@@ -1,6 +1,9 @@
 //! Reactor used to initialize a node.
 
-use std::fmt::{self, Display, Formatter};
+use std::{
+    fmt::{self, Display, Formatter},
+    sync::Arc,
+};
 
 use datasize::DataSize;
 use derive_more::From;
@@ -132,6 +135,10 @@ pub(crate) enum Error {
     #[error("storage error: {0}")]
     Storage(#[from] storage::Error),
 
+    /// Execution engine storage error, can happen during rocksdb migration from lmdb.
+    #[error(transparent)]
+    ExecutionEngineStorage(#[from] casper_execution_engine::storage::error::Error),
+
     /// `ContractRuntime` component error.
     #[error("contract runtime config error: {0}")]
     ContractRuntime(#[from] contract_runtime::ConfigError),
@@ -199,13 +206,26 @@ impl Reactor {
             registry,
         )?;
 
-        // TODO: This integrity check is misplaced, it should be part of the components
-        // `handle_event` function. Ideally it would be in the constructor, but since a query to
-        // storage needs to be made, this is not possible.
-        //
-        // Refactoring this has been postponed for now, since it is unclear whether time-consuming
-        // integrity checks are even a good idea, as they can block the node for one or more hours
-        // on restarts (online checks are an alternative).
+        {
+            // TODO(dwerner): profiling this on mainnet- how long are we blocking the initializer.
+            let engine_state = Arc::clone(contract_runtime.engine_state());
+            // We need to be synchronous here, ensures migration (of just the highest block) is
+            // complete before proceeding.
+            match storage.read_highest_block_header()? {
+                Some(highest_block_header) => {
+                    engine_state.migrate_state_root_to_rocksdb_if_needed(
+                        *highest_block_header.state_root_hash(),
+                        false,
+                    )?;
+                }
+                None => {
+                    info!(
+                        "unable to find highest block header while migrating from lmdb to rocksdb"
+                    );
+                }
+            }
+        }
+
         if should_check_integrity {
             info!("running trie-store integrity check, this may take a while");
             let state_roots = storage.read_state_root_hashes_for_trie_check()?;

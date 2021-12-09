@@ -1,7 +1,9 @@
+use casper_types::bytesrepr::Bytes;
+
+/// DB implementation of transaction source.
+pub mod db;
 /// In-memory implementation of transaction source.
 pub mod in_memory;
-/// LMDB implementation of transaction source.
-pub mod lmdb;
 
 /// A transaction which can be committed or aborted.
 pub trait Transaction: Sized {
@@ -26,7 +28,7 @@ pub trait Transaction: Sized {
 /// A transaction with the capability to read from a given [`Handle`](Transaction::Handle).
 pub trait Readable: Transaction {
     /// Returns the value from the corresponding key from a given [`Transaction::Handle`].
-    fn read(&self, handle: Self::Handle, key: &[u8]) -> Result<Option<&[u8]>, Self::Error>;
+    fn read(&self, handle: Self::Handle, key: &[u8]) -> Result<Option<Bytes>, Self::Error>;
 }
 
 /// A transaction with the capability to write to a given [`Handle`](Transaction::Handle).

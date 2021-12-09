@@ -3,10 +3,10 @@
 /// In-memory implementation of global state.
 pub mod in_memory;
 
-/// Lmdb implementation of global state.
-pub mod lmdb;
+/// Db implementation of global state.
+pub mod db;
 
-/// Lmdb implementation of global state with cache.
+/// Implementation of global state with cache.
 pub mod scratch;
 
 use std::{collections::HashMap, hash::BuildHasher};

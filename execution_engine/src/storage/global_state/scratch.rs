@@ -1,7 +1,6 @@
 use std::{
     collections::HashMap,
     mem,
-    ops::Deref,
     sync::{Arc, RwLock},
 };
 
@@ -15,17 +14,13 @@ use crate::{
     storage::{
         error,
         global_state::{CommitError, CommitProvider, StateProvider, StateReader},
-        store::Store,
-        transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
+        transaction_source::{Transaction, TransactionSource},
         trie::{merkle_proof::TrieMerkleProof, Trie},
-        trie_store::{
-            lmdb::LmdbTrieStore,
-            operations::{
-                keys_with_prefix, missing_trie_keys, put_trie, read, read_with_proof, ReadResult,
-            },
-        },
+        trie_store::operations::{read, ReadResult},
     },
 };
+
+use super::db::{DbGlobalState, DbGlobalStateView};
 
 type SharedCache = Arc<RwLock<Cache>>;
 
@@ -53,43 +48,29 @@ impl Cache {
     }
 }
 
-/// Global state implemented against LMDB as a backing data store.
+/// Global state implemented against rocksdb as a backing data store.
 pub struct ScratchGlobalState {
-    /// Underlying, cached stored values.
+    /// Underlying cached stored values.
     cache: SharedCache,
-    /// Environment for LMDB.
-    pub(crate) environment: Arc<LmdbEnvironment>,
-    /// Trie store held within LMDB.
-    pub(crate) trie_store: Arc<LmdbTrieStore>,
-    // TODO: make this a lazy-static
-    /// Empty root hash used for a new trie.
-    pub(crate) empty_root_hash: Digest,
+    /// Underlying uncached global state which is delegated to for reads.
+    store: DbGlobalState,
 }
 
 /// Represents a "view" of global state at a particular root hash.
 pub struct ScratchGlobalStateView {
+    /// Underlying cached stored values.
     cache: SharedCache,
-    /// Environment for LMDB.
-    pub(crate) environment: Arc<LmdbEnvironment>,
-    /// Trie store held within LMDB.
-    pub(crate) trie_store: Arc<LmdbTrieStore>,
-    /// Root hash of this "view".
-    pub(crate) root_hash: Digest,
+    /// Underlying uncached global state view which is delegated to for reads.
+    view: DbGlobalStateView,
 }
 
 impl ScratchGlobalState {
     /// Creates a state from an existing environment, store, and root_hash.
     /// Intended to be used for testing.
-    pub fn new(
-        environment: Arc<LmdbEnvironment>,
-        trie_store: Arc<LmdbTrieStore>,
-        empty_root_hash: Digest,
-    ) -> Self {
+    pub fn new(store: DbGlobalState) -> Self {
         ScratchGlobalState {
             cache: Arc::new(RwLock::new(Cache::new())),
-            environment,
-            trie_store,
-            empty_root_hash,
+            store,
         }
     }
 
@@ -111,22 +92,10 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
         if let Some(value) = self.cache.read().unwrap().get(key) {
             return Ok(Some(value.clone()));
         }
-        let txn = self.environment.create_read_txn()?;
-        let ret = match read::<Key, StoredValue, lmdb::RoTransaction, LmdbTrieStore, Self::Error>(
-            correlation_id,
-            &txn,
-            self.trie_store.deref(),
-            &self.root_hash,
-            key,
-        )? {
-            ReadResult::Found(value) => {
-                self.cache.write().unwrap().insert(*key, value.clone());
-                Some(value)
-            }
-            ReadResult::NotFound => None,
-            ReadResult::RootNotFound => panic!("ScratchGlobalState has invalid root"),
-        };
-        txn.commit()?;
+        let ret = self.view.read(correlation_id, key)?;
+        if let Some(value) = ret.as_ref() {
+            self.cache.write().unwrap().insert(*key, value.clone());
+        }
         Ok(ret)
     }
 
@@ -135,26 +104,7 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
         correlation_id: CorrelationId,
         key: &Key,
     ) -> Result<Option<TrieMerkleProof<Key, StoredValue>>, Self::Error> {
-        let txn = self.environment.create_read_txn()?;
-        let ret = match read_with_proof::<
-            Key,
-            StoredValue,
-            lmdb::RoTransaction,
-            LmdbTrieStore,
-            Self::Error,
-        >(
-            correlation_id,
-            &txn,
-            self.trie_store.deref(),
-            &self.root_hash,
-            key,
-        )? {
-            ReadResult::Found(value) => Some(value),
-            ReadResult::NotFound => None,
-            ReadResult::RootNotFound => panic!("LmdbWithCacheGlobalState has invalid root"),
-        };
-        txn.commit()?;
-        Ok(ret)
+        self.view.read_with_proof(correlation_id, key)
     }
 
     fn keys_with_prefix(
@@ -162,23 +112,7 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
         correlation_id: CorrelationId,
         prefix: &[u8],
     ) -> Result<Vec<Key>, Self::Error> {
-        let txn = self.environment.create_read_txn()?;
-        let keys_iter = keys_with_prefix::<Key, StoredValue, _, _>(
-            correlation_id,
-            &txn,
-            self.trie_store.deref(),
-            &self.root_hash,
-            prefix,
-        );
-        let mut ret = Vec::new();
-        for result in keys_iter {
-            match result {
-                Ok(key) => ret.push(key),
-                Err(error) => return Err(error),
-            }
-        }
-        txn.commit()?;
-        Ok(ret)
+        self.view.keys_with_prefix(correlation_id, prefix)
     }
 }
 
@@ -198,17 +132,11 @@ impl CommitProvider for ScratchGlobalState {
                 (None, transform) => {
                     // It might be the case that for `Add*` operations we don't have the previous
                     // value in cache yet.
-                    let txn = self.environment.create_read_txn()?;
-                    let updated_value = match read::<
-                        Key,
-                        StoredValue,
-                        lmdb::RoTransaction,
-                        LmdbTrieStore,
-                        Self::Error,
-                    >(
+                    let txn = self.store.rocksdb_store.create_read_txn()?;
+                    let updated_value = match read::<Key, StoredValue, _, _, Self::Error>(
                         correlation_id,
                         &txn,
-                        self.trie_store.deref(),
+                        &self.store.rocksdb_store,
                         &state_hash,
                         &key,
                     )? {
@@ -258,31 +186,24 @@ impl StateProvider for ScratchGlobalState {
     type Reader = ScratchGlobalStateView;
 
     fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, Self::Error> {
-        let txn = self.environment.create_read_txn()?;
-        let maybe_root: Option<Trie<Key, StoredValue>> = self.trie_store.get(&txn, &state_hash)?;
-        let maybe_state = maybe_root.map(|_| ScratchGlobalStateView {
+        let maybe_view = self.store.checkout(state_hash)?;
+        let maybe_state = maybe_view.map(|view| ScratchGlobalStateView {
             cache: Arc::clone(&self.cache),
-            environment: Arc::clone(&self.environment),
-            trie_store: Arc::clone(&self.trie_store),
-            root_hash: state_hash,
+            view,
         });
-        txn.commit()?;
         Ok(maybe_state)
     }
 
     fn empty_root(&self) -> Digest {
-        self.empty_root_hash
+        self.store.empty_root_hash
     }
 
     fn get_trie(
         &self,
-        _correlation_id: CorrelationId,
+        correlation_id: CorrelationId,
         trie_key: &Digest,
     ) -> Result<Option<Trie<Key, StoredValue>>, Self::Error> {
-        let txn = self.environment.create_read_txn()?;
-        let ret: Option<Trie<Key, StoredValue>> = self.trie_store.get(&txn, trie_key)?;
-        txn.commit()?;
-        Ok(ret)
+        self.store.get_trie(correlation_id, trie_key)
     }
 
     fn put_trie(
@@ -290,16 +211,7 @@ impl StateProvider for ScratchGlobalState {
         correlation_id: CorrelationId,
         trie: &Trie<Key, StoredValue>,
     ) -> Result<Digest, Self::Error> {
-        let mut txn = self.environment.create_read_write_txn()?;
-        let trie_hash = put_trie::<
-            Key,
-            StoredValue,
-            lmdb::RwTransaction,
-            LmdbTrieStore,
-            Self::Error,
-        >(correlation_id, &mut txn, &self.trie_store, trie)?;
-        txn.commit()?;
-        Ok(trie_hash)
+        self.store.put_trie(correlation_id, trie)
     }
 
     /// Finds all of the keys of missing descendant `Trie<K,V>` values
@@ -309,17 +221,8 @@ impl StateProvider for ScratchGlobalState {
         trie_keys: Vec<Digest>,
         check_integrity: bool,
     ) -> Result<Vec<Digest>, Self::Error> {
-        let txn = self.environment.create_read_txn()?;
-        let missing_descendants =
-            missing_trie_keys::<Key, StoredValue, lmdb::RoTransaction, LmdbTrieStore, Self::Error>(
-                correlation_id,
-                &txn,
-                self.trie_store.deref(),
-                trie_keys,
-                check_integrity,
-            )?;
-        txn.commit()?;
-        Ok(missing_descendants)
+        self.store
+            .missing_trie_keys(correlation_id, trie_keys, check_integrity)
     }
 }
 
@@ -333,8 +236,9 @@ mod tests {
 
     use super::*;
     use crate::storage::{
-        global_state::{lmdb::LmdbGlobalState, CommitProvider},
-        trie_store::operations::{write, WriteResult},
+        global_state::{db::DbGlobalState, CommitProvider},
+        transaction_source::db::LmdbEnvironment,
+        trie_store::db::LmdbTrieStore,
         DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
     };
 
@@ -392,7 +296,7 @@ mod tests {
     }
 
     struct TestState {
-        state: LmdbGlobalState,
+        state: DbGlobalState,
         root_hash: Digest,
     }
 
@@ -401,7 +305,7 @@ mod tests {
         let temp_dir = tempdir().unwrap();
         let environment = Arc::new(
             LmdbEnvironment::new(
-                &temp_dir.path(),
+                temp_dir.path(),
                 DEFAULT_TEST_MAX_DB_SIZE,
                 DEFAULT_TEST_MAX_READERS,
                 true,
@@ -411,36 +315,23 @@ mod tests {
         let trie_store =
             Arc::new(LmdbTrieStore::new(&environment, None, DatabaseFlags::empty()).unwrap());
 
-        let state = LmdbGlobalState::empty(environment, trie_store).unwrap();
-        let mut current_root = state.empty_root_hash;
-        {
-            let mut txn = state.environment.create_read_write_txn().unwrap();
-
-            for TestPair { key, value } in &create_test_pairs() {
-                match write::<_, _, _, LmdbTrieStore, error::Error>(
-                    correlation_id,
-                    &mut txn,
-                    &state.trie_store,
-                    &current_root,
-                    key,
-                    value,
-                )
-                .unwrap()
-                {
-                    WriteResult::Written(root_hash) => {
-                        current_root = root_hash;
-                    }
-                    WriteResult::AlreadyExists => (),
-                    WriteResult::RootNotFound => {
-                        panic!("LmdbWithCacheGlobalState has invalid root")
-                    }
-                }
-            }
-
-            txn.commit().unwrap();
+        let engine_state = DbGlobalState::empty(
+            environment,
+            trie_store,
+            tempdir().unwrap(),
+            crate::rocksdb_defaults(),
+        )
+        .unwrap();
+        let mut current_root = engine_state.empty_root_hash;
+        for TestPair { key, value } in create_test_pairs() {
+            let mut stored_values = HashMap::new();
+            stored_values.insert(key, value);
+            current_root = engine_state
+                .put_stored_values(correlation_id, current_root, stored_values)
+                .unwrap();
         }
         TestState {
-            state,
+            state: engine_state,
             root_hash: current_root,
         }
     }
@@ -451,6 +342,8 @@ mod tests {
         let test_pairs_updated = create_test_pairs_updated();
 
         let TestState { state, root_hash } = create_test_state();
+
+        let state = Arc::new(state);
 
         let scratch = state.create_scratch();
 

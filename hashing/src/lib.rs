@@ -65,22 +65,6 @@ impl Digest {
 
     /// Creates a 32-byte BLAKE2b hash digest from a given a piece of data.
     pub fn hash<T: AsRef<[u8]>>(data: T) -> Digest {
-        // TODO:
-        // Temporarily, to avoid potential regression, we always use the original hashing method.
-        // After the `ChunkWithProof` is thoroughly tested we should replace
-        // the current implementation with the commented one.
-        // This change may require updating the hashes in the `test_hash_btreemap'
-        // and `hash_known` tests.
-        //
-        // if Self::should_hash_with_chunks(&data) {
-        //     Self::hash_merkle_tree(
-        //         data.as_ref()
-        //             .chunks(ChunkWithProof::CHUNK_SIZE_BYTES)
-        //             .map(Self::blake2b_hash),
-        //     )
-        // } else {
-        //     Self::blake2b_hash(data)
-        // }
         Self::blake2b_hash(data)
     }
 
@@ -92,13 +76,6 @@ impl Digest {
         hasher.update(data);
         hasher.finalize_variable(|hash| ret.clone_from_slice(hash));
         Digest(ret)
-    }
-
-    // Temporarily unused, see comments inside `Digest::hash()` for details.
-    #[allow(unused)]
-    #[inline(always)]
-    fn should_hash_with_chunks<T: AsRef<[u8]>>(data: T) -> bool {
-        data.as_ref().len() > ChunkWithProof::CHUNK_SIZE_BYTES
     }
 
     /// Hashes a pair of byte slices.
@@ -342,7 +319,7 @@ mod tests {
 
     use casper_types::bytesrepr::{self, ToBytes};
 
-    use crate::{ChunkWithProof, Digest};
+    use crate::Digest;
 
     #[proptest]
     fn bytesrepr_roundtrip(data: [u8; Digest::LENGTH]) {
@@ -561,17 +538,6 @@ mod tests {
             hash_lower_hex,
             "aae1660ca492ed9af6b2ead22f88b390aeb2ec0719654824d084aa6c6553ceeb"
         );
-    }
-
-    #[test]
-    fn picks_correct_hashing_method() {
-        let data_smaller_than_chunk_size = vec![];
-        assert!(!Digest::should_hash_with_chunks(
-            data_smaller_than_chunk_size
-        ));
-
-        let data_bigger_than_chunk_size = vec![0; ChunkWithProof::CHUNK_SIZE_BYTES * 2];
-        assert!(Digest::should_hash_with_chunks(data_bigger_than_chunk_size));
     }
 
     #[test]

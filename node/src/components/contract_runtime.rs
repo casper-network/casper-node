@@ -28,9 +28,10 @@ use casper_execution_engine::{
     },
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::{
-        global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment,
-        trie_store::lmdb::LmdbTrieStore,
+        global_state::db::DbGlobalState, transaction_source::db::LmdbEnvironment,
+        trie_store::db::LmdbTrieStore,
     },
+    ROCKS_DB_DATA_DIR,
 };
 use casper_hashing::Digest;
 use casper_types::ProtocolVersion;
@@ -133,7 +134,7 @@ type ExecQueue = Arc<Mutex<BTreeMap<u64, (FinalizedBlock, Vec<Deploy>, Vec<Deplo
 #[derive(DataSize)]
 pub(crate) struct ContractRuntime {
     execution_pre_state: Arc<Mutex<ExecutionPreState>>,
-    engine_state: Arc<EngineState<LmdbGlobalState>>,
+    engine_state: Arc<EngineState<DbGlobalState>>,
     metrics: Arc<Metrics>,
     protocol_version: ProtocolVersion,
 
@@ -168,36 +169,48 @@ where
                 chainspec,
                 responder,
             } => {
-                let result = self.commit_genesis(&chainspec);
-                if let Err(lmdb_error) = self.engine_state.flush_environment() {
-                    fatal!(
-                        effect_builder,
-                        "error flushing lmdb environment {:?}",
-                        lmdb_error
-                    )
-                    .ignore()
-                } else {
-                    trace!(?result, "commit_genesis response");
-                    responder.respond(result).ignore()
+                let engine_state = Arc::clone(&self.engine_state);
+                async move {
+                    let result = commit_genesis(&chainspec, &engine_state);
+                    if let Err(lmdb_error) = engine_state.flush_environment() {
+                        fatal!(
+                            effect_builder,
+                            "error flushing lmdb environment {:?}",
+                            lmdb_error
+                        )
+                        .await;
+                    } else {
+                        trace!(?result, "commit_genesis response");
+                        responder.respond(result).await;
+                    }
                 }
             }
+            .ignore(),
             ContractRuntimeRequest::Upgrade {
                 upgrade_config,
                 responder,
             } => {
-                let result = self.commit_upgrade(*upgrade_config);
-                if let Err(lmdb_error) = self.engine_state.flush_environment() {
-                    fatal!(
-                        effect_builder,
-                        "error flushing lmdb environment {:?}",
-                        lmdb_error
-                    )
-                    .ignore()
-                } else {
-                    trace!(?result, "commit_upgrade response");
-                    responder.respond(result).ignore()
+                let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
+                async move {
+                    let result = commit_upgrade(*upgrade_config, &engine_state, metrics);
+                    match engine_state.flush_environment() {
+                        Err(db_error) => {
+                            fatal!(
+                                effect_builder,
+                                "error flushing lmdb environment {:?}",
+                                db_error
+                            )
+                            .await;
+                        }
+                        Ok(_) => {
+                            trace!(?result, "commit_upgrade response");
+                            responder.respond(result).await;
+                        }
+                    }
                 }
             }
+            .ignore(),
             ContractRuntimeRequest::Query {
                 query_request,
                 responder,
@@ -418,6 +431,38 @@ where
     }
 }
 
+fn commit_upgrade(
+    upgrade_config: UpgradeConfig,
+    engine_state: &EngineState<DbGlobalState>,
+    metrics: Arc<Metrics>,
+) -> Result<UpgradeSuccess, engine_state::Error> {
+    debug!(?upgrade_config, "upgrade");
+    let start = Instant::now();
+    let result = engine_state.commit_upgrade(CorrelationId::new(), upgrade_config);
+    metrics
+        .commit_upgrade
+        .observe(start.elapsed().as_secs_f64());
+    debug!(?result, "upgrade result");
+    result
+}
+
+fn commit_genesis(
+    chainspec: &Chainspec,
+    engine_state: &EngineState<DbGlobalState>,
+) -> Result<GenesisSuccess, engine_state::Error> {
+    let correlation_id = CorrelationId::new();
+    let genesis_config_hash = chainspec.hash();
+    let protocol_version = chainspec.protocol_config.version;
+    // Transforms a chainspec into a valid genesis config for execution engine.
+    let ee_config = chainspec.into();
+    engine_state.commit_genesis(
+        correlation_id,
+        genesis_config_hash,
+        protocol_version,
+        &ee_config,
+    )
+}
+
 impl ContractRuntime {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
@@ -451,7 +496,12 @@ impl ContractRuntime {
             DatabaseFlags::empty(),
         )?);
 
-        let global_state = LmdbGlobalState::empty(environment, trie_store)?;
+        let global_state = DbGlobalState::empty(
+            environment,
+            trie_store,
+            storage_dir.join(ROCKS_DB_DATA_DIR),
+            casper_execution_engine::rocksdb_defaults(),
+        )?;
         let engine_config = EngineConfig::new(
             contract_runtime_config.max_query_depth(),
             max_associated_keys,
@@ -471,40 +521,6 @@ impl ContractRuntime {
             engine_state,
             metrics,
         })
-    }
-
-    /// Commits a genesis using a chainspec
-    pub(crate) fn commit_genesis(
-        &self,
-        chainspec: &Chainspec,
-    ) -> Result<GenesisSuccess, engine_state::Error> {
-        let correlation_id = CorrelationId::new();
-        let genesis_config_hash = chainspec.hash();
-        let protocol_version = chainspec.protocol_config.version;
-        // Transforms a chainspec into a valid genesis config for execution engine.
-        let ee_config = chainspec.into();
-        self.engine_state.commit_genesis(
-            correlation_id,
-            genesis_config_hash,
-            protocol_version,
-            &ee_config,
-        )
-    }
-
-    fn commit_upgrade(
-        &self,
-        upgrade_config: UpgradeConfig,
-    ) -> Result<UpgradeSuccess, engine_state::Error> {
-        debug!(?upgrade_config, "upgrade");
-        let start = Instant::now();
-        let result = self
-            .engine_state
-            .commit_upgrade(CorrelationId::new(), upgrade_config);
-        self.metrics
-            .commit_upgrade
-            .observe(start.elapsed().as_secs_f64());
-        debug!(?result, "upgrade result");
-        result
     }
 
     /// Retrieve trie keys for the integrity check.
@@ -529,7 +545,7 @@ impl ContractRuntime {
 
     #[allow(clippy::too_many_arguments)]
     async fn execute_finalized_block_or_requeue<REv>(
-        engine_state: Arc<EngineState<LmdbGlobalState>>,
+        engine_state: Arc<EngineState<DbGlobalState>>,
         metrics: Arc<Metrics>,
         exec_queue: ExecQueue,
         execution_pre_state: Arc<Mutex<ExecutionPreState>>,
@@ -602,9 +618,8 @@ impl ContractRuntime {
         }
     }
 
-    /// Returns the engine state, for testing only.
-    #[cfg(test)]
-    pub(crate) fn engine_state(&self) -> &Arc<EngineState<LmdbGlobalState>> {
+    /// Returns the engine state.
+    pub(crate) fn engine_state(&self) -> &Arc<EngineState<DbGlobalState>> {
         &self.engine_state
     }
 }

@@ -9,7 +9,8 @@ use std::{
     sync::Arc,
 };
 
-use lmdb::DatabaseFlags;
+use filesize::PathExt;
+use lmdb::{Database, DatabaseFlags};
 use log::LevelFilter;
 
 use bytesrepr::FromBytes;
@@ -37,12 +38,12 @@ use casper_execution_engine::{
     },
     storage::{
         global_state::{
-            in_memory::InMemoryGlobalState, lmdb::LmdbGlobalState, scratch::ScratchGlobalState,
+            db::DbGlobalState, in_memory::InMemoryGlobalState, scratch::ScratchGlobalState,
             CommitProvider, StateProvider, StateReader,
         },
-        transaction_source::lmdb::LmdbEnvironment,
+        transaction_source::db::LmdbEnvironment,
         trie::merkle_proof::TrieMerkleProof,
-        trie_store::lmdb::LmdbTrieStore,
+        trie_store::db::LmdbTrieStore,
     },
 };
 use casper_hashing::Digest;
@@ -75,13 +76,13 @@ const DEFAULT_LMDB_PAGES: usize = 256_000_000;
 /// The default value is chosen to be the same as the node itself.
 const DEFAULT_MAX_READERS: u32 = 512;
 
-/// This is appended to the data dir path provided to the `LmdbWasmTestBuilder`".
+/// This is appended to the data dir path provided to the `DbWasmTestBuilder`".
 const GLOBAL_STATE_DIR: &str = "global_state";
 
 /// Wasm test builder where state is held entirely in memory.
 pub type InMemoryWasmTestBuilder = WasmTestBuilder<InMemoryGlobalState>;
 /// Wasm test builder where state is held in LMDB.
-pub type LmdbWasmTestBuilder = WasmTestBuilder<LmdbGlobalState>;
+pub type DbWasmTestBuilder = WasmTestBuilder<DbGlobalState>;
 
 /// Builder for simple WASM test
 pub struct WasmTestBuilder<S> {
@@ -111,6 +112,8 @@ pub struct WasmTestBuilder<S> {
     auction_contract_hash: Option<ContractHash>,
     /// Scratch global state used for in-memory execution and commit optimization.
     scratch_engine_state: Option<EngineState<ScratchGlobalState>>,
+    /// Global state dir, for implementations that define one.
+    global_state_dir: Option<PathBuf>,
 }
 
 impl<S> WasmTestBuilder<S> {
@@ -141,6 +144,7 @@ impl Default for InMemoryWasmTestBuilder {
             handle_payment_contract_hash: None,
             standard_payment_hash: None,
             auction_contract_hash: None,
+            global_state_dir: None,
             scratch_engine_state: None,
         }
     }
@@ -164,6 +168,7 @@ impl<S> Clone for WasmTestBuilder<S> {
             standard_payment_hash: self.standard_payment_hash,
             auction_contract_hash: self.auction_contract_hash,
             scratch_engine_state: None,
+            global_state_dir: self.global_state_dir.clone(),
         }
     }
 }
@@ -186,11 +191,12 @@ impl InMemoryWasmTestBuilder {
     }
 }
 
-impl LmdbWasmTestBuilder {
-    /// Returns an [`LmdbWasmTestBuilder`] with configuration.
+impl DbWasmTestBuilder {
+    /// Returns an [`DbWasmTestBuilder`] with configuration.
     pub fn new_with_config<T: AsRef<OsStr> + ?Sized>(
         data_dir: &T,
         engine_config: EngineConfig,
+        rocksdb_opts: rocksdb::Options,
     ) -> Self {
         Self::initialize_logging();
         let page_size = *OS_PAGE_SIZE;
@@ -210,8 +216,13 @@ impl LmdbWasmTestBuilder {
                 .expect("should create LmdbTrieStore"),
         );
 
-        let global_state =
-            LmdbGlobalState::empty(environment, trie_store).expect("should create LmdbGlobalState");
+        let global_state = DbGlobalState::empty(
+            environment,
+            trie_store,
+            global_state_dir.join("rocksdb-data"),
+            rocksdb_opts,
+        )
+        .expect("should create DbGlobalState");
         let engine_state = EngineState::new(global_state, engine_config);
         WasmTestBuilder {
             engine_state: Rc::new(engine_state),
@@ -226,6 +237,7 @@ impl LmdbWasmTestBuilder {
             handle_payment_contract_hash: None,
             standard_payment_hash: None,
             auction_contract_hash: None,
+            global_state_dir: Some(global_state_dir),
             scratch_engine_state: None,
         }
     }
@@ -236,9 +248,15 @@ impl LmdbWasmTestBuilder {
         engine_state.flush_environment().unwrap();
     }
 
-    /// Returns a new [`LmdbWasmTestBuilder`].
-    pub fn new<T: AsRef<OsStr> + ?Sized>(data_dir: &T) -> Self {
-        Self::new_with_config(data_dir, Default::default())
+    /// Get the size of rocksdb's data files on disk in bytes.
+    pub fn rocksdb_on_disk_size(&self) -> usize {
+        let engine_state = &*self.engine_state;
+        engine_state.rocksdb_on_disk_size()
+    }
+
+    /// Returns a new [`DbWasmTestBuilder`].
+    pub fn new<T: AsRef<OsStr> + ?Sized>(data_dir: &T, rocksdb_opts: rocksdb::Options) -> Self {
+        Self::new_with_config(data_dir, EngineConfig::default(), rocksdb_opts)
     }
 
     /// Creates a new instance of builder using the supplied configurations, opening wrapped LMDBs
@@ -275,9 +293,21 @@ impl LmdbWasmTestBuilder {
         let trie_store =
             Arc::new(LmdbTrieStore::open(&environment, None).expect("should open LmdbTrieStore"));
 
-        let global_state =
-            LmdbGlobalState::empty(environment, trie_store).expect("should create LmdbGlobalState");
+        let global_state = DbGlobalState::empty(
+            environment,
+            trie_store,
+            global_state_dir.as_ref().join("rocksdb-data"),
+            casper_execution_engine::rocksdb_defaults(),
+        )
+        .expect("should create DbGlobalState");
         let engine_state = EngineState::new(global_state, engine_config);
+
+        // TODO: replace lmdb fixture files with rocksdb ones, or perhaps a more universal format.
+        // Currently copies all state from lmdb file to rocksdb.
+        engine_state
+            .migrate_state_root_to_rocksdb_if_needed(post_state_hash, false)
+            .expect("unable to migrate state root from lmdb to rocksdb");
+
         WasmTestBuilder {
             engine_state: Rc::new(engine_state),
             exec_results: Vec::new(),
@@ -292,6 +322,7 @@ impl LmdbWasmTestBuilder {
             standard_payment_hash: None,
             auction_contract_hash: None,
             scratch_engine_state: None,
+            global_state_dir: Some(global_state_dir.as_ref().to_path_buf()),
         }
     }
 
@@ -310,8 +341,18 @@ impl LmdbWasmTestBuilder {
         path
     }
 
+    /// Returns the file size on disk of the backing lmdb file behind DbGlobalState.
+    pub fn lmdb_on_disk_size(&self) -> Option<u64> {
+        if let Some(path) = self.global_state_dir.as_ref() {
+            let mut path = path.clone();
+            path.push("data.lmdb");
+            return path.as_path().size_on_disk().ok();
+        }
+        None
+    }
+
     /// Execute and commit transforms from an ExecuteRequest into a scratch global state.
-    /// You MUST call scratch_flush to flush these changes to LmdbGlobalState.
+    /// You MUST call write_scratch_to_db to flush these changes to DbGlobalState.
     pub fn scratch_exec_and_commit(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
         if self.scratch_engine_state.is_none() {
             self.scratch_engine_state = Some(self.engine_state.get_scratch_engine_state());
@@ -352,16 +393,26 @@ impl LmdbWasmTestBuilder {
     }
 
     /// Commit scratch to global state, and reset the scratch cache.
-    pub fn write_scratch_to_lmdb(&mut self) -> &mut Self {
+    pub fn write_scratch_to_db(&mut self) -> &mut Self {
         let prestate_hash = self.post_state_hash.expect("Should have genesis hash");
         if let Some(scratch) = self.scratch_engine_state.take() {
             self.post_state_hash = Some(
                 self.engine_state
-                    .write_scratch_to_lmdb(prestate_hash, scratch.into_inner())
+                    .write_scratch_to_db(prestate_hash, scratch.into_inner())
                     .unwrap(),
             );
         }
         self
+    }
+
+    /// Returns a handle to the underlying LMDB environment.
+    pub fn lmdb_environment(&self) -> Arc<LmdbEnvironment> {
+        self.engine_state.lmdb_environment()
+    }
+
+    /// Returns a handle to the underlying LMDB database.
+    pub fn lmdb_handle(&self) -> Database {
+        self.engine_state.lmdb_handle()
     }
 }
 

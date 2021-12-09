@@ -1,7 +1,17 @@
-use std::{collections::HashMap, ops::Deref, sync::Arc};
+use std::{
+    collections::HashMap,
+    path::Path,
+    sync::Arc,
+    thread,
+    time::{Duration, Instant},
+};
+use tracing::info;
 
 use casper_hashing::Digest;
-use casper_types::{Key, StoredValue};
+use casper_types::{
+    bytesrepr::{self, Bytes, ToBytes},
+    Key, StoredValue,
+};
 
 use crate::{
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
@@ -12,10 +22,15 @@ use crate::{
             StateReader,
         },
         store::Store,
-        transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
-        trie::{merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie},
+        transaction_source::{
+            db::{LmdbEnvironment, RocksDb, RocksDbStore},
+            Readable, Transaction, TransactionSource, Writable,
+        },
+        trie::{
+            merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Pointer, Trie,
+        },
         trie_store::{
-            lmdb::LmdbTrieStore,
+            db::LmdbTrieStore,
             operations::{
                 keys_with_prefix, missing_trie_keys, put_trie, read, read_with_proof, ReadResult,
             },
@@ -24,41 +39,144 @@ use crate::{
 };
 
 /// Global state implemented against LMDB as a backing data store.
-pub struct LmdbGlobalState {
+#[derive(Clone)]
+pub struct DbGlobalState {
     /// Environment for LMDB.
-    pub(crate) environment: Arc<LmdbEnvironment>,
+    pub(crate) lmdb_environment: Arc<LmdbEnvironment>,
     /// Trie store held within LMDB.
-    pub(crate) trie_store: Arc<LmdbTrieStore>,
-    // TODO: make this a lazy-static
+    pub(crate) lmdb_trie_store: Arc<LmdbTrieStore>,
     /// Empty root hash used for a new trie.
     pub(crate) empty_root_hash: Digest,
+    /// Handle to rocksdb.
+    pub rocksdb_store: RocksDbStore,
 }
 
 /// Represents a "view" of global state at a particular root hash.
-pub struct LmdbGlobalStateView {
-    /// Environment for LMDB.
-    pub(crate) environment: Arc<LmdbEnvironment>,
-    /// Trie store held within LMDB.
-    pub(crate) store: Arc<LmdbTrieStore>,
+#[derive(Clone)]
+pub struct DbGlobalStateView {
     /// Root hash of this "view".
     pub(crate) root_hash: Digest,
+    /// Handle to rocksdb.
+    pub rocksdb_store: RocksDbStore,
 }
 
-impl LmdbGlobalState {
+impl DbGlobalState {
+    /// Migrate data at the given state roots (if they exist) from lmdb to rocksdb.
+    /// This function uses std::thread::sleep, is otherwise intensive and so needs to be called with
+    /// tokio::task::spawn_blocking.
+    ///
+    /// TODO(dwerner): optionally add multithreading here. Measure time of this method first.
+    pub fn migrate_state_root_to_rocksdb(
+        &self,
+        state_root: Digest,
+        limit_rate: bool,
+    ) -> Result<(), error::Error> {
+        let mut missing_trie_keys = vec![state_root];
+        let start_time = Instant::now();
+        let mut interval_start = start_time;
+        let mut heartbeat_interval = Instant::now();
+
+        const BYTES_PER_SEC: u64 = 8 * 1024 * 1024;
+        const INTERVAL_MILLIS: u64 = 10;
+        const TARGET_INTERVAL_BYTES: u64 = (BYTES_PER_SEC / 1000) * INTERVAL_MILLIS;
+        const INTERVAL_DURATION: Duration = Duration::from_millis(INTERVAL_MILLIS);
+
+        let mut interval_bytes = 0;
+        let mut total_tries: u64 = 0;
+        let mut total_bytes: u64 = 0;
+
+        let mut time_searching_for_trie_keys = Duration::from_secs(0);
+
+        while let Some(next_trie_key) = missing_trie_keys.pop() {
+            if limit_rate {
+                let elapsed = interval_start.elapsed();
+                if interval_bytes >= TARGET_INTERVAL_BYTES {
+                    if elapsed < INTERVAL_DURATION {
+                        thread::sleep(INTERVAL_DURATION - elapsed);
+                    }
+                    interval_start = Instant::now();
+                    interval_bytes = 0;
+                }
+            }
+
+            // For user feedback, update on progress if this takes longer than 10 seconds.
+            if heartbeat_interval.elapsed().as_secs() > 10 {
+                info!(
+                    "trie migration progress: bytes copied {}, tries copied {}",
+                    total_bytes, total_tries,
+                );
+                heartbeat_interval = Instant::now();
+            }
+
+            let lmdb_txn = self.lmdb_environment.create_read_txn()?;
+
+            // TODO(dwerner): after this migration clean up read and write traits to fix:
+            let mut handle = self.rocksdb_store.rocksdb.clone();
+            let rocksdb = self.rocksdb_store.rocksdb.clone();
+
+            match lmdb_txn.read(self.lmdb_trie_store.db, &next_trie_key.to_bytes()?)? {
+                Some(value_bytes) => {
+                    let key_bytes = next_trie_key.to_bytes()?;
+                    let read_bytes = key_bytes.len() as u64 + value_bytes.len() as u64;
+                    interval_bytes += read_bytes;
+                    total_bytes += read_bytes;
+                    total_tries += 1;
+
+                    handle.write(rocksdb.clone(), &key_bytes, &value_bytes)?;
+
+                    find_missing_descendants(
+                        value_bytes,
+                        handle,
+                        rocksdb,
+                        &mut missing_trie_keys,
+                        &mut time_searching_for_trie_keys,
+                    )?;
+                }
+                None => {
+                    return Err(error::Error::CorruptLmdbStateRootDuringMigrationToRocksdb {
+                        trie_key: next_trie_key,
+                        state_root,
+                    });
+                }
+            }
+            lmdb_txn.commit()?;
+        }
+
+        info!(
+            %total_bytes,
+            %total_tries,
+            time_migration_took_micros = %start_time.elapsed().as_micros(),
+            time_searching_for_trie_keys_micros = %time_searching_for_trie_keys.as_micros(),
+            "trie migration complete",
+        );
+        Ok(())
+    }
+
     /// Creates an empty state from an existing environment and trie_store.
     pub fn empty(
         environment: Arc<LmdbEnvironment>,
         trie_store: Arc<LmdbTrieStore>,
+        rocksdb_path: impl AsRef<Path>,
+        rocksdb_opts: rocksdb::Options,
     ) -> Result<Self, error::Error> {
+        let rocksdb_store = RocksDbStore::new(rocksdb_path, rocksdb_opts)?;
+
         let root_hash: Digest = {
             let (root_hash, root) = create_hashed_empty_trie::<Key, StoredValue>()?;
             let mut txn = environment.create_read_write_txn()?;
+            let mut rocksdb_txn = rocksdb_store.create_read_write_txn()?;
+            rocksdb_store.put(&mut rocksdb_txn, &root_hash, &root)?;
             trie_store.put(&mut txn, &root_hash, &root)?;
             txn.commit()?;
             environment.env().sync(true)?;
             root_hash
         };
-        Ok(LmdbGlobalState::new(environment, trie_store, root_hash))
+        Ok(DbGlobalState::new(
+            environment,
+            trie_store,
+            root_hash,
+            rocksdb_store,
+        ))
     }
 
     /// Creates a state from an existing environment, store, and root_hash.
@@ -67,21 +185,19 @@ impl LmdbGlobalState {
         environment: Arc<LmdbEnvironment>,
         trie_store: Arc<LmdbTrieStore>,
         empty_root_hash: Digest,
+        rocksdb_store: RocksDbStore,
     ) -> Self {
-        LmdbGlobalState {
-            environment,
-            trie_store,
+        DbGlobalState {
+            lmdb_environment: environment,
+            lmdb_trie_store: trie_store,
             empty_root_hash,
+            rocksdb_store,
         }
     }
 
     /// Creates an in-memory cache for changes written.
     pub fn create_scratch(&self) -> ScratchGlobalState {
-        ScratchGlobalState::new(
-            Arc::clone(&self.environment),
-            Arc::clone(&self.trie_store),
-            self.empty_root_hash,
-        )
+        ScratchGlobalState::new(self.clone())
     }
 
     /// Write stored values to LMDB.
@@ -91,9 +207,9 @@ impl LmdbGlobalState {
         prestate_hash: Digest,
         stored_values: HashMap<Key, StoredValue>,
     ) -> Result<Digest, error::Error> {
-        put_stored_values::<LmdbEnvironment, LmdbTrieStore, error::Error>(
-            &self.environment,
-            &self.trie_store,
+        put_stored_values::<_, _, error::Error>(
+            &self.rocksdb_store,
+            &self.rocksdb_store,
             correlation_id,
             prestate_hash,
             stored_values,
@@ -102,7 +218,46 @@ impl LmdbGlobalState {
     }
 }
 
-impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
+fn find_missing_descendants(
+    value_bytes: Bytes,
+    handle: RocksDb,
+    rocksdb: RocksDb,
+    missing_trie_keys: &mut Vec<Digest>,
+    time_in_missing_trie_keys: &mut Duration,
+) -> Result<(), error::Error> {
+    if value_bytes[0] == 0u8 {
+        return Ok(());
+    }
+    let start_trie_keys = Instant::now();
+    let trie: Trie<Key, StoredValue> = bytesrepr::deserialize(value_bytes.into())?;
+    match trie {
+        Trie::Leaf { .. } => unreachable!(),
+        Trie::Node { pointer_block } => {
+            for (_index, ptr) in pointer_block.as_indexed_pointers() {
+                let ptr = match ptr {
+                    Pointer::LeafPointer(pointer) | Pointer::NodePointer(pointer) => pointer,
+                };
+                let existing = handle.read(rocksdb.clone(), &ptr.to_bytes()?)?;
+                if existing.is_none() {
+                    missing_trie_keys.push(ptr);
+                }
+            }
+        }
+        Trie::Extension { affix: _, pointer } => {
+            let ptr = match pointer {
+                Pointer::LeafPointer(pointer) | Pointer::NodePointer(pointer) => pointer,
+            };
+            let existing = handle.read(rocksdb, &ptr.to_bytes()?)?;
+            if existing.is_none() {
+                missing_trie_keys.push(ptr);
+            }
+        }
+    }
+    *time_in_missing_trie_keys += start_trie_keys.elapsed();
+    Ok(())
+}
+
+impl StateReader<Key, StoredValue> for DbGlobalStateView {
     type Error = error::Error;
 
     fn read(
@@ -110,17 +265,17 @@ impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
         correlation_id: CorrelationId,
         key: &Key,
     ) -> Result<Option<StoredValue>, Self::Error> {
-        let txn = self.environment.create_read_txn()?;
-        let ret = match read::<Key, StoredValue, lmdb::RoTransaction, LmdbTrieStore, Self::Error>(
+        let txn = self.rocksdb_store.create_read_txn()?;
+        let ret = match read::<Key, StoredValue, _, RocksDbStore, Self::Error>(
             correlation_id,
             &txn,
-            self.store.deref(),
+            &self.rocksdb_store,
             &self.root_hash,
             key,
         )? {
             ReadResult::Found(value) => Some(value),
             ReadResult::NotFound => None,
-            ReadResult::RootNotFound => panic!("LmdbGlobalState has invalid root"),
+            ReadResult::RootNotFound => panic!("DbGlobalState has invalid root"),
         };
         txn.commit()?;
         Ok(ret)
@@ -131,23 +286,17 @@ impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
         correlation_id: CorrelationId,
         key: &Key,
     ) -> Result<Option<TrieMerkleProof<Key, StoredValue>>, Self::Error> {
-        let txn = self.environment.create_read_txn()?;
-        let ret = match read_with_proof::<
-            Key,
-            StoredValue,
-            lmdb::RoTransaction,
-            LmdbTrieStore,
-            Self::Error,
-        >(
+        let txn = self.rocksdb_store.create_read_txn()?;
+        let ret = match read_with_proof::<Key, StoredValue, _, _, Self::Error>(
             correlation_id,
             &txn,
-            self.store.deref(),
+            &self.rocksdb_store,
             &self.root_hash,
             key,
         )? {
             ReadResult::Found(value) => Some(value),
             ReadResult::NotFound => None,
-            ReadResult::RootNotFound => panic!("LmdbGlobalState has invalid root"),
+            ReadResult::RootNotFound => panic!("DbGlobalState has invalid root"),
         };
         txn.commit()?;
         Ok(ret)
@@ -158,11 +307,11 @@ impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
         correlation_id: CorrelationId,
         prefix: &[u8],
     ) -> Result<Vec<Key>, Self::Error> {
-        let txn = self.environment.create_read_txn()?;
+        let txn = self.rocksdb_store.create_read_txn()?;
         let keys_iter = keys_with_prefix::<Key, StoredValue, _, _>(
             correlation_id,
             &txn,
-            self.store.deref(),
+            &self.rocksdb_store,
             &self.root_hash,
             prefix,
         );
@@ -178,16 +327,16 @@ impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
     }
 }
 
-impl CommitProvider for LmdbGlobalState {
+impl CommitProvider for DbGlobalState {
     fn commit(
         &self,
         correlation_id: CorrelationId,
         prestate_hash: Digest,
         effects: AdditiveMap<Key, Transform>,
     ) -> Result<Digest, Self::Error> {
-        commit::<LmdbEnvironment, LmdbTrieStore, _, Self::Error>(
-            &self.environment,
-            &self.trie_store,
+        commit::<RocksDbStore, RocksDbStore, _, Self::Error>(
+            &self.rocksdb_store,
+            &self.rocksdb_store,
             correlation_id,
             prestate_hash,
             effects,
@@ -196,18 +345,18 @@ impl CommitProvider for LmdbGlobalState {
     }
 }
 
-impl StateProvider for LmdbGlobalState {
+impl StateProvider for DbGlobalState {
     type Error = error::Error;
 
-    type Reader = LmdbGlobalStateView;
+    type Reader = DbGlobalStateView;
 
     fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, Self::Error> {
-        let txn = self.environment.create_read_txn()?;
-        let maybe_root: Option<Trie<Key, StoredValue>> = self.trie_store.get(&txn, &state_hash)?;
-        let maybe_state = maybe_root.map(|_| LmdbGlobalStateView {
-            environment: Arc::clone(&self.environment),
-            store: Arc::clone(&self.trie_store),
+        let txn = self.rocksdb_store.create_read_txn()?;
+        let rocksdb_store = self.rocksdb_store.clone();
+        let maybe_root: Option<Trie<Key, StoredValue>> = rocksdb_store.get(&txn, &state_hash)?;
+        let maybe_state = maybe_root.map(|_| DbGlobalStateView {
             root_hash: state_hash,
+            rocksdb_store,
         });
         txn.commit()?;
         Ok(maybe_state)
@@ -222,8 +371,9 @@ impl StateProvider for LmdbGlobalState {
         _correlation_id: CorrelationId,
         trie_key: &Digest,
     ) -> Result<Option<Trie<Key, StoredValue>>, Self::Error> {
-        let txn = self.environment.create_read_txn()?;
-        let ret: Option<Trie<Key, StoredValue>> = self.trie_store.get(&txn, trie_key)?;
+        let txn = self.rocksdb_store.create_read_txn()?;
+        let trie_store = self.rocksdb_store.clone();
+        let ret: Option<Trie<Key, StoredValue>> = trie_store.get(&txn, trie_key)?;
         txn.commit()?;
         Ok(ret)
     }
@@ -233,14 +383,14 @@ impl StateProvider for LmdbGlobalState {
         correlation_id: CorrelationId,
         trie: &Trie<Key, StoredValue>,
     ) -> Result<Digest, Self::Error> {
-        let mut txn = self.environment.create_read_write_txn()?;
-        let trie_hash = put_trie::<
-            Key,
-            StoredValue,
-            lmdb::RwTransaction,
-            LmdbTrieStore,
-            Self::Error,
-        >(correlation_id, &mut txn, &self.trie_store, trie)?;
+        let mut txn = self.rocksdb_store.create_read_write_txn()?;
+        let trie_store = self.rocksdb_store.clone();
+        let trie_hash = put_trie::<Key, StoredValue, _, _, Self::Error>(
+            correlation_id,
+            &mut txn,
+            &trie_store,
+            trie,
+        )?;
         txn.commit()?;
         Ok(trie_hash)
     }
@@ -253,15 +403,15 @@ impl StateProvider for LmdbGlobalState {
         trie_keys: Vec<Digest>,
         check_integrity: bool,
     ) -> Result<Vec<Digest>, Self::Error> {
-        let txn = self.environment.create_read_txn()?;
-        let missing_descendants =
-            missing_trie_keys::<Key, StoredValue, lmdb::RoTransaction, LmdbTrieStore, Self::Error>(
-                correlation_id,
-                &txn,
-                self.trie_store.deref(),
-                trie_keys,
-                check_integrity,
-            )?;
+        let txn = self.rocksdb_store.create_read_txn()?;
+        let trie_store = self.rocksdb_store.clone();
+        let missing_descendants = missing_trie_keys::<Key, StoredValue, _, _, Self::Error>(
+            correlation_id,
+            &txn,
+            &trie_store,
+            trie_keys,
+            check_integrity,
+        )?;
         txn.commit()?;
         Ok(missing_descendants)
     }
@@ -276,10 +426,7 @@ mod tests {
     use casper_types::{account::AccountHash, CLValue};
 
     use super::*;
-    use crate::storage::{
-        trie_store::operations::{write, WriteResult},
-        DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
-    };
+    use crate::storage::{DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS};
 
     #[derive(Debug, Clone)]
     struct TestPair {
@@ -317,12 +464,13 @@ mod tests {
         ]
     }
 
-    fn create_test_state() -> (LmdbGlobalState, Digest) {
+    fn create_test_state() -> (DbGlobalState, Digest) {
         let correlation_id = CorrelationId::new();
-        let temp_dir = tempdir().unwrap();
+        let lmdb_temp_dir = tempdir().unwrap();
+        let rocksdb_temp_dir = tempdir().unwrap();
         let environment = Arc::new(
             LmdbEnvironment::new(
-                &temp_dir.path(),
+                lmdb_temp_dir.path(),
                 DEFAULT_TEST_MAX_DB_SIZE,
                 DEFAULT_TEST_MAX_READERS,
                 true,
@@ -332,33 +480,22 @@ mod tests {
         let trie_store =
             Arc::new(LmdbTrieStore::new(&environment, None, DatabaseFlags::empty()).unwrap());
 
-        let ret = LmdbGlobalState::empty(environment, trie_store).unwrap();
-        let mut current_root = ret.empty_root_hash;
-        {
-            let mut txn = ret.environment.create_read_write_txn().unwrap();
-
-            for TestPair { key, value } in &create_test_pairs() {
-                match write::<_, _, _, LmdbTrieStore, error::Error>(
-                    correlation_id,
-                    &mut txn,
-                    &ret.trie_store,
-                    &current_root,
-                    key,
-                    value,
-                )
-                .unwrap()
-                {
-                    WriteResult::Written(root_hash) => {
-                        current_root = root_hash;
-                    }
-                    WriteResult::AlreadyExists => (),
-                    WriteResult::RootNotFound => panic!("LmdbGlobalState has invalid root"),
-                }
-            }
-
-            txn.commit().unwrap();
+        let engine_state = DbGlobalState::empty(
+            environment,
+            trie_store,
+            &rocksdb_temp_dir.path(),
+            crate::rocksdb_defaults(),
+        )
+        .unwrap();
+        let mut current_root = engine_state.empty_root_hash;
+        for TestPair { key, value } in create_test_pairs() {
+            let mut stored_values = HashMap::new();
+            stored_values.insert(key, value);
+            current_root = engine_state
+                .put_stored_values(correlation_id, current_root, stored_values)
+                .unwrap();
         }
-        (ret, current_root)
+        (engine_state, current_root)
     }
 
     #[test]

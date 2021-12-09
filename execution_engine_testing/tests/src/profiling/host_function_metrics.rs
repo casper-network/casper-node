@@ -19,7 +19,7 @@ use log::LevelFilter;
 use rand::{self, Rng};
 use serde_json::Value;
 
-use casper_engine_test_support::{DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder};
+use casper_engine_test_support::{DbWasmTestBuilder, DeployItemBuilder, ExecuteRequestBuilder};
 use casper_execution_engine::{
     core::engine_state::EngineConfig,
     shared::logging::{self, Settings},
@@ -146,7 +146,7 @@ fn run_test(root_hash: Vec<u8>, repetitions: usize, data_dir: &Path) {
     let engine_config = EngineConfig::default();
 
     let mut test_builder =
-        LmdbWasmTestBuilder::open(data_dir, engine_config, Digest::hash(&root_hash));
+        DbWasmTestBuilder::open(data_dir, engine_config, Digest::hash(&root_hash));
 
     let mut rng = rand::thread_rng();
 

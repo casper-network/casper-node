@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder,
+    DbWasmTestBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_RUN_GENESIS_REQUEST,
     MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
@@ -18,7 +18,7 @@ use casper_types::{
     RuntimeArgs, StoredValue, StoredValueTypeMismatch, URef, U512,
 };
 
-use crate::lmdb_fixture;
+use crate::db_fixture;
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 const GH_1470_REGRESSION: &str = "gh_1470_regression.wasm";
@@ -53,7 +53,7 @@ fn setup() -> InMemoryWasmTestBuilder {
 }
 
 fn apply_global_state_update(
-    builder: &LmdbWasmTestBuilder,
+    builder: &DbWasmTestBuilder,
     post_state_hash: Digest,
 ) -> BTreeMap<Key, StoredValue> {
     let key = URef::new([0u8; 32], AccessRights::all()).into();
@@ -630,7 +630,7 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
 #[test]
 fn should_transfer_after_major_version_bump_from_1_2_0() {
     let (mut builder, lmdb_fixture_state, _temp_dir) =
-        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_3_1);
+        db_fixture::builder_from_global_state_fixture(db_fixture::RELEASE_1_3_1);
 
     let previous_protocol_version = lmdb_fixture_state.genesis_protocol_version();
 
@@ -671,7 +671,7 @@ fn should_transfer_after_major_version_bump_from_1_2_0() {
 #[test]
 fn should_transfer_after_minor_version_bump_from_1_2_0() {
     let (mut builder, lmdb_fixture_state, _temp_dir) =
-        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_3_1);
+        db_fixture::builder_from_global_state_fixture(db_fixture::RELEASE_1_3_1);
 
     let transfer_args = runtime_args! {
         mint::ARG_AMOUNT => U512::one(),
@@ -712,16 +712,15 @@ fn should_transfer_after_minor_version_bump_from_1_2_0() {
 #[ignore]
 #[test]
 fn should_add_bid_after_major_bump() {
-    let (mut builder, lmdb_fixture_state, _temp_dir) =
-        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_3_1);
+    let (mut builder, fixture_state, _temp_dir) =
+        db_fixture::builder_from_global_state_fixture(db_fixture::RELEASE_1_3_1);
 
-    let current_protocol_version = lmdb_fixture_state.genesis_protocol_version();
+    let current_protocol_version = fixture_state.genesis_protocol_version();
 
     let new_protocol_version =
         ProtocolVersion::from_parts(current_protocol_version.value().major + 1, 0, 0);
 
-    let global_state_update =
-        apply_global_state_update(&builder, lmdb_fixture_state.post_state_hash);
+    let global_state_update = apply_global_state_update(&builder, fixture_state.post_state_hash);
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
@@ -759,7 +758,7 @@ fn should_add_bid_after_major_bump() {
 #[test]
 fn should_add_bid_after_minor_bump() {
     let (mut builder, lmdb_fixture_state, _temp_dir) =
-        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_3_1);
+        db_fixture::builder_from_global_state_fixture(db_fixture::RELEASE_1_3_1);
 
     let current_protocol_version = lmdb_fixture_state.genesis_protocol_version();
 
@@ -808,7 +807,7 @@ fn should_add_bid_after_minor_bump() {
 #[test]
 fn should_wasm_transfer_after_major_bump() {
     let (mut builder, lmdb_fixture_state, _temp_dir) =
-        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_3_1);
+        db_fixture::builder_from_global_state_fixture(db_fixture::RELEASE_1_3_1);
 
     let current_protocol_version = lmdb_fixture_state.genesis_protocol_version();
 
@@ -853,7 +852,7 @@ fn should_wasm_transfer_after_major_bump() {
 #[test]
 fn should_wasm_transfer_after_minor_bump() {
     let (mut builder, lmdb_fixture_state, _temp_dir) =
-        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_3_1);
+        db_fixture::builder_from_global_state_fixture(db_fixture::RELEASE_1_3_1);
 
     let current_protocol_version = lmdb_fixture_state.genesis_protocol_version();
 
@@ -901,7 +900,7 @@ fn should_wasm_transfer_after_minor_bump() {
 #[test]
 fn should_upgrade_from_1_3_1_rel_fixture() {
     let (mut builder, lmdb_fixture_state, _temp_dir) =
-        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_3_1);
+        db_fixture::builder_from_global_state_fixture(db_fixture::RELEASE_1_3_1);
 
     let previous_protocol_version = lmdb_fixture_state.genesis_protocol_version();
 

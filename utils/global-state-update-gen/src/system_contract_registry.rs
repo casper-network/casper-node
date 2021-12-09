@@ -3,7 +3,7 @@ use std::path::Path;
 use clap::ArgMatches;
 use lmdb::{self, Cursor, Environment, EnvironmentFlags, Transaction};
 
-use casper_engine_test_support::LmdbWasmTestBuilder;
+use casper_engine_test_support::DbWasmTestBuilder;
 use casper_execution_engine::core::engine_state::genesis::SystemContractRegistry;
 use casper_types::{
     bytesrepr::FromBytes,
@@ -104,7 +104,7 @@ fn generate_system_contract_registry_using_protocol_data(data_dir: &Path) {
 
 fn generate_system_contract_registry_using_global_state(data_dir: &Path, state_hash: &str) {
     let builder =
-        LmdbWasmTestBuilder::open_raw(data_dir, Default::default(), hash_from_str(state_hash));
+        DbWasmTestBuilder::open_raw(data_dir, Default::default(), hash_from_str(state_hash));
 
     let mint_hash = builder.get_system_mint_hash();
     let handle_payment_hash = builder.get_system_handle_payment_hash();

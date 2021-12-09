@@ -72,6 +72,9 @@ pub(crate) use components::{
     small_network::Config as SmallNetworkConfig,
 };
 
+// TODO: remove this once migration to rocksdb is completed.
+pub use reactor::participating::migrate_lmdb_data_to_rocksdb;
+
 pub(crate) use types::NodeRng;
 
 /// The maximum thread count which should be spawned by the tokio runtime.
