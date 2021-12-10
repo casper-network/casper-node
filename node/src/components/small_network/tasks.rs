@@ -184,6 +184,8 @@ where
     pub(super) consensus_keys: Option<ConsensusKeyPair>,
     /// Weights to estimate payloads with.
     pub(super) payload_weights: PayloadWeights,
+    /// Whether or not to reject incompatible versions during handshake.
+    pub(super) reject_incompatible_versions: bool,
 }
 
 /// Handles an incoming connection.
@@ -359,7 +361,9 @@ where
         //
         // Since we are not using SemVer for versioning, we cannot make any assumptions about
         // compatibility, so we allow only exact version matches.
-        if protocol_version != context.chain_info.protocol_version {
+        if context.reject_incompatible_versions
+            && protocol_version != context.chain_info.protocol_version
+        {
             return Err(ConnectionError::IncompatibleVersion(protocol_version));
         }
 

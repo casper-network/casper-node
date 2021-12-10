@@ -35,6 +35,7 @@ impl Default for Config {
             max_outgoing_byte_rate_non_validators: 0,
             max_incoming_message_rate_non_validators: 0,
             estimator_weights: Default::default(),
+            reject_incompatible_versions: true,
         }
     }
 }
@@ -64,6 +65,8 @@ pub struct Config {
     pub max_incoming_message_rate_non_validators: u32,
     /// Weight distribution for the payload impact estimator.
     pub estimator_weights: PayloadWeights,
+    /// Whether or not to reject incompatible versions during handshake.
+    pub reject_incompatible_versions: bool,
 }
 
 #[cfg(test)]

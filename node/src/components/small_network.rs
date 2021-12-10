@@ -282,6 +282,7 @@ where
             public_addr,
             consensus_keys,
             payload_weights: cfg.estimator_weights.clone(),
+            reject_incompatible_versions: cfg.reject_incompatible_versions,
         });
 
         // Run the server task.
