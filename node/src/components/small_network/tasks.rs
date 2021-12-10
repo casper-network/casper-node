@@ -353,6 +353,16 @@ where
             return Err(ConnectionError::WrongNetwork(network_name));
         }
 
+        // If there is a version mismatch, we treat it as a connection error. We do not ban peers
+        // for this error, but instead rely on exponential backoff, as bans would result in issues
+        // during upgrades where nodes may have a legitimate reason for differing versions.
+        //
+        // Since we are not using SemVer for versioning, we cannot make any assumptions about
+        // compatibility, so we allow only exact version matches.
+        if protocol_version != context.chain_info.protocol_version {
+            return Err(ConnectionError::IncompatibleVersion(protocol_version));
+        }
+
         let peer_consensus_public_key = consensus_certificate
             .map(|cert| {
                 cert.validate(connection_id)

@@ -517,11 +517,15 @@ where
     fn is_blockable_offense_for_outgoing(&self, error: &ConnectionError) -> bool {
         match error {
             // Potentially transient failures.
+            //
+            // Note that incompatible versions need to be considered transient, since they occur
+            // during regular upgrades.
             ConnectionError::TlsInitialization(_)
             | ConnectionError::TcpConnection(_)
             | ConnectionError::TlsHandshake(_)
             | ConnectionError::HandshakeSend(_)
-            | ConnectionError::HandshakeRecv(_) => false,
+            | ConnectionError::HandshakeRecv(_)
+            | ConnectionError::IncompatibleVersion(_) => false,
 
             // These could be candidates for blocking, but for now we decided not to.
             ConnectionError::NoPeerCertificate
