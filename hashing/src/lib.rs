@@ -30,10 +30,58 @@ use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use casper_types::{
-    bytesrepr::{self, FromBytes, ToBytes},
+    bytesrepr::{self, FromBytes, ToBytes, Writer},
     checksummed_hex,
 };
 pub use chunk_with_proof::ChunkWithProof;
+
+/// A default hasher implementation that wraps Blake2b with 256-bit output.
+///
+/// This hasher object also acts as an Writer object so it can efficiently hash serializable objects
+/// without temporary buffers.
+pub struct DefaultHasher(VarBlake2b);
+
+impl DefaultHasher {
+    /// Length of the output bytes.
+    pub const LENGTH: usize = 32;
+
+    /// Creates new default hasher that uses VarBlake2b algorithm.
+    pub fn new() -> DefaultHasher {
+        DefaultHasher(VarBlake2b::new(DefaultHasher::LENGTH).unwrap())
+    }
+
+    /// Update a hasher with bytes.
+    pub fn update(&mut self, data: impl AsRef<[u8]>) {
+        self.0.update(data);
+    }
+
+    /// Finalizes a hasher object and returns a [`Digest`].
+    pub fn finalize(self) -> Digest {
+        let mut output_array = [0; DefaultHasher::LENGTH];
+        self.0.finalize_variable(|digest| {
+            output_array.copy_from_slice(digest);
+        });
+        Digest(output_array)
+    }
+}
+
+impl Default for DefaultHasher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Writer for DefaultHasher {
+    fn write_bytes(&mut self, bytes: impl AsRef<[u8]>) -> Result<(), bytesrepr::Error> {
+        self.update(bytes);
+        Ok(())
+    }
+
+    fn write_u8(&mut self, byte: u8) -> Result<(), bytesrepr::Error> {
+        self.update(&[byte]);
+        Ok(())
+    }
+}
 
 /// Possible hashing errors.
 #[derive(Debug, thiserror::Error)]
@@ -54,7 +102,7 @@ pub struct Digest(#[schemars(skip, with = "String")] pub(crate) [u8; Digest::LEN
 
 impl Digest {
     /// The number of bytes in a `Digest`.
-    pub const LENGTH: usize = 32;
+    pub const LENGTH: usize = DefaultHasher::LENGTH;
 
     /// Sentinel hash to be used for hashing options in the case of `None`.
     pub const SENTINEL_NONE: Digest = Digest([0u8; Digest::LENGTH]);
@@ -86,12 +134,10 @@ impl Digest {
 
     /// Creates a 32-byte BLAKE2b hash digest from a given a piece of data
     pub(crate) fn blake2b_hash<T: AsRef<[u8]>>(data: T) -> Digest {
-        let mut ret = [0u8; Digest::LENGTH];
         // NOTE: Safe to unwrap here because our digest length is constant and valid
-        let mut hasher = VarBlake2b::new(Digest::LENGTH).unwrap();
+        let mut hasher = DefaultHasher::new();
         hasher.update(data);
-        hasher.finalize_variable(|hash| ret.clone_from_slice(hash));
-        Digest(ret)
+        hasher.finalize()
     }
 
     // Temporarily unused, see comments inside `Digest::hash()` for details.
@@ -103,14 +149,10 @@ impl Digest {
 
     /// Hashes a pair of byte slices.
     pub fn hash_pair<T: AsRef<[u8]>, U: AsRef<[u8]>>(data1: T, data2: U) -> Digest {
-        let mut result = [0; Digest::LENGTH];
-        let mut hasher = VarBlake2b::new(Digest::LENGTH).unwrap();
+        let mut hasher = DefaultHasher::new();
         hasher.update(data1);
         hasher.update(data2);
-        hasher.finalize_variable(|slice| {
-            result.copy_from_slice(slice);
-        });
-        Digest(result)
+        hasher.finalize()
     }
 
     /// Returns the underlying BLAKE2b hash bytes
@@ -293,8 +335,11 @@ impl ToBytes for Digest {
     }
 
     #[inline(always)]
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        writer.extend_from_slice(&self.0);
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
+        writer.write_bytes(&self.0)?;
         Ok(())
     }
 }

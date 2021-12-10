@@ -261,7 +261,10 @@ impl ToBytes for Account {
             + self.action_thresholds.serialized_length()
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
         self.account_hash().write_bytes(writer)?;
         self.named_keys().write_bytes(writer)?;
         self.main_purse().write_bytes(writer)?;

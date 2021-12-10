@@ -98,8 +98,7 @@ struct HashedTrie<K, V> {
 
 impl<K: ToBytes, V: ToBytes> HashedTrie<K, V> {
     pub fn new(trie: Trie<K, V>) -> Result<Self, bytesrepr::Error> {
-        let trie_bytes = trie.to_bytes()?;
-        let hash = Digest::hash(&trie_bytes);
+        let hash = trie.hash_digest()?;
         Ok(HashedTrie { hash, trie })
     }
 }

@@ -9,7 +9,7 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
 
 use casper_execution_engine::storage::trie::Trie;
 use casper_hashing::Digest;
-use casper_types::{bytesrepr::ToBytes, Key, StoredValue};
+use casper_types::{Key, StoredValue};
 
 use crate::types::{BlockHash, BlockHeader, BlockHeaderWithMetadata};
 
@@ -65,8 +65,8 @@ impl Item for Trie<Key, StoredValue> {
     const ID_IS_COMPLETE_ITEM: bool = false;
 
     fn id(&self) -> Self::Id {
-        let node_bytes = self.to_bytes().expect("Could not serialize trie to bytes");
-        Digest::hash(&node_bytes)
+        self.hash_digest()
+            .expect("Could not serialize trie to bytes")
     }
 }
 

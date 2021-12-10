@@ -102,8 +102,11 @@ impl ToBytes for SeigniorageAllocation {
             }
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        writer.push(self.tag());
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
+        writer.write_u8(self.tag())?;
         match self {
             SeigniorageAllocation::Validator {
                 validator_public_key,
@@ -222,7 +225,10 @@ impl ToBytes for EraInfo {
         self.seigniorage_allocations.serialized_length()
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
         self.seigniorage_allocations().write_bytes(writer)?;
         Ok(())
     }

@@ -35,10 +35,7 @@ where
     )?;
 
     for (index, parent) in parents.into_iter().rev() {
-        let expected_tip_hash = {
-            let tip_bytes = tip.to_bytes().unwrap();
-            Digest::hash(&tip_bytes)
-        };
+        let expected_tip_hash = tip.hash_digest().unwrap();
         match parent {
             Trie::Leaf { .. } => panic!("parents should not contain any leaves"),
             Trie::Node { pointer_block } => {

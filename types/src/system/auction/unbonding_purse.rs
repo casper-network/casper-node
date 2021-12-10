@@ -101,7 +101,10 @@ impl ToBytes for UnbondingPurse {
             + self.amount.serialized_length()
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
         self.bonding_purse.write_bytes(writer)?;
         self.validator_public_key.write_bytes(writer)?;
         self.unbonder_public_key.write_bytes(writer)?;

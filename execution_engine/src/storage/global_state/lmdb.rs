@@ -236,7 +236,7 @@ impl StateProvider for LmdbGlobalState {
 #[cfg(test)]
 mod tests {
     use lmdb::DatabaseFlags;
-    use tempfile::tempdir;
+    use tempfile::{tempdir, TempDir};
 
     use casper_hashing::Digest;
     use casper_types::{account::AccountHash, CLValue};
@@ -283,8 +283,7 @@ mod tests {
         ]
     }
 
-    fn create_test_state() -> (LmdbGlobalState, Digest) {
-        let correlation_id = CorrelationId::new();
+    fn make_empty_global_state() -> (LmdbGlobalState, TempDir) {
         let temp_dir = tempdir().unwrap();
         let environment = Arc::new(
             LmdbEnvironment::new(
@@ -297,8 +296,13 @@ mod tests {
         );
         let trie_store =
             Arc::new(LmdbTrieStore::new(&environment, None, DatabaseFlags::empty()).unwrap());
-
         let ret = LmdbGlobalState::empty(environment, trie_store).unwrap();
+        (ret, temp_dir)
+    }
+
+    fn create_test_state() -> (LmdbGlobalState, Digest) {
+        let correlation_id = CorrelationId::new();
+        let (ret, _temp_dir) = make_empty_global_state();
         let mut current_root = ret.empty_root_hash;
         {
             let mut txn = ret.environment.create_read_write_txn().unwrap();
@@ -410,5 +414,16 @@ mod tests {
                 .read(correlation_id, &test_pairs_updated[2].key)
                 .unwrap()
         );
+    }
+
+    #[test]
+    fn initial_state_has_the_expected_hash() {
+        let expected_bytes = vec![
+            197, 117, 38, 12, 241, 62, 54, 241, 121, 165, 11, 8, 130, 189, 100, 252, 4, 102, 236,
+            210, 91, 221, 123, 200, 135, 102, 194, 204, 46, 76, 13, 254,
+        ];
+        let (ret, _) = make_empty_global_state();
+        let root_hash = ret.empty_root();
+        assert_eq!(expected_bytes, root_hash.into_vec())
     }
 }

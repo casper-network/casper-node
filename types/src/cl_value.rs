@@ -153,7 +153,10 @@ impl ToBytes for CLValue {
         self.bytes.serialized_length() + self.cl_type.serialized_length()
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
         (&self.bytes).write_bytes(writer)?;
         self.cl_type.append_bytes(writer)?;
         Ok(())

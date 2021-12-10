@@ -18,7 +18,7 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
-use super::{Error, FromBytes, ToBytes};
+use super::{Error, FromBytes, ToBytes, Writer};
 use crate::{checksummed_hex, CLType, CLTyped};
 
 /// A newtype wrapper for bytes that has efficient serialization routines.
@@ -98,7 +98,10 @@ impl ToBytes for Bytes {
     }
 
     #[inline(always)]
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), Error>
+    where
+        W: Writer,
+    {
         super::write_u8_slice(self.as_slice(), writer)
     }
 }

@@ -207,7 +207,7 @@ where
         let txn: R::ReadTransaction = target_environment.create_read_txn()?;
         let bad_trie = target_store.get(&txn, &bad_key)?.expect("should have trie");
         txn.commit()?;
-        Digest::hash(&bad_trie.to_bytes()?)
+        bad_trie.hash_digest()?
     };
 
     assert_ne!(bad_key, bad_value_hash);

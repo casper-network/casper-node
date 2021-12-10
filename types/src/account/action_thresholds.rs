@@ -110,7 +110,10 @@ impl ToBytes for ActionThresholds {
         2 * WEIGHT_SERIALIZED_LENGTH
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
         self.deployment().write_bytes(writer)?;
         self.key_management().write_bytes(writer)?;
         Ok(())

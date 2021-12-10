@@ -363,16 +363,19 @@ impl ToBytes for PublicKey {
             }
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
         match self {
-            PublicKey::System => writer.push(SYSTEM_TAG),
+            PublicKey::System => writer.write_u8(SYSTEM_TAG)?,
             PublicKey::Ed25519(pk) => {
-                writer.push(ED25519_TAG);
-                writer.extend_from_slice(pk.as_bytes());
+                writer.write_u8(ED25519_TAG)?;
+                writer.write_bytes(pk.as_bytes())?;
             }
             PublicKey::Secp256k1(pk) => {
-                writer.push(SECP256K1_TAG);
-                writer.extend_from_slice(&pk.to_bytes());
+                writer.write_u8(SECP256K1_TAG)?;
+                writer.write_bytes(&pk.to_bytes())?;
             }
         }
         Ok(())
@@ -616,18 +619,21 @@ impl ToBytes for Signature {
             }
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
         match self {
             Signature::System => {
-                writer.push(SYSTEM_TAG);
+                writer.write_u8(SYSTEM_TAG)?;
             }
             Signature::Ed25519(ed25519_signature) => {
-                writer.push(ED25519_TAG);
-                writer.extend(&ed25519_signature.to_bytes());
+                writer.write_u8(ED25519_TAG)?;
+                writer.write_bytes(&ed25519_signature.to_bytes())?;
             }
             Signature::Secp256k1(signature) => {
-                writer.push(SECP256K1_TAG);
-                writer.extend_from_slice(signature.as_ref());
+                writer.write_u8(SECP256K1_TAG)?;
+                writer.write_bytes(signature.as_ref())?;
             }
         }
         Ok(())

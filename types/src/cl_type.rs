@@ -17,7 +17,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bytesrepr::{self, FromBytes, ToBytes},
+    bytesrepr::{self, FromBytes, ToBytes, Writer},
     Key, URef, U128, U256, U512,
 };
 
@@ -155,41 +155,44 @@ pub fn named_key_type() -> CLType {
 }
 
 impl CLType {
-    pub(crate) fn append_bytes(&self, stream: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    pub(crate) fn append_bytes<W>(&self, stream: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: Writer,
+    {
         match self {
-            CLType::Bool => stream.push(CL_TYPE_TAG_BOOL),
-            CLType::I32 => stream.push(CL_TYPE_TAG_I32),
-            CLType::I64 => stream.push(CL_TYPE_TAG_I64),
-            CLType::U8 => stream.push(CL_TYPE_TAG_U8),
-            CLType::U32 => stream.push(CL_TYPE_TAG_U32),
-            CLType::U64 => stream.push(CL_TYPE_TAG_U64),
-            CLType::U128 => stream.push(CL_TYPE_TAG_U128),
-            CLType::U256 => stream.push(CL_TYPE_TAG_U256),
-            CLType::U512 => stream.push(CL_TYPE_TAG_U512),
-            CLType::Unit => stream.push(CL_TYPE_TAG_UNIT),
-            CLType::String => stream.push(CL_TYPE_TAG_STRING),
-            CLType::Key => stream.push(CL_TYPE_TAG_KEY),
-            CLType::URef => stream.push(CL_TYPE_TAG_UREF),
-            CLType::PublicKey => stream.push(CL_TYPE_TAG_PUBLIC_KEY),
+            CLType::Bool => stream.write_u8(CL_TYPE_TAG_BOOL)?,
+            CLType::I32 => stream.write_u8(CL_TYPE_TAG_I32)?,
+            CLType::I64 => stream.write_u8(CL_TYPE_TAG_I64)?,
+            CLType::U8 => stream.write_u8(CL_TYPE_TAG_U8)?,
+            CLType::U32 => stream.write_u8(CL_TYPE_TAG_U32)?,
+            CLType::U64 => stream.write_u8(CL_TYPE_TAG_U64)?,
+            CLType::U128 => stream.write_u8(CL_TYPE_TAG_U128)?,
+            CLType::U256 => stream.write_u8(CL_TYPE_TAG_U256)?,
+            CLType::U512 => stream.write_u8(CL_TYPE_TAG_U512)?,
+            CLType::Unit => stream.write_u8(CL_TYPE_TAG_UNIT)?,
+            CLType::String => stream.write_u8(CL_TYPE_TAG_STRING)?,
+            CLType::Key => stream.write_u8(CL_TYPE_TAG_KEY)?,
+            CLType::URef => stream.write_u8(CL_TYPE_TAG_UREF)?,
+            CLType::PublicKey => stream.write_u8(CL_TYPE_TAG_PUBLIC_KEY)?,
             CLType::Option(cl_type) => {
-                stream.push(CL_TYPE_TAG_OPTION);
+                stream.write_u8(CL_TYPE_TAG_OPTION)?;
                 cl_type.append_bytes(stream)?;
             }
             CLType::List(cl_type) => {
-                stream.push(CL_TYPE_TAG_LIST);
+                stream.write_u8(CL_TYPE_TAG_LIST)?;
                 cl_type.append_bytes(stream)?;
             }
             CLType::ByteArray(len) => {
-                stream.push(CL_TYPE_TAG_BYTE_ARRAY);
-                stream.append(&mut len.to_bytes()?);
+                stream.write_u8(CL_TYPE_TAG_BYTE_ARRAY)?;
+                len.write_bytes(stream)?;
             }
             CLType::Result { ok, err } => {
-                stream.push(CL_TYPE_TAG_RESULT);
+                stream.write_u8(CL_TYPE_TAG_RESULT)?;
                 ok.append_bytes(stream)?;
                 err.append_bytes(stream)?;
             }
             CLType::Map { key, value } => {
-                stream.push(CL_TYPE_TAG_MAP);
+                stream.write_u8(CL_TYPE_TAG_MAP)?;
                 key.append_bytes(stream)?;
                 value.append_bytes(stream)?;
             }
@@ -202,7 +205,7 @@ impl CLType {
             CLType::Tuple3(cl_type_array) => {
                 serialize_cl_tuple_type(CL_TYPE_TAG_TUPLE3, cl_type_array, stream)?
             }
-            CLType::Any => stream.push(CL_TYPE_TAG_ANY),
+            CLType::Any => stream.write_u8(CL_TYPE_TAG_ANY)?,
         }
         Ok(())
     }
@@ -294,12 +297,16 @@ impl FromBytes for CLType {
     }
 }
 
-fn serialize_cl_tuple_type<'a, T: IntoIterator<Item = &'a Box<CLType>>>(
+fn serialize_cl_tuple_type<'a, T, W>(
     tag: u8,
     cl_type_array: T,
-    stream: &mut Vec<u8>,
-) -> Result<(), bytesrepr::Error> {
-    stream.push(tag);
+    stream: &mut W,
+) -> Result<(), bytesrepr::Error>
+where
+    T: IntoIterator<Item = &'a Box<CLType>>,
+    W: Writer,
+{
+    stream.write_u8(tag)?;
     for cl_type in cl_type_array {
         cl_type.append_bytes(stream)?;
     }

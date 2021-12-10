@@ -93,8 +93,11 @@ impl bytesrepr::ToBytes for AccessRights {
         ACCESS_RIGHTS_SERIALIZED_LENGTH
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        writer.push(self.bits());
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
+        writer.write_u8(self.bits())?;
         Ok(())
     }
 }

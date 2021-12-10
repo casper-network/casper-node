@@ -15,7 +15,7 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 
 use super::FromStrError;
 use crate::{
-    bytesrepr::{Error, FromBytes, ToBytes},
+    bytesrepr::{Error, FromBytes, ToBytes, Writer},
     checksummed_hex, crypto, CLType, CLTyped, PublicKey, BLAKE2B_DIGEST_LENGTH,
 };
 
@@ -189,8 +189,11 @@ impl ToBytes for AccountHash {
     }
 
     #[inline(always)]
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
-        writer.extend_from_slice(&self.0);
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), Error>
+    where
+        W: Writer,
+    {
+        writer.write_bytes(&self.0)?;
         Ok(())
     }
 }

@@ -14,7 +14,7 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 use crate::{
     account,
     account::TryFromSliceForAccountHashError,
-    bytesrepr::{Bytes, Error, FromBytes, ToBytes},
+    bytesrepr::{Bytes, Error, FromBytes, ToBytes, Writer},
     checksummed_hex, uref, CLType, CLTyped, HashAddr,
 };
 
@@ -149,7 +149,10 @@ impl ToBytes for ContractWasmHash {
     }
 
     #[inline(always)]
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), Error>
+    where
+        W: Writer,
+    {
         self.0.write_bytes(writer)?;
         Ok(())
     }
@@ -279,7 +282,10 @@ impl ToBytes for ContractWasm {
         self.bytes.serialized_length()
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), Error>
+    where
+        W: Writer,
+    {
         (&self.bytes).write_bytes(writer)?;
         Ok(())
     }

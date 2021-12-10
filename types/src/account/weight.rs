@@ -36,8 +36,11 @@ impl ToBytes for Weight {
         WEIGHT_SERIALIZED_LENGTH
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        writer.push(self.0);
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
+        writer.write_u8(self.0)?;
         Ok(())
     }
 }

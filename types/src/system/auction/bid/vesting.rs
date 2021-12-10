@@ -150,7 +150,10 @@ impl ToBytes for VestingSchedule {
             + self.locked_amounts.serialized_length()
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
         (&self.initial_release_timestamp_millis).write_bytes(writer)?;
         self.locked_amounts().write_bytes(writer)?;
         Ok(())

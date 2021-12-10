@@ -72,7 +72,10 @@ impl ToBytes for DictionaryValue {
             + self.dictionary_item_key_bytes.serialized_length()
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
         self.cl_value.write_bytes(writer)?;
         self.seed_uref_addr.write_bytes(writer)?;
         self.dictionary_item_key_bytes.write_bytes(writer)?;

@@ -305,7 +305,10 @@ impl ToBytes for Bid {
             + self.inactive.serialized_length()
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
         (&self.validator_public_key).write_bytes(writer)?;
         (&self.bonding_purse).write_bytes(writer)?;
         self.staked_amount.write_bytes(writer)?;

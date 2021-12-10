@@ -5,7 +5,7 @@ use proptest::{collection::vec, prelude::proptest};
 use tempfile::tempdir;
 
 use casper_hashing::Digest;
-use casper_types::{bytesrepr::ToBytes, Key, StoredValue};
+use casper_types::{Key, StoredValue};
 
 use crate::storage::{
     store::tests as store_tests,
@@ -40,7 +40,7 @@ fn in_memory_roundtrip_succeeds(inputs: Vec<Trie<Key, StoredValue>>) -> bool {
 
     let inputs: BTreeMap<Digest, Trie<Key, StoredValue>> = inputs
         .into_iter()
-        .map(|trie| (Digest::hash(&trie.to_bytes().unwrap()), trie))
+        .map(|trie| (trie.hash_digest().unwrap(), trie))
         .collect();
 
     store_tests::roundtrip_succeeds(&env, &store, inputs).unwrap()
@@ -63,7 +63,7 @@ fn lmdb_roundtrip_succeeds(inputs: Vec<Trie<Key, StoredValue>>) -> bool {
 
     let inputs: BTreeMap<Digest, Trie<Key, StoredValue>> = inputs
         .into_iter()
-        .map(|trie| (Digest::hash(&trie.to_bytes().unwrap()), trie))
+        .map(|trie| (trie.hash_digest().unwrap(), trie))
         .collect();
 
     let ret = store_tests::roundtrip_succeeds(&env, &store, inputs).unwrap();

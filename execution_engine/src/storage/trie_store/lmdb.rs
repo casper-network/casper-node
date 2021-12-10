@@ -8,8 +8,7 @@
 //! use casper_execution_engine::storage::transaction_source::lmdb::LmdbEnvironment;
 //! use casper_execution_engine::storage::trie::{Pointer, PointerBlock, Trie};
 //! use casper_execution_engine::storage::trie_store::lmdb::LmdbTrieStore;
-//! use casper_hashing::Digest;
-//! use casper_types::bytesrepr::{ToBytes, Bytes};
+//! use casper_types::bytesrepr::Bytes;
 //! use lmdb::DatabaseFlags;
 //! use tempfile::tempdir;
 //!
@@ -18,8 +17,8 @@
 //! let leaf_2 = Trie::Leaf { key: Bytes::from(vec![1u8, 0, 0]), value: Bytes::from(b"val_2".to_vec()) };
 //!
 //! // Get their hashes
-//! let leaf_1_hash = Digest::hash(&leaf_1.to_bytes().unwrap());
-//! let leaf_2_hash = Digest::hash(&leaf_2.to_bytes().unwrap());
+//! let leaf_1_hash = leaf_1.hash_digest().unwrap();
+//! let leaf_2_hash = leaf_2.hash_digest().unwrap();
 //!
 //! // Create a node
 //! let node: Trie<Bytes, Bytes> = {
@@ -31,7 +30,7 @@
 //! };
 //!
 //! // Get its hash
-//! let node_hash = Digest::hash(&node.to_bytes().unwrap());
+//! let node_hash = node.hash_digest().unwrap();
 //!
 //! // Create the environment and the store. For both the in-memory and
 //! // LMDB-backed implementations, the environment is the source of

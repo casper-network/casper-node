@@ -164,7 +164,10 @@ impl ToBytes for EraId {
     }
 
     #[inline(always)]
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
         self.0.write_bytes(writer)?;
         Ok(())
     }

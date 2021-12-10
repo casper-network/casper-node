@@ -603,42 +603,45 @@ impl ToBytes for Key {
         }
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        writer.push(self.tag());
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
+        writer.write_u8(self.tag())?;
         match self {
             Key::Account(account_hash) => {
-                writer.extend_from_slice(account_hash.as_bytes());
+                writer.write_bytes(account_hash.as_bytes())?;
             }
             Key::Hash(hash) => {
-                writer.extend_from_slice(hash);
+                writer.write_bytes(hash)?;
             }
             Key::URef(uref) => {
-                writer.extend_from_slice(&uref.addr());
-                writer.push(uref.access_rights().bits());
+                writer.write_bytes(&uref.addr())?;
+                writer.write_u8(uref.access_rights().bits())?;
             }
             Key::Transfer(addr) => {
-                writer.extend_from_slice(addr.as_bytes());
+                writer.write_bytes(addr.as_bytes())?;
             }
             Key::DeployInfo(addr) => {
-                writer.extend_from_slice(addr.as_bytes());
+                writer.write_bytes(addr.as_bytes())?;
             }
             Key::EraInfo(era_id) => {
-                writer.extend_from_slice(&era_id.to_le_bytes());
+                writer.write_bytes(&era_id.to_le_bytes())?;
             }
             Key::Balance(uref_addr) => {
-                writer.extend_from_slice(uref_addr);
+                writer.write_bytes(uref_addr)?;
             }
             Key::Bid(account_hash) => {
-                writer.extend_from_slice(account_hash.as_bytes());
+                writer.write_bytes(account_hash.as_bytes())?;
             }
             Key::Withdraw(account_hash) => {
-                writer.extend_from_slice(account_hash.as_bytes());
+                writer.write_bytes(account_hash.as_bytes())?;
             }
             Key::Dictionary(addr) => {
-                writer.extend_from_slice(addr);
+                writer.write_bytes(addr)?;
             }
             Key::SystemContractRegistry => {
-                writer.extend_from_slice(&[0u8; 32]);
+                writer.write_bytes(&[0u8; 32])?;
             }
         };
         Ok(())

@@ -1,13 +1,18 @@
 //! Core types for a Merkle Trie
 mod pointer_block;
 
+use casper_hashing::{DefaultHasher, Digest};
+use num_derive::FromPrimitive;
+use num_traits::FromPrimitive;
+use serde::{Deserialize, Serialize};
 use std::fmt::{self, Debug, Display, Formatter};
 
-use serde::{Deserialize, Serialize};
-
-use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+use casper_types::bytesrepr::{
+    self, Bytes, FromBytes, ToBytes, OPTION_NONE_TAG, OPTION_SOME_TAG, U8_SERIALIZED_LENGTH,
+};
 
 pub use self::pointer_block::{Pointer, PointerBlock};
+
 pub(crate) use self::pointer_block::{RADIX, USIZE_EXCEEDS_U8};
 
 #[cfg(test)]
@@ -20,6 +25,19 @@ mod tests;
 
 /// A parent is represented as a pair of a child index and a node or extension.
 pub type Parents<K, V> = Vec<(u8, Trie<K, V>)>;
+
+#[derive(FromPrimitive)]
+enum TrieTag {
+    Leaf = 0,
+    Node = 1,
+    Extension = 2,
+}
+
+const MERKLE_PROOF_TRIE_TAG_LEAF: u8 = 0;
+const MERKLE_PROOF_TRIE_TAG_NODE: u8 = 1;
+const MERKLE_PROOF_TRIE_TAG_EXTENSION: u8 = 2;
+const MERKLE_PROOF_POINTER_TAG_LEAF: u8 = 0;
+const MERKLE_PROOF_POINTER_TAG_NODE: u8 = 1;
 
 /// Represents a Merkle Trie.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -56,11 +74,11 @@ where
 }
 
 impl<K, V> Trie<K, V> {
-    fn tag(&self) -> u8 {
+    fn tag(&self) -> TrieTag {
         match self {
-            Trie::Leaf { .. } => 0,
-            Trie::Node { .. } => 1,
-            Trie::Extension { .. } => 2,
+            Trie::Leaf { .. } => TrieTag::Leaf,
+            Trie::Node { .. } => TrieTag::Node,
+            Trie::Extension { .. } => TrieTag::Extension,
         }
     }
 
@@ -93,6 +111,51 @@ impl<K, V> Trie<K, V> {
     }
 }
 
+impl<K, V> Trie<K, V>
+where
+    K: ToBytes,
+    V: ToBytes,
+{
+    /// Computes a deterministic hash of a trie object.
+    pub fn hash_digest(&self) -> Result<Digest, bytesrepr::Error> {
+        let mut hasher = DefaultHasher::new();
+
+        match self {
+            Trie::Leaf { key, value } => {
+                hasher.update(&[MERKLE_PROOF_TRIE_TAG_LEAF]);
+                key.write_bytes(&mut hasher)?;
+                value.write_bytes(&mut hasher)?;
+            }
+            Trie::Node { pointer_block } => {
+                hasher.update(&[MERKLE_PROOF_TRIE_TAG_NODE]);
+
+                for maybe_pointer in pointer_block.iter() {
+                    match maybe_pointer {
+                        Some(Pointer::LeafPointer(leaf)) => {
+                            hasher.update(&[OPTION_SOME_TAG]);
+                            hasher.update(&[MERKLE_PROOF_POINTER_TAG_LEAF]);
+                            hasher.update(&leaf.value());
+                        }
+                        Some(Pointer::NodePointer(node)) => {
+                            hasher.update(&[OPTION_SOME_TAG]);
+                            hasher.update(&[MERKLE_PROOF_POINTER_TAG_NODE]);
+                            hasher.update(&node.value());
+                        }
+                        None => hasher.update(&[OPTION_NONE_TAG]),
+                    };
+                }
+            }
+            Trie::Extension { affix, pointer } => {
+                hasher.update(&[MERKLE_PROOF_TRIE_TAG_EXTENSION]);
+                affix.write_bytes(&mut hasher)?;
+                pointer.write_bytes(&mut hasher)?;
+            }
+        }
+
+        Ok(hasher.finalize())
+    }
+}
+
 impl<K, V> ToBytes for Trie<K, V>
 where
     K: ToBytes,
@@ -115,8 +178,11 @@ where
             }
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        writer.push(self.tag());
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
+        writer.write_u8(self.tag() as u8)?;
         match self {
             Trie::Leaf { key, value } => {
                 key.write_bytes(writer)?;
@@ -134,14 +200,15 @@ where
 
 impl<K: FromBytes, V: FromBytes> FromBytes for Trie<K, V> {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, rem) = u8::from_bytes(bytes)?;
+        let (tag_byte, rem) = u8::from_bytes(bytes)?;
+        let tag = TrieTag::from_u8(tag_byte).ok_or(bytesrepr::Error::Formatting)?;
         match tag {
-            0 => {
+            TrieTag::Leaf => {
                 let (key, rem) = K::from_bytes(rem)?;
                 let (value, rem) = V::from_bytes(rem)?;
                 Ok((Trie::Leaf { key, value }, rem))
             }
-            1 => {
+            TrieTag::Node => {
                 let (pointer_block, rem) = PointerBlock::from_bytes(rem)?;
                 Ok((
                     Trie::Node {
@@ -150,12 +217,11 @@ impl<K: FromBytes, V: FromBytes> FromBytes for Trie<K, V> {
                     rem,
                 ))
             }
-            2 => {
+            TrieTag::Extension => {
                 let (affix, rem) = FromBytes::from_bytes(rem)?;
                 let (pointer, rem) = Pointer::from_bytes(rem)?;
                 Ok((Trie::Extension { affix, pointer }, rem))
             }
-            _ => Err(bytesrepr::Error::Formatting),
         }
     }
 }
@@ -173,7 +239,7 @@ pub(crate) mod operations {
         let root: Trie<K, V> = Trie::Node {
             pointer_block: Default::default(),
         };
-        let root_bytes: Vec<u8> = root.to_bytes()?;
-        Ok((Digest::hash(&root_bytes), root))
+        let trie_hash = root.hash_digest()?;
+        Ok((trie_hash, root))
     }
 }

@@ -131,8 +131,11 @@ impl ToBytes for AssociatedKeys {
         self.0.serialized_length()
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        writer.extend_from_slice(&(self.0.len() as u32).to_le_bytes());
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
+        writer.write_bytes(&(self.0.len() as u32).to_le_bytes())?;
         for (key, weight) in self.0.iter() {
             key.write_bytes(writer)?;
             weight.write_bytes(writer)?;

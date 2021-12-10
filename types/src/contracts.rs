@@ -230,7 +230,10 @@ impl ToBytes for Group {
         self.0.serialized_length()
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
         self.value().write_bytes(writer)?;
         Ok(())
     }
@@ -297,7 +300,10 @@ impl ToBytes for ContractVersionKey {
         CONTRACT_VERSION_KEY_SERIALIZED_LENGTH
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
         self.0.write_bytes(writer)?;
         self.1.write_bytes(writer)?;
         Ok(())
@@ -399,8 +405,11 @@ impl ToBytes for ContractHash {
     }
 
     #[inline(always)]
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        writer.extend_from_slice(&self.0);
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
+        writer.write_bytes(&self.0)?;
         Ok(())
     }
 }
@@ -555,8 +564,11 @@ impl ToBytes for ContractPackageHash {
     }
 
     #[inline(always)]
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        writer.extend_from_slice(&self.0);
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
+        writer.write_bytes(&self.0)?;
         Ok(())
     }
 }
@@ -680,10 +692,13 @@ impl ToBytes for ContractPackageStatus {
         }
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
         match self {
-            ContractPackageStatus::Locked => writer.push(u8::from(true)),
-            ContractPackageStatus::Unlocked => writer.push(u8::from(false)),
+            ContractPackageStatus::Locked => writer.write_u8(u8::from(true))?,
+            ContractPackageStatus::Unlocked => writer.write_u8(u8::from(false))?,
         }
         Ok(())
     }
@@ -902,7 +917,10 @@ impl ToBytes for ContractPackage {
             + self.lock_status.serialized_length()
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
         self.access_key().write_bytes(writer)?;
         self.versions().write_bytes(writer)?;
         self.disabled_versions().write_bytes(writer)?;
@@ -955,7 +973,10 @@ impl ToBytes for EntryPoints {
         self.0.serialized_length()
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
         (&self.0).write_bytes(writer)?;
         Ok(())
     }
@@ -1151,7 +1172,10 @@ impl ToBytes for Contract {
             + ToBytes::serialized_length(&self.named_keys)
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
         self.contract_package_hash().write_bytes(writer)?;
         self.contract_wasm_hash().write_bytes(writer)?;
         self.named_keys().write_bytes(writer)?;
@@ -1213,8 +1237,11 @@ impl ToBytes for EntryPointType {
         1
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        writer.push(*self as u8);
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
+        writer.write_u8(*self as u8)?;
         Ok(())
     }
 }
@@ -1351,7 +1378,10 @@ impl ToBytes for EntryPoint {
             + self.entry_point_type.serialized_length()
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
         self.name().write_bytes(writer)?;
         self.args.write_bytes(writer)?;
         self.ret.append_bytes(writer)?;
@@ -1429,13 +1459,16 @@ impl ToBytes for EntryPointAccess {
         }
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
         match self {
             EntryPointAccess::Public => {
-                writer.push(ENTRYPOINTACCESS_PUBLIC_TAG);
+                writer.write_u8(ENTRYPOINTACCESS_PUBLIC_TAG)?;
             }
             EntryPointAccess::Groups(groups) => {
-                writer.push(ENTRYPOINTACCESS_GROUPS_TAG);
+                writer.write_u8(ENTRYPOINTACCESS_GROUPS_TAG)?;
                 groups.write_bytes(writer)?;
             }
         }
@@ -1505,7 +1538,10 @@ impl ToBytes for Parameter {
         ToBytes::serialized_length(&self.name) + self.cl_type.serialized_length()
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
         (&self.name).write_bytes(writer)?;
         self.cl_type.append_bytes(writer)
     }

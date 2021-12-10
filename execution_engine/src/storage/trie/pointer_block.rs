@@ -5,7 +5,9 @@ use std::{
 };
 
 use casper_hashing::Digest;
-use casper_types::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+use casper_types::bytesrepr::{self, FromBytes, ToBytes, Writer, U8_SERIALIZED_LENGTH};
+use num_derive::FromPrimitive;
+use num_traits::FromPrimitive;
 use serde::{
     de::{self, MapAccess, Visitor},
     ser::SerializeMap,
@@ -15,6 +17,12 @@ use serde::{
 pub(crate) const USIZE_EXCEEDS_U8: &str = "usize exceeds u8";
 
 pub(crate) const RADIX: usize = 256;
+
+#[derive(FromPrimitive)]
+enum PointerTag {
+    Leaf = 0,
+    Node = 1,
+}
 
 /// Represents a pointer to the next object in a Merkle Trie
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -51,10 +59,10 @@ impl Pointer {
     }
 
     /// Returns the `tag` value for a variant of `Pointer`.
-    fn tag(&self) -> u8 {
+    fn tag(&self) -> PointerTag {
         match self {
-            Pointer::LeafPointer(_) => 0,
-            Pointer::NodePointer(_) => 1,
+            Pointer::LeafPointer(_) => PointerTag::Leaf,
+            Pointer::NodePointer(_) => PointerTag::Node,
         }
     }
 }
@@ -72,26 +80,29 @@ impl ToBytes for Pointer {
     }
 
     #[inline]
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        writer.push(self.tag());
-        writer.extend_from_slice(self.hash().as_ref());
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: Writer,
+    {
+        writer.write_u8(self.tag() as u8)?;
+        writer.write_bytes(self.hash())?;
         Ok(())
     }
 }
 
 impl FromBytes for Pointer {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, rem) = u8::from_bytes(bytes)?;
+        let (tag_byte, rem) = u8::from_bytes(bytes)?;
+        let tag = PointerTag::from_u8(tag_byte).ok_or(bytesrepr::Error::Formatting)?;
         match tag {
-            0 => {
+            PointerTag::Leaf => {
                 let (hash, rem) = Digest::from_bytes(rem)?;
                 Ok((Pointer::LeafPointer(hash), rem))
             }
-            1 => {
+            PointerTag::Node => {
                 let (hash, rem) = Digest::from_bytes(rem)?;
                 Ok((Pointer::NodePointer(hash), rem))
             }
-            _ => Err(bytesrepr::Error::Formatting),
         }
     }
 }
@@ -193,6 +204,11 @@ impl PointerBlock {
     pub fn child_count(&self) -> usize {
         self.as_indexed_pointers().count()
     }
+
+    /// Returns iterator over all pointers.
+    pub fn iter(&self) -> impl Iterator<Item = &Option<Pointer>> {
+        self.0.iter()
+    }
 }
 
 impl From<PointerBlockArray> for PointerBlock {
@@ -229,7 +245,10 @@ impl ToBytes for PointerBlock {
         self.0.iter().map(ToBytes::serialized_length).sum()
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: Writer,
+    {
         for pointer in self.0.iter() {
             pointer.write_bytes(writer)?;
         }

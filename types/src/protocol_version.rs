@@ -8,7 +8,7 @@ use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
-    bytesrepr::{Error, FromBytes, ToBytes},
+    bytesrepr::{Error, FromBytes, ToBytes, Writer},
     ParseSemVerError, SemVer,
 };
 
@@ -128,10 +128,13 @@ impl ToBytes for ProtocolVersion {
         self.value().serialized_length()
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
-        writer.extend(self.0.major.to_le_bytes());
-        writer.extend(self.0.minor.to_le_bytes());
-        writer.extend(self.0.patch.to_le_bytes());
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), Error>
+    where
+        W: Writer,
+    {
+        writer.write_bytes(self.0.major.to_le_bytes())?;
+        writer.write_bytes(self.0.minor.to_le_bytes())?;
+        writer.write_bytes(self.0.patch.to_le_bytes())?;
         Ok(())
     }
 }

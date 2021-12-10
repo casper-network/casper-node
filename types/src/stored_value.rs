@@ -348,8 +348,11 @@ impl ToBytes for StoredValue {
             }
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        writer.push(self.tag() as u8);
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
+        writer.write_u8(self.tag() as u8)?;
         match self {
             StoredValue::CLValue(cl_value) => cl_value.write_bytes(writer)?,
             StoredValue::Account(account) => account.write_bytes(writer)?,

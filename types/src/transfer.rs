@@ -76,7 +76,10 @@ impl ToBytes for DeployHash {
         self.0.serialized_length()
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
         self.0.write_bytes(writer)?;
         Ok(())
     }
@@ -219,7 +222,10 @@ impl ToBytes for Transfer {
             + self.id.serialized_length()
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
         (&self.deploy_hash).write_bytes(writer)?;
         (&self.from).write_bytes(writer)?;
         self.to.write_bytes(writer)?;
@@ -396,7 +402,10 @@ impl ToBytes for TransferAddr {
     }
 
     #[inline(always)]
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
         (&self.0).write_bytes(writer)?;
         Ok(())
     }

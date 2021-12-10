@@ -23,7 +23,7 @@ fn gh_2429_sparse_serialization() {
     let (mut builder, _lmdb_fixture_state, protocol_version, _temp_dir) = setup();
 
     let stored_value = builder
-        .query_with_proof(None, Key::SystemContractRegistry, &[])
+        .query(None, Key::SystemContractRegistry, &[])
         .unwrap();
 
     let _trie = builder
@@ -42,6 +42,8 @@ fn gh_2429_sparse_serialization() {
         .get(system::MINT)
         .expect("should have mint system contract");
 
+    // let mint_contract = builder.get_contract(*mint).expect("should have mint contract");
+
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         "create_purse_01.wasm",
@@ -53,13 +55,6 @@ fn gh_2429_sparse_serialization() {
     .build();
 
     builder.exec(exec_request).expect_success().commit();
-
-    let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
-        .expect("should have account");
-    let _purse_key = account.named_keys()["test_purse"]
-        .into_uref()
-        .expect("should have purse uref");
 }
 
 fn setup() -> (
@@ -70,7 +65,7 @@ fn setup() -> (
 ) {
     let (mut builder, lmdb_fixture_state, temp_dir) =
         lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_3_1);
-
+    let _scurrent_protocol_version = lmdb_fixture_state.genesis_protocol_version();
     let global_state_update =
         apply_global_state_update(&builder, lmdb_fixture_state.post_state_hash);
 
@@ -105,6 +100,11 @@ fn apply_global_state_update(
     let stored_value = builder
         .query_with_proof(Some(post_state_hash), key, &Vec::new())
         .expect("Must have stored system contract hashes");
+
+    // eprintln!("proof {:?}", proof);
+    // let computed_state_hash: Result<Vec<Digest>, _> = proof.into_iter().map(|step|
+    // step.compute_state_hash()).collect(); assert_eq!(computed_state_hash.unwrap(),
+    // vec![builder.get_post_state_hash()]);
 
     let system_contract_hashes = stored_value
         .as_cl_value()

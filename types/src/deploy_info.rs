@@ -89,7 +89,10 @@ impl ToBytes for DeployInfo {
             + self.gas.serialized_length()
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
+    where
+        W: bytesrepr::Writer,
+    {
         (&self.deploy_hash).write_bytes(writer)?;
         self.transfers.write_bytes(writer)?;
         (&self.from).write_bytes(writer)?;

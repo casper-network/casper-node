@@ -161,8 +161,8 @@ where
     /// The steps in this function reflect `operations::rehash`.
     pub fn compute_state_hash(&self) -> Result<Digest, bytesrepr::Error> {
         let mut hash = {
-            let leaf_bytes = Trie::leaf(self.key, self.value.to_owned()).to_bytes()?;
-            Digest::hash(&leaf_bytes)
+            let leaf = Trie::leaf(self.key, self.value.to_owned());
+            leaf.hash_digest()?
         };
 
         for (proof_step_index, proof_step) in self.proof_steps.iter().enumerate() {
@@ -171,7 +171,7 @@ where
             } else {
                 Pointer::NodePointer(hash)
             };
-            let proof_step_bytes = match proof_step {
+            let proof_step = match proof_step {
                 TrieMerkleProofStep::Node {
                     hole_index,
                     indexed_pointers_with_hole,
@@ -180,13 +180,13 @@ where
                     assert!(hole_index as usize <= RADIX, "hole_index exceeded RADIX");
                     let mut indexed_pointers = indexed_pointers_with_hole.to_owned();
                     indexed_pointers.push((hole_index, pointer));
-                    Trie::<K, V>::node(&indexed_pointers).to_bytes()?
+                    Trie::<K, V>::node(&indexed_pointers)
                 }
                 TrieMerkleProofStep::Extension { affix } => {
-                    Trie::<K, V>::extension(affix.clone().into(), pointer).to_bytes()?
+                    Trie::<K, V>::extension(affix.clone().into(), pointer)
                 }
             };
-            hash = Digest::hash(&proof_step_bytes);
+            hash = proof_step.hash_digest()?;
         }
         Ok(hash)
     }
