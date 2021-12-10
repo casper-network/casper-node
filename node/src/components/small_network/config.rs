@@ -1,7 +1,8 @@
 #[cfg(test)]
 use std::net::{Ipv4Addr, SocketAddr};
-use std::str::FromStr;
+use std::{str::FromStr, time::Duration};
 
+use casper_types::ProtocolVersion;
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
@@ -36,6 +37,8 @@ impl Default for Config {
             max_incoming_message_rate_non_validators: 0,
             estimator_weights: Default::default(),
             reject_incompatible_versions: true,
+            tarpit_version_threshold: None,
+            tarpit_duration: Duration::from_secs(600),
         }
     }
 }
@@ -67,6 +70,10 @@ pub struct Config {
     pub estimator_weights: PayloadWeights,
     /// Whether or not to reject incompatible versions during handshake.
     pub reject_incompatible_versions: bool,
+    /// The protocol version at which (or under) tarpitting is enabled.
+    pub tarpit_version_threshold: Option<ProtocolVersion>,
+    /// If tarpitting is enabled, duration for which connections should be kept open.
+    pub tarpit_duration: Duration,
 }
 
 #[cfg(test)]

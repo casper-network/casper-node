@@ -10,7 +10,7 @@ use std::{
     time::Duration,
 };
 
-use casper_types::PublicKey;
+use casper_types::{ProtocolVersion, PublicKey};
 use futures::{
     future::{self, Either},
     stream::{SplitSink, SplitStream},
@@ -186,6 +186,10 @@ where
     pub(super) payload_weights: PayloadWeights,
     /// Whether or not to reject incompatible versions during handshake.
     pub(super) reject_incompatible_versions: bool,
+    /// The protocol version at which (or under) tarpitting is enabled.
+    pub(super) tarpit_version_threshold: Option<ProtocolVersion>,
+    /// If tarpitting is enabled, duration for which connections should be kept open.
+    pub(super) tarpit_duration: Duration,
 }
 
 /// Handles an incoming connection.
@@ -364,6 +368,14 @@ where
         if context.reject_incompatible_versions
             && protocol_version != context.chain_info.protocol_version
         {
+            if let Some(threshold) = context.tarpit_version_threshold {
+                if protocol_version <= threshold {
+                    // If tarpitting is enabled, we hold open the connection for a specific amount
+                    // of time, to reduce load on other nodes and keep them from reconnecting.
+                    info!(duration=?context.tarpit_duration, "tarpitting node");
+                    tokio::time::sleep(context.tarpit_duration).await;
+                }
+            }
             return Err(ConnectionError::IncompatibleVersion(protocol_version));
         }
 
