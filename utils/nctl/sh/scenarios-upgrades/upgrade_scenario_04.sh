@@ -3,12 +3,14 @@
 # Synopsis.
 # ----------------------------------------------------------------
 
-# 1. Start v1 running at current mainnet commit.
-# 2. Execute some deploys to populate global state a little
-# 3. Upgrade all running nodes to v2
-# 4. Assert v2 nodes run & the chain advances (new blocks are generated)
-# 5. Start passive nodes.  The launcher should cause the v1 node to run, it should exit and the v2 node should then catch up.
-# 6. Assert passive nodes are now running.
+# - Start nodes 1-5 running version V1
+# - Execute some deploys to populate global state a little
+# - Upgrade nodes 1-5 to V2
+# - Assert V2 nodes run & the chain advances (new blocks are generated)
+# - Stage upgrade of node 6 to V2
+# - Start the node 6, assert that it upgrades
+# - Assert all nodes run & the chain advances (new blocks are generated)
+# - Clean-up
 
 # ----------------------------------------------------------------
 # Imports.
@@ -31,21 +33,24 @@ function _main()
         exit 1
     fi
 
+
     _step_01 "$STAGE_ID"
     _step_02
 
-    # Set initial protocol version for use later.
-    INITIAL_PROTOCOL_VERSION=$(get_node_protocol_version 1)
+    local INITIAL_PROTOCOL_VERSION=$(get_node_protocol_version 1)
+    local ACTIVATION_POINT="$(get_chain_era)"
+
     _step_03
     _step_04
-    _step_05 "$STAGE_ID"
+    _step_05 "$STAGE_ID" "$ACTIVATION_POINT"
 
     _copy_new_client_binary "$STAGE_ID"
 
     _step_06 "$INITIAL_PROTOCOL_VERSION"
-    _step_07
+    _step_07 "$STAGE_ID" "$ACTIVATION_POINT"
     _step_08 "$INITIAL_PROTOCOL_VERSION"
     _step_09
+    _step_10
 }
 
 function _copy_new_client_binary()
@@ -82,18 +87,19 @@ function _step_01()
 {
     local STAGE_ID=${1}
 
-    log_step_upgrades 1 "starting network from stage ($STAGE_ID)"
+    log_step_upgrades 1 "starting nodes (nodes 1-5) from stage ($STAGE_ID)"
 
     source "$NCTL/sh/assets/setup_from_stage.sh" stage="$STAGE_ID"
-    source "$NCTL/sh/node/start.sh" node=all
+    for i in {1..5}
+    do
+        source "$NCTL/sh/node/start.sh" node=$i
+    done
 }
 
 # Step 02: Await era-id >= 1.
 function _step_02()
 {
     log_step_upgrades 2 "awaiting genesis era completion"
-
-    sleep 60.0
     await_until_era_n 1
 }
 
@@ -119,19 +125,25 @@ function _step_04()
     await_n_eras 1
 }
 
-# Step 05: Upgrade network from stage.
+# Step 05: Upgrade nodes 1-5 from stage.
 function _step_05()
 {
     local STAGE_ID=${1}
+    local ACTIVATION_POINT=${2}
 
-    log_step_upgrades 5 "upgrading network from stage ($STAGE_ID)"
+    log_step_upgrades 5 "upgrading 1 thru 5 from stage ($STAGE_ID)"
 
     log "... setting upgrade assets"
-    source "$NCTL/sh/assets/upgrade_from_stage.sh" stage="$STAGE_ID" verbose=false
+
+    for i in $(seq 1 5); do
+        log "... staging upgrade on node-$i"
+        source "$NCTL/sh/assets/upgrade_from_stage_single_node.sh" stage="$STAGE_ID" verbose=false node="$i" era="$ACTIVATION_POINT" force_launcher_upgrade=false
+        echo ""
+    done
 
     log "... awaiting 2 eras + 1 block"
-    await_n_eras 2
-    await_n_blocks 1
+    await_n_eras '2'
+    await_n_blocks '1'
 }
 
 # Step 06: Assert chain is progressing at all nodes.
@@ -142,7 +154,7 @@ function _step_06()
     local HEIGHT_2
     local NODE_ID
 
-    log_step_upgrades 6 "asserting node upgrades"
+    log_step_upgrades 6 "asserting nodes 1-5 upgrade"
 
     # Assert no nodes have stopped.
     if [ "$(get_count_of_up_nodes)" != "$(get_count_of_genesis_nodes)" ]; then
@@ -184,47 +196,63 @@ function _step_06()
     done
 }
 
-# Step 07: Join passive nodes.
+# Step 07: Stage update of the passive node 6
 function _step_07()
 {
-    local NODE_ID
-    local TRUSTED_HASH
+    local STAGE_ID=${1}
+    local ACTIVATION_POINT=${2}
+    local TRUSTED_HASH="$(get_chain_latest_block_hash)"
 
-    log_step_upgrades 7 "joining passive nodes"
+    log_step_upgrades 7 "upgrading node 6 from stage ($STAGE_ID)"
 
-    log "... submitting auction bids"
-    for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
-    do
-        if [ $(get_node_is_up "$NODE_ID") == false ]; then
-            source "$NCTL/sh/contracts-auction/do_bid.sh" \
-                node="$NODE_ID" \
-                amount="$(get_node_staking_weight "$NODE_ID")" \
-                rate="2" \
-                quiet="TRUE"
-        fi
-    done
+    log "... setting upgrade assets"
 
-    log "... awaiting auction bid acceptance (3 eras + 1 block)"
-    await_n_eras 3
-    await_n_blocks 1
+    log "... staging upgrade on node-6"
+    source "$NCTL/sh/assets/upgrade_from_stage_single_node.sh" stage="$STAGE_ID" verbose=false node="6" era="$ACTIVATION_POINT" force_launcher_upgrade=true
+    echo ""
 
-    log "... starting nodes"
-    TRUSTED_HASH="$(get_chain_latest_block_hash)"
-    for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
-    do
-        if [ $(get_node_is_up "$NODE_ID") == false ]; then
-            do_node_start "$NODE_ID" "$TRUSTED_HASH"
-        fi
-    done
+    log "... starting node-6"
+    do_node_start "6" "$TRUSTED_HASH" true
 
-    log "... ... awaiting new nodes to start"
-    sleep 60
-    await_n_eras 1
-    await_n_blocks 1
+    log "... awaiting 2 eras + 1 block"
+    await_n_eras '2'
+    await_n_blocks '1'
 }
 
-# Step 08: Assert passive joined & all are running upgrade.
-function _step_08()
+# Step 08: Assert node 6 is upgraded
+function _step_08
+{
+    local N1_PROTOCOL_VERSION_INITIAL=${1}
+   
+    log_step_upgrades 8 "asserting node 6 upgrade"
+
+    # Assert no nodes have stalled.
+    HEIGHT_1=$(get_chain_height)
+    await_n_blocks 2
+    for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
+    do
+        HEIGHT_2=$(get_chain_height "$NODE_ID")
+        if [ "$HEIGHT_2" != "N/A" ] && [ "$HEIGHT_2" -le "$HEIGHT_1" ]; then
+            log "ERROR :: protocol upgrade failure - >= 1 nodes have stalled"
+            exit 1
+        fi
+    done
+
+    local N6_PROTOCOL_VERSION=$(get_node_protocol_version 6)
+    if [ -z "$N6_PROTOCOL_VERSION" ]; then
+        log "ERROR :: protocol upgrade failure - >= unable to read protocol version of node 6"
+        exit 1
+    fi
+    if [ "$N6_PROTOCOL_VERSION" == "$N1_PROTOCOL_VERSION_INITIAL" ]; then
+        log "ERROR :: protocol upgrade failure - >= protocol version did not increment"
+        exit 1
+    else
+        log "Node 6 upgraded successfully: $N1_PROTOCOL_VERSION_INITIAL -> $N6_PROTOCOL_VERSION"
+    fi
+}
+
+# Step 09: Assert passive joined & all are running upgrade.
+function _step_09()
 {
     local N1_PROTOCOL_VERSION_INITIAL=${1}
     local NODE_ID
@@ -235,10 +263,10 @@ function _step_08()
     local NX_STATE_ROOT_HASH
     local RETRY_COUNT
 
-    log_step_upgrades 8 "asserting joined nodes are running upgrade"
+    log_step_upgrades 9 "asserting all nodes are running upgrade"
 
     # Assert all nodes are live.
-    for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
+    for NODE_ID in $(seq 1 "$(get_count_of_up_nodes)")
     do
         if [ $(get_node_is_up "$NODE_ID") == false ]; then
             log "ERROR :: protocol upgrade failure - >= 1 nodes not live"
@@ -258,7 +286,7 @@ function _step_08()
     fi
 
     # Assert nodes are running same protocol version.
-    for NODE_ID in $(seq 2 "$(get_count_of_nodes)")
+    for NODE_ID in $(seq 2 "$(get_count_of_up_nodes)")
     do
         NX_PROTOCOL_VERSION=$(get_node_protocol_version "$NODE_ID")
         if [ "$NX_PROTOCOL_VERSION" != "$N1_PROTOCOL_VERSION" ]; then
@@ -272,7 +300,7 @@ function _step_08()
     # Assert nodes are synced.
     N1_BLOCK_HASH=$(get_chain_latest_block_hash 1)
     N1_STATE_ROOT_HASH=$(get_state_root_hash 1 "$N1_BLOCK_HASH")
-    for NODE_ID in $(seq 2 "$(get_count_of_nodes)")
+    for NODE_ID in $(seq 2 "$(get_count_of_up_nodes)")
     do
         # Retry command to address: https://github.com/casper-network/casper-node/issues/1499
         unset NX_STATE_ROOT_HASH
@@ -300,10 +328,10 @@ function _step_08()
     done
 }
 
-# Step 09: Terminate.
-function _step_09()
+# Step 10: Terminate.
+function _step_10()
 {
-    log_step_upgrades 9 "test successful - tidying up"
+    log_step_upgrades 10 "test successful - tidying up"
 
     source "$NCTL/sh/assets/teardown.sh"
 

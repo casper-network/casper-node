@@ -5,22 +5,32 @@
 # Arguments:
 #   Node ordinal identifier.
 #   A trusted hash to streamline joining.
+#   Flag telling whether we should run latest available binary (fast-sync approach) or oldest one (classic approach)
 #######################################
 function do_node_start()
 {
     local NODE_ID=${1}
     local TRUSTED_HASH=${2}
+    local START_LATEST_BINARY=${3:-false}
 
     local NODE_PROTOCOL_VERSION
     local PATH_TO_NODE_CONFIG
     local PROCESS_NAME
 
-    NODE_PROTOCOL_VERSION=$(get_node_protocol_version_from_fs "$NODE_ID" "_")
-    PATH_TO_NODE_CONFIG="$(get_path_to_node_config "$NODE_ID")/$NODE_PROTOCOL_VERSION/config.toml"
-
     if [ ! -e "$(get_path_net_supervisord_sock)" ]; then
         _do_supervisord_start
     fi
+
+
+    if [ "$START_LATEST_BINARY" = "true" ]; then
+        NODE_PROTOCOL_VERSION=$(get_node_protocol_version_from_fs "$NODE_ID" "_" true)
+        log "... selecting latest binary to be run: ${NODE_PROTOCOL_VERSION}"
+    else
+        NODE_PROTOCOL_VERSION=$(get_node_protocol_version_from_fs "$NODE_ID" "_")
+        log "... selecting oldest binary to be run: ${NODE_PROTOCOL_VERSION}"
+    fi
+
+    PATH_TO_NODE_CONFIG="$(get_path_to_node_config "$NODE_ID")/$NODE_PROTOCOL_VERSION/config.toml"
 
     if [ -n "$TRUSTED_HASH" ]; then
         _update_node_config_on_start "$PATH_TO_NODE_CONFIG" "$TRUSTED_HASH"
