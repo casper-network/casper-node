@@ -39,6 +39,7 @@ impl Default for Config {
             reject_incompatible_versions: true,
             tarpit_version_threshold: None,
             tarpit_duration: Duration::from_secs(600),
+            tarpit_chance: 0.2,
         }
     }
 }
@@ -74,6 +75,8 @@ pub struct Config {
     pub tarpit_version_threshold: Option<ProtocolVersion>,
     /// If tarpitting is enabled, duration for which connections should be kept open.
     pub tarpit_duration: Duration,
+    /// The chance, expressed as a number between 0.0 and 1.0, of triggering the tarpit.
+    pub tarpit_chance: f32,
 }
 
 #[cfg(test)]

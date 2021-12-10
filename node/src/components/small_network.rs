@@ -285,6 +285,7 @@ where
             reject_incompatible_versions: cfg.reject_incompatible_versions,
             tarpit_version_threshold: cfg.tarpit_version_threshold,
             tarpit_duration: cfg.tarpit_duration,
+            tarpit_chance: cfg.tarpit_chance,
         });
 
         // Run the server task.

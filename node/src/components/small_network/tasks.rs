@@ -21,6 +21,7 @@ use openssl::{
     ssl::Ssl,
 };
 use prometheus::IntGauge;
+use rand::{rngs::OsRng, Rng};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tokio::{
     net::TcpStream,
@@ -190,6 +191,8 @@ where
     pub(super) tarpit_version_threshold: Option<ProtocolVersion>,
     /// If tarpitting is enabled, duration for which connections should be kept open.
     pub(super) tarpit_duration: Duration,
+    /// The chance, expressed as a number between 0.0 and 1.0, of triggering the tarpit.
+    pub(super) tarpit_chance: f32,
 }
 
 /// Handles an incoming connection.
@@ -370,10 +373,18 @@ where
         {
             if let Some(threshold) = context.tarpit_version_threshold {
                 if protocol_version <= threshold {
-                    // If tarpitting is enabled, we hold open the connection for a specific amount
-                    // of time, to reduce load on other nodes and keep them from reconnecting.
-                    info!(duration=?context.tarpit_duration, "tarpitting node");
-                    tokio::time::sleep(context.tarpit_duration).await;
+                    let mut rng = OsRng;
+
+                    let sample = rng.gen_range(0.0f32..1.0f32);
+                    if context.tarpit_chance > sample {
+                        // If tarpitting is enabled, we hold open the connection for a specific
+                        // amount of time, to reduce load on other nodes and keep them from
+                        // reconnecting.
+                        info!(duration=?context.tarpit_duration, "tarpitting node");
+                        tokio::time::sleep(context.tarpit_duration).await;
+                    } else {
+                        debug!(p = context.tarpit_chance, "randomly not tarpitting node");
+                    }
                 }
             }
             return Err(ConnectionError::IncompatibleVersion(protocol_version));
