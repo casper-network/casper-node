@@ -310,7 +310,7 @@ impl LmdbWasmTestBuilder {
 
     /// Execute and commit transforms from an ExecuteRequest into a scratch global state.
     /// You MUST call scratch_flush to flush these changes to LmdbGlobalState.
-    pub fn scratch_exec(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
+    pub fn scratch_exec_and_commit(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
         if self.scratch_engine_state.is_none() {
             self.scratch_engine_state = Some(self.engine_state.get_scratch_engine_state());
         }

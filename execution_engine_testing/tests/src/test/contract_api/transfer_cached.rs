@@ -49,7 +49,9 @@ fn should_transfer_to_account_with_correct_balances() {
            ARG_ID => <Option<u64>>::None,
         },
     ));
-    builder.scratch_exec(exec_builder.build()).expect_success();
+    builder
+        .scratch_exec_and_commit(exec_builder.build())
+        .expect_success();
 
     builder.write_scratch_to_lmdb();
     builder.flush_environment();
@@ -106,7 +108,9 @@ fn should_transfer_from_default_and_then_to_another_account() {
            ARG_ID => <Option<u64>>::None,
         },
     ));
-    builder.scratch_exec(exec_builder.build()).expect_success();
+    builder
+        .scratch_exec_and_commit(exec_builder.build())
+        .expect_success();
 
     let mut exec_builder = ExecuteRequestBuilder::new();
     exec_builder = exec_builder.push_deploy(transfer(
@@ -118,7 +122,9 @@ fn should_transfer_from_default_and_then_to_another_account() {
         },
     ));
 
-    builder.scratch_exec(exec_builder.build()).expect_success();
+    builder
+        .scratch_exec_and_commit(exec_builder.build())
+        .expect_success();
 
     // Double spend test for account 1
     let mut exec_builder = ExecuteRequestBuilder::new();
@@ -131,7 +137,9 @@ fn should_transfer_from_default_and_then_to_another_account() {
         },
     ));
 
-    builder.scratch_exec(exec_builder.build()).expect_failure();
+    builder
+        .scratch_exec_and_commit(exec_builder.build())
+        .expect_failure();
 
     builder.write_scratch_to_lmdb();
     builder.flush_environment();

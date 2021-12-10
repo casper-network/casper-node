@@ -342,7 +342,7 @@ fn transfer_to_account_multiple_native_transfers(
             exec_request.proposer.clone(),
         );
         if use_scratch {
-            builder.scratch_exec(request).expect_success();
+            builder.scratch_exec_and_commit(request).expect_success();
         } else {
             builder.exec(request).expect_success();
             builder.commit();
