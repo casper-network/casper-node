@@ -550,7 +550,7 @@ mod tests {
             assert_eq!(
                 Some(value),
                 updated_checkout.read(correlation_id, &key).unwrap(),
-                ""
+                "ScratchGlobalState should not yet be written to the underlying lmdb state"
             );
         }
 
