@@ -70,7 +70,7 @@ fn initialize_builder() -> InMemoryWasmTestBuilder {
 
 #[ignore]
 #[test]
-fn should_not_create_same_purse() {
+fn should_not_create_any_purse() {
     let mut builder = initialize_builder();
 
     let mut now = SystemTime::now();
@@ -165,11 +165,7 @@ fn should_not_create_same_purse() {
         })
         .collect();
 
-    assert_eq!(
-        balances_1.len(),
-        4,
-        "distribute should create 4 purses and zero out their balance"
-    );
+    assert_eq!(balances_1.len(), 0, "distribute should not create purses");
 
     let balances_2: BTreeSet<Key> = journal_2
         .into_iter()
@@ -183,11 +179,7 @@ fn should_not_create_same_purse() {
         })
         .collect();
 
-    assert_eq!(
-        balances_2.len(),
-        4,
-        "distribute should create 4 purses and zero out their balance"
-    );
+    assert_eq!(balances_2.len(), 0, "distribute should not create purses");
 
     let common_keys: BTreeSet<_> = balances_1.intersection(&balances_2).collect();
     assert_eq!(common_keys.len(), 0, "there should be no commmon Key::Balance keys with Transfer::Write(0) in two distinct step requests");

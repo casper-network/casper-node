@@ -552,18 +552,18 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
 
     // Logs the details about the received vertex.
     fn log_received_vertex(&self, vertex: &Vertex<C>) {
-        let creator = if let Some(creator) = vertex
-            .creator()
-            .and_then(|vid| self.highway.validators().id(vid))
-        {
-            creator
-        } else {
-            error!(?vertex, "invalid creator");
-            return;
-        };
-
         match vertex {
             Vertex::Unit(swu) => {
+                let creator = if let Some(creator) = vertex
+                    .creator()
+                    .and_then(|vid| self.highway.validators().id(vid))
+                {
+                    creator
+                } else {
+                    error!(?vertex, "invalid creator");
+                    return;
+                };
+
                 let wire_unit = swu.wire_unit();
                 let hash = swu.hash();
 
