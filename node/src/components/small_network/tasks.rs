@@ -375,8 +375,7 @@ where
                 if protocol_version <= threshold {
                     let mut rng = OsRng;
 
-                    let sample = rng.gen_range(0.0f32..1.0f32);
-                    if context.tarpit_chance > sample {
+                    if rng.gen_bool(context.tarpit_chance as f64) {
                         // If tarpitting is enabled, we hold open the connection for a specific
                         // amount of time, to reduce load on other nodes and keep them from
                         // reconnecting.
