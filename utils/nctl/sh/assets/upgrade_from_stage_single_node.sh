@@ -60,18 +60,6 @@ function _setup_asset_binaries()
         fi
     fi
 
-    # if [[ "$NODE_ID" -eq 6 ]]; then
-    #     log "... we're on node-6 ... overwriting launcher with $PATH_TO_NODE_LAUNCHER"
-    #     cp "$PATH_TO_NODE_LAUNCHER" "$PATH_TO_BIN"
-    # else
-    #     if [ ! -f "$NODE_ID/casper-node-launcher" ]; then
-    #         cp "$PATH_TO_NODE_LAUNCHER" "$PATH_TO_BIN"
-    #         log "... no launcher present, copying from $PATH_TO_NODE_LAUNCHER"
-    #     else
-    #         log "... launcher already present"
-    #     fi
-    # fi
-
     cp "$PATH_TO_NODE" "$PATH_TO_BIN/$PROTOCOL_VERSION"
 
     # Set client-side binary.
