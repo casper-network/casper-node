@@ -55,7 +55,10 @@ use once_cell::sync::Lazy;
 #[cfg(not(test))]
 use rand::SeedableRng;
 use signal_hook::{
-    consts::{signal::SIGUSR1, TERM_SIGNALS},
+    consts::{
+        signal::{SIGUSR1, SIGUSR2},
+        TERM_SIGNALS,
+    },
     flag,
 };
 
@@ -111,8 +114,12 @@ pub(crate) static VERSION_STRING: Lazy<String> = Lazy::new(|| version_string(fal
 pub(crate) static TERMINATION_REQUESTED: Lazy<Arc<AtomicUsize>> =
     Lazy::new(|| Arc::new(AtomicUsize::new(0)));
 
-/// Global flag that indicates the currently running reactor should dump its event queue.
-pub(crate) static QUEUE_DUMP_REQUESTED: Lazy<Arc<AtomicBool>> =
+/// Global flag indicating the running reactor should dump its event queue in JSON format.
+pub(crate) static JSON_DUMP_REQUESTED: Lazy<Arc<AtomicBool>> =
+    Lazy::new(|| Arc::new(AtomicBool::new(false)));
+
+/// Global flag indicating the running reactor should dump its event queue in debug text format.
+pub(crate) static DEBUG_DUMP_REQUESTED: Lazy<Arc<AtomicBool>> =
     Lazy::new(|| Arc::new(AtomicBool::new(false)));
 
 /// Setup UNIX signal hooks for current application.
@@ -125,7 +132,8 @@ pub(crate) fn setup_signal_hooks() {
         )
         .unwrap_or_else(|error| panic!("failed to register signal {}: {}", signal, error));
     }
-    let _ = flag::register(SIGUSR1, Arc::clone(&*QUEUE_DUMP_REQUESTED));
+    let _ = flag::register(SIGUSR1, Arc::clone(&*DEBUG_DUMP_REQUESTED));
+    let _ = flag::register(SIGUSR2, Arc::clone(&*JSON_DUMP_REQUESTED));
 }
 
 /// Constructs a new `NodeRng`.
