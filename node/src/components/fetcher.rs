@@ -8,7 +8,7 @@ use std::{collections::HashMap, fmt::Debug, time::Duration};
 use datasize::DataSize;
 use prometheus::Registry;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use casper_execution_engine::storage::trie::Trie;
 use casper_hashing::Digest;
@@ -29,6 +29,7 @@ use crate::{
     NodeRng,
 };
 
+use crate::effect::announcements::BlocklistAnnouncement;
 pub(crate) use config::Config;
 pub(crate) use event::{Event, FetchResult, FetchedData, FetcherError};
 use metrics::FetcherMetrics;
@@ -39,6 +40,7 @@ pub(crate) trait ReactorEventT<T>:
     + From<NetworkRequest<NodeId, Message>>
     + From<StorageRequest>
     + From<ContractRuntimeRequest>
+    + From<BlocklistAnnouncement<NodeId>>
     + Send
     + 'static
 where
@@ -55,6 +57,7 @@ where
         + From<NetworkRequest<NodeId, Message>>
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
+        + From<BlocklistAnnouncement<NodeId>>
         + Send
         + 'static,
 {
@@ -137,18 +140,6 @@ pub(crate) trait ItemFetcher<T: Item + 'static> {
         id: T::Id,
         peer: NodeId,
     ) -> Effects<Event<T>>;
-
-    /// Handles the `Ok` case for a `Result` of attempting to get the item from the storage
-    /// component in order to send it to the requester.
-    fn got_from_storage(&mut self, item: T, peer: NodeId) -> Effects<Event<T>> {
-        self.signal(
-            item.id(),
-            Ok(FetchedData::FromStorage {
-                item: Box::new(item),
-            }),
-            peer,
-        )
-    }
 
     /// Handles the `Err` case for a `Result` of attempting to get the item from the storage
     /// component.
@@ -523,7 +514,13 @@ where
             } => match *maybe_item {
                 Some(item) => {
                     self.metrics.found_in_storage.inc();
-                    self.got_from_storage(item, peer)
+                    self.signal(
+                        id,
+                        Ok(FetchedData::FromStorage {
+                            item: Box::new(item),
+                        }),
+                        peer,
+                    )
                 }
                 None => self.failed_to_get_from_storage(effect_builder, id, peer),
             },
@@ -531,7 +528,12 @@ where
                 match source {
                     Source::Peer(peer) => {
                         self.metrics.found_on_peer.inc();
-                        self.signal(item.id(), Ok(FetchedData::FromPeer { item, peer }), peer)
+                        if let Err(err) = item.validate() {
+                            warn!(?peer, ?err, ?item, "Peer sent invalid item, banning peer");
+                            effect_builder.announce_disconnect_from_peer(peer).ignore()
+                        } else {
+                            self.signal(item.id(), Ok(FetchedData::FromPeer { item, peer }), peer)
+                        }
                     }
                     Source::Client | Source::Ourself => {
                         // TODO - we could possibly also handle this case

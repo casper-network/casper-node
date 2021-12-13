@@ -885,122 +885,20 @@ impl reactor::Reactor for Reactor {
                 Effects::new()
             }
             JoinerEvent::NetResponseIncoming(NetResponseIncoming { sender, message }) => {
-                match message {
-                    NetResponse::Deploy(ref serialized_item) =>
-                        match fetcher::Event::<Deploy>::from_get_response_serialized_item(
-                            sender,
-                            serialized_item,
-                        ) {
-                            Some(fetcher_event) => self.dispatch_event(
-                                effect_builder,
-                                rng,
-                                JoinerEvent::DeployFetcher(fetcher_event),
-                            ),
-                            None => {
-                                info!("{} sent us a deploy we couldn't parse! Banning", sender);
-                                effect_builder
-                                    .announce_disconnect_from_peer(sender)
-                                    .ignore()
-                            }
-                        }
-
-                    NetResponse::Block(ref serialized_item) => match fetcher::Event::<Block>::from_get_response_serialized_item(
-                            sender,
-                            serialized_item,
-                        ) {
-                            Some(fetcher_event) => self.dispatch_event(
-                                effect_builder,
-                                rng,
-                                JoinerEvent::BlockFetcher(fetcher_event),
-                            ),
-                            None => {
-                                info!("{} sent us a block we couldn't parse! Banning", sender);
-                                effect_builder
-                                    .announce_disconnect_from_peer(sender)
-                                    .ignore()
-                            }
-                        }
-
-                    NetResponse::GossipedAddress(_) => {
-                        warn!("received get response for gossiped-address from {}", sender);
-                        Effects::new()
-                    }
-
-                    NetResponse::BlockAndMetadataByHeight(ref serialized_item) =>
-                        match fetcher::Event::<BlockWithMetadata>::from_get_response_serialized_item(
-                            sender,
-                            serialized_item,
-                        ) {
-                            Some(fetcher_event) => self.dispatch_event(
-                                effect_builder,
-                                rng,
-                                JoinerEvent::BlockByHeightFetcher(fetcher_event),
-                            ),
-                            None => {
-                                info!(
-                                    "{} sent us a block with metadata we couldn't parse! Banning",
-                                    sender
-                                );
-                                effect_builder
-                                    .announce_disconnect_from_peer(sender)
-                                    .ignore()
-                            }
-                        }
-
-                    NetResponse::BlockHeaderByHash(ref serialized_item) =>
-                         match fetcher::Event::<BlockHeader>::from_get_response_serialized_item(
-                            sender,
-                            serialized_item,
-                        ) {
-                            Some(fetcher_event) => self.dispatch_event(
-                                effect_builder,
-                                rng,
-                                JoinerEvent::BlockHeaderFetcher(fetcher_event),
-                            ),
-                            None => {
-                                info!(
-                                    "{} sent us a block header we couldn't parse! Banning",
-                                    sender
-                                );
-                                effect_builder
-                                    .announce_disconnect_from_peer(sender)
-                                    .ignore()
-                            }
-                        }
-
-                    NetResponse::BlockHeaderAndFinalitySignaturesByHeight(ref serialized_item) =>
-                        match fetcher::Event::<BlockHeaderWithMetadata>::from_get_response_serialized_item(
-                            sender, serialized_item) {
-                            Some(fetcher_event) =>
-                                self.dispatch_event(effect_builder, rng, JoinerEvent::BlockHeaderByHeightFetcher(fetcher_event))
-                            ,
-                            None => {
-                                info!("{} sent us a block header with finality signatures we couldn't parse! Banning", sender);
-                                effect_builder.announce_disconnect_from_peer(sender).ignore()
-                            }
-                        },
-                    }
+                self.handle_get_response(effect_builder, rng, sender, message)
             }
             JoinerEvent::TrieRequestIncoming(incoming) => {
                 debug!(%incoming, "trie request ignored");
                 Effects::new()
             }
             JoinerEvent::TrieResponseIncoming(TrieResponseIncoming { sender, message }) => {
-                match fetcher::Event::<Trie<Key, StoredValue>>::from_get_response_serialized_item(
-                    sender, &message.0,
-                ) {
-                    Some(fetcher_event) => self.dispatch_event(
-                        effect_builder,
-                        rng,
-                        JoinerEvent::TrieFetcher(fetcher_event),
-                    ),
-                    None => {
-                        info!("{} sent us a trie we couldn't parse! Banning", sender);
-                        effect_builder
-                            .announce_disconnect_from_peer(sender)
-                            .ignore()
-                    }
-                }
+                reactor::handle_fetch_response::<Self, Trie<Key, StoredValue>>(
+                    self,
+                    effect_builder,
+                    rng,
+                    sender,
+                    &message.0,
+                )
             }
 
             JoinerEvent::FinalitySignatureIncoming(FinalitySignatureIncoming {
@@ -1034,6 +932,73 @@ impl reactor::Reactor for Reactor {
 }
 
 impl Reactor {
+    fn handle_get_response(
+        &mut self,
+        effect_builder: EffectBuilder<JoinerEvent>,
+        rng: &mut NodeRng,
+        sender: NodeId,
+        message: NetResponse,
+    ) -> Effects<JoinerEvent> {
+        match message {
+            NetResponse::Deploy(ref serialized_item) => {
+                reactor::handle_fetch_response::<Self, Deploy>(
+                    self,
+                    effect_builder,
+                    rng,
+                    sender,
+                    serialized_item,
+                )
+            }
+            NetResponse::Block(ref serialized_item) => {
+                reactor::handle_fetch_response::<Self, Block>(
+                    self,
+                    effect_builder,
+                    rng,
+                    sender,
+                    serialized_item,
+                )
+            }
+            NetResponse::GossipedAddress(_) => {
+                // The item trait is used for both fetchers and gossiped things, but this kind of
+                // item is never fetched, only gossiped.
+                warn!(
+                    "Gossiped addresses are never fetched, banning peer: {}",
+                    sender
+                );
+                effect_builder
+                    .announce_disconnect_from_peer(sender)
+                    .ignore()
+            }
+            NetResponse::BlockAndMetadataByHeight(ref serialized_item) => {
+                reactor::handle_fetch_response::<Self, BlockWithMetadata>(
+                    self,
+                    effect_builder,
+                    rng,
+                    sender,
+                    serialized_item,
+                )
+            }
+            NetResponse::BlockHeaderByHash(ref serialized_item) => {
+                reactor::handle_fetch_response::<Self, BlockHeader>(
+                    self,
+                    effect_builder,
+                    rng,
+                    sender,
+                    serialized_item,
+                )
+            }
+            NetResponse::BlockHeaderAndFinalitySignaturesByHeight(ref serialized_item) => {
+                reactor::handle_fetch_response::<Self, BlockHeaderWithMetadata>(
+                    self,
+                    effect_builder,
+                    rng,
+                    sender,
+                    serialized_item,
+                )
+            }
+        }
+    }
+
     /// Deconstructs the reactor into config useful for creating a Validator reactor. Shuts down
     /// the network, closing all incoming and outgoing connections, and frees up the listening
     /// socket.

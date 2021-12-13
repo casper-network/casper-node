@@ -60,8 +60,12 @@ use tracing_futures::Instrument;
 use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
 
 use crate::{
-    effect::{announcements::ControlAnnouncement, Effect, EffectBuilder, Effects},
-    types::{ExitCode, Timestamp},
+    components::fetcher,
+    effect::{
+        announcements::{BlocklistAnnouncement, ControlAnnouncement},
+        Effect, EffectBuilder, EffectExt, Effects,
+    },
+    types::{ExitCode, Item, NodeId, Timestamp},
     unregister_metric,
     utils::{self, SharedFlag, WeightedRoundRobin},
     NodeRng, QUEUE_DUMP_REQUESTED, TERMINATION_REQUESTED,
@@ -924,4 +928,33 @@ where
         .into_iter()
         .map(move |effect| wrap_effect(wrap.clone(), effect))
         .collect()
+}
+
+pub(crate) fn handle_fetch_response<R, T>(
+    reactor: &mut R,
+    effect_builder: EffectBuilder<<R as Reactor>::Event>,
+    rng: &mut NodeRng,
+    sender: NodeId,
+    serialized_item: &[u8],
+) -> Effects<<R as Reactor>::Event>
+where
+    T: Item,
+    R: Reactor,
+    <R as Reactor>::Event: From<fetcher::Event<T>> + From<BlocklistAnnouncement<NodeId>>,
+{
+    match fetcher::Event::<T>::from_get_response_serialized_item(sender, serialized_item) {
+        Some(fetcher_event) => {
+            Reactor::dispatch_event(reactor, effect_builder, rng, fetcher_event.into())
+        }
+        None => {
+            info!(
+                "{} sent us a {:?} item we couldn't parse, banning peer",
+                sender,
+                T::TAG
+            );
+            effect_builder
+                .announce_disconnect_from_peer(sender)
+                .ignore()
+        }
+    }
 }

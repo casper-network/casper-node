@@ -34,7 +34,7 @@ pub use deploy::{
 };
 pub use error::BlockValidationError;
 pub use exit_code::ExitCode;
-pub use item::{Item, Tag};
+pub(crate) use item::{Item, Tag};
 pub use node_config::NodeConfig;
 pub(crate) use node_id::NodeId;
 pub use peers_map::PeersMap;

@@ -213,7 +213,7 @@ where
 // Note: This request should eventually entirely replace `ItemReceived`.
 #[derive(Debug, Serialize)]
 #[must_use]
-pub struct BeginGossipRequest<T>
+pub(crate) struct BeginGossipRequest<T>
 where
     T: Item,
 {

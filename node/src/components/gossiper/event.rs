@@ -15,7 +15,7 @@ use crate::{
 
 /// `Gossiper` events.
 #[derive(Debug, From, Serialize)]
-pub enum Event<T: Item> {
+pub(crate) enum Event<T: Item> {
     /// A request to gossip an item has been made.
     #[from]
     BeginGossipRequest(BeginGossipRequest<T>),

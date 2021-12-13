@@ -136,6 +136,7 @@ reactor!(Reactor {
         // No consensus component.
         ConsensusMessageIncoming<NodeId> -> [!];
         FinalitySignatureIncoming -> [!];
+        BlocklistAnnouncement<NodeId> -> [!];
     }
 });
 
@@ -306,8 +307,7 @@ async fn assert_settled(
             ExpectedFetchedDeployResult::FromStorage { expected_deploy },
             Some(Ok(FetchedData::FromStorage { item })),
             Some(stored_deploy),
-        ) if expected_deploy.equals_ignoring_is_valid(&*item)
-            && stored_deploy.equals_ignoring_is_valid(&*item) => {}
+        ) if expected_deploy == item && stored_deploy == *item => {}
         // FromPeer case: deploys should correspond, storage should be present and correspond, and
         // peers should correspond.
         (
@@ -317,9 +317,7 @@ async fn assert_settled(
             },
             Some(Ok(FetchedData::FromPeer { item, peer })),
             Some(stored_deploy),
-        ) if expected_deploy.equals_ignoring_is_valid(&*item)
-            && stored_deploy.equals_ignoring_is_valid(&*item)
-            && expected_peer == peer => {}
+        ) if expected_deploy == item && stored_deploy == *item && expected_peer == peer => {}
         // Sad path case
         (expected_result, actual_fetcher_result, maybe_stored_deploy) => {
             panic!(

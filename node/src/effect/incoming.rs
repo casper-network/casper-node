@@ -33,7 +33,7 @@ where
 pub(crate) type ConsensusMessageIncoming<I> = MessageIncoming<I, consensus::ConsensusMessage>;
 
 /// A new message from a gossiper arrived.
-pub type GossiperIncoming<T> = MessageIncoming<NodeId, gossiper::Message<T>>;
+pub(crate) type GossiperIncoming<T> = MessageIncoming<NodeId, gossiper::Message<T>>;
 
 /// A new message requesting various objects arrived.
 pub(crate) type NetRequestIncoming = MessageIncoming<NodeId, NetRequest>;
