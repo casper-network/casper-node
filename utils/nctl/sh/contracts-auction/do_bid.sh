@@ -33,7 +33,7 @@ function main()
     PATH_TO_CLIENT=$(get_path_to_client)
     PATH_TO_CONTRACT=$(get_path_to_contract "auction/add_bid.wasm")
 
-    BIDDER_ACCOUNT_KEY=$(get_account_key "$NCTL_ACCOUNT_TYPE_NODE" "$BIDDER_ID")
+    BIDDER_ACCOUNT_KEY=$(get_account_key "$NCTL_ACCOUNT_TYPE_NODE" "$BIDDER_ID" | tr '[:upper:]' '[:lower:]')
     BIDDER_SECRET_KEY=$(get_path_to_secret_key "$NCTL_ACCOUNT_TYPE_NODE" "$BIDDER_ID")
 
     if [ "$QUIET" != "TRUE" ]; then

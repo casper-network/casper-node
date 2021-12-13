@@ -230,7 +230,7 @@ pub trait Auction:
     /// is missing, the function call returns an error and does nothing.
     ///
     /// The function transfers motes from the source purse to the delegator's bonding purse.
-    ///    
+    ///
     /// This entry point returns the number of tokens currently delegated to a given validator.
     fn delegate(
         &mut self,
@@ -528,7 +528,7 @@ pub trait Auction:
         }
 
         let mut era_info = EraInfo::new();
-        let mut seigniorage_allocations = era_info.seigniorage_allocations_mut();
+        let seigniorage_allocations = era_info.seigniorage_allocations_mut();
 
         for (public_key, reward_factor) in reward_factors {
             let recipient = seigniorage_recipients
@@ -580,7 +580,7 @@ pub trait Auction:
                     });
             let delegator_payouts = detail::reinvest_delegator_rewards(
                 self,
-                &mut seigniorage_allocations,
+                seigniorage_allocations,
                 public_key.clone(),
                 delegator_rewards,
             )?;
@@ -593,7 +593,7 @@ pub trait Auction:
             let validator_reward = validators_part.to_integer();
             let validator_bonding_purse = detail::reinvest_validator_reward(
                 self,
-                &mut seigniorage_allocations,
+                seigniorage_allocations,
                 public_key.clone(),
                 validator_reward,
             )?;

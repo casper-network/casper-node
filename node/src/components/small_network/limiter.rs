@@ -132,6 +132,7 @@ struct ClassBasedHandle {
 #[derive(Debug)]
 struct ConsumerId {
     /// The peer's ID.
+    #[allow(dead_code)]
     peer_id: NodeId,
     /// The remote node's `validator_id`.
     validator_id: Option<PublicKey>,
