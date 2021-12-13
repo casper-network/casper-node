@@ -17,6 +17,7 @@ All notable changes to this project will be documented in this file.  The format
 * Add new event to the main SSE server stream across all endpoints `<IP:Port>/events/*` which emits a shutdown event when the node shuts down.
 * Introducing fast-syncing to join the network, avoiding the need to execute every block to catch up.
 * Added `archival_sync` to `[node]` config section, along with archival syncing capabilities
+* Add capabilities for known nodes to slow down the reconnection process of outdated legacy nodes still out on the internet.
 
 ### Changed
 * `enable_manual_sync` configuration parameter defaults to `true`.
@@ -24,6 +25,7 @@ All notable changes to this project will be documented in this file.  The format
 * More node modules are now `pub(crate)`.
 * Chain automatically creates a switch block immediately after genesis or an upgrade.
 * Asymmetric connections are now swept regularly again.
+* Nodes no longer connect to nodes that do not speak the same protocol version by default.
 
 ### Deprecated
 * Deprecate the `starting_state_root_hash` field from the REST and JSON-RPC status endpoints.

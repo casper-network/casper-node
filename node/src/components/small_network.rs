@@ -282,6 +282,10 @@ where
             public_addr,
             consensus_keys,
             payload_weights: cfg.estimator_weights.clone(),
+            reject_incompatible_versions: cfg.reject_incompatible_versions,
+            tarpit_version_threshold: cfg.tarpit_version_threshold,
+            tarpit_duration: cfg.tarpit_duration,
+            tarpit_chance: cfg.tarpit_chance,
         });
 
         // Run the server task.
@@ -517,11 +521,15 @@ where
     fn is_blockable_offense_for_outgoing(&self, error: &ConnectionError) -> bool {
         match error {
             // Potentially transient failures.
+            //
+            // Note that incompatible versions need to be considered transient, since they occur
+            // during regular upgrades.
             ConnectionError::TlsInitialization(_)
             | ConnectionError::TcpConnection(_)
             | ConnectionError::TlsHandshake(_)
             | ConnectionError::HandshakeSend(_)
-            | ConnectionError::HandshakeRecv(_) => false,
+            | ConnectionError::HandshakeRecv(_)
+            | ConnectionError::IncompatibleVersion(_) => false,
 
             // These could be candidates for blocking, but for now we decided not to.
             ConnectionError::NoPeerCertificate
