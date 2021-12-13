@@ -1814,11 +1814,11 @@ where
                 let delegator = Self::get_named_argument(runtime_args, auction::ARG_DELEGATOR)?;
                 let validator = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
                 let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
-                let new_validator_public_key =
-                    Self::get_named_argument(runtime_args, auction::ARG_NEW_VALIDATOR_PUBLIC_KEY)?;
+                let new_validator =
+                    Self::get_named_argument(runtime_args, auction::ARG_NEW_VALIDATOR)?;
 
                 let result = runtime
-                    .undelegate(delegator, validator, amount, new_validator_public_key)
+                    .undelegate(delegator, validator, amount, new_validator)
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)

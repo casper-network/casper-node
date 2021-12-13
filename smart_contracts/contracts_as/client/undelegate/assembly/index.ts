@@ -10,7 +10,7 @@ import {Option} from "../../../../contract_as/assembly/option";
 const ARG_AMOUNT = "amount";
 const ARG_DELEGATOR = "delegator";
 const ARG_VALIDATOR = "validator";
-const ARG_NEW_VALIDATOR_PUBLIC_KEY = "new_validator_public_key";
+const ARG_NEW_VALIDATOR = "new_validator";
 const METHOD_UNDELEGATE = "undelegate";
 
 export function call(): void {
@@ -55,14 +55,14 @@ export function call(): void {
     }
     let amount = amountResult.value;
 
-    let newValidatorPublicKeyBytes = CL.getNamedArg(ARG_NEW_VALIDATOR_PUBLIC_KEY);
+    let newValidatorPublicKeyBytes = CL.getNamedArg(ARG_NEW_VALIDATOR);
     let newValidatorPublicKey = Option.fromBytes(newValidatorPublicKeyBytes);
 
     let runtimeArgs = RuntimeArgs.fromArray([
         new Pair(ARG_AMOUNT, CLValue.fromU512(amount)),
         new Pair(ARG_DELEGATOR, CLValue.fromPublicKey(delegator)),
         new Pair(ARG_VALIDATOR, CLValue.fromPublicKey(validator)),
-        new Pair(ARG_NEW_VALIDATOR_PUBLIC_KEY, CLValue.fromOption(newValidatorPublicKey, new CLType(CLTypeTag.PublicKey)))
+        new Pair(ARG_NEW_VALIDATOR, CLValue.fromOption(newValidatorPublicKey, new CLType(CLTypeTag.PublicKey)))
     ]);
     CL.callContract(auction, METHOD_UNDELEGATE, runtimeArgs);
 }

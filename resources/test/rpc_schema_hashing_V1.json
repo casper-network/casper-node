@@ -2642,7 +2642,7 @@
                 ],
                 "description": "Era in which this unbonding request was created."
               },
-              "new_validator_public_key": {
+              "new_validator": {
                 "anyOf": [
                   {
                     "$ref": "#/components/schemas/PublicKey"

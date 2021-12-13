@@ -32,8 +32,8 @@ pub const ARG_VALIDATOR_PURSE: &str = "validator_purse";
 pub const ARG_VALIDATOR_KEYS: &str = "validator_keys";
 /// Named constant for `validator_public_keys`.
 pub const ARG_VALIDATOR_PUBLIC_KEYS: &str = "validator_public_keys";
-/// Named constant for `new_validator_public_key`.
-pub const ARG_NEW_VALIDATOR_PUBLIC_KEY: &str = "new_validator_public_key";
+/// Named constant for `new_validator`.
+pub const ARG_NEW_VALIDATOR: &str = "new_validator";
 /// Named constant for `era_id`.
 pub const ARG_ERA_ID: &str = "era_id";
 /// Named constant for `reward_factors`.

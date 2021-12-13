@@ -109,14 +109,14 @@ fn undelegate(
     delegator: PublicKey,
     validator: PublicKey,
     amount: U512,
-    new_validator_public_key: Option<PublicKey>,
+    new_validator: Option<PublicKey>,
 ) {
     let auction = builder.get_auction_contract_hash();
     let undelegate_args = runtime_args! {
         auction::ARG_DELEGATOR => delegator,
         auction::ARG_VALIDATOR => validator,
         auction::ARG_AMOUNT => amount,
-        auction::ARG_NEW_VALIDATOR_PUBLIC_KEY => new_validator_public_key
+        auction::ARG_NEW_VALIDATOR => new_validator
     };
     let undelegate_request = ExecuteRequestBuilder::contract_call_by_hash(
         sender,

@@ -404,7 +404,7 @@ where
             let withdraw_keys = tracking_copy
                 .borrow_mut()
                 .get_keys(correlation_id, &KeyTag::Withdraw)
-                .map_err(|_| Error::FailedToGetWithdrawsKeys)?;
+                .map_err(|_| Error::FailedToGetWithdrawKeys)?;
 
             let (unbonding_delay, current_era_id) = {
                 let auction_contract = tracking_copy
@@ -445,7 +445,7 @@ where
                 let withdraw_purses = tracking_copy
                     .borrow_mut()
                     .read(correlation_id, &key)
-                    .map_err(|_| Error::FailedToGetWithdrawsKeys)?
+                    .map_err(|_| Error::FailedToGetWithdrawKeys)?
                     .ok_or(Error::FailedToGetStoredWithdraws)?
                     .as_withdraw()
                     .ok_or(Error::FailedToGetWithdrawPurses)?

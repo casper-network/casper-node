@@ -28,7 +28,7 @@ pub struct UnbondingPurse {
     /// Unbonding Amount.
     amount: U512,
     /// The validator public key to re-delegate to.
-    new_validator_public_key: Option<PublicKey>,
+    new_validator: Option<PublicKey>,
 }
 
 impl UnbondingPurse {
@@ -39,7 +39,7 @@ impl UnbondingPurse {
         unbonder_public_key: PublicKey,
         era_of_creation: EraId,
         amount: U512,
-        new_validator_public_key: Option<PublicKey>,
+        new_validator: Option<PublicKey>,
     ) -> Self {
         Self {
             bonding_purse,
@@ -47,7 +47,7 @@ impl UnbondingPurse {
             unbonder_public_key,
             era_of_creation,
             amount,
-            new_validator_public_key,
+            new_validator,
         }
     }
 
@@ -87,8 +87,8 @@ impl UnbondingPurse {
     }
 
     /// Returns the public key for the new validator.
-    pub fn new_validator_public_key(&self) -> &Option<PublicKey> {
-        &self.new_validator_public_key
+    pub fn new_validator(&self) -> &Option<PublicKey> {
+        &self.new_validator
     }
 }
 
@@ -100,7 +100,7 @@ impl ToBytes for UnbondingPurse {
         result.extend(&self.unbonder_public_key.to_bytes()?);
         result.extend(&self.era_of_creation.to_bytes()?);
         result.extend(&self.amount.to_bytes()?);
-        result.extend(&self.new_validator_public_key.to_bytes()?);
+        result.extend(&self.new_validator.to_bytes()?);
         Ok(result)
     }
     fn serialized_length(&self) -> usize {
@@ -109,7 +109,7 @@ impl ToBytes for UnbondingPurse {
             + self.unbonder_public_key.serialized_length()
             + self.era_of_creation.serialized_length()
             + self.amount.serialized_length()
-            + self.new_validator_public_key.serialized_length()
+            + self.new_validator.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
@@ -118,7 +118,7 @@ impl ToBytes for UnbondingPurse {
         self.unbonder_public_key.write_bytes(writer)?;
         self.era_of_creation.write_bytes(writer)?;
         self.amount.write_bytes(writer)?;
-        self.new_validator_public_key.write_bytes(writer)?;
+        self.new_validator.write_bytes(writer)?;
         Ok(())
     }
 }
@@ -130,7 +130,7 @@ impl FromBytes for UnbondingPurse {
         let (unbonder_public_key, remainder) = FromBytes::from_bytes(remainder)?;
         let (era_of_creation, remainder) = FromBytes::from_bytes(remainder)?;
         let (amount, remainder) = FromBytes::from_bytes(remainder)?;
-        let (new_validator_public_key, remainder) = Option::<PublicKey>::from_bytes(remainder)?;
+        let (new_validator, remainder) = Option::<PublicKey>::from_bytes(remainder)?;
 
         Ok((
             UnbondingPurse {
@@ -139,7 +139,7 @@ impl FromBytes for UnbondingPurse {
                 unbonder_public_key,
                 era_of_creation,
                 amount,
-                new_validator_public_key,
+                new_validator,
             },
             remainder,
         ))
@@ -316,7 +316,7 @@ mod tests {
             unbonder_public_key: unbonder_public_key(),
             era_of_creation: ERA_OF_WITHDRAWAL,
             amount: amount(),
-            new_validator_public_key: None,
+            new_validator: None,
         };
 
         bytesrepr::test_serialization_roundtrip(&unbonding_purse);

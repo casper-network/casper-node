@@ -348,9 +348,7 @@ where
                 *delegator.staked_amount()
             }
             None => {
-                let bonding_purse = self.create_purse().map_err(|exec_error| {
-                    <Option<Error>>::from(exec_error).unwrap_or(Error::CreatePurseFailed)
-                })?;
+                let bonding_purse = self.create_purse().map_err(|_| Error::CreatePurseFailed)?;
                 self.mint_transfer_direct(
                     Some(PublicKey::System.to_account_hash()),
                     source,

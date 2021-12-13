@@ -271,7 +271,7 @@ pub trait Auction:
         delegator_public_key: PublicKey,
         validator_public_key: PublicKey,
         amount: U512,
-        new_validator_public_key: Option<PublicKey>,
+        new_validator: Option<PublicKey>,
     ) -> Result<U512, Error> {
         let provided_account_hash =
             AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
@@ -297,7 +297,7 @@ pub trait Auction:
                     delegator_public_key.clone(),
                     *delegator.bonding_purse(),
                     amount,
-                    new_validator_public_key,
+                    new_validator,
                 )?;
 
                 let era_end_timestamp_millis = detail::get_era_end_timestamp_millis(self)?;

@@ -248,7 +248,7 @@
               "unbonder_public_key": "01197f6b23e16C8532c6ABC838fAcD5eA789be0c76b2920334039bfa8b3d368D61",
               "era_of_creation": 41,
               "amount": "60000000000",
-              "new_validator_public_key": null
+              "new_validator": null
             },
             {
               "bonding_purse": "uref-0B0b0B0b0b0B0b0b0b0b0b0B0b0b0b0b0B0B0B0b0B0b0b0b0b0B0B0B0B0B0B0b-001",
@@ -256,7 +256,7 @@
               "unbonder_public_key": "0202Bb58B5FEcA505C74EDC000d8282fc556E51a1024fc8E7D7E56C6F887C5c8d5f2",
               "era_of_creation": 42,
               "amount": "50000000000",
-              "new_validator_public_key": null
+              "new_validator": null
             }
           ]
         }

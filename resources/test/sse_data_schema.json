@@ -1874,7 +1874,7 @@
             }
           ]
         },
-        "new_validator_public_key": {
+        "new_validator": {
           "description": "The validator public key to re-delegate to.",
           "anyOf": [
             {

@@ -9,20 +9,20 @@ use casper_types::{runtime_args, system::auction, PublicKey, RuntimeArgs, U512};
 const ARG_AMOUNT: &str = "amount";
 const ARG_DELEGATOR: &str = "delegator";
 const ARG_VALIDATOR: &str = "validator";
-const ARG_NEW_VALIDATOR_PUBLIC_KEY: &str = "new_validator_public_key";
+const ARG_NEW_VALIDATOR: &str = "new_validator";
 
 fn undelegate(
     delegator: PublicKey,
     validator: PublicKey,
     amount: U512,
-    new_validator_public_key: Option<PublicKey>,
+    new_validator: Option<PublicKey>,
 ) {
     let contract_hash = system::get_auction();
     let args = runtime_args! {
         auction::ARG_DELEGATOR => delegator,
         auction::ARG_VALIDATOR => validator,
         auction::ARG_AMOUNT => amount,
-        auction::ARG_NEW_VALIDATOR_PUBLIC_KEY => new_validator_public_key
+        auction::ARG_NEW_VALIDATOR => new_validator
     };
     let _amount: U512 = runtime::call_contract(contract_hash, auction::METHOD_UNDELEGATE, args);
 }
@@ -36,6 +36,6 @@ pub extern "C" fn call() {
     let delegator = runtime::get_named_arg(ARG_DELEGATOR);
     let validator = runtime::get_named_arg(ARG_VALIDATOR);
     let amount = runtime::get_named_arg(ARG_AMOUNT);
-    let new_validator_public_key = runtime::get_named_arg(ARG_NEW_VALIDATOR_PUBLIC_KEY);
-    undelegate(delegator, validator, amount, new_validator_public_key);
+    let new_validator = runtime::get_named_arg(ARG_NEW_VALIDATOR);
+    undelegate(delegator, validator, amount, new_validator);
 }

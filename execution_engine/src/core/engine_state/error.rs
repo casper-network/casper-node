@@ -80,7 +80,7 @@ pub enum Error {
     MissingSystemContractHash(String),
     /// Failed to get the set of Key::Withdraw from global state.
     #[error("Failed to get withdraw keys")]
-    FailedToGetWithdrawsKeys,
+    FailedToGetWithdrawKeys,
     /// Failed to get the purses stored under Key::Withdraw
     #[error("Failed to get stored values under withdraws")]
     FailedToGetStoredWithdraws,

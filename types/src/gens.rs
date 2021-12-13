@@ -470,10 +470,27 @@ fn unbonding_arb() -> impl Strategy<Value = UnbondingPurse> {
         public_key_arb_no_system(),
         era_id_arb(),
         u512_arb(),
+        option::of(public_key_arb_no_system()),
     )
-        .prop_map(|(bonding_purse, validator_pk, unbonder_pk, era, amount)| {
-            UnbondingPurse::new(bonding_purse, validator_pk, unbonder_pk, era, amount, None)
-        })
+        .prop_map(
+            |(
+                bonding_purse,
+                validator_public_key,
+                unbonder_public_key,
+                era,
+                amount,
+                new_validator,
+            )| {
+                UnbondingPurse::new(
+                    bonding_purse,
+                    validator_public_key,
+                    unbonder_public_key,
+                    era,
+                    amount,
+                    new_validator,
+                )
+            },
+        )
 }
 
 fn unbondings_arb(size: impl Into<SizeRange>) -> impl Strategy<Value = Vec<UnbondingPurse>> {

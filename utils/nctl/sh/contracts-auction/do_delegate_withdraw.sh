@@ -40,10 +40,10 @@ function main()
     DELEGATOR_MAIN_PURSE_UREF=$(get_main_purse_uref "$DELEGATOR_ACCOUNT_KEY" | tr '[:upper:]' '[:lower:]')
     VALIDATOR_ACCOUNT_KEY=$(get_account_key "$NCTL_ACCOUNT_TYPE_NODE" "$VALIDATOR_ID" | tr '[:upper:]' '[:lower:]')
     if [ "$NEW_VALIDATOR_ID" = null ]; then
-        NEW_VALIDATOR_ACCOUNT_ARG="new_validator_public_key:opt_public_key=null"
+        NEW_VALIDATOR_ACCOUNT_ARG="new_validator:opt_public_key=null"
     else
        NEW_VALIDATOR_ACCOUNT_KEY=$(get_account_key "$NCTL_ACCOUNT_TYPE_NODE" "$NEW_VALIDATOR_ID" | tr '[:upper:]' '[:lower:]')
-       NEW_VALIDATOR_ACCOUNT_ARG="$(get_cl_arg_opt_public_key 'new_validator_public_key' "$NEW_VALIDATOR_ACCOUNT_KEY")"
+       NEW_VALIDATOR_ACCOUNT_ARG="$(get_cl_arg_opt_public_key 'new_validator' "$NEW_VALIDATOR_ACCOUNT_KEY")"
     fi
 
 
@@ -96,7 +96,7 @@ do
         amount) AMOUNT=${VALUE} ;;
         delegator) DELEGATOR_ID=${VALUE} ;;
         validator) VALIDATOR_ID=${VALUE} ;;
-        new_validator_public_key) NEW_VALIDATOR_ID=${VALUE} ;;
+        new_validator) NEW_VALIDATOR_ID=${VALUE} ;;
         *)
     esac
 done

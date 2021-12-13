@@ -107,7 +107,7 @@ fn should_run_ee_1152_regression_test() {
             auction::ARG_DELEGATOR => DELEGATOR_1.clone(),
             auction::ARG_VALIDATOR => VALIDATOR_1.clone(),
             auction::ARG_AMOUNT => U512::from(DELEGATE_AMOUNT),
-            auction::ARG_NEW_VALIDATOR_PUBLIC_KEY => Option::<PublicKey>::None
+            auction::ARG_NEW_VALIDATOR => Option::<PublicKey>::None
         },
     )
     .build();
