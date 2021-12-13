@@ -15,7 +15,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Changed
 
-* (Perf) Changed contract runtime to allow for executing many deploys per execute/commit cycle.
+* (Perf) Changed contract runtime to allow caching GlobalState changes during execution of a single block.
 
 
 ## [1.4.2] - 2021-11-11
