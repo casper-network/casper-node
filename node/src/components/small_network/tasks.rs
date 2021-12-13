@@ -21,7 +21,7 @@ use openssl::{
     ssl::Ssl,
 };
 use prometheus::IntGauge;
-use rand::{rngs::OsRng, Rng};
+use rand::Rng;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tokio::{
     net::TcpStream,
@@ -373,7 +373,7 @@ where
         {
             if let Some(threshold) = context.tarpit_version_threshold {
                 if protocol_version <= threshold {
-                    let mut rng = OsRng;
+                    let mut rng = crate::new_rng();
 
                     if rng.gen_bool(context.tarpit_chance as f64) {
                         // If tarpitting is enabled, we hold open the connection for a specific
