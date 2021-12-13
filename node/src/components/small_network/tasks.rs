@@ -379,7 +379,7 @@ where
                         // If tarpitting is enabled, we hold open the connection for a specific
                         // amount of time, to reduce load on other nodes and keep them from
                         // reconnecting.
-                        info!(duration=?context.tarpit_duration, "tarpitting node");
+                        info!(duration=?context.tarpit_duration, "randomly tarpitting node");
                         tokio::time::sleep(context.tarpit_duration).await;
                     } else {
                         debug!(p = context.tarpit_chance, "randomly not tarpitting node");
