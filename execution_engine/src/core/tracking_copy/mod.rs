@@ -631,7 +631,18 @@ impl From<bytesrepr::Error> for ValidationError {
 
 /// Validates proof of the query.
 ///
-/// Returns [`ValidationError`] for any of
+/// Returns [`ValidationError`] in the following cases:
+/// - The number of proofs[^note] in `proofs` is different than the path length less one.
+/// - The first proof's [`Key`] does not match the `expected_first_key`.
+/// - Any proof's [`Key`] does not match its expected [`Key`].
+/// - The first proof's state root hash does not match `hash`.
+/// - The state root hash is invalid for any proof.
+/// - A expected named key cannot be found in a set of named keys for an [`Account`] or a
+///   [`Contract`].
+/// - The value returned by the query does not match the expected value.
+///
+/// [^note]: In cases where a query traverses through a [`ContractPackage`] and into a [`Contract`]
+/// using a named key, the [`ContractPackage`] will not be counted for path length validation.
 pub fn validate_query_proof(
     hash: &Digest,
     proofs: &[TrieMerkleProof<Key, StoredValue>],
