@@ -84,20 +84,20 @@ use self::{
 pub(crate) use self::{
     event::Event,
     gossiped_address::GossipedAddress,
-    message::{Message, MessageKind, Payload, PayloadWeights},
+    message::{FromIncoming, Message, MessageKind, Payload, PayloadWeights},
 };
 use super::{consensus, contract_runtime::ContractRuntimeAnnouncement};
 use crate::{
     components::{networking_metrics::NetworkingMetrics, Component},
     effect::{
-        announcements::{BlocklistAnnouncement, NetworkAnnouncement},
-        requests::{NetworkInfoRequest, NetworkRequest, StorageRequest},
+        announcements::BlocklistAnnouncement,
+        requests::{BeginGossipRequest, NetworkInfoRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
     reactor::{EventQueueHandle, Finalize, ReactorEvent},
     tls::{self, TlsCert, ValidationError},
     types::NodeId,
-    utils::{self, display_error, WithDir},
+    utils::{self, display_error, Source, WithDir},
     NodeRng,
 };
 use chain_info::ChainInfo;
@@ -185,8 +185,7 @@ where
 impl<REv, P> SmallNetwork<REv, P>
 where
     P: Payload + 'static,
-    REv:
-        ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>> + From<StorageRequest>,
+    REv: ReactorEvent + From<Event<P>> + FromIncoming<NodeId, P> + From<StorageRequest>,
 {
     /// Creates a new small network component instance.
     #[allow(clippy::type_complexity)]
@@ -403,7 +402,6 @@ where
     #[allow(clippy::redundant_clone)]
     fn handle_incoming_connection(
         &mut self,
-        effect_builder: EffectBuilder<REv>,
         incoming: Box<IncomingConnection<P>>,
         span: Span,
     ) -> Effects<Event<P>> {
@@ -458,7 +456,7 @@ where
                     .or_default()
                     .add_incoming(peer_addr, Instant::now())
                 {
-                    effects.extend(self.connection_completed(effect_builder, peer_id));
+                    self.connection_completed(peer_id);
                 }
 
                 // Now we can start the message reader.
@@ -542,7 +540,6 @@ where
     #[allow(clippy::redundant_clone)]
     fn handle_outgoing_connection(
         &mut self,
-        effect_builder: EffectBuilder<REv>,
         outgoing: OutgoingConnection<P>,
         span: Span,
     ) -> Effects<Event<P>> {
@@ -611,7 +608,7 @@ where
                     .or_default()
                     .mark_outgoing(now)
                 {
-                    effects.extend(self.connection_completed(effect_builder, peer_id));
+                    self.connection_completed(peer_id);
                 }
 
                 effects.extend(
@@ -649,14 +646,6 @@ where
             .unmark_outgoing(Instant::now());
 
         self.process_dial_requests(requests)
-    }
-
-    /// Gossips our public listening address, and schedules the next such gossip round.
-    fn gossip_our_address(&mut self, effect_builder: EffectBuilder<REv>) -> Effects<Event<P>> {
-        let our_address = GossipedAddress::new(self.context.public_addr);
-        effect_builder
-            .announce_gossip_our_address(our_address)
-            .ignore()
     }
 
     /// Processes a set of `DialRequest`s, updating the component and emitting needed effects.
@@ -698,7 +687,7 @@ where
         span: Span,
     ) -> Effects<Event<P>>
     where
-        REv: From<NetworkAnnouncement<NodeId, P>>,
+        REv: FromIncoming<NodeId, P>,
     {
         span.in_scope(|| match msg {
             Message::Handshake { .. } => {
@@ -708,21 +697,16 @@ where
                 warn!("received unexpected handshake");
                 Effects::new()
             }
-            Message::Payload(payload) => effect_builder
-                .announce_message_received(peer_id, payload)
-                .ignore(),
+            Message::Payload(payload) => {
+                effect_builder.announce_incoming(peer_id, payload).ignore()
+            }
         })
     }
 
     /// Emits an announcement that a connection has been completed.
-    fn connection_completed(
-        &self,
-        effect_builder: EffectBuilder<REv>,
-        peer_id: NodeId,
-    ) -> Effects<Event<P>> {
+    fn connection_completed(&self, peer_id: NodeId) {
         trace!(num_peers = self.peers().len(), new_peer=%peer_id, "connection complete");
         self.net_metrics.peers.set(self.peers().len() as i64);
-        effect_builder.announce_new_peer(peer_id).ignore()
     }
 
     /// Returns the set of connected nodes.
@@ -784,8 +768,11 @@ where
 
 impl<REv, P> Component<REv> for SmallNetwork<REv, P>
 where
-    REv:
-        ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>> + From<StorageRequest>,
+    REv: ReactorEvent
+        + From<Event<P>>
+        + From<BeginGossipRequest<GossipedAddress>>
+        + FromIncoming<NodeId, P>
+        + From<StorageRequest>,
     P: Payload,
 {
     type Event = Event<P>;
@@ -799,7 +786,7 @@ where
     ) -> Effects<Self::Event> {
         match event {
             Event::IncomingConnection { incoming, span } => {
-                self.handle_incoming_connection(effect_builder, incoming, span)
+                self.handle_incoming_connection(incoming, span)
             }
             Event::IncomingMessage { peer_id, msg, span } => {
                 self.handle_incoming_message(effect_builder, *peer_id, *msg, span)
@@ -812,7 +799,7 @@ where
             } => self.handle_incoming_closed(result, peer_id, peer_addr, *span),
 
             Event::OutgoingConnection { outgoing, span } => {
-                self.handle_outgoing_connection(effect_builder, *outgoing, span)
+                self.handle_outgoing_connection(*outgoing, span)
             }
 
             Event::OutgoingDropped { peer_id, peer_addr } => {
@@ -934,7 +921,11 @@ where
             }
 
             Event::GossipOurAddress => {
-                let mut effects = self.gossip_our_address(effect_builder);
+                let our_address = GossipedAddress::new(self.context.public_addr);
+
+                let mut effects = effect_builder
+                    .begin_gossip(our_address, Source::Ourself)
+                    .ignore();
                 effects.extend(
                     effect_builder
                         .set_timeout(self.cfg.gossip_interval.into())

@@ -59,6 +59,7 @@
 //! some point. Failing to do so will result in a resource leak.
 
 pub(crate) mod announcements;
+pub(crate) mod incoming;
 pub(crate) mod requests;
 
 use std::{
@@ -102,19 +103,19 @@ use crate::{
         },
         deploy_acceptor,
         fetcher::FetchResult,
-        small_network::GossipedAddress,
+        small_network::FromIncoming,
     },
     reactor::{EventQueueHandle, QueueKind},
     types::{
         Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload, BlockSignatures,
         BlockWithMetadata, ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata,
-        FinalitySignature, FinalizedBlock, Item, TimeDiff, Timestamp,
+        FinalitySignature, FinalizedBlock, Item, NodeId, TimeDiff, Timestamp,
     },
     utils::{SharedFlag, Source},
 };
 use announcements::{
     ChainspecLoaderAnnouncement, ConsensusAnnouncement, ControlAnnouncement,
-    DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
+    DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
     RpcServerAnnouncement,
 };
 use requests::{
@@ -125,7 +126,7 @@ use requests::{
 
 use self::{
     announcements::{BlockProposerAnnouncement, BlocklistAnnouncement},
-    requests::StateStoreRequest,
+    requests::{BeginGossipRequest, StateStoreRequest},
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -641,43 +642,17 @@ impl<REv> EffectBuilder<REv> {
             .await;
     }
 
-    /// Announces that a network message has been received.
-    pub(crate) async fn announce_message_received<I, P>(self, sender: I, payload: P)
+    /// Announces an incoming network message.
+    pub(crate) async fn announce_incoming<I, P>(self, sender: I, payload: P)
     where
-        REv: From<NetworkAnnouncement<I, P>>,
+        REv: FromIncoming<I, P>,
     {
         self.event_queue
             .schedule(
-                NetworkAnnouncement::MessageReceived { sender, payload },
+                <REv as FromIncoming<I, P>>::from_incoming(sender, payload),
                 QueueKind::NetworkIncoming,
             )
-            .await;
-    }
-
-    /// Announces that we should gossip our own public listening address.
-    pub(crate) async fn announce_gossip_our_address<I, P>(self, our_address: GossipedAddress)
-    where
-        REv: From<NetworkAnnouncement<I, P>>,
-    {
-        self.event_queue
-            .schedule(
-                NetworkAnnouncement::GossipOurAddress(our_address),
-                QueueKind::Regular,
-            )
-            .await;
-    }
-
-    /// Announces that a new peer has connected.
-    pub(crate) async fn announce_new_peer<I, P>(self, peer_id: I)
-    where
-        REv: From<NetworkAnnouncement<I, P>>,
-    {
-        self.event_queue
-            .schedule(
-                NetworkAnnouncement::NewPeer(peer_id),
-                QueueKind::NetworkIncoming,
-            )
-            .await;
+            .await
     }
 
     /// Announces that a gossiper has received a new item, where the item's ID is the complete item.
@@ -769,6 +744,23 @@ impl<REv> EffectBuilder<REv> {
                 QueueKind::Regular,
             )
             .await
+    }
+
+    /// Begins gossiping an item.
+    pub(crate) async fn begin_gossip<T>(self, item_id: T::Id, source: Source<NodeId>)
+    where
+        T: Item,
+        REv: From<BeginGossipRequest<T>>,
+    {
+        self.make_request(
+            |responder| BeginGossipRequest {
+                item_id,
+                source,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
     }
 
     /// Puts the given block into the linear block store.

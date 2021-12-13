@@ -935,14 +935,14 @@ pub(crate) fn handle_fetch_response<R, T>(
     effect_builder: EffectBuilder<<R as Reactor>::Event>,
     rng: &mut NodeRng,
     sender: NodeId,
-    serialized_item: Vec<u8>,
+    serialized_item: &[u8],
 ) -> Effects<<R as Reactor>::Event>
 where
     T: Item,
     R: Reactor,
     <R as Reactor>::Event: From<fetcher::Event<T>> + From<BlocklistAnnouncement<NodeId>>,
 {
-    match fetcher::Event::<T>::from_get_response_serialized_item(sender, &serialized_item) {
+    match fetcher::Event::<T>::from_get_response_serialized_item(sender, serialized_item) {
         Some(fetcher_event) => {
             Reactor::dispatch_event(reactor, effect_builder, rng, fetcher_event.into())
         }

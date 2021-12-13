@@ -5,7 +5,10 @@ use std::{
 
 use casper_types::ExecutionResult;
 
-use crate::types::{ActivationPoint, Block, BlockSignatures, DeployHash, FinalitySignature};
+use crate::{
+    effect::incoming::FinalitySignatureIncoming,
+    types::{ActivationPoint, Block, BlockSignatures, DeployHash, FinalitySignature},
+};
 
 #[derive(Debug)]
 pub(crate) enum Event {
@@ -32,6 +35,12 @@ pub(crate) enum Event {
     Upgrade,
     /// Got the result of checking for an upgrade activation point.
     GotUpgradeActivationPoint(ActivationPoint),
+}
+
+impl From<FinalitySignatureIncoming> for Event {
+    fn from(incoming: FinalitySignatureIncoming) -> Self {
+        Event::FinalitySignatureReceived(incoming.message, true)
+    }
 }
 
 impl Display for Event {

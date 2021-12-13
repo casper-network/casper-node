@@ -25,7 +25,9 @@ use crate::{
         announcements::{
             ChainspecLoaderAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
         },
-        requests::{ConsensusRequest, ContractRuntimeRequest, NetworkRequest, RestRequest},
+        requests::{
+            ConsensusRequest, ContractRuntimeRequest, NetworkRequest, RestRequest, StorageRequest,
+        },
         EffectBuilder, Effects,
     },
     protocol::Message,
@@ -44,16 +46,19 @@ pub(crate) enum Event {
     Chainspec(chainspec_loader::Event),
 
     /// Storage event.
-
     #[from]
-    Storage(#[serde(skip_serializing)] storage::Event),
+    Storage(storage::Event),
 
     /// Contract runtime event.
     ContractRuntime(#[serde(skip_serializing)] Box<ContractRuntimeRequest>),
 
-    /// Control announcement
+    /// Control announcement.
     #[from]
     ControlAnnouncement(ControlAnnouncement),
+
+    /// Storage request.
+    #[from]
+    StorageRequest(StorageRequest),
 }
 
 impl From<ContractRuntimeRequest> for Event {
@@ -77,6 +82,7 @@ impl ReactorEvent for Event {
             Event::Storage(_) => "Storage",
             Event::ContractRuntime(_) => "ContractRuntime",
             Event::ControlAnnouncement(_) => "ControlAnnouncement",
+            Event::StorageRequest(_) => "StorageRequest",
         }
     }
 }
@@ -124,6 +130,7 @@ impl Display for Event {
             Event::Storage(event) => write!(formatter, "storage: {}", event),
             Event::ContractRuntime(event) => write!(formatter, "contract runtime: {:?}", event),
             Event::ControlAnnouncement(ctrl_ann) => write!(formatter, "control: {}", ctrl_ann),
+            Event::StorageRequest(req) => write!(formatter, "storage request: {}", req),
         }
     }
 }
@@ -141,7 +148,7 @@ pub(crate) enum Error {
 
     /// `Storage` component error.
     #[error("storage error: {0}")]
-    Storage(#[from] storage::Error),
+    Storage(#[from] storage::FatalStorageError),
 
     /// `ContractRuntime` component error.
     #[error("contract runtime config error: {0}")]
@@ -293,6 +300,10 @@ impl reactor::Reactor for Reactor {
                 Event::from,
                 self.contract_runtime
                     .handle_event(effect_builder, rng, *event),
+            ),
+            Event::StorageRequest(req) => reactor::wrap_effects(
+                Event::Storage,
+                self.storage.handle_event(effect_builder, rng, req.into()),
             ),
             Event::ControlAnnouncement(_) => unreachable!("unhandled control announcement"),
         }

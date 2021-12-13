@@ -10,9 +10,13 @@ use thiserror::Error;
 
 use super::*;
 use crate::{
-    components::{deploy_acceptor, in_memory_network::NetworkController, storage},
+    components::{
+        deploy_acceptor, in_memory_network::NetworkController, small_network::GossipedAddress,
+        storage,
+    },
     effect::{
-        announcements::{DeployAcceptorAnnouncement, NetworkAnnouncement},
+        announcements::DeployAcceptorAnnouncement,
+        incoming::{NetResponse, NetResponseIncoming},
         Responder,
     },
     fatal,
@@ -109,92 +113,81 @@ reactor!(Reactor {
     announcements: {
         // The deploy fetcher needs to be notified about new deploys.
         DeployAcceptorAnnouncement<NodeId> -> [deploy_fetcher];
-        NetworkAnnouncement<NodeId, Message> -> [fn handle_message];
         // Currently the RpcServerAnnouncement is misnamed - it solely tells of new deploys arriving
         // from a client.
         RpcServerAnnouncement -> [deploy_acceptor];
         ChainspecLoaderAnnouncement -> [!];
+
+        // The `handle_net_response` function implements the entire "custom" logic found in this test
+        // reactor, outside of routing.
+        NetRequestIncoming -> [storage];
+        NetResponseIncoming -> [fn handle_net_response];
+
+        // There is no deploy gossiping going on.
+        GossiperIncoming<Deploy> -> [!];
+
+        // We are using an in-memory network, so we do not expect any gossiping of addresses.
+        GossiperIncoming<GossipedAddress> -> [!];
+
+        // We do not serve any other requests.
+        TrieRequestIncoming -> [!];
+        TrieResponseIncoming -> [!];
+
+        // No consensus component.
+        ConsensusMessageIncoming<NodeId> -> [!];
+        FinalitySignatureIncoming -> [!];
         BlocklistAnnouncement<NodeId> -> [!];
     }
 });
 
 impl Reactor {
-    fn handle_message(
+    fn handle_net_response(
         &mut self,
         effect_builder: EffectBuilder<ReactorEvent>,
         rng: &mut NodeRng,
-        network_announcement: NetworkAnnouncement<NodeId, Message>,
+        response: NetResponseIncoming,
     ) -> Effects<ReactorEvent> {
-        // TODO: Make this manual routing disappear and supply appropriate
-        // announcements.
-        match network_announcement {
-            NetworkAnnouncement::MessageReceived { sender, payload } => match payload {
-                Message::GetRequest { serialized_id, .. } => {
-                    let deploy_hash: DeployHash = match bincode::deserialize(&serialized_id) {
-                        Ok(hash) => hash,
-                        Err(error) => {
-                            error!(
-                                "failed to decode {:?} from {}: {}",
-                                serialized_id, sender, error
-                            );
-                            return Effects::new();
-                        }
-                    };
-
-                    let fetched_or_not_found_deploy = match self.storage.get_deploy(deploy_hash) {
-                        Ok(Some(deploy)) => FetchedOrNotFound::Fetched(deploy),
-                        Ok(None) | Err(_) => FetchedOrNotFound::NotFound(deploy_hash),
-                    };
-
-                    match Message::new_get_response(&fetched_or_not_found_deploy) {
-                        Ok(message) => effect_builder.send_message(sender, message).ignore(),
-                        Err(error) => {
-                            error!("failed to create get-response: {}", error);
-                            Effects::new()
-                        }
+        match response.message {
+            NetResponse::Deploy(ref serialized_item) => {
+                let deploy = match bincode::deserialize::<FetchedOrNotFound<Deploy, DeployHash>>(
+                    serialized_item,
+                ) {
+                    Ok(FetchedOrNotFound::Fetched(deploy)) => Box::new(deploy),
+                    Ok(FetchedOrNotFound::NotFound(deploy_hash)) => {
+                        return fatal!(
+                            effect_builder,
+                            "peer did not have deploy with hash {}: {}",
+                            deploy_hash,
+                            response.sender,
+                        )
+                        .ignore();
                     }
-                }
+                    Err(error) => {
+                        return fatal!(
+                            effect_builder,
+                            "failed to decode deploy from {}: {}",
+                            response.sender,
+                            error
+                        )
+                        .ignore();
+                    }
+                };
 
-                Message::GetResponse {
-                    serialized_item, ..
-                } => {
-                    let deploy = match bincode::deserialize::<FetchedOrNotFound<Deploy, DeployHash>>(
-                        &serialized_item,
-                    ) {
-                        Ok(FetchedOrNotFound::Fetched(deploy)) => Box::new(deploy),
-                        Ok(FetchedOrNotFound::NotFound(deploy_hash)) => {
-                            return fatal!(
-                                effect_builder,
-                                "peer did not have deploy with hash {}: {}",
-                                deploy_hash,
-                                sender,
-                            )
-                            .ignore();
-                        }
-                        Err(error) => {
-                            return fatal!(
-                                effect_builder,
-                                "failed to decode deploy from {}: {}",
-                                sender,
-                                error
-                            )
-                            .ignore();
-                        }
-                    };
-
-                    self.dispatch_event(
-                        effect_builder,
-                        rng,
-                        ReactorEvent::DeployAcceptor(deploy_acceptor::Event::Accept {
-                            deploy,
-                            source: Source::Peer(sender),
-                            maybe_responder: None,
-                        }),
-                    )
-                }
-                msg => panic!("should not get {}", msg),
-            },
-            ann => panic!("should not received any network announcements: {:?}", ann),
+                self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    ReactorEvent::DeployAcceptor(deploy_acceptor::Event::Accept {
+                        deploy,
+                        source: Source::Peer(response.sender),
+                        maybe_responder: None,
+                    }),
+                )
+            }
+            _ => fatal!(
+                effect_builder,
+                "no support for anything but deploy responses in fetcher test"
+            )
+            .ignore(),
         }
     }
 }
@@ -257,7 +250,7 @@ async fn store_deploy(
             move |event: &ReactorEvent| {
                 matches!(
                     event,
-                    ReactorEvent::DeployAcceptorAnnouncement(
+                    ReactorEvent::DeployAcceptorAnnouncementNodeId(
                         DeployAcceptorAnnouncement::AcceptedNewDeploy { .. },
                     )
                 )
@@ -468,8 +461,9 @@ async fn should_timeout_fetch_from_peer() {
             &requesting_node,
             &mut rng,
             move |event: &ReactorEvent| {
-                if let ReactorEvent::NetworkRequest(NetworkRequest::SendMessage {
-                    payload, ..
+                if let ReactorEvent::NetworkRequestNodeIdMessage(NetworkRequest::SendMessage {
+                    payload,
+                    ..
                 }) = event
                 {
                     matches!(**payload, Message::GetRequest { .. })
@@ -487,8 +481,9 @@ async fn should_timeout_fetch_from_peer() {
             &holding_node,
             &mut rng,
             move |event: &ReactorEvent| {
-                if let ReactorEvent::NetworkRequest(NetworkRequest::SendMessage {
-                    payload, ..
+                if let ReactorEvent::NetworkRequestNodeIdMessage(NetworkRequest::SendMessage {
+                    payload,
+                    ..
                 }) = event
                 {
                     matches!(**payload, Message::GetResponse { .. })

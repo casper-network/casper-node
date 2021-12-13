@@ -14,9 +14,7 @@ use serde::Serialize;
 use casper_types::{EraId, ExecutionResult, PublicKey};
 
 use crate::{
-    components::{
-        chainspec_loader::NextUpgrade, deploy_acceptor::Error, small_network::GossipedAddress,
-    },
+    components::{chainspec_loader::NextUpgrade, deploy_acceptor::Error},
     effect::Responder,
     types::{
         Block, Deploy, DeployHash, DeployHeader, FinalitySignature, FinalizedBlock, Item, Timestamp,
@@ -55,45 +53,6 @@ impl Display for ControlAnnouncement {
         match self {
             ControlAnnouncement::FatalError { file, line, msg } => {
                 write!(f, "fatal error [{}:{}]: {}", file, line, msg)
-            }
-        }
-    }
-}
-
-/// A networking layer announcement.
-#[derive(Debug, Serialize)]
-#[must_use]
-pub(crate) enum NetworkAnnouncement<I, P> {
-    /// A payload message has been received from a peer.
-    MessageReceived {
-        /// The sender of the message
-        sender: I,
-        /// The message payload
-        payload: P,
-    },
-    /// Our public listening address should be gossiped across the network.
-    GossipOurAddress(GossipedAddress),
-    /// A new peer connection was established.
-    ///
-    /// IMPORTANT NOTE: This announcement is a work-around for some short-term functionality. Do
-    ///                 not rely on or use this for anything without asking anyone that has written
-    ///                 this section of the code first!
-    NewPeer(I),
-}
-
-impl<I, P> Display for NetworkAnnouncement<I, P>
-where
-    I: Display,
-    P: Display,
-{
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            NetworkAnnouncement::MessageReceived { sender, payload } => {
-                write!(formatter, "received from {}: {}", sender, payload)
-            }
-            NetworkAnnouncement::GossipOurAddress(_) => write!(formatter, "gossip our address"),
-            NetworkAnnouncement::NewPeer(id) => {
-                write!(formatter, "new peer connection established to {}", id)
             }
         }
     }

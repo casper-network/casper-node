@@ -35,6 +35,7 @@ use crate::{
     components::Component,
     effect::{
         announcements::{BlocklistAnnouncement, ConsensusAnnouncement},
+        incoming::ConsensusMessageIncoming,
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
             ContractRuntimeRequest, NetworkInfoRequest, NetworkRequest, StorageRequest,
@@ -94,8 +95,9 @@ pub struct ResolveValidity<I> {
 /// Consensus component event.
 #[derive(DataSize, Debug, From)]
 pub(crate) enum Event<I> {
+    #[from]
     /// An incoming network message.
-    MessageReceived { sender: I, msg: ConsensusMessage },
+    Incoming(ConsensusMessageIncoming<I>),
     /// A scheduled event to be handled by a specified era.
     Timer {
         era_id: EraId,
@@ -160,7 +162,9 @@ impl Display for ConsensusMessage {
 impl<I: Debug> Display for Event<I> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::MessageReceived { sender, msg } => write!(f, "msg from {:?}: {}", sender, msg),
+            Event::Incoming(ConsensusMessageIncoming { sender, message }) => {
+                write!(f, "msg from {:?}: {}", sender, message)
+            }
             Event::Timer {
                 era_id,
                 timestamp,
@@ -281,8 +285,8 @@ where
             Event::Action { era_id, action_id } => {
                 self.handle_action(effect_builder, rng, era_id, action_id)
             }
-            Event::MessageReceived { sender, msg } => {
-                self.handle_message(effect_builder, rng, sender, msg)
+            Event::Incoming(ConsensusMessageIncoming { sender, message }) => {
+                self.handle_message(effect_builder, rng, sender, message)
             }
             Event::NewBlockPayload(new_block_payload) => {
                 self.handle_new_block_payload(effect_builder, rng, new_block_payload)

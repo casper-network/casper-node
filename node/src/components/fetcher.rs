@@ -70,6 +70,32 @@ pub enum FetchedOrNotFound<T, Id> {
     NotFound(Id),
 }
 
+impl<T, Id> FetchedOrNotFound<T, Id> {
+    /// Constructs a fetched or not found from an option and an id.
+    pub(crate) fn from_opt(id: Id, item: Option<T>) -> Self {
+        match item {
+            Some(item) => FetchedOrNotFound::Fetched(item),
+            None => FetchedOrNotFound::NotFound(id),
+        }
+    }
+
+    /// Returns whether this reponse is a positive (fetched / "found") one.
+    pub(crate) fn was_found(&self) -> bool {
+        matches!(self, FetchedOrNotFound::Fetched(_))
+    }
+}
+
+impl<T, Id> FetchedOrNotFound<T, Id>
+where
+    Self: Serialize,
+{
+    /// The canonical serialization for the inner encoding of the `FetchedOrNotFound` response (see
+    /// [`Message::GetResponse`]).
+    pub(crate) fn to_serialized(&self) -> Result<Vec<u8>, bincode::Error> {
+        bincode::serialize(self)
+    }
+}
+
 pub(crate) trait ItemFetcher<T: Item + 'static> {
     /// Indicator on whether it is safe to respond to all of our responders. For example, [Deploy]s
     /// and [BlockHeader]s are safe because their [Item::id] is all that is needed for
