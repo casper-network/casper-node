@@ -184,7 +184,7 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
 
 impl CommitProvider for ScratchGlobalState {
     /// State hash returned is the one provided, as we do not write to lmdb with this kind of global
-    /// state.
+    /// state. Note that the state hash is NOT used, and simply passed back to the caller.
     fn commit(
         &self,
         _correlation_id: CorrelationId,
@@ -410,17 +410,17 @@ mod tests {
             tmp
         };
 
-        scratch
+        let scratch_root_hash = scratch
             .commit(correlation_id, root_hash, effects.clone())
             .unwrap();
 
-        let scratch_hash = state.commit(correlation_id, root_hash, effects).unwrap();
-        let updated_checkout = state.checkout(scratch_hash).unwrap().unwrap();
-
         assert_eq!(
-            scratch_hash, root_hash,
+            scratch_root_hash, root_hash,
             "ScratchGlobalState should not modify the state root, as it does no hashing"
         );
+
+        let lmdb_hash = state.commit(correlation_id, root_hash, effects).unwrap();
+        let updated_checkout = state.checkout(lmdb_hash).unwrap().unwrap();
 
         let all_keys = updated_checkout
             .keys_with_prefix(correlation_id, &[])
