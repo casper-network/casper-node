@@ -414,8 +414,14 @@ mod tests {
             .commit(correlation_id, root_hash, effects.clone())
             .unwrap();
 
-        let updated_hash = state.commit(correlation_id, root_hash, effects).unwrap();
-        let updated_checkout = state.checkout(updated_hash).unwrap().unwrap();
+        let scratch_hash = state.commit(correlation_id, root_hash, effects).unwrap();
+        let updated_checkout = state.checkout(scratch_hash).unwrap().unwrap();
+
+        assert_eq!(
+            scratch_hash, root_hash,
+            "ScratchGlobalState should not modify the state root, as it does no hashing"
+        );
+
         let all_keys = updated_checkout
             .keys_with_prefix(correlation_id, &[])
             .unwrap();
@@ -543,7 +549,8 @@ mod tests {
         for TestPair { key, value } in test_pairs_updated.iter().cloned() {
             assert_eq!(
                 Some(value),
-                updated_checkout.read(correlation_id, &key).unwrap()
+                updated_checkout.read(correlation_id, &key).unwrap(),
+                ""
             );
         }
 

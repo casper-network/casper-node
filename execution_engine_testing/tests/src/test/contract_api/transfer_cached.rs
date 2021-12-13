@@ -5,7 +5,12 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::engine_state::{DeployItem, MAX_PAYMENT_AMOUNT};
-use casper_types::{account::AccountHash, runtime_args, PublicKey, RuntimeArgs, SecretKey, U512};
+use casper_types::{
+    account::AccountHash,
+    runtime_args,
+    system::mint::{ARG_AMOUNT, ARG_ID, ARG_TARGET},
+    PublicKey, RuntimeArgs, SecretKey, U512,
+};
 use rand::Rng;
 use tempfile::TempDir;
 
@@ -23,11 +28,8 @@ static ACCOUNT_2_PUBLIC_KEY: Lazy<PublicKey> =
     Lazy::new(|| PublicKey::from(&*ACCOUNT_2_SECRET_KEY));
 static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| ACCOUNT_2_PUBLIC_KEY.to_account_hash());
 
-const ARG_TARGET: &str = "target";
-const ARG_AMOUNT: &str = "amount";
-const ARG_ID: &str = "id";
-
 const TRANSFER_COST: u64 = 100_000_000;
+const ID_NONE: Option<u64> = None;
 
 #[ignore]
 #[test]
@@ -46,7 +48,7 @@ fn should_transfer_to_account_with_correct_balances() {
         runtime_args! {
            ARG_TARGET => *ACCOUNT_1_ADDR,
            ARG_AMOUNT => U512::one(),
-           ARG_ID => <Option<u64>>::None,
+           ARG_ID => ID_NONE,
         },
     ));
     builder
@@ -105,7 +107,7 @@ fn should_transfer_from_default_and_then_to_another_account() {
         runtime_args! {
            ARG_TARGET => *ACCOUNT_1_ADDR,
            ARG_AMOUNT => *TRANSFER_AMOUNT + TRANSFER_COST,
-           ARG_ID => <Option<u64>>::None,
+           ARG_ID => ID_NONE,
         },
     ));
     builder
@@ -118,7 +120,7 @@ fn should_transfer_from_default_and_then_to_another_account() {
         runtime_args! {
             ARG_TARGET => *ACCOUNT_2_ADDR,
             ARG_AMOUNT => *TRANSFER_AMOUNT,
-            ARG_ID => <Option<u64>>::None,
+            ARG_ID => ID_NONE,
         },
     ));
 
@@ -133,7 +135,7 @@ fn should_transfer_from_default_and_then_to_another_account() {
         runtime_args! {
             ARG_TARGET => *ACCOUNT_2_ADDR,
             ARG_AMOUNT => *TRANSFER_AMOUNT,
-            ARG_ID => <Option<u64>>::None,
+            ARG_ID => ID_NONE,
         },
     ));
 
