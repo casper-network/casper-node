@@ -4,19 +4,21 @@ use num_rational::Ratio;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
-    SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder, UpgradeRequestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+    DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_RUN_GENESIS_REQUEST,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
+use casper_execution_engine::core::engine_state::step::RewardItem;
 use casper_types::{
     self,
     account::AccountHash,
     runtime_args,
     system::auction::{
-        self, Bid, Bids, DelegationRate, Delegator, SeigniorageAllocation, ARG_AMOUNT,
-        ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS, ARG_VALIDATOR,
-        BLOCK_REWARD, DELEGATION_RATE_DENOMINATOR, METHOD_DISTRIBUTE,
+        self, Bid, Bids, DelegationRate, Delegator, SeigniorageAllocation,
+        SeigniorageRecipientsSnapshot, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
+        ARG_PUBLIC_KEY, ARG_REWARD_FACTORS, ARG_VALIDATOR, BLOCK_REWARD,
+        DELEGATION_RATE_DENOMINATOR, METHOD_DISTRIBUTE, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
     EraId, Key, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
@@ -4023,4 +4025,328 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
     assert!(expected_validator_1_payout_before > expected_validator_1_balance_after); // expected amount after decreasing seigniorage rate is lower than the first amount
     assert!(total_payout_before > total_payout_after); // expected total payout after decreasing
                                                        // rate is lower than the first payout
+}
+
+#[test]
+fn should_not_restake_after_full_unbond() {
+    const DELEGATOR_1_STAKE: u64 = 1_000_000;
+    const VALIDATOR_1_STAKE: u64 = 1_000_000;
+    const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    // advance past the initial auction delay due to special condition of post-genesis behavior.
+    for _ in 0..4 {
+        let step_request = StepRequestBuilder::new()
+            .with_parent_state_hash(builder.get_post_state_hash())
+            .with_protocol_version(ProtocolVersion::V1_0_0)
+            .with_next_era_id(builder.get_era() + 1)
+            .build();
+
+        builder.step(step_request).expect("should step");
+    }
+
+    let validator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *VALIDATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    builder
+        .exec(validator_1_fund_request)
+        .expect_success()
+        .commit();
+
+    let delegator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *DELEGATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    builder
+        .exec(delegator_1_fund_request)
+        .expect_success()
+        .commit();
+
+    let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
+        VALIDATOR_1_ADDR.clone(),
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
+            ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
+            ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
+        },
+    )
+    .build();
+
+    builder
+        .exec(validator_1_add_bid_request)
+        .expect_success()
+        .commit();
+
+    let delegator_1_validator_1_delegate_request = ExecuteRequestBuilder::standard(
+        *DELEGATOR_1_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_1.clone(),
+        },
+    )
+    .build();
+
+    builder
+        .exec(delegator_1_validator_1_delegate_request)
+        .expect_success()
+        .commit();
+
+    // advance the era.
+    let mut next_era = builder.get_era() + 1;
+
+    // first step after funding, adding bid and delegating.
+    let step_request = StepRequestBuilder::new()
+        .with_parent_state_hash(builder.get_post_state_hash())
+        .with_protocol_version(ProtocolVersion::V1_0_0)
+        .with_next_era_id(next_era)
+        .build();
+
+    builder.step(step_request).expect("should step");
+
+    let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
+
+    assert!(delegator.is_some());
+    assert_eq!(
+        delegator.unwrap().staked_amount().to_owned(),
+        U512::from(DELEGATOR_1_STAKE)
+    );
+
+    next_era += 1;
+
+    let step_request = StepRequestBuilder::new()
+        .with_parent_state_hash(builder.get_post_state_hash())
+        .with_protocol_version(ProtocolVersion::V1_0_0)
+        .with_next_era_id(next_era)
+        .build();
+
+    builder.step(step_request).expect("should step");
+
+    // undelegate in the era right after we delegated.
+    undelegate(
+        &mut builder,
+        DELEGATOR_1_ADDR.clone(),
+        DELEGATOR_1.clone(),
+        VALIDATOR_1.clone(),
+        U512::from(DELEGATOR_1_STAKE),
+    );
+    let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
+    assert!(delegator.is_none());
+
+    let withdraws = builder.get_withdraws();
+    let unbonding_purses = withdraws
+        .get(&VALIDATOR_1_ADDR)
+        .expect("should have validator entry");
+    let delegator_unbond_amount = unbonding_purses
+        .iter()
+        .find(|up| *up.unbonder_public_key() == DELEGATOR_1.clone())
+        .expect("should be unbonding purse");
+
+    assert_eq!(
+        *delegator_unbond_amount.amount(),
+        U512::from(DELEGATOR_1_STAKE),
+        "unbond purse amount should match staked amount"
+    );
+
+    // step until validator receives rewards.
+    for _ in 0..2 {
+        let step_request = StepRequestBuilder::new()
+            .with_parent_state_hash(builder.get_post_state_hash())
+            .with_protocol_version(ProtocolVersion::V1_0_0)
+            .with_next_era_id(builder.get_era() + 1)
+            .build();
+
+        builder.step(step_request).expect("should step");
+    }
+
+    // validator receives rewards after this step.
+    let step_request = StepRequestBuilder::new()
+        .with_parent_state_hash(builder.get_post_state_hash())
+        .with_protocol_version(ProtocolVersion::V1_0_0)
+        .with_reward_item(RewardItem::new(VALIDATOR_1.clone(), BLOCK_REWARD))
+        .with_next_era_id(builder.get_era() + 1)
+        .build();
+
+    builder.step(step_request).expect("should step");
+
+    // let auction_hash = builder.get_auction_contract_hash();
+    // let seigniorage_snapshot: SeigniorageRecipientsSnapshot =
+    //     builder.get_value(auction_hash, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY);
+
+    // Delegator should not remain delegated even though they were eligible for rewards in the second era.
+    let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
+    assert!(delegator.is_none());
+}
+
+#[test]
+fn delegator_full_unbond_during_first_reward_era() {
+    const DELEGATOR_1_STAKE: u64 = 1_000_000;
+    const VALIDATOR_1_STAKE: u64 = 1_000_000;
+    const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    // advance past the initial auction delay due to special condition of post-genesis behavior.
+    for _ in 0..4 {
+        let step_request = StepRequestBuilder::new()
+            .with_parent_state_hash(builder.get_post_state_hash())
+            .with_protocol_version(ProtocolVersion::V1_0_0)
+            .with_next_era_id(builder.get_era() + 1)
+            .build();
+
+        builder.step(step_request).expect("should step");
+    }
+
+    let validator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *VALIDATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    builder
+        .exec(validator_1_fund_request)
+        .expect_success()
+        .commit();
+
+    let delegator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *DELEGATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    builder
+        .exec(delegator_1_fund_request)
+        .expect_success()
+        .commit();
+
+    let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
+        VALIDATOR_1_ADDR.clone(),
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
+            ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
+            ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
+        },
+    )
+    .build();
+
+    builder
+        .exec(validator_1_add_bid_request)
+        .expect_success()
+        .commit();
+
+    let delegator_1_validator_1_delegate_request = ExecuteRequestBuilder::standard(
+        *DELEGATOR_1_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_1.clone(),
+        },
+    )
+    .build();
+
+    builder
+        .exec(delegator_1_validator_1_delegate_request)
+        .expect_success()
+        .commit();
+
+    // first step after funding, adding bid and delegating.
+    let step_request = StepRequestBuilder::new()
+        .with_parent_state_hash(builder.get_post_state_hash())
+        .with_protocol_version(ProtocolVersion::V1_0_0)
+        .with_next_era_id(builder.get_era() + 1)
+        .build();
+
+    builder.step(step_request).expect("should step");
+
+    let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
+
+    assert!(delegator.is_some());
+    assert_eq!(
+        delegator.unwrap().staked_amount().to_owned(),
+        U512::from(DELEGATOR_1_STAKE)
+    );
+
+    // step until validator receives rewards.
+    for _ in 0..3 {
+        // auction delay is 3.
+        let step_request = StepRequestBuilder::new()
+            .with_parent_state_hash(builder.get_post_state_hash())
+            .with_protocol_version(ProtocolVersion::V1_0_0)
+            .with_next_era_id(builder.get_era() + 1)
+            .build();
+
+        builder.step(step_request).expect("should step");
+    }
+
+    // undelegate in the first era that the delegator will receive rewards.
+    undelegate(
+        &mut builder,
+        DELEGATOR_1_ADDR.clone(),
+        DELEGATOR_1.clone(),
+        VALIDATOR_1.clone(),
+        U512::from(DELEGATOR_1_STAKE),
+    );
+    let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
+    assert!(delegator.is_none());
+
+    let withdraws = builder.get_withdraws();
+    let unbonding_purses = withdraws
+        .get(&VALIDATOR_1_ADDR)
+        .expect("should have validator entry");
+    let delegator_unbond_amount = unbonding_purses
+        .iter()
+        .find(|up| *up.unbonder_public_key() == DELEGATOR_1.clone())
+        .expect("should be unbonding purse");
+
+    assert_eq!(
+        *delegator_unbond_amount.amount(),
+        U512::from(DELEGATOR_1_STAKE),
+        "unbond purse amount should match staked amount"
+    );
+
+    // validator receives rewards after this step.
+    let step_request = StepRequestBuilder::new()
+        .with_parent_state_hash(builder.get_post_state_hash())
+        .with_protocol_version(ProtocolVersion::V1_0_0)
+        .with_reward_item(RewardItem::new(VALIDATOR_1.clone(), BLOCK_REWARD))
+        .with_next_era_id(builder.get_era() + 1)
+        .build();
+
+    builder.step(step_request).expect("should step");
+
+    // let auction_hash = builder.get_auction_contract_hash();
+    // let seigniorage_snapshot: SeigniorageRecipientsSnapshot =
+    //     builder.get_value(auction_hash, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY);
+
+    // Delegator should not remain delegated even though they were eligible for rewards in the second era.
+    let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
+    assert!(delegator.is_none());
 }
