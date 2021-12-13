@@ -294,7 +294,7 @@ mod tests {
     use tempfile::tempdir;
 
     use casper_hashing::Digest;
-    use casper_types::{account::AccountHash, CLType, CLValue};
+    use casper_types::{account::AccountHash, CLValue};
 
     use super::*;
     use crate::storage::{
@@ -337,6 +337,23 @@ mod tests {
                 value: StoredValue::CLValue(CLValue::from_t(3_i32).unwrap()),
             },
         ]
+    }
+
+    fn create_test_transforms() -> AdditiveMap<Key, Transform> {
+        let mut transforms = AdditiveMap::new();
+        transforms.insert(
+            Key::Account(AccountHash::new([3u8; 32])),
+            Transform::Write(StoredValue::CLValue(CLValue::from_t("one").unwrap())),
+        );
+        transforms.insert(
+            Key::Account(AccountHash::new([3u8; 32])),
+            Transform::AddInt32(1),
+        );
+        transforms.insert(
+            Key::Account(AccountHash::new([3u8; 32])),
+            Transform::AddInt32(2),
+        );
+        transforms
     }
 
     struct TestState {
@@ -479,23 +496,7 @@ mod tests {
             .unwrap();
 
         // Create add transforms as well
-        let add_effects: AdditiveMap<Key, Transform> = {
-            let mut tmp = AdditiveMap::new();
-            for TestPair { key, value } in &test_pairs_updated {
-                if let StoredValue::CLValue(cl_value) = value {
-                    match cl_value.cl_type() {
-                        CLType::I32 => {
-                            tmp.insert(*key, Transform::AddInt32(2i32));
-                        }
-                        CLType::String => {}
-                        _ => unreachable!(
-                            "remember to update the test pairs if new cl_types are added"
-                        ),
-                    }
-                }
-            }
-            tmp
-        };
+        let add_effects = create_test_transforms();
         scratch
             .commit(correlation_id, root_hash, add_effects.clone())
             .unwrap();
