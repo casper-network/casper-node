@@ -284,10 +284,10 @@ where
                 for (_, pointer) in pointer_block.as_indexed_pointers() {
                     match pointer {
                         Pointer::LeafPointer(descendant_leaf_trie_key) => {
-                            trie_keys_to_visit.push(descendant_leaf_trie_key)
+                            trie_keys_to_visit.push(*descendant_leaf_trie_key)
                         }
                         Pointer::NodePointer(descendant_node_trie_key) => {
-                            trie_keys_to_visit.push(descendant_node_trie_key)
+                            trie_keys_to_visit.push(*descendant_node_trie_key)
                         }
                     }
                 }
@@ -361,10 +361,10 @@ where
                     new_path.push(byte);
                     match pointer {
                         Pointer::LeafPointer(descendant_leaf_trie_key) => {
-                            trie_keys_to_visit.push((new_path, descendant_leaf_trie_key))
+                            trie_keys_to_visit.push((new_path, *descendant_leaf_trie_key))
                         }
                         Pointer::NodePointer(descendant_node_trie_key) => {
-                            trie_keys_to_visit.push((new_path, descendant_node_trie_key))
+                            trie_keys_to_visit.push((new_path, *descendant_node_trie_key))
                         }
                     }
                 }
@@ -569,7 +569,7 @@ where
                     // The sibling is a leaf and the grandparent is a node.  Reseat the single leaf
                     // sibling into the grandparent.
                     (Pointer::LeafPointer(..), Some((idx, Trie::Node { mut pointer_block }))) => {
-                        pointer_block[idx as usize] = Some(sibling_pointer);
+                        pointer_block[idx as usize] = Some(*sibling_pointer);
                         let trie_node = Trie::Node { pointer_block };
                         let trie_key = trie_node.hash_digest()?;
                         new_elements.push((trie_key, trie_node))
@@ -585,7 +585,7 @@ where
                             // The great-grandparent is a node. Reseat the single leaf sibling into
                             // the position the grandparent was in.
                             Some((idx, Trie::Node { mut pointer_block })) => {
-                                pointer_block[idx as usize] = Some(sibling_pointer);
+                                pointer_block[idx as usize] = Some(*sibling_pointer);
                                 let trie_node = Trie::Node { pointer_block };
                                 let trie_key = trie_node.hash_digest()?;
                                 new_elements.push((trie_key, trie_node))
@@ -600,7 +600,7 @@ where
                         // Elsewhere we maintain the invariant that all trie keys have corresponding
                         // trie values.
                         let sibling_trie = store
-                            .get(txn, &sibling_trie_key)?
+                            .get(txn, sibling_trie_key)?
                             .expect("should have sibling");
                         match sibling_trie {
                             Trie::Leaf { .. } => {
@@ -615,7 +615,7 @@ where
                             Trie::Node { .. } => {
                                 let new_extension: Trie<K, V> = Trie::Extension {
                                     affix: vec![sibling_idx].into(),
-                                    pointer: sibling_pointer,
+                                    pointer: *sibling_pointer,
                                 };
                                 let trie_key = new_extension.hash_digest()?;
                                 new_elements.push((trie_key, new_extension))

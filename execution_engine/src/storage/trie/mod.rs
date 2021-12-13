@@ -11,6 +11,7 @@ use casper_types::bytesrepr::{
     self, Bytes, FromBytes, ToBytes, OPTION_NONE_TAG, OPTION_SOME_TAG, U8_SERIALIZED_LENGTH,
 };
 
+use self::pointer_block::LegacyPointerBlock;
 pub use self::pointer_block::{Pointer, PointerBlock};
 
 pub(crate) use self::pointer_block::{RADIX, USIZE_EXCEEDS_U8};
@@ -29,8 +30,9 @@ pub type Parents<K, V> = Vec<(u8, Trie<K, V>)>;
 #[derive(FromPrimitive)]
 enum TrieTag {
     Leaf = 0,
-    Node = 1,
+    LegacySparseNode = 1,
     Extension = 2,
+    Node = 3,
 }
 
 const MERKLE_PROOF_TRIE_TAG_LEAF: u8 = 0;
@@ -201,15 +203,16 @@ where
 impl<K: FromBytes, V: FromBytes> FromBytes for Trie<K, V> {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag_byte, rem) = u8::from_bytes(bytes)?;
-        let tag = TrieTag::from_u8(tag_byte).ok_or(bytesrepr::Error::Formatting)?;
-        match tag {
+        let trie_tag = TrieTag::from_u8(tag_byte).ok_or(bytesrepr::Error::Formatting)?;
+        match trie_tag {
             TrieTag::Leaf => {
                 let (key, rem) = K::from_bytes(rem)?;
                 let (value, rem) = V::from_bytes(rem)?;
                 Ok((Trie::Leaf { key, value }, rem))
             }
-            TrieTag::Node => {
-                let (pointer_block, rem) = PointerBlock::from_bytes(rem)?;
+            TrieTag::LegacySparseNode => {
+                let (legacy_pointer_block, rem) = LegacyPointerBlock::from_bytes(rem)?;
+                let pointer_block = PointerBlock::from(legacy_pointer_block);
                 Ok((
                     Trie::Node {
                         pointer_block: Box::new(pointer_block),
@@ -221,6 +224,15 @@ impl<K: FromBytes, V: FromBytes> FromBytes for Trie<K, V> {
                 let (affix, rem) = FromBytes::from_bytes(rem)?;
                 let (pointer, rem) = Pointer::from_bytes(rem)?;
                 Ok((Trie::Extension { affix, pointer }, rem))
+            }
+            TrieTag::Node => {
+                let (pointer_block, rem) = PointerBlock::from_bytes(rem)?;
+                Ok((
+                    Trie::Node {
+                        pointer_block: Box::new(pointer_block),
+                    },
+                    rem,
+                ))
             }
         }
     }

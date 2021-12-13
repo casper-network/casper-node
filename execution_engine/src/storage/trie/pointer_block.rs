@@ -1,11 +1,8 @@
-use std::{
-    convert::TryInto,
-    fmt::{self, Formatter},
-    mem::MaybeUninit,
-};
+mod legacy_pointer_block;
 
+use bitvec::prelude::*;
 use casper_hashing::Digest;
-use casper_types::bytesrepr::{self, FromBytes, ToBytes, Writer, U8_SERIALIZED_LENGTH};
+use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use serde::{
@@ -13,10 +10,22 @@ use serde::{
     ser::SerializeMap,
     Deserialize, Deserializer, Serialize, Serializer,
 };
+use std::{
+    convert::TryInto,
+    fmt::{self, Formatter},
+};
+
+pub(crate) use legacy_pointer_block::LegacyPointerBlock;
+
+use crate::storage::trie::pointer_block::legacy_pointer_block::LegacyDigest;
+
+use self::legacy_pointer_block::LegacyPointer;
 
 pub(crate) const USIZE_EXCEEDS_U8: &str = "usize exceeds u8";
 
 pub(crate) const RADIX: usize = 256;
+
+const POINTER_SERIALIZED_LENGTH: usize = Digest::LENGTH + 1;
 
 #[derive(FromPrimitive)]
 enum PointerTag {
@@ -76,13 +85,13 @@ impl ToBytes for Pointer {
 
     #[inline(always)]
     fn serialized_length(&self) -> usize {
-        U8_SERIALIZED_LENGTH + Digest::LENGTH
+        POINTER_SERIALIZED_LENGTH
     }
 
     #[inline]
     fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
     where
-        W: Writer,
+        W: bytesrepr::Writer,
     {
         writer.write_u8(self.tag() as u8)?;
         writer.write_bytes(self.hash())?;
@@ -116,6 +125,26 @@ pub type PointerBlockArray = [PointerBlockValue; RADIX];
 /// Represents the underlying structure of a node in a Merkle Trie
 #[derive(Copy, Clone)]
 pub struct PointerBlock(PointerBlockArray);
+
+impl From<LegacyPointerBlock> for PointerBlock {
+    fn from(legacy_pointer_block: LegacyPointerBlock) -> Self {
+        let mut pointer_block_array = [None; RADIX];
+        for (legacy_index, legacy_pointer) in legacy_pointer_block.as_legacy_indexed_pointers() {
+            let pointer = match legacy_pointer {
+                LegacyPointer::LegacyLeafPointer(LegacyDigest(legacy_digest)) => {
+                    Pointer::LeafPointer(Digest::from(*legacy_digest))
+                }
+                LegacyPointer::LegacyNodePointer(LegacyDigest(legacy_digest)) => {
+                    Pointer::NodePointer(Digest::from(*legacy_digest))
+                }
+            };
+
+            debug_assert!(legacy_index <= pointer_block_array.len());
+            pointer_block_array[legacy_index] = Some(pointer);
+        }
+        PointerBlock(pointer_block_array)
+    }
+}
 
 impl Serialize for PointerBlock {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -190,13 +219,14 @@ impl PointerBlock {
     }
 
     /// Deconstructs a `PointerBlock` into an iterator of indexed `Pointer`s.
-    pub fn as_indexed_pointers(&self) -> impl Iterator<Item = (u8, Pointer)> + '_ {
+    pub fn as_indexed_pointers(&self) -> impl Iterator<Item = (u8, &Pointer)> {
         self.0
             .iter()
             .enumerate()
             .filter_map(|(index, maybe_pointer)| {
                 maybe_pointer
-                    .map(|value| (index.try_into().expect(USIZE_EXCEEDS_U8), value.to_owned()))
+                    .as_ref()
+                    .map(|value| (index.try_into().expect(USIZE_EXCEEDS_U8), value))
             })
     }
 
@@ -235,48 +265,101 @@ impl Default for PointerBlock {
 impl ToBytes for PointerBlock {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-        for pointer in self.0.iter() {
-            result.append(&mut pointer.to_bytes()?);
-        }
+        self.write_bytes(&mut result)?;
         Ok(result)
     }
 
     fn serialized_length(&self) -> usize {
-        self.0.iter().map(ToBytes::serialized_length).sum()
+        let cnt = self.child_count();
+        (RADIX / 8) + ((cnt + 7) / 8) + (Digest::LENGTH * cnt)
     }
 
     fn write_bytes<W>(&self, writer: &mut W) -> Result<(), bytesrepr::Error>
     where
-        W: Writer,
+        W: bytesrepr::Writer,
     {
-        for pointer in self.0.iter() {
-            pointer.write_bytes(writer)?;
+        let mut option_tags = [0u8; RADIX / 8];
+        let mut variant_tags: BitVec<Msb0, _> = BitVec::new();
+
+        let total_some_variants = {
+            let option_tag_bits = option_tags.view_bits_mut::<Msb0>();
+
+            for (index, pointer) in self.iter().enumerate() {
+                let option_tag = match pointer {
+                    Some(Pointer::LeafPointer(_)) => {
+                        variant_tags.push(true);
+                        true
+                    }
+                    Some(Pointer::NodePointer(_)) => {
+                        variant_tags.push(false);
+                        true
+                    }
+                    None => false,
+                };
+                option_tag_bits.set(index, option_tag);
+            }
+
+            option_tag_bits.count_ones()
+        };
+
+        writer.write_bytes(&option_tags)?;
+
+        debug_assert_eq!(
+            variant_tags.as_raw_slice().len(),
+            (total_some_variants + 7) / 8
+        );
+        writer.write_bytes(&variant_tags.as_raw_slice())?;
+
+        for (_index, pointer) in self.as_indexed_pointers() {
+            pointer.hash().write_bytes(writer)?;
         }
+
         Ok(())
     }
 }
 
 impl FromBytes for PointerBlock {
     fn from_bytes(mut bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let pointer_block_array = {
-            // With MaybeUninit here we can avoid default initialization of result array below.
-            let mut result: MaybeUninit<PointerBlockArray> = MaybeUninit::uninit();
-            let result_ptr = result.as_mut_ptr() as *mut PointerBlockValue;
-            for i in 0..RADIX {
-                let (t, remainder) = match FromBytes::from_bytes(bytes) {
-                    Ok(success) => success,
-                    Err(error) => {
-                        for j in 0..i {
-                            unsafe { result_ptr.add(j).drop_in_place() }
-                        }
-                        return Err(error);
-                    }
-                };
-                unsafe { result_ptr.add(i).write(t) };
-                bytes = remainder;
-            }
-            unsafe { result.assume_init() }
+        let mut pointer_block_array: PointerBlockArray = [None; RADIX];
+
+        let option_tags = {
+            let (option_tags_data, rem) = bytesrepr::safe_split_at(bytes, RADIX / 8)?;
+            bytes = rem;
+
+            option_tags_data.view_bits::<Msb0>()
         };
+
+        let variant_tags = {
+            let some_count = option_tags.count_ones();
+
+            // We know that all variant tags will occupy exactly (N+7)/8 bytes.
+            let (variant_tags, rem) = bytesrepr::safe_split_at(bytes, (some_count + 7) / 8)?;
+            bytes = rem;
+
+            variant_tags.view_bits::<Msb0>()
+        };
+
+        let mut variant_tags_iter = variant_tags.iter();
+
+        for (position, option_tag) in option_tags.iter().enumerate() {
+            if !*option_tag {
+                // We don't care about 0s as we know that only 1s makes sense to check next bit in
+                // the variant tags.
+                continue;
+            }
+
+            let (digest, rem) = Digest::from_bytes(bytes)?;
+            bytes = rem;
+
+            let pointer = match variant_tags_iter.next() {
+                Some(flag) if flag == true => Pointer::LeafPointer(digest),
+                Some(flag) if flag == false => Pointer::NodePointer(digest),
+                Some(_) | None => unreachable!(), // We asserted correct size earlier
+            };
+
+            pointer_block_array[position] = Some(pointer);
+        }
+
         Ok((PointerBlock(pointer_block_array), bytes))
     }
 }
@@ -399,5 +482,34 @@ mod tests {
     fn indexing_off_end() {
         let pointer_block = PointerBlock::new();
         let _val = pointer_block[RADIX];
+    }
+
+    #[test]
+    fn serialization_round_trip() {
+        let mut pointer_block = PointerBlock::default();
+        for a in 0..RADIX {
+            match a % 3 {
+                0 => continue,
+                1 => {
+                    pointer_block[a] = Some(Pointer::NodePointer(Digest::hash(
+                        format!("{}", a).as_bytes(),
+                    )))
+                }
+                2 => {
+                    pointer_block[a] = Some(Pointer::LeafPointer(Digest::hash(
+                        format!("{}", a).as_bytes(),
+                    )))
+                }
+                _ => unreachable!(),
+            }
+        }
+        bytesrepr::test_serialization_roundtrip(&pointer_block);
+
+        let mut bytes = pointer_block.to_bytes().unwrap();
+        bytes.push(255);
+
+        let (pointer_block_2, rem) = PointerBlock::from_bytes(&bytes).unwrap();
+        assert_eq!(rem, b"\xff");
+        assert_eq!(pointer_block, pointer_block_2);
     }
 }
