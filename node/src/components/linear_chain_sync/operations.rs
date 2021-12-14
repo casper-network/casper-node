@@ -1,7 +1,15 @@
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use std::{
+    collections::BTreeMap,
+    sync::{
+        atomic::{self, AtomicBool},
+        Arc,
+    },
+    time::Duration,
+};
 
 use async_trait::async_trait;
 use datasize::DataSize;
+use futures::stream::{futures_unordered::FuturesUnordered, StreamExt};
 use tracing::{info, trace, warn};
 
 use casper_execution_engine::storage::trie::Trie;
@@ -22,6 +30,7 @@ use crate::{
         Chainspec, Deploy, DeployHash, FinalizedBlock, Item, NodeConfig, NodeId, TimeDiff,
         Timestamp,
     },
+    utils::work_queue::WorkQueue,
 };
 
 const SLEEP_DURATION_SO_WE_DONT_SPAM: Duration = Duration::from_millis(100);
@@ -408,7 +417,7 @@ fn check_block_version(
 
 /// Queries all of the peers for a trie, puts the trie found from the network in the trie-store, and
 /// returns any outstanding descendant tries.
-async fn fetch_trie_and_insert_into_trie_store(
+async fn fetch_and_store_trie(
     effect_builder: EffectBuilder<JoinerEvent>,
     trie_key: Digest,
 ) -> Result<Vec<Digest>, LinearChainSyncError> {
@@ -439,17 +448,54 @@ async fn fetch_and_store_block_by_hash(
     }
 }
 
-/// Synchronize the trie store under a given state root hash.
+/// A worker task that takes trie keys from a queue and downloads the trie.
+async fn sync_trie_store_worker(
+    worker_id: usize,
+    effect_builder: EffectBuilder<JoinerEvent>,
+    abort: Arc<AtomicBool>,
+    queue: Arc<WorkQueue<Digest>>,
+) -> Result<(), LinearChainSyncError> {
+    while let Some(job) = queue.next_job().await {
+        trace!(worker_id, trie_key = %job.inner(), "worker downloading trie");
+        let child_jobs = fetch_and_store_trie(effect_builder, *job.inner())
+            .await
+            .map_err(|err| {
+                abort.store(true, atomic::Ordering::Relaxed);
+                warn!(?err, trie_key = %job.inner(), "failed to download trie");
+                err
+            })?;
+        trace!(?child_jobs, trie_key = %job.inner(), "downloaded trie node");
+        if abort.load(atomic::Ordering::Relaxed) {
+            return Ok(()); // Another task failed and sent an error.
+        }
+        for child_job in child_jobs {
+            queue.push_job(child_job);
+        }
+        drop(job); // Make sure the job gets dropped only when the children are in the queue.
+    }
+    Ok(())
+}
+
+/// Synchronizes the trie store under a given state root hash.
 async fn sync_trie_store(
     effect_builder: EffectBuilder<JoinerEvent>,
     state_root_hash: Digest,
+    max_parallel_trie_fetches: usize,
 ) -> Result<(), LinearChainSyncError> {
     info!(?state_root_hash, "syncing trie store",);
-    let mut outstanding_trie_keys = vec![state_root_hash];
-    while let Some(trie_key) = outstanding_trie_keys.pop() {
-        let missing_descendant_trie_keys =
-            fetch_trie_and_insert_into_trie_store(effect_builder, trie_key).await?;
-        outstanding_trie_keys.extend(missing_descendant_trie_keys);
+
+    // Flag set by a worker when it encounters an error.
+    let abort = Arc::new(AtomicBool::new(false));
+
+    let queue = Arc::new(WorkQueue::default());
+    queue.push_job(state_root_hash);
+    let mut workers: FuturesUnordered<_> = (0..max_parallel_trie_fetches)
+        .map(|worker_id| {
+            sync_trie_store_worker(worker_id, effect_builder, abort.clone(), queue.clone())
+        })
+        .collect();
+    while let Some(result) = workers.next().await {
+        result?; // Return the error if a download failed.
     }
     Ok(())
 }
@@ -469,6 +515,7 @@ async fn fast_sync_to_most_recent(
     effect_builder: EffectBuilder<JoinerEvent>,
     trusted_block_header: BlockHeader,
     chainspec: &Chainspec,
+    node_config: NodeConfig,
 ) -> Result<(KeyBlockInfo, BlockHeader), LinearChainSyncError> {
     let mut trusted_key_block_info =
         get_trusted_key_block_info(effect_builder, chainspec, &trusted_block_header).await?;
@@ -542,7 +589,12 @@ async fn fast_sync_to_most_recent(
     }
 
     // Synchronize the trie store for the most recent block header.
-    sync_trie_store(effect_builder, *most_recent_block_header.state_root_hash()).await?;
+    sync_trie_store(
+        effect_builder,
+        *most_recent_block_header.state_root_hash(),
+        node_config.max_parallel_trie_fetches as usize,
+    )
+    .await?;
 
     Ok((trusted_key_block_info, most_recent_block_header))
 }
@@ -551,15 +603,27 @@ async fn fast_sync_to_most_recent(
 async fn sync_deploys_and_transfers_and_state(
     effect_builder: EffectBuilder<JoinerEvent>,
     block: &Block,
+    node_config: &NodeConfig,
 ) -> Result<(), LinearChainSyncError> {
-    for deploy_hash in block.deploy_hashes() {
-        fetch_and_store_deploy(effect_builder, *deploy_hash).await?;
+    let hash_iter: Vec<_> = block
+        .deploy_hashes()
+        .iter()
+        .chain(block.transfer_hashes())
+        .cloned()
+        .collect();
+    let mut stream = futures::stream::iter(hash_iter)
+        .map(|hash| fetch_and_store_deploy(effect_builder, hash))
+        .buffer_unordered(node_config.max_parallel_deploy_fetches as usize);
+    while let Some(result) = stream.next().await {
+        let deploy = result?;
+        trace!("fetched {:?}", deploy);
     }
-    for transfer_hash in block.transfer_hashes() {
-        fetch_and_store_deploy(effect_builder, *transfer_hash).await?;
-    }
-    sync_trie_store(effect_builder, *block.header().state_root_hash()).await?;
-    Ok(())
+    sync_trie_store(
+        effect_builder,
+        *block.header().state_root_hash(),
+        node_config.max_parallel_trie_fetches as usize,
+    )
+    .await
 }
 
 /// Archival sync all the way up to the current version.
@@ -577,6 +641,7 @@ async fn archival_sync(
     effect_builder: EffectBuilder<JoinerEvent>,
     trusted_block_header: BlockHeader,
     chainspec: &Chainspec,
+    node_config: NodeConfig,
 ) -> Result<(KeyBlockInfo, BlockHeader), LinearChainSyncError> {
     // Get the trusted block info. This will fail if we are trying to join with a trusted hash in
     // era 0.
@@ -589,7 +654,7 @@ async fn archival_sync(
     // Sync to genesis
     let mut walkback_block = trusted_block.clone();
     loop {
-        sync_deploys_and_transfers_and_state(effect_builder, &walkback_block).await?;
+        sync_deploys_and_transfers_and_state(effect_builder, &walkback_block, &node_config).await?;
         if walkback_block.height() == 0 {
             break;
         } else {
@@ -618,7 +683,8 @@ async fn archival_sync(
                 continue;
             }
         };
-        sync_deploys_and_transfers_and_state(effect_builder, &most_recent_block).await?;
+        sync_deploys_and_transfers_and_state(effect_builder, &most_recent_block, &node_config)
+            .await?;
         if let Some(key_block_info) =
             KeyBlockInfo::maybe_from_block_header(most_recent_block.header())
         {
@@ -702,15 +768,32 @@ pub(crate) async fn run_fast_sync_task(
         .await?
         .is_none()
         {
-            sync_trie_store(effect_builder, *trusted_block_header.state_root_hash()).await?;
+            sync_trie_store(
+                effect_builder,
+                *trusted_block_header.state_root_hash(),
+                node_config.max_parallel_trie_fetches as usize,
+            )
+            .await?;
             return Ok(*trusted_block_header);
         }
     }
 
     let (mut trusted_key_block_info, mut most_recent_block_header) = if node_config.archival_sync {
-        archival_sync(effect_builder, *trusted_block_header, &chainspec).await?
+        archival_sync(
+            effect_builder,
+            *trusted_block_header,
+            &chainspec,
+            node_config,
+        )
+        .await?
     } else {
-        fast_sync_to_most_recent(effect_builder, *trusted_block_header, &chainspec).await?
+        fast_sync_to_most_recent(
+            effect_builder,
+            *trusted_block_header,
+            &chainspec,
+            node_config,
+        )
+        .await?
     };
 
     // Execute blocks to get to current.

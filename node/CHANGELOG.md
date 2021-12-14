@@ -17,6 +17,7 @@ All notable changes to this project will be documented in this file.  The format
 * Add new event to the main SSE server stream across all endpoints `<IP:Port>/events/*` which emits a shutdown event when the node shuts down.
 * Introducing fast-syncing to join the network, avoiding the need to execute every block to catch up.
 * Added `archival_sync` to `[node]` config section, along with archival syncing capabilities
+* Added `max_parallel_deploy_fetches` and `max_parallel_trie_fetches` config options to the `[node]` section to control how many requests are made in parallel while syncing.
 * Add capabilities for known nodes to slow down the reconnection process of outdated legacy nodes still out on the internet.
 
 ### Changed

@@ -10,6 +10,12 @@
 # If set, use this hash as a trust anchor when joining an existing network.
 #trusted_hash = 'HEX-FORMATTED BLOCK HASH'
 
+# Maximum number of deploys to fetch in parallel.
+max_parallel_deploy_fetches = 20
+
+# Maximum number of trie nodes to fetch in parallel.
+max_parallel_trie_fetches = 20
+
 # Whether to synchronize all data back to genesis when joining.
 #archival_sync = true
 
