@@ -1,6 +1,6 @@
 #[cfg(test)]
 use std::net::{Ipv4Addr, SocketAddr};
-use std::{str::FromStr, time::Duration};
+use std::str::FromStr;
 
 use casper_types::ProtocolVersion;
 use datasize::DataSize;
@@ -38,7 +38,7 @@ impl Default for Config {
             estimator_weights: Default::default(),
             reject_incompatible_versions: true,
             tarpit_version_threshold: None,
-            tarpit_duration: Duration::from_secs(600),
+            tarpit_duration: TimeDiff::from_seconds(600),
             tarpit_chance: 0.2,
         }
     }
@@ -74,7 +74,7 @@ pub struct Config {
     /// The protocol version at which (or under) tarpitting is enabled.
     pub tarpit_version_threshold: Option<ProtocolVersion>,
     /// If tarpitting is enabled, duration for which connections should be kept open.
-    pub tarpit_duration: Duration,
+    pub tarpit_duration: TimeDiff,
     /// The chance, expressed as a number between 0.0 and 1.0, of triggering the tarpit.
     pub tarpit_chance: f32,
 }
