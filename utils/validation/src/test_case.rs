@@ -1,4 +1,5 @@
 use casper_types::bytesrepr;
+use hex::FromHexError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -9,6 +10,12 @@ pub enum Error {
     DataMismatch { expected: Vec<u8>, actual: Vec<u8> },
     #[error("length mismatch expected {expected} != actual {actual}")]
     LengthMismatch { expected: usize, actual: usize },
+    #[error("expected JSON string in output field")]
+    WrongOutputType,
+    #[error("not a valid hex string")]
+    Hex(#[from] FromHexError),
+    #[error(transparent)]
+    Json(#[from] serde_json::Error),
 }
 
 impl From<bytesrepr::Error> for Error {
