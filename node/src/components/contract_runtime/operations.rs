@@ -1,4 +1,8 @@
-use std::{collections::{BTreeMap, VecDeque}, sync::Arc, time::Instant};
+use std::{
+    collections::{BTreeMap, VecDeque},
+    sync::Arc,
+    time::Instant,
+};
 
 use itertools::Itertools;
 use tracing::{debug, trace};
