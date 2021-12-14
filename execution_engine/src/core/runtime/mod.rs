@@ -11,7 +11,7 @@ use std::{
     cmp,
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     convert::TryFrom,
-    iter::IntoIterator,
+    iter::{FromIterator, IntoIterator},
 };
 
 use itertools::Itertools;
@@ -3649,6 +3649,46 @@ where
                 Ok(self.context.is_system_contract(contract_hash)?)
             }
         }
+    }
+
+    fn load_authorization_keys(
+        &mut self,
+        len_ptr: u32,
+        result_size_ptr: u32,
+    ) -> Result<Result<(), ApiError>, Trap> {
+        if !self.can_write_to_host_buffer() {
+            // Exit early if the host buffer is already occupied
+            return Ok(Err(ApiError::HostBufferFull));
+        }
+
+        // A set of keys is converted into a vector so it can be written to a host buffer
+        let authorization_keys =
+            Vec::from_iter(self.context.authorization_keys().clone().into_iter());
+
+        let total_keys = authorization_keys.len() as u32;
+        let total_keys_bytes = total_keys.to_le_bytes();
+        if let Err(error) = self.memory.set(len_ptr, &total_keys_bytes) {
+            return Err(Error::Interpreter(error.into()).into());
+        }
+
+        if total_keys == 0 {
+            // No need to do anything else, we leave host buffer empty.
+            return Ok(Ok(()));
+        }
+
+        let named_keys = CLValue::from_t(authorization_keys).map_err(Error::CLValue)?;
+
+        let length = named_keys.inner_bytes().len() as u32;
+        if let Err(error) = self.write_host_buffer(named_keys) {
+            return Ok(Err(error));
+        }
+
+        let length_bytes = length.to_le_bytes();
+        if let Err(error) = self.memory.set(result_size_ptr, &length_bytes) {
+            return Err(Error::Interpreter(error.into()).into());
+        }
+
+        Ok(Ok(()))
     }
 }
 

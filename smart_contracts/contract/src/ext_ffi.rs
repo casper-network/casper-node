@@ -63,6 +63,15 @@ extern "C" {
     /// * `value_ptr` - pointer to bytes representing the value to write under the new `URef`
     /// * `value_size` - size of the value (in bytes)
     pub fn casper_new_uref(uref_ptr: *mut u8, value_ptr: *const u8, value_size: usize);
+    /// This function loads a set of authorized keys used to sign this deploy from the host.
+    /// The data will be available through the host buffer and can be copied to Wasm memory through
+    /// [`casper_read_host_buffer`].
+    ///
+    /// # Arguments
+    ///
+    /// * `total_keys`: number of authorization keys used to sign this deploy
+    /// * `result_size`: size of the data loaded in the host
+    pub fn casper_load_authorization_keys(total_keys: *mut usize, result_size: *mut usize) -> i32;
     ///
     pub fn casper_load_named_keys(total_keys: *mut usize, result_size: *mut usize) -> i32;
     /// This function causes a `Trap`, terminating the currently running module,

@@ -7,6 +7,7 @@ mod get_blocktime;
 mod get_call_stack;
 mod get_caller;
 mod get_phase;
+mod list_authorization_keys;
 mod list_named_keys;
 mod main_purse;
 mod mint_purse;
