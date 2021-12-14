@@ -59,10 +59,7 @@ pub(crate) enum Event<T: Item> {
     /// A different component rejected an item.
     // TODO: If having this event is not desirable, the `DeployAcceptorAnnouncement` needs to be
     //       split in two instead.
-    RejectedRemotely {
-        item: Box<T>,
-        source: Source<NodeId>,
-    },
+    RejectedRemotely { id: T::Id, source: Source<NodeId> },
     /// An item was not available on the remote peer.
     AbsentRemotely { id: T::Id, peer: NodeId },
     /// The timeout has elapsed and we should clean up state.
@@ -107,7 +104,7 @@ impl From<DeployAcceptorAnnouncement<NodeId>> for Event<Deploy> {
             }
             DeployAcceptorAnnouncement::InvalidDeploy { deploy, source } => {
                 Event::RejectedRemotely {
-                    item: deploy,
+                    id: *Deploy::id(&deploy),
                     source,
                 }
             }
@@ -131,12 +128,9 @@ impl<T: Item> Display for Event<T> {
             Event::GotRemotely { item, source } => {
                 write!(formatter, "got {} from {}", item.id(), source)
             }
-            Event::RejectedRemotely { item, source } => write!(
-                formatter,
-                "other component rejected {} from {}",
-                item.id(),
-                source
-            ),
+            Event::RejectedRemotely { id, source } => {
+                write!(formatter, "other component rejected {} from {}", id, source)
+            }
             Event::TimeoutPeer { id, peer } => write!(
                 formatter,
                 "check get from peer timeout for {} with {}",

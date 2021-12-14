@@ -32,18 +32,24 @@ use crate::{
         metrics::Metrics,
         rest_server::{self, RestServer},
         small_network::{self, GossipedAddress, SmallNetwork, SmallNetworkIdentity},
-        storage::Storage,
+        storage::{self, Storage},
         Component,
     },
     effect::{
         announcements::{
             BlocklistAnnouncement, ChainspecLoaderAnnouncement, ContractRuntimeAnnouncement,
             ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
-            LinearChainAnnouncement, NetworkAnnouncement,
+            LinearChainAnnouncement,
+        },
+        incoming::{
+            ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
+            NetRequestIncoming, NetResponse, NetResponseIncoming, TrieRequestIncoming,
+            TrieResponseIncoming,
         },
         requests::{
-            ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
-            MetricsRequest, NetworkInfoRequest, NetworkRequest, RestRequest, StorageRequest,
+            BeginGossipRequest, ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest,
+            FetcherRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest, RestRequest,
+            StorageRequest,
         },
         EffectBuilder, EffectExt, EffectOptionExt, Effects,
     },
@@ -56,12 +62,11 @@ use crate::{
         participating::{self, Error, ParticipatingInitConfig},
         EventQueueHandle, Finalize, ReactorExit,
     },
-    storage,
     types::{
         Block, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy, ExitCode, NodeId,
-        Tag, Timestamp,
+        Timestamp,
     },
-    utils::{Source, WithDir},
+    utils::WithDir,
     NodeRng,
 };
 use casper_execution_engine::storage::trie::Trie;
@@ -84,7 +89,7 @@ pub(crate) enum JoinerEvent {
 
     /// Storage event.
     #[from]
-    Storage(#[serde(skip_serializing)] storage::Event),
+    Storage(storage::Event),
 
     #[from]
     /// REST server event.
@@ -146,7 +151,11 @@ pub(crate) enum JoinerEvent {
     #[from]
     AddressGossiper(gossiper::Event<GossipedAddress>),
 
-    /// Requests.
+    // Requests.
+    /// Storage request.
+    #[from]
+    StorageRequest(StorageRequest),
+
     /// Linear chain block by hash fetcher request.
     #[from]
     BlockFetcherRequest(#[serde(skip_serializing)] FetcherRequest<NodeId, Block>),
@@ -175,14 +184,14 @@ pub(crate) enum JoinerEvent {
     #[from]
     DeployFetcherRequest(#[serde(skip_serializing)] FetcherRequest<NodeId, Deploy>),
 
+    /// Address gossip request.
+    #[from]
+    BeginAddressGossipRequest(BeginGossipRequest<GossipedAddress>),
+
     // Announcements
     /// A control announcement.
     #[from]
     ControlAnnouncement(ControlAnnouncement),
-
-    /// Network announcement.
-    #[from]
-    NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, Message>),
 
     /// Blocklist announcement.
     #[from]
@@ -211,12 +220,38 @@ pub(crate) enum JoinerEvent {
     /// Consensus request.
     #[from]
     ConsensusRequest(#[serde(skip_serializing)] ConsensusRequest),
-}
 
-impl From<StorageRequest> for JoinerEvent {
-    fn from(request: StorageRequest) -> Self {
-        JoinerEvent::Storage(request.into())
-    }
+    /// Incoming consensus network message.
+    #[from]
+    ConsensusMessageIncoming(ConsensusMessageIncoming<NodeId>),
+
+    /// Incoming deploy gossiper network message.
+    #[from]
+    DeployGossiperIncoming(GossiperIncoming<Deploy>),
+
+    /// Incoming address gossiper network message.
+    #[from]
+    AddressGossiperIncoming(GossiperIncoming<GossipedAddress>),
+
+    /// Incoming net request network message.
+    #[from]
+    NetRequestIncoming(NetRequestIncoming),
+
+    /// Incoming net response network message.
+    #[from]
+    NetResponseIncoming(NetResponseIncoming),
+
+    /// Incoming trie request network message.
+    #[from]
+    TrieRequestIncoming(TrieRequestIncoming),
+
+    /// Incoming trie response network message.
+    #[from]
+    TrieResponseIncoming(TrieResponseIncoming),
+
+    /// Incoming finality signature network message.
+    #[from]
+    FinalitySignatureIncoming(FinalitySignatureIncoming),
 }
 
 impl ReactorEvent for JoinerEvent {
@@ -247,7 +282,6 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::BlockByHeightFetcherRequest(_) => "BlockByHeightFetcherRequest",
             JoinerEvent::DeployFetcherRequest(_) => "DeployFetcherRequest",
             JoinerEvent::ControlAnnouncement(_) => "ControlAnnouncement",
-            JoinerEvent::NetworkAnnouncement(_) => "NetworkAnnouncement",
             JoinerEvent::ContractRuntimeAnnouncement(_) => "ContractRuntimeAnnouncement",
             JoinerEvent::AddressGossiperAnnouncement(_) => "AddressGossiperAnnouncement",
             JoinerEvent::DeployAcceptorAnnouncement(_) => "DeployAcceptorAnnouncement",
@@ -265,6 +299,16 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::FinishedJoining { .. } => "FinishedJoining",
             JoinerEvent::Shutdown(_) => "Shutdown",
             JoinerEvent::BlocklistAnnouncement(_) => "BlocklistAnnouncement",
+            JoinerEvent::StorageRequest(_) => "StorageRequest",
+            JoinerEvent::BeginAddressGossipRequest(_) => "BeginAddressGossipRequest",
+            JoinerEvent::ConsensusMessageIncoming(_) => "ConsensusMessageIncoming",
+            JoinerEvent::DeployGossiperIncoming(_) => "DeployGossiperIncoming",
+            JoinerEvent::AddressGossiperIncoming(_) => "AddressGossiperIncoming",
+            JoinerEvent::NetRequestIncoming(_) => "NetRequestIncoming",
+            JoinerEvent::NetResponseIncoming(_) => "NetResponseIncoming",
+            JoinerEvent::TrieRequestIncoming(_) => "TrieRequestIncoming",
+            JoinerEvent::TrieResponseIncoming(_) => "TrieResponseIncoming",
+            JoinerEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
         }
     }
 }
@@ -293,7 +337,6 @@ impl Display for JoinerEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             JoinerEvent::SmallNetwork(event) => write!(f, "small network: {}", event),
-            JoinerEvent::NetworkAnnouncement(event) => write!(f, "network announcement: {}", event),
             JoinerEvent::BlocklistAnnouncement(event) => {
                 write!(f, "blocklist announcement: {}", event)
             }
@@ -305,12 +348,16 @@ impl Display for JoinerEvent {
             JoinerEvent::ChainspecLoaderRequest(req) => {
                 write!(f, "chainspec loader request: {}", req)
             }
+            JoinerEvent::StorageRequest(req) => write!(f, "storage request: {}", req),
             JoinerEvent::NetworkInfoRequest(req) => write!(f, "network info request: {}", req),
             JoinerEvent::BlockFetcherRequest(request) => {
                 write!(f, "block fetcher request: {}", request)
             }
             JoinerEvent::DeployFetcherRequest(request) => {
                 write!(f, "deploy fetcher request: {}", request)
+            }
+            JoinerEvent::BeginAddressGossipRequest(request) => {
+                write!(f, "begin address gossip request: {}", request)
             }
             JoinerEvent::BlockFetcher(event) => write!(f, "block fetcher: {}", event),
             JoinerEvent::BlockByHeightFetcherRequest(request) => {
@@ -365,6 +412,14 @@ impl Display for JoinerEvent {
             JoinerEvent::FinishedJoining { block_header } => {
                 write!(f, "finished joining with block header: {}", block_header)
             }
+            JoinerEvent::ConsensusMessageIncoming(inner) => write!(f, "incoming: {}", inner),
+            JoinerEvent::DeployGossiperIncoming(inner) => write!(f, "incoming: {}", inner),
+            JoinerEvent::AddressGossiperIncoming(inner) => write!(f, "incoming: {}", inner),
+            JoinerEvent::NetRequestIncoming(inner) => write!(f, "incoming: {}", inner),
+            JoinerEvent::NetResponseIncoming(inner) => write!(f, "incoming: {}", inner),
+            JoinerEvent::TrieRequestIncoming(inner) => write!(f, "incoming: {}", inner),
+            JoinerEvent::TrieResponseIncoming(inner) => write!(f, "incoming: {}", inner),
+            JoinerEvent::FinalitySignatureIncoming(inner) => write!(f, "incoming: {}", inner),
             JoinerEvent::Shutdown(exit_code) => {
                 write!(f, "shutting down with exit code: {:?}", exit_code)
             }
@@ -614,143 +669,9 @@ impl reactor::Reactor for Reactor {
             JoinerEvent::ControlAnnouncement(ctrl_ann) => {
                 unreachable!("unhandled control announcement: {}", ctrl_ann)
             }
-            JoinerEvent::NetworkAnnouncement(NetworkAnnouncement::NewPeer(_id)) => {
-                Effects::new()
-            }
-            JoinerEvent::NetworkAnnouncement(NetworkAnnouncement::GossipOurAddress(
-                gossiped_address,
-            )) => {
-                let event = gossiper::Event::ItemReceived {
-                    item_id: gossiped_address,
-                    source: Source::<NodeId>::Ourself,
-                };
-                self.dispatch_event(effect_builder, rng, JoinerEvent::AddressGossiper(event))
-            }
             JoinerEvent::BlocklistAnnouncement(ann) => {
                 self.dispatch_event(effect_builder, rng, JoinerEvent::SmallNetwork(ann.into()))
             }
-            JoinerEvent::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
-                sender,
-                payload,
-            }) => match payload {
-                Message::GetResponse {
-                    tag: Tag::Block,
-                    serialized_item
-                } => {
-                    match fetcher::Event::<Block>::from_get_response_serialized_item(
-                        sender,
-                        &serialized_item,
-                    ) {
-                        Some(fetcher_event) => {
-                            self.dispatch_event(effect_builder, rng, JoinerEvent::BlockFetcher(fetcher_event))
-                        } ,
-                        None => {
-                            info!("{} sent us a block we couldn't parse! Banning", sender);
-                            effect_builder.announce_disconnect_from_peer(sender).ignore()
-                        }
-                    }
-                }
-                Message::GetResponse {
-                    tag: Tag::BlockAndMetadataByHeight,
-                    serialized_item,
-                } => {
-                    match fetcher::Event::<BlockWithMetadata>::from_get_response_serialized_item(
-                        sender,
-                        &serialized_item,
-                    ) {
-                        Some(fetcher_event) => {
-                            self.dispatch_event(effect_builder, rng, JoinerEvent::BlockByHeightFetcher(fetcher_event))
-                        }
-                        None => {
-                            info!("{} sent us a block with metadata we couldn't parse! Banning", sender);
-                            effect_builder.announce_disconnect_from_peer(sender).ignore()
-                        }
-                    }
-                }
-                Message::GetResponse {
-                    tag: Tag::Trie,
-                    serialized_item,
-                } => {
-                    match fetcher::Event::<Trie<Key, StoredValue>>::from_get_response_serialized_item(
-                        sender,
-                        &serialized_item,
-                    ) {
-                        Some(fetcher_event) => {
-                            self.dispatch_event(effect_builder, rng, JoinerEvent::TrieFetcher(fetcher_event))
-                        } ,
-                        None => {
-                            info!("{} sent us a trie we couldn't parse! Banning", sender);
-                            effect_builder.announce_disconnect_from_peer(sender).ignore()
-                        }
-                    }
-                }
-                Message::GetResponse {
-                    tag: Tag::BlockHeaderByHash,
-                    serialized_item,
-                } => {
-                    match fetcher::Event::<BlockHeader>::from_get_response_serialized_item(
-                        sender,
-                        &serialized_item,
-                    ) {
-                        Some(fetcher_event) => {
-                            self.dispatch_event(effect_builder, rng, JoinerEvent::BlockHeaderFetcher(fetcher_event))
-                        } ,
-                        None => {
-                            info!("{} sent us a block header we couldn't parse! Banning", sender);
-                            effect_builder.announce_disconnect_from_peer(sender).ignore()
-                        }
-                    }
-                }
-                Message::GetResponse {
-                    tag: Tag::BlockHeaderAndFinalitySignaturesByHeight,
-                    serialized_item,
-                } => {
-                    match fetcher::Event::<BlockHeaderWithMetadata>::from_get_response_serialized_item(
-                        sender,
-                        &serialized_item,
-                    ) {
-                        Some(fetcher_event) => {
-                            self.dispatch_event(effect_builder, rng, JoinerEvent::BlockHeaderByHeightFetcher(fetcher_event))
-                        } ,
-                        None => {
-                            info!("{} sent us a block header with finality signatures we couldn't parse! Banning", sender);
-                            effect_builder.announce_disconnect_from_peer(sender).ignore()
-                        }
-                    }
-                }
-                Message::GetResponse {
-                    tag: Tag::Deploy,
-                    serialized_item,
-                } => {
-                    match fetcher::Event::<Deploy>::from_get_response_serialized_item(
-                        sender,
-                        &serialized_item,
-                    ) {
-                        Some(fetcher_event) => {
-                            self.dispatch_event(effect_builder, rng, JoinerEvent::DeployFetcher(fetcher_event))
-                        },
-                        None => {
-                            info!("{} sent us a deploy we couldn't parse! Banning", sender);
-                            effect_builder.announce_disconnect_from_peer(sender).ignore()
-                        }
-                    }
-                }
-                Message::AddressGossiper(message) => {
-                    let event = JoinerEvent::AddressGossiper(gossiper::Event::MessageReceived {
-                        sender,
-                        message,
-                    });
-                    self.dispatch_event(effect_builder, rng, event)
-                }
-                Message::FinalitySignature(_) => {
-                    debug!("finality signatures not handled in joiner reactor");
-                    Effects::new()
-                }
-                other => {
-                    debug!(?other, "network announcement ignored.");
-                    Effects::new()
-                }
-            },
             JoinerEvent::DeployAcceptorAnnouncement(
                 DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
             ) => {
@@ -782,9 +703,11 @@ impl reactor::Reactor for Reactor {
                 JoinerEvent::Storage,
                 self.storage.handle_event(effect_builder, rng, event),
             ),
-            JoinerEvent::BlockFetcherRequest(request) => {
-                self.dispatch_event(effect_builder, rng, JoinerEvent::BlockFetcher(request.into()))
-            }
+            JoinerEvent::BlockFetcherRequest(request) => self.dispatch_event(
+                effect_builder,
+                rng,
+                JoinerEvent::BlockFetcher(request.into()),
+            ),
             JoinerEvent::DeployAcceptor(event) => reactor::wrap_effects(
                 JoinerEvent::DeployAcceptor,
                 self.deploy_acceptor
@@ -813,17 +736,30 @@ impl reactor::Reactor for Reactor {
                 self.block_header_by_hash_fetcher
                     .handle_event(effect_builder, rng, event),
             ),
-            JoinerEvent::DeployFetcherRequest(request) => {
-                self.dispatch_event(effect_builder, rng, JoinerEvent::DeployFetcher(request.into()))
-            }
+            JoinerEvent::DeployFetcherRequest(request) => self.dispatch_event(
+                effect_builder,
+                rng,
+                JoinerEvent::DeployFetcher(request.into()),
+            ),
+            JoinerEvent::StorageRequest(req) => reactor::wrap_effects(
+                JoinerEvent::Storage,
+                self.storage.handle_event(effect_builder, rng, req.into()),
+            ),
+            JoinerEvent::BeginAddressGossipRequest(req) => reactor::wrap_effects(
+                JoinerEvent::AddressGossiper,
+                self.address_gossiper
+                    .handle_event(effect_builder, rng, req.into()),
+            ),
             JoinerEvent::BlockByHeightFetcherRequest(request) => self.dispatch_event(
                 effect_builder,
                 rng,
                 JoinerEvent::BlockByHeightFetcher(request.into()),
             ),
-            JoinerEvent::TrieFetcherRequest(request) => {
-                self.dispatch_event(effect_builder, rng, JoinerEvent::TrieFetcher(request.into()))
-            }
+            JoinerEvent::TrieFetcherRequest(request) => self.dispatch_event(
+                effect_builder,
+                rng,
+                JoinerEvent::TrieFetcher(request.into()),
+            ),
             JoinerEvent::BlockHeaderFetcherRequest(request) => self.dispatch_event(
                 effect_builder,
                 rng,
@@ -834,9 +770,7 @@ impl reactor::Reactor for Reactor {
                 self.contract_runtime
                     .handle_event(effect_builder, rng, event),
             ),
-            JoinerEvent::ContractRuntimeAnnouncement(_) => {
-                Effects::new()
-            }
+            JoinerEvent::ContractRuntimeAnnouncement(_) => Effects::new(),
             JoinerEvent::AddressGossiper(event) => reactor::wrap_effects(
                 JoinerEvent::AddressGossiper,
                 self.address_gossiper
@@ -933,6 +867,46 @@ impl reactor::Reactor for Reactor {
                 self.linear_chain_sync = LinearChainSyncState::Done(block_header);
                 Effects::new()
             }
+            JoinerEvent::ConsensusMessageIncoming(incoming) => {
+                debug!(%incoming, "ignoring incoming consensus message");
+                Effects::new()
+            }
+            JoinerEvent::DeployGossiperIncoming(incoming) => {
+                debug!(%incoming, "ignoring incoming deploy gossiper message");
+                Effects::new()
+            }
+            JoinerEvent::AddressGossiperIncoming(incoming) => reactor::wrap_effects(
+                JoinerEvent::AddressGossiper,
+                self.address_gossiper
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
+            JoinerEvent::NetRequestIncoming(incoming) => {
+                debug!(%incoming, "net request ignored");
+                Effects::new()
+            }
+            JoinerEvent::NetResponseIncoming(NetResponseIncoming { sender, message }) => {
+                self.handle_get_response(effect_builder, rng, sender, message)
+            }
+            JoinerEvent::TrieRequestIncoming(incoming) => {
+                debug!(%incoming, "trie request ignored");
+                Effects::new()
+            }
+            JoinerEvent::TrieResponseIncoming(TrieResponseIncoming { sender, message }) => {
+                reactor::handle_fetch_response::<Self, Trie<Key, StoredValue>>(
+                    self,
+                    effect_builder,
+                    rng,
+                    sender,
+                    &message.0,
+                )
+            }
+
+            JoinerEvent::FinalitySignatureIncoming(FinalitySignatureIncoming {
+                sender, ..
+            }) => {
+                debug!(%sender, "finality signatures not handled in joiner reactor");
+                Effects::new()
+            }
             JoinerEvent::Shutdown(exit_code) => {
                 self.exit_code = Some(exit_code);
                 Effects::new()
@@ -958,6 +932,73 @@ impl reactor::Reactor for Reactor {
 }
 
 impl Reactor {
+    fn handle_get_response(
+        &mut self,
+        effect_builder: EffectBuilder<JoinerEvent>,
+        rng: &mut NodeRng,
+        sender: NodeId,
+        message: NetResponse,
+    ) -> Effects<JoinerEvent> {
+        match message {
+            NetResponse::Deploy(ref serialized_item) => {
+                reactor::handle_fetch_response::<Self, Deploy>(
+                    self,
+                    effect_builder,
+                    rng,
+                    sender,
+                    serialized_item,
+                )
+            }
+            NetResponse::Block(ref serialized_item) => {
+                reactor::handle_fetch_response::<Self, Block>(
+                    self,
+                    effect_builder,
+                    rng,
+                    sender,
+                    serialized_item,
+                )
+            }
+            NetResponse::GossipedAddress(_) => {
+                // The item trait is used for both fetchers and gossiped things, but this kind of
+                // item is never fetched, only gossiped.
+                warn!(
+                    "Gossiped addresses are never fetched, banning peer: {}",
+                    sender
+                );
+                effect_builder
+                    .announce_disconnect_from_peer(sender)
+                    .ignore()
+            }
+            NetResponse::BlockAndMetadataByHeight(ref serialized_item) => {
+                reactor::handle_fetch_response::<Self, BlockWithMetadata>(
+                    self,
+                    effect_builder,
+                    rng,
+                    sender,
+                    serialized_item,
+                )
+            }
+            NetResponse::BlockHeaderByHash(ref serialized_item) => {
+                reactor::handle_fetch_response::<Self, BlockHeader>(
+                    self,
+                    effect_builder,
+                    rng,
+                    sender,
+                    serialized_item,
+                )
+            }
+            NetResponse::BlockHeaderAndFinalitySignaturesByHeight(ref serialized_item) => {
+                reactor::handle_fetch_response::<Self, BlockHeaderWithMetadata>(
+                    self,
+                    effect_builder,
+                    rng,
+                    sender,
+                    serialized_item,
+                )
+            }
+        }
+    }
+
     /// Deconstructs the reactor into config useful for creating a Validator reactor. Shuts down
     /// the network, closing all incoming and outgoing connections, and frees up the listening
     /// socket.

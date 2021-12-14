@@ -27,13 +27,13 @@ use crate::{
     effect::EffectBuilder,
     reactor::QueueKind,
     rpcs::common,
-    types::{Block, BlockHash, BlockWithMetadata, Item, JsonBlock},
+    types::{Block, BlockHash, BlockWithMetadata, JsonBlock},
 };
 pub use era_summary::EraSummary;
 use era_summary::ERA_SUMMARY;
 
 static GET_BLOCK_PARAMS: Lazy<GetBlockParams> = Lazy::new(|| GetBlockParams {
-    block_identifier: BlockIdentifier::Hash(Block::doc_example().id()),
+    block_identifier: BlockIdentifier::Hash(*Block::doc_example().hash()),
 });
 static GET_BLOCK_RESULT: Lazy<GetBlockResult> = Lazy::new(|| GetBlockResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
@@ -41,12 +41,12 @@ static GET_BLOCK_RESULT: Lazy<GetBlockResult> = Lazy::new(|| GetBlockResult {
 });
 static GET_BLOCK_TRANSFERS_PARAMS: Lazy<GetBlockTransfersParams> =
     Lazy::new(|| GetBlockTransfersParams {
-        block_identifier: BlockIdentifier::Hash(Block::doc_example().id()),
+        block_identifier: BlockIdentifier::Hash(*Block::doc_example().hash()),
     });
 static GET_BLOCK_TRANSFERS_RESULT: Lazy<GetBlockTransfersResult> =
     Lazy::new(|| GetBlockTransfersResult {
         api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
-        block_hash: Some(Block::doc_example().id()),
+        block_hash: Some(*Block::doc_example().hash()),
         transfers: Some(vec![Transfer::default()]),
     });
 static GET_STATE_ROOT_HASH_PARAMS: Lazy<GetStateRootHashParams> =
@@ -59,7 +59,7 @@ static GET_STATE_ROOT_HASH_RESULT: Lazy<GetStateRootHashResult> =
         state_root_hash: Some(*Block::doc_example().header().state_root_hash()),
     });
 static GET_ERA_INFO_PARAMS: Lazy<GetEraInfoParams> = Lazy::new(|| GetEraInfoParams {
-    block_identifier: BlockIdentifier::Hash(Block::doc_example().id()),
+    block_identifier: BlockIdentifier::Hash(*Block::doc_example().hash()),
 });
 static GET_ERA_INFO_RESULT: Lazy<GetEraInfoResult> = Lazy::new(|| GetEraInfoResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,

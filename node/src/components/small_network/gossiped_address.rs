@@ -1,4 +1,5 @@
 use std::{
+    convert::Infallible,
     fmt::{self, Display, Formatter},
     net::SocketAddr,
 };
@@ -28,8 +29,13 @@ impl Display for GossipedAddress {
 
 impl Item for GossipedAddress {
     type Id = GossipedAddress;
+    type ValidationError = Infallible;
     const TAG: Tag = Tag::GossipedAddress;
     const ID_IS_COMPLETE_ITEM: bool = true;
+
+    fn validate(&self) -> Result<(), Self::ValidationError> {
+        Ok(())
+    }
 
     fn id(&self) -> Self::Id {
         *self

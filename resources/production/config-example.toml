@@ -147,6 +147,37 @@ max_incoming_message_rate_non_validators = 3000
 # Any weight set to 0 means that the category of traffic is exempt from throttling.
 estimator_weights = { consensus=0, deploy_requests=1 }
 
+# Reject incompatible node versions
+#
+# Causes the node to immediately disconnect from versions on a different protocol version than
+# itself. In general, this feature should be enabled on the entire network, it can be disabled in
+# the case of problems during upgrades if the nodes are still compatible on the networking level.
+reject_incompatible_versions = true
+
+# Version threshold to enable tarpit for.
+#
+# When set to a version (the value may be `null` to disable the feature), any peer that reports a
+# protocol version equal or below the threshold will be rejected only after holding open the
+# connection for a specific (`tarpit_duration`) amount of time.
+#
+# This option makes most sense to enable on known nodes with addresses where legacy nodes that are
+# still in operation are connecting to, as these older versions will only attempt to reconnect to
+# other nodes once they have exhausted their set of known nodes.
+#
+# This feature is only enabled if `reject_incompatible_versions` is enabled.
+tarpit_version_threshold = '1.2.1'
+
+# How long to hold connections to trapped legacy nodes.
+tarpit_duration = '10min'
+
+# The probability [0.0, 1.0] of this node trapping a legacy node.
+#
+# Since older nodes will only reconnect if all their options are exhausted, it is sufficient for a
+# single known node to hold open a connection to prevent the node from reconnecting. This should be
+# set to `1/n` or higher, with `n` being the number of known nodes expected in the configuration of
+# legacy nodes running this software.
+tarpit_chance = 0.2
+
 
 # ==================================================
 # Configuration options for the JSON-RPC HTTP server
@@ -251,6 +282,11 @@ max_state_store_size = 10_737_418_240
 # If enabled, nodes will attempt to share loaded objects if possible.
 enable_mem_deduplication = true
 
+# Memory duplication garbage collection.
+#
+# Sets the frequency how often the memory pool cache is swept for free references.
+# For example, setting this value to 5 means that every 5th time something is put in the pool the cache is swept.
+mem_pool_prune_interval = 4096
 
 # ===================================
 # Configuration options for gossiping

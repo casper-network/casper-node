@@ -27,12 +27,17 @@ use crate::{
         contract_runtime::{self, ContractRuntime},
         deploy_acceptor::{self, DeployAcceptor},
         in_memory_network::{self, InMemoryNetwork, NetworkController},
+        small_network::GossipedAddress,
         storage::{self, Storage},
     },
     effect::{
         announcements::{
             ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
-            GossiperAnnouncement, NetworkAnnouncement, RpcServerAnnouncement,
+            GossiperAnnouncement, RpcServerAnnouncement,
+        },
+        incoming::{
+            ConsensusMessageIncoming, FinalitySignatureIncoming, NetRequestIncoming, NetResponse,
+            NetResponseIncoming, TrieRequestIncoming, TrieResponseIncoming,
         },
         requests::{ConsensusRequest, ContractRuntimeRequest},
         Responder,
@@ -45,7 +50,7 @@ use crate::{
         network::{Network, NetworkedReactor},
         ConditionCheckReactor, TestRng,
     },
-    types::{Chainspec, Deploy, NodeId, Tag},
+    types::{Chainspec, Deploy, NodeId},
     utils::{Loadable, WithDir},
     NodeRng,
 };
@@ -58,7 +63,7 @@ enum Event {
     #[from]
     Network(in_memory_network::Event<NodeMessage>),
     #[from]
-    Storage(#[serde(skip_serializing)] storage::Event),
+    Storage(storage::Event),
     #[from]
     DeployAcceptor(#[serde(skip_serializing)] deploy_acceptor::Event),
     #[from]
@@ -66,9 +71,9 @@ enum Event {
     #[from]
     NetworkRequest(NetworkRequest<NodeId, NodeMessage>),
     #[from]
-    ControlAnnouncement(ControlAnnouncement),
+    StorageRequest(StorageRequest),
     #[from]
-    NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, NodeMessage>),
+    ControlAnnouncement(ControlAnnouncement),
     #[from]
     RpcServerAnnouncement(#[serde(skip_serializing)] RpcServerAnnouncement),
     #[from]
@@ -77,6 +82,22 @@ enum Event {
     DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
     #[from]
     ContractRuntime(#[serde(skip_serializing)] Box<ContractRuntimeRequest>),
+    #[from]
+    ConsensusMessageIncoming(ConsensusMessageIncoming<NodeId>),
+    #[from]
+    DeployGossiperIncoming(GossiperIncoming<Deploy>),
+    #[from]
+    AddressGossiperIncoming(GossiperIncoming<GossipedAddress>),
+    #[from]
+    NetRequestIncoming(NetRequestIncoming),
+    #[from]
+    NetResponseIncoming(NetResponseIncoming),
+    #[from]
+    TrieRequestIncoming(TrieRequestIncoming),
+    #[from]
+    TrieResponseIncoming(TrieResponseIncoming),
+    #[from]
+    FinalitySignatureIncoming(FinalitySignatureIncoming),
 }
 
 impl ReactorEvent for Event {
@@ -92,12 +113,6 @@ impl ReactorEvent for Event {
 impl From<ContractRuntimeRequest> for Event {
     fn from(contract_runtime_request: ContractRuntimeRequest) -> Self {
         Event::ContractRuntime(Box::new(contract_runtime_request))
-    }
-}
-
-impl From<StorageRequest> for Event {
-    fn from(request: StorageRequest) -> Self {
-        Event::Storage(storage::Event::from(request))
     }
 }
 
@@ -126,9 +141,9 @@ impl Display for Event {
             Event::Storage(event) => write!(formatter, "storage: {}", event),
             Event::DeployAcceptor(event) => write!(formatter, "deploy acceptor: {}", event),
             Event::DeployGossiper(event) => write!(formatter, "deploy gossiper: {}", event),
+            Event::StorageRequest(req) => write!(formatter, "storage request: {}", req),
             Event::NetworkRequest(req) => write!(formatter, "network request: {}", req),
             Event::ControlAnnouncement(ctrl_ann) => write!(formatter, "control: {}", ctrl_ann),
-            Event::NetworkAnnouncement(ann) => write!(formatter, "network announcement: {}", ann),
             Event::RpcServerAnnouncement(ann) => {
                 write!(formatter, "api server announcement: {}", ann)
             }
@@ -141,6 +156,14 @@ impl Display for Event {
             Event::ContractRuntime(event) => {
                 write!(formatter, "contract-runtime event: {:?}", event)
             }
+            Event::ConsensusMessageIncoming(inner) => write!(formatter, "incoming: {}", inner),
+            Event::DeployGossiperIncoming(inner) => write!(formatter, "incoming: {}", inner),
+            Event::AddressGossiperIncoming(inner) => write!(formatter, "incoming: {}", inner),
+            Event::NetRequestIncoming(inner) => write!(formatter, "incoming: {}", inner),
+            Event::NetResponseIncoming(inner) => write!(formatter, "incoming: {}", inner),
+            Event::TrieRequestIncoming(inner) => write!(formatter, "incoming: {}", inner),
+            Event::TrieResponseIncoming(inner) => write!(formatter, "incoming: {}", inner),
+            Event::FinalitySignatureIncoming(inner) => write!(formatter, "incoming: {}", inner),
         }
     }
 }
@@ -258,101 +281,13 @@ impl reactor::Reactor for Reactor {
                 self.network
                     .handle_event(effect_builder, rng, request.into()),
             ),
+            Event::StorageRequest(request) => reactor::wrap_effects(
+                Event::Storage,
+                self.storage
+                    .handle_event(effect_builder, rng, request.into()),
+            ),
             Event::ControlAnnouncement(ctrl_ann) => {
                 unreachable!("unhandled control announcement: {}", ctrl_ann)
-            }
-            Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
-                sender,
-                payload,
-            }) => {
-                let reactor_event = match payload {
-                    NodeMessage::GetRequest {
-                        tag: Tag::Deploy,
-                        serialized_id,
-                    } => {
-                        // Note: unlike the validator reactor, we emit fatal events when something
-                        // unexpected happens
-                        let deploy_hash: DeployHash = match bincode::deserialize(&serialized_id) {
-                            Ok(hash) => hash,
-                            Err(error) => {
-                                return fatal!(
-                                    effect_builder,
-                                    "failed to decode {:?} from {}: {}",
-                                    serialized_id,
-                                    sender,
-                                    error
-                                )
-                                .ignore();
-                            }
-                        };
-
-                        let fetched_or_not_found_deploy = match self.storage.get_deploy(deploy_hash)
-                        {
-                            Ok(Some(deploy)) => FetchedOrNotFound::Fetched(deploy),
-                            _ => FetchedOrNotFound::NotFound(deploy_hash),
-                        };
-                        match NodeMessage::new_get_response(&fetched_or_not_found_deploy) {
-                            Ok(message) => {
-                                return effect_builder.send_message(sender, message).ignore();
-                            }
-
-                            Err(error) => {
-                                return fatal!(
-                                    effect_builder,
-                                    "failed to create get-response: {}",
-                                    error
-                                )
-                                .ignore();
-                            }
-                        }
-                    }
-                    NodeMessage::GetResponse {
-                        tag: Tag::Deploy,
-                        serialized_item,
-                    } => {
-                        let deploy = match bincode::deserialize::<
-                            FetchedOrNotFound<Deploy, DeployHash>,
-                        >(&serialized_item)
-                        {
-                            Ok(FetchedOrNotFound::Fetched(deploy)) => Box::new(deploy),
-                            Ok(FetchedOrNotFound::NotFound(deploy_hash)) => {
-                                return fatal!(
-                                    effect_builder,
-                                    "peer did not have deploy with hash {}: {}",
-                                    deploy_hash,
-                                    sender,
-                                )
-                                .ignore();
-                            }
-                            Err(error) => {
-                                return fatal!(
-                                    effect_builder,
-                                    "failed to decode deploy from {}: {}",
-                                    sender,
-                                    error
-                                )
-                                .ignore();
-                            }
-                        };
-                        Event::DeployAcceptor(deploy_acceptor::Event::Accept {
-                            deploy,
-                            source: Source::Peer(sender),
-                            maybe_responder: None,
-                        })
-                    }
-                    NodeMessage::DeployGossiper(message) => {
-                        Event::DeployGossiper(super::Event::MessageReceived { sender, message })
-                    }
-                    msg => panic!("should not get {}", msg),
-                };
-                self.dispatch_event(effect_builder, rng, reactor_event)
-            }
-            Event::NetworkAnnouncement(NetworkAnnouncement::GossipOurAddress(_)) => {
-                unreachable!("should not receive announcements of type GossipOurAddress");
-            }
-            Event::NetworkAnnouncement(NetworkAnnouncement::NewPeer(_)) => {
-                // We do not care about new peers in the gossiper test.
-                Effects::new()
             }
             Event::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived {
                 deploy,
@@ -392,6 +327,73 @@ impl reactor::Reactor for Reactor {
                 self.contract_runtime
                     .handle_event(effect_builder, rng, *event),
             ),
+            Event::DeployGossiperIncoming(incoming) => reactor::wrap_effects(
+                Event::DeployGossiper,
+                self.deploy_gossiper
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
+            Event::NetRequestIncoming(incoming) => reactor::wrap_effects(
+                Event::Storage,
+                self.storage
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
+            Event::NetResponseIncoming(NetResponseIncoming { sender, message }) => match message {
+                NetResponse::Deploy(ref serialized_item) => {
+                    let deploy = match bincode::deserialize::<FetchedOrNotFound<Deploy, DeployHash>>(
+                        serialized_item,
+                    ) {
+                        Ok(FetchedOrNotFound::Fetched(deploy)) => Box::new(deploy),
+                        Ok(FetchedOrNotFound::NotFound(deploy_hash)) => {
+                            return fatal!(
+                                effect_builder,
+                                "peer did not have deploy with hash {}: {}",
+                                deploy_hash,
+                                sender,
+                            )
+                            .ignore();
+                        }
+                        Err(error) => {
+                            return fatal!(
+                                effect_builder,
+                                "failed to decode deploy from {}: {}",
+                                sender,
+                                error
+                            )
+                            .ignore();
+                        }
+                    };
+                    reactor::wrap_effects(
+                        Event::DeployAcceptor,
+                        self.deploy_acceptor.handle_event(
+                            effect_builder,
+                            rng,
+                            deploy_acceptor::Event::Accept {
+                                deploy,
+                                source: Source::Peer(sender),
+                                maybe_responder: None,
+                            },
+                        ),
+                    )
+                }
+                other
+                @
+                (NetResponse::Block(_)
+                | NetResponse::GossipedAddress(_)
+                | NetResponse::BlockAndMetadataByHeight(_)
+                | NetResponse::BlockHeaderByHash(_)
+                | NetResponse::BlockHeaderAndFinalitySignaturesByHeight(_)) => {
+                    fatal!(effect_builder, "unexpected net response: {:?}", other).ignore()
+                }
+            },
+            other
+            @
+            (Event::ConsensusMessageIncoming(_)
+            | Event::FinalitySignatureIncoming(_)
+            | Event::AddressGossiperIncoming(_)
+            | Event::TrieRequestIncoming(_)
+            | Event::TrieResponseIncoming(_)) => {
+                fatal!(effect_builder, "should not receive {:?}", other).ignore()
+            }
         }
     }
 

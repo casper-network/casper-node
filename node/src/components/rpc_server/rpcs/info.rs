@@ -26,7 +26,7 @@ use crate::{
     crypto::AsymmetricKeyExt,
     effect::EffectBuilder,
     reactor::QueueKind,
-    types::{Block, BlockHash, Deploy, DeployHash, GetStatusResult, Item, PeersMap},
+    types::{Block, BlockHash, Deploy, DeployHash, GetStatusResult, PeersMap},
 };
 
 static GET_DEPLOY_PARAMS: Lazy<GetDeployParams> = Lazy::new(|| GetDeployParams {
@@ -36,7 +36,7 @@ static GET_DEPLOY_RESULT: Lazy<GetDeployResult> = Lazy::new(|| GetDeployResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     deploy: Deploy::doc_example().clone(),
     execution_results: vec![JsonExecutionResult {
-        block_hash: Block::doc_example().id(),
+        block_hash: *Block::doc_example().hash(),
         result: ExecutionResult::example().clone(),
     }],
 });

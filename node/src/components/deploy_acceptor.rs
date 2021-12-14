@@ -846,7 +846,7 @@ impl DeployAcceptor {
     fn validate_deploy_cryptography<REv: ReactorEventT>(
         &self,
         effect_builder: EffectBuilder<REv>,
-        mut event_metadata: EventMetadata,
+        event_metadata: EventMetadata,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
         if let Err(deploy_configuration_failure) = event_metadata.deploy.is_valid() {

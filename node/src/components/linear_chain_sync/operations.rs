@@ -10,7 +10,6 @@ use std::{
 use async_trait::async_trait;
 use datasize::DataSize;
 use futures::stream::{futures_unordered::FuturesUnordered, StreamExt};
-use num::rational::Ratio;
 use tracing::{info, trace, warn};
 
 use casper_execution_engine::storage::trie::Trie;
@@ -22,14 +21,14 @@ use crate::{
         consensus::{check_sufficient_finality_signatures, ChainspecConsensusExt},
         contract_runtime::ExecutionPreState,
         fetcher::{FetchResult, FetchedData, FetcherError},
-        linear_chain_sync::error::{LinearChainSyncError, SignatureValidationError},
+        linear_chain_sync::error::LinearChainSyncError,
     },
     effect::{requests::FetcherRequest, EffectBuilder},
     reactor::joiner::JoinerEvent,
     types::{
-        Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures,
-        BlockValidationError, BlockWithMetadata, Chainspec, Deploy, DeployHash, FinalizedBlock,
-        Item, NodeConfig, NodeId, TimeDiff, Timestamp,
+        Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata,
+        Chainspec, Deploy, DeployHash, FinalizedBlock, Item, NodeConfig, NodeId, TimeDiff,
+        Timestamp,
     },
     utils::work_queue::WorkQueue,
 };
@@ -132,43 +131,6 @@ async fn fetch_and_store_deploy(
             Ok(deploy)
         }
     }
-}
-
-/// Verifies finality signatures for a block header
-fn validate_finality_signatures(
-    block_header: &BlockHeader,
-    trusted_key_block_info: &KeyBlockInfo,
-    finality_threshold_fraction: Ratio<u64>,
-    block_signatures: &BlockSignatures,
-) -> Result<(), SignatureValidationError> {
-    if block_header.era_id() != trusted_key_block_info.era_id {
-        return Err(SignatureValidationError::HeaderIsInWrongEra {
-            block_header: Box::new(block_header.clone()),
-            trusted_key_block_info: Box::new(trusted_key_block_info.clone()),
-        });
-    }
-
-    // Check the signatures' block hash is the header's block hash
-    let block_hash = block_header.hash();
-    if block_signatures.block_hash != block_hash {
-        return Err(
-            SignatureValidationError::SignaturesDoNotCorrespondToBlockHeader {
-                block_header: Box::new(block_header.clone()),
-                block_hash: Box::new(block_hash),
-                block_signatures: Box::new(block_signatures.clone()),
-            },
-        );
-    }
-
-    // Cryptographically verify block signatures
-    block_signatures.verify()?;
-
-    check_sufficient_finality_signatures(
-        &trusted_key_block_info.validator_weights,
-        finality_threshold_fraction,
-        block_signatures,
-    )
-    .map_err(Into::into)
 }
 
 /// Key block info used for verifying finality signatures.
@@ -288,8 +250,6 @@ trait BlockOrHeaderWithMetadata: Item<Id = u64> + 'static {
 
     fn finality_signatures(&self) -> &BlockSignatures;
 
-    fn verify(&self) -> Result<(), BlockValidationError>;
-
     async fn store_block_or_header(&self, effect_builder: EffectBuilder<JoinerEvent>);
 }
 
@@ -301,11 +261,6 @@ impl BlockOrHeaderWithMetadata for BlockWithMetadata {
 
     fn finality_signatures(&self) -> &BlockSignatures {
         &self.finality_signatures
-    }
-
-    fn verify(&self) -> Result<(), BlockValidationError> {
-        self.block.verify()?;
-        Ok(())
     }
 
     async fn store_block_or_header(&self, effect_builder: EffectBuilder<JoinerEvent>) {
@@ -322,10 +277,6 @@ impl BlockOrHeaderWithMetadata for BlockHeaderWithMetadata {
 
     fn finality_signatures(&self) -> &BlockSignatures {
         &self.block_signatures
-    }
-
-    fn verify(&self) -> Result<(), BlockValidationError> {
-        Ok(())
     }
 
     async fn store_block_or_header(&self, effect_builder: EffectBuilder<JoinerEvent>) {
@@ -379,22 +330,17 @@ where
                     continue;
                 }
 
-                if let Err(error) = item.verify() {
-                    warn!(
-                        ?error,
-                        ?peer,
-                        "error validating block from peer; banning peer.",
-                    );
+                if let Err(error) = check_sufficient_finality_signatures(
+                    trusted_key_block_info.validator_weights(),
+                    chainspec.highway_config.finality_threshold_fraction,
+                    item.finality_signatures(),
+                ) {
+                    warn!(?error, ?peer, "insufficient finality signatures from peer",);
                     effect_builder.announce_disconnect_from_peer(peer).await;
                     continue;
                 }
 
-                if let Err(error) = validate_finality_signatures(
-                    item.header(),
-                    trusted_key_block_info,
-                    chainspec.highway_config.finality_threshold_fraction,
-                    item.finality_signatures(),
-                ) {
+                if let Err(error) = item.finality_signatures().verify() {
                     warn!(
                         ?error,
                         ?peer,
