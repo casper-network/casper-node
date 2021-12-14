@@ -638,7 +638,7 @@ impl From<bytesrepr::Error> for ValidationError {
 /// - Any proof's [`Key`] does not match its expected [`Key`].
 /// - The first proof's state root hash does not match `hash`.
 /// - The state root hash is invalid for any proof.
-/// - A expected named key cannot be found in a set of named keys for an [`Account`] or a
+/// - An expected named key cannot be found in a set of named keys for an [`Account`] or a
 ///   [`Contract`].
 /// - The value returned by the query does not match the expected value.
 ///
