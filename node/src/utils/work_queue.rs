@@ -3,13 +3,15 @@
 //! A queue that allows for processing a variable amount of work that may spawn more jobs, but is
 //! expected to finish eventually.
 
-use std::collections::VecDeque;
+use std::{
+    collections::VecDeque,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, Mutex,
+    },
+};
 
 use futures::{stream, Stream};
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc, Mutex,
-};
 use tokio::sync::Notify;
 
 /// Multi-producer, multi-consumer async job queue with end conditions.
@@ -77,7 +79,7 @@ use tokio::sync::Notify;
 /// # let handle = rt.handle();
 /// # handle.block_on(test_func());
 /// ```
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct WorkQueue<T> {
     /// Jobs currently in the queue.
     jobs: Mutex<VecDeque<T>>,
@@ -85,6 +87,17 @@ pub struct WorkQueue<T> {
     in_progress: Arc<AtomicUsize>,
     /// Notifier for waiting tasks.
     notify: Notify,
+}
+
+// Manual default implementation, since the derivation would require a `T: Default` trait bound.
+impl<T> Default for WorkQueue<T> {
+    fn default() -> Self {
+        Self {
+            jobs: Default::default(),
+            in_progress: Default::default(),
+            notify: Default::default(),
+        }
+    }
 }
 
 impl<T> WorkQueue<T> {
@@ -195,5 +208,123 @@ impl<T> JobHandle<T> {
 impl<T> Drop for JobHandle<T> {
     fn drop(&mut self) {
         self.queue.complete_job()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        sync::{
+            atomic::{AtomicU32, Ordering},
+            Arc,
+        },
+        time::Duration,
+    };
+
+    use futures::StreamExt;
+
+    use super::WorkQueue;
+
+    #[derive(Debug)]
+    struct TestJob(u32);
+
+    /// Process a job, sleeping a short amout of time on every 5th job.
+    async fn job_worker_simple(queue: Arc<WorkQueue<TestJob>>, sum: Arc<AtomicU32>) {
+        while let Some(job) = queue.next_job().await {
+            if job.inner().0 % 5 == 0 {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+
+            sum.fetch_add(job.inner().0, Ordering::SeqCst);
+        }
+    }
+
+    /// Process a job, sleeping a short amount of time on every job.
+    ///
+    /// Spawns two additional jobs for every job processed, decreasing the job number until reaching
+    /// zero.
+    async fn job_worker_binary(queue: Arc<WorkQueue<TestJob>>, sum: Arc<AtomicU32>) {
+        while let Some(job) = queue.next_job().await {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+
+            sum.fetch_add(job.inner().0, Ordering::SeqCst);
+
+            if job.inner().0 > 0 {
+                queue.push_job(TestJob(job.inner().0 - 1));
+                queue.push_job(TestJob(job.inner().0 - 1));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn empty_queue_exits_immediately() {
+        let q: Arc<WorkQueue<TestJob>> = Arc::new(Default::default());
+        assert!(q.next_job().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn large_front_loaded_queue_terminates() {
+        let num_jobs = 1_000;
+        let q: Arc<WorkQueue<TestJob>> = Arc::new(Default::default());
+        for job in (0..num_jobs).map(TestJob) {
+            q.push_job(job);
+        }
+
+        let mut workers = Vec::new();
+        let output = Arc::new(AtomicU32::new(0));
+        for _ in 0..3 {
+            workers.push(tokio::spawn(job_worker_simple(q.clone(), output.clone())));
+        }
+
+        // We use a different pattern for waiting here, see the doctest for a solution that does not
+        // spawn.
+        for worker in workers {
+            worker.await.expect("task panicked");
+        }
+
+        let expected_total = (num_jobs * (num_jobs - 1)) / 2;
+        assert_eq!(output.load(Ordering::SeqCst), expected_total);
+    }
+
+    #[tokio::test]
+    async fn stream_interface_works() {
+        let num_jobs = 1_000;
+        let q: Arc<WorkQueue<TestJob>> = Arc::new(Default::default());
+        for job in (0..num_jobs).map(TestJob) {
+            q.push_job(job);
+        }
+
+        let mut current = 0;
+        let mut stream = Box::pin(q.to_stream());
+        while let Some(job) = stream.next().await {
+            assert_eq!(job.inner().0, current);
+            current += 1;
+        }
+    }
+
+    #[tokio::test]
+    async fn complex_queue_terminates() {
+        let num_jobs = 5;
+        let q: Arc<WorkQueue<TestJob>> = Arc::new(Default::default());
+        for _ in 0..num_jobs {
+            q.push_job(TestJob(num_jobs));
+        }
+
+        let mut workers = Vec::new();
+        let output = Arc::new(AtomicU32::new(0));
+        for _ in 0..3 {
+            workers.push(tokio::spawn(job_worker_binary(q.clone(), output.clone())));
+        }
+
+        // We use a different pattern for waiting here, see the doctest for a solution that does not
+        // spawn.
+        for worker in workers {
+            worker.await.expect("task panicked");
+        }
+
+        // A single job starting at `k` will add `SUM_{n=0}^{k} (k-n) * 2^n`, which is
+        // 57 for `k=5`. We start 5 jobs, so we expect `5 * 57 = 285` to be the result.
+        let expected_total = 285;
+        assert_eq!(output.load(Ordering::SeqCst), expected_total);
     }
 }
