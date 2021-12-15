@@ -569,7 +569,7 @@ where
                             %threshold_bytes,
                             "node has allocated enough memory to trigger queue dump"
                         );
-                        self.dump_queues().await;
+                        self.dump_queues(DumpFormat::Debug).await;
                     }
                 }
             }
