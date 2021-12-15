@@ -1473,7 +1473,7 @@ impl Block {
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
-        let era = rng.gen_range(1..6);
+        let era = rng.gen_range(0..6);
         let height = era * 10 + rng.gen_range(0..10);
         let is_switch = rng.gen_bool(0.1);
 
