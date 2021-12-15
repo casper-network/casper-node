@@ -294,8 +294,8 @@ impl BlockPayload {
         let deploys = (0..num_deploys)
             .map(|n| {
                 let mut n_approvals = rng.gen_range(1..MAX_APPROVALS_PER_DEPLOY);
-                // if the random number of approvals is too little for us to be able to cover all the
-                // approvals later, go with the maximum number
+                // if the random number of approvals is too little for us to be able to cover all
+                // the approvals later, go with the maximum number
                 if total_approvals_left - n_approvals
                     >= MAX_APPROVALS_PER_DEPLOY * (num_transfers + num_deploys - n - 1)
                 {
@@ -312,8 +312,8 @@ impl BlockPayload {
         let transfers = (0..num_transfers)
             .map(|n| {
                 let mut n_approvals = rng.gen_range(1..MAX_APPROVALS_PER_DEPLOY);
-                // if the random number of approvals is too little for us to be able to cover all the
-                // approvals later, go with the maximum number
+                // if the random number of approvals is too little for us to be able to cover all
+                // the approvals later, go with the maximum number
                 if total_approvals_left - n_approvals
                     >= MAX_APPROVALS_PER_DEPLOY * (num_transfers - n - 1)
                 {
