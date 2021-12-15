@@ -450,6 +450,7 @@ pub extern "C" fn casper_get_deploy(
     node_address: *const c_char,
     verbosity_level: u64,
     deploy_hash: *const c_char,
+    finalized_approvals: bool,
     response_buf: *mut c_uchar,
     response_buf_len: usize,
 ) -> casper_error_t {
@@ -459,8 +460,14 @@ pub extern "C" fn casper_get_deploy(
     let node_address = try_unsafe_arg!(node_address);
     let deploy_hash = try_unsafe_arg!(deploy_hash);
     runtime.block_on(async move {
-        let result =
-            super::get_deploy(maybe_rpc_id, node_address, verbosity_level, deploy_hash).await;
+        let result = super::get_deploy(
+            maybe_rpc_id,
+            node_address,
+            verbosity_level,
+            deploy_hash,
+            finalized_approvals,
+        )
+        .await;
         let response = try_unwrap_rpc!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
         casper_error_t::CASPER_SUCCESS

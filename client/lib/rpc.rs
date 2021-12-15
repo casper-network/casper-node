@@ -75,11 +75,16 @@ impl RpcCall {
         }
     }
 
-    pub(crate) async fn get_deploy(self, deploy_hash: &str) -> Result<JsonRpc> {
+    pub(crate) async fn get_deploy(
+        self,
+        deploy_hash: &str,
+        finalized_approvals: bool,
+    ) -> Result<JsonRpc> {
         let hash =
             Digest::from_hex(deploy_hash).map_err(|error| map_hashing_error(error)("deploy"))?;
         let params = GetDeployParams {
             deploy_hash: DeployHash::new(hash),
+            finalized_approvals,
         };
         GetDeploy::request_with_map_params(self, params).await
     }

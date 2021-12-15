@@ -290,9 +290,10 @@ pub async fn get_deploy(
     node_address: &str,
     verbosity_level: u64,
     deploy_hash: &str,
+    finalized_approvals: bool,
 ) -> Result<JsonRpc> {
     RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
-        .get_deploy(deploy_hash)
+        .get_deploy(deploy_hash, finalized_approvals)
         .await
 }
 

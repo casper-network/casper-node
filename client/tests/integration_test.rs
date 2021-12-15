@@ -129,7 +129,7 @@ impl MockServerHandle {
     }
 
     async fn get_deploy(&self, deploy_hash: &str) -> Result<(), Error> {
-        casper_client::get_deploy("1", &self.url(), 0, deploy_hash)
+        casper_client::get_deploy("1", &self.url(), 0, deploy_hash, true)
             .await
             .map(|_| ())
     }

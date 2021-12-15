@@ -128,6 +128,7 @@ pub async fn download_block_with_deploys(
             url,
             GetDeployParams {
                 deploy_hash: *transfer_hash,
+                finalized_approvals: true,
             },
         )
         .await?
@@ -142,6 +143,7 @@ pub async fn download_block_with_deploys(
             url,
             GetDeployParams {
                 deploy_hash: *deploy_hash,
+                finalized_approvals: true,
             },
         )
         .await?
