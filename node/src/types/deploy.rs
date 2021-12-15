@@ -535,6 +535,16 @@ impl Approval {
     }
 }
 
+#[cfg(test)]
+impl Approval {
+    pub fn random(rng: &mut TestRng) -> Self {
+        Self {
+            signer: PublicKey::random(rng),
+            signature: Signature::ed25519([0; Signature::ED25519_LENGTH]).unwrap(),
+        }
+    }
+}
+
 impl Display for Approval {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(formatter, "approval({})", self.signer)

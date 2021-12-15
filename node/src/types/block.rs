@@ -42,7 +42,7 @@ use crate::{
     utils::DisplayIter,
 };
 #[cfg(test)]
-use crate::{crypto::generate_ed25519_keypair, testing::TestRng};
+use crate::{crypto::generate_ed25519_keypair, testing::TestRng, types::Approval};
 
 static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
     let secret_key_1 = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
@@ -275,6 +275,68 @@ impl Display for BlockPayload {
             self.accusations,
             self.random_bit,
         )
+    }
+}
+
+#[cfg(test)]
+impl BlockPayload {
+    #[allow(unused)] // TODO: remove when used in tests
+    pub fn random(
+        rng: &mut TestRng,
+        num_deploys: usize,
+        num_transfers: usize,
+        num_approvals: usize,
+        num_accusations: usize,
+    ) -> Self {
+        let mut total_approvals_left = num_approvals;
+        const MAX_APPROVALS_PER_DEPLOY: usize = 100;
+
+        let deploys = (0..num_deploys)
+            .map(|n| {
+                let mut n_approvals = rng.gen_range(1..MAX_APPROVALS_PER_DEPLOY);
+                // if the random number of approvals is too little for us to be able to cover all the
+                // approvals later, go with the maximum number
+                if total_approvals_left - n_approvals
+                    >= MAX_APPROVALS_PER_DEPLOY * (num_transfers + num_deploys - n - 1)
+                {
+                    n_approvals = MAX_APPROVALS_PER_DEPLOY;
+                }
+                total_approvals_left -= n_approvals;
+                DeployWithApprovals {
+                    deploy_hash: DeployHash::random(rng),
+                    approvals: (0..n_approvals).map(|_| Approval::random(rng)).collect(),
+                }
+            })
+            .collect();
+
+        let transfers = (0..num_transfers)
+            .map(|n| {
+                let mut n_approvals = rng.gen_range(1..MAX_APPROVALS_PER_DEPLOY);
+                // if the random number of approvals is too little for us to be able to cover all the
+                // approvals later, go with the maximum number
+                if total_approvals_left - n_approvals
+                    >= MAX_APPROVALS_PER_DEPLOY * (num_transfers - n - 1)
+                {
+                    n_approvals = MAX_APPROVALS_PER_DEPLOY;
+                }
+                total_approvals_left -= n_approvals;
+                DeployWithApprovals {
+                    deploy_hash: DeployHash::random(rng),
+                    approvals: (0..n_approvals).map(|_| Approval::random(rng)).collect(),
+                }
+            })
+            .collect();
+
+        let accusations = (0..num_accusations)
+            .map(|_| PublicKey::random(rng))
+            .collect();
+
+        Self {
+            deploys,
+            transfers,
+            accusations,
+            random_bit: rng.gen(),
+        }
     }
 }
 
