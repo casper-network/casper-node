@@ -399,7 +399,9 @@ where
             tracking_copy.borrow_mut().write(*key, value.clone());
         }
 
-        // Run through global state and process the withdraw purses
+        // This is a one time data transformation which will be removed
+        // in a following upgrade.
+        // TODO: CRef={https://github.com/casper-network/casper-node/issues/2479}
         {
             let withdraw_keys = tracking_copy
                 .borrow_mut()
