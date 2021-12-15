@@ -638,12 +638,11 @@ impl From<bytesrepr::Error> for ValidationError {
 /// - Any proof's [`Key`] does not match its expected [`Key`].
 /// - The first proof's state root hash does not match `hash`.
 /// - The state root hash is invalid for any proof.
-/// - An expected named key cannot be found in a set of named keys for an [`Account`] or a
-///   [`Contract`].
+/// - An expected named key cannot be found in a set of named keys for an `Account` or a `Contract`.
 /// - The value returned by the query does not match the expected value.
 ///
-/// [^note]: In cases where a query traverses through a [`ContractPackage`] and into a [`Contract`]
-/// using a named key, the [`ContractPackage`] will not be counted for path length validation.
+/// [^note]: In cases where a query traverses through a `ContractPackage` and into a `Contract`
+/// using a named key, the `ContractPackage` will not be counted for path length validation.
 pub fn validate_query_proof(
     hash: &Digest,
     proofs: &[TrieMerkleProof<Key, StoredValue>],
