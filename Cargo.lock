@@ -193,14 +193,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "authorized-keys"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
-]
-
-[[package]]
 name = "autocfg"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3976,6 +3968,14 @@ dependencies = [
  "itoa",
  "ryu",
  "serde",
+]
+
+[[package]]
+name = "set-action-thresholds"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]

@@ -3676,10 +3676,10 @@ where
             return Ok(Ok(()));
         }
 
-        let named_keys = CLValue::from_t(authorization_keys).map_err(Error::CLValue)?;
+        let authorization_keys = CLValue::from_t(authorization_keys).map_err(Error::CLValue)?;
 
-        let length = named_keys.inner_bytes().len() as u32;
-        if let Err(error) = self.write_host_buffer(named_keys) {
+        let length = authorization_keys.inner_bytes().len() as u32;
+        if let Err(error) = self.write_host_buffer(authorization_keys) {
             return Ok(Err(error));
         }
 
