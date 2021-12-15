@@ -48,7 +48,7 @@ use crate::{
     components::{networking_metrics::NetworkingMetrics, small_network::message::PayloadWeights},
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert},
-    types::NodeId,
+    types::{NodeId, TimeDiff},
     utils::display_error,
 };
 
@@ -190,7 +190,7 @@ where
     /// The protocol version at which (or under) tarpitting is enabled.
     pub(super) tarpit_version_threshold: Option<ProtocolVersion>,
     /// If tarpitting is enabled, duration for which connections should be kept open.
-    pub(super) tarpit_duration: Duration,
+    pub(super) tarpit_duration: TimeDiff,
     /// The chance, expressed as a number between 0.0 and 1.0, of triggering the tarpit.
     pub(super) tarpit_chance: f32,
 }
@@ -380,7 +380,7 @@ where
                         // amount of time, to reduce load on other nodes and keep them from
                         // reconnecting.
                         info!(duration=?context.tarpit_duration, "randomly tarpitting node");
-                        tokio::time::sleep(context.tarpit_duration).await;
+                        tokio::time::sleep(Duration::from(context.tarpit_duration)).await;
                     } else {
                         debug!(p = context.tarpit_chance, "randomly not tarpitting node");
                     }
