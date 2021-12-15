@@ -4186,11 +4186,8 @@ fn should_not_restake_after_full_unbond() {
 
     builder.step(step_request).expect("should step");
 
-    // let auction_hash = builder.get_auction_contract_hash();
-    // let seigniorage_snapshot: SeigniorageRecipientsSnapshot =
-    //     builder.get_value(auction_hash, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY);
-
-    // Delegator should not remain delegated even though they were eligible for rewards in the second era.
+    // Delegator should not remain delegated even though they were eligible for rewards in the
+    // second era.
     let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
     assert!(delegator.is_none());
 }
@@ -4286,11 +4283,11 @@ fn delegator_full_unbond_during_first_reward_era() {
 
     builder.step(step_request).expect("should step");
 
-    let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
+    let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone())
+        .expect("should be delegator");
 
-    assert!(delegator.is_some());
     assert_eq!(
-        delegator.unwrap().staked_amount().to_owned(),
+        delegator.staked_amount().to_owned(),
         U512::from(DELEGATOR_1_STAKE)
     );
 
@@ -4305,6 +4302,24 @@ fn delegator_full_unbond_during_first_reward_era() {
 
         builder.step(step_request).expect("should step");
     }
+    // assert that the validator should indeed receive rewards and that
+    // the delegator is scheduled to receive rewards this era.
+
+    let auction_hash = builder.get_auction_contract_hash();
+    let seigniorage_snapshot: SeigniorageRecipientsSnapshot =
+        builder.get_value(auction_hash, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY);
+
+    let validator_seigniorage = seigniorage_snapshot
+        .get(&builder.get_era())
+        .expect("should be seigniorage for era")
+        .get(&VALIDATOR_1)
+        .expect("should be validator seigniorage for era");
+
+    let delegator_seigniorage = validator_seigniorage
+        .delegator_stake()
+        .get(&DELEGATOR_1)
+        .expect("should be delegator seigniorage");
+    assert_eq!(*delegator_seigniorage, U512::from(DELEGATOR_1_STAKE));
 
     // undelegate in the first era that the delegator will receive rewards.
     undelegate(
@@ -4342,11 +4357,8 @@ fn delegator_full_unbond_during_first_reward_era() {
 
     builder.step(step_request).expect("should step");
 
-    // let auction_hash = builder.get_auction_contract_hash();
-    // let seigniorage_snapshot: SeigniorageRecipientsSnapshot =
-    //     builder.get_value(auction_hash, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY);
-
-    // Delegator should not remain delegated even though they were eligible for rewards in the second era.
+    // Delegator should not remain delegated even though they were eligible for rewards in the
+    // second era.
     let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
     assert!(delegator.is_none());
 }
