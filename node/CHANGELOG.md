@@ -15,9 +15,13 @@ All notable changes to this project will be documented in this file.  The format
 ### Added
 * Add new event to the main SSE server stream accessed via `<IP:Port>/events/main` which emits hashes of expired deploys.
 * Add new event to the main SSE server stream across all endpoints `<IP:PORT>/events/*` which emits a shutdown event when the node shuts down.
+* Add ability to force DB integrity checks to run on node start by setting env var `CL_RUN_INTEGRITY_CHECKS=1`.
+* Add ability to force DB integrity checks to run on node start by adding non-numeric contents to the initializer.pid file.
 
 ### Changed
 * `enable_manual_sync` configuration parameter defaults to `true`.
+* Detection of a crash no longer triggers DB integrity checks to run on node start; the checks can be triggered manually instead.
+
 
 
 ## [1.4.2] - 2021-11-11
@@ -31,6 +35,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Fixed
 * The block proposer component now retains pending deploys and transfers across a restart.
+
 
 
 ## [1.4.0] - 2021-10-04
