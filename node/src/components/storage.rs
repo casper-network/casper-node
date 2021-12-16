@@ -113,7 +113,7 @@ const DEFAULT_MAX_DEPLOY_METADATA_STORE_SIZE: usize = 300 * GIB;
 /// Default max state store size.
 const DEFAULT_MAX_STATE_STORE_SIZE: usize = 10 * GIB;
 /// Maximum number of allowed dbs.
-const MAX_DB_COUNT: u32 = 11;
+const MAX_DB_COUNT: u32 = 12;
 
 /// OS-specific lmdb flags.
 #[cfg(not(target_os = "macos"))]
