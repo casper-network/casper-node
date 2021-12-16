@@ -33,6 +33,8 @@ pub struct ProtocolConfig {
     pub(crate) global_state_update: Option<GlobalStateUpdate>,
     /// The era ID in which the last emergency restart happened.
     pub(crate) last_emergency_restart: Option<EraId>,
+    /// The era ID starting at which the new Merkle tree-based hashing scheme is applied.
+    pub(crate) merkle_tree_hash_activation: EraId,
 }
 
 impl ProtocolConfig {
@@ -94,6 +96,7 @@ impl ProtocolConfig {
         );
         let activation_point = ActivationPoint::random(rng);
         let last_emergency_restart = rng.gen::<bool>().then(|| rng.gen());
+        let merkle_tree_hash_activation = EraId::from(rng.gen_range(0..5));
 
         ProtocolConfig {
             version: protocol_version,
@@ -101,6 +104,7 @@ impl ProtocolConfig {
             activation_point,
             global_state_update: None,
             last_emergency_restart,
+            merkle_tree_hash_activation,
         }
     }
 }
@@ -113,6 +117,7 @@ impl ToBytes for ProtocolConfig {
         buffer.extend(self.activation_point.to_bytes()?);
         buffer.extend(self.global_state_update.to_bytes()?);
         buffer.extend(self.last_emergency_restart.to_bytes()?);
+        buffer.extend(self.merkle_tree_hash_activation.to_bytes()?);
         Ok(buffer)
     }
 
@@ -122,6 +127,7 @@ impl ToBytes for ProtocolConfig {
             + self.activation_point.serialized_length()
             + self.global_state_update.serialized_length()
             + self.last_emergency_restart.serialized_length()
+            + self.merkle_tree_hash_activation.serialized_length()
     }
 }
 
@@ -134,12 +140,14 @@ impl FromBytes for ProtocolConfig {
         let (activation_point, remainder) = ActivationPoint::from_bytes(remainder)?;
         let (global_state_update, remainder) = Option::<GlobalStateUpdate>::from_bytes(remainder)?;
         let (last_emergency_restart, remainder) = Option::<EraId>::from_bytes(remainder)?;
+        let (merkle_tree_hash_activation, remainder) = EraId::from_bytes(remainder)?;
         let protocol_config = ProtocolConfig {
             version,
             hard_reset,
             activation_point,
             global_state_update,
             last_emergency_restart,
+            merkle_tree_hash_activation,
         };
         Ok((protocol_config, remainder))
     }
@@ -227,6 +235,7 @@ mod tests {
             activation_point: ActivationPoint::EraId(upgrade_era),
             global_state_update: None,
             last_emergency_restart: None,
+            merkle_tree_hash_activation: EraId::from(0),
         };
 
         // The block before this protocol version: a switch block with previous era and version.

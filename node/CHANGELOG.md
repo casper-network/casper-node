@@ -19,6 +19,8 @@ All notable changes to this project will be documented in this file.  The format
 * Added `archival_sync` to `[node]` config section, along with archival syncing capabilities
 * Added `max_parallel_deploy_fetches` and `max_parallel_trie_fetches` config options to the `[node]` section to control how many requests are made in parallel while syncing.
 * Add capabilities for known nodes to slow down the reconnection process of outdated legacy nodes still out on the internet.
+* Add `merkle_tree_hash_activation` to the chainspec to specify the first era in which the new Merkle tree-based hashing scheme is used.
+
 
 ### Changed
 * `enable_manual_sync` configuration parameter defaults to `true`.
