@@ -25,7 +25,7 @@ fn should_run_ee_584_no_errored_session_transforms() {
 
     assert!(builder.is_error());
 
-    let transforms = builder.get_transforms();
+    let transforms = builder.get_execution_journals();
 
     assert!(!transforms[0].iter().any(|(_, t)| {
         if let Transform::Write(StoredValue::CLValue(cl_value)) = t {

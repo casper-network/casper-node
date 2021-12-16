@@ -33,11 +33,13 @@ fn should_run_ee_601_pay_session_new_uref_collision() {
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request);
 
-    let transforms = builder.get_transforms();
+    let transforms = builder.get_execution_journals();
     let transform = &transforms[0];
 
-    let add_keys = if let Some(Transform::AddKeys(keys)) =
-        transform.get(&Key::Account(*DEFAULT_ACCOUNT_ADDR))
+    let add_keys = if let Some((_, Transform::AddKeys(keys))) = transform
+        .clone()
+        .into_iter()
+        .find(|(key, _)| key == &Key::Account(*DEFAULT_ACCOUNT_ADDR))
     {
         keys
     } else {
