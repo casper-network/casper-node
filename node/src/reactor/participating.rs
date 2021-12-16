@@ -1074,13 +1074,13 @@ impl reactor::Reactor for Reactor {
                         block: Box::new(block),
                         execution_results: execution_results
                             .iter()
-                            .map(|(hash, (_header, results))| (*hash, results.clone()))
+                            .map(|(hash, _header, results)| (*hash, results.clone()))
                             .collect(),
                     });
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
 
                 // send to event stream
-                for (deploy_hash, (deploy_header, execution_result)) in execution_results {
+                for (deploy_hash, deploy_header, execution_result) in execution_results {
                     let reactor_event = ParticipatingEvent::EventStreamServer(
                         event_stream_server::Event::DeployProcessed {
                             deploy_hash,

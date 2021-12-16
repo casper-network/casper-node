@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::BTreeMap,
     fmt::{self, Display, Formatter},
 };
 
@@ -80,7 +80,7 @@ pub(super) async fn step_success<REv>(
 pub(crate) async fn linear_chain_block<REv>(
     effect_builder: EffectBuilder<REv>,
     block: Block,
-    execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
+    execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
 ) where
     REv: From<ContractRuntimeAnnouncement>,
 {
