@@ -86,7 +86,8 @@ fn should_fail_to_get_funds_from_faucet_stored() {
         _ => panic!("should be an error"),
     }
 
-    // Verify that even though execution failed, we still emit the `Identity` transform for the contract we called.
+    // Verify that even though execution failed, we still emit the `Identity` transform for the
+    // contract we called.
     let transforms = builder.get_execution_journals().last().unwrap().clone();
     assert!(
         transforms
