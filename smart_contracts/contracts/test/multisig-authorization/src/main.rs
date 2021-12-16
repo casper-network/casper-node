@@ -39,7 +39,8 @@ impl From<UserError> for ApiError {
     }
 }
 
-/// Checks if at least one of provided authorization keys belongs to a role defined as a slice of `AccountHash`es.
+/// Checks if at least one of provided authorization keys belongs to a role defined as a slice of
+/// `AccountHash`es.
 fn has_role_access_to(role_keys: &[AccountHash]) -> bool {
     let authorization_keys = runtime::list_authorization_keys();
     let role_b_keys: BTreeSet<AccountHash> = role_keys.iter().copied().collect();

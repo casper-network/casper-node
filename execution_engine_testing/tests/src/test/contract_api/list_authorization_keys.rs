@@ -18,7 +18,7 @@ const DEFAULT_WEIGHT: Weight = Weight::new(1);
 const CONTRACT_ADD_ASSOCIATED_KEY: &str = "add_associated_key.wasm";
 
 const CONTRACT_LIST_AUTHORIZATION_KEYS: &str = "list_authorization_keys.wasm";
-const ARG_EXPECTED_AUTHORIZATION_KEYS: &str = "expected_authorized_keys";
+const ARG_EXPECTED_AUTHORIZATION_KEYS: &str = "expected_authorization_keys";
 
 static ACCOUNT_1_SECRET_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::secp256k1_from_bytes(&[234u8; 32]).unwrap());

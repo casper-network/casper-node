@@ -2688,6 +2688,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "multisig-authorization"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "named-dictionary-test"
 version = "0.1.0"
 dependencies = [

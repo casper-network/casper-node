@@ -8,7 +8,7 @@ use alloc::collections::BTreeSet;
 use casper_contract::contract_api::runtime;
 use casper_types::{account::AccountHash, ApiError};
 
-const ARG_EXPECTED_AUTHORIZATION_KEYS: &str = "expected_authorized_keys";
+const ARG_EXPECTED_AUTHORIZATION_KEYS: &str = "expected_authorization_keys";
 
 #[repr(u16)]
 enum UserError {

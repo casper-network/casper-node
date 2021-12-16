@@ -12,6 +12,5 @@ doctest = false
 test = false
 
 [dependencies]
-base16 = { version = "0.2.1", default-features = false }
 casper-contract = { path = "../../../contract" }
 casper-types = { path = "../../../../types" }
