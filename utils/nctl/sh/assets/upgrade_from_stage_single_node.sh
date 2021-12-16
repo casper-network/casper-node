@@ -199,6 +199,7 @@ function _setup_asset_node_configs()
         "cfg['rest_server']['address']='0.0.0.0:$(get_node_port_rest "$NODE_ID")';"
         "cfg['rpc_server']['address']='0.0.0.0:$(get_node_port_rpc "$NODE_ID")';"
         "cfg['event_stream_server']['address']='0.0.0.0:$(get_node_port_sse "$NODE_ID")';"
+        "cfg['node']['archival_sync']=False;"
         "toml.dump(cfg, open('$PATH_TO_CONFIG_FILE', 'w'));"
     )
     python3 -c "${SCRIPT[*]}"
