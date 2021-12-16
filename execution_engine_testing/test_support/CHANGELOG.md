@@ -15,7 +15,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Changed
 * Revert the change to the path detection logic applied in v2.0.1.
-
+* `WasmTestBuilder::get_transforms` is deprecated in favor of `WasmTestBuilder::get_execution_journals`.
 
 
 ## [2.0.1] - 2021-11-4

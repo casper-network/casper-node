@@ -125,6 +125,6 @@ fn main() {
     test_builder.exec(exec_request).expect_success().commit();
 
     if args.verbose {
-        println!("{:#?}", test_builder.get_transforms());
+        println!("{:#?}", test_builder.get_execution_journals());
     }
 }
