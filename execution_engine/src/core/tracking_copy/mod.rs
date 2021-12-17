@@ -689,14 +689,12 @@ pub fn validate_query_proof(
         if let StoredValue::ContractPackage(_) = proof_value {
             proof_value = proofs
                 .get(index + 1)
-                .expect("expected a contract after this contract package.")
+                .ok_or(ValidationError::PathCold)?
                 .value();
             continue;
         }
 
-        let path_component = path_iter
-            .next()
-            .expect("expected path component but none found.");
+        let path_component = path_iter.next().ok_or(ValidationError::PathCold)?;
 
         let named_keys = match proof_value {
             StoredValue::Account(account) => account.named_keys(),
