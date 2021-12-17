@@ -22,7 +22,6 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
-
 ## [1.4.2] - 2021-11-11
 
 ### Changed
