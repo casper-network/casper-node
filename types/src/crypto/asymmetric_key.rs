@@ -10,6 +10,7 @@ use core::{
     convert::TryFrom,
     fmt::{self, Debug, Display, Formatter},
     hash::{Hash, Hasher},
+    iter,
     marker::Copy,
 };
 
@@ -67,45 +68,13 @@ pub const SYSTEM_ACCOUNT: PublicKey = PublicKey::System;
 pub trait AsymmetricType<'a>
 where
     Self: 'a + Sized + Tagged<u8>,
-    &'a Self: Into<Vec<u8>>,
 {
     /// Converts `self` to hex, where the first byte represents the algorithm tag.
-    fn to_hex(&'a self) -> String {
-        checksummed_hex::encode(&vec![self.tag()]) + &checksummed_hex::encode(&self.into())
-    }
+    fn to_hex(&'a self) -> String;
 
     /// Tries to decode `Self` from its hex-representation.  The hex format should be as produced
     /// by `AsymmetricType::to_hex()`.
-    fn from_hex<A: AsRef<[u8]>>(input: A) -> Result<Self, Error> {
-        if input.as_ref().len() < 2 {
-            return Err(Error::AsymmetricKey(
-                "failed to decode from hex: too short".to_string(),
-            ));
-        }
-
-        let (tag_hex, key_hex) = input.as_ref().split_at(2);
-
-        let tag = checksummed_hex::decode(&tag_hex)?;
-        let key_bytes = checksummed_hex::decode(&key_hex)?;
-
-        match tag[0] {
-            SYSTEM_TAG => {
-                if key_bytes.is_empty() {
-                    Ok(Self::system())
-                } else {
-                    Err(Error::AsymmetricKey(
-                        "failed to decode from hex: invalid system variant".to_string(),
-                    ))
-                }
-            }
-            ED25519_TAG => Self::ed25519_from_bytes(&key_bytes),
-            SECP256K1_TAG => Self::secp256k1_from_bytes(&key_bytes),
-            _ => Err(Error::AsymmetricKey(format!(
-                "failed to decode from hex: invalid tag.  Expected {}, {} or {}, got {}",
-                SYSTEM_TAG, ED25519_TAG, SECP256K1_TAG, tag[0]
-            ))),
-        }
-    }
+    fn from_hex<A: AsRef<[u8]>>(input: A) -> Result<Self, Error>;
 
     /// Constructs a new system variant.
     fn system() -> Self;
@@ -229,7 +198,43 @@ impl PublicKey {
     }
 }
 
-impl AsymmetricType<'_> for PublicKey {
+impl<'a> AsymmetricType<'a> for PublicKey {
+    fn to_hex(&'a self) -> String {
+        checksummed_hex::encode(&vec![self.tag()])
+            + &checksummed_hex::encode(&Vec::<u8>::from(self))
+    }
+
+    fn from_hex<A: AsRef<[u8]>>(input: A) -> Result<Self, Error> {
+        if input.as_ref().len() < 2 {
+            return Err(Error::AsymmetricKey(
+                "failed to decode public key from hex: too short".to_string(),
+            ));
+        }
+
+        let (tag_hex, key_hex) = input.as_ref().split_at(2);
+
+        let tag = checksummed_hex::decode(&tag_hex)?;
+        let key_bytes = checksummed_hex::decode(&key_hex)?;
+
+        match tag[0] {
+            SYSTEM_TAG => {
+                if key_bytes.is_empty() {
+                    Ok(Self::system())
+                } else {
+                    Err(Error::AsymmetricKey(
+                        "failed to decode public key from hex: invalid system variant".to_string(),
+                    ))
+                }
+            }
+            ED25519_TAG => Self::ed25519_from_bytes(&key_bytes),
+            SECP256K1_TAG => Self::secp256k1_from_bytes(&key_bytes),
+            _ => Err(Error::AsymmetricKey(format!(
+                "failed to decode public key from hex: invalid tag.  Expected {}, {} or {}, got {}",
+                SYSTEM_TAG, ED25519_TAG, SECP256K1_TAG, tag[0]
+            ))),
+        }
+    }
+
     fn system() -> Self {
         PublicKey::System
     }
@@ -495,7 +500,50 @@ impl Signature {
     }
 }
 
-impl AsymmetricType<'_> for Signature {
+impl<'a> AsymmetricType<'a> for Signature {
+    fn to_hex(&'a self) -> String {
+        let bytes = iter::once(self.tag())
+            .chain(Vec::<u8>::from(self))
+            .collect::<Vec<u8>>();
+        base16::encode_lower(&bytes)
+    }
+
+    fn from_hex<A: AsRef<[u8]>>(input: A) -> Result<Self, Error> {
+        if input.as_ref().len() < 2 {
+            return Err(Error::AsymmetricKey(
+                "failed to decode signature from hex: too short".to_string(),
+            ));
+        }
+
+        let (tag_bytes, key_bytes) = input.as_ref().split_at(2);
+        let mut tag = [0u8; 1];
+        base16::decode_slice(tag_bytes, tag.as_mut())?;
+
+        match tag[0] {
+            SYSTEM_TAG => {
+                if key_bytes.is_empty() {
+                    Ok(Self::system())
+                } else {
+                    Err(Error::AsymmetricKey(
+                        "failed to decode signature from hex: invalid system variant".to_string(),
+                    ))
+                }
+            }
+            ED25519_TAG => {
+                let bytes = base16::decode(key_bytes)?;
+                Self::ed25519_from_bytes(&bytes)
+            }
+            SECP256K1_TAG => {
+                let bytes = base16::decode(key_bytes)?;
+                Self::secp256k1_from_bytes(&bytes)
+            }
+            _ => Err(Error::AsymmetricKey(format!(
+                "failed to decode signature from hex: invalid tag.  Expected {}, {} or {}, got {}",
+                SYSTEM_TAG, ED25519_TAG, SECP256K1_TAG, tag[0]
+            ))),
+        }
+    }
+
     fn system() -> Self {
         Signature::System
     }
@@ -696,8 +744,7 @@ impl JsonSchema for Signature {
         let schema = gen.subschema_for::<String>();
         let mut schema_object = schema.into_object();
         schema_object.metadata().description = Some(
-            "Checksummed hex-encoded cryptographic signature, including the algorithm tag prefix."
-                .to_string(),
+            "Hex-encoded cryptographic signature, including the algorithm tag prefix.".to_string(),
         );
         schema_object.into()
     }

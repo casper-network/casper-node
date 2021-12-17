@@ -424,22 +424,22 @@ mod tests {
     }"#;
 
     const CHECKSUMMED_SAMPLE_DEPLOY: &str = r#"{
-  "hash": "4858BbD79Ab7B825244C4e6959CbcD588A05608168Ef36518bC6590937191D55",
+  "hash": "4858bbd79ab7b825244c4e6959cbcd588a05608168ef36518bc6590937191d55",
   "header": {
     "account": "01F60BCe2bB1059C41910EaC1E7Ee6C3EF4C8fcC63A901Eb9603C1524caDFb0C18",
     "timestamp": "2021-01-19T01:18:19.120Z",
     "ttl": "10s",
     "gas_price": 1,
-    "body_hash": "95F2F2358c4864F01F8B073Ae6f5AE67BAeAf7747fc0799D0078743C513BC1De",
+    "body_hash": "95f2f2358c4864f01f8b073ae6f5ae67baeaf7747fc0799d0078743c513bc1de",
     "dependencies": [
-      "be5fDeea0240E999E376F8ecBCe1BD4FD9336f58daE4A5842558a4da6AD35aa8",
-      "168D7Ea9C88e76B3Eef72759F2A7af24663cc871A469C7bA1387ca479E82FB41"
+      "be5fdeea0240e999e376f8ecbce1bd4fd9336f58dae4a5842558a4da6ad35aa8",
+      "168d7ea9c88e76b3eef72759f2a7af24663cc871a469c7ba1387ca479e82fb41"
     ],
     "chain_name": "casper-test-chain-name-1"
   },
   "payment": {
     "StoredVersionedContractByHash": {
-      "hash": "09dceE4B212Cfd53642Ab323fbEf07DAFaFc6F945A80A00147f62910A915C4E6",
+      "hash": "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6",
       "version": null,
       "entry_point": "entrypoint",
       "args": [
@@ -464,7 +464,7 @@ mod tests {
   },
   "session": {
     "StoredVersionedContractByHash": {
-      "hash": "09dceE4B212Cfd53642Ab323fbEf07DAFaFc6F945A80A00147f62910A915C4E6",
+      "hash": "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6",
       "version": null,
       "entry_point": "entrypoint",
       "args": [
@@ -490,11 +490,11 @@ mod tests {
   "approvals": [
     {
       "signer": "01F60BCe2bB1059C41910EaC1E7Ee6C3EF4C8fcC63A901Eb9603C1524caDFb0C18",
-      "signature": "010f538Ef188770CdbF608bc2D7Aa9460108B419B2B629F5e0714204A7f29149809a1D52776b0C514e3320494fDf6F9E9747F06f2c14DdF6F924cE218148E2840a"
+      "signature": "010f538ef188770cdbf608bc2d7aa9460108b419b2b629f5e0714204a7f29149809a1d52776b0c514e3320494fdf6f9e9747f06f2c14ddf6f924ce218148e2840a"
     },
     {
       "signer": "01e67D6e56ae07ecA98b07EcEc8cFBe826b4d5BC51f3A86590C0882cdAfBD72fcC",
-      "signature": "01c4F58D7F6145c1e4397efCE766149CDe5450CBe74991269161e5e1f30A397e6Bc4c484F3c72a645cefD42c55CFdE0294bfd91DE55cA977798C3C8d2A7E43a40c"
+      "signature": "01c4f58d7f6145c1e4397efce766149cde5450cbe74991269161e5e1f30a397e6bc4c484f3c72a645cefd42c55cfde0294bfd91de55ca977798c3c8d2a7e43a40c"
     }
   ]
 }"#;

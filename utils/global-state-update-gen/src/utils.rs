@@ -5,15 +5,12 @@ use std::{
 
 use casper_hashing::Digest;
 use casper_types::{
-    bytesrepr::ToBytes, checksummed_hex, system::auction::SeigniorageRecipientsSnapshot, Key,
-    PublicKey, StoredValue,
+    bytesrepr::ToBytes, system::auction::SeigniorageRecipientsSnapshot, Key, PublicKey, StoredValue,
 };
 
 /// Parses a Digest from a string. Panics if parsing fails.
 pub fn hash_from_str(hex_str: &str) -> Digest {
-    (&checksummed_hex::decode(hex_str).unwrap()[..])
-        .try_into()
-        .unwrap()
+    (&base16::decode(hex_str).unwrap()[..]).try_into().unwrap()
 }
 
 /// Prints a global state update entry in a format ready for inclusion in a TOML file.

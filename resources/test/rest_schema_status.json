@@ -96,7 +96,7 @@
     "additionalProperties": false,
     "definitions": {
       "Digest": {
-        "description": "Checksummed hex-encoded hash digest.",
+        "description": "Hex-encoded hash digest.",
         "type": "string"
       },
       "PeersMap": {

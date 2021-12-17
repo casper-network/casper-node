@@ -88,7 +88,8 @@ impl ConsensusKeyPair {
 ///
 /// Note that this type has custom `Serialize` and `Deserialize` implementations to allow the
 /// `public_key` and `signature` fields to be encoded to all-lowercase hex, hence circumventing the
-/// checksummed-hex encoding used by `PublicKey` and `Signature` normally.
+/// checksummed-hex encoding used by `PublicKey` normally and `Signature` at versions 1.4.2 and
+/// 1.4.3.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ConsensusCertificate {
     public_key: PublicKey,
@@ -133,14 +134,14 @@ impl Display for ConsensusCertificate {
 /// and `Deserialize` implementations of `ConsensusCertificate` to allow handshaking between nodes
 /// running the casper-node v1.4.2 software and later versions.
 ///
-/// Checksummed-hex encoding was introduced in 1.4.2 and is applied to `PublicKey` and `Signature`
+/// Checksummed-hex encoding was introduced in 1.4.2 and was applied to `PublicKey` and `Signature`
 /// types, affecting the encoding of `ConsensusCertificate` since handshaking uses a human-readable
 /// type of encoder/decoder.
 ///
-/// The version immediately after 1.4.2 and subsequent versions use a slightly different style of
-/// checksummed-hex encoding which is incompatible with the 1.4.2 style.  To effectively disable
-/// checksummed-hex encoding, we simply need to use an all-lowercase form of hex encoding for the
-/// `PublicKey` and `Signature` types.
+/// The 1.4.3 version immediately after 1.4.2 uses a slightly different style of checksummed-hex
+/// encoding which is incompatible with the 1.4.2 style.  To effectively disable checksummed-hex
+/// encoding, we simply need to use an all-lowercase form of hex encoding for the `PublicKey` and
+/// `Signature` types.
 ///
 /// The `HumanReadableCertificate` enables that by explicitly being constructed from all-lowercase
 /// hex encoded types, while the `NonHumanReadableCertificate` is a simple mirror of

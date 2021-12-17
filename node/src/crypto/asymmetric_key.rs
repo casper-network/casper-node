@@ -639,10 +639,9 @@ MHQCAQEEIL3fqaMKAfXSK1D2PnVVbZlZ7jTv133nukq4+95s6kmcoAcGBSuBBAAK
 oUQDQgAEQI6VJjFv0fje9IDdRbLMcv/XMnccnOtdkv+kBR5u4ISEAkuc2TFWQHX0
 Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
 -----END EC PRIVATE KEY-----"#;
-            let key_bytes = checksummed_hex::decode(
-                "bddfa9a30a01f5d22b50f63e75556d9959ee34efd77de7ba4ab8fbde6cea499c",
-            )
-            .unwrap();
+            let key_bytes =
+                base16::decode("bddfa9a30a01f5d22b50f63e75556d9959ee34efd77de7ba4ab8fbde6cea499c")
+                    .unwrap();
             let expected_key = SecretKey::secp256k1_from_bytes(key_bytes).unwrap();
             super::known_secret_key_to_pem(&expected_key, KNOWN_KEY_PEM, SECP256K1_TAG);
         }
@@ -903,13 +902,13 @@ kv+kBR5u4ISEAkuc2TFWQHX0Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
         // compressed.
         let uncompressed_hex = {
             let tag_bytes = vec![0x02u8];
-            checksummed_hex::encode(&tag_bytes)
-                + &checksummed_hex::encode(&secp256k1_public_key.to_encoded_point(false).as_bytes())
+            base16::encode_lower(&tag_bytes)
+                + &base16::encode_lower(&secp256k1_public_key.to_encoded_point(false).as_bytes())
         };
 
         format!(
             "02{}",
-            checksummed_hex::encode(secp256k1_public_key.to_encoded_point(false).as_bytes())
+            base16::encode_lower(secp256k1_public_key.to_encoded_point(false).as_bytes())
                 .to_lowercase()
         );
         let from_uncompressed_hex = PublicKey::from_hex(&uncompressed_hex).unwrap();

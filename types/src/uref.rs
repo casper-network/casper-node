@@ -22,7 +22,7 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 use crate::{
     bytesrepr,
     bytesrepr::{Error, FromBytes},
-    checksummed_hex, AccessRights, ApiError, Key, ACCESS_RIGHTS_SERIALIZED_LENGTH,
+    AccessRights, ApiError, Key, ACCESS_RIGHTS_SERIALIZED_LENGTH,
 };
 
 /// The number of bytes in a [`URef`] address.
@@ -177,7 +177,7 @@ impl URef {
         format!(
             "{}{}-{:03o}",
             UREF_FORMATTED_STRING_PREFIX,
-            checksummed_hex::encode(&self.addr()),
+            base16::encode_lower(&self.addr()),
             access_rights_bits
         )
     }
@@ -191,7 +191,7 @@ impl URef {
         if parts.len() != 2 {
             return Err(FromStrError::MissingSuffix);
         }
-        let addr = URefAddr::try_from(checksummed_hex::decode(parts[0])?.as_ref())?;
+        let addr = URefAddr::try_from(base16::decode(parts[0])?.as_ref())?;
         let access_rights_value = u8::from_str_radix(parts[1], 8)?;
         let access_rights = AccessRights::from_bits(access_rights_value)
             .ok_or(FromStrError::InvalidAccessRights)?;
@@ -208,8 +208,7 @@ impl JsonSchema for URef {
     fn json_schema(gen: &mut SchemaGenerator) -> Schema {
         let schema = gen.subschema_for::<String>();
         let mut schema_object = schema.into_object();
-        schema_object.metadata().description =
-            Some(String::from("Checksummed hex-encoded, formatted URef."));
+        schema_object.metadata().description = Some(String::from("Hex-encoded, formatted URef."));
         schema_object.into()
     }
 }
@@ -221,7 +220,7 @@ impl Display for URef {
         write!(
             f,
             "URef({}, {})",
-            checksummed_hex::encode(&addr),
+            base16::encode_lower(&addr),
             access_rights
         )
     }

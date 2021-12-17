@@ -15,7 +15,8 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Changed
 * Increase `DICTIONARY_ITEM_KEY_MAX_LENGTH` to 128.
-* Change checksummed hex implementation to use 32 byte rather than 64 byte blake2b digests. 
+* Change checksummed-hex implementation to use 32 byte rather than 64 byte blake2b digests.
+* Restrict usage of checksummed-hex encoding and decoding to account hash and public key types. 
 
 
 

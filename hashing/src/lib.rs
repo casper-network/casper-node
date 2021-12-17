@@ -29,10 +29,7 @@ use rand::{distributions::Standard, prelude::Distribution, Rng};
 use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
-use casper_types::{
-    bytesrepr::{self, FromBytes, ToBytes},
-    checksummed_hex,
-};
+use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 pub use chunk_with_proof::ChunkWithProof;
 
 /// Possible hashing errors.
@@ -49,7 +46,7 @@ pub enum Error {
 /// The output of the hash function.
 #[derive(Copy, Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Default, JsonSchema)]
 #[serde(deny_unknown_fields)]
-#[schemars(with = "String", description = "Checksummed hex-encoded hash digest.")]
+#[schemars(with = "String", description = "Hex-encoded hash digest.")]
 pub struct Digest(#[schemars(skip, with = "String")] pub(crate) [u8; Digest::LENGTH]);
 
 impl Digest {
@@ -206,7 +203,7 @@ impl Digest {
 
     /// Returns a `Digest` parsed from a hex-encoded `Digest`.
     pub fn from_hex<T: AsRef<[u8]>>(hex_input: T) -> Result<Self, Error> {
-        let bytes = checksummed_hex::decode(&hex_input).map_err(Error::Base16DecodeError)?;
+        let bytes = base16::decode(&hex_input).map_err(Error::Base16DecodeError)?;
         let slice: [u8; Self::LENGTH] = bytes
             .try_into()
             .map_err(|_| Error::IncorrectDigestLength(hex_input.as_ref().len()))?;
@@ -251,7 +248,7 @@ impl Display for Digest {
 
 impl Debug for Digest {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{}", checksummed_hex::encode(&self.0))
+        write!(f, "{}", base16::encode_lower(&self.0))
     }
 }
 
@@ -309,7 +306,7 @@ impl FromBytes for Digest {
 impl Serialize for Digest {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            checksummed_hex::encode(&self.0).serialize(serializer)
+            base16::encode_lower(&self.0).serialize(serializer)
         } else {
             // This is to keep backwards compatibility with how HexForm encodes
             // byte arrays. HexForm treats this like a slice.
@@ -322,8 +319,7 @@ impl<'de> Deserialize<'de> for Digest {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         if deserializer.is_human_readable() {
             let hex_string = String::deserialize(deserializer)?;
-            let bytes =
-                checksummed_hex::decode(hex_string.as_bytes()).map_err(SerdeError::custom)?;
+            let bytes = base16::decode(hex_string.as_bytes()).map_err(SerdeError::custom)?;
             let data =
                 <[u8; Digest::LENGTH]>::try_from(bytes.as_ref()).map_err(SerdeError::custom)?;
             Ok(Digest::from(data))
@@ -379,23 +375,23 @@ mod tests {
         let inputs_and_digests = [
             (
                 "",
-                "0e5751c026E543B2E8AB2eB06099daA1d1e5df47778F7787FAaB45CDF12fe3A8",
+                "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8",
             ),
             (
                 "abc",
-                "bDDd813C634239723171EF3FEE98579B94964e3bB1Cb3e427262c8C068D52319",
+                "bddd813c634239723171ef3fee98579b94964e3bb1cb3e427262c8c068d52319",
             ),
             (
                 "0123456789",
-                "7b6Cb8D374484e221785288B035dc53FC9DDF000607f473FC2a3258d89a70398",
+                "7b6cb8d374484e221785288b035dc53fc9ddf000607f473fc2a3258d89a70398",
             ),
             (
                 "01234567890",
-                "3D199478c18B7fE3cA1F4F2A9B3E07F708Ff66eD52Eb345Db258abE8A812Ed5c",
+                "3d199478c18b7fe3ca1f4f2a9b3e07f708ff66ed52eb345db258abe8a812ed5c",
             ),
             (
                 "The quick brown fox jumps over the lazy dog",
-                "01718CeC35cD3d796Dd00020E0bFeCB473ad23457d063b75EFf29c0fFA2E58A9",
+                "01718cec35cd3d796dd00020e0bfecb473ad23457d063b75eff29c0ffa2e58a9",
             ),
         ];
         for (known_input, expected_digest) in &inputs_and_digests {
