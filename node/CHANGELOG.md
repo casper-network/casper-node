@@ -12,12 +12,15 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
-### Added
-* Add new event to the main SSE server stream accessed via `<IP:Port>/events/main` which emits hashes of expired deploys.
-* Add new event to the main SSE server stream across all endpoints `<IP:PORT>/events/*` which emits a shutdown event when the node shuts down.
+
+
+## 1.4.3 - 2021-12-06
 
 ### Changed
 * `enable_manual_sync` configuration parameter defaults to `true`.
+* Default behavior of LMDB changed to use [`NO_READAHEAD`](https://docs.rs/lmdb/0.8.0/lmdb/struct.EnvironmentFlags.html#associatedconstant.NO_READAHEAD)
+
+
 
 
 ## [1.4.2] - 2021-11-11
