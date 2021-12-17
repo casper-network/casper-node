@@ -107,6 +107,7 @@ steps:
   image: casperlabs/node-build-u1804
   commands:
   - make setup
+  - ./generate-chainspec.sh
   - cargo test --release --tests components
   # - make test CARGO_FLAGS=--release
   # - make test-contracts CARGO_FLAGS=--release
