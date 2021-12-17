@@ -395,7 +395,6 @@ impl TryFrom<u8> for Error {
             d if d == Error::Transfer as u8 => Ok(Error::Transfer),
             d if d == Error::DelegationRateTooLarge as u8 => Ok(Error::DelegationRateTooLarge),
             d if d == Error::DelegatorFundsLocked as u8 => Ok(Error::DelegatorFundsLocked),
-            d if d == Error::GasLimit as u8 => Ok(Error::GasLimit),
             d if d == Error::ArithmeticOverflow as u8 => Ok(Error::ArithmeticOverflow),
             d if d == Error::GasLimit as u8 => Ok(Error::GasLimit),
             d if d == Error::RuntimeStackOverflow as u8 => Ok(Error::RuntimeStackOverflow),
