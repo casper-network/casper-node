@@ -2831,6 +2831,10 @@
                 {
                   "name": "deploy_hash",
                   "value": "5c9b3b099c1378aa8e4a5f07f59ff1fcdc69a83179427c7e67ae0377d94d93fa"
+                },
+                {
+                  "name": "finalized_approvals",
+                  "value": true
                 }
               ],
               "result": {
@@ -2937,6 +2941,15 @@
               "schema": {
                 "$ref": "#/components/schemas/DeployHash",
                 "description": "The deploy hash."
+              }
+            },
+            {
+              "name": "finalized_approvals",
+              "required": false,
+              "schema": {
+                "description": "Whether to return the deploy with the finalized approvals substituted. If `false` or omitted, returns the deploy with the approvals that were originally received by the node.",
+                "default": false,
+                "type": "boolean"
               }
             }
           ],
