@@ -6,6 +6,7 @@ use std::{
     str::FromStr,
 };
 
+use casper_types::EraId;
 use indicatif::ProgressBar;
 use reqwest::ClientBuilder;
 use retrieve_state::{put_block_with_deploys, BlockWithDeploys};
@@ -137,6 +138,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let chain_download_path = env::current_dir()?.join(&opts.chain_download_path);
     let url = format!("{}/rpc", opts.server_host);
+    let merkle_tree_hash_activation = EraId::from(0u64);
 
     let maybe_highest_block = opts.highest_block;
     let maybe_download_block = opts
@@ -158,7 +160,8 @@ async fn main() -> Result<(), anyhow::Error> {
                 }
                 Some(path) => path
             };
-            let mut storage = create_storage(&chain_download_path).expect("should create storage");
+            let mut storage = create_storage(&chain_download_path, merkle_tree_hash_activation)
+                .expect("should create storage");
             let block_files = get_block_files(&block_file_download_path);
             println!(
                 "loading {} blocks from {} into db at {}",
@@ -201,7 +204,8 @@ async fn main() -> Result<(), anyhow::Error> {
                     .unwrap();
             let progress = ProgressBar::new(highest_block.header.height);
 
-            let mut storage = create_storage(&chain_download_path).expect("should create storage");
+            let mut storage = create_storage(&chain_download_path, merkle_tree_hash_activation)
+                .expect("should create storage");
             println!("Downloading all blocks to genesis...");
             let (downloaded, read_from_disk) = retrieve_state::download_or_read_blocks(
                 &mut client,

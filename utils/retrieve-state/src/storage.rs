@@ -20,7 +20,7 @@ use casper_node::{
     types::{Deploy, DeployHash},
     StorageConfig, WithDir,
 };
-use casper_types::ProtocolVersion;
+use casper_types::{EraId, ProtocolVersion};
 
 use crate::DEFAULT_MAX_READERS;
 
@@ -127,7 +127,10 @@ pub fn normalize_path(path: impl AsRef<Path>) -> Result<PathBuf, anyhow::Error> 
     }
 }
 
-pub fn create_storage(chain_download_path: impl AsRef<Path>) -> Result<Storage, anyhow::Error> {
+pub fn create_storage(
+    chain_download_path: impl AsRef<Path>,
+    merkle_tree_hash_activation: EraId,
+) -> Result<Storage, anyhow::Error> {
     let chain_download_path = normalize_path(chain_download_path)?;
     let mut storage_config = StorageConfig::default();
     storage_config.path = chain_download_path.clone();
@@ -139,6 +142,7 @@ pub fn create_storage(chain_download_path: impl AsRef<Path>) -> Result<Storage, 
         "test",
         Ratio::new(1, 3),
         None,
+        merkle_tree_hash_activation,
     )?)
 }
 

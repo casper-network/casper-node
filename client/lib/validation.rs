@@ -287,7 +287,11 @@ pub(crate) fn validate_get_block_response(
         return Ok(());
     };
     let block = Block::from(json_block);
-    block.verify()?;
+
+    // TODO[RC]: Temporarily disabled as we need to have the `merkle_tree_hash_activation` here.
+    // We could possibly do the verification with the arbitrarily chosen hashing algorithm.
+    // block.verify()?;
+
     match maybe_block_identifier {
         Some(BlockIdentifier::Hash(block_hash)) => {
             if block_hash != block.hash() {

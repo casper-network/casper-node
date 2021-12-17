@@ -243,11 +243,17 @@ impl LinearChain {
         vec![Outcome::StoreBlock(block, execution_results)]
     }
 
-    pub(super) fn handle_put_block(&mut self, block: Box<Block>) -> Outcomes {
+    pub(super) fn handle_put_block(
+        &mut self,
+        block: Box<Block>,
+        merkle_tree_hash_activation: EraId,
+    ) -> Outcomes {
         let mut outcomes = Vec::new();
         let signatures = self.new_block(&*block);
         self.latest_block = Some(*block.clone());
-        if let Some(key_block_info) = KeyBlockInfo::maybe_from_block_header(block.header()) {
+        if let Some(key_block_info) =
+            KeyBlockInfo::maybe_from_block_header(block.header(), merkle_tree_hash_activation)
+        {
             let current_era = key_block_info.era_id();
             self.key_block_info.insert(current_era, key_block_info);
             if let Some(old_era_id) = self.lowest_acceptable_era_id(current_era).checked_sub(1) {

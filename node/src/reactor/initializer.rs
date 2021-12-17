@@ -209,6 +209,10 @@ impl Reactor {
                 .chainspec()
                 .protocol_config
                 .last_emergency_restart,
+            chainspec_loader
+                .chainspec()
+                .protocol_config
+                .merkle_tree_hash_activation,
         )?;
 
         let contract_runtime = ContractRuntime::new(
@@ -219,6 +223,10 @@ impl Reactor {
             chainspec_loader.chainspec().system_costs_config,
             chainspec_loader.chainspec().core_config.max_associated_keys,
             registry,
+            chainspec_loader
+                .chainspec()
+                .protocol_config
+                .merkle_tree_hash_activation,
         )?;
 
         if crashed {

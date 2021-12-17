@@ -126,7 +126,7 @@ impl<T: Item> Display for Event<T> {
                 }
             }
             Event::GotRemotely { item, source } => {
-                write!(formatter, "got {} from {}", item.id(), source)
+                write!(formatter, "got {} from {}", /*item.id()*/ "X", source) // TODO[RC]: ?
             }
             Event::RejectedRemotely { id, source } => {
                 write!(formatter, "other component rejected {} from {}", id, source)

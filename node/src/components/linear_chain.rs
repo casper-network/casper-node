@@ -13,7 +13,7 @@ use num::rational::Ratio;
 use prometheus::Registry;
 use tracing::error;
 
-use casper_types::ProtocolVersion;
+use casper_types::{EraId, ProtocolVersion};
 
 use crate::{
     components::{
@@ -43,6 +43,7 @@ pub(crate) struct LinearChainComponent<I> {
     metrics: LinearChainMetrics,
     /// If true, the process should stop execution to allow an upgrade to proceed.
     stop_for_upgrade: bool,
+    merkle_tree_hash_activation: EraId,
     _marker: PhantomData<I>,
 }
 
@@ -54,6 +55,7 @@ impl<I> LinearChainComponent<I> {
         unbonding_delay: u64,
         finality_threshold_fraction: Ratio<u64>,
         next_upgrade_activation_point: Option<ActivationPoint>,
+        merkle_tree_hash_activation: EraId,
     ) -> Result<Self, prometheus::Error> {
         let metrics = LinearChainMetrics::new(registry)?;
         let linear_chain_state = LinearChain::new(
@@ -67,12 +69,17 @@ impl<I> LinearChainComponent<I> {
             linear_chain_state,
             metrics,
             stop_for_upgrade: false,
+            merkle_tree_hash_activation,
             _marker: PhantomData,
         })
     }
 
     pub(crate) fn stop_for_upgrade(&self) -> bool {
         self.stop_for_upgrade
+    }
+
+    fn merkle_tree_hash_activation(&self) -> EraId {
+        self.merkle_tree_hash_activation
     }
 }
 
@@ -174,7 +181,9 @@ where
                 self.metrics
                     .block_completion_duration
                     .set(completion_duration as i64);
-                let outcomes = self.linear_chain_state.handle_put_block(block);
+                let outcomes = self
+                    .linear_chain_state
+                    .handle_put_block(block, self.merkle_tree_hash_activation());
                 outcomes_to_effects(effect_builder, outcomes)
             }
             Event::FinalitySignatureReceived(fs, gossiped) => {

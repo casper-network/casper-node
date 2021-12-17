@@ -194,7 +194,8 @@ impl<I: Debug> Display for Event<I> {
             Event::BlockAdded(block_header) => write!(
                 f,
                 "A block has been added to the linear chain: {}",
-                block_header.hash(),
+                "X" // TODO[RC]: ?
+                //block_header.hash(),
             ),
             Event::ResolveValidity(ResolveValidity {
                 era_id,
@@ -291,9 +292,11 @@ where
             Event::NewBlockPayload(new_block_payload) => {
                 self.handle_new_block_payload(effect_builder, rng, new_block_payload)
             }
-            Event::BlockAdded(block_header) => {
-                self.handle_block_added(effect_builder, *block_header)
-            }
+            Event::BlockAdded(block_header) => self.handle_block_added(
+                effect_builder,
+                *block_header,
+                self.merkle_tree_hash_activation(),
+            ),
             Event::ResolveValidity(resolve_validity) => {
                 self.resolve_validity(effect_builder, rng, resolve_validity)
             }
@@ -302,9 +305,12 @@ where
                 faulty_num,
                 delay,
             } => self.handle_deactivate_era(effect_builder, era_id, faulty_num, delay),
-            Event::CreateNewEra { switch_blocks } => {
-                self.create_new_era_effects(effect_builder, rng, &switch_blocks)
-            }
+            Event::CreateNewEra { switch_blocks } => self.create_new_era_effects(
+                effect_builder,
+                rng,
+                &switch_blocks,
+                self.merkle_tree_hash_activation(),
+            ),
             Event::GotUpgradeActivationPoint(activation_point) => {
                 self.got_upgrade_activation_point(activation_point)
             }

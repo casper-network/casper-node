@@ -1,5 +1,6 @@
 use std::{path::PathBuf, time::Instant};
 
+use casper_types::EraId;
 use histogram::Histogram;
 use indicatif::{ProgressBar, ProgressStyle};
 use structopt::StructOpt;
@@ -48,8 +49,11 @@ async fn main() -> Result<(), anyhow::Error> {
     let chain_download_path = normalize_path(&opts.chain_download_path)?;
     let lmdb_path = normalize_path(&opts.lmdb_path)?;
 
+    let merkle_tree_hash_activation = EraId::from(0u64);
+
     // Create a separate lmdb for block/deploy storage at chain_download_path.
-    let storage = create_storage(&chain_download_path).expect("should create storage");
+    let storage = create_storage(&chain_download_path, merkle_tree_hash_activation)
+        .expect("should create storage");
 
     // Grab the block previous
     let previous_block = storage
@@ -64,7 +68,8 @@ async fn main() -> Result<(), anyhow::Error> {
         opts.manual_sync_enabled,
     )?;
 
-    let mut execution_pre_state = ExecutionPreState::from(&previous_block_header);
+    let mut execution_pre_state =
+        ExecutionPreState::from_block_header(&previous_block_header, merkle_tree_hash_activation);
     let mut execute_count = 0;
 
     let highest_height_in_chain = storage.read_highest_block()?;
@@ -122,6 +127,7 @@ async fn main() -> Result<(), anyhow::Error> {
             finalized_block,
             deploys,
             transfers,
+            merkle_tree_hash_activation,
         )?;
         let elapsed_micros = start.elapsed().as_micros() as u64;
         execution_time_hist
@@ -129,7 +135,8 @@ async fn main() -> Result<(), anyhow::Error> {
             .map_err(anyhow::Error::msg)?;
 
         let header = block_and_execution_effects.block.take_header();
-        execution_pre_state = ExecutionPreState::from(&header);
+        execution_pre_state =
+            ExecutionPreState::from_block_header(&header, merkle_tree_hash_activation);
         execute_count += 1;
         if opts.verbose {
             eprintln!(

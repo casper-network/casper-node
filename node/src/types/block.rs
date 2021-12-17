@@ -117,6 +117,7 @@ static BLOCK: Lazy<Block> = Lazy::new(|| {
     let finalized_block = FinalizedBlock::doc_example().clone();
     let parent_seed = Digest::from([9u8; Digest::LENGTH]);
     let protocol_version = ProtocolVersion::V1_0_0;
+    let merkle_tree_hash_activation = EraId::new(17_u64);
 
     let secret_key = SecretKey::doc_example();
     let public_key = PublicKey::from(secret_key);
@@ -146,6 +147,7 @@ static BLOCK: Lazy<Block> = Lazy::new(|| {
         finalized_block,
         next_era_validator_weights,
         protocol_version,
+        merkle_tree_hash_activation,
     )
     .expect("could not construct block")
 });
@@ -773,10 +775,11 @@ impl BlockHeader {
     }
 
     /// Hash of the block header.
-    pub fn hash(&self) -> BlockHash {
-        match HashingAlgorithmVersion::from_protocol_version(&self.protocol_version) {
-            HashingAlgorithmVersion::V1 => self.hash_v1(),
-            HashingAlgorithmVersion::V2 => self.hash_v2(),
+    pub fn hash(&self, merkle_tree_hash_activation: EraId) -> BlockHash {
+        if self.era_id() < merkle_tree_hash_activation {
+            self.hash_v1()
+        } else {
+            self.hash_v2()
         }
     }
 
@@ -944,11 +947,15 @@ impl Item for BlockHeaderWithMetadata {
     const TAG: Tag = Tag::BlockHeaderAndFinalitySignaturesByHeight;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    fn validate(&self) -> Result<(), Self::ValidationError> {
-        validate_block_header_and_signature_hash(&self.block_header, &self.block_signatures)
+    fn validate(&self, merkle_tree_hash_activation: EraId) -> Result<(), Self::ValidationError> {
+        validate_block_header_and_signature_hash(
+            &self.block_header,
+            &self.block_signatures,
+            merkle_tree_hash_activation,
+        )
     }
 
-    fn id(&self) -> Self::Id {
+    fn id(&self, _merkle_tree_hash_activation: EraId) -> Self::Id {
         self.block_header.height()
     }
 }
@@ -1315,10 +1322,15 @@ impl HashingAlgorithmVersion {
 }
 
 impl Block {
-    fn hash_block_body(protocol_version: &ProtocolVersion, block_body: &BlockBody) -> Digest {
-        match HashingAlgorithmVersion::from_protocol_version(protocol_version) {
-            HashingAlgorithmVersion::V1 => block_body.hash_v1(),
-            HashingAlgorithmVersion::V2 => block_body.hash_v2(),
+    fn hash_block_body(
+        block_era_id: EraId,
+        block_body: &BlockBody,
+        merkle_tree_hash_activation: EraId,
+    ) -> Digest {
+        if block_era_id < merkle_tree_hash_activation {
+            block_body.hash_v1()
+        } else {
+            block_body.hash_v2()
         }
     }
 
@@ -1329,6 +1341,7 @@ impl Block {
         finalized_block: FinalizedBlock,
         next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
         protocol_version: ProtocolVersion,
+        merkle_tree_hash_activation: EraId,
     ) -> Result<Self, BlockCreationError> {
         let body = BlockBody::new(
             finalized_block.proposer.clone(),
@@ -1336,7 +1349,8 @@ impl Block {
             finalized_block.transfer_hashes,
         );
 
-        let body_hash = Self::hash_block_body(&protocol_version, &body);
+        let body_hash =
+            Self::hash_block_body(finalized_block.era_id, &body, merkle_tree_hash_activation);
 
         let era_end = match (finalized_block.era_report, next_era_validator_weights) {
             (None, None) => None,
@@ -1367,7 +1381,7 @@ impl Block {
         };
 
         Ok(Block {
-            hash: header.hash(),
+            hash: header.hash(merkle_tree_hash_activation),
             header,
             body,
         })
@@ -1376,10 +1390,11 @@ impl Block {
     pub(crate) fn new_from_header_and_body(
         header: BlockHeader,
         body: BlockBody,
+        merkle_tree_hash_activation: EraId,
     ) -> Result<Self, BlockValidationError> {
-        let hash = header.hash();
+        let hash = header.hash(merkle_tree_hash_activation);
         let block = Block { hash, header, body };
-        block.verify()?;
+        block.verify(merkle_tree_hash_activation)?;
         Ok(block)
     }
 
@@ -1441,8 +1456,8 @@ impl Block {
     }
 
     /// Check the integrity of a block by hashing its body and header
-    pub fn verify(&self) -> Result<(), BlockValidationError> {
-        let actual_block_header_hash = self.header().hash();
+    pub fn verify(&self, merkle_tree_hash_activation: EraId) -> Result<(), BlockValidationError> {
+        let actual_block_header_hash = self.header().hash(merkle_tree_hash_activation);
         if *self.hash() != actual_block_header_hash {
             return Err(BlockValidationError::UnexpectedBlockHash {
                 block: Box::new(self.to_owned()),
@@ -1450,8 +1465,11 @@ impl Block {
             });
         }
 
-        let actual_block_body_hash =
-            Self::hash_block_body(&self.header.protocol_version, &self.body);
+        let actual_block_body_hash = Self::hash_block_body(
+            self.header().era_id,
+            &self.body,
+            merkle_tree_hash_activation,
+        );
         if self.header.body_hash != actual_block_body_hash {
             return Err(BlockValidationError::UnexpectedBodyHash {
                 block: Box::new(self.to_owned()),
@@ -1464,9 +1482,9 @@ impl Block {
 
     /// Overrides the height of a block.
     #[cfg(test)]
-    pub fn set_height(&mut self, height: u64) -> &mut Self {
+    pub fn set_height(&mut self, height: u64, merkle_tree_hash_activation: EraId) -> &mut Self {
         self.header.height = height;
-        self.hash = self.header.hash();
+        self.hash = self.header.hash(merkle_tree_hash_activation);
         self
     }
 
@@ -1578,11 +1596,11 @@ impl Item for Block {
     const TAG: Tag = Tag::Block;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    fn validate(&self) -> Result<(), Self::ValidationError> {
-        self.verify()
+    fn validate(&self, merkle_tree_hash_activation: EraId) -> Result<(), Self::ValidationError> {
+        self.verify(merkle_tree_hash_activation)
     }
 
-    fn id(&self) -> Self::Id {
+    fn id(&self, _merkle_tree_hash_activation: EraId) -> Self::Id {
         *self.hash()
     }
 }
@@ -1609,11 +1627,12 @@ impl Display for BlockWithMetadata {
 fn validate_block_header_and_signature_hash(
     block_header: &BlockHeader,
     finality_signatures: &BlockSignatures,
+    merkle_tree_hash_activation: EraId,
 ) -> Result<(), BlockHeaderWithMetadataValidationError> {
-    if block_header.hash() != finality_signatures.block_hash {
+    if block_header.hash(merkle_tree_hash_activation) != finality_signatures.block_hash {
         return Err(
             BlockHeaderWithMetadataValidationError::FinalitySignaturesHaveUnexpectedBlockHash {
-                expected_block_hash: block_header.hash(),
+                expected_block_hash: block_header.hash(merkle_tree_hash_activation),
                 finality_signatures_block_hash: finality_signatures.block_hash,
             },
         );
@@ -1636,13 +1655,17 @@ impl Item for BlockWithMetadata {
     const TAG: Tag = Tag::BlockAndMetadataByHeight;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    fn validate(&self) -> Result<(), Self::ValidationError> {
-        self.block.verify()?;
-        validate_block_header_and_signature_hash(self.block.header(), &self.finality_signatures)?;
+    fn validate(&self, merkle_tree_hash_activation: EraId) -> Result<(), Self::ValidationError> {
+        self.block.verify(merkle_tree_hash_activation)?;
+        validate_block_header_and_signature_hash(
+            self.block.header(),
+            &self.finality_signatures,
+            merkle_tree_hash_activation,
+        )?;
         Ok(())
     }
 
-    fn id(&self) -> Self::Id {
+    fn id(&self, _merkle_tree_hash_activation: EraId) -> Self::Id {
         self.block.height()
     }
 }

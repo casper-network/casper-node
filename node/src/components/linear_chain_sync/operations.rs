@@ -26,9 +26,9 @@ use crate::{
     effect::{requests::FetcherRequest, EffectBuilder},
     reactor::joiner::JoinerEvent,
     types::{
-        Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata,
-        Chainspec, Deploy, DeployHash, FinalizedBlock, Item, NodeConfig, NodeId, TimeDiff,
-        Timestamp,
+        Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures,
+        BlockWithMetadata, Chainspec, Deploy, DeployHash, FinalizedBlock, Item, NodeConfig, NodeId,
+        TimeDiff, Timestamp,
     },
     utils::work_queue::WorkQueue,
 };
@@ -156,12 +156,15 @@ pub(crate) struct KeyBlockInfo {
 }
 
 impl KeyBlockInfo {
-    pub(crate) fn maybe_from_block_header(block_header: &BlockHeader) -> Option<KeyBlockInfo> {
+    pub(crate) fn maybe_from_block_header(
+        block_header: &BlockHeader,
+        merkle_tree_hash_activation: EraId,
+    ) -> Option<KeyBlockInfo> {
         block_header
             .next_era_validator_weights()
             .and_then(|next_era_validator_weights| {
                 Some(KeyBlockInfo {
-                    key_block_hash: block_header.hash(),
+                    key_block_hash: block_header.hash(merkle_tree_hash_activation),
                     validator_weights: next_era_validator_weights.clone(),
                     era_start: block_header.timestamp(),
                     height: block_header.height(),
@@ -221,9 +224,10 @@ async fn get_trusted_key_block_info(
             _ => {}
         }
 
-        if let Some(key_block_info) =
-            KeyBlockInfo::maybe_from_block_header(&current_header_to_walk_back_from)
-        {
+        if let Some(key_block_info) = KeyBlockInfo::maybe_from_block_header(
+            &current_header_to_walk_back_from,
+            chainspec.protocol_config.merkle_tree_hash_activation,
+        ) {
             check_block_version(trusted_header, &key_block_info, chainspec)?;
             break Ok(key_block_info);
         }
@@ -310,7 +314,9 @@ where
         };
         match effect_builder.fetch::<I, NodeId>(height, peer).await {
             Ok(FetchedData::FromStorage { item }) => {
-                if *item.header().parent_hash() != parent_header.hash() {
+                if *item.header().parent_hash()
+                    != parent_header.hash(chainspec.protocol_config.merkle_tree_hash_activation)
+                {
                     return Err(LinearChainSyncError::UnexpectedParentHash {
                         parent: Box::new(parent_header.clone()),
                         child: Box::new(item.header().clone()),
@@ -319,7 +325,9 @@ where
                 break item;
             }
             Ok(FetchedData::FromPeer { item, .. }) => {
-                if *item.header().parent_hash() != parent_header.hash() {
+                if *item.header().parent_hash()
+                    != parent_header.hash(chainspec.protocol_config.merkle_tree_hash_activation)
+                {
                     warn!(
                         ?peer,
                         fetched_header = ?item.header(),
@@ -536,9 +544,10 @@ async fn fast_sync_to_most_recent(
             Some(more_recent_block_header_with_metadata) => {
                 most_recent_block_header = more_recent_block_header_with_metadata.block_header;
                 // If the new block is a switch block, update the validator weights, etc...
-                if let Some(key_block_info) =
-                    KeyBlockInfo::maybe_from_block_header(&most_recent_block_header)
-                {
+                if let Some(key_block_info) = KeyBlockInfo::maybe_from_block_header(
+                    &most_recent_block_header,
+                    chainspec.protocol_config.merkle_tree_hash_activation,
+                ) {
                     trusted_key_block_info = key_block_info;
                 }
             }
@@ -648,8 +657,11 @@ async fn archival_sync(
     let mut trusted_key_block_info =
         get_trusted_key_block_info(effect_builder, chainspec, &trusted_block_header).await?;
 
-    let trusted_block =
-        *fetch_and_store_block_by_hash(effect_builder, trusted_block_header.hash()).await?;
+    let trusted_block = *fetch_and_store_block_by_hash(
+        effect_builder,
+        trusted_block_header.hash(chainspec.protocol_config.merkle_tree_hash_activation),
+    )
+    .await?;
 
     // Sync to genesis
     let mut walkback_block = trusted_block.clone();
@@ -685,9 +697,10 @@ async fn archival_sync(
         };
         sync_deploys_and_transfers_and_state(effect_builder, &most_recent_block, &node_config)
             .await?;
-        if let Some(key_block_info) =
-            KeyBlockInfo::maybe_from_block_header(most_recent_block.header())
-        {
+        if let Some(key_block_info) = KeyBlockInfo::maybe_from_block_header(
+            most_recent_block.header(),
+            chainspec.protocol_config.merkle_tree_hash_activation,
+        ) {
             trusted_key_block_info = key_block_info;
         }
     }
@@ -797,7 +810,10 @@ pub(crate) async fn run_fast_sync_task(
     };
 
     // Execute blocks to get to current.
-    let mut execution_pre_state = ExecutionPreState::from(&most_recent_block_header);
+    let mut execution_pre_state = ExecutionPreState::from_block_header(
+        &most_recent_block_header,
+        chainspec.protocol_config.merkle_tree_hash_activation,
+    );
     info!(
         era_id = ?most_recent_block_header.era_id(),
         height = most_recent_block_header.height(),
@@ -862,11 +878,15 @@ pub(crate) async fn run_fast_sync_task(
         }
 
         most_recent_block_header = block.take_header();
-        execution_pre_state = ExecutionPreState::from(&most_recent_block_header);
+        execution_pre_state = ExecutionPreState::from_block_header(
+            &most_recent_block_header,
+            chainspec.protocol_config.merkle_tree_hash_activation,
+        );
 
-        if let Some(key_block_info) =
-            KeyBlockInfo::maybe_from_block_header(&most_recent_block_header)
-        {
+        if let Some(key_block_info) = KeyBlockInfo::maybe_from_block_header(
+            &most_recent_block_header,
+            chainspec.protocol_config.merkle_tree_hash_activation,
+        ) {
             trusted_key_block_info = key_block_info;
         }
 

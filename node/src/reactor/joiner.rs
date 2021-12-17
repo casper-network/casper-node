@@ -499,13 +499,15 @@ impl reactor::Reactor for Reactor {
 
         let metrics = Metrics::new(registry.clone());
 
+        let chainspec = chainspec_loader.chainspec().as_ref();
+
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
             config.network.clone(),
             Some(WithDir::new(&root, &config.consensus)),
             registry,
             small_network_identity,
-            chainspec_loader.chainspec().as_ref(),
+            chainspec,
         )?;
 
         let mut effects = reactor::wrap_effects(JoinerEvent::SmallNetwork, small_network_effects);
@@ -520,7 +522,9 @@ impl reactor::Reactor for Reactor {
             None => storage
                 .read_highest_block_header()
                 .expect("Could not read highest block header")
-                .map(|block_header| block_header.hash()),
+                .map(|block_header| {
+                    block_header.hash(chainspec.protocol_config.merkle_tree_hash_activation)
+                }),
         };
 
         let chainspec = chainspec_loader.chainspec().clone();
@@ -566,6 +570,10 @@ impl reactor::Reactor for Reactor {
             }
         };
 
+        let merkle_tree_hash_activation = chainspec_loader
+            .chainspec()
+            .protocol_config
+            .merkle_tree_hash_activation;
         let protocol_version = &chainspec_loader.chainspec().protocol_config.version;
         let rest_server = RestServer::new(
             config.rest_server.clone(),
@@ -581,17 +589,46 @@ impl reactor::Reactor for Reactor {
             DeployGetter::new(effect_builder),
         )?;
 
-        let deploy_fetcher = Fetcher::new("deploy", config.fetcher, registry)?;
+        let deploy_fetcher = Fetcher::new(
+            "deploy",
+            config.fetcher,
+            registry,
+            merkle_tree_hash_activation,
+        )?;
 
-        let block_by_height_fetcher = Fetcher::new("block_by_height", config.fetcher, registry)?;
+        // TODO[RC]: Refactor
+        let block_by_height_fetcher = Fetcher::new(
+            "block_by_height",
+            config.fetcher,
+            registry,
+            merkle_tree_hash_activation,
+        )?;
 
-        let block_by_hash_fetcher = Fetcher::new("block", config.fetcher, registry)?;
-        let trie_fetcher = Fetcher::new("trie", config.fetcher, registry)?;
-        let block_header_and_finality_signatures_by_height_fetcher =
-            Fetcher::new("block_header_by_height", config.fetcher, registry)?;
+        let block_by_hash_fetcher = Fetcher::new(
+            "block",
+            config.fetcher,
+            registry,
+            merkle_tree_hash_activation,
+        )?;
+        let trie_fetcher = Fetcher::new(
+            "trie",
+            config.fetcher,
+            registry,
+            merkle_tree_hash_activation,
+        )?;
+        let block_header_and_finality_signatures_by_height_fetcher = Fetcher::new(
+            "block_header_by_height",
+            config.fetcher,
+            registry,
+            merkle_tree_hash_activation,
+        )?;
 
-        let block_header_by_hash_fetcher: Fetcher<BlockHeader> =
-            Fetcher::new("block_header", config.fetcher, registry)?;
+        let block_header_by_hash_fetcher: Fetcher<BlockHeader> = Fetcher::new(
+            "block_header",
+            config.fetcher,
+            registry,
+            merkle_tree_hash_activation,
+        )?;
 
         let deploy_acceptor = DeployAcceptor::new(
             config.deploy_acceptor,

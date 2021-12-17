@@ -611,7 +611,12 @@ impl reactor::Reactor for Reactor {
         )?;
 
         let deploy_acceptor = DeployAcceptor::new(config.deploy_acceptor, &*chainspec, registry)?;
-        let deploy_fetcher = Fetcher::new("deploy", config.fetcher, registry)?;
+        let deploy_fetcher = Fetcher::new(
+            "deploy",
+            config.fetcher,
+            registry,
+            chainspec.protocol_config.merkle_tree_hash_activation,
+        )?;
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
             config.gossip,
@@ -676,7 +681,8 @@ impl reactor::Reactor for Reactor {
                 let initial_pre_state = ExecutionPreState::new(
                     upgrade_block_header.height() + 1,
                     post_state_hash,
-                    upgrade_block_header.hash(),
+                    upgrade_block_header
+                        .hash(chainspec.protocol_config.merkle_tree_hash_activation),
                     upgrade_block_header.accumulated_seed(),
                 );
                 let (new_header, new_effects) = create_immediate_switch_block(
@@ -782,7 +788,10 @@ impl reactor::Reactor for Reactor {
             init_consensus_effects,
         ));
 
-        contract_runtime.set_initial_state(ExecutionPreState::from(&latest_block_header));
+        contract_runtime.set_initial_state(ExecutionPreState::from_block_header(
+            &latest_block_header,
+            chainspec.protocol_config.merkle_tree_hash_activation,
+        ));
 
         let block_validator = BlockValidator::new(Arc::clone(chainspec));
         let linear_chain = linear_chain::LinearChainComponent::new(
@@ -792,6 +801,7 @@ impl reactor::Reactor for Reactor {
             chainspec.core_config.unbonding_delay,
             chainspec.highway_config.finality_threshold_fraction,
             maybe_next_activation_point,
+            chainspec.protocol_config.merkle_tree_hash_activation,
         )?;
 
         effects.extend(reactor::wrap_effects(
@@ -1348,6 +1358,7 @@ fn create_immediate_switch_block(
         finalized_block,
         vec![],
         vec![],
+        chainspec.protocol_config.merkle_tree_hash_activation,
     )?;
     // Make sure the new block really is a switch block
     if !new_switch_block.header().is_switch_block() {

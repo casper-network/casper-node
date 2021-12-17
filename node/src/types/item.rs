@@ -10,7 +10,7 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
 
 use casper_execution_engine::storage::trie::Trie;
 use casper_hashing::Digest;
-use casper_types::{bytesrepr::ToBytes, Key, StoredValue};
+use casper_types::{bytesrepr::ToBytes, EraId, Key, StoredValue};
 
 use crate::types::{BlockHash, BlockHeader};
 
@@ -63,10 +63,10 @@ pub(crate) trait Item:
     const ID_IS_COMPLETE_ITEM: bool;
 
     /// Checks cryptographic validity of the item, and returns an error if invalid.
-    fn validate(&self) -> Result<(), Self::ValidationError>;
+    fn validate(&self, merkle_tree_hash_activation: EraId) -> Result<(), Self::ValidationError>;
 
     /// The ID of the specific item.
-    fn id(&self) -> Self::Id;
+    fn id(&self, merkle_tree_hash_activation: EraId) -> Self::Id;
 }
 
 impl Item for Trie<Key, StoredValue> {
@@ -75,11 +75,11 @@ impl Item for Trie<Key, StoredValue> {
     const TAG: Tag = Tag::Trie;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    fn validate(&self) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _merkle_tree_hash_activation: EraId) -> Result<(), Self::ValidationError> {
         Ok(())
     }
 
-    fn id(&self) -> Self::Id {
+    fn id(&self, _merkle_tree_hash_activation: EraId) -> Self::Id {
         let node_bytes = self.to_bytes().expect("Could not serialize trie to bytes");
         Digest::hash(&node_bytes)
     }
@@ -91,11 +91,11 @@ impl Item for BlockHeader {
     const TAG: Tag = Tag::BlockHeaderByHash;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    fn validate(&self) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _merkle_tree_hash_activation: EraId) -> Result<(), Self::ValidationError> {
         Ok(())
     }
 
-    fn id(&self) -> Self::Id {
-        self.hash()
+    fn id(&self, merkle_tree_hash_activation: EraId) -> Self::Id {
+        self.hash(merkle_tree_hash_activation)
     }
 }
