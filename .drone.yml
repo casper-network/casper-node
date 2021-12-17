@@ -16,30 +16,30 @@ steps:
     #   commands:
     #     - "./ci/markdown_link_check.sh"
 
-  - name: cargo-fmt
-    image: casperlabs/node-build-u1804
-    commands:
-      - make setup-rs
-      - make check-format
+  # - name: cargo-fmt
+  #   image: casperlabs/node-build-u1804
+  #   commands:
+  #     - make setup-rs
+  #     - make check-format
 
-  - name: cargo-clippy
-    image: casperlabs/node-build-u1804
-    commands:
-      - make setup-rs
-      - make lint
+  # - name: cargo-clippy
+  #   image: casperlabs/node-build-u1804
+  #   commands:
+  #     - make setup-rs
+  #     - make lint
 
-  - name: cargo-doc
-    image: casperlabs/node-build-u1804
-    commands:
-      - make setup-rs
-      - make doc
+  # - name: cargo-doc
+  #   image: casperlabs/node-build-u1804
+  #   commands:
+  #     - make setup-rs
+  #     - make doc
 
-  - name: cargo-audit
-    image: casperlabs/node-build-u1804
-    commands:
-      - make setup-audit
-      - cargo generate-lockfile
-      - make audit
+  # - name: cargo-audit
+  #   image: casperlabs/node-build-u1804
+  #   commands:
+  #     - make setup-audit
+  #     - cargo generate-lockfile
+  #     - make audit
 
 trigger:
   branch:
@@ -107,18 +107,19 @@ steps:
   image: casperlabs/node-build-u1804
   commands:
   - make setup
-  - make test CARGO_FLAGS=--release
-  - make test-contracts CARGO_FLAGS=--release
+  - cargo test --release --tests components
+  # - make test CARGO_FLAGS=--release
+  # - make test-contracts CARGO_FLAGS=--release
 
-- name: client-ffi-tests-and-examples
-  image: casperlabs/node-build-u1804
-  commands:
-  - make setup-rs
-  - cmake -Hclient/examples/ffi -Btarget/build -DCMAKE_BUILD_TYPE=Debug
-  - cmake --build target/build
-  - ./target/build/ffi-tests
-  - ./target/build/get-auction-info
-  - ./target/build/put-deploy
+# - name: client-ffi-tests-and-examples
+#   image: casperlabs/node-build-u1804
+#   commands:
+#   - make setup-rs
+#   - cmake -Hclient/examples/ffi -Btarget/build -DCMAKE_BUILD_TYPE=Debug
+#   - cmake --build target/build
+#   - ./target/build/ffi-tests
+#   - ./target/build/get-auction-info
+#   - ./target/build/put-deploy
 
 depends_on:
   - pre-checks
