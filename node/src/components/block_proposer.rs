@@ -521,7 +521,7 @@ impl BlockProposerReady {
                 match err {
                     // We added the maximum number of transfers.
                     AddError::TransferCount | AddError::GasLimit | AddError::BlockSize => break,
-                    // This transfer would exceed the approval count, but another one with less
+                    // This transfer would exceed the approval count, but another one with fewer
                     // approvals might not.
                     AddError::ApprovalCount if approvals.len() > 1 => (),
                     AddError::ApprovalCount => break,
@@ -559,7 +559,7 @@ impl BlockProposerReady {
                             break; // Probably no deploy will fit in this block anymore.
                         }
                     }
-                    // This deploy would exceed the approval count, but another one with less
+                    // This deploy would exceed the approval count, but another one with fewer
                     // approvals might not.
                     AddError::ApprovalCount if approvals.len() > 1 => (),
                     AddError::ApprovalCount => break,

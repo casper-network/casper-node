@@ -931,7 +931,7 @@ impl Deploy {
 ///
 /// A typical case where these can differ is if a deploy is sent with an original set of approvals
 /// to the local node, while a second set of approvals makes it to the proposing node. The local
-/// node has to adhere to the proposer's approval to obtain the same outcome.
+/// node has to adhere to the proposer's approvals to obtain the same outcome.
 #[derive(DataSize, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct DeployWithFinalizedApprovals {
     /// The deploy that likely has been included in a block.

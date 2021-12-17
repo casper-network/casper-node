@@ -241,12 +241,12 @@ impl BlockPayload {
     }
 
     /// An iterator over deploy hashes included in the block, excluding transfers.
-    pub(crate) fn deploy_hashes(&self) -> impl Iterator<Item = &DeployHash> {
+    pub(crate) fn deploy_hashes(&self) -> impl Iterator<Item = &DeployHash> + Clone {
         self.deploys.iter().map(|dwa| &dwa.deploy_hash)
     }
 
     /// An iterator over transfer hashes included in the block.
-    pub(crate) fn transfer_hashes(&self) -> impl Iterator<Item = &DeployHash> {
+    pub(crate) fn transfer_hashes(&self) -> impl Iterator<Item = &DeployHash> + Clone {
         self.transfers.iter().map(|dwa| &dwa.deploy_hash)
     }
 
@@ -270,8 +270,8 @@ impl Display for BlockPayload {
         write!(
             formatter,
             "block payload: deploys {}, transfers {}, accusations {:?}, random bit {}",
-            HexList(self.deploy_hashes().collect::<Vec<_>>()),
-            HexList(self.transfer_hashes().collect::<Vec<_>>()),
+            HexList(self.deploy_hashes()),
+            HexList(self.transfer_hashes()),
             self.accusations,
             self.random_bit,
         )
@@ -293,14 +293,18 @@ impl BlockPayload {
 
         let deploys = (0..num_deploys)
             .map(|n| {
-                let mut n_approvals = rng.gen_range(1..MAX_APPROVALS_PER_DEPLOY);
-                // if the random number of approvals is too little for us to be able to cover all
-                // the approvals later, go with the maximum number
-                if total_approvals_left - n_approvals
-                    >= MAX_APPROVALS_PER_DEPLOY * (num_transfers + num_deploys - n - 1)
-                {
-                    n_approvals = MAX_APPROVALS_PER_DEPLOY;
-                }
+                // We need at least one approval, and at least as many so that we are able to split
+                // all the remaining approvals between the remaining deploys while not exceeding
+                // the limit per deploy.
+                let min_approval_count = total_approvals_left
+                    .saturating_sub(
+                        MAX_APPROVALS_PER_DEPLOY * (num_transfers + num_deploys - n - 1),
+                    )
+                    .max(1);
+                // We have to leave at least one approval per deploy for the remaining deploys.
+                let max_approval_count = MAX_APPROVALS_PER_DEPLOY
+                    .min(total_approvals_left - (num_transfers + num_deploys - n - 1));
+                let n_approvals = rng.gen_range(min_approval_count..=max_approval_count);
                 total_approvals_left -= n_approvals;
                 DeployWithApprovals {
                     deploy_hash: DeployHash::random(rng),
@@ -311,14 +315,16 @@ impl BlockPayload {
 
         let transfers = (0..num_transfers)
             .map(|n| {
-                let mut n_approvals = rng.gen_range(1..MAX_APPROVALS_PER_DEPLOY);
-                // if the random number of approvals is too little for us to be able to cover all
-                // the approvals later, go with the maximum number
-                if total_approvals_left - n_approvals
-                    >= MAX_APPROVALS_PER_DEPLOY * (num_transfers - n - 1)
-                {
-                    n_approvals = MAX_APPROVALS_PER_DEPLOY;
-                }
+                // We need at least one approval, and at least as many so that we are able to split
+                // all the remaining approvals between the remaining transfers while not exceeding
+                // the limit per deploy.
+                let min_approval_count = total_approvals_left
+                    .saturating_sub(MAX_APPROVALS_PER_DEPLOY * (num_transfers - n - 1))
+                    .max(1);
+                // We have to leave at least one approval per transfer for the remaining transfers.
+                let max_approval_count =
+                    MAX_APPROVALS_PER_DEPLOY.min(total_approvals_left - (num_transfers - n - 1));
+                let n_approvals = rng.gen_range(min_approval_count..=max_approval_count);
                 total_approvals_left -= n_approvals;
                 DeployWithApprovals {
                     deploy_hash: DeployHash::random(rng),
