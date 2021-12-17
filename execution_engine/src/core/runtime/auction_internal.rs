@@ -237,13 +237,12 @@ where
 
         let gas_counter = self.gas_counter();
         let mut stack = self.stack().clone();
-        let call_stack_element = self
-            .get_system_contract_stack_frame(MINT)
-            .map_err(|_| Error::Storage)?;
         stack
-            .push(call_stack_element)
+            .push(
+                self.get_system_contract_stack_frame(MINT)
+                    .map_err(|_| Error::Storage)?,
+            )
             .map_err(|_| Error::RuntimeStackOverflow)?;
-
         let mint_contract_hash = self.get_mint_contract().map_err(|exec_error| {
             <Option<Error>>::from(exec_error).unwrap_or(Error::MissingValue)
         })?;
