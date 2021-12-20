@@ -40,11 +40,11 @@ pub(crate) fn generate_balances_update(matches: &ArgMatches<'_>) {
 
     builder.exec(no_wasm_transfer_request).expect_success();
 
-    let transforms = &builder.get_transforms()[0];
+    let transforms = &builder.get_execution_journals()[0];
 
-    for (key, value) in transforms {
+    for (key, value) in transforms[0].clone() {
         if let Transform::Write(val) = value {
-            print_entry(key, val);
+            print_entry(&key, &val);
         }
     }
 }

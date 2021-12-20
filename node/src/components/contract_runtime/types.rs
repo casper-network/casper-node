@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
 use casper_execution_engine::{
     core::engine_state::GetEraValidatorsRequest, shared::execution_journal::ExecutionJournal,
@@ -97,7 +97,7 @@ pub struct BlockAndExecutionEffects {
     /// The [`Block`] the contract runtime executed.
     pub block: Block,
     /// The results from executing the deploys in the block.
-    pub execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
+    pub execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
     /// The [`ExecutionJournal`] and the upcoming validator sets determined by the `step`
     pub maybe_step_effect_and_upcoming_era_validators: Option<StepEffectAndUpcomingEraValidators>,
 }

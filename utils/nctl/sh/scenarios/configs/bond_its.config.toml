@@ -305,9 +305,6 @@ verify_accounts = true
 # ========================================================
 [contract_runtime]
 
-# Optional setting to enable bonding or not.  If unset, defaults to false.
-#enable_bonding = false
-
 # Optional maximum size of the database to use for the global state store.
 #
 # If unset, defaults to 32,212,254,720 == 30 GiB.
@@ -322,8 +319,8 @@ verify_accounts = true
 
 # Enable manual synchronizing to disk.
 #
-# If unset, defaults to false.
-#enable_manual_sync = false
+# If unset, defaults to true.
+#enable_manual_sync = true
 
 
 # ========================================================

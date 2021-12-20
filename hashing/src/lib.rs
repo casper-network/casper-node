@@ -379,23 +379,23 @@ mod tests {
         let inputs_and_digests = [
             (
                 "",
-                "0E5751C026E543B2E8aB2eb06099dAA1d1e5dF47778F7787fAAB45Cdf12fE3A8",
+                "0e5751c026E543B2E8AB2eB06099daA1d1e5df47778F7787FAaB45CDF12fe3A8",
             ),
             (
                 "abc",
-                "BddD813c634239723171ef3feE98579b94964e3Bb1cB3E427262C8C068d52319",
+                "bDDd813C634239723171EF3FEE98579B94964e3bB1Cb3e427262c8C068D52319",
             ),
             (
                 "0123456789",
-                "7b6CB8D374484e221785288b035Dc53fC9dDf000607F473fc2a3258D89A70398",
+                "7b6Cb8D374484e221785288B035dc53FC9DDF000607f473FC2a3258d89a70398",
             ),
             (
                 "01234567890",
-                "3D199478C18B7fE3ca1F4F2a9B3E07f708FF66ED52Eb345dB258ABE8a812eD5C",
+                "3D199478c18B7fE3cA1F4F2A9B3E07F708Ff66eD52Eb345Db258abE8A812Ed5c",
             ),
             (
                 "The quick brown fox jumps over the lazy dog",
-                "01718CeC35Cd3D796Dd00020e0bFECB473Ad23457d063b75eFF29c0FFa2E58a9",
+                "01718CeC35cD3d796Dd00020E0bFeCB473ad23457d063b75EFf29c0fFA2E58A9",
             ),
         ];
         for (known_input, expected_digest) in &inputs_and_digests {

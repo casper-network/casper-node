@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, VecDeque},
     sync::Arc,
     time::Instant,
 };
@@ -57,8 +57,8 @@ pub fn execute_finalized_block(
         next_block_height: _,
     } = execution_pre_state;
     let mut state_root_hash = pre_state_root_hash;
-    let mut execution_results: HashMap<NodeDeployHash, (DeployHeader, ExecutionResult)> =
-        HashMap::new();
+    let mut execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)> =
+        Vec::with_capacity(deploys.len() + transfers.len());
     // Run any deploys that must be executed
     let block_time = finalized_block.timestamp().millis();
     let start = Instant::now();
@@ -93,7 +93,7 @@ pub fn execute_finalized_block(
             deploy_hash.into(),
             result,
         )?;
-        execution_results.insert(deploy_hash, (deploy_header, execution_result));
+        execution_results.push((deploy_hash, deploy_header, execution_result));
         state_root_hash = state_hash;
     }
 

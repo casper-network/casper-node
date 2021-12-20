@@ -13,7 +13,10 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
-* Increased `DICTIONARY_ITEM_KEY_MAX_LENGTH` to 128.
+### Changed
+* Increase `DICTIONARY_ITEM_KEY_MAX_LENGTH` to 128.
+* Change checksummed hex implementation to use 32 byte rather than 64 byte blake2b digests. 
+
 
 
 ## [1.4.0] - 2021-10-04
