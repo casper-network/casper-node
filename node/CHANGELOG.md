@@ -15,9 +15,11 @@ All notable changes to this project will be documented in this file.  The format
 ### Added
 * Add new event to the main SSE server stream accessed via `<IP:Port>/events/main` which emits hashes of expired deploys.
 * Add new event to the main SSE server stream across all endpoints `<IP:PORT>/events/*` which emits a shutdown event when the node shuts down.
+* Add `SIGUSR2` signal handling to dump the queue in JSON format (see "Changed" section for `SIGUSR1`).
 
 ### Changed
 * `enable_manual_sync` configuration parameter defaults to `true`.
+* `SIGUSR1` now only dumps the queue in the debug text format.
 
 
 ## [1.4.2] - 2021-11-11
