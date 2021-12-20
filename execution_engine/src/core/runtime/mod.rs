@@ -46,6 +46,7 @@ use crate::{
         execution::{self, Error},
         resolvers::{create_module_resolver, memory_resolver::MemoryResolver},
         runtime_context::{self, RuntimeContext},
+        tracking_copy::TrackingCopyExt,
         Address,
     },
     shared::{
@@ -56,8 +57,6 @@ use crate::{
 };
 
 use self::host_function_flag::HostFunctionFlag;
-
-use super::tracking_copy::TrackingCopyExt;
 
 /// Represents the runtime properties of a WASM execution.
 pub struct Runtime<'a, R> {
