@@ -711,7 +711,6 @@ where
                 );
                 if let Err(error) = self.scheduler.snapshot(&mut serializer).await {
                     warn!(%error, "could not serialize snapshot to {}", output_fn);
-                    return;
                 }
             }
             DumpFormat::Debug => {
