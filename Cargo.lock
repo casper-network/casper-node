@@ -582,6 +582,7 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "serde_repr",
+ "shlex",
  "signal-hook",
  "signature",
  "smallvec",
@@ -3996,6 +3997,12 @@ checksum = "740223c51853f3145fe7c90360d2d4232f2b62e3449489c207eccde818979982"
 dependencies = [
  "lazy_static",
 ]
+
+[[package]]
+name = "shlex"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43b2853a4d09f215c24cc5489c992ce46052d359b5109343cbafbf26bc62f8a3"
 
 [[package]]
 name = "signal-hook"
