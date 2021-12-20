@@ -12,9 +12,15 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+### Added
+* Add new event to the main SSE server stream across all endpoints `<IP:PORT>/events/*` which emits a shutdown event when the node shuts down.
+
 
 
 ## 1.4.3 - 2021-12-06
+
+### Added
+* Add new event to the main SSE server stream accessed via `<IP:Port>/events/main` which emits hashes of expired deploys.
 
 ### Changed
 * `enable_manual_sync` configuration parameter defaults to `true`.
