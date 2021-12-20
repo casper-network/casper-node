@@ -1,9 +1,6 @@
-use std::{
-    collections::{BTreeMap, HashMap, VecDeque},
-    sync::Arc,
-    time::Instant,
-};
+use std::{collections::BTreeMap, sync::Arc, time::Instant};
 
+use itertools::Itertools;
 use tracing::{debug, trace};
 
 use casper_execution_engine::{
@@ -26,13 +23,12 @@ use crate::{
             BlockAndExecutionEffects, ContractRuntimeMetrics, ExecutionPreState,
         },
     },
-    types::{Block, Deploy, DeployHash as NodeDeployHash, DeployHeader, FinalizedBlock},
+    types::{Block, Deploy, DeployHeader, FinalizedBlock},
 };
 use casper_execution_engine::{
     core::{engine_state::execution_result::ExecutionResults, execution},
     storage::global_state::{CommitProvider, StateProvider},
 };
-use itertools::Itertools;
 
 /// Executes a finalized block.
 pub fn execute_finalized_block(
@@ -57,7 +53,7 @@ pub fn execute_finalized_block(
         next_block_height: _,
     } = execution_pre_state;
     let mut state_root_hash = pre_state_root_hash;
-    let mut execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)> =
+    let mut execution_results: Vec<(_, DeployHeader, ExecutionResult)> =
         Vec::with_capacity(deploys.len() + transfers.len());
     // Run any deploys that must be executed
     let block_time = finalized_block.timestamp().millis();

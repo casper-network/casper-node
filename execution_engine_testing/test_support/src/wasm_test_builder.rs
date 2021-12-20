@@ -333,17 +333,17 @@ impl LmdbWasmTestBuilder {
         let maybe_exec_results = cached_state.run_execute(CorrelationId::new(), exec_request);
         for execution_result in maybe_exec_results.unwrap() {
             let journal = execution_result.execution_journal().clone();
-            let transforms: AdditiveMap<Key, Transform> = journal.into();
+            let transforms: AdditiveMap<Key, Transform> = journal.clone().into();
             let _post_state_hash = cached_state
                 .apply_effect(
                     CorrelationId::new(),
                     self.post_state_hash.expect("requires a post_state_hash"),
-                    transforms.clone(),
+                    transforms,
                 )
                 .expect("should commit");
 
             // Save transforms and execution results for WasmTestBuilder.
-            self.transforms.push(transforms);
+            self.transforms.push(journal);
             exec_results.push(Rc::new(execution_result))
         }
         self.exec_results.push(exec_results);
@@ -691,17 +691,17 @@ where
         since = "2.1.0",
         note = "Use `get_execution_journals` that returns transforms in the order they were created."
     )]
-    pub fn get_transforms(&self) -> &[AdditiveMap<Key, Transform>] {
+    pub fn get_transforms(&self) -> Vec<AdditiveMap<Key, Transform>> {
         self.transforms
             .clone()
             .into_iter()
-            .map(AdditiveMap::from)
+            .map(|journal| journal.into_iter().collect())
             .collect()
     }
 
     /// Gets `ExecutionJournal`s of all passed runs.
     pub fn get_execution_journals(&self) -> Vec<ExecutionJournal> {
-        &self.transforms
+        self.transforms.clone()
     }
 
     /// Gets genesis account (if present)
