@@ -312,7 +312,8 @@ pub async fn download_trie(
         .await?;
         if let Some(blob) = read_result.maybe_trie_bytes {
             let bytes: Vec<u8> = blob.into();
-            let (trie, _): (Trie<Key, StoredValue>, _) = FromBytes::from_bytes(&bytes)?;
+            let (trie, _): (Trie<Key, StoredValue>, _) =
+                FromBytes::from_bytes(&bytes).map_err(anyhow::Error::msg)?;
             let mut missing_descendants = engine_state
                 .put_trie_and_find_missing_descendant_trie_keys(CorrelationId::new(), &trie)?;
             outstanding_tries.append(&mut missing_descendants);
