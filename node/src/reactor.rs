@@ -410,13 +410,16 @@ struct RunnerMetrics {
 impl RunnerMetrics {
     /// Create and register new runner metrics.
     fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
-        let events = IntCounter::new("runner_events", "total event count")?;
+        let events = IntCounter::new(
+            "runner_events",
+            "running total count of events handled by this reactor",
+        )?;
 
         // Create an event dispatch histogram, putting extra emphasis on the area between 1-10 us.
         let event_dispatch_duration = Histogram::with_opts(
             HistogramOpts::new(
                 "event_dispatch_duration",
-                "duration of complete dispatch of a single event in nanoseconds",
+                "time in nanoseconds to dispatch an event",
             )
             .buckets(vec![
                 100.0,

@@ -29,7 +29,13 @@ impl EventQueueMetrics {
         let mut event_queue_gauges: HashMap<QueueKind, IntGauge> = HashMap::new();
         for queue_kind in event_queue_handle.event_queues_counts().keys() {
             let key = format!("scheduler_queue_{}_count", queue_kind.metrics_name());
-            let queue_event_counter = IntGauge::new(key, "Event in the queue.".to_string())?;
+            let queue_event_counter = IntGauge::new(
+                key,
+                format!(
+                    "current number of events in the reactor {} queue",
+                    queue_kind.metrics_name()
+                ),
+            )?;
             registry.register(Box::new(queue_event_counter.clone()))?;
             let result = event_queue_gauges.insert(*queue_kind, queue_event_counter);
             assert!(result.is_none(), "Map keys should not be overwritten.");
@@ -37,7 +43,7 @@ impl EventQueueMetrics {
 
         let event_total = IntGauge::new(
             "scheduler_queue_total_count",
-            "total count of events in queues.",
+            "current total number of events in all reactor queues",
         )?;
         registry.register(Box::new(event_total.clone()))?;
 
