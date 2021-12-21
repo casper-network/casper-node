@@ -109,7 +109,7 @@ impl ExecutionPreState {
         }
     }
 
-    // TODO[RC]: Docs
+    /// Creates instance of `ExecutionPreState` from given block header nad merkle tree hash activation point.
     pub fn from_block_header(
         block_header: &BlockHeader,
         merkle_tree_hash_activation: EraId,
