@@ -1,4 +1,4 @@
-use prometheus::{self, Histogram, IntGauge, Registry};
+use prometheus::{self, Gauge, Histogram, IntGauge, Registry};
 
 use crate::{unregister_metric, utils};
 
@@ -58,6 +58,9 @@ const CHAIN_HEIGHT_HELP: &str = "current chain height";
 const EXEC_BLOCK_NAME: &str = "contract_runtime_execute_block";
 const EXEC_BLOCK_HELP: &str = "time in seconds to execute all deploys in a block";
 
+const LATEST_COMMIT_STEP_NAME: &str = "contract_runtime_latest_commit_step";
+const LATEST_COMMIT_STEP_HELP: &str = "duration in seconds of latest commit step at era end";
+
 /// Metrics for the contract runtime component.
 #[derive(Debug)]
 pub struct Metrics {
@@ -75,6 +78,7 @@ pub struct Metrics {
     pub(super) get_trie: Histogram,
     pub(super) chain_height: IntGauge,
     pub(super) exec_block: Histogram,
+    pub(super) latest_commit_step: Gauge,
     registry: Registry,
 }
 
@@ -86,10 +90,14 @@ impl Metrics {
             EXPONENTIAL_BUCKET_FACTOR,
             EXPONENTIAL_BUCKET_COUNT,
         )?;
+
         let chain_height = IntGauge::new(CHAIN_HEIGHT_NAME, CHAIN_HEIGHT_HELP)?;
         registry.register(Box::new(chain_height.clone()))?;
+
+        let latest_commit_step = Gauge::new(LATEST_COMMIT_STEP_NAME, LATEST_COMMIT_STEP_HELP)?;
+        registry.register(Box::new(latest_commit_step.clone()))?;
+
         Ok(Metrics {
-            chain_height,
             run_execute: utils::register_histogram_metric(
                 registry,
                 RUN_EXECUTE_NAME,
@@ -162,12 +170,14 @@ impl Metrics {
                 MISSING_TRIE_KEYS_HELP,
                 common_buckets.clone(),
             )?,
+            chain_height,
             exec_block: utils::register_histogram_metric(
                 registry,
                 EXEC_BLOCK_NAME,
                 EXEC_BLOCK_HELP,
                 common_buckets,
             )?,
+            latest_commit_step,
             registry: registry.clone(),
         })
     }
@@ -189,5 +199,6 @@ impl Drop for Metrics {
         unregister_metric!(self.registry, self.get_trie);
         unregister_metric!(self.registry, self.chain_height);
         unregister_metric!(self.registry, self.exec_block);
+        unregister_metric!(self.registry, self.latest_commit_step);
     }
 }
