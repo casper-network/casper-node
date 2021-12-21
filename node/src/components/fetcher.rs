@@ -531,7 +531,11 @@ where
                 }
                 None => self.failed_to_get_from_storage(effect_builder, id, peer),
             },
-            Event::GotRemotely { item, source } => {
+            Event::GotRemotely {
+                merkle_tree_hash_activation: _, // TODO[RC]: Check if we need `self.merkle_tree_hash_activation()` below
+                item,
+                source,
+            } => {
                 match source {
                     Source::Peer(peer) => {
                         self.metrics.found_on_peer.inc();

@@ -1020,6 +1020,7 @@ impl reactor::Reactor for Reactor {
                 ));
 
                 let event = fetcher::Event::GotRemotely {
+                    merkle_tree_hash_activation: None,
                     item: deploy,
                     source,
                 };
