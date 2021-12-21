@@ -13,10 +13,7 @@ use casper_execution_engine::{
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
 
-use crate::{
-    chainspec_config::Error::CouldNotParseLockedFundsPeriod, DEFAULT_ACCOUNTS,
-    DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-};
+use crate::{DEFAULT_ACCOUNTS, DEFAULT_GENESIS_TIMESTAMP_MILLIS};
 
 /// The name of the chainspec file on disk.
 pub const CHAINSPEC_NAME: &str = "chainspec.toml";
@@ -90,7 +87,7 @@ impl ChainspecConfig {
     pub(crate) fn locked_funds_period(&self) -> Result<u64, Error> {
         let locked_funds_period_millis =
             humantime::parse_duration(&self.core_config.locked_funds_period)
-                .map_err(|_| CouldNotParseLockedFundsPeriod)?
+                .map_err(|_| Error::CouldNotParseLockedFundsPeriod)?
                 .as_millis() as u64;
         Ok(locked_funds_period_millis)
     }

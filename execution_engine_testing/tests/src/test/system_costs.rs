@@ -160,11 +160,6 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
 fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
     let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    // const NEW_ADD_BID_COST: u32 = DEFAULT_ADD_BID_COST * 2;
-    // const NEW_WITHDRAW_BID_COST: u32 = DEFAULT_WITHDRAW_BID_COST * 3;
-    // const NEW_DELEGATE_COST: u32 = DEFAULT_DELEGATE_COST * 4;
-    // const NEW_UNDELEGATE_COST: u32 = DEFAULT_UNDELEGATE_COST * 5;
-
     let system_config = builder.get_initial_system_config();
 
     let new_wasmless_transfer_cost = system_config.wasmless_transfer_cost();
