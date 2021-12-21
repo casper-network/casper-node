@@ -31,6 +31,7 @@ use crate::{
 };
 
 /// Executes a finalized block.
+#[allow(clippy::too_many_arguments)]
 pub fn execute_finalized_block(
     engine_state: &EngineState<LmdbGlobalState>,
     metrics: Option<Arc<ContractRuntimeMetrics>>,

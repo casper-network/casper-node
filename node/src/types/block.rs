@@ -168,6 +168,9 @@ static JSON_BLOCK_HEADER: Lazy<JsonBlockHeader> = Lazy::new(|| {
     JsonBlockHeader::from(block_header)
 });
 
+#[cfg(test)]
+const MERKLE_TREE_HASH_ACTIVATION: u64 = 1;
+
 /// Error returned from constructing a `Block`.
 #[derive(Debug, Error)]
 pub enum Error {
@@ -1530,6 +1533,7 @@ impl Block {
             finalized_block,
             next_era_validator_weights,
             protocol_version,
+            MERKLE_TREE_HASH_ACTIVATION.into(),
         )
         .expect("Could not create random block with specifics")
     }
@@ -2086,7 +2090,7 @@ mod tests {
         let loop_iterations = 50;
         for _ in 0..loop_iterations {
             Block::random(&mut rng)
-                .verify()
+                .verify(MERKLE_TREE_HASH_ACTIVATION.into())
                 .expect("block hash should check");
         }
     }
@@ -2098,11 +2102,11 @@ mod tests {
 
         let bogus_block_body_hash = Digest::hash(&[0xde, 0xad, 0xbe, 0xef]);
         block.header.body_hash = bogus_block_body_hash;
-        block.hash = block.header.hash();
+        block.hash = block.header.hash(MERKLE_TREE_HASH_ACTIVATION.into());
         let bogus_block_hash = block.hash;
 
         // No Eq trait for BlockValidationError, so pattern match
-        match block.verify() {
+        match block.verify(MERKLE_TREE_HASH_ACTIVATION.into()) {
             Err(BlockValidationError::UnexpectedBodyHash {
                 block,
                 actual_block_body_hash,
@@ -2123,12 +2127,13 @@ mod tests {
         block.hash = bogus_block_hash;
 
         // No Eq trait for BlockValidationError, so pattern match
-        match block.verify() {
+        match block.verify(MERKLE_TREE_HASH_ACTIVATION.into()) {
             Err(BlockValidationError::UnexpectedBlockHash {
                 block,
                 actual_block_header_hash,
             }) if block.hash == bogus_block_hash
-                && block.header.hash() == actual_block_header_hash => {}
+                && block.header.hash(MERKLE_TREE_HASH_ACTIVATION.into())
+                    == actual_block_header_hash => {}
             unexpected => panic!("Bad check response: {:?}", unexpected),
         }
     }

@@ -296,7 +296,7 @@ pub(crate) fn validate_get_block_response(
     // access to the proper `merkle_tree_hash_activation`.
     let result_legacy_hash = block.verify(EraId::from(0u64));
     let result_new_hash = block.verify(block.header().era_id() + 1);
-    
+
     match (result_legacy_hash, result_new_hash) {
         (Ok(_), Ok(_)) | (Ok(_), Err(_)) | (Err(_), Ok(_)) => {
             match maybe_block_identifier {
@@ -311,9 +311,10 @@ pub(crate) fn validate_get_block_response(
                         return Err(ValidateResponseError::UnexpectedBlockHeight);
                     }
                 }
-                // More is necessary here to mitigate a MITM attack. In this case we would want to validate
-                // `block.proofs()` to make sure that 1/3 of the validator weight signed the block, and we
-                // would have to know the latest validators through some trustworthy means
+                // More is necessary here to mitigate a MITM attack. In this case we would want to
+                // validate `block.proofs()` to make sure that 1/3 of the validator
+                // weight signed the block, and we would have to know the latest
+                // validators through some trustworthy means
                 None => (),
             }
             Ok(())

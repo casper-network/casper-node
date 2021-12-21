@@ -35,6 +35,8 @@ use crate::{
     utils::WithDir,
 };
 
+const MERKLE_TREE_HASH_ACTIVATION: u64 = 1;
+
 fn new_config(harness: &ComponentHarness<UnitTestEvent>) -> Config {
     const MIB: usize = 1024 * 1024;
 
@@ -67,6 +69,7 @@ fn storage_fixture(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
         "test",
         Ratio::new(1, 3),
         None,
+        MERKLE_TREE_HASH_ACTIVATION.into(),
     )
     .expect("could not create storage component fixture")
 }
@@ -91,6 +94,7 @@ fn storage_fixture_with_hard_reset(
         "test",
         Ratio::new(1, 3),
         None,
+        MERKLE_TREE_HASH_ACTIVATION.into(),
     )
     .expect("could not create storage component fixture")
 }
@@ -116,6 +120,7 @@ fn storage_fixture_with_hard_reset_and_protocol_version(
         "test",
         Ratio::new(1, 3),
         None,
+        MERKLE_TREE_HASH_ACTIVATION.into(),
     )
     .expect("could not create storage component fixture")
 }
@@ -123,7 +128,7 @@ fn storage_fixture_with_hard_reset_and_protocol_version(
 /// Creates a random block with a specific block height.
 fn random_block_at_height(rng: &mut TestRng, height: u64) -> Box<Block> {
     let mut block = Box::new(Block::random(rng));
-    block.set_height(height);
+    block.set_height(height, MERKLE_TREE_HASH_ACTIVATION.into());
     block
 }
 
@@ -386,6 +391,7 @@ fn switch_block_for_block_header(
         finalized_block,
         Some(validator_weights),
         block_header.protocol_version(),
+        MERKLE_TREE_HASH_ACTIVATION.into(),
     )
     .expect("Could not create block")
 }
@@ -410,7 +416,10 @@ fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
         )
     };
 
-    let mut block_signatures = BlockSignatures::new(block.header().hash(), block.header().era_id());
+    let mut block_signatures = BlockSignatures::new(
+        block.header().hash(MERKLE_TREE_HASH_ACTIVATION.into()),
+        block.header().era_id(),
+    );
 
     // Secret and Public Keys
     let alice_secret_key = SecretKey::ed25519_from_bytes([1; SecretKey::ED25519_LENGTH]).unwrap();
@@ -423,7 +432,7 @@ fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
             signature,
             ..
         } = FinalitySignature::new(
-            block.header().hash(),
+            block.header().hash(MERKLE_TREE_HASH_ACTIVATION.into()),
             block.header().era_id(),
             &alice_secret_key,
             alice_public_key.clone(),
@@ -437,7 +446,7 @@ fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
             signature,
             ..
         } = FinalitySignature::new(
-            block.header().hash(),
+            block.header().hash(MERKLE_TREE_HASH_ACTIVATION.into()),
             block.header().era_id(),
             &bob_secret_key,
             bob_public_key.clone(),
@@ -1153,6 +1162,7 @@ fn should_create_subdir_named_after_network() {
         network_name,
         Ratio::new(1, 3),
         None,
+        MERKLE_TREE_HASH_ACTIVATION.into(),
     )
     .unwrap();
 
@@ -1366,6 +1376,7 @@ fn should_garbage_collect() {
             &storage.transfer_hashes_db,
             &storage.proposer_db,
             &block_header_map,
+            MERKLE_TREE_HASH_ACTIVATION.into(),
         )
         .unwrap();
         txn.commit().unwrap();

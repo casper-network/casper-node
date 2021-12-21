@@ -56,6 +56,8 @@ use crate::{
 };
 
 const MAX_ASSOCIATED_KEYS: u32 = 100;
+const MERKLE_TREE_HASH_ACTIVATION: u64 = 1;
+
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
 #[must_use]
@@ -213,6 +215,7 @@ impl reactor::Reactor for Reactor {
             "test",
             Ratio::new(1, 3),
             None,
+            MERKLE_TREE_HASH_ACTIVATION.into(),
         )
         .unwrap();
 
@@ -225,6 +228,7 @@ impl reactor::Reactor for Reactor {
             SystemConfig::default(),
             MAX_ASSOCIATED_KEYS,
             registry,
+            MERKLE_TREE_HASH_ACTIVATION.into(),
         )
         .unwrap();
 

@@ -109,7 +109,8 @@ impl ExecutionPreState {
         }
     }
 
-    /// Creates instance of `ExecutionPreState` from given block header nad merkle tree hash activation point.
+    /// Creates instance of `ExecutionPreState` from given block header nad merkle tree hash
+    /// activation point.
     pub fn from_block_header(
         block_header: &BlockHeader,
         merkle_tree_hash_activation: EraId,
@@ -530,6 +531,7 @@ where
 }
 
 impl ContractRuntime {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         protocol_version: ProtocolVersion,
         storage_dir: &Path,
@@ -720,6 +722,7 @@ impl ContractRuntime {
     }
 
     // TODO: Deduplicate this and execute_finalized_block_or_requeue.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn execute_finalized_block<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,

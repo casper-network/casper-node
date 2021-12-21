@@ -477,6 +477,7 @@ impl Storage {
     /// If `should_check_integrity` is true, time-consuming integrity checks will be performed
     /// during this call to `new()`, potentially blocking for several minutes.  This should normally
     /// only be required if the node is detected to have restarted after a crash.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         cfg: &WithDir<Config>,
         hard_reset_to_start_of_era: Option<EraId>,

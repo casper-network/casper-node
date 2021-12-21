@@ -26,9 +26,9 @@ use crate::{
     effect::{requests::FetcherRequest, EffectBuilder},
     reactor::joiner::JoinerEvent,
     types::{
-        Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures,
-        BlockWithMetadata, Chainspec, Deploy, DeployHash, FinalizedBlock, Item, NodeConfig, NodeId,
-        TimeDiff, Timestamp,
+        Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata,
+        Chainspec, Deploy, DeployHash, FinalizedBlock, Item, NodeConfig, NodeId, TimeDiff,
+        Timestamp,
     },
     utils::work_queue::WorkQueue,
 };
@@ -974,6 +974,8 @@ mod tests {
         utils::Loadable,
     };
 
+    const MERKLE_TREE_HASH_ACTIVATION: u64 = 1;
+
     /// Creates a block for testing, with the given data, and returns its header.
     ///
     /// The other fields are filled in with defaults, since they are not used in these tests.
@@ -1016,6 +1018,7 @@ mod tests {
             finalized_block,
             next_era_validator_weights,
             Default::default(), // protocol version
+            MERKLE_TREE_HASH_ACTIVATION.into(),
         )
         .expect("failed to create block for tests")
         .take_header()
@@ -1041,8 +1044,11 @@ mod tests {
         // We assume era 6 started after six minimum era durations, at block 100.
         let era6_start = genesis_time + era_duration * 6;
         let switch_block5 = create_block(era6_start, EraId::from(5), 100, true);
-        let trusted_switch_block_info5 = KeyBlockInfo::maybe_from_block_header(&switch_block5)
-            .expect("no switch block info for switch block");
+        let trusted_switch_block_info5 = KeyBlockInfo::maybe_from_block_header(
+            &switch_block5,
+            MERKLE_TREE_HASH_ACTIVATION.into(),
+        )
+        .expect("no switch block info for switch block");
 
         // If we are still within the minimum era duration the era is current, even if we have the
         // required number of blocks (115 - 100 > 10).
@@ -1091,7 +1097,9 @@ mod tests {
 
         let key_block =
             Block::random_with_specifics(&mut rng, EraId::from(5), 100, v1_2_0, true).take_header();
-        let key_block_info = KeyBlockInfo::maybe_from_block_header(&key_block).unwrap();
+        let key_block_info =
+            KeyBlockInfo::maybe_from_block_header(&key_block, MERKLE_TREE_HASH_ACTIVATION.into())
+                .unwrap();
         let header = Block::random_with_specifics(&mut rng, EraId::from(6), 101, v1_3_0, false)
             .take_header();
 
@@ -1129,7 +1137,9 @@ mod tests {
         // so we don't necessarily need to downgrade.
         let key_block =
             Block::random_with_specifics(&mut rng, EraId::from(5), 100, v1_2_0, true).take_header();
-        let key_block_info = KeyBlockInfo::maybe_from_block_header(&key_block).unwrap();
+        let key_block_info =
+            KeyBlockInfo::maybe_from_block_header(&key_block, MERKLE_TREE_HASH_ACTIVATION.into())
+                .unwrap();
         let last_block_height = key_block.height() + chainspec.core_config.minimum_era_height;
         let header =
             Block::random_with_specifics(&mut rng, EraId::from(6), last_block_height, v1_3_0, true)

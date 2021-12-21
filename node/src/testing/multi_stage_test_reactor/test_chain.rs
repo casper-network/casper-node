@@ -26,6 +26,8 @@ use crate::{
     NodeRng,
 };
 
+const MERKLE_TREE_HASH_ACTIVATION: u64 = 1;
+
 #[derive(Clone)]
 struct SecretKeyWithStake {
     secret_key: Arc<SecretKey>,
@@ -359,7 +361,7 @@ async fn await_switch_block(
     info!(
         "Found block hash for Era {}: {:?}",
         switch_block_era_num,
-        switch_block_header.hash()
+        switch_block_header.hash(MERKLE_TREE_HASH_ACTIVATION.into())
     );
     switch_block_header
 }
@@ -391,7 +393,7 @@ async fn test_joiner_at_genesis() {
         .read_block_header_by_height(2)
         .expect("should not have storage error")
         .expect("should have block header")
-        .hash();
+        .hash(MERKLE_TREE_HASH_ACTIVATION.into());
 
     // Have a node join the network with that hash
     info!("Joining with trusted hash {}", trusted_hash);
@@ -446,7 +448,7 @@ async fn test_archival_sync() {
     // As part of the fast sync process, we will need to retrieve the first switch block
     let switch_block_hash = await_switch_block(1, &mut chain.network, &mut rng)
         .await
-        .hash();
+        .hash(MERKLE_TREE_HASH_ACTIVATION.into());
 
     let era_to_join = 3;
     info!("Waiting for Era {} to end", era_to_join);
@@ -502,7 +504,7 @@ async fn test_archival_sync() {
             .expect("must read from storage")
             .expect("must have highest block header");
         // Check every block and its state root going back to genesis
-        let mut block_hash = highest_block_header.hash();
+        let mut block_hash = highest_block_header.hash(MERKLE_TREE_HASH_ACTIVATION.into());
         loop {
             let block = storage
                 .read_block(&block_hash)
@@ -545,7 +547,7 @@ async fn test_joiner() {
     // As part of the fast sync process, we will need to retrieve the first switch block
     let switch_block_hash = await_switch_block(1, &mut chain.network, &mut rng)
         .await
-        .hash();
+        .hash(MERKLE_TREE_HASH_ACTIVATION.into());
 
     let era_to_join = 3;
     info!("Waiting for Era {} to end", era_to_join);
@@ -614,7 +616,7 @@ async fn test_joiner_network() {
         .read_block_header_by_height(2)
         .expect("should not have storage error")
         .expect("should have block header")
-        .hash();
+        .hash(MERKLE_TREE_HASH_ACTIVATION.into());
 
     // Have a node join the network with that hash
     info!("Joining with trusted hash {}", trusted_block_hash);

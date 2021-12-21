@@ -532,7 +532,8 @@ where
                 None => self.failed_to_get_from_storage(effect_builder, id, peer),
             },
             Event::GotRemotely {
-                merkle_tree_hash_activation: _, // TODO[RC]: Check if we need `self.merkle_tree_hash_activation()` below
+                merkle_tree_hash_activation: _, /* TODO[RC]: Check if we need
+                                                 * `self.merkle_tree_hash_activation()` below */
                 item,
                 source,
             } => {

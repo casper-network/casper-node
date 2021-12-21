@@ -45,6 +45,7 @@ use crate::{
 const VERIFY_ACCOUNTS: bool = true;
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 const TIMEOUT: Duration = Duration::from_secs(10);
+const MERKLE_TREE_HASH_ACTIVATION: u64 = 1;
 
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
@@ -393,6 +394,7 @@ impl reactor::Reactor for Reactor {
             "test",
             Ratio::new(1, 3),
             None,
+            MERKLE_TREE_HASH_ACTIVATION.into(),
         )
         .unwrap();
 
