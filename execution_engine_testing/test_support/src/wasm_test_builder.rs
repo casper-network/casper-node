@@ -32,6 +32,7 @@ use casper_execution_engine::{
     },
     shared::{
         additive_map::AdditiveMap,
+        execution_journal::ExecutionJournal,
         logging::{self, Settings, Style},
         newtypes::CorrelationId,
         system_config::SystemConfig,
@@ -97,7 +98,7 @@ pub struct WasmTestBuilder<S> {
     post_state_hash: Option<Digest>,
     /// Cached transform maps after subsequent successful runs i.e. `transforms[0]` is for first
     /// exec call etc.
-    transforms: Vec<AdditiveMap<Key, Transform>>,
+    transforms: Vec<ExecutionJournal>,
     /// Cached genesis transforms
     genesis_account: Option<Account>,
     /// Genesis transforms
@@ -605,7 +606,7 @@ where
         self.transforms.extend(
             execution_results
                 .iter()
-                .map(|res| res.execution_journal().clone().into()),
+                .map(|res| res.execution_journal().clone()),
         );
         self.exec_results.push(
             maybe_exec_results
@@ -623,7 +624,7 @@ where
 
         let effects = self.transforms.last().cloned().unwrap_or_default();
 
-        self.commit_transforms(prestate_hash, effects)
+        self.commit_transforms(prestate_hash, effects.into())
     }
 
     /// Runs a commit request, expects a successful response, and
@@ -772,7 +773,20 @@ where
     }
 
     /// Gets the transform map that's cached between runs
+    #[deprecated(
+        since = "2.1.0",
+        note = "Use `get_execution_journals` that returns transforms in the order they were created."
+    )]
     pub fn get_transforms(&self) -> Vec<AdditiveMap<Key, Transform>> {
+        self.transforms
+            .clone()
+            .into_iter()
+            .map(AdditiveMap::from)
+            .collect()
+    }
+
+    /// Gets `ExecutionJournal`s of all passed runs.
+    pub fn get_execution_journals(&self) -> Vec<ExecutionJournal> {
         self.transforms.clone()
     }
 

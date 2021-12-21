@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use assert_matches::assert_matches;
 
 use casper_engine_test_support::{
@@ -66,7 +68,7 @@ fn should_raise_insufficient_payment_when_caller_lacks_minimum_balance() {
     );
 
     let expected_transfers_count = 0;
-    let transforms = builder.get_transforms();
+    let transforms = builder.get_execution_journals();
     let transform = &transforms[1];
 
     assert_eq!(
@@ -532,7 +534,7 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
         .expect_success()
         .commit();
 
-    let transforms = builder.get_transforms();
+    let transforms = builder.get_execution_journals();
     let transforms_from_genesis = &transforms[1];
     let transforms_from_account_1 = &transforms[2];
 
@@ -545,16 +547,26 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
         .into_uref()
         .unwrap();
 
+    let transforms_from_genesis_map: HashMap<Key, Transform> =
+        transforms_from_genesis.clone().into_iter().collect();
+    let transforms_from_account_1_map: HashMap<Key, Transform> =
+        transforms_from_account_1.clone().into_iter().collect();
+
     // Confirm the two deploys have no overlapping writes except for the payment purse balance.
-    let common_write_keys = transforms_from_genesis.keys().filter(|k| {
-        *k != &Key::Balance(payment_purse.addr())
+    let common_write_keys = transforms_from_genesis.iter().filter_map(|(k, _)| {
+        if k != &Key::Balance(payment_purse.addr())
             && matches!(
                 (
-                    transforms_from_genesis.get(k),
-                    transforms_from_account_1.get(k),
+                    transforms_from_genesis_map.get(k),
+                    transforms_from_account_1_map.get(k),
                 ),
                 (Some(Transform::Write(_)), Some(Transform::Write(_)))
             )
+        {
+            Some(k)
+        } else {
+            None
+        }
     });
 
     assert_eq!(common_write_keys.count(), 0);

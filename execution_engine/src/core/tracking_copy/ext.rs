@@ -218,7 +218,7 @@ where
         contract_hash: ContractHash,
     ) -> Result<Contract, Self::Error> {
         let key = contract_hash.into();
-        match self.get(correlation_id, &key).map_err(Into::into)? {
+        match self.read(correlation_id, &key).map_err(Into::into)? {
             Some(StoredValue::Contract(contract)) => Ok(contract),
             Some(other) => Err(execution::Error::TypeMismatch(
                 StoredValueTypeMismatch::new("Contract".to_string(), other.type_name()),
@@ -233,7 +233,7 @@ where
         contract_package_hash: ContractPackageHash,
     ) -> Result<ContractPackage, Self::Error> {
         let key = contract_package_hash.into();
-        match self.get(correlation_id, &key).map_err(Into::into)? {
+        match self.read(correlation_id, &key).map_err(Into::into)? {
             Some(StoredValue::ContractPackage(contract_package)) => Ok(contract_package),
             Some(other) => Err(execution::Error::TypeMismatch(
                 StoredValueTypeMismatch::new("ContractPackage".to_string(), other.type_name()),

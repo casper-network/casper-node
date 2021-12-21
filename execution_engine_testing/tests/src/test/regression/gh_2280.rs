@@ -6,7 +6,9 @@ use casper_engine_test_support::{
     PRODUCTION_PATH,
 };
 use casper_execution_engine::{
-    core::engine_state::{EngineConfig, UpgradeConfig, DEFAULT_MAX_QUERY_DEPTH},
+    core::engine_state::{
+        EngineConfig, UpgradeConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+    },
     shared::{
         host_function_costs::{Cost, HostFunction, HostFunctionCosts},
         system_config::{mint_costs::MintCosts, SystemConfig},

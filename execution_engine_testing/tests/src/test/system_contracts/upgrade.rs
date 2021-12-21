@@ -8,7 +8,9 @@ use casper_engine_test_support::{
 };
 
 use casper_execution_engine::{
-    core::engine_state::{EngineConfig, DEFAULT_MAX_QUERY_DEPTH},
+    core::engine_state::{
+        EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+    },
     shared::{
         host_function_costs::HostFunctionCosts,
         opcode_costs::{
@@ -131,6 +133,7 @@ fn should_allow_only_wasm_costs_patch_version() {
     let engine_config = EngineConfig::new(
         DEFAULT_MAX_QUERY_DEPTH,
         builder.get_initial_max_associated_keys(),
+        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         new_wasm_config,
         SystemConfig::default(),
     );
@@ -171,6 +174,7 @@ fn should_allow_only_wasm_costs_minor_version() {
     let engine_config = EngineConfig::new(
         DEFAULT_MAX_QUERY_DEPTH,
         builder.get_initial_max_associated_keys(),
+        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         new_wasm_config,
         SystemConfig::default(),
     );
@@ -663,6 +667,7 @@ fn should_increase_max_associated_keys_after_upgrade() {
     let new_engine_config = EngineConfig::new(
         DEFAULT_MAX_QUERY_DEPTH,
         builder.get_initial_max_associated_keys() + 1,
+        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         builder.get_initial_wasm_config(),
         new_system_config,
     );
