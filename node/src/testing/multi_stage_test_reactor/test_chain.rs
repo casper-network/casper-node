@@ -26,7 +26,8 @@ use crate::{
     NodeRng,
 };
 
-const MERKLE_TREE_HASH_ACTIVATION: u64 = 1;
+const ERA_TO_JOIN: u64 = 3;
+const MERKLE_TREE_HASH_ACTIVATION: u64 = ERA_TO_JOIN + 1;
 
 #[derive(Clone)]
 struct SecretKeyWithStake {
@@ -450,13 +451,12 @@ async fn test_archival_sync() {
         .await
         .hash(MERKLE_TREE_HASH_ACTIVATION.into());
 
-    let era_to_join = 3;
-    info!("Waiting for Era {} to end", era_to_join);
+    info!("Waiting for Era {} to end", ERA_TO_JOIN);
     chain
         .network
         .settle_on(
             &mut rng,
-            has_passed_by_era(era_to_join),
+            has_passed_by_era(ERA_TO_JOIN),
             Duration::from_secs(600),
         )
         .await;
@@ -480,7 +480,7 @@ async fn test_archival_sync() {
         "There should be two nodes in the network (one bonded validator and one read only)"
     );
 
-    let synchronized_era = era_to_join + 1;
+    let synchronized_era = ERA_TO_JOIN + 1;
     info!("Waiting for Era {} to end", synchronized_era);
     chain
         .network
@@ -549,13 +549,12 @@ async fn test_joiner() {
         .await
         .hash(MERKLE_TREE_HASH_ACTIVATION.into());
 
-    let era_to_join = 3;
-    info!("Waiting for Era {} to end", era_to_join);
+    info!("Waiting for Era {} to end", ERA_TO_JOIN);
     chain
         .network
         .settle_on(
             &mut rng,
-            has_passed_by_era(era_to_join),
+            has_passed_by_era(ERA_TO_JOIN),
             Duration::from_secs(600),
         )
         .await;
@@ -579,7 +578,7 @@ async fn test_joiner() {
         "There should be two validators in the network (one bonded and one read only)"
     );
 
-    let synchronized_era = era_to_join + 1;
+    let synchronized_era = ERA_TO_JOIN + 1;
     info!("Waiting for Era {} to end", synchronized_era);
     chain
         .network

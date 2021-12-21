@@ -689,8 +689,15 @@ pub struct BlockHeader {
 impl BlockHeader {
     /// The [`HashingAlgorithmVersion`] used for the header (as well as for its corresponding block
     /// body).
-    pub fn hashing_algorithm_version(&self) -> HashingAlgorithmVersion {
-        HashingAlgorithmVersion::from_protocol_version(&self.protocol_version)
+    pub fn hashing_algorithm_version(
+        &self,
+        merkle_tree_hash_activation: EraId,
+    ) -> HashingAlgorithmVersion {
+        if self.era_id < merkle_tree_hash_activation {
+            HashingAlgorithmVersion::V1
+        } else {
+            HashingAlgorithmVersion::V2
+        }
     }
 
     /// The parent block's hash.
@@ -1304,19 +1311,6 @@ pub enum HashingAlgorithmVersion {
     V1,
     /// Version 2
     V2,
-}
-
-impl HashingAlgorithmVersion {
-    pub(crate) const HASH_V2_PROTOCOL_VERSION: ProtocolVersion =
-        ProtocolVersion::from_parts(1, 5, 0);
-
-    fn from_protocol_version(protocol_version: &ProtocolVersion) -> Self {
-        if *protocol_version < Self::HASH_V2_PROTOCOL_VERSION {
-            HashingAlgorithmVersion::V1
-        } else {
-            HashingAlgorithmVersion::V2
-        }
-    }
 }
 
 impl Block {
@@ -2107,8 +2101,11 @@ mod tests {
                 actual_block_body_hash,
             }) if block.hash == bogus_block_hash
                 && block.header.body_hash == bogus_block_body_hash
-                && block.body.hash(block.header.hashing_algorithm_version())
-                    == actual_block_body_hash => {}
+                && block.body.hash(
+                    block
+                        .header
+                        .hashing_algorithm_version(MERKLE_TREE_HASH_ACTIVATION.into()),
+                ) == actual_block_body_hash => {}
             unexpected => panic!("Bad check response: {:?}", unexpected),
         }
     }
@@ -2165,7 +2162,7 @@ mod tests {
             &mut rng,
             era_id,
             height,
-            HashingAlgorithmVersion::HASH_V2_PROTOCOL_VERSION,
+            ProtocolVersion::from_parts(1, 5, 0),
             is_switch,
         );
 

@@ -561,7 +561,9 @@ impl Storage {
                 if block_header.era_id() >= invalid_era
                     && block_header.protocol_version() < protocol_version
                 {
-                    if block_header.hashing_algorithm_version() == HashingAlgorithmVersion::V1 {
+                    if block_header.hashing_algorithm_version(merkle_tree_hash_activation)
+                        == HashingAlgorithmVersion::V1
+                    {
                         let _ = deleted_block_body_hashes_v1.insert(*block_header.body_hash());
                     }
                     let _ =
@@ -590,28 +592,29 @@ impl Storage {
             )?;
 
             let mut body_txn = env.begin_ro_txn()?;
-            let block_body: BlockBody = match block_header.hashing_algorithm_version() {
-                HashingAlgorithmVersion::V1 => body_txn
-                    .get_value(block_body_v1_db, block_header.body_hash())?
+            let block_body: BlockBody =
+                match block_header.hashing_algorithm_version(merkle_tree_hash_activation) {
+                    HashingAlgorithmVersion::V1 => body_txn
+                        .get_value(block_body_v1_db, block_header.body_hash())?
+                        .ok_or_else(|| {
+                            FatalStorageError::NonExistentBlockBodyReferredToByHeader(Box::new(
+                                block_header.clone(),
+                            ))
+                        })?,
+                    HashingAlgorithmVersion::V2 => get_single_block_body_v2(
+                        &mut body_txn,
+                        block_body_v2_db,
+                        deploy_hashes_db,
+                        transfer_hashes_db,
+                        proposer_db,
+                        block_header.body_hash(),
+                    )?
                     .ok_or_else(|| {
                         FatalStorageError::NonExistentBlockBodyReferredToByHeader(Box::new(
                             block_header.clone(),
                         ))
                     })?,
-                HashingAlgorithmVersion::V2 => get_single_block_body_v2(
-                    &mut body_txn,
-                    block_body_v2_db,
-                    deploy_hashes_db,
-                    transfer_hashes_db,
-                    proposer_db,
-                    block_header.body_hash(),
-                )?
-                .ok_or_else(|| {
-                    FatalStorageError::NonExistentBlockBodyReferredToByHeader(Box::new(
-                        block_header.clone(),
-                    ))
-                })?,
-            };
+                };
 
             if should_check_integrity {
                 Block::new_from_header_and_body(
@@ -1181,7 +1184,10 @@ impl Storage {
         {
             let block_body_hash = block.header().body_hash();
             let block_body = block.body();
-            let success = match block.header().hashing_algorithm_version() {
+            let success = match block
+                .header()
+                .hashing_algorithm_version(self.merkle_tree_hash_activation)
+            {
                 HashingAlgorithmVersion::V1 => {
                     self.put_single_block_body_v1(&mut txn, block_body_hash, block_body)?
                 }
@@ -1577,7 +1583,7 @@ impl Storage {
         tx: &mut Tx,
         block_header: &BlockHeader,
     ) -> Result<Option<BlockBody>, LmdbExtError> {
-        match block_header.hashing_algorithm_version() {
+        match block_header.hashing_algorithm_version(self.merkle_tree_hash_activation) {
             HashingAlgorithmVersion::V1 => {
                 self.get_single_block_body_v1(tx, block_header.body_hash())
             }
@@ -2151,7 +2157,8 @@ fn initialize_block_body_v1_db(
                 .map_err(|err| LmdbExtError::DataCorrupted(Box::new(err)))?;
             let block_body: BlockBody = lmdb_ext::deserialize(raw_val)?;
             if let Some(block_header) = block_body_hash_to_header_map.get(&block_body_hash) {
-                let actual_hashing_algorithm_version = block_header.hashing_algorithm_version();
+                let actual_hashing_algorithm_version =
+                    block_header.hashing_algorithm_version(merkle_tree_hash_activation);
                 if expected_hashing_algorithm_version != actual_hashing_algorithm_version {
                     return Err(FatalStorageError::UnexpectedHashingAlgorithmVersion {
                         expected_hashing_algorithm_version,
@@ -2275,7 +2282,9 @@ fn garbage_collect_block_body_v2_db(
     ];
 
     for (body_hash, header) in block_body_hash_to_header_map {
-        if header.hashing_algorithm_version() != HashingAlgorithmVersion::V2 {
+        if header.hashing_algorithm_version(merkle_tree_hash_activation)
+            != HashingAlgorithmVersion::V2
+        {
             // We're only interested in body hashes for V2 blocks here
             continue;
         }
@@ -2364,7 +2373,8 @@ fn initialize_block_body_v2_db(
                     continue;
                 }
             };
-            let actual_hashing_algorithm_version = block_header.hashing_algorithm_version();
+            let actual_hashing_algorithm_version =
+                block_header.hashing_algorithm_version(merkle_tree_hash_activation);
             if expected_hashing_algorithm_version != actual_hashing_algorithm_version {
                 return Err(FatalStorageError::UnexpectedHashingAlgorithmVersion {
                     expected_hashing_algorithm_version,
