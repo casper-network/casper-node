@@ -4,9 +4,9 @@ use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_VALIDATOR_SLOTS, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_GENESIS_TIMESTAMP_MILLIS, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    PRODUCTION_PATH,
 };
 use casper_execution_engine::core::engine_state::{genesis::GenesisValidator, GenesisAccount};
 use casper_types::{
@@ -23,6 +23,12 @@ const MINIMUM_BONDED_AMOUNT: u64 = 1_000;
 /// Validator with smallest stake will withdraw most of his stake to ensure we did move time forward
 /// to unlock his whole vesting schedule.
 const WITHDRAW_AMOUNT: u64 = MINIMUM_BONDED_AMOUNT - 1;
+
+/// Default value for locked funds periods millis
+const DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS: u64 = 90 * 24 * 60 * 60 * 1000;
+
+/// Default value for validator slots
+const DEFAULT_VALIDATOR_SLOTS: u32 = 100;
 
 /// Initial lockup period
 const VESTING_BASE: u64 = DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
@@ -99,10 +105,9 @@ static GENESIS_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
 });
 
 fn initialize_builder() -> InMemoryWasmTestBuilder {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let run_genesis_request = utils::create_run_genesis_request(GENESIS_ACCOUNTS.clone());
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(GENESIS_ACCOUNTS.clone());
 
     let fund_request = ExecuteRequestBuilder::transfer(
         *DEFAULT_ACCOUNT_ADDR,

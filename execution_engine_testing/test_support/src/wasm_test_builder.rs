@@ -179,6 +179,7 @@ impl InMemoryWasmTestBuilder {
         let engine_config = EngineConfig::new(
             DEFAULT_MAX_QUERY_DEPTH,
             chainspec_config.core_config.max_associated_keys,
+            chainspec_config.core_config.max_runtime_call_stack_height,
             chainspec_config.wasm_config,
             chainspec_config.system_costs_config,
         );
@@ -236,6 +237,7 @@ impl LmdbWasmTestBuilder {
         let engine_config = EngineConfig::new(
             DEFAULT_MAX_QUERY_DEPTH,
             chainspec_config.core_config.max_associated_keys,
+            chainspec_config.core_config.max_runtime_call_stack_height,
             chainspec_config.wasm_config,
             chainspec_config.system_costs_config,
         );
@@ -312,6 +314,7 @@ impl LmdbWasmTestBuilder {
         let engine_config = EngineConfig::new(
             DEFAULT_MAX_QUERY_DEPTH,
             chainspec_config.core_config.max_associated_keys,
+            chainspec_config.core_config.max_runtime_call_stack_height,
             chainspec_config.wasm_config,
             chainspec_config.system_costs_config,
         );
@@ -1238,13 +1241,21 @@ where
         self.chainspec_config.system_costs_config
     }
 
-    /// Returns the validator slots
+    /// Returns the validator slots value used to instantiate the builder.
     pub fn get_initial_validator_slots(&self) -> u32 {
         self.chainspec_config.core_config.validator_slots
     }
 
-    /// Returns
+    /// Returns the initial round_seignorage_rate value used to instantiate the builder.
     pub fn get_initial_round_seignorage_rate(&self) -> Ratio<u64> {
         self.chainspec_config.core_config.round_seigniorage_rate
+    }
+
+    /// Returns the initial max_runtime_call_stack_height value
+    /// used to instantiate the builder.
+    pub fn get_initial_max_runtime_call_stack_height(&self) -> u32 {
+        self.chainspec_config
+            .core_config
+            .max_runtime_call_stack_height
     }
 }

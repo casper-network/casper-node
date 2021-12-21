@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_RUN_GENESIS_REQUEST,
+    PRODUCTION_PATH,
 };
 use casper_execution_engine::core::{
     engine_state::Error as CoreError, execution::Error as ExecError,
@@ -26,8 +26,8 @@ const STARTING_BALANCE: u64 = 100_000_000_000;
 fn regression_20211110() {
     let mut funds: u64 = STARTING_BALANCE;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let transfer_request = ExecuteRequestBuilder::transfer(
         *DEFAULT_ACCOUNT_ADDR,

@@ -2,13 +2,11 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
+    DEFAULT_PROTOCOL_VERSION, PRODUCTION_PATH,
 };
 use casper_execution_engine::{
     core::{
-        engine_state::{
-            EngineConfig, Error, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        },
+        engine_state::{EngineConfig, Error, DEFAULT_MAX_QUERY_DEPTH},
         execution::Error as ExecError,
     },
     shared::wasm_config::{WasmConfig, DEFAULT_WASM_MAX_MEMORY},
@@ -57,8 +55,8 @@ fn make_n_arg_call_bytes(arity: usize, arg_type: &str) -> Vec<u8> {
 }
 
 fn initialize_builder() -> InMemoryWasmTestBuilder {
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+    builder.run_genesis_with_default_genesis_accounts();
     builder
 }
 
@@ -115,8 +113,8 @@ fn should_observe_stack_height_limit() {
         // We need to perform an upgrade to be able to observe new max wasm stack height.
         let new_engine_config = EngineConfig::new(
             DEFAULT_MAX_QUERY_DEPTH,
-            DEFAULT_MAX_ASSOCIATED_KEYS,
-            DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+            builder.get_initial_max_associated_keys(),
+            builder.get_initial_max_runtime_call_stack_height(),
             WasmConfig::new(
                 DEFAULT_WASM_MAX_MEMORY,
                 NEW_WASM_STACK_HEIGHT,

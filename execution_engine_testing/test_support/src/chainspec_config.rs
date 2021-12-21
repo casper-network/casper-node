@@ -57,6 +57,8 @@ pub struct CoreConfig {
     pub(crate) round_seigniorage_rate: Ratio<u64>,
     /// Maximum number of associated keys for a single account.
     pub(crate) max_associated_keys: u32,
+    /// Maximum height of contract runtime call stack.
+    pub(crate) max_runtime_call_stack_height: u32,
 }
 
 /// This struct can be parsed from a TOML-encoded chainspec file.  It means that as the

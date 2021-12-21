@@ -6,9 +6,7 @@ use casper_engine_test_support::{
     PRODUCTION_PATH,
 };
 use casper_execution_engine::{
-    core::engine_state::{
-        EngineConfig, UpgradeConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-    },
+    core::engine_state::{EngineConfig, UpgradeConfig, DEFAULT_MAX_QUERY_DEPTH},
     shared::{
         host_function_costs::{Cost, HostFunction, HostFunctionCosts},
         system_config::{mint_costs::MintCosts, SystemConfig},
@@ -169,6 +167,7 @@ fn gh_2280_transfer_should_always_cost_the_same_gas() {
     let new_engine_config = EngineConfig::new(
         DEFAULT_MAX_QUERY_DEPTH,
         builder.get_initial_max_associated_keys(),
+        builder.get_initial_max_runtime_call_stack_height(),
         new_wasm_config,
         new_system_config,
     );
@@ -312,6 +311,7 @@ fn gh_2280_create_purse_should_always_cost_the_same_gas() {
     let new_engine_config = EngineConfig::new(
         DEFAULT_MAX_QUERY_DEPTH,
         builder.get_initial_max_associated_keys(),
+        builder.get_initial_max_runtime_call_stack_height(),
         new_wasm_config,
         new_system_config,
     );
@@ -456,6 +456,7 @@ fn gh_2280_transfer_purse_to_account_should_always_cost_the_same_gas() {
     let new_engine_config = EngineConfig::new(
         DEFAULT_MAX_QUERY_DEPTH,
         builder.get_initial_max_associated_keys(),
+        builder.get_initial_max_runtime_call_stack_height(),
         new_wasm_config,
         new_system_config,
     );
@@ -605,6 +606,7 @@ fn gh_2280_stored_transfer_to_account_should_always_cost_the_same_gas() {
     let new_engine_config = EngineConfig::new(
         DEFAULT_MAX_QUERY_DEPTH,
         builder.get_initial_max_associated_keys(),
+        builder.get_initial_max_runtime_call_stack_height(),
         new_wasm_config,
         new_system_config,
     );
@@ -750,6 +752,7 @@ fn gh_2280_stored_faucet_call_should_cost_the_same() {
     let new_engine_config = EngineConfig::new(
         DEFAULT_MAX_QUERY_DEPTH,
         builder.get_initial_max_associated_keys(),
+        builder.get_initial_max_runtime_call_stack_height(),
         new_wasm_config,
         new_system_config,
     );
