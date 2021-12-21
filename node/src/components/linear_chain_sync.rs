@@ -55,7 +55,7 @@ use crate::{
 pub(crate) use config::Config;
 pub(crate) use event::Event;
 use event::{BlockByHeightResult, StopReason};
-pub(crate) use metrics::LinearChainSyncMetrics;
+use metrics::Metrics;
 pub(crate) use peers::PeersState;
 pub(crate) use state::State;
 pub(crate) use traits::ReactorEventT;
@@ -65,7 +65,7 @@ pub(crate) struct LinearChainSync<I> {
     peers: PeersState<I>,
     state: State,
     #[data_size(skip)]
-    metrics: LinearChainSyncMetrics,
+    metrics: Metrics,
     /// The next upgrade activation point.
     /// When we download the switch block of an era immediately before the activation point,
     /// we need to shut down for an upgrade.
@@ -186,7 +186,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             let linear_chain_sync = LinearChainSync {
                 peers: PeersState::new(),
                 state,
-                metrics: LinearChainSyncMetrics::new(registry)?,
+                metrics: Metrics::new(registry)?,
                 next_upgrade_activation_point,
                 stop_reason: None,
                 state_key,
@@ -225,7 +225,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         Ok(LinearChainSync {
             peers: PeersState::new(),
             state,
-            metrics: LinearChainSyncMetrics::new(registry)?,
+            metrics: Metrics::new(registry)?,
             next_upgrade_activation_point,
             stop_reason: None,
             state_key,

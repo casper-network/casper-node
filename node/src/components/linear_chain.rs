@@ -13,7 +13,7 @@ use prometheus::Registry;
 use tracing::{debug, error};
 
 use self::{
-    metrics::LinearChainMetrics,
+    metrics::Metrics,
     state::{Outcome, Outcomes},
 };
 use super::Component;
@@ -39,7 +39,7 @@ use state::LinearChain;
 pub(crate) struct LinearChainComponent<I> {
     linear_chain_state: LinearChain,
     #[data_size(skip)]
-    metrics: LinearChainMetrics,
+    metrics: Metrics,
     _marker: PhantomData<I>,
 }
 
@@ -50,7 +50,7 @@ impl<I> LinearChainComponent<I> {
         auction_delay: u64,
         unbonding_delay: u64,
     ) -> Result<Self, prometheus::Error> {
-        let metrics = LinearChainMetrics::new(registry)?;
+        let metrics = Metrics::new(registry)?;
         let linear_chain_state = LinearChain::new(protocol_version, auction_delay, unbonding_delay);
         Ok(LinearChainComponent {
             linear_chain_state,
