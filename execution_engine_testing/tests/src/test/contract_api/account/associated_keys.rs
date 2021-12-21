@@ -2,7 +2,7 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
-    DEFAULT_RUN_GENESIS_REQUEST,
+    PRODUCTION_PATH,
 };
 use casper_types::{
     account::{AccountHash, Weight},
@@ -22,7 +22,7 @@ static ACCOUNT_1_INITIAL_FUND: Lazy<U512> = Lazy::new(|| *DEFAULT_PAYMENT * 10);
 fn should_manage_associated_key() {
     // for a given account, should be able to add a new associated key and update
     // that key
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -38,7 +38,7 @@ fn should_manage_associated_key() {
     .build();
 
     builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+        .run_genesis_with_default_genesis_accounts()
         .exec(exec_request_1)
         .expect_success()
         .commit();

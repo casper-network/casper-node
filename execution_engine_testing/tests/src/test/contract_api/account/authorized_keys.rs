@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, ARG_AMOUNT,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, PRODUCTION_PATH,
 };
 use casper_execution_engine::core::{
     engine_state::{self, Error},
@@ -35,8 +35,8 @@ fn should_deploy_with_authorized_identity_key() {
     )
     .build();
     // Basic deploy with single key
-    InMemoryWasmTestBuilder::default()
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+    InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None)
+        .run_genesis_with_default_genesis_accounts()
         .exec(exec_request)
         .commit()
         .expect_success();
@@ -67,9 +67,9 @@ fn should_raise_auth_failure_with_invalid_key() {
     };
 
     // Basic deploy with single key
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
     builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+        .run_genesis_with_default_genesis_accounts()
         .exec(exec_request)
         .commit();
 
@@ -116,9 +116,9 @@ fn should_raise_auth_failure_with_invalid_keys() {
     };
 
     // Basic deploy with single key
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
     builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+        .run_genesis_with_default_genesis_accounts()
         .exec(exec_request)
         .commit();
 
@@ -175,9 +175,9 @@ fn should_raise_deploy_authorization_failure() {
     )
     .build();
     // Basic deploy with single key
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
     builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+        .run_genesis_with_default_genesis_accounts()
         // Reusing a test contract that would add new key
         .exec(exec_request_1)
         .expect_success()
@@ -340,9 +340,9 @@ fn should_authorize_deploy_with_multiple_keys() {
     )
     .build();
     // Basic deploy with single key
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
     builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+        .run_genesis_with_default_genesis_accounts()
         // Reusing a test contract that would add new key
         .exec(exec_request_1)
         .expect_success()
@@ -398,9 +398,9 @@ fn should_not_authorize_deploy_with_duplicated_keys() {
     )
     .build();
     // Basic deploy with single key
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
     builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+        .run_genesis_with_default_genesis_accounts()
         // Reusing a test contract that would add new key
         .exec(exec_request_1)
         .expect_success()
@@ -481,10 +481,10 @@ fn should_not_authorize_transfer_without_deploy_key_threshold() {
     .build();
 
     // Basic deploy with single key
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
     builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+        .run_genesis_with_default_genesis_accounts()
         // Reusing a test contract that would add new key
         .exec(add_key_1_request)
         .expect_success()

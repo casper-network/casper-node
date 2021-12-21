@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
-    DEFAULT_RUN_GENESIS_REQUEST,
+    PRODUCTION_PATH,
 };
 use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, StoredValue};
 
@@ -13,9 +13,9 @@ const ARG_AMOUNT: &str = "amount";
 #[ignore]
 #[test]
 fn should_run_main_purse_contract_default_account() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let builder = builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let builder = builder.run_genesis_with_default_genesis_accounts();
 
     let default_account = if let Ok(StoredValue::Account(account)) =
         builder.query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -38,7 +38,7 @@ fn should_run_main_purse_contract_default_account() {
 #[ignore]
 #[test]
 fn should_run_main_purse_contract_account_1() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -48,7 +48,7 @@ fn should_run_main_purse_contract_account_1() {
     .build();
 
     let builder = builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+        .run_genesis_with_default_genesis_accounts()
         .exec(exec_request_1)
         .expect_success()
         .commit();

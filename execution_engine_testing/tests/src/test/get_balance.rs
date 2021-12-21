@@ -1,8 +1,7 @@
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, PRODUCTION_PATH,
 };
 use casper_execution_engine::{core, core::ValidationError};
 use casper_hashing::Digest;
@@ -26,8 +25,8 @@ static TRANSFER_AMOUNT_1: Lazy<U512> = Lazy::new(|| U512::from(100_000_000));
 #[ignore]
 #[test]
 fn get_balance_should_work() {
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let transfer_request = ExecuteRequestBuilder::transfer(
         *DEFAULT_ACCOUNT_ADDR,
@@ -111,8 +110,8 @@ fn get_balance_should_work() {
 #[ignore]
 #[test]
 fn get_balance_using_public_key_should_work() {
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let transfer_request = ExecuteRequestBuilder::transfer(
         *DEFAULT_ACCOUNT_ADDR,

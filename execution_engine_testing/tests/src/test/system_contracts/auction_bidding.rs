@@ -4,9 +4,8 @@ use num_traits::Zero;
 use casper_engine_test_support::{
     utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNTS,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT, DEFAULT_PROPOSER_PUBLIC_KEY,
-    DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY,
-    MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
+    DEFAULT_PAYMENT, DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_PATH, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::core::{
     engine_state::{
@@ -53,8 +52,9 @@ const DELEGATION_RATE: DelegationRate = 42;
 #[test]
 fn should_run_successful_bond_and_unbond_and_slashing() {
     let default_public_key_arg = DEFAULT_ACCOUNT_PUBLIC_KEY.clone();
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+
+    builder.run_genesis_with_default_genesis_accounts();
 
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -141,10 +141,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     let unbond_era_1 = unbond_list[0].era_of_creation();
 
-    builder.run_auction(
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-        Vec::new(),
-    );
+    builder.run_auction(DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo(), Vec::new());
     let unbond_purses: UnbondingPurses = builder.get_withdraws();
     assert_eq!(unbond_purses.len(), 1);
 
@@ -204,12 +201,12 @@ fn should_fail_bonding_with_insufficient_funds_directly() {
     let new_validator_hash = AccountHash::from(&new_validator_pk);
     assert_ne!(&DEFAULT_PROPOSER_PUBLIC_KEY.clone(), &new_validator_pk);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
     let transfer_amount = U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE);
     let delegation_rate: DelegationRate = 10;
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let transfer_args = runtime_args! {
         mint::ARG_TARGET => new_validator_hash,
@@ -280,10 +277,10 @@ fn should_fail_bonding_with_insufficient_funds() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
     builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+        .run_genesis_with_default_genesis_accounts()
         .exec(exec_request_1)
         .commit();
 
@@ -323,11 +320,9 @@ fn should_fail_unbonding_validator_with_locked_funds() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 
     let exec_request_2 = ExecuteRequestBuilder::standard(
         account_1_hash,
@@ -372,9 +367,9 @@ fn should_fail_unbonding_validator_without_bonding_first() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     builder.exec(exec_request).commit();
 
@@ -400,11 +395,11 @@ fn should_fail_unbonding_validator_without_bonding_first() {
 fn should_run_successful_bond_and_unbond_with_release() {
     let default_public_key_arg = DEFAULT_ACCOUNT_PUBLIC_KEY.clone();
 
-    let mut timestamp_millis =
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo();
+
+    builder.run_genesis_with_default_genesis_accounts();
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -521,7 +516,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
     //
     // Advance state to hit the unbonding period
     //
-    for _ in 0..DEFAULT_UNBONDING_DELAY {
+    for _ in 0..builder.get_initial_unbonding_delay() {
         builder.run_auction(timestamp_millis, Vec::new());
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
@@ -555,13 +550,13 @@ fn should_run_successful_bond_and_unbond_with_release() {
 fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
     let default_public_key_arg = DEFAULT_ACCOUNT_PUBLIC_KEY.clone();
 
-    let mut timestamp_millis =
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo();
 
-    let new_unbonding_delay = DEFAULT_UNBONDING_DELAY + 5;
+    builder.run_genesis_with_default_genesis_accounts();
+
+    let new_unbonding_delay = builder.get_initial_unbonding_delay() + 5;
 
     let old_protocol_version = *DEFAULT_PROTOCOL_VERSION;
     let sem_ver = old_protocol_version.value();
@@ -700,7 +695,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
     // Advance state to hit the unbonding period
     //
 
-    for _ in 0..DEFAULT_UNBONDING_DELAY {
+    for _ in 0..builder.get_initial_unbonding_delay() {
         builder.run_auction(timestamp_millis, Vec::new());
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
@@ -717,7 +712,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
     );
 
     // -1 below is the extra run auction above in `run_auction_request_1`
-    for _ in 0..new_unbonding_delay - DEFAULT_UNBONDING_DELAY - 1 {
+    for _ in 0..new_unbonding_delay - builder.get_initial_unbonding_delay() - 1 {
         builder.run_auction(timestamp_millis, Vec::new());
     }
 

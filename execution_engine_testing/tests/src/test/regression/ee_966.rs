@@ -4,8 +4,7 @@ use parity_wasm::builder;
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
-    ARG_AMOUNT, DEFAULT_ACCOUNT_ADDR, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PAYMENT,
-    DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
+    ARG_AMOUNT, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION, PRODUCTION_PATH,
 };
 use casper_execution_engine::{
     core::{
@@ -91,9 +90,9 @@ fn should_run_ee_966_with_zero_min_and_zero_max_memory() {
 
     let exec_request = make_request_with_session_bytes(session_code);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     builder.exec(exec_request).commit().expect_success();
 }
@@ -105,9 +104,9 @@ fn should_run_ee_966_cant_have_too_much_initial_memory() {
 
     let exec_request = make_request_with_session_bytes(session_code);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     builder.exec(exec_request).commit();
 
@@ -126,9 +125,9 @@ fn should_run_ee_966_should_request_exactly_maximum() {
 
     let exec_request = make_request_with_session_bytes(session_code);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     builder.exec(exec_request).commit().expect_success();
 }
@@ -140,9 +139,9 @@ fn should_run_ee_966_should_request_exactly_maximum_as_initial() {
 
     let exec_request = make_request_with_session_bytes(session_code);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     builder.exec(exec_request).commit().expect_success();
 }
@@ -157,9 +156,9 @@ fn should_run_ee_966_cant_have_too_much_max_memory() {
 
     let exec_request = make_request_with_session_bytes(session_code);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     builder.exec(exec_request).commit();
 
@@ -180,9 +179,9 @@ fn should_run_ee_966_cant_have_way_too_much_max_memory() {
 
     let exec_request = make_request_with_session_bytes(session_code);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     builder.exec(exec_request).commit();
 
@@ -201,9 +200,9 @@ fn should_run_ee_966_cant_have_larger_initial_than_max_memory() {
 
     let exec_request = make_request_with_session_bytes(session_code);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     builder.exec(exec_request).commit();
 
@@ -224,9 +223,9 @@ fn should_run_ee_966_regression_fail_when_growing_mem_past_max() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     builder.exec(exec_request).commit();
 
@@ -247,9 +246,9 @@ fn should_run_ee_966_regression_when_growing_mem_after_upgrade() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     builder.exec(exec_request_1).commit();
 
@@ -275,7 +274,7 @@ fn should_run_ee_966_regression_when_growing_mem_after_upgrade() {
 
     let engine_config = EngineConfig::new(
         DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_ASSOCIATED_KEYS,
+        builder.get_initial_max_associated_keys(),
         *DOUBLED_WASM_MEMORY_LIMIT,
         SystemConfig::default(),
     );

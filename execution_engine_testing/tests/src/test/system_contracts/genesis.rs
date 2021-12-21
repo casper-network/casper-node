@@ -2,20 +2,14 @@ use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    InMemoryWasmTestBuilder, DEFAULT_AUCTION_DELAY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG,
-    DEFAULT_UNBONDING_DELAY, DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
+    InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, PRODUCTION_PATH,
 };
-use casper_execution_engine::core::engine_state::{
-    genesis::{ExecConfig, GenesisAccount, GenesisValidator},
-    run_genesis_request::RunGenesisRequest,
-};
+use casper_execution_engine::core::engine_state::genesis::{GenesisAccount, GenesisValidator};
 use casper_types::{
-    account::AccountHash, system::auction::DelegationRate, Motes, ProtocolVersion, PublicKey,
-    SecretKey, StoredValue, U512,
+    account::AccountHash, system::auction::DelegationRate, Motes, PublicKey, SecretKey,
+    StoredValue, U512,
 };
 
-const GENESIS_CONFIG_HASH: [u8; 32] = [127; 32];
 const ACCOUNT_1_BONDED_AMOUNT: u64 = 1_000_000;
 const ACCOUNT_2_BONDED_AMOUNT: u64 = 2_000_000;
 const ACCOUNT_1_BALANCE: u64 = 1_000_000_000;
@@ -33,6 +27,7 @@ static ACCOUNT_2_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
 static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCOUNT_2_PUBLIC_KEY));
 
 static GENESIS_CUSTOM_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
+    let mut default_accounts = DEFAULT_ACCOUNTS.clone();
     let account_1 = {
         let account_1_balance = Motes::new(ACCOUNT_1_BALANCE.into());
         let account_1_bonded_amount = Motes::new(ACCOUNT_1_BONDED_AMOUNT.into());
@@ -45,6 +40,7 @@ static GENESIS_CUSTOM_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
             )),
         )
     };
+    default_accounts.push(account_1);
     let account_2 = {
         let account_2_balance = Motes::new(ACCOUNT_2_BALANCE.into());
         let account_2_bonded_amount = Motes::new(ACCOUNT_2_BONDED_AMOUNT.into());
@@ -57,39 +53,16 @@ static GENESIS_CUSTOM_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
             )),
         )
     };
-    vec![account_1, account_2]
+    default_accounts.push(account_2);
+    default_accounts
 });
 
 #[ignore]
 #[test]
 fn should_run_genesis() {
-    let protocol_version = ProtocolVersion::V1_0_0;
-    let wasm_config = *DEFAULT_WASM_CONFIG;
-    let system_config = *DEFAULT_SYSTEM_CONFIG;
-    let validator_slots = DEFAULT_VALIDATOR_SLOTS;
-    let auction_delay = DEFAULT_AUCTION_DELAY;
-    let locked_funds_period = DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
-    let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
-    let unbonding_delay = DEFAULT_UNBONDING_DELAY;
-    let genesis_timestamp = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let exec_config = ExecConfig::new(
-        GENESIS_CUSTOM_ACCOUNTS.clone(),
-        wasm_config,
-        system_config,
-        validator_slots,
-        auction_delay,
-        locked_funds_period,
-        round_seigniorage_rate,
-        unbonding_delay,
-        genesis_timestamp,
-    );
-    let run_genesis_request =
-        RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, exec_config);
-
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(GENESIS_CUSTOM_ACCOUNTS.clone());
 
     let system_account = builder
         .get_account(PublicKey::System.to_account_hash())
@@ -134,32 +107,9 @@ fn should_run_genesis() {
 #[test]
 fn should_track_total_token_supply_in_mint() {
     let accounts = GENESIS_CUSTOM_ACCOUNTS.clone();
-    let wasm_config = *DEFAULT_WASM_CONFIG;
-    let system_config = *DEFAULT_SYSTEM_CONFIG;
-    let protocol_version = ProtocolVersion::V1_0_0;
-    let validator_slots = DEFAULT_VALIDATOR_SLOTS;
-    let auction_delay = DEFAULT_AUCTION_DELAY;
-    let locked_funds_period = DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
-    let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
-    let unbonding_delay = DEFAULT_UNBONDING_DELAY;
-    let genesis_timestamp = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
-    let ee_config = ExecConfig::new(
-        accounts.clone(),
-        wasm_config,
-        system_config,
-        validator_slots,
-        auction_delay,
-        locked_funds_period,
-        round_seigniorage_rate,
-        unbonding_delay,
-        genesis_timestamp,
-    );
-    let run_genesis_request =
-        RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, ee_config);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(accounts.clone());
 
     let total_supply = builder.total_supply(None);
 
@@ -175,4 +125,14 @@ fn should_track_total_token_supply_in_mint() {
         expected_balance + expected_staked_amount,
         "unexpected total supply"
     )
+}
+
+#[ignore]
+#[test]
+fn should_maybe_work() {
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+    builder.run_genesis_with_default_genesis_accounts();
+    let _account_1 = builder
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .expect("default account should exist");
 }

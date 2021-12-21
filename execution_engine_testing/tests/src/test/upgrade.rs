@@ -1,6 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, PRODUCTION_PATH,
 };
 use casper_types::{
     contracts::{ContractVersion, CONTRACT_INITIAL_VERSION},
@@ -36,9 +35,9 @@ const ARG_IS_LOCKED: &str = "is_locked";
 #[ignore]
 #[test]
 fn should_upgrade_do_nothing_to_do_something_version_hash_call() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     // Create contract package and store contract ver: 1.0.0 with "delegate" entry function
     {
@@ -128,9 +127,9 @@ fn should_upgrade_do_nothing_to_do_something_version_hash_call() {
 #[ignore]
 #[test]
 fn should_upgrade_do_nothing_to_do_something_contract_call() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     // Create contract package and store contract ver: 1.0.0
     {
@@ -240,9 +239,9 @@ fn should_upgrade_do_nothing_to_do_something_contract_call() {
 #[ignore]
 #[test]
 fn should_be_able_to_observe_state_transition_across_upgrade() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     // store do-nothing-stored
     {
@@ -339,9 +338,9 @@ fn should_be_able_to_observe_state_transition_across_upgrade() {
 #[ignore]
 #[test]
 fn should_support_extending_functionality() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     // store do-nothing-stored
     {
@@ -482,9 +481,9 @@ fn should_support_extending_functionality() {
 #[ignore]
 #[test]
 fn should_maintain_named_keys_across_upgrade() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     // store contract
     {
@@ -586,9 +585,9 @@ fn should_maintain_named_keys_across_upgrade() {
 #[ignore]
 #[test]
 fn should_fail_upgrade_for_locked_contract() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     // store contract
     {

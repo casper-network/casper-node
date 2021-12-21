@@ -4,8 +4,7 @@ use num_rational::Ratio;
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY,
-    DEFAULT_WASM_CONFIG,
+    PRODUCTION_PATH,
 };
 
 use casper_execution_engine::{
@@ -79,9 +78,9 @@ fn get_upgraded_wasm_config() -> WasmConfig {
 #[ignore]
 #[test]
 fn should_upgrade_only_protocol_version() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let sem_ver = PROTOCOL_VERSION.value();
     let new_protocol_version =
@@ -102,7 +101,7 @@ fn should_upgrade_only_protocol_version() {
     let upgraded_engine_config = builder.get_engine_state().config();
 
     assert_eq!(
-        *DEFAULT_WASM_CONFIG,
+        builder.get_initial_wasm_config(),
         *upgraded_engine_config.wasm_config(),
         "upgraded costs should equal original costs"
     );
@@ -111,9 +110,9 @@ fn should_upgrade_only_protocol_version() {
 #[ignore]
 #[test]
 fn should_allow_only_wasm_costs_patch_version() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let sem_ver = PROTOCOL_VERSION.value();
     let new_protocol_version =
@@ -131,7 +130,7 @@ fn should_allow_only_wasm_costs_patch_version() {
 
     let engine_config = EngineConfig::new(
         DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_ASSOCIATED_KEYS,
+        builder.get_initial_max_associated_keys(),
         new_wasm_config,
         SystemConfig::default(),
     );
@@ -152,10 +151,9 @@ fn should_allow_only_wasm_costs_patch_version() {
 #[ignore]
 #[test]
 fn should_allow_only_wasm_costs_minor_version() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
-
+    builder.run_genesis_with_default_genesis_accounts();
     let sem_ver = PROTOCOL_VERSION.value();
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor + 1, sem_ver.patch);
@@ -172,7 +170,7 @@ fn should_allow_only_wasm_costs_minor_version() {
 
     let engine_config = EngineConfig::new(
         DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_ASSOCIATED_KEYS,
+        builder.get_initial_max_associated_keys(),
         new_wasm_config,
         SystemConfig::default(),
     );
@@ -193,9 +191,9 @@ fn should_allow_only_wasm_costs_minor_version() {
 #[ignore]
 #[test]
 fn should_not_downgrade() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let new_protocol_version = ProtocolVersion::from_parts(2, 0, 0);
 
@@ -214,7 +212,7 @@ fn should_not_downgrade() {
     let upgraded_engine_config = builder.get_engine_state().config();
 
     assert_eq!(
-        *DEFAULT_WASM_CONFIG,
+        builder.get_initial_wasm_config(),
         *upgraded_engine_config.wasm_config(),
         "upgraded costs should equal original costs"
     );
@@ -242,9 +240,9 @@ fn should_not_downgrade() {
 #[ignore]
 #[test]
 fn should_not_skip_major_versions() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let sem_ver = PROTOCOL_VERSION.value();
 
@@ -270,9 +268,9 @@ fn should_not_skip_major_versions() {
 #[ignore]
 #[test]
 fn should_allow_skip_minor_versions() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let sem_ver = PROTOCOL_VERSION.value();
 
@@ -299,9 +297,9 @@ fn should_allow_skip_minor_versions() {
 #[ignore]
 #[test]
 fn should_upgrade_only_validator_slots() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let sem_ver = PROTOCOL_VERSION.value();
     let new_protocol_version =
@@ -354,9 +352,9 @@ fn should_upgrade_only_validator_slots() {
 #[ignore]
 #[test]
 fn should_upgrade_only_auction_delay() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let sem_ver = PROTOCOL_VERSION.value();
     let new_protocol_version =
@@ -409,9 +407,9 @@ fn should_upgrade_only_auction_delay() {
 #[ignore]
 #[test]
 fn should_upgrade_only_locked_funds_period() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let sem_ver = PROTOCOL_VERSION.value();
     let new_protocol_version =
@@ -464,9 +462,9 @@ fn should_upgrade_only_locked_funds_period() {
 #[ignore]
 #[test]
 fn should_upgrade_only_round_seigniorage_rate() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let sem_ver = PROTOCOL_VERSION.value();
     let new_protocol_version =
@@ -526,9 +524,9 @@ fn should_upgrade_only_round_seigniorage_rate() {
 #[ignore]
 #[test]
 fn should_upgrade_only_unbonding_delay() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let sem_ver = PROTOCOL_VERSION.value();
     let new_protocol_version =
@@ -548,7 +546,7 @@ fn should_upgrade_only_unbonding_delay() {
         .into_t()
         .expect("should be u64");
 
-    let new_unbonding_delay = DEFAULT_UNBONDING_DELAY + 5;
+    let new_unbonding_delay = builder.get_initial_unbonding_delay() + 5;
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
@@ -583,9 +581,9 @@ fn should_upgrade_only_unbonding_delay() {
 #[ignore]
 #[test]
 fn should_apply_global_state_upgrade() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let sem_ver = PROTOCOL_VERSION.value();
     let new_protocol_version =
@@ -606,7 +604,7 @@ fn should_apply_global_state_upgrade() {
         .into_t()
         .expect("should be u64");
 
-    let new_unbonding_delay = DEFAULT_UNBONDING_DELAY + 5;
+    let new_unbonding_delay = builder.get_initial_unbonding_delay() + 5;
 
     let mut update_map = BTreeMap::new();
     update_map.insert(
@@ -647,10 +645,9 @@ fn should_apply_global_state_upgrade() {
 #[ignore]
 #[test]
 fn should_increase_max_associated_keys_after_upgrade() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
-
+    builder.run_genesis_with_default_genesis_accounts();
     let sem_ver = PROTOCOL_VERSION.value();
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
@@ -665,8 +662,8 @@ fn should_increase_max_associated_keys_after_upgrade() {
 
     let new_engine_config = EngineConfig::new(
         DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_ASSOCIATED_KEYS + 1,
-        *DEFAULT_WASM_CONFIG,
+        builder.get_initial_max_associated_keys() + 1,
+        builder.get_initial_wasm_config(),
         new_system_config,
     );
 
@@ -682,7 +679,7 @@ fn should_increase_max_associated_keys_after_upgrade() {
         .upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request)
         .expect_upgrade_success();
 
-    for n in (0..DEFAULT_MAX_ASSOCIATED_KEYS).map(U256::from) {
+    for n in (0..builder.get_initial_max_associated_keys()).map(U256::from) {
         let account_hash = {
             let mut addr = [0; ACCOUNT_HASH_LENGTH];
             n.to_big_endian(&mut addr);
@@ -706,7 +703,7 @@ fn should_increase_max_associated_keys_after_upgrade() {
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account");
 
-    assert!(account.associated_keys().len() > DEFAULT_MAX_ASSOCIATED_KEYS as usize);
+    assert!(account.associated_keys().len() > builder.get_initial_max_associated_keys() as usize);
     assert_eq!(
         account.associated_keys().len(),
         new_engine_config.max_associated_keys() as usize

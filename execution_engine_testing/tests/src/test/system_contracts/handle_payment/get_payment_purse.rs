@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
-    DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_PATH,
 };
 use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
 
@@ -22,8 +22,8 @@ fn should_run_get_payment_purse_contract_default_account() {
         },
     )
     .build();
-    InMemoryWasmTestBuilder::default()
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+    InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None)
+        .run_genesis_with_default_genesis_accounts()
         .exec(exec_request)
         .expect_success()
         .commit();
@@ -46,8 +46,8 @@ fn should_run_get_payment_purse_contract_account_1() {
         },
     )
     .build();
-    InMemoryWasmTestBuilder::default()
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+    InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None)
+        .run_genesis_with_default_genesis_accounts()
         .exec(exec_request_1)
         .expect_success()
         .commit()

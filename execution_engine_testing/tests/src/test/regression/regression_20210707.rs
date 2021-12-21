@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_PATH,
 };
 use casper_execution_engine::{
     core::{
@@ -89,9 +89,9 @@ fn assert_forged_uref_error(error: CoreError, forged_uref: URef) {
 #[ignore]
 #[test]
 fn should_not_transfer_funds_from_forged_purse_to_account() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let store_request = setup_regression_contract();
 
@@ -133,9 +133,9 @@ fn should_not_transfer_funds_from_forged_purse_to_account() {
 #[ignore]
 #[test]
 fn should_not_transfer_funds_from_forged_purse_to_account_native_transfer() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let store_request = setup_regression_contract();
 
@@ -173,9 +173,9 @@ fn should_not_transfer_funds_from_forged_purse_to_account_native_transfer() {
 #[ignore]
 #[test]
 fn should_not_transfer_funds_from_forged_purse_to_owned_purse() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let store_request = setup_regression_contract();
 
@@ -227,9 +227,9 @@ fn should_not_transfer_funds_from_forged_purse_to_owned_purse() {
 #[ignore]
 #[test]
 fn should_not_transfer_funds_into_bob_purse() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let store_request = setup_regression_contract();
 
@@ -272,9 +272,9 @@ fn should_not_transfer_funds_into_bob_purse() {
 #[ignore]
 #[test]
 fn should_not_transfer_from_hardcoded_purse() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let store_request = setup_regression_contract();
 
@@ -315,9 +315,9 @@ fn should_not_transfer_from_hardcoded_purse() {
 #[ignore]
 #[test]
 fn should_not_refund_to_bob_and_charge_alice() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let store_request = setup_regression_contract();
 
@@ -375,9 +375,9 @@ fn should_not_refund_to_bob_and_charge_alice() {
 #[ignore]
 #[test]
 fn should_not_charge_alice_for_execution() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let store_request = setup_regression_contract();
 
@@ -433,9 +433,9 @@ fn should_not_charge_alice_for_execution() {
 #[ignore]
 #[test]
 fn should_not_charge_for_execution_from_hardcoded_purse() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let store_request = setup_regression_contract();
 

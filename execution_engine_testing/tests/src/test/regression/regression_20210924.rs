@@ -2,7 +2,7 @@ use num_traits::Zero;
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_RUN_GENESIS_REQUEST,
+    PRODUCTION_PATH,
 };
 use casper_execution_engine::{
     core::engine_state::{Error as CoreError, MAX_PAYMENT},
@@ -62,9 +62,9 @@ fn should_charge_minimum_for_do_nothing_session() {
     }
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
 
@@ -118,9 +118,9 @@ fn should_execute_do_minimum_session() {
     }
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
 
@@ -173,9 +173,9 @@ fn should_charge_minimum_for_do_nothing_payment() {
     }
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
 

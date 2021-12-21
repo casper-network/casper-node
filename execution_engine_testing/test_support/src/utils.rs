@@ -9,22 +9,10 @@ use std::{
 use once_cell::sync::Lazy;
 
 use casper_execution_engine::{
-    core::engine_state::{
-        execution_result::ExecutionResult,
-        genesis::{ExecConfig, GenesisAccount, GenesisConfig},
-        run_genesis_request::RunGenesisRequest,
-        Error,
-    },
+    core::engine_state::{execution_result::ExecutionResult, Error},
     shared::{additive_map::AdditiveMap, transform::Transform},
 };
 use casper_types::{account::Account, Gas, Key, StoredValue};
-
-use super::{DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY};
-use crate::{
-    DEFAULT_AUCTION_DELAY, DEFAULT_CHAIN_NAME, DEFAULT_GENESIS_CONFIG_HASH,
-    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
-};
 
 static RUST_WORKSPACE_PATH: Lazy<PathBuf> = Lazy::new(|| {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -131,48 +119,48 @@ pub fn read_wasm_file_bytes<T: AsRef<Path>>(contract_file: T) -> Vec<u8> {
     panic!("{}\n", error_msg);
 }
 
-/// Returns an [`ExecConfig`].
-pub fn create_exec_config(accounts: Vec<GenesisAccount>) -> ExecConfig {
-    let wasm_config = *DEFAULT_WASM_CONFIG;
-    let system_config = *DEFAULT_SYSTEM_CONFIG;
-    let validator_slots = DEFAULT_VALIDATOR_SLOTS;
-    let auction_delay = DEFAULT_AUCTION_DELAY;
-    let locked_funds_period_millis = DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
-    let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
-    let unbonding_delay = DEFAULT_UNBONDING_DELAY;
-    let genesis_timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
-    ExecConfig::new(
-        accounts,
-        wasm_config,
-        system_config,
-        validator_slots,
-        auction_delay,
-        locked_funds_period_millis,
-        round_seigniorage_rate,
-        unbonding_delay,
-        genesis_timestamp_millis,
-    )
-}
+// /// Returns an [`ExecConfig`].
+// pub fn create_exec_config(accounts: Vec<GenesisAccount>) -> ExecConfig {
+//     let wasm_config = *DEFAULT_WASM_CONFIG;
+//     let system_config = *DEFAULT_SYSTEM_CONFIG;
+//     let validator_slots = DEFAULT_VALIDATOR_SLOTS;
+//     let auction_delay = DEFAULT_AUCTION_DELAY;
+//     let locked_funds_period_millis = DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+//     let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
+//     let unbonding_delay = DEFAULT_UNBONDING_DELAY;
+//     let genesis_timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
+//     ExecConfig::new(
+//         accounts,
+//         wasm_config,
+//         system_config,
+//         validator_slots,
+//         auction_delay,
+//         locked_funds_period_millis,
+//         round_seigniorage_rate,
+//         unbonding_delay,
+//         genesis_timestamp_millis,
+//     )
+// }
 
-/// Returns a [`GenesisConfig`].
-pub fn create_genesis_config(accounts: Vec<GenesisAccount>) -> GenesisConfig {
-    let name = DEFAULT_CHAIN_NAME.to_string();
-    let timestamp = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
-    let protocol_version = *DEFAULT_PROTOCOL_VERSION;
-    let exec_config = create_exec_config(accounts);
-
-    GenesisConfig::new(name, timestamp, protocol_version, exec_config)
-}
-
-/// Returns a [`RunGenesisRequest`].
-pub fn create_run_genesis_request(accounts: Vec<GenesisAccount>) -> RunGenesisRequest {
-    let exec_config = create_exec_config(accounts);
-    RunGenesisRequest::new(
-        *DEFAULT_GENESIS_CONFIG_HASH,
-        *DEFAULT_PROTOCOL_VERSION,
-        exec_config,
-    )
-}
+// /// Returns a [`GenesisConfig`].
+// pub fn create_genesis_config(accounts: Vec<GenesisAccount>) -> GenesisConfig {
+//     let name = DEFAULT_CHAIN_NAME.to_string();
+//     let timestamp = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
+//     let protocol_version = *DEFAULT_PROTOCOL_VERSION;
+//     let exec_config = create_exec_config(accounts);
+//
+//     GenesisConfig::new(name, timestamp, protocol_version, exec_config)
+// }
+//
+// /// Returns a [`RunGenesisRequest`].
+// pub fn create_run_genesis_request(accounts: Vec<GenesisAccount>) -> RunGenesisRequest {
+//     let exec_config = create_exec_config(accounts);
+//     RunGenesisRequest::new(
+//         *DEFAULT_GENESIS_CONFIG_HASH,
+//         *DEFAULT_PROTOCOL_VERSION,
+//         exec_config,
+//     )
+// }
 
 /// Returns a `Vec<Gas>` representing gas consts for an [`ExecutionResult`].
 pub fn get_exec_costs<T: AsRef<ExecutionResult>, I: IntoIterator<Item = T>>(

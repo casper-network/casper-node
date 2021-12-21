@@ -3,8 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, PRODUCTION_PATH,
 };
 use casper_execution_engine::shared::system_config::DEFAULT_WASMLESS_TRANSFER_COST;
 use casper_types::{
@@ -49,8 +48,8 @@ static TRANSFER_AMOUNT_3: Lazy<U512> = Lazy::new(|| U512::from(300_100_000));
 #[ignore]
 #[test]
 fn should_record_wasmless_transfer() {
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let id = Some(0);
 
@@ -117,8 +116,8 @@ fn should_record_wasmless_transfer() {
 #[ignore]
 #[test]
 fn should_record_wasm_transfer() {
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let transfer_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -180,8 +179,8 @@ fn should_record_wasm_transfer() {
 #[ignore]
 #[test]
 fn should_record_wasm_transfer_with_id() {
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let id = Some(0);
 
@@ -247,8 +246,8 @@ fn should_record_wasm_transfer_with_id() {
 #[ignore]
 #[test]
 fn should_record_wasm_transfers() {
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -386,8 +385,8 @@ fn should_record_wasm_transfers() {
 #[ignore]
 #[test]
 fn should_record_wasm_transfers_with_subcall() {
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let alice_id = Some(0);
     let bob_id = Some(1);

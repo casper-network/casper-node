@@ -1,6 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, PRODUCTION_PATH,
 };
 use casper_types::{runtime_args, Key, RuntimeArgs};
 
@@ -16,7 +15,7 @@ const METHOD_INC: &str = "inc";
 #[ignore]
 #[test]
 fn should_run_counter_example_contract() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -26,7 +25,7 @@ fn should_run_counter_example_contract() {
     .build();
 
     builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+        .run_genesis_with_default_genesis_accounts()
         .exec(exec_request_1)
         .expect_success()
         .commit();
@@ -99,7 +98,7 @@ fn should_run_counter_example_contract() {
 #[ignore]
 #[test]
 fn should_default_contract_hash_arg() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
     // This test runs a contract that's after every call extends the same key with
     // more data
@@ -111,7 +110,7 @@ fn should_default_contract_hash_arg() {
     .build();
 
     builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+        .run_genesis_with_default_genesis_accounts()
         .exec(exec_request_1)
         .expect_success()
         .commit();
@@ -158,7 +157,7 @@ fn should_default_contract_hash_arg() {
 #[ignore]
 #[test]
 fn should_call_counter_contract_directly() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -168,7 +167,7 @@ fn should_call_counter_contract_directly() {
     .build();
 
     builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+        .run_genesis_with_default_genesis_accounts()
         .exec(exec_request_1)
         .expect_success()
         .commit();

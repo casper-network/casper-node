@@ -1,7 +1,7 @@
 use assert_matches::assert_matches;
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
+    DEFAULT_PAYMENT, PRODUCTION_PATH,
 };
 use casper_execution_engine::core::{engine_state::Error, execution};
 use casper_types::{contracts::CONTRACT_INITIAL_VERSION, runtime_args, Key, RuntimeArgs};
@@ -82,9 +82,8 @@ fn should_enforce_intended_execution_contexts() {
 
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+    builder.run_genesis_with_default_genesis_accounts();
 
     builder.exec(exec_request_1).expect_success().commit();
 
@@ -179,9 +178,9 @@ fn should_enforce_intended_execution_context_direct_by_name() {
 
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     builder.exec(exec_request_1).expect_success().commit();
 
@@ -224,9 +223,9 @@ fn should_enforce_intended_execution_context_direct_by_hash() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     builder.exec(exec_request_1).expect_success().commit();
 
@@ -322,9 +321,9 @@ fn should_not_call_session_from_contract() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     builder.exec(exec_request_1).expect_success().commit();
 

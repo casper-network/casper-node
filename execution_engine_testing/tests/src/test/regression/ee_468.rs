@@ -1,6 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, PRODUCTION_PATH,
 };
 use casper_types::RuntimeArgs;
 
@@ -15,8 +14,8 @@ fn should_not_fail_deserializing() {
         RuntimeArgs::new(),
     )
     .build();
-    let is_error = InMemoryWasmTestBuilder::default()
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+    let is_error = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None)
+        .run_genesis_with_default_genesis_accounts()
         .exec(exec_request)
         .commit()
         .is_error();

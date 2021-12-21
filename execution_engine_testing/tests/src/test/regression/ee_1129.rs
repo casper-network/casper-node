@@ -3,9 +3,9 @@ use once_cell::sync::Lazy;
 use parity_wasm::builder;
 
 use casper_engine_test_support::{
-    utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
+    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
-    DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
+    DEFAULT_PAYMENT, PRODUCTION_PATH,
 };
 use casper_execution_engine::{
     core::{
@@ -67,10 +67,9 @@ fn should_run_ee_1129_underfunded_delegate_call() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 
     let auction = builder.get_auction_contract_hash();
 
@@ -131,10 +130,9 @@ fn should_run_ee_1129_underfunded_add_bid_call() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 
     let auction = builder.get_auction_contract_hash();
 
@@ -181,9 +179,9 @@ fn should_run_ee_1129_underfunded_add_bid_call() {
 #[ignore]
 #[test]
 fn should_run_ee_1129_underfunded_mint_contract_call() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let install_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -229,9 +227,9 @@ fn should_run_ee_1129_underfunded_mint_contract_call() {
 #[ignore]
 #[test]
 fn should_not_panic_when_calling_session_contract_by_uref() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let install_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -277,9 +275,9 @@ fn should_not_panic_when_calling_session_contract_by_uref() {
 #[ignore]
 #[test]
 fn should_not_panic_when_calling_payment_contract_by_uref() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let install_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -323,9 +321,9 @@ fn should_not_panic_when_calling_payment_contract_by_uref() {
 #[ignore]
 #[test]
 fn should_not_panic_when_calling_contract_package_by_uref() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let install_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -376,9 +374,9 @@ fn should_not_panic_when_calling_contract_package_by_uref() {
 #[ignore]
 #[test]
 fn should_not_panic_when_calling_payment_versioned_contract_by_uref() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let install_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -443,9 +441,9 @@ fn do_nothing_without_memory() -> Vec<u8> {
 #[ignore]
 #[test]
 fn should_not_panic_when_calling_module_without_memory() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let exec_request = {
         let deploy = DeployItemBuilder::new()

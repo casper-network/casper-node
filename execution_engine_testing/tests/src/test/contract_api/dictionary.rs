@@ -1,11 +1,10 @@
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, ARG_AMOUNT,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
-    DEFAULT_GENESIS_CONFIG, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_PAYMENT,
-    DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
+    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_PATH,
 };
 use casper_execution_engine::core::{
-    engine_state::{run_genesis_request::RunGenesisRequest, Error as EngineError, GenesisAccount},
+    engine_state::{Error as EngineError, GenesisAccount},
     execution::Error,
 };
 use casper_types::{
@@ -22,9 +21,9 @@ const DICTIONARY_ITEM_KEY_CHECK: &str = "dictionary-item-key-check.wasm";
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 
 fn setup() -> (InMemoryWasmTestBuilder, ContractHash) {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let fund_request = ExecuteRequestBuilder::transfer(
         *DEFAULT_ACCOUNT_ADDR,
@@ -450,9 +449,9 @@ fn should_fail_get_with_invalid_dictionary_item_key() {
 #[ignore]
 #[test]
 fn dictionary_put_should_fail_with_large_item_key() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let fund_request = ExecuteRequestBuilder::transfer(
         *DEFAULT_ACCOUNT_ADDR,
@@ -494,9 +493,8 @@ fn dictionary_put_should_fail_with_large_item_key() {
 #[ignore]
 #[test]
 fn dictionary_get_should_fail_with_large_item_key() {
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let fund_request = ExecuteRequestBuilder::transfer(
         *DEFAULT_ACCOUNT_ADDR,
@@ -543,14 +541,8 @@ fn should_query_dictionary_items_with_test_builder() {
         Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE)),
         None,
     );
-
-    let mut genesis_config = DEFAULT_GENESIS_CONFIG.clone();
-    genesis_config.ee_config_mut().push_account(genesis_account);
-    let run_genesis_request = RunGenesisRequest::new(
-        *DEFAULT_GENESIS_CONFIG_HASH,
-        genesis_config.protocol_version(),
-        genesis_config.take_ee_config(),
-    );
+    let mut accounts = DEFAULT_ACCOUNTS.clone();
+    accounts.push(genesis_account);
 
     let dictionary_code = PathBuf::from(DICTIONARY_WASM);
     let deploy_item = DeployItemBuilder::new()
@@ -562,8 +554,8 @@ fn should_query_dictionary_items_with_test_builder() {
 
     let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&run_genesis_request).commit();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 
     builder.exec(exec_request).commit().expect_success();
 

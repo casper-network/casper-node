@@ -7,16 +7,10 @@ use std::{env, path::PathBuf};
 use clap::{crate_version, App};
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, ARG_AMOUNT, DEFAULT_ACCOUNTS,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_AUCTION_DELAY, DEFAULT_GENESIS_CONFIG_HASH,
-    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT,
-    DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG,
-    DEFAULT_UNBONDING_DELAY, DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, ARG_AMOUNT,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, PRODUCTION_PATH,
 };
 use casper_engine_tests::profiling;
-use casper_execution_engine::core::engine_state::{
-    engine_config::EngineConfig, genesis::ExecConfig, run_genesis_request::RunGenesisRequest,
-};
 use casper_types::{runtime_args, RuntimeArgs};
 
 const ABOUT: &str = "Initializes global state in preparation for profiling runs. Outputs the root \
@@ -64,28 +58,10 @@ fn main() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let engine_config = EngineConfig::default();
-    let mut builder = LmdbWasmTestBuilder::new_with_config(&data_dir, engine_config);
-
-    let exec_config = ExecConfig::new(
-        DEFAULT_ACCOUNTS.clone(),
-        *DEFAULT_WASM_CONFIG,
-        *DEFAULT_SYSTEM_CONFIG,
-        DEFAULT_VALIDATOR_SLOTS,
-        DEFAULT_AUCTION_DELAY,
-        DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-        DEFAULT_ROUND_SEIGNIORAGE_RATE,
-        DEFAULT_UNBONDING_DELAY,
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    );
-    let run_genesis_request = RunGenesisRequest::new(
-        *DEFAULT_GENESIS_CONFIG_HASH,
-        *DEFAULT_PROTOCOL_VERSION,
-        exec_config,
-    );
+    let mut builder = LmdbWasmTestBuilder::new_with_config(&data_dir, &*PRODUCTION_PATH);
 
     let post_state_hash = builder
-        .run_genesis(&run_genesis_request)
+        .run_genesis_with_default_genesis_accounts()
         .exec(exec_request)
         .expect_success()
         .commit()

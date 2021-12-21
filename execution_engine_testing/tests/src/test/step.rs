@@ -4,7 +4,7 @@ use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, InMemoryWasmTestBuilder, StepRequestBuilder, WasmTestBuilder, DEFAULT_ACCOUNTS,
+    InMemoryWasmTestBuilder, StepRequestBuilder, WasmTestBuilder, DEFAULT_ACCOUNTS, PRODUCTION_PATH,
 };
 use casper_execution_engine::{
     core::engine_state::{
@@ -52,7 +52,7 @@ fn get_named_key(
 }
 
 fn initialize_builder() -> WasmTestBuilder<InMemoryGlobalState> {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
@@ -76,8 +76,7 @@ fn initialize_builder() -> WasmTestBuilder<InMemoryGlobalState> {
         tmp.push(account_2);
         tmp
     };
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
     builder
 }
 

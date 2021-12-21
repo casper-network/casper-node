@@ -8,7 +8,7 @@ use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, InMemoryWasmTestBuilder, StepRequestBuilder, DEFAULT_ACCOUNTS,
+    InMemoryWasmTestBuilder, StepRequestBuilder, DEFAULT_ACCOUNTS, PRODUCTION_PATH,
 };
 use casper_execution_engine::{
     core::engine_state::{
@@ -39,7 +39,7 @@ const ACCOUNT_2_BALANCE: u64 = 200_000_000;
 const ACCOUNT_2_BOND: u64 = 200_000_000;
 
 fn initialize_builder() -> InMemoryWasmTestBuilder {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
@@ -63,8 +63,8 @@ fn initialize_builder() -> InMemoryWasmTestBuilder {
         tmp.push(account_2);
         tmp
     };
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
-    builder.run_genesis(&run_genesis_request);
+
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
     builder
 }
 

@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_RUN_GENESIS_REQUEST,
-    MINIMUM_ACCOUNT_CREATION_BALANCE,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    PRODUCTION_PATH,
 };
 use casper_execution_engine::core::{
     engine_state::{Error, SystemContractRegistry},
@@ -34,8 +34,9 @@ const ARG_AMOUNT: &str = "amount";
 const ARG_TARGET: &str = "target";
 
 fn setup() -> InMemoryWasmTestBuilder {
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+
+    builder.run_genesis_with_default_genesis_accounts();
 
     let transfer = ExecuteRequestBuilder::transfer(
         *DEFAULT_ACCOUNT_ADDR,

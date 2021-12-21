@@ -2,21 +2,15 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PROTOCOL_VERSION, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    PRODUCTION_PATH,
 };
 use casper_execution_engine::{
     core::engine_state::{EngineConfig, UpgradeConfig, DEFAULT_MAX_QUERY_DEPTH},
     shared::{
         host_function_costs::{Cost, HostFunction, HostFunctionCosts},
-        opcode_costs::OpcodeCosts,
-        storage_costs::StorageCosts,
-        system_config::{
-            auction_costs::AuctionCosts, handle_payment_costs::HandlePaymentCosts,
-            mint_costs::MintCosts, standard_payment_costs::StandardPaymentCosts, SystemConfig,
-            DEFAULT_WASMLESS_TRANSFER_COST,
-        },
-        wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
+        system_config::{mint_costs::MintCosts, SystemConfig},
+        wasm_config::WasmConfig,
     },
 };
 use casper_types::{
@@ -125,9 +119,11 @@ fn gh_2280_transfer_should_always_cost_the_same_gas() {
 
     let mut upgrade_request = make_upgrade_request();
 
+    let old_system_config = builder.get_initial_system_config();
+    let old_wasm_config = builder.get_initial_wasm_config();
     // Increase "transfer_to_account" host function call exactly by X, so we can assert that
     // transfer cost increased by exactly X without hidden fees.
-    let default_host_function_costs = HostFunctionCosts::default();
+    let default_host_function_costs = old_wasm_config.take_host_function_costs();
 
     let default_transfer_to_account_cost = default_host_function_costs.transfer_to_account.cost();
     let new_transfer_to_account_cost = default_transfer_to_account_cost
@@ -140,16 +136,40 @@ fn gh_2280_transfer_should_always_cost_the_same_gas() {
         ..default_host_function_costs
     };
 
-    let new_wasm_config = make_wasm_config(new_host_function_costs);
+    let new_wasm_config = WasmConfig::new(
+        old_wasm_config.max_memory,
+        old_wasm_config.max_stack_height,
+        old_wasm_config.opcode_costs(),
+        old_wasm_config.storage_costs(),
+        new_host_function_costs,
+    );
 
+    let old_mint_costs = old_system_config.mint_costs();
     // Inflate affected system contract entry point cost to the maximum
     let new_mint_create_cost = u32::MAX;
     let new_mint_costs = MintCosts {
+        mint: old_mint_costs.mint,
+        reduce_total_supply: old_mint_costs.reduce_total_supply,
         create: new_mint_create_cost,
-        ..Default::default()
+        balance: old_mint_costs.balance,
+        transfer: old_mint_costs.transfer,
+        read_base_round_reward: old_mint_costs.read_base_round_reward,
     };
 
-    let new_engine_config = make_engine_config(new_mint_costs, new_wasm_config);
+    let new_system_config = SystemConfig::new(
+        old_system_config.wasmless_transfer_cost(),
+        *old_system_config.auction_costs(),
+        new_mint_costs,
+        *old_system_config.handle_payment_costs(),
+        *old_system_config.standard_payment_costs(),
+    );
+
+    let new_engine_config = EngineConfig::new(
+        DEFAULT_MAX_QUERY_DEPTH,
+        builder.get_initial_max_associated_keys(),
+        new_wasm_config,
+        new_system_config,
+    );
 
     builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
 
@@ -238,11 +258,15 @@ fn gh_2280_create_purse_should_always_cost_the_same_gas() {
 
     assert_eq!(gas_cost_1, gas_cost_2);
 
+    // An upgrade request that does not change the cost tables.
     let mut upgrade_request = make_upgrade_request();
+
+    let old_system_config = builder.get_initial_system_config();
+    let old_wasm_config = builder.get_initial_wasm_config();
 
     // Increase "transfer_to_account" host function call exactly by X, so we can assert that
     // transfer cost increased by exactly X without hidden fees.
-    let default_host_function_costs = HostFunctionCosts::default();
+    let default_host_function_costs = old_wasm_config.take_host_function_costs();
 
     let default_create_purse_cost = default_host_function_costs.create_purse.cost();
     let new_create_purse_cost = default_create_purse_cost
@@ -255,16 +279,40 @@ fn gh_2280_create_purse_should_always_cost_the_same_gas() {
         ..default_host_function_costs
     };
 
-    let new_wasm_config = make_wasm_config(new_host_function_costs);
+    let new_wasm_config = WasmConfig::new(
+        old_wasm_config.max_memory,
+        old_wasm_config.max_stack_height,
+        old_wasm_config.opcode_costs(),
+        old_wasm_config.storage_costs(),
+        new_host_function_costs,
+    );
 
+    let old_mint_costs = old_system_config.mint_costs();
     // Inflate affected system contract entry point cost to the maximum
     let new_mint_create_cost = u32::MAX;
     let new_mint_costs = MintCosts {
+        mint: old_mint_costs.mint,
+        reduce_total_supply: old_mint_costs.reduce_total_supply,
         create: new_mint_create_cost,
-        ..Default::default()
+        balance: old_mint_costs.balance,
+        transfer: old_mint_costs.transfer,
+        read_base_round_reward: old_mint_costs.read_base_round_reward,
     };
 
-    let new_engine_config = make_engine_config(new_mint_costs, new_wasm_config);
+    let new_system_config = SystemConfig::new(
+        old_system_config.wasmless_transfer_cost(),
+        *old_system_config.auction_costs(),
+        new_mint_costs,
+        *old_system_config.handle_payment_costs(),
+        *old_system_config.standard_payment_costs(),
+    );
+
+    let new_engine_config = EngineConfig::new(
+        DEFAULT_MAX_QUERY_DEPTH,
+        builder.get_initial_max_associated_keys(),
+        new_wasm_config,
+        new_system_config,
+    );
 
     builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
 
@@ -356,9 +404,11 @@ fn gh_2280_transfer_purse_to_account_should_always_cost_the_same_gas() {
 
     let mut upgrade_request = make_upgrade_request();
 
+    let old_system_config = builder.get_initial_system_config();
+    let old_wasm_config = builder.get_initial_wasm_config();
     // Increase "transfer_to_account" host function call exactly by X, so we can assert that
     // transfer cost increased by exactly X without hidden fees.
-    let default_host_function_costs = HostFunctionCosts::default();
+    let default_host_function_costs = old_wasm_config.take_host_function_costs();
 
     let default_transfer_from_purse_to_account_cost = default_host_function_costs
         .transfer_from_purse_to_account
@@ -374,16 +424,39 @@ fn gh_2280_transfer_purse_to_account_should_always_cost_the_same_gas() {
         ..default_host_function_costs
     };
 
-    let new_wasm_config = make_wasm_config(new_host_function_costs);
-
+    let new_wasm_config = WasmConfig::new(
+        old_wasm_config.max_memory,
+        old_wasm_config.max_stack_height,
+        old_wasm_config.opcode_costs(),
+        old_wasm_config.storage_costs(),
+        new_host_function_costs,
+    );
+    let old_mint_costs = old_system_config.mint_costs();
     // Inflate affected system contract entry point cost to the maximum
     let new_mint_create_cost = u32::MAX;
     let new_mint_costs = MintCosts {
+        mint: old_mint_costs.mint,
+        reduce_total_supply: old_mint_costs.reduce_total_supply,
         create: new_mint_create_cost,
-        ..Default::default()
+        balance: old_mint_costs.balance,
+        transfer: old_mint_costs.transfer,
+        read_base_round_reward: old_mint_costs.read_base_round_reward,
     };
 
-    let new_engine_config = make_engine_config(new_mint_costs, new_wasm_config);
+    let new_system_config = SystemConfig::new(
+        old_system_config.wasmless_transfer_cost(),
+        *old_system_config.auction_costs(),
+        new_mint_costs,
+        *old_system_config.handle_payment_costs(),
+        *old_system_config.standard_payment_costs(),
+    );
+
+    let new_engine_config = EngineConfig::new(
+        DEFAULT_MAX_QUERY_DEPTH,
+        builder.get_initial_max_associated_keys(),
+        new_wasm_config,
+        new_system_config,
+    );
 
     builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
 
@@ -479,9 +552,12 @@ fn gh_2280_stored_transfer_to_account_should_always_cost_the_same_gas() {
 
     let mut upgrade_request = make_upgrade_request();
 
+    let old_system_config = builder.get_initial_system_config();
+    let old_wasm_config = builder.get_initial_wasm_config();
+
     // Increase "transfer_to_account" host function call exactly by X, so we can assert that
     // transfer cost increased by exactly X without hidden fees.
-    let default_host_function_costs = HostFunctionCosts::default();
+    let default_host_function_costs = old_wasm_config.take_host_function_costs();
 
     let default_transfer_from_purse_to_account_cost = default_host_function_costs
         .transfer_from_purse_to_account
@@ -497,16 +573,39 @@ fn gh_2280_stored_transfer_to_account_should_always_cost_the_same_gas() {
         ..default_host_function_costs
     };
 
-    let new_wasm_config = make_wasm_config(new_host_function_costs);
-
+    let new_wasm_config = WasmConfig::new(
+        old_wasm_config.max_memory,
+        old_wasm_config.max_stack_height,
+        old_wasm_config.opcode_costs(),
+        old_wasm_config.storage_costs(),
+        new_host_function_costs,
+    );
+    let old_mint_costs = old_system_config.mint_costs();
     // Inflate affected system contract entry point cost to the maximum
     let new_mint_create_cost = u32::MAX;
     let new_mint_costs = MintCosts {
+        mint: old_mint_costs.mint,
+        reduce_total_supply: old_mint_costs.reduce_total_supply,
         create: new_mint_create_cost,
-        ..Default::default()
+        balance: old_mint_costs.balance,
+        transfer: old_mint_costs.transfer,
+        read_base_round_reward: old_mint_costs.read_base_round_reward,
     };
 
-    let new_engine_config = make_engine_config(new_mint_costs, new_wasm_config);
+    let new_system_config = SystemConfig::new(
+        old_system_config.wasmless_transfer_cost(),
+        *old_system_config.auction_costs(),
+        new_mint_costs,
+        *old_system_config.handle_payment_costs(),
+        *old_system_config.standard_payment_costs(),
+    );
+
+    let new_engine_config = EngineConfig::new(
+        DEFAULT_MAX_QUERY_DEPTH,
+        builder.get_initial_max_associated_keys(),
+        new_wasm_config,
+        new_system_config,
+    );
 
     builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
 
@@ -598,9 +697,11 @@ fn gh_2280_stored_faucet_call_should_cost_the_same() {
 
     let mut upgrade_request = make_upgrade_request();
 
+    let old_system_config = builder.get_initial_system_config();
+    let old_wasm_config = builder.get_initial_wasm_config();
     // Increase "transfer_to_account" host function call exactly by X, so we can assert that
     // transfer cost increased by exactly X without hidden fees.
-    let default_host_function_costs = HostFunctionCosts::default();
+    let default_host_function_costs = old_wasm_config.take_host_function_costs();
 
     let default_transfer_from_purse_to_account_cost = default_host_function_costs
         .transfer_from_purse_to_account
@@ -616,16 +717,40 @@ fn gh_2280_stored_faucet_call_should_cost_the_same() {
         ..default_host_function_costs
     };
 
-    let new_wasm_config = make_wasm_config(new_host_function_costs);
+    let new_wasm_config = WasmConfig::new(
+        old_wasm_config.max_memory,
+        old_wasm_config.max_stack_height,
+        old_wasm_config.opcode_costs(),
+        old_wasm_config.storage_costs(),
+        new_host_function_costs,
+    );
 
+    let old_mint_costs = old_system_config.mint_costs();
     // Inflate affected system contract entry point cost to the maximum
     let new_mint_create_cost = u32::MAX;
     let new_mint_costs = MintCosts {
+        mint: old_mint_costs.mint,
+        reduce_total_supply: old_mint_costs.reduce_total_supply,
         create: new_mint_create_cost,
-        ..Default::default()
+        balance: old_mint_costs.balance,
+        transfer: old_mint_costs.transfer,
+        read_base_round_reward: old_mint_costs.read_base_round_reward,
     };
 
-    let new_engine_config = make_engine_config(new_mint_costs, new_wasm_config);
+    let new_system_config = SystemConfig::new(
+        old_system_config.wasmless_transfer_cost(),
+        *old_system_config.auction_costs(),
+        new_mint_costs,
+        *old_system_config.handle_payment_costs(),
+        *old_system_config.standard_payment_costs(),
+    );
+
+    let new_engine_config = EngineConfig::new(
+        DEFAULT_MAX_QUERY_DEPTH,
+        builder.get_initial_max_associated_keys(),
+        new_wasm_config,
+        new_system_config,
+    );
 
     builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
 
@@ -671,8 +796,9 @@ struct TestContext {
 }
 
 fn setup() -> (InMemoryWasmTestBuilder, TestContext) {
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+
+    builder.run_genesis_with_default_genesis_accounts();
 
     let session_args = runtime_args! {
         ARG_FAUCET_FUNDS => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
@@ -698,32 +824,6 @@ fn setup() -> (InMemoryWasmTestBuilder, TestContext) {
         .expect("should have key");
 
     (builder, TestContext { gh_2280_regression })
-}
-
-fn make_engine_config(new_mint_costs: MintCosts, new_wasm_config: WasmConfig) -> EngineConfig {
-    let new_system_config = SystemConfig::new(
-        DEFAULT_WASMLESS_TRANSFER_COST,
-        AuctionCosts::default(),
-        new_mint_costs,
-        HandlePaymentCosts::default(),
-        StandardPaymentCosts::default(),
-    );
-    EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_ASSOCIATED_KEYS,
-        new_wasm_config,
-        new_system_config,
-    )
-}
-
-fn make_wasm_config(new_host_function_costs: HostFunctionCosts) -> WasmConfig {
-    WasmConfig::new(
-        DEFAULT_WASM_MAX_MEMORY,
-        DEFAULT_MAX_STACK_HEIGHT,
-        OpcodeCosts::default(),
-        StorageCosts::default(),
-        new_host_function_costs,
-    )
 }
 
 fn make_upgrade_request() -> UpgradeConfig {

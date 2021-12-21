@@ -8,6 +8,7 @@
 )]
 #![warn(missing_docs)]
 mod additive_map_diff;
+mod chainspec_config;
 mod deploy_item_builder;
 mod execute_request_builder;
 mod step_request_builder;
@@ -15,50 +16,44 @@ mod upgrade_request_builder;
 pub mod utils;
 mod wasm_test_builder;
 
-use num_rational::Ratio;
 use once_cell::sync::Lazy;
 
-use casper_execution_engine::{
-    core::engine_state::{
-        genesis::{ExecConfig, GenesisAccount, GenesisConfig},
-        run_genesis_request::RunGenesisRequest,
-    },
-    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
-};
+use casper_execution_engine::core::engine_state::genesis::GenesisAccount;
 use casper_hashing::Digest;
 use casper_types::{account::AccountHash, Motes, ProtocolVersion, PublicKey, SecretKey, U512};
 
 pub use additive_map_diff::AdditiveMapDiff;
+pub use chainspec_config::{ChainspecConfig, PRODUCTION_PATH};
 pub use deploy_item_builder::DeployItemBuilder;
 pub use execute_request_builder::ExecuteRequestBuilder;
 pub use step_request_builder::StepRequestBuilder;
 pub use upgrade_request_builder::UpgradeRequestBuilder;
 pub use wasm_test_builder::{InMemoryWasmTestBuilder, LmdbWasmTestBuilder, WasmTestBuilder};
 
-/// Default number of validator slots.
-pub const DEFAULT_VALIDATOR_SLOTS: u32 = 5;
-/// Default auction delay.
-pub const DEFAULT_AUCTION_DELAY: u64 = 3;
-/// Default lock-in period of 90 days
-pub const DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS: u64 = 90 * 24 * 60 * 60 * 1000;
-/// Default number of eras that need to pass to be able to withdraw unbonded funds.
-pub const DEFAULT_UNBONDING_DELAY: u64 = 14;
-
-/// Default round seigniorage rate represented as a fractional number.
-///
-/// Annual issuance: 2%
-/// Minimum round exponent: 14
-/// Ticks per year: 31536000000
-///
-/// (1+0.02)^((2^14)/31536000000)-1 is expressed as a fraction below.
-pub const DEFAULT_ROUND_SEIGNIORAGE_RATE: Ratio<u64> = Ratio::new_raw(6414, 623437335209);
+// /// Default number of validator slots.
+// pub const DEFAULT_VALIDATOR_SLOTS: u32 = 5;
+// /// Default auction delay.
+// pub const DEFAULT_AUCTION_DELAY: u64 = 3;
+// /// Default lock-in period of 90 days
+// pub const DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS: u64 = 90 * 24 * 60 * 60 * 1000;
+// /// Default number of eras that need to pass to be able to withdraw unbonded funds.
+// pub const DEFAULT_UNBONDING_DELAY: u64 = 14;
+//
+// /// Default round seigniorage rate represented as a fractional number.
+// ///
+// /// Annual issuance: 2%
+// /// Minimum round exponent: 14
+// /// Ticks per year: 31536000000
+// ///
+// /// (1+0.02)^((2^14)/31536000000)-1 is expressed as a fraction below.
+// pub const DEFAULT_ROUND_SEIGNIORAGE_RATE: Ratio<u64> = Ratio::new_raw(6414, 623437335209);
 
 /// Default chain name.
 pub const DEFAULT_CHAIN_NAME: &str = "casper-execution-engine-testing";
 /// Default genesis timestamp in milliseconds.
 pub const DEFAULT_GENESIS_TIMESTAMP_MILLIS: u64 = 0;
-/// Default maximum number of associated keys.
-pub const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
+// /// Default maximum number of associated keys.
+// pub const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
 /// Default block time.
 pub const DEFAULT_BLOCK_TIME: u64 = 0;
 /// Default gas price.
@@ -115,40 +110,40 @@ pub static DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
 pub static DEFAULT_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| ProtocolVersion::V1_0_0);
 /// Default payment.
 pub static DEFAULT_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(1_500_000_000_000u64));
-/// Default [`WasmConfig`].
-pub static DEFAULT_WASM_CONFIG: Lazy<WasmConfig> = Lazy::new(WasmConfig::default);
-/// Default [`SystemConfig`].
-pub static DEFAULT_SYSTEM_CONFIG: Lazy<SystemConfig> = Lazy::new(SystemConfig::default);
-/// Default [`ExecConfig`].
-pub static DEFAULT_EXEC_CONFIG: Lazy<ExecConfig> = Lazy::new(|| {
-    ExecConfig::new(
-        DEFAULT_ACCOUNTS.clone(),
-        *DEFAULT_WASM_CONFIG,
-        *DEFAULT_SYSTEM_CONFIG,
-        DEFAULT_VALIDATOR_SLOTS,
-        DEFAULT_AUCTION_DELAY,
-        DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-        DEFAULT_ROUND_SEIGNIORAGE_RATE,
-        DEFAULT_UNBONDING_DELAY,
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    )
-});
-/// Default [`GenesisConfig`].
-pub static DEFAULT_GENESIS_CONFIG: Lazy<GenesisConfig> = Lazy::new(|| {
-    GenesisConfig::new(
-        DEFAULT_CHAIN_NAME.to_string(),
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-        *DEFAULT_PROTOCOL_VERSION,
-        DEFAULT_EXEC_CONFIG.clone(),
-    )
-});
-/// Default [`RunGenesisRequest`].
-pub static DEFAULT_RUN_GENESIS_REQUEST: Lazy<RunGenesisRequest> = Lazy::new(|| {
-    RunGenesisRequest::new(
-        *DEFAULT_GENESIS_CONFIG_HASH,
-        *DEFAULT_PROTOCOL_VERSION,
-        DEFAULT_EXEC_CONFIG.clone(),
-    )
-});
+// /// Default [`WasmConfig`].
+// pub static DEFAULT_WASM_CONFIG: Lazy<WasmConfig> = Lazy::new(WasmConfig::default);
+// /// Default [`SystemConfig`].
+// pub static DEFAULT_SYSTEM_CONFIG: Lazy<SystemConfig> = Lazy::new(SystemConfig::default);
+// /// Default [`ExecConfig`].
+// pub static DEFAULT_EXEC_CONFIG: Lazy<ExecConfig> = Lazy::new(|| {
+//     ExecConfig::new(
+//         DEFAULT_ACCOUNTS.clone(),
+//         *DEFAULT_WASM_CONFIG,
+//         *DEFAULT_SYSTEM_CONFIG,
+//         DEFAULT_VALIDATOR_SLOTS,
+//         DEFAULT_AUCTION_DELAY,
+//         DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+//         DEFAULT_ROUND_SEIGNIORAGE_RATE,
+//         DEFAULT_UNBONDING_DELAY,
+//         DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+//     )
+// });
+// /// Default [`GenesisConfig`].
+// pub static DEFAULT_GENESIS_CONFIG: Lazy<GenesisConfig> = Lazy::new(|| {
+//     GenesisConfig::new(
+//         DEFAULT_CHAIN_NAME.to_string(),
+//         DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+//         *DEFAULT_PROTOCOL_VERSION,
+//         DEFAULT_EXEC_CONFIG.clone(),
+//     )
+// });
+// /// Default [`RunGenesisRequest`].
+// pub static DEFAULT_RUN_GENESIS_REQUEST: Lazy<RunGenesisRequest> = Lazy::new(|| {
+//     RunGenesisRequest::new(
+//         *DEFAULT_GENESIS_CONFIG_HASH,
+//         *DEFAULT_PROTOCOL_VERSION,
+//         DEFAULT_EXEC_CONFIG.clone(),
+//     )
+// });
 /// System address.
 pub static SYSTEM_ADDR: Lazy<AccountHash> = Lazy::new(|| PublicKey::System.to_account_hash());

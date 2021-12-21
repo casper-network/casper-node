@@ -2,13 +2,11 @@ use core::convert::TryFrom;
 use std::path::PathBuf;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_GENESIS_CONFIG,
-    DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_PAYMENT,
+    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
+    DEFAULT_PAYMENT, PRODUCTION_PATH,
 };
-use casper_execution_engine::core::engine_state::{
-    run_genesis_request::RunGenesisRequest, GenesisAccount,
-};
+use casper_execution_engine::core::engine_state::GenesisAccount;
 use casper_types::{runtime_args, Key, Motes, RuntimeArgs, U512};
 
 const ARG_AMOUNT: &str = "amount";
@@ -27,16 +25,8 @@ fn test_check_transfer_success_with_source_only() {
         Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE)),
         None,
     );
-
-    // add the account to the genesis config.
-    let mut genesis_config = DEFAULT_GENESIS_CONFIG.clone();
-    genesis_config.ee_config_mut().push_account(account);
-
-    let run_genesis_request = RunGenesisRequest::new(
-        *DEFAULT_GENESIS_CONFIG_HASH,
-        genesis_config.protocol_version(),
-        genesis_config.take_ee_config(),
-    );
+    let mut accounts = DEFAULT_ACCOUNTS.clone();
+    accounts.push(account);
 
     // Doing a transfer from main purse to create new purse and store URef under NEW_PURSE_NAME.
     let transfer_amount = U512::try_from(FIRST_TRANSFER_AMOUNT).expect("U512 from u64");
@@ -57,8 +47,9 @@ fn test_check_transfer_success_with_source_only() {
     // build a request to execute the deploy.
     let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&run_genesis_request).commit();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 
     // we need this to figure out what the transfer fee is.
     let proposer_starting_balance = builder.get_proposer_purse_balance();
@@ -87,15 +78,8 @@ fn test_check_transfer_success_with_source_only_errors() {
         Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE)),
         None,
     );
-
-    let mut genesis_config = DEFAULT_GENESIS_CONFIG.clone();
-    genesis_config.ee_config_mut().push_account(genesis_account);
-
-    let run_genesis_request = RunGenesisRequest::new(
-        *DEFAULT_GENESIS_CONFIG_HASH,
-        genesis_config.protocol_version(),
-        genesis_config.take_ee_config(),
-    );
+    let mut accounts = DEFAULT_ACCOUNTS.clone();
+    accounts.push(genesis_account);
 
     // Doing a transfer from main purse to create new purse and store Uref under NEW_PURSE_NAME.
     let transfer_amount = U512::try_from(FIRST_TRANSFER_AMOUNT).expect("U512 from u64");
@@ -118,8 +102,9 @@ fn test_check_transfer_success_with_source_only_errors() {
     let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
 
     // Set up test builder and run genesis.
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&run_genesis_request).commit();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 
     // compare proposer balance before and after the transaction to get the tx fee.
     let proposer_starting_balance = builder.get_proposer_purse_balance();
@@ -146,15 +131,8 @@ fn test_check_transfer_success_with_source_and_target() {
         Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE)),
         None,
     );
-
-    let mut genesis_config = DEFAULT_GENESIS_CONFIG.clone();
-    genesis_config.ee_config_mut().push_account(genesis_account);
-
-    let run_genesis_request = RunGenesisRequest::new(
-        *DEFAULT_GENESIS_CONFIG_HASH,
-        genesis_config.protocol_version(),
-        genesis_config.take_ee_config(),
-    );
+    let mut accounts = DEFAULT_ACCOUNTS.clone();
+    accounts.push(genesis_account);
 
     let transfer_amount = U512::try_from(SECOND_TRANSFER_AMOUNT).expect("U512 from u64");
     // Doing a transfer from main purse to create new purse and store URef under NEW_PURSE_NAME.
@@ -172,8 +150,9 @@ fn test_check_transfer_success_with_source_and_target() {
 
     let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&run_genesis_request).commit();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 
     // we need this to figure out what the transfer fee is.
     let proposer_starting_balance = builder.get_proposer_purse_balance();

@@ -1,6 +1,8 @@
 use clap::ArgMatches;
 
-use casper_engine_test_support::{DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder};
+use casper_engine_test_support::{
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, PRODUCTION_PATH,
+};
 use casper_execution_engine::shared::transform::Transform;
 use casper_types::{
     account::AccountHash, runtime_args, system::mint, AsymmetricType, Key, PublicKey, RuntimeArgs,
@@ -20,7 +22,7 @@ pub(crate) fn generate_balances_update(matches: &ArgMatches<'_>) {
 
     // Open the global state that should be in the supplied directory.
     let mut builder =
-        LmdbWasmTestBuilder::open_raw(data_dir, Default::default(), hash_from_str(state_hash));
+        LmdbWasmTestBuilder::open_raw(data_dir, &*PRODUCTION_PATH, hash_from_str(state_hash));
 
     let no_wasm_transfer_request = {
         let deploy_item = DeployItemBuilder::new()

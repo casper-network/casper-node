@@ -2,10 +2,9 @@ use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder, DEFAULT_ACCOUNTS,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder, DEFAULT_ACCOUNTS,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, MINIMUM_ACCOUNT_CREATION_BALANCE,
-    TIMESTAMP_MILLIS_INCREMENT,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_PATH, TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::core::engine_state::{
     genesis::GenesisValidator, GenesisAccount, RewardItem,
@@ -59,7 +58,6 @@ fn should_run_ee_1152_regression_test() {
         tmp.push(validator_2);
         tmp
     };
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
 
     let fund_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -78,9 +76,9 @@ fn should_run_ee_1152_regression_test() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 
     builder.exec(fund_request_1).commit().expect_success();
     builder.exec(fund_request_2).commit().expect_success();
@@ -113,8 +111,7 @@ fn should_run_ee_1152_regression_test() {
 
     builder.exec(delegate_request_1).expect_success().commit();
 
-    let mut timestamp_millis =
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+    let mut timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo();
 
     // In reality a step request is made, but to simplify the test I'm just calling the auction part
     // only.

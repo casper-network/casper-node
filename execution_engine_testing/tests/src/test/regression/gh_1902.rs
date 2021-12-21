@@ -2,12 +2,9 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    DEFAULT_ACCOUNT_PUBLIC_KEY, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_PATH,
 };
-use casper_execution_engine::{
-    core::engine_state::ExecuteRequest,
-    shared::system_config::auction_costs::{DEFAULT_ADD_BID_COST, DEFAULT_DELEGATE_COST},
-};
+use casper_execution_engine::core::engine_state::ExecuteRequest;
 use casper_types::{
     account::{Account, AccountHash},
     runtime_args,
@@ -29,8 +26,9 @@ static ACCOUNT_1_PUBLIC_KEY: Lazy<PublicKey> =
 static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCOUNT_1_PUBLIC_KEY));
 
 fn setup() -> InMemoryWasmTestBuilder {
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+
+    builder.run_genesis_with_default_genesis_accounts();
     let id: Option<u64> = None;
     let transfer_args_1 = runtime_args! {
         mint::ARG_TARGET => *ACCOUNT_1_ADDR,
@@ -87,7 +85,8 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
 
     let bond_amount = U512::from(BOND_AMOUNT);
     // This amount should be enough to make first time add_bid call.
-    let add_bid_payment_amount = U512::from(DEFAULT_ADD_BID_COST);
+    let chainspec_add_bid_cost = builder.get_initial_system_config().auction_costs().add_bid;
+    let add_bid_payment_amount = U512::from(chainspec_add_bid_cost);
 
     let add_bid_request = {
         let sender = *DEFAULT_ACCOUNT_ADDR;
@@ -118,10 +117,11 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
         default_account,
         bond_amount,
         add_bid_payment_amount,
-        Gas::from(DEFAULT_ADD_BID_COST),
+        Gas::from(chainspec_add_bid_cost),
     );
 
-    let delegate_payment_amount = U512::from(DEFAULT_DELEGATE_COST);
+    let delegate_cost = builder.get_initial_system_config().auction_costs().delegate;
+    let delegate_payment_amount = U512::from(delegate_cost);
     let delegate_amount = U512::from(DELEGATE_AMOUNT);
 
     let delegate_request = {
@@ -155,6 +155,6 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
         account_1,
         delegate_amount,
         delegate_payment_amount,
-        Gas::from(DEFAULT_DELEGATE_COST),
+        Gas::from(delegate_cost),
     );
 }

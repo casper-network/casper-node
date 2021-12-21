@@ -2,7 +2,7 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    DEFAULT_ACCOUNT_PUBLIC_KEY, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_PATH,
 };
 use casper_execution_engine::core::{
     engine_state::Error as CoreError, execution::Error as ExecError,
@@ -44,10 +44,9 @@ static BID_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(1_000_000));
 static DELEGATE_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(500_000));
 
 fn setup() -> InMemoryWasmTestBuilder {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
-
+    builder.run_genesis_with_default_genesis_accounts();
     let id: Option<u64> = None;
 
     let transfer_args_1 = runtime_args! {
@@ -72,9 +71,9 @@ fn setup() -> InMemoryWasmTestBuilder {
 
     builder.exec(transfer_request_2).expect_success().commit();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let id: Option<u64> = None;
 

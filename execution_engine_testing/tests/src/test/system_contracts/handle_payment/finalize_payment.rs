@@ -2,7 +2,7 @@ use std::convert::TryInto;
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
+    DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_PATH, SYSTEM_ADDR,
 };
 use casper_types::{
     account::{Account, AccountHash},
@@ -27,7 +27,7 @@ pub const ARG_ACCOUNT_KEY: &str = "account";
 pub const ARG_TARGET: &str = "target";
 
 fn initialize() -> InMemoryWasmTestBuilder {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -46,7 +46,7 @@ fn initialize() -> InMemoryWasmTestBuilder {
     )
     .build();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     builder.exec(exec_request_1).expect_success().commit();
 
@@ -86,7 +86,7 @@ fn finalize_payment_should_not_be_run_by_non_system_accounts() {
 #[ignore]
 #[test]
 fn finalize_payment_should_refund_to_specified_purse() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
     let payment_amount = *DEFAULT_PAYMENT;
     let refund_purse_flag: u8 = 1;
     // Don't need to run finalize_payment manually, it happens during
@@ -99,7 +99,7 @@ fn finalize_payment_should_refund_to_specified_purse() {
         ARG_PURSE_NAME => LOCAL_REFUND_PURSE,
     };
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let create_purse_request = {
         ExecuteRequestBuilder::standard(

@@ -2,8 +2,7 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_RUN_GENESIS_REQUEST,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION, PRODUCTION_PATH,
 };
 use casper_execution_engine::{
     core::{
@@ -649,7 +648,7 @@ fn get_default_account_named_uref(builder: &mut InMemoryWasmTestBuilder, name: &
 }
 
 fn init_wasmless_transform_builder(create_account_2: bool) -> InMemoryWasmTestBuilder {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
     let id: Option<u64> = None;
 
@@ -665,7 +664,7 @@ fn init_wasmless_transform_builder(create_account_2: bool) -> InMemoryWasmTestBu
     .build();
 
     builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+        .run_genesis_with_default_genesis_accounts()
         .exec(create_account_1_request)
         .expect_success()
         .commit();
@@ -942,8 +941,10 @@ fn transfer_wasmless_should_fail_with_secondary_purse_insufficient_funds() {
 #[ignore]
 #[test]
 fn transfer_wasmless_should_observe_upgraded_cost() {
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+
     let new_wasmless_transfer_cost_value = DEFAULT_WASMLESS_TRANSFER_COST * 2;
-    let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
+    let new_max_associated_keys = builder.get_initial_max_associated_keys();
 
     let new_wasmless_transfer_gas_cost = Gas::from(new_wasmless_transfer_cost_value);
     let new_wasmless_transfer_cost = Motes::from_gas(
@@ -983,8 +984,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
         old_protocol_version.value().patch + 1,
     );
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)

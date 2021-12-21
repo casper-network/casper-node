@@ -5,16 +5,15 @@ use num_traits::{One, Zero};
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_AUCTION_DELAY, DEFAULT_EXEC_CONFIG,
-    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-    DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY, MINIMUM_ACCOUNT_CREATION_BALANCE,
-    SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder, DEFAULT_ACCOUNTS,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_PATH, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::core::{
     engine_state::{
         self,
         genesis::{GenesisAccount, GenesisValidator},
+        RewardItem,
     },
     execution,
 };
@@ -31,7 +30,7 @@ use casper_types::{
             ERA_ID_KEY, INITIAL_ERA_ID,
         },
     },
-    EraId, Motes, PublicKey, RuntimeArgs, SecretKey, U256, U512,
+    EraId, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U256, U512,
 };
 
 const ARG_TARGET: &str = "target";
@@ -127,25 +126,46 @@ const DELEGATOR_2_BALANCE: u64 = DEFAULT_ACCOUNT_INITIAL_BALANCE;
 
 const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 
-const EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS: u64 =
-    DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+// const EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS: u64 =
+//     DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+//
+// const WEEK_TIMESTAMPS: [u64; 14] = [
+//     EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS,
+//     EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + WEEK_MILLIS,
+//     EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 2),
+//     EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 3),
+//     EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 4),
+//     EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 5),
+//     EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 6),
+//     EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 7),
+//     EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 8),
+//     EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 9),
+//     EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 10),
+//     EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 11),
+//     EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 12),
+//     EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 13),
+// ];
 
-const WEEK_TIMESTAMPS: [u64; 14] = [
-    EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS,
-    EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + WEEK_MILLIS,
-    EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 2),
-    EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 3),
-    EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 4),
-    EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 5),
-    EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 6),
-    EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 7),
-    EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 8),
-    EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 9),
-    EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 10),
-    EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 11),
-    EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 12),
-    EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 13),
-];
+fn generate_week_timestamps(locked_funds_period_millis: u64) -> [u64; 14] {
+    let expected_initial_release_timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + locked_funds_period_millis;
+    [
+        expected_initial_release_timestamp_millis,
+        expected_initial_release_timestamp_millis + WEEK_MILLIS,
+        expected_initial_release_timestamp_millis + (WEEK_MILLIS * 2),
+        expected_initial_release_timestamp_millis + (WEEK_MILLIS * 3),
+        expected_initial_release_timestamp_millis + (WEEK_MILLIS * 4),
+        expected_initial_release_timestamp_millis + (WEEK_MILLIS * 5),
+        expected_initial_release_timestamp_millis + (WEEK_MILLIS * 6),
+        expected_initial_release_timestamp_millis + (WEEK_MILLIS * 7),
+        expected_initial_release_timestamp_millis + (WEEK_MILLIS * 8),
+        expected_initial_release_timestamp_millis + (WEEK_MILLIS * 9),
+        expected_initial_release_timestamp_millis + (WEEK_MILLIS * 10),
+        expected_initial_release_timestamp_millis + (WEEK_MILLIS * 11),
+        expected_initial_release_timestamp_millis + (WEEK_MILLIS * 12),
+        expected_initial_release_timestamp_millis + (WEEK_MILLIS * 13),
+    ]
+}
 
 #[ignore]
 #[test]
@@ -161,11 +181,9 @@ fn should_add_new_bid() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *BID_ACCOUNT_1_ADDR,
@@ -205,11 +223,9 @@ fn should_increase_existing_bid() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *BID_ACCOUNT_1_ADDR,
@@ -264,11 +280,9 @@ fn should_decrease_existing_bid() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 
     let bid_request = ExecuteRequestBuilder::standard(
         *BID_ACCOUNT_1_ADDR,
@@ -332,11 +346,9 @@ fn should_run_delegate_and_undelegate() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 
     let transfer_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -512,11 +524,9 @@ fn should_calculate_era_validators() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 
     let transfer_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -573,10 +583,7 @@ fn should_calculate_era_validators() {
     let pre_era_id: EraId = builder.get_value(auction_hash, ERA_ID_KEY);
     assert_eq!(pre_era_id, EraId::from(0));
 
-    builder.run_auction(
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-        Vec::new(),
-    );
+    builder.run_auction(DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo(), Vec::new());
 
     let post_era_id: EraId = builder.get_value(auction_hash, ERA_ID_KEY);
     assert_eq!(post_era_id, EraId::from(1));
@@ -587,7 +594,7 @@ fn should_calculate_era_validators() {
     // elements are
     let eras: Vec<_> = era_validators.keys().copied().collect();
     assert!(!era_validators.is_empty());
-    assert!(era_validators.len() >= DEFAULT_AUCTION_DELAY as usize); // definitely more than 1 element
+    assert!(era_validators.len() >= builder.get_initial_auction_delay() as usize); // definitely more than 1 element
     let (first_era, _) = era_validators.iter().min().unwrap();
     let (last_era, _) = era_validators.iter().max().unwrap();
     let expected_eras: Vec<EraId> = {
@@ -598,9 +605,9 @@ fn should_calculate_era_validators() {
     assert_eq!(eras, expected_eras, "Eras {:?}", eras);
 
     assert!(post_era_id > EraId::from(0));
-    let consensus_next_era_id: EraId = post_era_id + DEFAULT_AUCTION_DELAY + 1;
+    let consensus_next_era_id: EraId = post_era_id + builder.get_initial_auction_delay() + 1;
 
-    let snapshot_size = DEFAULT_AUCTION_DELAY as usize + 1;
+    let snapshot_size = builder.get_initial_auction_delay() as usize + 1;
     assert_eq!(
         era_validators.len(),
         snapshot_size,
@@ -669,11 +676,9 @@ fn should_get_first_seigniorage_recipients() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 
     let transfer_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -693,7 +698,7 @@ fn should_get_first_seigniorage_recipients() {
         founding_validator_1
             .vesting_schedule()
             .map(|vesting_schedule| vesting_schedule.initial_release_timestamp_millis()),
-        Some(DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS)
+        Some(DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo())
     );
 
     let founding_validator_2 = bids.get(&ACCOUNT_2_PK).expect("should have account 2 pk");
@@ -701,25 +706,33 @@ fn should_get_first_seigniorage_recipients() {
         founding_validator_2
             .vesting_schedule()
             .map(|vesting_schedule| vesting_schedule.initial_release_timestamp_millis()),
-        Some(DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS)
+        Some(DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo())
     );
 
     builder.exec(transfer_request_1).commit().expect_success();
 
-    // run_auction should be executed first
-    builder.run_auction(
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-        Vec::new(),
-    );
+    let step_request = StepRequestBuilder::new()
+        .with_parent_state_hash(builder.get_post_state_hash())
+        .with_protocol_version(ProtocolVersion::V1_0_0)
+        .with_reward_item(RewardItem::new(ACCOUNT_1_PK.clone(), 1))
+        .with_reward_item(RewardItem::new(ACCOUNT_2_PK.clone(), 1))
+        .with_next_era_id(builder.get_era().successor())
+        .with_run_auction(true)
+        .build();
+
+    builder
+        .step(step_request)
+        .expect("must execute step successfully");
 
     let mut era_validators: EraValidators = builder.get_era_validators();
-    let snapshot_size = DEFAULT_AUCTION_DELAY as usize + 1;
+    let snapshot_size = builder.get_initial_auction_delay() as usize + 1;
 
     assert_eq!(era_validators.len(), snapshot_size, "{:?}", era_validators); // eraindex==1 - ran once
 
-    assert!(era_validators.contains_key(&(EraId::from(DEFAULT_AUCTION_DELAY).successor())));
+    assert!(era_validators
+        .contains_key(&(EraId::from(builder.get_initial_auction_delay()).successor())));
 
-    let era_id = EraId::from(DEFAULT_AUCTION_DELAY) - 1;
+    let era_id = builder.get_era();
 
     let validator_weights = era_validators.remove(&era_id).unwrap_or_else(|| {
         panic!(
@@ -817,11 +830,11 @@ fn should_release_founder_stake() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 
-    builder.run_genesis(&run_genesis_request);
+    let week_timestamps = generate_week_timestamps(builder.foo());
 
     let fund_system_account = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -844,7 +857,10 @@ fn should_release_founder_stake() {
         let vesting_schedule = entry.vesting_schedule().unwrap();
 
         let initial_release = vesting_schedule.initial_release_timestamp_millis();
-        assert_eq!(initial_release, EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS);
+        assert_eq!(
+            initial_release,
+            DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo()
+        );
 
         let locked_amounts = vesting_schedule.locked_amounts().map(|arr| arr.to_vec());
         assert!(locked_amounts.is_none());
@@ -857,7 +873,7 @@ fn should_release_founder_stake() {
         expect_unbond_failure(&mut builder, u64::one());
     }
 
-    builder.run_auction(WEEK_TIMESTAMPS[0], Vec::new());
+    builder.run_auction(week_timestamps[0], Vec::new());
 
     // Check bid and its vesting schedule
     {
@@ -868,7 +884,10 @@ fn should_release_founder_stake() {
         let vesting_schedule = entry.vesting_schedule().unwrap();
 
         let initial_release = vesting_schedule.initial_release_timestamp_millis();
-        assert_eq!(initial_release, EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS);
+        assert_eq!(
+            initial_release,
+            DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo()
+        );
 
         let locked_amounts = vesting_schedule.locked_amounts().map(|arr| arr.to_vec());
         assert_eq!(locked_amounts, Some(expected_locked_amounts));
@@ -890,13 +909,13 @@ fn should_release_founder_stake() {
 
     for i in 1..13 {
         // Run auction forward by almost a week
-        builder.run_auction(WEEK_TIMESTAMPS[i] - 1, Vec::new());
+        builder.run_auction(week_timestamps[i] - 1, Vec::new());
 
         // Attempt unbond of 1 mote
         expect_unbond_failure(&mut builder, u64::one());
 
         // Run auction forward by one millisecond
-        builder.run_auction(WEEK_TIMESTAMPS[i], Vec::new());
+        builder.run_auction(week_timestamps[i], Vec::new());
 
         // Attempt unbond of more than weekly release
         expect_unbond_failure(&mut builder, EXPECTED_WEEKLY_RELEASE + 1);
@@ -911,13 +930,13 @@ fn should_release_founder_stake() {
 
     {
         // Run auction forward by almost a week
-        builder.run_auction(WEEK_TIMESTAMPS[13] - 1, Vec::new());
+        builder.run_auction(week_timestamps[13] - 1, Vec::new());
 
         // Attempt unbond of 1 mote
         expect_unbond_failure(&mut builder, u64::one());
 
         // Run auction forward by one millisecond
-        builder.run_auction(WEEK_TIMESTAMPS[13], Vec::new());
+        builder.run_auction(week_timestamps[13], Vec::new());
 
         // Attempt unbond of released amount + remainder
         expect_unbond_success(&mut builder, EXPECTED_WEEKLY_RELEASE + EXPECTED_REMAINDER);
@@ -947,11 +966,9 @@ fn should_fail_to_get_era_validators() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 
     assert_eq!(
         builder.get_validator_weights(EraId::MAX),
@@ -978,11 +995,9 @@ fn should_use_era_validators_endpoint_for_first_era() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 
     let validator_weights = builder
         .get_validator_weights(INITIAL_ERA_ID)
@@ -1036,18 +1051,16 @@ fn should_calculate_era_validators_multiple_new_bids() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 
     let genesis_validator_weights = builder
         .get_validator_weights(INITIAL_ERA_ID)
         .expect("should have genesis validators for initial era");
 
     // new_era is the first era in the future where new era validator weights will be calculated
-    let new_era = INITIAL_ERA_ID + DEFAULT_AUCTION_DELAY + 1;
+    let new_era = INITIAL_ERA_ID + builder.get_initial_auction_delay() + 1;
     assert!(builder.get_validator_weights(new_era).is_none());
     assert_eq!(
         builder.get_validator_weights(new_era - 1).unwrap(),
@@ -1106,10 +1119,7 @@ fn should_calculate_era_validators_multiple_new_bids() {
     builder.exec(add_bid_request_2).commit().expect_success();
 
     // run auction and compute validators for new era
-    builder.run_auction(
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-        Vec::new(),
-    );
+    builder.run_auction(DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo(), Vec::new());
     // Verify first era validators
     let new_validator_weights: ValidatorWeights = builder
         .get_validator_weights(new_era)
@@ -1204,12 +1214,11 @@ fn undelegated_funds_should_be_released() {
         delegator_1_validator_1_delegate_request,
     ];
 
-    let mut timestamp_millis =
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
@@ -1243,7 +1252,7 @@ fn undelegated_funds_should_be_released() {
 
     let delegator_1_purse_balance_before = builder.get_purse_balance(delegator_1_undelegate_purse);
 
-    for _ in 0..=DEFAULT_UNBONDING_DELAY {
+    for _ in 0..=builder.get_initial_unbonding_delay() {
         let delegator_1_undelegate_purse_balance =
             builder.get_purse_balance(delegator_1_undelegate_purse);
         assert_eq!(
@@ -1328,12 +1337,11 @@ fn fully_undelegated_funds_should_be_released() {
         delegator_1_validator_1_delegate_request,
     ];
 
-    let mut timestamp_millis =
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
@@ -1367,7 +1375,7 @@ fn fully_undelegated_funds_should_be_released() {
 
     let delegator_1_purse_balance_before = builder.get_purse_balance(delegator_1_undelegate_purse);
 
-    for _ in 0..=DEFAULT_UNBONDING_DELAY {
+    for _ in 0..=builder.get_initial_unbonding_delay() {
         let delegator_1_undelegate_purse_balance =
             builder.get_purse_balance(delegator_1_undelegate_purse);
         assert_eq!(
@@ -1487,12 +1495,10 @@ fn should_undelegate_delegators_when_validator_unbonds() {
         validator_1_partial_withdraw_bid,
     ];
 
-    let mut timestamp_millis =
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+    let mut timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
@@ -1615,7 +1621,7 @@ fn should_undelegate_delegators_when_validator_unbonds() {
         .expect("should have delegator 1 account");
     let delegator_2_balance_before = builder.get_purse_balance(delegator_2.main_purse());
 
-    for _ in 0..=DEFAULT_UNBONDING_DELAY {
+    for _ in 0..=builder.get_initial_unbonding_delay() {
         builder.run_auction(timestamp_millis, Vec::new());
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
@@ -1724,12 +1730,11 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
         delegator_2_delegate_request,
     ];
 
-    let mut timestamp_millis =
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
@@ -1807,7 +1812,7 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
         .expect("should have delegator 1 account");
     let delegator_2_balance_before = builder.get_purse_balance(delegator_2.main_purse());
 
-    for _ in 0..=DEFAULT_UNBONDING_DELAY {
+    for _ in 0..=builder.get_initial_unbonding_delay() {
         builder.run_auction(timestamp_millis, Vec::new());
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
@@ -1910,11 +1915,9 @@ fn should_handle_evictions() {
 
     let mut timestamp = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 
     builder.exec(system_fund_request).commit().expect_success();
 
@@ -2053,11 +2056,9 @@ fn should_validate_orphaned_genesis_delegators() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 }
 
 #[should_panic(expected = "DuplicatedDelegatorEntry")]
@@ -2108,11 +2109,9 @@ fn should_validate_duplicated_genesis_delegators() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 }
 
 #[should_panic(expected = "InvalidDelegationRate")]
@@ -2133,11 +2132,9 @@ fn should_validate_delegation_rate_of_genesis_validator() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 }
 
 #[should_panic(expected = "InvalidBondAmount")]
@@ -2155,11 +2152,9 @@ fn should_validate_bond_amount_of_genesis_validator() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 }
 
 #[ignore]
@@ -2192,11 +2187,9 @@ fn should_setup_genesis_delegators() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 
     let _account_1 = builder
         .get_account(*ACCOUNT_1_ADDR)
@@ -2257,11 +2250,9 @@ fn should_not_partially_undelegate_uninitialized_vesting_schedule() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 
     let fund_delegator_account = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -2329,11 +2320,9 @@ fn should_not_fully_undelegate_uninitialized_vesting_schedule() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 
     let fund_delegator_account = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -2401,11 +2390,11 @@ fn should_not_undelegate_vfta_holder_stake() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let week_timestamps = generate_week_timestamps(builder.foo());
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 
     let post_genesis_requests = {
         let fund_delegator_account = ExecuteRequestBuilder::standard(
@@ -2449,7 +2438,7 @@ fn should_not_undelegate_vfta_holder_stake() {
         assert_eq!(vesting_schedule.locked_amounts(), None);
     }
 
-    builder.run_auction(WEEK_TIMESTAMPS[0], Vec::new());
+    builder.run_auction(week_timestamps[0], Vec::new());
 
     let partial_unbond = ExecuteRequestBuilder::standard(
         *DELEGATOR_1_ADDR,
@@ -2581,11 +2570,11 @@ fn should_release_vfta_holder_stake() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let week_timestamps = generate_week_timestamps(builder.foo());
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 
     let fund_delegator_account = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -2624,7 +2613,10 @@ fn should_release_vfta_holder_stake() {
         let vesting_schedule = entry.vesting_schedule().unwrap();
 
         let initial_release = vesting_schedule.initial_release_timestamp_millis();
-        assert_eq!(initial_release, EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS);
+        assert_eq!(
+            initial_release,
+            DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo()
+        );
 
         let locked_amounts = vesting_schedule.locked_amounts().map(|arr| arr.to_vec());
         assert!(locked_amounts.is_none());
@@ -2637,7 +2629,7 @@ fn should_release_vfta_holder_stake() {
         expect_undelegate_failure(&mut builder, u64::one());
     }
 
-    builder.run_auction(WEEK_TIMESTAMPS[0], Vec::new());
+    builder.run_auction(week_timestamps[0], Vec::new());
 
     // Check bid and its vesting schedule
     {
@@ -2650,7 +2642,10 @@ fn should_release_vfta_holder_stake() {
         let vesting_schedule = entry.vesting_schedule().unwrap();
 
         let initial_release = vesting_schedule.initial_release_timestamp_millis();
-        assert_eq!(initial_release, EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS);
+        assert_eq!(
+            initial_release,
+            DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo()
+        );
 
         let locked_amounts = vesting_schedule.locked_amounts().map(|arr| arr.to_vec());
         assert_eq!(locked_amounts, Some(expected_locked_amounts));
@@ -2675,13 +2670,13 @@ fn should_release_vfta_holder_stake() {
 
     for i in 1..13 {
         // Run auction forward by almost a week
-        builder.run_auction(WEEK_TIMESTAMPS[i] - 1, Vec::new());
+        builder.run_auction(week_timestamps[i] - 1, Vec::new());
 
         // Attempt unbond of 1 mote
         expect_undelegate_failure(&mut builder, u64::one());
 
         // Run auction forward by one millisecond
-        builder.run_auction(WEEK_TIMESTAMPS[i], Vec::new());
+        builder.run_auction(week_timestamps[i], Vec::new());
 
         // Attempt unbond of more than weekly release
         expect_undelegate_failure(&mut builder, EXPECTED_WEEKLY_RELEASE + 1);
@@ -2699,13 +2694,13 @@ fn should_release_vfta_holder_stake() {
 
     {
         // Run auction forward by almost a week
-        builder.run_auction(WEEK_TIMESTAMPS[13] - 1, Vec::new());
+        builder.run_auction(week_timestamps[13] - 1, Vec::new());
 
         // Attempt unbond of 1 mote
         expect_undelegate_failure(&mut builder, u64::one());
 
         // Run auction forward by one millisecond
-        builder.run_auction(WEEK_TIMESTAMPS[13], Vec::new());
+        builder.run_auction(week_timestamps[13], Vec::new());
 
         // Attempt unbond of released amount + remainder
         expect_undelegate_success(&mut builder, EXPECTED_WEEKLY_RELEASE + EXPECTED_REMAINDER);
@@ -2854,9 +2849,9 @@ fn should_reset_delegators_stake_after_slashing() {
         delegator_2_validator_2_delegate_request,
     ];
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     for request in post_genesis_requests {
         builder.exec(request).expect_success().commit();
@@ -3005,18 +3000,18 @@ fn should_validate_genesis_delegators_bond_amount() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 }
 
-fn check_validator_slots_for_accounts(accounts: usize) {
+fn check_validator_slots_for_accounts(extra_validator_slots: usize) {
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+    let validator_slots = builder.get_initial_validator_slots() as usize + extra_validator_slots;
     let accounts = {
-        let range = 1..=accounts;
+        let range = 1..=validator_slots;
 
-        let mut tmp: Vec<GenesisAccount> = Vec::with_capacity(accounts);
+        let mut tmp: Vec<GenesisAccount> = Vec::with_capacity(validator_slots);
 
         for count in range.map(U256::from) {
             let secret_key = {
@@ -3039,22 +3034,18 @@ fn check_validator_slots_for_accounts(accounts: usize) {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
-
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 }
 
 #[should_panic(expected = "InvalidValidatorSlots")]
 #[ignore]
 #[test]
 fn should_fail_with_more_accounts_than_slots() {
-    check_validator_slots_for_accounts(DEFAULT_EXEC_CONFIG.validator_slots() as usize + 1);
+    check_validator_slots_for_accounts(1);
 }
 
 #[ignore]
 #[test]
 fn should_run_genesis_with_exact_validator_slots() {
-    check_validator_slots_for_accounts(DEFAULT_EXEC_CONFIG.validator_slots() as usize);
+    check_validator_slots_for_accounts(0);
 }

@@ -1,6 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, PRODUCTION_PATH,
 };
 use casper_types::{bytesrepr::Bytes, runtime_args, ContractHash, RuntimeArgs};
 
@@ -20,7 +19,7 @@ const ARG_SIZE_FUNCTION_CALL_100_NAME: &str = "arg_size_function_call_100";
 fn should_measure_gas_cost() {
     // This test runs a contract that's after every call extends the same key with
     // more data
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -30,7 +29,7 @@ fn should_measure_gas_cost() {
     .build();
 
     // Create Accounts
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     builder.exec(exec_request_1).expect_success().commit();
 
@@ -88,7 +87,7 @@ fn should_measure_gas_cost() {
 fn should_measure_nested_host_function_call_cost() {
     // This test runs a contract that's after every call extends the same key with
     // more data
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -98,7 +97,7 @@ fn should_measure_nested_host_function_call_cost() {
     .build();
 
     // Create Accounts
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     builder.exec(exec_request_1).expect_success().commit();
 
@@ -166,7 +165,7 @@ fn should_measure_nested_host_function_call_cost() {
 #[test]
 fn should_measure_argument_size_in_host_function_call() {
     // Checks if calling a contract with large arguments affects costs
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -176,7 +175,7 @@ fn should_measure_argument_size_in_host_function_call() {
     .build();
 
     // Create Accounts
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     builder.exec(exec_request_1).expect_success().commit();
 

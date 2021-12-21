@@ -2,9 +2,9 @@ use num_traits::Zero;
 use std::collections::BTreeSet;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_AUCTION_DELAY, DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-    MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_PATH,
+    SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::core::engine_state::genesis::{GenesisAccount, GenesisValidator};
 use casper_types::{
@@ -95,10 +95,9 @@ fn should_run_ee_1045_squash_validators() {
         tmp
     };
 
-    let mut timestamp_millis =
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    let mut timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo();
 
     let transfer_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -110,15 +109,13 @@ fn should_run_ee_1045_squash_validators() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 
     let genesis_validator_weights = builder
         .get_validator_weights(INITIAL_ERA_ID)
         .expect("should have genesis validator weights");
 
-    let mut new_era_id = INITIAL_ERA_ID + DEFAULT_AUCTION_DELAY + 1;
+    let mut new_era_id = INITIAL_ERA_ID + builder.get_initial_auction_delay() + 1;
     assert!(builder.get_validator_weights(new_era_id).is_none());
     assert!(builder.get_validator_weights(new_era_id - 1).is_some());
 

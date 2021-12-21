@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
+    DEFAULT_PAYMENT, PRODUCTION_PATH,
 };
 use casper_types::{runtime_args, Phase, RuntimeArgs};
 
@@ -33,8 +33,8 @@ fn should_run_get_phase_contract() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    InMemoryWasmTestBuilder::default()
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+    InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None)
+        .run_genesis_with_default_genesis_accounts()
         .exec(exec_request)
         .commit()
         .expect_success();

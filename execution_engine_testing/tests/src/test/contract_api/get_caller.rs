@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
-    DEFAULT_RUN_GENESIS_REQUEST,
+    PRODUCTION_PATH,
 };
 use casper_types::{account::AccountHash, runtime_args, RuntimeArgs};
 
@@ -12,8 +12,8 @@ const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 #[ignore]
 #[test]
 fn should_run_get_caller_contract() {
-    InMemoryWasmTestBuilder::default()
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+    InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None)
+        .run_genesis_with_default_genesis_accounts()
         .exec(
             ExecuteRequestBuilder::standard(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -29,9 +29,9 @@ fn should_run_get_caller_contract() {
 #[ignore]
 #[test]
 fn should_run_get_caller_contract_other_account() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     builder
         .exec(
@@ -62,8 +62,8 @@ fn should_run_get_caller_contract_other_account() {
 #[test]
 fn should_run_get_caller_subcall_contract() {
     {
-        let mut builder = InMemoryWasmTestBuilder::default();
-        builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+        let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+        builder.run_genesis_with_default_genesis_accounts();
 
         builder
             .exec(
@@ -78,9 +78,9 @@ fn should_run_get_caller_subcall_contract() {
             .commit();
     }
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
     builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+        .run_genesis_with_default_genesis_accounts()
         .exec(
             ExecuteRequestBuilder::standard(
                 *DEFAULT_ACCOUNT_ADDR,

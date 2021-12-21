@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_RUN_GENESIS_REQUEST,
+    DEFAULT_ACCOUNT_PUBLIC_KEY, PRODUCTION_PATH,
 };
 
 use casper_execution_engine::core::{engine_state::Error, execution};
@@ -20,8 +20,9 @@ const LARGE_DELEGATION_RATE: DelegationRate = 101;
 fn should_run_ee_1174_delegation_rate_too_high() {
     let bid_amount = U512::one();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+
+    builder.run_genesis_with_default_genesis_accounts();
 
     let auction = builder.get_auction_contract_hash();
 

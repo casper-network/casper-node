@@ -1,8 +1,8 @@
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_PATH,
 };
 use casper_execution_engine::core::{
     engine_state::{self, genesis::GenesisAccount},
@@ -32,7 +32,8 @@ static FAUCET_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*FAUCET)
 static ALICE_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ALICE));
 
 fn get_builder() -> InMemoryWasmTestBuilder {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+
     {
         // first, store contract
         let store_request = ExecuteRequestBuilder::standard(
@@ -42,7 +43,7 @@ fn get_builder() -> InMemoryWasmTestBuilder {
         )
         .build();
 
-        builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+        builder.run_genesis_with_default_genesis_accounts();
         builder.exec(store_request).commit();
     }
     builder
@@ -98,10 +99,9 @@ fn should_fail_to_create_account() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 
     let store_faucet_request = ExecuteRequestBuilder::standard(
         *FAUCET_ADDR,
@@ -166,10 +166,9 @@ fn should_fail_transfer_to_existing_account() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 
     let store_faucet_request = ExecuteRequestBuilder::standard(
         *FAUCET_ADDR,

@@ -1,7 +1,7 @@
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
     WasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_KEY,
-    DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
+    DEFAULT_PAYMENT, PRODUCTION_PATH,
 };
 use casper_execution_engine::storage::global_state::in_memory::InMemoryGlobalState;
 use casper_types::{
@@ -98,8 +98,8 @@ fn should_exec_non_stored_code() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
@@ -133,8 +133,8 @@ fn should_exec_stored_code_by_hash() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
 
     // genesis
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+    builder.run_genesis_with_default_genesis_accounts();
 
     // store payment
     let proposer_reward_starting_balance_alpha = builder.get_proposer_purse_balance();
@@ -220,8 +220,8 @@ fn should_exec_stored_code_by_named_hash() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
 
     // genesis
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+    builder.run_genesis_with_default_genesis_accounts();
 
     // store payment
     let proposer_reward_starting_balance_alpha = builder.get_proposer_purse_balance();
@@ -315,8 +315,8 @@ fn should_fail_payment_stored_at_named_key_with_incompatible_major_version() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+    builder.run_genesis_with_default_genesis_accounts();
 
     builder.exec(exec_request).commit();
 
@@ -399,8 +399,8 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+    builder.run_genesis_with_default_genesis_accounts();
 
     builder.exec(exec_request).commit();
 
@@ -476,8 +476,8 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+    builder.run_genesis_with_default_genesis_accounts();
 
     builder.exec(exec_request_1).commit();
 
@@ -562,8 +562,8 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+    builder.run_genesis_with_default_genesis_accounts();
 
     builder.exec(exec_request_1).commit();
 
@@ -649,8 +649,8 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+    builder.run_genesis_with_default_genesis_accounts();
 
     builder.exec(exec_request_1).commit();
 
@@ -714,8 +714,8 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
 fn should_execute_stored_payment_and_session_code_with_new_major_version() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+    builder.run_genesis_with_default_genesis_accounts();
 
     //
     // upgrade with new wasm costs with modified mint for given version

@@ -8,10 +8,8 @@ use fs_extra::dir;
 use serde::{Deserialize, Serialize};
 use tempfile::TempDir;
 
-use casper_engine_test_support::LmdbWasmTestBuilder;
-use casper_execution_engine::core::engine_state::{
-    run_genesis_request::RunGenesisRequest, EngineConfig,
-};
+use casper_engine_test_support::{LmdbWasmTestBuilder, PRODUCTION_PATH};
+use casper_execution_engine::core::engine_state::run_genesis_request::RunGenesisRequest;
 use casper_hashing::Digest;
 use casper_types::ProtocolVersion;
 
@@ -68,7 +66,7 @@ pub fn builder_from_global_state_fixture(
     (
         LmdbWasmTestBuilder::open(
             &path_to_gs,
-            EngineConfig::default(),
+            &*PRODUCTION_PATH,
             lmdb_fixture_state.post_state_hash,
         ),
         lmdb_fixture_state,
@@ -83,16 +81,15 @@ pub fn builder_from_global_state_fixture(
 /// control.
 pub fn generate_fixture(
     name: &str,
-    genesis_request: RunGenesisRequest,
+    _genesis_request: RunGenesisRequest,
     post_genesis_setup: impl FnOnce(&mut LmdbWasmTestBuilder),
 ) -> Result<(), Box<dyn std::error::Error>> {
     let lmdb_fixtures_root = path_to_lmdb_fixtures();
     let fixture_root = lmdb_fixtures_root.join(name);
 
-    let engine_config = EngineConfig::default();
-    let mut builder = LmdbWasmTestBuilder::new_with_config(&fixture_root, engine_config);
+    let mut builder = LmdbWasmTestBuilder::new_with_config(&fixture_root, &*PRODUCTION_PATH);
 
-    builder.run_genesis(&genesis_request);
+    builder.run_genesis_with_default_genesis_accounts();
 
     // You can customize the fixture post genesis with a callable.
     post_genesis_setup(&mut builder);
@@ -100,7 +97,7 @@ pub fn generate_fixture(
     let post_state_hash = builder.get_post_state_hash();
 
     let state = LmdbFixtureState {
-        genesis_request: serde_json::to_value(genesis_request)?,
+        genesis_request: serde_json::to_value(builder.get_genesis_request())?,
         post_state_hash,
     };
     let serialized_state = serde_json::to_string_pretty(&state)?;

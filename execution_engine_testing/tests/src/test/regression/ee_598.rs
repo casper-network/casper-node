@@ -3,7 +3,7 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
-    DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_ACCOUNT_ADDR, PRODUCTION_PATH,
 };
 use casper_execution_engine::core::engine_state::genesis::{GenesisAccount, GenesisValidator};
 use casper_types::{
@@ -51,8 +51,6 @@ fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
-
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_AUCTION_BIDDING,
@@ -80,8 +78,8 @@ fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
         ExecuteRequestBuilder::from_deploy_item(deploy).build()
     };
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&run_genesis_request);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 
     builder.exec(exec_request_1).expect_success().commit();
 

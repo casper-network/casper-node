@@ -2,10 +2,9 @@ use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
-    UpgradeRequestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
-    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PAYMENT,
-    DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
+    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
+    DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
+    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION, PRODUCTION_PATH,
 };
 use casper_execution_engine::{
     core::engine_state::{
@@ -16,20 +15,8 @@ use casper_execution_engine::{
         opcode_costs::OpcodeCosts,
         storage_costs::StorageCosts,
         system_config::{
-            auction_costs::{
-                AuctionCosts, DEFAULT_ADD_BID_COST, DEFAULT_DELEGATE_COST, DEFAULT_DISTRIBUTE_COST,
-                DEFAULT_RUN_AUCTION_COST, DEFAULT_SLASH_COST, DEFAULT_UNDELEGATE_COST,
-                DEFAULT_WITHDRAW_BID_COST,
-            },
-            handle_payment_costs::{
-                HandlePaymentCosts, DEFAULT_FINALIZE_PAYMENT_COST, DEFAULT_SET_REFUND_PURSE_COST,
-            },
-            mint_costs::{
-                MintCosts, DEFAULT_BALANCE_COST, DEFAULT_MINT_COST,
-                DEFAULT_REDUCE_TOTAL_SUPPLY_COST, DEFAULT_TRANSFER_COST,
-            },
-            standard_payment_costs::StandardPaymentCosts,
-            SystemConfig, DEFAULT_WASMLESS_TRANSFER_COST,
+            auction_costs::AuctionCosts, handle_payment_costs::HandlePaymentCosts,
+            mint_costs::MintCosts, standard_payment_costs::StandardPaymentCosts, SystemConfig,
         },
         wasm,
         wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
@@ -58,10 +45,6 @@ const BID_AMOUNT: u64 = 99;
 const TRANSFER_AMOUNT: u64 = 123;
 const BID_DELEGATION_RATE: DelegationRate = auction::DELEGATION_RATE_DENOMINATOR;
 const UPDATED_CALL_CONTRACT_COST: Cost = 12_345;
-const NEW_ADD_BID_COST: u32 = DEFAULT_ADD_BID_COST * 2;
-const NEW_WITHDRAW_BID_COST: u32 = DEFAULT_WITHDRAW_BID_COST * 3;
-const NEW_DELEGATE_COST: u32 = DEFAULT_DELEGATE_COST * 4;
-const NEW_UNDELEGATE_COST: u32 = DEFAULT_UNDELEGATE_COST * 5;
 const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 
 static OLD_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| *DEFAULT_PROTOCOL_VERSION);
@@ -78,9 +61,9 @@ const ARG_AMOUNT: &str = "amount";
 #[ignore]
 #[test]
 fn add_bid_and_withdraw_bid_have_expected_costs() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let system_contract_hashes_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -125,7 +108,10 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
     let transaction_fee_1 =
         builder.get_proposer_purse_balance() - proposer_reward_starting_balance_1;
 
-    let expected_call_cost = U512::from(DEFAULT_ADD_BID_COST);
+    let expected_call_cost = {
+        let system_config = builder.get_initial_system_config();
+        U512::from(system_config.auction_costs().add_bid)
+    };
     assert_eq!(
         balance_after,
         balance_before - U512::from(BOND_AMOUNT) - transaction_fee_1
@@ -161,7 +147,10 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
     let transaction_fee_2 =
         builder.get_proposer_purse_balance() - proposer_reward_starting_balance_2;
 
-    let expected_call_cost = U512::from(DEFAULT_WITHDRAW_BID_COST);
+    let expected_call_cost = {
+        let system_config = builder.get_initial_system_config();
+        U512::from(system_config.auction_costs().withdraw_bid)
+    };
     assert_eq!(balance_after, balance_before - transaction_fee_2);
     assert_eq!(builder.last_exec_gas_cost().value(), expected_call_cost);
 }
@@ -169,12 +158,25 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
 #[ignore]
 #[test]
 fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
-    let new_wasmless_transfer_cost = DEFAULT_WASMLESS_TRANSFER_COST;
-    let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+
+    // const NEW_ADD_BID_COST: u32 = DEFAULT_ADD_BID_COST * 2;
+    // const NEW_WITHDRAW_BID_COST: u32 = DEFAULT_WITHDRAW_BID_COST * 3;
+    // const NEW_DELEGATE_COST: u32 = DEFAULT_DELEGATE_COST * 4;
+    // const NEW_UNDELEGATE_COST: u32 = DEFAULT_UNDELEGATE_COST * 5;
+
+    let system_config = builder.get_initial_system_config();
+
+    let new_wasmless_transfer_cost = system_config.wasmless_transfer_cost();
+    let new_max_associated_keys = builder.get_initial_max_associated_keys();
+
+    // We add here as opposed to doubling the value to avoid an overflow.
+    let new_add_bid_cost = system_config.auction_costs().add_bid + 10_000u32;
+    let new_withdraw_bid_cost = system_config.auction_costs().withdraw_bid * 3;
 
     let new_auction_costs = AuctionCosts {
-        add_bid: NEW_ADD_BID_COST,
-        withdraw_bid: NEW_WITHDRAW_BID_COST,
+        add_bid: new_add_bid_cost,
+        withdraw_bid: new_withdraw_bid_cost,
         ..Default::default()
     };
     let new_mint_costs = MintCosts::default();
@@ -196,9 +198,7 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
         new_system_config,
     );
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
-
+    builder.run_genesis_with_default_genesis_accounts();
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
             .with_current_protocol_version(*OLD_PROTOCOL_VERSION)
@@ -255,7 +255,7 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
     let transaction_fee_1 =
         builder.get_proposer_purse_balance() - proposer_reward_starting_balance_1;
 
-    let expected_call_cost = U512::from(NEW_ADD_BID_COST);
+    let expected_call_cost = U512::from(new_add_bid_cost);
     assert_eq!(
         balance_after,
         balance_before - U512::from(BOND_AMOUNT) - transaction_fee_1
@@ -291,7 +291,7 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
     let transaction_fee_2 =
         builder.get_proposer_purse_balance() - proposer_reward_starting_balance_2;
 
-    let call_cost = U512::from(NEW_WITHDRAW_BID_COST);
+    let call_cost = U512::from(new_withdraw_bid_cost);
     assert_eq!(balance_after, balance_before - transaction_fee_2);
     assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
 }
@@ -299,7 +299,6 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
 #[ignore]
 #[test]
 fn delegate_and_undelegate_have_expected_costs() {
-    let mut builder = InMemoryWasmTestBuilder::default();
     let accounts = {
         let validator_1 = GenesisAccount::account(
             VALIDATOR_1.clone(),
@@ -315,9 +314,9 @@ fn delegate_and_undelegate_have_expected_costs() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 
     let system_contract_hashes_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -363,7 +362,9 @@ fn delegate_and_undelegate_have_expected_costs() {
     let transaction_fee_1 =
         builder.get_proposer_purse_balance() - proposer_reward_starting_balance_1;
 
-    let expected_call_cost = U512::from(DEFAULT_DELEGATE_COST);
+    let system_config = builder.get_initial_system_config();
+
+    let expected_call_cost = U512::from(system_config.auction_costs().delegate);
     assert_eq!(
         balance_after,
         balance_before - U512::from(BID_AMOUNT) - transaction_fee_1,
@@ -399,7 +400,7 @@ fn delegate_and_undelegate_have_expected_costs() {
     let transaction_fee_2 =
         builder.get_proposer_purse_balance() - proposer_reward_starting_balance_2;
 
-    let expected_call_cost = U512::from(DEFAULT_UNDELEGATE_COST);
+    let expected_call_cost = U512::from(system_config.auction_costs().undelegate);
     assert_eq!(balance_after, balance_before - transaction_fee_2);
     assert_eq!(builder.last_exec_gas_cost().value(), expected_call_cost);
 }
@@ -407,12 +408,20 @@ fn delegate_and_undelegate_have_expected_costs() {
 #[ignore]
 #[test]
 fn upgraded_delegate_and_undelegate_have_expected_costs() {
-    let new_wasmless_transfer_cost = DEFAULT_WASMLESS_TRANSFER_COST;
-    let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+
+    let system_config = builder.get_initial_system_config();
+
+    let new_wasmless_transfer_cost = system_config.wasmless_transfer_cost();
+    let new_max_associated_keys = builder.get_initial_max_associated_keys();
+
+    // We add instead of multiplying in order to avoid overflow.
+    let new_delegate_cost = system_config.auction_costs().delegate + 10_000u32;
+    let new_undelegate_cost = system_config.auction_costs().undelegate * 5;
 
     let new_auction_costs = AuctionCosts {
-        delegate: NEW_DELEGATE_COST,
-        undelegate: NEW_UNDELEGATE_COST,
+        delegate: new_delegate_cost,
+        undelegate: new_undelegate_cost,
         ..Default::default()
     };
     let new_mint_costs = MintCosts::default();
@@ -434,7 +443,6 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
         new_system_config,
     );
 
-    let mut builder = InMemoryWasmTestBuilder::default();
     let accounts = {
         let validator_1 = GenesisAccount::account(
             VALIDATOR_1.clone(),
@@ -450,9 +458,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
-
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
@@ -508,7 +514,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
     let transaction_fee_1 =
         builder.get_proposer_purse_balance() - proposer_reward_starting_balance_1;
 
-    let call_cost = U512::from(NEW_DELEGATE_COST);
+    let call_cost = U512::from(new_delegate_cost);
     assert_eq!(
         balance_after,
         balance_before - U512::from(BID_AMOUNT) - transaction_fee_1,
@@ -545,7 +551,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
     let transaction_fee_2 =
         builder.get_proposer_purse_balance() - proposer_reward_starting_balance_2;
 
-    let call_cost = U512::from(NEW_UNDELEGATE_COST);
+    let call_cost = U512::from(new_undelegate_cost);
     assert_eq!(balance_after, balance_before - transaction_fee_2);
     assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
 }
@@ -553,8 +559,6 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
 #[ignore]
 #[test]
 fn mint_transfer_has_expected_costs() {
-    let mut builder = InMemoryWasmTestBuilder::default();
-
     let accounts = {
         let validator_1 = GenesisAccount::account(
             VALIDATOR_1.clone(),
@@ -570,9 +574,9 @@ fn mint_transfer_has_expected_costs() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis_with_custom_genesis_accounts(accounts);
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -614,7 +618,7 @@ fn mint_transfer_has_expected_costs() {
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
-    let expected_call_cost = U512::from(DEFAULT_TRANSFER_COST);
+    let expected_call_cost = U512::from(builder.get_initial_system_config().mint_costs().transfer);
     assert_eq!(
         balance_after,
         balance_before - transfer_amount - transaction_fee,
@@ -625,9 +629,9 @@ fn mint_transfer_has_expected_costs() {
 #[ignore]
 #[test]
 fn should_charge_for_erroneous_system_contract_calls() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let auction_hash = builder.get_auction_contract_hash();
     let mint_hash = builder.get_mint_contract_hash();
@@ -637,52 +641,74 @@ fn should_charge_for_erroneous_system_contract_calls() {
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
+    let system_config = builder.get_initial_system_config();
+
     // Entrypoints that could fail early due to missing arguments
     let entrypoint_calls = vec![
-        (auction_hash, auction::METHOD_ADD_BID, DEFAULT_ADD_BID_COST),
+        (
+            auction_hash,
+            auction::METHOD_ADD_BID,
+            system_config.auction_costs().add_bid,
+        ),
         (
             auction_hash,
             auction::METHOD_WITHDRAW_BID,
-            DEFAULT_WITHDRAW_BID_COST,
+            system_config.auction_costs().withdraw_bid,
         ),
         (
             auction_hash,
             auction::METHOD_DELEGATE,
-            DEFAULT_DELEGATE_COST,
+            system_config.auction_costs().delegate,
         ),
         (
             auction_hash,
             auction::METHOD_UNDELEGATE,
-            DEFAULT_UNDELEGATE_COST,
+            system_config.auction_costs().undelegate,
         ),
         (
             auction_hash,
             auction::METHOD_RUN_AUCTION,
-            DEFAULT_RUN_AUCTION_COST,
+            system_config.auction_costs().run_auction,
         ),
-        (auction_hash, auction::METHOD_SLASH, DEFAULT_SLASH_COST),
+        (
+            auction_hash,
+            auction::METHOD_SLASH,
+            system_config.auction_costs().slash,
+        ),
         (
             auction_hash,
             auction::METHOD_DISTRIBUTE,
-            DEFAULT_DISTRIBUTE_COST,
+            system_config.auction_costs().distribute,
         ),
-        (mint_hash, mint::METHOD_MINT, DEFAULT_MINT_COST),
+        (
+            mint_hash,
+            mint::METHOD_MINT,
+            system_config.mint_costs().mint,
+        ),
         (
             mint_hash,
             mint::METHOD_REDUCE_TOTAL_SUPPLY,
-            DEFAULT_REDUCE_TOTAL_SUPPLY_COST,
+            system_config.mint_costs().reduce_total_supply,
         ),
-        (mint_hash, mint::METHOD_BALANCE, DEFAULT_BALANCE_COST),
-        (mint_hash, mint::METHOD_TRANSFER, DEFAULT_TRANSFER_COST),
+        (
+            mint_hash,
+            mint::METHOD_BALANCE,
+            system_config.mint_costs().balance,
+        ),
+        (
+            mint_hash,
+            mint::METHOD_TRANSFER,
+            system_config.mint_costs().transfer,
+        ),
         (
             handle_payment_hash,
             handle_payment::METHOD_SET_REFUND_PURSE,
-            DEFAULT_SET_REFUND_PURSE_COST,
+            system_config.handle_payment_costs().set_refund_purse,
         ),
         (
             handle_payment_hash,
             handle_payment::METHOD_FINALIZE_PAYMENT,
-            DEFAULT_FINALIZE_PAYMENT_COST,
+            system_config.handle_payment_costs().finalize_payment,
         ),
     ];
 
@@ -730,9 +756,9 @@ fn should_charge_for_erroneous_system_contract_calls() {
 #[ignore]
 #[test]
 fn should_verify_do_nothing_charges_only_for_standard_payment() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -770,9 +796,9 @@ fn should_verify_do_nothing_charges_only_for_standard_payment() {
 #[ignore]
 #[test]
 fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let new_opcode_costs = OpcodeCosts {
         bit: 0,
@@ -852,8 +878,8 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
     );
 
     let new_wasmless_transfer_cost = 0;
-    let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
-    let new_auction_costs = AuctionCosts::default();
+    let new_max_associated_keys = builder.get_initial_max_associated_keys();
+    let new_auction_costs = *builder.get_initial_system_config().auction_costs();
     let new_mint_costs = MintCosts::default();
     let new_standard_payment_costs = StandardPaymentCosts::default();
     let new_handle_payment_costs = HandlePaymentCosts::default();
@@ -912,7 +938,8 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         builder.get_proposer_purse_balance() - proposer_reward_starting_balance_1;
 
     let expected_call_cost =
-        U512::from(DEFAULT_ADD_BID_COST) + U512::from(UPDATED_CALL_CONTRACT_COST);
+        U512::from(builder.get_initial_system_config().auction_costs().add_bid)
+            + U512::from(UPDATED_CALL_CONTRACT_COST);
 
     assert_eq!(
         user_funds_after,

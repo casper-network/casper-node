@@ -2,7 +2,7 @@ use parity_wasm::{self, builder};
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, ARG_AMOUNT,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, PRODUCTION_PATH,
 };
 use casper_types::{contracts::DEFAULT_ENTRY_POINT_NAME, runtime_args, RuntimeArgs};
 
@@ -50,9 +50,10 @@ fn should_run_ee_890_gracefully_reject_start_node_in_session() {
 
     let exec_request_1 = ExecuteRequestBuilder::new().push_deploy(deploy_1).build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+
     builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+        .run_genesis_with_default_genesis_accounts()
         .exec(exec_request_1)
         .commit();
     let message = builder.exec_error_message(0).expect("should fail");
@@ -78,9 +79,10 @@ fn should_run_ee_890_gracefully_reject_start_node_in_payment() {
 
     let exec_request_1 = ExecuteRequestBuilder::new().push_deploy(deploy_1).build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+
     builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+        .run_genesis_with_default_genesis_accounts()
         .exec(exec_request_1)
         .commit();
     let message = builder.exec_error_message(0).expect("should fail");

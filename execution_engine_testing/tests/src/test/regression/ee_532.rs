@@ -1,6 +1,4 @@
-use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST,
-};
+use casper_engine_test_support::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, PRODUCTION_PATH};
 use casper_execution_engine::core::engine_state::Error;
 use casper_types::{account::AccountHash, RuntimeArgs};
 
@@ -20,9 +18,10 @@ fn should_run_ee_532_get_uref_regression_test() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+
     builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+        .run_genesis_with_default_genesis_accounts()
         .exec(exec_request)
         .commit();
 

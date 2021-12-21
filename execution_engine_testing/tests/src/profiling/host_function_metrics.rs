@@ -19,11 +19,10 @@ use log::LevelFilter;
 use rand::{self, Rng};
 use serde_json::Value;
 
-use casper_engine_test_support::{DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder};
-use casper_execution_engine::{
-    core::engine_state::EngineConfig,
-    shared::logging::{self, Settings},
+use casper_engine_test_support::{
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, PRODUCTION_PATH,
 };
+use casper_execution_engine::shared::logging::{self, Settings};
 use casper_types::{runtime_args, ApiError, RuntimeArgs};
 
 use casper_engine_tests::profiling;
@@ -143,10 +142,8 @@ fn run_test(root_hash: Vec<u8>, repetitions: usize, data_dir: &Path) {
     let account_1_account_hash = profiling::account_1_account_hash();
     let account_2_account_hash = profiling::account_2_account_hash();
 
-    let engine_config = EngineConfig::default();
-
     let mut test_builder =
-        LmdbWasmTestBuilder::open(data_dir, engine_config, Digest::hash(&root_hash));
+        LmdbWasmTestBuilder::open(data_dir, &*PRODUCTION_PATH, Digest::hash(&root_hash));
 
     let mut rng = rand::thread_rng();
 

@@ -6,15 +6,18 @@ use parity_wasm::{
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, ARG_AMOUNT,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_WASM_CONFIG,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, PRODUCTION_PATH,
 };
-use casper_execution_engine::{core::engine_state::Error, shared::wasm_prep::PreprocessingError};
+use casper_execution_engine::{
+    core::engine_state::Error,
+    shared::{wasm_config::WasmConfig, wasm_prep::PreprocessingError},
+};
 use casper_types::{contracts::DEFAULT_ENTRY_POINT_NAME, runtime_args, Gas, RuntimeArgs};
 
 /// Prepare malicious payload with amount of opcodes that could potentially overflow injected gas
 /// counter.
-fn make_gas_counter_overflow() -> Vec<u8> {
-    let opcode_costs = DEFAULT_WASM_CONFIG.opcode_costs();
+fn make_gas_counter_overflow(wasm_config: WasmConfig) -> Vec<u8> {
+    let opcode_costs = wasm_config.opcode_costs();
 
     // Create a lot of `nop` opcodes to potentially overflow gas injector's batching counter.
     let upper_bound = (u32::max_value() as usize / opcode_costs.nop as usize) + 1;
@@ -72,9 +75,9 @@ fn make_session_code_with(instructions: Vec<Instruction>) -> Vec<u8> {
 #[ignore]
 #[test]
 fn should_fail_to_overflow_gas_counter() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let session_bytes = make_gas_counter_overflow();
+    let session_bytes = make_gas_counter_overflow(builder.get_initial_wasm_config());
 
     let exec_request = {
         let deploy_item = DeployItemBuilder::new()
@@ -89,7 +92,7 @@ fn should_fail_to_overflow_gas_counter() {
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     builder.exec(exec_request).commit();
 
@@ -106,7 +109,9 @@ fn should_fail_to_overflow_gas_counter() {
 #[ignore]
 #[test]
 fn should_correctly_measure_gas_for_opcodes() {
-    let opcode_costs = DEFAULT_WASM_CONFIG.opcode_costs();
+    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+
+    let opcode_costs = builder.get_initial_wasm_config().opcode_costs();
 
     const GROW_PAGES: u32 = 1;
 
@@ -180,9 +185,7 @@ fn should_correctly_measure_gas_for_opcodes() {
 
     let session_bytes = make_session_code_with(instructions);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     let exec_request = {
         let deploy_item = DeployItemBuilder::new()

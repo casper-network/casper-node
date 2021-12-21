@@ -11,6 +11,8 @@ use std::{
 
 use lmdb::DatabaseFlags;
 use log::LevelFilter;
+use num_rational::Ratio;
+use num_traits::CheckedMul;
 
 use bytesrepr::FromBytes;
 use casper_execution_engine::{
@@ -22,8 +24,9 @@ use casper_execution_engine::{
             execution_result::ExecutionResult,
             run_genesis_request::RunGenesisRequest,
             step::{StepRequest, StepSuccess},
-            BalanceResult, EngineConfig, EngineState, GenesisSuccess, GetBidsRequest, QueryRequest,
-            QueryResult, StepError, SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
+            BalanceResult, EngineConfig, EngineState, ExecConfig, GenesisAccount, GenesisSuccess,
+            GetBidsRequest, QueryRequest, QueryResult, StepError, SystemContractRegistry,
+            UpgradeConfig, UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
         },
         execution,
     },
@@ -31,8 +34,10 @@ use casper_execution_engine::{
         additive_map::AdditiveMap,
         logging::{self, Settings, Style},
         newtypes::CorrelationId,
+        system_config::SystemConfig,
         transform::Transform,
         utils::OS_PAGE_SIZE,
+        wasm_config::WasmConfig,
     },
     storage::{
         global_state::{
@@ -52,7 +57,7 @@ use casper_types::{
             Bids, EraValidators, UnbondingPurses, ValidatorWeights, ARG_ERA_END_TIMESTAMP_MILLIS,
             ARG_EVICTED_VALIDATORS, AUCTION_DELAY_KEY, ERA_ID_KEY, METHOD_RUN_AUCTION,
         },
-        mint::TOTAL_SUPPLY_KEY,
+        mint::{ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,
@@ -61,7 +66,8 @@ use casper_types::{
 };
 
 use crate::{
-    utils, ExecuteRequestBuilder, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
+    utils, ChainspecConfig, ExecuteRequestBuilder, DEFAULT_GENESIS_CONFIG_HASH,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
 };
 
 /// LMDB initial map size is calculated based on DEFAULT_LMDB_PAGES and systems page size.
@@ -104,6 +110,8 @@ pub struct WasmTestBuilder<S> {
     standard_payment_hash: Option<ContractHash>,
     /// Auction contract key
     auction_contract_hash: Option<ContractHash>,
+    /// Chainspec configuration
+    chainspec_config: ChainspecConfig,
 }
 
 impl<S> WasmTestBuilder<S> {
@@ -113,30 +121,30 @@ impl<S> WasmTestBuilder<S> {
     }
 }
 
-impl Default for InMemoryWasmTestBuilder {
-    fn default() -> Self {
-        Self::initialize_logging();
-        let engine_config = EngineConfig::default();
-
-        let global_state = InMemoryGlobalState::empty().expect("should create global state");
-        let engine_state = EngineState::new(global_state, engine_config);
-
-        WasmTestBuilder {
-            engine_state: Rc::new(engine_state),
-            exec_results: Vec::new(),
-            upgrade_results: Vec::new(),
-            genesis_hash: None,
-            post_state_hash: None,
-            transforms: Vec::new(),
-            genesis_account: None,
-            genesis_transforms: None,
-            mint_contract_hash: None,
-            handle_payment_contract_hash: None,
-            standard_payment_hash: None,
-            auction_contract_hash: None,
-        }
-    }
-}
+// impl Default for InMemoryWasmTestBuilder {
+//     fn default() -> Self {
+//         Self::initialize_logging();
+//         let engine_config = EngineConfig::default();
+//
+//         let global_state = InMemoryGlobalState::empty().expect("should create global state");
+//         let engine_state = EngineState::new(global_state, engine_config);
+//
+//         WasmTestBuilder {
+//             engine_state: Rc::new(engine_state),
+//             exec_results: Vec::new(),
+//             upgrade_results: Vec::new(),
+//             genesis_hash: None,
+//             post_state_hash: None,
+//             transforms: Vec::new(),
+//             genesis_account: None,
+//             genesis_transforms: None,
+//             mint_contract_hash: None,
+//             handle_payment_contract_hash: None,
+//             standard_payment_hash: None,
+//             auction_contract_hash: None,
+//         }
+//     }
+// }
 
 // TODO: Deriving `Clone` for `WasmTestBuilder<S>` doesn't work correctly (unsure why), so
 // implemented by hand here.  Try to derive in the future with a different compiler version.
@@ -155,33 +163,50 @@ impl<S> Clone for WasmTestBuilder<S> {
             handle_payment_contract_hash: self.handle_payment_contract_hash,
             standard_payment_hash: self.standard_payment_hash,
             auction_contract_hash: self.auction_contract_hash,
+            chainspec_config: self.chainspec_config.clone(),
         }
     }
 }
 
 impl InMemoryWasmTestBuilder {
     /// Returns an [`InMemoryWasmTestBuilder`].
-    pub fn new(
-        global_state: InMemoryGlobalState,
-        engine_config: EngineConfig,
-        post_state_hash: Digest,
-    ) -> Self {
+    pub fn new<P: AsRef<Path>>(chainspec_path: P, post_state_hash: Option<Digest>) -> Self {
         Self::initialize_logging();
+        let chainspec_config = ChainspecConfig::from_chainspec_path(chainspec_path)
+            .expect("must build chainspec configuration");
+
+        let engine_config = EngineConfig::new(
+            DEFAULT_MAX_QUERY_DEPTH,
+            chainspec_config.core_config.max_associated_keys,
+            chainspec_config.wasm_config,
+            chainspec_config.system_costs_config,
+        );
+
+        let global_state = InMemoryGlobalState::empty().expect("should create global state");
         let engine_state = EngineState::new(global_state, engine_config);
         WasmTestBuilder {
             engine_state: Rc::new(engine_state),
-            genesis_hash: Some(post_state_hash),
-            post_state_hash: Some(post_state_hash),
-            ..Default::default()
+            exec_results: Vec::new(),
+            upgrade_results: Vec::new(),
+            genesis_hash: post_state_hash,
+            post_state_hash,
+            transforms: Vec::new(),
+            genesis_account: None,
+            genesis_transforms: None,
+            mint_contract_hash: None,
+            handle_payment_contract_hash: None,
+            standard_payment_hash: None,
+            auction_contract_hash: None,
+            chainspec_config,
         }
     }
 }
 
 impl LmdbWasmTestBuilder {
     /// Returns an [`LmdbWasmTestBuilder`] with configuration.
-    pub fn new_with_config<T: AsRef<OsStr> + ?Sized>(
+    pub fn new_with_config<T: AsRef<OsStr> + ?Sized, P: AsRef<Path>>(
         data_dir: &T,
-        engine_config: EngineConfig,
+        chainspec_path: P,
     ) -> Self {
         Self::initialize_logging();
         let page_size = *OS_PAGE_SIZE;
@@ -203,6 +228,17 @@ impl LmdbWasmTestBuilder {
 
         let global_state =
             LmdbGlobalState::empty(environment, trie_store).expect("should create LmdbGlobalState");
+
+        let chainspec_config = ChainspecConfig::from_chainspec_path(chainspec_path)
+            .expect("must build chainspec configuration");
+
+        let engine_config = EngineConfig::new(
+            DEFAULT_MAX_QUERY_DEPTH,
+            chainspec_config.core_config.max_associated_keys,
+            chainspec_config.wasm_config,
+            chainspec_config.system_costs_config,
+        );
+
         let engine_state = EngineState::new(global_state, engine_config);
         WasmTestBuilder {
             engine_state: Rc::new(engine_state),
@@ -217,6 +253,7 @@ impl LmdbWasmTestBuilder {
             handle_payment_contract_hash: None,
             standard_payment_hash: None,
             auction_contract_hash: None,
+            chainspec_config,
         }
     }
 
@@ -227,27 +264,27 @@ impl LmdbWasmTestBuilder {
     }
 
     /// Returns a new [`LmdbWasmTestBuilder`].
-    pub fn new<T: AsRef<OsStr> + ?Sized>(data_dir: &T) -> Self {
-        Self::new_with_config(data_dir, Default::default())
+    pub fn new<T: AsRef<OsStr> + ?Sized, P: AsRef<Path>>(data_dir: &T, chainspec_path: P) -> Self {
+        Self::new_with_config(data_dir, chainspec_path)
     }
 
     /// Creates a new instance of builder using the supplied configurations, opening wrapped LMDBs
     /// (e.g. in the Trie and Data stores) rather than creating them.
-    pub fn open<T: AsRef<OsStr> + ?Sized>(
+    pub fn open<T: AsRef<OsStr> + ?Sized, P: AsRef<Path>>(
         data_dir: &T,
-        engine_config: EngineConfig,
+        chainspec_path: P,
         post_state_hash: Digest,
     ) -> Self {
         let global_state_path = Self::global_state_dir(data_dir);
-        Self::open_raw(global_state_path, engine_config, post_state_hash)
+        Self::open_raw(global_state_path, chainspec_path, post_state_hash)
     }
 
     /// Creates a new instance of builder using the supplied configurations, opening wrapped LMDBs
     /// (e.g. in the Trie and Data stores) rather than creating them.
     /// Differs from `open` in that it doesn't append `GLOBAL_STATE_DIR` to the supplied path.
-    pub fn open_raw<T: AsRef<Path>>(
+    pub fn open_raw<T: AsRef<Path>, P: AsRef<Path>>(
         global_state_dir: T,
-        engine_config: EngineConfig,
+        chainspec_path: P,
         post_state_hash: Digest,
     ) -> Self {
         Self::initialize_logging();
@@ -267,6 +304,17 @@ impl LmdbWasmTestBuilder {
 
         let global_state =
             LmdbGlobalState::empty(environment, trie_store).expect("should create LmdbGlobalState");
+
+        let chainspec_config = ChainspecConfig::from_chainspec_path(chainspec_path)
+            .expect("must build chainspec configuration");
+
+        let engine_config = EngineConfig::new(
+            DEFAULT_MAX_QUERY_DEPTH,
+            chainspec_config.core_config.max_associated_keys,
+            chainspec_config.wasm_config,
+            chainspec_config.system_costs_config,
+        );
+
         let engine_state = EngineState::new(global_state, engine_config);
         WasmTestBuilder {
             engine_state: Rc::new(engine_state),
@@ -281,6 +329,7 @@ impl LmdbWasmTestBuilder {
             handle_payment_contract_hash: None,
             standard_payment_hash: None,
             auction_contract_hash: None,
+            chainspec_config,
         }
     }
 
@@ -307,7 +356,7 @@ where
     S::Error: Into<execution::Error>,
 {
     /// Takes a [`RunGenesisRequest`], executes the request and returns Self.
-    pub fn run_genesis(&mut self, run_genesis_request: &RunGenesisRequest) -> &mut Self {
+    fn run_genesis(&mut self, run_genesis_request: &RunGenesisRequest) -> &mut Self {
         let system_account = Key::Account(PublicKey::System.to_account_hash());
 
         let GenesisSuccess {
@@ -359,6 +408,51 @@ where
         self.genesis_account = Some(genesis_account);
         self.genesis_transforms = Some(transforms);
         self
+    }
+
+    /// Execute genesis with a given chainspec file and default genesis accounts.
+    pub fn run_genesis_with_default_genesis_accounts(&mut self) -> &mut Self {
+        let ee_config =
+            ExecConfig::try_from(self.chainspec_config.clone()).expect("must create exec_config");
+
+        let genesis_request = RunGenesisRequest::new(
+            *DEFAULT_GENESIS_CONFIG_HASH,
+            *DEFAULT_PROTOCOL_VERSION,
+            ee_config,
+        );
+
+        self.run_genesis(&genesis_request)
+    }
+
+    /// Execute genesis with a given chainspec file with custom genesis accounts.
+    pub fn run_genesis_with_custom_genesis_accounts(
+        &mut self,
+        genesis_accounts: Vec<GenesisAccount>,
+    ) -> &mut Self {
+        let locked_funds_period = self
+            .chainspec_config
+            .locked_funds_period()
+            .expect("must get locked funds period");
+
+        let ee_config = ExecConfig::new(
+            genesis_accounts,
+            self.chainspec_config.wasm_config,
+            self.chainspec_config.system_costs_config,
+            self.chainspec_config.core_config.validator_slots,
+            self.chainspec_config.core_config.auction_delay,
+            locked_funds_period,
+            self.chainspec_config.core_config.round_seigniorage_rate,
+            self.chainspec_config.core_config.unbonding_delay,
+            DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+        );
+
+        let genesis_request = RunGenesisRequest::new(
+            *DEFAULT_GENESIS_CONFIG_HASH,
+            *DEFAULT_PROTOCOL_VERSION,
+            ee_config,
+        );
+
+        self.run_genesis(&genesis_request)
     }
 
     /// Queries state for a [`StoredValue`].
@@ -444,6 +538,54 @@ where
         };
 
         total_supply
+    }
+
+    /// Queries for the base round reward.
+    /// # Panics
+    /// Panics if the total supply or seigniorage rate can't be found.
+    pub fn base_round_reward(&mut self, maybe_post_state: Option<Digest>) -> U512 {
+        let mint_key: Key = self.get_mint_contract_hash().into();
+
+        let mint_contract = self
+            .query(maybe_post_state, mint_key, &[])
+            .expect("must get mint stored value")
+            .as_contract()
+            .expect("must convert to mint contract")
+            .clone();
+
+        let mint_named_keys = mint_contract.named_keys().clone();
+
+        let total_supply_uref = *mint_named_keys
+            .get(TOTAL_SUPPLY_KEY)
+            .expect("must track total supply")
+            .as_uref()
+            .expect("must get uref");
+
+        let round_seigniorage_rate_uref = *mint_named_keys
+            .get(ROUND_SEIGNIORAGE_RATE_KEY)
+            .expect("must track round seigniorage rate");
+
+        let total_supply = self
+            .query(maybe_post_state, Key::URef(total_supply_uref), &[])
+            .expect("must read value under total supply URef")
+            .as_cl_value()
+            .expect("must convert into CL value")
+            .clone()
+            .into_t::<U512>()
+            .expect("must convert into U512");
+
+        let rate = self
+            .query(maybe_post_state, round_seigniorage_rate_uref, &[])
+            .expect("must read value")
+            .as_cl_value()
+            .expect("must conver to cl value")
+            .clone()
+            .into_t::<Ratio<U512>>()
+            .expect("must conver to ratio");
+
+        rate.checked_mul(&Ratio::from(total_supply))
+            .map(|ratio| ratio.to_integer())
+            .expect("must get base round reward")
     }
 
     /// Runs an [`ExecuteRequest`].
@@ -1036,5 +1178,59 @@ where
         self.upgrade_results = Vec::new();
         self.transforms = Vec::new();
         self
+    }
+
+    /// Returns the genesis request executed by the WasmTestBuilder.
+    pub fn get_genesis_request(&self) -> RunGenesisRequest {
+        let ee_config =
+            ExecConfig::try_from(self.chainspec_config.clone()).expect("must create exec_config");
+
+        RunGenesisRequest::new(
+            *DEFAULT_GENESIS_CONFIG_HASH,
+            *DEFAULT_PROTOCOL_VERSION,
+            ee_config,
+        )
+    }
+
+    /// Returns the auction delay used to instantiate the builder.
+    pub fn get_initial_auction_delay(&self) -> u64 {
+        self.chainspec_config.core_config.auction_delay
+    }
+
+    /// Returns the unbonding delay used to instantiate the builder.
+    pub fn get_initial_unbonding_delay(&self) -> u64 {
+        self.chainspec_config.core_config.unbonding_delay
+    }
+
+    /// Returns the locked_funds_period_millis used to instantiate the builder.
+    pub fn foo(&self) -> u64 {
+        humantime::parse_duration(&self.chainspec_config.core_config.locked_funds_period)
+            .expect("must parse into duration")
+            .as_millis() as u64
+    }
+
+    /// Returns the max associated keys value used to instantiate the builder.
+    pub fn get_initial_max_associated_keys(&self) -> u32 {
+        self.chainspec_config.core_config.max_associated_keys
+    }
+
+    /// Returns the [`WasmConfig`] used to instantiate the builder.
+    pub fn get_initial_wasm_config(&self) -> WasmConfig {
+        self.chainspec_config.wasm_config
+    }
+
+    /// Returns the [`SystemConfig`] used to instantiate the builder.
+    pub fn get_initial_system_config(&self) -> SystemConfig {
+        self.chainspec_config.system_costs_config
+    }
+
+    /// Returns the validator slots
+    pub fn get_initial_validator_slots(&self) -> u32 {
+        self.chainspec_config.core_config.validator_slots
+    }
+
+    /// Returns
+    pub fn get_initial_round_seignorage_rate(&self) -> Ratio<u64> {
+        self.chainspec_config.core_config.round_seigniorage_rate
     }
 }

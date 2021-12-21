@@ -1,6 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, PRODUCTION_PATH,
 };
 use casper_execution_engine::storage::global_state::in_memory::InMemoryGlobalState;
 use casper_types::RuntimeArgs;
@@ -10,7 +9,7 @@ const CONTRACT_DO_NOTHING: &str = "do_nothing.wasm";
 #[ignore]
 #[test]
 fn regression_test_genesis_hash_mismatch() {
-    let mut builder_base = InMemoryWasmTestBuilder::default();
+    let mut builder_base = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -20,7 +19,7 @@ fn regression_test_genesis_hash_mismatch() {
     .build();
 
     // Step 1.
-    let builder = builder_base.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let builder = builder_base.run_genesis_with_default_genesis_accounts();
 
     // This is trie's post state hash after calling run_genesis endpoint.
     // Step 1a)
@@ -46,7 +45,7 @@ fn regression_test_genesis_hash_mismatch() {
 
     // No step 3.
     // Step 4.
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis_with_default_genesis_accounts();
 
     // Step 4a)
     let second_genesis_run_hash = builder.get_genesis_hash();
