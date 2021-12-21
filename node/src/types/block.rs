@@ -1398,12 +1398,13 @@ impl Block {
         Ok(block)
     }
 
-    pub(crate) fn header(&self) -> &BlockHeader {
-        &self.header
-    }
-
     pub(crate) fn body(&self) -> &BlockBody {
         &self.body
+    }
+
+    /// Returns the reference to the header/
+    pub fn header(&self) -> &BlockHeader {
+        &self.header
     }
 
     /// Returns the header, consuming the block.

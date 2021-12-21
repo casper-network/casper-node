@@ -16,7 +16,7 @@ use casper_node::{
         json_compatibility, Block, BlockHeader, BlockValidationError, JsonBlock, JsonBlockHeader,
     },
 };
-use casper_types::{bytesrepr, Key, StoredValue, U512};
+use casper_types::{bytesrepr, EraId, Key, StoredValue, U512};
 
 const GET_ITEM_RESULT_BALANCE_VALUE: &str = "balance_value";
 const GET_ITEM_RESULT_STORED_VALUE: &str = "stored_value";
@@ -288,26 +288,36 @@ pub(crate) fn validate_get_block_response(
     };
     let block = Block::from(json_block);
 
-    // TODO[RC]: Temporarily disabled as we need to have the `merkle_tree_hash_activation` here.
-    // We could possibly do the verification with the arbitrarily chosen hashing algorithm.
-    // block.verify()?;
-
-    match maybe_block_identifier {
-        Some(BlockIdentifier::Hash(block_hash)) => {
-            if block_hash != block.hash() {
-                return Err(ValidateResponseError::UnexpectedBlockHash);
+    // Currently, the consumer of this function (the client app) has no access to the chainspec,
+    // hence, it cannot give us the proper `merkle_tree_hash_activation` which is needed
+    // for block verification. Therefore, we try to validate the block with both legacy
+    // and new hashing algorithm. If one of the validation passes, we assume the block is correct.
+    // This is a temporary solution which should be removed once the client is given
+    // access to the proper `merkle_tree_hash_activation`.
+    let result_legacy_hash = block.verify(EraId::from(0u64));
+    let result_new_hash = block.verify(block.header().era_id() + 1);
+    
+    match (result_legacy_hash, result_new_hash) {
+        (Ok(_), Ok(_)) | (Ok(_), Err(_)) | (Err(_), Ok(_)) => {
+            match maybe_block_identifier {
+                Some(BlockIdentifier::Hash(block_hash)) => {
+                    if block_hash != block.hash() {
+                        return Err(ValidateResponseError::UnexpectedBlockHash);
+                    }
+                }
+                Some(BlockIdentifier::Height(height)) => {
+                    // More is necessary here to mitigate a MITM attack
+                    if height != &block.height() {
+                        return Err(ValidateResponseError::UnexpectedBlockHeight);
+                    }
+                }
+                // More is necessary here to mitigate a MITM attack. In this case we would want to validate
+                // `block.proofs()` to make sure that 1/3 of the validator weight signed the block, and we
+                // would have to know the latest validators through some trustworthy means
+                None => (),
             }
+            Ok(())
         }
-        Some(BlockIdentifier::Height(height)) => {
-            // More is necessary here to mitigate a MITM attack
-            if height != &block.height() {
-                return Err(ValidateResponseError::UnexpectedBlockHeight);
-            }
-        }
-        // More is necessary here to mitigate a MITM attack. In this case we would want to validate
-        // `block.proofs()` to make sure that 1/3 of the validator weight signed the block, and we
-        // would have to know the latest validators through some trustworthy means
-        None => (),
+        (Err(err), Err(_)) => Err(err.into()),
     }
-    Ok(())
 }
