@@ -18,9 +18,9 @@ make setup-rs
 
 # Build client utility.
 if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
-    cargo build --package casper-client --features casper-mainnet
+    cargo build --package casper-client
 else
-    cargo build --release --package casper-client --features casper-mainnet
+    cargo build --release --package casper-client
 fi
 
 # Build client side contracts.

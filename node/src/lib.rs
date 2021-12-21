@@ -72,16 +72,7 @@ pub(crate) use types::NodeRng;
 pub const MAX_THREAD_COUNT: usize = 512;
 
 fn version_string(color: bool) -> String {
-    let mut version = format!(
-        "{}-{}{}",
-        env!("CARGO_PKG_VERSION"),
-        env!("VERGEN_SHA_SHORT"),
-        if cfg!(feature = "casper-mainnet") {
-            "-casper-mainnet"
-        } else {
-            ""
-        }
-    );
+    let mut version = format!("{}-{}", env!("CARGO_PKG_VERSION"), env!("VERGEN_SHA_SHORT"),);
 
     // Add a `@DEBUG` (or similar) tag to release string on non-release builds.
     if env!("NODE_BUILD_PROFILE") != "release" {
