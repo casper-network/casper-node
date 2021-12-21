@@ -1149,9 +1149,16 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(
                 block,
             )) => {
-                let reactor_event_consensus = ParticipatingEvent::Consensus(
-                    consensus::Event::BlockAdded(Box::new(block.header().clone())),
-                );
+                let reactor_event_consensus =
+                    ParticipatingEvent::Consensus(consensus::Event::BlockAdded {
+                        header: Box::new(block.header().clone()),
+                        header_hash: block.header().hash(
+                            self.chainspec_loader
+                                .chainspec()
+                                .protocol_config
+                                .merkle_tree_hash_activation,
+                        ),
+                    });
                 let reactor_event_es = ParticipatingEvent::EventStreamServer(
                     event_stream_server::Event::BlockAdded(block),
                 );
