@@ -282,7 +282,9 @@ fn commit_step(
     let start = Instant::now();
     let result = engine_state.commit_step(correlation_id, step_request);
     if let Some(metrics) = maybe_metrics {
-        metrics.commit_step.observe(start.elapsed().as_secs_f64());
+        let elapsed = start.elapsed().as_secs_f64();
+        metrics.commit_step.observe(elapsed);
+        metrics.latest_commit_step.set(elapsed);
     }
     trace!(?result, "step response");
     result
