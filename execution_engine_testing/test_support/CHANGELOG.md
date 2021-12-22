@@ -13,6 +13,8 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+### Changed
+* Changed both `InMemoryWasmTestBuilder` and `LmdbWasmTestBuilder` constructors to take a path pointing to Chainspec file.
 
 
 ## 2.0.3 - 2021-12-06
