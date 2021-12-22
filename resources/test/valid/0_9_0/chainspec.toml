@@ -2,7 +2,7 @@
 version = '0.9.0'
 hard_reset = false
 activation_point = '2020-09-18T18:45:00Z'
-merkle_tree_hash_activation = 0,
+merkle_tree_hash_activation = 0
 
 [network]
 name = 'test-chain'

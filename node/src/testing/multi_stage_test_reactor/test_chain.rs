@@ -28,6 +28,7 @@ use crate::{
 
 const ERA_TO_JOIN: u64 = 3;
 const MERKLE_TREE_HASH_ACTIVATION: u64 = ERA_TO_JOIN + 1;
+const MERKLE_TREE_HASH_ACTIVATION_FOR_ARCHIVAL_SYNC: u64 = ERA_TO_JOIN;
 
 #[derive(Clone)]
 struct SecretKeyWithStake {
@@ -449,7 +450,7 @@ async fn test_archival_sync() {
     // As part of the fast sync process, we will need to retrieve the first switch block
     let switch_block_hash = await_switch_block(1, &mut chain.network, &mut rng)
         .await
-        .hash(MERKLE_TREE_HASH_ACTIVATION.into());
+        .hash(MERKLE_TREE_HASH_ACTIVATION_FOR_ARCHIVAL_SYNC.into());
 
     info!("Waiting for Era {} to end", ERA_TO_JOIN);
     chain
@@ -504,7 +505,8 @@ async fn test_archival_sync() {
             .expect("must read from storage")
             .expect("must have highest block header");
         // Check every block and its state root going back to genesis
-        let mut block_hash = highest_block_header.hash(MERKLE_TREE_HASH_ACTIVATION.into());
+        let mut block_hash =
+            highest_block_header.hash(MERKLE_TREE_HASH_ACTIVATION_FOR_ARCHIVAL_SYNC.into());
         loop {
             let block = storage
                 .read_block(&block_hash)
