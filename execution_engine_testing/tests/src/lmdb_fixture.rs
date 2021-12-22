@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use tempfile::TempDir;
 
 use casper_engine_test_support::{LmdbWasmTestBuilder, PRODUCTION_PATH};
-use casper_execution_engine::core::engine_state::run_genesis_request::RunGenesisRequest;
+use casper_execution_engine::core::engine_state::GenesisAccount;
 use casper_hashing::Digest;
 use casper_types::ProtocolVersion;
 
@@ -26,7 +26,7 @@ fn path_to_lmdb_fixtures() -> PathBuf {
 /// Contains serialized genesis config.
 #[derive(Serialize, Deserialize)]
 pub struct LmdbFixtureState {
-    /// Serializes as unstructured JSON value because [`RunGenesisRequest`] might change over time
+    /// Serializes as unstructured JSON value because `RunGenesisRequest` might change over time
     /// and likely old fixture might not deserialize cleanly in the future.
     pub genesis_request: serde_json::Value,
     pub post_state_hash: Digest,
@@ -77,19 +77,20 @@ pub fn builder_from_global_state_fixture(
 /// Creates a new fixture with a name.
 ///
 /// This process is currently manual. The process to do this is to check out a release branch, call
-/// this function to generate (i.e. `generate_fixture("release_1_3_0")`) and persist it in version
-/// control.
-pub fn generate_fixture(
+/// this function to generate (i.e. `generate_fixture("release_1_3_0", accounts, chainspec_path)`)
+/// and persist it in version control.
+pub fn generate_fixture<P: AsRef<Path>>(
     name: &str,
-    _genesis_request: RunGenesisRequest,
+    genesis_accounts: Vec<GenesisAccount>,
+    chainspec_path: P,
     post_genesis_setup: impl FnOnce(&mut LmdbWasmTestBuilder),
 ) -> Result<(), Box<dyn std::error::Error>> {
     let lmdb_fixtures_root = path_to_lmdb_fixtures();
     let fixture_root = lmdb_fixtures_root.join(name);
 
-    let mut builder = LmdbWasmTestBuilder::new_with_config(&fixture_root, &*PRODUCTION_PATH);
+    let mut builder = LmdbWasmTestBuilder::new_with_config(&fixture_root, chainspec_path);
 
-    builder.run_genesis_with_default_genesis_accounts();
+    builder.run_genesis_with_custom_genesis_accounts(genesis_accounts);
 
     // You can customize the fixture post genesis with a callable.
     post_genesis_setup(&mut builder);

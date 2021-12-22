@@ -83,6 +83,7 @@ fn should_enforce_intended_execution_contexts() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
     let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+
     builder.run_genesis_with_default_genesis_accounts();
 
     builder.exec(exec_request_1).expect_success().commit();

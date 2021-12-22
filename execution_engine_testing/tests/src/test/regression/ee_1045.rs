@@ -97,7 +97,8 @@ fn should_run_ee_1045_squash_validators() {
 
     let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo();
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.locked_funds_period_millis();
 
     let transfer_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,

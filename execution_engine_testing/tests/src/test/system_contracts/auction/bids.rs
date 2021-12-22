@@ -126,26 +126,6 @@ const DELEGATOR_2_BALANCE: u64 = DEFAULT_ACCOUNT_INITIAL_BALANCE;
 
 const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 
-// const EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS: u64 =
-//     DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
-//
-// const WEEK_TIMESTAMPS: [u64; 14] = [
-//     EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS,
-//     EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + WEEK_MILLIS,
-//     EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 2),
-//     EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 3),
-//     EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 4),
-//     EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 5),
-//     EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 6),
-//     EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 7),
-//     EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 8),
-//     EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 9),
-//     EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 10),
-//     EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 11),
-//     EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 12),
-//     EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 13),
-// ];
-
 fn generate_week_timestamps(locked_funds_period_millis: u64) -> [u64; 14] {
     let expected_initial_release_timestamp_millis =
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + locked_funds_period_millis;
@@ -583,7 +563,10 @@ fn should_calculate_era_validators() {
     let pre_era_id: EraId = builder.get_value(auction_hash, ERA_ID_KEY);
     assert_eq!(pre_era_id, EraId::from(0));
 
-    builder.run_auction(DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo(), Vec::new());
+    builder.run_auction(
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.locked_funds_period_millis(),
+        Vec::new(),
+    );
 
     let post_era_id: EraId = builder.get_value(auction_hash, ERA_ID_KEY);
     assert_eq!(post_era_id, EraId::from(1));
@@ -698,7 +681,7 @@ fn should_get_first_seigniorage_recipients() {
         founding_validator_1
             .vesting_schedule()
             .map(|vesting_schedule| vesting_schedule.initial_release_timestamp_millis()),
-        Some(DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo())
+        Some(DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.locked_funds_period_millis())
     );
 
     let founding_validator_2 = bids.get(&ACCOUNT_2_PK).expect("should have account 2 pk");
@@ -706,7 +689,7 @@ fn should_get_first_seigniorage_recipients() {
         founding_validator_2
             .vesting_schedule()
             .map(|vesting_schedule| vesting_schedule.initial_release_timestamp_millis()),
-        Some(DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo())
+        Some(DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.locked_funds_period_millis())
     );
 
     builder.exec(transfer_request_1).commit().expect_success();
@@ -834,7 +817,7 @@ fn should_release_founder_stake() {
 
     builder.run_genesis_with_custom_genesis_accounts(accounts);
 
-    let week_timestamps = generate_week_timestamps(builder.foo());
+    let week_timestamps = generate_week_timestamps(builder.locked_funds_period_millis());
 
     let fund_system_account = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -859,7 +842,7 @@ fn should_release_founder_stake() {
         let initial_release = vesting_schedule.initial_release_timestamp_millis();
         assert_eq!(
             initial_release,
-            DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo()
+            DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.locked_funds_period_millis()
         );
 
         let locked_amounts = vesting_schedule.locked_amounts().map(|arr| arr.to_vec());
@@ -886,7 +869,7 @@ fn should_release_founder_stake() {
         let initial_release = vesting_schedule.initial_release_timestamp_millis();
         assert_eq!(
             initial_release,
-            DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo()
+            DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.locked_funds_period_millis()
         );
 
         let locked_amounts = vesting_schedule.locked_amounts().map(|arr| arr.to_vec());
@@ -1119,7 +1102,10 @@ fn should_calculate_era_validators_multiple_new_bids() {
     builder.exec(add_bid_request_2).commit().expect_success();
 
     // run auction and compute validators for new era
-    builder.run_auction(DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo(), Vec::new());
+    builder.run_auction(
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.locked_funds_period_millis(),
+        Vec::new(),
+    );
     // Verify first era validators
     let new_validator_weights: ValidatorWeights = builder
         .get_validator_weights(new_era)
@@ -1216,7 +1202,8 @@ fn undelegated_funds_should_be_released() {
 
     let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo();
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.locked_funds_period_millis();
 
     builder.run_genesis_with_default_genesis_accounts();
 
@@ -1339,7 +1326,8 @@ fn fully_undelegated_funds_should_be_released() {
 
     let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo();
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.locked_funds_period_millis();
 
     builder.run_genesis_with_default_genesis_accounts();
 
@@ -1496,7 +1484,8 @@ fn should_undelegate_delegators_when_validator_unbonds() {
     ];
 
     let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
-    let mut timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo();
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.locked_funds_period_millis();
 
     builder.run_genesis_with_default_genesis_accounts();
 
@@ -1732,7 +1721,8 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
 
     let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo();
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.locked_funds_period_millis();
 
     builder.run_genesis_with_default_genesis_accounts();
 
@@ -2392,7 +2382,7 @@ fn should_not_undelegate_vfta_holder_stake() {
 
     let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let week_timestamps = generate_week_timestamps(builder.foo());
+    let week_timestamps = generate_week_timestamps(builder.locked_funds_period_millis());
 
     builder.run_genesis_with_custom_genesis_accounts(accounts);
 
@@ -2572,7 +2562,7 @@ fn should_release_vfta_holder_stake() {
 
     let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let week_timestamps = generate_week_timestamps(builder.foo());
+    let week_timestamps = generate_week_timestamps(builder.locked_funds_period_millis());
 
     builder.run_genesis_with_custom_genesis_accounts(accounts);
 
@@ -2615,7 +2605,7 @@ fn should_release_vfta_holder_stake() {
         let initial_release = vesting_schedule.initial_release_timestamp_millis();
         assert_eq!(
             initial_release,
-            DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo()
+            DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.locked_funds_period_millis()
         );
 
         let locked_amounts = vesting_schedule.locked_amounts().map(|arr| arr.to_vec());
@@ -2644,7 +2634,7 @@ fn should_release_vfta_holder_stake() {
         let initial_release = vesting_schedule.initial_release_timestamp_millis();
         assert_eq!(
             initial_release,
-            DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo()
+            DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.locked_funds_period_millis()
         );
 
         let locked_amounts = vesting_schedule.locked_amounts().map(|arr| arr.to_vec());

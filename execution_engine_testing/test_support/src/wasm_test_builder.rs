@@ -122,31 +122,6 @@ impl<S> WasmTestBuilder<S> {
     }
 }
 
-// impl Default for InMemoryWasmTestBuilder {
-//     fn default() -> Self {
-//         Self::initialize_logging();
-//         let engine_config = EngineConfig::default();
-//
-//         let global_state = InMemoryGlobalState::empty().expect("should create global state");
-//         let engine_state = EngineState::new(global_state, engine_config);
-//
-//         WasmTestBuilder {
-//             engine_state: Rc::new(engine_state),
-//             exec_results: Vec::new(),
-//             upgrade_results: Vec::new(),
-//             genesis_hash: None,
-//             post_state_hash: None,
-//             transforms: Vec::new(),
-//             genesis_account: None,
-//             genesis_transforms: None,
-//             mint_contract_hash: None,
-//             handle_payment_contract_hash: None,
-//             standard_payment_hash: None,
-//             auction_contract_hash: None,
-//         }
-//     }
-// }
-
 // TODO: Deriving `Clone` for `WasmTestBuilder<S>` doesn't work correctly (unsure why), so
 // implemented by hand here.  Try to derive in the future with a different compiler version.
 impl<S> Clone for WasmTestBuilder<S> {
@@ -1220,7 +1195,7 @@ where
     }
 
     /// Returns the locked_funds_period_millis used to instantiate the builder.
-    pub fn foo(&self) -> u64 {
+    pub fn locked_funds_period_millis(&self) -> u64 {
         humantime::parse_duration(&self.chainspec_config.core_config.locked_funds_period)
             .expect("must parse into duration")
             .as_millis() as u64

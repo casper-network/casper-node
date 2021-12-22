@@ -43,6 +43,7 @@ fn should_call_group_restricted_session() {
     .build();
 
     let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+
     builder.run_genesis_with_default_genesis_accounts();
 
     builder.exec(exec_request_1).expect_success().commit();
@@ -107,6 +108,7 @@ fn should_call_group_restricted_session_caller() {
     .build();
 
     let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
+
     builder.run_genesis_with_default_genesis_accounts();
 
     builder.exec(exec_request_1).expect_success().commit();

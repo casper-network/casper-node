@@ -279,12 +279,12 @@ fn should_distribute_delegation_rate_zero() {
         .expect("must execute step successfully");
 
     let delegators_share = {
-        let delegator_total_stake = U512::from(DELEGATOR_1_STAKE + DELEGATOR_2_STAKE);
         let commission_rate = Ratio::new(
             U512::from(VALIDATOR_1_DELEGATION_RATE),
             U512::from(DELEGATION_RATE_DENOMINATOR),
         );
-        let reward_multiplier = Ratio::new(delegator_total_stake, U512::from(TOTAL_STAKE));
+        let reward_multiplier =
+            Ratio::new(U512::from(TOTAL_DELEGATOR_STAKE), U512::from(TOTAL_STAKE));
         let delegator_reward = expected_total_reward
             .checked_mul(&reward_multiplier)
             .expect("must get delegator reward");
@@ -425,6 +425,7 @@ fn should_withdraw_bids_after_distribute() {
     const DELEGATOR_1_STAKE: u64 = 1_000_000;
     const DELEGATOR_2_STAKE: u64 = 1_000_000;
     const TOTAL_DELEGATOR_STAKE: u64 = DELEGATOR_1_STAKE + DELEGATOR_2_STAKE;
+    const TOTAL_STAKE: u64 = VALIDATOR_1_STAKE + TOTAL_DELEGATOR_STAKE;
 
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 
@@ -564,15 +565,12 @@ fn should_withdraw_bids_after_distribute() {
     };
 
     let delegators_share = {
-        let delegator_total_stake = U512::from(DELEGATOR_1_STAKE + DELEGATOR_2_STAKE);
         let commission_rate = Ratio::new(
             U512::from(VALIDATOR_1_DELEGATION_RATE),
             U512::from(DELEGATION_RATE_DENOMINATOR),
         );
-        let reward_multiplier = Ratio::new(
-            delegator_total_stake,
-            delegator_total_stake + VALIDATOR_1_STAKE,
-        );
+        let reward_multiplier =
+            Ratio::new(U512::from(TOTAL_DELEGATOR_STAKE), U512::from(TOTAL_STAKE));
         let delegator_reward = expected_total_reward
             .checked_mul(&reward_multiplier)
             .expect("must get delegator reward");
@@ -604,13 +602,15 @@ fn should_withdraw_bids_after_distribute() {
             .unwrap()
     };
 
-    let expected_validator_1_balance_ratio = expected_total_reward
-        - Ratio::from(delegator_1_expected_payout + delegator_2_expected_payout);
-    let validator_1_expected_payout = expected_validator_1_balance_ratio.to_integer();
+    let validator_1_expected_payout = {
+        let total_delegator_payout = delegator_1_expected_payout + delegator_2_expected_payout;
+        let validator_share = expected_total_reward - Ratio::from(total_delegator_payout);
+        validator_share.to_integer()
+    };
     assert_eq!(
         validator_1_actual_payout, validator_1_expected_payout,
         "rhs {}",
-        expected_validator_1_balance_ratio
+        validator_1_expected_payout
     );
 
     let delegator_1_actual_payout = {
@@ -738,7 +738,6 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
     const VALIDATOR_1_STAKE: u64 = 1_000_000;
     const DELEGATOR_1_STAKE: u64 = 1_000_000;
     const DELEGATOR_2_STAKE: u64 = 1_000_000;
-
     const TOTAL_DELEGATOR_STAKE: u64 = DELEGATOR_1_STAKE + DELEGATOR_2_STAKE;
     const TOTAL_STAKE: u64 = TOTAL_DELEGATOR_STAKE + VALIDATOR_1_STAKE;
 
@@ -1393,8 +1392,6 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
             .expect("should be era info")
     };
 
-    println!("{:?} {:#?}", total_payout_1, era_info_1);
-
     assert!(matches!(
         era_info_1.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
@@ -1416,7 +1413,7 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
     let total_supply_2 = builder.total_supply(None);
     let total_payout_2 = builder.base_round_reward(None);
 
-    // New rewards
+    // Distribute new rewards
     let step_request = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0)
@@ -1601,7 +1598,8 @@ fn should_distribute_delegation_rate_half() {
     const VALIDATOR_1_STAKE: u64 = 1_000_000;
     const DELEGATOR_1_STAKE: u64 = 1_000_000;
     const DELEGATOR_2_STAKE: u64 = 1_000_000;
-    const TOTAL_STAKE: u64 = VALIDATOR_1_STAKE + DELEGATOR_1_STAKE + DELEGATOR_2_STAKE;
+    const TOTAL_DELEGATOR_STAKE: u64 = DELEGATOR_1_STAKE + DELEGATOR_2_STAKE;
+    const TOTAL_STAKE: u64 = VALIDATOR_1_STAKE + TOTAL_DELEGATOR_STAKE;
 
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = DELEGATION_RATE_DENOMINATOR / 2;
 
@@ -1735,12 +1733,12 @@ fn should_distribute_delegation_rate_half() {
         .expect("must execute step successfully");
 
     let delegators_share = {
-        let delegator_total_stake = U512::from(DELEGATOR_1_STAKE + DELEGATOR_2_STAKE);
         let commission_rate = Ratio::new(
             U512::from(VALIDATOR_1_DELEGATION_RATE),
             U512::from(DELEGATION_RATE_DENOMINATOR),
         );
-        let reward_multiplier = Ratio::new(delegator_total_stake, U512::from(TOTAL_STAKE));
+        let reward_multiplier =
+            Ratio::new(U512::from(TOTAL_DELEGATOR_STAKE), U512::from(TOTAL_STAKE));
         let delegator_reward = expected_total_reward
             .checked_mul(&reward_multiplier)
             .expect("must get delegator reward");
@@ -1751,7 +1749,10 @@ fn should_distribute_delegation_rate_half() {
     };
 
     let delegator_1_expected_payout = {
-        let reward_multiplier = Ratio::new(U512::from(DELEGATOR_1_STAKE), U512::from(2_000_000));
+        let reward_multiplier = Ratio::new(
+            U512::from(DELEGATOR_1_STAKE),
+            U512::from(TOTAL_DELEGATOR_STAKE),
+        );
         delegators_share
             .checked_mul(&reward_multiplier)
             .map(|ratio| ratio.to_integer())
@@ -1759,7 +1760,10 @@ fn should_distribute_delegation_rate_half() {
     };
 
     let delegator_2_expected_payout = {
-        let reward_multiplier = Ratio::new(U512::from(DELEGATOR_2_STAKE), U512::from(2_000_000));
+        let reward_multiplier = Ratio::new(
+            U512::from(DELEGATOR_2_STAKE),
+            U512::from(TOTAL_DELEGATOR_STAKE),
+        );
         delegators_share
             .checked_mul(&reward_multiplier)
             .map(|ratio| ratio.to_integer())
@@ -1836,7 +1840,8 @@ fn should_distribute_delegation_rate_full() {
     const VALIDATOR_1_STAKE: u64 = 1_000_000;
     const DELEGATOR_1_STAKE: u64 = 1_000_000;
     const DELEGATOR_2_STAKE: u64 = 1_000_000;
-    const TOTAL_STAKE: u64 = VALIDATOR_1_STAKE + DELEGATOR_1_STAKE + DELEGATOR_2_STAKE;
+    const TOTAL_DELEGATOR_STAKE: u64 = DELEGATOR_1_STAKE + DELEGATOR_2_STAKE;
+    const TOTAL_STAKE: u64 = VALIDATOR_1_STAKE + TOTAL_DELEGATOR_STAKE;
 
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = DELEGATION_RATE_DENOMINATOR;
 
@@ -1968,12 +1973,12 @@ fn should_distribute_delegation_rate_full() {
         .expect("must execute step successfully");
 
     let delegators_share = {
-        let delegator_total_stake = U512::from(DELEGATOR_1_STAKE + DELEGATOR_2_STAKE);
         let commission_rate = Ratio::new(
             U512::from(VALIDATOR_1_DELEGATION_RATE),
             U512::from(DELEGATION_RATE_DENOMINATOR),
         );
-        let reward_multiplier = Ratio::new(delegator_total_stake, U512::from(TOTAL_STAKE));
+        let reward_multiplier =
+            Ratio::new(U512::from(TOTAL_DELEGATOR_STAKE), U512::from(TOTAL_STAKE));
         let delegator_reward = expected_total_reward
             .checked_mul(&reward_multiplier)
             .expect("must get delegator reward");
@@ -1984,7 +1989,10 @@ fn should_distribute_delegation_rate_full() {
     };
 
     let delegator_1_expected_payout = {
-        let reward_multiplier = Ratio::new(U512::from(DELEGATOR_1_STAKE), U512::from(2_000_000));
+        let reward_multiplier = Ratio::new(
+            U512::from(DELEGATOR_1_STAKE),
+            U512::from(TOTAL_DELEGATOR_STAKE),
+        );
         delegators_share
             .checked_mul(&reward_multiplier)
             .map(|ratio| ratio.to_integer())
@@ -1992,7 +2000,10 @@ fn should_distribute_delegation_rate_full() {
     };
 
     let delegator_2_expected_payout = {
-        let reward_multiplier = Ratio::new(U512::from(DELEGATOR_2_STAKE), U512::from(2_000_000));
+        let reward_multiplier = Ratio::new(
+            U512::from(DELEGATOR_2_STAKE),
+            U512::from(TOTAL_DELEGATOR_STAKE),
+        );
         delegators_share
             .checked_mul(&reward_multiplier)
             .map(|ratio| ratio.to_integer())
@@ -2201,12 +2212,12 @@ fn should_distribute_uneven_delegation_rate_zero() {
         .expect("must execute step successfully");
 
     let delegators_share = {
-        let delegator_total_stake = U512::from(DELEGATOR_1_STAKE + DELEGATOR_2_STAKE);
         let commission_rate = Ratio::new(
             U512::from(VALIDATOR_1_DELEGATION_RATE),
             U512::from(DELEGATION_RATE_DENOMINATOR),
         );
-        let reward_multiplier = Ratio::new(delegator_total_stake, U512::from(TOTAL_STAKE));
+        let reward_multiplier =
+            Ratio::new(U512::from(TOTAL_DELEGATOR_STAKE), U512::from(TOTAL_STAKE));
         let delegator_reward = expected_total_reward
             .checked_mul(&reward_multiplier)
             .expect("must get delegator reward");
@@ -2456,53 +2467,53 @@ fn should_distribute_by_factor() {
         .step(step_request)
         .expect("must execute step successfully");
 
-    let validator_1_updated_stake = {
+    let validator_1_actual_payout = {
         let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
         let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
     };
-    let expected_validator_1_payout = expected_total_reward
+    let validator_1_expected_payout = expected_total_reward
         .checked_mul(&Ratio::new(
             U512::from(VALIDATOR_1_REWARD_FACTOR),
             U512::from(BLOCK_REWARD),
         ))
         .map(|ratio| ratio.to_integer())
         .unwrap();
-    assert_eq!(validator_1_updated_stake, expected_validator_1_payout);
+    assert_eq!(validator_1_actual_payout, validator_1_expected_payout);
 
-    let validator_2_updated_stake = {
+    let validator_2_actual_payout = {
         let validator_stake_before = U512::from(VALIDATOR_2_STAKE);
         let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_2.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
     };
-    let expected_validator_2_payout = expected_total_reward
+    let validator_2_expected_payout = expected_total_reward
         .checked_mul(&Ratio::new(
             U512::from(VALIDATOR_2_REWARD_FACTOR),
             U512::from(BLOCK_REWARD),
         ))
         .map(|ratio| ratio.to_integer())
         .unwrap();
-    assert_eq!(validator_2_updated_stake, expected_validator_2_payout);
+    assert_eq!(validator_2_actual_payout, validator_2_expected_payout);
 
-    let validator_3_updated_stake = {
+    let validator_3_actual_payout = {
         let validator_stake_before = U512::from(VALIDATOR_3_STAKE);
         let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_3.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
     };
-    let expected_validator_3_payout = expected_total_reward
+    let validator_3_expected_payout = expected_total_reward
         .checked_mul(&Ratio::new(
             U512::from(VALIDATOR_3_REWARD_FACTOR),
             U512::from(BLOCK_REWARD),
         ))
         .map(|ratio| ratio.to_integer())
         .unwrap();
-    assert_eq!(validator_3_updated_stake, expected_validator_3_payout);
+    assert_eq!(validator_3_actual_payout, validator_3_expected_payout);
 
     let era_info = {
         let era = builder.get_era() - 1;
@@ -2520,19 +2531,19 @@ fn should_distribute_by_factor() {
     assert!(matches!(
         era_info.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_1 && *amount == expected_validator_1_payout
+        if *validator_public_key == *VALIDATOR_1 && *amount == validator_1_expected_payout
     ));
 
     assert!(matches!(
         era_info.select(VALIDATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_2 && *amount == expected_validator_2_payout
+        if *validator_public_key == *VALIDATOR_2 && *amount == validator_2_expected_payout
     ));
 
     assert!(matches!(
         era_info.select(VALIDATOR_3.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_3 && *amount == expected_validator_3_payout
+        if *validator_public_key == *VALIDATOR_3 && *amount == validator_3_expected_payout
     ));
 }
 
@@ -2692,53 +2703,53 @@ fn should_distribute_by_factor_regardless_of_stake() {
         .step(step_request)
         .expect("must execute step successfully");
 
-    let validator_1_updated_stake = {
+    let validator_1_actual_payout = {
         let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
         let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
     };
-    let expected_validator_1_payout = expected_total_reward
+    let validator_1_expected_payout = expected_total_reward
         .checked_mul(&Ratio::new(
             U512::from(VALIDATOR_1_REWARD_FACTOR),
             U512::from(BLOCK_REWARD),
         ))
         .map(|ratio| ratio.to_integer())
         .unwrap();
-    assert_eq!(validator_1_updated_stake, expected_validator_1_payout);
+    assert_eq!(validator_1_actual_payout, validator_1_expected_payout);
 
-    let validator_2_updated_stake = {
+    let validator_2_actual_payout = {
         let validator_stake_before = U512::from(VALIDATOR_2_STAKE);
         let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_2.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
     };
-    let expected_validator_2_payout = expected_total_reward
+    let validator_2_expected_payout = expected_total_reward
         .checked_mul(&Ratio::new(
             U512::from(VALIDATOR_2_REWARD_FACTOR),
             U512::from(BLOCK_REWARD),
         ))
         .map(|ratio| ratio.to_integer())
         .unwrap();
-    assert_eq!(validator_2_updated_stake, expected_validator_2_payout);
+    assert_eq!(validator_2_actual_payout, validator_2_expected_payout);
 
-    let validator_3_updated_stake = {
+    let validator_3_actual_payout = {
         let validator_stake_before = U512::from(VALIDATOR_3_STAKE);
         let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_3.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
     };
-    let expected_validator_3_payout = expected_total_reward
+    let validator_3_expected_payout = expected_total_reward
         .checked_mul(&Ratio::new(
             U512::from(VALIDATOR_3_REWARD_FACTOR),
             U512::from(BLOCK_REWARD),
         ))
         .map(|ratio| ratio.to_integer())
         .unwrap();
-    assert_eq!(validator_3_updated_stake, expected_validator_3_payout);
+    assert_eq!(validator_3_actual_payout, validator_3_expected_payout);
 
     let era_info = {
         let era = builder.get_era() - 1;
@@ -2756,19 +2767,19 @@ fn should_distribute_by_factor_regardless_of_stake() {
     assert!(matches!(
         era_info.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_1 && *amount == expected_validator_1_payout
+        if *validator_public_key == *VALIDATOR_1 && *amount == validator_1_expected_payout
     ));
 
     assert!(matches!(
         era_info.select(VALIDATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_2 && *amount == expected_validator_2_payout
+        if *validator_public_key == *VALIDATOR_2 && *amount == validator_2_expected_payout
     ));
 
     assert!(matches!(
         era_info.select(VALIDATOR_3.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_3 && *amount == expected_validator_3_payout
+        if *validator_public_key == *VALIDATOR_3 && *amount == validator_3_expected_payout
     ));
 }
 
@@ -2925,53 +2936,53 @@ fn should_distribute_by_factor_uneven() {
         .step(step_request)
         .expect("must execute step successfully");
 
-    let validator_1_updated_stake = {
+    let validator_1_actual_payout = {
         let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
         let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
     };
-    let expected_validator_1_payout = expected_total_reward
+    let validator_1_expected_payout = expected_total_reward
         .checked_mul(&Ratio::new(
             U512::from(VALIDATOR_1_REWARD_FACTOR),
             U512::from(BLOCK_REWARD),
         ))
         .map(|ratio| ratio.to_integer())
         .unwrap();
-    assert_eq!(validator_1_updated_stake, expected_validator_1_payout);
+    assert_eq!(validator_1_actual_payout, validator_1_expected_payout);
 
-    let validator_2_updated_stake = {
+    let validator_2_actual_payout = {
         let validator_stake_before = U512::from(VALIDATOR_2_STAKE);
         let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_2.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
     };
-    let expected_validator_2_payout = expected_total_reward
+    let validator_2_expected_payout = expected_total_reward
         .checked_mul(&Ratio::new(
             U512::from(VALIDATOR_2_REWARD_FACTOR),
             U512::from(BLOCK_REWARD),
         ))
         .map(|ratio| ratio.to_integer())
         .unwrap();
-    assert_eq!(validator_2_updated_stake, expected_validator_2_payout);
+    assert_eq!(validator_2_actual_payout, validator_2_expected_payout);
 
-    let validator_3_updated_stake = {
+    let validator_3_actual_payout = {
         let validator_stake_before = U512::from(VALIDATOR_3_STAKE);
         let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_3.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
     };
-    let expected_validator_3_payout = expected_total_reward
+    let validator_3_expected_payout = expected_total_reward
         .checked_mul(&Ratio::new(
             U512::from(VALIDATOR_3_REWARD_FACTOR),
             U512::from(BLOCK_REWARD),
         ))
         .map(|ratio| ratio.to_integer())
         .unwrap();
-    assert_eq!(validator_3_updated_stake, expected_validator_3_payout);
+    assert_eq!(validator_3_actual_payout, validator_3_expected_payout);
 
     let era_info = {
         let era = builder.get_era() - 1;
@@ -2989,19 +3000,19 @@ fn should_distribute_by_factor_uneven() {
     assert!(matches!(
         era_info.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_1 && *amount == expected_validator_1_payout
+        if *validator_public_key == *VALIDATOR_1 && *amount == validator_1_expected_payout
     ));
 
     assert!(matches!(
         era_info.select(VALIDATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_2 && *amount == expected_validator_2_payout
+        if *validator_public_key == *VALIDATOR_2 && *amount == validator_2_expected_payout
     ));
 
     assert!(matches!(
         era_info.select(VALIDATOR_3.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_3 && *amount == expected_validator_3_payout
+        if *validator_public_key == *VALIDATOR_3 && *amount == validator_3_expected_payout
     ));
 }
 
@@ -3231,7 +3242,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         .step(step_request)
         .expect("must execute step successfully");
 
-    let validator_1_updated_stake = {
+    let validator_1_actual_payout = {
         let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
         let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
@@ -3239,7 +3250,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         validator_stake_after - validator_stake_before
     };
 
-    let validator_2_updated_stake = {
+    let validator_2_actual_payout = {
         let validator_stake_before = U512::from(VALIDATOR_2_STAKE);
         let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_2.clone())
             .expect("should have validator bid")
@@ -3247,7 +3258,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         validator_stake_after - validator_stake_before
     };
 
-    let validator_3_updated_stake = {
+    let validator_3_actual_payout = {
         let validator_stake_before = U512::from(VALIDATOR_3_STAKE);
         let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_3.clone())
             .expect("should have validator bid")
@@ -3255,21 +3266,21 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         validator_stake_after - validator_stake_before
     };
 
-    let delegator_1_updated_stake = {
+    let delegator_1_actual_payout = {
         let delegator_stake_before = U512::from(DELEGATOR_1_STAKE);
         let delegator_stake_after =
             get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
         delegator_stake_after - delegator_stake_before
     };
 
-    let delegator_2_updated_stake = {
+    let delegator_2_actual_payout = {
         let delegator_stake_before = U512::from(DELEGATOR_2_STAKE);
         let delegator_stake_after =
             get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone());
         delegator_stake_after - delegator_stake_before
     };
 
-    let delegator_3_updated_stake = {
+    let delegator_3_actual_payout = {
         let delegator_stake_before = U512::from(DELEGATOR_3_STAKE);
         let delegator_stake_after =
             get_delegator_staked_amount(&mut builder, VALIDATOR_2.clone(), DELEGATOR_3.clone());
@@ -3292,37 +3303,37 @@ fn should_distribute_with_multiple_validators_and_delegators() {
     assert!(matches!(
         era_info.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_1 && *amount == validator_1_updated_stake
+        if *validator_public_key == *VALIDATOR_1 && *amount == validator_1_actual_payout
     ));
 
     assert!(matches!(
         era_info.select(VALIDATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_2 && *amount == validator_2_updated_stake
+        if *validator_public_key == *VALIDATOR_2 && *amount == validator_2_actual_payout
     ));
 
     assert!(matches!(
         era_info.select(VALIDATOR_3.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_3 && *amount == validator_3_updated_stake
+        if *validator_public_key == *VALIDATOR_3 && *amount == validator_3_actual_payout
     ));
 
     assert!(matches!(
         era_info.select(DELEGATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
-        if *delegator_public_key == *DELEGATOR_1 && *amount == delegator_1_updated_stake
+        if *delegator_public_key == *DELEGATOR_1 && *amount == delegator_1_actual_payout
     ));
 
     assert!(matches!(
         era_info.select(DELEGATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
-        if *delegator_public_key == *DELEGATOR_2 && *amount == delegator_2_updated_stake
+        if *delegator_public_key == *DELEGATOR_2 && *amount == delegator_2_actual_payout
     ));
 
     assert!(matches!(
         era_info.select(DELEGATOR_3.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
-        if *delegator_public_key == *DELEGATOR_3 && *amount == delegator_3_updated_stake
+        if *delegator_public_key == *DELEGATOR_3 && *amount == delegator_3_actual_payout
     ));
 }
 
@@ -3600,7 +3611,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
         let validator_2_total_stake = VALIDATOR_2_STAKE + DELEGATOR_1_STAKE;
 
         let reward_rate = Ratio::new(
-            U512::from(VALIDATOR_1_REWARD_FACTOR),
+            U512::from(VALIDATOR_2_REWARD_FACTOR),
             U512::from(BLOCK_REWARD),
         );
 
@@ -3648,7 +3659,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
         let validator_3_total_stake = VALIDATOR_3_STAKE + DELEGATOR_1_STAKE;
 
         let reward_rate = Ratio::new(
-            U512::from(VALIDATOR_1_REWARD_FACTOR),
+            U512::from(VALIDATOR_3_REWARD_FACTOR),
             U512::from(BLOCK_REWARD),
         );
 
@@ -3956,7 +3967,8 @@ fn should_increase_total_supply_after_distribute() {
 
     let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo();
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.locked_funds_period_millis();
 
     builder.run_genesis_with_default_genesis_accounts();
 
@@ -4134,7 +4146,8 @@ fn should_not_create_purses_during_distribute() {
 
     let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo();
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.locked_funds_period_millis();
 
     builder.run_genesis_with_default_genesis_accounts();
 
@@ -4294,7 +4307,8 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
 
     let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo();
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.locked_funds_period_millis();
 
     builder.run_genesis_with_default_genesis_accounts();
 

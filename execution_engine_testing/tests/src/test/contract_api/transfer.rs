@@ -398,8 +398,6 @@ fn should_transfer_to_existing_account() {
 #[ignore]
 #[test]
 fn should_fail_when_insufficient_funds() {
-    // Run genesis
-
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
@@ -419,9 +417,8 @@ fn should_fail_when_insufficient_funds() {
         runtime_args! { ARG_TARGET => *ACCOUNT_2_ADDR, ARG_AMOUNT => *TRANSFER_TOO_MUCH },
     )
     .build();
-
+    // Run genesis
     let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
-
     builder
         .run_genesis_with_default_genesis_accounts()
         // Exec transfer contract

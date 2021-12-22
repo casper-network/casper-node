@@ -157,7 +157,8 @@ fn validator_scores_should_reflect_delegates() {
 
     let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo();
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.locked_funds_period_millis();
 
     builder.run_genesis_with_custom_genesis_accounts(accounts);
 

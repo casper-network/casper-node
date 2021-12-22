@@ -35,7 +35,6 @@ const ARG_TARGET: &str = "target";
 
 fn setup() -> InMemoryWasmTestBuilder {
     let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
-
     builder.run_genesis_with_default_genesis_accounts();
 
     let transfer = ExecuteRequestBuilder::transfer(

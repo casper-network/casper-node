@@ -618,7 +618,6 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_add() {
     let cost_per_byte = U512::from(StorageCosts::default().gas_per_byte());
 
     let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
-
     builder.run_genesis_with_default_genesis_accounts();
 
     let install_exec_request = ExecuteRequestBuilder::standard(

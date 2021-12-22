@@ -64,9 +64,8 @@ fn run_genesis_and_create_initial_accounts(
             )),
         ))
     }
-    // let run_genesis_request =
-    //     create_run_genesis_request(validator_keys.len() as u32 + 2, genesis_accounts);
-    builder.run_genesis_with_default_genesis_accounts();
+
+    builder.run_genesis_with_custom_genesis_accounts(genesis_accounts);
 
     // Setup the system account with enough cspr
     let transfer = ExecuteRequestBuilder::transfer(
@@ -96,30 +95,6 @@ fn run_genesis_and_create_initial_accounts(
     }
     builder
 }
-
-// fn create_run_genesis_request(
-//     validator_slots: u32,
-//     genesis_accounts: Vec<GenesisAccount>,
-// ) -> RunGenesisRequest {
-//     let exec_config = {
-//         ExecConfig::new(
-//             genesis_accounts,
-//             *DEFAULT_WASM_CONFIG,
-//             *DEFAULT_SYSTEM_CONFIG,
-//             validator_slots,
-//             DEFAULT_AUCTION_DELAY,
-//             DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-//             DEFAULT_ROUND_SEIGNIORAGE_RATE,
-//             DEFAULT_UNBONDING_DELAY,
-//             DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-//         )
-//     };
-//     RunGenesisRequest::new(
-//         *DEFAULT_GENESIS_CONFIG_HASH,
-//         *DEFAULT_PROTOCOL_VERSION,
-//         exec_config,
-//     )
-// }
 
 fn setup_bench_run_auction(
     group: &mut BenchmarkGroup<WallTime>,

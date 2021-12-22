@@ -17,7 +17,6 @@ const CONTRACT_HASH_KEY: &str = "contract_hash";
 
 fn setup() -> (InMemoryWasmTestBuilder, ContractPackageHash, ContractHash) {
     let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
-
     builder.run_genesis_with_default_genesis_accounts();
 
     let install_contract_request_1 = ExecuteRequestBuilder::standard(

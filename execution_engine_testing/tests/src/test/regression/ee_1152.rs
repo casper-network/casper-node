@@ -111,7 +111,8 @@ fn should_run_ee_1152_regression_test() {
 
     builder.exec(delegate_request_1).expect_success().commit();
 
-    let mut timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo();
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.locked_funds_period_millis();
 
     // In reality a step request is made, but to simplify the test I'm just calling the auction part
     // only.

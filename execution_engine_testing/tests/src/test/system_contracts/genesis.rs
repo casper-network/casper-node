@@ -1,9 +1,7 @@
 use num_traits::Zero;
 use once_cell::sync::Lazy;
 
-use casper_engine_test_support::{
-    InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, PRODUCTION_PATH,
-};
+use casper_engine_test_support::{InMemoryWasmTestBuilder, PRODUCTION_PATH};
 use casper_execution_engine::core::engine_state::genesis::{GenesisAccount, GenesisValidator};
 use casper_types::{
     account::AccountHash, system::auction::DelegationRate, Motes, PublicKey, SecretKey,
@@ -27,7 +25,6 @@ static ACCOUNT_2_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
 static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCOUNT_2_PUBLIC_KEY));
 
 static GENESIS_CUSTOM_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
-    let mut default_accounts = DEFAULT_ACCOUNTS.clone();
     let account_1 = {
         let account_1_balance = Motes::new(ACCOUNT_1_BALANCE.into());
         let account_1_bonded_amount = Motes::new(ACCOUNT_1_BONDED_AMOUNT.into());
@@ -40,7 +37,6 @@ static GENESIS_CUSTOM_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
             )),
         )
     };
-    default_accounts.push(account_1);
     let account_2 = {
         let account_2_balance = Motes::new(ACCOUNT_2_BALANCE.into());
         let account_2_bonded_amount = Motes::new(ACCOUNT_2_BONDED_AMOUNT.into());
@@ -53,8 +49,7 @@ static GENESIS_CUSTOM_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
             )),
         )
     };
-    default_accounts.push(account_2);
-    default_accounts
+    vec![account_1, account_2]
 });
 
 #[ignore]
@@ -125,14 +120,4 @@ fn should_track_total_token_supply_in_mint() {
         expected_balance + expected_staked_amount,
         "unexpected total supply"
     )
-}
-
-#[ignore]
-#[test]
-fn should_maybe_work() {
-    let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
-    builder.run_genesis_with_default_genesis_accounts();
-    let _account_1 = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
-        .expect("default account should exist");
 }

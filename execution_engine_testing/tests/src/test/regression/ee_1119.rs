@@ -114,7 +114,10 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
     //
     // Unlock funds of genesis validators
     //
-    builder.run_auction(DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo(), Vec::new());
+    builder.run_auction(
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.locked_funds_period_millis(),
+        Vec::new(),
+    );
 
     //
     // Partial unbond through undelegate on other genesis validator

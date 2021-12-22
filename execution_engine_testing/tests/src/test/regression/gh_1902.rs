@@ -27,7 +27,6 @@ static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCO
 
 fn setup() -> InMemoryWasmTestBuilder {
     let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
-
     builder.run_genesis_with_default_genesis_accounts();
     let id: Option<u64> = None;
     let transfer_args_1 = runtime_args! {

@@ -19,7 +19,6 @@ fn contract_transforms_should_be_ordered_in_the_journal() {
     const N_OPS: usize = 1000;
 
     let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
-
     builder.run_genesis_with_default_genesis_accounts();
 
     let mut rng = StdRng::seed_from_u64(0);

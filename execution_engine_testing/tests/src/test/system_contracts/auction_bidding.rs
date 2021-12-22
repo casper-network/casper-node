@@ -141,7 +141,10 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     let unbond_era_1 = unbond_list[0].era_of_creation();
 
-    builder.run_auction(DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo(), Vec::new());
+    builder.run_auction(
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.locked_funds_period_millis(),
+        Vec::new(),
+    );
     let unbond_purses: UnbondingPurses = builder.get_withdraws();
     assert_eq!(unbond_purses.len(), 1);
 
@@ -368,7 +371,6 @@ fn should_fail_unbonding_validator_without_bonding_first() {
     .build();
 
     let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
-
     builder.run_genesis_with_default_genesis_accounts();
 
     builder.exec(exec_request).commit();
@@ -397,7 +399,8 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo();
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.locked_funds_period_millis();
 
     builder.run_genesis_with_default_genesis_accounts();
 
@@ -552,7 +555,8 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
 
     let mut builder = InMemoryWasmTestBuilder::new(&*PRODUCTION_PATH, None);
 
-    let mut timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.foo();
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + builder.locked_funds_period_millis();
 
     builder.run_genesis_with_default_genesis_accounts();
 
