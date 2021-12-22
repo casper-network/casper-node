@@ -285,6 +285,11 @@ pub fn make_transfer(
 ///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
 ///   will not be printed to `stdout`.
 /// * `deploy_hash` must be a hex-encoded, 32-byte hash digest.
+/// * `finalized_approvals` is a boolean flag switching which set of approvals is to be returned.
+///   It is possible for a deploy to get finalized in a block with a different set of approvals
+///   than the one a node received with it. If this flag is false, the set of approvals received
+///   with the deploy will be returned. If it is true, it will be overridden with the finalized set
+///   of approvals, if the deploy has been already included in a finalized block.
 pub async fn get_deploy(
     maybe_rpc_id: &str,
     node_address: &str,

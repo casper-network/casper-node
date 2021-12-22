@@ -49,6 +49,7 @@ mod finalized_approvals {
 
     pub(super) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
+            .long(ARG_NAME)
             .takes_value(false)
             .help(ARG_HELP)
             .display_order(DisplayOrder::DeployHash as usize)
