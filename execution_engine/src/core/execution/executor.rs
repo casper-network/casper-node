@@ -473,11 +473,10 @@ impl Executor {
             }
         };
 
-        let mut inner_named_keys = runtime.context().named_keys().clone();
+        let inner_named_keys = runtime.context().named_keys().clone();
         let ret = direct_system_contract_call.host_exec(
             runtime,
             protocol_version,
-            &mut inner_named_keys,
             &runtime_args,
             extra_keys,
             execution_journal,
@@ -673,7 +672,6 @@ impl DirectSystemContractCall {
         &self,
         mut runtime: Runtime<R>,
         protocol_version: ProtocolVersion,
-        _named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
         execution_journal: ExecutionJournal,
