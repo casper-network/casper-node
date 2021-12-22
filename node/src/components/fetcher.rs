@@ -26,7 +26,7 @@ use crate::{
         DeployHash, Item, NodeId,
     },
     utils::Source,
-    NodeRng,
+    FetcherConfig, NodeRng,
 };
 
 use crate::effect::announcements::BlocklistAnnouncement;
@@ -532,8 +532,7 @@ where
                 None => self.failed_to_get_from_storage(effect_builder, id, peer),
             },
             Event::GotRemotely {
-                merkle_tree_hash_activation: _, /* TODO[RC]: Check if we need
-                                                 * `self.merkle_tree_hash_activation()` below */
+                merkle_tree_hash_activation: _,
                 item,
                 source,
             } => {
@@ -568,5 +567,37 @@ where
                 self.signal(id, Err(FetcherError::TimedOut { id, peer }), peer)
             }
         }
+    }
+}
+
+pub(crate) struct FetcherBuilder<'a> {
+    config: FetcherConfig,
+    registry: &'a Registry,
+    merkle_tree_hash_activation: EraId,
+}
+
+impl<'a> FetcherBuilder<'a> {
+    pub(crate) fn new(
+        config: FetcherConfig,
+        registry: &'a Registry,
+        merkle_tree_hash_activation: EraId,
+    ) -> Self {
+        Self {
+            config,
+            registry,
+            merkle_tree_hash_activation,
+        }
+    }
+
+    pub(crate) fn build<T: Item + 'static>(
+        &self,
+        name: &str,
+    ) -> Result<Fetcher<T>, prometheus::Error> {
+        Fetcher::new(
+            name,
+            self.config,
+            self.registry,
+            self.merkle_tree_hash_activation,
+        )
     }
 }

@@ -26,7 +26,7 @@ use crate::{
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server,
         event_stream_server::{DeployGetter, EventStreamServer},
-        fetcher::{self, Fetcher},
+        fetcher::{self, Fetcher, FetcherBuilder},
         gossiper::{self, Gossiper},
         linear_chain_sync::{self, LinearChainSyncError, LinearChainSyncState},
         metrics::Metrics,
@@ -589,46 +589,16 @@ impl reactor::Reactor for Reactor {
             DeployGetter::new(effect_builder),
         )?;
 
-        let deploy_fetcher = Fetcher::new(
-            "deploy",
-            config.fetcher,
-            registry,
-            merkle_tree_hash_activation,
-        )?;
+        let fetcher_builder =
+            FetcherBuilder::new(config.fetcher, registry, merkle_tree_hash_activation);
 
-        // TODO[RC]: Refactor
-        let block_by_height_fetcher = Fetcher::new(
-            "block_by_height",
-            config.fetcher,
-            registry,
-            merkle_tree_hash_activation,
-        )?;
-
-        let block_by_hash_fetcher = Fetcher::new(
-            "block",
-            config.fetcher,
-            registry,
-            merkle_tree_hash_activation,
-        )?;
-        let trie_fetcher = Fetcher::new(
-            "trie",
-            config.fetcher,
-            registry,
-            merkle_tree_hash_activation,
-        )?;
-        let block_header_and_finality_signatures_by_height_fetcher = Fetcher::new(
-            "block_header_by_height",
-            config.fetcher,
-            registry,
-            merkle_tree_hash_activation,
-        )?;
-
-        let block_header_by_hash_fetcher: Fetcher<BlockHeader> = Fetcher::new(
-            "block_header",
-            config.fetcher,
-            registry,
-            merkle_tree_hash_activation,
-        )?;
+        let deploy_fetcher = fetcher_builder.build("deploy")?;
+        let block_by_height_fetcher = fetcher_builder.build("block_by_height")?;
+        let block_by_hash_fetcher = fetcher_builder.build("block")?;
+        let trie_fetcher = fetcher_builder.build("trie")?;
+        let block_header_and_finality_signatures_by_height_fetcher =
+            fetcher_builder.build("block_header_by_height")?;
+        let block_header_by_hash_fetcher = fetcher_builder.build("block_header")?;
 
         let deploy_acceptor = DeployAcceptor::new(
             config.deploy_acceptor,
