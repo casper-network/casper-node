@@ -134,7 +134,7 @@ RUST_LOG=info cargo run --release -- validator resources/local/config.toml
 
 If the environment variable is unset, it is equivalent to setting `RUST_LOG=error`.
 
-#### Log message format
+### Log message format
 
 A typical log message will look like:
 
@@ -149,7 +149,7 @@ This is comprised of the following parts:
 * filename and line number of the source of the message
 * message
 
-#### Filtering log messages
+### Filtering log messages
 
 `RUST_LOG` can be set to enable varying levels for different modules.  Simply set it to a comma-separated list of
 `module-path=level`, where the module path is as shown above in the typical log message, with the end truncated to suit.
@@ -160,6 +160,24 @@ modules in `components`, and `warn` level for the remaining codebase:
 ```
 RUST_LOG=casper_node::components::small=trace,casper_node::comp=info,warn
 ```
+
+### Logging network messages and tracing events
+
+Special logging targets exist in `net_in` and `net_out` which can be used to log every single network message leaving or
+entering a node when set to trace level:
+
+```
+RUST_LOG=net_in::TRACE,net_out::TRACE
+```
+
+All messages in these logs are also assigned a unique ID that is different even if the same message is sent to multiple
+nodes. The receiving node will log them using the same ID as the sender, thus enabling the tracing of a message across
+multiple nodes provided all logs are available.
+
+Another helpful logging feature is ancestor logging. If the target `dispatch` is set to at least debug level, events
+being dispatched will be logged as well. Any event has an id (`ev`) and may have an ancestor (`a`), which is the previous
+event whose effects caused the resulting event to be scheduled. As an example, if an incoming network message gets
+asssigned an ID of `ev=123`, the first round of subsequent events will show `a=123` as their ancestor in the logs.
 
 ## Debugging
 
@@ -187,7 +205,7 @@ $ jq < queue_dump.json
 }
 ```
 
-#### jq Examples
+### jq Examples
 
 Dump the type of events:
 
