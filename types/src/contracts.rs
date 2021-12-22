@@ -343,7 +343,7 @@ impl ContractHash {
         format!(
             "{}{}",
             CONTRACT_STRING_PREFIX,
-            checksummed_hex::encode(&self.0),
+            base16::encode_lower(&self.0),
         )
     }
 
@@ -360,13 +360,13 @@ impl ContractHash {
 
 impl Display for ContractHash {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", checksummed_hex::encode(&self.0))
+        write!(f, "{}", base16::encode_lower(&self.0))
     }
 }
 
 impl Debug for ContractHash {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
-        write!(f, "ContractHash({})", checksummed_hex::encode(&self.0))
+        write!(f, "ContractHash({})", base16::encode_lower(&self.0))
     }
 }
 
@@ -486,11 +486,7 @@ impl ContractPackageHash {
 
     /// Formats the `ContractPackageHash` for users getting and putting.
     pub fn to_formatted_string(self) -> String {
-        format!(
-            "{}{}",
-            PACKAGE_STRING_PREFIX,
-            checksummed_hex::encode(&self.0),
-        )
+        format!("{}{}", PACKAGE_STRING_PREFIX, base16::encode_lower(&self.0),)
     }
 
     /// Parses a string formatted as per `Self::to_formatted_string()` into a
@@ -506,17 +502,13 @@ impl ContractPackageHash {
 
 impl Display for ContractPackageHash {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", checksummed_hex::encode(&self.0))
+        write!(f, "{}", base16::encode_lower(&self.0))
     }
 }
 
 impl Debug for ContractPackageHash {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
-        write!(
-            f,
-            "ContractPackageHash({})",
-            checksummed_hex::encode(&self.0)
-        )
+        write!(f, "ContractPackageHash({})", base16::encode_lower(&self.0))
     }
 }
 
