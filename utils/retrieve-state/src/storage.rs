@@ -157,20 +157,19 @@ mod tests {
         info::GetDeployResult,
     };
 
-    const MERKLE_TREE_HASH_ACTIVATION: u64 = 1;
-
     #[test]
     fn block_with_deploys_round_trip_lmdb() {
-        let dir = tempfile::tempdir().unwrap().into_path();
-        let mut storage =
-            create_storage(dir, MERKLE_TREE_HASH_ACTIVATION.into()).expect("should create storage");
-
-        let example_deploy = GetDeployResult::doc_example().deploy.clone();
         let example_block = GetBlockResult::doc_example()
             .block
             .as_ref()
             .unwrap()
             .clone();
+
+        let dir = tempfile::tempdir().unwrap().into_path();
+        let mut storage =
+            create_storage(dir, example_block.header.height.into()).expect("should create storage");
+
+        let example_deploy = GetDeployResult::doc_example().deploy.clone();
 
         let block_with_deploys = BlockWithDeploys {
             block: example_block.clone(),
