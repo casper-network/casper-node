@@ -242,7 +242,7 @@ where
         Ok((era_supervisor, effects))
     }
 
-    // TODO[RC]: Add docs
+    /// Returns the merkle tree hash activation from the chainspec.
     pub(crate) fn merkle_tree_hash_activation(&self) -> EraId {
         self.chainspec.protocol_config.merkle_tree_hash_activation
     }
