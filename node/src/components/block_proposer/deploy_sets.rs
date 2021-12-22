@@ -6,6 +6,7 @@ use std::{
 
 use datasize::DataSize;
 use itertools::{Either, Itertools};
+use serde::{Deserialize, Serialize};
 
 use super::{BlockHeight, CachedState, DeployInfo, FinalizationQueue};
 use crate::types::{Approval, DeployHash, DeployHeader, Timestamp};
@@ -24,15 +25,22 @@ impl PruneResult {
     }
 }
 
+#[derive(Clone, DataSize, Debug, Serialize, Deserialize)]
+pub(super) struct DeployData {
+    pub(super) approvals: Vec<Approval>,
+    pub(super) info: DeployInfo,
+    pub(super) timestamp: Timestamp,
+}
+
 /// Stores the internal state of the BlockProposer.
 #[derive(Clone, DataSize, Debug, Default)]
 pub(super) struct BlockProposerDeploySets {
     /// The collection of deploys pending for inclusion in a block, with a timestamp of when we
     /// received them.
-    pub(super) pending_deploys: HashMap<DeployHash, (Vec<Approval>, DeployInfo, Timestamp)>,
+    pub(super) pending_deploys: HashMap<DeployHash, DeployData>,
     /// The collection of transfers pending for inclusion in a block, with a timestamp of when we
     /// received them.
-    pub(super) pending_transfers: HashMap<DeployHash, (Vec<Approval>, DeployInfo, Timestamp)>,
+    pub(super) pending_transfers: HashMap<DeployHash, DeployData>,
     /// The deploys that have already been included in a finalized block.
     pub(super) finalized_deploys: HashMap<DeployHash, DeployHeader>,
     /// The next block height we expect to be finalized.
@@ -136,12 +144,10 @@ fn prune_deploys(
 /// Prunes expired deploy information from an individual pending deploy collection, returns the
 /// hashes of deploys pruned.
 pub(super) fn prune_pending_deploys(
-    deploys: &mut HashMap<DeployHash, (Vec<Approval>, DeployInfo, Timestamp)>,
+    deploys: &mut HashMap<DeployHash, DeployData>,
     current_instant: Timestamp,
 ) -> Vec<DeployHash> {
-    hashmap_drain_filter_in_place(deploys, |(_, deploy_info, _)| {
-        deploy_info.header.expired(current_instant)
-    })
+    hashmap_drain_filter_in_place(deploys, |data| data.info.header.expired(current_instant))
 }
 
 #[cfg(test)]
@@ -153,8 +159,7 @@ mod tests {
     #[test]
     fn prunes_pending_deploys() {
         let mut test_rng = TestRng::new();
-        let mut deploys: HashMap<DeployHash, (Vec<Approval>, DeployInfo, Timestamp)> =
-            HashMap::new();
+        let mut deploys: HashMap<DeployHash, DeployData> = HashMap::new();
         let now = Timestamp::now();
 
         let deploy_1 = testing::create_not_expired_deploy(now, &mut test_rng);
@@ -165,23 +170,43 @@ mod tests {
 
         deploys.insert(
             *deploy_1.id(),
-            (vec![], deploy_1.deploy_info().unwrap(), now),
+            DeployData {
+                approvals: vec![],
+                info: deploy_1.deploy_info().unwrap(),
+                timestamp: now,
+            },
         );
         deploys.insert(
             *deploy_2.id(),
-            (vec![], deploy_2.deploy_info().unwrap(), now),
+            DeployData {
+                approvals: vec![],
+                info: deploy_2.deploy_info().unwrap(),
+                timestamp: now,
+            },
         );
         deploys.insert(
             *deploy_3.id(),
-            (vec![], deploy_3.deploy_info().unwrap(), now),
+            DeployData {
+                approvals: vec![],
+                info: deploy_3.deploy_info().unwrap(),
+                timestamp: now,
+            },
         );
         deploys.insert(
             *deploy_4.id(),
-            (vec![], deploy_4.deploy_info().unwrap(), now),
+            DeployData {
+                approvals: vec![],
+                info: deploy_4.deploy_info().unwrap(),
+                timestamp: now,
+            },
         );
         deploys.insert(
             *deploy_5.id(),
-            (vec![], deploy_5.deploy_info().unwrap(), now),
+            DeployData {
+                approvals: vec![],
+                info: deploy_5.deploy_info().unwrap(),
+                timestamp: now,
+            },
         );
 
         // We expect deploys created with `create_expired_deploy` to be drained
