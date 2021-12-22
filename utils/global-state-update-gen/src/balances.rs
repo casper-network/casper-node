@@ -3,7 +3,7 @@ use clap::ArgMatches;
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, PRODUCTION_PATH,
 };
-use casper_execution_engine::shared::transform::Transform;
+use casper_execution_engine::shared::{additive_map::AdditiveMap, transform::Transform};
 use casper_types::{
     account::AccountHash, runtime_args, system::mint, AsymmetricType, Key, PublicKey, RuntimeArgs,
     U512,
@@ -42,9 +42,15 @@ pub(crate) fn generate_balances_update(matches: &ArgMatches<'_>) {
 
     builder.exec(no_wasm_transfer_request).expect_success();
 
-    let transforms = builder.get_execution_journals();
+    // Combine the journal into an AdditiveMap in order to collapse Writes and Adds into just Writes
+    let transforms = builder
+        .get_execution_journals()
+        .into_iter()
+        .map(AdditiveMap::from)
+        .next()
+        .unwrap();
 
-    for (key, value) in transforms[0].clone() {
+    for (key, value) in transforms {
         if let Transform::Write(val) = value {
             print_entry(&key, &val);
         }
