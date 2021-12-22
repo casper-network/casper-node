@@ -1165,9 +1165,10 @@ where
                     inactive_validators: tbd.inactive_validators,
                 });
                 let proposed_block = Arc::try_unwrap(value).unwrap_or_else(|arc| (*arc).clone());
-                let mut finalized_approvals: HashMap<_, _> = proposed_block
+                let finalized_approvals: HashMap<_, _> = proposed_block
                     .deploys()
                     .iter()
+                    .chain(proposed_block.transfers().iter())
                     .map(|dwa| {
                         (
                             dwa.deploy_hash,
@@ -1175,12 +1176,6 @@ where
                         )
                     })
                     .collect();
-                finalized_approvals.extend(proposed_block.transfers().iter().map(|dwa| {
-                    (
-                        dwa.deploy_hash,
-                        FinalizedApprovals::new(dwa.approvals.clone()),
-                    )
-                }));
                 let finalized_block = FinalizedBlock::new(
                     proposed_block,
                     era_end,
