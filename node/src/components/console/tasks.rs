@@ -1,7 +1,7 @@
 use std::{
     fmt::{self, Debug, Display, Formatter},
     fs, io,
-    path::Path,
+    path::PathBuf,
 };
 
 use super::{
@@ -209,21 +209,11 @@ async fn handler(stream: UnixStream, mut shutdown_receiver: watch::Receiver<()>)
 }
 
 /// Server task for console.
-pub(super) async fn server<P: AsRef<Path>>(
-    socket_path: P,
+pub(super) async fn server(
+    socket_path: PathBuf,
+    listener: UnixListener,
     mut shutdown_receiver: watch::Receiver<()>,
-) -> io::Result<()> {
-    let socket_path = socket_path.as_ref();
-    // This would be racy, but no one is racing us for the socket, so we'll just do a naive
-    // check-then-delete :).
-    if socket_path.exists() {
-        warn!(socket_path=%socket_path.display(), "found stale socket file, trying to remove");
-        fs::remove_file(socket_path)?;
-    }
-
-    let listener = UnixListener::bind(socket_path)?;
-    debug!(local_addr=%ShowUnixAddr(&listener.local_addr()?), "console socket listening");
-
+) {
     let handling_shutdown_receiver = shutdown_receiver.clone();
     let mut next_client_id: u64 = 0;
     let accept_connections = async move {
@@ -261,7 +251,7 @@ pub(super) async fn server<P: AsRef<Path>>(
     }
 
     // When we're shutting down, we try to delete the socket, but only warn in case of failure.
-    match fs::remove_file(socket_path) {
+    match fs::remove_file(&socket_path) {
         Ok(_) => {
             debug!(socket_path=%socket_path.display(), "removed socket file");
         }
@@ -269,8 +259,6 @@ pub(super) async fn server<P: AsRef<Path>>(
             warn!(socket_path=%socket_path.display(), "could not remove socket file");
         }
     }
-
-    Ok(())
 }
 
 /// A dummy consensus state, to be replaced with a proper serialization.
