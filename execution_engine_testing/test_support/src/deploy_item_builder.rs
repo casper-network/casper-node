@@ -18,7 +18,7 @@ struct DeployItemData {
     pub session_code: Option<ExecutableDeployItem>,
     pub gas_price: u64,
     pub authorization_keys: BTreeSet<AccountHash>,
-    pub deploy_hash: DeployHash,
+    pub deploy_hash: Option<DeployHash>,
 }
 
 /// Builds a [`DeployItem`].
@@ -255,7 +255,7 @@ impl DeployItemBuilder {
     /// Sets the hash of the deploy.
     pub fn with_deploy_hash(mut self, hash: [u8; 32]) -> Self {
         let digest: Digest = hash.into();
-        self.deploy_item.deploy_hash = DeployHash::new(digest.value());
+        self.deploy_item.deploy_hash = Some(DeployHash::new(digest.value()));
         self
     }
 
@@ -276,7 +276,10 @@ impl DeployItemBuilder {
                 .expect("should have payment code"),
             gas_price: self.deploy_item.gas_price,
             authorization_keys: self.deploy_item.authorization_keys,
-            deploy_hash: self.deploy_item.deploy_hash,
+            deploy_hash: self
+                .deploy_item
+                .deploy_hash
+                .expect("should have deploy hash"),
         }
     }
 }
@@ -288,5 +291,22 @@ impl Default for DeployItemBuilder {
             ..Default::default()
         };
         DeployItemBuilder { deploy_item }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[should_panic = "should have deploy hash"]
+    #[test]
+    fn should_fail_to_build_deploy_without_deploy_hash() {
+        let address = AccountHash::new([42; 32]);
+        let _deploy = DeployItemBuilder::new()
+            .with_address(address)
+            .with_authorization_keys(&[address])
+            .with_session_bytes(Vec::new(), RuntimeArgs::new())
+            .with_payment_bytes(Vec::new(), RuntimeArgs::new())
+            .build();
     }
 }
