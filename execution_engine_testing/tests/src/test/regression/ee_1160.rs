@@ -44,6 +44,7 @@ fn ee_1160_wasmless_transfer_should_empty_account() {
             .with_empty_payment_bytes(runtime_args! {})
             .with_transfer_args(wasmless_transfer_args)
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+            .with_deploy_hash([42; 32])
             .build();
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
@@ -99,6 +100,7 @@ fn ee_1160_transfer_larger_than_balance_should_fail() {
             .with_empty_payment_bytes(runtime_args! {})
             .with_transfer_args(wasmless_transfer_args)
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+            .with_deploy_hash([42; 32])
             .build();
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
@@ -159,6 +161,7 @@ fn ee_1160_large_wasmless_transfer_should_avoid_overflow() {
             .with_empty_payment_bytes(runtime_args! {})
             .with_transfer_args(wasmless_transfer_args)
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+            .with_deploy_hash([42; 32])
             .build();
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
