@@ -479,6 +479,7 @@ version = "1.4.3"
 dependencies = [
  "anyhow",
  "assert_matches",
+ "base16",
  "bincode",
  "casper-hashing",
  "casper-types",

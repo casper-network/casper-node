@@ -197,7 +197,7 @@ impl Serialize for CLValue {
         if serializer.is_human_readable() {
             CLValueJson {
                 cl_type: self.cl_type.clone(),
-                bytes: checksummed_hex::encode(&self.bytes),
+                bytes: base16::encode_lower(&self.bytes),
                 parsed: jsonrepr::cl_value_to_json(self),
             }
             .serialize(serializer)
@@ -427,13 +427,13 @@ mod tests {
                 PublicKey::from(
                     &SecretKey::ed25519_from_bytes([7; SecretKey::ED25519_LENGTH]).unwrap(),
                 ),
-                r#"{"cl_type":"PublicKey","parsed":"01Ea4A6C63e29c520aBEf5507B132Ec5F9954776aebeBE7B92421eea691446d22C"}"#,
+                r#"{"cl_type":"PublicKey","parsed":"01ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c"}"#,
             );
             check_to_json(
                 PublicKey::from(
                     &SecretKey::secp256k1_from_bytes([8; SecretKey::SECP256K1_LENGTH]).unwrap(),
                 ),
-                r#"{"cl_type":"PublicKey","parsed":"0203F991f944d1E1954A7fC8B9BF62e0d78F015f4c07762d505e20e6c45260A3661B"}"#,
+                r#"{"cl_type":"PublicKey","parsed":"0203f991f944d1e1954a7fc8b9bf62e0d78f015f4c07762d505e20e6c45260a3661b"}"#,
             );
         }
     }
@@ -658,13 +658,13 @@ mod tests {
                 Some(PublicKey::from(
                     &SecretKey::ed25519_from_bytes([7; SecretKey::ED25519_LENGTH]).unwrap(),
                 )),
-                r#"{"cl_type":{"Option":"PublicKey"},"parsed":"01Ea4A6C63e29c520aBEf5507B132Ec5F9954776aebeBE7B92421eea691446d22C"}"#,
+                r#"{"cl_type":{"Option":"PublicKey"},"parsed":"01ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c"}"#,
             );
             check_to_json(
                 Some(PublicKey::from(
                     &SecretKey::secp256k1_from_bytes([8; SecretKey::SECP256K1_LENGTH]).unwrap(),
                 )),
-                r#"{"cl_type":{"Option":"PublicKey"},"parsed":"0203F991f944d1E1954A7fC8B9BF62e0d78F015f4c07762d505e20e6c45260A3661B"}"#,
+                r#"{"cl_type":{"Option":"PublicKey"},"parsed":"0203f991f944d1e1954a7fc8b9bf62e0d78f015f4c07762d505e20e6c45260a3661b"}"#,
             );
             check_to_json(
                 Option::<PublicKey>::None,
@@ -1154,19 +1154,19 @@ mod tests {
             let public_key = PublicKey::from(&secret_key);
             check_to_json(
                 Result::<PublicKey, i32>::Ok(public_key.clone()),
-                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"I32"}},"parsed":{"Ok":"0203F991f944d1E1954A7fC8B9BF62e0d78F015f4c07762d505e20e6c45260A3661B"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"I32"}},"parsed":{"Ok":"0203f991f944d1e1954a7fc8b9bf62e0d78f015f4c07762d505e20e6c45260a3661b"}}"#,
             );
             check_to_json(
                 Result::<PublicKey, u32>::Ok(public_key.clone()),
-                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"U32"}},"parsed":{"Ok":"0203F991f944d1E1954A7fC8B9BF62e0d78F015f4c07762d505e20e6c45260A3661B"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"U32"}},"parsed":{"Ok":"0203f991f944d1e1954a7fc8b9bf62e0d78f015f4c07762d505e20e6c45260a3661b"}}"#,
             );
             check_to_json(
                 Result::<PublicKey, ()>::Ok(public_key.clone()),
-                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"Unit"}},"parsed":{"Ok":"0203F991f944d1E1954A7fC8B9BF62e0d78F015f4c07762d505e20e6c45260A3661B"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"Unit"}},"parsed":{"Ok":"0203f991f944d1e1954a7fc8b9bf62e0d78f015f4c07762d505e20e6c45260a3661b"}}"#,
             );
             check_to_json(
                 Result::<PublicKey, String>::Ok(public_key),
-                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"String"}},"parsed":{"Ok":"0203F991f944d1E1954A7fC8B9BF62e0d78F015f4c07762d505e20e6c45260A3661B"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"String"}},"parsed":{"Ok":"0203f991f944d1e1954a7fc8b9bf62e0d78f015f4c07762d505e20e6c45260a3661b"}}"#,
             );
             check_to_json(
                 Result::<PublicKey, i32>::Err(-1),

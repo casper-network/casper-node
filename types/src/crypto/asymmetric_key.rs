@@ -10,6 +10,7 @@ use core::{
     convert::TryFrom,
     fmt::{self, Debug, Display, Formatter},
     hash::{Hash, Hasher},
+    iter,
     marker::Copy,
 };
 
@@ -67,11 +68,14 @@ pub const SYSTEM_ACCOUNT: PublicKey = PublicKey::System;
 pub trait AsymmetricType<'a>
 where
     Self: 'a + Sized + Tagged<u8>,
-    &'a Self: Into<Vec<u8>>,
+    Vec<u8>: From<&'a Self>,
 {
     /// Converts `self` to hex, where the first byte represents the algorithm tag.
     fn to_hex(&'a self) -> String {
-        checksummed_hex::encode(&vec![self.tag()]) + &checksummed_hex::encode(&self.into())
+        let bytes = iter::once(self.tag())
+            .chain(Vec::<u8>::from(self))
+            .collect::<Vec<u8>>();
+        base16::encode_lower(&bytes)
     }
 
     /// Tries to decode `Self` from its hex-representation.  The hex format should be as produced
@@ -268,7 +272,7 @@ impl Debug for PublicKey {
             formatter,
             "PublicKey::{}({})",
             self.variant_name(),
-            checksummed_hex::encode(&Into::<Vec<u8>>::into(self))
+            base16::encode_lower(&Into::<Vec<u8>>::into(self))
         )
     }
 }
@@ -399,8 +403,7 @@ impl JsonSchema for PublicKey {
         let schema = gen.subschema_for::<String>();
         let mut schema_object = schema.into_object();
         schema_object.metadata().description = Some(
-            "Checksummed hex-encoded cryptographic public key, including the algorithm tag prefix."
-                .to_string(),
+            "Hex-encoded cryptographic public key, including the algorithm tag prefix.".to_string(),
         );
         schema_object.into()
     }
@@ -501,7 +504,7 @@ impl Debug for Signature {
             formatter,
             "Signature::{}({})",
             self.variant_name(),
-            checksummed_hex::encode(&Into::<Vec<u8>>::into(*self))
+            base16::encode_lower(&Into::<Vec<u8>>::into(*self))
         )
     }
 }
@@ -653,8 +656,7 @@ impl JsonSchema for Signature {
         let schema = gen.subschema_for::<String>();
         let mut schema_object = schema.into_object();
         schema_object.metadata().description = Some(
-            "Checksummed hex-encoded cryptographic signature, including the algorithm tag prefix."
-                .to_string(),
+            "Hex-encoded cryptographic signature, including the algorithm tag prefix.".to_string(),
         );
         schema_object.into()
     }
