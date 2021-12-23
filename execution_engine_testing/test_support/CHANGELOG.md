@@ -13,6 +13,9 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+### Changed
+* `deploy_hash` field is now required field in `DeployItemBuilder`
+
 
 
 ## 2.0.3 - 2021-12-06
