@@ -148,7 +148,8 @@ fn should_run_ee_1152_regression_test() {
         .with_protocol_version(ProtocolVersion::V1_0_0)
         // Next era id is used for returning future era validators, which we don't need to inspect
         // in this test.
-        .with_next_era_id(era_id);
+        .with_next_era_id(era_id)
+        .with_era_end_timestamp_millis(timestamp_millis);
 
     for (public_key, _stake) in trusted_era_validators.clone().into_iter() {
         let reward_amount = BLOCK_REWARD / trusted_era_validators.len() as u64;

@@ -9,6 +9,7 @@ use crate::{
     core::{
         engine_state::{genesis::GenesisError, upgrade::ProtocolUpgradeError},
         execution,
+        runtime::stack,
     },
     shared::wasm_prep,
     storage,
@@ -78,6 +79,9 @@ pub enum Error {
     /// Missing system contract hash.
     #[error("Missing system contract hash: {0}")]
     MissingSystemContractHash(String),
+    /// An attempt to push to the runtime stack while already at the maximum height.
+    #[error("Runtime stack overflow")]
+    RuntimeStackOverflow,
     /// Failed to get the set of Key::Withdraw from global state.
     #[error("Failed to get withdraw keys")]
     FailedToGetWithdrawKeys,
@@ -132,6 +136,12 @@ impl From<mint::Error> for Error {
 impl From<GenesisError> for Error {
     fn from(genesis_error: GenesisError) -> Self {
         Self::Genesis(Box::new(genesis_error))
+    }
+}
+
+impl From<stack::RuntimeStackOverflow> for Error {
+    fn from(_: stack::RuntimeStackOverflow) -> Self {
+        Self::RuntimeStackOverflow
     }
 }
 

@@ -5,6 +5,7 @@ mod externals;
 mod handle_payment_internal;
 mod host_function_flag;
 mod mint_internal;
+pub mod stack;
 mod standard_payment_internal;
 
 use std::{
@@ -54,6 +55,7 @@ use crate::{
     },
     storage::global_state::StateReader,
 };
+pub use stack::{RuntimeStack, RuntimeStackFrame, RuntimeStackOverflow};
 
 use self::host_function_flag::HostFunctionFlag;
 
@@ -64,7 +66,7 @@ pub struct Runtime<'a, R> {
     module: Module,
     host_buffer: Option<CLValue>,
     context: RuntimeContext<'a, R>,
-    call_stack: Vec<CallStackElement>,
+    stack: RuntimeStack,
     host_function_flag: HostFunctionFlag,
 }
 
@@ -986,48 +988,44 @@ where
         memory: MemoryRef,
         module: Module,
         context: RuntimeContext<'a, R>,
-        call_stack: Vec<CallStackElement>,
+        stack: RuntimeStack,
     ) -> Self {
-        Self::check_preconditions(&call_stack);
+        Self::check_preconditions(&stack);
         Runtime {
             config,
             memory,
             module,
             host_buffer: None,
             context,
-            call_stack,
+            stack,
             host_function_flag: HostFunctionFlag::default(),
         }
     }
 
     /// Creates a new runtime instance by cloning the config, memory, module and host function flag
     /// from `self`.
-    fn new_from_self(
-        &self,
-        context: RuntimeContext<'a, R>,
-        call_stack: Vec<CallStackElement>,
-    ) -> Self {
-        Self::check_preconditions(&call_stack);
+    fn new_from_self(&self, context: RuntimeContext<'a, R>, stack: RuntimeStack) -> Self {
+        Self::check_preconditions(&stack);
         Runtime {
             config: self.config,
             memory: self.memory.clone(),
             module: self.module.clone(),
             host_buffer: None,
             context,
-            call_stack,
+            stack,
             host_function_flag: self.host_function_flag.clone(),
         }
     }
 
     /// Preconditions that would render the system inconsistent if violated. Those are strictly
     /// programming errors.
-    fn check_preconditions(call_stack: &[CallStackElement]) {
-        if call_stack.is_empty() {
+    fn check_preconditions(stack: &RuntimeStack) {
+        if stack.is_empty() {
             error!("Call stack should not be empty while creating a new Runtime instance");
             debug_assert!(false);
         }
 
-        if call_stack.first().unwrap().contract_hash().is_some() {
+        if stack.first_frame().unwrap().contract_hash().is_some() {
             error!("First element of the call stack should always represent a Session call");
             debug_assert!(false);
         }
@@ -1082,9 +1080,9 @@ where
         self.context.charge_system_contract_call(amount)
     }
 
-    /// Returns current call stack.
-    pub fn call_stack(&self) -> &Vec<CallStackElement> {
-        &self.call_stack
+    /// Runtime stack.
+    pub(crate) fn stack(&self) -> &RuntimeStack {
+        &self.stack
     }
 
     /// Returns bytes from the WASM memory instance.
@@ -1259,7 +1257,7 @@ where
 
     /// Gets the immediate caller of the current execution
     fn get_immediate_caller(&self) -> Option<&CallStackElement> {
-        self.call_stack().iter().rev().nth(1)
+        self.stack.previous_frame()
     }
 
     /// Checks if immediate caller is of session type of the same account as the provided account
@@ -1308,7 +1306,7 @@ where
             // Exit early if the host buffer is already occupied
             return Ok(Err(ApiError::HostBufferFull));
         }
-        let call_stack = self.call_stack();
+        let call_stack = self.stack.call_stack_elements();
         let call_stack_len = call_stack.len() as u32;
         let call_stack_len_bytes = call_stack_len.to_le_bytes();
 
@@ -1445,7 +1443,7 @@ where
         named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
-        call_stack: Vec<CallStackElement>,
+        stack: RuntimeStack,
     ) -> Result<CLValue, Error> {
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
@@ -1487,7 +1485,7 @@ where
             transfers,
         );
 
-        let mut mint_runtime = self.new_from_self(mint_context, call_stack);
+        let mut mint_runtime = self.new_from_self(mint_context, stack);
 
         let system_config = self.config.system_config();
         let mint_costs = system_config.mint_costs();
@@ -1591,7 +1589,7 @@ where
         named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
-        call_stack: Vec<CallStackElement>,
+        stack: RuntimeStack,
     ) -> Result<CLValue, Error> {
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
@@ -1633,7 +1631,7 @@ where
             transfers,
         );
 
-        let mut runtime = self.new_from_self(runtime_context, call_stack);
+        let mut runtime = self.new_from_self(runtime_context, stack);
 
         let system_config = self.config.system_config();
         let handle_payment_costs = system_config.handle_payment_costs();
@@ -1710,7 +1708,7 @@ where
         named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
-        call_stack: Vec<CallStackElement>,
+        stack: RuntimeStack,
     ) -> Result<CLValue, Error> {
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
@@ -1753,7 +1751,7 @@ where
             transfers,
         );
 
-        let mut runtime = self.new_from_self(runtime_context, call_stack);
+        let mut runtime = self.new_from_self(runtime_context, stack);
 
         let system_config = self.config.system_config();
         let auction_costs = system_config.auction_costs();
@@ -2131,12 +2129,12 @@ where
             }
 
             if self.is_mint(key) {
-                let mut call_stack = self.call_stack.to_owned();
+                let mut stack = self.stack.clone();
                 let call_stack_element = CallStackElement::stored_contract(
                     contract.contract_package_hash(),
                     contract_hash,
                 );
-                call_stack.push(call_stack_element);
+                stack.push(call_stack_element)?;
 
                 return self.call_host_mint(
                     self.context.protocol_version(),
@@ -2144,15 +2142,15 @@ where
                     &mut named_keys,
                     &args,
                     &extra_keys,
-                    call_stack,
+                    stack,
                 );
             } else if self.is_handle_payment(key) {
-                let mut call_stack = self.call_stack.to_owned();
+                let mut stack = self.stack.clone();
                 let call_stack_element = CallStackElement::stored_contract(
                     contract.contract_package_hash(),
                     contract_hash,
                 );
-                call_stack.push(call_stack_element);
+                stack.push(call_stack_element)?;
 
                 return self.call_host_handle_payment(
                     self.context.protocol_version(),
@@ -2160,15 +2158,15 @@ where
                     &mut named_keys,
                     &args,
                     &extra_keys,
-                    call_stack,
+                    stack,
                 );
             } else if self.is_auction(key) {
-                let mut call_stack = self.call_stack.to_owned();
+                let mut stack = self.stack.clone();
                 let call_stack_element = CallStackElement::stored_contract(
                     contract.contract_package_hash(),
                     contract_hash,
                 );
-                call_stack.push(call_stack_element);
+                stack.push(call_stack_element)?;
 
                 return self.call_host_auction(
                     self.context.protocol_version(),
@@ -2176,7 +2174,7 @@ where
                     &mut named_keys,
                     &args,
                     &extra_keys,
-                    call_stack,
+                    stack,
                 );
             }
 
@@ -2231,7 +2229,7 @@ where
             self.context.transfers().to_owned(),
         );
 
-        let mut call_stack = self.call_stack.to_owned();
+        let mut stack = self.stack.clone();
 
         let call_stack_element = match entry_point.entry_point_type() {
             EntryPointType::Session => CallStackElement::stored_session(
@@ -2244,9 +2242,9 @@ where
             }
         };
 
-        call_stack.push(call_stack_element);
+        stack.push(call_stack_element)?;
 
-        let mut runtime = Runtime::new(config, memory, module, context, call_stack);
+        let mut runtime = Runtime::new(config, memory, module, context, stack);
 
         let result = instance.invoke_export(entry_point_name, &[], &mut runtime);
 
