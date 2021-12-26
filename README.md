@@ -185,13 +185,15 @@ Some additional debug functionality is available, mainly allowed for inspections
 
 ### Event queue dump
 
-The event queue can be dumped by sending a `SIGUSR1` to the running node process, e.g. if the node's process ID was `$NODE_PID`:
+The event queue can be dumped by sending a `SIGUSR1` or `SIGUSR2` to the running node process, e.g. if the node's process ID was `$NODE_PID`:
 
 ```console
 kill -USR1 $NODE_PID
 ```
 
-This will create a `queue_dump.json` in the working directory of the node. A tool like [jq](https://stedolan.github.io/jq/) can then be used to format and display it:
+`USR1` will cause a debug/text representation to be dumped, `USR2` a JSON formatted version, which is likely much larger.
+
+Both variants will create a dump file in the working directory of the node. A tool like [jq](https://stedolan.github.io/jq/) can then be used to format and display the JSON representation:
 
 ```console
 $ jq < queue_dump.json
