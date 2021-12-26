@@ -3,12 +3,17 @@
 //! The console listens on a configurable unix socket for incoming connections and allows deep debug
 //! access to a running node via special commands.
 
-use std::{fs, io, path::{PathBuf, Path}};
+use std::{
+    fmt::{self, Display, Formatter},
+    fs, io,
+    path::{Path, PathBuf},
+};
 
 use datasize::DataSize;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
 use tokio::{net::UnixListener, sync::watch};
-use tracing::{debug, warn};
+use tracing::debug;
 
 use super::Component;
 use crate::{
@@ -24,7 +29,7 @@ mod util;
 
 /// Unix console component.
 #[derive(Debug, DataSize)]
-struct Console {
+pub(crate) struct Console {
     /// Sender, when dropped, will cause server and client connections to exit.
     #[data_size(skip)]
     shutdown_sender: watch::Sender<()>,
@@ -32,7 +37,7 @@ struct Console {
 
 /// Unix console configuration.
 #[derive(Debug, Deserialize)]
-struct Config {
+pub(crate) struct Config {
     /// Whether or not the console is enabled.
     enabled: bool,
     /// Path to listen on.
@@ -41,10 +46,9 @@ struct Config {
 
 impl Console {
     /// Creates a new Unix console component.
-    fn new(cfg: &WithDir<Config>) -> io::Result<(Self, Effects<Event>)> {
+    pub(crate) fn new(cfg: &WithDir<Config>) -> Result<(Self, Effects<Event>), Error> {
         let config = cfg.value();
         let (shutdown_sender, shutdown_receiver) = watch::channel(());
-
 
         if !config.enabled {
             // If not enabled, do not launch a background task, simply exit immediately.
@@ -62,7 +66,7 @@ impl Console {
 }
 
 /// Sets up a UNIX socket listener at the given path.
-/// 
+///
 /// If the socket already exists, an attempt to delete it is made. Errors during deletion are
 /// ignored, but may cause the subsequent socket opening to fail.
 fn setup_listener<P: AsRef<Path>>(path: P) -> io::Result<UnixListener> {
@@ -92,12 +96,27 @@ fn setup_listener<P: AsRef<Path>>(path: P) -> io::Result<UnixListener> {
 }
 
 /// Unix console event.
-type Event = ();
+#[derive(Debug, Serialize)]
+pub(crate) struct Event;
+
+/// A console initialization error.
+#[derive(Debug, Error)]
+pub(crate) enum Error {
+    /// Error setting up the console's unix socket listener.
+    #[error("could not setup console listener")]
+    SetupListener(#[from] io::Error),
+}
+
+impl Display for Event {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str("console event")
+    }
+}
 
 impl<REv> Component<REv> for Console {
-    type Event = ();
+    type Event = Event;
 
-    type ConstructionError = io::Error;
+    type ConstructionError = Error;
 
     fn handle_event(
         &mut self,
