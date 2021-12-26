@@ -6,7 +6,9 @@ use casper_engine_test_support::{
     DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{
-    core::engine_state::{EngineConfig, UpgradeConfig, DEFAULT_MAX_QUERY_DEPTH},
+    core::engine_state::{
+        EngineConfig, UpgradeConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+    },
     shared::{
         host_function_costs::{Cost, HostFunction, HostFunctionCosts},
         opcode_costs::OpcodeCosts,
@@ -711,6 +713,7 @@ fn make_engine_config(new_mint_costs: MintCosts, new_wasm_config: WasmConfig) ->
     EngineConfig::new(
         DEFAULT_MAX_QUERY_DEPTH,
         DEFAULT_MAX_ASSOCIATED_KEYS,
+        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         new_wasm_config,
         new_system_config,
     )
