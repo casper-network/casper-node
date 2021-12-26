@@ -56,8 +56,18 @@ impl Console {
         // This would be racy, but no one is racing us for the socket, so we'll just do a naive
         // check-then-delete :).
         if socket_path.exists() {
-            warn!(socket_path=%socket_path.display(), "found stale socket file, trying to remove");
-            fs::remove_file(&socket_path)?;
+            debug!(socket_path=%socket_path.display(), "found stale socket file, trying to remove");
+            match fs::remove_file(&socket_path) {
+                Ok(_) => {
+                    debug!("stale socket file removed");
+                },
+                Err(err) => {
+                    // This happens if a background tasks races us for the removal, as it usually
+                    // means the file is already gone. We can ignore this, but make note of it in
+                    // the log.
+                    debug!(%err, "could not remove stale socket file, assuming race with background task");
+                },
+            }
         }
 
         let listener = UnixListener::bind(socket_path.clone())?;
@@ -83,6 +93,7 @@ impl<REv> Component<REv> for Console {
         rng: &mut NodeRng,
         event: Event,
     ) -> Effects<Event> {
-        todo!()
+        // No events are processed in the component, as all requests are handled per-client in tasks.
+        Effects::new()
     }
 }
