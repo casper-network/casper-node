@@ -24,6 +24,7 @@ use crate::{
     components::{
         block_validator::{self, BlockValidator},
         chainspec_loader::{self, ChainspecLoader},
+        console::{self, Console},
         contract_runtime::{ContractRuntime, ContractRuntimeAnnouncement},
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server,
@@ -139,6 +140,10 @@ pub(crate) enum JoinerEvent {
     #[from]
     AddressGossiper(gossiper::Event<GossipedAddress>),
 
+    /// Console event.
+    #[from]
+    Console(console::Event),
+
     /// Requests.
     /// Linear chain block by hash fetcher request.
     #[from]
@@ -226,6 +231,7 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::ContractRuntime(_) => "ContractRuntime",
             JoinerEvent::LinearChain(_) => "LinearChain",
             JoinerEvent::AddressGossiper(_) => "AddressGossiper",
+            JoinerEvent::Console(_) => "Console",
             JoinerEvent::BlockFetcherRequest(_) => "BlockFetcherRequest",
             JoinerEvent::BlockByHeightFetcherRequest(_) => "BlockByHeightFetcherRequest",
             JoinerEvent::DeployFetcherRequest(_) => "DeployFetcherRequest",
@@ -313,6 +319,7 @@ impl Display for JoinerEvent {
                 write!(f, "block executor announcement: {}", announcement)
             }
             JoinerEvent::AddressGossiper(event) => write!(f, "address gossiper: {}", event),
+            JoinerEvent::Console(event) => write!(f, "console"),
             JoinerEvent::AddressGossiperAnnouncement(ann) => {
                 write!(f, "address gossiper announcement: {}", ann)
             }
@@ -352,6 +359,7 @@ pub(crate) struct Reactor {
     block_validator: BlockValidator<NodeId>,
     deploy_fetcher: Fetcher<Deploy>,
     linear_chain: linear_chain::LinearChainComponent<NodeId>,
+    console: Console,
     // Handles request for linear chain block by height.
     block_by_height_fetcher: Fetcher<BlockByHeight>,
     pub(super) block_header_by_hash_fetcher: Fetcher<BlockHeader>,
@@ -407,6 +415,8 @@ impl reactor::Reactor for Reactor {
 
         let metrics = Metrics::new(registry.clone());
 
+        let (console, console_effects) = Console::new(WithDir::new(&root, &config.console))?;
+
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
             config.network.clone(),
@@ -419,6 +429,7 @@ impl reactor::Reactor for Reactor {
         let linear_chain_fetcher = Fetcher::new("linear_chain", config.fetcher, registry)?;
 
         let mut effects = reactor::wrap_effects(JoinerEvent::SmallNetwork, small_network_effects);
+        effects.extend(reactor::wrap_effects(JoinerEvent::Console, console_effects));
 
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
@@ -535,6 +546,7 @@ impl reactor::Reactor for Reactor {
                 block_validator,
                 deploy_fetcher,
                 linear_chain,
+                console,
                 block_by_height_fetcher,
                 block_header_by_hash_fetcher,
                 block_header_with_metadata_fetcher:
@@ -815,6 +827,10 @@ impl reactor::Reactor for Reactor {
                 JoinerEvent::AddressGossiper,
                 self.address_gossiper
                     .handle_event(effect_builder, rng, event),
+            ),
+            JoinerEvent::Console(event) => reactor::wrap_effects(
+                JoinerEvent::Console,
+                self.console.handle_event(effect_builder, rng, event),
             ),
             JoinerEvent::AddressGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
                 gossiped_address,

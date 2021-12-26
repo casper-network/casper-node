@@ -42,4 +42,6 @@ pub(crate) struct Config {
     /// Block proposer configuration.
     #[serde(default)]
     pub(crate) block_proposer: BlockProposerConfig,
+    /// Debug console configuration.
+    pub(crate) console: ConsoleConfig,
 }
