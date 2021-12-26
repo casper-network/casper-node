@@ -32,6 +32,7 @@ mod util;
 pub(crate) struct Console {
     /// Sender, when dropped, will cause server and client connections to exit.
     #[data_size(skip)]
+    #[allow(dead_code)] // only used for its `Drop` impl.
     shutdown_sender: watch::Sender<()>,
 }
 
@@ -54,6 +55,7 @@ impl Console {
             // If not enabled, do not launch a background task, simply exit immediately.
             //
             // Having a shutdown sender around still is harmless.
+            debug!("console disabled");
             return Ok((Console { shutdown_sender }, Effects::new()));
         }
 
