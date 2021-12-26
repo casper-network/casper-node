@@ -36,7 +36,7 @@ pub(crate) struct Console {
 }
 
 /// Unix console configuration.
-#[derive(Debug, Deserialize)]
+#[derive(Clone, DataSize, Debug, Default, Deserialize)]
 pub(crate) struct Config {
     /// Whether or not the console is enabled.
     enabled: bool,
@@ -120,9 +120,9 @@ impl<REv> Component<REv> for Console {
 
     fn handle_event(
         &mut self,
-        effect_builder: EffectBuilder<REv>,
-        rng: &mut NodeRng,
-        event: Event,
+        _effect_builder: EffectBuilder<REv>,
+        _rng: &mut NodeRng,
+        _event: Event,
     ) -> Effects<Event> {
         // No events are processed in the component, as all requests are handled per-client in tasks.
         Effects::new()
