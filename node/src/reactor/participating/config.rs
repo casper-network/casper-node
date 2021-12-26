@@ -2,7 +2,7 @@ use datasize::DataSize;
 use serde::Deserialize;
 
 use crate::{
-    logging::LoggingConfig, types::NodeConfig, BlockProposerConfig, ConsensusConfig,
+    logging::LoggingConfig, types::NodeConfig, BlockProposerConfig, ConsensusConfig, ConsoleConfig,
     ContractRuntimeConfig, DeployAcceptorConfig, EventStreamServerConfig, FetcherConfig,
     GossipConfig, LinearChainSyncConfig, RestServerConfig, RpcServerConfig, SmallNetworkConfig,
     StorageConfig,

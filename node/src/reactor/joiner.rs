@@ -319,7 +319,7 @@ impl Display for JoinerEvent {
                 write!(f, "block executor announcement: {}", announcement)
             }
             JoinerEvent::AddressGossiper(event) => write!(f, "address gossiper: {}", event),
-            JoinerEvent::Console(event) => write!(f, "console"),
+            JoinerEvent::Console(_event) => write!(f, "console"),
             JoinerEvent::AddressGossiperAnnouncement(ann) => {
                 write!(f, "address gossiper announcement: {}", ann)
             }
@@ -415,7 +415,8 @@ impl reactor::Reactor for Reactor {
 
         let metrics = Metrics::new(registry.clone());
 
-        let (console, console_effects) = Console::new(WithDir::new(&root, &config.console))?;
+        let (console, console_effects) =
+            Console::new(&WithDir::new(&root, config.console.clone()))?;
 
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
