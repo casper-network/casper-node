@@ -31,6 +31,7 @@ use crate::{
         block_validator::{self, BlockValidator},
         chainspec_loader::{self, ChainspecLoader},
         consensus::{self, EraSupervisor, HighwayProtocol},
+        console::{self, Console},
         contract_runtime::{ContractRuntime, ContractRuntimeAnnouncement, ExecutionPreState},
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server::{self, EventStreamServer},
@@ -120,6 +121,9 @@ pub(crate) enum ParticipatingEvent {
     /// Linear chain event.
     #[from]
     LinearChain(#[serde(skip_serializing)] linear_chain::Event<NodeId>),
+    /// Console event.
+    #[from]
+    Console(console::Event),
 
     // Requests
     /// Contract runtime request.
@@ -218,6 +222,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::BlockValidator(_) => "BlockValidator",
             ParticipatingEvent::LinearChain(_) => "LinearChain",
             ParticipatingEvent::ContractRuntime(_) => "ContractRuntime",
+            ParticipatingEvent::Console(_) => "Console",
             ParticipatingEvent::NetworkRequest(_) => "NetworkRequest",
             ParticipatingEvent::NetworkInfoRequest(_) => "NetworkInfoRequest",
             ParticipatingEvent::DeployFetcherRequest(_) => "DeployFetcherRequest",
@@ -313,6 +318,7 @@ impl Display for ParticipatingEvent {
             }
             ParticipatingEvent::LinearChain(event) => write!(f, "linear-chain event {}", event),
             ParticipatingEvent::BlockValidator(event) => write!(f, "block validator: {}", event),
+            ParticipatingEvent::Console(event) => write!(f, "console: {}", event),
             ParticipatingEvent::NetworkRequest(req) => write!(f, "network request: {}", req),
             ParticipatingEvent::NetworkInfoRequest(req) => {
                 write!(f, "network info request: {}", req)
@@ -417,6 +423,7 @@ pub(crate) struct Reactor {
     block_proposer: BlockProposer,
     block_validator: BlockValidator<NodeId>,
     linear_chain: LinearChainComponent<NodeId>,
+    console: Console,
 
     // Non-components.
     #[data_size(skip)] // Never allocates heap data.
@@ -595,6 +602,9 @@ impl reactor::Reactor for Reactor {
 
         let metrics = Metrics::new(registry.clone());
 
+        let (console, console_effects) =
+            Console::new(&WithDir::new(&root, config.console.clone()))?;
+
         let effect_builder = EffectBuilder::new(event_queue);
 
         let address_gossiper =
@@ -654,6 +664,11 @@ impl reactor::Reactor for Reactor {
 
         let mut effects =
             reactor::wrap_effects(ParticipatingEvent::BlockProposer, block_proposer_effects);
+
+        effects.extend(reactor::wrap_effects(
+            ParticipatingEvent::Console,
+            console_effects,
+        ));
 
         let maybe_next_activation_point = chainspec_loader
             .next_upgrade()
@@ -727,6 +742,7 @@ impl reactor::Reactor for Reactor {
                 block_proposer,
                 block_validator,
                 linear_chain,
+                console,
                 memory_metrics,
                 event_queue_metrics,
             },
@@ -807,6 +823,10 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::LinearChain(event) => reactor::wrap_effects(
                 ParticipatingEvent::LinearChain,
                 self.linear_chain.handle_event(effect_builder, rng, event),
+            ),
+            ParticipatingEvent::Console(event) => reactor::wrap_effects(
+                ParticipatingEvent::Console,
+                self.console.handle_event(effect_builder, rng, event),
             ),
 
             // Requests:

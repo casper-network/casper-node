@@ -319,7 +319,7 @@ impl Display for JoinerEvent {
                 write!(f, "block executor announcement: {}", announcement)
             }
             JoinerEvent::AddressGossiper(event) => write!(f, "address gossiper: {}", event),
-            JoinerEvent::Console(_event) => write!(f, "console"),
+            JoinerEvent::Console(event) => write!(f, "console: {}", event),
             JoinerEvent::AddressGossiperAnnouncement(ann) => {
                 write!(f, "address gossiper announcement: {}", ann)
             }
