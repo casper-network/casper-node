@@ -3,7 +3,7 @@
 //! The console listens on a configurable unix socket for incoming connections and allows deep debug
 //! access to a running node via special commands.
 
-use std::{fs, io, path::PathBuf};
+use std::{fs, io, path::{PathBuf, Path}};
 
 use datasize::DataSize;
 use serde::Deserialize;
@@ -44,7 +44,7 @@ impl Console {
     fn new(cfg: &WithDir<Config>) -> io::Result<(Self, Effects<Event>)> {
         let config = cfg.value();
         let (shutdown_sender, shutdown_receiver) = watch::channel(());
-        let socket_path = cfg.with_dir(config.socket_path.clone());
+
 
         if !config.enabled {
             // If not enabled, do not launch a background task, simply exit immediately.
@@ -53,30 +53,42 @@ impl Console {
             return Ok((Console { shutdown_sender }, Effects::new()));
         }
 
-        // This would be racy, but no one is racing us for the socket, so we'll just do a naive
-        // check-then-delete :).
-        if socket_path.exists() {
-            debug!(socket_path=%socket_path.display(), "found stale socket file, trying to remove");
-            match fs::remove_file(&socket_path) {
-                Ok(_) => {
-                    debug!("stale socket file removed");
-                },
-                Err(err) => {
-                    // This happens if a background tasks races us for the removal, as it usually
-                    // means the file is already gone. We can ignore this, but make note of it in
-                    // the log.
-                    debug!(%err, "could not remove stale socket file, assuming race with background task");
-                },
-            }
-        }
-
-        let listener = UnixListener::bind(socket_path.clone())?;
-        debug!(local_addr=%ShowUnixAddr(&listener.local_addr()?), "console socket listening");
-
+        let socket_path = cfg.with_dir(config.socket_path.clone());
+        let listener = setup_listener(&socket_path)?;
         let server = tasks::server(socket_path, listener, shutdown_receiver);
 
         Ok((Console { shutdown_sender }, server.ignore()))
     }
+}
+
+/// Sets up a UNIX socket listener at the given path.
+/// 
+/// If the socket already exists, an attempt to delete it is made. Errors during deletion are
+/// ignored, but may cause the subsequent socket opening to fail.
+fn setup_listener<P: AsRef<Path>>(path: P) -> io::Result<UnixListener> {
+    let socket_path = path.as_ref();
+
+    // This would be racy, but no one is racing us for the socket, so we'll just do a naive
+    // check-then-delete :).
+    if socket_path.exists() {
+        debug!(socket_path=%socket_path.display(), "found stale socket file, trying to remove");
+        match fs::remove_file(&socket_path) {
+            Ok(_) => {
+                debug!("stale socket file removed");
+            }
+            Err(err) => {
+                // This happens if a background tasks races us for the removal, as it usually
+                // means the file is already gone. We can ignore this, but make note of it in
+                // the log.
+                debug!(%err, "could not remove stale socket file, assuming race with background task");
+            }
+        }
+    }
+
+    let listener = UnixListener::bind(socket_path)?;
+    debug!(local_addr=%ShowUnixAddr(&listener.local_addr()?), "console socket listening");
+
+    Ok(listener)
 }
 
 /// Unix console event.
