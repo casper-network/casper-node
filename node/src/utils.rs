@@ -8,6 +8,7 @@ pub(crate) mod pid_file;
 #[cfg(target_os = "linux")]
 pub(crate) mod rlimit;
 mod round_robin;
+pub(crate) mod umask;
 
 use std::{
     any,

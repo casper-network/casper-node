@@ -19,6 +19,7 @@ use super::Component;
 use crate::{
     effect::{EffectBuilder, EffectExt, Effects},
     types::NodeRng,
+    utils::umask,
     WithDir,
 };
 use util::ShowUnixAddr;
@@ -37,12 +38,24 @@ pub(crate) struct Console {
 }
 
 /// Unix console configuration.
-#[derive(Clone, DataSize, Debug, Default, Deserialize)]
+#[derive(Clone, DataSize, Debug, Deserialize)]
 pub(crate) struct Config {
     /// Whether or not the console is enabled.
     enabled: bool,
     /// Path to listen on.
     socket_path: PathBuf,
+    /// `umask` to apply before creating the socket.
+    socket_umask: u16,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            socket_path: "debug.socket".into(),
+            socket_umask: 0o077,
+        }
+    }
 }
 
 impl Console {
@@ -60,7 +73,7 @@ impl Console {
         }
 
         let socket_path = cfg.with_dir(config.socket_path.clone());
-        let listener = setup_listener(&socket_path)?;
+        let listener = setup_listener(&socket_path, config.socket_umask)?;
         let server = tasks::server(socket_path, listener, shutdown_receiver);
 
         Ok((Console { shutdown_sender }, server.ignore()))
@@ -71,7 +84,7 @@ impl Console {
 ///
 /// If the socket already exists, an attempt to delete it is made. Errors during deletion are
 /// ignored, but may cause the subsequent socket opening to fail.
-fn setup_listener<P: AsRef<Path>>(path: P) -> io::Result<UnixListener> {
+fn setup_listener<P: AsRef<Path>>(path: P, socket_umask: umask::Mode) -> io::Result<UnixListener> {
     let socket_path = path.as_ref();
 
     // This would be racy, but no one is racing us for the socket, so we'll just do a naive
@@ -91,7 +104,12 @@ fn setup_listener<P: AsRef<Path>>(path: P) -> io::Result<UnixListener> {
         }
     }
 
+    // This is not thread-safe, as it will set the umask for the entire process, but we assume that
+    // initalization happens "sufficiently single-threaded".
+    let umask_guard = umask::temp_umask(socket_umask);
     let listener = UnixListener::bind(socket_path)?;
+    drop(umask_guard);
+
     debug!(local_addr=%ShowUnixAddr(&listener.local_addr()?), "console socket listening");
 
     Ok(listener)
