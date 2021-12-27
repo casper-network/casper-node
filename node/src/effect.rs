@@ -59,6 +59,7 @@
 //! some point. Failing to do so will result in a resource leak.
 
 pub(crate) mod announcements;
+mod console;
 pub(crate) mod requests;
 
 use std::{
@@ -74,7 +75,7 @@ use std::{
 use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
 use once_cell::sync::Lazy;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use smallvec::{smallvec, SmallVec};
 use tokio::{sync::Semaphore, time};
 #[cfg(not(feature = "fast-sync"))]
@@ -126,7 +127,10 @@ use requests::{
     NetworkRequest, StateStoreRequest, StorageRequest,
 };
 
-use self::announcements::{BlockProposerAnnouncement, BlocklistAnnouncement};
+use self::{
+    announcements::{BlockProposerAnnouncement, BlocklistAnnouncement},
+    console::DumpConsensusStateRequest,
+};
 use crate::components::contract_runtime::{
     BlockAndExecutionEffects, BlockExecutionError, ExecutionPreState,
 };
@@ -1801,6 +1805,19 @@ impl<REv> EffectBuilder<REv> {
         .await
         .into_iter()
         .collect()
+    }
+
+    /// Dump consensus state for a specific era, using the supplied function to serialize the output.
+    pub(crate) async fn console_dump_consensus_state(
+        self,
+        era_id: Option<EraId>,
+        serializer: Box<dyn FnOnce(&dyn erased_serde::Serialize) -> Vec<u8>>,
+    ) -> Vec<u8> where REv: From<DumpConsensusStateRequest> {
+        self.make_request(|responder| DumpConsensusStateRequest {
+            era_id,
+            serializer,
+            responder,
+        }, QueueKind::Control).await
     }
 }
 

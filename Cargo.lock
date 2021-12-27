@@ -537,6 +537,7 @@ dependencies = [
  "ed25519-dalek",
  "either",
  "enum-iterator",
+ "erased-serde",
  "fake_instant",
  "fs2",
  "futures",
@@ -1655,9 +1656,9 @@ dependencies = [
 
 [[package]]
 name = "erased-serde"
-version = "0.3.16"
+version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3de9ad4541d99dc22b59134e7ff8dc3d6c988c89ecd7324bf10a8362b07a2afa"
+checksum = "44a5d80251b806a14cd3e4e1a582e912d5cbf6904ab19fdefbd7a56adca088e1"
 dependencies = [
  "serde",
 ]
