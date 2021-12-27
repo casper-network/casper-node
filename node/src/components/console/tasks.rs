@@ -4,6 +4,8 @@ use std::{
     path::PathBuf,
 };
 
+use crate::effect::EffectBuilder;
+
 use super::{
     command::{Action, Command, OutputFormat},
     util::ShowUnixAddr,
@@ -81,7 +83,15 @@ impl Display for Session {
 
 impl Session {
     /// Processes a single command line sent from a client.
-    async fn process_line(&mut self, writer: &mut OwnedWriteHalf, line: &str) -> io::Result<()> {
+    async fn process_line<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        writer: &mut OwnedWriteHalf,
+        line: &str,
+    ) -> io::Result<()>
+    where
+        REv: Send,
+    {
         debug!(%line, "line received");
         match Command::from_line(line) {
             Ok(ref cmd) => {
@@ -184,7 +194,14 @@ impl Session {
 /// The handler itself will buffer an unlimited amount of data if no newline is encountered in the
 /// input stream. For this reason ensure that only trusted client connect to the socket producing
 /// the passed in `stream`.
-async fn handler(stream: UnixStream, mut shutdown_receiver: watch::Receiver<()>) -> io::Result<()> {
+async fn handler<REv>(
+    effect_builder: EffectBuilder<REv>,
+    stream: UnixStream,
+    mut shutdown_receiver: watch::Receiver<()>,
+) -> io::Result<()>
+where
+    REv: Send,
+{
     debug!("accepted new connection on console socket");
 
     let (reader, mut writer) = stream.into_split();
@@ -198,7 +215,9 @@ async fn handler(stream: UnixStream, mut shutdown_receiver: watch::Receiver<()>)
             Either::Left(_) => info!("shutting down console connection to client"),
             Either::Right((line_result, _)) => {
                 if let Some(line) = line_result? {
-                    session.process_line(&mut writer, line.as_str()).await?;
+                    session
+                        .process_line(effect_builder, &mut writer, line.as_str())
+                        .await?;
                 } else {
                     info!("client closed console connection");
                     break Ok(());
@@ -209,11 +228,14 @@ async fn handler(stream: UnixStream, mut shutdown_receiver: watch::Receiver<()>)
 }
 
 /// Server task for console.
-pub(super) async fn server(
+pub(super) async fn server<REv>(
+    effect_builder: EffectBuilder<REv>,
     socket_path: PathBuf,
     listener: UnixListener,
     mut shutdown_receiver: watch::Receiver<()>,
-) {
+) where
+    REv: Send,
+{
     let handling_shutdown_receiver = shutdown_receiver.clone();
     let mut next_client_id: u64 = 0;
     let accept_connections = async move {
@@ -231,7 +253,8 @@ pub(super) async fn server(
                     next_client_id += 1;
 
                     tokio::spawn(
-                        handler(stream, handling_shutdown_receiver.clone()).instrument(span),
+                        handler(effect_builder, stream, handling_shutdown_receiver.clone())
+                            .instrument(span),
                     );
                 }
                 Err(err) => {

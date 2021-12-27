@@ -416,7 +416,7 @@ impl reactor::Reactor for Reactor {
         let metrics = Metrics::new(registry.clone());
 
         let (console, console_effects) =
-            Console::new(&WithDir::new(&root, config.console.clone()))?;
+            Console::new(&WithDir::new(&root, config.console.clone()), event_queue)?;
 
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,

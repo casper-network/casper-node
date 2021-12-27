@@ -18,6 +18,7 @@ use tracing::debug;
 use super::Component;
 use crate::{
     effect::{EffectBuilder, EffectExt, Effects},
+    reactor::EventQueueHandle,
     types::NodeRng,
     utils::umask,
     WithDir,
@@ -60,7 +61,13 @@ impl Default for Config {
 
 impl Console {
     /// Creates a new Unix console component.
-    pub(crate) fn new(cfg: &WithDir<Config>) -> Result<(Self, Effects<Event>), Error> {
+    pub(crate) fn new<REv>(
+        cfg: &WithDir<Config>,
+        event_queue: EventQueueHandle<REv>,
+    ) -> Result<(Self, Effects<Event>), Error>
+    where
+        REv: Send,
+    {
         let config = cfg.value();
         let (shutdown_sender, shutdown_receiver) = watch::channel(());
 
@@ -74,7 +81,12 @@ impl Console {
 
         let socket_path = cfg.with_dir(config.socket_path.clone());
         let listener = setup_listener(&socket_path, config.socket_umask)?;
-        let server = tasks::server(socket_path, listener, shutdown_receiver);
+        let server = tasks::server(
+            EffectBuilder::new(event_queue),
+            socket_path,
+            listener,
+            shutdown_receiver,
+        );
 
         Ok((Console { shutdown_sender }, server.ignore()))
     }

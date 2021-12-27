@@ -603,7 +603,7 @@ impl reactor::Reactor for Reactor {
         let metrics = Metrics::new(registry.clone());
 
         let (console, console_effects) =
-            Console::new(&WithDir::new(&root, config.console.clone()))?;
+            Console::new(&WithDir::new(&root, config.console.clone()), event_queue)?;
 
         let effect_builder = EffectBuilder::new(event_queue);
 
