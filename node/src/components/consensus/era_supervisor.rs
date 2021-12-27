@@ -5,6 +5,7 @@
 //! it assumes is the concept of era/epoch and that each era runs separate consensus instance.
 //! Most importantly, it doesn't care about what messages it's forwarding.
 
+pub(super) mod debug;
 mod era;
 
 use std::{

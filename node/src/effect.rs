@@ -59,7 +59,7 @@
 //! some point. Failing to do so will result in a resource leak.
 
 pub(crate) mod announcements;
-mod console;
+pub(crate) mod console;
 pub(crate) mod requests;
 
 use std::{
@@ -75,7 +75,7 @@ use std::{
 use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
 use once_cell::sync::Lazy;
-use serde::{Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use smallvec::{smallvec, SmallVec};
 use tokio::{sync::Semaphore, time};
 #[cfg(not(feature = "fast-sync"))]
@@ -102,7 +102,7 @@ use crate::{
     components::{
         block_validator::ValidatingBlock,
         chainspec_loader::{CurrentRunInfo, NextUpgrade},
-        consensus::{BlockContext, ClContext, ValidatorChange},
+        consensus::{BlockContext, ClContext, EraDump, ValidatorChange},
         contract_runtime::EraValidatorsRequest,
         deploy_acceptor,
         fetcher::FetchResult,
@@ -1811,13 +1811,20 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn console_dump_consensus_state(
         self,
         era_id: Option<EraId>,
-        serializer: Box<dyn FnOnce(&dyn erased_serde::Serialize) -> Vec<u8>>,
-    ) -> Vec<u8> where REv: From<DumpConsensusStateRequest> {
-        self.make_request(|responder| DumpConsensusStateRequest {
-            era_id,
-            serializer,
-            responder,
-        }, QueueKind::Control).await
+        serialize: Box<dyn FnOnce(&EraDump) -> Vec<u8> + Send>,
+    ) -> Vec<u8>
+    where
+        REv: From<DumpConsensusStateRequest>,
+    {
+        self.make_request(
+            |responder| DumpConsensusStateRequest {
+                era_id,
+                serialize,
+                responder,
+            },
+            QueueKind::Control,
+        )
+        .await
     }
 }
 

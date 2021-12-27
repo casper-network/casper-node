@@ -35,6 +35,7 @@ use crate::{
     components::Component,
     effect::{
         announcements::{BlocklistAnnouncement, ConsensusAnnouncement},
+        console::DumpConsensusStateRequest,
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
             ContractRuntimeRequest, LinearChainRequest, NetworkInfoRequest, NetworkRequest,
@@ -52,6 +53,7 @@ use crate::{
 pub(crate) use cl_context::ClContext;
 pub(crate) use config::Config;
 pub(crate) use consensus_protocol::{BlockContext, EraReport, ProposedBlock};
+pub(crate) use era_supervisor::debug::EraDump;
 pub(crate) use era_supervisor::EraSupervisor;
 pub(crate) use protocols::highway::HighwayProtocol;
 use traits::NodeIdT;
@@ -136,6 +138,9 @@ pub(crate) enum Event<I> {
     },
     /// Got the result of checking for an upgrade activation point.
     GotUpgradeActivationPoint(ActivationPoint),
+    /// Dump state for debugging purposes.
+    #[from]
+    DumpState(DumpConsensusStateRequest),
 }
 
 impl Debug for ConsensusMessage {
@@ -235,6 +240,7 @@ impl<I: Debug> Display for Event<I> {
             Event::GotUpgradeActivationPoint(activation_point) => {
                 write!(f, "new upgrade activation point: {:?}", activation_point)
             }
+            Event::DumpState(req) => Display::fmt(req, f),
         }
     }
 }
@@ -356,6 +362,15 @@ where
             Event::ConsensusRequest(ConsensusRequest::ValidatorChanges(responder)) => {
                 let validator_changes = self.get_validator_changes();
                 responder.respond(validator_changes).ignore()
+            }
+            Event::DumpState(req @ DumpConsensusStateRequest { era_id, .. }) => {
+                // Currently not implemented. Create a sample value to send back.
+                let data = ();
+                let dump = EraDump {
+                    id: era_id.unwrap_or_default(),
+                    data: &data,
+                };
+                req.answer(&dump).ignore()
             }
         }
     }
