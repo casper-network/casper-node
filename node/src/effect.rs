@@ -1362,7 +1362,10 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Retrieves finalized blocks that were created more recently than the deploy TTL.
+    /// Retrieves finalized blocks with timestamps no older than the maximum deploy TTL.
+    ///
+    /// These blocks contain all deploy and transfer hashes that are known to be finalized but
+    /// may not have expired yet.
     pub(crate) async fn get_finalized_blocks(self, ttl: TimeDiff) -> Vec<Block>
     where
         REv: From<StorageRequest>,
