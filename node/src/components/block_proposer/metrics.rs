@@ -5,7 +5,7 @@ use crate::unregister_metric;
 
 /// Metrics for the block proposer.
 #[derive(DataSize, Debug, Clone)]
-pub(super) struct BlockProposerMetrics {
+pub(super) struct Metrics {
     /// Amount of pending deploys
     #[data_size(skip)]
     pub(super) pending_deploys: IntGauge,
@@ -14,19 +14,19 @@ pub(super) struct BlockProposerMetrics {
     registry: Registry,
 }
 
-impl BlockProposerMetrics {
+impl Metrics {
     /// Creates a new instance of the block proposer metrics.
     pub fn new(registry: Registry) -> Result<Self, prometheus::Error> {
-        let pending_deploys = IntGauge::new("pending_deploy", "amount of pending deploys")?;
+        let pending_deploys = IntGauge::new("pending_deploy", "the number of pending deploys")?;
         registry.register(Box::new(pending_deploys.clone()))?;
-        Ok(BlockProposerMetrics {
+        Ok(Metrics {
             pending_deploys,
             registry,
         })
     }
 }
 
-impl Drop for BlockProposerMetrics {
+impl Drop for Metrics {
     fn drop(&mut self) {
         unregister_metric!(self.registry, self.pending_deploys);
     }
