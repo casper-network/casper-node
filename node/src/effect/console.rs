@@ -18,9 +18,9 @@ pub(crate) struct DumpConsensusStateRequest {
     /// Serialization function to serialize the given era with.
     #[data_size(skip)]
     #[serde(skip)]
-    pub(crate) serialize: Box<dyn FnOnce(Option<&EraDump>) -> Vec<u8> + Send>,
+    pub(crate) serialize: Box<dyn FnOnce(Option<&EraDump>) -> Result<Vec<u8>, String> + Send>,
     /// Responder to send the serialized representation into.
-    pub(crate) responder: Responder<Vec<u8>>,
+    pub(crate) responder: Responder<Result<Vec<u8>, String>>,
 }
 
 impl DumpConsensusStateRequest {

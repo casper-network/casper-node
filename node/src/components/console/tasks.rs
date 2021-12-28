@@ -85,11 +85,11 @@ impl Display for Session {
 }
 
 impl Session {
-    fn create_serializer(&self) -> Box<dyn FnOnce(Option<&EraDump>) -> Vec<u8> + Send> {
+    fn create_serializer(&self) -> Box<dyn FnOnce(Option<&EraDump>) -> Result<Vec<u8>, String> + Send> {
         match self.output {
             OutputFormat::Interactive => todo!(),
             OutputFormat::Json => {
-                Box::new(|data: Option<&EraDump>| serde_json::to_vec(&data).expect("TODO"))
+                Box::new(|data: Option<&EraDump>| serde_json::to_vec(&data).map_err(|err| format!("failed to serialized era dump: {}", err)))
             }
             OutputFormat::Bincode => todo!(),
         }
@@ -140,10 +140,17 @@ impl Session {
                         let output = effect_builder
                             .console_dump_consensus_state(None, self.create_serializer())
                             .await;
-                        self.send_outcome(writer, &Outcome::success("dumping consensus state"))
-                            .await?;
-                        let state = ConsensusState::example();
-                        self.send_to_client(writer, &state).await?;
+
+                        match output {
+                            Ok(ref data) => {
+                                self.send_outcome(writer, &Outcome::success("dumping consensus state"))
+                                .await?;
+                                writer.write_all(data).await?;
+                            },
+                            Err(err) => {
+                                self.send_outcome(writer, &Outcome::failed(err)).await?;
+                            },
+                        }
                     }
                 };
             }
@@ -297,33 +304,5 @@ pub(super) async fn server<REv>(
         Err(_) => {
             warn!(socket_path=%socket_path.display(), "could not remove socket file");
         }
-    }
-}
-
-/// A dummy consensus state, to be replaced with a proper serialization.
-#[derive(Debug, Serialize)]
-struct ConsensusState {
-    this: u8,
-    is: Vec<u8>,
-    example: u128,
-    consensus: u16,
-    state: u32,
-}
-
-impl ConsensusState {
-    fn example() -> Self {
-        ConsensusState {
-            this: 123,
-            is: vec![5, 6, 7],
-            example: 99,
-            consensus: 9876,
-            state: 12345678,
-        }
-    }
-}
-
-impl Display for ConsensusState {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        Debug::fmt(self, f)
     }
 }
