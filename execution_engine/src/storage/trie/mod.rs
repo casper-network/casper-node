@@ -356,7 +356,7 @@ impl ::std::fmt::Debug for PointerBlock {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum TrieOrChunkedData {
     /// Represents a Merkle Trie.
-    Trie(Trie<Key, StoredValue>),
+    Trie(Box<Trie<Key, StoredValue>>),
     /// Represents a chunk of data with attached proof.
     ChunkWithProof(ChunkWithProof),
 }
@@ -419,7 +419,7 @@ impl FromBytes for TrieOrChunkedData {
         match tag {
             0 => {
                 let (trie, rem) = Trie::<Key, StoredValue>::from_bytes(rem)?;
-                Ok((TrieOrChunkedData::Trie(trie), rem))
+                Ok((TrieOrChunkedData::Trie(Box::new(trie)), rem))
             }
             1 => {
                 let (chunk, rem) = ChunkWithProof::from_bytes(rem)?;

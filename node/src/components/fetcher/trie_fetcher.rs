@@ -107,7 +107,7 @@ where
                 }
                 Some(partial_chunks) => {
                     debug!(%hash, "got a full trie");
-                    partial_chunks.responder.respond(Some(trie)).ignore()
+                    partial_chunks.responder.respond(Some(*trie)).ignore()
                 }
             },
             TrieOrChunkedData::ChunkWithProof(chunk) => {

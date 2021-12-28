@@ -205,7 +205,7 @@ impl StateProvider for LmdbGlobalState {
             |bytes| {
                 if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
                     let deserialized_trie = bytesrepr::deserialize(bytes.into())?;
-                    Ok(Some(TrieOrChunkedData::Trie(deserialized_trie)))
+                    Ok(Some(TrieOrChunkedData::Trie(Box::new(deserialized_trie))))
                 } else {
                     let chunk_with_proof = ChunkWithProof::new(bytes.as_slice(), index)
                         .map_err(|_| error::Error::ChunkWithProofError)?;
