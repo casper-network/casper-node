@@ -1811,7 +1811,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn console_dump_consensus_state(
         self,
         era_id: Option<EraId>,
-        serialize: Box<dyn FnOnce(&EraDump) -> Vec<u8> + Send>,
+        serialize: Box<dyn FnOnce(Option<&EraDump>) -> Vec<u8> + Send>,
     ) -> Vec<u8>
     where
         REv: From<DumpConsensusStateRequest>,

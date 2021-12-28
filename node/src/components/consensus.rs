@@ -370,7 +370,7 @@ where
                     id: era_id.unwrap_or_default(),
                     data: &data,
                 };
-                req.answer(&dump).ignore()
+                req.answer(Some(&dump)).ignore()
             }
         }
     }

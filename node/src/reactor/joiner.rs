@@ -943,7 +943,7 @@ impl reactor::Reactor for Reactor {
             }
             JoinerEvent::DumpConsensusStateRequest(req) => {
                 // We have no consensus running in the joiner, so we answer with `None`.
-                req.answer(todo!()).ignore()
+                req.answer(None).ignore()
             }
         }
     }

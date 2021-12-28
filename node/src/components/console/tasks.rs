@@ -85,11 +85,11 @@ impl Display for Session {
 }
 
 impl Session {
-    fn create_serializer(&self) -> Box<dyn FnOnce(&EraDump) -> Vec<u8> + Send> {
+    fn create_serializer(&self) -> Box<dyn FnOnce(Option<&EraDump>) -> Vec<u8> + Send> {
         match self.output {
             OutputFormat::Interactive => todo!(),
             OutputFormat::Json => {
-                Box::new(|data: &EraDump| serde_json::to_vec(data).expect("TODO"))
+                Box::new(|data: Option<&EraDump>| serde_json::to_vec(&data).expect("TODO"))
             }
             OutputFormat::Bincode => todo!(),
         }
