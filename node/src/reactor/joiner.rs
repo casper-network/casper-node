@@ -943,7 +943,8 @@ impl reactor::Reactor for Reactor {
             }
             JoinerEvent::DumpConsensusStateRequest(req) => {
                 // We have no consensus running in the joiner, so we answer with `None`.
-                req.answer(None).ignore()
+                req.answer(Err("node is joining, no running consensus".to_string()))
+                    .ignore()
             }
         }
     }

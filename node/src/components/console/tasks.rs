@@ -85,12 +85,13 @@ impl Display for Session {
 }
 
 impl Session {
-    fn create_serializer(&self) -> Box<dyn FnOnce(Option<&EraDump>) -> Result<Vec<u8>, String> + Send> {
+    fn create_serializer(&self) -> Box<dyn FnOnce(&EraDump) -> Result<Vec<u8>, String> + Send> {
         match self.output {
             OutputFormat::Interactive => todo!(),
-            OutputFormat::Json => {
-                Box::new(|data: Option<&EraDump>| serde_json::to_vec(&data).map_err(|err| format!("failed to serialized era dump: {}", err)))
-            }
+            OutputFormat::Json => Box::new(|data: &EraDump| {
+                serde_json::to_vec(&data)
+                    .map_err(|err| format!("failed to serialize era dump as JSON: {}", err))
+            }),
             OutputFormat::Bincode => todo!(),
         }
     }
@@ -143,13 +144,16 @@ impl Session {
 
                         match output {
                             Ok(ref data) => {
-                                self.send_outcome(writer, &Outcome::success("dumping consensus state"))
+                                self.send_outcome(
+                                    writer,
+                                    &Outcome::success("dumping consensus state"),
+                                )
                                 .await?;
                                 writer.write_all(data).await?;
-                            },
+                            }
                             Err(err) => {
                                 self.send_outcome(writer, &Outcome::failed(err)).await?;
-                            },
+                            }
                         }
                     }
                 };

@@ -18,16 +18,19 @@ pub(crate) struct DumpConsensusStateRequest {
     /// Serialization function to serialize the given era with.
     #[data_size(skip)]
     #[serde(skip)]
-    pub(crate) serialize: Box<dyn FnOnce(Option<&EraDump>) -> Result<Vec<u8>, String> + Send>,
+    pub(crate) serialize: Box<dyn FnOnce(&EraDump) -> Result<Vec<u8>, String> + Send>,
     /// Responder to send the serialized representation into.
     pub(crate) responder: Responder<Result<Vec<u8>, String>>,
 }
 
 impl DumpConsensusStateRequest {
-    pub(crate) fn answer(self, value: Option<&EraDump>) -> impl Future<Output = ()> {
-        let buf = (self.serialize)(value);
+    pub(crate) fn answer(self, value: Result<&EraDump, String>) -> impl Future<Output = ()> {
+        let answer = match value {
+            Ok(data) => (self.serialize)(data),
+            Err(err) => Err(err),
+        };
 
-        self.responder.respond(buf)
+        self.responder.respond(answer)
     }
 }
 

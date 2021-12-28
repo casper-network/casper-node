@@ -363,15 +363,9 @@ where
                 let validator_changes = self.get_validator_changes();
                 responder.respond(validator_changes).ignore()
             }
-            Event::DumpState(req @ DumpConsensusStateRequest { era_id, .. }) => {
-                // Currently not implemented. Create a sample value to send back.
-                let data = ();
-                let dump = EraDump {
-                    id: era_id.unwrap_or_default(),
-                    data: &data,
-                };
-                req.answer(Some(&dump)).ignore()
-            }
+            Event::DumpState(req @ DumpConsensusStateRequest { .. }) => req
+                .answer(Err("consensus dump is currently unimplemented".to_string()))
+                .ignore(),
         }
     }
 }
