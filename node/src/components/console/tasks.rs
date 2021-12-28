@@ -85,21 +85,24 @@ impl Display for Session {
 }
 
 impl Session {
-    fn create_serializer(&self) -> Box<dyn FnOnce(&EraDump) -> Result<Vec<u8>, String> + Send> {
+    /// Creates a serializer for an `EraDump`.
+    fn create_era_dump_serializer(&self) -> fn(&EraDump<'_>) -> Result<Vec<u8>, String> {
+        // TODO: This function could probably be a generic serialization function for any `T`, but
+        // the conversion is tricky due to the lifetime arguments on `EraDump` and has not been done yet.
         match self.output {
             OutputFormat::Interactive => {
-                Box::new(|data: &EraDump| {
+                |data: &EraDump| {
                     Ok(data.to_string().into_bytes())
-                })
+                }
             },
-            OutputFormat::Json => Box::new(|data: &EraDump| {
+            OutputFormat::Json => |data: &EraDump| {
                 serde_json::to_vec(&data)
                     .map_err(|err| format!("failed to serialize era dump as JSON: {}", err))
-            }),
-            OutputFormat::Bincode => Box::new(|data: &EraDump| {
+            },
+            OutputFormat::Bincode => |data: &EraDump| {
                 bincode::serialize(&data)
                     .map_err(|err| format!("failed to serialize era dump as bincode: {}", err))
-            }),
+            },
         }
     }
 
@@ -146,7 +149,7 @@ impl Session {
                     }
                     Action::DumpConsensus => {
                         let output = effect_builder
-                            .console_dump_consensus_state(None, self.create_serializer())
+                            .console_dump_consensus_state(None, self.create_era_dump_serializer())
                             .await;
 
                         match output {
