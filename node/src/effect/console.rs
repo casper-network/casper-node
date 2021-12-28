@@ -1,4 +1,7 @@
-use std::fmt::{Debug, Display};
+use std::{
+    borrow::Cow,
+    fmt::{Debug, Display},
+};
 
 use casper_types::EraId;
 use datasize::DataSize;
@@ -18,13 +21,16 @@ pub(crate) struct DumpConsensusStateRequest {
     /// Serialization function to serialize the given era with.
     #[data_size(skip)]
     #[serde(skip)]
-    pub(crate) serialize: fn(&EraDump) -> Result<Vec<u8>, String>,
+    pub(crate) serialize: fn(&EraDump) -> Result<Vec<u8>, Cow<'static, str>>,
     /// Responder to send the serialized representation into.
-    pub(crate) responder: Responder<Result<Vec<u8>, String>>,
+    pub(crate) responder: Responder<Result<Vec<u8>, Cow<'static, str>>>,
 }
 
 impl DumpConsensusStateRequest {
-    pub(crate) fn answer(self, value: Result<&EraDump, String>) -> impl Future<Output = ()> {
+    pub(crate) fn answer(
+        self,
+        value: Result<&EraDump, Cow<'static, str>>,
+    ) -> impl Future<Output = ()> {
         let answer = match value {
             Ok(data) => (self.serialize)(data),
             Err(err) => Err(err),

@@ -16,6 +16,7 @@ mod traits;
 mod validator_change;
 
 use std::{
+    borrow::Cow,
     collections::{BTreeMap, HashMap},
     convert::Infallible,
     fmt::{self, Debug, Display, Formatter},
@@ -364,7 +365,9 @@ where
                 responder.respond(validator_changes).ignore()
             }
             Event::DumpState(req @ DumpConsensusStateRequest { .. }) => req
-                .answer(Err("consensus dump is currently unimplemented".to_string()))
+                .answer(Err(Cow::Borrowed(
+                    "consensus dump is currently unimplemented",
+                )))
                 .ignore(),
         }
     }

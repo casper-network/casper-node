@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     fmt::{self, Debug, Display, Formatter},
     fs, io,
     path::PathBuf,
@@ -86,22 +87,20 @@ impl Display for Session {
 
 impl Session {
     /// Creates a serializer for an `EraDump`.
-    fn create_era_dump_serializer(&self) -> fn(&EraDump<'_>) -> Result<Vec<u8>, String> {
+    fn create_era_dump_serializer(&self) -> fn(&EraDump<'_>) -> Result<Vec<u8>, Cow<'static, str>> {
         // TODO: This function could probably be a generic serialization function for any `T`, but
         // the conversion is tricky due to the lifetime arguments on `EraDump` and has not been done yet.
         match self.output {
-            OutputFormat::Interactive => {
-                |data: &EraDump| {
-                    Ok(data.to_string().into_bytes())
-                }
-            },
+            OutputFormat::Interactive => |data: &EraDump| Ok(data.to_string().into_bytes()),
             OutputFormat::Json => |data: &EraDump| {
-                serde_json::to_vec(&data)
-                    .map_err(|err| format!("failed to serialize era dump as JSON: {}", err))
+                serde_json::to_vec(&data).map_err(|err| {
+                    Cow::Owned(format!("failed to serialize era dump as JSON: {}", err))
+                })
             },
             OutputFormat::Bincode => |data: &EraDump| {
-                bincode::serialize(&data)
-                    .map_err(|err| format!("failed to serialize era dump as bincode: {}", err))
+                bincode::serialize(&data).map_err(|err| {
+                    Cow::Owned(format!("failed to serialize era dump as bincode: {}", err))
+                })
             },
         }
     }
