@@ -87,12 +87,19 @@ impl Display for Session {
 impl Session {
     fn create_serializer(&self) -> Box<dyn FnOnce(&EraDump) -> Result<Vec<u8>, String> + Send> {
         match self.output {
-            OutputFormat::Interactive => todo!(),
+            OutputFormat::Interactive => {
+                Box::new(|data: &EraDump| {
+                    Ok(data.to_string().into_bytes())
+                })
+            },
             OutputFormat::Json => Box::new(|data: &EraDump| {
                 serde_json::to_vec(&data)
                     .map_err(|err| format!("failed to serialize era dump as JSON: {}", err))
             }),
-            OutputFormat::Bincode => todo!(),
+            OutputFormat::Bincode => Box::new(|data: &EraDump| {
+                bincode::serialize(&data)
+                    .map_err(|err| format!("failed to serialize era dump as bincode: {}", err))
+            }),
         }
     }
 
