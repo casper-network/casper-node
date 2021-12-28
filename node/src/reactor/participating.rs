@@ -52,6 +52,7 @@ use crate::{
             GossiperAnnouncement, LinearChainAnnouncement, LinearChainBlock, NetworkAnnouncement,
             RpcServerAnnouncement,
         },
+        console::DumpConsensusStateRequest,
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
             ContractRuntimeRequest, FetcherRequest, LinearChainRequest, MetricsRequest,
@@ -155,6 +156,9 @@ pub(crate) enum ParticipatingEvent {
     /// Request for state storage.
     #[from]
     StateStoreRequest(StateStoreRequest),
+    /// Consensus dump request.
+    #[from]
+    DumpConsensusStateRequest(DumpConsensusStateRequest),
 
     // Announcements
     /// Control announcement.
@@ -232,6 +236,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::ChainspecLoaderRequest(_) => "ChainspecLoaderRequest",
             ParticipatingEvent::StorageRequest(_) => "StorageRequest",
             ParticipatingEvent::StateStoreRequest(_) => "StateStoreRequest",
+            ParticipatingEvent::DumpConsensusStateRequest(_) => "DumpConsensusStateRequest",
             ParticipatingEvent::ControlAnnouncement(_) => "ControlAnnouncement",
             ParticipatingEvent::NetworkAnnouncement(_) => "NetworkAnnouncement",
             ParticipatingEvent::RpcServerAnnouncement(_) => "RpcServerAnnouncement",
@@ -339,6 +344,9 @@ impl Display for ParticipatingEvent {
             }
             ParticipatingEvent::MetricsRequest(req) => write!(f, "metrics request: {}", req),
             ParticipatingEvent::ControlAnnouncement(ctrl_ann) => write!(f, "control: {}", ctrl_ann),
+            ParticipatingEvent::DumpConsensusStateRequest(req) => {
+                write!(f, "dump consensus state: {}", req)
+            }
             ParticipatingEvent::NetworkAnnouncement(ann) => {
                 write!(f, "network announcement: {}", ann)
             }
@@ -868,6 +876,10 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::StateStoreRequest(req) => {
                 self.dispatch_event(effect_builder, rng, ParticipatingEvent::Storage(req.into()))
             }
+            ParticipatingEvent::DumpConsensusStateRequest(req) => reactor::wrap_effects(
+                ParticipatingEvent::Consensus,
+                self.consensus.handle_event(effect_builder, rng, req.into()),
+            ),
 
             // Announcements:
             ParticipatingEvent::ControlAnnouncement(ctrl_ann) => {

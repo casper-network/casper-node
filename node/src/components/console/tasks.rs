@@ -4,7 +4,10 @@ use std::{
     path::PathBuf,
 };
 
-use crate::effect::EffectBuilder;
+use crate::{
+    components::consensus::EraDump,
+    effect::{console::DumpConsensusStateRequest, EffectBuilder},
+};
 
 use super::{
     command::{Action, Command, OutputFormat},
@@ -82,6 +85,16 @@ impl Display for Session {
 }
 
 impl Session {
+    fn create_serializer(&self) -> Box<dyn FnOnce(&EraDump) -> Vec<u8> + Send> {
+        match self.output {
+            OutputFormat::Interactive => todo!(),
+            OutputFormat::Json => {
+                Box::new(|data: &EraDump| serde_json::to_vec(data).expect("TODO"))
+            }
+            OutputFormat::Bincode => todo!(),
+        }
+    }
+
     /// Processes a single command line sent from a client.
     async fn process_line<REv>(
         &mut self,
@@ -90,7 +103,7 @@ impl Session {
         line: &str,
     ) -> io::Result<()>
     where
-        REv: Send,
+        REv: From<DumpConsensusStateRequest> + Send,
     {
         debug!(%line, "line received");
         match Command::from_line(line) {
@@ -124,6 +137,9 @@ impl Session {
                         }
                     }
                     Action::DumpConsensus => {
+                        let output = effect_builder
+                            .console_dump_consensus_state(None, self.create_serializer())
+                            .await;
                         self.send_outcome(writer, &Outcome::success("dumping consensus state"))
                             .await?;
                         let state = ConsensusState::example();
@@ -200,7 +216,7 @@ async fn handler<REv>(
     mut shutdown_receiver: watch::Receiver<()>,
 ) -> io::Result<()>
 where
-    REv: Send,
+    REv: From<DumpConsensusStateRequest> + Send,
 {
     debug!("accepted new connection on console socket");
 
@@ -234,7 +250,7 @@ pub(super) async fn server<REv>(
     listener: UnixListener,
     mut shutdown_receiver: watch::Receiver<()>,
 ) where
-    REv: Send,
+    REv: From<DumpConsensusStateRequest> + Send,
 {
     let handling_shutdown_receiver = shutdown_receiver.clone();
     let mut next_client_id: u64 = 0;

@@ -3,12 +3,13 @@ use std::fmt::{Debug, Display};
 use casper_types::EraId;
 use datasize::DataSize;
 use futures::Future;
+use serde::Serialize;
 
 use super::Responder;
 use crate::components::consensus::EraDump;
 
 /// A request to dump the internal consensus state of a specific era.
-#[derive(DataSize)]
+#[derive(DataSize, Serialize)]
 pub(crate) struct DumpConsensusStateRequest {
     /// Era to serialize.
     ///
@@ -16,6 +17,7 @@ pub(crate) struct DumpConsensusStateRequest {
     pub(crate) era_id: Option<EraId>,
     /// Serialization function to serialize the given era with.
     #[data_size(skip)]
+    #[serde(skip)]
     pub(crate) serialize: Box<dyn FnOnce(&EraDump) -> Vec<u8> + Send>,
     /// Responder to send the serialized representation into.
     pub(crate) responder: Responder<Vec<u8>>,

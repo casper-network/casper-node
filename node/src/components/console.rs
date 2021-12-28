@@ -17,7 +17,7 @@ use tracing::debug;
 
 use super::Component;
 use crate::{
-    effect::{EffectBuilder, EffectExt, Effects},
+    effect::{console::DumpConsensusStateRequest, EffectBuilder, EffectExt, Effects},
     reactor::EventQueueHandle,
     types::NodeRng,
     utils::umask,
@@ -66,7 +66,7 @@ impl Console {
         event_queue: EventQueueHandle<REv>,
     ) -> Result<(Self, Effects<Event>), Error>
     where
-        REv: Send,
+        REv: From<DumpConsensusStateRequest> + Send,
     {
         let config = cfg.value();
         let (shutdown_sender, shutdown_receiver) = watch::channel(());

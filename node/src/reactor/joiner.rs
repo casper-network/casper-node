@@ -44,6 +44,7 @@ use crate::{
             ChainspecLoaderAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
             GossiperAnnouncement, LinearChainAnnouncement, LinearChainBlock, NetworkAnnouncement,
         },
+        console::DumpConsensusStateRequest,
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
             ContractRuntimeRequest, FetcherRequest, LinearChainRequest, MetricsRequest,
@@ -201,6 +202,10 @@ pub(crate) enum JoinerEvent {
     /// Consensus request.
     #[from]
     ConsensusRequest(#[serde(skip_serializing)] ConsensusRequest),
+
+    /// Consensus dump request.
+    #[from]
+    DumpConsensusStateRequest(DumpConsensusStateRequest),
 }
 
 impl ReactorEvent for JoinerEvent {
@@ -238,6 +243,7 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::BlockValidatorRequest(_) => "BlockValidatorRequest",
             JoinerEvent::BlockProposerRequest(_) => "BlockProposerRequest",
             JoinerEvent::StateStoreRequest(_) => "StateStoreRequest",
+            JoinerEvent::DumpConsensusStateRequest(_) => "DumpConsensusStateRequest",
             JoinerEvent::ControlAnnouncement(_) => "ControlAnnouncement",
             JoinerEvent::NetworkAnnouncement(_) => "NetworkAnnouncement",
             JoinerEvent::ContractRuntimeAnnouncement(_) => "ContractRuntimeAnnouncement",
@@ -339,6 +345,9 @@ impl Display for JoinerEvent {
             }
             JoinerEvent::StateStoreRequest(req) => write!(f, "state store request: {}", req),
             JoinerEvent::ConsensusRequest(req) => write!(f, "consensus request: {:?}", req),
+            JoinerEvent::DumpConsensusStateRequest(req) => {
+                write!(f, "consensus dump request: {}", req)
+            }
         }
     }
 }
@@ -931,6 +940,10 @@ impl reactor::Reactor for Reactor {
             JoinerEvent::ConsensusRequest(ConsensusRequest::ValidatorChanges(responder)) => {
                 // no consensus, respond with empty map
                 responder.respond(BTreeMap::new()).ignore()
+            }
+            JoinerEvent::DumpConsensusStateRequest(req) => {
+                // We have no consensus running in the joiner, so we answer with `None`.
+                req.answer(todo!()).ignore()
             }
         }
     }
