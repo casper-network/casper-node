@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap, VecDeque},
+    collections::{BTreeMap, VecDeque},
     sync::Arc,
     time::Instant,
 };
@@ -24,7 +24,7 @@ use crate::{
         consensus::EraReport,
         contract_runtime::{
             error::BlockExecutionError, types::StepEffectAndUpcomingEraValidators,
-            BlockAndExecutionEffects, ContractRuntimeMetrics, ExecutionPreState,
+            BlockAndExecutionEffects, ExecutionPreState, Metrics,
         },
     },
     types::{Block, Deploy, DeployHash, DeployHeader, FinalizedBlock},
@@ -33,7 +33,7 @@ use crate::{
 /// Executes a finalized block.
 pub fn execute_finalized_block(
     engine_state: &EngineState<LmdbGlobalState>,
-    metrics: Option<Arc<ContractRuntimeMetrics>>,
+    metrics: Option<Arc<Metrics>>,
     protocol_version: ProtocolVersion,
     execution_pre_state: ExecutionPreState,
     finalized_block: FinalizedBlock,
@@ -53,8 +53,8 @@ pub fn execute_finalized_block(
         next_block_height: _,
     } = execution_pre_state;
     let mut state_root_hash = pre_state_root_hash;
-    let mut execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)> =
-        HashMap::new();
+    let mut execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)> =
+        Vec::with_capacity(deploys.len() + transfers.len());
     // Run any deploys that must be executed
     let block_time = finalized_block.timestamp().millis();
     let start = Instant::now();
@@ -85,7 +85,7 @@ pub fn execute_finalized_block(
             deploy_hash,
             result,
         )?;
-        execution_results.insert(deploy_hash, (deploy_header, execution_result));
+        execution_results.push((deploy_hash, deploy_header, execution_result));
         state_root_hash = state_hash;
     }
 
@@ -163,7 +163,7 @@ pub fn execute_finalized_block(
 /// Commits the execution effects.
 fn commit_execution_effects(
     engine_state: &EngineState<LmdbGlobalState>,
-    metrics: Option<Arc<ContractRuntimeMetrics>>,
+    metrics: Option<Arc<Metrics>>,
     state_root_hash: Digest,
     deploy_hash: DeployHash,
     execution_results: ExecutionResults,
@@ -206,7 +206,7 @@ fn commit_execution_effects(
 
 fn commit_transforms(
     engine_state: &EngineState<LmdbGlobalState>,
-    metrics: Option<Arc<ContractRuntimeMetrics>>,
+    metrics: Option<Arc<Metrics>>,
     state_root_hash: Digest,
     effects: AdditiveMap<Key, Transform>,
 ) -> Result<Digest, engine_state::Error> {
@@ -223,7 +223,7 @@ fn commit_transforms(
 
 fn execute(
     engine_state: &EngineState<LmdbGlobalState>,
-    metrics: Option<Arc<ContractRuntimeMetrics>>,
+    metrics: Option<Arc<Metrics>>,
     execute_request: ExecuteRequest,
 ) -> Result<VecDeque<EngineExecutionResult>, engine_state::Error> {
     trace!(?execute_request, "execute");
@@ -239,7 +239,7 @@ fn execute(
 
 fn commit_step(
     engine_state: &EngineState<LmdbGlobalState>,
-    maybe_metrics: Option<Arc<ContractRuntimeMetrics>>,
+    maybe_metrics: Option<Arc<Metrics>>,
     protocol_version: ProtocolVersion,
     pre_state_root_hash: Digest,
     era_report: &EraReport<PublicKey>,
@@ -282,7 +282,9 @@ fn commit_step(
     let start = Instant::now();
     let result = engine_state.commit_step(correlation_id, step_request);
     if let Some(metrics) = maybe_metrics {
-        metrics.commit_step.observe(start.elapsed().as_secs_f64());
+        let elapsed = start.elapsed().as_secs_f64();
+        metrics.commit_step.observe(elapsed);
+        metrics.latest_commit_step.set(elapsed);
     }
     trace!(?result, "step response");
     result
