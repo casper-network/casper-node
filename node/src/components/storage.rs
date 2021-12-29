@@ -1440,7 +1440,7 @@ impl Storage {
                 deploy_hash: *deploy_hash,
             })?;
         // Only store the finalized approvals if they are different from the original ones.
-        if original_deploy.approvals() != finalized_approvals.as_slice() {
+        if original_deploy.approvals() != finalized_approvals.as_ref() {
             let mut txn = self.env.begin_rw_txn()?;
             let _ = txn.put_value(
                 self.finalized_approvals_db,

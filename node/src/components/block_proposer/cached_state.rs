@@ -3,14 +3,14 @@ use std::collections::HashMap;
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use super::{deploy_sets::DeployData, BlockProposerDeploySets};
+use super::{deploy_sets::PendingDeployInfo, BlockProposerDeploySets};
 use crate::types::DeployHash;
 
 /// State which is put to storage and loaded on initialization.
 #[derive(Serialize, Deserialize, Default, Debug, DataSize)]
 pub(crate) struct CachedState {
-    pub(super) pending_deploys: HashMap<DeployHash, DeployData>,
-    pub(super) pending_transfers: HashMap<DeployHash, DeployData>,
+    pub(super) pending_deploys: HashMap<DeployHash, PendingDeployInfo>,
+    pub(super) pending_transfers: HashMap<DeployHash, PendingDeployInfo>,
 }
 
 impl From<&BlockProposerDeploySets> for CachedState {

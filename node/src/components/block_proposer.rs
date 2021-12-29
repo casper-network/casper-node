@@ -45,7 +45,7 @@ use crate::{
 };
 use cached_state::CachedState;
 pub use config::Config;
-use deploy_sets::{BlockProposerDeploySets, DeployData, PruneResult};
+use deploy_sets::{BlockProposerDeploySets, PendingDeployInfo, PruneResult};
 pub(crate) use event::{DeployInfo, Event};
 use metrics::Metrics;
 
@@ -406,7 +406,7 @@ impl BlockProposerReady {
         if hash.is_transfer() {
             self.sets.pending_transfers.insert(
                 *hash.deploy_hash(),
-                DeployData {
+                PendingDeployInfo {
                     approvals,
                     info: deploy_info,
                     timestamp: current_instant,
@@ -415,7 +415,7 @@ impl BlockProposerReady {
         } else {
             self.sets.pending_deploys.insert(
                 *hash.deploy_hash(),
-                DeployData {
+                PendingDeployInfo {
                     approvals,
                     info: deploy_info,
                     timestamp: current_instant,

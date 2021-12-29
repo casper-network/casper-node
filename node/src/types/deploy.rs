@@ -601,9 +601,11 @@ impl FinalizedApprovals {
     pub fn new(approvals: Vec<Approval>) -> Self {
         Self(approvals)
     }
+}
 
+impl AsRef<[Approval]> for FinalizedApprovals {
     /// Returns the approvals as a slice.
-    pub fn as_slice(&self) -> &[Approval] {
+    fn as_ref(&self) -> &[Approval] {
         &self.0
     }
 }
