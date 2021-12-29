@@ -14,6 +14,16 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## 1.4.4 - 2021-12-29
+
+### Added
+* Add `contract_runtime_latest_commit_step` gauge metric indicating the execution duration of the latest `commit_step` call.
+
+### Changed
+* No longer checksum-hex encode various types.
+
+
+
 ## 1.4.3 - 2021-12-06
 
 ### Changed

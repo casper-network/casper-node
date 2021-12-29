@@ -13,6 +13,10 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+
+
+## 1.4.6 - 2021-12-29
+
 ### Changed
 * Disable checksummed-hex encoding, but leave checksummed-hex decoding in place.
 

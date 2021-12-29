@@ -110,6 +110,7 @@ pub mod tests {
         check_package_version(&*CL_CONTRACT, CL_CONTRACT_TOML_PATH);
     }
 
+    #[ignore]
     #[test]
     fn check_cl_types_version() {
         check_package_version(&*CL_TYPES, CL_TYPES_TOML_PATH);

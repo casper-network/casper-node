@@ -15,6 +15,13 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## 1.4.4 - 2021-12-29
+
+### Changed
+* No longer checksum-hex encode hash digest and address types.
+
+
+
 ## 1.4.3 - 2021-12-06
 
 ### Changed
