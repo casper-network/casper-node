@@ -19,8 +19,8 @@ function _main()
     local PATH_TO_STAGE
 
     PATH_TO_STAGE="$(get_path_to_stage "$STAGE_ID")/$PROTOCOL_VERSION"
-    set_stage_binaries "$NCTL_CASPER_HOME"
-    set_stage_files_from_repo "$NCTL_CASPER_HOME" "$PATH_TO_STAGE"
+    set_stage_binaries "$NCTL_CASPER_HOME" "$NCTL_CASPER_CLIENT_HOME"
+    set_stage_files_from_repo "$NCTL_CASPER_HOME" "$NCTL_CASPER_CLIENT_HOME" "$PATH_TO_STAGE"
 }
 
 # ----------------------------------------------------------------

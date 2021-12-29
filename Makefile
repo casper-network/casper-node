@@ -156,14 +156,6 @@ clean:
 build-for-packaging: build-client-contracts
 	$(LEGACY) $(CARGO) build --release
 
-.PHONY: deb
-deb: setup-rs build-for-packaging
-	cd client && $(LEGACY) $(CARGO) deb -p casper-client --no-build
-
-.PHONY: rpm
-rpm: setup-rs
-	cd client && $(CARGO) rpm build
-
 .PHONY: package
 package:
 	cd contract && $(CARGO) package

@@ -36,7 +36,7 @@ function get_remotes() {
     log "... downloading remote files and binaries"
 
     if [ -z "$AWS_SECRET_ACCESS_KEY" ] || [ -z "$AWS_ACCESS_KEY_ID" ]; then
-        log "ERROR: AWS KEYS neeeded to run. Contact SRE."
+        log "ERROR: AWS KEYS needed to run. Contact SRE."
         exit 1
     fi
 

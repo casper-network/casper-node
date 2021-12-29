@@ -110,16 +110,6 @@ steps:
   - make test CARGO_FLAGS=--release
   - make test-contracts CARGO_FLAGS=--release
 
-- name: client-ffi-tests-and-examples
-  image: casperlabs/node-build-u1804
-  commands:
-  - make setup-rs
-  - cmake -Hclient/examples/ffi -Btarget/build -DCMAKE_BUILD_TYPE=Debug
-  - cmake --build target/build
-  - ./target/build/ffi-tests
-  - ./target/build/get-auction-info
-  - ./target/build/put-deploy
-
 depends_on:
   - pre-checks
 
@@ -177,12 +167,6 @@ steps:
   image: casperlabs/node-build-u1804
   commands:
     - make deb
-
-- name: test-deb
-  image: ubuntu:bionic
-  commands:
-    - "apt update"
-    - "$(pwd)/ci/test_deb_install.sh $(pwd) casper-client"
 
 - name: put-drone-s3-cache-deb
   image: plugins/s3-sync:latest

@@ -203,13 +203,13 @@ jq 'map_values(map(keys[0]))' queue_dump.json
 
 ## Running a client
 
-See [the client README](client/README.md).
+See [the client README](https://github.com/casper-ecosystem/casper-client-rs#readme).
 
 ## Running a local network
 
 See [the nctl utility README](utils/nctl/README.md).
 
-## Running on a existing network
+## Running on an existing network
 
 To support upgrades with a network, the casper-node is installed using scripts distributed with the 
 [casper-node-launcher](https://github.com/casper-network/casper-node-launcher).

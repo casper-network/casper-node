@@ -147,8 +147,5 @@ cmake-build-debug/
 /utils/nctl/dumps
 /utils/nctl/tmp
 
-# client c headers
-client/headers/**
-
 # OS X
 .DS_Store
