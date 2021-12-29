@@ -523,6 +523,7 @@ where
 }
 
 impl ContractRuntime {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         protocol_version: ProtocolVersion,
         storage_dir: &Path,
@@ -530,6 +531,7 @@ impl ContractRuntime {
         wasm_config: WasmConfig,
         system_config: SystemConfig,
         max_associated_keys: u32,
+        max_runtime_call_stack_height: u32,
         registry: &Registry,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
@@ -557,6 +559,7 @@ impl ContractRuntime {
         let engine_config = EngineConfig::new(
             contract_runtime_config.max_query_depth(),
             max_associated_keys,
+            max_runtime_call_stack_height,
             wasm_config,
             system_config,
         );

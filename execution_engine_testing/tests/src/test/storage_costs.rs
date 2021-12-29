@@ -10,7 +10,9 @@ use casper_engine_test_support::{
 #[cfg(not(feature = "use-as-wasm"))]
 use casper_execution_engine::shared::system_config::auction_costs::DEFAULT_ADD_BID_COST;
 use casper_execution_engine::{
-    core::engine_state::{EngineConfig, DEFAULT_MAX_QUERY_DEPTH},
+    core::engine_state::{
+        EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+    },
     shared::{
         host_function_costs::{HostFunction, HostFunctionCosts},
         opcode_costs::OpcodeCosts,
@@ -159,6 +161,7 @@ fn initialize_isolated_storage_costs() -> InMemoryWasmTestBuilder {
     let new_engine_config = EngineConfig::new(
         DEFAULT_MAX_QUERY_DEPTH,
         DEFAULT_MAX_ASSOCIATED_KEYS,
+        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         *STORAGE_COSTS_ONLY,
         SystemConfig::default(),
     );
