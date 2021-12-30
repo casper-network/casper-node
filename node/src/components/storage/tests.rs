@@ -1397,7 +1397,10 @@ fn can_put_and_get_blocks_v2() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
 
-    let era_id = harness.rng.gen_range(0..10).into();
+    let era_id = harness
+        .rng
+        .gen_range(MERKLE_TREE_HASH_ACTIVATION..MERKLE_TREE_HASH_ACTIVATION + 10)
+        .into();
     let height = harness.rng.gen_range(0..100);
 
     let mut blocks = vec![];

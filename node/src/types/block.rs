@@ -2155,7 +2155,12 @@ mod tests {
     #[test]
     fn block_body_merkle_proof_should_be_correct() {
         let mut rng = TestRng::new();
-        let era_id = rng.gen_range(0..10).into();
+
+        // Choose era that is guaranteed to be after the merkle tree hash activation
+        let era_id = rng
+            .gen_range(MERKLE_TREE_HASH_ACTIVATION..MERKLE_TREE_HASH_ACTIVATION + 10)
+            .into();
+
         let height = rng.gen_range(0..100);
         let is_switch = rng.gen();
         let block = Block::random_with_specifics(
