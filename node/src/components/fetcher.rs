@@ -32,7 +32,7 @@ use crate::{
 use crate::effect::announcements::BlocklistAnnouncement;
 pub(crate) use config::Config;
 pub(crate) use event::{Event, FetchResult, FetchedData, FetcherError};
-use metrics::FetcherMetrics;
+use metrics::Metrics;
 
 /// A helper trait constraining `Fetcher` compatible reactor events.
 pub(crate) trait ReactorEventT<T>:
@@ -259,7 +259,7 @@ where
     get_from_peer_timeout: Duration,
     responders: HashMap<T::Id, HashMap<NodeId, Vec<FetchResponder<T>>>>,
     #[data_size(skip)]
-    metrics: FetcherMetrics,
+    metrics: Metrics,
 }
 
 impl<T: Item> Fetcher<T> {
@@ -271,7 +271,7 @@ impl<T: Item> Fetcher<T> {
         Ok(Fetcher {
             get_from_peer_timeout: config.get_from_peer_timeout().into(),
             responders: HashMap::new(),
-            metrics: FetcherMetrics::new(name, registry)?,
+            metrics: Metrics::new(name, registry)?,
         })
     }
 }

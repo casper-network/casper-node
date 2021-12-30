@@ -124,9 +124,9 @@ use requests::{
     NetworkRequest, StorageRequest,
 };
 
-use self::{
-    announcements::{BlockProposerAnnouncement, BlocklistAnnouncement},
-    requests::{BeginGossipRequest, StateStoreRequest},
+use self::announcements::{BlockProposerAnnouncement, BlocklistAnnouncement};
+use crate::components::contract_runtime::{
+    BlockAndExecutionEffects, BlockExecutionError, ExecutionPreState,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
