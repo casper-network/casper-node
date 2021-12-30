@@ -30,7 +30,7 @@ use crate::{
     testing::{ComponentHarness, TestRng, UnitTestEvent},
     types::{
         Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Deploy, DeployHash,
-        DeployMetadata, FinalitySignature, FinalizedBlock,
+        DeployMetadata, FinalitySignature, FinalizedBlock, HashingAlgorithmVersion,
     },
     utils::WithDir,
 };
@@ -1410,7 +1410,7 @@ fn can_put_and_get_blocks_v2() {
             &mut harness.rng,
             era_id,
             height + i,
-            ProtocolVersion::from_parts(1, 5, 0),
+            HashingAlgorithmVersion::HASH_V2_PROTOCOL_VERSION,
             i == num_blocks - 1,
         );
 

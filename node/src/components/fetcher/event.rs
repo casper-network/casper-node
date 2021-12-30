@@ -136,8 +136,8 @@ impl<T: Item> Display for Event<T> {
                 source,
             } => {
                 // If `merkle_tree_hash_activation` is not present here then our T is an object
-                // that doesn't require it to calculate its `id`, hence we can provide
-                // default value as it'll be ignored.
+                // that doesn't require the activation point to calculate its `id`, hence we can
+                // provide any value to the `id()` method, as it'll be ignored.
                 let merkle_tree_hash_activation = merkle_tree_hash_activation.unwrap_or_default();
 
                 write!(

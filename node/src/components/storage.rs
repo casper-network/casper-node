@@ -592,7 +592,7 @@ impl Storage {
             )?;
 
             let mut body_txn = env.begin_ro_txn()?;
-            let block_body: BlockBody =
+            let block_body =
                 match block_header.hashing_algorithm_version(merkle_tree_hash_activation) {
                     HashingAlgorithmVersion::V1 => body_txn
                         .get_value(block_body_v1_db, block_header.body_hash())?
@@ -2155,7 +2155,7 @@ fn initialize_block_body_v1_db(
         for (raw_key, raw_val) in txn.open_ro_cursor(*block_body_v1_db)?.iter() {
             let block_body_hash = Digest::try_from(raw_key)
                 .map_err(|err| LmdbExtError::DataCorrupted(Box::new(err)))?;
-            let block_body: BlockBody = lmdb_ext::deserialize(raw_val)?;
+            let block_body = lmdb_ext::deserialize(raw_val)?;
             if let Some(block_header) = block_body_hash_to_header_map.get(&block_body_hash) {
                 let actual_hashing_algorithm_version =
                     block_header.hashing_algorithm_version(merkle_tree_hash_activation);

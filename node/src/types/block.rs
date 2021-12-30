@@ -2017,6 +2017,11 @@ mod tests {
 
     use super::*;
 
+    impl HashingAlgorithmVersion {
+        pub(crate) const HASH_V2_PROTOCOL_VERSION: ProtocolVersion =
+            ProtocolVersion::from_parts(1, 5, 0);
+    }
+
     #[test]
     fn json_block_roundtrip() {
         let mut rng = crate::new_rng();
@@ -2167,7 +2172,7 @@ mod tests {
             &mut rng,
             era_id,
             height,
-            ProtocolVersion::from_parts(1, 5, 0),
+            HashingAlgorithmVersion::HASH_V2_PROTOCOL_VERSION,
             is_switch,
         );
 
