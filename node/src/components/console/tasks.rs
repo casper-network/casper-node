@@ -248,7 +248,10 @@ where
         let shutdown_messages = async { while shutdown_receiver.changed().await.is_ok() {} };
 
         match future::select(Box::pin(shutdown_messages), Box::pin(lines.next_line())).await {
-            Either::Left(_) => info!("shutting down console connection to client"),
+            Either::Left(_) => {
+                info!("shutting down console connection to client");
+                break Ok(());
+            }
             Either::Right((line_result, _)) => {
                 if let Some(line) = line_result? {
                     session
