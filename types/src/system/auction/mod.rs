@@ -17,7 +17,7 @@ use num_traits::{CheckedMul, CheckedSub};
 
 use crate::{account::AccountHash, EraId, PublicKey, U512};
 
-pub use bid::Bid;
+pub use bid::{Bid, VESTING_SCHEDULE_LENGTH_MILLIS};
 pub use constants::*;
 pub use delegator::Delegator;
 pub use entry_points::auction_entry_points;
@@ -436,9 +436,11 @@ pub trait Auction:
 
         // Compute next auction winners
         let winners: ValidatorWeights = {
-            let founder_weights: ValidatorWeights = bids
+            let locked_validators: ValidatorWeights = bids
                 .iter()
-                .filter(|(_public_key, bid)| bid.vesting_schedule().is_some() && !bid.inactive())
+                .filter(|(_public_key, bid)| {
+                    bid.is_locked(era_end_timestamp_millis) && !bid.inactive()
+                })
                 .map(|(public_key, bid)| {
                     let total_staked_amount = bid.total_staked_amount()?;
                     Ok((public_key.clone(), total_staked_amount))
@@ -446,28 +448,30 @@ pub trait Auction:
                 .collect::<Result<ValidatorWeights, Error>>()?;
 
             // We collect these into a vec for sorting
-            let mut non_founder_weights: Vec<(PublicKey, U512)> = bids
+            let mut unlocked_validators: Vec<(PublicKey, U512)> = bids
                 .iter()
-                .filter(|(_public_key, bid)| bid.vesting_schedule().is_none() && !bid.inactive())
+                .filter(|(_public_key, bid)| {
+                    !bid.is_locked(era_end_timestamp_millis) && !bid.inactive()
+                })
                 .map(|(public_key, bid)| {
                     let total_staked_amount = bid.total_staked_amount()?;
                     Ok((public_key.clone(), total_staked_amount))
                 })
                 .collect::<Result<Vec<(PublicKey, U512)>, Error>>()?;
 
-            non_founder_weights.sort_by(|(_, lhs), (_, rhs)| rhs.cmp(lhs));
+            unlocked_validators.sort_by(|(_, lhs), (_, rhs)| rhs.cmp(lhs));
 
             // This assumes that amount of founding validators does not exceed configured validator
             // slots. For a case where there are exactly N validators and the limit is N, only
             // founding validators will be the in the winning set. It is advised to set
             // `validator_slots` larger than amount of founding validators in accounts.toml to
             // accomodate non-genesis validators.
-            let remaining_auction_slots = validator_slots.saturating_sub(founder_weights.len());
+            let remaining_auction_slots = validator_slots.saturating_sub(locked_validators.len());
 
-            founder_weights
+            locked_validators
                 .into_iter()
                 .chain(
-                    non_founder_weights
+                    unlocked_validators
                         .into_iter()
                         .take(remaining_auction_slots),
                 )

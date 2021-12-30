@@ -8,7 +8,11 @@ use casper_types::{
     ContractPackageHash, ContractVersionKey, ContractWasmHash, Key, StoredValueTypeMismatch, URef,
 };
 
-use crate::{core::resolvers::error::ResolverError, shared::wasm_prep, storage};
+use crate::{
+    core::{resolvers::error::ResolverError, runtime::stack},
+    shared::wasm_prep,
+    storage,
+};
 
 /// Possible execution errors.
 #[derive(Error, Debug, Clone)]
@@ -156,6 +160,9 @@ pub enum Error {
     /// Missing system contract hash.
     #[error("Missing system contract hash: {0}")]
     MissingSystemContractHash(String),
+    /// An attempt to push to the runtime stack which is already at the maximum height.
+    #[error("Runtime stack overflow")]
+    RuntimeStackOverflow,
 }
 
 impl From<wasm_prep::PreprocessingError> for Error {
@@ -251,5 +258,11 @@ impl From<system::Error> for Error {
 impl From<CLValueError> for Error {
     fn from(e: CLValueError) -> Self {
         Error::CLValue(e)
+    }
+}
+
+impl From<stack::RuntimeStackOverflow> for Error {
+    fn from(_: stack::RuntimeStackOverflow) -> Self {
+        Error::RuntimeStackOverflow
     }
 }

@@ -18,7 +18,10 @@ use thiserror::Error;
 use tokio::time;
 use tracing::debug;
 
-use casper_execution_engine::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
+use casper_execution_engine::{
+    core::engine_state::DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
+};
 use casper_types::ProtocolVersion;
 
 use super::*;
@@ -227,6 +230,7 @@ impl reactor::Reactor for Reactor {
             WasmConfig::default(),
             SystemConfig::default(),
             MAX_ASSOCIATED_KEYS,
+            DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
             registry,
             MERKLE_TREE_HASH_ACTIVATION.into(),
         )

@@ -222,6 +222,10 @@ impl Reactor {
             chainspec_loader.chainspec().wasm_config,
             chainspec_loader.chainspec().system_costs_config,
             chainspec_loader.chainspec().core_config.max_associated_keys,
+            chainspec_loader
+                .chainspec()
+                .core_config
+                .max_runtime_call_stack_height,
             registry,
             chainspec_loader
                 .chainspec()
