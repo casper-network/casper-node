@@ -406,7 +406,8 @@ fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
     let block = {
         let era_id = EraId::from(harness.rng.gen_range(1..6));
 
-        // Height must be at least 1, otherwise it'll be rejected in `switch_block_for_block_header()`
+        // Height must be at least 1, otherwise it'll be rejected in
+        // `switch_block_for_block_header()`
         let height = harness.rng.gen_range(1..10);
 
         let is_switch = harness.rng.gen_bool(0.1);
