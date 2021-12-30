@@ -15,11 +15,7 @@ use tracing::error;
 
 use casper_types::ProtocolVersion;
 
-use self::{
-    metrics::Metrics,
-    state::{Outcome, Outcomes},
-};
-use super::Component;
+use self::metrics::Metrics;
 use crate::{
     components::{
         linear_chain::state::{Outcome, Outcomes},
@@ -59,8 +55,8 @@ impl<I> LinearChainComponent<I> {
         finality_threshold_fraction: Ratio<u64>,
         next_upgrade_activation_point: Option<ActivationPoint>,
     ) -> Result<Self, prometheus::Error> {
-let metrics = Metrics::new(registry)?;
-let linear_chain_state = LinearChain::new(
+        let metrics = Metrics::new(registry)?;
+        let linear_chain_state = LinearChain::new(
             protocol_version,
             auction_delay,
             unbonding_delay,
