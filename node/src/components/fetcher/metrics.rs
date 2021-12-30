@@ -3,7 +3,7 @@ use prometheus::{IntCounter, Registry};
 use crate::unregister_metric;
 
 #[derive(Debug)]
-pub(super) struct Metrics {
+pub(crate) struct Metrics {
     /// Number of fetch requests that found an item in the storage.
     pub found_in_storage: IntCounter,
     /// Number of fetch requests that fetched an item from peer.

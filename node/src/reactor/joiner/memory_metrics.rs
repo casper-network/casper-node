@@ -51,18 +51,6 @@ impl MemoryMetrics {
             "joiner_mem_block_fetcher",
             "block fetcher memory usage in bytes",
         )?;
-        let mem_linear_chain_fetcher = IntGauge::new(
-            "joiner_mem_linear_chain_fetcher",
-            "linear chain fetcher memory usage in bytes",
-        )?;
-        let mem_linear_chain_sync = IntGauge::new(
-            "joiner_mem_linear_chain_sync",
-            "linear chain sync memory usage in bytes",
-        )?;
-        let mem_block_validator = IntGauge::new(
-            "joiner_mem_block_validator",
-            "block validator memory usage in bytes",
-        )?;
         let mem_deploy_fetcher = IntGauge::new(
             "joiner_mem_deploy_fetcher",
             "deploy fetcher memory usage in bytes",
