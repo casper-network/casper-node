@@ -475,7 +475,7 @@ dependencies = [
 
 [[package]]
 name = "casper-execution-engine"
-version = "1.4.3"
+version = "1.4.4"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -518,7 +518,7 @@ dependencies = [
 
 [[package]]
 name = "casper-hashing"
-version = "1.4.2"
+version = "1.4.3"
 dependencies = [
  "assert_matches",
  "base16",
@@ -540,7 +540,7 @@ dependencies = [
 
 [[package]]
 name = "casper-node"
-version = "1.4.3"
+version = "1.4.4"
 dependencies = [
  "ansi_term 0.12.1",
  "anyhow",
@@ -649,7 +649,7 @@ dependencies = [
 
 [[package]]
 name = "casper-types"
-version = "1.4.5"
+version = "1.4.6"
 dependencies = [
  "base16",
  "base64",
