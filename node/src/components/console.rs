@@ -80,7 +80,7 @@ impl Console {
         }
 
         let socket_path = cfg.with_dir(config.socket_path.clone());
-        let listener = setup_listener(&socket_path, config.socket_umask)?;
+        let listener = setup_listener(&socket_path, config.socket_umask.into())?;
         let server = tasks::server(
             EffectBuilder::new(event_queue),
             socket_path,
