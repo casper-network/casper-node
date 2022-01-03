@@ -5,7 +5,6 @@ mod display_error;
 pub(crate) mod ds;
 mod external;
 pub(crate) mod pid_file;
-#[cfg(target_os = "linux")]
 pub(crate) mod rlimit;
 mod round_robin;
 pub(crate) mod umask;
@@ -31,6 +30,7 @@ use datasize::DataSize;
 use hyper::server::{conn::AddrIncoming, Builder, Server};
 #[cfg(test)]
 use once_cell::sync::Lazy;
+use prometheus::{self, Histogram, HistogramOpts, Registry};
 use serde::Serialize;
 use thiserror::Error;
 use tracing::{error, warn};
@@ -90,7 +90,7 @@ pub(crate) fn resolve_address(address: &str) -> Result<SocketAddr, ResolveAddres
 
 /// An error starting one of the HTTP servers.
 #[derive(Debug, Error)]
-pub enum ListeningError {
+pub(crate) enum ListeningError {
     /// Failed to resolve address.
     #[error("failed to resolve network address: {0}")]
     ResolveAddress(ResolveAddressError),
@@ -319,7 +319,7 @@ impl<T> WithDir<T> {
 
 /// The source of a piece of data.
 #[derive(Clone, Debug, Serialize)]
-pub enum Source<I> {
+pub(crate) enum Source<I> {
     /// A peer with the wrapped ID.
     Peer(I),
     /// A client.
@@ -364,7 +364,20 @@ where
     (numerator + denominator / T::from(2)) / denominator
 }
 
-/// Used to unregister a metric from the Prometheus registry.
+/// Creates a prometheus Histogram and registers it.
+pub(crate) fn register_histogram_metric(
+    registry: &Registry,
+    metric_name: &str,
+    metric_help: &str,
+    buckets: Vec<f64>,
+) -> Result<Histogram, prometheus::Error> {
+    let histogram_opts = HistogramOpts::new(metric_name, metric_help).buckets(buckets);
+    let histogram = Histogram::with_opts(histogram_opts)?;
+    registry.register(Box::new(histogram.clone()))?;
+    Ok(histogram)
+}
+
+/// Unregisters a metric from the Prometheus registry.
 #[macro_export]
 macro_rules! unregister_metric {
     ($registry:expr, $metric:expr) => {
@@ -385,7 +398,7 @@ macro_rules! unregister_metric {
 ///
 /// Panics if `lhs` and `rhs` are not of equal length.
 #[inline]
-pub fn xor(lhs: &mut [u8], rhs: &[u8]) {
+pub(crate) fn xor(lhs: &mut [u8], rhs: &[u8]) {
     // Implementing SIMD support is left as an exercise for the reader.
     assert_eq!(lhs.len(), rhs.len(), "xor inputs should have equal length");
     lhs.iter_mut()
@@ -404,7 +417,11 @@ pub fn xor(lhs: &mut [u8], rhs: &[u8]) {
 ///
 /// Using this function is usually a potential architectural issue and it should be used very
 /// sparingly. Consider introducing a different access pattern for the value under `Arc`.
-pub async fn wait_for_arc_drop<T>(arc: Arc<T>, attempts: usize, retry_delay: Duration) -> bool {
+pub(crate) async fn wait_for_arc_drop<T>(
+    arc: Arc<T>,
+    attempts: usize,
+    retry_delay: Duration,
+) -> bool {
     // Ensure that if we do hold the last reference, we are now going to 0.
     let weak = Arc::downgrade(&arc);
     drop(arc);

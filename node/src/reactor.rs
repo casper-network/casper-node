@@ -56,7 +56,6 @@ use tokio::time::{Duration, Instant};
 use tracing::{debug, debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
 
-#[cfg(target_os = "linux")]
 use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
 
 use crate::{
@@ -104,7 +103,6 @@ static DISPATCH_EVENT_THRESHOLD: Lazy<Duration> = Lazy::new(|| {
         .unwrap_or_else(|_| DEFAULT_DISPATCH_EVENT_THRESHOLD)
 });
 
-#[cfg(target_os = "linux")]
 /// The desired limit for open files.
 const TARGET_OPEN_FILES_LIMIT: Limit = 64_000;
 
@@ -117,7 +115,6 @@ enum DumpFormat {
     Debug,
 }
 
-#[cfg(target_os = "linux")]
 /// Adjusts the maximum number of open file handles upwards towards the hard limit.
 fn adjust_open_files_limit() {
     // Ensure we have reasonable ulimits.
@@ -153,12 +150,6 @@ fn adjust_open_files_limit() {
             }
         }
     }
-}
-
-#[cfg(not(target_os = "linux"))]
-/// File handle limit adjustment shim.
-fn adjust_open_files_limit() {
-    info!("not on linux, not adjusting open files limit");
 }
 
 /// The value returned by a reactor on completion of the `run()` loop.
@@ -410,13 +401,16 @@ struct RunnerMetrics {
 impl RunnerMetrics {
     /// Create and register new runner metrics.
     fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
-        let events = IntCounter::new("runner_events", "total event count")?;
+        let events = IntCounter::new(
+            "runner_events",
+            "running total count of events handled by this reactor",
+        )?;
 
         // Create an event dispatch histogram, putting extra emphasis on the area between 1-10 us.
         let event_dispatch_duration = Histogram::with_opts(
             HistogramOpts::new(
                 "event_dispatch_duration",
-                "duration of complete dispatch of a single event in nanoseconds",
+                "time in nanoseconds to dispatch an event",
             )
             .buckets(vec![
                 100.0,
