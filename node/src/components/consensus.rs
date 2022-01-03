@@ -371,18 +371,20 @@ where
                 // operator a chance to find out why their node is busy.
                 info!(era_id=%requested_era.value(), was_latest=era_id.is_none(), "dumping era via console");
 
-                match self.open_eras.get(&requested_era) {
-                    Some(era) => {
-                        let dump = EraDump::dump_era(era);
-
-                        req.answer(Ok(&dump)).ignore()
-                    }
-                    None => req
-                        .answer(Err(Cow::Owned(format!(
+                let era_dump_result = self
+                    .open_eras
+                    .get(&requested_era)
+                    .ok_or_else(|| {
+                        Cow::Owned(format!(
                             "could not dump consensus, {} not found",
                             requested_era
-                        ))))
-                        .ignore(),
+                        ))
+                    })
+                    .and_then(|era| EraDump::dump_era(era, requested_era));
+
+                match era_dump_result {
+                    Ok(dump) => req.answer(Ok(&dump)).ignore(),
+                    Err(err) => req.answer(Err(err)).ignore(),
                 }
             }
         }

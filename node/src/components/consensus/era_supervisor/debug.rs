@@ -1,6 +1,7 @@
 //! Data types used solely for dumping of consensus data via the debug console.
 
 use std::{
+    borrow::Cow,
     collections::{BTreeMap, HashSet},
     fmt::{self, Display, Formatter},
 };
@@ -8,7 +9,10 @@ use std::{
 use casper_types::{EraId, PublicKey, U512};
 use serde::Serialize;
 
-use crate::types::Timestamp;
+use crate::{
+    components::consensus::{ClContext, HighwayProtocol},
+    types::{NodeId, Timestamp},
+};
 
 use super::Era;
 
@@ -48,9 +52,17 @@ impl<'a> Display for EraDump<'a> {
 
 impl<'a> EraDump<'a> {
     /// Creates a new `EraDump` from a given era.
-    pub(super) fn dump_era(era: &'a Era) -> Self {
-        EraDump {
-            id: requested_era,
+    pub(crate) fn dump_era<I>(era: &'a Era<I>, era_id: EraId) -> Result<Self, Cow<'static, str>> {
+        let highway = era
+            .consensus
+            .as_any()
+            .downcast_ref::<HighwayProtocol<NodeId, ClContext>>()
+            .ok_or(Cow::Borrowed(
+                "could not downcast `ConsensusProtocol` into `HighwayProtocol<NodeId, ClContext>`",
+            ))?;
+
+        Ok(EraDump {
+            id: era_id,
             start_time: era.start_time,
             start_height: era.start_height,
             new_faulty: &era.new_faulty,
@@ -58,6 +70,6 @@ impl<'a> EraDump<'a> {
             cannot_propose: &era.cannot_propose,
             accusations: &era.accusations,
             validators: &era.validators,
-        }
+        })
     }
 }
