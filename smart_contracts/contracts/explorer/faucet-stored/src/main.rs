@@ -3,20 +3,33 @@
 
 extern crate alloc;
 
-use alloc::{string::ToString, vec};
+use alloc::{boxed::Box, format, string::ToString, vec};
 
-use casper_contract::contract_api::{runtime, storage};
+use casper_contract::{
+    contract_api,
+    contract_api::{account, runtime, storage, system::transfer_from_purse_to_purse},
+    unwrap_or_revert::UnwrapOrRevert,
+};
 use casper_types::{
-    account::AccountHash, contracts::ContractHash, CLType, CLTyped, ContractVersion, EntryPoint,
-    EntryPointAccess, EntryPointType, EntryPoints, Parameter,
+    account::AccountHash,
+    contracts::{ContractHash, NamedKeys},
+    ApiError, CLType, CLTyped, ContractVersion, EntryPoint, EntryPointAccess, EntryPointType,
+    EntryPoints, Parameter, RuntimeArgs, URef,
 };
 
+#[repr(u16)]
+enum InstallerSessionError {
+    FailedToTransfer = 101,
+}
+
+const ARG_ID: &str = "id";
+const ARG_AMOUNT: &str = "amount";
+const ENTRY_POINT_FAUCET: &str = "call_faucet";
+const ENTRY_POINT_INIT: &str = "init";
+const INSTALLER: &str = "installer";
 const CONTRACT_NAME: &str = "faucet";
 const HASH_KEY_NAME: &str = "faucet_package";
 const ACCESS_KEY_NAME: &str = "faucet_package_access";
-const ENTRY_POINT_NAME: &str = "call_faucet";
-const ARG_TARGET: &str = "target";
-const ARG_AMOUNT: &str = "amount";
 const CONTRACT_VERSION: &str = "contract_version";
 
 #[no_mangle]
@@ -28,24 +41,41 @@ fn store() -> (ContractHash, ContractVersion) {
     let entry_points = {
         let mut entry_points = EntryPoints::new();
 
-        let entry_point = EntryPoint::new(
-            ENTRY_POINT_NAME,
+        let faucet = EntryPoint::new(
+            ENTRY_POINT_FAUCET,
             vec![
-                Parameter::new(ARG_TARGET, AccountHash::cl_type()),
                 Parameter::new(ARG_AMOUNT, CLType::U512),
+                Parameter::new(ARG_ID, CLType::Option(Box::new(CLType::U64))),
             ],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Session,
+            EntryPointType::Contract,
         );
 
-        entry_points.add_entry_point(entry_point);
+        entry_points.add_entry_point(faucet);
+
+        let init_purse = EntryPoint::new(
+            ENTRY_POINT_INIT,
+            vec![],
+            CLType::Unit,
+            EntryPointAccess::Public,
+            EntryPointType::Contract,
+        );
+
+        entry_points.add_entry_point(init_purse);
 
         entry_points
     };
+
+    let named_keys = {
+        let mut named_keys = NamedKeys::new();
+        named_keys.insert(INSTALLER.to_string(), runtime::get_caller().into());
+        named_keys
+    };
+
     storage::new_contract(
         entry_points,
-        None,
+        Some(named_keys),
         Some(HASH_KEY_NAME.to_string()),
         Some(ACCESS_KEY_NAME.to_string()),
     )
@@ -53,7 +83,21 @@ fn store() -> (ContractHash, ContractVersion) {
 
 #[no_mangle]
 pub extern "C" fn call() {
+    let id: u64 = runtime::get_named_arg(ARG_ID);
+
     let (contract_hash, contract_version) = store();
     runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());
     runtime::put_key(CONTRACT_NAME, contract_hash.into());
+
+    // init the newly installed contract,
+    // keep track of the purse it returns so that it can be easily topped off later
+    // then fund that purse so that the faucet has some token to distribute
+    let purse: URef =
+        runtime::call_contract(contract_hash, ENTRY_POINT_INIT, RuntimeArgs::default());
+    runtime::put_key(&format!("faucet_{}", id), purse.into());
+    let main_purse = account::get_main_purse();
+    let amount = runtime::get_named_arg(ARG_AMOUNT);
+    transfer_from_purse_to_purse(main_purse, purse, amount, Some(id)).unwrap_or_revert_with(
+        ApiError::User(InstallerSessionError::FailedToTransfer as u16),
+    );
 }
