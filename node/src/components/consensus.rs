@@ -373,18 +373,9 @@ where
 
                 match self.open_eras.get(&requested_era) {
                     Some(era) => {
-                        let data = EraDump {
-                            id: requested_era,
-                            start_time: era.start_time,
-                            start_height: era.start_height,
-                            new_faulty: &era.new_faulty,
-                            faulty: &era.faulty,
-                            cannot_propose: &era.cannot_propose,
-                            accusations: &era.accusations,
-                            validators: &era.validators,
-                        };
+                        let dump = EraDump::dump_era(era);
 
-                        req.answer(Ok(&data)).ignore()
+                        req.answer(Ok(&dump)).ignore()
                     }
                     None => req
                         .answer(Err(Cow::Owned(format!(

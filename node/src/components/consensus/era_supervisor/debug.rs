@@ -10,6 +10,8 @@ use serde::Serialize;
 
 use crate::types::Timestamp;
 
+use super::Era;
+
 /// Debug dump of era used for serialization.
 #[derive(Debug, Serialize)]
 pub(crate) struct EraDump<'a> {
@@ -41,5 +43,21 @@ pub(crate) struct EraDump<'a> {
 impl<'a> Display for EraDump<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "era {}: TBD", self.id)
+    }
+}
+
+impl<'a> EraDump<'a> {
+    /// Creates a new `EraDump` from a given era.
+    pub(super) fn dump_era(era: &'a Era) -> Self {
+        EraDump {
+            id: requested_era,
+            start_time: era.start_time,
+            start_height: era.start_height,
+            new_faulty: &era.new_faulty,
+            faulty: &era.faulty,
+            cannot_propose: &era.cannot_propose,
+            accusations: &era.accusations,
+            validators: &era.validators,
+        }
     }
 }
