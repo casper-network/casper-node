@@ -2,76 +2,67 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_RUN_GENESIS_REQUEST,
 };
-use casper_types::{account::AccountHash, runtime_args, ApiError, RuntimeArgs, U512};
+use casper_types::{
+    account::AccountHash, crypto, runtime_args, system::mint, ApiError, PublicKey, RuntimeArgs,
+    SecretKey, U512,
+};
 
-const FAUCET_CONTRACT: &str = "faucet.wasm";
-const NEW_ACCOUNT_ADDR: AccountHash = AccountHash::new([99u8; 32]);
-
-const ARG_TARGET: &str = "target";
+const FAUCET_INSTALLER_SESSION: &str = "faucet_stored.wasm";
+const ENTRY_POINT_INIT: &str = "init";
 const ARG_AMOUNT: &str = "amount";
+const ARG_INSTALLER: &str = "installer";
+const _ARG_TARGET: &str = "target";
+const ARG_ID: &str = "id";
+const _ARG_TIME_INCREMENT: &str = "time_increment";
+const ARG_AVAILABLE_AMOUNT: &str = "available_amount";
+const _TIME_INCREMENT: &str = "time_increment";
+const _LAST_ISSUANCE: &str = "last_issuance";
+const _FAUCET_PURSE: &str = "faucet_purse";
+const _INSTALLER: &str = "installer";
 
 #[ignore]
 #[test]
-fn should_get_funds_from_faucet() {
-    let amount = U512::from(1000);
-    let exec_request = ExecuteRequestBuilder::standard(
+fn should_install_faucet_contract() {
+    let installer_secret_key =
+        SecretKey::ed25519_from_bytes([1; 32]).expect("failed to create secret key");
+    let installer_public_key = PublicKey::from(&installer_secret_key);
+    let installer_account = AccountHash::from_public_key(&installer_public_key, crypto::blake2b);
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST).commit();
+
+    let fund_installer_account_request = ExecuteRequestBuilder::transfer(
         *DEFAULT_ACCOUNT_ADDR,
-        FAUCET_CONTRACT,
-        runtime_args! { ARG_TARGET => NEW_ACCOUNT_ADDR, ARG_AMOUNT => amount },
+        runtime_args! {
+            mint::ARG_TARGET => installer_account,
+            mint::ARG_AMOUNT => 300_000_000_000_000u64,
+            mint::ARG_ID => <Option<u64>>::None
+        },
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
     builder
-        .run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST)
-        .exec(exec_request)
+        .exec(fund_installer_account_request)
         .expect_success()
         .commit();
 
-    let account = builder
-        .get_account(NEW_ACCOUNT_ADDR)
-        .expect("should get account");
-
-    let account_purse = account.main_purse();
-    let account_balance = builder.get_purse_balance(account_purse);
-    assert_eq!(
-        account_balance, amount,
-        "faucet should have created account with requested amount"
-    );
-}
-
-#[ignore]
-#[test]
-fn should_fail_if_already_funded() {
-    let amount = U512::from(1000);
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        FAUCET_CONTRACT,
-        runtime_args! { ARG_TARGET => NEW_ACCOUNT_ADDR, ARG_AMOUNT => amount },
+    let installer_session_request = ExecuteRequestBuilder::standard(
+        installer_account,
+        FAUCET_INSTALLER_SESSION,
+        runtime_args! {ARG_ID => 1337u64, ARG_AMOUNT => U512::from(500_000u64)},
     )
     .build();
-    let exec_request_2 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        FAUCET_CONTRACT,
-        runtime_args! { ARG_TARGET => NEW_ACCOUNT_ADDR, ARG_AMOUNT => amount },
-    )
-    .build();
-
-    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder
-        .run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST)
-        .exec(exec_request_1)
+        .exec(installer_session_request)
         .expect_success()
-        .commit()
-        .exec(exec_request_2); // should fail
+        .commit();
 
-    let error_msg = builder
-        .exec_error_message(1)
-        .expect("should have error message");
-    assert!(
-        error_msg.contains(&format!("{:?}", ApiError::User(1))),
-        "{}",
-        error_msg
-    );
+    // installer should be in contracts named keys.
+    let keys = builder
+        .get_expected_account(installer_account)
+        .named_keys()
+        .to_owned();
+
+    println!("named keys: {:?}", keys);
 }
