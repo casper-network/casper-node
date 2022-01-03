@@ -86,10 +86,10 @@ pub struct EraSupervisor<I> {
     ///
     /// This map always contains exactly `2 * bonded_eras + 1` entries, with the last one being the
     /// current one.
-    open_eras: HashMap<EraId, Era<I>>,
+    pub(super) open_eras: HashMap<EraId, Era<I>>,
     secret_signing_key: Arc<SecretKey>,
     public_signing_key: PublicKey,
-    current_era: EraId,
+    pub(super) current_era: EraId,
     protocol_config: ProtocolConfig,
     config: Config,
     #[data_size(skip)] // Negligible for most closures, zero for functions.

@@ -28,7 +28,7 @@ use datasize::DataSize;
 use derive_more::From;
 use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
-use tracing::error;
+use tracing::{error, info};
 
 use casper_types::{EraId, PublicKey, U512};
 
@@ -364,11 +364,36 @@ where
                 let validator_changes = self.get_validator_changes();
                 responder.respond(validator_changes).ignore()
             }
-            Event::DumpState(req @ DumpConsensusStateRequest { .. }) => req
-                .answer(Err(Cow::Borrowed(
-                    "consensus dump is currently unimplemented",
-                )))
-                .ignore(),
+            Event::DumpState(req @ DumpConsensusStateRequest { era_id, .. }) => {
+                let requested_era = era_id.unwrap_or(self.current_era);
+
+                // We emit some log message to get some performance information and give the
+                // operator a chance to find out why their node is busy.
+                info!(era_id=%requested_era.value(), was_latest=era_id.is_none(), "dumping era via console");
+
+                match self.open_eras.get(&requested_era) {
+                    Some(era) => {
+                        let data = EraDump {
+                            id: requested_era,
+                            start_time: era.start_time,
+                            start_height: era.start_height,
+                            new_faulty: &era.new_faulty,
+                            faulty: &era.faulty,
+                            cannot_propose: &era.cannot_propose,
+                            accusations: &era.accusations,
+                            validators: &era.validators,
+                        };
+
+                        req.answer(Ok(&data)).ignore()
+                    }
+                    None => req
+                        .answer(Err(Cow::Owned(format!(
+                            "could not dump consensus, {} not found",
+                            requested_era
+                        ))))
+                        .ignore(),
+                }
+            }
         }
     }
 }

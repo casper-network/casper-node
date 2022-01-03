@@ -91,11 +91,17 @@ impl Session {
         // TODO: This function could probably be a generic serialization function for any `T`, but
         // the conversion is tricky due to the lifetime arguments on `EraDump` and has not been done yet.
         match self.output {
-            OutputFormat::Interactive => |data: &EraDump| Ok(data.to_string().into_bytes()),
+            OutputFormat::Interactive => |data: &EraDump| {
+                let mut buf = data.to_string().into_bytes();
+                buf.push(b'\n');
+                Ok(buf)
+            },
             OutputFormat::Json => |data: &EraDump| {
-                serde_json::to_vec(&data).map_err(|err| {
+                let mut buf = serde_json::to_vec(&data).map_err(|err| {
                     Cow::Owned(format!("failed to serialize era dump as JSON: {}", err))
-                })
+                })?;
+                buf.push(b'\n');
+                Ok(buf)
             },
             OutputFormat::Bincode => |data: &EraDump| {
                 bincode::serialize(&data).map_err(|err| {
