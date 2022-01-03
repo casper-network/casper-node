@@ -10,7 +10,7 @@ use casper_types::{EraId, PublicKey, U512};
 use serde::Serialize;
 
 use crate::{
-    components::consensus::{ClContext, HighwayProtocol},
+    components::consensus::{highway_core::State, ClContext, HighwayProtocol},
     types::{NodeId, Timestamp},
 };
 
@@ -22,8 +22,6 @@ pub(crate) struct EraDump<'a> {
     /// The era that is being dumped.
     pub(crate) id: EraId,
 
-    /// The consensus protocol instance.
-    // pub(crate) consensus: Box<dyn ConsensusProtocol<I, ClContext>>,
     /// The scheduled starting time of this era.
     pub(crate) start_time: Timestamp,
     /// The height of this era's first block.
@@ -42,6 +40,9 @@ pub(crate) struct EraDump<'a> {
     pub(crate) accusations: &'a HashSet<PublicKey>,
     /// The validator weights.
     pub(crate) validators: &'a BTreeMap<PublicKey, U512>,
+
+    /// The state of the highway instance associated with the era.
+    pub(crate) highway_state: &'a State<ClContext>,
 }
 
 impl<'a> Display for EraDump<'a> {
@@ -70,6 +71,7 @@ impl<'a> EraDump<'a> {
             cannot_propose: &era.cannot_propose,
             accusations: &era.accusations,
             validators: &era.validators,
+            highway_state: highway.highway().state(),
         })
     }
 }
