@@ -89,7 +89,8 @@ impl Session {
     /// Creates a serializer for an `EraDump`.
     fn create_era_dump_serializer(&self) -> fn(&EraDump<'_>) -> Result<Vec<u8>, Cow<'static, str>> {
         // TODO: This function could probably be a generic serialization function for any `T`, but
-        // the conversion is tricky due to the lifetime arguments on `EraDump` and has not been done yet.
+        // the conversion is tricky due to the lifetime arguments on `EraDump` and has not been done
+        // yet.
         match self.output {
             OutputFormat::Interactive => |data: &EraDump| {
                 let mut buf = data.to_string().into_bytes();

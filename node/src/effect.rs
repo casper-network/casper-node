@@ -1807,7 +1807,8 @@ impl<REv> EffectBuilder<REv> {
         .collect()
     }
 
-    /// Dump consensus state for a specific era, using the supplied function to serialize the output.
+    /// Dump consensus state for a specific era, using the supplied function to serialize the
+    /// output.
     pub(crate) async fn console_dump_consensus_state(
         self,
         era_id: Option<EraId>,

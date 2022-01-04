@@ -5,7 +5,8 @@ pub(crate) type Mode = libc::mode_t;
 
 /// Set the umask to `new_mode`, returning the current mode.
 fn umask(new_mode: Mode) -> Mode {
-    // `umask` is always successful (according to the manpage), so there is no error condition to check.
+    // `umask` is always successful (according to the manpage), so there is no error condition to
+    // check.
     unsafe { libc::umask(new_mode) }
 }
 

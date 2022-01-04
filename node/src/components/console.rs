@@ -156,7 +156,8 @@ impl<REv> Component<REv> for Console {
         _rng: &mut NodeRng,
         _event: Event,
     ) -> Effects<Event> {
-        // No events are processed in the component, as all requests are handled per-client in tasks.
+        // No events are processed in the component, as all requests are handled per-client in
+        // tasks.
         Effects::new()
     }
 }
