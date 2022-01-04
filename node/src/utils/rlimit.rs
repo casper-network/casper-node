@@ -17,10 +17,16 @@ use fmt::Formatter;
 /// A scalar limit.
 pub type Limit = libc::rlim_t;
 
+#[cfg(target_os = "linux")]
+pub type LimitResourceId = libc::__rlimit_resource_t;
+
+#[cfg(target_os = "macos")]
+pub type LimitResourceId = libc::c_int;
+
 /// A kind of limit that can be set/retrieved.
 pub trait LimitKind {
     /// The `resource` id use for libc calls.
-    const LIBC_RESOURCE: libc::__rlimit_resource_t;
+    const LIBC_RESOURCE: LimitResourceId;
 }
 
 /// Maximum number of open files (`ulimit -n`).
@@ -28,7 +34,7 @@ pub trait LimitKind {
 pub struct OpenFiles;
 
 impl LimitKind for OpenFiles {
-    const LIBC_RESOURCE: libc::__rlimit_resource_t = libc::RLIMIT_NOFILE;
+    const LIBC_RESOURCE: LimitResourceId = libc::RLIMIT_NOFILE;
 }
 
 /// Infinite resource, i.e. no limit.

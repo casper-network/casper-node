@@ -3,7 +3,7 @@ use prometheus::{IntCounter, Registry};
 use crate::unregister_metric;
 
 #[derive(Debug)]
-pub(crate) struct FetcherMetrics {
+pub(crate) struct Metrics {
     /// Number of fetch requests that found an item in the storage.
     pub found_in_storage: IntCounter,
     /// Number of fetch requests that fetched an item from peer.
@@ -14,18 +14,18 @@ pub(crate) struct FetcherMetrics {
     registry: Registry,
 }
 
-impl FetcherMetrics {
-    pub(crate) fn new(name: &str, registry: &Registry) -> Result<Self, prometheus::Error> {
+impl Metrics {
+    pub(super) fn new(name: &str, registry: &Registry) -> Result<Self, prometheus::Error> {
         let found_in_storage = IntCounter::new(
             format!("{}_found_in_storage", name),
             format!(
-                "number of fetch requests that found {} in the storage.",
+                "number of fetch requests that found {} in local storage",
                 name
             ),
         )?;
         let found_on_peer = IntCounter::new(
             format!("{}_found_on_peer", name),
-            format!("number of fetch requests that fetched {} from peer.", name),
+            format!("number of fetch requests that fetched {} from peer", name),
         )?;
         let timeouts = IntCounter::new(
             format!("{}_timeouts", name),
@@ -35,7 +35,7 @@ impl FetcherMetrics {
         registry.register(Box::new(found_on_peer.clone()))?;
         registry.register(Box::new(timeouts.clone()))?;
 
-        Ok(FetcherMetrics {
+        Ok(Metrics {
             found_in_storage,
             found_on_peer,
             timeouts,
@@ -44,7 +44,7 @@ impl FetcherMetrics {
     }
 }
 
-impl Drop for FetcherMetrics {
+impl Drop for Metrics {
     fn drop(&mut self) {
         unregister_metric!(self.registry, self.found_in_storage);
         unregister_metric!(self.registry, self.found_on_peer);

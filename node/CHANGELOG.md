@@ -14,14 +14,12 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Added
 * Add new event to the main SSE server stream accessed via `<IP:Port>/events/main` which emits hashes of expired deploys.
-* Add new event to the main SSE server stream across all endpoints `<IP:Port>/events/*` which emits a shutdown event when the node shuts down.
 * Introducing fast-syncing to join the network, avoiding the need to execute every block to catch up.
 * Added `archival_sync` to `[node]` config section, along with archival syncing capabilities
 * Added `max_parallel_deploy_fetches` and `max_parallel_trie_fetches` config options to the `[node]` section to control how many requests are made in parallel while syncing.
 * Add capabilities for known nodes to slow down the reconnection process of outdated legacy nodes still out on the internet.
 
 ### Changed
-* `enable_manual_sync` configuration parameter defaults to `true`.
 * Major rewrite of the contract runtime component.
 * More node modules are now `pub(crate)`.
 * Chain automatically creates a switch block immediately after genesis or an upgrade.
@@ -37,8 +35,18 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [1.4.3] - 2021-12-06
 
+### Added
+* Add new event to the main SSE server stream accessed via `<IP:Port>/events/main` which emits hashes of expired deploys.
+
 ### Changed
 * Updated dependencies, in particular `casper-types` to use fixed checksummed-hex format.
+* Add new event to the main SSE server stream across all endpoints `<IP:PORT>/events/*` which emits a shutdown event when the node shuts down.
+* Add `SIGUSR2` signal handling to dump the queue in JSON format (see "Changed" section for `SIGUSR1`).
+
+### Changed
+* `SIGUSR1` now only dumps the queue in the debug text format.
+* `enable_manual_sync` configuration parameter defaults to `true`.
+* Default behavior of LMDB changed to use [`NO_READAHEAD`](https://docs.rs/lmdb/0.8.0/lmdb/struct.EnvironmentFlags.html#associatedconstant.NO_READAHEAD)
 
 
 ## [1.4.2] - 2021-11-11

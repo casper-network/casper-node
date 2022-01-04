@@ -36,7 +36,7 @@ use crate::{
                 ConsensusProtocol, EraReport, FinalizedBlock as CpFinalizedBlock, ProposedBlock,
                 ProtocolOutcome,
             },
-            metrics::ConsensusMetrics,
+            metrics::Metrics,
             traits::NodeIdT,
             validator_change::{ValidatorChange, ValidatorChanges},
             ActionId, ChainspecConsensusExt, Config, ConsensusMessage, Event, NewBlockPayload,
@@ -122,7 +122,7 @@ pub struct EraSupervisor<I> {
     /// The height of the next block to be executed. If this falls too far behind, we pause.
     next_executed_height: u64,
     #[data_size(skip)]
-    metrics: ConsensusMetrics,
+    metrics: Metrics,
     /// The path to the folder where unit files will be stored.
     unit_files_folder: PathBuf,
     /// The next upgrade activation point. When the era immediately before the activation point is
@@ -171,8 +171,9 @@ where
         let (root, config) = config.into_parts();
         let (secret_signing_key, public_signing_key) = config.load_keys(root)?;
         info!(our_id = %public_signing_key, "EraSupervisor pubkey",);
-        let metrics = ConsensusMetrics::new(registry)
-            .expect("failure to setup and register ConsensusMetrics");
+        let metrics =
+            Metrics::new(registry).expect("failure to setup and register ConsensusMetrics");
+
         #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
         let next_height = latest_block_header.height() + 1;
 

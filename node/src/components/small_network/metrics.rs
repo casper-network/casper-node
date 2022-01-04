@@ -3,12 +3,12 @@ use std::sync::Weak;
 use prometheus::{IntCounter, IntGauge, Registry};
 use tracing::debug;
 
-use super::small_network::MessageKind;
+use super::MessageKind;
 use crate::unregister_metric;
 
 /// Network-type agnostic networking metrics.
 #[derive(Debug)]
-pub(super) struct NetworkingMetrics {
+pub(super) struct Metrics {
     /// How often a request was made by a component to broadcast.
     pub(super) broadcast_requests: IntCounter,
     /// How often a request to send a message directly to a peer was made.
@@ -58,7 +58,7 @@ pub(super) struct NetworkingMetrics {
     registry: Registry,
 }
 
-impl NetworkingMetrics {
+impl Metrics {
     /// Creates a new instance of networking metrics.
     pub(super) fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
         let broadcast_requests =
@@ -165,7 +165,7 @@ impl NetworkingMetrics {
         registry.register(Box::new(out_bytes_trie_transfer.clone()))?;
         registry.register(Box::new(out_bytes_other.clone()))?;
 
-        Ok(NetworkingMetrics {
+        Ok(Metrics {
             broadcast_requests,
             direct_message_requests,
             open_connections,
@@ -234,7 +234,7 @@ impl NetworkingMetrics {
     }
 }
 
-impl Drop for NetworkingMetrics {
+impl Drop for Metrics {
     fn drop(&mut self) {
         unregister_metric!(self.registry, self.broadcast_requests);
         unregister_metric!(self.registry, self.direct_message_requests);
@@ -250,6 +250,7 @@ impl Drop for NetworkingMetrics {
         unregister_metric!(self.registry, self.out_count_block_transfer);
         unregister_metric!(self.registry, self.out_count_trie_transfer);
         unregister_metric!(self.registry, self.out_count_other);
+
         unregister_metric!(self.registry, self.out_bytes_protocol);
         unregister_metric!(self.registry, self.out_bytes_consensus);
         unregister_metric!(self.registry, self.out_bytes_deploy_gossip);

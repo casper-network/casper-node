@@ -41,11 +41,10 @@ use super::{
     event::{IncomingConnection, OutgoingConnection},
     framed,
     limiter::LimiterHandle,
-    message::ConsensusKeyPair,
-    Event, FramedTransport, Message, Payload, Transport,
+    message::{ConsensusKeyPair, PayloadWeights},
+    Event, FramedTransport, Message, Metrics, Payload, Transport,
 };
 use crate::{
-    components::{networking_metrics::NetworkingMetrics, small_network::message::PayloadWeights},
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert},
     types::{NodeId, TimeDiff},
@@ -176,7 +175,7 @@ where
     /// Secret key associated with `our_cert`.
     pub(super) secret_key: Arc<PKey<Private>>,
     /// Weak reference to the networking metrics shared by all sender/receiver tasks.
-    pub(super) net_metrics: Weak<NetworkingMetrics>,
+    pub(super) net_metrics: Weak<Metrics>,
     /// Chain info extract from chainspec.
     pub(super) chain_info: ChainInfo,
     /// Our own public listening address.
