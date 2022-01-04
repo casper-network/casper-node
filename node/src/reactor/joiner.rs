@@ -540,20 +540,22 @@ impl reactor::Reactor for Reactor {
         let chainspec = chainspec_loader.chainspec().clone();
         let linear_chain_sync = match maybe_trusted_hash {
             None => {
-                if let Some(start_time) = chainspec
+                let genesis_timestamp = chainspec
                     .protocol_config
                     .activation_point
-                    .genesis_timestamp()
-                {
-                    let era_duration = chainspec.core_config.era_duration;
-                    if Timestamp::now() > start_time + era_duration {
-                        error!(
+                    .genesis_timestamp();
+                let era_duration = chainspec.core_config.era_duration;
+                let genesis_era_ended = genesis_timestamp.map_or(true, |start_time| {
+                    Timestamp::now() > start_time + era_duration
+                });
+                if genesis_era_ended {
+                    error!(
                             now=?Timestamp::now(),
-                            genesis_era_end=?start_time + era_duration,
+                            genesis_era_end=?genesis_timestamp
+                                .map(|start_time| start_time + era_duration),
                             "node started with no trusted hash after the expected end of \
                              the genesis era! Please specify a trusted hash and restart.");
-                        panic!("should have trusted hash after genesis era")
-                    }
+                    panic!("should have trusted hash after genesis era")
                 }
                 LinearChainSyncState::NotGoingToSync
             }
