@@ -80,7 +80,10 @@ pub(super) enum Action {
     ///
     /// It is recommended to set the output format to `bincode` if the data is to be visualized
     /// after.
-    DumpConsensus,
+    DumpConsensus {
+        /// Era to dump. If omitted, dumps the latest era.
+        era: Option<u64>,
+    },
 }
 
 /// A command to be performed on the node's console.

@@ -14,6 +14,7 @@ use super::{
     command::{Action, Command, OutputFormat},
     util::ShowUnixAddr,
 };
+use casper_types::EraId;
 use futures::future::{self, Either};
 use serde::Serialize;
 use tokio::{
@@ -153,9 +154,12 @@ impl Session {
                                 .await?;
                         }
                     }
-                    Action::DumpConsensus => {
+                    Action::DumpConsensus { era } => {
                         let output = effect_builder
-                            .console_dump_consensus_state(None, self.create_era_dump_serializer())
+                            .console_dump_consensus_state(
+                                era.map(EraId::new),
+                                self.create_era_dump_serializer(),
+                            )
                             .await;
 
                         match output {
