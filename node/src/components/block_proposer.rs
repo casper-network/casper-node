@@ -46,7 +46,7 @@ use cached_state::CachedState;
 pub use config::Config;
 use deploy_sets::{BlockProposerDeploySets, PruneResult};
 pub(crate) use event::{DeployInfo, Event};
-use metrics::BlockProposerMetrics;
+use metrics::Metrics;
 
 /// Block proposer component.
 #[derive(DataSize, Debug)]
@@ -55,7 +55,7 @@ pub(crate) struct BlockProposer {
     state: BlockProposerState,
 
     /// Metrics, present in all states.
-    metrics: BlockProposerMetrics,
+    metrics: Metrics,
 }
 
 const STATE_KEY: &[u8] = b"block proposer";
@@ -132,7 +132,7 @@ impl BlockProposer {
                 deploy_config: chainspec.deploy_config,
                 local_config,
             },
-            metrics: BlockProposerMetrics::new(registry)?,
+            metrics: Metrics::new(registry)?,
         };
 
         Ok((block_proposer, effects))

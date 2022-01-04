@@ -10,6 +10,7 @@ use casper_engine_test_support::{
 use casper_execution_engine::{
     core::engine_state::{
         genesis::GenesisValidator, EngineConfig, GenesisAccount, DEFAULT_MAX_QUERY_DEPTH,
+        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
     },
     shared::{
         host_function_costs::{Cost, HostFunction, HostFunctionCosts},
@@ -192,6 +193,7 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
     let new_engine_config = EngineConfig::new(
         DEFAULT_MAX_QUERY_DEPTH,
         new_max_associated_keys,
+        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         WasmConfig::default(),
         new_system_config,
     );
@@ -430,6 +432,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
     let new_engine_config = EngineConfig::new(
         DEFAULT_MAX_QUERY_DEPTH,
         new_max_associated_keys,
+        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         WasmConfig::default(),
         new_system_config,
     );
@@ -868,6 +871,7 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
     let new_engine_config = EngineConfig::new(
         DEFAULT_MAX_QUERY_DEPTH,
         new_max_associated_keys,
+        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         new_wasm_config,
         new_system_config,
     );

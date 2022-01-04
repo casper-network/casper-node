@@ -56,7 +56,6 @@ use tokio::time::{Duration, Instant};
 use tracing::{debug, debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
 
-#[cfg(target_os = "linux")]
 use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
 
 use crate::{
@@ -64,7 +63,7 @@ use crate::{
     types::{ExitCode, Timestamp},
     unregister_metric,
     utils::{self, SharedFlag, WeightedRoundRobin},
-    NodeRng, QUEUE_DUMP_REQUESTED, TERMINATION_REQUESTED,
+    NodeRng, DEBUG_DUMP_REQUESTED, JSON_DUMP_REQUESTED, TERMINATION_REQUESTED,
 };
 #[cfg(test)]
 use crate::{reactor::initializer::Reactor as InitializerReactor, types::Chainspec};
@@ -104,11 +103,18 @@ static DISPATCH_EVENT_THRESHOLD: Lazy<Duration> = Lazy::new(|| {
         .unwrap_or_else(|_| DEFAULT_DISPATCH_EVENT_THRESHOLD)
 });
 
-#[cfg(target_os = "linux")]
 /// The desired limit for open files.
 const TARGET_OPEN_FILES_LIMIT: Limit = 64_000;
 
-#[cfg(target_os = "linux")]
+/// Format for dump of event queue.
+#[derive(Copy, Clone, Debug)]
+enum DumpFormat {
+    /// JSON-encoded (using serde).
+    Json,
+    /// Text-format derived from `fmt::Debug`.
+    Debug,
+}
+
 /// Adjusts the maximum number of open file handles upwards towards the hard limit.
 fn adjust_open_files_limit() {
     // Ensure we have reasonable ulimits.
@@ -144,12 +150,6 @@ fn adjust_open_files_limit() {
             }
         }
     }
-}
-
-#[cfg(not(target_os = "linux"))]
-/// File handle limit adjustment shim.
-fn adjust_open_files_limit() {
-    info!("not on linux, not adjusting open files limit");
 }
 
 /// The value returned by a reactor on completion of the `run()` loop.
@@ -401,13 +401,16 @@ struct RunnerMetrics {
 impl RunnerMetrics {
     /// Create and register new runner metrics.
     fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
-        let events = IntCounter::new("runner_events", "total event count")?;
+        let events = IntCounter::new(
+            "runner_events",
+            "running total count of events handled by this reactor",
+        )?;
 
         // Create an event dispatch histogram, putting extra emphasis on the area between 1-10 us.
         let event_dispatch_duration = Histogram::with_opts(
             HistogramOpts::new(
                 "event_dispatch_duration",
-                "duration of complete dispatch of a single event in nanoseconds",
+                "time in nanoseconds to dispatch an event",
             )
             .buckets(vec![
                 100.0,
@@ -560,18 +563,24 @@ where
                             %threshold_bytes,
                             "node has allocated enough memory to trigger queue dump"
                         );
-                        self.dump_queues().await;
+                        self.dump_queues(DumpFormat::Debug).await;
                     }
                 }
             }
         }
 
+        // Dump event queue in JSON format if requested, stopping the world.
+        if JSON_DUMP_REQUESTED.load(Ordering::SeqCst) {
+            debug!("dumping event queue in JSON format as requested");
+            self.dump_queues(DumpFormat::Json).await;
+            JSON_DUMP_REQUESTED.store(false, Ordering::SeqCst);
+        }
+
         // Dump event queue if requested, stopping the world.
-        if QUEUE_DUMP_REQUESTED.load(Ordering::SeqCst) {
-            debug!("dumping event queue as requested");
-            self.dump_queues().await;
-            // Indicate we are done with the dump.
-            QUEUE_DUMP_REQUESTED.store(false, Ordering::SeqCst);
+        if DEBUG_DUMP_REQUESTED.load(Ordering::SeqCst) {
+            debug!("dumping event queue in debug format as requested");
+            self.dump_queues(DumpFormat::Debug).await;
+            DEBUG_DUMP_REQUESTED.store(false, Ordering::SeqCst);
         }
 
         let ((ancestor, event), queue) = self.scheduler.pop().await;
@@ -678,33 +687,39 @@ where
     }
 
     /// Handles dumping queue contents to files in /tmp.
-    async fn dump_queues(&mut self) {
+    async fn dump_queues(&mut self, format: DumpFormat) {
         let timestamp = Timestamp::now();
         self.last_queue_dump = Some(timestamp);
-        let output_fn = format!("/tmp/queue_dump-{}.json", timestamp);
-        let mut serializer = serde_json::Serializer::pretty(match File::create(&output_fn) {
-            Ok(file) => file,
-            Err(error) => {
-                warn!(%error, "could not create output file ({}) for queue snapshot", output_fn);
-                return;
-            }
-        });
 
-        if let Err(error) = self.scheduler.snapshot(&mut serializer).await {
-            warn!(%error, "could not serialize snapshot to {}", output_fn);
-            return;
-        }
-
-        let debug_dump_filename = format!("/tmp/queue_dump_debug-{}.txt", timestamp);
-        let mut file = match File::create(&debug_dump_filename) {
-            Ok(file) => file,
-            Err(error) => {
-                warn!(%error, "could not create debug output file ({}) for queue snapshot", debug_dump_filename);
-                return;
+        match format {
+            DumpFormat::Json => {
+                let output_fn = format!("/tmp/queue_dump-{}.json", timestamp);
+                let mut serializer = serde_json::Serializer::pretty(
+                    match File::create(&output_fn) {
+                        Ok(file) => file,
+                        Err(error) => {
+                            warn!(%error, "could not create output file ({}) for queue snapshot", output_fn);
+                            return;
+                        }
+                    },
+                );
+                if let Err(error) = self.scheduler.snapshot(&mut serializer).await {
+                    warn!(%error, "could not serialize snapshot to {}", output_fn);
+                }
             }
-        };
-        if let Err(error) = self.scheduler.debug_dump(&mut file).await {
-            warn!(%error, "could not serialize debug snapshot to {}", debug_dump_filename);
+            DumpFormat::Debug => {
+                let output_fn = format!("/tmp/queue_dump_debug-{}.txt", timestamp);
+                let mut file = match File::create(&output_fn) {
+                    Ok(file) => file,
+                    Err(error) => {
+                        warn!(%error, "could not create debug output file ({}) for queue snapshot", output_fn);
+                        return;
+                    }
+                };
+                if let Err(error) = self.scheduler.debug_dump(&mut file).await {
+                    warn!(%error, "could not serialize debug snapshot to {}", output_fn);
+                }
+            }
         }
     }
 
