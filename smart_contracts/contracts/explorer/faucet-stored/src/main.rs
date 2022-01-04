@@ -24,8 +24,11 @@ enum InstallerSessionError {
 
 const ARG_ID: &str = "id";
 const ARG_AMOUNT: &str = "amount";
+const ARG_AVAILABLE_AMOUNT: &str = "available_amount";
+const ARG_TIME_INTERVAL: &str = "time_increment";
 const ENTRY_POINT_FAUCET: &str = "call_faucet";
 const ENTRY_POINT_INIT: &str = "init";
+const ENTRY_POINT_SET_VARIABLES: &str = "set_variables";
 const INSTALLER: &str = "installer";
 const CONTRACT_NAME: &str = "faucet";
 const HASH_KEY_NAME: &str = "faucet_package";
@@ -43,9 +46,28 @@ fn store() -> (ContractHash, ContractVersion) {
 
         let faucet = EntryPoint::new(
             ENTRY_POINT_FAUCET,
+            vec![Parameter::new(
+                ARG_ID,
+                CLType::Option(Box::new(CLType::U64)),
+            )],
+            CLType::U512,
+            EntryPointAccess::Public,
+            EntryPointType::Contract,
+        );
+
+        let init_purse = EntryPoint::new(
+            ENTRY_POINT_INIT,
+            vec![],
+            CLType::URef,
+            EntryPointAccess::Public,
+            EntryPointType::Contract,
+        );
+
+        let set_variables = EntryPoint::new(
+            ENTRY_POINT_SET_VARIABLES,
             vec![
-                Parameter::new(ARG_AMOUNT, CLType::U512),
-                Parameter::new(ARG_ID, CLType::Option(Box::new(CLType::U64))),
+                Parameter::new(ARG_AVAILABLE_AMOUNT, CLType::U512),
+                Parameter::new(ARG_TIME_INTERVAL, CLType::U64),
             ],
             CLType::Unit,
             EntryPointAccess::Public,
@@ -53,16 +75,8 @@ fn store() -> (ContractHash, ContractVersion) {
         );
 
         entry_points.add_entry_point(faucet);
-
-        let init_purse = EntryPoint::new(
-            ENTRY_POINT_INIT,
-            vec![],
-            CLType::Unit,
-            EntryPointAccess::Public,
-            EntryPointType::Contract,
-        );
-
         entry_points.add_entry_point(init_purse);
+        entry_points.add_entry_point(set_variables);
 
         entry_points
     };
