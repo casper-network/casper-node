@@ -1973,11 +1973,14 @@
           },
           "PeerEntry": {
             "additionalProperties": false,
+            "description": "Node peer entry.",
             "properties": {
               "address": {
+                "description": "Node address.",
                 "type": "string"
               },
               "node_id": {
+                "description": "Node id.",
                 "type": "string"
               }
             },
