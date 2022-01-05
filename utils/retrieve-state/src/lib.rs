@@ -910,7 +910,7 @@ async fn fetch_and_store_trie(
             ..
         }) => {
             let bytes: Vec<u8> = blob.into();
-          
+
             // total -trie bytes- per second
             {
                 let (_, total_bytes_since_last_update) = &mut *bps_counter.lock().await;
