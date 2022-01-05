@@ -361,19 +361,30 @@ impl BlockProposerReady {
             trace!(%hash, "expired deploy rejected from the buffer");
             return;
         }
-        // only add the deploy if it isn't contained in a finalized block
-        if self.sets.finalized_deploys.contains_key(hash.deploy_hash()) {
-            info!(%hash, "finalized deploy rejected from the buffer");
-            self.sets
-                .add_finalized(*hash.deploy_hash(), deploy_info.header.expires());
-            return;
-        }
 
         if hash.is_transfer() {
+            // only add the transfer if it isn't contained in a finalized block
+            if self
+                .sets
+                .finalized_transfers
+                .contains_key(hash.deploy_hash())
+            {
+                info!(%hash, "finalized transfer rejected from the buffer");
+                self.sets
+                    .add_finalized_transfer(*hash.deploy_hash(), deploy_info.header.expires());
+                return;
+            }
             self.sets
                 .pending_transfers
                 .insert(*hash.deploy_hash(), (deploy_info, current_instant));
         } else {
+            // only add the deploy if it isn't contained in a finalized block
+            if self.sets.finalized_deploys.contains_key(hash.deploy_hash()) {
+                info!(%hash, "finalized deploy rejected from the buffer");
+                self.sets
+                    .add_finalized_deploy(*hash.deploy_hash(), deploy_info.header.expires());
+                return;
+            }
             self.sets
                 .pending_deploys
                 .insert(*hash.deploy_hash(), (deploy_info, current_instant));
@@ -389,14 +400,14 @@ impl BlockProposerReady {
                 Some((deploy_info, _)) => deploy_info.header.expires(),
                 None => block.timestamp().saturating_add(self.deploy_config.max_ttl),
             };
-            self.sets.add_finalized(*deploy_hash, expiry);
+            self.sets.add_finalized_deploy(*deploy_hash, expiry);
         }
         for transfer_hash in block.transfer_hashes() {
             let expiry = match self.sets.pending_transfers.remove(transfer_hash) {
                 Some((deploy_info, _)) => deploy_info.header.expires(),
                 None => block.timestamp().saturating_add(self.deploy_config.max_ttl),
             };
-            self.sets.add_finalized(*transfer_hash, expiry);
+            self.sets.add_finalized_transfer(*transfer_hash, expiry);
         }
 
         self.sets.next_finalized = self.sets.next_finalized.max(block.height() + 1);
@@ -515,7 +526,8 @@ impl BlockProposerReady {
         self.sets.prune(current_instant)
     }
 
-    fn contains_finalized(&self, dep: &DeployHash) -> bool {
-        self.sets.finalized_deploys.contains_key(dep)
+    fn contains_finalized(&self, hash: &DeployHash) -> bool {
+        self.sets.finalized_deploys.contains_key(hash)
+            || self.sets.finalized_transfers.contains_key(hash)
     }
 }

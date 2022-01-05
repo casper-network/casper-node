@@ -36,13 +36,17 @@ pub(super) struct BlockProposerDeploySets {
     /// The deploys that have already been included in a finalized block, and their earliest known
     /// expiry date.
     pub(super) finalized_deploys: HashMap<DeployHash, Timestamp>,
+    /// The transfers that have already been included in a finalized block, and their earliest
+    /// known expiry date.
+    pub(super) finalized_transfers: HashMap<DeployHash, Timestamp>,
     /// The next block height we expect to be finalized.
     /// If we receive a notification of finalization of a later block, we will store it in
     /// finalization_queue.
     /// If we receive a request that contains a later next_finalized, we will store it in
     /// request_queue.
     pub(super) next_finalized: BlockHeight,
-    /// The queue of finalized block contents awaiting inclusion in `self.finalized_deploys`.
+    /// The queue of finalized block contents awaiting inclusion in `self.finalized_deploys` and
+    /// `self.finalized_transfers`.
     pub(super) finalization_queue: FinalizationQueue,
 }
 
@@ -56,13 +60,14 @@ impl BlockProposerDeploySets {
         max_ttl: TimeDiff,
     ) -> (BlockProposerDeploySets, PruneResult) {
         let mut finalized_deploys = HashMap::<DeployHash, Timestamp>::new();
+        let mut finalized_transfers = HashMap::<DeployHash, Timestamp>::new();
         for block in finalized_blocks {
             let expiry = block.header().timestamp().saturating_add(max_ttl);
             for hash in block.body().deploy_hashes() {
                 finalized_deploys.insert(*hash, expiry);
             }
             for hash in block.body().transfer_hashes() {
-                finalized_deploys.insert(*hash, expiry);
+                finalized_transfers.insert(*hash, expiry);
             }
         }
 
@@ -71,12 +76,13 @@ impl BlockProposerDeploySets {
             mut pending_transfers,
         } = cached_state;
         pending_deploys.retain(|hash, _| !finalized_deploys.contains_key(hash));
-        pending_transfers.retain(|hash, _| !finalized_deploys.contains_key(hash));
+        pending_transfers.retain(|hash, _| !finalized_transfers.contains_key(hash));
 
         let mut sets = BlockProposerDeploySets {
             pending_deploys,
             pending_transfers,
             finalized_deploys,
+            finalized_transfers,
             next_finalized: next_finalized_height,
             ..Default::default()
         };
@@ -90,26 +96,41 @@ impl BlockProposerDeploySets {
         let pending_deploys = prune_pending_deploys(&mut self.pending_deploys, current_instant);
         let pending_transfers = prune_pending_deploys(&mut self.pending_transfers, current_instant);
 
-        // We prune from finalized deploys collection because expired deploys
-        // can never be proposed again. This makes this collection smaller for
-        // later iterations.
-        let finalized = hashmap_drain_filter_in_place(&mut self.finalized_deploys, |expiry| {
-            *expiry < current_instant
-        });
+        // We prune from finalized deploys and transfers collections because expired ones can never
+        // be proposed again. This makes the collections smaller for later iterations.
+        let finalized_deploys =
+            hashmap_drain_filter_in_place(&mut self.finalized_deploys, |expiry| {
+                *expiry < current_instant
+            });
+        let finalized_transfers =
+            hashmap_drain_filter_in_place(&mut self.finalized_transfers, |expiry| {
+                *expiry < current_instant
+            });
 
         // We return a total of pruned deploys, but for the deploys pruned
         // from the `finalized` collection we don't want to send
         // the expiration event.
         PruneResult::new(
-            pending_deploys.len() + pending_transfers.len() + finalized.len(),
+            pending_deploys.len()
+                + pending_transfers.len()
+                + finalized_deploys.len()
+                + finalized_transfers.len(),
             [pending_deploys, pending_transfers].concat(),
         )
     }
 
     /// Adds a finalized deploy hash.
-    pub(super) fn add_finalized(&mut self, deploy_hash: DeployHash, new_expiry: Timestamp) {
+    pub(super) fn add_finalized_deploy(&mut self, hash: DeployHash, new_expiry: Timestamp) {
         self.finalized_deploys
-            .entry(deploy_hash)
+            .entry(hash)
+            .and_modify(|expiry| *expiry = new_expiry.min(*expiry))
+            .or_insert(new_expiry);
+    }
+
+    /// Adds a finalized transfer hash.
+    pub(super) fn add_finalized_transfer(&mut self, hash: DeployHash, new_expiry: Timestamp) {
+        self.finalized_transfers
+            .entry(hash)
             .and_modify(|expiry| *expiry = new_expiry.min(*expiry))
             .or_insert(new_expiry);
     }
@@ -121,7 +142,7 @@ impl Display for BlockProposerDeploySets {
             f,
             "(pending:{}, finalized:{})",
             self.pending_deploys.len() + self.pending_transfers.len(),
-            self.finalized_deploys.len()
+            self.finalized_deploys.len() + self.finalized_transfers.len(),
         )
     }
 }
