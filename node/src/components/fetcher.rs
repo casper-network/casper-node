@@ -258,8 +258,8 @@ where
 {
     get_from_peer_timeout: Duration,
     responders: HashMap<T::Id, HashMap<NodeId, Vec<FetchResponder<T>>>>,
-    #[data_size(skip)]
     merkle_tree_hash_activation: EraId,
+    #[data_size(skip)]
     metrics: Metrics,
 }
 
