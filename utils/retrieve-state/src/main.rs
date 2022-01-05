@@ -139,6 +139,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let chain_download_path = env::current_dir()?.join(&opts.chain_download_path);
     let url = format!("{}/rpc", opts.server_host);
+
+    // TODO: Consider reading the proper `chainspec` in the `retrieve-state` tool.
     let merkle_tree_hash_activation = EraId::from(0u64);
 
     let maybe_highest_block = opts.highest_block;
