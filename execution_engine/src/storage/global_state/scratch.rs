@@ -187,7 +187,7 @@ impl CommitProvider for ScratchGlobalState {
     /// state. Note that the state hash is NOT used, and simply passed back to the caller.
     fn commit(
         &self,
-        _correlation_id: CorrelationId,
+        correlation_id: CorrelationId,
         state_hash: Digest,
         effects: AdditiveMap<Key, Transform>,
     ) -> Result<Digest, Self::Error> {
@@ -196,12 +196,45 @@ impl CommitProvider for ScratchGlobalState {
             let value = match (cached_value, transform) {
                 (None, Transform::Write(new_value)) => new_value,
                 (None, transform) => {
-                    error!(
-                        ?key,
-                        ?transform,
-                        "Key not found while attempting to apply transform"
-                    );
-                    return Err(CommitError::KeyNotFound(key).into());
+                    // It might be the case that for `Add*` operations we don't have the previous value in cache yet.
+                    let txn = self.environment.create_read_txn()?;
+                    let updated_value = match read::<
+                        Key,
+                        StoredValue,
+                        lmdb::RoTransaction,
+                        LmdbTrieStore,
+                        Self::Error,
+                    >(
+                        correlation_id,
+                        &txn,
+                        self.trie_store.deref(),
+                        &state_hash,
+                        &key,
+                    )? {
+                        ReadResult::Found(current_value) => {
+                            match transform.apply(current_value.clone()) {
+                                Ok(updated_value) => updated_value,
+                                Err(err) => {
+                                    error!(?key, ?err, "Key found, but could not apply transform");
+                                    return Err(CommitError::TransformError(err).into());
+                                }
+                            }
+                        }
+                        ReadResult::NotFound => {
+                            error!(
+                                ?key,
+                                ?transform,
+                                "Key not found while attempting to apply transform"
+                            );
+                            return Err(CommitError::KeyNotFound(key).into());
+                        }
+                        ReadResult::RootNotFound => {
+                            error!(root_hash=?state_hash, "root not found");
+                            return Err(CommitError::ReadRootNotFound(state_hash).into());
+                        }
+                    };
+                    txn.commit()?;
+                    updated_value
                 }
                 (Some(current_value), transform) => match transform.apply(current_value.clone()) {
                     Ok(updated_value) => updated_value,
@@ -289,7 +322,6 @@ impl StateProvider for ScratchGlobalState {
 
 #[cfg(test)]
 mod tests {
-
     use lmdb::DatabaseFlags;
     use tempfile::tempdir;
 
@@ -371,7 +403,7 @@ mod tests {
                 DEFAULT_TEST_MAX_READERS,
                 true,
             )
-            .unwrap(),
+                .unwrap(),
         );
         let trie_store =
             Arc::new(LmdbTrieStore::new(&environment, None, DatabaseFlags::empty()).unwrap());
@@ -390,7 +422,7 @@ mod tests {
                     key,
                     value,
                 )
-                .unwrap()
+                    .unwrap()
                 {
                     WriteResult::Written(root_hash) => {
                         current_root = root_hash;
