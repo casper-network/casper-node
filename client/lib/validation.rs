@@ -297,28 +297,27 @@ pub(crate) fn validate_get_block_response(
     let result_legacy_hash = block.verify(EraId::from(0u64));
     let result_new_hash = block.verify(block.header().era_id() + 1);
 
-    match (result_legacy_hash, result_new_hash) {
-        (Ok(_), Ok(_)) | (Ok(_), Err(_)) | (Err(_), Ok(_)) => {
-            match maybe_block_identifier {
-                Some(BlockIdentifier::Hash(block_hash)) => {
-                    if block_hash != block.hash() {
-                        return Err(ValidateResponseError::UnexpectedBlockHash);
-                    }
-                }
-                Some(BlockIdentifier::Height(height)) => {
-                    // More is necessary here to mitigate a MITM attack
-                    if height != &block.height() {
-                        return Err(ValidateResponseError::UnexpectedBlockHeight);
-                    }
-                }
-                // More is necessary here to mitigate a MITM attack. In this case we would want to
-                // validate `block.proofs()` to make sure that 1/3 of the validator
-                // weight signed the block, and we would have to know the latest
-                // validators through some trustworthy means
-                None => (),
-            }
-            Ok(())
-        }
-        (Err(err), Err(_)) => Err(err.into()),
+    if result_legacy_hash.is_err() && result_new_hash.is_err() {
+        return result_new_hash.map_err(|e| e.into());
     }
+
+    match maybe_block_identifier {
+        Some(BlockIdentifier::Hash(block_hash)) => {
+            if block_hash != block.hash() {
+                return Err(ValidateResponseError::UnexpectedBlockHash);
+            }
+        }
+        Some(BlockIdentifier::Height(height)) => {
+            // More is necessary here to mitigate a MITM attack
+            if height != &block.height() {
+                return Err(ValidateResponseError::UnexpectedBlockHeight);
+            }
+        }
+        // More is necessary here to mitigate a MITM attack. In this case we would want to
+        // validate `block.proofs()` to make sure that 1/3 of the validator
+        // weight signed the block, and we would have to know the latest
+        // validators through some trustworthy means
+        None => (),
+    }
+    Ok(())
 }
