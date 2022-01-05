@@ -300,9 +300,7 @@ where
             Event::BlockAdded {
                 header,
                 header_hash: _,
-            } => {
-                self.handle_block_added(effect_builder, *header, self.merkle_tree_hash_activation())
-            }
+            } => self.handle_block_added(effect_builder, *header),
             Event::ResolveValidity(resolve_validity) => {
                 self.resolve_validity(effect_builder, rng, resolve_validity)
             }
@@ -311,12 +309,9 @@ where
                 faulty_num,
                 delay,
             } => self.handle_deactivate_era(effect_builder, era_id, faulty_num, delay),
-            Event::CreateNewEra { switch_blocks } => self.create_new_era_effects(
-                effect_builder,
-                rng,
-                &switch_blocks,
-                self.merkle_tree_hash_activation(),
-            ),
+            Event::CreateNewEra { switch_blocks } => {
+                self.create_new_era_effects(effect_builder, rng, &switch_blocks)
+            }
             Event::GotUpgradeActivationPoint(activation_point) => {
                 self.got_upgrade_activation_point(activation_point)
             }

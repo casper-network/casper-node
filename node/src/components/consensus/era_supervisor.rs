@@ -175,7 +175,6 @@ where
             .expect("failure to setup and register ConsensusMetrics");
         #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
         let next_height = latest_block_header.height() + 1;
-        let merkle_tree_hash_activation = chainspec.protocol_config.merkle_tree_hash_activation;
 
         let mut era_supervisor = Self {
             open_eras: Default::default(),
@@ -235,7 +234,6 @@ where
                 effect_builder,
                 rng,
                 &switch_blocks[..i],
-                merkle_tree_hash_activation,
             ));
         }
 
@@ -243,7 +241,7 @@ where
     }
 
     /// Returns the merkle tree hash activation from the chainspec.
-    pub(crate) fn merkle_tree_hash_activation(&self) -> EraId {
+    fn merkle_tree_hash_activation(&self) -> EraId {
         self.chainspec.protocol_config.merkle_tree_hash_activation
     }
 
@@ -341,9 +339,8 @@ where
         effect_builder: EffectBuilder<REv>,
         rng: &mut NodeRng,
         switch_blocks: &[BlockHeader],
-        merkle_tree_hash_activatio: EraId,
     ) -> Effects<Event<I>> {
-        match self.create_new_era(switch_blocks, merkle_tree_hash_activatio) {
+        match self.create_new_era(switch_blocks) {
             Ok((era_id, outcomes)) => {
                 self.handle_consensus_outcomes(effect_builder, rng, era_id, outcomes)
             }
@@ -361,7 +358,6 @@ where
     fn create_new_era(
         &mut self,
         switch_blocks: &[BlockHeader],
-        merkle_tree_hash_activation: EraId,
     ) -> Result<(EraId, Vec<ProtocolOutcome<I, ClContext>>), CreateNewEraError> {
         let key_block = switch_blocks
             .last()
@@ -408,7 +404,7 @@ where
         let auction_delay = self.chainspec.core_config.auction_delay as usize;
         let booking_block_hash =
             if let Some(booking_block) = switch_blocks.iter().rev().nth(auction_delay) {
-                booking_block.hash(merkle_tree_hash_activation)
+                booking_block.hash(self.merkle_tree_hash_activation())
             } else {
                 // If there's no booking block for the `era_id`
                 // (b/c it would have been from before Genesis, upgrade or emergency restart),
@@ -676,7 +672,6 @@ where
         &mut self,
         effect_builder: EffectBuilder<REv>,
         block_header: BlockHeader,
-        merkle_tree_hash_activation: EraId,
     ) -> Effects<Event<I>> {
         let our_pk = self.public_signing_key.clone();
         let our_sk = self.secret_signing_key.clone();
@@ -685,7 +680,7 @@ where
         let mut effects = if self.is_validator_in(&our_pk, era_id) {
             effect_builder
                 .announce_created_finality_signature(FinalitySignature::new(
-                    block_header.hash(merkle_tree_hash_activation),
+                    block_header.hash(self.merkle_tree_hash_activation()),
                     era_id,
                     &our_sk,
                     our_pk,
