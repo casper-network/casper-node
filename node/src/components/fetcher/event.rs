@@ -1,10 +1,11 @@
 use std::fmt::{self, Debug, Display, Formatter};
 
-use casper_types::EraId;
 use datasize::DataSize;
 use serde::Serialize;
 use thiserror::Error;
 use tracing::error;
+
+use casper_types::EraId;
 
 use super::Item;
 use crate::{

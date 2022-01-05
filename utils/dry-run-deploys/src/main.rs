@@ -1,6 +1,5 @@
 use std::{path::PathBuf, time::Instant};
 
-use casper_types::EraId;
 use histogram::Histogram;
 use indicatif::{ProgressBar, ProgressStyle};
 use structopt::StructOpt;
@@ -14,6 +13,8 @@ use retrieve_state::{
     storage,
     storage::{create_storage, get_many_deploys_by_hash, normalize_path},
 };
+
+use casper_types::EraId;
 
 #[derive(Debug, StructOpt)]
 struct Opts {

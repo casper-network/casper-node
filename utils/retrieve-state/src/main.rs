@@ -6,7 +6,6 @@ use std::{
     str::FromStr,
 };
 
-use casper_types::EraId;
 use indicatif::ProgressBar;
 use reqwest::ClientBuilder;
 use retrieve_state::{put_block_with_deploys, BlockWithDeploys};
@@ -20,6 +19,8 @@ use casper_node::{
 };
 
 use retrieve_state::storage::create_storage;
+
+use casper_types::EraId;
 
 const DOWNLOAD_TRIES: &str = "download-tries";
 const DOWNLOAD_BLOCKS: &str = "download-blocks";

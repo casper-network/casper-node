@@ -44,7 +44,6 @@ use std::{
     sync::atomic::Ordering,
 };
 
-use casper_types::EraId;
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use jemalloc_ctl::{epoch as jemalloc_epoch, stats::allocated as jemalloc_allocated};
@@ -57,6 +56,7 @@ use tokio::time::{Duration, Instant};
 use tracing::{debug, debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
 
+use casper_types::EraId;
 #[cfg(target_os = "linux")]
 use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
 

@@ -1394,7 +1394,7 @@ impl Block {
         &self.body
     }
 
-    /// Returns the reference to the header/
+    /// Returns the reference to the header.
     pub fn header(&self) -> &BlockHeader {
         &self.header
     }
