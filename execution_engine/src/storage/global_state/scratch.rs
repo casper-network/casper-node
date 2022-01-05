@@ -196,7 +196,8 @@ impl CommitProvider for ScratchGlobalState {
             let value = match (cached_value, transform) {
                 (None, Transform::Write(new_value)) => new_value,
                 (None, transform) => {
-                    // It might be the case that for `Add*` operations we don't have the previous value in cache yet.
+                    // It might be the case that for `Add*` operations we don't have the previous
+                    // value in cache yet.
                     let txn = self.environment.create_read_txn()?;
                     let updated_value = match read::<
                         Key,
