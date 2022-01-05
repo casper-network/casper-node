@@ -15,6 +15,7 @@ use tracing::error;
 
 use casper_types::{EraId, ProtocolVersion};
 
+use self::metrics::Metrics;
 use crate::{
     components::{
         linear_chain::state::{Outcome, Outcomes},
@@ -33,14 +34,13 @@ use crate::{
 };
 
 pub(crate) use event::Event;
-use metrics::LinearChainMetrics;
 use state::LinearChain;
 
 #[derive(DataSize, Debug)]
 pub(crate) struct LinearChainComponent<I> {
     linear_chain_state: LinearChain,
     #[data_size(skip)]
-    metrics: LinearChainMetrics,
+    metrics: Metrics,
     /// If true, the process should stop execution to allow an upgrade to proceed.
     stop_for_upgrade: bool,
     merkle_tree_hash_activation: EraId,
@@ -57,7 +57,7 @@ impl<I> LinearChainComponent<I> {
         next_upgrade_activation_point: Option<ActivationPoint>,
         merkle_tree_hash_activation: EraId,
     ) -> Result<Self, prometheus::Error> {
-        let metrics = LinearChainMetrics::new(registry)?;
+        let metrics = Metrics::new(registry)?;
         let linear_chain_state = LinearChain::new(
             protocol_version,
             auction_delay,

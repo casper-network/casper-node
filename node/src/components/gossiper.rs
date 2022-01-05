@@ -34,7 +34,7 @@ pub(crate) use config::Config;
 pub(crate) use event::Event;
 use gossip_table::{GossipAction, GossipTable};
 pub(crate) use message::Message;
-use metrics::GossiperMetrics;
+use metrics::Metrics;
 
 /// A helper trait whose bounds represent the requirements for a reactor event that `Gossiper` can
 /// work with.
@@ -107,7 +107,7 @@ where
     get_from_holder:
         Box<dyn Fn(EffectBuilder<REv>, T::Id, NodeId) -> Effects<Event<T>> + Send + 'static>,
     #[data_size(skip)]
-    metrics: GossiperMetrics,
+    metrics: Metrics,
 }
 
 impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
@@ -140,7 +140,7 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
             gossip_timeout: config.gossip_request_timeout().into(),
             get_from_peer_timeout: config.get_remainder_timeout().into(),
             get_from_holder: Box::new(get_from_holder),
-            metrics: GossiperMetrics::new(name, registry)?,
+            metrics: Metrics::new(name, registry)?,
         })
     }
 
@@ -165,7 +165,7 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
             get_from_holder: Box::new(|_, item, _| {
                 panic!("gossiper should never try to get {}", item)
             }),
-            metrics: GossiperMetrics::new(name, registry)?,
+            metrics: Metrics::new(name, registry)?,
         })
     }
 
