@@ -1,13 +1,11 @@
-use prometheus::{Histogram, HistogramOpts, Registry};
+use prometheus::{Histogram, Registry};
 
-use crate::{types::Timestamp, unregister_metric};
+use crate::{types::Timestamp, unregister_metric, utils};
 
 const DEPLOY_ACCEPTED_NAME: &str = "deploy_acceptor_accepted_deploy";
-const DEPLOY_ACCEPTED_HELP: &str =
-    "tracking time it took to accept a deploy in the deploy acceptor";
+const DEPLOY_ACCEPTED_HELP: &str = "time in seconds to accept a deploy in the deploy acceptor";
 const DEPLOY_REJECTED_NAME: &str = "deploy_acceptor_rejected_deploy";
-const DEPLOY_REJECTED_HELP: &str =
-    "tracking time it took to reject a deploy in the deploy acceptor";
+const DEPLOY_REJECTED_HELP: &str = "time in seconds to reject a deploy in the deploy acceptor";
 
 /// Value of upper bound of the first bucked. In ms.
 const EXPONENTIAL_BUCKET_START: f64 = 10.0;
@@ -18,22 +16,6 @@ const EXPONENTIAL_BUCKET_FACTOR: f64 = 2.0;
 /// Bucket count, with the last bucket going to +Inf which will not be included in the results.
 const EXPONENTIAL_BUCKET_COUNT: usize = 10;
 
-/// Create prometheus Histogram and register.
-fn register_histogram_metric(
-    registry: &Registry,
-    metric_name: &str,
-    metric_help: &str,
-) -> Result<Histogram, prometheus::Error> {
-    let common_buckets = prometheus::exponential_buckets(
-        EXPONENTIAL_BUCKET_START,
-        EXPONENTIAL_BUCKET_FACTOR,
-        EXPONENTIAL_BUCKET_COUNT,
-    )?;
-    let histogram_opts = HistogramOpts::new(metric_name, metric_help).buckets(common_buckets);
-    let histogram = Histogram::with_opts(histogram_opts)?;
-    registry.register(Box::new(histogram.clone()))?;
-    Ok(histogram)
-}
 #[derive(Debug)]
 pub(super) struct Metrics {
     deploy_accepted: Histogram,
@@ -43,16 +25,24 @@ pub(super) struct Metrics {
 
 impl Metrics {
     pub(super) fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
+        let common_buckets = prometheus::exponential_buckets(
+            EXPONENTIAL_BUCKET_START,
+            EXPONENTIAL_BUCKET_FACTOR,
+            EXPONENTIAL_BUCKET_COUNT,
+        )?;
+
         Ok(Self {
-            deploy_accepted: register_histogram_metric(
+            deploy_accepted: utils::register_histogram_metric(
                 registry,
                 DEPLOY_ACCEPTED_NAME,
                 DEPLOY_ACCEPTED_HELP,
+                common_buckets.clone(),
             )?,
-            deploy_rejected: register_histogram_metric(
+            deploy_rejected: utils::register_histogram_metric(
                 registry,
                 DEPLOY_REJECTED_NAME,
                 DEPLOY_REJECTED_HELP,
+                common_buckets,
             )?,
             registry: registry.clone(),
         })

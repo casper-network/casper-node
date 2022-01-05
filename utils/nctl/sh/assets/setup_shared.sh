@@ -112,7 +112,7 @@ EOM
 #######################################
 function setup_asset_accounts_from_template()
 {
-    log "... setting accounts.toml (from template)"    
+    log "... setting accounts.toml (from template)"
 
     local COUNT_NODES=${1}
     local COUNT_USERS=${2}
@@ -123,12 +123,12 @@ function setup_asset_accounts_from_template()
     local PBK_KEY
     local IDX
 
-    # Copy across template.    
+    # Copy across template.
     cp "$PATH_TO_TEMPLATE" "$PATH_TO_ACCOUNTS"
 
     # Set faucet.
     PBK_KEY="PBK_FAUCET"
-    ACCOUNT_KEY="$(get_account_key "$NCTL_ACCOUNT_TYPE_FAUCET")"    
+    ACCOUNT_KEY="$(get_account_key "$NCTL_ACCOUNT_TYPE_FAUCET")"
     sed -i "s/""$PBK_KEY""/""$ACCOUNT_KEY""/" "$PATH_TO_ACCOUNTS"
 
     # Set validators.
@@ -138,7 +138,7 @@ function setup_asset_accounts_from_template()
         ACCOUNT_KEY="$(get_account_key "$NCTL_ACCOUNT_TYPE_NODE" "$IDX")"
         sed -i "s/""$PBK_KEY""/""$ACCOUNT_KEY""/" "$PATH_TO_ACCOUNTS"
     done
-    
+
     # Set users.
     for IDX in $(seq "$COUNT_USERS" -1 1)
     do
@@ -194,7 +194,7 @@ function setup_asset_binaries()
             cp "$PATH_TO_WASM/$CONTRACT" \
                "$PATH_TO_BIN/auction"
         fi
-    done  
+    done
 
     # Set client-side shared contracts;
     for CONTRACT in "${NCTL_CONTRACTS_CLIENT_SHARED[@]}"
@@ -203,7 +203,7 @@ function setup_asset_binaries()
             cp "$PATH_TO_WASM/$CONTRACT" \
             "$PATH_TO_BIN/shared"
         fi
-    done  
+    done
 
     # Set client-side transfer contracts;
     for CONTRACT in "${NCTL_CONTRACTS_CLIENT_TRANSFERS[@]}"
@@ -311,7 +311,7 @@ function setup_asset_directories()
     mkdir "$PATH_TO_NET/daemon/config"
     mkdir "$PATH_TO_NET/daemon/logs"
     mkdir "$PATH_TO_NET/daemon/socket"
-    mkdir "$PATH_TO_NET/faucet" 
+    mkdir "$PATH_TO_NET/faucet"
     mkdir "$PATH_TO_NET/nodes"
     mkdir "$PATH_TO_NET/users"
 
@@ -327,7 +327,7 @@ function setup_asset_directories()
         mkdir "$PATH_TO_NODE/logs"
         mkdir "$PATH_TO_NODE/storage"
     done
-     
+
     for IDX in $(seq 1 "$COUNT_USERS")
     do
         mkdir "$PATH_TO_NET"/users/user-"$IDX"
@@ -359,7 +359,7 @@ function setup_asset_keys()
     do
         "$PATH_TO_CLIENT" keygen -f "$PATH_TO_NET/nodes/node-$IDX/keys" > /dev/null 2>&1
     done
-     
+
     for IDX in $(seq 1 "$COUNT_USERS")
     do
         "$PATH_TO_CLIENT" keygen -f "$PATH_TO_NET/users/user-$IDX" > /dev/null 2>&1
@@ -377,7 +377,7 @@ function setup_asset_keys()
 function setup_asset_node_configs()
 {
     log "... setting node configs"
-    
+
     local COUNT_NODES=${1}
     local PROTOCOL_VERSION=${2}
     local PATH_TO_TEMPLATE=${3}
@@ -440,10 +440,10 @@ function setup_asset_global_state_toml() {
             # Check new data.lmdb path under ..storage/<chain_name>/
             if [ -f "$PATH_TO_NET/nodes/node-$IDX/storage/$(get_chain_name)/data.lmdb" ]; then
                 GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-                        system-contract-registry -d "$PATH_TO_NET"/nodes/node-"$IDX"/storage/"$(get_chain_name)" -s "$(nctl-view-chain-state-root-hash node=$IDX | awk '{ print $12 }')")
+                        system-contract-registry -d "$PATH_TO_NET"/nodes/node-"$IDX"/storage/"$(get_chain_name)" -s "$(nctl-view-chain-state-root-hash node=$IDX | awk '{ print $12 }' | tr '[:upper:]' '[:lower:]')")
             else
                 GLOBAL_STATE_OUTPUT=$("$NCTL_CASPER_HOME"/target/"$NCTL_COMPILE_TARGET"/global-state-update-gen \
-                        system-contract-registry -d "$PATH_TO_NET"/nodes/node-1/storage/"$(get_chain_name)" -s "$(nctl-view-chain-state-root-hash node=1 | awk '{ print $12 }')")
+                        system-contract-registry -d "$PATH_TO_NET"/nodes/node-1/storage/"$(get_chain_name)" -s "$(nctl-view-chain-state-root-hash node=1 | awk '{ print $12 }' | tr '[:upper:]' '[:lower:]')")
             fi
         else
 

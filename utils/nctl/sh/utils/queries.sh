@@ -28,12 +28,7 @@ function get_chain_era()
     local ERA
 
     if [ "$(get_node_is_up "$NODE_ID")" = true ]; then
-        ERA=$(
-            $(get_path_to_client) get-block \
-                --node-address "$(get_node_address_rpc "$NODE_ID")" \
-                --block-identifier "" \
-                | jq '.result.block.header.era_id'    
-        )
+        ERA=$(curl -s "$(get_node_address_rest $NODE_ID)/status" | jq '.last_added_block_info.era_id')
         if [ "$ERA" == "null" ]; then
             echo 0
         else
@@ -55,10 +50,7 @@ function get_chain_height()
     local NODE_ID=${1:-$(get_node_for_dispatch)}
 
     if [ "$(get_node_is_up "$NODE_ID")" = true ]; then
-        $(get_path_to_client) get-block \
-            --node-address "$(get_node_address_rpc "$NODE_ID")" \
-            --block-identifier "" \
-            | jq '.result.block.header.height'    
+        curl -s "$(get_node_address_rest $NODE_ID)/status" | jq '.last_added_block_info.height'
     else
         echo "N/A"
     fi
@@ -83,10 +75,10 @@ function get_chain_latest_block_hash()
 {
     local NODE_ID=${1:-$(get_node_for_dispatch)}
 
-    $(get_path_to_client) get-block \
-        --node-address "$(get_node_address_rpc "$NODE_ID")" \
-        | jq '.result.block.hash' \
-        | sed -e 's/^"//' -e 's/"$//'
+    curl -s "$(get_node_address_rest $NODE_ID)/status" \
+    | jq '.last_added_block_info.hash' \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed -e 's/^"//' -e 's/"$//'
 }
 
 function get_chain_first_block_hash()
@@ -138,7 +130,7 @@ function get_node_status()
     local NODE_ID=${1}
     local NODE_ADDRESS_CURL
     local NODE_API_RESPONSE
-    
+
     NODE_ADDRESS_CURL=$(get_node_address_rpc_for_curl "$NODE_ID")
     NODE_API_RESPONSE=$(
         curl -s --header 'Content-Type: application/json' \
@@ -220,7 +212,7 @@ function get_protocol_version_for_fs()
 #######################################
 function get_state_root_hash()
 {
-    local NODE_ID=${1} 
+    local NODE_ID=${1}
     local BLOCK_ID=${2:-""}
 
     $(get_path_to_client) get-state-root-hash \

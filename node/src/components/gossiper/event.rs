@@ -13,7 +13,7 @@ use crate::{
 
 /// `Gossiper` events.
 #[derive(Debug, Serialize)]
-pub enum Event<T: Item> {
+pub(crate) enum Event<T: Item> {
     /// A new item has been received to be gossiped.
     ItemReceived {
         item_id: T::Id,

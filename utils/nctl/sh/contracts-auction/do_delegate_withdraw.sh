@@ -32,10 +32,10 @@ function main()
     PATH_TO_CLIENT=$(get_path_to_client)
     PATH_TO_CONTRACT=$(get_path_to_contract "auction/undelegate.wasm")
 
-    DELEGATOR_ACCOUNT_KEY=$(get_account_key "$NCTL_ACCOUNT_TYPE_USER" "$DELEGATOR_ID")
+    DELEGATOR_ACCOUNT_KEY=$(get_account_key "$NCTL_ACCOUNT_TYPE_USER" "$DELEGATOR_ID" | tr '[:upper:]' '[:lower:]')
     DELEGATOR_SECRET_KEY=$(get_path_to_secret_key "$NCTL_ACCOUNT_TYPE_USER" "$DELEGATOR_ID")
-    DELEGATOR_MAIN_PURSE_UREF=$(get_main_purse_uref "$DELEGATOR_ACCOUNT_KEY")
-    VALIDATOR_ACCOUNT_KEY=$(get_account_key "$NCTL_ACCOUNT_TYPE_NODE" "$VALIDATOR_ID")
+    DELEGATOR_MAIN_PURSE_UREF=$(get_main_purse_uref "$DELEGATOR_ACCOUNT_KEY" | tr '[:upper:]' '[:lower:]')
+    VALIDATOR_ACCOUNT_KEY=$(get_account_key "$NCTL_ACCOUNT_TYPE_NODE" "$VALIDATOR_ID" | tr '[:upper:]' '[:lower:]')
 
     log "dispatching deploy -> undelegate.wasm"
     log "... chain = $CHAIN_NAME"
@@ -91,4 +91,4 @@ done
 main \
     "${AMOUNT:-$NCTL_DEFAULT_AUCTION_DELEGATE_AMOUNT}" \
     "${DELEGATOR_ID:-1}" \
-    "${VALIDATOR_ID:-1}" 
+    "${VALIDATOR_ID:-1}"

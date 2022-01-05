@@ -4,7 +4,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_RUN_GENESIS_REQUEST,
 };
-use casper_types::{account, runtime_args, RuntimeArgs, BLAKE2B_DIGEST_LENGTH};
+use casper_types::{crypto, runtime_args, RuntimeArgs, BLAKE2B_DIGEST_LENGTH};
 
 const BLAKE2B_WASM: &str = "blake2b.wasm";
 const ARG_BYTES: &str = "bytes";
@@ -56,7 +56,7 @@ fn should_hash() {
         builder.exec(exec_request).commit().expect_success();
 
         let digest = get_digest(&builder);
-        let expected_digest = account::blake2b(&input);
+        let expected_digest = crypto::blake2b(&input);
         assert_eq!(digest, expected_digest);
     }
 }

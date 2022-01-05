@@ -25,10 +25,10 @@ use casper_types::checksummed_hex;
 
 use casper_hashing::Digest;
 
-use super::{tls::KeyFingerprint, Message, Payload};
+use super::{tls::KeyFingerprint, Message, Metrics, Payload};
 #[cfg(test)]
 use crate::testing::TestRng;
-use crate::{components::networking_metrics::NetworkingMetrics, types::NodeId, utils};
+use crate::{types::NodeId, utils};
 
 /// Lazily-evaluated network message ID generator.
 ///
@@ -62,14 +62,14 @@ pub struct CountingFormat<F> {
     /// Our role in the connection.
     role: Role,
     /// Metrics to update.
-    metrics: Weak<NetworkingMetrics>,
+    metrics: Weak<Metrics>,
 }
 
 impl<F> CountingFormat<F> {
     /// Creates a new counting formatter.
     #[inline]
     pub(super) fn new(
-        metrics: Weak<NetworkingMetrics>,
+        metrics: Weak<Metrics>,
         connection_id: ConnectionId,
         role: Role,
         inner: F,
@@ -100,7 +100,7 @@ where
         let serialized = F::serialize(projection, item)?;
         let msg_size = serialized.len() as u64;
         let msg_kind = item.classify();
-        NetworkingMetrics::record_payload_out(this.metrics, msg_kind, msg_size);
+        Metrics::record_payload_out(this.metrics, msg_kind, msg_size);
 
         let trace_id = this
             .connection_id
@@ -270,6 +270,16 @@ impl ConnectionId {
     #[inline]
     pub(crate) fn from_connection(ssl: &SslRef, our_id: NodeId, their_id: NodeId) -> Self {
         Self::create(TlsRandomData::collect(ssl), our_id, their_id)
+    }
+
+    /// Creates a random `ConnectionId`.
+    #[cfg(test)]
+    pub(super) fn random(rng: &mut TestRng) -> Self {
+        ConnectionId::create(
+            TlsRandomData::random(rng),
+            NodeId::random(rng),
+            NodeId::random(rng),
+        )
     }
 }
 

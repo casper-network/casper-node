@@ -9,13 +9,10 @@ use crate::{
     types::{Block, Deploy, NodeId, Timestamp},
 };
 
-use casper_execution_engine::core::engine_state::executable_deploy_item::{
-    ContractIdentifier, ContractPackageIdentifier,
-};
 use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
-    Contract, ContractPackage, U512,
+    Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersion, U512,
 };
 
 /// A utility struct to hold duplicated information across events.
@@ -81,7 +78,7 @@ pub(crate) enum Event {
         event_metadata: EventMetadata,
         prestate_hash: Digest,
         is_payment: bool,
-        contract_identifier: ContractIdentifier,
+        contract_hash: ContractHash,
         maybe_contract: Option<Contract>,
         verification_start_timestamp: Timestamp,
     },
@@ -90,7 +87,8 @@ pub(crate) enum Event {
         event_metadata: EventMetadata,
         prestate_hash: Digest,
         is_payment: bool,
-        contract_package_identifier: ContractPackageIdentifier,
+        contract_package_hash: ContractPackageHash,
+        maybe_package_version: Option<ContractVersion>,
         maybe_contract_package: Option<ContractPackage>,
         verification_start_timestamp: Timestamp,
     },

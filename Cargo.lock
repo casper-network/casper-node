@@ -357,7 +357,7 @@ checksum = "c4872d67bab6358e59559027aa3b9157c53d9358c51423c17554809a8858e0f8"
 
 [[package]]
 name = "casper-client"
-version = "1.4.2"
+version = "1.4.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -389,7 +389,7 @@ dependencies = [
 
 [[package]]
 name = "casper-contract"
-version = "1.4.2"
+version = "1.4.3"
 dependencies = [
  "casper-types",
  "hex_fmt",
@@ -399,7 +399,7 @@ dependencies = [
 
 [[package]]
 name = "casper-engine-test-support"
-version = "2.0.1"
+version = "2.0.3"
 dependencies = [
  "casper-execution-engine",
  "casper-hashing",
@@ -443,11 +443,13 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "wabt",
+ "wasmi",
 ]
 
 [[package]]
 name = "casper-execution-engine"
-version = "1.4.2"
+version = "1.4.3"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -513,7 +515,7 @@ dependencies = [
 
 [[package]]
 name = "casper-node"
-version = "1.4.2"
+version = "1.4.3"
 dependencies = [
  "ansi_term 0.12.1",
  "anyhow",
@@ -622,7 +624,7 @@ dependencies = [
 
 [[package]]
 name = "casper-types"
-version = "1.4.2"
+version = "1.4.5"
 dependencies = [
  "base16",
  "base64",
@@ -651,7 +653,6 @@ dependencies = [
  "serde_json",
  "serde_test",
  "strum",
- "thiserror",
  "uint",
  "version-sync",
 ]
@@ -674,7 +675,7 @@ dependencies = [
  "base16",
  "casper-execution-engine",
  "casper-types",
- "clap 3.0.0-beta.5",
+ "clap 3.0.0-rc.0",
  "derive_more",
  "hex",
  "serde",
@@ -758,9 +759,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "3.0.0-beta.5"
+version = "3.0.0-rc.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "feff3878564edb93745d58cf63e17b63f24142506e7a20c87a5521ed7bfb1d63"
+checksum = "79b70f999da60e6619a29b131739d2211ed4d4301f40372e94a8081422e9d6c7"
 dependencies = [
  "atty",
  "bitflags",
@@ -771,20 +772,28 @@ dependencies = [
  "strsim 0.10.0",
  "termcolor",
  "textwrap 0.14.2",
- "unicase",
 ]
 
 [[package]]
 name = "clap_derive"
-version = "3.0.0-beta.5"
+version = "3.0.0-rc.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b15c6b4f786ffb6192ffe65a36855bc1fc2444bcd0945ae16748dcd6ed7d0d3"
+checksum = "fe8c0f28022faaef0387fa54f8e33fee22b804a88bbd91303197da2ff8ca6a5d"
 dependencies = [
  "heck",
  "proc-macro-error",
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "cmake"
+version = "0.1.46"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7b858541263efe664aead4a5209a4ae5c5d2811167d4ed4ee0944503f8d2089"
+dependencies = [
+ "cc",
 ]
 
 [[package]]
@@ -2028,6 +2037,12 @@ checksum = "f0a01e0497841a3b2db4f8afa483cce65f7e96a3498bd6c541734792aeac8fe7"
 
 [[package]]
 name = "glob"
+version = "0.2.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8be18de09a56b60ed0edf84bc9df007e30040691af7acd1c41874faac5895bfb"
+
+[[package]]
+name = "glob"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
@@ -2951,9 +2966,9 @@ dependencies = [
 
 [[package]]
 name = "os_str_bytes"
-version = "4.2.0"
+version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "addaa943333a514159c80c97ff4a93306530d965d27e139188283cd13e06a799"
+checksum = "8e22443d1643a904602595ba1cd8f7d896afe56d26712531c5ff73a15b2fbf64"
 dependencies = [
  "memchr",
 ]
@@ -3186,7 +3201,7 @@ version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8588067671d03c9f4254b2e66fecb4d8b93b5d3e703195b84f311cd137e32130"
 dependencies = [
- "glob",
+ "glob 0.3.0",
  "pnet_base",
  "pnet_macros",
  "pnet_macros_support",
@@ -3603,6 +3618,14 @@ dependencies = [
 
 [[package]]
 name = "regression-20210831"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "regression_20211110"
 version = "0.1.0"
 dependencies = [
  "casper-contract",
@@ -4258,9 +4281,6 @@ name = "textwrap"
 version = "0.14.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0066c8d12af8b5acd21e00547c3797fde4e8677254a7ee429176ccebbe93dd80"
-dependencies = [
- "unicode-width",
-]
 
 [[package]]
 name = "thiserror"
@@ -4870,6 +4890,29 @@ name = "version_check"
 version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5fecdca9a5291cc2b8dcf7dc02453fee791a280f3743cb0905f8822ae463b3fe"
+
+[[package]]
+name = "wabt"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "00bef93d5e6c81a293bccf107cf43aa47239382f455ba14869d36695d8963b9c"
+dependencies = [
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "wabt-sys",
+]
+
+[[package]]
+name = "wabt-sys"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1a4e043159f63e16986e713e9b5e1c06043df4848565bf672e27c523864c7791"
+dependencies = [
+ "cc",
+ "cmake",
+ "glob 0.2.11",
+]
 
 [[package]]
 name = "wait-timeout"
