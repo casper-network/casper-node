@@ -355,7 +355,7 @@ mod tests {
         let actual_schema_string = serde_json::to_string_pretty(&actual_schema).unwrap();
         let actual_schema: Value = serde_json::from_str(&actual_schema_string).unwrap();
 
-        println!("{}", actual_schema_string);
+        // println!("{}", actual_schema_string);
 
         assert_json_eq!(actual_schema, expected_schema);
     }
