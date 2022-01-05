@@ -127,6 +127,7 @@ use requests::{
 use self::{
     announcements::{BlockProposerAnnouncement, BlocklistAnnouncement},
     requests::{BeginGossipRequest, StateStoreRequest},
+    BlockAndExecutionEffects, BlockExecutionError, ExecutionPreState,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
