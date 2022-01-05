@@ -15,10 +15,7 @@ use tracing::error;
 
 use casper_types::ProtocolVersion;
 
-use self::{
-    metrics::Metrics,
-    state::{Outcome, Outcomes},
-};
+use self::metrics::Metrics;
 use crate::{
     components::{
         linear_chain::state::{Outcome, Outcomes},
