@@ -403,7 +403,7 @@ mod tests {
                 DEFAULT_TEST_MAX_READERS,
                 true,
             )
-                .unwrap(),
+            .unwrap(),
         );
         let trie_store =
             Arc::new(LmdbTrieStore::new(&environment, None, DatabaseFlags::empty()).unwrap());
@@ -422,7 +422,7 @@ mod tests {
                     key,
                     value,
                 )
-                    .unwrap()
+                .unwrap()
                 {
                     WriteResult::Written(root_hash) => {
                         current_root = root_hash;
