@@ -21,7 +21,7 @@ fn transfer_disk_use(transfer_count: usize, purse_count: usize) -> Result<(), Bo
     transfer::create_initial_accounts_and_run_genesis(
         &mut builder,
         vec![TARGET_ADDR],
-        purse_amount.clone(),
+        purse_amount,
     );
 
     let purses = transfer::create_test_purses(
