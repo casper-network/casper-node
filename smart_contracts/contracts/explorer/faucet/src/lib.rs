@@ -2,17 +2,19 @@
 
 extern crate alloc;
 
-use alloc::{format, vec::Vec};
+use alloc::{vec, vec::Vec};
 use casper_contract::{
     contract_api::{self, runtime, storage, system},
     ext_ffi,
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    account::AccountHash, api_error, bytesrepr, bytesrepr::FromBytes, ApiError, BlockTime, CLValue,
-    U512,
+    account::AccountHash,
+    api_error, bytesrepr,
+    bytesrepr::{FromBytes, ToBytes},
+    ApiError, BlockTime, CLTyped, CLValue, Key, URef, U512,
 };
-use core::cmp::Ordering;
+use core::{cmp::Ordering, mem::MaybeUninit};
 use num::rational::Ratio;
 
 const ARG_TARGET: &str = "target";
@@ -24,15 +26,15 @@ const REMAINING_AMOUNT: &str = "remaining_amount";
 const AVAILABLE_AMOUNT: &str = "available_amount";
 const TIME_INTERVAL: &str = "time_interval";
 const DISTRIBUTIONS_PER_INTERVAL: &str = "distributions_per_interval";
-const LAST_DISTRIBUTION: &str = "last_distribution";
+const LAST_DISTRIBUTION_TIME: &str = "last_distribution_time";
 const FAUCET_PURSE: &str = "faucet_purse";
 const INSTALLER: &str = "installer";
 
 #[repr(u16)]
 enum FaucetError {
     InvalidAccount = 1,
-    InstallerMissing = 2,
-    InstallerInvalid = 3,
+    MissingInstaller = 2,
+    InvalidInstaller = 3,
     InstallerDoesNotFundItself = 4,
     InvalidAmount = 5,
     MissingDistributionTime = 6,
@@ -52,6 +54,7 @@ enum FaucetError {
     InvalidRemainingAmount = 20,
     MissingDistributionsPerInterval = 21,
     InvalidDistributionsPerInterval = 22,
+    UnexpectedKeyVariant = 23,
 }
 
 impl From<FaucetError> for ApiError {
@@ -59,47 +62,123 @@ impl From<FaucetError> for ApiError {
         ApiError::User(e as u16)
     }
 }
+
+#[no_mangle]
+pub fn init() {
+    let installer = get_account_hash_with_user_errors(
+        INSTALLER,
+        FaucetError::MissingInstaller,
+        FaucetError::InvalidInstaller,
+    );
+
+    if installer != runtime::get_caller() {
+        runtime::revert(FaucetError::InvalidAccount);
+    }
+
+    runtime::put_key(TIME_INTERVAL, storage::new_uref(7_200_000u64).into());
+    runtime::put_key(LAST_DISTRIBUTION_TIME, storage::new_uref(0u64).into());
+    runtime::put_key(AVAILABLE_AMOUNT, storage::new_uref(U512::zero()).into());
+    runtime::put_key(REMAINING_AMOUNT, storage::new_uref(U512::zero()).into());
+    // 20 blocks x 25 deploys = 500
+    runtime::put_key(DISTRIBUTIONS_PER_INTERVAL, storage::new_uref(500u64).into());
+
+    let purse = system::create_purse();
+
+    runtime::put_key(FAUCET_PURSE, purse.into());
+    runtime::ret(
+        CLValue::from_t(purse).unwrap_or_revert_with(FaucetError::FailedToConstructReturnData),
+    )
+}
+
+#[no_mangle]
+pub fn set_variables() {
+    let installer = get_account_hash_with_user_errors(
+        INSTALLER,
+        FaucetError::MissingInstaller,
+        FaucetError::InvalidInstaller,
+    );
+
+    if installer != runtime::get_caller() {
+        runtime::revert(FaucetError::InvalidAccount);
+    }
+
+    let new_time_interval: u64 = runtime::get_named_arg(ARG_TIME_INTERVAL);
+    let time_interval_uref = get_uref_with_user_errors(
+        TIME_INTERVAL,
+        FaucetError::MissingTimeInterval,
+        FaucetError::InvalidTimeInterval,
+    );
+    storage::write(time_interval_uref, new_time_interval);
+
+    let new_available_amount: U512 = runtime::get_named_arg(ARG_AVAILABLE_AMOUNT);
+    let available_amount_uref = get_uref_with_user_errors(
+        AVAILABLE_AMOUNT,
+        FaucetError::MissingAvailableAmount,
+        FaucetError::InvalidAvailableAmount,
+    );
+    storage::write(available_amount_uref, new_available_amount);
+
+    let remaining_amount_uref = get_uref_with_user_errors(
+        REMAINING_AMOUNT,
+        FaucetError::MissingRemainingAmount,
+        FaucetError::InvalidRemainingAmount,
+    );
+    storage::write(remaining_amount_uref, new_available_amount);
+
+    let new_distributions_per_interval: u64 =
+        runtime::get_named_arg(ARG_DISTRIBUTIONS_PER_INTERVAL);
+    let distributions_per_interval_uref = get_uref_with_user_errors(
+        DISTRIBUTIONS_PER_INTERVAL,
+        FaucetError::MissingDistributionsPerInterval,
+        FaucetError::InvalidDistributionsPerInterval,
+    );
+    storage::write(
+        distributions_per_interval_uref,
+        new_distributions_per_interval,
+    );
+}
+
 /// Executes token transfer to supplied account hash.
 /// Revert status codes:
 /// 1 - requested transfer to already funded account hash.
 #[no_mangle]
 pub fn delegate() {
-    // if available_amount.is_zero() {
-    //     // or revert with a "faucet exhausted" error.
-    //     runtime::revert(999);
-    // }
-
-    // let id: Option<u64> = get_optional_named_arg_with_user_errors(
-    //     ARG_ID,
-    //     CustomError::MissingId,
-    //     CustomError::InvalidId,
-    // );
-
-    let id: Option<u64> = runtime::get_named_arg(ARG_ID);
+    let id = get_optional_named_arg_with_user_errors(
+        ARG_ID,
+        FaucetError::MissingId,
+        FaucetError::InvalidId,
+    );
 
     let caller = runtime::get_caller();
-    let installer = runtime::get_key(INSTALLER)
-        .unwrap_or_revert_with(FaucetError::InstallerMissing)
-        .into_account()
-        .unwrap_or_revert_with(FaucetError::InstallerInvalid);
+    let installer = get_account_hash_with_user_errors(
+        INSTALLER,
+        FaucetError::MissingInstaller,
+        FaucetError::InvalidInstaller,
+    );
 
-    let last_distribution_time: u64 = storage::read(
-        runtime::get_key(LAST_DISTRIBUTION)
-            .unwrap_or_revert_with(FaucetError::MissingDistributionTime)
-            .into_uref()
-            .unwrap_or_revert_with(FaucetError::InvalidDistributionTime),
-    )
-    .unwrap_or_revert_with(FaucetError::MissingDistributionTime)
-    .unwrap_or_revert_with(FaucetError::InvalidDistributionTime);
+    let last_distribution_time_uref = get_uref_with_user_errors(
+        LAST_DISTRIBUTION_TIME,
+        FaucetError::MissingDistributionTime,
+        FaucetError::InvalidDistributionTime,
+    );
 
-    let time_interval: u64 = storage::read(
-        runtime::get_key(TIME_INTERVAL)
-            .unwrap_or_revert_with(FaucetError::MissingTimeInterval)
-            .into_uref()
-            .unwrap_or_revert_with(FaucetError::InvalidTimeInterval),
-    )
-    .unwrap_or_revert_with(FaucetError::MissingTimeInterval)
-    .unwrap_or_revert_with(FaucetError::InvalidTimeInterval);
+    let last_distribution_time: u64 = read_with_user_errors(
+        last_distribution_time_uref,
+        FaucetError::MissingDistributionTime,
+        FaucetError::InvalidDistributionTime,
+    );
+
+    let time_interval_uref = get_uref_with_user_errors(
+        TIME_INTERVAL,
+        FaucetError::MissingTimeInterval,
+        FaucetError::InvalidTimeInterval,
+    );
+
+    let time_interval: u64 = read_with_user_errors(
+        time_interval_uref,
+        FaucetError::MissingTimeInterval,
+        FaucetError::InvalidTimeInterval,
+    );
 
     let blocktime = runtime::get_blocktime();
 
@@ -109,66 +188,66 @@ pub fn delegate() {
 
     let available_amount: U512 = get_available_amount();
 
-    // let amount = {
     if caller == installer {
         // this is the installer / faucet account creating a NEW account
         // or topping off an existing account
         let target: AccountHash = runtime::get_named_arg(ARG_TARGET);
         transfer(target, available_amount, id);
     } else {
-        // this is an unknown existing account asking for top off
         transfer(caller, available_amount, id);
     }
 
     set_last_distribution_time(blocktime);
-    // };
-    // return amount granted as a courtesy to the caller
-    //
-    // runtime::ret(
-    //     CLValue::from_t(amount)
-    //         .unwrap_or_revert_with(ApiError::User(CustomError::InvalidAmount as u16)),
-    // )
 }
 
 fn transfer(target: AccountHash, amount: U512, id: Option<u64>) -> U512 {
-    let faucet_purse = runtime::get_key(FAUCET_PURSE)
-        .unwrap_or_revert_with(FaucetError::MissingFaucetPurse)
-        .into_uref()
-        .unwrap_or_revert_with(FaucetError::InvalidFaucetPurse);
+    let faucet_purse = get_uref_with_user_errors(
+        FAUCET_PURSE,
+        FaucetError::MissingFaucetPurse,
+        FaucetError::InvalidFaucetPurse,
+    );
+
     system::transfer_from_purse_to_account(faucet_purse, target, amount, id)
         .unwrap_or_revert_with(FaucetError::FailedToTransfer);
     decrease_remaining_amount(amount)
 }
 
 fn get_available_amount() -> U512 {
-    let available_amount_uref = runtime::get_key(AVAILABLE_AMOUNT)
-        .unwrap_or_revert_with(FaucetError::MissingAvailableAmount)
-        .into_uref()
-        .unwrap_or_revert_with(FaucetError::MissingAvailableAmount);
+    let available_amount_uref = get_uref_with_user_errors(
+        AVAILABLE_AMOUNT,
+        FaucetError::MissingAvailableAmount,
+        FaucetError::InvalidAvailableAmount,
+    );
 
-    let available_amount: U512 = storage::read(available_amount_uref)
-        .unwrap_or_revert_with(FaucetError::MissingAvailableAmount)
-        .unwrap_or_revert_with(FaucetError::InvalidAvailableAmount);
+    let available_amount: U512 = read_with_user_errors(
+        available_amount_uref,
+        FaucetError::MissingAvailableAmount,
+        FaucetError::InvalidAvailableAmount,
+    );
 
-    let remaining_amount_key = runtime::get_key(REMAINING_AMOUNT)
-        .unwrap_or_revert_with(FaucetError::MissingRemainingAmount);
+    let remaining_amount_uref = get_uref_with_user_errors(
+        REMAINING_AMOUNT,
+        FaucetError::MissingRemainingAmount,
+        FaucetError::InvalidRemainingAmount,
+    );
 
-    let remaining_amount: U512 = storage::read(
-        remaining_amount_key
-            .into_uref()
-            .unwrap_or_revert_with(FaucetError::MissingRemainingAmount),
-    )
-    .unwrap_or_revert_with(FaucetError::MissingRemainingAmount)
-    .unwrap_or_revert_with(FaucetError::InvalidRemainingAmount);
+    let remaining_amount: U512 = read_with_user_errors(
+        remaining_amount_uref,
+        FaucetError::MissingRemainingAmount,
+        FaucetError::InvalidRemainingAmount,
+    );
 
-    let distributions_per_interval_uref = runtime::get_key(DISTRIBUTIONS_PER_INTERVAL)
-        .unwrap_or_revert_with(FaucetError::MissingDistributionsPerInterval)
-        .into_uref()
-        .unwrap_or_revert_with(FaucetError::InvalidDistributionsPerInterval);
+    let distributions_per_interval_uref = get_uref_with_user_errors(
+        DISTRIBUTIONS_PER_INTERVAL,
+        FaucetError::MissingDistributionsPerInterval,
+        FaucetError::InvalidDistributionsPerInterval,
+    );
 
-    let distributions_per_interval: u64 = storage::read(distributions_per_interval_uref)
-        .unwrap_or_revert_with(FaucetError::MissingDistributionsPerInterval)
-        .unwrap_or_revert_with(FaucetError::InvalidDistributionsPerInterval);
+    let distributions_per_interval: u64 = read_with_user_errors(
+        distributions_per_interval_uref,
+        FaucetError::MissingDistributionsPerInterval,
+        FaucetError::InvalidDistributionsPerInterval,
+    );
 
     let distribution_amount =
         Ratio::new(available_amount, U512::from(distributions_per_interval)).to_integer();
@@ -180,32 +259,39 @@ fn get_available_amount() -> U512 {
 }
 
 fn reset_remaining_amount() {
-    let available_amount_uref = runtime::get_key(AVAILABLE_AMOUNT)
-        .unwrap_or_revert_with(FaucetError::MissingAvailableAmount)
-        .into_uref()
-        .unwrap_or_revert_with(FaucetError::MissingAvailableAmount);
+    let available_amount_uref = get_uref_with_user_errors(
+        AVAILABLE_AMOUNT,
+        FaucetError::MissingAvailableAmount,
+        FaucetError::InvalidAvailableAmount,
+    );
 
-    let available_amount: U512 = storage::read(available_amount_uref)
-        .unwrap_or_revert_with(FaucetError::MissingAvailableAmount)
-        .unwrap_or_revert_with(FaucetError::InvalidAvailableAmount);
+    let available_amount: U512 = read_with_user_errors(
+        available_amount_uref,
+        FaucetError::MissingAvailableAmount,
+        FaucetError::InvalidAvailableAmount,
+    );
 
-    let remaining_amount_uref = runtime::get_key(REMAINING_AMOUNT)
-        .unwrap_or_revert_with(FaucetError::MissingRemainingAmount)
-        .into_uref()
-        .unwrap_or_revert_with(FaucetError::InvalidRemainingAmount);
+    let remaining_amount_uref = get_uref_with_user_errors(
+        REMAINING_AMOUNT,
+        FaucetError::MissingRemainingAmount,
+        FaucetError::InvalidRemainingAmount,
+    );
 
     storage::write(remaining_amount_uref, available_amount);
 }
 
 fn decrease_remaining_amount(amount: U512) -> U512 {
-    let remaining_amount_uref = runtime::get_key(REMAINING_AMOUNT)
-        .unwrap_or_revert_with(FaucetError::MissingRemainingAmount)
-        .into_uref()
-        .unwrap_or_revert_with(FaucetError::InvalidRemainingAmount);
+    let remaining_amount_uref = get_uref_with_user_errors(
+        REMAINING_AMOUNT,
+        FaucetError::MissingRemainingAmount,
+        FaucetError::InvalidRemainingAmount,
+    );
 
-    let remaining_amount: U512 = storage::read(remaining_amount_uref)
-        .unwrap_or_revert_with(FaucetError::MissingRemainingAmount)
-        .unwrap_or_revert_with(FaucetError::InvalidRemainingAmount);
+    let remaining_amount: U512 = read_with_user_errors(
+        remaining_amount_uref,
+        FaucetError::MissingRemainingAmount,
+        FaucetError::InvalidRemainingAmount,
+    );
 
     let new_remaining_amount = remaining_amount.saturating_sub(amount);
     storage::write(remaining_amount_uref, new_remaining_amount);
@@ -214,10 +300,11 @@ fn decrease_remaining_amount(amount: U512) -> U512 {
 }
 
 fn set_last_distribution_time(t: BlockTime) {
-    let last_distribution_time_uref = runtime::get_key(LAST_DISTRIBUTION)
-        .unwrap_or_revert_with(FaucetError::MissingDistributionTime)
-        .into_uref()
-        .unwrap_or_revert_with(FaucetError::InvalidDistributionTime);
+    let last_distribution_time_uref = get_uref_with_user_errors(
+        LAST_DISTRIBUTION_TIME,
+        FaucetError::MissingDistributionTime,
+        FaucetError::InvalidDistributionTime,
+    );
 
     storage::write::<u64>(last_distribution_time_uref, t.into());
 }
@@ -244,7 +331,7 @@ fn get_optional_named_arg_with_user_errors<T: FromBytes>(
     invalid: FaucetError,
 ) -> Option<T> {
     match get_named_arg_with_user_errors(name, missing, invalid) {
-        Ok(val) => Some(val),
+        Ok(val) => val,
         Err(err @ FaucetError::InvalidId) => runtime::revert(err),
         Err(_) => None,
     }
@@ -281,76 +368,94 @@ fn get_named_arg_with_user_errors<T: FromBytes>(
     bytesrepr::deserialize(arg_bytes).map_err(|_| invalid)
 }
 
-#[no_mangle]
-pub fn init() {
-    let installer = runtime::get_key(INSTALLER)
-        .unwrap_or_revert_with(FaucetError::InstallerMissing)
-        .into_account()
-        .unwrap_or_revert_with(FaucetError::InstallerInvalid);
-
-    if runtime::get_caller() != installer {
-        runtime::revert(FaucetError::InvalidAccount);
-    }
-
-    runtime::put_key(TIME_INTERVAL, storage::new_uref(7_200_000u64).into());
-    runtime::put_key(LAST_DISTRIBUTION, storage::new_uref(0u64).into());
-    runtime::put_key(AVAILABLE_AMOUNT, storage::new_uref(U512::zero()).into());
-    runtime::put_key(REMAINING_AMOUNT, storage::new_uref(U512::zero()).into());
-    // 20 blocks x 25 deploys = 500
-    runtime::put_key(DISTRIBUTIONS_PER_INTERVAL, storage::new_uref(500u64).into());
-
-    let purse = system::create_purse();
-
-    runtime::put_key(FAUCET_PURSE, purse.into());
-    runtime::ret(
-        CLValue::from_t(purse).unwrap_or_revert_with(FaucetError::FailedToConstructReturnData),
-    )
+fn get_account_hash_with_user_errors(
+    name: &str,
+    missing: FaucetError,
+    invalid: FaucetError,
+) -> AccountHash {
+    let key = get_key_with_user_errors(name, missing, invalid);
+    key.into_account()
+        .unwrap_or_revert_with(FaucetError::UnexpectedKeyVariant)
 }
 
-#[no_mangle]
-pub fn set_variables() {
-    let installer = runtime::get_key(INSTALLER)
-        .unwrap_or_revert_with(FaucetError::InstallerMissing)
-        .into_account()
-        .unwrap_or_revert_with(FaucetError::InstallerInvalid);
-    let caller = runtime::get_caller();
-    if caller != installer {
-        runtime::revert(FaucetError::InvalidAccount);
+fn get_uref_with_user_errors(name: &str, missing: FaucetError, invalid: FaucetError) -> URef {
+    let key = get_key_with_user_errors(name, missing, invalid);
+    key.into_uref()
+        .unwrap_or_revert_with(FaucetError::UnexpectedKeyVariant)
+}
+
+fn get_key_with_user_errors(name: &str, missing: FaucetError, invalid: FaucetError) -> Key {
+    let (name_ptr, name_size, _bytes) = to_ptr(name);
+    let mut key_bytes = vec![0u8; Key::max_serialized_length()];
+    let mut total_bytes: usize = 0;
+    let ret = unsafe {
+        ext_ffi::casper_get_key(
+            name_ptr,
+            name_size,
+            key_bytes.as_mut_ptr(),
+            key_bytes.len(),
+            &mut total_bytes as *mut usize,
+        )
+    };
+    match api_error::result_from(ret) {
+        Ok(_) => {}
+        Err(ApiError::MissingKey) => runtime::revert(missing),
+        Err(e) => runtime::revert(e),
     }
+    key_bytes.truncate(total_bytes);
 
-    let new_time_interval: u64 = runtime::get_named_arg(ARG_TIME_INTERVAL);
-    let time_interval_uref = runtime::get_key(TIME_INTERVAL)
-        .unwrap_or_revert_with(FaucetError::MissingTimeInterval)
-        .into_uref()
-        .unwrap_or_revert_with(FaucetError::InvalidTimeInterval);
+    bytesrepr::deserialize(key_bytes).unwrap_or_revert_with(invalid)
+}
 
-    storage::write(time_interval_uref, new_time_interval);
+fn read_with_user_errors<T: CLTyped + FromBytes>(
+    uref: URef,
+    missing: FaucetError,
+    invalid: FaucetError,
+) -> T {
+    let key: Key = uref.into();
+    let (key_ptr, key_size, _bytes) = to_ptr(key);
 
-    let new_available_amount: U512 = runtime::get_named_arg(ARG_AVAILABLE_AMOUNT);
-    let available_amount_uref = runtime::get_key(AVAILABLE_AMOUNT)
-        .unwrap_or_revert_with(FaucetError::MissingAvailableAmount)
-        .into_uref()
-        .unwrap_or_revert_with(FaucetError::InvalidAvailableAmount);
+    let value_size = {
+        let mut value_size = MaybeUninit::uninit();
+        let ret = unsafe { ext_ffi::casper_read_value(key_ptr, key_size, value_size.as_mut_ptr()) };
+        match api_error::result_from(ret) {
+            Ok(_) => unsafe { value_size.assume_init() },
+            Err(ApiError::ValueNotFound) => runtime::revert(missing),
+            Err(e) => runtime::revert(e),
+        }
+    };
 
-    storage::write(available_amount_uref, new_available_amount);
+    let value_bytes = read_host_buffer(value_size).unwrap_or_revert();
 
-    // when the available amount is reset, the remaining amount will be reset to match it.
-    let remaining_amount_uref = runtime::get_key(REMAINING_AMOUNT)
-        .unwrap_or_revert_with(FaucetError::MissingRemainingAmount)
-        .into_uref()
-        .unwrap_or_revert_with(FaucetError::InvalidRemainingAmount);
+    bytesrepr::deserialize(value_bytes).unwrap_or_revert_with(invalid)
+}
 
-    storage::write(remaining_amount_uref, new_available_amount);
+fn read_host_buffer_into(dest: &mut [u8]) -> Result<usize, ApiError> {
+    let mut bytes_written = MaybeUninit::uninit();
+    let ret = unsafe {
+        ext_ffi::casper_read_host_buffer(dest.as_mut_ptr(), dest.len(), bytes_written.as_mut_ptr())
+    };
+    // NOTE: When rewriting below expression as `result_from(ret).map(|_| unsafe { ... })`, and the
+    // caller ignores the return value, execution of the contract becomes unstable and ultimately
+    // leads to `Unreachable` error.
+    api_error::result_from(ret)?;
+    Ok(unsafe { bytes_written.assume_init() })
+}
 
-    let new_distributions_per_interval: u64 =
-        runtime::get_named_arg(ARG_DISTRIBUTIONS_PER_INTERVAL);
-    let distributions_per_interval_uref = runtime::get_key(DISTRIBUTIONS_PER_INTERVAL)
-        .unwrap_or_revert_with(FaucetError::MissingDistributionsPerInterval)
-        .into_uref()
-        .unwrap_or_revert_with(FaucetError::InvalidDistributionsPerInterval);
+fn read_host_buffer(size: usize) -> Result<Vec<u8>, ApiError> {
+    let mut dest: Vec<u8> = if size == 0 {
+        Vec::new()
+    } else {
+        let bytes_non_null_ptr = contract_api::alloc_bytes(size);
+        unsafe { Vec::from_raw_parts(bytes_non_null_ptr.as_ptr(), size, size) }
+    };
+    read_host_buffer_into(&mut dest)?;
+    Ok(dest)
+}
 
-    storage::write(
-        distributions_per_interval_uref,
-        new_distributions_per_interval,
-    );
+fn to_ptr<T: ToBytes>(t: T) -> (*const u8, usize, Vec<u8>) {
+    let bytes = t.into_bytes().unwrap_or_revert();
+    let ptr = bytes.as_ptr();
+    let size = bytes.len();
+    (ptr, size, bytes)
 }

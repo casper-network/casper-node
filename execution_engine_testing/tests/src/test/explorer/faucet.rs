@@ -24,7 +24,7 @@ const ARG_DISTRIBUTIONS_PER_INTERVAL: &str = "distributions_per_interval";
 // stored contract named keys.
 const AVAILABLE_AMOUNT_NAMED_KEY: &str = "available_amount";
 const TIME_INTERVAL_NAMED_KEY: &str = "time_interval";
-const LAST_DISTRIBUTION_NAMED_KEY: &str = "last_distribution";
+const LAST_DISTRIBUTION_TIME_NAMED_KEY: &str = "last_distribution_time";
 const FAUCET_PURSE_NAMED_KEY: &str = "faucet_purse";
 const INSTALLER_NAMED_KEY: &str = "installer";
 const DISTRIBUTIONS_PER_INTERVAL_NAMED_KEY: &str = "distributions_per_interval";
@@ -108,7 +108,7 @@ fn should_install_faucet_contract() {
         )
         .expect("failed to find time interval named key");
 
-    // check last distribution
+    // check last distribution time
     builder
         .query(
             None,
@@ -117,7 +117,7 @@ fn should_install_faucet_contract() {
                     .into_hash()
                     .expect("failed to convert key into hash"),
             ),
-            &[LAST_DISTRIBUTION_NAMED_KEY.to_string()],
+            &[LAST_DISTRIBUTION_TIME_NAMED_KEY.to_string()],
         )
         .expect("failed to find last distribution named key");
 
@@ -981,7 +981,7 @@ fn should_not_fund_once_exhausted() {
         .query(
             None,
             faucet_contract_hash.into(),
-            &[LAST_DISTRIBUTION_NAMED_KEY.to_string()],
+            &[LAST_DISTRIBUTION_TIME_NAMED_KEY.to_string()],
         )
         .expect("failed to find available amount named key")
         .as_cl_value()
