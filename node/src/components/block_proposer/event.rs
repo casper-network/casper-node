@@ -10,7 +10,7 @@ use casper_types::Motes;
 use super::{BlockHeight, CachedState};
 use crate::{
     effect::requests::BlockProposerRequest,
-    types::{DeployHash, DeployHeader, DeployOrTransferHash, FinalizedBlock},
+    types::{Block, DeployHeader, DeployOrTransferHash, FinalizedBlock},
 };
 
 /// Information about a deploy.
@@ -29,8 +29,8 @@ pub(crate) enum Event {
     Request(BlockProposerRequest),
     /// The chainspec and previous sets have been successfully loaded from storage.
     Loaded {
-        /// Previously finalized deploys.
-        finalized_deploys: Vec<(DeployHash, DeployHeader)>,
+        /// Previously finalized blocks.
+        finalized_blocks: Vec<Block>,
         /// The height of the next expected finalized block.
         next_finalized_block: BlockHeight,
         /// The cached state retrieved from storage.

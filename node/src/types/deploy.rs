@@ -416,7 +416,7 @@ impl DeployHeader {
 
     /// Has this deploy expired?
     pub fn expired(&self, current_instant: Timestamp) -> bool {
-        let lifespan = self.timestamp + self.ttl;
+        let lifespan = self.timestamp.saturating_add(self.ttl);
         lifespan < current_instant
     }
 
@@ -448,12 +448,10 @@ impl DeployHeader {
         let num_deps_valid = self.dependencies().len() <= deploy_config.max_dependencies as usize;
         ttl_valid && timestamp_valid && not_expired && num_deps_valid
     }
-}
 
-impl DeployHeader {
     /// Returns the timestamp of when the deploy expires, i.e. `self.timestamp + self.ttl`.
     pub fn expires(&self) -> Timestamp {
-        self.timestamp + self.ttl
+        self.timestamp.saturating_add(self.ttl)
     }
 }
 
