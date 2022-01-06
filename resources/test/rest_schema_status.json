@@ -107,6 +107,7 @@
         }
       },
       "PeerEntry": {
+        "description": "Node peer entry.",
         "type": "object",
         "required": [
           "address",
@@ -114,9 +115,11 @@
         ],
         "properties": {
           "node_id": {
+            "description": "Node id.",
             "type": "string"
           },
           "address": {
+            "description": "Node address.",
             "type": "string"
           }
         },
@@ -215,4 +218,4 @@
         ]
       }
     }
-  }
+}
