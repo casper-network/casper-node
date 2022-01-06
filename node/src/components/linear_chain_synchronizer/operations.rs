@@ -1,4 +1,5 @@
 use std::{
+    cmp,
     collections::BTreeMap,
     sync::{
         atomic::{self, AtomicBool},
@@ -21,7 +22,7 @@ use crate::{
         consensus::{check_sufficient_finality_signatures, ChainspecConsensusExt},
         contract_runtime::ExecutionPreState,
         fetcher::{FetchResult, FetchedData, FetcherError},
-        linear_chain_sync::error::LinearChainSyncError,
+        linear_chain_synchronizer::error::Error,
     },
     effect::{requests::FetcherRequest, EffectBuilder},
     reactor::joiner::JoinerEvent,
@@ -95,10 +96,10 @@ where
 async fn fetch_and_store_block_header(
     effect_builder: EffectBuilder<JoinerEvent>,
     block_hash: BlockHash,
-) -> Result<Box<BlockHeader>, LinearChainSyncError> {
+) -> Result<Box<BlockHeader>, Error> {
     // Only genesis should have this as previous hash, so no block should ever have it...
     if block_hash == BlockHash::default() {
-        return Err(LinearChainSyncError::NoSuchBlockHash {
+        return Err(Error::NoSuchBlockHash {
             bogus_block_hash: block_hash,
         });
     }
@@ -191,15 +192,13 @@ async fn get_trusted_key_block_info(
     effect_builder: EffectBuilder<JoinerEvent>,
     chainspec: &Chainspec,
     trusted_header: &BlockHeader,
-) -> Result<KeyBlockInfo, LinearChainSyncError> {
+) -> Result<KeyBlockInfo, Error> {
     // If the trusted block's version is newer than ours we return an error
     if trusted_header.protocol_version() > chainspec.protocol_config.version {
-        return Err(
-            LinearChainSyncError::RetrievedBlockHeaderFromFutureVersion {
-                current_version: chainspec.protocol_config.version,
-                block_header_with_future_version: Box::new(trusted_header.clone()),
-            },
-        );
+        return Err(Error::RetrievedBlockHeaderFromFutureVersion {
+            current_version: chainspec.protocol_config.version,
+            block_header_with_future_version: Box::new(trusted_header.clone()),
+        });
     }
 
     // Fetch each parent hash one by one until we have the switch block info
@@ -211,7 +210,7 @@ async fn get_trusted_key_block_info(
             Some(last_emergency_restart)
                 if last_emergency_restart > current_header_to_walk_back_from.era_id() =>
             {
-                return Err(LinearChainSyncError::TrustedHeaderEraTooEarly {
+                return Err(Error::TrustedHeaderEraTooEarly {
                     trusted_header: Box::new(trusted_header.clone()),
                     maybe_last_emergency_restart_era_id: chainspec
                         .protocol_config
@@ -229,11 +228,9 @@ async fn get_trusted_key_block_info(
         }
 
         if current_header_to_walk_back_from.height() == 0 {
-            break Err(
-                LinearChainSyncError::HitGenesisBlockTryingToGetTrustedEraValidators {
-                    trusted_header: trusted_header.clone(),
-                },
-            );
+            break Err(Error::HitGenesisBlockTryingToGetTrustedEraValidators {
+                trusted_header: trusted_header.clone(),
+            });
         }
 
         current_header_to_walk_back_from = *fetch_and_store_block_header(
@@ -291,17 +288,18 @@ async fn fetch_and_store_next<I>(
     parent_header: &BlockHeader,
     trusted_key_block_info: &KeyBlockInfo,
     chainspec: &Chainspec,
-) -> Result<Option<Box<I>>, LinearChainSyncError>
+) -> Result<Option<Box<I>>, Error>
 where
     I: BlockOrHeaderWithMetadata,
     JoinerEvent: From<FetcherRequest<NodeId, I>>,
-    LinearChainSyncError: From<FetcherError<I, NodeId>>,
+    Error: From<FetcherError<I, NodeId>>,
 {
-    let height = parent_header.height().checked_add(1).ok_or_else(|| {
-        LinearChainSyncError::HeightOverflow {
+    let height = parent_header
+        .height()
+        .checked_add(1)
+        .ok_or_else(|| Error::HeightOverflow {
             parent: Box::new(parent_header.clone()),
-        }
-    })?;
+        })?;
     let mut peers = effect_builder.get_peers_in_random_order().await.into_iter();
     let item = loop {
         let peer = match peers.next() {
@@ -311,7 +309,7 @@ where
         match effect_builder.fetch::<I, NodeId>(height, peer).await {
             Ok(FetchedData::FromStorage { item }) => {
                 if *item.header().parent_hash() != parent_header.hash() {
-                    return Err(LinearChainSyncError::UnexpectedParentHash {
+                    return Err(Error::UnexpectedParentHash {
                         parent: Box::new(parent_header.clone()),
                         child: Box::new(item.header().clone()),
                     });
@@ -372,7 +370,7 @@ where
     };
 
     if item.header().protocol_version() < parent_header.protocol_version() {
-        return Err(LinearChainSyncError::LowerVersionThanParent {
+        return Err(Error::LowerVersionThanParent {
             parent: Box::new(parent_header.clone()),
             child: Box::new(item.header().clone()),
         });
@@ -389,16 +387,14 @@ fn check_block_version(
     header: &BlockHeader,
     trusted_key_block_info: &KeyBlockInfo,
     chainspec: &Chainspec,
-) -> Result<(), LinearChainSyncError> {
+) -> Result<(), Error> {
     let current_version = chainspec.protocol_config.version;
 
     if header.protocol_version() > current_version {
-        return Err(
-            LinearChainSyncError::RetrievedBlockHeaderFromFutureVersion {
-                current_version,
-                block_header_with_future_version: Box::new(header.clone()),
-            },
-        );
+        return Err(Error::RetrievedBlockHeaderFromFutureVersion {
+            current_version,
+            block_header_with_future_version: Box::new(header.clone()),
+        });
     }
 
     if is_current_era(header, trusted_key_block_info, chainspec)
@@ -406,7 +402,7 @@ fn check_block_version(
         && (header.next_block_era_id() != chainspec.protocol_config.activation_point.era_id()
             || !header.is_switch_block())
     {
-        return Err(LinearChainSyncError::CurrentBlockHeaderHasOldVersion {
+        return Err(Error::CurrentBlockHeaderHasOldVersion {
             current_version,
             block_header_with_old_version: Box::new(header.clone()),
         });
@@ -420,7 +416,7 @@ fn check_block_version(
 async fn fetch_and_store_trie(
     effect_builder: EffectBuilder<JoinerEvent>,
     trie_key: Digest,
-) -> Result<Vec<Digest>, LinearChainSyncError> {
+) -> Result<Vec<Digest>, Error> {
     let fetched_trie =
         fetch_retry_forever::<Trie<Key, StoredValue>>(effect_builder, trie_key).await?;
     match fetched_trie {
@@ -454,7 +450,7 @@ async fn sync_trie_store_worker(
     effect_builder: EffectBuilder<JoinerEvent>,
     abort: Arc<AtomicBool>,
     queue: Arc<WorkQueue<Digest>>,
-) -> Result<(), LinearChainSyncError> {
+) -> Result<(), Error> {
     while let Some(job) = queue.next_job().await {
         trace!(worker_id, trie_key = %job.inner(), "worker downloading trie");
         let child_jobs = fetch_and_store_trie(effect_builder, *job.inner())
@@ -481,7 +477,7 @@ async fn sync_trie_store(
     effect_builder: EffectBuilder<JoinerEvent>,
     state_root_hash: Digest,
     max_parallel_trie_fetches: usize,
-) -> Result<(), LinearChainSyncError> {
+) -> Result<(), Error> {
     info!(?state_root_hash, "syncing trie store",);
 
     // Flag set by a worker when it encounters an error.
@@ -516,7 +512,7 @@ async fn fast_sync_to_most_recent(
     trusted_block_header: BlockHeader,
     chainspec: &Chainspec,
     node_config: NodeConfig,
-) -> Result<(KeyBlockInfo, BlockHeader), LinearChainSyncError> {
+) -> Result<(KeyBlockInfo, BlockHeader), Error> {
     let mut trusted_key_block_info =
         get_trusted_key_block_info(effect_builder, chainspec, &trusted_block_header).await?;
 
@@ -604,7 +600,7 @@ async fn sync_deploys_and_transfers_and_state(
     effect_builder: EffectBuilder<JoinerEvent>,
     block: &Block,
     node_config: &NodeConfig,
-) -> Result<(), LinearChainSyncError> {
+) -> Result<(), Error> {
     let hash_iter: Vec<_> = block
         .deploy_hashes()
         .iter()
@@ -642,7 +638,7 @@ async fn archival_sync(
     trusted_block_header: BlockHeader,
     chainspec: &Chainspec,
     node_config: NodeConfig,
-) -> Result<(KeyBlockInfo, BlockHeader), LinearChainSyncError> {
+) -> Result<(KeyBlockInfo, BlockHeader), Error> {
     // Get the trusted block info. This will fail if we are trying to join with a trusted hash in
     // era 0.
     let mut trusted_key_block_info =
@@ -696,25 +692,23 @@ async fn archival_sync(
 }
 
 /// Runs the fast synchronization task.
-pub(crate) async fn run_fast_sync_task(
+pub(super) async fn run_fast_sync_task(
     effect_builder: EffectBuilder<JoinerEvent>,
     trusted_hash: BlockHash,
     chainspec: Arc<Chainspec>,
     node_config: NodeConfig,
-) -> Result<BlockHeader, LinearChainSyncError> {
+) -> Result<BlockHeader, Error> {
     // Fetch the trusted header
     let trusted_block_header = fetch_and_store_block_header(effect_builder, trusted_hash).await?;
 
     if trusted_block_header.protocol_version() > chainspec.protocol_config.version {
-        return Err(
-            LinearChainSyncError::RetrievedBlockHeaderFromFutureVersion {
-                current_version: chainspec.protocol_config.version,
-                block_header_with_future_version: trusted_block_header,
-            },
-        );
+        return Err(Error::RetrievedBlockHeaderFromFutureVersion {
+            current_version: chainspec.protocol_config.version,
+            block_header_with_future_version: trusted_block_header,
+        });
     }
 
-    let era_duration: TimeDiff = std::cmp::max(
+    let era_duration: TimeDiff = cmp::max(
         chainspec.highway_config.min_round_length() * chainspec.core_config.minimum_era_height,
         chainspec.core_config.era_duration,
     );
@@ -737,13 +731,11 @@ pub(crate) async fn run_fast_sync_task(
     let maybe_last_emergency_restart_era_id = chainspec.protocol_config.last_emergency_restart;
     if let Some(last_emergency_restart_era) = maybe_last_emergency_restart_era_id {
         if last_emergency_restart_era > trusted_block_header.era_id() {
-            return Err(
-                LinearChainSyncError::TryingToJoinBeforeLastEmergencyRestartEra {
-                    last_emergency_restart_era,
-                    trusted_hash,
-                    trusted_block_header,
-                },
-            );
+            return Err(Error::TryingToJoinBeforeLastEmergencyRestartEra {
+                last_emergency_restart_era,
+                trusted_hash,
+                trusted_block_header,
+            });
         }
     }
 
@@ -853,12 +845,10 @@ pub(crate) async fn run_fast_sync_task(
             .await?;
 
         if block != *block_and_execution_effects.block() {
-            return Err(
-                LinearChainSyncError::ExecutedBlockIsNotTheSameAsDownloadedBlock {
-                    executed_block: Box::new(Block::from(block_and_execution_effects)),
-                    downloaded_block: Box::new(block.clone()),
-                },
-            );
+            return Err(Error::ExecutedBlockIsNotTheSameAsDownloadedBlock {
+                executed_block: Box::new(Block::from(block_and_execution_effects)),
+                downloaded_block: Box::new(block.clone()),
+            });
         }
 
         most_recent_block_header = block.take_header();
@@ -1082,7 +1072,7 @@ mod tests {
         // If the current version is only 1.2.0 but the block's is 1.3.0, we have to upgrade.
         chainspec.protocol_config.version = v1_2_0;
         match check_block_version(&header, &key_block_info, &chainspec) {
-            Err(LinearChainSyncError::RetrievedBlockHeaderFromFutureVersion {
+            Err(Error::RetrievedBlockHeaderFromFutureVersion {
                 current_version,
                 block_header_with_future_version,
             }) => {
@@ -1095,7 +1085,7 @@ mod tests {
         // If the current version is 1.4.0 but the current block's is 1.3.0, we have to downgrade.
         chainspec.protocol_config.version = v1_4_0;
         match check_block_version(&header, &key_block_info, &chainspec) {
-            Err(LinearChainSyncError::CurrentBlockHeaderHasOldVersion {
+            Err(Error::CurrentBlockHeaderHasOldVersion {
                 current_version,
                 block_header_with_old_version,
             }) => {

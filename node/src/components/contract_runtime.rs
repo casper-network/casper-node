@@ -1,6 +1,5 @@
 //! Contract Runtime component.
 
-pub(crate) mod announcements;
 mod config;
 mod error;
 mod metrics;
@@ -39,20 +38,19 @@ use casper_types::{Key, ProtocolVersion, StoredValue};
 use crate::{
     components::{contract_runtime::types::StepEffectAndUpcomingEraValidators, Component},
     effect::{
-        announcements::ControlAnnouncement, requests::ContractRuntimeRequest, EffectBuilder,
-        EffectExt, Effects,
+        announcements::{ContractRuntimeAnnouncement, ControlAnnouncement},
+        requests::ContractRuntimeRequest,
+        EffectBuilder, EffectExt, Effects,
     },
     fatal,
-    types::{Block, BlockHash, BlockHeader, Chainspec, Deploy, FinalizedBlock},
+    types::{BlockHash, BlockHeader, Chainspec, Deploy, FinalizedBlock},
     NodeRng,
 };
-pub(crate) use announcements::ContractRuntimeAnnouncement;
 pub(crate) use config::Config;
 pub(crate) use error::{BlockExecutionError, ConfigError};
 use metrics::Metrics;
 pub use operations::execute_finalized_block;
-pub use types::BlockAndExecutionEffects;
-pub(crate) use types::EraValidatorsRequest;
+pub(crate) use types::{BlockAndExecutionEffects, EraValidatorsRequest};
 
 /// Maximum number of resource intensive tasks that can be run in parallel.
 ///
@@ -165,6 +163,19 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
+            ContractRuntimeRequest::CommitGenesis {
+                chainspec,
+                responder,
+            } => {
+                let result = self.commit_genesis(&chainspec);
+                responder.respond(result).ignore()
+            }
+            ContractRuntimeRequest::Upgrade {
+                upgrade_config,
+                responder,
+            } => responder
+                .respond(self.commit_upgrade(*upgrade_config))
+                .ignore(),
             ContractRuntimeRequest::Query {
                 query_request,
                 responder,
@@ -459,11 +470,8 @@ impl ContractRuntime {
         })
     }
 
-    /// Commits a genesis using a chainspec
-    pub(crate) fn commit_genesis(
-        &self,
-        chainspec: &Chainspec,
-    ) -> Result<GenesisSuccess, engine_state::Error> {
+    /// Commits a genesis request.
+    fn commit_genesis(&self, chainspec: &Chainspec) -> Result<GenesisSuccess, engine_state::Error> {
         let correlation_id = CorrelationId::new();
         let genesis_config_hash = chainspec.hash();
         let protocol_version = chainspec.protocol_config.version;
@@ -477,7 +485,7 @@ impl ContractRuntime {
         )
     }
 
-    pub(crate) fn commit_upgrade(
+    fn commit_upgrade(
         &self,
         upgrade_config: UpgradeConfig,
     ) -> Result<UpgradeSuccess, engine_state::Error> {
@@ -557,22 +565,22 @@ impl ContractRuntime {
 
         let current_era_id = block.header().era_id();
 
-        announcements::linear_chain_block(effect_builder, block, execution_results).await;
+        effect_builder
+            .announce_new_linear_chain_block(block, execution_results)
+            .await;
 
         if let Some(StepEffectAndUpcomingEraValidators {
             step_execution_journal,
             upcoming_era_validators,
         }) = maybe_step_effect_and_upcoming_era_validators
         {
-            announcements::step_success(effect_builder, current_era_id, step_execution_journal)
+            effect_builder
+                .announce_commit_step_success(current_era_id, step_execution_journal)
                 .await;
 
-            announcements::upcoming_era_validators(
-                effect_builder,
-                current_era_id,
-                upcoming_era_validators,
-            )
-            .await;
+            effect_builder
+                .announce_upcoming_era_validators(current_era_id, upcoming_era_validators)
+                .await;
         }
 
         // If the child is already finalized, start execution.
@@ -586,80 +594,6 @@ impl ContractRuntime {
                 .enqueue_block_for_execution(finalized_block, deploys, transfers)
                 .await
         }
-    }
-
-    // TODO: Deduplicate this and execute_finalized_block_or_requeue.
-    pub(crate) fn execute_finalized_block<REv>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        protocol_version: ProtocolVersion,
-        current_execution_pre_state: ExecutionPreState,
-        finalized_block: FinalizedBlock,
-        deploys: Vec<Deploy>,
-        transfers: Vec<Deploy>,
-    ) -> Result<(Block, Effects<ContractRuntimeRequest>), BlockExecutionError>
-    where
-        REv: From<ContractRuntimeRequest>
-            + From<ContractRuntimeAnnouncement>
-            + From<ControlAnnouncement>
-            + Send,
-    {
-        let BlockAndExecutionEffects {
-            block,
-            execution_results,
-            maybe_step_effect_and_upcoming_era_validators,
-        } = execute_finalized_block(
-            self.engine_state.as_ref(),
-            Some(Arc::clone(&self.metrics)),
-            protocol_version,
-            current_execution_pre_state,
-            finalized_block,
-            deploys,
-            transfers,
-        )?;
-
-        let new_execution_pre_state = ExecutionPreState::from(block.header());
-        *self.execution_pre_state.lock().unwrap() = new_execution_pre_state.clone();
-
-        let current_era_id = block.header().era_id();
-
-        let mut effects =
-            announcements::linear_chain_block(effect_builder, block.clone(), execution_results)
-                .ignore();
-
-        if let Some(StepEffectAndUpcomingEraValidators {
-            step_execution_journal,
-            upcoming_era_validators,
-        }) = maybe_step_effect_and_upcoming_era_validators
-        {
-            effects.extend(
-                announcements::step_success(effect_builder, current_era_id, step_execution_journal)
-                    .ignore(),
-            );
-            effects.extend(
-                announcements::upcoming_era_validators(
-                    effect_builder,
-                    current_era_id,
-                    upcoming_era_validators,
-                )
-                .ignore(),
-            );
-        }
-
-        // If the child is already finalized, start execution.
-        let next_block = {
-            // needed to help this async block impl Send (the MutexGuard lives too long)
-            let queue = &mut *self.exec_queue.lock().expect("mutex poisoned");
-            queue.remove(&new_execution_pre_state.next_block_height)
-        };
-        if let Some((finalized_block, deploys, transfers)) = next_block {
-            effects.extend(
-                effect_builder
-                    .enqueue_block_for_execution(finalized_block, deploys, transfers)
-                    .ignore(),
-            );
-        }
-        Ok((block, effects))
     }
 
     /// Read a [Trie<Key, StoredValue>] from the trie store.

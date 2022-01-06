@@ -6,6 +6,7 @@ use std::{
     collections::BTreeMap,
     fmt::{self, Display, Formatter},
     path::PathBuf,
+    sync::Arc,
     time::Instant,
 };
 
@@ -15,7 +16,7 @@ use memory_metrics::MemoryMetrics;
 use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::Serialize;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, warn};
 
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
@@ -28,7 +29,7 @@ use crate::{
         event_stream_server::{DeployGetter, EventStreamServer},
         fetcher::{self, Fetcher},
         gossiper::{self, Gossiper},
-        linear_chain_sync::{self, LinearChainSyncError, LinearChainSyncState},
+        linear_chain_synchronizer::{self, JoiningOutcome, LinearChainSynchronizer},
         metrics::Metrics,
         rest_server::{self, RestServer},
         small_network::{self, GossipedAddress, SmallNetwork, SmallNetworkIdentity},
@@ -51,9 +52,8 @@ use crate::{
             FetcherRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest, RestRequest,
             StorageRequest,
         },
-        EffectBuilder, EffectExt, EffectOptionExt, Effects,
+        EffectBuilder, EffectExt, Effects,
     },
-    fatal,
     protocol::Message,
     reactor::{
         self,
@@ -64,7 +64,6 @@ use crate::{
     },
     types::{
         Block, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy, ExitCode, NodeId,
-        Timestamp,
     },
     utils::WithDir,
     NodeRng,
@@ -77,11 +76,9 @@ use casper_types::{Key, StoredValue};
 #[derive(Debug, From, Serialize)]
 #[must_use]
 pub(crate) enum JoinerEvent {
-    /// Finished joining event.
-    FinishedJoining { block_header: Box<BlockHeader> },
-
-    /// Shut down with the given exit code.
-    Shutdown(#[serde(skip_serializing)] ExitCode),
+    /// Linear chain synchronizer event.
+    #[from]
+    LinearChainSynchronizer(linear_chain_synchronizer::Event),
 
     /// Small Network event.
     #[from]
@@ -264,6 +261,7 @@ impl ReactorEvent for JoinerEvent {
     }
     fn description(&self) -> &'static str {
         match self {
+            JoinerEvent::LinearChainSynchronizer(_) => "LinearChainSynchronizer",
             JoinerEvent::SmallNetwork(_) => "SmallNetwork",
             JoinerEvent::Storage(_) => "Storage",
             JoinerEvent::RestServer(_) => "RestServer",
@@ -296,8 +294,6 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::BlockHeaderByHeightFetcherRequest(_) => {
                 "BlockHeaderByHeightFetcherRequest"
             }
-            JoinerEvent::FinishedJoining { .. } => "FinishedJoining",
-            JoinerEvent::Shutdown(_) => "Shutdown",
             JoinerEvent::BlocklistAnnouncement(_) => "BlocklistAnnouncement",
             JoinerEvent::StorageRequest(_) => "StorageRequest",
             JoinerEvent::BeginAddressGossipRequest(_) => "BeginAddressGossipRequest",
@@ -336,6 +332,9 @@ impl From<RestRequest<NodeId>> for JoinerEvent {
 impl Display for JoinerEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            JoinerEvent::LinearChainSynchronizer(event) => {
+                write!(f, "linear chain sync: {}", event)
+            }
             JoinerEvent::SmallNetwork(event) => write!(f, "small network: {}", event),
             JoinerEvent::BlocklistAnnouncement(event) => {
                 write!(f, "blocklist announcement: {}", event)
@@ -409,9 +408,6 @@ impl Display for JoinerEvent {
             JoinerEvent::BlockHeaderByHeightFetcherRequest(req) => {
                 write!(f, "block header by height fetcher request: {}", req)
             }
-            JoinerEvent::FinishedJoining { block_header } => {
-                write!(f, "finished joining with block header: {}", block_header)
-            }
             JoinerEvent::ConsensusMessageIncoming(inner) => write!(f, "incoming: {}", inner),
             JoinerEvent::DeployGossiperIncoming(inner) => write!(f, "incoming: {}", inner),
             JoinerEvent::AddressGossiperIncoming(inner) => write!(f, "incoming: {}", inner),
@@ -420,9 +416,6 @@ impl Display for JoinerEvent {
             JoinerEvent::TrieRequestIncoming(inner) => write!(f, "incoming: {}", inner),
             JoinerEvent::TrieResponseIncoming(inner) => write!(f, "incoming: {}", inner),
             JoinerEvent::FinalitySignatureIncoming(inner) => write!(f, "incoming: {}", inner),
-            JoinerEvent::Shutdown(exit_code) => {
-                write!(f, "shutting down with exit code: {:?}", exit_code)
-            }
         }
     }
 }
@@ -438,14 +431,12 @@ pub(crate) struct Reactor {
     chainspec_loader: ChainspecLoader,
     storage: Storage,
     contract_runtime: ContractRuntime,
-    linear_chain_sync: LinearChainSyncState,
+    linear_chain_synchronizer: LinearChainSynchronizer,
     deploy_fetcher: Fetcher<Deploy>,
     block_by_hash_fetcher: Fetcher<Block>,
     block_by_height_fetcher: Fetcher<BlockWithMetadata>,
     block_header_by_hash_fetcher: Fetcher<BlockHeader>,
     block_header_and_finality_signatures_by_height_fetcher: Fetcher<BlockHeaderWithMetadata>,
-    /// This is set to `Some` if the node should shut down.
-    exit_code: Option<ExitCode>,
     // Handles request for fetching tries from the network.
     #[data_size(skip)]
     trie_fetcher: Fetcher<Trie<Key, StoredValue>>,
@@ -514,57 +505,15 @@ impl reactor::Reactor for Reactor {
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
 
         let effect_builder = EffectBuilder::new(event_queue);
-
-        let maybe_trusted_hash = match config.node.trusted_hash {
-            Some(trusted_hash) => Some(trusted_hash),
-            None => storage
-                .read_highest_block_header()
-                .expect("Could not read highest block header")
-                .map(|block_header| block_header.hash()),
-        };
-
-        let chainspec = chainspec_loader.chainspec().clone();
-        let linear_chain_sync = match maybe_trusted_hash {
-            None => {
-                if let Some(start_time) = chainspec
-                    .protocol_config
-                    .activation_point
-                    .genesis_timestamp()
-                {
-                    let era_duration = chainspec.core_config.era_duration;
-                    if Timestamp::now() > start_time + era_duration {
-                        error!(
-                            now=?Timestamp::now(),
-                            genesis_era_end=?start_time + era_duration,
-                            "node started with no trusted hash after the expected end of \
-                             the genesis era! Please specify a trusted hash and restart.");
-                        panic!("should have trusted hash after genesis era")
-                    }
-                }
-                LinearChainSyncState::NotGoingToSync
-            }
-            Some(hash) => {
-                let node_config = config.node.clone();
-                effects.extend(
-                    (async move {
-                        info!(trusted_hash=%hash, "synchronizing linear chain");
-                        generate_joiner_event(
-                            linear_chain_sync::run_fast_sync_task(
-                                effect_builder,
-                                hash,
-                                chainspec,
-                                node_config,
-                            )
-                            .await,
-                            effect_builder,
-                        )
-                        .await
-                    })
-                    .map_some(std::convert::identity),
-                );
-                LinearChainSyncState::Syncing
-            }
-        };
+        let (linear_chain_synchronizer, sync_effects) = LinearChainSynchronizer::new(
+            Arc::clone(chainspec_loader.chainspec()),
+            config.node.clone(),
+            effect_builder,
+        );
+        effects.extend(reactor::wrap_effects(
+            JoinerEvent::LinearChainSynchronizer,
+            sync_effects,
+        ));
 
         let protocol_version = &chainspec_loader.chainspec().protocol_config.version;
         let rest_server = RestServer::new(
@@ -614,14 +563,13 @@ impl reactor::Reactor for Reactor {
                 chainspec_loader,
                 storage,
                 contract_runtime,
-                linear_chain_sync,
+                linear_chain_synchronizer,
                 block_by_hash_fetcher,
                 trie_fetcher,
                 deploy_fetcher,
                 block_by_height_fetcher,
                 block_header_by_hash_fetcher,
                 block_header_and_finality_signatures_by_height_fetcher,
-                exit_code: None,
                 deploy_acceptor,
                 event_queue_metrics,
                 rest_server,
@@ -640,6 +588,11 @@ impl reactor::Reactor for Reactor {
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
+            JoinerEvent::LinearChainSynchronizer(event) => reactor::wrap_effects(
+                JoinerEvent::LinearChainSynchronizer,
+                self.linear_chain_synchronizer
+                    .handle_event(effect_builder, rng, event),
+            ),
             JoinerEvent::SmallNetwork(event) => reactor::wrap_effects(
                 JoinerEvent::SmallNetwork,
                 self.small_network.handle_event(effect_builder, rng, event),
@@ -841,10 +794,6 @@ impl reactor::Reactor for Reactor {
                 rng,
                 JoinerEvent::BlockHeaderByHeightFetcher(request.into()),
             ),
-            JoinerEvent::FinishedJoining { block_header } => {
-                self.linear_chain_sync = LinearChainSyncState::Done(block_header);
-                Effects::new()
-            }
             JoinerEvent::ConsensusMessageIncoming(incoming) => {
                 debug!(%incoming, "ignoring incoming consensus message");
                 Effects::new()
@@ -885,50 +834,26 @@ impl reactor::Reactor for Reactor {
                 debug!(%sender, "finality signatures not handled in joiner reactor");
                 Effects::new()
             }
-            JoinerEvent::Shutdown(exit_code) => {
-                self.exit_code = Some(exit_code);
-                Effects::new()
-            }
         }
     }
 
     fn maybe_exit(&self) -> Option<ReactorExit> {
-        if let Some(exit_code) = self.exit_code {
-            Some(ReactorExit::ProcessShouldExit(exit_code))
-        } else if self.linear_chain_sync.is_synced() {
-            Some(ReactorExit::ProcessShouldContinue)
-        } else {
-            None
-        }
+        self.linear_chain_synchronizer
+            .joining_outcome()
+            .map(|outcome| match outcome {
+                JoiningOutcome::ShouldExitForUpgrade => {
+                    ReactorExit::ProcessShouldExit(ExitCode::Success)
+                }
+                JoiningOutcome::Synced { .. } | JoiningOutcome::RanUpgradeOrGenesis { .. } => {
+                    ReactorExit::ProcessShouldContinue
+                }
+            })
     }
 
     fn update_metrics(&mut self, event_queue_handle: EventQueueHandle<Self::Event>) {
         self.memory_metrics.estimate(self);
         self.event_queue_metrics
             .record_event_queue_counts(&event_queue_handle);
-    }
-}
-
-async fn generate_joiner_event(
-    fast_sync_task_result: Result<BlockHeader, LinearChainSyncError>,
-    effect_builder: EffectBuilder<JoinerEvent>,
-) -> Option<JoinerEvent> {
-    match fast_sync_task_result {
-        Ok(block_header) => Some(JoinerEvent::FinishedJoining {
-            block_header: Box::new(block_header),
-        }),
-        Err(LinearChainSyncError::RetrievedBlockHeaderFromFutureVersion {
-            current_version,
-            block_header_with_future_version,
-        }) => {
-            let future_version = block_header_with_future_version.protocol_version();
-            info!(%current_version, %future_version, "restarting for upgrade");
-            Some(JoinerEvent::Shutdown(ExitCode::Success))
-        }
-        Err(error) => {
-            fatal!(effect_builder, "{}", error).await;
-            None
-        }
     }
 }
 
@@ -1004,14 +929,17 @@ impl Reactor {
     /// the network, closing all incoming and outgoing connections, and frees up the listening
     /// socket.
     pub(crate) async fn into_participating_config(self) -> Result<ParticipatingInitConfig, Error> {
-        let maybe_latest_block_header = self.linear_chain_sync.into_maybe_latest_block_header();
+        let joining_outcome = self
+            .linear_chain_synchronizer
+            .into_joining_outcome()
+            .ok_or(Error::InvalidJoiningOutcome)?;
         let config = ParticipatingInitConfig {
             root: self.root,
             chainspec_loader: self.chainspec_loader,
             config: self.config,
             contract_runtime: self.contract_runtime,
             storage: self.storage,
-            maybe_latest_block_header,
+            joining_outcome,
             event_stream_server: self.event_stream_server,
             small_network_identity: SmallNetworkIdentity::from(&self.small_network),
             node_startup_instant: self.node_startup_instant,
@@ -1040,76 +968,5 @@ impl Reactor {
     /// Inspect the contract runtime.
     pub(crate) fn contract_runtime(&self) -> &ContractRuntime {
         &self.contract_runtime
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use casper_types::{EraId, ProtocolVersion};
-
-    use crate::{
-        components::linear_chain_sync::LinearChainSyncError,
-        contract_runtime::BlockExecutionError,
-        effect::EffectBuilder,
-        reactor::{EventQueueHandle, QueueKind, Scheduler},
-        testing::TestRng,
-        types::Block,
-        utils::{self, SharedFlag},
-    };
-
-    use super::*;
-
-    #[tokio::test]
-    async fn generates_joiner_event() {
-        let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
-        let event_queue = EventQueueHandle::new(scheduler, SharedFlag::default());
-        let effect_builder = EffectBuilder::new(event_queue);
-
-        let mut rng = TestRng::new();
-        let era_id = EraId::new(42);
-        let height = 1;
-        let protocol_version = ProtocolVersion::from_parts(1, 2, 3);
-        let is_switch = false;
-
-        let block =
-            Block::random_with_specifics(&mut rng, era_id, height, protocol_version, is_switch);
-
-        // Ok(_) should result in generating JoinerEvent::FinishedJoining
-        let result_ok = Ok(block.header().clone());
-        let joiner_event = generate_joiner_event(result_ok, effect_builder).await;
-        assert!(matches!(
-            joiner_event,
-            Some(JoinerEvent::FinishedJoining { block_header: _ })
-        ));
-
-        // Block from the future version should result in generating JoinerEvent::Shutdown
-        // with proper exit code.
-        let result_block_from_future = Err(
-            LinearChainSyncError::RetrievedBlockHeaderFromFutureVersion {
-                current_version: protocol_version,
-                block_header_with_future_version: Box::new(block.header().clone()),
-            },
-        );
-        let joiner_event = generate_joiner_event(result_block_from_future, effect_builder).await;
-        assert!(matches!(
-            joiner_event,
-            Some(JoinerEvent::Shutdown(ExitCode::Success))
-        ));
-
-        // CurrentBlockHeaderHasOldVersion response should no longer generate JoinerEvent::Shutdown,
-        // but None. See: https://github.com/casper-network/casper-node/issues/2338
-        let result_block_from_past = Err(LinearChainSyncError::CurrentBlockHeaderHasOldVersion {
-            current_version: protocol_version,
-            block_header_with_old_version: Box::new(block.header().clone()),
-        });
-        let joiner_event = generate_joiner_event(result_block_from_past, effect_builder).await;
-        assert!(matches!(joiner_event, None));
-
-        // Other errors should result in None, we test against arbitrarily selected one.
-        let arbitrary_error = Err(LinearChainSyncError::BlockExecutionError(
-            BlockExecutionError::MoreThanOneExecutionResult,
-        ));
-        let joiner_event = generate_joiner_event(arbitrary_error, effect_builder).await;
-        assert!(matches!(joiner_event, None));
     }
 }

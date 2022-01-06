@@ -2,11 +2,10 @@ use thiserror::Error;
 
 use crate::{
     components::{contract_runtime, contract_runtime::BlockExecutionError, small_network, storage},
-    types::{Block, BlockHeader},
     utils::ListeningError,
 };
 use casper_execution_engine::core::engine_state;
-use casper_types::{bytesrepr, EraId, ProtocolVersion};
+use casper_types::bytesrepr;
 
 /// Error type returned by the validator reactor.
 #[derive(Debug, Error)]
@@ -47,56 +46,9 @@ pub(crate) enum Error {
     #[error("bytesrepr error: {0}")]
     BytesRepr(bytesrepr::Error),
 
-    /// Cannot run genesis on a non v1.0.0 blockchain.
-    #[error(
-        "Genesis must run on protocol version 1.0.0. \
-         Chainspec protocol version: {chainspec_protocol_version:?}"
-    )]
-    GenesisNeedsProtocolVersion1_0_0 {
-        chainspec_protocol_version: ProtocolVersion,
-    },
-
-    /// Cannot run genesis on preexisting blockchain.
-    #[error("Cannot run genesis on preexisting blockchain. First block: {highest_block_header:?}")]
-    CannotRunGenesisOnPreExistingBlockchain {
-        highest_block_header: Box<BlockHeader>,
-    },
-
-    /// No such switch block for upgrade era.
-    #[error("No such switch block for upgrade era: {upgrade_era_id}")]
-    NoSuchSwitchBlockHeaderForUpgradeEra {
-        /// The upgrade era id.
-        upgrade_era_id: EraId,
-    },
-
-    /// Non-emergency upgrade will clobber existing blockchain.
-    #[error(
-        "Non-emergency upgrade will clobber existing blockchain. \
-         Preexisting block header: {preexisting_block_header}"
-    )]
-    NonEmergencyUpgradeWillClobberExistingBlockChain {
-        /// A preexisting block header.
-        preexisting_block_header: Box<BlockHeader>,
-    },
-
-    /// Failed to create a switch block immediately after genesis or upgrade.
-    #[error(
-        "Failed to create a switch block immediately after genesis or upgrade. \
-         New bad block we made: {new_bad_block}"
-    )]
-    FailedToCreateSwitchBlockAfterGenesisOrUpgrade {
-        /// A new block we made which should be a switch block but is not.
-        new_bad_block: Box<Block>,
-    },
-
-    /// Unexpected latest block header: not our version and not the previous upgrade point.
-    #[error(
-        "Unexpected latest block header: not our version and not the previous upgrade point. \
-         Latest block: {latest_block_header}"
-    )]
-    UnexpectedLatestBlockHeader {
-        latest_block_header: Box<BlockHeader>,
-    },
+    /// Joining outcome invalid or missing after running linear chain sync.
+    #[error("joining outcome invalid or missing after running linear chain sync")]
+    InvalidJoiningOutcome,
 }
 
 impl From<bytesrepr::Error> for Error {

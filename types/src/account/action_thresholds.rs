@@ -1,6 +1,9 @@
 //! This module contains types and functions for managing action thresholds.
 
 use alloc::vec::Vec;
+
+#[cfg(feature = "datasize")]
+use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -10,6 +13,7 @@ use crate::{
 
 /// Thresholds that have to be met when executing an action of a certain type.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ActionThresholds {
     /// Threshold for deploy execution.
     pub deployment: Weight,

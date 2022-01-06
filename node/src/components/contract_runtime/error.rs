@@ -1,5 +1,8 @@
 //! Errors that the contract runtime component may raise.
 
+use serde::Serialize;
+use thiserror::Error;
+
 use casper_execution_engine::{
     core::engine_state::{Error as EngineStateError, StepError},
     storage::error::lmdb::Error as StorageLmdbError,
@@ -12,7 +15,7 @@ use crate::{
 use casper_execution_engine::core::engine_state::GetEraValidatorsError;
 
 /// Error returned from mis-configuring the contract runtime component.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Error)]
 pub(crate) enum ConfigError {
     /// Error initializing the LMDB environment.
     #[error("failed to initialize LMDB environment for contract runtime: {0}")]
@@ -23,7 +26,7 @@ pub(crate) enum ConfigError {
 }
 
 /// An error raised by a contract runtime variant.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Error, Serialize)]
 pub enum BlockExecutionError {
     /// Currently the contract runtime can only execute one commit at a time, so we cannot handle
     /// more than one execution result.
@@ -44,19 +47,35 @@ pub enum BlockExecutionError {
     },
     /// A core error thrown by the execution engine.
     #[error(transparent)]
-    EngineStateError(#[from] EngineStateError),
+    EngineStateError(
+        #[from]
+        #[serde(skip_serializing)]
+        EngineStateError,
+    ),
     /// An error that occurred when trying to run the auction contract.
     #[error(transparent)]
-    StepError(#[from] StepError),
+    StepError(
+        #[from]
+        #[serde(skip_serializing)]
+        StepError,
+    ),
     /// An error that occurred while creating a block.
     #[error(transparent)]
     BlockCreationError(#[from] BlockCreationError),
     /// An error that occurred while interacting with lmdb.
     #[error(transparent)]
-    LmdbError(#[from] lmdb::Error),
+    LmdbError(
+        #[from]
+        #[serde(skip_serializing)]
+        lmdb::Error,
+    ),
     /// An error that occurred while getting era validators.
     #[error(transparent)]
-    GetEraValidatorsError(#[from] GetEraValidatorsError),
+    GetEraValidatorsError(
+        #[from]
+        #[serde(skip_serializing)]
+        GetEraValidatorsError,
+    ),
 }
 
 /// An error raised when block execution events are being created for the reactor.
