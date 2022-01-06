@@ -119,7 +119,6 @@ enum DumpFormat {
     Debug,
 }
 
-#[cfg(target_os = "linux")]
 /// Adjusts the maximum number of open file handles upwards towards the hard limit.
 fn adjust_open_files_limit() {
     // Ensure we have reasonable ulimits.
