@@ -6,15 +6,13 @@ extern crate alloc;
 use alloc::{boxed::Box, format, string::ToString, vec};
 
 use casper_contract::{
-    contract_api,
     contract_api::{account, runtime, storage, system::transfer_from_purse_to_purse},
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    account::AccountHash,
     contracts::{ContractHash, NamedKeys},
-    ApiError, CLType, CLTyped, ContractVersion, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Parameter, RuntimeArgs, URef,
+    ApiError, CLType, ContractVersion, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
+    Parameter, RuntimeArgs, URef,
 };
 
 #[repr(u16)]
