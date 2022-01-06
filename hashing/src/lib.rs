@@ -49,8 +49,8 @@ pub enum Error {
 /// The output of the hash function.
 #[derive(Copy, Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Default, JsonSchema)]
 #[serde(deny_unknown_fields)]
-#[schemars(with = "String", description = "Checksummed hex-encoded hash digest.")]
-pub struct Digest(#[schemars(skip, with = "String")] pub(crate) [u8; Digest::LENGTH]);
+#[schemars(with = "String", description = "Hex-encoded hash digest.")]
+pub struct Digest(#[schemars(skip, with = "String")] [u8; Digest::LENGTH]);
 
 impl Digest {
     /// The number of bytes in a `Digest`.
@@ -251,7 +251,7 @@ impl Display for Digest {
 
 impl Debug for Digest {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{}", checksummed_hex::encode(&self.0))
+        write!(f, "{}", base16::encode_lower(&self.0))
     }
 }
 
@@ -309,7 +309,7 @@ impl FromBytes for Digest {
 impl Serialize for Digest {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            checksummed_hex::encode(&self.0).serialize(serializer)
+            base16::encode_lower(&self.0).serialize(serializer)
         } else {
             // This is to keep backwards compatibility with how HexForm encodes
             // byte arrays. HexForm treats this like a slice.
@@ -379,23 +379,23 @@ mod tests {
         let inputs_and_digests = [
             (
                 "",
-                "0e5751c026E543B2E8AB2eB06099daA1d1e5df47778F7787FAaB45CDF12fe3A8",
+                "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8",
             ),
             (
                 "abc",
-                "bDDd813C634239723171EF3FEE98579B94964e3bB1Cb3e427262c8C068D52319",
+                "bddd813c634239723171ef3fee98579b94964e3bb1cb3e427262c8c068d52319",
             ),
             (
                 "0123456789",
-                "7b6Cb8D374484e221785288B035dc53FC9DDF000607f473FC2a3258d89a70398",
+                "7b6cb8d374484e221785288b035dc53fc9ddf000607f473fc2a3258d89a70398",
             ),
             (
                 "01234567890",
-                "3D199478c18B7fE3cA1F4F2A9B3E07F708Ff66eD52Eb345Db258abE8A812Ed5c",
+                "3d199478c18b7fe3ca1f4f2a9b3e07f708ff66ed52eb345db258abe8a812ed5c",
             ),
             (
                 "The quick brown fox jumps over the lazy dog",
-                "01718CeC35cD3d796Dd00020E0bFeCB473ad23457d063b75EFf29c0fFA2E58A9",
+                "01718cec35cd3d796dd00020e0bfecb473ad23457d063b75eff29c0ffa2e58a9",
             ),
         ];
         for (known_input, expected_digest) in &inputs_and_digests {
