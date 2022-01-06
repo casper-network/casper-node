@@ -18,6 +18,8 @@ All notable changes to this project will be documented in this file.  The format
 * Added `archival_sync` to `[node]` config section, along with archival syncing capabilities
 * Added `max_parallel_deploy_fetches` and `max_parallel_trie_fetches` config options to the `[node]` section to control how many requests are made in parallel while syncing.
 * Add capabilities for known nodes to slow down the reconnection process of outdated legacy nodes still out on the internet.
+* `SIGUSR1` now only dumps the queue in the debug text format.
+* `enable_manual_sync` configuration parameter defaults to `true`.
 
 ### Changed
 * Major rewrite of the contract runtime component.
@@ -25,6 +27,7 @@ All notable changes to this project will be documented in this file.  The format
 * Chain automatically creates a switch block immediately after genesis or an upgrade.
 * Asymmetric connections are now swept regularly again.
 * Nodes no longer connect to nodes that do not speak the same protocol version by default.
+* Default behavior of LMDB changed to use [`NO_READAHEAD`](https://docs.rs/lmdb/0.8.0/lmdb/struct.EnvironmentFlags.html#associatedconstant.NO_READAHEAD)
 
 ### Deprecated
 * Deprecate the `starting_state_root_hash` field from the REST and JSON-RPC status endpoints.
@@ -42,11 +45,6 @@ All notable changes to this project will be documented in this file.  The format
 * Updated dependencies, in particular `casper-types` to use fixed checksummed-hex format.
 * Add new event to the main SSE server stream across all endpoints `<IP:PORT>/events/*` which emits a shutdown event when the node shuts down.
 * Add `SIGUSR2` signal handling to dump the queue in JSON format (see "Changed" section for `SIGUSR1`).
-
-### Changed
-* `SIGUSR1` now only dumps the queue in the debug text format.
-* `enable_manual_sync` configuration parameter defaults to `true`.
-* Default behavior of LMDB changed to use [`NO_READAHEAD`](https://docs.rs/lmdb/0.8.0/lmdb/struct.EnvironmentFlags.html#associatedconstant.NO_READAHEAD)
 
 
 ## [1.4.2] - 2021-11-11
