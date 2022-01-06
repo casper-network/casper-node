@@ -5,6 +5,7 @@ authors = ["Ed Hastings <ed@casperlabs.io>, Henry Till <henrytill@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+anyhow = "1"
 base16 = "0.2.1"
 casper-contract = { path = "../../smart_contracts/contract", default-features = false, features = ["test-support"] }
 casper-engine-test-support = { path = "../test_support", features = ["test-support"] }
@@ -18,6 +19,7 @@ dictionary-call = { path = "../../smart_contracts/contracts/test/dictionary-call
 env_logger = "0.8.1"
 fs_extra = "1.2.0"
 get-call-stack-recursive-subcall = { path = "../../smart_contracts/contracts/test/get-call-stack-recursive-subcall", default-features = false }
+lmdb = "0.8"
 log = "0.4.8"
 parity-wasm = "0.41.0"
 rand = "0.8.3"

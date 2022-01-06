@@ -10,7 +10,7 @@ use std::{
 };
 
 use filesize::PathExt;
-use lmdb::DatabaseFlags;
+use lmdb::{Database, DatabaseFlags};
 use log::LevelFilter;
 
 use bytesrepr::FromBytes;
@@ -326,9 +326,8 @@ impl LmdbWasmTestBuilder {
         None
     }
 
-
     /// Execute and commit transforms from an ExecuteRequest into a scratch global state.
-    /// You MUST call scratch_flush to flush these changes to LmdbGlobalState.
+    /// You MUST call write_scratch_to_lmdb to flush these changes to LmdbGlobalState.
     pub fn scratch_exec_and_commit(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
         if self.scratch_engine_state.is_none() {
             self.scratch_engine_state = Some(self.engine_state.get_scratch_engine_state());
@@ -379,6 +378,16 @@ impl LmdbWasmTestBuilder {
             );
         }
         self
+    }
+
+    /// Returns a handle to the underlying LMDB environment.
+    pub fn lmdb_environment(&self) -> Arc<LmdbEnvironment> {
+        self.engine_state.lmdb_environment()
+    }
+
+    /// Returns a handle to the underlying LMDB database.
+    pub fn lmdb_handle(&self) -> Database {
+        self.engine_state.lmdb_handle()
     }
 }
 

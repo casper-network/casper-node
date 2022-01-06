@@ -419,6 +419,7 @@ dependencies = [
 name = "casper-engine-tests"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "assert_matches",
  "base16",
  "casper-contract",
@@ -436,6 +437,7 @@ dependencies = [
  "get-call-stack-recursive-subcall",
  "gh-1470-regression",
  "gh-1470-regression-call",
+ "lmdb",
  "log",
  "num-rational 0.4.0",
  "num-traits",

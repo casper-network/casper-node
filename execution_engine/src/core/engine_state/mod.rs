@@ -23,8 +23,10 @@ use std::{
     convert::TryFrom,
     iter::FromIterator,
     rc::Rc,
+    sync::Arc,
 };
 
+use lmdb::Database;
 use num::Zero;
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
@@ -87,6 +89,7 @@ use crate::{
         global_state::{
             lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
         },
+        transaction_source::lmdb::LmdbEnvironment,
         trie::Trie,
     },
 };
@@ -149,6 +152,16 @@ impl EngineState<LmdbGlobalState> {
         self.state
             .put_stored_values(CorrelationId::new(), state_root_hash, stored_values)
             .map_err(Into::into)
+    }
+
+    /// Return a handle to the underlying LMDB environment.
+    pub fn lmdb_environment(&self) -> Arc<LmdbEnvironment> {
+        Arc::clone(&self.state.environment)
+    }
+
+    /// Return a handle to the underlying LMDB database.
+    pub fn lmdb_handle(&self) -> Database {
+        self.state.trie_store.db
     }
 }
 

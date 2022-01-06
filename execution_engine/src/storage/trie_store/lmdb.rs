@@ -121,7 +121,7 @@ use crate::storage::{
 /// Wraps [`lmdb::Database`].
 #[derive(Debug, Clone)]
 pub struct LmdbTrieStore {
-    db: Database,
+    pub(crate) db: Database,
 }
 
 impl LmdbTrieStore {
