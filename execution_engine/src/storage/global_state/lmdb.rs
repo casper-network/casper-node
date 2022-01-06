@@ -1,4 +1,4 @@
-use std::{ops::Deref, sync::Arc};
+use std::{collections::HashMap, ops::Deref, sync::Arc};
 
 use casper_hashing::Digest;
 use casper_types::{Key, StoredValue};
@@ -7,7 +7,10 @@ use crate::{
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
     storage::{
         error,
-        global_state::{commit, StateProvider, StateReader},
+        global_state::{
+            commit, put_stored_values, scratch::ScratchGlobalState, CommitProvider, StateProvider,
+            StateReader,
+        },
         store::Store,
         transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
         trie::{merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie},
@@ -70,6 +73,32 @@ impl LmdbGlobalState {
             trie_store,
             empty_root_hash,
         }
+    }
+
+    /// Creates an in-memory cache for changes written.
+    pub fn create_scratch(&self) -> ScratchGlobalState {
+        ScratchGlobalState::new(
+            Arc::clone(&self.environment),
+            Arc::clone(&self.trie_store),
+            self.empty_root_hash,
+        )
+    }
+
+    /// Write stored values to LMDB.
+    pub fn put_stored_values(
+        &self,
+        correlation_id: CorrelationId,
+        prestate_hash: Digest,
+        stored_values: HashMap<Key, StoredValue>,
+    ) -> Result<Digest, error::Error> {
+        put_stored_values::<LmdbEnvironment, LmdbTrieStore, error::Error>(
+            &self.environment,
+            &self.trie_store,
+            correlation_id,
+            prestate_hash,
+            stored_values,
+        )
+        .map_err(Into::into)
     }
 }
 
@@ -149,6 +178,24 @@ impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
     }
 }
 
+impl CommitProvider for LmdbGlobalState {
+    fn commit(
+        &self,
+        correlation_id: CorrelationId,
+        prestate_hash: Digest,
+        effects: AdditiveMap<Key, Transform>,
+    ) -> Result<Digest, Self::Error> {
+        commit::<LmdbEnvironment, LmdbTrieStore, _, Self::Error>(
+            &self.environment,
+            &self.trie_store,
+            correlation_id,
+            prestate_hash,
+            effects,
+        )
+        .map_err(Into::into)
+    }
+}
+
 impl StateProvider for LmdbGlobalState {
     type Error = error::Error;
 
@@ -164,22 +211,6 @@ impl StateProvider for LmdbGlobalState {
         });
         txn.commit()?;
         Ok(maybe_state)
-    }
-
-    fn commit(
-        &self,
-        correlation_id: CorrelationId,
-        prestate_hash: Digest,
-        effects: AdditiveMap<Key, Transform>,
-    ) -> Result<Digest, Self::Error> {
-        commit::<LmdbEnvironment, LmdbTrieStore, _, Self::Error>(
-            &self.environment,
-            &self.trie_store,
-            correlation_id,
-            prestate_hash,
-            effects,
-        )
-        .map_err(Into::into)
     }
 
     fn empty_root(&self) -> Digest {

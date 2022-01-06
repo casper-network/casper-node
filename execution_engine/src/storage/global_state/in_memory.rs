@@ -7,7 +7,7 @@ use crate::{
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
     storage::{
         error::{self, in_memory},
-        global_state::{commit, StateProvider, StateReader},
+        global_state::{commit, CommitProvider, StateProvider, StateReader},
         store::Store,
         transaction_source::{
             in_memory::{
@@ -197,6 +197,24 @@ impl StateReader<Key, StoredValue> for InMemoryGlobalStateView {
     }
 }
 
+impl CommitProvider for InMemoryGlobalState {
+    fn commit(
+        &self,
+        correlation_id: CorrelationId,
+        prestate_hash: Digest,
+        effects: AdditiveMap<Key, Transform>,
+    ) -> Result<Digest, Self::Error> {
+        commit::<InMemoryEnvironment, InMemoryTrieStore, _, Self::Error>(
+            &self.environment,
+            &self.trie_store,
+            correlation_id,
+            prestate_hash,
+            effects,
+        )
+        .map_err(Into::into)
+    }
+}
+
 impl StateProvider for InMemoryGlobalState {
     type Error = error::Error;
 
@@ -213,22 +231,6 @@ impl StateProvider for InMemoryGlobalState {
         });
         txn.commit()?;
         Ok(maybe_state)
-    }
-
-    fn commit(
-        &self,
-        correlation_id: CorrelationId,
-        prestate_hash: Digest,
-        effects: AdditiveMap<Key, Transform>,
-    ) -> Result<Digest, Self::Error> {
-        commit::<InMemoryEnvironment, InMemoryTrieStore, _, Self::Error>(
-            &self.environment,
-            &self.trie_store,
-            correlation_id,
-            prestate_hash,
-            effects,
-        )
-        .map_err(Into::into)
     }
 
     fn empty_root(&self) -> Digest {
