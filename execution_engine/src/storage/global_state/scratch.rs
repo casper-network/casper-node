@@ -307,6 +307,7 @@ impl StateProvider for ScratchGlobalState {
         &self,
         correlation_id: CorrelationId,
         trie_keys: Vec<Digest>,
+        check_integrity: bool,
     ) -> Result<Vec<Digest>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
         let missing_descendants =
@@ -315,6 +316,7 @@ impl StateProvider for ScratchGlobalState {
                 &txn,
                 self.trie_store.deref(),
                 trie_keys,
+                check_integrity,
             )?;
         txn.commit()?;
         Ok(missing_descendants)
