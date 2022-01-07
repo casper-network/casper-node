@@ -391,7 +391,8 @@ where
                 async move {
                     let correlation_id = CorrelationId::new();
                     let start = Instant::now();
-                    let result = engine_state.missing_trie_keys(correlation_id, vec![trie_key]);
+                    let result =
+                        engine_state.missing_trie_keys(correlation_id, vec![trie_key], false);
                     metrics
                         .missing_trie_keys
                         .observe(start.elapsed().as_secs_f64());

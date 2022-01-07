@@ -543,18 +543,6 @@ where
                 self.metrics.allocated_ram_bytes.set(allocated as i64);
                 self.metrics.consumed_ram_bytes.set(consumed as i64);
                 self.metrics.total_ram_bytes.set(total as i64);
-                if let Some(threshold_mb) = *MEM_DUMP_THRESHOLD_MB {
-                    let threshold_bytes = threshold_mb * 1024 * 1024;
-                    if allocated >= threshold_bytes && self.last_queue_dump.is_none() {
-                        info!(
-                            %allocated,
-                            %total,
-                            %threshold_bytes,
-                            "node has allocated enough memory to trigger queue dump"
-                        );
-                        self.dump_queues(DumpFormat::Debug).await;
-                    }
-                }
             }
         }
 
