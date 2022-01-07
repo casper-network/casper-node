@@ -40,7 +40,7 @@ use crate::{
             BlockAndExecutionEffects, BlockExecutionError, EraValidatorsRequest, ExecutionPreState,
         },
         deploy_acceptor::Error,
-        fetcher::FetchResult,
+        fetcher::{FetchResult, TrieFetcherResult},
     },
     effect::Responder,
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
@@ -916,16 +916,22 @@ impl<I: Display + Debug + Eq, T: Item> Display for FetcherRequest<I, T> {
 /// TrieFetcher related requests.
 #[derive(Debug, Serialize)]
 #[must_use]
-pub(crate) struct TrieFetcherRequest<I> {
+pub(crate) struct TrieFetcherRequest<I>
+where
+    I: Debug + Eq,
+{
     /// The peers to try to fetch from.
     pub(crate) peers: Vec<I>,
     /// The hash of the trie node.
     pub(crate) hash: Digest,
     /// Responder to call with the result.
-    pub(crate) responder: Responder<Option<Trie<Key, StoredValue>>>,
+    pub(crate) responder: Responder<TrieFetcherResult<I>>,
 }
 
-impl<I> Display for TrieFetcherRequest<I> {
+impl<I> Display for TrieFetcherRequest<I>
+where
+    I: Debug + Eq,
+{
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(formatter, "request trie by hash {}", self.hash)
     }

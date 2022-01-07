@@ -94,17 +94,17 @@ where
 async fn fetch_trie_retry_forever(
     effect_builder: EffectBuilder<JoinerEvent>,
     id: Digest,
-) -> Trie<Key, StoredValue> {
+) -> FetchedData<Trie<Key, StoredValue>, NodeId> {
     loop {
         let peers = effect_builder.get_peers_in_random_order::<NodeId>().await;
         trace!(?id, "attempting to fetch a trie",);
         match effect_builder.fetch_trie(id, peers).await {
-            Some(trie) => {
+            Ok(fetched_data) => {
                 trace!(?id, "got trie successfully",);
-                return trie;
+                return fetched_data;
             }
-            None => {
-                warn!(?id, "fast sync could not fetch a trie; trying again",)
+            Err(error) => {
+                warn!(?id, %error, "fast sync could not fetch a trie; trying again")
             }
         }
         tokio::time::sleep(SLEEP_DURATION_SO_WE_DONT_SPAM).await
@@ -442,9 +442,14 @@ async fn fetch_and_store_trie(
     trie_key: Digest,
 ) -> Result<Vec<Digest>, LinearChainSyncError> {
     let fetched_trie = fetch_trie_retry_forever(effect_builder, trie_key).await;
-    Ok(effect_builder
-        .put_trie_and_find_missing_descendant_trie_keys(Box::new(fetched_trie))
-        .await?)
+    match fetched_trie {
+        FetchedData::FromStorage { .. } => Ok(effect_builder
+            .find_missing_descendant_trie_keys(trie_key)
+            .await?),
+        FetchedData::FromPeer { item: trie, .. } => Ok(effect_builder
+            .put_trie_and_find_missing_descendant_trie_keys(trie)
+            .await?),
+    }
 }
 
 /// Downloads and stores a block.

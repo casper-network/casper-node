@@ -32,7 +32,7 @@ use crate::effect::announcements::BlocklistAnnouncement;
 pub(crate) use config::Config;
 pub(crate) use event::{Event, FetchResult, FetchedData, FetcherError};
 use metrics::Metrics;
-pub(crate) use trie_fetcher::{Event as TrieFetcherEvent, TrieFetcher};
+pub(crate) use trie_fetcher::{Event as TrieFetcherEvent, TrieFetcher, TrieFetcherResult};
 
 /// A helper trait constraining `Fetcher` compatible reactor events.
 pub(crate) trait ReactorEventT<T>:

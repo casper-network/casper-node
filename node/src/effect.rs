@@ -102,7 +102,7 @@ use crate::{
             BlockAndExecutionEffects, BlockExecutionError, EraValidatorsRequest, ExecutionPreState,
         },
         deploy_acceptor,
-        fetcher::FetchResult,
+        fetcher::{FetchResult, TrieFetcherResult},
         small_network::FromIncoming,
     },
     reactor::{EventQueueHandle, QueueKind},
@@ -1164,14 +1164,10 @@ impl<REv> EffectBuilder<REv> {
     // TODO: remove this once used by fast sync
     #[allow(unused)]
     /// Requests a trie node from a peer.
-    pub(crate) async fn fetch_trie<I>(
-        self,
-        hash: Digest,
-        peers: Vec<I>,
-    ) -> Option<Trie<Key, StoredValue>>
+    pub(crate) async fn fetch_trie<I>(self, hash: Digest, peers: Vec<I>) -> TrieFetcherResult<I>
     where
         REv: From<TrieFetcherRequest<I>>,
-        I: Send + 'static,
+        I: Debug + Eq + Send + 'static,
     {
         self.make_request(
             |responder| TrieFetcherRequest {

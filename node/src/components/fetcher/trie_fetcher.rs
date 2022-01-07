@@ -5,6 +5,7 @@ use std::{
 
 use datasize::DataSize;
 use derive_more::From;
+use thiserror::Error;
 use tracing::{debug, error, warn};
 
 use casper_execution_engine::storage::trie::{Trie, TrieOrChunkedData, TrieOrChunkedDataId};
@@ -14,7 +15,7 @@ use casper_types::{bytesrepr, Key, StoredValue};
 use crate::{
     components::{
         fetcher::{
-            event::{FetchResult, FetchedData},
+            event::{FetchResult, FetchedData, FetcherError},
             ReactorEventT,
         },
         Component,
@@ -27,16 +28,44 @@ use crate::{
     NodeRng,
 };
 
-#[derive(DataSize, Debug)]
-pub(crate) struct PartialChunks<I> {
-    peers: Vec<I>,
-    responder: Responder<Option<Trie<Key, StoredValue>>>,
-    chunks: HashMap<u64, ChunkWithProof>,
+#[derive(Debug, From, Error)]
+pub(crate) enum TrieFetcherError<I>
+where
+    I: Debug + Eq,
+{
+    #[error("Fetcher error: {0}")]
+    Fetcher(FetcherError<TrieOrChunkedData, I>),
+    #[error("Serialization error: {0}")]
+    Bytesrepr(bytesrepr::Error),
+    #[error("Couldn't fetch trie chunk ({0}, {1})")]
+    Absent(Digest, u64),
 }
 
-impl<I> PartialChunks<I> {
+pub(crate) type TrieFetcherResult<I> =
+    Result<FetchedData<Trie<Key, StoredValue>, I>, TrieFetcherError<I>>;
+
+#[derive(DataSize, Debug)]
+pub(crate) struct PartialChunks<I>
+where
+    I: Debug + Eq,
+{
+    peers: Vec<I>,
+    responder: Responder<TrieFetcherResult<I>>,
+    chunks: HashMap<u64, ChunkWithProof>,
+    sender: Option<I>,
+}
+
+impl<I> PartialChunks<I>
+where
+    I: Debug + Eq,
+{
     fn missing_chunk(&self, count: u64) -> Option<u64> {
         (0..count).find(|idx| !self.chunks.contains_key(idx))
+    }
+
+    fn mutate_sender(&mut self, sender: Option<I>) {
+        let old_sender = self.sender.take();
+        self.sender = old_sender.or(sender);
     }
 
     fn assemble_chunks(&self, count: u64) -> Result<Trie<Key, StoredValue>, bytesrepr::Error> {
@@ -50,7 +79,10 @@ impl<I> PartialChunks<I> {
 }
 
 #[derive(DataSize, Debug)]
-pub(crate) struct TrieFetcher<I> {
+pub(crate) struct TrieFetcher<I>
+where
+    I: Debug + Eq,
+{
     partial_chunks: HashMap<Digest, PartialChunks<I>>,
 }
 
@@ -76,6 +108,16 @@ where
             Event::Request(_) => write!(f, "trie fetcher request"),
             Event::TrieOrChunkFetched { id, .. } => write!(f, "trie or chunk {} fetched", id),
         }
+    }
+}
+
+fn into_response<I>(trie: Box<Trie<Key, StoredValue>>, sender: Option<I>) -> TrieFetcherResult<I>
+where
+    I: Debug + Eq,
+{
+    match sender {
+        Some(peer) => Ok(FetchedData::FromPeer { item: trie, peer }),
+        None => Ok(FetchedData::FromStorage { item: trie }),
     }
 }
 
@@ -107,7 +149,10 @@ where
                 }
                 Some(partial_chunks) => {
                     debug!(%hash, "got a full trie");
-                    partial_chunks.responder.respond(Some(*trie)).ignore()
+                    partial_chunks
+                        .responder
+                        .respond(into_response(trie, sender))
+                        .ignore()
                 }
             },
             TrieOrChunkedData::ChunkWithProof(chunk) => {
@@ -155,6 +200,8 @@ where
 
         // Add the downloaded chunk to cache.
         let _ = partial_chunks.chunks.insert(index, chunk);
+        // If it was downloaded from a peer, save the information.
+        partial_chunks.mutate_sender(sender);
 
         // Check if we can now return a complete trie.
         match partial_chunks.missing_chunk(count) {
@@ -166,19 +213,25 @@ where
                             %digest, %missing_index,
                             "no peers to download the next chunk from, giving up",
                         );
-                        return partial_chunks.responder.respond(None).ignore();
+                        return partial_chunks
+                            .responder
+                            .respond(Err(TrieFetcherError::Absent(digest, index)))
+                            .ignore();
                     }
                 };
                 let next_id = TrieOrChunkedDataId(missing_index, digest);
                 self.try_download_chunk(effect_builder, next_id, peer, partial_chunks)
             }
             None => match partial_chunks.assemble_chunks(count) {
-                Ok(trie) => partial_chunks.responder.respond(Some(trie)).ignore(),
+                Ok(trie) => partial_chunks
+                    .responder
+                    .respond(into_response(Box::new(trie), partial_chunks.sender))
+                    .ignore(),
                 Err(error) => {
                     error!(%digest, %error,
                         "error while assembling a complete trie",
                     );
-                    partial_chunks.responder.respond(None).ignore()
+                    partial_chunks.responder.respond(Err(error.into())).ignore()
                 }
             },
         }
@@ -235,6 +288,7 @@ where
                     responder,
                     peers,
                     chunks: Default::default(),
+                    sender: None,
                 };
                 self.try_download_chunk(effect_builder, trie_id, peer, partial_chunks)
             }
@@ -263,7 +317,7 @@ where
                                 ),
                                 None => {
                                     debug!(%id, "couldn't fetch chunk");
-                                    partial_chunks.responder.respond(None).ignore()
+                                    partial_chunks.responder.respond(Err(error.into())).ignore()
                                 }
                             }
                         }
