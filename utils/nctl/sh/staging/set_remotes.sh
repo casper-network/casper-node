@@ -7,7 +7,7 @@ source "$NCTL/sh/utils/main.sh"
 # ----------------------------------------------------------------
 
 # Base URL: casper-node-launcher.
-_LAUNCHER_URL=http://nctl.casperlabs.io.s3-website.us-east-2.amazonaws.com/casper-node-launcher/casper-node-launcher
+#_LAUNCHER_URL=http://nctl.casperlabs.io.s3-website.us-east-2.amazonaws.com/casper-node-launcher/casper-node-launcher
 
 # Set of protocol versions.
 if [ ! -z "$1" ]; then
@@ -31,9 +31,13 @@ function _main()
     fi
 
     pushd "$PATH_TO_REMOTES" || exit
-    log "... downloading launcher"
-    curl -O "$_LAUNCHER_URL" > /dev/null 2>&1
+    #log "... downloading launcher"
+    #curl -O "$_LAUNCHER_URL" > /dev/null 2>&1
+    #chmod +x ./casper-node-launcher
+    log "Using launcher from local copy: $NCTL_CASPER_NODE_LAUNCHER_HOME/target/$NCTL_COMPILE_TARGET/casper-node-launcher"
+    cp "$NCTL_CASPER_NODE_LAUNCHER_HOME/target/$NCTL_COMPILE_TARGET/casper-node-launcher" "$(pwd)"
     chmod +x ./casper-node-launcher
+    log "... $(./casper-node-launcher --version)"
     popd    
 
     for PROTOCOL_VERSION in "${_PROTOCOL_VERSIONS[@]}"
