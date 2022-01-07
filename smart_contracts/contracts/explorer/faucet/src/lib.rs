@@ -36,25 +36,24 @@ enum FaucetError {
     MissingInstaller = 2,
     InvalidInstaller = 3,
     InstallerDoesNotFundItself = 4,
-    InvalidAmount = 5,
-    MissingDistributionTime = 6,
-    InvalidDistributionTime = 7,
-    MissingAvailableAmount = 8,
-    InvalidAvailableAmount = 9,
-    MissingTimeInterval = 10,
-    InvalidTimeInterval = 11,
-    MissingId = 12,
-    InvalidId = 13,
-    FailedToTransfer = 14,
-    FailedToGetArgBytes = 15,
-    FailedToConstructReturnData = 16,
-    MissingFaucetPurse = 17,
-    InvalidFaucetPurse = 18,
-    MissingRemainingAmount = 19,
-    InvalidRemainingAmount = 20,
-    MissingDistributionsPerInterval = 21,
-    InvalidDistributionsPerInterval = 22,
-    UnexpectedKeyVariant = 23,
+    MissingDistributionTime = 5,
+    InvalidDistributionTime = 6,
+    MissingAvailableAmount = 7,
+    InvalidAvailableAmount = 8,
+    MissingTimeInterval = 9,
+    InvalidTimeInterval = 10,
+    MissingId = 11,
+    InvalidId = 12,
+    FailedToTransfer = 13,
+    FailedToGetArgBytes = 14,
+    FailedToConstructReturnData = 15,
+    MissingFaucetPurse = 16,
+    InvalidFaucetPurse = 17,
+    MissingRemainingAmount = 18,
+    InvalidRemainingAmount = 19,
+    MissingDistributionsPerInterval = 20,
+    InvalidDistributionsPerInterval = 21,
+    UnexpectedKeyVariant = 22,
 }
 
 impl From<FaucetError> for ApiError {
@@ -188,6 +187,11 @@ pub fn delegate() {
 
     if caller == installer {
         let target: AccountHash = runtime::get_named_arg(ARG_TARGET);
+
+        if target == installer {
+            runtime::revert(FaucetError::InstallerDoesNotFundItself);
+        }
+
         let amount = get_distribution_amount();
 
         transfer(target, amount, id);
