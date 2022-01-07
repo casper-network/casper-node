@@ -5,6 +5,7 @@
 pub mod arglang;
 
 use std::{
+    alloc::System,
     env, fs,
     path::{Path, PathBuf},
     str::FromStr,
@@ -13,6 +14,7 @@ use std::{
 use anyhow::{self, Context};
 use prometheus::Registry;
 use regex::Regex;
+use stats_alloc::{StatsAlloc, INSTRUMENTED_SYSTEM};
 use structopt::StructOpt;
 use toml::{value::Table, Value};
 use tracing::{error, info, warn};
@@ -31,7 +33,7 @@ use crate::{
 // We override the standard allocator to gather metrics and tune the allocator via th MALLOC_CONF
 // env var.
 #[global_allocator]
-static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
+static ALLOC: &StatsAlloc<System> = &INSTRUMENTED_SYSTEM;
 
 // Note: The docstring on `Cli` is the help shown when calling the binary with `--help`.
 #[derive(Debug, StructOpt)]

@@ -82,8 +82,7 @@ fn should_run_ee_572_regression() {
     let response = builder
         .exec(exec_request_4)
         .get_exec_result(3)
-        .expect("should have a response")
-        .to_owned();
+        .expect("should have a response");
 
     let error_message = utils::get_error_message(response);
 
