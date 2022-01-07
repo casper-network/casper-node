@@ -26,7 +26,7 @@ pub const STATUS_API_PATH: &str = "status";
 /// The metrics URL path.
 pub const METRICS_API_PATH: &str = "metrics";
 
-/// The OpenRPC scehma URL path.
+/// The OpenRPC schema URL path.
 pub const JSON_RPC_SCHEMA_API_PATH: &str = "rpc-schema";
 
 /// The validator information URL path.

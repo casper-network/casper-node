@@ -10,7 +10,8 @@ mod item;
 pub mod json_compatibility;
 mod node_config;
 mod node_id;
-mod peers_map;
+/// Peers map.
+pub mod peers_map;
 mod shared_object;
 mod status_feed;
 mod timestamp;
