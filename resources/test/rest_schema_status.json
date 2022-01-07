@@ -22,6 +22,7 @@
     },
     "starting_state_root_hash": {
       "description": "The state root hash used at the start of the current session.",
+      "deprecated": true,
       "allOf": [
         {
           "$ref": "#/definitions/Digest"

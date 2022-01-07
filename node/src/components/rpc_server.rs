@@ -344,6 +344,11 @@ mod tests {
         //
         // Note: Please review the diff of the input files to avoid any breaking changes.
 
+        // TODO: The mentioned `println!` was removed in: https://github.com/casper-network/casper-node/commit/fc537dda33c9337de8a4dbd7a16ce2760845f3cf
+        // yet the comment is not updated. Double check and either bring back the print and update
+        // the comment. This should, however, be postponed until the following ticket is merged: https://github.com/casper-network/casper-node/pull/2531
+        // as it will also modify this test.
+
         #[cfg(feature = "casper-mainnet")]
         let schema_path = format!(
             "{}/../resources/test/rpc_schema_hashing_V1.json",
