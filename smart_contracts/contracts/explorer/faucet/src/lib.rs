@@ -186,21 +186,22 @@ pub fn delegate() {
         reset_remaining_amount();
     }
 
-    let available_amount: U512 = get_available_amount();
-
     if caller == installer {
-        // this is the installer / faucet account creating a NEW account
-        // or topping off an existing account
         let target: AccountHash = runtime::get_named_arg(ARG_TARGET);
-        transfer(target, available_amount, id);
+        let amount = get_distribution_amount();
+
+        transfer(target, amount, id);
     } else {
-        transfer(caller, available_amount, id);
+        let amount = get_distribution_amount_debounced();
+
+        transfer(caller, amount, id);
+        decrease_remaining_amount(amount);
     }
 
     set_last_distribution_time(blocktime);
 }
 
-fn transfer(target: AccountHash, amount: U512, id: Option<u64>) -> U512 {
+fn transfer(target: AccountHash, amount: U512, id: Option<u64>) {
     let faucet_purse = get_uref_with_user_errors(
         FAUCET_PURSE,
         FaucetError::MissingFaucetPurse,
@@ -209,10 +210,9 @@ fn transfer(target: AccountHash, amount: U512, id: Option<u64>) -> U512 {
 
     system::transfer_from_purse_to_account(faucet_purse, target, amount, id)
         .unwrap_or_revert_with(FaucetError::FailedToTransfer);
-    decrease_remaining_amount(amount)
 }
 
-fn get_available_amount() -> U512 {
+fn get_distribution_amount_debounced() -> U512 {
     let available_amount_uref = get_uref_with_user_errors(
         AVAILABLE_AMOUNT,
         FaucetError::MissingAvailableAmount,
@@ -256,6 +256,34 @@ fn get_available_amount() -> U512 {
         Ordering::Equal | Ordering::Greater => distribution_amount,
         Ordering::Less => remaining_amount,
     }
+}
+
+fn get_distribution_amount() -> U512 {
+    let available_amount_uref = get_uref_with_user_errors(
+        AVAILABLE_AMOUNT,
+        FaucetError::MissingAvailableAmount,
+        FaucetError::InvalidAvailableAmount,
+    );
+
+    let available_amount: U512 = read_with_user_errors(
+        available_amount_uref,
+        FaucetError::MissingAvailableAmount,
+        FaucetError::InvalidAvailableAmount,
+    );
+
+    let distributions_per_interval_uref = get_uref_with_user_errors(
+        DISTRIBUTIONS_PER_INTERVAL,
+        FaucetError::MissingDistributionsPerInterval,
+        FaucetError::InvalidDistributionsPerInterval,
+    );
+
+    let distributions_per_interval: u64 = read_with_user_errors(
+        distributions_per_interval_uref,
+        FaucetError::MissingDistributionsPerInterval,
+        FaucetError::InvalidDistributionsPerInterval,
+    );
+
+    Ratio::new(available_amount, U512::from(distributions_per_interval)).to_integer()
 }
 
 fn reset_remaining_amount() {
