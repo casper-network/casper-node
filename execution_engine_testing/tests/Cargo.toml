@@ -29,9 +29,6 @@ tempfile = "3"
 wabt = "0.10.0"
 wasmi = "0.8.0"
 
-# REMOVE ME
-criterion = { version = "0.3.5", features = ["html_reports"]}
-
 [dev-dependencies]
 assert_matches = "1.3.0"
 criterion = { version = "0.3.5", features = ["html_reports"]}
@@ -58,11 +55,6 @@ harness = false
 [[bin]]
 name = "disk_use"
 path = "bin/disk_use.rs"
-
-# REMOVE ME
-[[bin]]
-name = "auction_bench"
-path = "benches/auction_bench.rs"
 
 [[bin]]
 name = "state-initializer"
