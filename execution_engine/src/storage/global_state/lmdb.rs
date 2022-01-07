@@ -479,7 +479,7 @@ mod tests {
 
     fn extract_next_hash_from_trie(trie: TrieOrChunkedData) -> Digest {
         let next_hash = if let TrieOrChunkedData::Trie(trie) = trie {
-            if let Trie::Node { pointer_block } = trie {
+            if let Trie::Node { pointer_block } = *trie {
                 if pointer_block.child_count() == 0 {
                     panic!("expected children");
                 }
