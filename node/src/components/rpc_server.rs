@@ -325,13 +325,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
-
-    use assert_json_diff::assert_json_eq;
     use schemars::schema_for_value;
-    use serde_json::Value;
 
-    use crate::rpcs::docs::OPEN_RPC_SCHEMA;
+    use crate::{rpcs::docs::OPEN_RPC_SCHEMA, testing::assert_schema};
 
     #[test]
     fn schema() {
@@ -360,15 +356,6 @@ mod tests {
             env!("CARGO_MANIFEST_DIR")
         );
 
-        let expected_schema = fs::read_to_string(schema_path).unwrap();
-        let expected_schema: Value = serde_json::from_str(expected_schema.trim()).unwrap();
-
-        let actual_schema = schema_for_value!(OPEN_RPC_SCHEMA.clone());
-        let actual_schema_string = serde_json::to_string_pretty(&actual_schema).unwrap();
-        let actual_schema: Value = serde_json::from_str(&actual_schema_string).unwrap();
-
-        // println!("{}", actual_schema_string);
-
-        assert_json_eq!(actual_schema, expected_schema);
+        assert_schema(schema_path, schema_for_value!(OPEN_RPC_SCHEMA.clone()));
     }
 }

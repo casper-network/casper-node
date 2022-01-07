@@ -27,8 +27,8 @@ use casper_execution_engine::{
 };
 use casper_hashing::Digest;
 use casper_types::{
-    checksummed_hex, system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion,
-    PublicKey, StoredValue, Transfer, URef,
+    system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
+    StoredValue, Transfer, URef,
 };
 
 use crate::{
@@ -510,12 +510,12 @@ impl Display for StateStoreRequest {
                 write!(
                     f,
                     "save data under {} ({} bytes)",
-                    checksummed_hex::encode(key),
+                    base16::encode_lower(key),
                     data.len()
                 )
             }
             StateStoreRequest::Load { key, .. } => {
-                write!(f, "load data from key {}", checksummed_hex::encode(key))
+                write!(f, "load data from key {}", base16::encode_lower(key))
             }
         }
     }

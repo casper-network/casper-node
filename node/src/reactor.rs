@@ -46,7 +46,6 @@ use std::{
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
-use jemalloc_ctl::{epoch as jemalloc_epoch, stats::allocated as jemalloc_allocated};
 use once_cell::sync::Lazy;
 use prometheus::{self, Histogram, HistogramOpts, IntCounter, IntGauge, Registry};
 use quanta::{Clock, IntoNanoseconds};
@@ -72,21 +71,7 @@ use crate::{
 #[cfg(test)]
 use crate::{reactor::initializer::Reactor as InitializerReactor, types::Chainspec};
 pub(crate) use queue_kind::QueueKind;
-
-/// Optional upper threshold for total RAM allocated in mB before dumping queues to disk.
-const MEM_DUMP_THRESHOLD_MB_ENV_VAR: &str = "CL_MEM_DUMP_THRESHOLD_MB";
-static MEM_DUMP_THRESHOLD_MB: Lazy<Option<u64>> = Lazy::new(|| {
-    env::var(MEM_DUMP_THRESHOLD_MB_ENV_VAR)
-        .map(|threshold_str| {
-            u64::from_str(&threshold_str).unwrap_or_else(|error| {
-                panic!(
-                    "can't parse env var {}={} as a u64: {}",
-                    MEM_DUMP_THRESHOLD_MB_ENV_VAR, threshold_str, error
-                )
-            })
-        })
-        .ok()
-});
+use stats_alloc::Stats;
 
 /// Default threshold for when an event is considered slow.  Can be overridden by setting the env
 /// var `CL_EVENT_MAX_MICROSECS=<MICROSECONDS>`.
@@ -392,7 +377,7 @@ struct RunnerMetrics {
     events: IntCounter,
     /// Histogram of how long it took to dispatch an event.
     event_dispatch_duration: Histogram,
-    /// Total allocated RAM in bytes, as reported by jemalloc.
+    /// Total allocated RAM in bytes, as reported by stats_alloc.
     allocated_ram_bytes: IntGauge,
     /// Total consumed RAM in bytes, as reported by sys-info.
     consumed_ram_bytes: IntGauge,
@@ -652,39 +637,21 @@ where
             }
         };
 
-        // mem_info gives us kB
+        // mem_info gives us kilobytes
         let total = mem_info.total * 1024;
-        let consumed = total - (mem_info.free * 1024);
+        let consumed = total - (mem_info.avail * 1024);
 
-        // whereas jemalloc_ctl gives us the numbers in bytes
-        match jemalloc_epoch::mib() {
-            Ok(mib) => {
-                // jemalloc_ctl requires you to advance the epoch to update its stats
-                if let Err(advance_error) = mib.advance() {
-                    warn!(%advance_error, "unable to advance jemalloc epoch");
-                }
-            }
-            Err(error) => {
-                warn!(%error, "unable to get epoch::mib from jemalloc");
-                return None;
-            }
-        }
-        let allocated = match jemalloc_allocated::mib() {
-            Ok(allocated_mib) => match allocated_mib.read() {
-                Ok(value) => value as u64,
-                Err(error) => {
-                    warn!(%error, "unable to read allocated mib using jemalloc");
-                    return None;
-                }
-            },
-            Err(error) => {
-                warn!(%error, "unable to get allocated mib using jemalloc");
-                return None;
-            }
-        };
+        let Stats {
+            allocations: _,
+            deallocations: _,
+            reallocations: _,
+            bytes_allocated,
+            bytes_deallocated: _,
+            bytes_reallocated: _,
+        } = stats_alloc::StatsAlloc::system().stats();
 
         Some(AllocatedMem {
-            allocated,
+            allocated: bytes_allocated as u64,
             consumed,
             total,
         })

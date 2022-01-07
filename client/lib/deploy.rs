@@ -423,82 +423,6 @@ mod tests {
       ]
     }"#;
 
-    const CHECKSUMMED_SAMPLE_DEPLOY: &str = r#"{
-  "hash": "4858BbD79Ab7B825244C4e6959CbcD588A05608168Ef36518bC6590937191D55",
-  "header": {
-    "account": "01F60BCe2bB1059C41910EaC1E7Ee6C3EF4C8fcC63A901Eb9603C1524caDFb0C18",
-    "timestamp": "2021-01-19T01:18:19.120Z",
-    "ttl": "10s",
-    "gas_price": 1,
-    "body_hash": "95F2F2358c4864F01F8B073Ae6f5AE67BAeAf7747fc0799D0078743C513BC1De",
-    "dependencies": [
-      "be5fDeea0240E999E376F8ecBCe1BD4FD9336f58daE4A5842558a4da6AD35aa8",
-      "168D7Ea9C88e76B3Eef72759F2A7af24663cc871A469C7bA1387ca479E82FB41"
-    ],
-    "chain_name": "casper-test-chain-name-1"
-  },
-  "payment": {
-    "StoredVersionedContractByHash": {
-      "hash": "09dceE4B212Cfd53642Ab323fbEf07DAFaFc6F945A80A00147f62910A915C4E6",
-      "version": null,
-      "entry_point": "entrypoint",
-      "args": [
-        [
-          "name_01",
-          {
-            "cl_type": "Bool",
-            "bytes": "00",
-            "parsed": false
-          }
-        ],
-        [
-          "name_02",
-          {
-            "cl_type": "I32",
-            "bytes": "2a000000",
-            "parsed": 42
-          }
-        ]
-      ]
-    }
-  },
-  "session": {
-    "StoredVersionedContractByHash": {
-      "hash": "09dceE4B212Cfd53642Ab323fbEf07DAFaFc6F945A80A00147f62910A915C4E6",
-      "version": null,
-      "entry_point": "entrypoint",
-      "args": [
-        [
-          "name_01",
-          {
-            "cl_type": "Bool",
-            "bytes": "00",
-            "parsed": false
-          }
-        ],
-        [
-          "name_02",
-          {
-            "cl_type": "I32",
-            "bytes": "2a000000",
-            "parsed": 42
-          }
-        ]
-      ]
-    }
-  },
-  "approvals": [
-    {
-      "signer": "01F60BCe2bB1059C41910EaC1E7Ee6C3EF4C8fcC63A901Eb9603C1524caDFb0C18",
-      "signature": "010f538Ef188770CdbF608bc2D7Aa9460108B419B2B629F5e0714204A7f29149809a1D52776b0C514e3320494fDf6F9E9747F06f2c14DdF6F924cE218148E2840a"
-    },
-    {
-      "signer": "01e67D6e56ae07ecA98b07EcEc8cFBe826b4d5BC51f3A86590C0882cdAfBD72fcC",
-      "signature": "01c4F58D7F6145c1e4397efCE766149CDe5450CBe74991269161e5e1f30A397e6Bc4c484F3c72a645cefD42c55CFdE0294bfd91DE55cA977798C3C8d2A7E43a40c"
-    }
-  ]
-}"#;
-
     pub fn deploy_params() -> DeployStrParams<'static> {
         DeployStrParams {
             secret_key: "../resources/local/secret_keys/node-1.pem",
@@ -597,14 +521,6 @@ mod tests {
     fn should_read_deploy() {
         let bytes = SAMPLE_DEPLOY.as_bytes();
         assert!(matches!(Deploy::read_deploy(bytes), Ok(_)));
-    }
-
-    #[test]
-    fn should_round_trip_checksummed_sample_deploy_json() {
-        let deploy: Deploy = serde_json::from_str(CHECKSUMMED_SAMPLE_DEPLOY).unwrap();
-        let casper_case_json_string = serde_json::to_string_pretty(&deploy).unwrap();
-
-        assert_eq!(CHECKSUMMED_SAMPLE_DEPLOY, casper_case_json_string);
     }
 
     #[test]

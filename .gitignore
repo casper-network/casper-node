@@ -147,6 +147,10 @@ cmake-build-debug/
 /utils/nctl/dumps
 /utils/nctl/tmp
 
+# utils data dirs
+/utils/**/chain-download
+/utils/**/lmdb-data
+
 # client c headers
 client/headers/**
 
