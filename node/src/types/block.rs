@@ -168,9 +168,6 @@ static JSON_BLOCK_HEADER: Lazy<JsonBlockHeader> = Lazy::new(|| {
     JsonBlockHeader::from(block_header)
 });
 
-#[cfg(test)]
-const MERKLE_TREE_HASH_ACTIVATION: u64 = 1;
-
 /// Error returned from constructing a `Block`.
 #[derive(Debug, Error)]
 pub enum Error {
@@ -1497,6 +1494,52 @@ impl Block {
         )
     }
 
+    /// Generates random instance that is guaranteed to be using
+    /// the legacy hashing scheme. Apart from the Block itself
+    /// it also returns the EraId used as merkle_tree_hash_activation.
+    #[cfg(test)]
+    pub fn random_v1(rng: &mut TestRng) -> (Self, EraId) {
+        let era = rng.gen_range(0..6);
+        let merkle_tree_hash_activation = EraId::from(7);
+        let height = era * 10 + rng.gen_range(0..10);
+        let is_switch = rng.gen_bool(0.1);
+
+        (
+            Block::random_with_specifics_1(
+                rng,
+                EraId::from(era),
+                height,
+                ProtocolVersion::V1_0_0,
+                is_switch,
+                merkle_tree_hash_activation,
+            ),
+            merkle_tree_hash_activation,
+        )
+    }
+
+    /// Generates random instance that is guaranteed to be using
+    /// the merkle tree hashing scheme. Apart from the Block itself
+    /// it also returns the EraId used as merkle_tree_hash_activation.
+    #[cfg(test)]
+    pub fn random_v2(rng: &mut TestRng) -> (Self, EraId) {
+        let era = rng.gen_range(0..6);
+        let merkle_tree_hash_activation = EraId::from(0);
+        let height = era * 10 + rng.gen_range(0..10);
+        let is_switch = rng.gen_bool(0.1);
+
+        (
+            Block::random_with_specifics_1(
+                rng,
+                EraId::from(era),
+                height,
+                ProtocolVersion::V1_0_0,
+                is_switch,
+                merkle_tree_hash_activation,
+            ),
+            merkle_tree_hash_activation,
+        )
+    }
+
     /// Generates a random instance using a `TestRng`, but using the specified values.
     #[cfg(test)]
     pub fn random_with_specifics(
@@ -1522,7 +1565,39 @@ impl Block {
             finalized_block,
             next_era_validator_weights,
             protocol_version,
-            MERKLE_TREE_HASH_ACTIVATION.into(),
+            EraId::from(0),
+        )
+        .expect("Could not create random block with specifics")
+    }
+
+    /// Generates a random instance using a `TestRng`, but using the specified values.
+    /// TODO[RC]: This function will replace the `random_with_specifics()` when all tests are updated.
+    #[cfg(test)]
+    pub fn random_with_specifics_1(
+        rng: &mut TestRng,
+        era_id: EraId,
+        height: u64,
+        protocol_version: ProtocolVersion,
+        is_switch: bool,
+        merkle_tree_hash_activation: EraId,
+    ) -> Self {
+        let parent_hash = BlockHash::new(rng.gen::<[u8; Digest::LENGTH]>().into());
+        let state_root_hash = rng.gen::<[u8; Digest::LENGTH]>().into();
+        let finalized_block = FinalizedBlock::random_with_specifics(rng, era_id, height, is_switch);
+        let parent_seed = rng.gen::<[u8; Digest::LENGTH]>().into();
+        let next_era_validator_weights = finalized_block
+            .era_report
+            .as_ref()
+            .map(|_| BTreeMap::<PublicKey, U512>::default());
+
+        Block::new(
+            parent_hash,
+            parent_seed,
+            state_root_hash,
+            finalized_block,
+            next_era_validator_weights,
+            protocol_version,
+            merkle_tree_hash_activation,
         )
         .expect("Could not create random block with specifics")
     }
@@ -2017,11 +2092,6 @@ mod tests {
 
     use super::*;
 
-    impl HashingAlgorithmVersion {
-        pub(crate) const HASH_V2_PROTOCOL_VERSION: ProtocolVersion =
-            ProtocolVersion::from_parts(1, 5, 0);
-    }
-
     #[test]
     fn json_block_roundtrip() {
         let mut rng = crate::new_rng();
@@ -2083,56 +2153,70 @@ mod tests {
         let mut rng = TestRng::from_seed([1u8; 16]);
         let loop_iterations = 50;
         for _ in 0..loop_iterations {
-            Block::random(&mut rng)
-                .verify(MERKLE_TREE_HASH_ACTIVATION.into())
-                .expect("block hash should check");
+            let (random_v1_block, merkle_tree_hash_activation) = Block::random_v1(&mut rng);
+            random_v1_block
+                .verify(merkle_tree_hash_activation)
+                .expect("v1 (legacy) block hash should check");
+            let (random_v2_block, merkle_tree_hash_activation) = Block::random_v2(&mut rng);
+            random_v2_block
+                .verify(merkle_tree_hash_activation)
+                .expect("v2 (merkle based) block hash should check");
         }
     }
 
     #[test]
     fn block_check_bad_body_hash_sad_path() {
         let mut rng = TestRng::from_seed([2u8; 16]);
-        let mut block = Block::random(&mut rng);
 
-        let bogus_block_body_hash = Digest::hash(&[0xde, 0xad, 0xbe, 0xef]);
-        block.header.body_hash = bogus_block_body_hash;
-        block.hash = block.header.hash(MERKLE_TREE_HASH_ACTIVATION.into());
-        let bogus_block_hash = block.hash;
+        let blocks = vec![Block::random_v1(&mut rng), Block::random_v2(&mut rng)];
 
-        // No Eq trait for BlockValidationError, so pattern match
-        match block.verify(MERKLE_TREE_HASH_ACTIVATION.into()) {
-            Err(BlockValidationError::UnexpectedBodyHash {
-                block,
-                actual_block_body_hash,
-            }) if block.hash == bogus_block_hash
-                && block.header.body_hash == bogus_block_body_hash
-                && block.body.hash(
-                    block
-                        .header
-                        .hashing_algorithm_version(MERKLE_TREE_HASH_ACTIVATION.into()),
-                ) == actual_block_body_hash => {}
-            unexpected => panic!("Bad check response: {:?}", unexpected),
-        }
+        blocks
+            .into_iter()
+            .for_each(|(mut random_block, merkle_tree_hash_activation)| {
+                let bogus_block_body_hash = Digest::hash(&[0xde, 0xad, 0xbe, 0xef]);
+                random_block.header.body_hash = bogus_block_body_hash;
+                random_block.hash = random_block.header.hash(merkle_tree_hash_activation);
+                let bogus_block_hash = random_block.hash;
+
+                match random_block.verify(merkle_tree_hash_activation) {
+                    Err(BlockValidationError::UnexpectedBodyHash {
+                        block,
+                        actual_block_body_hash,
+                    }) if block.hash == bogus_block_hash
+                        && block.header.body_hash == bogus_block_body_hash
+                        && block.body.hash(
+                            block
+                                .header
+                                .hashing_algorithm_version(merkle_tree_hash_activation),
+                        ) == actual_block_body_hash => {}
+                    unexpected => panic!("Bad check response: {:?}", unexpected),
+                }
+            });
     }
 
     #[test]
     fn block_check_bad_block_hash_sad_path() {
         let mut rng = TestRng::from_seed([3u8; 16]);
-        let mut block = Block::random(&mut rng);
 
-        let bogus_block_hash: BlockHash = Digest::hash(&[0xde, 0xad, 0xbe, 0xef]).into();
-        block.hash = bogus_block_hash;
+        let blocks = vec![Block::random_v1(&mut rng), Block::random_v2(&mut rng)];
 
-        // No Eq trait for BlockValidationError, so pattern match
-        match block.verify(MERKLE_TREE_HASH_ACTIVATION.into()) {
-            Err(BlockValidationError::UnexpectedBlockHash {
-                block,
-                actual_block_header_hash,
-            }) if block.hash == bogus_block_hash
-                && block.header.hash(MERKLE_TREE_HASH_ACTIVATION.into())
-                    == actual_block_header_hash => {}
-            unexpected => panic!("Bad check response: {:?}", unexpected),
-        }
+        blocks
+            .into_iter()
+            .for_each(|(mut random_block, merkle_tree_hash_activation)| {
+                let bogus_block_hash: BlockHash = Digest::hash(&[0xde, 0xad, 0xbe, 0xef]).into();
+                random_block.hash = bogus_block_hash;
+
+                // No Eq trait for BlockValidationError, so pattern match
+                match random_block.verify(merkle_tree_hash_activation) {
+                    Err(BlockValidationError::UnexpectedBlockHash {
+                        block,
+                        actual_block_header_hash,
+                    }) if block.hash == bogus_block_hash
+                        && block.header.hash(merkle_tree_hash_activation)
+                            == actual_block_header_hash => {}
+                    unexpected => panic!("Bad check response: {:?}", unexpected),
+                }
+            });
     }
 
     #[test]
@@ -2160,20 +2244,22 @@ mod tests {
     #[test]
     fn block_body_merkle_proof_should_be_correct() {
         let mut rng = TestRng::new();
-
-        // Choose era that is guaranteed to be after the merkle tree hash activation
-        let era_id = rng
-            .gen_range(MERKLE_TREE_HASH_ACTIVATION..MERKLE_TREE_HASH_ACTIVATION + 10)
-            .into();
-
+        let era_id = rng.gen_range(0..10).into();
         let height = rng.gen_range(0..100);
+        let protocol_version = ProtocolVersion::from_parts(1, 5, 0);
+
+        // We set the merkle tree hash activation to the very beginning of the
+        // chain to make sure all blocks are using the merkle hashing schema
+        let merkle_tree_hash_activation = EraId::from(0);
+
         let is_switch = rng.gen();
-        let block = Block::random_with_specifics(
+        let block = Block::random_with_specifics_1(
             &mut rng,
             era_id,
             height,
-            HashingAlgorithmVersion::HASH_V2_PROTOCOL_VERSION,
+            protocol_version,
             is_switch,
+            merkle_tree_hash_activation,
         );
 
         let merkle_block_body = block.body().merklize();
