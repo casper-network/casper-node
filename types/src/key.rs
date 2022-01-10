@@ -281,11 +281,7 @@ impl Key {
                 )
             }
             Key::Unbond(account_hash) => {
-                format!(
-                    "{}{}",
-                    UNBOND_PREFIX,
-                    checksummed_hex::encode(&account_hash)
-                )
+                format!("{}{}", UNBOND_PREFIX, base16::encode_lower(&account_hash))
             }
             Key::SystemContractRegistry => {
                 format!(
