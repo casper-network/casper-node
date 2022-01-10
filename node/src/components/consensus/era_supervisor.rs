@@ -173,7 +173,6 @@ where
         info!(our_id = %public_signing_key, "EraSupervisor pubkey",);
         let metrics =
             Metrics::new(registry).expect("failed to set up and register consensus metrics");
-
         #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
         let next_height = latest_block_header.height() + 1;
 

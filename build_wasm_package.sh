@@ -45,7 +45,7 @@ fi
 
 # upload to s3
 if [ -z "$AWS_SECRET_ACCESS_KEY" ] || [ -z "$AWS_ACCESS_KEY_ID" ]; then
-    log "ERROR: AWS KEYS neeeded to run. Contact SRE."
+    log "ERROR: AWS KEYS needed to run. Contact SRE."
     exit 1
 else
     s3cmd put ${CL_WASM_PACKAGE} s3://${CL_S3_BUCKET}/${CL_S3_LOCATION}/casper-contracts.tar.gz

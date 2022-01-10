@@ -15,11 +15,13 @@ use tracing::error;
 
 use casper_types::ProtocolVersion;
 
-use self::metrics::Metrics;
+use self::{
+    metrics::Metrics,
+};
+use super::Component;
 use crate::{
     components::{
         linear_chain::state::{Outcome, Outcomes},
-        Component,
     },
     effect::{
         announcements::LinearChainAnnouncement,

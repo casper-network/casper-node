@@ -151,8 +151,5 @@ cmake-build-debug/
 /utils/**/chain-download
 /utils/**/lmdb-data
 
-# client c headers
-client/headers/**
-
 # OS X
 .DS_Store

@@ -139,9 +139,9 @@ assets = [
 ]
 maintainer-scripts = "../resources/maintainer_scripts/debian"
 extended-description = """
-Package for Casper Node and Client.
+Package for Casper Node.
 
-For information on using package, see https://github.com/CasperLabs/casper-node
+For information on using package, see https://github.com/casper-network/casper-node
 """
 
 [package.metadata.deb.systemd-units]
