@@ -88,6 +88,28 @@ impl ExecuteRequestBuilder {
         ExecuteRequestBuilder::new().push_deploy(deploy)
     }
 
+    /// Returns an [`ExecuteRequest`] from a module bytes.
+    pub fn module_bytes(
+        account_hash: AccountHash,
+        module_bytes: Vec<u8>,
+        session_args: RuntimeArgs,
+    ) -> Self {
+        let mut rng = rand::thread_rng();
+        let deploy_hash: [u8; 32] = rng.gen();
+
+        let deploy = DeployItemBuilder::new()
+            .with_address(account_hash)
+            .with_session_bytes(module_bytes, session_args)
+            .with_empty_payment_bytes(runtime_args! {
+                ARG_AMOUNT => *DEFAULT_PAYMENT
+            })
+            .with_authorization_keys(&[account_hash])
+            .with_deploy_hash(deploy_hash)
+            .build();
+
+        ExecuteRequestBuilder::new().push_deploy(deploy)
+    }
+
     /// Returns an [`ExecuteRequest`] that will call a stored contract by hash.
     pub fn contract_call_by_hash(
         sender: AccountHash,

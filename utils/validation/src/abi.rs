@@ -63,16 +63,12 @@ impl ToBytes for Input {
 /// Test case defines a list of inputs and an output.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ABITestCase {
-    input: Vec<Input>,
-    #[serde(
-        deserialize_with = "hex::deserialize",
-        serialize_with = "hex::serialize"
-    )]
-    output: Vec<u8>,
+    input: Vec<serde_json::Value>,
+    output: String,
 }
 
 impl ABITestCase {
-    pub fn from_inputs(inputs: Vec<Input>) -> Result<ABITestCase, bytesrepr::Error> {
+    pub fn from_inputs(inputs: Vec<Input>) -> Result<ABITestCase, Error> {
         // This is manually going through each input passed as we can't use `ToBytes for Vec<T>` as
         // the `output` would be a serialized collection.
         let mut truth = Vec::new();
@@ -82,18 +78,43 @@ impl ABITestCase {
             truth.append(&mut generated_truth);
         }
 
+        let input_values = inputs
+            .into_iter()
+            .map(serde_json::to_value)
+            .collect::<Result<Vec<_>, _>>()?;
+
         Ok(ABITestCase {
-            input: inputs,
-            output: truth,
+            input: input_values,
+            output: hex::encode(truth),
         })
     }
 
-    pub fn input(&self) -> &[Input] {
-        &self.input
+    pub fn input(&self) -> Result<Vec<Input>, Error> {
+        let mut res = Vec::new();
+        for input_value in &self.input {
+            let input: Input = serde_json::from_value(input_value.clone())?;
+            res.push(input);
+        }
+        Ok(res)
     }
 
-    pub fn output(&self) -> &[u8] {
-        &self.output
+    pub fn output(&self) -> Result<Vec<u8>, Error> {
+        let output = hex::decode(&self.output)?;
+        Ok(output)
+    }
+
+    pub fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut res = Vec::with_capacity(self.serialized_length()?);
+
+        for input in self.input()? {
+            res.append(&mut input.to_bytes()?);
+        }
+
+        Ok(res)
+    }
+
+    pub fn serialized_length(&self) -> Result<usize, Error> {
+        Ok(self.input()?.iter().map(ToBytes::serialized_length).sum())
     }
 }
 
@@ -102,42 +123,28 @@ impl TestCase for ABITestCase {
     ///
     /// This gets executed for each test case.
     fn run_test(&self) -> Result<(), Error> {
-        let serialized_length = self.serialized_length();
+        let serialized_length = self.serialized_length()?;
         let serialized_data = self.to_bytes()?;
 
+        let output = self.output()?;
+
         // Serialized data should match the output
-        if serialized_data != self.output() {
+        if serialized_data != output {
             return Err(Error::DataMismatch {
                 actual: serialized_data,
-                expected: self.output().to_vec(),
+                expected: output.to_vec(),
             });
         }
 
         // Output from serialized_length should match the output data length
-        if serialized_length != self.output().len() {
+        if serialized_length != output.len() {
             return Err(Error::LengthMismatch {
                 expected: serialized_length,
-                actual: self.output().len(),
+                actual: output.len(),
             });
         }
 
         Ok(())
-    }
-}
-
-impl ToBytes for ABITestCase {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut res = Vec::with_capacity(self.serialized_length());
-
-        for input in &self.input {
-            res.append(&mut input.to_bytes()?);
-        }
-
-        Ok(res)
-    }
-
-    fn serialized_length(&self) -> usize {
-        self.input.iter().map(ToBytes::serialized_length).sum()
     }
 }
 

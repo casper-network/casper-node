@@ -250,9 +250,6 @@ fn main() {
     let node = Package::cargo("node", &*regex_data::node::DEPENDENT_FILES);
     node.update();
 
-    let client = Package::cargo("client", &*regex_data::client::DEPENDENT_FILES);
-    client.update();
-
     let smart_contracts_contract = Package::cargo(
         "smart_contracts/contract",
         &*regex_data::smart_contracts_contract::DEPENDENT_FILES,
@@ -270,12 +267,6 @@ fn main() {
         &*regex_data::execution_engine_testing_test_support::DEPENDENT_FILES,
     );
     execution_engine_testing_test_support.update();
-
-    let execution_engine_testing_cargo_casper = Package::cargo(
-        "execution_engine_testing/cargo_casper",
-        &*regex_data::execution_engine_testing_cargo_casper::DEPENDENT_FILES,
-    );
-    execution_engine_testing_cargo_casper.update();
 
     let chainspec = Chainspec::new();
     chainspec.update();

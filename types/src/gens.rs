@@ -5,8 +5,8 @@
 use alloc::{boxed::Box, string::String, vec};
 
 use proptest::{
-    array, bits,
-    collection::{self, btree_map, btree_set, vec, SizeRange},
+    array, bits, bool,
+    collection::{self, SizeRange},
     option,
     prelude::*,
     result,
@@ -32,7 +32,7 @@ use crate::deploy_info::gens::{deploy_hash_arb, transfer_addr_arb};
 pub use crate::{deploy_info::gens::deploy_info_arb, transfer::gens::transfer_arb};
 
 pub fn u8_slice_32() -> impl Strategy<Value = [u8; 32]> {
-    vec(any::<u8>(), 32).prop_map(|b| {
+    collection::vec(any::<u8>(), 32).prop_map(|b| {
         let mut res = [0u8; 32];
         res.clone_from_slice(b.as_slice());
         res
@@ -49,7 +49,7 @@ pub fn u2_slice_32() -> impl Strategy<Value = [u8; 32]> {
 }
 
 pub fn named_keys_arb(depth: usize) -> impl Strategy<Value = NamedKeys> {
-    btree_map("\\PC*", key_arb(), depth)
+    collection::btree_map("\\PC*", key_arb(), depth)
 }
 
 pub fn access_rights_arb() -> impl Strategy<Value = AccessRights> {
@@ -125,17 +125,17 @@ pub fn protocol_version_arb() -> impl Strategy<Value = ProtocolVersion> {
 }
 
 pub fn u128_arb() -> impl Strategy<Value = U128> {
-    vec(any::<u8>(), 0..16).prop_map(|b| U128::from_little_endian(b.as_slice()))
+    collection::vec(any::<u8>(), 0..16).prop_map(|b| U128::from_little_endian(b.as_slice()))
 }
 
 pub fn u256_arb() -> impl Strategy<Value = U256> {
-    vec(any::<u8>(), 0..32).prop_map(|b| U256::from_little_endian(b.as_slice()))
+    collection::vec(any::<u8>(), 0..32).prop_map(|b| U256::from_little_endian(b.as_slice()))
 }
 
 pub fn u512_arb() -> impl Strategy<Value = U512> {
     prop_oneof![
         1 => Just(U512::zero()),
-        8 => vec(any::<u8>(), 0..64).prop_map(|b| U512::from_little_endian(b.as_slice())),
+        8 => collection::vec(any::<u8>(), 0..64).prop_map(|b| U512::from_little_endian(b.as_slice())),
         1 => Just(U512::MAX),
     ]
 }
@@ -244,10 +244,11 @@ pub fn cl_value_arb() -> impl Strategy<Value = CLValue> {
         uref_arb().prop_map(|x| CLValue::from_t(x).expect("should create CLValue")),
         ".*".prop_map(|x: String| CLValue::from_t(x).expect("should create CLValue")),
         option::of(any::<u64>()).prop_map(|x| CLValue::from_t(x).expect("should create CLValue")),
-        vec(uref_arb(), 0..100).prop_map(|x| CLValue::from_t(x).expect("should create CLValue")),
+        collection::vec(uref_arb(), 0..100)
+            .prop_map(|x| CLValue::from_t(x).expect("should create CLValue")),
         result::maybe_err(key_arb(), ".*")
             .prop_map(|x| CLValue::from_t(x).expect("should create CLValue")),
-        btree_map(".*", u512_arb(), 0..100)
+        collection::btree_map(".*", u512_arb(), 0..100)
             .prop_map(|x| CLValue::from_t(x).expect("should create CLValue")),
         (any::<bool>()).prop_map(|x| CLValue::from_t(x).expect("should create CLValue")),
         (any::<bool>(), any::<i32>())
@@ -274,7 +275,7 @@ pub fn group_arb() -> impl Strategy<Value = Group> {
 pub fn entry_point_access_arb() -> impl Strategy<Value = EntryPointAccess> {
     prop_oneof![
         Just(EntryPointAccess::Public),
-        vec(group_arb(), 0..32).prop_map(EntryPointAccess::Groups),
+        collection::vec(group_arb(), 0..32).prop_map(EntryPointAccess::Groups),
     ]
 }
 
@@ -290,7 +291,7 @@ pub fn parameter_arb() -> impl Strategy<Value = Parameter> {
 }
 
 pub fn parameters_arb() -> impl Strategy<Value = Parameters> {
-    vec(parameter_arb(), 0..10)
+    collection::vec(parameter_arb(), 0..10)
 }
 
 pub fn entry_point_arb() -> impl Strategy<Value = EntryPoint> {
@@ -309,7 +310,7 @@ pub fn entry_point_arb() -> impl Strategy<Value = EntryPoint> {
 }
 
 pub fn entry_points_arb() -> impl Strategy<Value = EntryPoints> {
-    vec(entry_point_arb(), 1..10).prop_map(EntryPoints::from)
+    collection::vec(entry_point_arb(), 1..10).prop_map(EntryPoints::from)
 }
 
 pub fn contract_arb() -> impl Strategy<Value = Contract> {
@@ -340,7 +341,7 @@ pub fn contract_arb() -> impl Strategy<Value = Contract> {
 }
 
 pub fn contract_wasm_arb() -> impl Strategy<Value = ContractWasm> {
-    vec(any::<u8>(), 1..1000).prop_map(ContractWasm::new)
+    collection::vec(any::<u8>(), 1..1000).prop_map(ContractWasm::new)
 }
 
 pub fn contract_version_key_arb() -> impl Strategy<Value = ContractVersionKey> {
@@ -349,7 +350,7 @@ pub fn contract_version_key_arb() -> impl Strategy<Value = ContractVersionKey> {
 }
 
 pub fn contract_versions_arb() -> impl Strategy<Value = ContractVersions> {
-    btree_map(
+    collection::btree_map(
         contract_version_key_arb(),
         u8_slice_32().prop_map(ContractHash::new),
         1..5,
@@ -357,11 +358,11 @@ pub fn contract_versions_arb() -> impl Strategy<Value = ContractVersions> {
 }
 
 pub fn disabled_versions_arb() -> impl Strategy<Value = DisabledVersions> {
-    btree_set(contract_version_key_arb(), 0..5)
+    collection::btree_set(contract_version_key_arb(), 0..5)
 }
 
 pub fn groups_arb() -> impl Strategy<Value = Groups> {
-    btree_map(group_arb(), btree_set(uref_arb(), 1..10), 0..5)
+    collection::btree_map(group_arb(), collection::btree_set(uref_arb(), 1..10), 0..5)
 }
 
 pub fn contract_package_arb() -> impl Strategy<Value = ContractPackage> {
@@ -401,53 +402,48 @@ fn delegation_rate_arb() -> impl Strategy<Value = DelegationRate> {
 }
 
 pub(crate) fn bid_arb(delegations_len: impl Into<SizeRange>) -> impl Strategy<Value = Bid> {
-    fn locked_bid_arb() -> impl Strategy<Value = Bid> {
-        (
-            public_key_arb_no_system(),
-            uref_arb(),
-            u512_arb(),
-            delegation_rate_arb(),
-        )
-            .prop_map(
-                |(validator_pk, bonding_purse, staked_amount, delegation_rate)| {
+    (
+        public_key_arb_no_system(),
+        uref_arb(),
+        u512_arb(),
+        delegation_rate_arb(),
+        bool::ANY,
+        collection::vec(delegator_arb(), delegations_len),
+    )
+        .prop_map(
+            |(
+                validator_public_key,
+                bonding_purse,
+                staked_amount,
+                delegation_rate,
+                is_locked,
+                new_delegators,
+            )| {
+                let mut bid = if is_locked {
                     Bid::locked(
-                        validator_pk,
+                        validator_public_key,
                         bonding_purse,
                         staked_amount,
                         delegation_rate,
                         1u64,
                     )
-                },
-            )
-    }
-
-    fn unlocked_bid_arb() -> impl Strategy<Value = Bid> {
-        (
-            public_key_arb_no_system(),
-            uref_arb(),
-            u512_arb(),
-            delegation_rate_arb(),
+                } else {
+                    Bid::unlocked(
+                        validator_public_key,
+                        bonding_purse,
+                        staked_amount,
+                        delegation_rate,
+                    )
+                };
+                let delegators = bid.delegators_mut();
+                new_delegators.into_iter().for_each(|delegator| {
+                    assert!(delegators
+                        .insert(delegator.delegator_public_key().clone(), delegator)
+                        .is_none());
+                });
+                bid
+            },
         )
-            .prop_map(
-                |(validator_pk, bonding_purse, staked_amount, delegation_rate)| {
-                    Bid::unlocked(validator_pk, bonding_purse, staked_amount, delegation_rate)
-                },
-            )
-    }
-
-    (
-        prop_oneof![locked_bid_arb(), unlocked_bid_arb()],
-        collection::vec(delegator_arb(), delegations_len),
-    )
-        .prop_map(|(mut bid, new_delegators)| {
-            let delegators = bid.delegators_mut();
-            new_delegators.into_iter().for_each(|delegator| {
-                assert!(delegators
-                    .insert(delegator.delegator_public_key().clone(), delegator)
-                    .is_none());
-            });
-            bid
-        })
 }
 
 fn withdraw_arb() -> impl Strategy<Value = UnbondingPurse> {
@@ -481,7 +477,7 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         withdraws_arb(1..50).prop_map(StoredValue::Withdraw),
     ]
     .prop_map(|stored_value|
-        // The following match statement is here only to make sure 
+        // The following match statement is here only to make sure
         // we don't forget to update the generator when a new variant is added.
         match stored_value {
             StoredValue::CLValue(_) => stored_value,

@@ -75,6 +75,11 @@ impl ToBytes for DeployHash {
     fn serialized_length(&self) -> usize {
         self.0.serialized_length()
     }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.0.write_bytes(writer)?;
+        Ok(())
+    }
 }
 
 impl FromBytes for DeployHash {
@@ -87,7 +92,7 @@ impl FromBytes for DeployHash {
 impl Serialize for DeployHash {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            checksummed_hex::encode(&self.0).serialize(serializer)
+            base16::encode_lower(&self.0).serialize(serializer)
         } else {
             self.0.serialize(serializer)
         }
@@ -192,14 +197,14 @@ impl FromBytes for Transfer {
 impl ToBytes for Transfer {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-        result.append(&mut self.deploy_hash.to_bytes()?);
-        result.append(&mut self.from.to_bytes()?);
-        result.append(&mut self.to.to_bytes()?);
-        result.append(&mut self.source.to_bytes()?);
-        result.append(&mut self.target.to_bytes()?);
-        result.append(&mut self.amount.to_bytes()?);
-        result.append(&mut self.gas.to_bytes()?);
-        result.append(&mut self.id.to_bytes()?);
+        (&self.deploy_hash).write_bytes(&mut result)?;
+        (&self.from).write_bytes(&mut result)?;
+        (&self.to).write_bytes(&mut result)?;
+        (&self.source).write_bytes(&mut result)?;
+        (&self.target).write_bytes(&mut result)?;
+        (&self.amount).write_bytes(&mut result)?;
+        (&self.gas).write_bytes(&mut result)?;
+        (&self.id).write_bytes(&mut result)?;
         Ok(result)
     }
 
@@ -212,6 +217,18 @@ impl ToBytes for Transfer {
             + self.amount.serialized_length()
             + self.gas.serialized_length()
             + self.id.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        (&self.deploy_hash).write_bytes(writer)?;
+        (&self.from).write_bytes(writer)?;
+        self.to.write_bytes(writer)?;
+        self.source.write_bytes(writer)?;
+        self.target.write_bytes(writer)?;
+        self.amount.write_bytes(writer)?;
+        self.gas.write_bytes(writer)?;
+        self.id.write_bytes(writer)?;
+        Ok(())
     }
 }
 
@@ -277,7 +294,7 @@ impl TransferAddr {
         format!(
             "{}{}",
             TRANSFER_ADDR_FORMATTED_STRING_PREFIX,
-            checksummed_hex::encode(&self.0),
+            base16::encode_lower(&self.0),
         )
     }
 
@@ -301,8 +318,7 @@ impl JsonSchema for TransferAddr {
     fn json_schema(gen: &mut SchemaGenerator) -> Schema {
         let schema = gen.subschema_for::<String>();
         let mut schema_object = schema.into_object();
-        schema_object.metadata().description =
-            Some("Checksummed hex-encoded transfer address.".to_string());
+        schema_object.metadata().description = Some("Hex-encoded transfer address.".to_string());
         schema_object.into()
     }
 }
@@ -329,35 +345,15 @@ impl<'de> Deserialize<'de> for TransferAddr {
     }
 }
 
-// impl TryFrom<&[u8]> for AccountHash {
-//     type Error = TryFromSliceForAccountHashError;
-//
-//     fn try_from(bytes: &[u8]) -> Result<Self, TryFromSliceForAccountHashError> {
-//         [u8; TRANSFER_ADDR_LENGTH]::try_from(bytes)
-//             .map(AccountHash::new)
-//             .map_err(|_| TryFromSliceForAccountHashError(()))
-//     }
-// }
-//
-// impl TryFrom<&alloc::vec::Vec<u8>> for AccountHash {
-//     type Error = TryFromSliceForAccountHashError;
-//
-//     fn try_from(bytes: &Vec<u8>) -> Result<Self, Self::Error> {
-//         [u8; TRANSFER_ADDR_LENGTH]::try_from(bytes as &[u8])
-//             .map(AccountHash::new)
-//             .map_err(|_| TryFromSliceForAccountHashError(()))
-//     }
-// }
-
 impl Display for TransferAddr {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", checksummed_hex::encode(&self.0))
+        write!(f, "{}", base16::encode_lower(&self.0))
     }
 }
 
 impl Debug for TransferAddr {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
-        write!(f, "TransferAddr({})", checksummed_hex::encode(&self.0))
+        write!(f, "TransferAddr({})", base16::encode_lower(&self.0))
     }
 }
 
@@ -376,6 +372,12 @@ impl ToBytes for TransferAddr {
     #[inline(always)]
     fn serialized_length(&self) -> usize {
         self.0.serialized_length()
+    }
+
+    #[inline(always)]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        (&self.0).write_bytes(writer)?;
+        Ok(())
     }
 }
 

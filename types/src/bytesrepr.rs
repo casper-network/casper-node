@@ -69,6 +69,12 @@ pub trait ToBytes {
     /// `to_bytes()` or `into_bytes()`.  The data is not actually serialized, so this call is
     /// relatively cheap.
     fn serialized_length(&self) -> usize;
+
+    /// Writes `&self` into a mutable `writer`.
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.extend(self.to_bytes()?);
+        Ok(())
+    }
 }
 
 /// A type which can be deserialized from a `Vec<u8>`.
@@ -100,7 +106,6 @@ pub fn allocate_buffer<T: ToBytes>(to_be_serialized: &T) -> Result<Vec<u8>, Erro
 
 /// Serialization and deserialization errors.
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "std", derive(thiserror::Error))]
 #[repr(u8)]
 pub enum Error {
     /// Early end of stream while deserializing.
@@ -190,6 +195,11 @@ impl ToBytes for bool {
     fn serialized_length(&self) -> usize {
         BOOL_SERIALIZED_LENGTH
     }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.push(*self as u8);
+        Ok(())
+    }
 }
 
 impl FromBytes for bool {
@@ -213,6 +223,11 @@ impl ToBytes for u8 {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
     }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.push(*self);
+        Ok(())
+    }
 }
 
 impl FromBytes for u8 {
@@ -231,6 +246,11 @@ impl ToBytes for i32 {
 
     fn serialized_length(&self) -> usize {
         I32_SERIALIZED_LENGTH
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.extend_from_slice(&self.to_le_bytes());
+        Ok(())
     }
 }
 
@@ -251,6 +271,11 @@ impl ToBytes for i64 {
     fn serialized_length(&self) -> usize {
         I64_SERIALIZED_LENGTH
     }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.extend_from_slice(&self.to_le_bytes());
+        Ok(())
+    }
 }
 
 impl FromBytes for i64 {
@@ -269,6 +294,11 @@ impl ToBytes for u16 {
 
     fn serialized_length(&self) -> usize {
         U16_SERIALIZED_LENGTH
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.extend_from_slice(&self.to_le_bytes());
+        Ok(())
     }
 }
 
@@ -289,6 +319,11 @@ impl ToBytes for u32 {
     fn serialized_length(&self) -> usize {
         U32_SERIALIZED_LENGTH
     }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.extend_from_slice(&self.to_le_bytes());
+        Ok(())
+    }
 }
 
 impl FromBytes for u32 {
@@ -307,6 +342,11 @@ impl ToBytes for u64 {
 
     fn serialized_length(&self) -> usize {
         U64_SERIALIZED_LENGTH
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.extend_from_slice(&self.to_le_bytes());
+        Ok(())
     }
 }
 
@@ -327,6 +367,11 @@ impl ToBytes for String {
 
     fn serialized_length(&self) -> usize {
         u8_slice_serialized_length(self.as_bytes())
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        write_u8_slice(self.as_bytes(), writer)?;
+        Ok(())
     }
 }
 
@@ -381,6 +426,14 @@ impl<T: ToBytes> ToBytes for Vec<T> {
 
     fn serialized_length(&self) -> usize {
         iterator_serialized_length(self.iter())
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.extend_from_slice(&(self.len() as u32).to_le_bytes());
+        for item in self.iter() {
+            item.write_bytes(writer)?;
+        }
+        Ok(())
     }
 }
 
@@ -474,6 +527,12 @@ macro_rules! impl_to_from_bytes_for_array {
 
                 #[inline(always)]
                 fn serialized_length(&self) -> usize { $N }
+
+                #[inline(always)]
+                fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+                    writer.extend_from_slice(self);
+                    Ok(())
+                }
             }
 
             impl FromBytes for [u8; $N] {
@@ -515,6 +574,14 @@ impl<V: ToBytes> ToBytes for BTreeSet<V> {
     fn serialized_length(&self) -> usize {
         U32_SERIALIZED_LENGTH + self.iter().map(|v| v.serialized_length()).sum::<usize>()
     }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.extend_from_slice(&(self.len() as u32).to_le_bytes());
+        for value in self.iter() {
+            value.write_bytes(writer)?;
+        }
+        Ok(())
+    }
 }
 
 impl<V: FromBytes + Ord> FromBytes for BTreeSet<V> {
@@ -555,6 +622,15 @@ where
                 .iter()
                 .map(|(key, value)| key.serialized_length() + value.serialized_length())
                 .sum::<usize>()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.extend_from_slice(&(self.len() as u32).to_le_bytes());
+        for (key, value) in self.iter() {
+            key.write_bytes(writer)?;
+            value.write_bytes(writer)?;
+        }
+        Ok(())
     }
 }
 
@@ -599,6 +675,17 @@ impl<T: ToBytes> ToBytes for Option<T> {
                 None => 0,
             }
     }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        match self {
+            None => writer.push(OPTION_NONE_TAG),
+            Some(v) => {
+                writer.push(OPTION_SOME_TAG);
+                v.write_bytes(writer)?;
+            }
+        };
+        Ok(())
+    }
 }
 
 impl<T: FromBytes> FromBytes for Option<T> {
@@ -633,6 +720,20 @@ impl<T: ToBytes, E: ToBytes> ToBytes for Result<T, E> {
                 Ok(ok) => ok.serialized_length(),
                 Err(error) => error.serialized_length(),
             }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        match self {
+            Err(error) => {
+                writer.push(RESULT_ERR_TAG);
+                error.write_bytes(writer)?;
+            }
+            Ok(result) => {
+                writer.push(RESULT_OK_TAG);
+                result.write_bytes(writer)?;
+            }
+        };
+        Ok(())
     }
 }
 
@@ -1068,6 +1169,12 @@ impl ToBytes for str {
     fn serialized_length(&self) -> usize {
         u8_slice_serialized_length(self.as_bytes())
     }
+
+    #[inline]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        write_u8_slice(self.as_bytes(), writer)?;
+        Ok(())
+    }
 }
 
 impl ToBytes for &str {
@@ -1079,6 +1186,12 @@ impl ToBytes for &str {
     #[inline(always)]
     fn serialized_length(&self) -> usize {
         (*self).serialized_length()
+    }
+
+    #[inline]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        write_u8_slice(self.as_bytes(), writer)?;
+        Ok(())
     }
 }
 
@@ -1127,6 +1240,12 @@ fn u8_slice_to_bytes(bytes: &[u8]) -> Result<Vec<u8>, Error> {
     Ok(vec)
 }
 
+fn write_u8_slice(bytes: &[u8], writer: &mut Vec<u8>) -> Result<(), Error> {
+    writer.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
+    writer.extend_from_slice(bytes);
+    Ok(())
+}
+
 /// Serializes a vector of bytes with a length prefix.
 ///
 /// For efficiency you should avoid serializing Vec<u8>.
@@ -1167,10 +1286,13 @@ where
         serialized,
         t
     );
+    let mut written_bytes = vec![];
+    t.write_bytes(&mut written_bytes)
+        .expect("Unable to serialize data via write_bytes");
+    assert_eq!(serialized, written_bytes);
     let deserialized = deserialize::<T>(serialized).expect("Unable to deserialize data");
-    assert!(*t == deserialized)
+    assert!(*t == deserialized);
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

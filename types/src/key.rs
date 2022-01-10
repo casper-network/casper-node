@@ -55,7 +55,7 @@ pub const KEY_DEPLOY_INFO_LENGTH: usize = DEPLOY_HASH_LENGTH;
 /// The number of bytes in a [`Key::Dictionary`].
 pub const KEY_DICTIONARY_LENGTH: usize = 32;
 /// The maximum length for a `dictionary_item_key`.
-pub const DICTIONARY_ITEM_KEY_MAX_LENGTH: usize = 64;
+pub const DICTIONARY_ITEM_KEY_MAX_LENGTH: usize = 128;
 
 const SYSTEM_CONTRACT_REGISTRY_KEY: [u8; 32] = [0u8; 32];
 const KEY_ID_SERIALIZED_LENGTH: usize = 1;
@@ -240,44 +240,40 @@ impl Key {
     pub fn to_formatted_string(self) -> String {
         match self {
             Key::Account(account_hash) => account_hash.to_formatted_string(),
-            Key::Hash(addr) => format!("{}{}", HASH_PREFIX, checksummed_hex::encode(&addr)),
+            Key::Hash(addr) => format!("{}{}", HASH_PREFIX, base16::encode_lower(&addr)),
             Key::URef(uref) => uref.to_formatted_string(),
             Key::Transfer(transfer_addr) => transfer_addr.to_formatted_string(),
             Key::DeployInfo(addr) => {
                 format!(
                     "{}{}",
                     DEPLOY_INFO_PREFIX,
-                    checksummed_hex::encode(addr.as_bytes())
+                    base16::encode_lower(addr.as_bytes())
                 )
             }
             Key::EraInfo(era_id) => {
                 format!("{}{}", ERA_INFO_PREFIX, era_id.value())
             }
             Key::Balance(uref_addr) => {
-                format!("{}{}", BALANCE_PREFIX, checksummed_hex::encode(&uref_addr))
+                format!("{}{}", BALANCE_PREFIX, base16::encode_lower(&uref_addr))
             }
             Key::Bid(account_hash) => {
-                format!("{}{}", BID_PREFIX, checksummed_hex::encode(&account_hash))
+                format!("{}{}", BID_PREFIX, base16::encode_lower(&account_hash))
             }
             Key::Withdraw(account_hash) => {
-                format!(
-                    "{}{}",
-                    WITHDRAW_PREFIX,
-                    checksummed_hex::encode(&account_hash)
-                )
+                format!("{}{}", WITHDRAW_PREFIX, base16::encode_lower(&account_hash))
             }
             Key::Dictionary(dictionary_addr) => {
                 format!(
                     "{}{}",
                     DICTIONARY_PREFIX,
-                    checksummed_hex::encode(&dictionary_addr)
+                    base16::encode_lower(&dictionary_addr)
                 )
             }
             Key::SystemContractRegistry => {
                 format!(
                     "{}{}",
                     SYSTEM_CONTRACT_REGISTRY_PREFIX,
-                    checksummed_hex::encode(&SYSTEM_CONTRACT_REGISTRY_KEY)
+                    base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_KEY)
                 )
             }
         }
@@ -450,27 +446,27 @@ impl Display for Key {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             Key::Account(account_hash) => write!(f, "Key::Account({})", account_hash),
-            Key::Hash(addr) => write!(f, "Key::Hash({})", checksummed_hex::encode(&addr)),
+            Key::Hash(addr) => write!(f, "Key::Hash({})", base16::encode_lower(&addr)),
             Key::URef(uref) => write!(f, "Key::{}", uref), /* Display impl for URef will append */
             Key::Transfer(transfer_addr) => write!(f, "Key::Transfer({})", transfer_addr),
             Key::DeployInfo(addr) => write!(
                 f,
                 "Key::DeployInfo({})",
-                checksummed_hex::encode(addr.as_bytes())
+                base16::encode_lower(addr.as_bytes())
             ),
             Key::EraInfo(era_id) => write!(f, "Key::EraInfo({})", era_id),
             Key::Balance(uref_addr) => {
-                write!(f, "Key::Balance({})", checksummed_hex::encode(uref_addr))
+                write!(f, "Key::Balance({})", base16::encode_lower(uref_addr))
             }
             Key::Bid(account_hash) => write!(f, "Key::Bid({})", account_hash),
             Key::Withdraw(account_hash) => write!(f, "Key::Withdraw({})", account_hash),
             Key::Dictionary(addr) => {
-                write!(f, "Key::Dictionary({})", checksummed_hex::encode(addr))
+                write!(f, "Key::Dictionary({})", base16::encode_lower(addr))
             }
             Key::SystemContractRegistry => write!(
                 f,
                 "Key::SystemContractRegistry({})",
-                checksummed_hex::encode(&SYSTEM_CONTRACT_REGISTRY_KEY)
+                base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_KEY)
             ),
         }
     }
@@ -601,6 +597,47 @@ impl ToBytes for Key {
             Key::Dictionary(_) => KEY_DICTIONARY_SERIALIZED_LENGTH,
             Key::SystemContractRegistry => KEY_SYSTEM_CONTRACT_REGISTRY_SERIALIZED_LENGTH,
         }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        writer.push(self.tag());
+        match self {
+            Key::Account(account_hash) => {
+                writer.extend_from_slice(account_hash.as_bytes());
+            }
+            Key::Hash(hash) => {
+                writer.extend_from_slice(hash);
+            }
+            Key::URef(uref) => {
+                writer.extend_from_slice(&uref.addr());
+                writer.push(uref.access_rights().bits());
+            }
+            Key::Transfer(addr) => {
+                writer.extend_from_slice(addr.as_bytes());
+            }
+            Key::DeployInfo(addr) => {
+                writer.extend_from_slice(addr.as_bytes());
+            }
+            Key::EraInfo(era_id) => {
+                writer.extend_from_slice(&era_id.to_le_bytes());
+            }
+            Key::Balance(uref_addr) => {
+                writer.extend_from_slice(uref_addr);
+            }
+            Key::Bid(account_hash) => {
+                writer.extend_from_slice(account_hash.as_bytes());
+            }
+            Key::Withdraw(account_hash) => {
+                writer.extend_from_slice(account_hash.as_bytes());
+            }
+            Key::Dictionary(addr) => {
+                writer.extend_from_slice(addr);
+            }
+            Key::SystemContractRegistry => {
+                writer.extend_from_slice(&[0u8; 32]);
+            }
+        };
+        Ok(())
     }
 }
 
@@ -867,7 +904,7 @@ mod tests {
         DICTIONARY_KEY,
         REGISTRY_KEY,
     ];
-    const HEX_STRING: &str = "2a2A2a2a2A2A2a2A2A2a2A2a2a2a2a2a2a2A2A2A2A2A2a2a2a2A2a2A2A2a2A2a";
+    const HEX_STRING: &str = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
 
     fn test_readable(right: AccessRights, is_true: bool) {
         assert_eq!(right.is_readable(), is_true)
@@ -957,7 +994,7 @@ mod tests {
             format!("{}", REGISTRY_KEY),
             format!(
                 "Key::SystemContractRegistry({})",
-                checksummed_hex::encode(&SYSTEM_CONTRACT_REGISTRY_KEY)
+                base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_KEY)
             )
         )
     }
@@ -1116,7 +1153,7 @@ mod tests {
             format!(r#"{{"Dictionary":"dictionary-{}"}}"#, HEX_STRING),
             format!(
                 r#"{{"SystemContractRegistry":"system-contract-registry-{}"}}"#,
-                checksummed_hex::encode(&SYSTEM_CONTRACT_REGISTRY_KEY)
+                base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_KEY)
             ),
         ];
 
