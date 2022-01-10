@@ -144,12 +144,12 @@ pub fn deserialize<T: FromBytes>(bytes: Vec<u8>) -> Result<T, Error> {
     }
 }
 
-/// Deserializes slice of bbytes into an instance of `T`.
+/// Deserializes a slice of bytes into an instance of `T`.
 ///
 /// Returns an error if the bytes cannot be deserialized into `T` or if not all of the input bytes
 /// are consumed in the operation.
-pub fn deserialize_slice<T: FromBytes>(bytes: &[u8]) -> Result<T, Error> {
-    let (t, remainder) = T::from_bytes(bytes)?;
+pub fn deserialize_from_slice<I: AsRef<[u8]>, O: FromBytes>(bytes: I) -> Result<O, Error> {
+    let (t, remainder) = O::from_bytes(bytes.as_ref())?;
     if remainder.is_empty() {
         Ok(t)
     } else {

@@ -1006,8 +1006,8 @@ impl InMemoryEnvironment {
         let data = self.data(Some(&name))?.unwrap();
         data.into_iter()
             .map(|(hash_bytes, trie_bytes)| {
-                let hash: Digest = bytesrepr::deserialize(hash_bytes.to_vec())?;
-                let trie: Trie<K, V> = bytesrepr::deserialize(trie_bytes.to_vec())?;
+                let hash: Digest = bytesrepr::deserialize_from_slice(hash_bytes)?;
+                let trie: Trie<K, V> = bytesrepr::deserialize_from_slice(trie_bytes)?;
                 Ok((hash, trie))
             })
             .collect::<Result<HashMap<Digest, Trie<K, V>>, bytesrepr::Error>>()
