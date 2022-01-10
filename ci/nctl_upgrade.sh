@@ -22,11 +22,6 @@ function main() {
     local TEST_ID=${1}
     local SKIP_SETUP=${2}
     if [ "$SKIP_SETUP" != "true" ]; then
-        # NCTL compile requires casper-node-launcher
-        if [ ! -d "$LAUNCHER_DIR/casper-node-launcher" ]; then
-            pushd $LAUNCHER_DIR
-            git clone https://github.com/CasperLabs/casper-node-launcher.git
-        fi
 
         # NCTL Build
         pushd "$ROOT_DIR"
