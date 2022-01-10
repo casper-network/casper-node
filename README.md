@@ -226,7 +226,7 @@ jq 'map_values(map(keys[0]))' queue_dump.json
 If the configuration option `console.enabled` is set to `true`, a unix socket named `debug.socket` by default can be found next to the configuration while the node is running. It can be connected to by tools like `socat`:
 
 ```sh
-$ sockat - unix:/path/to/debug.socket
+$ socat - unix:/path/to/debug.socket
 ```
 
 Entering `help` will show available commands. The interface can also be scripted, it may be helpful to change some of the per-connection settings in this case:
