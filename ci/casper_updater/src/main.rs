@@ -250,9 +250,6 @@ fn main() {
     let node = Package::cargo("node", &*regex_data::node::DEPENDENT_FILES);
     node.update();
 
-    let client = Package::cargo("client", &*regex_data::client::DEPENDENT_FILES);
-    client.update();
-
     let smart_contracts_contract = Package::cargo(
         "smart_contracts/contract",
         &*regex_data::smart_contracts_contract::DEPENDENT_FILES,

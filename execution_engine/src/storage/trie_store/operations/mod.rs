@@ -231,13 +231,15 @@ where
 
 /// Given a root hash, find any try keys that are descendant from it that are:
 /// 1. referenced but not present in the database
-/// 2. referenced and present but whose values' hashes do not equal their keys (ie, corrupted)
+/// 2. (Optionally, when `check_integrity` is `true`) referenced and present but whose values'
+/// hashes do not equal their keys (ie, corrupted)
 // TODO: We only need to check one trie key at a time
 pub fn missing_trie_keys<K, V, T, S, E>(
     _correlation_id: CorrelationId,
     txn: &T,
     store: &S,
     mut trie_keys_to_visit: Vec<Digest>,
+    check_integrity: bool,
 ) -> Result<Vec<Digest>, E>
 where
     K: ToBytes + FromBytes + Eq + std::fmt::Debug,
@@ -254,19 +256,22 @@ where
             continue;
         }
         let maybe_retrieved_trie: Option<Trie<K, V>> = store.get(txn, &trie_key)?;
-        if let Some(trie_value) = &maybe_retrieved_trie {
-            let hash_of_trie_value = {
-                let node_bytes = trie_value.to_bytes()?;
-                Digest::hash(&node_bytes)
-            };
-            if trie_key != hash_of_trie_value {
-                warn!(
-                    "Trie key {:?} has corrupted value {:?} (hash of value is {:?}); \
+        // Perform an optional integrity check on the retrieved node.
+        if check_integrity {
+            if let Some(trie_value) = &maybe_retrieved_trie {
+                let hash_of_trie_value = {
+                    let node_bytes = trie_value.to_bytes()?;
+                    Digest::hash(&node_bytes)
+                };
+                if trie_key != hash_of_trie_value {
+                    warn!(
+                        "Trie key {:?} has corrupted value {:?} (hash of value is {:?}); \
                      adding to list of missing nodes",
-                    trie_key, trie_value, hash_of_trie_value
-                );
-                missing_descendants.push(trie_key);
-                continue;
+                        trie_key, trie_value, hash_of_trie_value
+                    );
+                    missing_descendants.push(trie_key);
+                    continue;
+                }
             }
         }
         match maybe_retrieved_trie {

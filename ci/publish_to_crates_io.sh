@@ -81,6 +81,5 @@ publish hashing
 publish execution_engine
 publish node_macros
 publish node
-publish client
 publish smart_contracts/contract
 publish execution_engine_testing/test_support

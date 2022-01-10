@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Changed
 * Undelegate now takes an optional `new_validator` argument which will re-delegate to a validator without unbonding.
+* (Perf) Changed contract runtime to allow caching GlobalState changes during execution of a single block.
 
 
 
@@ -44,8 +45,6 @@ All notable changes to this project will be documented in this file.  The format
 * Added genesis validation step to ensure there are more genesis validators than validator slots.
 * Added a support for passing a public key as a `target` argument in native transfers.
 * Added a `max_associated_keys` configuration option for a hard limit of associated keys under accounts.
-
-
 
 ### Changed
 * Documented `storage` module and children.

@@ -44,6 +44,7 @@ where
             &txn,
             source_store,
             vec![root.to_owned()],
+            false,
         )?;
         assert_eq!(missing_from_source, Vec::new());
         txn.commit()?;
@@ -72,6 +73,7 @@ where
                 &target_txn,
                 target_store,
                 vec![trie_key],
+                false,
             )?;
 
             queue.extend(new_keys);
@@ -88,6 +90,7 @@ where
             &target_txn,
             target_store,
             vec![root.to_owned()],
+            true,
         )?;
         assert_eq!(missing_from_target, Vec::new());
         target_txn.commit()?;
@@ -197,6 +200,7 @@ where
             &txn,
             target_store,
             vec![root.to_owned()],
+            true,
         )?;
         txn.commit()?;
         assert_eq!(missing_from_target.len(), usize::one());
@@ -236,6 +240,7 @@ where
                 &target_txn,
                 target_store,
                 vec![trie_key],
+                true,
             )?;
 
             queue.extend(new_keys);
@@ -253,6 +258,7 @@ where
             &txn,
             target_store,
             vec![root.to_owned()],
+            true,
         )?;
         txn.commit()?;
         assert_eq!(missing_from_target, Vec::new());

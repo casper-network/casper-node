@@ -23,7 +23,6 @@ use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    checksummed_hex,
     contracts::{ContractVersion, DEFAULT_ENTRY_POINT_NAME},
     system::{mint::ARG_AMOUNT, CallStackElement, HANDLE_PAYMENT, STANDARD_PAYMENT},
     CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersionKey,
@@ -127,7 +126,7 @@ pub enum ExecutableDeployItem {
     StoredContractByHash {
         /// Contract hash.
         #[serde(with = "contract_hash_as_digest")]
-        #[schemars(with = "String", description = "Checksummed hex-encoded hash.")]
+        #[schemars(with = "String", description = "Hex-encoded hash.")]
         hash: ContractHash,
         /// Name of an entry point.
         entry_point: String,
@@ -149,7 +148,7 @@ pub enum ExecutableDeployItem {
     StoredVersionedContractByHash {
         /// Contract package hash
         #[serde(with = "contract_package_hash_as_digest")]
-        #[schemars(with = "String", description = "Checksummed hex-encoded hash.")]
+        #[schemars(with = "String", description = "Hex-encoded hash.")]
         hash: ContractPackageHash,
         /// An optional version of the contract to call. It will default to the highest enabled
         /// version if no value is specified.
@@ -881,7 +880,7 @@ impl Debug for ExecutableDeployItem {
                 args,
             } => f
                 .debug_struct("StoredContractByHash")
-                .field("hash", &checksummed_hex::encode(hash))
+                .field("hash", &base16::encode_lower(hash))
                 .field("entry_point", &entry_point)
                 .field("args", args)
                 .finish(),
@@ -902,7 +901,7 @@ impl Debug for ExecutableDeployItem {
                 args,
             } => f
                 .debug_struct("StoredVersionedContractByHash")
-                .field("hash", &checksummed_hex::encode(hash))
+                .field("hash", &base16::encode_lower(hash))
                 .field("version", version)
                 .field("entry_point", &entry_point)
                 .field("args", args)
