@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     account::{AccountHash, AddKeyFailure, RemoveKeyFailure, UpdateKeyFailure, Weight},
-    bytesrepr::{Error, FromBytes, ToBytes},
+    bytesrepr::{self, Error, FromBytes, ToBytes},
 };
 
 /// A mapping that represents the association of a [`Weight`] with an [`AccountHash`].
@@ -129,6 +129,15 @@ impl ToBytes for AssociatedKeys {
 
     fn serialized_length(&self) -> usize {
         self.0.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        writer.extend_from_slice(&(self.0.len() as u32).to_le_bytes());
+        for (key, weight) in self.0.iter() {
+            key.write_bytes(writer)?;
+            weight.write_bytes(writer)?;
+        }
+        Ok(())
     }
 }
 

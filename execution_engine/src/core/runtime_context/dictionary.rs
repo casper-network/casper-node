@@ -71,6 +71,13 @@ impl ToBytes for DictionaryValue {
             + self.seed_uref_addr.serialized_length()
             + self.dictionary_item_key_bytes.serialized_length()
     }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.cl_value.write_bytes(writer)?;
+        self.seed_uref_addr.write_bytes(writer)?;
+        self.dictionary_item_key_bytes.write_bytes(writer)?;
+        Ok(())
+    }
 }
 
 /// Inspects `key` argument whether it contains a dictionary variant, and checks if `stored_value`

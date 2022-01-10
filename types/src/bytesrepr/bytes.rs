@@ -96,6 +96,11 @@ impl ToBytes for Bytes {
     fn serialized_length(&self) -> usize {
         super::vec_u8_serialized_length(&self.0)
     }
+
+    #[inline(always)]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        super::write_u8_slice(self.as_slice(), writer)
+    }
 }
 
 impl FromBytes for Bytes {
@@ -289,7 +294,7 @@ impl Serialize for Bytes {
         S: Serializer,
     {
         if serializer.is_human_readable() {
-            checksummed_hex::encode(&self.0).serialize(serializer)
+            base16::encode_lower(&self.0).serialize(serializer)
         } else {
             serializer.serialize_bytes(&self.0)
         }
@@ -351,7 +356,7 @@ mod tests {
         let bytes_ser: Bytes = truth.clone().into();
 
         let json_object = serde_json::to_value(bytes_ser).unwrap();
-        assert_eq!(json_object, json!("deadbEEf"));
+        assert_eq!(json_object, json!("deadbeef"));
 
         let bytes_de: Bytes = serde_json::from_value(json_object).unwrap();
         assert_eq!(bytes_de, Bytes::from(truth));
@@ -360,7 +365,7 @@ mod tests {
     #[test]
     fn should_ser_de_readable() {
         let truth: Bytes = TRUTH.into();
-        assert_tokens(&truth.readable(), &[Token::Str("deadbEEf")]);
+        assert_tokens(&truth.readable(), &[Token::Str("deadbeef")]);
     }
 
     #[test]

@@ -32,7 +32,7 @@ use crate::{
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
     storage::global_state::{
         in_memory::{InMemoryGlobalState, InMemoryGlobalStateView},
-        StateProvider,
+        CommitProvider, StateProvider,
     },
 };
 

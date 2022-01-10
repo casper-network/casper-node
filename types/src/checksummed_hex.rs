@@ -2,13 +2,14 @@
 //!
 //! [1]: https://eips.ethereum.org/EIPS/eip-55
 
-use alloc::{string::String, vec::Vec};
+use alloc::vec::Vec;
 use core::ops::RangeInclusive;
 
 use base16;
-use blake2::{Blake2b, Digest};
 
-/// The number of input bytes, at or below which [`encode`] will checksum-encode the output.
+use crate::crypto;
+
+/// The number of input bytes, at or below which [`decode`] will checksum-decode the output.
 pub const SMALL_BYTES_COUNT: usize = 75;
 
 const HEX_CHARS: [char; 22] = [
@@ -33,35 +34,16 @@ fn bytes_to_bits_cycle(bytes: Vec<u8>) -> impl Iterator<Item = bool> {
         .flat_map(move |byte| (0..8usize).map(move |offset| ((byte >> offset) & 0x01) == 0x01))
 }
 
-/// Computes a Blake2b hash.
-fn blake2b_hash(data: impl AsRef<[u8]>) -> Vec<u8> {
-    let mut hasher = Blake2b::new();
-    hasher.update(data);
-    hasher.finalize().to_vec()
-}
-
-/// If `input` is not greater than [`SMALL_BYTES_COUNT`], returns the bytes encoded as hexadecimal
-/// with mixed-case based checksums following a scheme similar to [EIP-55][1].  If `input` is
-/// greater than `SMALL_BYTES_COUNT`, no mixed-case checksumming is applied, and lowercase hex is
-/// returned.
+/// Returns the bytes encoded as hexadecimal with mixed-case based checksums following a scheme
+/// similar to [EIP-55](https://eips.ethereum.org/EIPS/eip-55).
 ///
 /// Key differences:
-///   - Works on any length of data up to `SMALL_BYTES_COUNT`, not just 20-byte addresses
+///   - Works on any length of data, not just 20-byte addresses
 ///   - Uses Blake2b hashes rather than Keccak
 ///   - Uses hash bits rather than nibbles
-///
-/// [1]: https://eips.ethereum.org/EIPS/eip-55
-pub fn encode<T: AsRef<[u8]>>(input: T) -> String {
-    if input.as_ref().len() > SMALL_BYTES_COUNT {
-        return base16::encode_lower(&input);
-    }
-    encode_iter(&input).collect()
-}
-
-/// `encode` but it returns an iterator.
 fn encode_iter<'a, T: 'a + AsRef<[u8]>>(input: &'a T) -> impl Iterator<Item = char> + 'a {
     let nibbles = bytes_to_nibbles(input);
-    let mut hash_bits = bytes_to_bits_cycle(blake2b_hash(input.as_ref()));
+    let mut hash_bits = bytes_to_bits_cycle(crypto::blake2b(input.as_ref()).to_vec());
     nibbles.map(move |mut nibble| {
         // Base 16 numbers greater than 10 are represented by the ascii characters a through f.
         if nibble >= 10 && hash_bits.next().unwrap_or(true) {
@@ -145,9 +127,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn should_encode_empty_input() {
-        let input = [];
-        let actual = encode(&input);
+    fn should_decode_empty_input() {
+        let input = String::new();
+        let actual = decode(&input).unwrap();
         assert!(actual.is_empty());
     }
 
@@ -173,27 +155,29 @@ mod tests {
     }
 
     #[test]
-    fn should_checksum_encode_only_if_small() {
-        let input = [255; SMALL_BYTES_COUNT + 1];
-        let small_output = encode(&input[..SMALL_BYTES_COUNT]);
-        assert!(!string_is_same_case(&small_output));
+    fn should_checksum_decode_only_if_small() {
+        let input = [255; SMALL_BYTES_COUNT];
+        let small_encoded: String = encode_iter(&input).collect();
+        assert_eq!(input.to_vec(), decode(&small_encoded).unwrap());
 
-        let large_output = encode(&input);
-        assert!(string_is_same_case(&large_output));
+        assert!(decode("A1a2").is_err());
+
+        let large_encoded = format!("A1{}", small_encoded);
+        assert!(decode(&large_encoded).is_ok());
     }
 
     #[proptest]
     fn hex_roundtrip(input: Vec<u8>) {
         prop_assert_eq!(
             input.clone(),
-            decode(&encode(&input)).expect("Failed to decode input.")
+            decode(&encode_iter(&input).collect::<String>()).expect("Failed to decode input.")
         );
     }
 
     proptest::proptest! {
         #[test]
         fn should_fail_on_invalid_checksum(input in vec(any::<u8>(), 0..75)) {
-            let encoded = encode(&input);
+            let encoded: String = encode_iter(&input).collect();
 
             // Swap the case of the first letter in the checksum hex-encoded value.
             let mut expected_error = None;
@@ -234,7 +218,10 @@ mod tests {
 
     #[proptest]
     fn hex_roundtrip_sanity(input: Vec<u8>) {
-        prop_assert!(matches!(decode(&encode(&input)), Ok(_)))
+        prop_assert!(matches!(
+            decode(&encode_iter(&input).collect::<String>()),
+            Ok(_)
+        ))
     }
 
     #[proptest]

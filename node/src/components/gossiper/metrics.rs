@@ -4,7 +4,7 @@ use crate::unregister_metric;
 
 /// Metrics for the gossiper component.
 #[derive(Debug)]
-pub struct GossiperMetrics {
+pub(super) struct Metrics {
     /// Total number of items received by the gossiper.
     pub(super) items_received: IntCounter,
     /// Total number of gossip requests sent to peers.
@@ -19,7 +19,7 @@ pub struct GossiperMetrics {
     registry: Registry,
 }
 
-impl GossiperMetrics {
+impl Metrics {
     /// Creates a new instance of gossiper metrics, using the given prefix.
     pub fn new(name: &str, registry: &Registry) -> Result<Self, prometheus::Error> {
         let items_received = IntCounter::new(
@@ -58,7 +58,7 @@ impl GossiperMetrics {
         registry.register(Box::new(table_items_current.clone()))?;
         registry.register(Box::new(table_items_finished.clone()))?;
 
-        Ok(GossiperMetrics {
+        Ok(Metrics {
             items_received,
             times_gossiped,
             times_ran_out_of_peers,
@@ -69,7 +69,7 @@ impl GossiperMetrics {
     }
 }
 
-impl Drop for GossiperMetrics {
+impl Drop for Metrics {
     fn drop(&mut self) {
         unregister_metric!(self.registry, self.items_received);
         unregister_metric!(self.registry, self.times_gossiped);

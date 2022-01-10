@@ -15,7 +15,7 @@ use crate::{
     CLType, CLTyped, PublicKey, URef, U512,
 };
 
-pub use vesting::VestingSchedule;
+pub use vesting::{VestingSchedule, VESTING_SCHEDULE_LENGTH_MILLIS};
 
 /// An entry in the validator map.
 #[derive(PartialEq, Eq, Debug, Serialize, Deserialize, Clone)]
@@ -108,6 +108,17 @@ impl Bid {
     /// Gets the bonding purse of the provided bid
     pub fn bonding_purse(&self) -> &URef {
         &self.bonding_purse
+    }
+
+    /// Checks if a bid is still locked under a vesting schedule.
+    ///
+    /// Returns true if a timestamp falls below the initial lockup period + 91 days release
+    /// schedule, otherwise false.
+    pub fn is_locked(&self, timestamp_millis: u64) -> bool {
+        match self.vesting_schedule {
+            Some(vesting_schedule) => vesting_schedule.is_vesting(timestamp_millis),
+            None => false,
+        }
     }
 
     /// Gets the staked amount of the provided bid
@@ -274,13 +285,13 @@ impl CLTyped for Bid {
 impl ToBytes for Bid {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-        result.extend(self.validator_public_key.to_bytes()?);
-        result.extend(self.bonding_purse.to_bytes()?);
-        result.extend(self.staked_amount.to_bytes()?);
-        result.extend(self.delegation_rate.to_bytes()?);
-        result.extend(self.vesting_schedule.to_bytes()?);
-        result.extend(self.delegators.to_bytes()?);
-        result.extend(self.inactive.to_bytes()?);
+        (&self.validator_public_key).write_bytes(&mut result)?;
+        (&self.bonding_purse).write_bytes(&mut result)?;
+        self.staked_amount.write_bytes(&mut result)?;
+        self.delegation_rate.write_bytes(&mut result)?;
+        self.vesting_schedule.write_bytes(&mut result)?;
+        self.delegators().write_bytes(&mut result)?;
+        self.inactive.write_bytes(&mut result)?;
         Ok(result)
     }
 
@@ -292,6 +303,17 @@ impl ToBytes for Bid {
             + self.vesting_schedule.serialized_length()
             + self.delegators.serialized_length()
             + self.inactive.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        (&self.validator_public_key).write_bytes(writer)?;
+        (&self.bonding_purse).write_bytes(writer)?;
+        self.staked_amount.write_bytes(writer)?;
+        self.delegation_rate.write_bytes(writer)?;
+        self.vesting_schedule.write_bytes(writer)?;
+        self.delegators().write_bytes(writer)?;
+        self.inactive.write_bytes(writer)?;
+        Ok(())
     }
 }
 
@@ -441,5 +463,19 @@ mod tests {
 
         // Validator initialized, and all delegators initialized
         assert!(!bid.process(delegator_2_release_timestamp + 1));
+    }
+}
+
+#[cfg(test)]
+mod prop_tests {
+    use proptest::prelude::*;
+
+    use crate::{bytesrepr, gens};
+
+    proptest! {
+        #[test]
+        fn test_value_bid(bid in gens::bid_arb(1..100)) {
+            bytesrepr::test_serialization_roundtrip(&bid);
+        }
     }
 }

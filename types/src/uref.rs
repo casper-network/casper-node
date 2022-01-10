@@ -177,7 +177,7 @@ impl URef {
         format!(
             "{}{}-{:03o}",
             UREF_FORMATTED_STRING_PREFIX,
-            checksummed_hex::encode(&self.addr()),
+            base16::encode_lower(&self.addr()),
             access_rights_bits
         )
     }
@@ -208,8 +208,7 @@ impl JsonSchema for URef {
     fn json_schema(gen: &mut SchemaGenerator) -> Schema {
         let schema = gen.subschema_for::<String>();
         let mut schema_object = schema.into_object();
-        schema_object.metadata().description =
-            Some(String::from("Checksummed hex-encoded, formatted URef."));
+        schema_object.metadata().description = Some(String::from("Hex-encoded, formatted URef."));
         schema_object.into()
     }
 }
@@ -221,7 +220,7 @@ impl Display for URef {
         write!(
             f,
             "URef({}, {})",
-            checksummed_hex::encode(&addr),
+            base16::encode_lower(&addr),
             access_rights
         )
     }
@@ -243,6 +242,12 @@ impl bytesrepr::ToBytes for URef {
 
     fn serialized_length(&self) -> usize {
         UREF_SERIALIZED_LENGTH
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), self::Error> {
+        writer.extend_from_slice(&self.0);
+        self.1.write_bytes(writer)?;
+        Ok(())
     }
 }
 

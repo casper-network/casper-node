@@ -24,10 +24,12 @@ rand = "0.8.3"
 serde = "1"
 serde_json = "1"
 tempfile = "3"
+wabt = "0.10.0"
+wasmi = "0.8.0"
 
 [dev-dependencies]
 assert_matches = "1.3.0"
-criterion = "0.3.5"
+criterion = { version = "0.3.5", features = ["html_reports"]}
 gh-1470-regression = { path = "../../smart_contracts/contracts/test/gh-1470-regression", default-features = false }
 gh-1470-regression-call = { path = "../../smart_contracts/contracts/test/gh-1470-regression-call", default-features = false }
 num-rational = "0.4.0"
@@ -42,6 +44,10 @@ bench = false
 
 [[bench]]
 name = "transfer_bench"
+harness = false
+
+[[bench]]
+name = "auction_bench"
 harness = false
 
 [[bin]]

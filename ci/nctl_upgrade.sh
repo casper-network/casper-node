@@ -2,9 +2,21 @@
 set -e
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)"
-LAUNCHER_DIR="$ROOT_DIR/../"
+
+# Activate Environment
 pushd "$ROOT_DIR"
 source $(pwd)/utils/nctl/activate
+
+# Clone the client and launcher repos if required.
+if [ ! -d "$NCTL_CASPER_CLIENT_HOME" ]; then
+    git clone https://github.com/casper-ecosystem/casper-client-rs "$NCTL_CASPER_CLIENT_HOME"
+fi
+if [ ! -d "$NCTL_CASPER_NODE_LAUNCHER_HOME" ]; then
+    git clone https://github.com/casper-network/casper-node-launcher "$NCTL_CASPER_NODE_LAUNCHER_HOME"
+fi
+
+# NCTL Build
+nctl-compile
 
 function main() {
     local TEST_ID=${1}
@@ -43,7 +55,7 @@ function get_remotes() {
     log "... downloading remote files and binaries"
 
     if [ -z "$AWS_SECRET_ACCESS_KEY" ] || [ -z "$AWS_ACCESS_KEY_ID" ]; then
-        log "ERROR: AWS KEYS neeeded to run. Contact SRE."
+        log "ERROR: AWS KEYS needed to run. Contact SRE."
         exit 1
     fi
 

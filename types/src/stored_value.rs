@@ -150,6 +150,21 @@ impl StoredValue {
             StoredValue::Withdraw(_) => "Withdraw".to_string(),
         }
     }
+
+    fn tag(&self) -> Tag {
+        match self {
+            StoredValue::CLValue(_) => Tag::CLValue,
+            StoredValue::Account(_) => Tag::Account,
+            StoredValue::ContractWasm(_) => Tag::ContractWasm,
+            StoredValue::Contract(_) => Tag::Contract,
+            StoredValue::ContractPackage(_) => Tag::ContractPackage,
+            StoredValue::Transfer(_) => Tag::Transfer,
+            StoredValue::DeployInfo(_) => Tag::DeployInfo,
+            StoredValue::EraInfo(_) => Tag::EraInfo,
+            StoredValue::Bid(_) => Tag::Bid,
+            StoredValue::Withdraw(_) => Tag::Withdraw,
+        }
+    }
 }
 
 impl From<CLValue> for StoredValue {
@@ -331,6 +346,25 @@ impl ToBytes for StoredValue {
                 StoredValue::Bid(bid) => bid.serialized_length(),
                 StoredValue::Withdraw(unbonding_purses) => unbonding_purses.serialized_length(),
             }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        writer.push(self.tag() as u8);
+        match self {
+            StoredValue::CLValue(cl_value) => cl_value.write_bytes(writer)?,
+            StoredValue::Account(account) => account.write_bytes(writer)?,
+            StoredValue::ContractWasm(contract_wasm) => contract_wasm.write_bytes(writer)?,
+            StoredValue::Contract(contract_header) => contract_header.write_bytes(writer)?,
+            StoredValue::ContractPackage(contract_package) => {
+                contract_package.write_bytes(writer)?
+            }
+            StoredValue::Transfer(transfer) => transfer.write_bytes(writer)?,
+            StoredValue::DeployInfo(deploy_info) => deploy_info.write_bytes(writer)?,
+            StoredValue::EraInfo(era_info) => era_info.write_bytes(writer)?,
+            StoredValue::Bid(bid) => bid.write_bytes(writer)?,
+            StoredValue::Withdraw(unbonding_purses) => unbonding_purses.write_bytes(writer)?,
+        };
+        Ok(())
     }
 }
 

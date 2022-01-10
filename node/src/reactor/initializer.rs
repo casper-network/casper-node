@@ -224,6 +224,10 @@ impl Reactor {
             chainspec_loader.chainspec().wasm_config,
             chainspec_loader.chainspec().system_costs_config,
             chainspec_loader.chainspec().core_config.max_associated_keys,
+            chainspec_loader
+                .chainspec()
+                .core_config
+                .max_runtime_call_stack_height,
             registry,
         )?;
 
@@ -322,7 +326,7 @@ impl reactor::Reactor for Reactor {
 }
 
 #[cfg(test)]
-pub(crate) mod test {
+pub(crate) mod tests {
     use super::*;
     use crate::{testing::network::NetworkedReactor, types::Chainspec};
     use std::sync::Arc;

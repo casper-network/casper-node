@@ -105,7 +105,7 @@ impl ContractWasmHash {
 
     /// Formats the `ContractWasmHash` for users getting and putting.
     pub fn to_formatted_string(self) -> String {
-        format!("{}{}", WASM_STRING_PREFIX, checksummed_hex::encode(&self.0),)
+        format!("{}{}", WASM_STRING_PREFIX, base16::encode_lower(&self.0),)
     }
 
     /// Parses a string formatted as per `Self::to_formatted_string()` into a
@@ -121,13 +121,13 @@ impl ContractWasmHash {
 
 impl Display for ContractWasmHash {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", checksummed_hex::encode(&self.0))
+        write!(f, "{}", base16::encode_lower(&self.0))
     }
 }
 
 impl Debug for ContractWasmHash {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
-        write!(f, "ContractWasmHash({})", checksummed_hex::encode(&self.0))
+        write!(f, "ContractWasmHash({})", base16::encode_lower(&self.0))
     }
 }
 
@@ -146,6 +146,12 @@ impl ToBytes for ContractWasmHash {
     #[inline(always)]
     fn serialized_length(&self) -> usize {
         self.0.serialized_length()
+    }
+
+    #[inline(always)]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        self.0.write_bytes(writer)?;
+        Ok(())
     }
 }
 
@@ -271,6 +277,11 @@ impl ToBytes for ContractWasm {
 
     fn serialized_length(&self) -> usize {
         self.bytes.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        (&self.bytes).write_bytes(writer)?;
+        Ok(())
     }
 }
 
