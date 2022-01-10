@@ -1481,7 +1481,9 @@ impl Block {
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
-        let era = rng.gen_range(0..6);
+        const MAX_ERA: u64 = 6;
+
+        let era = rng.gen_range(0..MAX_ERA);
         let height = era * 10 + rng.gen_range(0..10);
         let is_switch = rng.gen_bool(0.1);
 
@@ -1499,8 +1501,10 @@ impl Block {
     /// it also returns the EraId used as merkle_tree_hash_activation.
     #[cfg(test)]
     pub fn random_v1(rng: &mut TestRng) -> (Self, EraId) {
-        let era = rng.gen_range(0..6);
-        let merkle_tree_hash_activation = EraId::from(7);
+        const MAX_ERA: u64 = 6;
+
+        let era = rng.gen_range(0..MAX_ERA);
+        let merkle_tree_hash_activation = EraId::from(MAX_ERA + 1);
         let height = era * 10 + rng.gen_range(0..10);
         let is_switch = rng.gen_bool(0.1);
 
@@ -1522,7 +1526,9 @@ impl Block {
     /// it also returns the EraId used as merkle_tree_hash_activation.
     #[cfg(test)]
     pub fn random_v2(rng: &mut TestRng) -> (Self, EraId) {
-        let era = rng.gen_range(0..6);
+        const MAX_ERA: u64 = 6;
+
+        let era = rng.gen_range(0..MAX_ERA);
         let merkle_tree_hash_activation = EraId::from(0);
         let height = era * 10 + rng.gen_range(0..10);
         let is_switch = rng.gen_bool(0.1);
@@ -1571,7 +1577,8 @@ impl Block {
     }
 
     /// Generates a random instance using a `TestRng`, but using the specified values.
-    /// TODO[RC]: This function will replace the `random_with_specifics()` when all tests are updated.
+    /// TODO[RC]: This function will replace the `random_with_specifics()` when all tests are
+    /// updated.
     #[cfg(test)]
     pub fn random_with_specifics_1(
         rng: &mut TestRng,
