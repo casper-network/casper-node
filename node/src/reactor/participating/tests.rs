@@ -355,25 +355,11 @@ async fn run_equivocator_network() {
         });
 
     let era_count = 4;
+
     let timeout = Duration::from_secs(90 * era_count);
-
-    for era_num in 1..era_count {
-        let era_id = EraId::from(era_num);
-        info!("Waiting for {} to end.", era_id);
-        net.settle_on(&mut rng, is_in_era(era_id.successor()), timeout)
-            .await;
-        // The only era with direct evidence is era 1. After that Alice was banned or evicted.
-        for runner in net.nodes().values() {
-            let consensus = runner.participating().consensus();
-            let expected = if era_num == 1 {
-                vec![&alice_pk]
-            } else {
-                vec![]
-            };
-            assert_eq!(consensus.validators_with_evidence(era_id), expected);
-        }
-    }
-
+    info!("Waiting for {} eras to end.", era_count);
+    net.settle_on(&mut rng, is_in_era(EraId::new(era_count)), timeout)
+        .await;
     let switch_blocks = SwitchBlocks::collect(net.nodes(), era_count);
     let bids: Vec<Bids> = (0..era_count)
         .map(|era_number| switch_blocks.bids(net.nodes(), era_number))
