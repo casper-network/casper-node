@@ -988,22 +988,26 @@ fn store_execution_results_twice_for_same_block_deploy_pair() {
     put_execution_results(&mut harness, &mut storage, block_hash, exec_result_2);
 }
 
-// #[test]
-// fn store_identical_execution_results() {
-//     let mut harness = ComponentHarness::default();
-//     let mut storage = storage_fixture(&harness);
+#[test]
+fn store_identical_execution_results() {
+    let mut harness = ComponentHarness::default();
 
-//     let block_hash = BlockHash::random(&mut harness.rng);
-//     let deploy_hash = DeployHash::random(&mut harness.rng);
+    // `merkle_tree_hash_activation` can be chosen arbitrarily
+    let merkle_tree_hash_activation = harness.rng.gen();
 
-//     let mut exec_result = HashMap::new();
-//     exec_result.insert(deploy_hash, harness.rng.gen());
+    let mut storage = storage_fixture(&harness, merkle_tree_hash_activation);
 
-//     put_execution_results(&mut harness, &mut storage, block_hash, exec_result.clone());
+    let block_hash = BlockHash::random(&mut harness.rng);
+    let deploy_hash = DeployHash::random(&mut harness.rng);
 
-//     // We should be fine storing the exact same result twice.
-//     put_execution_results(&mut harness, &mut storage, block_hash, exec_result);
-// }
+    let mut exec_result = HashMap::new();
+    exec_result.insert(deploy_hash, harness.rng.gen());
+
+    put_execution_results(&mut harness, &mut storage, block_hash, exec_result.clone());
+
+    // We should be fine storing the exact same result twice.
+    put_execution_results(&mut harness, &mut storage, block_hash, exec_result);
+}
 
 /// Example state used in storage.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
