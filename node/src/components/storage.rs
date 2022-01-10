@@ -1440,7 +1440,12 @@ impl Storage {
                 deploy_hash: *deploy_hash,
             })?;
         // Only store the finalized approvals if they are different from the original ones.
-        if original_deploy.approvals() != finalized_approvals.as_ref() {
+        // Make sure we compare the sorted lists - differences in order are unimportant.
+        let mut sorted_original_approvals = original_deploy.approvals().to_vec();
+        sorted_original_approvals.sort();
+        let mut sorted_finalized_approvals = finalized_approvals.as_ref().to_vec();
+        sorted_finalized_approvals.sort();
+        if sorted_original_approvals != sorted_finalized_approvals {
             let mut txn = self.env.begin_rw_txn()?;
             let _ = txn.put_value(
                 self.finalized_approvals_db,
