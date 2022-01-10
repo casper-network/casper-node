@@ -791,11 +791,13 @@ fn should_release_founder_stake() {
 
         let error = {
             let response = builder
-                .get_exec_results()
-                .last()
+                .get_last_exec_results()
                 .expect("should have last exec result");
             let exec_response = response.last().expect("should have response");
-            exec_response.as_error().expect("should have error")
+            exec_response
+                .as_error()
+                .cloned()
+                .expect("should have error")
         };
         assert_matches!(
             error,
@@ -2291,17 +2293,19 @@ fn should_not_partially_undelegate_uninitialized_vesting_schedule() {
     builder.exec(partial_undelegate).commit();
     let error = {
         let response = builder
-            .get_exec_results()
-            .last()
+            .get_last_exec_results()
             .expect("should have last exec result");
         let exec_response = response.last().expect("should have response");
-        exec_response.as_error().expect("should have error")
+        exec_response
+            .as_error()
+            .cloned()
+            .expect("should have error")
     };
 
     assert!(matches!(
         error,
         engine_state::Error::Exec(execution::Error::Revert(ApiError::AuctionError(auction_error)))
-        if *auction_error == system::auction::Error::DelegatorFundsLocked as u8
+        if auction_error == system::auction::Error::DelegatorFundsLocked as u8
     ));
 }
 
@@ -2363,17 +2367,19 @@ fn should_not_fully_undelegate_uninitialized_vesting_schedule() {
     builder.exec(full_undelegate).commit();
     let error = {
         let response = builder
-            .get_exec_results()
-            .last()
+            .get_last_exec_results()
             .expect("should have last exec result");
         let exec_response = response.last().expect("should have response");
-        exec_response.as_error().expect("should have error")
+        exec_response
+            .as_error()
+            .cloned()
+            .expect("should have error")
     };
 
     assert!(matches!(
         error,
         engine_state::Error::Exec(execution::Error::Revert(ApiError::AuctionError(auction_error)))
-        if *auction_error == system::auction::Error::DelegatorFundsLocked as u8
+        if auction_error == system::auction::Error::DelegatorFundsLocked as u8
     ));
 }
 
@@ -2479,17 +2485,19 @@ fn should_not_undelegate_vfta_holder_stake() {
     builder.exec(partial_unbond).commit();
     let error = {
         let response = builder
-            .get_exec_results()
-            .last()
+            .get_last_exec_results()
             .expect("should have last exec result");
         let exec_response = response.last().expect("should have response");
-        exec_response.as_error().expect("should have error")
+        exec_response
+            .as_error()
+            .cloned()
+            .expect("should have error")
     };
 
     assert!(matches!(
         error,
         engine_state::Error::Exec(execution::Error::Revert(ApiError::AuctionError(auction_error)))
-        if *auction_error == system::auction::Error::DelegatorFundsLocked as u8
+        if auction_error == system::auction::Error::DelegatorFundsLocked as u8
     ));
 }
 
@@ -2542,18 +2550,20 @@ fn should_release_vfta_holder_stake() {
 
         let error = {
             let response = builder
-                .get_exec_results()
-                .last()
+                .get_last_exec_results()
                 .expect("should have last exec result");
             let exec_response = response.last().expect("should have response");
-            exec_response.as_error().expect("should have error")
+            exec_response
+                .as_error()
+                .cloned()
+                .expect("should have error")
         };
 
         assert!(
             matches!(
                 error,
                 engine_state::Error::Exec(execution::Error::Revert(ApiError::AuctionError(auction_error)))
-                if *auction_error == system::auction::Error::DelegatorFundsLocked as u8
+                if auction_error == system::auction::Error::DelegatorFundsLocked as u8
             ),
             "{:?}",
             error

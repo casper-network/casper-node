@@ -49,6 +49,7 @@ fn should_charge_for_user_error(
         .get_exec_result(0)
         .expect("should have result")
         .get(0)
+        .cloned()
         .expect("should have first result");
     assert_eq!(response.cost(), transfer_cost);
     assert_eq!(
@@ -168,6 +169,7 @@ fn should_properly_charge_fixed_cost_with_nondefault_gas_price() {
         .get_exec_result(0)
         .expect("should have result")
         .get(0)
+        .cloned()
         .expect("should have first result");
     assert_eq!(
         response.cost(),

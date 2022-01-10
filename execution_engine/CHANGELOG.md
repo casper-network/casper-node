@@ -13,6 +13,10 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+### Changed
+
+* (Perf) Changed contract runtime to allow caching GlobalState changes during execution of a single block.
+
 
 
 ## 1.4.3 - 2021-12-06
@@ -41,8 +45,6 @@ All notable changes to this project will be documented in this file.  The format
 * Added genesis validation step to ensure there are more genesis validators than validator slots.
 * Added a support for passing a public key as a `target` argument in native transfers.
 * Added a `max_associated_keys` configuration option for a hard limit of associated keys under accounts.
-
-
 
 ### Changed
 * Documented `storage` module and children.

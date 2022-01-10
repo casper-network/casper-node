@@ -8,6 +8,7 @@ pub(crate) mod pid_file;
 pub(crate) mod rlimit;
 mod round_robin;
 pub(crate) mod umask;
+pub mod work_queue;
 
 use std::{
     any,

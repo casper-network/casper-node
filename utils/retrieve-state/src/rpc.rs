@@ -18,7 +18,7 @@ pub enum Error {
 }
 
 pub(crate) async fn rpc<'de, R, P>(
-    client: &mut Client,
+    client: &Client,
     url: &str,
     method: &str,
     params: P,
@@ -32,6 +32,26 @@ where
     let response = client.post(url).json(&rpc_req).send().await?;
     let rpc_res: JsonRpc = response.json().await?;
     if let Some(error) = rpc_res.get_error() {
+        return Err(error.clone().into());
+    }
+    let value = rpc_res.get_result().unwrap();
+    let deserialized = serde_json::from_value(value.clone())?;
+    Ok(deserialized)
+}
+
+pub(crate) async fn rpc_without_params<'de, R>(
+    client: &Client,
+    url: &str,
+    method: &str,
+) -> Result<R, Error>
+where
+    R: DeserializeOwned,
+{
+    let rpc_req = JsonRpc::request(12345, method);
+    let response = client.post(url).json(&rpc_req).send().await?;
+    let rpc_res: JsonRpc = response.json().await?;
+    if let Some(error) = rpc_res.get_error() {
+        println!("res {:?}", rpc_res);
         return Err(error.clone().into());
     }
     let value = rpc_res.get_result().unwrap();

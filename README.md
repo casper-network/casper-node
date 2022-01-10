@@ -116,12 +116,6 @@ To set the threshold at which a warn-level log message is generated for a long-r
 CL_EVENT_MAX_MICROSECS=1000
 ```
 
-To set the threshold at which a queue dump will occur, use the env var `CL_MEM_DUMP_THRESHOLD_MB`. When the process reaches this level of memory allocation a dump will occur, but this will only occur once. Queue dumps can be found in `/tmp` once they are complete. For example, to set the threshold to 16000 megabytes:
-
-```
-CL_MEM_DUMP_THRESHOLD_MB=16000
-```
-
 
 ## Logging
 
@@ -240,13 +234,13 @@ This calls `example-command` on the console, but disables the command confirmati
 
 ## Running a client
 
-See [the client README](client/README.md).
+See [the client README](https://github.com/casper-ecosystem/casper-client-rs#readme).
 
 ## Running a local network
 
 See [the nctl utility README](utils/nctl/README.md).
 
-## Running on a existing network
+## Running on an existing network
 
 To support upgrades with a network, the casper-node is installed using scripts distributed with the 
 [casper-node-launcher](https://github.com/casper-network/casper-node-launcher).

@@ -110,16 +110,6 @@ steps:
   - make test CARGO_FLAGS=--release
   - make test-contracts CARGO_FLAGS=--release
 
-- name: client-ffi-tests-and-examples
-  image: casperlabs/node-build-u1804
-  commands:
-  - make setup-rs
-  - cmake -Hclient/examples/ffi -Btarget/build -DCMAKE_BUILD_TYPE=Debug
-  - cmake --build target/build
-  - ./target/build/ffi-tests
-  - ./target/build/get-auction-info
-  - ./target/build/put-deploy
-
 depends_on:
   - pre-checks
 
@@ -142,69 +132,6 @@ type: docker
 name: package
 
 steps:
-- name: build-rpm
-  image: casperlabs/rpm-package
-  commands:
-    - make rpm
-
-- name: put-drone-s3-cache-rpm
-  image: plugins/s3-sync:latest
-  settings:
-    bucket:
-      from_secret: put-drone-s3-bucket
-    access_key:
-      from_secret: put-drone-aws-ak
-    secret_key:
-      from_secret: put-drone-aws-sk
-    region: us-east-2
-    source: target/release/rpmbuild/RPMS/x86_64/
-    target: "/drone_temp/${DRONE_BUILD_NUMBER}_${DRONE_REPO_OWNER}_${DRONE_REPO_NAME}/rpm/"
-  when:
-    branch:
-      - master
-      - dev
-      - "release-*"
-      - "feat-*"
-    event:
-      - push
-
-- name: build-deb-update-revision
-  image: casperlabs/node-build-u1804
-  commands:
-    - "./update-rev.sh"
-
-- name: build-deb
-  image: casperlabs/node-build-u1804
-  commands:
-    - make deb
-
-- name: test-deb
-  image: ubuntu:bionic
-  commands:
-    - "apt update"
-    - "$(pwd)/ci/test_deb_install.sh $(pwd) casper-client"
-
-- name: put-drone-s3-cache-deb
-  image: plugins/s3-sync:latest
-  settings:
-    bucket:
-      from_secret: put-drone-s3-bucket
-    access_key:
-      from_secret: put-drone-aws-ak
-    secret_key:
-      from_secret: put-drone-aws-sk
-    region: us-east-2
-    source: target/debian/
-    target: "/drone_temp/${DRONE_BUILD_NUMBER}_${DRONE_REPO_OWNER}_${DRONE_REPO_NAME}/debian/"
-  when:
-    branch:
-      - master
-      - dev
-      - "release-*"
-      - "feat-*"
-    event:
-      - push
-
 - name: build-wasm-package-push-to-s3
   image: casperlabs/s3cmd-build:latest
   commands:
@@ -504,40 +431,6 @@ type: docker
 name: release-by-tag
 
 steps:
-- name: build-rpm
-  image: casperlabs/rpm-package
-  commands:
-    - make rpm
-
-- name: build-deb
-  image: casperlabs/node-build-u1804
-  commands:
-    - make deb
-
-- name: publish-repo-prod
-  image: casperlabs/aptly:latest
-  failure: ignore
-  environment:
-    AWS_SECRET_ACCESS_KEY:
-      from_secret: aptly_prod_secret_key
-    AWS_ACCESS_KEY_ID:
-      from_secret: aptly_prod_key_id
-  settings:
-    repo_name:
-      from_secret: aptly_prod_repo
-    region:
-      from_secret: aptly_prod_region
-    gpg_key:
-      from_secret: aptly_prod_gpg_key
-    gpg_pass:
-      from_secret: aptly_prod_gpg_pass
-    distribution_id:
-      from_secret: aptly_prod_dist_id
-    acl: 'public-read'
-    prefix: 'releases'
-    deb_path: './target/debian'
-    deb_name: '*.deb'
-
 - name: build-upgrade-package
   image: casperlabs/node-build-u1804
   commands:
@@ -552,8 +445,6 @@ steps:
     - sha256
     - md5
     files:
-    - "./target/debian/*.deb"
-    - "./target/release/rpmbuild/RPMS/x86_64/*.rpm"
     - "./target/upgrade_build/*.gz"
     prerelease:
     - true
