@@ -189,7 +189,7 @@ where
             if let Err(data) = sender.send(data) {
                 // If we cannot send a response down the channel, it means the original requestor is
                 // no longer interested in our response. This typically happens during shutdowns, or
-                // in cases where an originatinge external request has been cancelled.
+                // in cases where an originating external request has been cancelled.
 
                 debug!(
                     ?data,
