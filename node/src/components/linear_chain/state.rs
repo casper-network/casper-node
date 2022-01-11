@@ -16,9 +16,6 @@ use crate::{
     types::{ActivationPoint, Block, BlockHash, BlockSignatures, DeployHash, FinalitySignature},
 };
 
-#[cfg(test)]
-const MERKLE_TREE_HASH_ACTIVATION: u64 = 1;
-
 #[derive(DataSize, Debug)]
 pub(crate) struct LinearChain {
     /// The most recently added block.
@@ -477,8 +474,12 @@ mod tests {
             }
             others => panic!("unexpected outcome: {:?}", others),
         }
+
+        // `merkle_tree_hash_activation` can be chosen arbitrarily
+        let merkle_tree_hash_activation = EraId::from(rng.gen::<u64>());
+
         let block_stored_outcomes =
-            lc.handle_put_block(Box::new(block.clone()), MERKLE_TREE_HASH_ACTIVATION.into());
+            lc.handle_put_block(Box::new(block.clone()), merkle_tree_hash_activation);
         match &*block_stored_outcomes {
             [Outcome::AnnounceBlock(announced_block)] => {
                 assert_eq!(&**announced_block, &block);
@@ -571,7 +572,11 @@ mod tests {
             vec![Outcome::StoreBlock(block.clone(), execution_results)],
             outcomes,
         );
-        let outcomes = lc.handle_put_block(block.clone(), MERKLE_TREE_HASH_ACTIVATION.into());
+
+        // `merkle_tree_hash_activation` can be chosen arbitrarily
+        let merkle_tree_hash_activation = EraId::from(rng.gen::<u64>());
+
+        let outcomes = lc.handle_put_block(block.clone(), merkle_tree_hash_activation);
         // `sig_a` and `sig_b` are valid and created by bonded validators.
         let expected_outcomes = {
             let mut tmp = vec![];
@@ -699,8 +704,12 @@ mod tests {
         );
         let block_hash = *block.hash();
         let block_era = block.header().era_id();
+
+        // `merkle_tree_hash_activation` can be chosen arbitrarily
+        let merkle_tree_hash_activation = EraId::from(rng.gen::<u64>());
+
         let put_block_outcomes =
-            lc.handle_put_block(Box::new(block.clone()), MERKLE_TREE_HASH_ACTIVATION.into());
+            lc.handle_put_block(Box::new(block.clone()), merkle_tree_hash_activation);
         assert_eq!(put_block_outcomes.len(), 1);
         assert_eq!(
             lc.latest_block(),
@@ -752,8 +761,11 @@ mod tests {
         let new_block_outcomes = lc.handle_new_block(block.clone(), HashMap::new());
         let expected_outcomes = vec![Outcome::StoreBlock(block.clone(), HashMap::new())];
         assert_equal(expected_outcomes, new_block_outcomes);
-        let put_block_outcomes =
-            lc.handle_put_block(block.clone(), MERKLE_TREE_HASH_ACTIVATION.into());
+
+        // `merkle_tree_hash_activation` can be chosen arbitrarily
+        let merkle_tree_hash_activation = EraId::from(rng.gen::<u64>());
+
+        let put_block_outcomes = lc.handle_put_block(block.clone(), merkle_tree_hash_activation);
         // Verify that all outcomes are expected.
         assert_equal(vec![Outcome::AnnounceBlock(block)], put_block_outcomes);
         let valid_sig = FinalitySignature::random_for_block(block_hash, block_era.value());
@@ -807,6 +819,9 @@ mod tests {
             .map(|sk| (PublicKey::from(sk), 100.into()))
             .collect();
 
+        // `merkle_tree_hash_activation` can be chosen arbitrarily
+        let merkle_tree_hash_activation = EraId::from(rng.gen::<u64>());
+
         // The switch block in era 1 defines how many validators need to sign the one in era 2.
         let block = Box::new(
             Block::new(
@@ -816,11 +831,12 @@ mod tests {
                 FinalizedBlock::random_with_specifics(&mut rng, EraId::from(1), 10, true),
                 Some(validators.clone()),
                 protocol_version,
-                MERKLE_TREE_HASH_ACTIVATION.into(),
+                merkle_tree_hash_activation,
             )
             .unwrap(),
         );
-        let outcomes = lc.handle_put_block(block.clone(), MERKLE_TREE_HASH_ACTIVATION.into());
+
+        let outcomes = lc.handle_put_block(block.clone(), merkle_tree_hash_activation);
         assert_equal(vec![Outcome::AnnounceBlock(block)], outcomes);
 
         // The switch block in era 2 is the last before the upgrade.
@@ -832,7 +848,7 @@ mod tests {
                 FinalizedBlock::random_with_specifics(&mut rng, EraId::from(2), 20, true),
                 Some(validators),
                 protocol_version,
-                MERKLE_TREE_HASH_ACTIVATION.into(),
+                merkle_tree_hash_activation,
             )
             .unwrap(),
         );
@@ -865,7 +881,7 @@ mod tests {
                 Outcome::AnnounceSignature(signatures[0].clone()),
                 Outcome::StoreBlockSignatures(*stored_sigs.clone(), false),
             ],
-            lc.handle_put_block(block, MERKLE_TREE_HASH_ACTIVATION.into()),
+            lc.handle_put_block(block, merkle_tree_hash_activation),
         );
 
         // Two signatures is not enough for an upgrade yet: The upgrade flag is false.
@@ -921,6 +937,9 @@ mod tests {
             .map(|sk| (PublicKey::from(sk), 100.into()))
             .collect();
 
+        // `merkle_tree_hash_activation` can be chosen arbitrarily
+        let merkle_tree_hash_activation = EraId::from(rng.gen::<u64>());
+
         // The switch block in era 1 defines how many validators need to sign the one in era 2.
         let block = Box::new(
             Block::new(
@@ -930,11 +949,11 @@ mod tests {
                 FinalizedBlock::random_with_specifics(&mut rng, EraId::from(1), 10, true),
                 Some(validators.clone()),
                 protocol_version,
-                MERKLE_TREE_HASH_ACTIVATION.into(),
+                merkle_tree_hash_activation,
             )
             .unwrap(),
         );
-        let outcomes = lc.handle_put_block(block.clone(), MERKLE_TREE_HASH_ACTIVATION.into());
+        let outcomes = lc.handle_put_block(block.clone(), merkle_tree_hash_activation);
         assert_equal(vec![Outcome::AnnounceBlock(block)], outcomes);
 
         // The switch block in era 2 is the last before the upgrade.
@@ -946,7 +965,7 @@ mod tests {
                 FinalizedBlock::random_with_specifics(&mut rng, EraId::from(2), 20, true),
                 Some(validators),
                 protocol_version,
-                MERKLE_TREE_HASH_ACTIVATION.into(),
+                merkle_tree_hash_activation,
             )
             .unwrap(),
         );
@@ -970,7 +989,7 @@ mod tests {
             expected_sigs.insert_proof(fs.public_key.clone(), fs.signature);
         }
 
-        let outcomes = lc.handle_put_block(block.clone(), MERKLE_TREE_HASH_ACTIVATION.into());
+        let outcomes = lc.handle_put_block(block.clone(), merkle_tree_hash_activation);
         assert_equal(
             vec![
                 Outcome::AnnounceBlock(block),
