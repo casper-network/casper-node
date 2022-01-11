@@ -730,7 +730,7 @@ impl<REv> EffectBuilder<REv> {
         )
     }
 
-    /// Announce upgrade activation point read.
+    /// Announces upgrade activation point read.
     pub(crate) async fn announce_upgrade_activation_point_read(self, next_upgrade: NextUpgrade)
     where
         REv: From<ChainspecLoaderAnnouncement>,
