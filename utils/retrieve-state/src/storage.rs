@@ -23,8 +23,6 @@ use casper_types::{EraId, ProtocolVersion};
 use num_rational::Ratio;
 use tracing::info;
 
-use casper_types::ProtocolVersion;
-
 use crate::DEFAULT_MAX_READERS;
 
 /// Gets many deploys by hash.

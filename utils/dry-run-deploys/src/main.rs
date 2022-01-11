@@ -154,7 +154,8 @@ async fn main() -> Result<(), anyhow::Error> {
             expected.state_root_hash(),
             "state root hash mismatch"
         );
-        execution_pre_state = ExecutionPreState::from(&header);
+        execution_pre_state =
+            ExecutionPreState::from_block_header(&header, merkle_tree_hash_activation);
         execute_count += 1;
         if opts.verbose {
             eprintln!(
