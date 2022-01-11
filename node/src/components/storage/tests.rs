@@ -36,6 +36,8 @@ use crate::{
     utils::WithDir,
 };
 
+type BlockGenerators = Vec<fn(&mut TestRng) -> (Block, EraId)>;
+
 fn new_config(harness: &ComponentHarness<UnitTestEvent>) -> Config {
     const MIB: usize = 1024 * 1024;
 
@@ -357,7 +359,7 @@ fn switch_block_for_block_header(
         Default::default(),
         Default::default(),
         Default::default(),
-        finalized_block.clone(),
+        finalized_block,
         Some(validator_weights),
         block_header.protocol_version(),
         merkle_tree_hash_activation,
@@ -1053,8 +1055,7 @@ fn random_block_at_height(
 
 #[test]
 fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
-    let block_generators: Vec<fn(&mut TestRng) -> (Block, EraId)> =
-        vec![Block::random_v1, Block::random_v2];
+    let block_generators: BlockGenerators = vec![Block::random_v1, Block::random_v2];
 
     for block_generator in block_generators {
         thread::spawn(move || {
