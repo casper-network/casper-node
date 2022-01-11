@@ -46,10 +46,10 @@ pub(crate) enum Error {
     },
 
     #[error(
-        "network is still running an older version. Current version is {current_version}, \
-         but current block header has older version: {block_header_with_old_version:?}"
+        "the trusted block has an older version. Current version is {current_version}, \
+         but trusted block header has older version: {block_header_with_old_version:?}"
     )]
-    CurrentBlockHeaderHasOldVersion {
+    TrustedBlockHasOldVersion {
         current_version: ProtocolVersion,
         block_header_with_old_version: Box<BlockHeader>,
     },
