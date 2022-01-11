@@ -43,6 +43,7 @@ use crate::{
             ReactorEventT, ResolveValidity, TimerId,
         },
         storage::Storage,
+        metrics::Metrics,
     },
     effect::{
         announcements::ControlAnnouncement,

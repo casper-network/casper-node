@@ -187,7 +187,7 @@ pub(crate) struct Reactor {
 
 impl Reactor {
     fn new_with_chainspec_loader(
-        (crashed, config): <Self as reactor::Reactor>::Config,
+        (should_check_integrity, config): <Self as reactor::Reactor>::Config,
         registry: &Registry,
         chainspec_loader: ChainspecLoader,
         chainspec_effects: Effects<chainspec_loader::Event>,
@@ -199,7 +199,7 @@ impl Reactor {
             &storage_config,
             hard_reset_to_start_of_era,
             chainspec_loader.chainspec().protocol_config.version,
-            crashed,
+            should_check_integrity,
             &chainspec_loader.chainspec().network_config.name,
             chainspec_loader
                 .chainspec()
