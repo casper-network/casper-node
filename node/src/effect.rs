@@ -108,8 +108,8 @@ use crate::{
     reactor::{EventQueueHandle, QueueKind},
     types::{
         Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload, BlockSignatures,
-        BlockWithMetadata, ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata,
-        FinalitySignature, FinalizedBlock, Item, NodeId, TimeDiff, Timestamp,
+        BlockWithMetadata, ChainspecInfo, Deploy, DeployHash, DeployMetadata, FinalitySignature,
+        FinalizedBlock, Item, NodeId, TimeDiff, Timestamp,
     },
     utils::{SharedFlag, Source},
 };
@@ -1362,16 +1362,16 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Retrieves finalized deploys from blocks that were created more recently than the TTL.
-    pub(crate) async fn get_finalized_deploys(
-        self,
-        ttl: TimeDiff,
-    ) -> Vec<(DeployHash, DeployHeader)>
+    /// Retrieves finalized blocks with timestamps no older than the maximum deploy TTL.
+    ///
+    /// These blocks contain all deploy and transfer hashes that are known to be finalized but
+    /// may not have expired yet.
+    pub(crate) async fn get_finalized_blocks(self, ttl: TimeDiff) -> Vec<Block>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            move |responder| StorageRequest::GetFinalizedDeploys { ttl, responder },
+            move |responder| StorageRequest::GetFinalizedBlocks { ttl, responder },
             QueueKind::Regular,
         )
         .await

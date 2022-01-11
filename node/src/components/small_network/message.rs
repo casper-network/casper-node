@@ -88,7 +88,7 @@ impl ConsensusKeyPair {
 ///
 /// Note that this type has custom `Serialize` and `Deserialize` implementations to allow the
 /// `public_key` and `signature` fields to be encoded to all-lowercase hex, hence circumventing the
-/// checksummed-hex encoding used by `PublicKey` and `Signature` normally.
+/// checksummed-hex encoding used by `PublicKey` and `Signature` in versions 1.4.2 and 1.4.3.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ConsensusCertificate {
     public_key: PublicKey,
@@ -131,16 +131,16 @@ impl Display for ConsensusCertificate {
 
 /// This type and the `NonHumanReadableCertificate` are helper structs only used in the `Serialize`
 /// and `Deserialize` implementations of `ConsensusCertificate` to allow handshaking between nodes
-/// running the casper-node v1.4.2 software and later versions.
+/// running the casper-node v1.4.2 and v1.4.3 software versions.
 ///
-/// Checksummed-hex encoding was introduced in 1.4.2 and is applied to `PublicKey` and `Signature`
+/// Checksummed-hex encoding was introduced in 1.4.2 and was applied to `PublicKey` and `Signature`
 /// types, affecting the encoding of `ConsensusCertificate` since handshaking uses a human-readable
 /// type of encoder/decoder.
 ///
-/// The version immediately after 1.4.2 and subsequent versions use a slightly different style of
-/// checksummed-hex encoding which is incompatible with the 1.4.2 style.  To effectively disable
-/// checksummed-hex encoding, we simply need to use an all-lowercase form of hex encoding for the
-/// `PublicKey` and `Signature` types.
+/// The 1.4.3 version immediately after 1.4.2 used a slightly different style of checksummed-hex
+/// encoding which is incompatible with the 1.4.2 style.  To effectively disable checksummed-hex
+/// encoding, we need to use an all-lowercase form of hex encoding for the `PublicKey` and
+/// `Signature` types.
 ///
 /// The `HumanReadableCertificate` enables that by explicitly being constructed from all-lowercase
 /// hex encoded types, while the `NonHumanReadableCertificate` is a simple mirror of
@@ -360,6 +360,24 @@ mod tests {
         55, 55, 53, 48, 66, 67, 67, 69, 65, 69,
     ];
 
+    /// A "conserved" version 1.4.3 handshake.
+    ///
+    /// NEVER CHANGE THIS CONSTANT TO MAKE TESTS PASS, AS IT IS BASED ON MAINNET DATA.
+    const V1_4_3_HANDSHAKE: &[u8] = &[
+        129, 0, 148, 177, 101, 120, 97, 109, 112, 108, 101, 45, 104, 97, 110, 100, 115, 104, 97,
+        107, 101, 177, 49, 50, 46, 51, 52, 46, 53, 54, 46, 55, 56, 58, 49, 50, 51, 52, 54, 165, 49,
+        46, 52, 46, 51, 146, 217, 68, 48, 50, 48, 51, 51, 49, 101, 102, 98, 102, 55, 99, 99, 51,
+        51, 56, 49, 53, 49, 53, 97, 55, 50, 50, 57, 102, 57, 99, 51, 101, 55, 57, 55, 48, 51, 48,
+        50, 50, 56, 99, 97, 97, 49, 56, 57, 102, 98, 50, 97, 49, 48, 50, 56, 97, 100, 101, 48, 52,
+        101, 50, 57, 55, 48, 102, 55, 52, 99, 53, 217, 130, 48, 50, 55, 54, 54, 52, 56, 54, 54, 55,
+        57, 52, 98, 97, 99, 99, 101, 52, 52, 49, 51, 57, 50, 102, 52, 51, 50, 100, 98, 97, 50, 100,
+        101, 54, 55, 100, 97, 51, 98, 97, 55, 56, 53, 101, 53, 57, 99, 57, 52, 56, 48, 102, 49, 50,
+        54, 55, 57, 52, 101, 100, 55, 56, 98, 56, 101, 53, 50, 57, 57, 57, 55, 54, 49, 99, 48, 56,
+        49, 53, 56, 50, 56, 53, 53, 56, 48, 98, 52, 97, 54, 55, 98, 55, 101, 51, 52, 51, 99, 50,
+        50, 56, 49, 51, 51, 99, 52, 49, 100, 52, 50, 53, 48, 98, 102, 55, 57, 100, 55, 56, 54, 100,
+        55, 99, 49, 57, 57, 99, 97, 57, 55, 55,
+    ];
+
     // Note: MessagePack messages can be visualized using the message pack visualizer at
     // https://sugendran.github.io/msgpack-visualizer/. Rust arrays can be copy&pasted and converted
     // to base64 using the following one-liner: `import base64; base64.b64encode(bytes([129, 0,
@@ -539,6 +557,47 @@ mod tests {
                     Signature::from_hex(
                         "02cdfa333c18893d9f36035a3b7702348acff0fd5a2ae9cbc0e48e59dd085581a6015\
                         9b7fccc54dd0fa9443d2e3573378d61ea16e659d16d0009a40b7750bcceae"
+                    )
+                    .unwrap()
+                );
+            }
+            Message::Payload(_) => {
+                panic!("did not expect modern handshake to deserialize to payload")
+            }
+        }
+    }
+
+    #[test]
+    fn current_handshake_decodes_from_historic_v1_4_3() {
+        let modern_handshake: Message<protocol::Message> = deserialize_message(V1_4_3_HANDSHAKE);
+
+        match modern_handshake {
+            Message::Handshake {
+                network_name,
+                public_addr,
+                protocol_version,
+                consensus_certificate,
+            } => {
+                assert_eq!(network_name, "example-handshake");
+                assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
+                assert_eq!(protocol_version, ProtocolVersion::from_parts(1, 4, 3));
+                let ConsensusCertificate {
+                    public_key,
+                    signature,
+                } = consensus_certificate.unwrap();
+
+                assert_eq!(
+                    public_key,
+                    PublicKey::from_hex(
+                        "020331efbf7cc3381515a7229f9c3e797030228caa189fb2a1028ade04e2970f74c5"
+                    )
+                    .unwrap()
+                );
+                assert_eq!(
+                    signature,
+                    Signature::from_hex(
+                        "027664866794bacce441392f432dba2de67da3ba785e59c9480f126794ed78b8e5299\
+                        9761c08158285580b4a67b7e343c228133c41d4250bf79d786d7c199ca977"
                     )
                     .unwrap()
                 );

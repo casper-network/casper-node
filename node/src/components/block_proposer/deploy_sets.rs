@@ -8,7 +8,7 @@ use datasize::DataSize;
 use itertools::{Either, Itertools};
 
 use super::{BlockHeight, CachedState, DeployInfo, FinalizationQueue};
-use crate::types::{DeployHash, DeployHeader, Timestamp};
+use crate::types::{Block, DeployHash, TimeDiff, Timestamp};
 
 pub(crate) struct PruneResult {
     pub(crate) total_pruned: usize,
@@ -33,15 +33,20 @@ pub(super) struct BlockProposerDeploySets {
     /// The collection of transfers pending for inclusion in a block, with a timestamp of when we
     /// received them.
     pub(super) pending_transfers: HashMap<DeployHash, (DeployInfo, Timestamp)>,
-    /// The deploys that have already been included in a finalized block.
-    pub(super) finalized_deploys: HashMap<DeployHash, DeployHeader>,
+    /// The deploys that have already been included in a finalized block, and their earliest known
+    /// expiry date.
+    pub(super) finalized_deploys: HashMap<DeployHash, Timestamp>,
+    /// The transfers that have already been included in a finalized block, and their earliest
+    /// known expiry date.
+    pub(super) finalized_transfers: HashMap<DeployHash, Timestamp>,
     /// The next block height we expect to be finalized.
     /// If we receive a notification of finalization of a later block, we will store it in
     /// finalization_queue.
     /// If we receive a request that contains a later next_finalized, we will store it in
     /// request_queue.
     pub(super) next_finalized: BlockHeight,
-    /// The queue of finalized block contents awaiting inclusion in `self.finalized_deploys`.
+    /// The queue of finalized block contents awaiting inclusion in `self.finalized_deploys` and
+    /// `self.finalized_transfers`.
     pub(super) finalization_queue: FinalizationQueue,
 }
 
@@ -49,23 +54,35 @@ impl BlockProposerDeploySets {
     /// Constructs the instance of `BlockProposerDeploySets` from the list of finalized deploys and
     /// the cached state.
     pub(super) fn new(
-        finalized_deploys: Vec<(DeployHash, DeployHeader)>,
+        finalized_blocks: Vec<Block>,
         next_finalized_height: u64,
         cached_state: CachedState,
+        max_ttl: TimeDiff,
     ) -> (BlockProposerDeploySets, PruneResult) {
-        let finalized_deploys: HashMap<_, _> = finalized_deploys.into_iter().collect();
+        let mut finalized_deploys = HashMap::<DeployHash, Timestamp>::new();
+        let mut finalized_transfers = HashMap::<DeployHash, Timestamp>::new();
+        for block in finalized_blocks {
+            let expiry = block.header().timestamp().saturating_add(max_ttl);
+            for hash in block.body().deploy_hashes() {
+                finalized_deploys.insert(*hash, expiry);
+            }
+            for hash in block.body().transfer_hashes() {
+                finalized_transfers.insert(*hash, expiry);
+            }
+        }
 
         let CachedState {
             mut pending_deploys,
             mut pending_transfers,
         } = cached_state;
         pending_deploys.retain(|hash, _| !finalized_deploys.contains_key(hash));
-        pending_transfers.retain(|hash, _| !finalized_deploys.contains_key(hash));
+        pending_transfers.retain(|hash, _| !finalized_transfers.contains_key(hash));
 
         let mut sets = BlockProposerDeploySets {
             pending_deploys,
             pending_transfers,
             finalized_deploys,
+            finalized_transfers,
             next_finalized: next_finalized_height,
             ..Default::default()
         };
@@ -79,18 +96,43 @@ impl BlockProposerDeploySets {
         let pending_deploys = prune_pending_deploys(&mut self.pending_deploys, current_instant);
         let pending_transfers = prune_pending_deploys(&mut self.pending_transfers, current_instant);
 
-        // We prune from finalized deploys collection because expired deploys
-        // can never be proposed again. This makes this collection smaller for
-        // later iterations.
-        let finalized = prune_deploys(&mut self.finalized_deploys, current_instant);
+        // We prune from finalized deploys and transfers collections because expired ones can never
+        // be proposed again. This makes the collections smaller for later iterations.
+        let finalized_deploys =
+            hashmap_drain_filter_in_place(&mut self.finalized_deploys, |expiry| {
+                *expiry < current_instant
+            });
+        let finalized_transfers =
+            hashmap_drain_filter_in_place(&mut self.finalized_transfers, |expiry| {
+                *expiry < current_instant
+            });
 
         // We return a total of pruned deploys, but for the deploys pruned
         // from the `finalized` collection we don't want to send
         // the expiration event.
         PruneResult::new(
-            pending_deploys.len() + pending_transfers.len() + finalized.len(),
+            pending_deploys.len()
+                + pending_transfers.len()
+                + finalized_deploys.len()
+                + finalized_transfers.len(),
             [pending_deploys, pending_transfers].concat(),
         )
+    }
+
+    /// Adds a finalized deploy hash.
+    pub(super) fn add_finalized_deploy(&mut self, hash: DeployHash, new_expiry: Timestamp) {
+        self.finalized_deploys
+            .entry(hash)
+            .and_modify(|expiry| *expiry = new_expiry.min(*expiry))
+            .or_insert(new_expiry);
+    }
+
+    /// Adds a finalized transfer hash.
+    pub(super) fn add_finalized_transfer(&mut self, hash: DeployHash, new_expiry: Timestamp) {
+        self.finalized_transfers
+            .entry(hash)
+            .and_modify(|expiry| *expiry = new_expiry.min(*expiry))
+            .or_insert(new_expiry);
     }
 }
 
@@ -100,7 +142,7 @@ impl Display for BlockProposerDeploySets {
             f,
             "(pending:{}, finalized:{})",
             self.pending_deploys.len() + self.pending_transfers.len(),
-            self.finalized_deploys.len()
+            self.finalized_deploys.len() + self.finalized_transfers.len(),
         )
     }
 }
@@ -122,15 +164,6 @@ where
         });
     hash_map.extend(retained);
     drained
-}
-
-/// Prunes expired deploy information from an individual deploy collection, returns the
-/// hashes of deploys pruned.
-fn prune_deploys(
-    deploys: &mut HashMap<DeployHash, DeployHeader>,
-    current_instant: Timestamp,
-) -> Vec<DeployHash> {
-    hashmap_drain_filter_in_place(deploys, |header| header.expired(current_instant))
 }
 
 /// Prunes expired deploy information from an individual pending deploy collection, returns the

@@ -42,8 +42,6 @@ http = "0.2.1"
 humantime = "2"
 hyper = "0.14.4"
 itertools = "0.10.0"
-jemalloc-ctl = "0.3.3"
-jemallocator = "0.3.2"
 k256 = { version = "0.7.2", features = ["arithmetic", "ecdsa", "sha256", "zeroize"] }
 libc = "0.2.66"
 linked-hash-map = "0.5.3"
@@ -75,6 +73,7 @@ serde_repr = "0.1.6"
 signal-hook = "0.3.4"
 signature = "1"
 smallvec = { version = "1", features = ["serde"] }
+stats_alloc = "0.1.8"
 static_assertions = "1"
 structopt = "0.3.14"
 sys-info = "0.8.0"
@@ -138,9 +137,9 @@ assets = [
 ]
 maintainer-scripts = "../resources/maintainer_scripts/debian"
 extended-description = """
-Package for Casper Node and Client.
+Package for Casper Node.
 
-For information on using package, see https://github.com/CasperLabs/casper-node
+For information on using package, see https://github.com/casper-network/casper-node
 """
 
 [package.metadata.deb.systemd-units]

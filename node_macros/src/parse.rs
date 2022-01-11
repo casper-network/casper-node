@@ -509,8 +509,8 @@ impl Debug for Target {
         match self {
             Target::Discard => write!(f, "#"),
             Target::Panic => write!(f, "!"),
-            Target::Dest(id) => write!(f, "{}", id.to_string()),
-            Target::Dispatch(id) => write!(f, "{}()", id.to_string()),
+            Target::Dest(id) => write!(f, "{}", id),
+            Target::Dispatch(id) => write!(f, "{}()", id),
         }
     }
 }

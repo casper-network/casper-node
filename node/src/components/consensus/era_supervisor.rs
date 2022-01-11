@@ -172,8 +172,7 @@ where
         let (secret_signing_key, public_signing_key) = config.load_keys(root)?;
         info!(our_id = %public_signing_key, "EraSupervisor pubkey",);
         let metrics =
-            Metrics::new(registry).expect("failure to setup and register ConsensusMetrics");
-
+            Metrics::new(registry).expect("failed to set up and register consensus metrics");
         #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
         let next_height = latest_block_header.height() + 1;
 
@@ -1098,11 +1097,6 @@ where
     /// Returns the most recent era.
     pub(crate) fn current_era(&self) -> EraId {
         self.current_era
-    }
-
-    /// Returns the list of validators who equivocated in this era.
-    pub(crate) fn validators_with_evidence(&self, era_id: EraId) -> Vec<&PublicKey> {
-        self.open_eras[&era_id].consensus.validators_with_evidence()
     }
 
     /// Returns this node's validator key.

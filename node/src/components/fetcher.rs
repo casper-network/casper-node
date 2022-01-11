@@ -29,10 +29,10 @@ use crate::{
     FetcherConfig, NodeRng,
 };
 
-use self::metrics::Metrics;
 use crate::effect::announcements::BlocklistAnnouncement;
 pub(crate) use config::Config;
 pub(crate) use event::{Event, FetchResult, FetchedData, FetcherError};
+use metrics::Metrics;
 
 /// A helper trait constraining `Fetcher` compatible reactor events.
 pub(crate) trait ReactorEventT<T>:

@@ -27,8 +27,8 @@ use casper_execution_engine::{
 };
 use casper_hashing::Digest;
 use casper_types::{
-    checksummed_hex, system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion,
-    PublicKey, StoredValue, Transfer, URef,
+    system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
+    StoredValue, Transfer, URef,
 };
 
 use crate::{
@@ -46,8 +46,8 @@ use crate::{
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
         Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload, BlockSignatures,
-        BlockWithMetadata, ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata,
-        FinalizedBlock, Item, NodeId, StatusFeed, TimeDiff,
+        BlockWithMetadata, ChainspecInfo, Deploy, DeployHash, DeployMetadata, FinalizedBlock, Item,
+        NodeId, StatusFeed, TimeDiff,
     },
     utils::{DisplayIter, Source},
 };
@@ -321,13 +321,13 @@ pub(crate) enum StorageRequest {
         /// Responder to call with the results.
         responder: Responder<Vec<Option<Deploy>>>,
     },
-    /// Retrieve deploys that are finalized and whose TTL hasn't expired yet.
-    GetFinalizedDeploys {
+    /// Retrieve finalized blocks that whose deploy TTL hasn't expired yet.
+    GetFinalizedBlocks {
         /// Maximum TTL of block we're interested in.
         /// I.e. we don't want deploys from blocks that are older than this.
         ttl: TimeDiff,
         /// Responder to call with the results.
-        responder: Responder<Vec<(DeployHash, DeployHeader)>>,
+        responder: Responder<Vec<Block>>,
     },
     /// Store execution results for a set of deploys of a single block.
     ///
@@ -450,8 +450,8 @@ impl Display for StorageRequest {
             StorageRequest::PutBlockSignatures { .. } => {
                 write!(formatter, "put finality signatures")
             }
-            StorageRequest::GetFinalizedDeploys { ttl, .. } => {
-                write!(formatter, "get finalized deploys, ttl: {:?}", ttl)
+            StorageRequest::GetFinalizedBlocks { ttl, .. } => {
+                write!(formatter, "get finalized blocks, ttl: {:?}", ttl)
             }
             StorageRequest::GetBlockHeaderAndSufficientFinalitySignaturesByHeight {
                 block_height,
@@ -510,12 +510,12 @@ impl Display for StateStoreRequest {
                 write!(
                     f,
                     "save data under {} ({} bytes)",
-                    checksummed_hex::encode(key),
+                    base16::encode_lower(key),
                     data.len()
                 )
             }
             StateStoreRequest::Load { key, .. } => {
-                write!(f, "load data from key {}", checksummed_hex::encode(key))
+                write!(f, "load data from key {}", base16::encode_lower(key))
             }
         }
     }
