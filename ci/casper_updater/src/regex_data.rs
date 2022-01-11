@@ -28,11 +28,6 @@ pub mod types {
     pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
         vec![
             DependentFile::new(
-                "client/Cargo.toml",
-                Regex::new(r#"(?m)(^casper-types = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
-                replacement,
-            ),
-            DependentFile::new(
                 "execution_engine/Cargo.toml",
                 Regex::new(r#"(?m)(^casper-types = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
                 replacement,
@@ -75,11 +70,6 @@ pub mod hashing {
     pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
         vec![
             DependentFile::new(
-                "client/Cargo.toml",
-                Regex::new(r#"(?m)(^casper-hashing = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
-                replacement,
-            ),
-            DependentFile::new(
                 "execution_engine/Cargo.toml",
                 Regex::new(r#"(?m)(^casper-hashing = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
                 replacement,
@@ -116,12 +106,6 @@ pub mod execution_engine {
 
     pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
         vec![
-                DependentFile::new(
-                    "client/Cargo.toml",
-                    Regex::new(r#"(?m)(^casper-execution-engine = \{[^\}]*version = )"(?:[^"]+)"#)
-                        .unwrap(),
-                    replacement,
-                ),
                 DependentFile::new(
                     "execution_engine_testing/test_support/Cargo.toml",
                     Regex::new(r#"(?m)(^casper-execution-engine = \{[^\}]*version = )"(?:[^"]+)"#)
@@ -181,11 +165,6 @@ pub mod node {
     pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
         vec![
             DependentFile::new(
-                "client/Cargo.toml",
-                Regex::new(r#"(?m)(^casper-node = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
-                replacement,
-            ),
-            DependentFile::new(
                 "node/Cargo.toml",
                 MANIFEST_VERSION_REGEX.clone(),
                 replacement,
@@ -199,18 +178,6 @@ pub mod node {
                 replacement_with_slash,
             ),
         ]
-    });
-}
-
-pub mod client {
-    use super::*;
-
-    pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
-        vec![DependentFile::new(
-            "client/Cargo.toml",
-            MANIFEST_VERSION_REGEX.clone(),
-            replacement,
-        )]
     });
 }
 

@@ -356,38 +356,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c4872d67bab6358e59559027aa3b9157c53d9358c51423c17554809a8858e0f8"
 
 [[package]]
-name = "casper-client"
-version = "1.4.3"
-dependencies = [
- "anyhow",
- "async-trait",
- "base16",
- "base64",
- "casper-execution-engine",
- "casper-hashing",
- "casper-node",
- "casper-types",
- "cbindgen",
- "clap 2.33.3",
- "futures",
- "humantime",
- "hyper",
- "jsonrpc-lite",
- "once_cell",
- "rand 0.8.4",
- "reqwest",
- "semver 0.11.0",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
- "tokio",
- "tower",
- "warp",
- "warp-json-rpc",
-]
-
-[[package]]
 name = "casper-contract"
 version = "1.4.3"
 dependencies = [
@@ -690,25 +658,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4c24dab4283a142afa2fdca129b80ad2c6284e073930f964c3a1293c225ee39a"
 dependencies = [
  "rustc_version 0.4.0",
-]
-
-[[package]]
-name = "cbindgen"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97449daf9b8c245bcad10bbc7c9f4a37c06172c18dd5f9fac340deefc309b957"
-dependencies = [
- "clap 2.33.3",
- "heck",
- "indexmap",
- "log",
- "proc-macro2",
- "quote",
- "serde",
- "serde_json",
- "syn",
- "tempfile",
- "toml",
 ]
 
 [[package]]
