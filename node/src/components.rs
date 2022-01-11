@@ -4,6 +4,7 @@
 //! Each component has a unified interface, expressed by the `Component` trait.
 pub(crate) mod block_proposer;
 pub(crate) mod block_validator;
+pub(crate) mod chain_synchronizer;
 pub(crate) mod chainspec_loader;
 pub(crate) mod consensus;
 pub mod contract_runtime;
@@ -12,7 +13,6 @@ pub(crate) mod event_stream_server;
 pub(crate) mod fetcher;
 pub(crate) mod gossiper;
 pub(crate) mod linear_chain;
-pub(crate) mod linear_chain_synchronizer;
 pub(crate) mod rest_server;
 pub mod rpc_server;
 // The `in_memory_network` is public for use in doctests.

@@ -22,6 +22,7 @@ use tracing::{debug, warn};
 use crate::testing::network::NetworkedReactor;
 use crate::{
     components::{
+        chain_synchronizer::{self, ChainSynchronizer, JoiningOutcome},
         chainspec_loader::{self, ChainspecLoader},
         contract_runtime::ContractRuntime,
         deploy_acceptor::{self, DeployAcceptor},
@@ -29,7 +30,6 @@ use crate::{
         event_stream_server::{DeployGetter, EventStreamServer},
         fetcher::{self, Fetcher},
         gossiper::{self, Gossiper},
-        linear_chain_synchronizer::{self, JoiningOutcome, LinearChainSynchronizer},
         metrics::Metrics,
         rest_server::{self, RestServer},
         small_network::{self, GossipedAddress, SmallNetwork, SmallNetworkIdentity},
@@ -76,9 +76,9 @@ use casper_types::{Key, StoredValue};
 #[derive(Debug, From, Serialize)]
 #[must_use]
 pub(crate) enum JoinerEvent {
-    /// Linear chain synchronizer event.
+    /// Chain synchronizer event.
     #[from]
-    LinearChainSynchronizer(linear_chain_synchronizer::Event),
+    ChainSynchronizer(chain_synchronizer::Event),
 
     /// Small Network event.
     #[from]
@@ -261,7 +261,7 @@ impl ReactorEvent for JoinerEvent {
     }
     fn description(&self) -> &'static str {
         match self {
-            JoinerEvent::LinearChainSynchronizer(_) => "LinearChainSynchronizer",
+            JoinerEvent::ChainSynchronizer(_) => "ChainSynchronizer",
             JoinerEvent::SmallNetwork(_) => "SmallNetwork",
             JoinerEvent::Storage(_) => "Storage",
             JoinerEvent::RestServer(_) => "RestServer",
@@ -332,8 +332,8 @@ impl From<RestRequest<NodeId>> for JoinerEvent {
 impl Display for JoinerEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            JoinerEvent::LinearChainSynchronizer(event) => {
-                write!(f, "linear chain sync: {}", event)
+            JoinerEvent::ChainSynchronizer(event) => {
+                write!(f, "chain synchronizer: {}", event)
             }
             JoinerEvent::SmallNetwork(event) => write!(f, "small network: {}", event),
             JoinerEvent::BlocklistAnnouncement(event) => {
@@ -431,7 +431,7 @@ pub(crate) struct Reactor {
     chainspec_loader: ChainspecLoader,
     storage: Storage,
     contract_runtime: ContractRuntime,
-    linear_chain_synchronizer: LinearChainSynchronizer,
+    chain_synchronizer: ChainSynchronizer,
     deploy_fetcher: Fetcher<Deploy>,
     block_by_hash_fetcher: Fetcher<Block>,
     block_by_height_fetcher: Fetcher<BlockWithMetadata>,
@@ -505,13 +505,13 @@ impl reactor::Reactor for Reactor {
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
 
         let effect_builder = EffectBuilder::new(event_queue);
-        let (linear_chain_synchronizer, sync_effects) = LinearChainSynchronizer::new(
+        let (chain_synchronizer, sync_effects) = ChainSynchronizer::new(
             Arc::clone(chainspec_loader.chainspec()),
             config.node.clone(),
             effect_builder,
         );
         effects.extend(reactor::wrap_effects(
-            JoinerEvent::LinearChainSynchronizer,
+            JoinerEvent::ChainSynchronizer,
             sync_effects,
         ));
 
@@ -563,7 +563,7 @@ impl reactor::Reactor for Reactor {
                 chainspec_loader,
                 storage,
                 contract_runtime,
-                linear_chain_synchronizer,
+                chain_synchronizer,
                 block_by_hash_fetcher,
                 trie_fetcher,
                 deploy_fetcher,
@@ -588,9 +588,9 @@ impl reactor::Reactor for Reactor {
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            JoinerEvent::LinearChainSynchronizer(event) => reactor::wrap_effects(
-                JoinerEvent::LinearChainSynchronizer,
-                self.linear_chain_synchronizer
+            JoinerEvent::ChainSynchronizer(event) => reactor::wrap_effects(
+                JoinerEvent::ChainSynchronizer,
+                self.chain_synchronizer
                     .handle_event(effect_builder, rng, event),
             ),
             JoinerEvent::SmallNetwork(event) => reactor::wrap_effects(
@@ -838,7 +838,7 @@ impl reactor::Reactor for Reactor {
     }
 
     fn maybe_exit(&self) -> Option<ReactorExit> {
-        self.linear_chain_synchronizer
+        self.chain_synchronizer
             .joining_outcome()
             .map(|outcome| match outcome {
                 JoiningOutcome::ShouldExitForUpgrade => {
@@ -930,7 +930,7 @@ impl Reactor {
     /// socket.
     pub(crate) async fn into_participating_config(self) -> Result<ParticipatingInitConfig, Error> {
         let joining_outcome = self
-            .linear_chain_synchronizer
+            .chain_synchronizer
             .into_joining_outcome()
             .ok_or(Error::InvalidJoiningOutcome)?;
         let config = ParticipatingInitConfig {

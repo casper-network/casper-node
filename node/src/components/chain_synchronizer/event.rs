@@ -14,7 +14,7 @@ use crate::{
 pub(crate) enum Event {
     /// The result of getting the highest block from storage.
     HighestBlockHash(Option<BlockHash>),
-    /// The result of the fast sync task.
+    /// The result of the sync task.
     SyncResult(Result<BlockHeader, Error>),
     /// The result of contract runtime running the genesis process.
     CommitGenesisResult(#[serde(skip_serializing)] Result<GenesisSuccess, engine_state::Error>),

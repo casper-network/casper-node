@@ -46,8 +46,8 @@ pub(crate) enum Error {
     #[error("bytesrepr error: {0}")]
     BytesRepr(bytesrepr::Error),
 
-    /// Joining outcome invalid or missing after running linear chain sync.
-    #[error("joining outcome invalid or missing after running linear chain sync")]
+    /// Joining outcome invalid or missing after running chain sync.
+    #[error("joining outcome invalid or missing after running chain synchronization")]
     InvalidJoiningOutcome,
 }
 

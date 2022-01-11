@@ -251,7 +251,7 @@ pub(crate) enum MessageKind {
     DeployTransfer,
     /// Blocks for finality signatures being transferred directly (via requests and other means).
     BlockTransfer,
-    /// Tries transferred, usually as part of fast syncing.
+    /// Tries transferred, usually as part of chain syncing.
     TrieTransfer,
     /// Any other kind of payload (or missing classification).
     Other,

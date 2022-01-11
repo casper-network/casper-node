@@ -19,10 +19,10 @@ use casper_types::{EraId, Key, PublicKey, StoredValue, U512};
 
 use crate::{
     components::{
+        chain_synchronizer::error::Error,
         consensus::{check_sufficient_finality_signatures, ChainspecConsensusExt},
         contract_runtime::ExecutionPreState,
         fetcher::{FetchResult, FetchedData, FetcherError},
-        linear_chain_synchronizer::error::Error,
     },
     effect::{requests::FetcherRequest, EffectBuilder},
     reactor::joiner::JoinerEvent,
@@ -74,7 +74,7 @@ where
                         ?id,
                         tag = ?T::TAG,
                         ?peer,
-                        "fast sync could not fetch; trying next peer",
+                        "chain sync could not fetch; trying next peer",
                     )
                 }
                 Err(FetcherError::TimedOut { .. }) => {
@@ -691,8 +691,8 @@ async fn archival_sync(
     Ok((trusted_key_block_info, most_recent_block.take_header()))
 }
 
-/// Runs the fast synchronization task.
-pub(super) async fn run_fast_sync_task(
+/// Runs the chain synchronization task.
+pub(super) async fn run_chain_sync_task(
     effect_builder: EffectBuilder<JoinerEvent>,
     trusted_hash: BlockHash,
     chainspec: Arc<Chainspec>,

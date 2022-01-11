@@ -44,7 +44,7 @@ pub(crate) enum JoiningOutcome {
 }
 
 #[derive(DataSize, Debug)]
-pub(crate) struct LinearChainSynchronizer {
+pub(crate) struct ChainSynchronizer {
     chainspec: Arc<Chainspec>,
     config: NodeConfig,
     /// This will be populated once the synchronizer has completed all work, indicating the joiner
@@ -53,13 +53,13 @@ pub(crate) struct LinearChainSynchronizer {
     joining_outcome: Option<JoiningOutcome>,
 }
 
-impl LinearChainSynchronizer {
+impl ChainSynchronizer {
     pub(crate) fn new(
         chainspec: Arc<Chainspec>,
         config: NodeConfig,
         effect_builder: EffectBuilder<JoinerEvent>,
     ) -> (Self, Effects<Event>) {
-        let synchronizer = LinearChainSynchronizer {
+        let synchronizer = ChainSynchronizer {
             chainspec,
             config,
             joining_outcome: None,
@@ -93,7 +93,7 @@ impl LinearChainSynchronizer {
         trusted_hash: BlockHash,
     ) -> Effects<Event> {
         info!(%trusted_hash, "synchronizing linear chain");
-        operations::run_fast_sync_task(
+        operations::run_chain_sync_task(
             effect_builder,
             trusted_hash,
             Arc::clone(&self.chainspec),
@@ -373,7 +373,7 @@ impl LinearChainSynchronizer {
     }
 }
 
-impl Component<JoinerEvent> for LinearChainSynchronizer {
+impl Component<JoinerEvent> for ChainSynchronizer {
     type Event = Event;
     type ConstructionError = Infallible;
 

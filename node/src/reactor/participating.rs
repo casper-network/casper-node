@@ -28,6 +28,7 @@ use crate::{
     components::{
         block_proposer::{self, BlockProposer},
         block_validator::{self, BlockValidator},
+        chain_synchronizer::JoiningOutcome,
         chainspec_loader::{self, ChainspecLoader},
         consensus::{self, EraSupervisor, HighwayProtocol},
         contract_runtime::{BlockAndExecutionEffects, ContractRuntime, ExecutionPreState},
@@ -36,7 +37,6 @@ use crate::{
         fetcher::{self, FetchedOrNotFound, Fetcher},
         gossiper::{self, Gossiper},
         linear_chain::{self, LinearChainComponent},
-        linear_chain_synchronizer::JoiningOutcome,
         metrics::Metrics,
         rest_server::{self, RestServer},
         rpc_server::{self, RpcServer},
