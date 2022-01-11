@@ -9,7 +9,7 @@ use casper_execution_engine::{
     core::{
         engine_state::{
             EngineConfig, Error as CoreError, DEFAULT_MAX_QUERY_DEPTH,
-            WASMLESS_TRANSFER_FIXED_GAS_PRICE,
+            DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT, WASMLESS_TRANSFER_FIXED_GAS_PRICE,
         },
         execution::Error as ExecError,
     },
@@ -530,10 +530,10 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
     builder.exec(no_wasm_transfer_request);
 
     let result = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("Expected to be called after run()")
         .get(0)
+        .cloned()
         .expect("Unable to get first deploy result");
 
     assert!(result.is_failure(), "was expected to fail");
@@ -778,7 +778,7 @@ fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
 
     builder.exec(no_wasm_transfer_request_2).commit();
 
-    let exec_result = &builder.get_exec_results().last().unwrap()[0];
+    let exec_result = &builder.get_last_exec_results().unwrap()[0];
     let error = exec_result
         .as_error()
         .unwrap_or_else(|| panic!("should have error {:?}", exec_result));
@@ -930,7 +930,7 @@ fn transfer_wasmless_should_fail_with_secondary_purse_insufficient_funds() {
 
     builder.exec(no_wasm_transfer_request_1).commit();
 
-    let exec_result = &builder.get_exec_results().last().unwrap()[0];
+    let exec_result = &builder.get_last_exec_results().unwrap()[0];
     let error = exec_result.as_error().expect("should have error");
     assert!(
         matches!(error, CoreError::InsufficientPayment),
@@ -972,6 +972,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
     let new_engine_config = EngineConfig::new(
         DEFAULT_MAX_QUERY_DEPTH,
         new_max_associated_keys,
+        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         WasmConfig::default(),
         new_system_config,
     );

@@ -5,7 +5,6 @@ use std::{
 };
 
 use lmdb::DatabaseFlags;
-use num_rational::Ratio;
 
 use casper_execution_engine::{
     core::engine_state::{EngineConfig, EngineState},
@@ -20,6 +19,9 @@ use casper_node::{
     types::{Deploy, DeployHash},
     StorageConfig, WithDir,
 };
+use num_rational::Ratio;
+use tracing::info;
+
 use casper_types::ProtocolVersion;
 
 use crate::DEFAULT_MAX_READERS;
@@ -94,7 +96,7 @@ pub fn create_execution_engine(
     manual_sync_enabled: bool,
 ) -> Result<(Arc<EngineState<LmdbGlobalState>>, Arc<LmdbEnvironment>), anyhow::Error> {
     if !ee_lmdb_path.as_ref().exists() {
-        println!(
+        info!(
             "creating new lmdb data dir {}",
             ee_lmdb_path.as_ref().display()
         );

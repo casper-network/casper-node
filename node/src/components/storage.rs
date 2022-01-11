@@ -94,8 +94,8 @@ use crate::{
     types::{
         error::BlockValidationError, Block, BlockBody, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, Deploy, DeployHash,
-        DeployHeader, DeployMetadata, HashingAlgorithmVersion, Item, MerkleBlockBody,
-        MerkleBlockBodyPart, MerkleLinkedListNode, NodeId, TimeDiff,
+        DeployMetadata, HashingAlgorithmVersion, Item, MerkleBlockBody, MerkleBlockBodyPart,
+        MerkleLinkedListNode, NodeId, TimeDiff,
     },
     utils::{display_error, WithDir},
     NodeRng,
@@ -1088,8 +1088,8 @@ impl Storage {
                     self.get_finality_signatures(&mut self.env.begin_ro_txn()?, &block_hash)?;
                 responder.respond(result).ignore()
             }
-            StorageRequest::GetFinalizedDeploys { ttl, responder } => {
-                responder.respond(self.get_finalized_deploys(ttl)?).ignore()
+            StorageRequest::GetFinalizedBlocks { ttl, responder } => {
+                responder.respond(self.get_finalized_blocks(ttl)?).ignore()
             }
             StorageRequest::GetBlockHeaderAndSufficientFinalitySignaturesByHeight {
                 block_height,
@@ -1352,42 +1352,12 @@ impl Storage {
         Ok(blocks)
     }
 
-    /// Returns the vector of deploys whose TTL hasn't expired yet.
-    fn get_finalized_deploys(
-        &self,
-        ttl: TimeDiff,
-    ) -> Result<Vec<(DeployHash, DeployHeader)>, FatalStorageError> {
+    /// Returns the vector of blocks that could still have deploys whose TTL hasn't expired yet.
+    fn get_finalized_blocks(&self, ttl: TimeDiff) -> Result<Vec<Block>, FatalStorageError> {
         let mut txn = self.env.begin_ro_txn()?;
         // We're interested in deploys whose TTL hasn't expired yet.
-        let ttl_expired = |block: &Block| block.timestamp().elapsed() < ttl;
-        let mut deploys = Vec::new();
-        for block in self.get_blocks_while(&mut txn, ttl_expired)? {
-            for deploy_hash in block
-                .body()
-                .deploy_hashes()
-                .iter()
-                .chain(block.body().transfer_hashes())
-            {
-                let deploy_header = match self.get_deploy_header(&mut txn, deploy_hash)? {
-                    Some(deploy_header) => deploy_header,
-                    None => {
-                        let deploy_hash = deploy_hash.to_owned();
-                        return Err(FatalStorageError::NonExistentDeploy {
-                            block: Box::new(block),
-                            deploy_hash,
-                        });
-                    }
-                };
-                // If block's deploy has already expired, ignore it.
-                // It may happen that deploy was not expired at the time of proposing a block but it
-                // is now.
-                if deploy_header.timestamp().elapsed() > ttl {
-                    continue;
-                }
-                deploys.push((*deploy_hash, deploy_header));
-            }
-        }
-        Ok(deploys)
+        let ttl_not_expired = |block: &Block| block.timestamp().elapsed() < ttl;
+        self.get_blocks_while(&mut txn, ttl_not_expired)
     }
 
     /// Retrieves the state root hashes from storage to check the integrity of the trie store.
@@ -1582,16 +1552,6 @@ impl Storage {
             .iter()
             .map(|deploy_hash| tx.get_value(self.deploy_db, deploy_hash))
             .collect()
-    }
-
-    /// Returns the deploy's header.
-    fn get_deploy_header<Tx: Transaction>(
-        &self,
-        txn: &mut Tx,
-        deploy_hash: &DeployHash,
-    ) -> Result<Option<DeployHeader>, LmdbExtError> {
-        let maybe_deploy: Option<Deploy> = txn.get_value(self.deploy_db, deploy_hash)?;
-        Ok(maybe_deploy.map(|deploy| deploy.header().clone()))
     }
 
     /// Retrieves deploy metadata associated with deploy.
@@ -2352,7 +2312,7 @@ fn initialize_block_body_v2_db(
                 None => {
                     // get_single_block_body_v2 returning an Ok(None) means we have an
                     // incomplete block body - this doesn't have to indicate an error, it may
-                    // be caused by fast sync not downloading the whole body, but only a part
+                    // be caused by chain sync not downloading the whole body, but only a part
                     // of it - log it and skip the check
                     info!(?block_body_hash, "incomplete block body found");
                 }

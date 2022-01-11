@@ -200,6 +200,7 @@ impl Display for FromStrError {
 /// A (labelled) "user group". Each method of a versioned contract may be
 /// associated with one or more user groups which are allowed to call it.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Group(String);
 
@@ -253,6 +254,7 @@ pub type ProtocolVersionMajor = u32;
 
 /// Major element of `ProtocolVersion` combined with `ContractVersion`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ContractVersionKey(ProtocolVersionMajor, ContractVersion);
 
 impl ContractVersionKey {
@@ -354,7 +356,7 @@ impl ContractHash {
         format!(
             "{}{}",
             CONTRACT_STRING_PREFIX,
-            checksummed_hex::encode(&self.0),
+            base16::encode_lower(&self.0),
         )
     }
 
@@ -371,13 +373,13 @@ impl ContractHash {
 
 impl Display for ContractHash {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", checksummed_hex::encode(&self.0))
+        write!(f, "{}", base16::encode_lower(&self.0))
     }
 }
 
 impl Debug for ContractHash {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
-        write!(f, "ContractHash({})", checksummed_hex::encode(&self.0))
+        write!(f, "ContractHash({})", base16::encode_lower(&self.0))
     }
 }
 
@@ -503,11 +505,7 @@ impl ContractPackageHash {
 
     /// Formats the `ContractPackageHash` for users getting and putting.
     pub fn to_formatted_string(self) -> String {
-        format!(
-            "{}{}",
-            PACKAGE_STRING_PREFIX,
-            checksummed_hex::encode(&self.0),
-        )
+        format!("{}{}", PACKAGE_STRING_PREFIX, base16::encode_lower(&self.0),)
     }
 
     /// Parses a string formatted as per `Self::to_formatted_string()` into a
@@ -523,17 +521,13 @@ impl ContractPackageHash {
 
 impl Display for ContractPackageHash {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", checksummed_hex::encode(&self.0))
+        write!(f, "{}", base16::encode_lower(&self.0))
     }
 }
 
 impl Debug for ContractPackageHash {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
-        write!(
-            f,
-            "ContractPackageHash({})",
-            checksummed_hex::encode(&self.0)
-        )
+        write!(f, "ContractPackageHash({})", base16::encode_lower(&self.0))
     }
 }
 
@@ -639,6 +633,7 @@ impl JsonSchema for ContractPackageHash {
 
 /// A enum to determine the lock status of the contract package.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub enum ContractPackageStatus {
     /// The package is locked and cannot be versioned.
     Locked,
@@ -699,6 +694,7 @@ impl FromBytes for ContractPackageStatus {
 
 /// Contract definition, metadata, and security container.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ContractPackage {
     /// Key used to add or disable versions
     access_key: URef,
@@ -936,6 +932,7 @@ pub type EntryPointsMap = BTreeMap<String, EntryPoint>;
 
 /// Collection of named entry points
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct EntryPoints(EntryPointsMap);
 
 impl Default for EntryPoints {
@@ -1015,6 +1012,7 @@ pub type NamedKeys = BTreeMap<String, Key>;
 
 /// Methods and type signatures supported by a contract.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct Contract {
     contract_package_hash: ContractPackageHash,
     contract_wasm_hash: ContractWasmHash,
@@ -1196,6 +1194,7 @@ impl Default for Contract {
 /// Context of method execution
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum EntryPointType {
     /// Runs as session code
@@ -1245,6 +1244,7 @@ pub type Parameters = Vec<Parameter>;
 /// Type signature of a method. Order of arguments matter since can be
 /// referenced by index as well as name.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct EntryPoint {
     name: String,
@@ -1385,6 +1385,7 @@ impl FromBytes for EntryPoint {
 /// Enum describing the possible access control options for a contract entry
 /// point (method).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum EntryPointAccess {
     /// Anyone can call this method (no access controls).
@@ -1461,6 +1462,7 @@ impl FromBytes for EntryPointAccess {
 
 /// Parameter to a method
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Parameter {
     name: String,

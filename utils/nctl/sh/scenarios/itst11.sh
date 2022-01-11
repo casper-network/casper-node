@@ -36,7 +36,7 @@ function main() {
     # ... doppels=ignore: doppelganger purposely created in this test
     # ... equivocators=ignore: doppelganger can cause an equivocation
     source "$NCTL"/sh/scenarios/common/health_checks.sh \
-            errors=1 \
+            errors='ignore' \
             equivocators='ignore' \
             doppels='ignore' \
             crashes=0 \

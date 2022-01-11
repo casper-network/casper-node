@@ -52,7 +52,7 @@ impl AccountHash {
         format!(
             "{}{}",
             ACCOUNT_HASH_FORMATTED_STRING_PREFIX,
-            checksummed_hex::encode(&self.0),
+            base16::encode_lower(&self.0),
         )
     }
 
@@ -105,8 +105,7 @@ impl JsonSchema for AccountHash {
     fn json_schema(gen: &mut SchemaGenerator) -> Schema {
         let schema = gen.subschema_for::<String>();
         let mut schema_object = schema.into_object();
-        schema_object.metadata().description =
-            Some("Checksummed hex-encoded account hash.".to_string());
+        schema_object.metadata().description = Some("Hex-encoded account hash.".to_string());
         schema_object.into()
     }
 }
@@ -161,13 +160,13 @@ impl From<&PublicKey> for AccountHash {
 
 impl Display for AccountHash {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", checksummed_hex::encode(&self.0))
+        write!(f, "{}", base16::encode_lower(&self.0))
     }
 }
 
 impl Debug for AccountHash {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
-        write!(f, "AccountHash({})", checksummed_hex::encode(&self.0))
+        write!(f, "AccountHash({})", base16::encode_lower(&self.0))
     }
 }
 

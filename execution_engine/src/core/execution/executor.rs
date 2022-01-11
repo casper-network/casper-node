@@ -8,7 +8,7 @@ use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::FromBytes,
     contracts::NamedKeys,
-    system::{auction, handle_payment, mint, CallStackElement, AUCTION, HANDLE_PAYMENT, MINT},
+    system::{auction, handle_payment, mint, AUCTION, HANDLE_PAYMENT, MINT},
     BlockTime, CLTyped, CLValue, ContractPackage, DeployHash, EntryPoint, EntryPointType, Gas, Key,
     Phase, ProtocolVersion, RuntimeArgs, StoredValue,
 };
@@ -17,7 +17,7 @@ use crate::{
     core::{
         engine_state::{execution_result::ExecutionResult, EngineConfig},
         execution::{address_generator::AddressGenerator, Error},
-        runtime::{extract_access_rights_from_keys, instance_and_memory, Runtime},
+        runtime::{extract_access_rights_from_keys, instance_and_memory, Runtime, RuntimeStack},
         runtime_context::{self, RuntimeContext},
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
@@ -107,7 +107,7 @@ impl Executor {
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
         contract_package: &ContractPackage,
-        call_stack: Vec<CallStackElement>,
+        stack: RuntimeStack,
     ) -> ExecutionResult
     where
         R: StateReader<Key, StoredValue>,
@@ -160,7 +160,7 @@ impl Executor {
             transfers,
         );
 
-        let mut runtime = Runtime::new(self.config, memory, module, context, call_stack);
+        let mut runtime = Runtime::new(self.config, memory, module, context, stack);
 
         let accounts_access_rights = {
             let keys: Vec<Key> = account.named_keys().values().cloned().collect();
@@ -173,7 +173,7 @@ impl Executor {
             |uref| runtime_context::uref_has_access_rights(uref, &accounts_access_rights)
         ));
 
-        let call_stack = runtime.call_stack().to_owned();
+        let stack = runtime.stack().clone();
 
         if runtime.is_mint(base_key) {
             match runtime.call_host_mint(
@@ -182,7 +182,7 @@ impl Executor {
                 &mut runtime.context().named_keys().to_owned(),
                 &args,
                 Default::default(),
-                call_stack,
+                stack,
             ) {
                 Ok(_value) => {
                     return ExecutionResult::Success {
@@ -207,7 +207,7 @@ impl Executor {
                 &mut runtime.context().named_keys().to_owned(),
                 &args,
                 Default::default(),
-                call_stack,
+                stack,
             ) {
                 Ok(_value) => {
                     return ExecutionResult::Success {
@@ -232,7 +232,7 @@ impl Executor {
                 &mut runtime.context().named_keys().to_owned(),
                 &args,
                 Default::default(),
-                call_stack,
+                stack,
             ) {
                 Ok(_value) => {
                     return ExecutionResult::Success {
@@ -281,7 +281,7 @@ impl Executor {
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
-        call_stack: Vec<CallStackElement>,
+        stack: RuntimeStack,
     ) -> ExecutionResult
     where
         R: StateReader<Key, StoredValue>,
@@ -310,7 +310,7 @@ impl Executor {
             correlation_id,
             Rc::clone(&tracking_copy),
             phase,
-            call_stack,
+            stack,
         ) {
             Ok((_instance, runtime)) => runtime,
             Err(error) => {
@@ -363,7 +363,7 @@ impl Executor {
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
-        call_stack: Vec<CallStackElement>,
+        stack: RuntimeStack,
     ) -> (Option<T>, ExecutionResult)
     where
         R: StateReader<Key, StoredValue>,
@@ -462,7 +462,7 @@ impl Executor {
             correlation_id,
             tracking_copy,
             phase,
-            call_stack,
+            stack,
         ) {
             Ok((instance, runtime)) => (instance, runtime),
             Err(error) => {
@@ -506,7 +506,7 @@ impl Executor {
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
-        call_stack: Vec<CallStackElement>,
+        stack: RuntimeStack,
     ) -> Result<T, Error>
     where
         R: StateReader<Key, StoredValue>,
@@ -533,7 +533,7 @@ impl Executor {
             correlation_id,
             tracking_copy,
             phase,
-            call_stack,
+            stack,
         )?;
 
         let error: wasmi::Error = match instance.invoke_export(entry_point_name, &[], &mut runtime)
@@ -593,7 +593,7 @@ impl Executor {
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
-        call_stack: Vec<CallStackElement>,
+        stack: RuntimeStack,
     ) -> Result<(ModuleRef, Runtime<'a, R>), Error>
     where
         R: StateReader<Key, StoredValue>,
@@ -632,7 +632,7 @@ impl Executor {
         let (instance, memory) =
             instance_and_memory(module.clone(), protocol_version, self.config.wasm_config())?;
 
-        let runtime = Runtime::new(self.config, memory, module, runtime_context, call_stack);
+        let runtime = Runtime::new(self.config, memory, module, runtime_context, stack);
 
         Ok((instance, runtime))
     }
@@ -688,7 +688,7 @@ impl DirectSystemContractCall {
     {
         let entry_point_name = self.entry_point_name();
 
-        let call_stack = runtime.call_stack().to_owned();
+        let stack = runtime.stack().clone();
 
         let result = match self {
             DirectSystemContractCall::Slash
@@ -699,7 +699,7 @@ impl DirectSystemContractCall {
                 named_keys,
                 runtime_args,
                 extra_keys,
-                call_stack,
+                stack,
             ),
             DirectSystemContractCall::FinalizePayment => runtime.call_host_handle_payment(
                 protocol_version,
@@ -707,7 +707,7 @@ impl DirectSystemContractCall {
                 named_keys,
                 runtime_args,
                 extra_keys,
-                call_stack,
+                stack,
             ),
             DirectSystemContractCall::CreatePurse | DirectSystemContractCall::Transfer => runtime
                 .call_host_mint(
@@ -716,7 +716,7 @@ impl DirectSystemContractCall {
                     named_keys,
                     runtime_args,
                     extra_keys,
-                    call_stack,
+                    stack,
                 ),
             DirectSystemContractCall::GetEraValidators => runtime.call_host_auction(
                 protocol_version,
@@ -724,7 +724,7 @@ impl DirectSystemContractCall {
                 named_keys,
                 runtime_args,
                 extra_keys,
-                call_stack,
+                stack,
             ),
 
             DirectSystemContractCall::GetPaymentPurse => runtime.call_host_handle_payment(
@@ -733,7 +733,7 @@ impl DirectSystemContractCall {
                 named_keys,
                 runtime_args,
                 extra_keys,
-                call_stack,
+                stack,
             ),
         };
 

@@ -3,6 +3,8 @@
 
 use alloc::vec::Vec;
 
+#[cfg(feature = "datasize")]
+use datasize::DataSize;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -14,6 +16,7 @@ use crate::{
 
 /// Unbonding purse.
 #[derive(PartialEq, Eq, Debug, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct UnbondingPurse {

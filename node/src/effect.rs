@@ -82,15 +82,18 @@ use tracing::{debug, error, warn};
 
 use casper_execution_engine::{
     core::engine_state::{
-        self, era_validators::GetEraValidatorsError, BalanceRequest, BalanceResult, GetBidsRequest,
-        GetBidsResult, QueryRequest, QueryResult,
+        self, era_validators::GetEraValidatorsError, genesis::GenesisSuccess, BalanceRequest,
+        BalanceResult, GetBidsRequest, GetBidsResult, QueryRequest, QueryResult, UpgradeConfig,
+        UpgradeSuccess,
     },
+    shared::execution_journal::ExecutionJournal,
     storage::trie::Trie,
 };
 use casper_hashing::Digest;
 use casper_types::{
     account::Account, system::auction::EraValidators, Contract, ContractPackage, EraId,
-    ExecutionResult, Key, ProtocolVersion, PublicKey, StoredValue, Transfer, URef, U512,
+    ExecutionEffect, ExecutionResult, Key, ProtocolVersion, PublicKey, StoredValue, Transfer, URef,
+    U512,
 };
 
 use crate::{
@@ -108,25 +111,21 @@ use crate::{
     reactor::{EventQueueHandle, QueueKind},
     types::{
         Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload, BlockSignatures,
-        BlockWithMetadata, ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata,
-        FinalitySignature, FinalizedBlock, Item, NodeId, TimeDiff, Timestamp,
+        BlockWithMetadata, Chainspec, ChainspecInfo, Deploy, DeployHash, DeployHeader,
+        DeployMetadata, FinalitySignature, FinalizedBlock, Item, NodeId, TimeDiff, Timestamp,
     },
     utils::{SharedFlag, Source},
 };
 use announcements::{
-    ChainspecLoaderAnnouncement, ConsensusAnnouncement, ControlAnnouncement,
+    BlockProposerAnnouncement, BlocklistAnnouncement, ChainspecLoaderAnnouncement,
+    ConsensusAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
     DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
     RpcServerAnnouncement,
 };
 use requests::{
-    BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
-    ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
-    NetworkRequest, StorageRequest,
-};
-
-use self::{
-    announcements::{BlockProposerAnnouncement, BlocklistAnnouncement},
-    requests::{BeginGossipRequest, StateStoreRequest},
+    BeginGossipRequest, BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest,
+    ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
+    MetricsRequest, NetworkInfoRequest, NetworkRequest, StateStoreRequest, StorageRequest,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -427,14 +426,6 @@ impl<REv> EffectBuilder<REv> {
         EffectBuilder { event_queue }
     }
 
-    /// Schedules a regular event.
-    pub(crate) async fn schedule_regular<E>(self, event: E)
-    where
-        REv: From<E>,
-    {
-        self.event_queue.schedule(event, QueueKind::Regular).await
-    }
-
     /// Extract the event queue handle out of the effect builder.
     #[cfg(test)]
     pub(crate) fn into_inner(self) -> EventQueueHandle<REv> {
@@ -733,7 +724,7 @@ impl<REv> EffectBuilder<REv> {
         )
     }
 
-    /// Announce upgrade activation point read.
+    /// Announces upgrade activation point read.
     pub(crate) async fn announce_upgrade_activation_point_read(self, next_upgrade: NextUpgrade)
     where
         REv: From<ChainspecLoaderAnnouncement>,
@@ -741,6 +732,63 @@ impl<REv> EffectBuilder<REv> {
         self.event_queue
             .schedule(
                 ChainspecLoaderAnnouncement::UpgradeActivationPointRead(next_upgrade),
+                QueueKind::Regular,
+            )
+            .await
+    }
+
+    /// Announces a committed Step success.
+    pub(crate) async fn announce_commit_step_success(
+        self,
+        era_id: EraId,
+        execution_journal: ExecutionJournal,
+    ) where
+        REv: From<ContractRuntimeAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                ContractRuntimeAnnouncement::CommitStepSuccess {
+                    era_id,
+                    execution_effect: ExecutionEffect::from(&execution_journal),
+                },
+                QueueKind::Regular,
+            )
+            .await
+    }
+
+    /// Announces a new block has been created.
+    pub(crate) async fn announce_new_linear_chain_block(
+        self,
+        block: Box<Block>,
+        execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
+    ) where
+        REv: From<ContractRuntimeAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                ContractRuntimeAnnouncement::LinearChainBlock {
+                    block,
+                    execution_results,
+                },
+                QueueKind::Regular,
+            )
+            .await
+    }
+
+    /// Announces validators for upcoming era.
+    pub(crate) async fn announce_upcoming_era_validators(
+        self,
+        era_that_is_ending: EraId,
+        upcoming_era_validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
+    ) where
+        REv: From<ContractRuntimeAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                ContractRuntimeAnnouncement::UpcomingEraValidators {
+                    era_that_is_ending,
+                    upcoming_era_validators,
+                },
                 QueueKind::Regular,
             )
             .await
@@ -1341,6 +1389,42 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
+    /// Runs the genesis process on the contract runtime.
+    pub(crate) async fn commit_genesis(
+        self,
+        chainspec: Arc<Chainspec>,
+    ) -> Result<GenesisSuccess, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::CommitGenesis {
+                chainspec,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Runs the upgrade process on the contract runtime.
+    pub(crate) async fn upgrade_contract_runtime(
+        self,
+        upgrade_config: Box<UpgradeConfig>,
+    ) -> Result<UpgradeSuccess, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::Upgrade {
+                upgrade_config,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Gets the requested chainspec info from the chainspec loader.
     pub(crate) async fn get_chainspec_info(self) -> ChainspecInfo
     where
@@ -1362,16 +1446,16 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Retrieves finalized deploys from blocks that were created more recently than the TTL.
-    pub(crate) async fn get_finalized_deploys(
-        self,
-        ttl: TimeDiff,
-    ) -> Vec<(DeployHash, DeployHeader)>
+    /// Retrieves finalized blocks with timestamps no older than the maximum deploy TTL.
+    ///
+    /// These blocks contain all deploy and transfer hashes that are known to be finalized but
+    /// may not have expired yet.
+    pub(crate) async fn get_finalized_blocks(self, ttl: TimeDiff) -> Vec<Block>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            move |responder| StorageRequest::GetFinalizedDeploys { ttl, responder },
+            move |responder| StorageRequest::GetFinalizedBlocks { ttl, responder },
             QueueKind::Regular,
         )
         .await

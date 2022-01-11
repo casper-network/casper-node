@@ -20,15 +20,17 @@ use casper_execution_engine::{
         self,
         balance::{BalanceRequest, BalanceResult},
         era_validators::GetEraValidatorsError,
+        genesis::GenesisSuccess,
         get_bids::{GetBidsRequest, GetBidsResult},
         query::{QueryRequest, QueryResult},
+        UpgradeConfig, UpgradeSuccess,
     },
     storage::trie::Trie,
 };
 use casper_hashing::Digest;
 use casper_types::{
-    checksummed_hex, system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion,
-    PublicKey, StoredValue, Transfer, URef,
+    system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
+    StoredValue, Transfer, URef,
 };
 
 use crate::{
@@ -46,7 +48,7 @@ use crate::{
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
         Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload, BlockSignatures,
-        BlockWithMetadata, ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata,
+        BlockWithMetadata, Chainspec, ChainspecInfo, Deploy, DeployHash, DeployMetadata,
         FinalizedBlock, Item, NodeId, StatusFeed, TimeDiff,
     },
     utils::{DisplayIter, Source},
@@ -321,13 +323,13 @@ pub(crate) enum StorageRequest {
         /// Responder to call with the results.
         responder: Responder<Vec<Option<Deploy>>>,
     },
-    /// Retrieve deploys that are finalized and whose TTL hasn't expired yet.
-    GetFinalizedDeploys {
+    /// Retrieve finalized blocks that whose deploy TTL hasn't expired yet.
+    GetFinalizedBlocks {
         /// Maximum TTL of block we're interested in.
         /// I.e. we don't want deploys from blocks that are older than this.
         ttl: TimeDiff,
         /// Responder to call with the results.
-        responder: Responder<Vec<(DeployHash, DeployHeader)>>,
+        responder: Responder<Vec<Block>>,
     },
     /// Store execution results for a set of deploys of a single block.
     ///
@@ -450,8 +452,8 @@ impl Display for StorageRequest {
             StorageRequest::PutBlockSignatures { .. } => {
                 write!(formatter, "put finality signatures")
             }
-            StorageRequest::GetFinalizedDeploys { ttl, .. } => {
-                write!(formatter, "get finalized deploys, ttl: {:?}", ttl)
+            StorageRequest::GetFinalizedBlocks { ttl, .. } => {
+                write!(formatter, "get finalized blocks, ttl: {:?}", ttl)
             }
             StorageRequest::GetBlockHeaderAndSufficientFinalitySignaturesByHeight {
                 block_height,
@@ -510,12 +512,12 @@ impl Display for StateStoreRequest {
                 write!(
                     f,
                     "save data under {} ({} bytes)",
-                    checksummed_hex::encode(key),
+                    base16::encode_lower(key),
                     data.len()
                 )
             }
             StateStoreRequest::Load { key, .. } => {
-                write!(f, "load data from key {}", checksummed_hex::encode(key))
+                write!(f, "load data from key {}", base16::encode_lower(key))
             }
         }
     }
@@ -750,6 +752,21 @@ pub(crate) enum ContractRuntimeRequest {
         /// The transfers for that `FinalizedBlock`
         transfers: Vec<Deploy>,
     },
+    /// Commit genesis chainspec.
+    CommitGenesis {
+        /// The chainspec.
+        chainspec: Arc<Chainspec>,
+        /// Responder to call with the result.
+        responder: Responder<Result<GenesisSuccess, engine_state::Error>>,
+    },
+    /// A request to run upgrade.
+    Upgrade {
+        /// Upgrade config.
+        #[serde(skip_serializing)]
+        upgrade_config: Box<UpgradeConfig>,
+        /// Responder to call with the upgrade result.
+        responder: Responder<Result<UpgradeSuccess, engine_state::Error>>,
+    },
     /// A query request.
     Query {
         /// Query request.
@@ -846,6 +863,18 @@ impl Display for ContractRuntimeRequest {
                 transfers: _,
             } => {
                 write!(formatter, "finalized_block: {}", finalized_block)
+            }
+
+            ContractRuntimeRequest::CommitGenesis { chainspec, .. } => {
+                write!(
+                    formatter,
+                    "commit genesis {}",
+                    chainspec.protocol_config.version
+                )
+            }
+
+            ContractRuntimeRequest::Upgrade { upgrade_config, .. } => {
+                write!(formatter, "upgrade request: {:?}", upgrade_config)
             }
 
             ContractRuntimeRequest::Query { query_request, .. } => {

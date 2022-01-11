@@ -399,7 +399,7 @@ fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
     // We need the block to be of an era > 0.
     let block = {
         let era_id = EraId::from(harness.rng.gen_range(1..6));
-        let height = harness.rng.gen_range(0..10);
+        let height = harness.rng.gen_range(1..10);
         let is_switch = harness.rng.gen_bool(0.1);
         Block::random_with_specifics(
             &mut harness.rng,

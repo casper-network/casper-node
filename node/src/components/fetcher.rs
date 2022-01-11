@@ -32,7 +32,7 @@ use crate::{
 use crate::effect::announcements::BlocklistAnnouncement;
 pub(crate) use config::Config;
 pub(crate) use event::{Event, FetchResult, FetchedData, FetcherError};
-use metrics::FetcherMetrics;
+use metrics::Metrics;
 
 /// A helper trait constraining `Fetcher` compatible reactor events.
 pub(crate) trait ReactorEventT<T>:
@@ -106,7 +106,7 @@ pub(crate) trait ItemFetcher<T: Item + 'static> {
 
     fn responders(&mut self) -> &mut HashMap<T::Id, HashMap<NodeId, Vec<FetchResponder<T>>>>;
 
-    fn metrics(&mut self) -> &FetcherMetrics;
+    fn metrics(&mut self) -> &Metrics;
 
     fn peer_timeout(&self) -> Duration;
 
@@ -259,7 +259,7 @@ where
     get_from_peer_timeout: Duration,
     responders: HashMap<T::Id, HashMap<NodeId, Vec<FetchResponder<T>>>>,
     #[data_size(skip)]
-    metrics: FetcherMetrics,
+    metrics: Metrics,
 }
 
 impl<T: Item> Fetcher<T> {
@@ -271,7 +271,7 @@ impl<T: Item> Fetcher<T> {
         Ok(Fetcher {
             get_from_peer_timeout: config.get_from_peer_timeout().into(),
             responders: HashMap::new(),
-            metrics: FetcherMetrics::new(name, registry)?,
+            metrics: Metrics::new(name, registry)?,
         })
     }
 }
@@ -285,7 +285,7 @@ impl ItemFetcher<Deploy> for Fetcher<Deploy> {
         &mut self.responders
     }
 
-    fn metrics(&mut self) -> &FetcherMetrics {
+    fn metrics(&mut self) -> &Metrics {
         &self.metrics
     }
 
@@ -319,7 +319,7 @@ impl ItemFetcher<Block> for Fetcher<Block> {
         &mut self.responders
     }
 
-    fn metrics(&mut self) -> &FetcherMetrics {
+    fn metrics(&mut self) -> &Metrics {
         &self.metrics
     }
 
@@ -352,7 +352,7 @@ impl ItemFetcher<BlockWithMetadata> for Fetcher<BlockWithMetadata> {
         &mut self.responders
     }
 
-    fn metrics(&mut self) -> &FetcherMetrics {
+    fn metrics(&mut self) -> &Metrics {
         &self.metrics
     }
 
@@ -385,7 +385,7 @@ impl ItemFetcher<BlockHeaderWithMetadata> for Fetcher<BlockHeaderWithMetadata> {
         &mut self.responders
     }
 
-    fn metrics(&mut self) -> &FetcherMetrics {
+    fn metrics(&mut self) -> &Metrics {
         &self.metrics
     }
 
@@ -420,7 +420,7 @@ impl ItemFetcher<GlobalStorageTrie> for Fetcher<GlobalStorageTrie> {
         &mut self.responders
     }
 
-    fn metrics(&mut self) -> &FetcherMetrics {
+    fn metrics(&mut self) -> &Metrics {
         &self.metrics
     }
 
@@ -461,7 +461,7 @@ impl ItemFetcher<BlockHeader> for Fetcher<BlockHeader> {
         &mut self.responders
     }
 
-    fn metrics(&mut self) -> &FetcherMetrics {
+    fn metrics(&mut self) -> &Metrics {
         &self.metrics
     }
 
