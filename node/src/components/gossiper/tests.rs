@@ -59,7 +59,6 @@ use crate::{
 };
 
 const MAX_ASSOCIATED_KEYS: u32 = 100;
-const MERKLE_TREE_HASH_ACTIVATION: u64 = 1;
 
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
@@ -208,6 +207,9 @@ impl reactor::Reactor for Reactor {
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let network = NetworkController::create_node(event_queue, rng);
 
+        // `merkle_tree_hash_activation` can be chosen arbitrarily
+        let merkle_tree_hash_activation = rng.gen();
+
         let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
         let storage = Storage::new(
@@ -218,7 +220,7 @@ impl reactor::Reactor for Reactor {
             "test",
             Ratio::new(1, 3),
             None,
-            MERKLE_TREE_HASH_ACTIVATION.into(),
+            merkle_tree_hash_activation,
         )
         .unwrap();
 
@@ -232,7 +234,7 @@ impl reactor::Reactor for Reactor {
             MAX_ASSOCIATED_KEYS,
             DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
             registry,
-            MERKLE_TREE_HASH_ACTIVATION.into(),
+            merkle_tree_hash_activation,
         )
         .unwrap();
 
