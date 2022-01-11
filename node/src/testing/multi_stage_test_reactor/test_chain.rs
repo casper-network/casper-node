@@ -383,7 +383,7 @@ async fn test_joiner_at_genesis() {
     );
 
     // Get the first switch block hash
-    // As part of the fast sync process, we will need to retrieve the first switch block
+    // As part of the chain sync process, we will need to retrieve the first switch block
     let start_era = 2;
     let _ = await_switch_block(start_era, &mut chain.network, &mut rng).await;
 
@@ -443,7 +443,7 @@ async fn test_archival_sync() {
     );
 
     // Get the first switch block hash
-    // As part of the fast sync process, we will need to retrieve the first switch block
+    // As part of the chain sync process, we will need to retrieve the first switch block
     let switch_block_hash = await_switch_block(1, &mut chain.network, &mut rng)
         .await
         .hash();
@@ -542,7 +542,7 @@ async fn test_joiner() {
     );
 
     // Get the first switch block hash
-    // As part of the fast sync process, we will need to retrieve the first switch block
+    // As part of the chain sync process, we will need to retrieve the first switch block
     let switch_block_hash = await_switch_block(1, &mut chain.network, &mut rng)
         .await
         .hash();

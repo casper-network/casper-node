@@ -153,14 +153,14 @@ pub fn execute_finalized_block(
                         .cloned()
                 },
             );
-    let block = Block::new(
+    let block = Box::new(Block::new(
         parent_hash,
         parent_seed,
         state_root_hash,
         finalized_block,
         next_era_validator_weights,
         protocol_version,
-    )?;
+    )?);
 
     Ok(BlockAndExecutionEffects {
         block,

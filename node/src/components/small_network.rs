@@ -91,11 +91,10 @@ pub(crate) use self::{
     gossiped_address::GossipedAddress,
     message::{FromIncoming, Message, MessageKind, Payload, PayloadWeights},
 };
-use super::{consensus, contract_runtime::ContractRuntimeAnnouncement};
 use crate::{
-    components::Component,
+    components::{consensus, Component},
     effect::{
-        announcements::BlocklistAnnouncement,
+        announcements::{BlocklistAnnouncement, ContractRuntimeAnnouncement},
         requests::{BeginGossipRequest, NetworkInfoRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
@@ -883,8 +882,8 @@ where
                 }
             }
             Event::ContractRuntimeAnnouncement(
-                ContractRuntimeAnnouncement::LinearChainBlock(_)
-                | ContractRuntimeAnnouncement::StepSuccess { .. },
+                ContractRuntimeAnnouncement::LinearChainBlock { .. }
+                | ContractRuntimeAnnouncement::CommitStepSuccess { .. },
             ) => Effects::new(),
             Event::ContractRuntimeAnnouncement(
                 ContractRuntimeAnnouncement::UpcomingEraValidators {

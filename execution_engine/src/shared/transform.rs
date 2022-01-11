@@ -7,6 +7,7 @@ use std::{
     ops::{Add, AddAssign},
 };
 
+use datasize::DataSize;
 use num::traits::{AsPrimitive, WrappingAdd};
 
 use casper_types::{
@@ -57,7 +58,7 @@ impl From<CLValueError> for Error {
 /// Note that all arithmetic variants of [`Transform`] are commutative which means that a given
 /// collection of them can be executed in any order to produce the same end result.
 #[allow(clippy::large_enum_variant)]
-#[derive(PartialEq, Eq, Debug, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone, DataSize)]
 pub enum Transform {
     /// An identity transformation that does not modify a value in the global state.
     ///
@@ -85,6 +86,7 @@ pub enum Transform {
     /// This transform assumes that the existing stored value is either an Account or a Contract.
     AddKeys(NamedKeys),
     /// Represents the case where applying a transform would cause an error.
+    #[data_size(skip)]
     Failure(Error),
 }
 
