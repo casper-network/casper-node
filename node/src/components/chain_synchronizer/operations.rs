@@ -200,6 +200,16 @@ async fn get_trusted_key_block_info(
             block_header_with_future_version: Box::new(trusted_header.clone()),
         });
     }
+    // If the trusted block's version is older than ours we also return an error, except if we are
+    // at the current activation point, i.e. at an upgrade.
+    if trusted_header.protocol_version() < chainspec.protocol_config.version
+        && trusted_header.next_block_era_id() != chainspec.protocol_config.activation_point.era_id()
+    {
+        return Err(Error::TrustedBlockHasOldVersion {
+            current_version: chainspec.protocol_config.version,
+            block_header_with_old_version: Box::new(trusted_header.clone()),
+        });
+    }
 
     // Fetch each parent hash one by one until we have the switch block info
     // This will crash if we try to get the parent hash of genesis, which is the default [0u8; 32]
@@ -223,7 +233,7 @@ async fn get_trusted_key_block_info(
         if let Some(key_block_info) =
             KeyBlockInfo::maybe_from_block_header(&current_header_to_walk_back_from)
         {
-            check_block_version(trusted_header, &key_block_info, chainspec)?;
+            check_block_version(trusted_header, chainspec)?;
             break Ok(key_block_info);
         }
 
@@ -376,35 +386,20 @@ where
         });
     }
 
-    check_block_version(item.header(), trusted_key_block_info, chainspec)?;
+    check_block_version(item.header(), chainspec)?;
 
     Ok(Some(item))
 }
 
 /// Compares the block's version with the current and parent version and returns an error if it is
 /// too new or old.
-fn check_block_version(
-    header: &BlockHeader,
-    trusted_key_block_info: &KeyBlockInfo,
-    chainspec: &Chainspec,
-) -> Result<(), Error> {
+fn check_block_version(header: &BlockHeader, chainspec: &Chainspec) -> Result<(), Error> {
     let current_version = chainspec.protocol_config.version;
 
     if header.protocol_version() > current_version {
         return Err(Error::RetrievedBlockHeaderFromFutureVersion {
             current_version,
             block_header_with_future_version: Box::new(header.clone()),
-        });
-    }
-
-    if is_current_era(header, trusted_key_block_info, chainspec)
-        && header.protocol_version() < current_version
-        && (header.next_block_era_id() != chainspec.protocol_config.activation_point.era_id()
-            || !header.is_switch_block())
-    {
-        return Err(Error::CurrentBlockHeaderHasOldVersion {
-            current_version,
-            block_header_with_old_version: Box::new(header.clone()),
         });
     }
 
@@ -1057,21 +1052,17 @@ mod tests {
         let mut chainspec = Chainspec::from_resources("local");
         let v1_2_0 = ProtocolVersion::from_parts(1, 2, 0);
         let v1_3_0 = ProtocolVersion::from_parts(1, 3, 0);
-        let v1_4_0 = ProtocolVersion::from_parts(1, 4, 0);
 
-        let key_block =
-            Block::random_with_specifics(&mut rng, EraId::from(5), 100, v1_2_0, true).take_header();
-        let key_block_info = KeyBlockInfo::maybe_from_block_header(&key_block).unwrap();
         let header = Block::random_with_specifics(&mut rng, EraId::from(6), 101, v1_3_0, false)
             .take_header();
 
         // The new block's protocol version is the current one, 1.3.0.
         chainspec.protocol_config.version = v1_3_0;
-        check_block_version(&header, &key_block_info, &chainspec).expect("versions are valid");
+        check_block_version(&header, &chainspec).expect("versions are valid");
 
         // If the current version is only 1.2.0 but the block's is 1.3.0, we have to upgrade.
         chainspec.protocol_config.version = v1_2_0;
-        match check_block_version(&header, &key_block_info, &chainspec) {
+        match check_block_version(&header, &chainspec) {
             Err(Error::RetrievedBlockHeaderFromFutureVersion {
                 current_version,
                 block_header_with_future_version,
@@ -1081,31 +1072,5 @@ mod tests {
             }
             result => panic!("expected future block version error, got {:?}", result),
         }
-
-        // If the current version is 1.4.0 but the current block's is 1.3.0, we have to downgrade.
-        chainspec.protocol_config.version = v1_4_0;
-        match check_block_version(&header, &key_block_info, &chainspec) {
-            Err(Error::CurrentBlockHeaderHasOldVersion {
-                current_version,
-                block_header_with_old_version,
-            }) => {
-                assert_eq!(v1_4_0, current_version);
-                assert_eq!(header, *block_header_with_old_version);
-            }
-            result => panic!("expected old block version error, got {:?}", result),
-        }
-
-        // If the block is the last one of its era, we don't know whether it's the current block,
-        // so we don't necessarily need to downgrade.
-        let key_block =
-            Block::random_with_specifics(&mut rng, EraId::from(5), 100, v1_2_0, true).take_header();
-        let key_block_info = KeyBlockInfo::maybe_from_block_header(&key_block).unwrap();
-        let last_block_height = key_block.height() + chainspec.core_config.minimum_era_height;
-        let header =
-            Block::random_with_specifics(&mut rng, EraId::from(6), last_block_height, v1_3_0, true)
-                .take_header();
-        chainspec.core_config.era_duration = 0.into();
-        chainspec.protocol_config.version = v1_4_0;
-        check_block_version(&header, &key_block_info, &chainspec).expect("versions are valid");
     }
 }
