@@ -962,9 +962,11 @@ fn is_current_era_given_current_timestamp(
 mod tests {
     use std::iter;
 
-    use super::*;
+    use rand::Rng;
 
     use casper_types::{EraId, ProtocolVersion, PublicKey, SecretKey};
+
+    use super::*;
 
     use crate::{
         components::consensus::EraReport,
@@ -974,8 +976,6 @@ mod tests {
         utils::Loadable,
     };
 
-    const MERKLE_TREE_HASH_ACTIVATION: u64 = 1;
-
     /// Creates a block for testing, with the given data, and returns its header.
     ///
     /// The other fields are filled in with defaults, since they are not used in these tests.
@@ -984,6 +984,7 @@ mod tests {
         era_id: EraId,
         height: u64,
         switch_block: bool,
+        merkle_tree_hash_activation: EraId,
     ) -> BlockHeader {
         let secret_key = SecretKey::doc_example();
         let public_key = PublicKey::from(secret_key);
@@ -1011,6 +1012,7 @@ mod tests {
             height,
             public_key,
         );
+
         Block::new(
             Default::default(), // parent block hash
             Default::default(), // parent random seed
@@ -1018,7 +1020,7 @@ mod tests {
             finalized_block,
             next_era_validator_weights,
             Default::default(), // protocol version
-            MERKLE_TREE_HASH_ACTIVATION.into(),
+            merkle_tree_hash_activation,
         )
         .expect("failed to create block for tests")
         .take_header()
@@ -1026,6 +1028,7 @@ mod tests {
 
     #[test]
     fn test_is_current_era() {
+        let mut rng = TestRng::new();
         let mut chainspec = Chainspec::from_resources("local");
 
         let genesis_time = chainspec
@@ -1041,20 +1044,34 @@ mod tests {
         chainspec.core_config.era_duration = era_duration;
         chainspec.core_config.minimum_era_height = minimum_era_height;
 
+        // `merkle_tree_hash_activation` can be chosen arbitrarily
+        let merkle_tree_hash_activation = EraId::from(rng.gen::<u64>());
+
         // We assume era 6 started after six minimum era durations, at block 100.
         let era6_start = genesis_time + era_duration * 6;
-        let switch_block5 = create_block(era6_start, EraId::from(5), 100, true);
-        let trusted_switch_block_info5 = KeyBlockInfo::maybe_from_block_header(
-            &switch_block5,
-            MERKLE_TREE_HASH_ACTIVATION.into(),
-        )
-        .expect("no switch block info for switch block");
+        let switch_block5 = create_block(
+            era6_start,
+            EraId::from(5),
+            100,
+            true,
+            merkle_tree_hash_activation,
+        );
+
+        let trusted_switch_block_info5 =
+            KeyBlockInfo::maybe_from_block_header(&switch_block5, merkle_tree_hash_activation)
+                .expect("no switch block info for switch block");
 
         // If we are still within the minimum era duration the era is current, even if we have the
         // required number of blocks (115 - 100 > 10).
         let block_time = era6_start + era_duration - 10.into();
         let now = block_time + 5.into();
-        let block = create_block(block_time, EraId::from(6), 115, false);
+        let block = create_block(
+            block_time,
+            EraId::from(6),
+            115,
+            false,
+            merkle_tree_hash_activation,
+        );
         assert!(is_current_era_given_current_timestamp(
             &block,
             &trusted_switch_block_info5,
@@ -1067,7 +1084,13 @@ mod tests {
         // passed.
         let block_time = era6_start + era_duration * 2;
         let now = block_time + min_round_length * 4;
-        let block = create_block(block_time, EraId::from(6), 105, false);
+        let block = create_block(
+            block_time,
+            EraId::from(6),
+            105,
+            false,
+            merkle_tree_hash_activation,
+        );
         assert!(is_current_era_given_current_timestamp(
             &block,
             &trusted_switch_block_info5,
@@ -1078,7 +1101,13 @@ mod tests {
         // If both criteria are satisfied, the era could have ended.
         let block_time = era6_start + era_duration * 2;
         let now = block_time + min_round_length * 5;
-        let block = create_block(block_time, EraId::from(6), 105, false);
+        let block = create_block(
+            block_time,
+            EraId::from(6),
+            105,
+            false,
+            merkle_tree_hash_activation,
+        );
         assert!(!is_current_era_given_current_timestamp(
             &block,
             &trusted_switch_block_info5,
@@ -1095,13 +1124,29 @@ mod tests {
         let v1_3_0 = ProtocolVersion::from_parts(1, 3, 0);
         let v1_4_0 = ProtocolVersion::from_parts(1, 4, 0);
 
-        let key_block =
-            Block::random_with_specifics(&mut rng, EraId::from(5), 100, v1_2_0, true).take_header();
+        // `merkle_tree_hash_activation` can be chosen arbitrarily
+        let merkle_tree_hash_activation = EraId::from(rng.gen::<u64>());
+
+        let key_block = Block::random_with_specifics_1(
+            &mut rng,
+            EraId::from(5),
+            100,
+            v1_2_0,
+            true,
+            merkle_tree_hash_activation,
+        )
+        .take_header();
         let key_block_info =
-            KeyBlockInfo::maybe_from_block_header(&key_block, MERKLE_TREE_HASH_ACTIVATION.into())
-                .unwrap();
-        let header = Block::random_with_specifics(&mut rng, EraId::from(6), 101, v1_3_0, false)
-            .take_header();
+            KeyBlockInfo::maybe_from_block_header(&key_block, merkle_tree_hash_activation).unwrap();
+        let header = Block::random_with_specifics_1(
+            &mut rng,
+            EraId::from(6),
+            101,
+            v1_3_0,
+            false,
+            merkle_tree_hash_activation,
+        )
+        .take_header();
 
         // The new block's protocol version is the current one, 1.3.0.
         chainspec.protocol_config.version = v1_3_0;
@@ -1135,15 +1180,27 @@ mod tests {
 
         // If the block is the last one of its era, we don't know whether it's the current block,
         // so we don't necessarily need to downgrade.
-        let key_block =
-            Block::random_with_specifics(&mut rng, EraId::from(5), 100, v1_2_0, true).take_header();
+        let key_block = Block::random_with_specifics_1(
+            &mut rng,
+            EraId::from(5),
+            100,
+            v1_2_0,
+            true,
+            merkle_tree_hash_activation,
+        )
+        .take_header();
         let key_block_info =
-            KeyBlockInfo::maybe_from_block_header(&key_block, MERKLE_TREE_HASH_ACTIVATION.into())
-                .unwrap();
+            KeyBlockInfo::maybe_from_block_header(&key_block, merkle_tree_hash_activation).unwrap();
         let last_block_height = key_block.height() + chainspec.core_config.minimum_era_height;
-        let header =
-            Block::random_with_specifics(&mut rng, EraId::from(6), last_block_height, v1_3_0, true)
-                .take_header();
+        let header = Block::random_with_specifics_1(
+            &mut rng,
+            EraId::from(6),
+            last_block_height,
+            v1_3_0,
+            true,
+            merkle_tree_hash_activation,
+        )
+        .take_header();
         chainspec.core_config.era_duration = 0.into();
         chainspec.protocol_config.version = v1_4_0;
         check_block_version(&header, &key_block_info, &chainspec).expect("versions are valid");
