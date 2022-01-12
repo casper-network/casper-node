@@ -336,7 +336,7 @@ mod tests {
     // greater than the chunk limit.
     fn create_test_pairs_with_large_data() -> [TestPair; 2] {
         let val = CLValue::from_t(
-            String::from_utf8(vec![b'a'; ChunkWithProof::CHUNK_SIZE_BYTES * 2]).unwrap(),
+            String::from_utf8(vec![b'a'; ChunkWithProof::CHUNK_SIZE_BYTES * 5]).unwrap(),
         )
         .unwrap();
         [
@@ -505,8 +505,8 @@ mod tests {
         // Expect `Trie` with NodePointer when asking with a root hash.
         let trie = state
             .get_trie(correlation_id, TrieOrChunkId(0, root_hash))
-            .unwrap()
-            .unwrap();
+            .expect("should get trie correctly")
+            .expect("should be Some()");
         assert!(matches!(trie, TrieOrChunk::Trie(_)));
 
         // Expect another `Trie` with two LeafPointers.
@@ -515,20 +515,57 @@ mod tests {
                 correlation_id,
                 TrieOrChunkId(0, extract_next_hash_from_trie(trie)),
             )
-            .unwrap()
-            .unwrap();
+            .expect("should get trie correctly")
+            .expect("should be Some()");
         assert!(matches!(trie, TrieOrChunk::Trie(_)));
 
         // Now, the next hash will point to the actual leaf, which as we expect
         // contains large data, so we expect to get `ChunkWithProof`.
-        let chunked_data = state
-            .get_trie(
-                correlation_id,
-                TrieOrChunkId(0, extract_next_hash_from_trie(trie)),
-            )
-            .unwrap()
-            .unwrap();
-        assert!(matches!(chunked_data, TrieOrChunk::ChunkWithProof(_)));
+        let hash = extract_next_hash_from_trie(trie);
+        let chunk = match state
+            .get_trie(correlation_id, TrieOrChunkId(0, hash))
+            .expect("should get trie correctly")
+            .expect("should be Some()")
+        {
+            TrieOrChunk::ChunkWithProof(chunk) => chunk,
+            other => panic!("expected ChunkWithProof, got {:?}", other),
+        };
+
+        // try to read all the chunks
+        let count = chunk.proof().count();
+        let mut chunks = vec![chunk];
+        for i in 1..count {
+            let chunk = match state
+                .get_trie(correlation_id, TrieOrChunkId(i, hash))
+                .expect("should get trie correctly")
+                .expect("should be Some()")
+            {
+                TrieOrChunk::ChunkWithProof(chunk) => chunk,
+                other => panic!("expected ChunkWithProof, got {:?}", other),
+            };
+            chunks.push(chunk);
+        }
+
+        // there should be no chunk with index `count`
+        assert!(matches!(
+            state.get_trie(correlation_id, TrieOrChunkId(count, hash)),
+            Err(error::Error::ChunkWithProofError)
+        ));
+
+        // all chunks should be valid
+        assert!(chunks.iter().all(|chunk| chunk.verify()));
+
+        let data: Vec<u8> = chunks
+            .iter()
+            .flat_map(|chunk| chunk.chunk())
+            .copied()
+            .collect();
+
+        let trie: Trie<Key, StoredValue> =
+            bytesrepr::deserialize(data).expect("trie should deserialize correctly");
+
+        // should be deserialized to a leaf
+        assert!(matches!(trie, Trie::Leaf { .. }));
     }
 
     fn extract_next_hash_from_trie(trie: TrieOrChunk) -> Digest {
