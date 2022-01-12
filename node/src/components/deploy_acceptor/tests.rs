@@ -687,7 +687,12 @@ async fn run_deploy_acceptor_without_timeout(
     let mut runner: Runner<ConditionCheckReactor<Reactor>> =
         Runner::new(test_scenario, &mut rng).await.unwrap();
 
-    let block = Box::new(Block::random(&mut rng));
+    let chainspec = Chainspec::from_resources("local");
+
+    let block = Box::new(Block::random_with_merkle_tree_hash_activation(
+        &mut rng,
+        chainspec.protocol_config.merkle_tree_hash_activation,
+    ));
     // Create a responder to assert that the block was successfully injected into storage.
     let (block_sender, block_receiver) = oneshot::channel();
     let block_responder = Responder::without_shutdown(block_sender);

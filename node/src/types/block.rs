@@ -1496,6 +1496,29 @@ impl Block {
         )
     }
 
+    /// Generates a random instance using a `TestRng` with the specified
+    /// `merkle_tree_hash_activation`
+    #[cfg(test)]
+    pub fn random_with_merkle_tree_hash_activation(
+        rng: &mut TestRng,
+        merkle_tree_hash_activation: EraId,
+    ) -> Self {
+        const MAX_ERA: u64 = 6;
+
+        let era = rng.gen_range(0..MAX_ERA);
+        let height = era * 10 + rng.gen_range(0..10);
+        let is_switch = rng.gen_bool(0.1);
+
+        Block::random_with_specifics_1(
+            rng,
+            EraId::from(era),
+            height,
+            ProtocolVersion::V1_0_0,
+            is_switch,
+            merkle_tree_hash_activation,
+        )
+    }
+
     /// Generates random instance that is guaranteed to be using
     /// the legacy hashing scheme. Apart from the Block itself
     /// it also returns the EraId used as merkle_tree_hash_activation.
