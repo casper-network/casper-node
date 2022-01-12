@@ -1,4 +1,11 @@
-use std::{collections::HashMap, ops::Deref, sync::Arc};
+use std::{
+    collections::HashMap,
+    mem,
+    ops::Deref,
+    sync::{Arc, RwLock},
+};
+
+use tracing::error;
 
 use casper_hashing::{ChunkWithProof, Digest};
 use casper_types::{bytesrepr, Key, StoredValue};
@@ -7,16 +14,10 @@ use crate::{
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
     storage::{
         error,
-        global_state::{
-            commit, put_stored_values, scratch::ScratchGlobalState, CommitProvider, StateProvider,
-            StateReader,
-        },
+        global_state::{CommitError, CommitProvider, StateProvider, StateReader},
         store::Store,
         transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
-        trie::{
-            merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie, TrieOrChunk,
-            TrieOrChunkId,
-        },
+        trie::{merkle_proof::TrieMerkleProof, Trie, TrieOrChunk, TrieOrChunkId},
         trie_store::{
             lmdb::LmdbTrieStore,
             operations::{
@@ -26,8 +27,36 @@ use crate::{
     },
 };
 
+type SharedCache = Arc<RwLock<Cache>>;
+
+struct Cache {
+    stored_values: HashMap<Key, StoredValue>,
+}
+
+impl Cache {
+    fn new() -> Self {
+        Cache {
+            stored_values: HashMap::new(),
+        }
+    }
+
+    fn insert(&mut self, key: Key, value: StoredValue) {
+        self.stored_values.insert(key, value);
+    }
+
+    fn get(&self, key: &Key) -> Option<&StoredValue> {
+        self.stored_values.get(key)
+    }
+
+    fn into_inner(self) -> HashMap<Key, StoredValue> {
+        self.stored_values
+    }
+}
+
 /// Global state implemented against LMDB as a backing data store.
-pub struct LmdbGlobalState {
+pub struct ScratchGlobalState {
+    /// Underlying, cached stored values.
+    cache: SharedCache,
     /// Environment for LMDB.
     pub(crate) environment: Arc<LmdbEnvironment>,
     /// Trie store held within LMDB.
@@ -38,32 +67,17 @@ pub struct LmdbGlobalState {
 }
 
 /// Represents a "view" of global state at a particular root hash.
-pub struct LmdbGlobalStateView {
+pub struct ScratchGlobalStateView {
+    cache: SharedCache,
     /// Environment for LMDB.
     pub(crate) environment: Arc<LmdbEnvironment>,
     /// Trie store held within LMDB.
-    pub(crate) store: Arc<LmdbTrieStore>,
+    pub(crate) trie_store: Arc<LmdbTrieStore>,
     /// Root hash of this "view".
     pub(crate) root_hash: Digest,
 }
 
-impl LmdbGlobalState {
-    /// Creates an empty state from an existing environment and trie_store.
-    pub fn empty(
-        environment: Arc<LmdbEnvironment>,
-        trie_store: Arc<LmdbTrieStore>,
-    ) -> Result<Self, error::Error> {
-        let root_hash: Digest = {
-            let (root_hash, root) = create_hashed_empty_trie::<Key, StoredValue>()?;
-            let mut txn = environment.create_read_write_txn()?;
-            trie_store.put(&mut txn, &root_hash, &root)?;
-            txn.commit()?;
-            environment.env().sync(true)?;
-            root_hash
-        };
-        Ok(LmdbGlobalState::new(environment, trie_store, root_hash))
-    }
-
+impl ScratchGlobalState {
     /// Creates a state from an existing environment, store, and root_hash.
     /// Intended to be used for testing.
     pub fn new(
@@ -71,41 +85,22 @@ impl LmdbGlobalState {
         trie_store: Arc<LmdbTrieStore>,
         empty_root_hash: Digest,
     ) -> Self {
-        LmdbGlobalState {
+        ScratchGlobalState {
+            cache: Arc::new(RwLock::new(Cache::new())),
             environment,
             trie_store,
             empty_root_hash,
         }
     }
 
-    /// Creates an in-memory cache for changes written.
-    pub fn create_scratch(&self) -> ScratchGlobalState {
-        ScratchGlobalState::new(
-            Arc::clone(&self.environment),
-            Arc::clone(&self.trie_store),
-            self.empty_root_hash,
-        )
-    }
-
-    /// Write stored values to LMDB.
-    pub fn put_stored_values(
-        &self,
-        correlation_id: CorrelationId,
-        prestate_hash: Digest,
-        stored_values: HashMap<Key, StoredValue>,
-    ) -> Result<Digest, error::Error> {
-        put_stored_values::<LmdbEnvironment, LmdbTrieStore, error::Error>(
-            &self.environment,
-            &self.trie_store,
-            correlation_id,
-            prestate_hash,
-            stored_values,
-        )
-        .map_err(Into::into)
+    /// Consume self and return inner cache.
+    pub fn into_inner(self) -> HashMap<Key, StoredValue> {
+        let cache = mem::replace(&mut *self.cache.write().unwrap(), Cache::new());
+        cache.into_inner()
     }
 }
 
-impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
+impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
     type Error = error::Error;
 
     fn read(
@@ -113,17 +108,23 @@ impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
         correlation_id: CorrelationId,
         key: &Key,
     ) -> Result<Option<StoredValue>, Self::Error> {
+        if let Some(value) = self.cache.read().unwrap().get(key) {
+            return Ok(Some(value.clone()));
+        }
         let txn = self.environment.create_read_txn()?;
         let ret = match read::<Key, StoredValue, lmdb::RoTransaction, LmdbTrieStore, Self::Error>(
             correlation_id,
             &txn,
-            self.store.deref(),
+            self.trie_store.deref(),
             &self.root_hash,
             key,
         )? {
-            ReadResult::Found(value) => Some(value),
+            ReadResult::Found(value) => {
+                self.cache.write().unwrap().insert(*key, value.clone());
+                Some(value)
+            }
             ReadResult::NotFound => None,
-            ReadResult::RootNotFound => panic!("LmdbGlobalState has invalid root"),
+            ReadResult::RootNotFound => panic!("ScratchGlobalState has invalid root"),
         };
         txn.commit()?;
         Ok(ret)
@@ -144,13 +145,13 @@ impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
         >(
             correlation_id,
             &txn,
-            self.store.deref(),
+            self.trie_store.deref(),
             &self.root_hash,
             key,
         )? {
             ReadResult::Found(value) => Some(value),
             ReadResult::NotFound => None,
-            ReadResult::RootNotFound => panic!("LmdbGlobalState has invalid root"),
+            ReadResult::RootNotFound => panic!("LmdbWithCacheGlobalState has invalid root"),
         };
         txn.commit()?;
         Ok(ret)
@@ -165,7 +166,7 @@ impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
         let keys_iter = keys_with_prefix::<Key, StoredValue, _, _>(
             correlation_id,
             &txn,
-            self.store.deref(),
+            self.trie_store.deref(),
             &self.root_hash,
             prefix,
         );
@@ -181,35 +182,88 @@ impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
     }
 }
 
-impl CommitProvider for LmdbGlobalState {
+impl CommitProvider for ScratchGlobalState {
+    /// State hash returned is the one provided, as we do not write to lmdb with this kind of global
+    /// state. Note that the state hash is NOT used, and simply passed back to the caller.
     fn commit(
         &self,
         correlation_id: CorrelationId,
-        prestate_hash: Digest,
+        state_hash: Digest,
         effects: AdditiveMap<Key, Transform>,
     ) -> Result<Digest, Self::Error> {
-        commit::<LmdbEnvironment, LmdbTrieStore, _, Self::Error>(
-            &self.environment,
-            &self.trie_store,
-            correlation_id,
-            prestate_hash,
-            effects,
-        )
-        .map_err(Into::into)
+        for (key, transform) in effects.into_iter() {
+            let cached_value = self.cache.read().unwrap().get(&key).cloned();
+            let value = match (cached_value, transform) {
+                (None, Transform::Write(new_value)) => new_value,
+                (None, transform) => {
+                    // It might be the case that for `Add*` operations we don't have the previous
+                    // value in cache yet.
+                    let txn = self.environment.create_read_txn()?;
+                    let updated_value = match read::<
+                        Key,
+                        StoredValue,
+                        lmdb::RoTransaction,
+                        LmdbTrieStore,
+                        Self::Error,
+                    >(
+                        correlation_id,
+                        &txn,
+                        self.trie_store.deref(),
+                        &state_hash,
+                        &key,
+                    )? {
+                        ReadResult::Found(current_value) => {
+                            match transform.apply(current_value.clone()) {
+                                Ok(updated_value) => updated_value,
+                                Err(err) => {
+                                    error!(?key, ?err, "Key found, but could not apply transform");
+                                    return Err(CommitError::TransformError(err).into());
+                                }
+                            }
+                        }
+                        ReadResult::NotFound => {
+                            error!(
+                                ?key,
+                                ?transform,
+                                "Key not found while attempting to apply transform"
+                            );
+                            return Err(CommitError::KeyNotFound(key).into());
+                        }
+                        ReadResult::RootNotFound => {
+                            error!(root_hash=?state_hash, "root not found");
+                            return Err(CommitError::ReadRootNotFound(state_hash).into());
+                        }
+                    };
+                    txn.commit()?;
+                    updated_value
+                }
+                (Some(current_value), transform) => match transform.apply(current_value.clone()) {
+                    Ok(updated_value) => updated_value,
+                    Err(err) => {
+                        error!(?key, ?err, "Key found, but could not apply transform");
+                        return Err(CommitError::TransformError(err).into());
+                    }
+                },
+            };
+
+            self.cache.write().unwrap().insert(key, value);
+        }
+        Ok(state_hash)
     }
 }
 
-impl StateProvider for LmdbGlobalState {
+impl StateProvider for ScratchGlobalState {
     type Error = error::Error;
 
-    type Reader = LmdbGlobalStateView;
+    type Reader = ScratchGlobalStateView;
 
     fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
         let maybe_root: Option<Trie<Key, StoredValue>> = self.trie_store.get(&txn, &state_hash)?;
-        let maybe_state = maybe_root.map(|_| LmdbGlobalStateView {
+        let maybe_state = maybe_root.map(|_| ScratchGlobalStateView {
+            cache: Arc::clone(&self.cache),
             environment: Arc::clone(&self.environment),
-            store: Arc::clone(&self.trie_store),
+            trie_store: Arc::clone(&self.trie_store),
             root_hash: state_hash,
         });
         txn.commit()?;
@@ -277,8 +331,7 @@ impl StateProvider for LmdbGlobalState {
         Ok(trie_hash)
     }
 
-    /// Finds all of the keys of missing descendant `Trie<K,V>` values and optionally performs an
-    /// integrity check on each node
+    /// Finds all of the keys of missing descendant `Trie<K,V>` values
     fn missing_trie_keys(
         &self,
         correlation_id: CorrelationId,
@@ -309,6 +362,7 @@ mod tests {
 
     use super::*;
     use crate::storage::{
+        global_state::{lmdb::LmdbGlobalState, CommitProvider},
         trie_store::operations::{write, WriteResult},
         DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
     };
@@ -332,25 +386,6 @@ mod tests {
         ]
     }
 
-    // Creates the test pairs that contain data of size
-    // greater than the chunk limit.
-    fn create_test_pairs_with_large_data() -> [TestPair; 2] {
-        let val = CLValue::from_t(
-            String::from_utf8(vec![b'a'; ChunkWithProof::CHUNK_SIZE_BYTES * 2]).unwrap(),
-        )
-        .unwrap();
-        [
-            TestPair {
-                key: Key::Account(AccountHash::new([1_u8; 32])),
-                value: StoredValue::CLValue(val.clone()),
-            },
-            TestPair {
-                key: Key::Account(AccountHash::new([2_u8; 32])),
-                value: StoredValue::CLValue(val),
-            },
-        ]
-    }
-
     fn create_test_pairs_updated() -> [TestPair; 3] {
         [
             TestPair {
@@ -368,7 +403,29 @@ mod tests {
         ]
     }
 
-    fn create_test_state(pairs_creator: fn() -> [TestPair; 2]) -> (LmdbGlobalState, Digest) {
+    fn create_test_transforms() -> AdditiveMap<Key, Transform> {
+        let mut transforms = AdditiveMap::new();
+        transforms.insert(
+            Key::Account(AccountHash::new([3u8; 32])),
+            Transform::Write(StoredValue::CLValue(CLValue::from_t("one").unwrap())),
+        );
+        transforms.insert(
+            Key::Account(AccountHash::new([3u8; 32])),
+            Transform::AddInt32(1),
+        );
+        transforms.insert(
+            Key::Account(AccountHash::new([3u8; 32])),
+            Transform::AddInt32(2),
+        );
+        transforms
+    }
+
+    struct TestState {
+        state: LmdbGlobalState,
+        root_hash: Digest,
+    }
+
+    fn create_test_state() -> TestState {
         let correlation_id = CorrelationId::new();
         let temp_dir = tempdir().unwrap();
         let environment = Arc::new(
@@ -383,16 +440,16 @@ mod tests {
         let trie_store =
             Arc::new(LmdbTrieStore::new(&environment, None, DatabaseFlags::empty()).unwrap());
 
-        let ret = LmdbGlobalState::empty(environment, trie_store).unwrap();
-        let mut current_root = ret.empty_root_hash;
+        let state = LmdbGlobalState::empty(environment, trie_store).unwrap();
+        let mut current_root = state.empty_root_hash;
         {
-            let mut txn = ret.environment.create_read_write_txn().unwrap();
+            let mut txn = state.environment.create_read_write_txn().unwrap();
 
-            for TestPair { key, value } in &(pairs_creator)() {
+            for TestPair { key, value } in &create_test_pairs() {
                 match write::<_, _, _, LmdbTrieStore, error::Error>(
                     correlation_id,
                     &mut txn,
-                    &ret.trie_store,
+                    &state.trie_store,
                     &current_root,
                     key,
                     value,
@@ -403,31 +460,18 @@ mod tests {
                         current_root = root_hash;
                     }
                     WriteResult::AlreadyExists => (),
-                    WriteResult::RootNotFound => panic!("LmdbGlobalState has invalid root"),
+                    WriteResult::RootNotFound => {
+                        panic!("LmdbWithCacheGlobalState has invalid root")
+                    }
                 }
             }
 
             txn.commit().unwrap();
         }
-        (ret, current_root)
-    }
-
-    #[test]
-    fn reads_from_a_checkout_return_expected_values() {
-        let correlation_id = CorrelationId::new();
-        let (state, root_hash) = create_test_state(create_test_pairs);
-        let checkout = state.checkout(root_hash).unwrap().unwrap();
-        for TestPair { key, value } in create_test_pairs().iter().cloned() {
-            assert_eq!(Some(value), checkout.read(correlation_id, &key).unwrap());
+        TestState {
+            state,
+            root_hash: current_root,
         }
-    }
-
-    #[test]
-    fn checkout_fails_if_unknown_hash_is_given() {
-        let (state, _) = create_test_state(create_test_pairs);
-        let fake_hash: Digest = Digest::hash(&[1u8; 32]);
-        let result = state.checkout(fake_hash).unwrap();
-        assert!(result.is_none());
     }
 
     #[test]
@@ -435,7 +479,9 @@ mod tests {
         let correlation_id = CorrelationId::new();
         let test_pairs_updated = create_test_pairs_updated();
 
-        let (state, root_hash) = create_test_state(create_test_pairs);
+        let TestState { state, root_hash } = create_test_state();
+
+        let scratch = state.create_scratch();
 
         let effects: AdditiveMap<Key, Transform> = {
             let mut tmp = AdditiveMap::new();
@@ -445,9 +491,35 @@ mod tests {
             tmp
         };
 
-        let updated_hash = state.commit(correlation_id, root_hash, effects).unwrap();
+        let scratch_root_hash = scratch
+            .commit(correlation_id, root_hash, effects.clone())
+            .unwrap();
 
-        let updated_checkout = state.checkout(updated_hash).unwrap().unwrap();
+        assert_eq!(
+            scratch_root_hash, root_hash,
+            "ScratchGlobalState should not modify the state root, as it does no hashing"
+        );
+
+        let lmdb_hash = state.commit(correlation_id, root_hash, effects).unwrap();
+        let updated_checkout = state.checkout(lmdb_hash).unwrap().unwrap();
+
+        let all_keys = updated_checkout
+            .keys_with_prefix(correlation_id, &[])
+            .unwrap();
+
+        let stored_values = scratch.into_inner();
+        assert_eq!(all_keys.len(), stored_values.len());
+
+        for key in all_keys {
+            assert!(stored_values.get(&key).is_some());
+            assert_eq!(
+                stored_values.get(&key),
+                updated_checkout
+                    .read(correlation_id, &key)
+                    .unwrap()
+                    .as_ref()
+            );
+        }
 
         for TestPair { key, value } in test_pairs_updated.iter().cloned() {
             assert_eq!(
@@ -458,11 +530,18 @@ mod tests {
     }
 
     #[test]
-    fn commit_updates_state_and_original_state_stays_intact() {
+    fn commit_updates_state_with_add() {
         let correlation_id = CorrelationId::new();
         let test_pairs_updated = create_test_pairs_updated();
 
-        let (state, root_hash) = create_test_state(create_test_pairs);
+        // create two lmdb instances, with a scratch instance on the first
+        let TestState { state, root_hash } = create_test_state();
+        let TestState {
+            state: state2,
+            root_hash: state_2_root_hash,
+        } = create_test_state();
+
+        let scratch = state.create_scratch();
 
         let effects: AdditiveMap<Key, Transform> = {
             let mut tmp = AdditiveMap::new();
@@ -472,13 +551,71 @@ mod tests {
             tmp
         };
 
-        let updated_hash = state.commit(correlation_id, root_hash, effects).unwrap();
+        // Commit effects to both databases.
+        scratch
+            .commit(correlation_id, root_hash, effects.clone())
+            .unwrap();
+        let updated_hash = state2
+            .commit(correlation_id, state_2_root_hash, effects)
+            .unwrap();
 
-        let updated_checkout = state.checkout(updated_hash).unwrap().unwrap();
+        // Create add transforms as well
+        let add_effects = create_test_transforms();
+        scratch
+            .commit(correlation_id, root_hash, add_effects.clone())
+            .unwrap();
+        let updated_hash = state2
+            .commit(correlation_id, updated_hash, add_effects)
+            .unwrap();
+
+        let scratch_checkout = scratch.checkout(root_hash).unwrap().unwrap();
+        let updated_checkout = state2.checkout(updated_hash).unwrap().unwrap();
+        let all_keys = updated_checkout
+            .keys_with_prefix(correlation_id, &[])
+            .unwrap();
+
+        // Check that cache matches the contents of the second instance of lmdb
+        for key in all_keys {
+            assert_eq!(
+                scratch_checkout
+                    .read(correlation_id, &key)
+                    .unwrap()
+                    .as_ref(),
+                updated_checkout
+                    .read(correlation_id, &key)
+                    .unwrap()
+                    .as_ref()
+            );
+        }
+    }
+
+    #[test]
+    fn commit_updates_state_and_original_state_stays_intact() {
+        let correlation_id = CorrelationId::new();
+        let test_pairs_updated = create_test_pairs_updated();
+
+        let TestState {
+            state, root_hash, ..
+        } = create_test_state();
+
+        let scratch = state.create_scratch();
+
+        let effects: AdditiveMap<Key, Transform> = {
+            let mut tmp = AdditiveMap::new();
+            for TestPair { key, value } in &test_pairs_updated {
+                tmp.insert(*key, Transform::Write(value.to_owned()));
+            }
+            tmp
+        };
+
+        let updated_hash = scratch.commit(correlation_id, root_hash, effects).unwrap();
+
+        let updated_checkout = scratch.checkout(updated_hash).unwrap().unwrap();
         for TestPair { key, value } in test_pairs_updated.iter().cloned() {
             assert_eq!(
                 Some(value),
-                updated_checkout.read(correlation_id, &key).unwrap()
+                updated_checkout.read(correlation_id, &key).unwrap(),
+                "ScratchGlobalState should not yet be written to the underlying lmdb state"
             );
         }
 
@@ -495,59 +632,5 @@ mod tests {
                 .read(correlation_id, &test_pairs_updated[2].key)
                 .unwrap()
         );
-    }
-
-    #[test]
-    fn returns_trie_or_chunk() {
-        let correlation_id = CorrelationId::new();
-        let (state, root_hash) = create_test_state(create_test_pairs_with_large_data);
-
-        // Expect `Trie` with NodePointer when asking with a root hash.
-        let trie = state
-            .get_trie(correlation_id, TrieOrChunkId(0, root_hash))
-            .unwrap()
-            .unwrap();
-        assert!(matches!(trie, TrieOrChunk::Trie(_)));
-
-        // Expect another `Trie` with two LeafPointers.
-        let trie = state
-            .get_trie(
-                correlation_id,
-                TrieOrChunkId(0, extract_next_hash_from_trie(trie)),
-            )
-            .unwrap()
-            .unwrap();
-        assert!(matches!(trie, TrieOrChunk::Trie(_)));
-
-        // Now, the next hash will point to the actual leaf, which as we expect
-        // contains large data, so we expect to get `ChunkWithProof`.
-        let chunked_data = state
-            .get_trie(
-                correlation_id,
-                TrieOrChunkId(0, extract_next_hash_from_trie(trie)),
-            )
-            .unwrap()
-            .unwrap();
-        assert!(matches!(chunked_data, TrieOrChunk::ChunkWithProof(_)));
-    }
-
-    fn extract_next_hash_from_trie(trie: TrieOrChunk) -> Digest {
-        let next_hash = if let TrieOrChunk::Trie(trie) = trie {
-            if let Trie::Node { pointer_block } = *trie {
-                if pointer_block.child_count() == 0 {
-                    panic!("expected children");
-                }
-                let (_, ptr) = pointer_block.as_indexed_pointers().next().unwrap();
-                match ptr {
-                    crate::storage::trie::Pointer::LeafPointer(ptr)
-                    | crate::storage::trie::Pointer::NodePointer(ptr) => ptr,
-                }
-            } else {
-                panic!("expected `Node`");
-            }
-        } else {
-            panic!("expected `Trie`");
-        };
-        next_hash
     }
 }

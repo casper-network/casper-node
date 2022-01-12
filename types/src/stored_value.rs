@@ -7,6 +7,8 @@ use alloc::{
 };
 use core::{convert::TryFrom, fmt::Debug};
 
+#[cfg(feature = "datasize")]
+use datasize::DataSize;
 use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
 use serde_bytes::ByteBuf;
 
@@ -36,6 +38,7 @@ enum Tag {
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Eq, PartialEq, Clone, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 /// StoredValue represents all possible variants of values stored in Global State.
 pub enum StoredValue {
     /// Variant that stores [`CLValue`].

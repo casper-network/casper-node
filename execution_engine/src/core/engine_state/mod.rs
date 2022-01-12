@@ -59,7 +59,7 @@ pub use self::{
     executable_deploy_item::{ExecutableDeployItem, ExecutableDeployItemIdentifier},
     execute_request::ExecuteRequest,
     execution::Error as ExecError,
-    execution_result::{ExecutionResult, ExecutionResults, ForcedTransferResult},
+    execution_result::{ExecutionResult, ForcedTransferResult},
     genesis::{ExecConfig, GenesisAccount, GenesisSuccess, SystemContractRegistry},
     get_bids::{GetBidsRequest, GetBidsResult},
     query::{QueryRequest, QueryResult},
@@ -71,7 +71,7 @@ use crate::{
     core::{
         engine_state::{
             executable_deploy_item::DeployKind,
-            execution_result::ExecutionResultBuilder,
+            execution_result::{ExecutionResultBuilder, ExecutionResults},
             genesis::GenesisInstaller,
             upgrade::{ProtocolUpgradeError, SystemUpgrader},
         },
@@ -84,7 +84,9 @@ use crate::{
         wasm_prep::Preprocessor,
     },
     storage::{
-        global_state::{lmdb::LmdbGlobalState, StateProvider},
+        global_state::{
+            lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
+        },
         trie::{Trie, TrieOrChunk, TrieOrChunkId},
     },
 };
@@ -113,6 +115,13 @@ pub struct EngineState<S> {
     state: S,
 }
 
+impl EngineState<ScratchGlobalState> {
+    /// Returns the inner state
+    pub fn into_inner(self) -> ScratchGlobalState {
+        self.state
+    }
+}
+
 impl EngineState<LmdbGlobalState> {
     /// Flushes the LMDB environment to disk when manual sync is enabled in the config.toml.
     pub fn flush_environment(&self) -> Result<(), lmdb::Error> {
@@ -121,11 +130,31 @@ impl EngineState<LmdbGlobalState> {
         }
         Ok(())
     }
+
+    /// Provide a local cached-only version of engine-state.
+    pub fn get_scratch_engine_state(&self) -> EngineState<ScratchGlobalState> {
+        EngineState {
+            config: self.config,
+            state: self.state.create_scratch(),
+        }
+    }
+
+    /// Writes state cached in an EngineState<ScratchEngineState> to LMDB.
+    pub fn write_scratch_to_lmdb(
+        &self,
+        state_root_hash: Digest,
+        scratch_global_state: ScratchGlobalState,
+    ) -> Result<Digest, Error> {
+        let stored_values = scratch_global_state.into_inner();
+        self.state
+            .put_stored_values(CorrelationId::new(), state_root_hash, stored_values)
+            .map_err(Into::into)
+    }
 }
 
 impl<S> EngineState<S>
 where
-    S: StateProvider,
+    S: StateProvider + CommitProvider,
     S::Error: Into<execution::Error>,
 {
     /// Creates new engine state.
@@ -593,7 +622,7 @@ where
 
         let base_key = Key::Account(deploy_item.address);
 
-        let account_public_key = match base_key.into_account() {
+        let account_hash = match base_key.into_account() {
             Some(account_addr) => account_addr,
             None => {
                 return Ok(ExecutionResult::precondition_failure(
@@ -606,7 +635,7 @@ where
 
         let account = match self.get_authorized_account(
             correlation_id,
-            account_public_key,
+            account_hash,
             &authorization_keys,
             Rc::clone(&tracking_copy),
         ) {
@@ -1736,7 +1765,7 @@ where
 
     /// Apply effects of the execution.
     ///
-    /// This is also refered to as "committing" the effects into the global state. This method has
+    /// This is also referred to as "committing" the effects into the global state. This method has
     /// to be run after an execution has been made to persists the effects of it.
     ///
     /// Returns new state root hash.
@@ -1745,13 +1774,10 @@ where
         correlation_id: CorrelationId,
         pre_state_hash: Digest,
         effects: AdditiveMap<Key, Transform>,
-    ) -> Result<Digest, Error>
-    where
-        Error: From<S::Error>,
-    {
+    ) -> Result<Digest, Error> {
         self.state
             .commit(correlation_id, pre_state_hash, effects)
-            .map_err(Error::from)
+            .map_err(|err| Error::Exec(err.into()))
     }
 
     /// Gets a trie (or chunk) object for given state root hash.
@@ -1775,7 +1801,7 @@ where
     where
         Error: From<S::Error>,
     {
-        Ok(self.state.get_trie_full(correlation_id, trie_key)?)
+        Ok(self.state.get_trie_full(correlation_id, &trie_key)?)
     }
 
     /// Puts a trie and finds missing descendant trie keys.
@@ -1788,23 +1814,25 @@ where
         Error: From<S::Error>,
     {
         let inserted_trie_key = self.state.put_trie(correlation_id, trie)?;
-        let missing_descendant_trie_keys = self
-            .state
-            .missing_trie_keys(correlation_id, vec![inserted_trie_key])?;
+        let missing_descendant_trie_keys =
+            self.state
+                .missing_trie_keys(correlation_id, vec![inserted_trie_key], false)?;
         Ok(missing_descendant_trie_keys)
     }
 
-    /// Performs a lookup for a list of missing root hashes.
+    /// Performs a lookup for a list of missing root hashes and optionally performs an integrity
+    /// check on each node
     pub fn missing_trie_keys(
         &self,
         correlation_id: CorrelationId,
         trie_keys: Vec<Digest>,
+        check_integrity: bool,
     ) -> Result<Vec<Digest>, Error>
     where
         Error: From<S::Error>,
     {
         self.state
-            .missing_trie_keys(correlation_id, trie_keys)
+            .missing_trie_keys(correlation_id, trie_keys, check_integrity)
             .map_err(Error::from)
     }
 

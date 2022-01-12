@@ -10,7 +10,7 @@ use crate::{
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
     storage::{
         error::{self, in_memory},
-        global_state::{commit, StateProvider, StateReader},
+        global_state::{commit, CommitProvider, StateProvider, StateReader},
         store::Store,
         transaction_source::{
             in_memory::{
@@ -203,6 +203,24 @@ impl StateReader<Key, StoredValue> for InMemoryGlobalStateView {
     }
 }
 
+impl CommitProvider for InMemoryGlobalState {
+    fn commit(
+        &self,
+        correlation_id: CorrelationId,
+        prestate_hash: Digest,
+        effects: AdditiveMap<Key, Transform>,
+    ) -> Result<Digest, Self::Error> {
+        commit::<InMemoryEnvironment, InMemoryTrieStore, _, Self::Error>(
+            &self.environment,
+            &self.trie_store,
+            correlation_id,
+            prestate_hash,
+            effects,
+        )
+        .map_err(Into::into)
+    }
+}
+
 impl StateProvider for InMemoryGlobalState {
     type Error = error::Error;
 
@@ -219,22 +237,6 @@ impl StateProvider for InMemoryGlobalState {
         });
         txn.commit()?;
         Ok(maybe_state)
-    }
-
-    fn commit(
-        &self,
-        correlation_id: CorrelationId,
-        prestate_hash: Digest,
-        effects: AdditiveMap<Key, Transform>,
-    ) -> Result<Digest, Self::Error> {
-        commit::<InMemoryEnvironment, InMemoryTrieStore, _, Self::Error>(
-            &self.environment,
-            &self.trie_store,
-            correlation_id,
-            prestate_hash,
-            effects,
-        )
-        .map_err(Into::into)
     }
 
     fn empty_root(&self) -> Digest {
@@ -273,20 +275,12 @@ impl StateProvider for InMemoryGlobalState {
     fn get_trie_full(
         &self,
         _correlation_id: CorrelationId,
-        trie_key: Digest,
+        trie_key: &Digest,
     ) -> Result<Option<Trie<Key, StoredValue>>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
-        let bytes = Store::<Digest, Trie<Digest, StoredValue>>::get_raw(
-            &*self.trie_store,
-            &txn,
-            &trie_key,
-        )?;
+        let ret: Option<Trie<Key, StoredValue>> = self.trie_store.get(&txn, trie_key)?;
         txn.commit()?;
-
-        bytes.map_or_else(
-            || Ok(None),
-            |bytes| Ok(Some(bytesrepr::deserialize(bytes.into())?)),
-        )
+        Ok(ret)
     }
 
     fn put_trie(
@@ -306,21 +300,28 @@ impl StateProvider for InMemoryGlobalState {
         Ok(trie_hash)
     }
 
-    /// Finds all of the keys of missing descendant `Trie<Key,StoredValue>` values
+    /// Finds all of the keys of missing descendant `Trie<Key,StoredValue>` values and optionally
+    /// performs an integrity check on each node
     fn missing_trie_keys(
         &self,
         correlation_id: CorrelationId,
         trie_keys: Vec<Digest>,
+        check_integrity: bool,
     ) -> Result<Vec<Digest>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
-        let missing_descendants =
-            missing_trie_keys::<
-                Key,
-                StoredValue,
-                InMemoryReadTransaction,
-                InMemoryTrieStore,
-                Self::Error,
-            >(correlation_id, &txn, self.trie_store.deref(), trie_keys)?;
+        let missing_descendants = missing_trie_keys::<
+            Key,
+            StoredValue,
+            InMemoryReadTransaction,
+            InMemoryTrieStore,
+            Self::Error,
+        >(
+            correlation_id,
+            &txn,
+            self.trie_store.deref(),
+            trie_keys,
+            check_integrity,
+        )?;
         txn.commit()?;
         Ok(missing_descendants)
     }

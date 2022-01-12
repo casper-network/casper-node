@@ -82,15 +82,18 @@ use tracing::{debug, error, warn};
 
 use casper_execution_engine::{
     core::engine_state::{
-        self, era_validators::GetEraValidatorsError, BalanceRequest, BalanceResult, GetBidsRequest,
-        GetBidsResult, QueryRequest, QueryResult,
+        self, era_validators::GetEraValidatorsError, genesis::GenesisSuccess, BalanceRequest,
+        BalanceResult, GetBidsRequest, GetBidsResult, QueryRequest, QueryResult, UpgradeConfig,
+        UpgradeSuccess,
     },
+    shared::execution_journal::ExecutionJournal,
     storage::trie::{Trie, TrieOrChunk, TrieOrChunkId},
 };
 use casper_hashing::Digest;
 use casper_types::{
     account::Account, system::auction::EraValidators, Contract, ContractPackage, EraId,
-    ExecutionResult, Key, ProtocolVersion, PublicKey, StoredValue, Transfer, URef, U512,
+    ExecutionEffect, ExecutionResult, Key, ProtocolVersion, PublicKey, StoredValue, Transfer, URef,
+    U512,
 };
 
 use crate::{
@@ -108,13 +111,14 @@ use crate::{
     reactor::{EventQueueHandle, QueueKind},
     types::{
         Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload, BlockSignatures,
-        BlockWithMetadata, ChainspecInfo, Deploy, DeployHash, DeployMetadata, FinalitySignature,
-        FinalizedBlock, Item, NodeId, TimeDiff, Timestamp,
+        BlockWithMetadata, Chainspec, ChainspecInfo, Deploy, DeployHash, DeployHeader,
+        DeployMetadata, FinalitySignature, FinalizedBlock, Item, NodeId, TimeDiff, Timestamp,
     },
     utils::{SharedFlag, Source},
 };
 use announcements::{
-    ChainspecLoaderAnnouncement, ConsensusAnnouncement, ControlAnnouncement,
+    BlockProposerAnnouncement, BlocklistAnnouncement, ChainspecLoaderAnnouncement,
+    ConsensusAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
     DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
     RpcServerAnnouncement,
 };
@@ -124,10 +128,7 @@ use requests::{
     NetworkRequest, StorageRequest, TrieFetcherRequest,
 };
 
-use self::{
-    announcements::{BlockProposerAnnouncement, BlocklistAnnouncement},
-    requests::{BeginGossipRequest, StateStoreRequest},
-};
+use self::requests::{BeginGossipRequest, StateStoreRequest};
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
 static UNOBTAINABLE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
@@ -185,17 +186,14 @@ where
     pub(crate) async fn respond(mut self, data: T) {
         if let Some(sender) = self.sender.take() {
             if let Err(data) = sender.send(data) {
-                if self.is_shutting_down.is_set() {
-                    debug!(
-                        ?data,
-                        "ignored failure to send response to request down oneshot channel"
-                    );
-                } else {
-                    error!(
-                        ?data,
-                        "could not send response to request down oneshot channel"
-                    );
-                }
+                // If we cannot send a response down the channel, it means the original requestor is
+                // no longer interested in our response. This typically happens during shutdowns, or
+                // in cases where an originating external request has been cancelled.
+
+                debug!(
+                    ?data,
+                    "ignored failure to send response to request down oneshot channel"
+                );
             }
         } else {
             error!(
@@ -228,6 +226,8 @@ impl<T> Drop for Responder<T> {
                 );
             } else {
                 // This is usually a very serious error, as another component will now be stuck.
+                //
+                // See the code `make_request` for more details.
                 error!(
                     responder=?self,
                     "dropped without being responded to outside of shutdown"
@@ -427,14 +427,6 @@ impl<REv> EffectBuilder<REv> {
         EffectBuilder { event_queue }
     }
 
-    /// Schedules a regular event.
-    pub(crate) async fn schedule_regular<E>(self, event: E)
-    where
-        REv: From<E>,
-    {
-        self.event_queue.schedule(event, QueueKind::Regular).await
-    }
-
     /// Extract the event queue handle out of the effect builder.
     #[cfg(test)]
     pub(crate) fn into_inner(self) -> EventQueueHandle<REv> {
@@ -443,14 +435,19 @@ impl<REv> EffectBuilder<REv> {
 
     /// Performs a request.
     ///
-    /// Given a request `Q`, that when completed will yield a result of `T`, produces a future
-    /// that will
+    /// Given a request `Q`, that when completed will yield a result of `T`, produces a future that
+    /// will
     ///
     /// 1. create an event to send the request to the respective component (thus `Q: Into<REv>`),
-    /// 2. waits for a response and returns it.
+    /// 2. wait for a response and return it.
     ///
-    /// This function is usually only used internally by effects implement on the effects builder,
+    /// This function is usually only used internally by effects implemented on the effects builder,
     /// but IO components may also make use of it.
+    ///
+    /// # Cancellation safety
+    ///
+    /// This future is cancellation safe: If it is dropped without being polled, it merely indicates
+    /// the original requestor is not longer interested in the result, which will be discarded.
     pub(crate) async fn make_request<T, Q, F>(self, f: F, queue_kind: QueueKind) -> T
     where
         T: Send + 'static,
@@ -470,8 +467,10 @@ impl<REv> EffectBuilder<REv> {
         match receiver.await {
             Ok(value) => value,
             Err(err) => {
-                // The channel should never be closed, ever. If it is, we pretend nothing happened
-                // though, instead of crashing.
+                // The channel should usually not be closed except during shutdowns, as it indicates
+                // a panic or disappearance of the remote that is supposed to process the request.
+                //
+                // If it does happen, we pretend nothing happened instead of crashing.
                 if self.event_queue.shutdown_flag().is_set() {
                     debug!(%err, ?queue_kind, channel=?type_name::<T>(), "ignoring closed channel due to shutdown")
                 } else {
@@ -733,7 +732,7 @@ impl<REv> EffectBuilder<REv> {
         )
     }
 
-    /// Announce upgrade activation point read.
+    /// Announces upgrade activation point read.
     pub(crate) async fn announce_upgrade_activation_point_read(self, next_upgrade: NextUpgrade)
     where
         REv: From<ChainspecLoaderAnnouncement>,
@@ -741,6 +740,63 @@ impl<REv> EffectBuilder<REv> {
         self.event_queue
             .schedule(
                 ChainspecLoaderAnnouncement::UpgradeActivationPointRead(next_upgrade),
+                QueueKind::Regular,
+            )
+            .await
+    }
+
+    /// Announces a committed Step success.
+    pub(crate) async fn announce_commit_step_success(
+        self,
+        era_id: EraId,
+        execution_journal: ExecutionJournal,
+    ) where
+        REv: From<ContractRuntimeAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                ContractRuntimeAnnouncement::CommitStepSuccess {
+                    era_id,
+                    execution_effect: ExecutionEffect::from(&execution_journal),
+                },
+                QueueKind::Regular,
+            )
+            .await
+    }
+
+    /// Announces a new block has been created.
+    pub(crate) async fn announce_new_linear_chain_block(
+        self,
+        block: Box<Block>,
+        execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
+    ) where
+        REv: From<ContractRuntimeAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                ContractRuntimeAnnouncement::LinearChainBlock {
+                    block,
+                    execution_results,
+                },
+                QueueKind::Regular,
+            )
+            .await
+    }
+
+    /// Announces validators for upcoming era.
+    pub(crate) async fn announce_upcoming_era_validators(
+        self,
+        era_that_is_ending: EraId,
+        upcoming_era_validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
+    ) where
+        REv: From<ContractRuntimeAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                ContractRuntimeAnnouncement::UpcomingEraValidators {
+                    era_that_is_ending,
+                    upcoming_era_validators,
+                },
                 QueueKind::Regular,
             )
             .await
@@ -1374,6 +1430,42 @@ impl<REv> EffectBuilder<REv> {
                 QueueKind::Regular,
             )
             .await
+    }
+
+    /// Runs the genesis process on the contract runtime.
+    pub(crate) async fn commit_genesis(
+        self,
+        chainspec: Arc<Chainspec>,
+    ) -> Result<GenesisSuccess, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::CommitGenesis {
+                chainspec,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Runs the upgrade process on the contract runtime.
+    pub(crate) async fn upgrade_contract_runtime(
+        self,
+        upgrade_config: Box<UpgradeConfig>,
+    ) -> Result<UpgradeSuccess, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::Upgrade {
+                upgrade_config,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
     }
 
     /// Gets the requested chainspec info from the chainspec loader.

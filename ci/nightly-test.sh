@@ -6,17 +6,18 @@ SCENARIOS_DIR="$DRONE_ROOT_DIR/utils/nctl/sh/scenarios"
 SCENARIOS_CHAINSPEC_DIR="$SCENARIOS_DIR/chainspecs"
 SCENARIOS_ACCOUNTS_DIR="$SCENARIOS_DIR/accounts_toml"
 SCENARIOS_CONFIGS_DIR="$SCENARIOS_DIR/configs"
-LAUNCHER_DIR="$DRONE_ROOT_DIR/.."
-
-# NCTL requires casper-node-launcher
-if [ ! -d "$LAUNCHER_DIR/casper-node-launcher" ]; then
-    pushd "$LAUNCHER_DIR"
-    git clone https://github.com/CasperLabs/casper-node-launcher.git
-fi
 
 # Activate Environment
 pushd "$DRONE_ROOT_DIR"
 source "$(pwd)"/utils/nctl/activate
+
+# Clone the client and launcher repos if required.
+if [ ! -d "$NCTL_CASPER_CLIENT_HOME" ]; then
+    git clone https://github.com/casper-ecosystem/casper-client-rs "$NCTL_CASPER_CLIENT_HOME"
+fi
+if [ ! -d "$NCTL_CASPER_NODE_LAUNCHER_HOME" ]; then
+    git clone https://github.com/casper-network/casper-node-launcher "$NCTL_CASPER_NODE_LAUNCHER_HOME"
+fi
 
 # Build, Setup, and Start NCTL
 nctl-compile
