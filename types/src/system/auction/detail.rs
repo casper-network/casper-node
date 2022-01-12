@@ -206,14 +206,14 @@ pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(provider: &mut P) -> 
             // was calculated on `unbond` attempt.
             if current_era_id >= unbonding_purse.era_of_creation() + unbonding_delay {
                 match unbonding_purse.new_validator() {
-                    Some(public_key) => {
-                        match provider.read_bid(&public_key.to_account_hash()) {
+                    Some(new_validator) => {
+                        match provider.read_bid(&new_validator.to_account_hash()) {
                             Ok(Some(bid)) => {
                                 if !bid.staked_amount().is_zero() {
                                     provider
                                         .handle_delegation(
                                             unbonding_purse.unbonder_public_key().clone(),
-                                            public_key.clone(),
+                                            new_validator.clone(),
                                             *unbonding_purse.bonding_purse(),
                                             *unbonding_purse.amount(),
                                         )
