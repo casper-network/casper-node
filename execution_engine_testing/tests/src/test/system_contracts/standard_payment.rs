@@ -139,7 +139,7 @@ fn should_forward_payment_execution_runtime_error() {
         .get_exec_result(0)
         .expect("there should be a response");
 
-    let execution_result = utils::get_success_result(response);
+    let execution_result = utils::get_success_result(&response);
     let error = execution_result.as_error().expect("should have error");
     assert_matches!(
         error,
@@ -208,7 +208,7 @@ fn should_forward_payment_execution_gas_limit_error() {
         .get_exec_result(0)
         .expect("there should be a response");
 
-    let execution_result = utils::get_success_result(response);
+    let execution_result = utils::get_success_result(&response);
     let error = execution_result.as_error().expect("should have error");
     assert_matches!(error, Error::Exec(execution::Error::GasLimit));
     let payment_gas_limit = Gas::from_motes(Motes::new(*MAX_PAYMENT), DEFAULT_GAS_PRICE)
@@ -253,7 +253,7 @@ fn should_run_out_of_gas_when_session_code_exceeds_gas_limit() {
         .get_exec_result(0)
         .expect("there should be a response");
 
-    let execution_result = utils::get_success_result(response);
+    let execution_result = utils::get_success_result(&response);
     let error = execution_result.as_error().expect("should have error");
     assert_matches!(error, Error::Exec(execution::Error::GasLimit));
     let session_gas_limit = Gas::from_motes(Motes::new(payment_purse_amount), DEFAULT_GAS_PRICE)
@@ -304,7 +304,7 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
         .get_exec_result(0)
         .expect("there should be a response");
 
-    let success_result = utils::get_success_result(response);
+    let success_result = utils::get_success_result(&response);
     let gas = success_result.cost();
     let motes = Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes");
 
@@ -315,7 +315,7 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
         "no net resources should be gained or lost post-distribution"
     );
 
-    let execution_result = utils::get_success_result(response);
+    let execution_result = utils::get_success_result(&response);
     let error = execution_result.as_error().expect("should have error");
     assert_matches!(error, Error::Exec(execution::Error::GasLimit));
     let session_gas_limit = Gas::from_motes(Motes::new(payment_purse_amount), DEFAULT_GAS_PRICE)

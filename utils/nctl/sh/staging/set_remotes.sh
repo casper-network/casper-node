@@ -34,7 +34,7 @@ function _main()
     log "... downloading launcher"
     curl -O "$_LAUNCHER_URL" > /dev/null 2>&1
     chmod +x ./casper-node-launcher
-    popd    
+    popd
 
     for PROTOCOL_VERSION in "${_PROTOCOL_VERSIONS[@]}"
     do
@@ -42,4 +42,4 @@ function _main()
     done
 }
 
-_main 
+_main
