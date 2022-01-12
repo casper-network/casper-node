@@ -10,7 +10,6 @@ use derive_more::From;
 use futures::channel::oneshot;
 use num_rational::Ratio;
 use prometheus::Registry;
-use rand::Rng;
 use reactor::ReactorEvent;
 use serde::Serialize;
 use tempfile::TempDir;
@@ -23,7 +22,7 @@ use casper_execution_engine::{
 };
 use casper_types::{
     account::{Account, ActionThresholds, AssociatedKeys, Weight},
-    CLValue, EraId, ProtocolVersion, StoredValue, URef, U512,
+    CLValue, ProtocolVersion, StoredValue, URef, U512,
 };
 
 use super::*;
@@ -399,13 +398,15 @@ impl reactor::Reactor for Reactor {
         config: Self::Config,
         registry: &Registry,
         _event_queue: EventQueueHandle<Self::Event>,
-        rng: &mut NodeRng,
+        _rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
 
-        // `merkle_tree_hash_activation` can be chosen arbitrarily
-        let merkle_tree_hash_activation = EraId::from(rng.gen::<u64>());
+        let chainspec = Chainspec::from_resources("local");
+
+        let deploy_acceptor =
+            DeployAcceptor::new(super::Config::new(VERIFY_ACCOUNTS), &chainspec, registry).unwrap();
 
         let storage = Storage::new(
             &storage_withdir,
@@ -415,14 +416,7 @@ impl reactor::Reactor for Reactor {
             "test",
             Ratio::new(1, 3),
             None,
-            merkle_tree_hash_activation,
-        )
-        .unwrap();
-
-        let deploy_acceptor = DeployAcceptor::new(
-            super::Config::new(VERIFY_ACCOUNTS),
-            &Chainspec::from_resources("local"),
-            registry,
+            chainspec.protocol_config.merkle_tree_hash_activation,
         )
         .unwrap();
 
