@@ -390,7 +390,7 @@ fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
                 let height = harness.rng.gen_range(1..10);
 
                 let is_switch = harness.rng.gen_bool(0.1);
-                Block::random_with_specifics_1(
+                Block::random_with_specifics(
                     &mut harness.rng,
                     era_id,
                     height,
@@ -545,7 +545,7 @@ fn can_retrieve_block_by_height() {
             let mut harness = ComponentHarness::default();
 
             // Create a random blocks, load and store them.
-            let block_33 = Box::new(Block::random_with_specifics_1(
+            let block_33 = Box::new(Block::random_with_specifics(
                 &mut harness.rng,
                 block_spec.era_id,
                 33,
@@ -553,7 +553,7 @@ fn can_retrieve_block_by_height() {
                 true,
                 block_spec.merkle_tree_hash_activation,
             ));
-            let block_14 = Box::new(Block::random_with_specifics_1(
+            let block_14 = Box::new(Block::random_with_specifics(
                 &mut harness.rng,
                 block_spec.era_id,
                 14,
@@ -561,7 +561,7 @@ fn can_retrieve_block_by_height() {
                 false,
                 block_spec.merkle_tree_hash_activation,
             ));
-            let block_99 = Box::new(Block::random_with_specifics_1(
+            let block_99 = Box::new(Block::random_with_specifics(
                 &mut harness.rng,
                 block_spec.era_id.successor(),
                 99,
@@ -684,7 +684,7 @@ fn different_block_at_height_is_fatal() {
     let mut storage = storage_fixture(&harness, merkle_tree_hash_activation);
 
     // Create two different blocks at the same height.
-    let block_44_a = Box::new(Block::random_with_specifics_1(
+    let block_44_a = Box::new(Block::random_with_specifics(
         &mut harness.rng,
         EraId::new(1),
         44,
@@ -692,7 +692,7 @@ fn different_block_at_height_is_fatal() {
         false,
         merkle_tree_hash_activation,
     ));
-    let block_44_b = Box::new(Block::random_with_specifics_1(
+    let block_44_b = Box::new(Block::random_with_specifics(
         &mut harness.rng,
         EraId::new(1),
         44,
@@ -1126,7 +1126,7 @@ fn should_hard_reset() {
     let blocks: Vec<Block> = (0..blocks_count)
         .map(|height| {
             let is_switch = height % blocks_per_era == blocks_per_era - 1;
-            Block::random_with_specifics_1(
+            Block::random_with_specifics(
                 &mut harness.rng,
                 EraId::from(height as u64 / 3),
                 height as u64,
@@ -1415,7 +1415,7 @@ fn should_garbage_collect() {
         .map(|height| {
             let is_switch = height % blocks_per_era == blocks_per_era - 1;
 
-            Block::random_with_specifics_1(
+            Block::random_with_specifics(
                 &mut harness.rng,
                 EraId::from((height / blocks_per_era) as u64),
                 height as u64,
@@ -1539,7 +1539,7 @@ fn can_put_and_get_blocks_v2() {
     let mut blocks = vec![];
 
     for i in 0..num_blocks {
-        let block = Block::random_with_specifics_1(
+        let block = Block::random_with_specifics(
             &mut harness.rng,
             era_id,
             height + i,

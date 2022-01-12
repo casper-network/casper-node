@@ -228,6 +228,8 @@ mod tests {
         let upgrade_era = EraId::from(5);
         let previous_era = upgrade_era.saturating_sub(1);
 
+        let merkle_tree_hash_activation = EraId::from(0);
+
         let mut rng = crate::new_rng();
         let protocol_config = ProtocolConfig {
             version: current_version,
@@ -235,26 +237,60 @@ mod tests {
             activation_point: ActivationPoint::EraId(upgrade_era),
             global_state_update: None,
             last_emergency_restart: None,
-            merkle_tree_hash_activation: EraId::from(0),
+            merkle_tree_hash_activation,
         };
 
         // The block before this protocol version: a switch block with previous era and version.
-        let block = Block::random_with_specifics(&mut rng, previous_era, 100, past_version, true);
+        let block = Block::random_with_specifics(
+            &mut rng,
+            previous_era,
+            100,
+            past_version,
+            true,
+            merkle_tree_hash_activation,
+        );
         assert!(protocol_config.is_last_block_before_activation(block.header()));
 
         // Not the activation point: wrong era.
-        let block = Block::random_with_specifics(&mut rng, upgrade_era, 100, past_version, true);
+        let block = Block::random_with_specifics(
+            &mut rng,
+            upgrade_era,
+            100,
+            past_version,
+            true,
+            merkle_tree_hash_activation,
+        );
         assert!(!protocol_config.is_last_block_before_activation(block.header()));
 
         // Not the activation point: wrong version.
-        let block =
-            Block::random_with_specifics(&mut rng, previous_era, 100, current_version, true);
+        let block = Block::random_with_specifics(
+            &mut rng,
+            previous_era,
+            100,
+            current_version,
+            true,
+            merkle_tree_hash_activation,
+        );
         assert!(!protocol_config.is_last_block_before_activation(block.header()));
-        let block = Block::random_with_specifics(&mut rng, previous_era, 100, future_version, true);
+        let block = Block::random_with_specifics(
+            &mut rng,
+            previous_era,
+            100,
+            future_version,
+            true,
+            merkle_tree_hash_activation,
+        );
         assert!(!protocol_config.is_last_block_before_activation(block.header()));
 
         // Not the activation point: not a switch block.
-        let block = Block::random_with_specifics(&mut rng, previous_era, 100, past_version, false);
+        let block = Block::random_with_specifics(
+            &mut rng,
+            previous_era,
+            100,
+            past_version,
+            false,
+            merkle_tree_hash_activation,
+        );
         assert!(!protocol_config.is_last_block_before_activation(block.header()));
     }
 }

@@ -1486,6 +1486,7 @@ impl Block {
         let era = rng.gen_range(0..MAX_ERA);
         let height = era * 10 + rng.gen_range(0..10);
         let is_switch = rng.gen_bool(0.1);
+        let merkle_tree_hash_activation = EraId::from(rng.gen::<u64>());
 
         Block::random_with_specifics(
             rng,
@@ -1493,6 +1494,7 @@ impl Block {
             height,
             ProtocolVersion::V1_0_0,
             is_switch,
+            merkle_tree_hash_activation,
         )
     }
 
@@ -1509,7 +1511,7 @@ impl Block {
         let height = era * 10 + rng.gen_range(0..10);
         let is_switch = rng.gen_bool(0.1);
 
-        Block::random_with_specifics_1(
+        Block::random_with_specifics(
             rng,
             EraId::from(era),
             height,
@@ -1532,7 +1534,7 @@ impl Block {
         let is_switch = rng.gen_bool(0.1);
 
         (
-            Block::random_with_specifics_1(
+            Block::random_with_specifics(
                 rng,
                 EraId::from(era),
                 height,
@@ -1557,7 +1559,7 @@ impl Block {
         let is_switch = rng.gen_bool(0.1);
 
         (
-            Block::random_with_specifics_1(
+            Block::random_with_specifics(
                 rng,
                 EraId::from(era),
                 height,
@@ -1572,38 +1574,6 @@ impl Block {
     /// Generates a random instance using a `TestRng`, but using the specified values.
     #[cfg(test)]
     pub fn random_with_specifics(
-        rng: &mut TestRng,
-        era_id: EraId,
-        height: u64,
-        protocol_version: ProtocolVersion,
-        is_switch: bool,
-    ) -> Self {
-        let parent_hash = BlockHash::new(rng.gen::<[u8; Digest::LENGTH]>().into());
-        let state_root_hash = rng.gen::<[u8; Digest::LENGTH]>().into();
-        let finalized_block = FinalizedBlock::random_with_specifics(rng, era_id, height, is_switch);
-        let parent_seed = rng.gen::<[u8; Digest::LENGTH]>().into();
-        let next_era_validator_weights = finalized_block
-            .era_report
-            .as_ref()
-            .map(|_| BTreeMap::<PublicKey, U512>::default());
-
-        Block::new(
-            parent_hash,
-            parent_seed,
-            state_root_hash,
-            finalized_block,
-            next_era_validator_weights,
-            protocol_version,
-            EraId::from(0),
-        )
-        .expect("Could not create random block with specifics")
-    }
-
-    /// Generates a random instance using a `TestRng`, but using the specified values.
-    /// TODO[RC]: This function will replace the `random_with_specifics()` when all tests are
-    /// updated.
-    #[cfg(test)]
-    pub fn random_with_specifics_1(
         rng: &mut TestRng,
         era_id: EraId,
         height: u64,
@@ -2283,7 +2253,7 @@ mod tests {
         let merkle_tree_hash_activation = EraId::from(0);
 
         let is_switch = rng.gen();
-        let block = Block::random_with_specifics_1(
+        let block = Block::random_with_specifics(
             &mut rng,
             era_id,
             height,

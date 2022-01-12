@@ -694,6 +694,10 @@ mod tests {
             Ratio::new(1, 3),
             None,
         );
+
+        // `merkle_tree_hash_activation` can be chosen arbitrarily
+        let merkle_tree_hash_activation = EraId::from(rng.gen::<u64>());
+
         // Set the latest known block so that we can trigger the following checks.
         let block = Block::random_with_specifics(
             &mut rng,
@@ -701,12 +705,10 @@ mod tests {
             10,
             ProtocolVersion::V1_0_0,
             false,
+            merkle_tree_hash_activation,
         );
         let block_hash = *block.hash();
         let block_era = block.header().era_id();
-
-        // `merkle_tree_hash_activation` can be chosen arbitrarily
-        let merkle_tree_hash_activation = EraId::from(rng.gen::<u64>());
 
         let put_block_outcomes =
             lc.handle_put_block(Box::new(block.clone()), merkle_tree_hash_activation);
@@ -748,6 +750,10 @@ mod tests {
             Ratio::new(1, 3),
             None,
         );
+
+        // `merkle_tree_hash_activation` can be chosen arbitrarily
+        let merkle_tree_hash_activation = EraId::from(rng.gen::<u64>());
+
         // Set the latest known block so that we can trigger the following checks.
         let block = Box::new(Block::random_with_specifics(
             &mut rng,
@@ -755,15 +761,13 @@ mod tests {
             10,
             ProtocolVersion::V1_0_0,
             false,
+            merkle_tree_hash_activation,
         ));
         let block_hash = *block.hash();
         let block_era = block.header().era_id();
         let new_block_outcomes = lc.handle_new_block(block.clone(), HashMap::new());
         let expected_outcomes = vec![Outcome::StoreBlock(block.clone(), HashMap::new())];
         assert_equal(expected_outcomes, new_block_outcomes);
-
-        // `merkle_tree_hash_activation` can be chosen arbitrarily
-        let merkle_tree_hash_activation = EraId::from(rng.gen::<u64>());
 
         let put_block_outcomes = lc.handle_put_block(block.clone(), merkle_tree_hash_activation);
         // Verify that all outcomes are expected.
