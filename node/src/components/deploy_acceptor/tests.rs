@@ -10,6 +10,7 @@ use derive_more::From;
 use futures::channel::oneshot;
 use num_rational::Ratio;
 use prometheus::Registry;
+use rand::Rng;
 use reactor::ReactorEvent;
 use serde::Serialize;
 use tempfile::TempDir;
@@ -22,7 +23,7 @@ use casper_execution_engine::{
 };
 use casper_types::{
     account::{Account, ActionThresholds, AssociatedKeys, Weight},
-    CLValue, ProtocolVersion, StoredValue, URef, U512,
+    CLValue, EraId, ProtocolVersion, StoredValue, URef, U512,
 };
 
 use super::*;
@@ -45,7 +46,6 @@ use crate::{
 const VERIFY_ACCOUNTS: bool = true;
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 const TIMEOUT: Duration = Duration::from_secs(10);
-const MERKLE_TREE_HASH_ACTIVATION: u64 = 1;
 
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
@@ -399,10 +399,14 @@ impl reactor::Reactor for Reactor {
         config: Self::Config,
         registry: &Registry,
         _event_queue: EventQueueHandle<Self::Event>,
-        _rng: &mut NodeRng,
+        rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
+
+        // `merkle_tree_hash_activation` can be chosen arbitrarily
+        let merkle_tree_hash_activation = EraId::from(rng.gen::<u64>());
+
         let storage = Storage::new(
             &storage_withdir,
             None,
@@ -411,7 +415,7 @@ impl reactor::Reactor for Reactor {
             "test",
             Ratio::new(1, 3),
             None,
-            MERKLE_TREE_HASH_ACTIVATION.into(),
+            merkle_tree_hash_activation,
         )
         .unwrap();
 
