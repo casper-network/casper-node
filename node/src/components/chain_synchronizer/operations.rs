@@ -1110,18 +1110,6 @@ mod tests {
 
         // `merkle_tree_hash_activation` can be chosen arbitrarily
         let merkle_tree_hash_activation = EraId::from(rng.gen::<u64>());
-
-        let key_block = Block::random_with_specifics_1(
-            &mut rng,
-            EraId::from(5),
-            100,
-            v1_2_0,
-            true,
-            merkle_tree_hash_activation,
-        )
-        .take_header();
-        let key_block_info =
-            KeyBlockInfo::maybe_from_block_header(&key_block, merkle_tree_hash_activation).unwrap();
         let header = Block::random_with_specifics_1(
             &mut rng,
             EraId::from(6),
