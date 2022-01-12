@@ -1608,7 +1608,7 @@ impl Storage {
             Some(block_header) => block_header,
         };
         let block_signatures = match self.get_sufficient_finality_signatures(tx, &block_header)? {
-            None => BlockSignatures::new(*block_hash, block_header.era_id()),
+            None => return Ok(None),
             Some(signatures) => signatures,
         };
         Ok(Some(BlockHeaderWithMetadata {
