@@ -4078,7 +4078,7 @@ fn should_not_restake_after_full_unbond() {
         .commit();
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
-        VALIDATOR_1_ADDR.clone(),
+        *VALIDATOR_1_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
@@ -4142,7 +4142,7 @@ fn should_not_restake_after_full_unbond() {
     // undelegate in the era right after we delegated.
     undelegate(
         &mut builder,
-        DELEGATOR_1_ADDR.clone(),
+        *DELEGATOR_1_ADDR,
         DELEGATOR_1.clone(),
         VALIDATOR_1.clone(),
         U512::from(DELEGATOR_1_STAKE),
@@ -4243,7 +4243,7 @@ fn delegator_full_unbond_during_first_reward_era() {
         .commit();
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
-        VALIDATOR_1_ADDR.clone(),
+        *VALIDATOR_1_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
@@ -4324,7 +4324,7 @@ fn delegator_full_unbond_during_first_reward_era() {
     // undelegate in the first era that the delegator will receive rewards.
     undelegate(
         &mut builder,
-        DELEGATOR_1_ADDR.clone(),
+        *DELEGATOR_1_ADDR,
         DELEGATOR_1.clone(),
         VALIDATOR_1.clone(),
         U512::from(DELEGATOR_1_STAKE),
