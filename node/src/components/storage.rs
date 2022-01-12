@@ -273,21 +273,6 @@ pub enum FatalStorageError {
         /// The block hash of the signatures found in the index.
         block_hash_bytes: Vec<u8>,
     },
-    /// Non-existent block body referred to by header.
-    #[error("Non-existent block body referred to by header. Block header: {0:?}")]
-    NonExistentBlockBodyReferredToByHeader(Box<BlockHeader>),
-    /// Non-existent deploy or transfer in block.
-    #[error(
-        "Non-existent deploy or transfer in block. \
-         Deploy hash: {deploy_hash:?}, \
-         Block: {block:?}"
-    )]
-    NonExistentDeploy {
-        /// The missing deploy hash.
-        deploy_hash: DeployHash,
-        /// The block which has the missing deploy hash.
-        block: Box<Block>,
-    },
     /// Switch block does not contain era end.
     #[error("switch block does not contain era end: {0:?}")]
     InvalidSwitchBlock(Box<BlockHeader>),
@@ -584,14 +569,10 @@ impl Storage {
             )?;
 
             let mut body_txn = env.begin_ro_txn()?;
-            let block_body: BlockBody = match block_header.hashing_algorithm_version() {
-                HashingAlgorithmVersion::V1 => body_txn
-                    .get_value(block_body_v1_db, block_header.body_hash())?
-                    .ok_or_else(|| {
-                        FatalStorageError::NonExistentBlockBodyReferredToByHeader(Box::new(
-                            block_header.clone(),
-                        ))
-                    })?,
+            let maybe_block_body = match block_header.hashing_algorithm_version() {
+                HashingAlgorithmVersion::V1 => {
+                    body_txn.get_value(block_body_v1_db, block_header.body_hash())?
+                }
                 HashingAlgorithmVersion::V2 => get_single_block_body_v2(
                     &mut body_txn,
                     block_body_v2_db,
@@ -599,19 +580,16 @@ impl Storage {
                     transfer_hashes_db,
                     proposer_db,
                     block_header.body_hash(),
-                )?
-                .ok_or_else(|| {
-                    FatalStorageError::NonExistentBlockBodyReferredToByHeader(Box::new(
-                        block_header.clone(),
-                    ))
-                })?,
+                )?,
             };
 
-            if should_check_integrity {
-                Block::new_from_header_and_body(block_header.clone(), block_body.clone())?;
-            }
+            if let Some(block_body) = maybe_block_body {
+                if should_check_integrity {
+                    Block::new_from_header_and_body(block_header.clone(), block_body.clone())?;
+                }
 
-            insert_to_deploy_index(&mut deploy_hash_index, block_header.hash(), &block_body)?;
+                insert_to_deploy_index(&mut deploy_hash_index, block_header.hash(), &block_body)?;
+            }
         }
         info!("block store reindexing complete");
         drop(cursor);
@@ -1630,7 +1608,7 @@ impl Storage {
             Some(block_header) => block_header,
         };
         let block_signatures = match self.get_sufficient_finality_signatures(tx, &block_header)? {
-            None => BlockSignatures::new(*block_hash, block_header.era_id()),
+            None => return Ok(None),
             Some(signatures) => signatures,
         };
         Ok(Some(BlockHeaderWithMetadata {
