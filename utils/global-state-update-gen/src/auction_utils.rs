@@ -73,7 +73,7 @@ pub fn find_large_bids(
         .min()
         .unwrap();
     builder
-        .get_bids()
+        .get_bids(None)
         .into_iter()
         .filter(|(_pkey, bid)| bid.staked_amount() >= min_bid)
         .map(|(pkey, _bid)| pkey)

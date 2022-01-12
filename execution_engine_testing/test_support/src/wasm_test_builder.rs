@@ -986,24 +986,29 @@ where
     }
 
     /// Gets [`EraValidators`].
-    pub fn get_era_validators(&mut self) -> EraValidators {
+    pub fn get_era_validators(&mut self, state_root_hash: Option<Digest>) -> EraValidators {
+        let state_root_hash = state_root_hash.unwrap_or_else(|| self.get_post_state_hash());
         let correlation_id = CorrelationId::new();
-        let state_hash = self.get_post_state_hash();
-        let request = GetEraValidatorsRequest::new(state_hash, *DEFAULT_PROTOCOL_VERSION);
+        let request = GetEraValidatorsRequest::new(state_root_hash, *DEFAULT_PROTOCOL_VERSION);
         self.engine_state
             .get_era_validators(correlation_id, request)
             .expect("get era validators should not error")
     }
 
     /// Gets [`ValidatorWeights`] for a given [`EraId`].
-    pub fn get_validator_weights(&mut self, era_id: EraId) -> Option<ValidatorWeights> {
-        let mut result = self.get_era_validators();
+    pub fn get_validator_weights(
+        &mut self,
+        state_root_hash: Option<Digest>,
+        era_id: EraId,
+    ) -> Option<ValidatorWeights> {
+        let mut result = self.get_era_validators(state_root_hash);
         result.remove(&era_id)
     }
 
     /// Gets [`Bids`].
-    pub fn get_bids(&mut self) -> Bids {
-        let get_bids_request = GetBidsRequest::new(self.get_post_state_hash());
+    pub fn get_bids(&mut self, state_root_hash: Option<Digest>) -> Bids {
+        let state_root_hash = state_root_hash.unwrap_or_else(|| self.get_post_state_hash());
+        let get_bids_request = GetBidsRequest::new(state_root_hash);
 
         let get_bids_result = self
             .engine_state

@@ -129,7 +129,7 @@ fn should_not_retain_genesis_validator_slot_protection_after_vesting_period_elap
     // Unlock all funds of genesis validator
     builder.run_auction(VESTING_WEEKS[0], Vec::new());
 
-    let era_validators_1: EraValidators = builder.get_era_validators();
+    let era_validators_1: EraValidators = builder.get_era_validators(None);
 
     let (last_era_1, weights_1) = era_validators_1.iter().last().unwrap();
     let genesis_validator_stake_1 = weights_1.get(&LOWEST_STAKE_VALIDATOR).unwrap();
@@ -159,7 +159,7 @@ fn should_not_retain_genesis_validator_slot_protection_after_vesting_period_elap
 
     builder.run_auction(VESTING_WEEKS[1], Vec::new());
 
-    let era_validators_2: EraValidators = builder.get_era_validators();
+    let era_validators_2: EraValidators = builder.get_era_validators(None);
 
     let (last_era_2, weights_2) = era_validators_2.iter().last().unwrap();
     assert!(last_era_2 > last_era_1);
@@ -202,7 +202,7 @@ fn should_not_retain_genesis_validator_slot_protection_after_vesting_period_elap
 
     builder.run_auction(VESTING_WEEKS[2], Vec::new());
 
-    let era_validators_3: EraValidators = builder.get_era_validators();
+    let era_validators_3: EraValidators = builder.get_era_validators(None);
     let (last_era_3, weights_3) = era_validators_3.iter().last().unwrap();
     assert!(last_era_3 > last_era_2);
 
@@ -240,7 +240,7 @@ fn should_not_retain_genesis_validator_slot_protection_after_vesting_period_elap
 fn should_retain_genesis_validator_slot_protection() {
     let mut builder = initialize_builder();
 
-    let era_validators_1: EraValidators = builder.get_era_validators();
+    let era_validators_1: EraValidators = builder.get_era_validators(None);
 
     let (last_era_1, weights_1) = era_validators_1.iter().last().unwrap();
     let genesis_validator_stake_1 = weights_1.get(&LOWEST_STAKE_VALIDATOR).unwrap();
@@ -255,7 +255,7 @@ fn should_retain_genesis_validator_slot_protection() {
 
     builder.run_auction(VESTING_BASE, Vec::new());
 
-    let era_validators_2: EraValidators = builder.get_era_validators();
+    let era_validators_2: EraValidators = builder.get_era_validators(None);
 
     let (last_era_2, weights_2) = era_validators_2.iter().last().unwrap();
     assert!(last_era_2 > last_era_1);
@@ -279,7 +279,7 @@ fn should_retain_genesis_validator_slot_protection() {
     builder.run_auction(VESTING_BASE + WEEK_MILLIS, Vec::new());
 
     // All genesis validator slots are protected after ~1 week
-    let era_validators_3: EraValidators = builder.get_era_validators();
+    let era_validators_3: EraValidators = builder.get_era_validators(None);
     let (last_era_3, weights_3) = era_validators_3.iter().last().unwrap();
     assert!(last_era_3 > last_era_2);
     let next_validator_set_3 = BTreeSet::from_iter(weights_3.keys().cloned());
@@ -291,7 +291,7 @@ fn should_retain_genesis_validator_slot_protection() {
         Vec::new(),
     );
 
-    let era_validators_4: EraValidators = builder.get_era_validators();
+    let era_validators_4: EraValidators = builder.get_era_validators(None);
     let (last_era_4, weights_4) = era_validators_4.iter().last().unwrap();
     assert!(last_era_4 > last_era_3);
     let next_validator_set_4 = BTreeSet::from_iter(weights_4.keys().cloned());

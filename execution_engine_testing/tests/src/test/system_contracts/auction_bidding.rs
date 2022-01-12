@@ -87,7 +87,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     builder.exec(exec_request_1).expect_success().commit();
 
-    let bids: Bids = builder.get_bids();
+    let bids: Bids = builder.get_bids(None);
     let default_account_bid = bids
         .get(&*DEFAULT_ACCOUNT_PUBLIC_KEY)
         .expect("should have bid");
@@ -187,7 +187,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
         .unwrap()
         .is_empty());
 
-    let bids: Bids = builder.get_bids();
+    let bids: Bids = builder.get_bids(None);
     let default_account_bid = bids.get(&DEFAULT_ACCOUNT_PUBLIC_KEY).unwrap();
     assert!(default_account_bid.inactive());
     assert!(default_account_bid.staked_amount().is_zero());
@@ -432,7 +432,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     builder.exec(exec_request_1).expect_success().commit();
 
-    let bids: Bids = builder.get_bids();
+    let bids: Bids = builder.get_bids(None);
     let bid = bids.get(&default_public_key_arg).expect("should have bid");
     let bid_purse = *bid.bonding_purse();
     assert_eq!(
@@ -530,7 +530,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
         .unwrap()
         .is_empty());
 
-    let bids: Bids = builder.get_bids();
+    let bids: Bids = builder.get_bids(None);
     assert!(!bids.is_empty());
 
     let bid = bids.get(&default_public_key_arg).expect("should have bid");
@@ -609,7 +609,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
 
     builder.exec(exec_request_1).expect_success().commit();
 
-    let bids: Bids = builder.get_bids();
+    let bids: Bids = builder.get_bids(None);
     let bid = bids.get(&default_public_key_arg).expect("should have bid");
     let bid_purse = *bid.bonding_purse();
     assert_eq!(
@@ -723,7 +723,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
         .unwrap()
         .is_empty());
 
-    let bids: Bids = builder.get_bids();
+    let bids: Bids = builder.get_bids(None);
     assert!(!bids.is_empty());
 
     let bid = bids.get(&default_public_key_arg).expect("should have bid");

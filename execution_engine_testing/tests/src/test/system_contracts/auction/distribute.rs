@@ -69,7 +69,7 @@ static GENESIS_ROUND_SEIGNIORAGE_RATE: Lazy<Ratio<U512>> = Lazy::new(|| {
 });
 
 fn get_validator_bid(builder: &mut InMemoryWasmTestBuilder, validator: PublicKey) -> Option<Bid> {
-    let mut bids: Bids = builder.get_bids();
+    let mut bids: Bids = builder.get_bids(None);
     bids.remove(&validator)
 }
 
@@ -133,7 +133,7 @@ fn get_delegator_staked_amount(
     validator: PublicKey,
     delegator: PublicKey,
 ) -> U512 {
-    let bids: Bids = builder.get_bids();
+    let bids: Bids = builder.get_bids(None);
     let validator_bid = bids.get(&validator).expect("should have validator entry");
 
     let delegator_entry = validator_bid

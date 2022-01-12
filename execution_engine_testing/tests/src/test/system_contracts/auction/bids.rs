@@ -193,7 +193,7 @@ fn should_add_new_bid() {
 
     builder.exec(exec_request_1).expect_success().commit();
 
-    let bids: Bids = builder.get_bids();
+    let bids: Bids = builder.get_bids(None);
 
     assert_eq!(bids.len(), 1);
     let active_bid = bids.get(&BID_ACCOUNT_1_PK.clone()).unwrap();
@@ -251,7 +251,7 @@ fn should_increase_existing_bid() {
 
     builder.exec(exec_request_2).commit().expect_success();
 
-    let bids: Bids = builder.get_bids();
+    let bids: Bids = builder.get_bids(None);
 
     assert_eq!(bids.len(), 1);
 
@@ -307,7 +307,7 @@ fn should_decrease_existing_bid() {
     .build();
     builder.exec(withdraw_request).commit().expect_success();
 
-    let bids: Bids = builder.get_bids();
+    let bids: Bids = builder.get_bids(None);
 
     assert_eq!(bids.len(), 1);
 
@@ -389,7 +389,7 @@ fn should_run_delegate_and_undelegate() {
 
     let auction_hash = builder.get_auction_contract_hash();
 
-    let bids: Bids = builder.get_bids();
+    let bids: Bids = builder.get_bids(None);
     assert_eq!(bids.len(), 1);
     let active_bid = bids.get(&NON_FOUNDER_VALIDATOR_1_PK).unwrap();
     assert_eq!(
@@ -419,7 +419,7 @@ fn should_run_delegate_and_undelegate() {
 
     builder.exec(exec_request_1).commit().expect_success();
 
-    let bids: Bids = builder.get_bids();
+    let bids: Bids = builder.get_bids(None);
     assert_eq!(bids.len(), 1);
     let delegators = bids[&NON_FOUNDER_VALIDATOR_1_PK].delegators();
     assert_eq!(delegators.len(), 1);
@@ -440,7 +440,7 @@ fn should_run_delegate_and_undelegate() {
 
     builder.exec(exec_request_2).commit().expect_success();
 
-    let bids: Bids = builder.get_bids();
+    let bids: Bids = builder.get_bids(None);
     assert_eq!(bids.len(), 1);
     let delegators = bids[&NON_FOUNDER_VALIDATOR_1_PK].delegators();
     assert_eq!(delegators.len(), 1);
@@ -463,7 +463,7 @@ fn should_run_delegate_and_undelegate() {
     .build();
     builder.exec(exec_request_3).commit().expect_success();
 
-    let bids: Bids = builder.get_bids();
+    let bids: Bids = builder.get_bids(None);
     assert_eq!(bids.len(), 1);
     let delegators = bids[&NON_FOUNDER_VALIDATOR_1_PK].delegators();
     assert_eq!(delegators.len(), 1);
@@ -552,12 +552,12 @@ fn should_calculate_era_validators() {
     .build();
 
     let auction_hash = builder.get_auction_contract_hash();
-    let bids: Bids = builder.get_bids();
+    let bids: Bids = builder.get_bids(None);
     assert_eq!(bids.len(), 2, "founding validators {:?}", bids);
 
     // Verify first era validators
     let first_validator_weights: ValidatorWeights = builder
-        .get_validator_weights(INITIAL_ERA_ID)
+        .get_validator_weights(None, INITIAL_ERA_ID)
         .expect("should have first era validator weights");
     assert_eq!(
         first_validator_weights
@@ -595,7 +595,7 @@ fn should_calculate_era_validators() {
     let post_era_id: EraId = builder.get_value(auction_hash, ERA_ID_KEY);
     assert_eq!(post_era_id, EraId::from(1));
 
-    let era_validators: EraValidators = builder.get_era_validators();
+    let era_validators: EraValidators = builder.get_era_validators(None);
 
     // Check if there are no missing eras after the calculation, but we don't care about what the
     // elements are
@@ -649,7 +649,7 @@ fn should_calculate_era_validators() {
 
     // Check validator weights using the API
     let era_validators_result = builder
-        .get_validator_weights(lookup_era_id)
+        .get_validator_weights(None, lookup_era_id)
         .expect("should have validator weights");
     assert_eq!(era_validators_result, *validator_weights);
 
@@ -699,7 +699,7 @@ fn should_get_first_seigniorage_recipients() {
     )
     .build();
 
-    let bids: Bids = builder.get_bids();
+    let bids: Bids = builder.get_bids(None);
     assert_eq!(bids.len(), 2);
 
     let founding_validator_1 = bids.get(&ACCOUNT_1_PK).expect("should have account 1 pk");
@@ -726,7 +726,7 @@ fn should_get_first_seigniorage_recipients() {
         Vec::new(),
     );
 
-    let mut era_validators: EraValidators = builder.get_era_validators();
+    let mut era_validators: EraValidators = builder.get_era_validators(None);
     let snapshot_size = DEFAULT_AUCTION_DELAY as usize + 1;
 
     assert_eq!(era_validators.len(), snapshot_size, "{:?}", era_validators); // eraindex==1 - ran once
@@ -753,7 +753,7 @@ fn should_get_first_seigniorage_recipients() {
     );
 
     let first_validator_weights = builder
-        .get_validator_weights(era_id)
+        .get_validator_weights(None, era_id)
         .expect("should have validator weights");
     assert_eq!(first_validator_weights, validator_weights);
 }
@@ -853,7 +853,7 @@ fn should_release_founder_stake() {
 
     // Check bid and its vesting schedule
     {
-        let bids: Bids = builder.get_bids();
+        let bids: Bids = builder.get_bids(None);
         assert_eq!(bids.len(), 1);
 
         let entry = bids.get(&ACCOUNT_1_PK).unwrap();
@@ -877,7 +877,7 @@ fn should_release_founder_stake() {
 
     // Check bid and its vesting schedule
     {
-        let bids: Bids = builder.get_bids();
+        let bids: Bids = builder.get_bids(None);
         assert_eq!(bids.len(), 1);
 
         let entry = bids.get(&ACCOUNT_1_PK).unwrap();
@@ -970,7 +970,7 @@ fn should_fail_to_get_era_validators() {
     builder.run_genesis(&run_genesis_request);
 
     assert_eq!(
-        builder.get_validator_weights(EraId::MAX),
+        builder.get_validator_weights(None, EraId::MAX),
         None,
         "should not have era validators for invalid era"
     );
@@ -1001,13 +1001,13 @@ fn should_use_era_validators_endpoint_for_first_era() {
     builder.run_genesis(&run_genesis_request);
 
     let validator_weights = builder
-        .get_validator_weights(INITIAL_ERA_ID)
+        .get_validator_weights(None, INITIAL_ERA_ID)
         .expect("should have validator weights for era 0");
 
     assert_eq!(validator_weights.len(), 1);
     assert_eq!(validator_weights[&ACCOUNT_1_PK], ACCOUNT_1_BOND.into());
 
-    let era_validators: EraValidators = builder.get_era_validators();
+    let era_validators: EraValidators = builder.get_era_validators(None);
     assert_eq!(era_validators[&EraId::from(0)], validator_weights);
 }
 
@@ -1059,15 +1059,15 @@ fn should_calculate_era_validators_multiple_new_bids() {
     builder.run_genesis(&run_genesis_request);
 
     let genesis_validator_weights = builder
-        .get_validator_weights(INITIAL_ERA_ID)
+        .get_validator_weights(None, INITIAL_ERA_ID)
         .expect("should have genesis validators for initial era");
 
     // new_era is the first era in the future where new era validator weights will be calculated
     let new_era = INITIAL_ERA_ID + DEFAULT_AUCTION_DELAY + 1;
-    assert!(builder.get_validator_weights(new_era).is_none());
+    assert!(builder.get_validator_weights(None, new_era).is_none());
     assert_eq!(
-        builder.get_validator_weights(new_era - 1).unwrap(),
-        builder.get_validator_weights(INITIAL_ERA_ID).unwrap()
+        builder.get_validator_weights(None, new_era - 1).unwrap(),
+        builder.get_validator_weights(None, INITIAL_ERA_ID).unwrap()
     );
 
     assert_eq!(
@@ -1128,7 +1128,7 @@ fn should_calculate_era_validators_multiple_new_bids() {
     );
     // Verify first era validators
     let new_validator_weights: ValidatorWeights = builder
-        .get_validator_weights(new_era)
+        .get_validator_weights(None, new_era)
         .expect("should have first era validator weights");
 
     // check that the new computed era has exactly the state we expect
@@ -1521,7 +1521,7 @@ fn should_undelegate_delegators_when_validator_unbonds() {
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
-    let bids_before: Bids = builder.get_bids();
+    let bids_before: Bids = builder.get_bids(None);
     let validator_1_bid = bids_before
         .get(&*VALIDATOR_1)
         .expect("should have validator 1 bid");
@@ -1557,7 +1557,7 @@ fn should_undelegate_delegators_when_validator_unbonds() {
         .commit()
         .expect_success();
 
-    let bids_after: Bids = builder.get_bids();
+    let bids_after: Bids = builder.get_bids(None);
     let validator_1_bid = bids_after.get(&VALIDATOR_1).unwrap();
     assert!(validator_1_bid.inactive());
     assert!(validator_1_bid.staked_amount().is_zero());
@@ -1769,7 +1769,7 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
         .commit()
         .expect_success();
 
-    let bids_after: Bids = builder.get_bids();
+    let bids_after: Bids = builder.get_bids(None);
     let validator_1_bid = bids_after.get(&VALIDATOR_1).unwrap();
     assert!(validator_1_bid.inactive());
     assert!(validator_1_bid.staked_amount().is_zero());
@@ -1865,7 +1865,7 @@ fn should_handle_evictions() {
     };
 
     let latest_validators = |builder: &mut InMemoryWasmTestBuilder| {
-        let era_validators: EraValidators = builder.get_era_validators();
+        let era_validators: EraValidators = builder.get_era_validators(None);
         let validators = era_validators
             .iter()
             .rev()
@@ -2231,7 +2231,7 @@ fn should_setup_genesis_delegators() {
         U512::from(DELEGATOR_1_BALANCE)
     );
 
-    let bids: Bids = builder.get_bids();
+    let bids: Bids = builder.get_bids(None);
     assert_eq!(
         bids.keys().cloned().collect::<BTreeSet<_>>(),
         BTreeSet::from_iter(vec![ACCOUNT_1_PK.clone(), ACCOUNT_2_PK.clone(),])
@@ -2460,7 +2460,7 @@ fn should_not_undelegate_vfta_holder_stake() {
     }
 
     {
-        let bids: Bids = builder.get_bids();
+        let bids: Bids = builder.get_bids(None);
         let delegator = bids
             .get(&*VALIDATOR_1)
             .expect("should have validator")
@@ -2488,7 +2488,7 @@ fn should_not_undelegate_vfta_holder_stake() {
     .build();
 
     {
-        let bids: Bids = builder.get_bids();
+        let bids: Bids = builder.get_bids(None);
         let delegator = bids
             .get(&*VALIDATOR_1)
             .expect("should have validator")
@@ -2646,7 +2646,7 @@ fn should_release_vfta_holder_stake() {
 
     // Check bid and its vesting schedule
     {
-        let bids: Bids = builder.get_bids();
+        let bids: Bids = builder.get_bids(None);
         assert_eq!(bids.len(), 1);
 
         let bid_entry = bids.get(&ACCOUNT_1_PK).unwrap();
@@ -2672,7 +2672,7 @@ fn should_release_vfta_holder_stake() {
 
     // Check bid and its vesting schedule
     {
-        let bids: Bids = builder.get_bids();
+        let bids: Bids = builder.get_bids(None);
         assert_eq!(bids.len(), 1);
 
         let bid_entry = bids.get(&ACCOUNT_1_PK).unwrap();
@@ -2897,7 +2897,7 @@ fn should_reset_delegators_stake_after_slashing() {
 
     // Check bids before slashing
 
-    let bids_1: Bids = builder.get_bids();
+    let bids_1: Bids = builder.get_bids(None);
 
     let validator_1_delegator_stakes_1: U512 = bids_1
         .get(&NON_FOUNDER_VALIDATOR_1_PK)
@@ -2932,7 +2932,7 @@ fn should_reset_delegators_stake_after_slashing() {
     builder.exec(slash_request_1).expect_success().commit();
 
     // Compare bids after slashing validator 2
-    let bids_2: Bids = builder.get_bids();
+    let bids_2: Bids = builder.get_bids(None);
     assert_ne!(bids_1, bids_2);
 
     let validator_1_bid_2 = bids_2
@@ -2979,7 +2979,7 @@ fn should_reset_delegators_stake_after_slashing() {
     builder.exec(slash_request_2).expect_success().commit();
 
     // Compare bids after slashing validator 2
-    let bids_3: Bids = builder.get_bids();
+    let bids_3: Bids = builder.get_bids(None);
     assert_ne!(bids_3, bids_2);
     assert_ne!(bids_3, bids_1);
 
@@ -3258,7 +3258,7 @@ fn should_delegate_and_redelegate() {
         delegator_1_purse_balance_after
     );
 
-    let bids: Bids = builder.get_bids();
+    let bids: Bids = builder.get_bids(None);
     assert_eq!(bids.len(), 2);
 
     let delegators = bids[&NON_FOUNDER_VALIDATOR_1_PK].delegators();
@@ -3778,7 +3778,7 @@ fn should_continue_auction_state_from_release_1_4_x() {
         delegator_4_purse_balance_after
     );
 
-    let bids: Bids = builder.get_bids();
+    let bids: Bids = builder.get_bids(None);
     assert_eq!(bids.len(), 3);
 
     let delegators = bids[&NON_FOUNDER_VALIDATOR_1_PK].delegators();
@@ -4066,7 +4066,7 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
 
     let delegator_4_purse_balance_after = builder.get_purse_balance(delegator_4_purse);
 
-    let bids: Bids = builder.get_bids();
+    let bids: Bids = builder.get_bids(None);
 
     assert!(bids[&NON_FOUNDER_VALIDATOR_1_PK].inactive());
 

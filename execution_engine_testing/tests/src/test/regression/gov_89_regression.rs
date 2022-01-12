@@ -96,14 +96,14 @@ fn should_not_create_any_purse() {
     let before_auction_seigniorage: SeigniorageRecipientsSnapshot =
         builder.get_value(auction_hash, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY);
 
-    let bids_before_slashing: Bids = builder.get_bids();
+    let bids_before_slashing: Bids = builder.get_bids(None);
     assert!(
         bids_before_slashing.contains_key(&ACCOUNT_1_PK),
         "should have entry in the genesis bids table {:?}",
         bids_before_slashing
     );
 
-    let bids_before_slashing: Bids = builder.get_bids();
+    let bids_before_slashing: Bids = builder.get_bids(None);
     assert!(
         bids_before_slashing.contains_key(&ACCOUNT_1_PK),
         "should have entry in bids table before slashing {:?}",
@@ -115,12 +115,12 @@ fn should_not_create_any_purse() {
         ..
     } = builder.step(step_request_1).expect("should execute step");
 
-    let bids_after_slashing: Bids = builder.get_bids();
+    let bids_after_slashing: Bids = builder.get_bids(None);
     let account_1_bid = bids_after_slashing.get(&ACCOUNT_1_PK).unwrap();
     assert!(account_1_bid.inactive());
     assert!(account_1_bid.staked_amount().is_zero());
 
-    let bids_after_slashing: Bids = builder.get_bids();
+    let bids_after_slashing: Bids = builder.get_bids(None);
     assert_ne!(
         bids_before_slashing, bids_after_slashing,
         "bids table should be different before and after slashing"

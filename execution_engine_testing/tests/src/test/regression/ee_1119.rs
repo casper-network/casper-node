@@ -101,7 +101,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
         .expect_success()
         .commit();
 
-    let bids: Bids = builder.get_bids();
+    let bids: Bids = builder.get_bids(None);
     let validator_1_bid = bids.get(&VALIDATOR_1).expect("should have bid");
     let bid_purse = validator_1_bid.bonding_purse();
     assert_eq!(
@@ -208,7 +208,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
         "slashing default validator should be noop because no unbonding was done"
     );
 
-    let bids: Bids = builder.get_bids();
+    let bids: Bids = builder.get_bids(None);
     assert!(!bids.is_empty());
     assert!(bids.contains_key(&VALIDATOR_1)); // still bid upon
 
@@ -237,7 +237,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
 
     assert!(unbond_purses.get(&VALIDATOR_1_ADDR).unwrap().is_empty());
 
-    let bids: Bids = builder.get_bids();
+    let bids: Bids = builder.get_bids(None);
     let validator_1_bid = bids.get(&VALIDATOR_1).unwrap();
     assert!(validator_1_bid.inactive());
     assert!(validator_1_bid.staked_amount().is_zero());

@@ -131,7 +131,7 @@ fn should_run_ee_1152_regression_test() {
     builder.run_auction(timestamp_millis, Vec::new());
     timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
 
-    let era_validators = builder.get_era_validators();
+    let era_validators = builder.get_era_validators(None);
 
     assert!(!era_validators.is_empty());
 

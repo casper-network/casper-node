@@ -173,7 +173,7 @@ fn validator_scores_should_reflect_delegates() {
     // Check initial weights
     {
         let era_weights = builder
-            .get_validator_weights(era)
+            .get_validator_weights(None, era)
             .expect("should get validator weights");
 
         assert_eq!(era_weights.get(&VALIDATOR_1), Some(&*VALIDATOR_1_STAKE));
@@ -192,7 +192,7 @@ fn validator_scores_should_reflect_delegates() {
         assert_eq!(builder.get_auction_delay(), auction_delay);
 
         let era_weights = builder
-            .get_validator_weights(era + auction_delay)
+            .get_validator_weights(None, era + auction_delay)
             .expect("should get validator weights");
 
         assert_eq!(era_weights.get(&VALIDATOR_1), Some(&*VALIDATOR_1_STAKE));
@@ -227,7 +227,7 @@ fn validator_scores_should_reflect_delegates() {
         assert_eq!(builder.get_auction_delay(), auction_delay);
 
         let era_weights = builder
-            .get_validator_weights(era)
+            .get_validator_weights(None, era)
             .expect("should get validator weights");
 
         let validator_1_expected_stake = *VALIDATOR_1_STAKE + *DELEGATOR_1_STAKE;
@@ -277,7 +277,7 @@ fn validator_scores_should_reflect_delegates() {
         assert_eq!(builder.get_auction_delay(), auction_delay);
 
         let era_weights = builder
-            .get_validator_weights(era)
+            .get_validator_weights(None, era)
             .expect("should get validator weights");
 
         let validator_1_expected_stake =
@@ -327,7 +327,7 @@ fn validator_scores_should_reflect_delegates() {
         assert_eq!(builder.get_auction_delay(), auction_delay);
 
         let era_weights = builder
-            .get_validator_weights(era)
+            .get_validator_weights(None, era)
             .expect("should get validator weights");
 
         let validator_1_expected_stake =
