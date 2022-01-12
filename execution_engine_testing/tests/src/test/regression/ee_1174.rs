@@ -42,15 +42,15 @@ fn should_run_ee_1174_delegation_rate_too_high() {
     builder.exec(add_bid_request).commit();
 
     let error = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have results")
         .get(0)
         .expect("should have first result")
         .as_error()
+        .cloned()
         .expect("should have error");
 
     assert!(matches!(
         error,
-        Error::Exec(execution::Error::Revert(ApiError::AuctionError(auction_error))) if *auction_error == system::auction::Error::DelegationRateTooLarge as u8));
+        Error::Exec(execution::Error::Revert(ApiError::AuctionError(auction_error))) if auction_error == system::auction::Error::DelegationRateTooLarge as u8));
 }

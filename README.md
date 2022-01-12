@@ -107,19 +107,21 @@ casper-node validator /etc/casper-node/config.toml
 
 Note how the semicolon is used to separate configuration overrides here.
 
-### Development environment variables
+### Other environment variables
+
+To force an integrity check to be run on the databases on node startup, set the following environment variable:
+
+```
+CL_RUN_INTEGRITY_CHECKS=1
+```
+
+**Note that integrity checks can run for several hours, and will hold the node in an initializing state until complete.**
 
 To set the threshold at which a warn-level log message is generated for a long-running reactor event, use the env var
 `CL_EVENT_MAX_MICROSECS`.  For example, to set the threshold to 1 millisecond:
 
 ```
 CL_EVENT_MAX_MICROSECS=1000
-```
-
-To set the threshold at which a queue dump will occur, use the env var `CL_MEM_DUMP_THRESHOLD_MB`. When the process reaches this level of memory allocation a dump will occur, but this will only occur once. Queue dumps can be found in `/tmp` once they are complete. For example, to set the threshold to 16000 megabytes:
-
-```
-CL_MEM_DUMP_THRESHOLD_MB=16000
 ```
 
 
@@ -203,13 +205,13 @@ jq 'map_values(map(keys[0]))' queue_dump.json
 
 ## Running a client
 
-See [the client README](client/README.md).
+See [the client README](https://github.com/casper-ecosystem/casper-client-rs#readme).
 
 ## Running a local network
 
 See [the nctl utility README](utils/nctl/README.md).
 
-## Running on a existing network
+## Running on an existing network
 
 To support upgrades with a network, the casper-node is installed using scripts distributed with the 
 [casper-node-launcher](https://github.com/casper-network/casper-node-launcher).

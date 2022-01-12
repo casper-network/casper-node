@@ -1,100 +1,100 @@
 {
-    "$schema": "http://json-schema.org/draft-07/schema#",
-    "title": "GetValidatorChangesResult",
-    "description": "Result for the \"info_get_validator_changes\" RPC.",
-    "type": "object",
-    "required": [
-      "api_version",
-      "changes"
-    ],
-    "properties": {
-      "api_version": {
-        "description": "The RPC API version.",
-        "type": "string"
-      },
-      "changes": {
-        "description": "The validators' status changes.",
-        "type": "array",
-        "items": {
-          "$ref": "#/definitions/JsonValidatorChanges"
-        }
-      }
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "GetValidatorChangesResult",
+  "description": "Result for the \"info_get_validator_changes\" RPC.",
+  "type": "object",
+  "required": [
+    "api_version",
+    "changes"
+  ],
+  "properties": {
+    "api_version": {
+      "description": "The RPC API version.",
+      "type": "string"
     },
-    "additionalProperties": false,
-    "definitions": {
-      "JsonValidatorChanges": {
-        "description": "The changes in a validator's status.",
-        "type": "object",
-        "required": [
-          "public_key",
-          "status_changes"
-        ],
-        "properties": {
-          "public_key": {
-            "description": "The public key of the validator.",
-            "allOf": [
-              {
-                "$ref": "#/definitions/PublicKey"
-              }
-            ]
-          },
-          "status_changes": {
-            "description": "The set of changes to the validator's status.",
-            "type": "array",
-            "items": {
-              "$ref": "#/definitions/JsonValidatorStatusChange"
-            }
-          }
-        },
-        "additionalProperties": false
-      },
-      "PublicKey": {
-        "description": "Checksummed hex-encoded cryptographic public key, including the algorithm tag prefix.",
-        "type": "string"
-      },
-      "JsonValidatorStatusChange": {
-        "description": "A single change to a validator's status in the given era.",
-        "type": "object",
-        "required": [
-          "era_id",
-          "validator_change"
-        ],
-        "properties": {
-          "era_id": {
-            "description": "The era in which the change occurred.",
-            "allOf": [
-              {
-                "$ref": "#/definitions/EraId"
-              }
-            ]
-          },
-          "validator_change": {
-            "description": "The change in validator status.",
-            "allOf": [
-              {
-                "$ref": "#/definitions/ValidatorChange"
-              }
-            ]
-          }
-        },
-        "additionalProperties": false
-      },
-      "EraId": {
-        "description": "Era ID newtype.",
-        "type": "integer",
-        "format": "uint64",
-        "minimum": 0.0
-      },
-      "ValidatorChange": {
-        "description": "A change to a validator's status between two eras.",
-        "type": "string",
-        "enum": [
-          "Added",
-          "Removed",
-          "Banned",
-          "CannotPropose",
-          "SeenAsFaulty"
-        ]
+    "changes": {
+      "description": "The validators' status changes.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/JsonValidatorChanges"
       }
     }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "JsonValidatorChanges": {
+      "description": "The changes in a validator's status.",
+      "type": "object",
+      "required": [
+        "public_key",
+        "status_changes"
+      ],
+      "properties": {
+        "public_key": {
+          "description": "The public key of the validator.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            }
+          ]
+        },
+        "status_changes": {
+          "description": "The set of changes to the validator's status.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/JsonValidatorStatusChange"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "PublicKey": {
+      "description": "Hex-encoded cryptographic public key, including the algorithm tag prefix.",
+      "type": "string"
+    },
+    "JsonValidatorStatusChange": {
+      "description": "A single change to a validator's status in the given era.",
+      "type": "object",
+      "required": [
+        "era_id",
+        "validator_change"
+      ],
+      "properties": {
+        "era_id": {
+          "description": "The era in which the change occurred.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EraId"
+            }
+          ]
+        },
+        "validator_change": {
+          "description": "The change in validator status.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ValidatorChange"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "EraId": {
+      "description": "Era ID newtype.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "ValidatorChange": {
+      "description": "A change to a validator's status between two eras.",
+      "type": "string",
+      "enum": [
+        "Added",
+        "Removed",
+        "Banned",
+        "CannotPropose",
+        "SeenAsFaulty"
+      ]
+    }
   }
+}

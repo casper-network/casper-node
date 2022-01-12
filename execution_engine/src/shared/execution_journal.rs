@@ -32,6 +32,11 @@ impl ExecutionJournal {
     pub fn push(&mut self, entry: (Key, Transform)) {
         self.0.push(entry)
     }
+
+    /// Returns an iterator over the journal entries.
+    pub fn iter(&self) -> impl Iterator<Item = &(Key, Transform)> {
+        self.0.iter()
+    }
 }
 
 impl From<&ExecutionJournal> for JsonExecutionEffect {

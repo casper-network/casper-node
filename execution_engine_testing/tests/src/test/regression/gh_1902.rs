@@ -6,7 +6,10 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     core::engine_state::ExecuteRequest,
-    shared::system_config::auction_costs::{DEFAULT_ADD_BID_COST, DEFAULT_DELEGATE_COST},
+    shared::system_config::auction_costs::{
+        DEFAULT_ADD_BID_COST, DEFAULT_DELEGATE_COST, DEFAULT_UNDELEGATE_COST,
+        DEFAULT_WITHDRAW_BID_COST,
+    },
 };
 use casper_types::{
     account::{Account, AccountHash},
@@ -115,7 +118,7 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
     exec_and_assert_costs(
         &mut builder,
         add_bid_request,
-        default_account,
+        default_account.clone(),
         bond_amount,
         add_bid_payment_amount,
         Gas::from(DEFAULT_ADD_BID_COST),
@@ -152,9 +155,81 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
     exec_and_assert_costs(
         &mut builder,
         delegate_request,
-        account_1,
+        account_1.clone(),
         delegate_amount,
         delegate_payment_amount,
         Gas::from(DEFAULT_DELEGATE_COST),
+    );
+
+    let undelegate_payment_amount = U512::from(DEFAULT_UNDELEGATE_COST);
+    let undelegate_amount = delegate_amount;
+
+    let undelegate_request = {
+        let sender = *ACCOUNT_1_ADDR;
+        let contract_hash = builder.get_auction_contract_hash();
+        let entry_point = auction::METHOD_UNDELEGATE;
+        let payment_args = runtime_args! {
+            standard_payment::ARG_AMOUNT => undelegate_payment_amount,
+        };
+        let session_args = runtime_args! {
+            auction::ARG_DELEGATOR => ACCOUNT_1_PUBLIC_KEY.clone(),
+            auction::ARG_VALIDATOR => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
+            auction::ARG_AMOUNT => undelegate_amount,
+        };
+        let deploy_hash = [56; 32];
+
+        let deploy = DeployItemBuilder::new()
+            .with_address(sender)
+            .with_stored_session_hash(contract_hash, entry_point, session_args)
+            .with_empty_payment_bytes(payment_args)
+            .with_authorization_keys(&[sender])
+            .with_deploy_hash(deploy_hash)
+            .build();
+
+        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    };
+
+    exec_and_assert_costs(
+        &mut builder,
+        undelegate_request,
+        account_1,
+        U512::zero(), // we paid nothing in the deploy as we're unbonding
+        undelegate_payment_amount,
+        Gas::from(DEFAULT_UNDELEGATE_COST),
+    );
+
+    let unbond_amount = bond_amount;
+    // This amount should be enough to make first time add_bid call.
+    let withdraw_bid_payment_amount = U512::from(DEFAULT_WITHDRAW_BID_COST);
+
+    let withdraw_bid_request = {
+        let sender = *DEFAULT_ACCOUNT_ADDR;
+        let contract_hash = builder.get_auction_contract_hash();
+        let entry_point = auction::METHOD_WITHDRAW_BID;
+        let payment_args =
+            runtime_args! { standard_payment::ARG_AMOUNT => withdraw_bid_payment_amount, };
+        let session_args = runtime_args! {
+            auction::ARG_PUBLIC_KEY => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
+            auction::ARG_AMOUNT => unbond_amount,
+        };
+
+        let deploy = DeployItemBuilder::new()
+            .with_address(sender)
+            .with_stored_session_hash(contract_hash, entry_point, session_args)
+            .with_empty_payment_bytes(payment_args)
+            .with_authorization_keys(&[sender])
+            .with_deploy_hash([58; 32])
+            .build();
+
+        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    };
+
+    exec_and_assert_costs(
+        &mut builder,
+        withdraw_bid_request,
+        default_account,
+        U512::zero(),
+        withdraw_bid_payment_amount,
+        Gas::from(DEFAULT_WITHDRAW_BID_COST),
     );
 }
