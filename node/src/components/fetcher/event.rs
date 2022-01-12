@@ -15,7 +15,7 @@ use crate::{
     utils::Source,
 };
 
-#[derive(Clone, Debug, Error, PartialEq, Eq)]
+#[derive(Clone, Debug, Error, PartialEq, Eq, Serialize)]
 pub(crate) enum FetcherError<T, I>
 where
     T: Item,

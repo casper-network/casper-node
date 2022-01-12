@@ -12,7 +12,7 @@ use super::{
     pending_signatures::PendingSignatures, signature::Signature, signature_cache::SignatureCache,
 };
 use crate::{
-    components::{consensus, linear_chain_sync::KeyBlockInfo},
+    components::{chain_synchronizer::KeyBlockInfo, consensus},
     types::{ActivationPoint, Block, BlockHash, BlockSignatures, DeployHash, FinalitySignature},
 };
 

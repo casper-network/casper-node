@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 
+use serde::Serialize;
 use thiserror::Error;
 use tokio::task::JoinError;
 
@@ -16,13 +17,17 @@ use crate::{
     },
 };
 
-#[derive(Error, Debug)]
-pub(crate) enum LinearChainSyncError {
+#[derive(Error, Debug, Serialize)]
+pub(crate) enum Error {
     #[error(transparent)]
-    ExecutionEngineError(#[from] engine_state::Error),
+    ExecutionEngine(
+        #[from]
+        #[serde(skip_serializing)]
+        engine_state::Error,
+    ),
 
     #[error(
-        "Cannot get trusted validators for such an early era. \
+        "cannot get trusted validators for such an early era. \
          trusted header: {trusted_header:?}, \
          last emergency restart era id: {maybe_last_emergency_restart_era_id:?}"
     )]
@@ -32,7 +37,7 @@ pub(crate) enum LinearChainSyncError {
     },
 
     #[error(
-        "Current version is {current_version}, but retrieved block header with future version: \
+        "current version is {current_version}, but retrieved block header with future version: \
          {block_header_with_future_version:?}"
     )]
     RetrievedBlockHeaderFromFutureVersion {
@@ -41,39 +46,39 @@ pub(crate) enum LinearChainSyncError {
     },
 
     #[error(
-        "Network is still running an older version. Current version is {current_version}, \
-        but current block header has older version: {block_header_with_old_version:?}"
+        "the trusted block has an older version. Current version is {current_version}, \
+         but trusted block header has older version: {block_header_with_old_version:?}"
     )]
-    CurrentBlockHeaderHasOldVersion {
+    TrustedBlockHasOldVersion {
         current_version: ProtocolVersion,
         block_header_with_old_version: Box<BlockHeader>,
     },
 
     #[error(transparent)]
-    BlockFetcherError(#[from] FetcherError<Block, NodeId>),
+    BlockFetcher(#[from] FetcherError<Block, NodeId>),
 
-    #[error("No such block hash: {bogus_block_hash}")]
+    #[error("no such block hash: {bogus_block_hash}")]
     NoSuchBlockHash { bogus_block_hash: BlockHash },
 
     #[error(transparent)]
-    BlockHeaderFetcherError(#[from] FetcherError<BlockHeader, NodeId>),
+    BlockHeaderFetcher(#[from] FetcherError<BlockHeader, NodeId>),
 
     #[error(transparent)]
-    BlockHeaderWithMetadataFetcherError(#[from] FetcherError<BlockHeaderWithMetadata, NodeId>),
+    BlockHeaderWithMetadataFetcher(#[from] FetcherError<BlockHeaderWithMetadata, NodeId>),
 
     #[error(transparent)]
-    BlockWithMetadataFetcherError(#[from] FetcherError<BlockWithMetadata, NodeId>),
+    BlockWithMetadataFetcher(#[from] FetcherError<BlockWithMetadata, NodeId>),
 
     #[error(transparent)]
-    DeployWithMetadataFetcherError(#[from] FetcherError<Deploy, NodeId>),
+    DeployWithMetadataFetcher(#[from] FetcherError<Deploy, NodeId>),
 
     #[error(transparent)]
-    TrieFetcherError(#[from] FetcherError<Trie<Key, StoredValue>, NodeId>),
+    TrieFetcher(#[from] FetcherError<Trie<Key, StoredValue>, NodeId>),
 
     #[error(
-        "Executed block is not the same as downloaded block. \
-         Executed block: {executed_block:?}, \
-         Downloaded block: {downloaded_block:?}"
+        "executed block is not the same as downloaded block. \
+         executed block: {executed_block:?}, \
+         downloaded block: {downloaded_block:?}"
     )]
     ExecutedBlockIsNotTheSameAsDownloadedBlock {
         executed_block: Box<Block>,
@@ -81,14 +86,14 @@ pub(crate) enum LinearChainSyncError {
     },
 
     #[error(transparent)]
-    BlockExecutionError(#[from] BlockExecutionError),
+    BlockExecution(#[from] BlockExecutionError),
 
     #[error(
-        "Joining with trusted hash before emergency restart not supported. \
-         Find a more recent hash from after the restart. \
-         Last emergency restart era: {last_emergency_restart_era}, \
-         Trusted hash: {trusted_hash:?}, \
-         Trusted block header: {trusted_block_header:?}"
+        "joining with trusted hash before emergency restart not supported - find a more recent \
+         hash from after the restart. \
+         last emergency restart era: {last_emergency_restart_era}, \
+         trusted hash: {trusted_hash:?}, \
+         trusted block header: {trusted_block_header:?}"
     )]
     TryingToJoinBeforeLastEmergencyRestartEra {
         last_emergency_restart_era: EraId,
@@ -96,29 +101,37 @@ pub(crate) enum LinearChainSyncError {
         trusted_block_header: Box<BlockHeader>,
     },
 
-    #[error("Hit genesis block trying to get trusted era validators.")]
+    #[error("hit genesis block trying to get trusted era validators")]
     HitGenesisBlockTryingToGetTrustedEraValidators { trusted_header: BlockHeader },
 
     /// Error getting era validators from the execution engine.
     #[error(transparent)]
-    GetEraValidatorsError(#[from] GetEraValidatorsError),
+    GetEraValidators(
+        #[from]
+        #[serde(skip_serializing)]
+        GetEraValidatorsError,
+    ),
 
-    #[error("Stored block has unexpected parent hash. parent: {parent:?}, child: {child:?}")]
+    #[error("stored block has unexpected parent hash. parent: {parent:?}, child: {child:?}")]
     UnexpectedParentHash {
         parent: Box<BlockHeader>,
         child: Box<BlockHeader>,
     },
 
-    #[error("Block has a lower version than its parent.")]
+    #[error("block has a lower version than its parent")]
     LowerVersionThanParent {
         parent: Box<BlockHeader>,
         child: Box<BlockHeader>,
     },
 
-    #[error("Parent block has a height of u64::MAX.")]
+    #[error("parent block has a height of u64::MAX")]
     HeightOverflow { parent: Box<BlockHeader> },
 
     /// Error joining tokio task.
     #[error(transparent)]
-    Join(#[from] JoinError),
+    Join(
+        #[from]
+        #[serde(skip_serializing)]
+        JoinError,
+    ),
 }

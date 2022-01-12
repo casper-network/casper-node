@@ -5,6 +5,8 @@ use alloc::{
     vec::Vec,
 };
 
+#[cfg(feature = "datasize")]
+use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -14,6 +16,7 @@ use crate::{
 
 /// A mapping that represents the association of a [`Weight`] with an [`AccountHash`].
 #[derive(Default, PartialOrd, Ord, PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct AssociatedKeys(BTreeMap<AccountHash, Weight>);
 
 impl AssociatedKeys {

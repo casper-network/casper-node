@@ -4,6 +4,8 @@
 use alloc::vec::Vec;
 use core::mem::MaybeUninit;
 
+#[cfg(feature = "datasize")]
+use datasize::DataSize;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -26,6 +28,7 @@ pub const VESTING_SCHEDULE_LENGTH_MILLIS: u64 =
 const LOCKED_AMOUNTS_LENGTH: usize = (VESTING_SCHEDULE_LENGTH_DAYS / DAYS_IN_WEEK) + 1;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct VestingSchedule {

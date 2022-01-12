@@ -2363,7 +2363,7 @@ fn initialize_block_body_v2_db(
                 None => {
                     // get_single_block_body_v2 returning an Ok(None) means we have an
                     // incomplete block body - this doesn't have to indicate an error, it may
-                    // be caused by fast sync not downloading the whole body, but only a part
+                    // be caused by chain sync not downloading the whole body, but only a part
                     // of it - log it and skip the check
                     info!(?block_body_hash, "incomplete block body found");
                 }

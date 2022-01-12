@@ -2,6 +2,8 @@
 
 use std::{iter::IntoIterator, vec::IntoIter};
 
+use datasize::DataSize;
+
 use casper_types::{
     ExecutionEffect as JsonExecutionEffect, Key, TransformEntry as JsonTransformEntry,
 };
@@ -9,7 +11,7 @@ use casper_types::{
 use crate::shared::transform::Transform;
 
 /// A log of all transforms produced during execution.
-#[derive(Debug, Default, Clone, Eq, PartialEq)]
+#[derive(Debug, Default, Clone, Eq, PartialEq, DataSize)]
 pub struct ExecutionJournal(Vec<(Key, Transform)>);
 
 impl ExecutionJournal {
