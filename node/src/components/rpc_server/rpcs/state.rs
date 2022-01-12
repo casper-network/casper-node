@@ -113,7 +113,6 @@ static QUERY_GLOBAL_STATE_RESULT: Lazy<QueryGlobalStateResult> =
         merkle_proof: MERKLE_PROOF.clone(),
     });
 static GET_TRIE_PARAMS: Lazy<GetTrieParams> = Lazy::new(|| GetTrieParams {
-    trie_index: 0, // TODO: get the index from somewhere?
     trie_key: *Block::doc_example().header().state_root_hash(),
 });
 static GET_TRIE_RESULT: Lazy<GetTrieResult> = Lazy::new(|| GetTrieResult {
@@ -1016,8 +1015,6 @@ impl RpcWithParamsExt for QueryGlobalState {
 /// Parameters for "state_get_trie" RPC request.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 pub struct GetTrieParams {
-    /// A chunk index.
-    pub trie_index: u64,
     /// A trie key.
     pub trie_key: Digest,
 }
@@ -1066,10 +1063,9 @@ impl RpcWithParamsExt for GetTrie {
         api_version: ProtocolVersion,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
-            let trie_index = params.trie_index;
             let trie_key = params.trie_key;
 
-            let ee_trie = match effect_builder.get_trie(trie_index, trie_key).await {
+            let ee_trie = match effect_builder.get_trie_full(trie_key).await {
                 Ok(Some(trie)) => trie,
                 Ok(None) => {
                     return Ok(response_builder.success(Self::ResponseResult {

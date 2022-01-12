@@ -22,8 +22,6 @@ use reactor::ReactorEvent;
 use serde::Serialize;
 use tracing::{debug, error, info, trace, warn};
 
-use casper_execution_engine::storage::trie::TrieOrChunkedDataId;
-
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
 
@@ -502,14 +500,11 @@ impl Reactor {
         serialized_id: &[u8],
     ) -> Effects<<Self as reactor::Reactor>::Event> {
         match tag {
-            Tag::Trie => Self::respond_to_fetch(
-                effect_builder,
-                serialized_id,
-                sender,
-                |TrieOrChunkedDataId(index, trie_key)| {
-                    self.contract_runtime.get_trie(index, trie_key)
-                },
-            ),
+            Tag::Trie => {
+                Self::respond_to_fetch(effect_builder, serialized_id, sender, |trie_or_chunk_id| {
+                    self.contract_runtime.get_trie(trie_or_chunk_id)
+                })
+            }
             _ => {
                 warn!(%sender, ?tag, ?serialized_id, "tried to handle a non-trie get request, this should not have happened");
                 Effects::new()

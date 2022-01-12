@@ -11,7 +11,7 @@ use prometheus::Registry;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, warn};
 
-use casper_execution_engine::storage::trie::{TrieOrChunkedData, TrieOrChunkedDataId};
+use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
 
 use crate::{
     components::{fetcher::event::FetchResponder, Component},
@@ -409,13 +409,12 @@ impl ItemFetcher<BlockHeaderWithMetadata> for Fetcher<BlockHeaderWithMetadata> {
     }
 }
 
-impl ItemFetcher<TrieOrChunkedData> for Fetcher<TrieOrChunkedData> {
+impl ItemFetcher<TrieOrChunk> for Fetcher<TrieOrChunk> {
     const SAFE_TO_RESPOND_TO_ALL: bool = true;
 
     fn responders(
         &mut self,
-    ) -> &mut HashMap<TrieOrChunkedDataId, HashMap<NodeId, Vec<FetchResponder<TrieOrChunkedData>>>>
-    {
+    ) -> &mut HashMap<TrieOrChunkId, HashMap<NodeId, Vec<FetchResponder<TrieOrChunk>>>> {
         &mut self.responders
     }
 
@@ -427,14 +426,14 @@ impl ItemFetcher<TrieOrChunkedData> for Fetcher<TrieOrChunkedData> {
         self.get_from_peer_timeout
     }
 
-    fn get_from_storage<REv: ReactorEventT<TrieOrChunkedData>>(
+    fn get_from_storage<REv: ReactorEventT<TrieOrChunk>>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        id: TrieOrChunkedDataId,
+        id: TrieOrChunkId,
         peer: NodeId,
-    ) -> Effects<Event<TrieOrChunkedData>> {
+    ) -> Effects<Event<TrieOrChunk>> {
         async move {
-            let maybe_trie = match effect_builder.get_trie(id.0, id.1).await {
+            let maybe_trie = match effect_builder.get_trie(id).await {
                 Ok(maybe_trie) => maybe_trie,
                 Err(error) => {
                     error!(?error, "get_trie_request");

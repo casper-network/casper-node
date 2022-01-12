@@ -17,7 +17,7 @@ use reactor::ReactorEvent;
 use serde::Serialize;
 use tracing::{debug, error, info, warn};
 
-use casper_execution_engine::storage::trie::TrieOrChunkedData;
+use casper_execution_engine::storage::trie::TrieOrChunk;
 
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
@@ -137,7 +137,7 @@ pub(crate) enum JoinerEvent {
 
     /// Trie or chunk fetcher event.
     #[from]
-    TrieOrChunkFetcher(#[serde(skip_serializing)] fetcher::Event<TrieOrChunkedData>),
+    TrieOrChunkFetcher(#[serde(skip_serializing)] fetcher::Event<TrieOrChunk>),
 
     /// Trie fetcher event.
     #[from]
@@ -170,7 +170,7 @@ pub(crate) enum JoinerEvent {
 
     /// Trie or chunk fetcher request.
     #[from]
-    TrieOrChunkFetcherRequest(#[serde(skip_serializing)] FetcherRequest<NodeId, TrieOrChunkedData>),
+    TrieOrChunkFetcherRequest(#[serde(skip_serializing)] FetcherRequest<NodeId, TrieOrChunk>),
 
     /// Trie or chunk fetcher request.
     #[from]
@@ -460,7 +460,7 @@ pub(crate) struct Reactor {
     block_header_and_finality_signatures_by_height_fetcher: Fetcher<BlockHeaderWithMetadata>,
     /// This is set to `Some` if the node should shut down.
     exit_code: Option<ExitCode>,
-    trie_or_chunk_fetcher: Fetcher<TrieOrChunkedData>,
+    trie_or_chunk_fetcher: Fetcher<TrieOrChunk>,
     // Handles requests for fetching tries from the network.
     trie_fetcher: TrieFetcher<NodeId>,
     #[data_size(skip)]
@@ -899,7 +899,7 @@ impl reactor::Reactor for Reactor {
                 Effects::new()
             }
             JoinerEvent::TrieResponseIncoming(TrieResponseIncoming { sender, message }) => {
-                reactor::handle_fetch_response::<Self, TrieOrChunkedData>(
+                reactor::handle_fetch_response::<Self, TrieOrChunk>(
                     self,
                     effect_builder,
                     rng,

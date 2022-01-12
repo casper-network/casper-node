@@ -354,87 +354,98 @@ impl ::std::fmt::Debug for PointerBlock {
 /// Chunk with attached proof is used when the requested
 /// trie is larger than [ChunkWithProof::CHUNK_SIZE_BYTES].
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum TrieOrChunkedData {
+pub enum TrieOrChunk {
     /// Represents a Merkle Trie.
     Trie(Box<Trie<Key, StoredValue>>),
     /// Represents a chunk of data with attached proof.
     ChunkWithProof(ChunkWithProof),
 }
 
-impl Display for TrieOrChunkedData {
+impl Display for TrieOrChunk {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            TrieOrChunkedData::Trie(trie) => {
-                write!(f, "Trie({})", trie)
-            }
-            TrieOrChunkedData::ChunkWithProof(chunk) => {
-                write!(
-                    f,
-                    "ChunkWithProof {{ index = {}, hash = {} }}",
-                    chunk.proof().index(),
-                    chunk.proof().root_hash()
-                )
-            }
+            TrieOrChunk::Trie(trie) => f.debug_tuple("Trie").field(trie).finish(),
+            TrieOrChunk::ChunkWithProof(chunk) => f
+                .debug_struct("ChunkWithProof")
+                .field("index", &chunk.proof().index())
+                .field("hash", &chunk.proof().root_hash())
+                .finish(),
         }
     }
 }
 
-impl TrieOrChunkedData {
+impl TrieOrChunk {
     fn tag(&self) -> u8 {
         match self {
-            TrieOrChunkedData::Trie(_) => 0,
-            TrieOrChunkedData::ChunkWithProof(_) => 1,
+            TrieOrChunk::Trie(_) => 0,
+            TrieOrChunk::ChunkWithProof(_) => 1,
         }
     }
 }
 
-impl ToBytes for TrieOrChunkedData {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut ret = bytesrepr::allocate_buffer(self)?;
-        ret.push(self.tag());
+impl ToBytes for TrieOrChunk {
+    fn write_bytes(&self, buf: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        buf.push(self.tag());
 
         match self {
-            TrieOrChunkedData::Trie(trie) => {
-                ret.append(&mut trie.to_bytes()?);
+            TrieOrChunk::Trie(trie) => {
+                buf.append(&mut trie.to_bytes()?);
             }
-            TrieOrChunkedData::ChunkWithProof(chunk) => {
-                ret.append(&mut chunk.to_bytes()?);
+            TrieOrChunk::ChunkWithProof(chunk) => {
+                buf.append(&mut chunk.to_bytes()?);
             }
         }
+
+        Ok(())
+    }
+
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut ret = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut ret)?;
         Ok(ret)
     }
 
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-                TrieOrChunkedData::Trie(trie) => trie.serialized_length(),
-                TrieOrChunkedData::ChunkWithProof(chunk) => chunk.serialized_length(),
+                TrieOrChunk::Trie(trie) => trie.serialized_length(),
+                TrieOrChunk::ChunkWithProof(chunk) => chunk.serialized_length(),
             }
     }
 }
 
-impl FromBytes for TrieOrChunkedData {
+impl FromBytes for TrieOrChunk {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, rem) = u8::from_bytes(bytes)?;
         match tag {
             0 => {
                 let (trie, rem) = Trie::<Key, StoredValue>::from_bytes(rem)?;
-                Ok((TrieOrChunkedData::Trie(Box::new(trie)), rem))
+                Ok((TrieOrChunk::Trie(Box::new(trie)), rem))
             }
             1 => {
                 let (chunk, rem) = ChunkWithProof::from_bytes(rem)?;
-                Ok((TrieOrChunkedData::ChunkWithProof(chunk), rem))
+                Ok((TrieOrChunk::ChunkWithProof(chunk), rem))
             }
             _ => Err(bytesrepr::Error::Formatting),
         }
     }
 }
 
-/// Represents the ID of a `TrieOrChunkedData` - containing the index and the root hash.
+/// Represents the ID of a `TrieOrChunk` - containing the index and the root hash.
+/// The root hash is the hash of the trie node as a whole.
+/// The index is the index of a chunk if the node's size is too large and requires chunking. For
+/// small nodes, it's always 0.
 #[derive(DataSize, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct TrieOrChunkedDataId(pub u64, pub Digest);
+pub struct TrieOrChunkId(pub u64, pub Digest);
 
-impl Display for TrieOrChunkedDataId {
+impl TrieOrChunkId {
+    /// Returns the trie key part of the ID.
+    pub fn digest(&self) -> &Digest {
+        &self.1
+    }
+}
+
+impl Display for TrieOrChunkId {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "({}, {})", self.0, self.1)
     }

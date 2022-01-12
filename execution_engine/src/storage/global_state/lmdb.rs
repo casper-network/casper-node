@@ -11,8 +11,8 @@ use crate::{
         store::Store,
         transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
         trie::{
-            merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie,
-            TrieOrChunkedData,
+            merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie, TrieOrChunk,
+            TrieOrChunkId,
         },
         trie_store::{
             lmdb::LmdbTrieStore,
@@ -192,26 +192,48 @@ impl StateProvider for LmdbGlobalState {
     fn get_trie(
         &self,
         _correlation_id: CorrelationId,
-        trie_key: &Digest,
-        index: u64,
-    ) -> Result<Option<TrieOrChunkedData>, Self::Error> {
+        trie_or_chunk_id: TrieOrChunkId,
+    ) -> Result<Option<TrieOrChunk>, Self::Error> {
+        let TrieOrChunkId(trie_index, trie_key) = trie_or_chunk_id;
         let txn = self.environment.create_read_txn()?;
-        let bytes =
-            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?;
-        txn.commit()?; // TODO[RC]: Needed for read only txn?
+        let bytes = Store::<Digest, Trie<Digest, StoredValue>>::get_raw(
+            &*self.trie_store,
+            &txn,
+            &trie_key,
+        )?;
+        txn.commit()?;
 
         bytes.map_or_else(
             || Ok(None),
             |bytes| {
                 if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
                     let deserialized_trie = bytesrepr::deserialize(bytes.into())?;
-                    Ok(Some(TrieOrChunkedData::Trie(Box::new(deserialized_trie))))
+                    Ok(Some(TrieOrChunk::Trie(Box::new(deserialized_trie))))
                 } else {
-                    let chunk_with_proof = ChunkWithProof::new(bytes.as_slice(), index)
+                    let chunk_with_proof = ChunkWithProof::new(bytes.as_slice(), trie_index)
                         .map_err(|_| error::Error::ChunkWithProofError)?;
-                    Ok(Some(TrieOrChunkedData::ChunkWithProof(chunk_with_proof)))
+                    Ok(Some(TrieOrChunk::ChunkWithProof(chunk_with_proof)))
                 }
             },
+        )
+    }
+
+    fn get_trie_full(
+        &self,
+        _correlation_id: CorrelationId,
+        trie_key: Digest,
+    ) -> Result<Option<Trie<Key, StoredValue>>, Self::Error> {
+        let txn = self.environment.create_read_txn()?;
+        let bytes = Store::<Digest, Trie<Digest, StoredValue>>::get_raw(
+            &*self.trie_store,
+            &txn,
+            &trie_key,
+        )?;
+        txn.commit()?;
+
+        bytes.map_or_else(
+            || Ok(None),
+            |bytes| Ok(Some(bytesrepr::deserialize(bytes.into())?)),
         )
     }
 
@@ -456,29 +478,35 @@ mod tests {
 
         // Expect `Trie` with NodePointer when asking with a root hash.
         let trie = state
-            .get_trie(correlation_id, &root_hash, 0)
+            .get_trie(correlation_id, TrieOrChunkId(0, root_hash))
             .unwrap()
             .unwrap();
-        assert!(matches!(trie, TrieOrChunkedData::Trie(_)));
+        assert!(matches!(trie, TrieOrChunk::Trie(_)));
 
         // Expect another `Trie` with two LeafPointers.
         let trie = state
-            .get_trie(correlation_id, &extract_next_hash_from_trie(trie), 0)
+            .get_trie(
+                correlation_id,
+                TrieOrChunkId(0, extract_next_hash_from_trie(trie)),
+            )
             .unwrap()
             .unwrap();
-        assert!(matches!(trie, TrieOrChunkedData::Trie(_)));
+        assert!(matches!(trie, TrieOrChunk::Trie(_)));
 
         // Now, the next hash will point to the actual leaf, which as we expect
         // contains large data, so we expect to get `ChunkWithProof`.
         let chunked_data = state
-            .get_trie(correlation_id, &extract_next_hash_from_trie(trie), 0)
+            .get_trie(
+                correlation_id,
+                TrieOrChunkId(0, extract_next_hash_from_trie(trie)),
+            )
             .unwrap()
             .unwrap();
-        assert!(matches!(chunked_data, TrieOrChunkedData::ChunkWithProof(_)));
+        assert!(matches!(chunked_data, TrieOrChunk::ChunkWithProof(_)));
     }
 
-    fn extract_next_hash_from_trie(trie: TrieOrChunkedData) -> Digest {
-        let next_hash = if let TrieOrChunkedData::Trie(trie) = trie {
+    fn extract_next_hash_from_trie(trie: TrieOrChunk) -> Digest {
+        let next_hash = if let TrieOrChunk::Trie(trie) = trie {
             if let Trie::Node { pointer_block } = *trie {
                 if pointer_block.child_count() == 0 {
                     panic!("expected children");

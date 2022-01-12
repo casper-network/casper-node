@@ -16,10 +16,16 @@ pub struct ChunkWithProof {
 }
 
 impl ToBytes for ChunkWithProof {
+    fn write_bytes(&self, buf: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        buf.append(&mut self.proof.to_bytes()?);
+        buf.append(&mut self.chunk.to_bytes()?);
+
+        Ok(())
+    }
+
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-        result.append(&mut self.proof.to_bytes()?);
-        result.append(&mut self.chunk.to_bytes()?);
+        self.write_bytes(&mut result)?;
         Ok(result)
     }
 

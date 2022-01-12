@@ -19,8 +19,8 @@ use crate::{
             Transaction, TransactionSource,
         },
         trie::{
-            merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie,
-            TrieOrChunkedData,
+            merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie, TrieOrChunk,
+            TrieOrChunkId,
         },
         trie_store::{
             in_memory::InMemoryTrieStore,
@@ -244,26 +244,48 @@ impl StateProvider for InMemoryGlobalState {
     fn get_trie(
         &self,
         _correlation_id: CorrelationId,
-        trie_key: &Digest,
-        index: u64,
-    ) -> Result<Option<TrieOrChunkedData>, Self::Error> {
+        trie_or_chunk_id: TrieOrChunkId,
+    ) -> Result<Option<TrieOrChunk>, Self::Error> {
+        let TrieOrChunkId(trie_index, trie_key) = trie_or_chunk_id;
         let txn = self.environment.create_read_txn()?;
-        let bytes =
-            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?;
-        txn.commit()?; // TODO[RC]: Needed for read only txn?
+        let bytes = Store::<Digest, Trie<Digest, StoredValue>>::get_raw(
+            &*self.trie_store,
+            &txn,
+            &trie_key,
+        )?;
+        txn.commit()?;
 
         bytes.map_or_else(
             || Ok(None),
             |bytes| {
                 if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
                     let deserialized_trie = bytesrepr::deserialize(bytes.into())?;
-                    Ok(Some(TrieOrChunkedData::Trie(Box::new(deserialized_trie))))
+                    Ok(Some(TrieOrChunk::Trie(Box::new(deserialized_trie))))
                 } else {
-                    let chunk_with_proof = ChunkWithProof::new(bytes.as_slice(), index)
+                    let chunk_with_proof = ChunkWithProof::new(bytes.as_slice(), trie_index)
                         .map_err(|_| error::Error::ChunkWithProofError)?;
-                    Ok(Some(TrieOrChunkedData::ChunkWithProof(chunk_with_proof)))
+                    Ok(Some(TrieOrChunk::ChunkWithProof(chunk_with_proof)))
                 }
             },
+        )
+    }
+
+    fn get_trie_full(
+        &self,
+        _correlation_id: CorrelationId,
+        trie_key: Digest,
+    ) -> Result<Option<Trie<Key, StoredValue>>, Self::Error> {
+        let txn = self.environment.create_read_txn()?;
+        let bytes = Store::<Digest, Trie<Digest, StoredValue>>::get_raw(
+            &*self.trie_store,
+            &txn,
+            &trie_key,
+        )?;
+        txn.commit()?;
+
+        bytes.map_or_else(
+            || Ok(None),
+            |bytes| Ok(Some(bytesrepr::deserialize(bytes.into())?)),
         )
     }
 

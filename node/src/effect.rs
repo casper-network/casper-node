@@ -85,7 +85,7 @@ use casper_execution_engine::{
         self, era_validators::GetEraValidatorsError, BalanceRequest, BalanceResult, GetBidsRequest,
         GetBidsResult, QueryRequest, QueryResult,
     },
-    storage::trie::{Trie, TrieOrChunkedData},
+    storage::trie::{Trie, TrieOrChunk, TrieOrChunkId},
 };
 use casper_hashing::Digest;
 use casper_types::{
@@ -933,18 +933,34 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Get a trie by its hash key.
+    /// Get a trie or chunk by its ID.
     pub(crate) async fn get_trie(
         self,
-        index: u64,
-        trie_key: Digest,
-    ) -> Result<Option<TrieOrChunkedData>, engine_state::Error>
+        trie_or_chunk_id: TrieOrChunkId,
+    ) -> Result<Option<TrieOrChunk>, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
             |responder| ContractRuntimeRequest::GetTrie {
-                index,
+                trie_or_chunk_id,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Get a trie by its hash key.
+    pub(crate) async fn get_trie_full(
+        self,
+        trie_key: Digest,
+    ) -> Result<Option<Trie<Key, StoredValue>>, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::GetTrieFull {
                 trie_key,
                 responder,
             },
@@ -969,9 +985,6 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Asynchronously returns any missing descendant trie keys given an ancestor.
-    // TODO: get fast sync to not store trie nodes returned from storage and then remove this
-    // allow(unused)
-    #[allow(unused)]
     pub(crate) async fn find_missing_descendant_trie_keys(
         self,
         trie_key: Digest,
@@ -1161,13 +1174,11 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    // TODO: remove this once used by fast sync
-    #[allow(unused)]
     /// Requests a trie node from a peer.
     pub(crate) async fn fetch_trie<I>(self, hash: Digest, peers: Vec<I>) -> TrieFetcherResult<I>
     where
         REv: From<TrieFetcherRequest<I>>,
-        I: Debug + Eq + Send + 'static,
+        I: Debug + Eq + Send + Clone + 'static,
     {
         self.make_request(
             |responder| TrieFetcherRequest {

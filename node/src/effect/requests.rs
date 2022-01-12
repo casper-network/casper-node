@@ -23,7 +23,7 @@ use casper_execution_engine::{
         get_bids::{GetBidsRequest, GetBidsResult},
         query::{QueryRequest, QueryResult},
     },
-    storage::trie::{Trie, TrieOrChunkedData},
+    storage::trie::{Trie, TrieOrChunk, TrieOrChunkId},
 };
 use casper_hashing::Digest;
 use casper_types::{
@@ -795,14 +795,19 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder,
         responder: Responder<Result<bool, GetEraValidatorsError>>,
     },
-    /// Get a trie by its hash key.
+    /// Get a trie or chunk by its ID.
     GetTrie {
-        /// The index of the trie chunk.
-        index: u64,
-        /// The hash of the value to get from the `TrieStore`.
+        /// The ID of the trie (or chunk of a trie) to be read.
+        trie_or_chunk_id: TrieOrChunkId,
+        /// Responder to call with the result.
+        responder: Responder<Result<Option<TrieOrChunk>, engine_state::Error>>,
+    },
+    /// Get a trie by its ID.
+    GetTrieFull {
+        /// The ID of the trie to be read.
         trie_key: Digest,
         /// Responder to call with the result.
-        responder: Responder<Result<Option<TrieOrChunkedData>, engine_state::Error>>,
+        responder: Responder<Result<Option<Trie<Key, StoredValue>>, engine_state::Error>>,
     },
     /// Insert a trie into global storage
     PutTrie {
@@ -873,7 +878,12 @@ impl Display for ContractRuntimeRequest {
             } => {
                 write!(formatter, "is {} bonded in era {}", public_key, era_id)
             }
-            ContractRuntimeRequest::GetTrie { trie_key, .. } => {
+            ContractRuntimeRequest::GetTrie {
+                trie_or_chunk_id, ..
+            } => {
+                write!(formatter, "get trie_or_chunk_id: {}", trie_or_chunk_id)
+            }
+            ContractRuntimeRequest::GetTrieFull { trie_key, .. } => {
                 write!(formatter, "get trie_key: {}", trie_key)
             }
             ContractRuntimeRequest::PutTrie { trie, .. } => {
@@ -918,7 +928,7 @@ impl<I: Display + Debug + Eq, T: Item> Display for FetcherRequest<I, T> {
 #[must_use]
 pub(crate) struct TrieFetcherRequest<I>
 where
-    I: Debug + Eq,
+    I: Debug + Eq + Clone,
 {
     /// The peers to try to fetch from.
     pub(crate) peers: Vec<I>,
@@ -930,7 +940,7 @@ where
 
 impl<I> Display for TrieFetcherRequest<I>
 where
-    I: Debug + Eq,
+    I: Debug + Eq + Clone,
 {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(formatter, "request trie by hash {}", self.hash)

@@ -47,10 +47,7 @@ pub trait Store<K, V> {
         Self::Error: From<T::Error>,
     {
         let handle = self.handle();
-        match txn.read(handle, &key.to_bytes()?)? {
-            None => Ok(None),
-            Some(value_bytes) => Ok(Some(value_bytes)),
-        }
+        Ok(txn.read(handle, &key.to_bytes()?)?)
     }
 
     /// Puts a `value` into the store at `key` within a transaction, potentially returning an
