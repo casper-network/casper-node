@@ -725,12 +725,24 @@ pub(super) async fn run_chain_sync_task(
 
     let maybe_last_emergency_restart_era_id = chainspec.protocol_config.last_emergency_restart;
     if let Some(last_emergency_restart_era) = maybe_last_emergency_restart_era_id {
-        if last_emergency_restart_era > trusted_block_header.era_id() {
+        if last_emergency_restart_era > trusted_block_header.next_block_era_id() {
             return Err(Error::TryingToJoinBeforeLastEmergencyRestartEra {
                 last_emergency_restart_era,
                 trusted_hash,
                 trusted_block_header,
             });
+        }
+        // If this is an emergency restart just sync the trie store so the upgrade can be applied.
+        if trusted_block_header.is_switch_block()
+            && trusted_block_header.next_block_era_id() == last_emergency_restart_era
+        {
+            sync_trie_store(
+                effect_builder,
+                *trusted_block_header.state_root_hash(),
+                node_config.max_parallel_trie_fetches as usize,
+            )
+            .await?;
+            return Ok(*trusted_block_header);
         }
     }
 
@@ -740,10 +752,9 @@ pub(super) async fn run_chain_sync_task(
     // 3. Try to get the next block by height; if there is `None` then switch to the participating
     //    reactor.
     if trusted_block_header.is_switch_block()
-        && trusted_block_header.era_id().successor()
+        && trusted_block_header.next_block_era_id()
             == chainspec.protocol_config.activation_point.era_id()
     {
-        // TODO: handle emergency updates
         let trusted_key_block_info =
             get_trusted_key_block_info(effect_builder, &*chainspec, &trusted_block_header).await?;
         if fetch_and_store_next::<BlockHeaderWithMetadata>(
