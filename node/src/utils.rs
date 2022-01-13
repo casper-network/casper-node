@@ -31,6 +31,7 @@ use hyper::server::{conn::AddrIncoming, Builder, Server};
 #[cfg(test)]
 use once_cell::sync::Lazy;
 use prometheus::{self, Histogram, HistogramOpts, Registry};
+use rand::{distributions::Standard, prelude::Distribution, Rng, RngCore, SeedableRng};
 use serde::Serialize;
 use thiserror::Error;
 use tracing::{error, warn};
@@ -40,6 +41,31 @@ pub(crate) use display_error::display_error;
 pub(crate) use external::RESOURCES_PATH;
 pub(crate) use external::{External, LoadError, Loadable};
 pub(crate) use round_robin::WeightedRoundRobin;
+
+/// Create a child RNG from a parent RNG.
+///
+/// Offers a non-fallible alternative to `SeedableRng::from_rng`.
+pub(crate) trait ChildRng {
+    /// Creates another RNG initialized by a random seed generated using the current RNG.
+    ///
+    /// # Note for non-cryptographically secure RNGs
+    ///
+    /// The implementation seeds a random number generator from a randomly generated seed. Caveats
+    /// described [`rand::SeedableRng::from_rng`] thus apply for RNGs not implementing `CryptoRng`.
+    fn from_parent(parent: &mut Self) -> Self;
+}
+
+impl<T> ChildRng for T
+where
+    T: SeedableRng + RngCore,
+    Standard: Distribution<<T as SeedableRng>::Seed>,
+{
+    fn from_parent(parent: &mut Self) -> Self {
+        let seed = parent.gen();
+        let child_rng = Self::from_seed(seed);
+        child_rng
+    }
+}
 
 /// DNS resolution error.
 #[derive(Debug, Error)]
