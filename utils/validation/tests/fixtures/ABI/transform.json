@@ -18,17 +18,17 @@
           "AddKeys": [
             {
               "name": "key 1",
-              "key": "hash-2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
+              "key": "hash-2a2a2A2A2a2a2a2A2a2A2A2A2a2A2a2a2A2a2A2A2a2A2A2a2a2A2a2a2A2A2a2a"
             },
             {
               "name": "uref",
-              "key": "uref-2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b-007"
+              "key": "uref-2b2B2B2b2B2B2B2B2B2b2b2B2b2B2B2b2B2B2B2b2B2b2B2b2B2b2B2B2b2B2B2B-007"
             }
           ]
         }
       }
     ],
-    "output": "1002000000050000006b6579203145000000686173682d32613261326132613261326132613261326132613261326132613261326132613261326132613261326132613261326132613261326132613261326132613261040000007572656649000000757265662d326232623262326232623262326232623262326232623262326232623262326232623262326232623262326232623262326232623262326232623262326232622d303037"
+    "output": "1002000000050000006b6579203145000000686173682d32613261324132413261326132613241326132413241324132613241326132613241326132413241326132413241326132613241326132613241324132613261040000007572656649000000757265662d326232423242326232423242324232423242326232623242326232423242326232423242324232623242326232423262324232623242324232623242324232422d303037"
   },
   "AddUInt128": {
     "input": [
@@ -99,7 +99,7 @@
       {
         "type": "Transform",
         "value": {
-          "WriteAccount": "account-hash-2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
+          "WriteAccount": "account-hash-2a2a2A2A2a2a2a2A2a2A2A2A2a2A2a2a2A2a2A2A2a2A2A2a2a2A2a2a2A2A2a2a"
         }
       }
     ],
@@ -111,8 +111,8 @@
         "type": "Transform",
         "value": {
           "WriteBid": {
-            "validator_public_key": "01197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61",
-            "bonding_purse": "uref-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a-007",
+            "validator_public_key": "01197f6b23e16C8532c6ABC838fAcD5eA789be0c76b2920334039bfa8b3d368D61",
+            "bonding_purse": "uref-0A0a0a0a0A0a0a0a0a0a0A0a0A0A0a0a0A0A0A0A0A0a0a0A0a0A0a0a0a0A0A0a-007",
             "staked_amount": "50000000000",
             "delegation_rate": 100,
             "vesting_schedule": {
@@ -134,7 +134,7 @@
         "value": {
           "WriteCLValue": {
             "cl_type": "String",
-            "bytes": "0d00000048656c6c6f2c20776f726c6421",
+            "bytes": "0D00000048656C6C6f2c20776F726c6421",
             "parsed": "Hello, world!"
           }
         }
@@ -181,7 +181,7 @@
               "transfer-0202020202020202020202020202020202020202020202020202020202020202"
             ],
             "from": "account-hash-6464646464646464646464646464646464646464646464646464646464646464",
-            "source": "uref-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a-007",
+            "source": "uref-0A0a0a0a0A0a0a0a0a0a0A0a0A0A0a0a0A0A0A0A0A0a0a0A0a0A0a0a0a0A0A0a-007",
             "gas": "2500000000"
           }
         }
@@ -198,14 +198,14 @@
             "seigniorage_allocations": [
               {
                 "Validator": {
-                  "validator_public_key": "01197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61",
+                  "validator_public_key": "01197f6b23e16C8532c6ABC838fAcD5eA789be0c76b2920334039bfa8b3d368D61",
                   "amount": "1000000000"
                 }
               },
               {
                 "Delegator": {
-                  "delegator_public_key": "0202bb58b5feca505c74edc000d8282fc556e51a1024fc8e7d7e56c6f887c5c8d5f2",
-                  "validator_public_key": "01197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61",
+                  "delegator_public_key": "0202Bb58B5FEcA505C74EDC000d8282fc556E51a1024fc8E7D7E56C6F887C5c8d5f2",
+                  "validator_public_key": "01197f6b23e16C8532c6ABC838fAcD5eA789be0c76b2920334039bfa8b3d368D61",
                   "amount": "1000000000"
                 }
               }
@@ -222,11 +222,11 @@
         "type": "Transform",
         "value": {
           "WriteTransfer": {
-            "deploy_hash": "2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c",
+            "deploy_hash": "2c2C2c2C2C2C2C2C2C2c2c2c2C2C2c2C2C2c2c2c2C2c2c2c2C2C2C2c2c2C2c2c",
             "from": "account-hash-6464646464646464646464646464646464646464646464646464646464646464",
             "to": "account-hash-6565656565656565656565656565656565656565656565656565656565656565",
-            "source": "uref-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a-002",
-            "target": "uref-0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b-002",
+            "source": "uref-0A0a0a0a0A0a0a0a0a0a0A0a0A0A0a0a0A0A0A0A0A0a0a0A0a0A0a0a0a0A0A0a-002",
+            "target": "uref-0B0b0B0b0b0B0b0b0b0b0b0B0b0b0b0b0B0B0B0b0B0b0b0b0b0B0B0B0B0B0B0b-002",
             "amount": "15000000000",
             "gas": "2500000000",
             "id": 1
@@ -243,23 +243,25 @@
         "value": {
           "WriteWithdraw": [
             {
-              "bonding_purse": "uref-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a-001",
-              "validator_public_key": "01197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61",
-              "unbonder_public_key": "01197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61",
+              "bonding_purse": "uref-0A0a0a0a0A0a0a0a0a0a0A0a0A0A0a0a0A0A0A0A0A0a0a0A0a0A0a0a0a0A0A0a-001",
+              "validator_public_key": "01197f6b23e16C8532c6ABC838fAcD5eA789be0c76b2920334039bfa8b3d368D61",
+              "unbonder_public_key": "01197f6b23e16C8532c6ABC838fAcD5eA789be0c76b2920334039bfa8b3d368D61",
               "era_of_creation": 41,
-              "amount": "60000000000"
+              "amount": "60000000000",
+              "new_validator": null
             },
             {
-              "bonding_purse": "uref-0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b-001",
-              "validator_public_key": "01197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61",
-              "unbonder_public_key": "0202bb58b5feca505c74edc000d8282fc556e51a1024fc8e7d7e56c6f887c5c8d5f2",
+              "bonding_purse": "uref-0B0b0B0b0b0B0b0b0b0b0b0B0b0b0b0b0B0B0B0b0B0b0b0b0b0B0B0B0B0B0B0b-001",
+              "validator_public_key": "01197f6b23e16C8532c6ABC838fAcD5eA789be0c76b2920334039bfa8b3d368D61",
+              "unbonder_public_key": "0202Bb58B5FEcA505C74EDC000d8282fc556E51a1024fc8E7D7E56C6F887C5c8d5f2",
               "era_of_creation": 42,
-              "amount": "50000000000"
+              "amount": "50000000000",
+              "new_validator": null
             }
           ]
         }
       }
     ],
-    "output": "0a020000000a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0101197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d6101197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61290000000000000005005847f80d0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0101197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d610202bb58b5feca505c74edc000d8282fc556e51a1024fc8e7d7e56c6f887c5c8d5f22a000000000000000500743ba40b"
+    "output": "0a020000000a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0101197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d6101197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61290000000000000005005847f80d000b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0101197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d610202bb58b5feca505c74edc000d8282fc556e51a1024fc8e7d7e56c6f887c5c8d5f22a000000000000000500743ba40b00"
   }
 }
