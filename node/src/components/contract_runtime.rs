@@ -478,12 +478,14 @@ impl ContractRuntime {
         let protocol_version = chainspec.protocol_config.version;
         // Transforms a chainspec into a valid genesis config for execution engine.
         let ee_config = chainspec.into();
-        self.engine_state.commit_genesis(
+        let result = self.engine_state.commit_genesis(
             correlation_id,
             genesis_config_hash,
             protocol_version,
             &ee_config,
-        )
+        );
+        self.engine_state.flush_environment()?;
+        result
     }
 
     fn commit_upgrade(
@@ -495,6 +497,7 @@ impl ContractRuntime {
         let result = self
             .engine_state
             .commit_upgrade(CorrelationId::new(), upgrade_config);
+        self.engine_state.flush_environment()?;
         self.metrics
             .commit_upgrade
             .observe(start.elapsed().as_secs_f64());

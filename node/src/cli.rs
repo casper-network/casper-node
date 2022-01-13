@@ -30,6 +30,8 @@ use crate::{
     },
 };
 
+const RUN_INTEGRITY_CHECKS: &str = "CL_RUN_INTEGRITY_CHECKS";
+
 // We override the standard allocator to gather metrics and tune the allocator via th MALLOC_CONF
 // env var.
 #[global_allocator]
@@ -151,8 +153,8 @@ impl Cli {
                 let validator_config = Self::init(&config, config_ext)?;
                 info!(version = %crate::VERSION_STRING.as_str(), "node starting up");
 
-                let pidfile_outcome = {
-                    // Determine storage directory to store pidfile in.
+                let pid_file_outcome = {
+                    // Determine storage directory to store PidFile in.
                     let storage_config = validator_config.map_ref(|cfg| cfg.storage.clone());
                     let root = storage_config.with_dir(storage_config.value().path.clone());
 
@@ -165,23 +167,40 @@ impl Cli {
                     PidFile::acquire(root.join("initializer.pid"))
                 };
 
-                // Note: Do not change `_pidfile` to `_`, or it will be dropped prematurely.
-                // Instantiating `pidfile` guarantees that it will be dropped _after_ any reactor,
+                // Note: Do not change `_pid_file` to `_`, or it will be dropped prematurely.
+                // Instantiating `pid_file` guarantees that it will be dropped _after_ any reactor,
                 // which is what we want.
-                let (_pidfile, crashed) = match pidfile_outcome {
+                let (_pid_file, pid_outcome_check_integrity) = match pid_file_outcome {
                     PidFileOutcome::AnotherNodeRunning(_) => {
-                        anyhow::bail!("another node instance is running (pidfile is locked)");
+                        anyhow::bail!("another node instance is running (pid_file is locked)");
                     }
-                    PidFileOutcome::Crashed(pidfile) => {
-                        warn!("previous node instance seems to have crashed, integrity checks may be run");
-                        (pidfile, true)
+                    PidFileOutcome::Crashed(pid_file) => {
+                        warn!("previous node instance seems to have crashed, consider running integrity checks");
+                        (pid_file, false)
                     }
-                    PidFileOutcome::Clean(pidfile) => {
+                    PidFileOutcome::ForceIntegrityChecks(pid_file) => {
+                        warn!("pid_file has non-numeric contents, running integrity checks");
+                        (pid_file, true)
+                    }
+                    PidFileOutcome::Clean(pid_file) => {
                         info!("no previous crash detected");
-                        (pidfile, false)
+                        (pid_file, false)
                     }
                     PidFileOutcome::PidFileError(err) => {
                         return Err(anyhow::anyhow!(err));
+                    }
+                };
+
+                let should_check_integrity = pid_outcome_check_integrity || {
+                    match env::var(RUN_INTEGRITY_CHECKS) {
+                        Ok(_) => {
+                            warn!(
+                                "env var '{}' set, running integrity checks",
+                                RUN_INTEGRITY_CHECKS
+                            );
+                            true
+                        }
+                        Err(_) => false,
                     }
                 };
 
@@ -195,7 +214,7 @@ impl Cli {
                 let registry = Registry::new();
 
                 let mut initializer_runner = Runner::<initializer::Reactor>::with_metrics(
-                    (crashed, validator_config),
+                    (should_check_integrity, validator_config),
                     &mut rng,
                     &registry,
                 )
