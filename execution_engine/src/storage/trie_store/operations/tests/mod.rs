@@ -23,7 +23,7 @@ use crate::{
             in_memory::InMemoryEnvironment, lmdb::LmdbEnvironment, Readable, Transaction,
             TransactionSource,
         },
-        trie::{merkle_proof::TrieMerkleProof, Pointer, Trie},
+        trie::{merkle_proof::TrieMerkleProof, Pointer, Trie, TrieHashingError},
         trie_store::{
             self,
             in_memory::InMemoryTrieStore,
@@ -675,7 +675,7 @@ where
     T: Readable<Handle = S::Handle>,
     S: TrieStore<K, V>,
     S::Error: From<T::Error>,
-    E: From<S::Error> + From<bytesrepr::Error>,
+    E: From<S::Error> + From<bytesrepr::Error> + From<TrieHashingError>,
 {
     let mut ret = Vec::new();
 
@@ -748,7 +748,7 @@ where
     R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<K, V>,
     S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<TrieHashingError>,
 {
     let txn: R::ReadTransaction = environment.create_read_txn()?;
 
@@ -801,7 +801,7 @@ where
     R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<K, V>,
     S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<TrieHashingError>,
 {
     let mut results = Vec::new();
     if leaves.is_empty() {
@@ -843,7 +843,7 @@ where
     R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<K, V>,
     S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<TrieHashingError>,
 {
     let txn = environment.create_read_txn()?;
     for (index, root_hash) in root_hashes.iter().enumerate() {
@@ -924,7 +924,7 @@ where
     R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<K, V>,
     S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<TrieHashingError>,
 {
     let mut results = Vec::new();
     if pairs.is_empty() {
@@ -960,7 +960,7 @@ where
     R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<K, V>,
     S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<TrieHashingError>,
 {
     let mut states = states.to_vec();
 

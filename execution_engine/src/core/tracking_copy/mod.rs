@@ -13,7 +13,7 @@ use std::{
 use linked_hash_map::LinkedHashMap;
 use thiserror::Error;
 
-use casper_hashing::Digest;
+use casper_hashing::{Digest, MerkleConstructionError};
 use casper_types::{
     bytesrepr, CLType, CLValue, CLValueError, Key, KeyTag, StoredValue, StoredValueTypeMismatch,
     Tagged, U512,
@@ -29,7 +29,10 @@ use crate::{
         newtypes::CorrelationId,
         transform::{self, Transform},
     },
-    storage::{global_state::StateReader, trie::merkle_proof::TrieMerkleProof},
+    storage::{
+        global_state::StateReader,
+        trie::{merkle_proof::TrieMerkleProof, TrieHashingError},
+    },
 };
 
 #[derive(Debug)]
@@ -610,6 +613,10 @@ pub enum ValidationError {
     /// CLValue conversion error.
     #[error("{0}")]
     CLValueError(CLValueError),
+
+    /// Error during trie hashing.
+    #[error("{0}")]
+    MerkleConstruction(MerkleConstructionError),
 }
 
 impl From<CLValueError> for ValidationError {
@@ -621,6 +628,15 @@ impl From<CLValueError> for ValidationError {
 impl From<bytesrepr::Error> for ValidationError {
     fn from(error: bytesrepr::Error) -> Self {
         Self::BytesRepr(error)
+    }
+}
+
+impl From<TrieHashingError> for ValidationError {
+    fn from(error: TrieHashingError) -> Self {
+        match error {
+            TrieHashingError::BytesRepr(err) => Self::BytesRepr(err),
+            TrieHashingError::MerkleConstruction(err) => Self::MerkleConstruction(err),
+        }
     }
 }
 

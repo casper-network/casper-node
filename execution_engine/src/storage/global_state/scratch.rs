@@ -295,8 +295,7 @@ impl StateProvider for ScratchGlobalState {
                     let deserialized_trie = bytesrepr::deserialize(bytes.into())?;
                     Ok(Some(TrieOrChunk::Trie(Box::new(deserialized_trie))))
                 } else {
-                    let chunk_with_proof = ChunkWithProof::new(bytes.as_slice(), trie_index)
-                        .map_err(|_| error::Error::ChunkWithProofError)?;
+                    let chunk_with_proof = ChunkWithProof::new(bytes.as_slice(), trie_index)?;
                     Ok(Some(TrieOrChunk::ChunkWithProof(chunk_with_proof)))
                 }
             },

@@ -9,6 +9,7 @@ use crate::{
         error,
         error::in_memory,
         transaction_source::{Transaction, TransactionSource},
+        trie::TrieHashingError,
         trie_store::{
             operations::{
                 self,
@@ -34,7 +35,7 @@ where
     R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<K, V>,
     S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<TrieHashingError>,
 {
     // Make sure no missing nodes in source
     {
@@ -191,7 +192,7 @@ where
     R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<K, V>,
     S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<TrieHashingError>,
 {
     let bad_key = {
         let txn: R::ReadTransaction = target_environment.create_read_txn()?;

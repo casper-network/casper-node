@@ -34,6 +34,7 @@ use casper_types::{
     checksummed_hex,
 };
 pub use chunk_with_proof::ChunkWithProof;
+pub use error::MerkleConstructionError;
 
 /// Possible hashing errors.
 #[derive(Debug, thiserror::Error)]

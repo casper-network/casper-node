@@ -3,9 +3,10 @@ use std::sync;
 use lmdb as lmdb_external;
 use thiserror::Error;
 
+use casper_hashing::MerkleConstructionError;
 use casper_types::bytesrepr;
 
-use crate::storage::{error::in_memory, global_state::CommitError};
+use crate::storage::{error::in_memory, global_state::CommitError, trie::TrieHashingError};
 
 /// Error enum representing possible error states in LMDB interactions.
 #[derive(Debug, Clone, Error, PartialEq, Eq)]
@@ -27,8 +28,8 @@ pub enum Error {
     CommitError(#[from] CommitError),
 
     /// Trie chunking error.
-    #[error("Could not create a ChunkWithProof")]
-    ChunkWithProofError,
+    #[error("{0}")]
+    MerkleConstruction(MerkleConstructionError),
 }
 
 impl wasmi::HostError for Error {}
@@ -50,6 +51,22 @@ impl From<in_memory::Error> for Error {
         match error {
             in_memory::Error::BytesRepr(error) => Error::BytesRepr(error),
             in_memory::Error::Poison => Error::Poison,
+            in_memory::Error::MerkleConstruction(error) => Error::MerkleConstruction(error),
+        }
+    }
+}
+
+impl From<MerkleConstructionError> for Error {
+    fn from(error: MerkleConstructionError) -> Self {
+        Error::MerkleConstruction(error)
+    }
+}
+
+impl From<TrieHashingError> for Error {
+    fn from(error: TrieHashingError) -> Self {
+        match error {
+            TrieHashingError::BytesRepr(err) => Error::BytesRepr(err),
+            TrieHashingError::MerkleConstruction(err) => Error::MerkleConstruction(err),
         }
     }
 }

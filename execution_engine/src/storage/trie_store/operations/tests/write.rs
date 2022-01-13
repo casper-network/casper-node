@@ -129,7 +129,7 @@ mod partial_tries {
         R: TransactionSource<'a, Handle = S::Handle>,
         S: TrieStore<TestKey, TestValue>,
         S::Error: From<R::Error>,
-        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<TrieHashingError>,
     {
         // Check that the expected set of leaves is in the trie
         check_leaves::<_, _, _, _, E>(
@@ -214,7 +214,7 @@ mod partial_tries {
         R: TransactionSource<'a, Handle = S::Handle>,
         S: TrieStore<TestKey, TestValue>,
         S::Error: From<R::Error>,
-        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<TrieHashingError>,
     {
         let mut states = states.to_owned();
 
@@ -324,7 +324,7 @@ mod full_tries {
         R: TransactionSource<'a, Handle = S::Handle>,
         S: TrieStore<TestKey, TestValue>,
         S::Error: From<R::Error>,
-        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<TrieHashingError>,
     {
         // Check that the expected set of leaves is in the trie at every state reference
         for (num_leaves, state) in states[..index].iter().enumerate() {
@@ -421,7 +421,7 @@ mod full_tries {
         R: TransactionSource<'a, Handle = S::Handle>,
         S: TrieStore<TestKey, TestValue>,
         S::Error: From<R::Error>,
-        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<TrieHashingError>,
     {
         let mut states = states.to_vec();
 
@@ -544,7 +544,7 @@ mod full_tries {
         R: TransactionSource<'a, Handle = S::Handle>,
         S: TrieStore<TestKey, TestValue>,
         S::Error: From<R::Error>,
-        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<TrieHashingError>,
     {
         let mut states = states.to_vec();
         let num_leaves = TEST_LEAVES_LENGTH;

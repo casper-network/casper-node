@@ -241,8 +241,7 @@ impl StateProvider for LmdbGlobalState {
                     let deserialized_trie = bytesrepr::deserialize(bytes.into())?;
                     Ok(Some(TrieOrChunk::Trie(Box::new(deserialized_trie))))
                 } else {
-                    let chunk_with_proof = ChunkWithProof::new(bytes.as_slice(), trie_index)
-                        .map_err(|_| error::Error::ChunkWithProofError)?;
+                    let chunk_with_proof = ChunkWithProof::new(bytes.as_slice(), trie_index)?;
                     Ok(Some(TrieOrChunk::ChunkWithProof(chunk_with_proof)))
                 }
             },
@@ -531,6 +530,8 @@ mod tests {
             other => panic!("expected ChunkWithProof, got {:?}", other),
         };
 
+        assert_eq!(chunk.proof().root_hash(), hash);
+
         // try to read all the chunks
         let count = chunk.proof().count();
         let mut chunks = vec![chunk];
@@ -549,7 +550,7 @@ mod tests {
         // there should be no chunk with index `count`
         assert!(matches!(
             state.get_trie(correlation_id, TrieOrChunkId(count, hash)),
-            Err(error::Error::ChunkWithProofError)
+            Err(error::Error::MerkleConstruction(_))
         ));
 
         // all chunks should be valid

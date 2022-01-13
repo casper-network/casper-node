@@ -24,7 +24,7 @@ use crate::{
     },
     storage::{
         transaction_source::{Transaction, TransactionSource},
-        trie::{merkle_proof::TrieMerkleProof, Trie, TrieOrChunk, TrieOrChunkId},
+        trie::{merkle_proof::TrieMerkleProof, Trie, TrieHashingError, TrieOrChunk, TrieOrChunkId},
         trie_store::{
             operations::{read, write, ReadResult, WriteResult},
             TrieStore,
@@ -144,7 +144,11 @@ where
     R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<Key, StoredValue>,
     S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<CommitError>,
+    E: From<R::Error>
+        + From<S::Error>
+        + From<bytesrepr::Error>
+        + From<CommitError>
+        + From<TrieHashingError>,
 {
     let mut txn = environment.create_read_write_txn()?;
     let mut state_root = prestate_hash;
@@ -182,7 +186,11 @@ where
     R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<Key, StoredValue>,
     S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<CommitError>,
+    E: From<R::Error>
+        + From<S::Error>
+        + From<bytesrepr::Error>
+        + From<CommitError>
+        + From<TrieHashingError>,
     H: BuildHasher,
 {
     let mut txn = environment.create_read_write_txn()?;
