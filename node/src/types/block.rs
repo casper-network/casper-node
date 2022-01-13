@@ -168,6 +168,11 @@ static JSON_BLOCK_HEADER: Lazy<JsonBlockHeader> = Lazy::new(|| {
     JsonBlockHeader::from(block_header)
 });
 
+// This should be clearly specified because the `merkle_tree_hash_activation`
+// parameter used in various tests strongly rely on this value.
+#[cfg(test)]
+const MAX_ERA_FOR_RANDOM_BLOCK: u64 = 6;
+
 /// Error returned from constructing a `Block`.
 #[derive(Debug, Error)]
 pub enum Error {
@@ -1481,9 +1486,7 @@ impl Block {
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
-        const MAX_ERA: u64 = 6;
-
-        let era = rng.gen_range(0..MAX_ERA);
+        let era = rng.gen_range(0..MAX_ERA_FOR_RANDOM_BLOCK);
         let height = era * 10 + rng.gen_range(0..10);
         let is_switch = rng.gen_bool(0.1);
         let merkle_tree_hash_activation = EraId::from(rng.gen::<u64>());
@@ -1505,9 +1508,7 @@ impl Block {
         rng: &mut TestRng,
         merkle_tree_hash_activation: EraId,
     ) -> Self {
-        const MAX_ERA: u64 = 6;
-
-        let era = rng.gen_range(0..MAX_ERA);
+        let era = rng.gen_range(0..MAX_ERA_FOR_RANDOM_BLOCK);
         let height = era * 10 + rng.gen_range(0..10);
         let is_switch = rng.gen_bool(0.1);
 
@@ -1526,22 +1527,10 @@ impl Block {
     /// it also returns the EraId used as merkle_tree_hash_activation.
     #[cfg(test)]
     pub fn random_v1(rng: &mut TestRng) -> (Self, EraId) {
-        const MAX_ERA: u64 = 6;
-
-        let era = rng.gen_range(0..MAX_ERA);
-        let merkle_tree_hash_activation = EraId::from(MAX_ERA + 1);
-        let height = era * 10 + rng.gen_range(0..10);
-        let is_switch = rng.gen_bool(0.1);
+        let merkle_tree_hash_activation = EraId::from(MAX_ERA_FOR_RANDOM_BLOCK + 1);
 
         (
-            Block::random_with_specifics(
-                rng,
-                EraId::from(era),
-                height,
-                ProtocolVersion::V1_0_0,
-                is_switch,
-                merkle_tree_hash_activation,
-            ),
+            Self::random_with_merkle_tree_hash_activation(rng, merkle_tree_hash_activation),
             merkle_tree_hash_activation,
         )
     }
@@ -1551,22 +1540,10 @@ impl Block {
     /// it also returns the EraId used as merkle_tree_hash_activation.
     #[cfg(test)]
     pub fn random_v2(rng: &mut TestRng) -> (Self, EraId) {
-        const MAX_ERA: u64 = 6;
-
-        let era = rng.gen_range(0..MAX_ERA);
         let merkle_tree_hash_activation = EraId::from(0);
-        let height = era * 10 + rng.gen_range(0..10);
-        let is_switch = rng.gen_bool(0.1);
 
         (
-            Block::random_with_specifics(
-                rng,
-                EraId::from(era),
-                height,
-                ProtocolVersion::V1_0_0,
-                is_switch,
-                merkle_tree_hash_activation,
-            ),
+            Self::random_with_merkle_tree_hash_activation(rng, merkle_tree_hash_activation),
             merkle_tree_hash_activation,
         )
     }
