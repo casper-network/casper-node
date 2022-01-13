@@ -55,6 +55,10 @@ pub(crate) enum Event<T: Item> {
     },
     /// An announcement from a different component that we have accepted and stored the given item.
     GotRemotely {
+        // TODO[RC]: `merkle_tree_hash_activation` is scattered around, because this is a piece of
+        // information obtained in the top-level code (read from the chainspec), but
+        // required across all the layers, including the very bottom ones. At some point we should
+        // consider refactoring to get rid of such "tramp data".
         merkle_tree_hash_activation: Option<EraId>,
         item: Box<T>,
         source: Source<NodeId>,
