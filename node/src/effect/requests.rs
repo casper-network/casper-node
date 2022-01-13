@@ -186,8 +186,7 @@ pub(crate) enum NetworkInfoRequest<I> {
     },
     /// Get the peers in random order.
     GetFullyConnectedPeers {
-        /// Responder to be called with all connected peers.
-        /// Responds with a vector in a random order.
+        /// Responder to be called with all connected in random order peers.
         responder: Responder<Vec<I>>,
     },
 }
