@@ -55,8 +55,8 @@ function start_run_teardown() {
 
     # Start nctl network
     nctl-start
-    echo "Sleeping 10 to allow network startup"
-    sleep 10
+    echo "Sleeping 90 to allow network startup"
+    sleep 90
 
     # Run passed in test
     pushd "$SCENARIOS_DIR"
