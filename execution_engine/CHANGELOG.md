@@ -14,7 +14,7 @@ All notable changes to this project will be documented in this file.  The format
 ## [Unreleased]
 
 ### Changed
-
+* Undelegate now takes an optional `new_validator` argument which will re-delegate to a validator without unbonding.
 * (Perf) Changed contract runtime to allow caching GlobalState changes during execution of a single block.
 
 

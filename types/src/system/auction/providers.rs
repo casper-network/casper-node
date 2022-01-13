@@ -7,7 +7,7 @@ use crate::{
         auction::{Bid, EraId, EraInfo, Error, UnbondingPurse},
         mint,
     },
-    CLTyped, Key, KeyTag, URef, BLAKE2B_DIGEST_LENGTH, U512,
+    CLTyped, Key, KeyTag, PublicKey, URef, BLAKE2B_DIGEST_LENGTH, U512,
 };
 
 /// Provider of runtime host functionality.
@@ -43,10 +43,10 @@ pub trait StorageProvider {
     fn write_bid(&mut self, account_hash: AccountHash, bid: Bid) -> Result<(), Error>;
 
     /// Reads collection of [`UnbondingPurse`]s at account hash derived from given public key
-    fn read_withdraw(&mut self, account_hash: &AccountHash) -> Result<Vec<UnbondingPurse>, Error>;
+    fn read_unbond(&mut self, account_hash: &AccountHash) -> Result<Vec<UnbondingPurse>, Error>;
 
     /// Writes given [`UnbondingPurse`]s at account hash derived from given public key
-    fn write_withdraw(
+    fn write_unbond(
         &mut self,
         account_hash: AccountHash,
         unbonding_purses: Vec<UnbondingPurse>,
@@ -93,6 +93,16 @@ pub trait MintProvider {
     /// Reduce total supply by `amount`. Returns unit on success, otherwise
     /// an error.
     fn reduce_total_supply(&mut self, amount: U512) -> Result<(), Error>;
+
+    /// Transfers token from a given source URef to a bonding purse.
+    /// Returns the number of tokens currently delegated to a given validator.
+    fn handle_delegation(
+        &mut self,
+        delegator_public_key: PublicKey,
+        validator_public_key: PublicKey,
+        source: URef,
+        amount: U512,
+    ) -> Result<U512, Error>;
 }
 
 /// Provider of an account related functionality.
