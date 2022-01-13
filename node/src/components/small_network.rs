@@ -445,6 +445,25 @@ where
                 peer_consensus_public_key,
                 stream,
             } => {
+                if self.cfg.max_incoming_peer_connections != 0 {
+                    if let Some(symmetries) = self.connection_symmetries.get(&peer_id) {
+                        let incoming_count = symmetries
+                            .incoming_addrs()
+                            .map(|addrs| addrs.len())
+                            .unwrap_or_default();
+
+                        if incoming_count >= self.cfg.max_incoming_peer_connections as usize {
+                            info!(%public_addr,
+                                  %peer_id,
+                                  count=incoming_count,
+                                  limit=self.cfg.max_incoming_peer_connections,
+                                  "rejecting new incoming connection, limit for peer exceeded"
+                            );
+                            return Effects::new();
+                        }
+                    }
+                }
+
                 info!(%public_addr, "new incoming connection established");
 
                 // Learn the address the peer gave us.
