@@ -62,8 +62,7 @@ where
 {
     fn from_parent(parent: &mut Self) -> Self {
         let seed = parent.gen();
-        let child_rng = Self::from_seed(seed);
-        child_rng
+        Self::from_seed(seed)
     }
 }
 
