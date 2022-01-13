@@ -37,6 +37,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Removed
 * Legacy synchronization from genesis in favor of fast sync has been removed.
+* The `casper-mainnet` feature flag has been removed.
 
 
 
