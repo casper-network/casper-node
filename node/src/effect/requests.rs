@@ -181,7 +181,6 @@ pub(crate) enum NetworkInfoRequest<I> {
     /// Get incoming and outgoing peers.
     GetPeers {
         /// Responder to be called with all connected peers.
-        // TODO - change the `String` field to a `libp2p::Multiaddr` once small_network is removed.
         responder: Responder<BTreeMap<I, String>>,
     },
     /// Get the peers in random order.
