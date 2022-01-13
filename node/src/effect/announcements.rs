@@ -7,6 +7,7 @@ use std::{
     collections::BTreeMap,
     fmt::{self, Display, Formatter},
 };
+use std::fmt::{self, Display, Formatter};
 
 use itertools::Itertools;
 use serde::Serialize;
