@@ -37,8 +37,7 @@ function _main()
     log "Using launcher from local copy: $NCTL_CASPER_NODE_LAUNCHER_HOME/target/$NCTL_COMPILE_TARGET/casper-node-launcher"
     cp "$NCTL_CASPER_NODE_LAUNCHER_HOME/target/$NCTL_COMPILE_TARGET/casper-node-launcher" "$(pwd)"
     chmod +x ./casper-node-launcher
-    log "... $(./casper-node-launcher --version)"
-    popd    
+    popd
 
     for PROTOCOL_VERSION in "${_PROTOCOL_VERSIONS[@]}"
     do
@@ -46,4 +45,4 @@ function _main()
     done
 }
 
-_main 
+_main

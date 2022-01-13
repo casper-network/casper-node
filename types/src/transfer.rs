@@ -92,7 +92,7 @@ impl FromBytes for DeployHash {
 impl Serialize for DeployHash {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            checksummed_hex::encode(&self.0).serialize(serializer)
+            base16::encode_lower(&self.0).serialize(serializer)
         } else {
             self.0.serialize(serializer)
         }
@@ -121,6 +121,7 @@ impl Distribution<DeployHash> for Standard {
 
 /// Represents a transfer from one purse to another
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Transfer {
@@ -294,7 +295,7 @@ impl TransferAddr {
         format!(
             "{}{}",
             TRANSFER_ADDR_FORMATTED_STRING_PREFIX,
-            checksummed_hex::encode(&self.0),
+            base16::encode_lower(&self.0),
         )
     }
 
@@ -318,8 +319,7 @@ impl JsonSchema for TransferAddr {
     fn json_schema(gen: &mut SchemaGenerator) -> Schema {
         let schema = gen.subschema_for::<String>();
         let mut schema_object = schema.into_object();
-        schema_object.metadata().description =
-            Some("Checksummed hex-encoded transfer address.".to_string());
+        schema_object.metadata().description = Some("Hex-encoded transfer address.".to_string());
         schema_object.into()
     }
 }
@@ -346,35 +346,15 @@ impl<'de> Deserialize<'de> for TransferAddr {
     }
 }
 
-// impl TryFrom<&[u8]> for AccountHash {
-//     type Error = TryFromSliceForAccountHashError;
-//
-//     fn try_from(bytes: &[u8]) -> Result<Self, TryFromSliceForAccountHashError> {
-//         [u8; TRANSFER_ADDR_LENGTH]::try_from(bytes)
-//             .map(AccountHash::new)
-//             .map_err(|_| TryFromSliceForAccountHashError(()))
-//     }
-// }
-//
-// impl TryFrom<&alloc::vec::Vec<u8>> for AccountHash {
-//     type Error = TryFromSliceForAccountHashError;
-//
-//     fn try_from(bytes: &Vec<u8>) -> Result<Self, Self::Error> {
-//         [u8; TRANSFER_ADDR_LENGTH]::try_from(bytes as &[u8])
-//             .map(AccountHash::new)
-//             .map_err(|_| TryFromSliceForAccountHashError(()))
-//     }
-// }
-
 impl Display for TransferAddr {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", checksummed_hex::encode(&self.0))
+        write!(f, "{}", base16::encode_lower(&self.0))
     }
 }
 
 impl Debug for TransferAddr {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
-        write!(f, "TransferAddr({})", checksummed_hex::encode(&self.0))
+        write!(f, "TransferAddr({})", base16::encode_lower(&self.0))
     }
 }
 

@@ -4,14 +4,14 @@
 //! module documentation for details.
 
 use std::{
-    collections::HashMap,
+    collections::BTreeMap,
     fmt::{self, Display, Formatter},
 };
 
 use itertools::Itertools;
 use serde::Serialize;
 
-use casper_types::{EraId, ExecutionResult, PublicKey};
+use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey, U512};
 
 use crate::{
     components::{chainspec_loader::NextUpgrade, deploy_acceptor::Error},
@@ -21,8 +21,6 @@ use crate::{
     },
     utils::Source,
 };
-
-pub(crate) use crate::components::contract_runtime::ContractRuntimeAnnouncement;
 
 /// Control announcements are special announcements handled directly by the runtime/runner.
 ///
@@ -194,15 +192,6 @@ where
     }
 }
 
-/// A ContractRuntimeAnnouncement's block.
-#[derive(Debug)]
-pub(crate) struct LinearChainBlock {
-    /// The block.
-    pub(crate) block: Block,
-    /// The results of executing the deploys in this block.
-    pub(crate) execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
-}
-
 /// A Gossiper announcement.
 #[derive(Debug)]
 pub(crate) enum GossiperAnnouncement<T: Item> {
@@ -258,6 +247,55 @@ impl Display for ChainspecLoaderAnnouncement {
         match self {
             ChainspecLoaderAnnouncement::UpgradeActivationPointRead(next_upgrade) => {
                 write!(f, "read {}", next_upgrade)
+            }
+        }
+    }
+}
+
+/// A ContractRuntime announcement.
+#[derive(Debug, Serialize)]
+pub(crate) enum ContractRuntimeAnnouncement {
+    /// A new block from the linear chain was produced.
+    LinearChainBlock {
+        /// The block.
+        block: Box<Block>,
+        /// The results of executing the deploys in this block.
+        // #[serde(skip_serializing)]
+        execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
+    },
+    /// A step was committed successfully and has altered global state.
+    CommitStepSuccess {
+        /// The era id in which the step was committed to global state.
+        era_id: EraId,
+        /// The operations and transforms committed to global state.
+        execution_effect: ExecutionEffect,
+    },
+    /// New era validators.
+    UpcomingEraValidators {
+        /// The era id in which the step was committed to global state.
+        era_that_is_ending: EraId,
+        /// The validators for the eras after the `era_that_is_ending` era.
+        upcoming_era_validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
+    },
+}
+
+impl Display for ContractRuntimeAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ContractRuntimeAnnouncement::LinearChainBlock { block, .. } => {
+                write!(f, "created linear chain block {}", block.hash())
+            }
+            ContractRuntimeAnnouncement::CommitStepSuccess { era_id, .. } => {
+                write!(f, "commit step completed for {}", era_id)
+            }
+            ContractRuntimeAnnouncement::UpcomingEraValidators {
+                era_that_is_ending, ..
+            } => {
+                write!(
+                    f,
+                    "upcoming era validators after current {}.",
+                    era_that_is_ending,
+                )
             }
         }
     }

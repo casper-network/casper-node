@@ -1,5 +1,7 @@
 use alloc::vec::Vec;
 
+#[cfg(feature = "datasize")]
+use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -13,6 +15,7 @@ pub const WEIGHT_SERIALIZED_LENGTH: usize = U8_SERIALIZED_LENGTH;
 /// The weight attributed to a given [`AccountHash`](super::AccountHash) in an account's associated
 /// keys.
 #[derive(PartialOrd, Ord, PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct Weight(u8);
 
 impl Weight {

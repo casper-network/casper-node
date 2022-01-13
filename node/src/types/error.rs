@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 
+use serde::Serialize;
 use thiserror::Error;
 
 use casper_hashing::Digest;
@@ -10,7 +11,7 @@ use casper_types::{bytesrepr, EraId, PublicKey, U512};
 use crate::types::{block::EraReport, Block, BlockHash};
 
 /// An error that can arise when creating a block from a finalized block and other components
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Serialize)]
 pub enum BlockCreationError {
     /// `EraEnd`s need both an `EraReport` present and a map of the next era validator weights.
     /// If one of them is not present while trying to construct an `EraEnd` we must emit an
@@ -29,7 +30,7 @@ pub enum BlockCreationError {
 }
 
 /// An error that can arise when validating a block's cryptographic integrity using its hashes
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Serialize)]
 pub enum BlockValidationError {
     /// Problem serializing some of a block's data into bytes
     #[error("{0}")]

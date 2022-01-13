@@ -6,17 +6,17 @@ export NCTL_STAGE_DESCRIPTION="YOUR-DESCRIPTION"
 
 # Map: version <-> commit hash.
 export NCTL_STAGE_TARGETS=(
-    "1_0_0:local|remote|YOUR_COMMIT_HASH_1"
-    "1_0_1:local|remote|YOUR_COMMIT_HASH_2"
-    "1_1_0:local|remote|YOUR_COMMIT_HASH_3"
-    "2_0_0:local|remote|YOUR_COMMIT_HASH_4"
+    "1_0_0:local|remote|YOUR_NODE_COMMIT_HASH_1-YOUR_CLIENT_COMMIT_HASH_1"
+    "1_0_1:local|remote|YOUR_NODE_COMMIT_HASH_2-YOUR_CLIENT_COMMIT_HASH_2"
+    "1_1_0:local|remote|YOUR_NODE_COMMIT_HASH_3-YOUR_CLIENT_COMMIT_HASH_3"
+    "2_0_0:local|remote|YOUR_NODE_COMMIT_HASH_4-YOUR_CLIENT_COMMIT_HASH_4"
 )
 
 # EXAMPLE
 # export NCTL_STAGE_SHORT_NAME="gslade-01"
 # export NCTL_STAGE_DESCRIPTION="Testing upgrade in response to a prickly consensus fault"
 # export NCTL_STAGE_TARGETS=(
-#     "1_0_0:remote"            # will be pulled from remotely hosted files 
-#     "1_0_1:874c2db40"         # will be pulled from a specific commit hash
-#     "1_1_0:local"             # will be pulled from local
+#     "1_0_0:remote"                # will be pulled from remotely hosted files
+#     "1_0_1:874c2db40-047b4bc46a"  # will be pulled from a specific commit hash in the node and client repos respectively
+#     "1_1_0:local"                 # will be pulled from local
 # )

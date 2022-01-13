@@ -395,7 +395,21 @@ fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
     let mut storage = storage_fixture(&harness);
 
     // Create a random block, store and load it.
-    let block = Block::random(&mut harness.rng);
+    //
+    // We need the block to be of an era > 0.
+    let block = {
+        let era_id = EraId::from(harness.rng.gen_range(1..6));
+        let height = harness.rng.gen_range(1..10);
+        let is_switch = harness.rng.gen_bool(0.1);
+        Block::random_with_specifics(
+            &mut harness.rng,
+            era_id,
+            height,
+            ProtocolVersion::V1_0_0,
+            is_switch,
+        )
+    };
+
     let mut block_signatures = BlockSignatures::new(block.header().hash(), block.header().era_id());
 
     // Secret and Public Keys

@@ -293,6 +293,18 @@ impl DeployHash {
     }
 }
 
+impl From<DeployHash> for casper_types::DeployHash {
+    fn from(deploy_hash: DeployHash) -> casper_types::DeployHash {
+        casper_types::DeployHash::new(deploy_hash.inner().value())
+    }
+}
+
+impl From<casper_types::DeployHash> for DeployHash {
+    fn from(deploy_hash: casper_types::DeployHash) -> DeployHash {
+        DeployHash::new(deploy_hash.value().into())
+    }
+}
+
 impl From<DeployHash> for Digest {
     fn from(deploy_hash: DeployHash) -> Self {
         deploy_hash.0
@@ -416,7 +428,7 @@ impl DeployHeader {
 
     /// Has this deploy expired?
     pub fn expired(&self, current_instant: Timestamp) -> bool {
-        let lifespan = self.timestamp + self.ttl;
+        let lifespan = self.timestamp.saturating_add(self.ttl);
         lifespan < current_instant
     }
 
@@ -448,12 +460,10 @@ impl DeployHeader {
         let num_deps_valid = self.dependencies().len() <= deploy_config.max_dependencies as usize;
         ttl_valid && timestamp_valid && not_expired && num_deps_valid
     }
-}
 
-impl DeployHeader {
     /// Returns the timestamp of when the deploy expires, i.e. `self.timestamp + self.ttl`.
     pub fn expires(&self) -> Timestamp {
-        self.timestamp + self.ttl
+        self.timestamp.saturating_add(self.ttl)
     }
 }
 
@@ -1058,15 +1068,15 @@ impl Deploy {
     pub(crate) fn random_with_missing_payment_contract_by_hash(rng: &mut TestRng) -> Self {
         let payment = ExecutableDeployItem::StoredContractByHash {
             hash: [19; 32].into(),
-            entry_point: "non-existent-entry-point".to_string(),
+            entry_point: "call".to_string(),
             args: Default::default(),
         };
         Self::random_transfer_with_payment(rng, payment)
     }
 
     pub(crate) fn random_with_missing_entry_point_in_payment_contract(rng: &mut TestRng) -> Self {
-        let payment = ExecutableDeployItem::StoredContractByName {
-            name: "Test".to_string(),
+        let payment = ExecutableDeployItem::StoredContractByHash {
+            hash: [19; 32].into(),
             entry_point: "non-existent-entry-point".to_string(),
             args: Default::default(),
         };
@@ -1096,8 +1106,8 @@ impl Deploy {
     pub(crate) fn random_with_nonexistent_contract_version_in_payment_package(
         rng: &mut TestRng,
     ) -> Self {
-        let payment = ExecutableDeployItem::StoredVersionedContractByName {
-            name: "Test".to_string(),
+        let payment = ExecutableDeployItem::StoredVersionedContractByHash {
+            hash: [19; 32].into(),
             version: Some(6u32),
             entry_point: "non-existent-entry-point".to_string(),
             args: Default::default(),
@@ -1124,8 +1134,8 @@ impl Deploy {
     }
 
     pub(crate) fn random_with_missing_entry_point_in_session_contract(rng: &mut TestRng) -> Self {
-        let session = ExecutableDeployItem::StoredContractByName {
-            name: "Test".to_string(),
+        let session = ExecutableDeployItem::StoredContractByHash {
+            hash: [19; 32].into(),
             entry_point: "non-existent-entry-point".to_string(),
             args: Default::default(),
         };
@@ -1155,8 +1165,8 @@ impl Deploy {
     pub(crate) fn random_with_nonexistent_contract_version_in_session_package(
         rng: &mut TestRng,
     ) -> Self {
-        let session = ExecutableDeployItem::StoredVersionedContractByName {
-            name: "Test".to_string(),
+        let session = ExecutableDeployItem::StoredVersionedContractByHash {
+            hash: [19; 32].into(),
             version: Some(6u32),
             entry_point: "non-existent-entry-point".to_string(),
             args: Default::default(),

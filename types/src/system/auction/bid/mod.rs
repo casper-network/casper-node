@@ -5,6 +5,8 @@ mod vesting;
 
 use alloc::{collections::BTreeMap, vec::Vec};
 
+#[cfg(feature = "datasize")]
+use datasize::DataSize;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -15,10 +17,11 @@ use crate::{
     CLType, CLTyped, PublicKey, URef, U512,
 };
 
-pub use vesting::VestingSchedule;
+pub use vesting::{VestingSchedule, VESTING_SCHEDULE_LENGTH_MILLIS};
 
 /// An entry in the validator map.
 #[derive(PartialEq, Eq, Debug, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Bid {
@@ -108,6 +111,17 @@ impl Bid {
     /// Gets the bonding purse of the provided bid
     pub fn bonding_purse(&self) -> &URef {
         &self.bonding_purse
+    }
+
+    /// Checks if a bid is still locked under a vesting schedule.
+    ///
+    /// Returns true if a timestamp falls below the initial lockup period + 91 days release
+    /// schedule, otherwise false.
+    pub fn is_locked(&self, timestamp_millis: u64) -> bool {
+        match self.vesting_schedule {
+            Some(vesting_schedule) => vesting_schedule.is_vesting(timestamp_millis),
+            None => false,
+        }
     }
 
     /// Gets the staked amount of the provided bid
