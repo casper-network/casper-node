@@ -632,7 +632,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| NetworkInfoRequest::GetFullyConnectedPeers { responder },
-            QueueKind::Api,
+            QueueKind::Regular,
         )
         .await
     }
