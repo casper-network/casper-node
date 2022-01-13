@@ -1417,7 +1417,7 @@ fn should_garbage_collect() {
     let blocks_count = 9_usize;
     let blocks_per_era = 3;
 
-    // Ensure blocks are created with the merkle hashing scheme
+    // Ensure blocks are created with the Merkle hashing scheme
     let merkle_tree_hash_activation = EraId::from(0);
 
     let mut harness = ComponentHarness::default();
@@ -1432,7 +1432,7 @@ fn should_garbage_collect() {
                 &mut harness.rng,
                 EraId::from((height / blocks_per_era) as u64),
                 height as u64,
-                ProtocolVersion::from_parts(1, 4, 0), // so that they are stored in v2 scheme
+                ProtocolVersion::from_parts(1, 4, 0),
                 is_switch,
                 merkle_tree_hash_activation,
             )
@@ -1541,7 +1541,7 @@ fn can_put_and_get_blocks_v2() {
 
     let era_id = harness.rng.gen_range(0..10).into();
 
-    // Ensure the merkle hashing algorithm is used.
+    // Ensure the Merkle hashing algorithm is used.
     let merkle_tree_hash_activation = era_id;
 
     let mut storage = storage_fixture(&harness, merkle_tree_hash_activation);

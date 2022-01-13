@@ -461,7 +461,7 @@ async fn test_archival_sync() {
 
     const ERA_TO_JOIN: u64 = 3;
 
-    // We need to make sure we're in the merkle-based hashing scheme.
+    // We need to make sure we're in the Merkle-based hashing scheme.
     let merkle_tree_hash_activation = EraId::from(ERA_TO_JOIN - 1);
 
     // Create a chain with just one node

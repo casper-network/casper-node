@@ -2226,7 +2226,7 @@ mod tests {
         let protocol_version = ProtocolVersion::from_parts(1, 5, 0);
 
         // We set the merkle tree hash activation to the very beginning of the
-        // chain to make sure all blocks are using the merkle hashing schema
+        // chain to make sure all blocks are using the Merkle hashing schema
         let merkle_tree_hash_activation = EraId::from(0);
 
         let is_switch = rng.gen();
