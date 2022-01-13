@@ -449,6 +449,7 @@ mod tests {
     use std::{collections::BTreeMap, fmt::Debug, iter};
 
     use rand::Rng;
+    use rand_distr::{Distribution, LogNormal};
 
     use casper_types::{EraId, PublicKey, SecretKey};
 
@@ -476,7 +477,8 @@ mod tests {
         }
 
         // `merkle_tree_hash_activation` can be chosen arbitrarily
-        let merkle_tree_hash_activation = EraId::from(rng.gen::<u64>());
+        let log_normal = LogNormal::new(2.5, 3.7).unwrap();
+        let merkle_tree_hash_activation = EraId::from(log_normal.sample(&mut rng) as u64);
 
         let block_stored_outcomes =
             lc.handle_put_block(Box::new(block.clone()), merkle_tree_hash_activation);
@@ -574,7 +576,8 @@ mod tests {
         );
 
         // `merkle_tree_hash_activation` can be chosen arbitrarily
-        let merkle_tree_hash_activation = EraId::from(rng.gen::<u64>());
+        let log_normal = LogNormal::new(2.5, 3.7).unwrap();
+        let merkle_tree_hash_activation = EraId::from(log_normal.sample(&mut rng) as u64);
 
         let outcomes = lc.handle_put_block(block.clone(), merkle_tree_hash_activation);
         // `sig_a` and `sig_b` are valid and created by bonded validators.
@@ -696,7 +699,8 @@ mod tests {
         );
 
         // `merkle_tree_hash_activation` can be chosen arbitrarily
-        let merkle_tree_hash_activation = EraId::from(rng.gen::<u64>());
+        let log_normal = LogNormal::new(2.5, 3.7).unwrap();
+        let merkle_tree_hash_activation = EraId::from(log_normal.sample(&mut rng) as u64);
 
         // Set the latest known block so that we can trigger the following checks.
         let block = Block::random_with_specifics(
@@ -752,7 +756,8 @@ mod tests {
         );
 
         // `merkle_tree_hash_activation` can be chosen arbitrarily
-        let merkle_tree_hash_activation = EraId::from(rng.gen::<u64>());
+        let log_normal = LogNormal::new(2.5, 3.7).unwrap();
+        let merkle_tree_hash_activation = EraId::from(log_normal.sample(&mut rng) as u64);
 
         // Set the latest known block so that we can trigger the following checks.
         let block = Box::new(Block::random_with_specifics(
@@ -824,7 +829,8 @@ mod tests {
             .collect();
 
         // `merkle_tree_hash_activation` can be chosen arbitrarily
-        let merkle_tree_hash_activation = EraId::from(rng.gen::<u64>());
+        let log_normal = LogNormal::new(2.5, 3.7).unwrap();
+        let merkle_tree_hash_activation = EraId::from(log_normal.sample(&mut rng) as u64);
 
         // The switch block in era 1 defines how many validators need to sign the one in era 2.
         let block = Box::new(
@@ -942,7 +948,8 @@ mod tests {
             .collect();
 
         // `merkle_tree_hash_activation` can be chosen arbitrarily
-        let merkle_tree_hash_activation = EraId::from(rng.gen::<u64>());
+        let log_normal = LogNormal::new(2.5, 3.7).unwrap();
+        let merkle_tree_hash_activation = EraId::from(log_normal.sample(&mut rng) as u64);
 
         // The switch block in era 1 defines how many validators need to sign the one in era 2.
         let block = Box::new(

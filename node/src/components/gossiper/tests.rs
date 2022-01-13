@@ -11,6 +11,7 @@ use derive_more::From;
 use num_rational::Ratio;
 use prometheus::Registry;
 use rand::Rng;
+use rand_distr::{Distribution, LogNormal};
 use reactor::ReactorEvent;
 use serde::Serialize;
 use tempfile::TempDir;
@@ -208,7 +209,8 @@ impl reactor::Reactor for Reactor {
         let network = NetworkController::create_node(event_queue, rng);
 
         // `merkle_tree_hash_activation` can be chosen arbitrarily
-        let merkle_tree_hash_activation = rng.gen();
+        let log_normal = LogNormal::<f64>::new(2.5, 3.7).unwrap();
+        let merkle_tree_hash_activation = log_normal.sample(rng) as u64;
 
         let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
@@ -220,7 +222,7 @@ impl reactor::Reactor for Reactor {
             "test",
             Ratio::new(1, 3),
             None,
-            merkle_tree_hash_activation,
+            merkle_tree_hash_activation.into(),
         )
         .unwrap();
 
@@ -234,7 +236,7 @@ impl reactor::Reactor for Reactor {
             MAX_ASSOCIATED_KEYS,
             DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
             registry,
-            merkle_tree_hash_activation,
+            merkle_tree_hash_activation.into(),
         )
         .unwrap();
 

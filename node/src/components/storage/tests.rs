@@ -10,6 +10,7 @@ use std::{
 use lmdb::{Cursor, Transaction};
 use num_rational::Ratio;
 use rand::{prelude::SliceRandom, Rng};
+use rand_distr::{Distribution, LogNormal};
 use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
 
@@ -317,7 +318,8 @@ fn get_block_of_non_existing_block_returns_none() {
     let mut harness = ComponentHarness::default();
 
     // `merkle_tree_hash_activation` can be chosen arbitrarily
-    let merkle_tree_hash_activation = harness.rng.gen();
+    let log_normal = LogNormal::new(2.5, 3.7).unwrap();
+    let merkle_tree_hash_activation = EraId::from(log_normal.sample(&mut harness.rng) as u64);
 
     let mut storage = storage_fixture(&harness, merkle_tree_hash_activation);
 
@@ -680,7 +682,8 @@ fn different_block_at_height_is_fatal() {
     let mut harness = ComponentHarness::default();
 
     // `merkle_tree_hash_activation` can be chosen arbitrarily
-    let merkle_tree_hash_activation = harness.rng.gen();
+    let log_normal = LogNormal::new(2.5, 3.7).unwrap();
+    let merkle_tree_hash_activation = EraId::from(log_normal.sample(&mut harness.rng) as u64);
 
     let mut storage = storage_fixture(&harness, merkle_tree_hash_activation);
 
@@ -717,7 +720,8 @@ fn get_vec_of_non_existing_deploy_returns_nones() {
     let mut harness = ComponentHarness::default();
 
     // `merkle_tree_hash_activation` can be chosen arbitrarily
-    let merkle_tree_hash_activation = harness.rng.gen();
+    let log_normal = LogNormal::new(2.5, 3.7).unwrap();
+    let merkle_tree_hash_activation = EraId::from(log_normal.sample(&mut harness.rng) as u64);
 
     let mut storage = storage_fixture(&harness, merkle_tree_hash_activation);
 
@@ -735,7 +739,8 @@ fn can_retrieve_store_and_load_deploys() {
     let mut harness = ComponentHarness::default();
 
     // `merkle_tree_hash_activation` can be chosen arbitrarily
-    let merkle_tree_hash_activation = EraId::from(0);
+    let log_normal = LogNormal::new(2.5, 3.7).unwrap();
+    let merkle_tree_hash_activation = EraId::from(log_normal.sample(&mut harness.rng) as u64);
 
     let mut storage = storage_fixture(&harness, merkle_tree_hash_activation);
 
@@ -777,7 +782,8 @@ fn storing_and_loading_a_lot_of_deploys_does_not_exhaust_handles() {
     let mut harness = ComponentHarness::default();
 
     // `merkle_tree_hash_activation` can be chosen arbitrarily
-    let merkle_tree_hash_activation = harness.rng.gen();
+    let log_normal = LogNormal::new(2.5, 3.7).unwrap();
+    let merkle_tree_hash_activation = EraId::from(log_normal.sample(&mut harness.rng) as u64);
 
     let mut storage = storage_fixture(&harness, merkle_tree_hash_activation);
 
@@ -807,7 +813,8 @@ fn store_execution_results_for_two_blocks() {
     let mut harness = ComponentHarness::default();
 
     // `merkle_tree_hash_activation` can be chosen arbitrarily
-    let merkle_tree_hash_activation = harness.rng.gen();
+    let log_normal = LogNormal::new(2.5, 3.7).unwrap();
+    let merkle_tree_hash_activation = EraId::from(log_normal.sample(&mut harness.rng) as u64);
 
     let mut storage = storage_fixture(&harness, merkle_tree_hash_activation);
 
@@ -863,7 +870,8 @@ fn store_random_execution_results() {
     let mut harness = ComponentHarness::default();
 
     // `merkle_tree_hash_activation` can be chosen arbitrarily
-    let merkle_tree_hash_activation = harness.rng.gen();
+    let log_normal = LogNormal::new(2.5, 3.7).unwrap();
+    let merkle_tree_hash_activation = EraId::from(log_normal.sample(&mut harness.rng) as u64);
 
     let mut storage = storage_fixture(&harness, merkle_tree_hash_activation);
 
@@ -972,7 +980,8 @@ fn store_execution_results_twice_for_same_block_deploy_pair() {
     let mut harness = ComponentHarness::default();
 
     // `merkle_tree_hash_activation` can be chosen arbitrarily
-    let merkle_tree_hash_activation = harness.rng.gen();
+    let log_normal = LogNormal::new(2.5, 3.7).unwrap();
+    let merkle_tree_hash_activation = EraId::from(log_normal.sample(&mut harness.rng) as u64);
 
     let mut storage = storage_fixture(&harness, merkle_tree_hash_activation);
 
@@ -996,7 +1005,8 @@ fn store_identical_execution_results() {
     let mut harness = ComponentHarness::default();
 
     // `merkle_tree_hash_activation` can be chosen arbitrarily
-    let merkle_tree_hash_activation = harness.rng.gen();
+    let log_normal = LogNormal::new(2.5, 3.7).unwrap();
+    let merkle_tree_hash_activation = EraId::from(log_normal.sample(&mut harness.rng) as u64);
 
     let mut storage = storage_fixture(&harness, merkle_tree_hash_activation);
 
@@ -1024,7 +1034,8 @@ fn test_legacy_interface() {
     let mut harness = ComponentHarness::default();
 
     // `merkle_tree_hash_activation` can be chosen arbitrarily
-    let merkle_tree_hash_activation = harness.rng.gen();
+    let log_normal = LogNormal::new(2.5, 3.7).unwrap();
+    let merkle_tree_hash_activation = EraId::from(log_normal.sample(&mut harness.rng) as u64);
 
     let mut storage = storage_fixture(&harness, merkle_tree_hash_activation);
 
@@ -1119,7 +1130,8 @@ fn should_hard_reset() {
     let mut harness = ComponentHarness::default();
 
     // `merkle_tree_hash_activation` can be chosen arbitrarily
-    let merkle_tree_hash_activation = harness.rng.gen();
+    let log_normal = LogNormal::new(2.5, 3.7).unwrap();
+    let merkle_tree_hash_activation = EraId::from(log_normal.sample(&mut harness.rng) as u64);
 
     let mut storage = storage_fixture(&harness, merkle_tree_hash_activation);
 

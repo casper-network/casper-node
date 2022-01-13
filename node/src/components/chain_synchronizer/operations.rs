@@ -947,7 +947,7 @@ fn is_current_era_given_current_timestamp(
 mod tests {
     use std::iter;
 
-    use rand::Rng;
+    use rand_distr::{Distribution, LogNormal};
 
     use casper_types::{EraId, ProtocolVersion, PublicKey, SecretKey};
 
@@ -1030,7 +1030,8 @@ mod tests {
         chainspec.core_config.minimum_era_height = minimum_era_height;
 
         // `merkle_tree_hash_activation` can be chosen arbitrarily
-        let merkle_tree_hash_activation = EraId::from(rng.gen::<u64>());
+        let log_normal = LogNormal::new(2.5, 3.7).unwrap();
+        let merkle_tree_hash_activation = EraId::from(log_normal.sample(&mut rng) as u64);
 
         // We assume era 6 started after six minimum era durations, at block 100.
         let era6_start = genesis_time + era_duration * 6;
@@ -1109,7 +1110,8 @@ mod tests {
         let v1_3_0 = ProtocolVersion::from_parts(1, 3, 0);
 
         // `merkle_tree_hash_activation` can be chosen arbitrarily
-        let merkle_tree_hash_activation = EraId::from(rng.gen::<u64>());
+        let log_normal = LogNormal::new(2.5, 3.7).unwrap();
+        let merkle_tree_hash_activation = EraId::from(log_normal.sample(&mut rng) as u64);
         let header = Block::random_with_specifics(
             &mut rng,
             EraId::from(6),
