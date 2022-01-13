@@ -1,7 +1,6 @@
 use std::{
     collections::HashMap,
     fmt::{self, Debug},
-    mem,
 };
 
 use datasize::DataSize;
@@ -97,12 +96,18 @@ where
     fn merge(&mut self, other: PartialChunks<I>) {
         self.chunks.extend(other.chunks);
         self.responders.extend(other.responders);
-        self.peers.extend(other.peers);
+        // this is quadratic in the number of peers, but it's never huge, so it shouldn't be a
+        // problem
+        for peer in other.peers {
+            if !self.peers.contains(&peer) {
+                self.peers.push(peer);
+            }
+        }
         self.sender = self.sender.take().or(other.sender);
     }
 
-    fn respond(&mut self, value: TrieFetcherResult<I>) -> Effects<Event<I>> {
-        mem::take(&mut self.responders)
+    fn respond(self, value: TrieFetcherResult<I>) -> Effects<Event<I>> {
+        self.responders
             .into_iter()
             .flat_map(|responder| responder.respond(value.clone()).ignore())
             .collect()
@@ -183,7 +188,7 @@ where
                     error!(%hash, "fetched a trie we didn't request!");
                     Effects::new()
                 }
-                Some(mut partial_chunks) => {
+                Some(partial_chunks) => {
                     debug!(%hash, "got a full trie");
                     partial_chunks.respond(into_response(trie, sender))
                 }
