@@ -860,7 +860,7 @@ where
                 NetworkInfoRequest::GetPeers { responder } => {
                     responder.respond(self.peers()).ignore()
                 }
-                NetworkInfoRequest::GetPeersInRandomOrder { responder } => {
+                NetworkInfoRequest::GetFullyConnectedPeers { responder } => {
                     let peers_vec: Vec<NodeId> = self
                         .connection_symmetries
                         .iter()
