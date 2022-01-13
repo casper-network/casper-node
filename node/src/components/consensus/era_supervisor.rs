@@ -22,7 +22,7 @@ use datasize::DataSize;
 use futures::FutureExt;
 use itertools::Itertools;
 use prometheus::Registry;
-use rand::Rng;
+use rand::{prelude::IteratorRandom, Rng, SeedableRng};
 use tracing::{debug, error, info, trace, warn};
 
 use casper_hashing::Digest;
@@ -972,9 +972,12 @@ where
             }
             ProtocolOutcome::CreatedMessageToRandomPeer(payload) => {
                 let message = ConsensusMessage::Protocol { era_id, payload };
+
+                let seed: <NodeRng as SeedableRng>::Seed = rng.gen();
+                let mut selection_rng = NodeRng::from_seed(seed);
                 async move {
                     let peers = effect_builder.get_fully_connected_peers().await;
-                    if let Some(to) = peers.into_iter().next() {
+                    if let Some(to) = peers.into_iter().choose(&mut selection_rng) {
                         effect_builder.send_message(to, message.into()).await;
                     }
                 }

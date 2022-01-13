@@ -56,7 +56,7 @@ use futures::{future::BoxFuture, FutureExt};
 use openssl::{error::ErrorStack as OpenSslErrorStack, pkey};
 use pkey::{PKey, Private};
 use prometheus::Registry;
-use rand::seq::{IteratorRandom, SliceRandom};
+use rand::seq::IteratorRandom;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::{
@@ -861,16 +861,15 @@ where
                     responder.respond(self.peers()).ignore()
                 }
                 NetworkInfoRequest::GetFullyConnectedPeers { responder } => {
-                    let peers_vec: Vec<NodeId> = self
+                    let symmetric_peers: Vec<NodeId> = self
                         .connection_symmetries
                         .iter()
                         .filter_map(|(node_id, sym)| {
-                            matches!(sym, ConnectionSymmetry::Symmetric { .. }).then_some(*node_id)
+                            matches!(sym, ConnectionSymmetry::Symmetric { .. }).then(|| *node_id)
                         })
                         .collect();
 
-                    peers_vec.shuffle(rng);
-                    responder.respond(peers_vec).ignore()
+                    responder.respond(symmetric_peers).ignore()
                 }
             },
             Event::PeerAddressReceived(gossiped_address) => {

@@ -624,7 +624,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the current network peers in a random order.
+    /// Gets the current network peers in unspecified (but not random) order.
     pub async fn get_fully_connected_peers<I>(self) -> Vec<I>
     where
         REv: From<NetworkInfoRequest<I>>,
