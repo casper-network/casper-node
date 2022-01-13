@@ -25,6 +25,7 @@ use crate::{
     },
 };
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, PartialEq, Eq)]
 pub enum ReadResult<V> {
     Found(V),
