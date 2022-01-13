@@ -861,7 +861,14 @@ where
                     responder.respond(self.peers()).ignore()
                 }
                 NetworkInfoRequest::GetPeersInRandomOrder { responder } => {
-                    let mut peers_vec: Vec<NodeId> = self.peers().keys().cloned().collect();
+                    let peers_vec: Vec<NodeId> = self
+                        .connection_symmetries
+                        .iter()
+                        .filter_map(|(node_id, sym)| {
+                            matches!(sym, ConnectionSymmetry::Symmetric { .. }).then_some(*node_id)
+                        })
+                        .collect();
+
                     peers_vec.shuffle(rng);
                     responder.respond(peers_vec).ignore()
                 }
