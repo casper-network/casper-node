@@ -737,7 +737,7 @@ pub(super) async fn run_chain_sync_task(
         }
         // If the trusted hash specifies the last block before the emergency restart, we have to
         // compute the immediate switch block ourselves, since there's no other way to verify that
-        // block. We just sync the trie there and and return, so the upgrade can be applied.
+        // block. We just sync the trie there and return, so the upgrade can be applied.
         if trusted_block_header.is_switch_block()
             && trusted_block_header.next_block_era_id() == last_emergency_restart_era
         {
