@@ -366,6 +366,7 @@ fn switch_block_for_block_header(
     )
     .expect("Could not create block")
 }
+
 #[test]
 fn test_get_block_header_and_sufficient_finality_signatures_by_height() {
     const MAX_ERA: u64 = 6;
