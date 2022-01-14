@@ -1,6 +1,7 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt::{self, Debug},
+    hash::Hash,
 };
 
 use datasize::DataSize;
@@ -59,7 +60,7 @@ where
 
 impl<I> PartialChunks<I>
 where
-    I: Debug + Eq + Clone + Send + 'static,
+    I: Debug + Eq + Clone + Hash + Send + 'static,
 {
     fn missing_chunk(&self, count: u64) -> Option<u64> {
         (0..count).find(|idx| !self.chunks.contains_key(idx))
@@ -96,10 +97,10 @@ where
     fn merge(&mut self, other: PartialChunks<I>) {
         self.chunks.extend(other.chunks);
         self.responders.extend(other.responders);
-        // this is quadratic in the number of peers, but it's never huge, so it shouldn't be a
-        // problem
+        // set used for filtering out duplicates
+        let mut filter_peers: HashSet<I> = self.peers.iter().cloned().collect();
         for peer in other.peers {
-            if !self.peers.contains(&peer) {
+            if !filter_peers.insert(peer.clone()) {
                 self.peers.push(peer);
             }
         }
@@ -161,7 +162,7 @@ where
 
 impl<I> TrieFetcher<I>
 where
-    I: Debug + Clone + Send + Eq + 'static,
+    I: Debug + Clone + Hash + Send + Eq + 'static,
 {
     pub(crate) fn new() -> Self {
         TrieFetcher {
@@ -323,7 +324,7 @@ where
         + From<FetcherRequest<I, TrieOrChunk>>
         + From<ControlAnnouncement>
         + From<BlocklistAnnouncement<I>>,
-    I: Debug + Clone + Send + Eq + 'static,
+    I: Debug + Clone + Hash + Send + Eq + 'static,
 {
     type Event = Event<I>;
     type ConstructionError = prometheus::Error;
