@@ -28,7 +28,7 @@ use crate::{
         engine_state::{execution_effect::ExecutionEffect, EngineConfig, SystemContractRegistry},
         execution::{AddressGenerator, Error},
         runtime_context::dictionary::DictionaryValue,
-        tracking_copy::{AddResult, TrackingCopy, TrackingCopyExt},
+        tracking_copy::{AddResult, TrackingCopy},
         Address,
     },
     shared::{execution_journal::ExecutionJournal, newtypes::CorrelationId},
@@ -118,6 +118,7 @@ pub struct RuntimeContext<'a, R> {
     engine_config: EngineConfig,
     entry_point_type: EntryPointType,
     transfers: Vec<TransferAddr>,
+    system_contract_registry: SystemContractRegistry,
 }
 
 impl<'a, R> RuntimeContext<'a, R>
@@ -146,6 +147,7 @@ where
         phase: Phase,
         engine_config: EngineConfig,
         transfers: Vec<TransferAddr>,
+        system_contract_registry: SystemContractRegistry,
     ) -> Self {
         RuntimeContext {
             tracking_copy,
@@ -166,6 +168,7 @@ where
             phase,
             engine_config,
             transfers,
+            system_contract_registry,
         }
     }
 
@@ -806,7 +809,7 @@ where
     /// Checks if we are calling a system contract.
     pub(crate) fn is_system_contract(&self, contract_hash: &ContractHash) -> Result<bool, Error> {
         Ok(self
-            .system_contract_registry()?
+            .system_contract_registry()
             .values()
             .any(|system_hash| system_hash == contract_hash))
     }
@@ -1192,7 +1195,7 @@ where
 
     /// Gets system contract by name.
     pub(crate) fn get_system_contract(&self, name: &str) -> Result<ContractHash, Error> {
-        let registry = self.system_contract_registry()?;
+        let registry = self.system_contract_registry();
         let hash = registry.get(name).ok_or_else(|| {
             error!("Missing system contract hash: {}", name);
             Error::MissingSystemContractHash(name.to_string())
@@ -1200,14 +1203,8 @@ where
         Ok(*hash)
     }
 
-    /// Returns system contract registry by querying the global state.
-    pub fn system_contract_registry(&self) -> Result<SystemContractRegistry, Error> {
-        self.tracking_copy
-            .borrow_mut()
-            .get_system_contracts(self.correlation_id)
-            .map_err(|_| {
-                error!("Missing system contract registry");
-                Error::MissingSystemContractRegistry
-            })
+    /// Returns cached system contract registry instance.
+    pub fn system_contract_registry(&self) -> &SystemContractRegistry {
+        &self.system_contract_registry
     }
 }

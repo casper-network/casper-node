@@ -18,7 +18,7 @@ mod transfer;
 pub mod upgrade;
 
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     collections::{BTreeMap, BTreeSet},
     convert::TryFrom,
     iter::FromIterator,
@@ -113,6 +113,11 @@ pub const WASMLESS_TRANSFER_FIXED_GAS_PRICE: u64 = 1;
 pub struct EngineState<S> {
     config: EngineConfig,
     state: S,
+    /// State root hash representing a known snapshot of the global state at initialization time.
+    state_root_hash: Cell<Option<Digest>>,
+    /// A cached instance of system contract registry. It is loaded lazily when a registry is first
+    /// accessed.
+    system_contract_registry: RefCell<Option<SystemContractRegistry>>,
 }
 
 impl EngineState<ScratchGlobalState> {
@@ -136,6 +141,8 @@ impl EngineState<LmdbGlobalState> {
         EngineState {
             config: self.config,
             state: self.state.create_scratch(),
+            state_root_hash: self.state_root_hash.clone(),
+            system_contract_registry: self.system_contract_registry.clone(),
         }
     }
 
@@ -158,8 +165,13 @@ where
     S::Error: Into<execution::Error>,
 {
     /// Creates new engine state.
-    pub fn new(state: S, config: EngineConfig) -> EngineState<S> {
-        EngineState { config, state }
+    pub fn new(state: S, config: EngineConfig, state_root_hash: Option<Digest>) -> EngineState<S> {
+        EngineState {
+            config,
+            state,
+            state_root_hash: Cell::new(state_root_hash),
+            system_contract_registry: Default::default(),
+        }
     }
 
     /// Returns engine config.
@@ -244,7 +256,8 @@ where
             )
             .map_err(Into::<execution::Error>::into)?;
 
-        // Return the result
+        self.state_root_hash.replace(Some(post_state_hash));
+
         Ok(GenesisSuccess {
             post_state_hash,
             execution_effect,
@@ -515,6 +528,10 @@ where
             )
             .map_err(Into::into)?;
 
+        // Update cached values
+        self.state_root_hash.replace(Some(post_state_hash));
+        self.system_contract_registry.replace(Some(registry));
+
         // return result and effects
         Ok(UpgradeSuccess {
             post_state_hash,
@@ -755,6 +772,7 @@ where
 
         let handle_payment_contract_hash = system_contract_registry
             .get(HANDLE_PAYMENT)
+            .copied()
             .ok_or_else(|| {
                 error!("Missing system handle payment contract hash");
                 Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
@@ -762,7 +780,7 @@ where
 
         let handle_payment_contract = match tracking_copy
             .borrow_mut()
-            .get_contract(correlation_id, *handle_payment_contract_hash)
+            .get_contract(correlation_id, handle_payment_contract_hash)
         {
             Ok(contract) => contract,
             Err(error) => {
@@ -772,7 +790,7 @@ where
 
         let mut handle_payment_named_keys = handle_payment_contract.named_keys().to_owned();
         let handle_payment_extra_keys: Vec<Key> = vec![];
-        let handle_payment_base_key = Key::from(*handle_payment_contract_hash);
+        let handle_payment_base_key = Key::from(handle_payment_contract_hash);
 
         let gas_limit = Gas::new(U512::from(std::u64::MAX));
 
@@ -885,6 +903,7 @@ where
                             Rc::clone(&tracking_copy),
                             Phase::Session,
                             create_purse_stack,
+                            system_contract_registry.clone(),
                         );
                     match maybe_uref {
                         Some(main_purse) => {
@@ -962,7 +981,7 @@ where
                 let system = CallStackElement::session(PublicKey::System.to_account_hash());
                 let handle_payment = CallStackElement::stored_contract(
                     handle_payment_contract.contract_package_hash(),
-                    *handle_payment_contract_hash,
+                    handle_payment_contract_hash,
                 );
                 let mut stack =
                     RuntimeStack::new(self.config.max_runtime_call_stack_height() as usize);
@@ -988,6 +1007,7 @@ where
                     Rc::clone(&tracking_copy),
                     Phase::Payment,
                     get_payment_purse_stack,
+                    system_contract_registry.clone(),
                 );
 
             payment_uref = match maybe_payment_uref {
@@ -1044,6 +1064,7 @@ where
                     Rc::clone(&tracking_copy),
                     Phase::Payment,
                     transfer_to_payment_purse_stack,
+                    system_contract_registry.clone(),
                 );
 
             if let Some(error) = payment_result.as_error().cloned() {
@@ -1141,6 +1162,7 @@ where
                 Rc::clone(&tracking_copy),
                 Phase::Session,
                 transfer_stack,
+                system_contract_registry.clone(),
             );
 
         // User is already charged fee for wasmless contract, and we need to make sure we will not
@@ -1189,7 +1211,7 @@ where
                 let system = CallStackElement::session(PublicKey::System.to_account_hash());
                 let handle_payment = CallStackElement::stored_contract(
                     handle_payment_contract.contract_package_hash(),
-                    *handle_payment_contract_hash,
+                    handle_payment_contract_hash,
                 );
                 let mut stack =
                     RuntimeStack::new(self.config.max_runtime_call_stack_height() as usize);
@@ -1206,7 +1228,7 @@ where
                     handle_payment_args,
                     &mut handle_payment_named_keys,
                     &extra_keys,
-                    Key::from(*handle_payment_contract_hash),
+                    Key::from(handle_payment_contract_hash),
                     &system_account,
                     authorization_keys,
                     blocktime,
@@ -1217,6 +1239,7 @@ where
                     finalization_tc,
                     Phase::FinalizePayment,
                     finalize_payment_stack,
+                    system_contract_registry,
                 );
 
             finalize_result
@@ -1407,9 +1430,8 @@ where
                 }
             };
 
-            let system_contract_registry = tracking_copy
-                .borrow_mut()
-                .get_system_contracts(correlation_id)?;
+            let system_contract_registry =
+                self.get_system_contract_registry(correlation_id, prestate_hash)?;
 
             // Create payment code module from bytes
             // validation_spec_1: valid wasm bytes
@@ -1420,7 +1442,7 @@ where
                 correlation_id,
                 &preprocessor,
                 &protocol_version,
-                system_contract_registry,
+                system_contract_registry.clone(),
                 phase,
             ) {
                 Ok(metadata) => metadata,
@@ -1464,6 +1486,7 @@ where
                     Rc::clone(&tracking_copy),
                     phase,
                     payment_stack,
+                    system_contract_registry,
                 )
             } else {
                 executor.exec(
@@ -1483,6 +1506,7 @@ where
                     phase,
                     &payment_package,
                     payment_stack,
+                    system_contract_registry,
                 )
             }
         };
@@ -1667,6 +1691,7 @@ where
                 Phase::Session,
                 &session_package,
                 session_stack,
+                system_contract_registry,
             )
         };
         debug!("Session result: {:?}", session_result);
@@ -1819,6 +1844,7 @@ where
                     finalization_tc,
                     Phase::FinalizePayment,
                     handle_payment_stack,
+                    system_contract_registry,
                 );
 
             finalize_result
@@ -1908,29 +1934,33 @@ where
     ) -> Result<EraValidators, GetEraValidatorsError> {
         let protocol_version = get_era_validators_request.protocol_version();
 
-        let tracking_copy = match self.tracking_copy(get_era_validators_request.state_hash())? {
-            Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
-            None => return Err(GetEraValidatorsError::RootNotFound),
-        };
+        let state_hash = get_era_validators_request.state_hash();
 
         let engine_config = self.config();
         let wasm_config = engine_config.wasm_config();
 
         let preprocessor = Preprocessor::new(*wasm_config);
 
-        let system_contract_registry = tracking_copy
-            .borrow_mut()
-            .get_system_contracts(correlation_id)
-            .map_err(Error::from)?;
+        let system_contract_registry =
+            self.get_system_contract_registry(correlation_id, state_hash)?;
 
-        let auction_contract_hash = system_contract_registry.get(AUCTION).ok_or_else(|| {
-            error!("Missing system auction contract hash");
-            Error::MissingSystemContractHash(AUCTION.to_string())
-        })?;
+        let auction_contract_hash =
+            system_contract_registry
+                .get(AUCTION)
+                .copied()
+                .ok_or_else(|| {
+                    error!("Missing system auction contract hash");
+                    Error::MissingSystemContractHash(AUCTION.to_string())
+                })?;
+
+        let tracking_copy = match self.tracking_copy(state_hash)? {
+            Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
+            None => return Err(GetEraValidatorsError::RootNotFound),
+        };
 
         let auction_contract: Contract = tracking_copy
             .borrow_mut()
-            .get_contract(correlation_id, *auction_contract_hash)
+            .get_contract(correlation_id, auction_contract_hash)
             .map_err(Error::from)?;
 
         let system_module = {
@@ -1943,7 +1973,7 @@ where
         let executor = Executor::new(*self.config());
 
         let mut named_keys = auction_contract.named_keys().to_owned();
-        let base_key = Key::from(*auction_contract_hash);
+        let base_key = Key::from(auction_contract_hash);
         let gas_limit = Gas::new(U512::from(std::u64::MAX));
         let virtual_system_account = {
             let named_keys = NamedKeys::new();
@@ -1967,7 +1997,7 @@ where
             let system = CallStackElement::session(PublicKey::System.to_account_hash());
             let auction = CallStackElement::stored_contract(
                 auction_contract.contract_package_hash(),
-                *auction_contract_hash,
+                auction_contract_hash,
             );
             let mut stack = RuntimeStack::new(self.config.max_runtime_call_stack_height() as usize);
             stack.push(system)?;
@@ -1992,6 +2022,7 @@ where
                 Rc::clone(&tracking_copy),
                 Phase::Session,
                 get_era_validators_stack,
+                system_contract_registry,
             );
 
         if let Some(error) = execution_result.take_error() {
@@ -2148,6 +2179,7 @@ where
             Rc::clone(&tracking_copy),
             Phase::Session,
             distribute_rewards_stack,
+            system_contract_registry.clone(),
         );
 
         if let Some(exec_error) = execution_result.take_error() {
@@ -2195,6 +2227,7 @@ where
                     Rc::clone(&tracking_copy),
                     Phase::Session,
                     slash_stack,
+                    system_contract_registry.clone(),
                 );
 
             if let Some(exec_error) = execution_result.take_error() {
@@ -2246,6 +2279,7 @@ where
             Rc::clone(&tracking_copy),
             Phase::Session,
             run_auction_stack,
+            system_contract_registry,
         );
 
         if let Some(exec_error) = execution_result.take_error() {
@@ -2324,18 +2358,48 @@ where
         correlation_id: CorrelationId,
         state_root_hash: Digest,
     ) -> Result<SystemContractRegistry, Error> {
-        let tracking_copy = match self.tracking_copy(state_root_hash)? {
+        if let Some(cached_registry) = self.system_contract_registry.borrow().as_ref() {
+            return Ok(cached_registry.clone());
+        }
+
+        let mut tracking_copy = match self.tracking_copy(state_root_hash)? {
             None => return Err(Error::RootNotFound(state_root_hash)),
-            Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
+            Some(tracking_copy) => tracking_copy,
         };
-        let result = tracking_copy
-            .borrow_mut()
-            .get_system_contracts(correlation_id)
-            .map_err(|_| {
-                error!("Failed to retrieve system contract registry");
-                Error::MissingSystemContractRegistry
-            });
-        result
+
+        let system_contract_registry = match tracking_copy.get_system_contracts(correlation_id) {
+            Ok(system_contract_registry) => system_contract_registry,
+            Err(execution::Error::KeyNotFound(Key::SystemContractRegistry)) => {
+                let fallback_root_hash = match self.state_root_hash.get() {
+                    Some(fallback_root_hash) => fallback_root_hash,
+                    None => {
+                        // This case should not happen. At this point we should either pass genesis
+                        // process, or start with an existing state root hash based on a highest
+                        // block.
+                        error!("Missing fallback state root hash");
+                        return Err(Error::MissingSystemContractRegistry);
+                    }
+                };
+
+                let mut tracking_copy = match self.tracking_copy(fallback_root_hash)? {
+                    None => return Err(Error::RootNotFound(fallback_root_hash)),
+                    Some(tracking_copy) => tracking_copy,
+                };
+
+                match tracking_copy.get_system_contracts(correlation_id) {
+                    Ok(system_contract_registry) => system_contract_registry,
+                    Err(error) => {
+                        error!(%error, %fallback_root_hash, "Failed to retrieve system contract registry under a fallback root state");
+                        return Err(Error::MissingSystemContractRegistry);
+                    }
+                }
+            }
+            Err(error) => return Err(error.into()),
+        };
+
+        self.system_contract_registry
+            .replace(Some(system_contract_registry.clone()));
+        Ok(system_contract_registry)
     }
 
     /// Returns mint system contract hash.

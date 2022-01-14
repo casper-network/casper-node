@@ -429,6 +429,7 @@ impl ContractRuntime {
         max_associated_keys: u32,
         max_runtime_call_stack_height: u32,
         registry: &Registry,
+        state_root_hash: Option<Digest>,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
         let execution_pre_state = Arc::new(Mutex::new(ExecutionPreState {
@@ -460,7 +461,11 @@ impl ContractRuntime {
             system_config,
         );
 
-        let engine_state = Arc::new(EngineState::new(global_state, engine_config));
+        let engine_state = Arc::new(EngineState::new(
+            global_state,
+            engine_config,
+            state_root_hash,
+        ));
 
         let metrics = Arc::new(Metrics::new(registry)?);
 

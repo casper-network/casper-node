@@ -217,6 +217,11 @@ impl Reactor {
             &chainspec_loader.chainspec().network_config.name,
         )?;
 
+        let maybe_state_root_hash = storage
+            .read_highest_block()?
+            .map(|block| block.state_root_hash())
+            .copied();
+
         let contract_runtime = ContractRuntime::new(
             chainspec_loader.chainspec().protocol_config.version,
             storage.root_path(),
@@ -229,6 +234,7 @@ impl Reactor {
                 .core_config
                 .max_runtime_call_stack_height,
             registry,
+            maybe_state_root_hash,
         )?;
 
         // TODO: This integrity check is misplaced, it should be part of the components

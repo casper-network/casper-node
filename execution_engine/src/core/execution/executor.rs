@@ -9,17 +9,17 @@ use casper_types::{
     bytesrepr::FromBytes,
     contracts::NamedKeys,
     system::{auction, handle_payment, mint, AUCTION, HANDLE_PAYMENT, MINT},
-    BlockTime, CLTyped, CLValue, ContractPackage, DeployHash, EntryPoint, EntryPointType, Gas, Key,
-    Phase, ProtocolVersion, RuntimeArgs, StoredValue,
+    BlockTime, CLTyped, ContractPackage, DeployHash, EntryPoint, EntryPointType, Gas, Key, Phase,
+    ProtocolVersion, RuntimeArgs, StoredValue,
 };
 
 use crate::{
     core::{
-        engine_state::{execution_result::ExecutionResult, EngineConfig},
+        engine_state::{execution_result::ExecutionResult, EngineConfig, SystemContractRegistry},
         execution::{address_generator::AddressGenerator, Error},
         runtime::{extract_access_rights_from_keys, instance_and_memory, Runtime, RuntimeStack},
         runtime_context::{self, RuntimeContext},
-        tracking_copy::{TrackingCopy, TrackingCopyExt},
+        tracking_copy::TrackingCopy,
     },
     shared::{execution_journal::ExecutionJournal, newtypes::CorrelationId},
     storage::global_state::StateReader,
@@ -108,6 +108,7 @@ impl Executor {
         phase: Phase,
         contract_package: &ContractPackage,
         stack: RuntimeStack,
+        system_contract_registry: SystemContractRegistry,
     ) -> ExecutionResult
     where
         R: StateReader<Key, StoredValue>,
@@ -158,6 +159,7 @@ impl Executor {
             phase,
             self.config,
             transfers,
+            system_contract_registry,
         );
 
         let mut runtime = Runtime::new(self.config, memory, module, context, stack);
@@ -279,6 +281,7 @@ impl Executor {
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
         stack: RuntimeStack,
+        system_contract_registry: SystemContractRegistry,
     ) -> ExecutionResult
     where
         R: StateReader<Key, StoredValue>,
@@ -308,6 +311,7 @@ impl Executor {
             Rc::clone(&tracking_copy),
             phase,
             stack,
+            system_contract_registry,
         ) {
             Ok((_instance, runtime)) => runtime,
             Err(error) => {
@@ -361,18 +365,13 @@ impl Executor {
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
         stack: RuntimeStack,
+        system_contract_registry: SystemContractRegistry,
     ) -> (Option<T>, ExecutionResult)
     where
         R: StateReader<Key, StoredValue>,
         R::Error: Into<Error>,
         T: FromBytes + CLTyped,
     {
-        // TODO See if these panics can be removed.
-        let system_contract_registry = tracking_copy
-            .borrow_mut()
-            .get_system_contracts(correlation_id)
-            .unwrap_or_else(|error| panic!("Could not retrieve system contracts: {:?}", error));
-
         match direct_system_contract_call {
             DirectSystemContractCall::Slash
             | DirectSystemContractCall::RunAuction
@@ -460,6 +459,7 @@ impl Executor {
             tracking_copy,
             phase,
             stack,
+            system_contract_registry,
         ) {
             Ok((instance, runtime)) => (instance, runtime),
             Err(error) => {
@@ -483,86 +483,6 @@ impl Executor {
         );
         *named_keys = inner_named_keys;
         ret
-    }
-
-    /// Used to execute arbitrary wasm; necessary for running system contract installers / upgraders
-    /// This is not meant to be used for executing system contracts.
-    pub fn exec_wasm_direct<R, T>(
-        &self,
-        module: Module,
-        entry_point_name: &str,
-        args: RuntimeArgs,
-        account: &mut Account,
-        authorization_keys: BTreeSet<AccountHash>,
-        blocktime: BlockTime,
-        deploy_hash: DeployHash,
-        gas_limit: Gas,
-        address_generator: Rc<RefCell<AddressGenerator>>,
-        protocol_version: ProtocolVersion,
-        correlation_id: CorrelationId,
-        tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
-        phase: Phase,
-        stack: RuntimeStack,
-    ) -> Result<T, Error>
-    where
-        R: StateReader<Key, StoredValue>,
-        R::Error: Into<Error>,
-        T: FromBytes + CLTyped,
-    {
-        let mut named_keys: NamedKeys = account.named_keys().clone();
-        let base_key = account.account_hash().into();
-
-        let (instance, mut runtime) = self.create_runtime(
-            module,
-            EntryPointType::Session,
-            args,
-            &mut named_keys,
-            Default::default(),
-            base_key,
-            account,
-            authorization_keys,
-            blocktime,
-            deploy_hash,
-            gas_limit,
-            address_generator,
-            protocol_version,
-            correlation_id,
-            tracking_copy,
-            phase,
-            stack,
-        )?;
-
-        let error: wasmi::Error = match instance.invoke_export(entry_point_name, &[], &mut runtime)
-        {
-            Err(error) => error,
-            Ok(_) => {
-                // This duplicates the behavior of runtime sub_call.
-                // If `instance.invoke_export` returns `Ok` and the `host_buffer` is `None`, the
-                // contract's execution succeeded but did not explicitly call `runtime::ret()`.
-                // Treat as though the execution returned the unit type `()` as per Rust
-                // functions which don't specify a return value.
-                let result = runtime.take_host_buffer().unwrap_or(CLValue::from_t(())?);
-                let ret = result.into_t()?;
-                *account.named_keys_mut() = named_keys;
-                return Ok(ret);
-            }
-        };
-
-        let return_value: CLValue = match error
-            .as_host_error()
-            .and_then(|host_error| host_error.downcast_ref::<Error>())
-        {
-            Some(Error::Ret(_)) => runtime
-                .take_host_buffer()
-                .ok_or(Error::ExpectedReturnValue)?,
-            Some(Error::Revert(code)) => return Err(Error::Revert(*code)),
-            Some(error) => return Err(error.clone()),
-            _ => return Err(Error::Interpreter(error.into())),
-        };
-
-        let ret = return_value.into_t()?;
-        *account.named_keys_mut() = named_keys;
-        Ok(ret)
     }
 
     /// Creates new runtime object.
@@ -590,6 +510,7 @@ impl Executor {
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
         stack: RuntimeStack,
+        system_contract_registry: SystemContractRegistry,
     ) -> Result<(ModuleRef, Runtime<'a, R>), Error>
     where
         R: StateReader<Key, StoredValue>,
@@ -623,6 +544,7 @@ impl Executor {
             phase,
             self.config,
             transfers,
+            system_contract_registry,
         );
 
         let (instance, memory) =

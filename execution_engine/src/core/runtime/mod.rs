@@ -1474,6 +1474,7 @@ where
         let correlation_id = self.context.correlation_id();
         let phase = self.context.phase();
         let transfers = self.context.transfers().to_owned();
+        let system_contract_registry = self.context.system_contract_registry().clone();
 
         let mint_context = RuntimeContext::new(
             self.context.state(),
@@ -1494,6 +1495,7 @@ where
             phase,
             self.config,
             transfers,
+            system_contract_registry,
         );
 
         let mut mint_runtime = self.new_from_self(mint_context, stack);
@@ -1630,6 +1632,7 @@ where
         let correlation_id = self.context.correlation_id();
         let phase = self.context.phase();
         let transfers = self.context.transfers().to_owned();
+        let system_contract_registry = self.context.system_contract_registry().to_owned();
 
         let runtime_context = RuntimeContext::new(
             self.context.state(),
@@ -1650,6 +1653,7 @@ where
             phase,
             self.config,
             transfers,
+            system_contract_registry,
         );
 
         let mut runtime = self.new_from_self(runtime_context, stack);
@@ -1760,6 +1764,7 @@ where
         let phase = self.context.phase();
 
         let transfers = self.context.transfers().to_owned();
+        let system_contract_registry = self.context.system_contract_registry().to_owned();
 
         let runtime_context = RuntimeContext::new(
             self.context.state(),
@@ -1780,6 +1785,7 @@ where
             phase,
             self.config,
             transfers,
+            system_contract_registry,
         );
 
         let mut runtime = self.new_from_self(runtime_context, stack);
@@ -2048,7 +2054,7 @@ where
         // execution of a system contract.
         if !self
             .context
-            .system_contract_registry()?
+            .system_contract_registry()
             .values()
             .any(|&system_hash| system_hash == contract_hash)
         {
@@ -2255,6 +2261,7 @@ where
             self.context.phase(),
             self.config,
             self.context.transfers().to_owned(),
+            self.context.system_contract_registry().to_owned(),
         );
 
         let mut stack = self.stack.clone();

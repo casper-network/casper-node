@@ -1220,14 +1220,14 @@ where
             ARG_AMOUNT => amount,
         };
 
-        let registry = self
+        let system_contract_registry = self
             .tracking_copy
             .borrow_mut()
             .get_system_contracts(self.correlation_id)
             .map_err(execution::Error::from)
             .map_err(GenesisError::ExecutionError)?;
 
-        let mint_hash = registry.get(MINT).ok_or_else(|| {
+        let mint_hash = system_contract_registry.get(MINT).ok_or_else(|| {
             error!("Missing system mint contract hash");
             GenesisError::MissingSystemContractHash(MINT.to_string())
         })?;
@@ -1277,6 +1277,7 @@ where
                 Rc::clone(&self.tracking_copy),
                 Phase::System,
                 stack,
+                system_contract_registry.clone(),
             )
             .map_err(|_| GenesisError::UnableToCreateRuntime)?;
 

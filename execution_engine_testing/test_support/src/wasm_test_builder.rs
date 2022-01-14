@@ -126,7 +126,7 @@ impl Default for InMemoryWasmTestBuilder {
         let engine_config = EngineConfig::default();
 
         let global_state = InMemoryGlobalState::empty().expect("should create global state");
-        let engine_state = EngineState::new(global_state, engine_config);
+        let engine_state = EngineState::new(global_state, engine_config, None);
 
         WasmTestBuilder {
             engine_state: Rc::new(engine_state),
@@ -176,7 +176,7 @@ impl InMemoryWasmTestBuilder {
         post_state_hash: Digest,
     ) -> Self {
         Self::initialize_logging();
-        let engine_state = EngineState::new(global_state, engine_config);
+        let engine_state = EngineState::new(global_state, engine_config, Some(post_state_hash));
         WasmTestBuilder {
             engine_state: Rc::new(engine_state),
             genesis_hash: Some(post_state_hash),
@@ -212,7 +212,7 @@ impl LmdbWasmTestBuilder {
 
         let global_state =
             LmdbGlobalState::empty(environment, trie_store).expect("should create LmdbGlobalState");
-        let engine_state = EngineState::new(global_state, engine_config);
+        let engine_state = EngineState::new(global_state, engine_config, None);
         WasmTestBuilder {
             engine_state: Rc::new(engine_state),
             exec_results: Vec::new(),
@@ -277,7 +277,7 @@ impl LmdbWasmTestBuilder {
 
         let global_state =
             LmdbGlobalState::empty(environment, trie_store).expect("should create LmdbGlobalState");
-        let engine_state = EngineState::new(global_state, engine_config);
+        let engine_state = EngineState::new(global_state, engine_config, Some(post_state_hash));
         WasmTestBuilder {
             engine_state: Rc::new(engine_state),
             exec_results: Vec::new(),
