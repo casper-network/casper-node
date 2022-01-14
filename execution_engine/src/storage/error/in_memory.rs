@@ -20,7 +20,7 @@ pub enum Error {
 
     /// Trie hashing error
     #[error("{0}")]
-    MerkleConstruction(MerkleConstructionError),
+    MerkleConstruction(#[from] MerkleConstructionError),
 }
 
 impl From<bytesrepr::Error> for Error {
@@ -32,12 +32,6 @@ impl From<bytesrepr::Error> for Error {
 impl<T> From<sync::PoisonError<T>> for Error {
     fn from(_error: sync::PoisonError<T>) -> Self {
         Error::Poison
-    }
-}
-
-impl From<MerkleConstructionError> for Error {
-    fn from(error: MerkleConstructionError) -> Self {
-        Error::MerkleConstruction(error)
     }
 }
 

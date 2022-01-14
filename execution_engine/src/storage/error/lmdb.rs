@@ -29,7 +29,7 @@ pub enum Error {
 
     /// Trie chunking error.
     #[error("{0}")]
-    MerkleConstruction(MerkleConstructionError),
+    MerkleConstruction(#[from] MerkleConstructionError),
 }
 
 impl wasmi::HostError for Error {}
@@ -53,12 +53,6 @@ impl From<in_memory::Error> for Error {
             in_memory::Error::Poison => Error::Poison,
             in_memory::Error::MerkleConstruction(error) => Error::MerkleConstruction(error),
         }
-    }
-}
-
-impl From<MerkleConstructionError> for Error {
-    fn from(error: MerkleConstructionError) -> Self {
-        Error::MerkleConstruction(error)
     }
 }
 
