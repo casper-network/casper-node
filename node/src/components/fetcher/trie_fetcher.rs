@@ -92,7 +92,7 @@ where
         // set used for filtering out duplicates
         let mut filter_peers: HashSet<I> = self.peers.iter().cloned().collect();
         for peer in other.peers {
-            if !filter_peers.insert(peer.clone()) {
+            if filter_peers.insert(peer.clone()) {
                 self.peers.push(peer);
             }
         }
