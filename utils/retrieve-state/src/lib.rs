@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    convert::TryInto,
     net::{AddrParseError, SocketAddr},
     sync::Arc,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},

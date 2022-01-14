@@ -31,7 +31,7 @@ use crate::{
 
 use crate::effect::announcements::BlocklistAnnouncement;
 pub(crate) use config::Config;
-pub(crate) use event::{Event, FetchResult, FetchedData, FetcherError};
+pub(crate) use event::{Event, FetchResult};
 use metrics::Metrics;
 
 /// A helper trait constraining `Fetcher` compatible reactor events.

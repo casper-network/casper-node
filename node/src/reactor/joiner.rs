@@ -691,7 +691,48 @@ impl reactor::Reactor for Reactor {
                 rng,
                 JoinerEvent::TrieFetcher(request.into()),
             ),
-            JoinerEvent::BlockHeaderFetcherRequest(request) => self.dispatch_event(
+            JoinerEvent::ContractRuntimeAnnouncement(
+                ContractRuntimeAnnouncement::LinearChainBlock(linear_chain_block),
+            ) => {
+                let LinearChainBlock {
+                    block,
+                    execution_results,
+                } = *linear_chain_block;
+                let mut effects = Effects::new();
+                let block_hash = *block.hash();
+
+                // send to linear chain
+                let reactor_event =
+                    JoinerEvent::LinearChain(linear_chain::Event::NewLinearChainBlock {
+                        block: Box::new(block),
+                        execution_results: execution_results
+                            .iter()
+                            .map(|(hash, _header, results)| (*hash, results.clone()))
+                            .collect(),
+                    });
+                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+
+                // send to event stream
+                for (deploy_hash, deploy_header, execution_result) in execution_results {
+                    let reactor_event = JoinerEvent::EventStreamServer(
+                        event_stream_server::Event::DeployProcessed {
+                            deploy_hash,
+                            deploy_header: Box::new(deploy_header),
+                            block_hash,
+                            execution_result: Box::new(execution_result),
+                        },
+                    );
+                    effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                }
+
+                effects
+            }
+            JoinerEvent::ContractRuntimeAnnouncement(
+                ContractRuntimeAnnouncement::StepSuccess {
+                    era_id,
+                    execution_effect,
+                },
+            ) => self.dispatch_event(
                 effect_builder,
                 rng,
                 JoinerEvent::BlockHeaderFetcher(request.into()),

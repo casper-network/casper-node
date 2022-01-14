@@ -1,7 +1,5 @@
 use std::collections::BTreeMap;
 
-use datasize::DataSize;
-
 use casper_execution_engine::{
     core::engine_state::GetEraValidatorsRequest, shared::execution_journal::ExecutionJournal,
 };

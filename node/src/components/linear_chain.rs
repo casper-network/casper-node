@@ -13,9 +13,10 @@ use num::rational::Ratio;
 use prometheus::Registry;
 use tracing::error;
 
-use casper_types::ProtocolVersion;
-
-use self::metrics::Metrics;
+use self::{
+    metrics::Metrics,
+    state::{Outcome, Outcomes},
+};
 use super::Component;
 use crate::{
     components::linear_chain::state::{Outcome, Outcomes},
@@ -39,8 +40,6 @@ pub(crate) struct LinearChainComponent<I> {
     linear_chain_state: LinearChain,
     #[data_size(skip)]
     metrics: Metrics,
-    /// If true, the process should stop execution to allow an upgrade to proceed.
-    stop_for_upgrade: bool,
     _marker: PhantomData<I>,
 }
 
@@ -54,13 +53,7 @@ impl<I> LinearChainComponent<I> {
         next_upgrade_activation_point: Option<ActivationPoint>,
     ) -> Result<Self, prometheus::Error> {
         let metrics = Metrics::new(registry)?;
-        let linear_chain_state = LinearChain::new(
-            protocol_version,
-            auction_delay,
-            unbonding_delay,
-            finality_threshold_fraction,
-            next_upgrade_activation_point,
-        );
+        let linear_chain_state = LinearChain::new(protocol_version, auction_delay, unbonding_delay);
         Ok(LinearChainComponent {
             linear_chain_state,
             metrics,

@@ -82,6 +82,21 @@ pub enum Error {
     /// An attempt to push to the runtime stack while already at the maximum height.
     #[error("Runtime stack overflow")]
     RuntimeStackOverflow,
+    /// Failed to get the set of Key::Withdraw from global state.
+    #[error("Failed to get withdraw keys")]
+    FailedToGetWithdrawKeys,
+    /// Failed to get the purses stored under Key::Withdraw
+    #[error("Failed to get stored values under withdraws")]
+    FailedToGetStoredWithdraws,
+    /// Failed to convert the StoredValue into WithdrawPurse.
+    #[error("Failed to convert the stored value to a withdraw purse")]
+    FailedToGetWithdrawPurses,
+    /// Failed to retrieve the unbonding delay from the auction state.
+    #[error("Failed to retrieve the unbonding delay from the auction state")]
+    FailedToRetrieveUnbondingDelay,
+    /// Failed to retrieve the current EraId from the auction state.
+    #[error("Failed to retrieve the era_id from the auction state")]
+    FailedToRetrieveEraId,
 }
 
 impl Error {

@@ -225,6 +225,13 @@ impl Reactor {
             registry,
         )?;
 
+        // TODO: This integrity check is misplaced, it should be part of the components
+        // `handle_event` function. Ideally it would be in the constructor, but since a query to
+        // storage needs to be made, this is not possible.
+        //
+        // Refactoring this has been postponed for now, since it is unclear whether time-consuming
+        // integrity checks are even a good idea, as they can block the node for one or more hours
+        // on restarts (online checks are an alternative).
         if should_check_integrity {
             info!("running trie-store integrity check, this may take a while");
             let state_roots = storage.read_state_root_hashes_for_trie_check()?;

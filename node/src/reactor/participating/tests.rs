@@ -372,6 +372,13 @@ async fn run_equivocator_network() {
         return;
     }
 
+    // In the genesis era, Alice equivocates. Since eviction takes place with a delay of one
+    // (`auction_delay`) era, she is still included in the next era's validator set.
+    assert_eq!(switch_blocks.equivocators(0), [alice_pk.clone()]);
+    assert_eq!(switch_blocks.inactive_validators(0), []);
+    assert!(bids[0][&alice_pk].inactive());
+    assert!(switch_blocks.next_era_validators(0).contains_key(&alice_pk));
+
     // Era 0 consists only of the genesis block.
     // In era 1, Alice equivocates. Since eviction takes place with a delay of one
     // (`auction_delay`) era, she is still included in the next era's validator set.

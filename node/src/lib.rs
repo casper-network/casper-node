@@ -31,6 +31,7 @@ pub(crate) mod reactor;
 #[cfg(test)]
 pub(crate) mod testing;
 pub(crate) mod tls;
+pub mod utils;
 
 // Public API
 pub mod cli;

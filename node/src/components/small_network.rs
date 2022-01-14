@@ -56,7 +56,7 @@ use futures::{future::BoxFuture, FutureExt};
 use openssl::{error::ErrorStack as OpenSslErrorStack, pkey};
 use pkey::{PKey, Private};
 use prometheus::Registry;
-use rand::seq::{IteratorRandom, SliceRandom};
+use rand::{prelude::SliceRandom, seq::IteratorRandom};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::{
@@ -92,7 +92,7 @@ pub(crate) use self::{
     message::{FromIncoming, Message, MessageKind, Payload, PayloadWeights},
 };
 use crate::{
-    components::{consensus, Component},
+    components::Component,
     effect::{
         announcements::{BlocklistAnnouncement, ContractRuntimeAnnouncement},
         requests::{BeginGossipRequest, NetworkInfoRequest, NetworkRequest, StorageRequest},
@@ -446,6 +446,25 @@ where
                 peer_consensus_public_key,
                 stream,
             } => {
+                if self.cfg.max_incoming_peer_connections != 0 {
+                    if let Some(symmetries) = self.connection_symmetries.get(&peer_id) {
+                        let incoming_count = symmetries
+                            .incoming_addrs()
+                            .map(|addrs| addrs.len())
+                            .unwrap_or_default();
+
+                        if incoming_count >= self.cfg.max_incoming_peer_connections as usize {
+                            info!(%public_addr,
+                                  %peer_id,
+                                  count=incoming_count,
+                                  limit=self.cfg.max_incoming_peer_connections,
+                                  "rejecting new incoming connection, limit for peer exceeded"
+                            );
+                            return Effects::new();
+                        }
+                    }
+                }
+
                 info!(%public_addr, "new incoming connection established");
 
                 // Learn the address the peer gave us.
@@ -854,10 +873,18 @@ where
                 NetworkInfoRequest::GetPeers { responder } => {
                     responder.respond(self.peers()).ignore()
                 }
-                NetworkInfoRequest::GetPeersInRandomOrder { responder } => {
-                    let mut peers_vec: Vec<NodeId> = self.peers().keys().cloned().collect();
-                    peers_vec.shuffle(rng);
-                    responder.respond(peers_vec).ignore()
+                NetworkInfoRequest::GetFullyConnectedPeers { responder } => {
+                    let mut symmetric_peers: Vec<NodeId> = self
+                        .connection_symmetries
+                        .iter()
+                        .filter_map(|(node_id, sym)| {
+                            matches!(sym, ConnectionSymmetry::Symmetric { .. }).then(|| *node_id)
+                        })
+                        .collect();
+
+                    symmetric_peers.shuffle(rng);
+
+                    responder.respond(symmetric_peers).ignore()
                 }
             },
             Event::PeerAddressReceived(gossiped_address) => {

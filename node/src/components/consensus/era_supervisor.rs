@@ -42,7 +42,11 @@ use crate::{
             ActionId, ChainspecConsensusExt, Config, ConsensusMessage, Event, NewBlockPayload,
             ReactorEventT, ResolveValidity, TimerId,
         },
-        storage::Storage,
+        metrics::Metrics,
+        traits::NodeIdT,
+        validator_change::ValidatorChanges,
+        ActionId, Config, ConsensusMessage, Event, NewBlockPayload, ReactorEventT, ResolveValidity,
+        TimerId, ValidatorChange,
     },
     effect::{
         announcements::ControlAnnouncement,
@@ -173,6 +177,8 @@ where
         info!(our_id = %public_signing_key, "EraSupervisor pubkey",);
         let metrics =
             Metrics::new(registry).expect("failed to set up and register consensus metrics");
+        let activation_era_id = protocol_config.last_activation_point;
+        let auction_delay = protocol_config.auction_delay;
         #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
         let next_height = latest_block_header.height() + 1;
 
@@ -847,8 +853,9 @@ where
             }
             ProtocolOutcome::CreatedMessageToRandomPeer(payload) => {
                 let message = ConsensusMessage::Protocol { era_id, payload };
+
                 async move {
-                    let peers = effect_builder.get_peers_in_random_order().await;
+                    let peers = effect_builder.get_fully_connected_peers().await;
                     if let Some(to) = peers.into_iter().next() {
                         effect_builder.send_message(to, message.into()).await;
                     }

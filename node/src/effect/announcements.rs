@@ -3,10 +3,7 @@
 //! Announcements indicate new incoming data or events from various sources. See the top-level
 //! module documentation for details.
 
-use std::{
-    collections::BTreeMap,
-    fmt::{self, Display, Formatter},
-};
+use std::fmt::{self, Display, Formatter};
 
 use itertools::Itertools;
 use serde::Serialize;
@@ -190,6 +187,15 @@ where
             }
         }
     }
+}
+
+/// A ContractRuntimeAnnouncement's block.
+#[derive(Debug)]
+pub(crate) struct LinearChainBlock {
+    /// The block.
+    pub(crate) block: Block,
+    /// The results of executing the deploys in this block.
+    pub(crate) execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
 }
 
 /// A Gossiper announcement.

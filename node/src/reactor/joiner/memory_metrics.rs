@@ -16,11 +16,11 @@ pub(super) struct MemoryMetrics {
     mem_chainspec_loader: IntGauge,
     mem_storage: IntGauge,
     mem_contract_runtime: IntGauge,
-    /// Estimated heap memory usage of the block fetcher component.
-    mem_block_fetcher: IntGauge,
-    /// Estimated heap memory usage of deploy fetcher component.
+    mem_linear_chain_fetcher: IntGauge,
+    mem_linear_chain_sync: IntGauge,
+    mem_block_validator: IntGauge,
     mem_deploy_fetcher: IntGauge,
-
+    mem_linear_chain: IntGauge,
     /// Histogram detailing how long it took to estimate memory usage.
     mem_estimator_runtime_s: Histogram,
     registry: Registry,
@@ -47,13 +47,25 @@ impl MemoryMetrics {
             "joiner_mem_contract_runtime",
             "contract runtime memory usage in bytes",
         )?;
-        let mem_block_fetcher = IntGauge::new(
-            "joiner_mem_block_fetcher",
-            "block fetcher memory usage in bytes",
+        let mem_linear_chain_fetcher = IntGauge::new(
+            "joiner_mem_linear_chain_fetcher",
+            "linear chain fetcher memory usage in bytes",
+        )?;
+        let mem_linear_chain_sync = IntGauge::new(
+            "joiner_mem_linear_chain_sync",
+            "linear chain sync memory usage in bytes",
+        )?;
+        let mem_block_validator = IntGauge::new(
+            "joiner_mem_block_validator",
+            "block validator memory usage in bytes",
         )?;
         let mem_deploy_fetcher = IntGauge::new(
             "joiner_mem_deploy_fetcher",
             "deploy fetcher memory usage in bytes",
+        )?;
+        let mem_linear_chain = IntGauge::new(
+            "joiner_mem_linear_chain",
+            "linear chain memory usage in bytes",
         )?;
         let mem_estimator_runtime_s = Histogram::with_opts(
             HistogramOpts::new(

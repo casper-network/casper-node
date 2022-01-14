@@ -19,7 +19,6 @@ use casper_node::{
     types::{Deploy, DeployHash},
     StorageConfig, WithDir,
 };
-use num_rational::Ratio;
 use tracing::info;
 
 use casper_types::ProtocolVersion;

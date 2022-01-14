@@ -123,9 +123,14 @@ use announcements::{
     RpcServerAnnouncement,
 };
 use requests::{
-    BeginGossipRequest, BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest,
-    ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
-    MetricsRequest, NetworkInfoRequest, NetworkRequest, StateStoreRequest, StorageRequest,
+    BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
+    ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
+    NetworkRequest, StateStoreRequest, StorageRequest,
+};
+
+use self::announcements::{BlockProposerAnnouncement, BlocklistAnnouncement};
+use crate::components::contract_runtime::{
+    BlockAndExecutionEffects, BlockExecutionError, ExecutionPreState,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -613,15 +618,15 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the current network peers in a random order.
-    pub async fn get_peers_in_random_order<I>(self) -> Vec<I>
+    /// Gets the current network peers in random order.
+    pub async fn get_fully_connected_peers<I>(self) -> Vec<I>
     where
         REv: From<NetworkInfoRequest<I>>,
         I: Send + 'static,
     {
         self.make_request(
-            |responder| NetworkInfoRequest::GetPeersInRandomOrder { responder },
-            QueueKind::Api,
+            |responder| NetworkInfoRequest::GetFullyConnectedPeers { responder },
+            QueueKind::Regular,
         )
         .await
     }
@@ -730,45 +735,10 @@ impl<REv> EffectBuilder<REv> {
         )
     }
 
-    /// Announces upgrade activation point read.
+    /// Announce upgrade activation point read.
     pub(crate) async fn announce_upgrade_activation_point_read(self, next_upgrade: NextUpgrade)
     where
         REv: From<ChainspecLoaderAnnouncement>,
-    {
-        self.event_queue
-            .schedule(
-                ChainspecLoaderAnnouncement::UpgradeActivationPointRead(next_upgrade),
-                QueueKind::Regular,
-            )
-            .await
-    }
-
-    /// Announces a committed Step success.
-    pub(crate) async fn announce_commit_step_success(
-        self,
-        era_id: EraId,
-        execution_journal: ExecutionJournal,
-    ) where
-        REv: From<ContractRuntimeAnnouncement>,
-    {
-        self.event_queue
-            .schedule(
-                ContractRuntimeAnnouncement::CommitStepSuccess {
-                    era_id,
-                    execution_effect: ExecutionEffect::from(&execution_journal),
-                },
-                QueueKind::Regular,
-            )
-            .await
-    }
-
-    /// Announces a new block has been created.
-    pub(crate) async fn announce_new_linear_chain_block(
-        self,
-        block: Box<Block>,
-        execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
-    ) where
-        REv: From<ContractRuntimeAnnouncement>,
     {
         self.event_queue
             .schedule(

@@ -12,7 +12,7 @@ use casper_types::{
     runtime_args,
     system::{
         auction::{
-            Bids, DelegationRate, UnbondingPurses, ARG_DELEGATOR, ARG_VALIDATOR,
+            Bids, DelegationRate, UnbondingPurses, ARG_DELEGATOR, ARG_NEW_VALIDATOR, ARG_VALIDATOR,
             ARG_VALIDATOR_PUBLIC_KEYS, METHOD_SLASH,
         },
         mint::TOTAL_SUPPLY_KEY,
@@ -109,7 +109,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
         U512::from(VALIDATOR_1_STAKE),
     );
 
-    let unbond_purses: UnbondingPurses = builder.get_withdraws();
+    let unbond_purses: UnbondingPurses = builder.get_unbonds();
     assert_eq!(unbond_purses.len(), 0);
 
     //
@@ -133,6 +133,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
             ARG_VALIDATOR => VALIDATOR_1.clone(),
             ARG_DELEGATOR => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
+            ARG_NEW_VALIDATOR => Option::<PublicKey>::None,
         },
     )
     .build();
@@ -157,7 +158,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
 
     builder.exec(withdraw_bid_request).expect_success().commit();
 
-    let unbond_purses: UnbondingPurses = builder.get_withdraws();
+    let unbond_purses: UnbondingPurses = builder.get_unbonds();
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
@@ -201,7 +202,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
 
     builder.exec(slash_request_1).expect_success().commit();
 
-    let unbond_purses_noop: UnbondingPurses = builder.get_withdraws();
+    let unbond_purses_noop: UnbondingPurses = builder.get_unbonds();
     assert_eq!(
         unbond_purses, unbond_purses_noop,
         "slashing default validator should be noop because no unbonding was done"
@@ -229,7 +230,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
 
     builder.exec(slash_request_2).expect_success().commit();
 
-    let unbond_purses: UnbondingPurses = builder.get_withdraws();
+    let unbond_purses: UnbondingPurses = builder.get_unbonds();
     assert_eq!(unbond_purses.len(), 1);
 
     assert!(!unbond_purses.contains_key(&*DEFAULT_ACCOUNT_ADDR));
