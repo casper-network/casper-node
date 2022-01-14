@@ -4,7 +4,6 @@ use log::info;
 use num::Zero;
 use num_rational::Ratio;
 use rand::Rng;
-use rand_distr::{Distribution, LogNormal};
 use tempfile::TempDir;
 
 use casper_types::{system::auction::DelegationRate, EraId, Motes, PublicKey, SecretKey, U512};
@@ -267,8 +266,7 @@ async fn run_participating_network() {
     let mut rng = crate::new_rng();
 
     // `merkle_tree_hash_activation` can be chosen arbitrarily
-    let log_normal = LogNormal::new(2.5, 3.7).unwrap();
-    let merkle_tree_hash_activation = EraId::from(log_normal.sample(&mut rng) as u64);
+    let merkle_tree_hash_activation = EraId::from(rng.gen_range(0..=10));
 
     // Instantiate a new chain with a fixed size.
     const NETWORK_SIZE: usize = 5;
@@ -311,8 +309,7 @@ async fn run_equivocator_network() {
     let other_secret_keys_with_stakes = vec![alice_sk.clone(), alice_sk];
 
     // `merkle_tree_hash_activation` can be chosen arbitrarily
-    let log_normal = LogNormal::new(2.5, 3.7).unwrap();
-    let merkle_tree_hash_activation = EraId::from(log_normal.sample(&mut rng) as u64);
+    let merkle_tree_hash_activation = EraId::from(rng.gen_range(0..=10));
 
     let mut chain = TestChain::new_with_keys(
         first_node_secret_key_with_stake,
@@ -389,8 +386,7 @@ async fn test_joiner_at_genesis() {
     let mut rng = crate::new_rng();
 
     // `merkle_tree_hash_activation` can be chosen arbitrarily
-    let log_normal = LogNormal::new(2.5, 3.7).unwrap();
-    let merkle_tree_hash_activation = EraId::from(log_normal.sample(&mut rng) as u64);
+    let merkle_tree_hash_activation = EraId::from(rng.gen_range(0..=10));
 
     // Create a chain with just one node
     let mut chain =
