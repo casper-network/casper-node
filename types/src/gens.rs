@@ -19,7 +19,7 @@ use crate::{
     },
     crypto::gens::public_key_arb_no_system,
     system::auction::{
-        gens::era_info_arb, Bid, DelegationRate, Delegator, UnbondingPurse, WithdrawPurse,
+        gens::era_info_arb, Bid, DelegationRate, Delegator, UnbondingPurse,
         DELEGATION_RATE_DENOMINATOR,
     },
     transfer::TransferAddr,
@@ -446,7 +446,7 @@ pub(crate) fn bid_arb(delegations_len: impl Into<SizeRange>) -> impl Strategy<Va
         )
 }
 
-fn withdraw_arb() -> impl Strategy<Value = WithdrawPurse> {
+fn withdraw_arb() -> impl Strategy<Value = UnbondingPurse> {
     (
         uref_arb(),
         public_key_arb_no_system(),
@@ -455,46 +455,12 @@ fn withdraw_arb() -> impl Strategy<Value = WithdrawPurse> {
         u512_arb(),
     )
         .prop_map(|(bonding_purse, validator_pk, unbonder_pk, era, amount)| {
-            WithdrawPurse::new(bonding_purse, validator_pk, unbonder_pk, era, amount)
+            UnbondingPurse::new(bonding_purse, validator_pk, unbonder_pk, era, amount)
         })
 }
 
-fn withdraws_arb(size: impl Into<SizeRange>) -> impl Strategy<Value = Vec<WithdrawPurse>> {
+fn withdraws_arb(size: impl Into<SizeRange>) -> impl Strategy<Value = Vec<UnbondingPurse>> {
     collection::vec(withdraw_arb(), size)
-}
-
-fn unbonding_arb() -> impl Strategy<Value = UnbondingPurse> {
-    (
-        uref_arb(),
-        public_key_arb_no_system(),
-        public_key_arb_no_system(),
-        era_id_arb(),
-        u512_arb(),
-        option::of(public_key_arb_no_system()),
-    )
-        .prop_map(
-            |(
-                bonding_purse,
-                validator_public_key,
-                unbonder_public_key,
-                era,
-                amount,
-                new_validator,
-            )| {
-                UnbondingPurse::new(
-                    bonding_purse,
-                    validator_public_key,
-                    unbonder_public_key,
-                    era,
-                    amount,
-                    new_validator,
-                )
-            },
-        )
-}
-
-fn unbondings_arb(size: impl Into<SizeRange>) -> impl Strategy<Value = Vec<UnbondingPurse>> {
-    collection::vec(unbonding_arb(), size)
 }
 
 pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
@@ -509,7 +475,6 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         era_info_arb(1..10).prop_map(StoredValue::EraInfo),
         bid_arb(0..100).prop_map(|bid| StoredValue::Bid(Box::new(bid))),
         withdraws_arb(1..50).prop_map(StoredValue::Withdraw),
-        unbondings_arb(1..50).prop_map(StoredValue::Unbonding)
     ]
     .prop_map(|stored_value|
         // The following match statement is here only to make sure
@@ -525,6 +490,5 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
             StoredValue::EraInfo(_) => stored_value,
             StoredValue::Bid(_) => stored_value,
             StoredValue::Withdraw(_) => stored_value,
-            StoredValue::Unbonding(_) => stored_value,
         })
 }
