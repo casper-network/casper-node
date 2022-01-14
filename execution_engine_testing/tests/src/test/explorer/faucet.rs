@@ -236,7 +236,7 @@ fn should_allow_installer_to_set_variables() {
         .expect("failed to find time interval named key")
         .as_cl_value()
         .cloned()
-        .expect("failed to conert to cl value")
+        .expect("failed to convert to cl value")
         .into_t::<u64>()
         .expect("failed to convert to u64");
 
