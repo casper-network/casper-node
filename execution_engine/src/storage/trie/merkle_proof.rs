@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use casper_hashing::Digest;
 use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 
-use crate::storage::trie::{Pointer, Trie, TrieHashingError, RADIX};
+use crate::storage::trie::{Pointer, Trie, RADIX};
 
 const TRIE_MERKLE_PROOF_STEP_NODE_ID: u8 = 0;
 const TRIE_MERKLE_PROOF_STEP_EXTENSION_ID: u8 = 1;
@@ -159,10 +159,10 @@ where
     /// 3. When there are no more steps, we return the final hash we have computed.
     ///
     /// The steps in this function reflect `operations::rehash`.
-    pub fn compute_state_hash(&self) -> Result<Digest, TrieHashingError> {
+    pub fn compute_state_hash(&self) -> Result<Digest, bytesrepr::Error> {
         let mut hash = {
             let leaf = Trie::leaf(self.key, self.value.to_owned());
-            leaf.hash()?
+            leaf.trie_hash()?
         };
 
         for (proof_step_index, proof_step) in self.proof_steps.iter().enumerate() {

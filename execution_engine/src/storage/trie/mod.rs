@@ -22,13 +22,10 @@ use datasize::DataSize;
 #[cfg(test)]
 pub mod gens;
 
-mod error;
 /// Merkle proofs.
 pub mod merkle_proof;
 #[cfg(test)]
 mod tests;
-
-pub use error::TrieHashingError;
 
 pub(crate) const USIZE_EXCEEDS_U8: &str = "usize exceeds u8";
 pub(crate) const RADIX: usize = 256;
@@ -526,7 +523,7 @@ impl<K, V> Trie<K, V> {
     }
 
     /// Returns the hash of this Trie.
-    pub fn hash(&self) -> Result<Digest, TrieHashingError>
+    pub fn trie_hash(&self) -> Result<Digest, bytesrepr::Error>
     where
         Self: ToBytes,
     {
@@ -534,8 +531,11 @@ impl<K, V> Trie<K, V> {
         if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
             Ok(Digest::hash(&bytes))
         } else {
-            let chunk_with_proof = ChunkWithProof::new(&bytes, 0)?;
-            Ok(chunk_with_proof.proof().root_hash())
+            Ok(Digest::hash_merkle_tree(
+                bytes
+                    .chunks(ChunkWithProof::CHUNK_SIZE_BYTES)
+                    .map(Digest::hash),
+            ))
         }
     }
 }

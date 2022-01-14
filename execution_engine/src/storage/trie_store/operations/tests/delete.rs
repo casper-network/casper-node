@@ -14,7 +14,7 @@ where
     T: Readable<Handle = S::Handle> + Writable<Handle = S::Handle>,
     S: TrieStore<K, V>,
     S::Error: From<T::Error>,
-    E: From<S::Error> + From<bytesrepr::Error> + From<TrieHashingError>,
+    E: From<S::Error> + From<bytesrepr::Error>,
 {
     let delete_result =
         operations::delete::<K, V, T, S, E>(correlation_id, txn, store, root, key_to_delete)?;
@@ -43,7 +43,7 @@ mod partial_tries {
         R: TransactionSource<'a, Handle = S::Handle>,
         S: TrieStore<K, V>,
         S::Error: From<R::Error>,
-        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<TrieHashingError>,
+        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
     {
         let mut txn = environment.create_read_write_txn()?;
         // The assert below only works with partial tries
@@ -123,7 +123,7 @@ mod partial_tries {
         R: TransactionSource<'a, Handle = S::Handle>,
         S: TrieStore<K, V>,
         S::Error: From<R::Error>,
-        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<TrieHashingError>,
+        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
     {
         let mut txn = environment.create_read_write_txn()?;
         match checked_delete::<K, V, _, _, E>(correlation_id, &mut txn, store, root, key_to_delete)?
@@ -201,7 +201,6 @@ mod full_tries {
         storage::{
             error,
             transaction_source::TransactionSource,
-            trie::TrieHashingError,
             trie_store::{
                 operations::{
                     delete,
@@ -230,7 +229,7 @@ mod full_tries {
         R: TransactionSource<'a, Handle = S::Handle>,
         S: TrieStore<K, V>,
         S::Error: From<R::Error>,
-        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<TrieHashingError>,
+        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
     {
         let mut txn = environment.create_read_write_txn()?;
         let mut roots = Vec::new();
@@ -328,7 +327,7 @@ mod full_tries {
         R: TransactionSource<'a, Handle = S::Handle>,
         S: TrieStore<K, V>,
         S::Error: From<R::Error>,
-        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<TrieHashingError>,
+        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
     {
         let mut txn = environment.create_read_write_txn()?;
         let mut expected_root = *root;

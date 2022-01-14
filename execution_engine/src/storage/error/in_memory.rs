@@ -5,8 +5,6 @@ use thiserror::Error;
 use casper_hashing::MerkleConstructionError;
 use casper_types::bytesrepr;
 
-use crate::storage::trie::TrieHashingError;
-
 /// Error enum encapsulating possible errors from in-memory implementation of data storage.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum Error {
@@ -18,7 +16,7 @@ pub enum Error {
     #[error("Another thread panicked while holding a lock")]
     Poison,
 
-    /// Trie hashing error
+    /// Merkle proof construction error
     #[error("{0}")]
     MerkleConstruction(#[from] MerkleConstructionError),
 }
@@ -32,14 +30,5 @@ impl From<bytesrepr::Error> for Error {
 impl<T> From<sync::PoisonError<T>> for Error {
     fn from(_error: sync::PoisonError<T>) -> Self {
         Error::Poison
-    }
-}
-
-impl From<TrieHashingError> for Error {
-    fn from(error: TrieHashingError) -> Self {
-        match error {
-            TrieHashingError::BytesRepr(err) => Error::BytesRepr(err),
-            TrieHashingError::MerkleConstruction(err) => Error::MerkleConstruction(err),
-        }
     }
 }

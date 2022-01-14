@@ -19,7 +19,7 @@ use crate::{
         transaction_source::{Readable, Writable},
         trie::{
             merkle_proof::{TrieMerkleProof, TrieMerkleProofStep},
-            Parents, Pointer, PointerBlock, Trie, TrieHashingError, RADIX, USIZE_EXCEEDS_U8,
+            Parents, Pointer, PointerBlock, Trie, RADIX, USIZE_EXCEEDS_U8,
         },
         trie_store::TrieStore,
     },
@@ -247,7 +247,7 @@ where
     T: Readable<Handle = S::Handle>,
     S: TrieStore<K, V>,
     S::Error: From<T::Error>,
-    E: From<S::Error> + From<bytesrepr::Error> + From<TrieHashingError>,
+    E: From<S::Error> + From<bytesrepr::Error>,
 {
     let mut missing_descendants = Vec::new();
     let mut visited = HashSet::new();
@@ -259,7 +259,7 @@ where
         // Perform an optional integrity check on the retrieved node.
         if check_integrity {
             if let Some(trie_value) = &maybe_retrieved_trie {
-                let hash_of_trie_value = trie_value.hash()?;
+                let hash_of_trie_value = trie_value.trie_hash()?;
                 if trie_key != hash_of_trie_value {
                     warn!(
                         "Trie key {:?} has corrupted value {:?} (hash of value is {:?}); \
@@ -311,7 +311,7 @@ where
     T: Readable<Handle = S::Handle>,
     S: TrieStore<K, V>,
     S::Error: From<T::Error>,
-    E: From<S::Error> + From<bytesrepr::Error> + From<TrieHashingError>,
+    E: From<S::Error> + From<bytesrepr::Error>,
 {
     for state_root in &trie_keys_to_visit {
         match store.get(txn, state_root)? {
@@ -330,7 +330,7 @@ where
         }
         let maybe_retrieved_trie: Option<Trie<K, V>> = store.get(txn, &trie_key)?;
         if let Some(trie_value) = &maybe_retrieved_trie {
-            let hash_of_trie_value = trie_value.hash()?;
+            let hash_of_trie_value = trie_value.trie_hash()?;
             if trie_key != hash_of_trie_value {
                 panic!(
                     "Trie key {:?} has corrupted value {:?} (hash of value is {:?})",
@@ -499,7 +499,7 @@ where
     T: Readable<Handle = S::Handle> + Writable<Handle = S::Handle>,
     S: TrieStore<K, V>,
     S::Error: From<T::Error>,
-    E: From<S::Error> + From<bytesrepr::Error> + From<TrieHashingError>,
+    E: From<S::Error> + From<bytesrepr::Error>,
 {
     let root_trie = match store.get(txn, root)? {
         None => return Ok(DeleteResult::RootNotFound),
@@ -530,7 +530,7 @@ where
                     pointer_block[idx as usize] = None;
                     Trie::Node { pointer_block }
                 };
-                let trie_key = trie_node.hash()?;
+                let trie_key = trie_node.trie_hash()?;
                 new_elements.push((trie_key, trie_node))
             }
             // The parent is the node which pointed to the leaf we deleted, and that leaf had one or
@@ -547,7 +547,7 @@ where
                         let trie_node = Trie::Node {
                             pointer_block: Box::new(PointerBlock::new()),
                         };
-                        let trie_key = trie_node.hash()?;
+                        let trie_key = trie_node.trie_hash()?;
                         new_elements.push((trie_key, trie_node));
                         break;
                     }
@@ -561,7 +561,7 @@ where
                     (_, None) => {
                         pointer_block[idx as usize] = None;
                         let trie_node = Trie::Node { pointer_block };
-                        let trie_key = trie_node.hash()?;
+                        let trie_key = trie_node.trie_hash()?;
                         new_elements.push((trie_key, trie_node));
                         break;
                     }
@@ -570,7 +570,7 @@ where
                     (Pointer::LeafPointer(..), Some((idx, Trie::Node { mut pointer_block }))) => {
                         pointer_block[idx as usize] = Some(sibling_pointer);
                         let trie_node = Trie::Node { pointer_block };
-                        let trie_key = trie_node.hash()?;
+                        let trie_key = trie_node.trie_hash()?;
                         new_elements.push((trie_key, trie_node))
                     }
                     // The sibling is a leaf and the grandparent is an extension.
@@ -586,7 +586,7 @@ where
                             Some((idx, Trie::Node { mut pointer_block })) => {
                                 pointer_block[idx as usize] = Some(sibling_pointer);
                                 let trie_node = Trie::Node { pointer_block };
-                                let trie_key = trie_node.hash()?;
+                                let trie_key = trie_node.trie_hash()?;
                                 new_elements.push((trie_key, trie_node))
                             }
                         }
@@ -616,7 +616,7 @@ where
                                     affix: vec![sibling_idx].into(),
                                     pointer: sibling_pointer,
                                 };
-                                let trie_key = new_extension.hash()?;
+                                let trie_key = new_extension.trie_hash()?;
                                 new_elements.push((trie_key, new_extension))
                             }
                             // The single sibling is a extension.  We output an extension to replace
@@ -633,7 +633,7 @@ where
                                     affix: new_affix.into(),
                                     pointer,
                                 };
-                                let trie_key = new_extension.hash()?;
+                                let trie_key = new_extension.trie_hash()?;
                                 new_elements.push((trie_key, new_extension))
                             }
                         }
@@ -648,7 +648,7 @@ where
                     pointer_block[idx as usize] = Some(Pointer::NodePointer(*trie_key));
                     Trie::Node { pointer_block }
                 };
-                let trie_key = trie_node.hash()?;
+                let trie_key = trie_node.trie_hash()?;
                 new_elements.push((trie_key, trie_node))
             }
             // The parent is an extension, and we are outputting an extension.  Prepend the parent
@@ -672,7 +672,7 @@ where
                         affix: child_affix.to_owned(),
                         pointer: pointer.to_owned(),
                     };
-                    new_extension.hash()?
+                    new_extension.trie_hash()?
                 }
             }
             // The parent is an extension and the new element is a pointer block.  The next element
@@ -680,7 +680,7 @@ where
             (Some((trie_key, Trie::Node { .. })), Trie::Extension { affix, .. }) => {
                 let pointer = Pointer::NodePointer(*trie_key);
                 let trie_extension = Trie::Extension { affix, pointer };
-                let trie_key = trie_extension.hash()?;
+                let trie_key = trie_extension.trie_hash()?;
                 new_elements.push((trie_key, trie_extension))
             }
         }
@@ -700,13 +700,13 @@ where
 fn rehash<K, V>(
     mut tip: Trie<K, V>,
     parents: Parents<K, V>,
-) -> Result<Vec<(Digest, Trie<K, V>)>, TrieHashingError>
+) -> Result<Vec<(Digest, Trie<K, V>)>, bytesrepr::Error>
 where
     K: ToBytes + Clone,
     V: ToBytes + Clone,
 {
     let mut ret: Vec<(Digest, Trie<K, V>)> = Vec::new();
-    let mut tip_hash = tip.hash()?;
+    let mut tip_hash = tip.trie_hash()?;
     ret.push((tip_hash, tip.to_owned()));
 
     for (index, parent) in parents.into_iter().rev() {
@@ -724,7 +724,7 @@ where
                     pointer_block[index.into()] = Some(pointer);
                     Trie::Node { pointer_block }
                 };
-                tip_hash = tip.hash()?;
+                tip_hash = tip.trie_hash()?;
                 ret.push((tip_hash, tip.to_owned()))
             }
             Trie::Extension { affix, pointer } => {
@@ -732,7 +732,7 @@ where
                     let pointer = pointer.update(tip_hash);
                     Trie::Extension { affix, pointer }
                 };
-                tip_hash = tip.hash()?;
+                tip_hash = tip.trie_hash()?;
                 ret.push((tip_hash, tip.to_owned()))
             }
         }
@@ -813,7 +813,7 @@ fn reparent_leaf<K, V>(
     new_leaf_path: &[u8],
     existing_leaf_path: &[u8],
     parents: Parents<K, V>,
-) -> Result<(Trie<K, V>, Parents<K, V>), TrieHashingError>
+) -> Result<(Trie<K, V>, Parents<K, V>), bytesrepr::Error>
 where
     K: ToBytes,
     V: ToBytes,
@@ -844,7 +844,7 @@ where
     // If the affix is non-empty, create an extension node and add it
     // to parents.
     if !affix.is_empty() {
-        let new_node_hash = new_node.hash()?;
+        let new_node_hash = new_node.trie_hash()?;
         let new_extension = Trie::extension(affix.to_vec(), Pointer::NodePointer(new_node_hash));
         parents.push((child_index, new_extension));
     }
@@ -869,7 +869,7 @@ fn split_extension<K, V>(
     new_leaf_path: &[u8],
     existing_extension: Trie<K, V>,
     mut parents: Parents<K, V>,
-) -> Result<SplitResult<K, V>, TrieHashingError>
+) -> Result<SplitResult<K, V>, bytesrepr::Error>
 where
     K: ToBytes + Clone,
     V: ToBytes + Clone,
@@ -897,7 +897,7 @@ where
             None
         } else {
             let child_extension = Trie::extension(child_extension_affix.to_vec(), pointer);
-            let child_extension_hash = child_extension.hash()?;
+            let child_extension_hash = child_extension.trie_hash()?;
             Some((child_extension_hash, child_extension))
         };
     // Assemble a new node.
@@ -910,7 +910,7 @@ where
     };
     // Create a parent extension if necessary
     if !parent_extension_affix.is_empty() {
-        let new_node_hash = new_node.hash()?;
+        let new_node_hash = new_node.trie_hash()?;
         let parent_extension = Trie::extension(
             parent_extension_affix.to_vec(),
             Pointer::NodePointer(new_node_hash),
@@ -945,7 +945,7 @@ where
     T: Readable<Handle = S::Handle> + Writable<Handle = S::Handle>,
     S: TrieStore<K, V>,
     S::Error: From<T::Error>,
-    E: From<S::Error> + From<bytesrepr::Error> + From<TrieHashingError>,
+    E: From<S::Error> + From<bytesrepr::Error>,
 {
     match store.get(txn, root)? {
         None => Ok(WriteResult::RootNotFound),
@@ -1033,9 +1033,9 @@ where
     T: Readable<Handle = S::Handle> + Writable<Handle = S::Handle>,
     S: TrieStore<K, V>,
     S::Error: From<T::Error>,
-    E: From<S::Error> + From<bytesrepr::Error> + From<TrieHashingError>,
+    E: From<S::Error> + From<bytesrepr::Error>,
 {
-    let trie_hash = trie.hash()?;
+    let trie_hash = trie.trie_hash()?;
     store.put(txn, &trie_hash, trie)?;
     Ok(trie_hash)
 }

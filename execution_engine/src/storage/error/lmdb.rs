@@ -6,7 +6,7 @@ use thiserror::Error;
 use casper_hashing::MerkleConstructionError;
 use casper_types::bytesrepr;
 
-use crate::storage::{error::in_memory, global_state::CommitError, trie::TrieHashingError};
+use crate::storage::{error::in_memory, global_state::CommitError};
 
 /// Error enum representing possible error states in LMDB interactions.
 #[derive(Debug, Clone, Error, PartialEq, Eq)]
@@ -27,7 +27,7 @@ pub enum Error {
     #[error(transparent)]
     CommitError(#[from] CommitError),
 
-    /// Trie chunking error.
+    /// Merkle proof construction error.
     #[error("{0}")]
     MerkleConstruction(#[from] MerkleConstructionError),
 }
@@ -52,15 +52,6 @@ impl From<in_memory::Error> for Error {
             in_memory::Error::BytesRepr(error) => Error::BytesRepr(error),
             in_memory::Error::Poison => Error::Poison,
             in_memory::Error::MerkleConstruction(error) => Error::MerkleConstruction(error),
-        }
-    }
-}
-
-impl From<TrieHashingError> for Error {
-    fn from(error: TrieHashingError) -> Self {
-        match error {
-            TrieHashingError::BytesRepr(err) => Error::BytesRepr(err),
-            TrieHashingError::MerkleConstruction(err) => Error::MerkleConstruction(err),
         }
     }
 }
