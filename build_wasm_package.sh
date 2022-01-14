@@ -27,6 +27,9 @@ export CL_WASM_PACKAGE="$CL_OUTPUT_S3_DIR/casper-contracts.tar.gz"
 export CL_S3_BUCKET='casperlabs-cicd-artifacts'
 export CL_S3_LOCATION="wasm_contracts/${WASM_PACKAGE_VERSION}"
 
+#Build contracts
+make build-client-contracts
+
 if [ ! -d $CL_OUTPUT_S3_DIR ]; then
   mkdir -p "${CL_OUTPUT_S3_DIR}"
 fi
