@@ -47,6 +47,7 @@ use crate::{
         execution::{self, Error},
         resolvers::{create_module_resolver, memory_resolver::MemoryResolver},
         runtime_context::{self, RuntimeContext},
+        tracking_copy::TrackingCopyExt,
         Address,
     },
     shared::{
@@ -112,6 +113,7 @@ pub fn key_to_tuple(key: Key) -> Option<([u8; 32], AccessRights)> {
         Key::Balance(_) => None,
         Key::Bid(_) => None,
         Key::Withdraw(_) => None,
+        Key::Unbond(_) => None,
         Key::Dictionary(_) => None,
         Key::SystemContractRegistry => None,
     }
@@ -1262,6 +1264,10 @@ where
     /// Checks if immediate caller is of session type of the same account as the provided account
     /// hash.
     fn is_allowed_session_caller(&self, provided_account_hash: &AccountHash) -> bool {
+        if self.context.get_caller() == PublicKey::System.to_account_hash() {
+            return true;
+        }
+
         if let Some(CallStackElement::Session { account_hash }) = self.get_immediate_caller() {
             return account_hash == provided_account_hash;
         }
@@ -1435,11 +1441,21 @@ where
         &mut self,
         protocol_version: ProtocolVersion,
         entry_point_name: &str,
-        named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
         stack: RuntimeStack,
     ) -> Result<CLValue, Error> {
+        let mut named_keys = {
+            let correlation_id = self.context.correlation_id();
+            let contract_hash = self.context.get_system_contract(MINT)?;
+            let contract = self
+                .context()
+                .state()
+                .borrow_mut()
+                .get_contract(correlation_id, contract_hash)?;
+
+            contract.named_keys().to_owned()
+        };
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
             keys.extend(extra_keys);
@@ -1462,7 +1478,7 @@ where
         let mint_context = RuntimeContext::new(
             self.context.state(),
             EntryPointType::Contract,
-            named_keys,
+            &mut named_keys,
             access_rights,
             runtime_args.to_owned(),
             authorization_keys,
@@ -1581,11 +1597,21 @@ where
         &mut self,
         protocol_version: ProtocolVersion,
         entry_point_name: &str,
-        named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
         stack: RuntimeStack,
     ) -> Result<CLValue, Error> {
+        let mut named_keys = {
+            let correlation_id = self.context.correlation_id();
+            let contract_hash = self.context.get_system_contract(HANDLE_PAYMENT)?;
+            let contract = self
+                .context()
+                .state()
+                .borrow_mut()
+                .get_contract(correlation_id, contract_hash)?;
+
+            contract.named_keys().to_owned()
+        };
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
             keys.extend(extra_keys);
@@ -1608,7 +1634,7 @@ where
         let runtime_context = RuntimeContext::new(
             self.context.state(),
             EntryPointType::Contract,
-            named_keys,
+            &mut named_keys,
             access_rights,
             runtime_args.to_owned(),
             authorization_keys,
@@ -1700,11 +1726,21 @@ where
         &mut self,
         protocol_version: ProtocolVersion,
         entry_point_name: &str,
-        named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
         stack: RuntimeStack,
     ) -> Result<CLValue, Error> {
+        let mut named_keys = {
+            let correlation_id = self.context.correlation_id();
+            let contract_hash = self.context.get_system_contract(AUCTION)?;
+            let contract = self
+                .context
+                .state()
+                .borrow_mut()
+                .get_contract(correlation_id, contract_hash)?;
+
+            contract.named_keys().to_owned()
+        };
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
             keys.extend(extra_keys);
@@ -1728,7 +1764,7 @@ where
         let runtime_context = RuntimeContext::new(
             self.context.state(),
             EntryPointType::Contract,
-            named_keys,
+            &mut named_keys,
             access_rights,
             runtime_args.to_owned(),
             authorization_keys,
@@ -1807,9 +1843,11 @@ where
                 let delegator = Self::get_named_argument(runtime_args, auction::ARG_DELEGATOR)?;
                 let validator = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
                 let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
+                let new_validator =
+                    Self::get_named_argument(runtime_args, auction::ARG_NEW_VALIDATOR)?;
 
                 let result = runtime
-                    .undelegate(delegator, validator, amount)
+                    .undelegate(delegator, validator, amount, new_validator)
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)
@@ -2132,7 +2170,6 @@ where
                 return self.call_host_mint(
                     self.context.protocol_version(),
                     entry_point.name(),
-                    &mut named_keys,
                     &args,
                     &extra_keys,
                     stack,
@@ -2148,7 +2185,6 @@ where
                 return self.call_host_handle_payment(
                     self.context.protocol_version(),
                     entry_point.name(),
-                    &mut named_keys,
                     &args,
                     &extra_keys,
                     stack,
@@ -2164,7 +2200,6 @@ where
                 return self.call_host_auction(
                     self.context.protocol_version(),
                     entry_point.name(),
-                    &mut named_keys,
                     &args,
                     &extra_keys,
                     stack,

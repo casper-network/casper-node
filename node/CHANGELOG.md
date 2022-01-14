@@ -13,21 +13,21 @@ All notable changes to this project will be documented in this file.  The format
 ## [Unreleased]
 
 ### Added
+* Add new event to the main SSE server stream across all endpoints `<IP:PORT>/events/*` which emits a shutdown event when the node shuts down.
+* Add `SIGUSR2` signal handling to dump the queue in JSON format (see "Changed" section for `SIGUSR1`).
 * Add ability to force DB integrity checks to run on node start by setting env var `CL_RUN_INTEGRITY_CHECKS=1`.
 * Add ability to force DB integrity checks to run on node start by adding non-numeric contents to the initializer.pid file.
-* Introducing fast-syncing to join the network, avoiding the need to execute every block to catch up.
-* Added `archival_sync` to `[node]` config section, along with archival syncing capabilities
-* Added `max_parallel_deploy_fetches` and `max_parallel_trie_fetches` config options to the `[node]` section to control how many requests are made in parallel while syncing.
 * Add capabilities for known nodes to slow down the reconnection process of outdated legacy nodes still out on the internet.
+* Added `max_parallel_deploy_fetches` and `max_parallel_trie_fetches` config options to the `[node]` section to control how many requests are made in parallel while syncing.
+* Added `archival_sync` to `[node]` config section, along with archival syncing capabilities
+* Introducing fast-syncing to join the network, avoiding the need to execute every block to catch up.
 
 ### Changed
 * Detection of a crash no longer triggers DB integrity checks to run on node start; the checks can be triggered manually instead.
 * `SIGUSR1` now only dumps the queue in the debug text format.
-* Major rewrite of the contract runtime component.
-* More node modules are now `pub(crate)`.
-* Chain automatically creates a switch block immediately after genesis or an upgrade.
-* Asymmetric connections are now swept regularly again.
+* Incoming connections from peers are rejected if they are exceeding the default incoming connections per peer limit of 3.
 * Nodes no longer connect to nodes that do not speak the same protocol version by default.
+* Chain automatically creates a switch block immediately after genesis or an upgrade.
 
 ### Deprecated
 * Deprecate the `starting_state_root_hash` field from the REST and JSON-RPC status endpoints.
@@ -37,7 +37,7 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
-## [1.4.3] - 2021-12-06
+## 1.4.3 - 2021-12-06
 
 ### Added
 * Add new event to the main SSE server stream accessed via `<IP:Port>/events/main` which emits hashes of expired deploys.
@@ -45,9 +45,6 @@ All notable changes to this project will be documented in this file.  The format
 ### Changed
 * `enable_manual_sync` configuration parameter defaults to `true`.
 * Default behavior of LMDB changed to use [`NO_READAHEAD`](https://docs.rs/lmdb/0.8.0/lmdb/struct.EnvironmentFlags.html#associatedconstant.NO_READAHEAD).
-* Updated dependencies, in particular `casper-types` to use fixed checksummed-hex format.
-* Add new event to the main SSE server stream across all endpoints `<IP:PORT>/events/*` which emits a shutdown event when the node shuts down.
-* Add `SIGUSR2` signal handling to dump the queue in JSON format (see "Changed" section for `SIGUSR1`).
 
 
 

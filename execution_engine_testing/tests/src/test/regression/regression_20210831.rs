@@ -365,6 +365,7 @@ fn regression_20210831_should_fail_to_undelegate_bid() {
         auction::ARG_VALIDATOR => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
         auction::ARG_DELEGATOR => ACCOUNT_1_PUBLIC_KEY.clone(),
         auction::ARG_AMOUNT => *BID_AMOUNT,
+        auction::ARG_NEW_VALIDATOR => Option::<PublicKey>::None
     };
 
     // ACCOUNT_2 undelegates ACCOUNT_1 by a direct auction contract call

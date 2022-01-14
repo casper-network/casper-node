@@ -73,16 +73,16 @@ pub fn get_unbonding_purses<P>(provider: &mut P) -> Result<UnbondingPurses, Erro
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
-    let withdraws_keys = provider.get_keys(&KeyTag::Withdraw)?;
+    let unbond_keys = provider.get_keys(&KeyTag::Unbond)?;
 
     let mut ret = BTreeMap::new();
 
-    for key in withdraws_keys {
+    for key in unbond_keys {
         let account_hash = match key {
-            Key::Withdraw(account_ash) => account_ash,
+            Key::Unbond(account_hash) => account_hash,
             _ => return Err(Error::InvalidKeyVariant),
         };
-        let unbonding_purses = provider.read_withdraw(&account_hash)?;
+        let unbonding_purses = provider.read_unbond(&account_hash)?;
         ret.insert(account_hash, unbonding_purses);
     }
 
@@ -97,7 +97,7 @@ where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
     for (account_hash, unbonding_purses) in unbonding_purses.into_iter() {
-        provider.write_withdraw(account_hash, unbonding_purses)?;
+        provider.write_unbond(account_hash, unbonding_purses)?;
     }
     Ok(())
 }
@@ -205,10 +205,39 @@ pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(provider: &mut P) -> 
             // current era id + unbonding delay is equal or greater than the `era_of_creation` that
             // was calculated on `unbond` attempt.
             if current_era_id >= unbonding_purse.era_of_creation() + unbonding_delay {
-                // Move funds from bid purse to unbonding purse
-                provider
-                    .unbond(unbonding_purse)
-                    .map_err(|_| Error::TransferToUnbondingPurse)?;
+                match unbonding_purse.new_validator() {
+                    Some(new_validator) => {
+                        match provider.read_bid(&new_validator.to_account_hash()) {
+                            Ok(Some(bid)) => {
+                                if !bid.staked_amount().is_zero() {
+                                    provider
+                                        .handle_delegation(
+                                            unbonding_purse.unbonder_public_key().clone(),
+                                            new_validator.clone(),
+                                            *unbonding_purse.bonding_purse(),
+                                            *unbonding_purse.amount(),
+                                        )
+                                        .map(|_| ())?
+                                } else {
+                                    // Move funds from bid purse to unbonding purse
+                                    provider
+                                        .unbond(unbonding_purse)
+                                        .map_err(|_| Error::TransferToUnbondingPurse)?
+                                }
+                            }
+                            // Move funds from bid purse to unbonding purse
+                            Ok(_) | Err(_) => provider
+                                .unbond(unbonding_purse)
+                                .map_err(|_| Error::TransferToUnbondingPurse)?,
+                        }
+                    }
+                    None => {
+                        // Move funds from bid purse to unbonding purse
+                        provider
+                            .unbond(unbonding_purse)
+                            .map_err(|_| Error::TransferToUnbondingPurse)?
+                    }
+                };
             } else {
                 new_unbonding_list.push(unbonding_purse.clone());
             }
@@ -228,13 +257,14 @@ pub(crate) fn create_unbonding_purse<P: Auction + ?Sized>(
     unbonder_public_key: PublicKey,
     bonding_purse: URef,
     amount: U512,
+    new_validator: Option<PublicKey>,
 ) -> Result<(), Error> {
     if provider.get_balance(bonding_purse)?.unwrap_or_default() < amount {
         return Err(Error::UnbondTooLarge);
     }
 
     let validator_account_hash = AccountHash::from(&validator_public_key);
-    let mut unbonding_purses = provider.read_withdraw(&validator_account_hash)?;
+    let mut unbonding_purses = provider.read_unbond(&validator_account_hash)?;
     let era_of_creation = provider.read_era_id()?;
     let new_unbonding_purse = UnbondingPurse::new(
         bonding_purse,
@@ -242,9 +272,10 @@ pub(crate) fn create_unbonding_purse<P: Auction + ?Sized>(
         unbonder_public_key,
         era_of_creation,
         amount,
+        new_validator,
     );
     unbonding_purses.push(new_unbonding_purse);
-    provider.write_withdraw(validator_account_hash, unbonding_purses)?;
+    provider.write_unbond(validator_account_hash, unbonding_purses)?;
 
     Ok(())
 }
