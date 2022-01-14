@@ -48,7 +48,7 @@ where
     JoinerEvent: From<FetcherRequest<NodeId, T>>,
 {
     loop {
-        for peer in effect_builder.get_peers_in_random_order().await {
+        for peer in effect_builder.get_fully_connected_peers().await {
             trace!(
                 "attempting to fetch {:?} with id {:?} from {:?}",
                 T::TAG,
@@ -310,7 +310,7 @@ where
         .ok_or_else(|| Error::HeightOverflow {
             parent: Box::new(parent_header.clone()),
         })?;
-    let mut peers = effect_builder.get_peers_in_random_order().await.into_iter();
+    let mut peers = effect_builder.get_fully_connected_peers().await.into_iter();
     let item = loop {
         let peer = match peers.next() {
             Some(peer) => peer,
