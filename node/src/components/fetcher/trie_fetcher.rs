@@ -80,17 +80,9 @@ where
         bytesrepr::deserialize(data)
     }
 
-    fn next_peer(&mut self, prev_peer: I) -> Option<&I> {
-        // return None early if not found - it means we didn't even request the chunk from the
-        // previous peer
-        let index = self
-            .peers
-            .iter()
-            .enumerate()
-            .rev() // to optimize slightly for the happy path: we expect prev_peer to be the last
-            .find(|(_index, peer)| **peer == prev_peer)
-            .map(|(index, _)| index)?;
-        self.peers.remove(index);
+    fn next_peer(&mut self) -> Option<&I> {
+        // remove the last used peer from the queue
+        self.peers.pop();
         self.peers.last()
     }
 
@@ -198,13 +190,6 @@ where
         }
     }
 
-    fn next_peer(&mut self, id: TrieOrChunkId, prev_peer: I) -> Option<I> {
-        let hash = id.digest();
-        self.partial_chunks
-            .get_mut(hash)
-            .and_then(|partial_chunks| partial_chunks.next_peer(prev_peer).cloned())
-    }
-
     fn consume_chunk<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -217,26 +202,6 @@ where
             + From<ControlAnnouncement>
             + From<BlocklistAnnouncement<I>>,
     {
-        if !chunk.verify() {
-            match sender {
-                None => {
-                    return fatal!(effect_builder, "got an invalid chunk from storage").ignore();
-                }
-                Some(sender) => {
-                    warn!(?sender, ?chunk, "got an invalid chunk from sender");
-                    let id = TrieOrChunkId(chunk.proof().index(), chunk.proof().root_hash());
-                    let mut effects = effect_builder
-                        .announce_disconnect_from_peer(sender.clone())
-                        .ignore();
-                    if let Some(peer) = self.next_peer(id, sender) {
-                        effects.extend(effect_builder.fetch(id, peer).event(move |fetch_result| {
-                            Event::TrieOrChunkFetched { id, fetch_result }
-                        }));
-                    }
-                    return effects;
-                }
-            }
-        }
         let digest = chunk.proof().root_hash();
         let index = chunk.proof().index();
         let count = chunk.proof().count();
@@ -371,10 +336,8 @@ where
                         }
                         Some(mut partial_chunks) => {
                             warn!(%error, %id, "error fetching trie chunk");
-                            // remove the last peer from eligible peers
-                            partial_chunks.peers.pop();
-                            // try with the next one, if possible
-                            match partial_chunks.peers.last().cloned() {
+                            // try with the next peer, if possible
+                            match partial_chunks.next_peer().cloned() {
                                 Some(next_peer) => self.try_download_chunk(
                                     effect_builder,
                                     id,
