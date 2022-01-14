@@ -183,9 +183,8 @@ pub(crate) enum NetworkInfoRequest<I> {
         responder: Responder<BTreeMap<I, String>>,
     },
     /// Get the peers in random order.
-    GetPeersInRandomOrder {
-        /// Responder to be called with all connected peers.
-        /// Responds with a vector in a random order.
+    GetFullyConnectedPeers {
+        /// Responder to be called with all connected in random order peers.
         responder: Responder<Vec<I>>,
     },
 }
@@ -196,11 +195,9 @@ where
 {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            NetworkInfoRequest::GetPeers { responder: _ } => {
-                write!(formatter, "get peers-to-socket-address map")
-            }
-            NetworkInfoRequest::GetPeersInRandomOrder { responder: _ } => {
-                write!(formatter, "get peers in random order")
+            NetworkInfoRequest::GetPeers { responder: _ } => write!(formatter, "get peers"),
+            NetworkInfoRequest::GetFullyConnectedPeers { responder: _ } => {
+                write!(formatter, "get fully connected peers")
             }
         }
     }

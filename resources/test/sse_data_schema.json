@@ -185,6 +185,7 @@
       "additionalProperties": false
     },
     {
+      "description": "The execution effects produced by a `StepRequest`.",
       "type": "object",
       "required": [
         "Step"
@@ -1871,6 +1872,17 @@
           "allOf": [
             {
               "$ref": "#/definitions/U512"
+            }
+          ]
+        },
+        "new_validator": {
+          "description": "The validator public key to re-delegate to.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            },
+            {
+              "type": "null"
             }
           ]
         }

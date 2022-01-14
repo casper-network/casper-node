@@ -71,7 +71,7 @@ use crate::{
 #[cfg(test)]
 use crate::{reactor::initializer::Reactor as InitializerReactor, types::Chainspec};
 pub(crate) use queue_kind::QueueKind;
-use stats_alloc::Stats;
+use stats_alloc::{Stats, INSTRUMENTED_SYSTEM};
 
 /// Default threshold for when an event is considered slow.  Can be overridden by setting the env
 /// var `CL_EVENT_MAX_MICROSECS=<MICROSECONDS>`.
@@ -634,12 +634,12 @@ where
             deallocations: _,
             reallocations: _,
             bytes_allocated,
-            bytes_deallocated: _,
+            bytes_deallocated,
             bytes_reallocated: _,
-        } = stats_alloc::StatsAlloc::system().stats();
+        } = INSTRUMENTED_SYSTEM.stats();
 
         Some(AllocatedMem {
-            allocated: bytes_allocated as u64,
+            allocated: bytes_allocated.saturating_sub(bytes_deallocated) as u64,
             consumed,
             total,
         })

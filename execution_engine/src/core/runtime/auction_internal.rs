@@ -3,12 +3,11 @@ use std::collections::BTreeSet;
 use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
-    contracts::NamedKeys,
     crypto,
     system::{
         auction::{
-            AccountProvider, Auction, Bid, EraInfo, Error, MintProvider, RuntimeProvider,
-            StorageProvider, UnbondingPurse,
+            AccountProvider, Auction, Bid, Delegator, EraInfo, Error, MintProvider,
+            RuntimeProvider, StorageProvider, UnbondingPurse,
         },
         mint, MINT,
     },
@@ -77,9 +76,9 @@ where
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
     }
 
-    fn read_withdraw(&mut self, account_hash: &AccountHash) -> Result<Vec<UnbondingPurse>, Error> {
-        match self.context.read_gs(&Key::Withdraw(*account_hash)) {
-            Ok(Some(StoredValue::Withdraw(unbonding_purses))) => Ok(unbonding_purses),
+    fn read_unbond(&mut self, account_hash: &AccountHash) -> Result<Vec<UnbondingPurse>, Error> {
+        match self.context.read_gs(&Key::Unbond(*account_hash)) {
+            Ok(Some(StoredValue::Unbonding(unbonding_purses))) => Ok(unbonding_purses),
             Ok(Some(_)) => Err(Error::Storage),
             Ok(None) => Ok(Vec::new()),
             Err(execution::Error::BytesRepr(_)) => Err(Error::Serialization),
@@ -90,15 +89,15 @@ where
         }
     }
 
-    fn write_withdraw(
+    fn write_unbond(
         &mut self,
         account_hash: AccountHash,
         unbonding_purses: Vec<UnbondingPurse>,
     ) -> Result<(), Error> {
         self.context
             .metered_write_gs_unsafe(
-                Key::Withdraw(account_hash),
-                StoredValue::Withdraw(unbonding_purses),
+                Key::Unbond(account_hash),
+                StoredValue::Unbonding(unbonding_purses),
             )
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
     }
@@ -207,7 +206,6 @@ where
             .call_host_mint(
                 self.context.protocol_version(),
                 mint::METHOD_TRANSFER,
-                &mut NamedKeys::default(),
                 &args_values,
                 &[],
                 stack,
@@ -243,32 +241,11 @@ where
                     .map_err(|_| Error::Storage)?,
             )
             .map_err(|_| Error::RuntimeStackOverflow)?;
-        let mint_contract_hash = self.get_mint_contract().map_err(|exec_error| {
-            <Option<Error>>::from(exec_error).unwrap_or(Error::MissingValue)
-        })?;
-
-        let mint_contract_key: Key = mint_contract_hash.into();
-
-        let mint = match self
-            .context
-            .read_gs(&mint_contract_key)
-            .map_err(|exec_error| {
-                <Option<Error>>::from(exec_error).unwrap_or(Error::MissingValue)
-            })? {
-            Some(StoredValue::Contract(contract)) => contract,
-            Some(_) => {
-                return Err(Error::MissingValue);
-            }
-            None => return Err(Error::MissingKey),
-        };
-
-        let mut mint_named_keys = mint.named_keys().clone();
 
         let cl_value = self
             .call_host_mint(
                 self.context.protocol_version(),
                 mint::METHOD_MINT_INTO_EXISTING_PURSE,
-                &mut mint_named_keys,
                 &args_values,
                 &[],
                 stack,
@@ -314,6 +291,66 @@ where
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::MintReward))?;
         self.mint_reduce_total_supply(mint_contract, amount)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::MintReward))
+    }
+
+    fn handle_delegation(
+        &mut self,
+        delegator_public_key: PublicKey,
+        validator_public_key: PublicKey,
+        source: URef,
+        amount: U512,
+    ) -> Result<U512, Error> {
+        let validator_account_hash = AccountHash::from(&validator_public_key);
+
+        let mut bid = match self.read_bid(&validator_account_hash)? {
+            Some(bid) => bid,
+            None => {
+                // Return early if target validator is not in `bids`
+                return Err(Error::ValidatorNotFound);
+            }
+        };
+
+        let delegators = bid.delegators_mut();
+
+        let new_delegation_amount = match delegators.get_mut(&delegator_public_key) {
+            Some(delegator) => {
+                self.mint_transfer_direct(
+                    Some(PublicKey::System.to_account_hash()),
+                    source,
+                    *delegator.bonding_purse(),
+                    amount,
+                    None,
+                )
+                .map_err(|_| Error::TransferToDelegatorPurse)?
+                .map_err(|_| Error::TransferToDelegatorPurse)?;
+                delegator.increase_stake(amount)?;
+                *delegator.staked_amount()
+            }
+            None => {
+                let bonding_purse = self.create_purse().map_err(|_| Error::CreatePurseFailed)?;
+                self.mint_transfer_direct(
+                    Some(PublicKey::System.to_account_hash()),
+                    source,
+                    bonding_purse,
+                    amount,
+                    None,
+                )
+                .map_err(|_| Error::TransferToDelegatorPurse)?
+                .map_err(|_| Error::TransferToDelegatorPurse)?;
+                let delegator = Delegator::unlocked(
+                    delegator_public_key.clone(),
+                    amount,
+                    bonding_purse,
+                    validator_public_key,
+                );
+                delegators.insert(delegator_public_key.clone(), delegator);
+                amount
+            }
+        };
+
+        self.write_bid(validator_account_hash, bid)?;
+
+        Ok(new_delegation_amount)
     }
 }
 
