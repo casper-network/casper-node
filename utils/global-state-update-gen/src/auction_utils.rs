@@ -134,7 +134,7 @@ pub fn generate_entries_removing_withdraws(
     builder: &mut LmdbWasmTestBuilder,
     validators_diff: &ValidatorsDiff,
 ) -> BTreeMap<Key, StoredValue> {
-    let withdraws = builder.get_unbonds();
+    let withdraws = builder.get_withdraws();
     let withdraw_keys: BTreeSet<_> = withdraws.keys().collect();
     validators_diff
         .removed

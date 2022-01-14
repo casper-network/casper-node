@@ -1,20 +1,19 @@
 #!/usr/bin/env bash
 
 source "$NCTL"/sh/utils/main.sh
+
 #######################################
 # Submits an auction delegate withdrawal.
 # Arguments:
 #   Amount to delegate.
 #   Delegator ordinal identifier.
 #   Validator ordinal identifier.
-#   NewValidator ordinal identifier.
 #######################################
 function main()
 {
     local AMOUNT=${1}
     local DELEGATOR_ID=${2}
     local VALIDATOR_ID=${3}
-    local NEW_VALIDATOR_ID=${4}
     local CHAIN_NAME
     local GAS_PRICE
     local GAS_PAYMENT
@@ -25,8 +24,6 @@ function main()
     local DELEGATOR_SECRET_KEY
     local DELEGATOR_MAIN_PURSE_UREF
     local VALIDATOR_ACCOUNT_KEY
-    local NEW_VALIDATOR_ACCOUNT_KEY
-    local NEW_VALIDATOR_ACCOUNT_ARG
 
     CHAIN_NAME=$(get_chain_name)
     GAS_PRICE=${GAS_PRICE:-$NCTL_DEFAULT_GAS_PRICE}
@@ -39,13 +36,6 @@ function main()
     DELEGATOR_SECRET_KEY=$(get_path_to_secret_key "$NCTL_ACCOUNT_TYPE_USER" "$DELEGATOR_ID")
     DELEGATOR_MAIN_PURSE_UREF=$(get_main_purse_uref "$DELEGATOR_ACCOUNT_KEY" | tr '[:upper:]' '[:lower:]')
     VALIDATOR_ACCOUNT_KEY=$(get_account_key "$NCTL_ACCOUNT_TYPE_NODE" "$VALIDATOR_ID" | tr '[:upper:]' '[:lower:]')
-    if [ "$NEW_VALIDATOR_ID" = null ]; then
-        NEW_VALIDATOR_ACCOUNT_ARG="new_validator:opt_public_key=null"
-    else
-       NEW_VALIDATOR_ACCOUNT_KEY=$(get_account_key "$NCTL_ACCOUNT_TYPE_NODE" "$NEW_VALIDATOR_ID" | tr '[:upper:]' '[:lower:]')
-       NEW_VALIDATOR_ACCOUNT_ARG="$(get_cl_arg_opt_public_key 'new_validator' "$NEW_VALIDATOR_ACCOUNT_KEY")"
-    fi
-
 
     log "dispatching deploy -> undelegate.wasm"
     log "... chain = $CHAIN_NAME"
@@ -69,7 +59,6 @@ function main()
             --session-arg "$(get_cl_arg_account_key 'delegator' "$DELEGATOR_ACCOUNT_KEY")" \
             --session-arg "$(get_cl_arg_account_key 'validator' "$VALIDATOR_ACCOUNT_KEY")" \
             --session-arg "$(get_cl_arg_opt_uref 'unbond_purse' "$DELEGATOR_MAIN_PURSE_UREF")" \
-            --session-arg "$NEW_VALIDATOR_ACCOUNT_ARG" \
             --session-path "$PATH_TO_CONTRACT" \
             | jq '.result.deploy_hash' \
             | sed -e 's/^"//' -e 's/"$//'
@@ -86,7 +75,6 @@ function main()
 unset AMOUNT
 unset DELEGATOR_ID
 unset VALIDATOR_ID
-unset NEW_VALIDATOR_ID
 
 for ARGUMENT in "$@"
 do
@@ -96,7 +84,6 @@ do
         amount) AMOUNT=${VALUE} ;;
         delegator) DELEGATOR_ID=${VALUE} ;;
         validator) VALIDATOR_ID=${VALUE} ;;
-        new_validator) NEW_VALIDATOR_ID=${VALUE} ;;
         *)
     esac
 done
@@ -104,5 +91,4 @@ done
 main \
     "${AMOUNT:-$NCTL_DEFAULT_AUCTION_DELEGATE_AMOUNT}" \
     "${DELEGATOR_ID:-1}" \
-    "${VALIDATOR_ID:-1}" \
-    "${NEW_VALIDATOR_ID:-null}"
+    "${VALIDATOR_ID:-1}"
