@@ -25,7 +25,7 @@ use casper_execution_engine::{
         query::{QueryRequest, QueryResult},
         UpgradeConfig, UpgradeSuccess,
     },
-    storage::trie::Trie,
+    storage::trie::{Trie, TrieOrChunk, TrieOrChunkId},
 };
 use casper_hashing::Digest;
 use casper_types::{
@@ -42,7 +42,7 @@ use crate::{
             BlockAndExecutionEffects, BlockExecutionError, EraValidatorsRequest, ExecutionPreState,
         },
         deploy_acceptor::Error,
-        fetcher::FetchResult,
+        fetcher::{FetchResult, TrieFetcherResult},
     },
     effect::Responder,
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
@@ -812,9 +812,16 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder,
         responder: Responder<Result<bool, GetEraValidatorsError>>,
     },
-    /// Get a trie by its hash key.
+    /// Get a trie or chunk by its ID.
     GetTrie {
-        /// The hash of the value to get from the `TrieStore`.
+        /// The ID of the trie (or chunk of a trie) to be read.
+        trie_or_chunk_id: TrieOrChunkId,
+        /// Responder to call with the result.
+        responder: Responder<Result<Option<TrieOrChunk>, engine_state::Error>>,
+    },
+    /// Get a trie by its ID.
+    GetTrieFull {
+        /// The ID of the trie to be read.
         trie_key: Digest,
         /// Responder to call with the result.
         responder: Responder<Result<Option<Trie<Key, StoredValue>>, engine_state::Error>>,
@@ -900,7 +907,12 @@ impl Display for ContractRuntimeRequest {
             } => {
                 write!(formatter, "is {} bonded in era {}", public_key, era_id)
             }
-            ContractRuntimeRequest::GetTrie { trie_key, .. } => {
+            ContractRuntimeRequest::GetTrie {
+                trie_or_chunk_id, ..
+            } => {
+                write!(formatter, "get trie_or_chunk_id: {}", trie_or_chunk_id)
+            }
+            ContractRuntimeRequest::GetTrieFull { trie_key, .. } => {
                 write!(formatter, "get trie_key: {}", trie_key)
             }
             ContractRuntimeRequest::PutTrie { trie, .. } => {
@@ -937,6 +949,30 @@ where
 impl<I: Display + Debug + Eq, T: Item> Display for FetcherRequest<I, T> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(formatter, "request item by id {}", self.id)
+    }
+}
+
+/// TrieFetcher related requests.
+#[derive(Debug, Serialize)]
+#[must_use]
+pub(crate) struct TrieFetcherRequest<I>
+where
+    I: Debug + Eq + Clone,
+{
+    /// The peers to try to fetch from.
+    pub(crate) peers: Vec<I>,
+    /// The hash of the trie node.
+    pub(crate) hash: Digest,
+    /// Responder to call with the result.
+    pub(crate) responder: Responder<TrieFetcherResult<I>>,
+}
+
+impl<I> Display for TrieFetcherRequest<I>
+where
+    I: Debug + Eq + Clone,
+{
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        write!(formatter, "request trie by hash {}", self.hash)
     }
 }
 

@@ -92,6 +92,26 @@ where
     }
 }
 
+async fn fetch_trie_retry_forever(
+    effect_builder: EffectBuilder<JoinerEvent>,
+    id: Digest,
+) -> FetchedData<Trie<Key, StoredValue>, NodeId> {
+    loop {
+        let peers = effect_builder.get_peers_in_random_order::<NodeId>().await;
+        trace!(?id, "attempting to fetch a trie",);
+        match effect_builder.fetch_trie(id, peers).await {
+            Ok(fetched_data) => {
+                trace!(?id, "got trie successfully",);
+                return fetched_data;
+            }
+            Err(error) => {
+                warn!(?id, %error, "fast sync could not fetch a trie; trying again")
+            }
+        }
+        tokio::time::sleep(SLEEP_DURATION_SO_WE_DONT_SPAM).await
+    }
+}
+
 /// Fetches and stores a block header from the network.
 async fn fetch_and_store_block_header(
     effect_builder: EffectBuilder<JoinerEvent>,
@@ -412,8 +432,7 @@ async fn fetch_and_store_trie(
     effect_builder: EffectBuilder<JoinerEvent>,
     trie_key: Digest,
 ) -> Result<Vec<Digest>, Error> {
-    let fetched_trie =
-        fetch_retry_forever::<Trie<Key, StoredValue>>(effect_builder, trie_key).await?;
+    let fetched_trie = fetch_trie_retry_forever(effect_builder, trie_key).await;
     match fetched_trie {
         FetchedData::FromStorage { .. } => Ok(effect_builder
             .find_missing_descendant_trie_keys(trie_key)

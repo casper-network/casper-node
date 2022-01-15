@@ -7,10 +7,11 @@ use std::{
 use derive_more::Display;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
+use thiserror::Error;
 
-use casper_execution_engine::storage::trie::Trie;
+use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
 use casper_hashing::Digest;
-use casper_types::{bytesrepr::ToBytes, Key, StoredValue};
+use casper_types::bytesrepr::ToBytes;
 
 use crate::types::{BlockHash, BlockHeader};
 
@@ -69,19 +70,37 @@ pub(crate) trait Item:
     fn id(&self) -> Self::Id;
 }
 
-impl Item for Trie<Key, StoredValue> {
-    type Id = Digest;
-    type ValidationError = Infallible;
+/// Error type simply conveying that chunk validation failed.
+#[derive(Debug, Error)]
+#[error("Chunk validation failed")]
+pub(crate) struct ChunkValidationError;
+
+impl Item for TrieOrChunk {
+    type Id = TrieOrChunkId;
+    type ValidationError = ChunkValidationError;
     const TAG: Tag = Tag::Trie;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
     fn validate(&self) -> Result<(), Self::ValidationError> {
-        Ok(())
+        match self {
+            TrieOrChunk::Trie(_) => Ok(()),
+            TrieOrChunk::ChunkWithProof(chunk) => {
+                chunk.verify().then(|| ()).ok_or(ChunkValidationError)
+            }
+        }
     }
 
     fn id(&self) -> Self::Id {
-        let node_bytes = self.to_bytes().expect("Could not serialize trie to bytes");
-        Digest::hash(&node_bytes)
+        match self {
+            TrieOrChunk::Trie(trie) => {
+                let node_bytes = trie.to_bytes().expect("Could not serialize trie to bytes");
+                TrieOrChunkId(0, Digest::hash(&node_bytes))
+            }
+            TrieOrChunk::ChunkWithProof(chunked_data) => TrieOrChunkId(
+                chunked_data.proof().index(),
+                chunked_data.proof().root_hash(),
+            ),
+        }
     }
 }
 

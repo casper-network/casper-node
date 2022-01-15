@@ -1,3 +1,4 @@
+use datasize::DataSize;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -6,7 +7,7 @@ use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 use crate::{error::MerkleConstructionError, indexed_merkle_proof::IndexedMerkleProof, Digest};
 
 /// Represents a chunk of data with attached proof.
-#[derive(PartialEq, Debug, JsonSchema, Serialize, Deserialize)]
+#[derive(DataSize, PartialEq, Eq, Debug, Clone, JsonSchema, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ChunkWithProof {
     proof: IndexedMerkleProof,
@@ -15,10 +16,16 @@ pub struct ChunkWithProof {
 }
 
 impl ToBytes for ChunkWithProof {
+    fn write_bytes(&self, buf: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        buf.append(&mut self.proof.to_bytes()?);
+        buf.append(&mut self.chunk.to_bytes()?);
+
+        Ok(())
+    }
+
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-        result.append(&mut self.proof.to_bytes()?);
-        result.append(&mut self.chunk.to_bytes()?);
+        self.write_bytes(&mut result)?;
         Ok(result)
     }
 
@@ -75,12 +82,17 @@ impl ChunkWithProof {
     }
 
     /// Get a reference to the `ChunkWithProof`'s chunk.
-    fn chunk(&self) -> &[u8] {
+    pub fn chunk(&self) -> &[u8] {
         self.chunk.as_slice()
     }
 
-    #[allow(unused)]
-    pub(crate) fn verify(&self) -> bool {
+    /// Returns the `IndexedMerkleProof`.
+    pub fn proof(&self) -> &IndexedMerkleProof {
+        &self.proof
+    }
+
+    /// Returns `true` if the proof for the chunk is valid, `false` otherwise.
+    pub fn verify(&self) -> bool {
         if self.proof.verify().is_err() {
             return false;
         }
