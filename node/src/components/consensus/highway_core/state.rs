@@ -11,6 +11,7 @@ pub(crate) mod tests;
 
 pub(crate) use params::Params;
 use quanta::Clock;
+use serde::{Deserialize, Serialize};
 pub(crate) use weight::Weight;
 
 pub(crate) use index_panorama::{IndexObservation, IndexPanorama};
@@ -113,7 +114,7 @@ pub(crate) enum UnitError {
 /// The `Banned` state is fixed from the beginning and can't be replaced. However, `Indirect` can
 /// be replaced with `Direct` evidence, which has the same effect but doesn't rely on information
 /// from other consensus protocol instances.
-#[derive(Clone, DataSize, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, DataSize, Debug, Deserialize, Eq, PartialEq, Hash, Serialize)]
 pub(crate) enum Fault<C>
 where
     C: Context,
@@ -141,7 +142,7 @@ impl<C: Context> Fault<C> {
 /// Both observers and active validators must instantiate this, pass in all incoming vertices from
 /// peers, and use a [FinalityDetector](../finality_detector/struct.FinalityDetector.html) to
 /// determine the outcome of the consensus process.
-#[derive(Debug, Clone, DataSize)]
+#[derive(Debug, Clone, DataSize, Serialize)]
 pub(crate) struct State<C>
 where
     C: Context,
@@ -187,6 +188,8 @@ where
     pings: ValidatorMap<Timestamp>,
     /// Clock to measure time spent in fork choice computation.
     #[data_size(skip)] // Not implemented for Clock; probably negligible.
+    #[serde(skip, default)]
+    // Serialization is used by external tools only, which cannot make sense of `Clock`.
     clock: Clock,
 }
 

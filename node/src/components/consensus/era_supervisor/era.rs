@@ -54,7 +54,7 @@ pub struct Era<I> {
     /// The height of this era's first block.
     pub(crate) start_height: u64,
     /// Pending blocks, waiting for validation and dependencies.
-    validation_states: HashMap<ProposedBlock<ClContext>, ValidationState>,
+    pub(crate) validation_states: HashMap<ProposedBlock<ClContext>, ValidationState>,
     /// Validators banned in this and the next BONDED_ERAS eras, because they were faulty in the
     /// previous switch block.
     pub(crate) new_faulty: Vec<PublicKey>,
@@ -64,9 +64,9 @@ pub struct Era<I> {
     /// Validators that are excluded from proposing new blocks.
     pub(crate) cannot_propose: HashSet<PublicKey>,
     /// Accusations collected in this era so far.
-    accusations: HashSet<PublicKey>,
+    pub(crate) accusations: HashSet<PublicKey>,
     /// The validator weights.
-    validators: BTreeMap<PublicKey, U512>,
+    pub(crate) validators: BTreeMap<PublicKey, U512>,
 }
 
 impl<I> Era<I> {
