@@ -11,7 +11,7 @@ use thiserror::Error;
 
 use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
 use casper_hashing::Digest;
-use casper_types::{bytesrepr::ToBytes, EraId, Key, StoredValue};
+use casper_types::{bytesrepr::ToBytes, EraId};
 
 use crate::types::{BlockHash, BlockHeader};
 

@@ -13,6 +13,8 @@ use tracing::{debug, error, info, warn};
 
 use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
 
+use casper_types::EraId;
+
 use crate::{
     components::{fetcher::event::FetchResponder, Component},
     effect::{

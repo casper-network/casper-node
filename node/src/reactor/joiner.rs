@@ -30,7 +30,7 @@ use crate::{
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server,
         event_stream_server::{DeployGetter, EventStreamServer},
-        fetcher::{self, Fetcher, TrieFetcher, TrieFetcherEvent},
+        fetcher::{self, Fetcher, FetcherBuilder, TrieFetcher, TrieFetcherEvent},
         gossiper::{self, Gossiper},
         metrics::Metrics,
         rest_server::{self, RestServer},
@@ -561,7 +561,7 @@ impl reactor::Reactor for Reactor {
         let block_header_by_hash_fetcher = fetcher_builder.build("block_header")?;
 
         let trie_or_chunk_fetcher = fetcher_builder.build("trie_or_chunk")?;
-        let trie_fetcher = TrieFetcher::new();
+        let trie_fetcher = TrieFetcher::new(merkle_tree_hash_activation);
 
         let deploy_acceptor = DeployAcceptor::new(
             config.deploy_acceptor,
@@ -858,7 +858,10 @@ impl reactor::Reactor for Reactor {
                     rng,
                     sender,
                     &message.0,
-                    merkle_tree_hash_activation,
+                    self.chainspec_loader
+                        .chainspec()
+                        .protocol_config
+                        .merkle_tree_hash_activation,
                 )
             }
 
