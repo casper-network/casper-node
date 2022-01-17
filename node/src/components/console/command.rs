@@ -19,7 +19,7 @@ pub(super) enum Error {
 }
 
 /// Output format information is sent back to the client it.
-#[derive(Clone, Copy, Debug, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 pub(super) enum OutputFormat {
     /// Human-readable interactive format.
     ///

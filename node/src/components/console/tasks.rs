@@ -137,13 +137,13 @@ impl Session {
                         let mut changed = false;
 
                         if let Some(quiet) = quiet {
+                            changed |= self.quiet != quiet;
                             self.quiet = quiet;
-                            changed = true;
                         }
 
                         if let Some(output) = output {
+                            changed |= self.output != output;
                             self.output = output;
-                            changed = true;
                         }
 
                         if changed {
