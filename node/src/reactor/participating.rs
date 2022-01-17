@@ -495,8 +495,8 @@ impl Reactor {
     ) -> Effects<<Self as reactor::Reactor>::Event> {
         match tag {
             Tag::Trie => {
-                Self::respond_to_fetch(effect_builder, serialized_id, sender, |trie_key| {
-                    self.contract_runtime.get_trie(trie_key)
+                Self::respond_to_fetch(effect_builder, serialized_id, sender, |trie_or_chunk_id| {
+                    self.contract_runtime.get_trie(trie_or_chunk_id)
                 })
             }
             _ => {

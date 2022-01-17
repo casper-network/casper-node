@@ -18,6 +18,8 @@ use reactor::ReactorEvent;
 use serde::Serialize;
 use tracing::{debug, warn};
 
+use casper_execution_engine::storage::trie::TrieOrChunk;
+
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
 use crate::{
@@ -28,7 +30,7 @@ use crate::{
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server,
         event_stream_server::{DeployGetter, EventStreamServer},
-        fetcher::{self, Fetcher, FetcherBuilder},
+        fetcher::{self, Fetcher, TrieFetcher, TrieFetcherEvent},
         gossiper::{self, Gossiper},
         metrics::Metrics,
         rest_server::{self, RestServer},
@@ -50,7 +52,7 @@ use crate::{
         requests::{
             BeginGossipRequest, ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest,
             FetcherRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest, RestRequest,
-            StorageRequest,
+            StorageRequest, TrieFetcherRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -68,8 +70,6 @@ use crate::{
     utils::WithDir,
     NodeRng,
 };
-use casper_execution_engine::storage::trie::Trie;
-use casper_types::{Key, StoredValue};
 
 /// Top-level event for the reactor.
 #[allow(clippy::large_enum_variant)]
@@ -116,10 +116,6 @@ pub(crate) enum JoinerEvent {
     #[from]
     BlockFetcher(#[serde(skip_serializing)] fetcher::Event<Block>),
 
-    /// Trie fetcher event.
-    #[from]
-    TrieFetcher(#[serde(skip_serializing)] fetcher::Event<Trie<Key, StoredValue>>),
-
     /// Block header (without metadata) fetcher event.
     #[from]
     BlockHeaderFetcher(#[serde(skip_serializing)] fetcher::Event<BlockHeader>),
@@ -135,6 +131,14 @@ pub(crate) enum JoinerEvent {
     /// Deploy fetcher event.
     #[from]
     DeployFetcher(#[serde(skip_serializing)] fetcher::Event<Deploy>),
+
+    /// Trie or chunk fetcher event.
+    #[from]
+    TrieOrChunkFetcher(#[serde(skip_serializing)] fetcher::Event<TrieOrChunk>),
+
+    /// Trie fetcher event.
+    #[from]
+    TrieFetcher(#[serde(skip_serializing)] TrieFetcherEvent<NodeId>),
 
     /// Deploy acceptor event.
     #[from]
@@ -157,13 +161,17 @@ pub(crate) enum JoinerEvent {
     #[from]
     BlockFetcherRequest(#[serde(skip_serializing)] FetcherRequest<NodeId, Block>),
 
-    /// Trie fetcher request.
-    #[from]
-    TrieFetcherRequest(#[serde(skip_serializing)] FetcherRequest<NodeId, Trie<Key, StoredValue>>),
-
     /// Blocker header (with no metadata) fetcher request.
     #[from]
     BlockHeaderFetcherRequest(#[serde(skip_serializing)] FetcherRequest<NodeId, BlockHeader>),
+
+    /// Trie or chunk fetcher request.
+    #[from]
+    TrieOrChunkFetcherRequest(#[serde(skip_serializing)] FetcherRequest<NodeId, TrieOrChunk>),
+
+    /// Trie or chunk fetcher request.
+    #[from]
+    TrieFetcherRequest(#[serde(skip_serializing)] TrieFetcherRequest<NodeId>),
 
     /// Block header with metadata by height fetcher request.
     #[from]
@@ -273,12 +281,16 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::BlockFetcher(_) => "BlockFetcher",
             JoinerEvent::BlockByHeightFetcher(_) => "BlockByHeightFetcher",
             JoinerEvent::DeployFetcher(_) => "DeployFetcher",
+            JoinerEvent::TrieOrChunkFetcher(_) => "TrieOrChunkFetcher",
+            JoinerEvent::TrieFetcher(_) => "TrieFetcher",
             JoinerEvent::DeployAcceptor(_) => "DeployAcceptor",
             JoinerEvent::ContractRuntime(_) => "ContractRuntime",
             JoinerEvent::AddressGossiper(_) => "AddressGossiper",
             JoinerEvent::BlockFetcherRequest(_) => "BlockFetcherRequest",
             JoinerEvent::BlockByHeightFetcherRequest(_) => "BlockByHeightFetcherRequest",
             JoinerEvent::DeployFetcherRequest(_) => "DeployFetcherRequest",
+            JoinerEvent::TrieOrChunkFetcherRequest(_) => "TrieOrChunkFetcherRequest",
+            JoinerEvent::TrieFetcherRequest(_) => "TrieFetcherRequest",
             JoinerEvent::ControlAnnouncement(_) => "ControlAnnouncement",
             JoinerEvent::ContractRuntimeAnnouncement(_) => "ContractRuntimeAnnouncement",
             JoinerEvent::AddressGossiperAnnouncement(_) => "AddressGossiperAnnouncement",
@@ -286,10 +298,8 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::LinearChainAnnouncement(_) => "LinearChainAnnouncement",
             JoinerEvent::ChainspecLoaderAnnouncement(_) => "ChainspecLoaderAnnouncement",
             JoinerEvent::ConsensusRequest(_) => "ConsensusRequest",
-            JoinerEvent::TrieFetcher(_) => "TrieFetcher",
             JoinerEvent::BlockHeaderFetcher(_) => "BlockHeaderFetcher",
             JoinerEvent::BlockHeaderByHeightFetcher(_) => "BlockHeaderByHeightFetcher",
-            JoinerEvent::TrieFetcherRequest(_) => "TrieFetcherRequest",
             JoinerEvent::BlockHeaderFetcherRequest(_) => "BlockHeaderFetcherRequest",
             JoinerEvent::BlockHeaderByHeightFetcherRequest(_) => {
                 "BlockHeaderByHeightFetcherRequest"
@@ -358,10 +368,20 @@ impl Display for JoinerEvent {
             JoinerEvent::BeginAddressGossipRequest(request) => {
                 write!(f, "begin address gossip request: {}", request)
             }
+            JoinerEvent::TrieOrChunkFetcherRequest(request) => {
+                write!(f, "trie or chunk fetcher request: {}", request)
+            }
+            JoinerEvent::TrieFetcherRequest(request) => {
+                write!(f, "trie fetcher request: {}", request)
+            }
             JoinerEvent::BlockFetcher(event) => write!(f, "block fetcher: {}", event),
             JoinerEvent::BlockByHeightFetcherRequest(request) => {
                 write!(f, "block by height fetcher request: {}", request)
             }
+            JoinerEvent::TrieOrChunkFetcher(event) => {
+                write!(f, "trie or chunk fetcher: {}", event)
+            }
+            JoinerEvent::TrieFetcher(event) => write!(f, "trie fetcher: {}", event),
             JoinerEvent::DeployFetcher(event) => write!(f, "deploy fetcher event: {}", event),
             JoinerEvent::ContractRuntime(event) => write!(f, "contract runtime event: {:?}", event),
             JoinerEvent::ContractRuntimeAnnouncement(announcement) => {
@@ -386,12 +406,6 @@ impl Display for JoinerEvent {
                 write!(f, "chainspec loader announcement: {}", ann)
             }
             JoinerEvent::ConsensusRequest(req) => write!(f, "consensus request: {:?}", req),
-            JoinerEvent::TrieFetcher(trie) => {
-                write!(f, "trie fetcher event: {}", trie)
-            }
-            JoinerEvent::TrieFetcherRequest(req) => {
-                write!(f, "trie fetcher request: {}", req)
-            }
             JoinerEvent::BlockHeaderFetcher(block_header) => {
                 write!(f, "block header fetcher event: {}", block_header)
             }
@@ -437,9 +451,9 @@ pub(crate) struct Reactor {
     block_by_height_fetcher: Fetcher<BlockWithMetadata>,
     block_header_by_hash_fetcher: Fetcher<BlockHeader>,
     block_header_and_finality_signatures_by_height_fetcher: Fetcher<BlockHeaderWithMetadata>,
-    // Handles request for fetching tries from the network.
-    #[data_size(skip)]
-    trie_fetcher: Fetcher<Trie<Key, StoredValue>>,
+    trie_or_chunk_fetcher: Fetcher<TrieOrChunk>,
+    // Handles requests for fetching tries from the network.
+    trie_fetcher: TrieFetcher<NodeId>,
     #[data_size(skip)]
     deploy_acceptor: DeployAcceptor,
     #[data_size(skip)]
@@ -542,10 +556,12 @@ impl reactor::Reactor for Reactor {
         let deploy_fetcher = fetcher_builder.build("deploy")?;
         let block_by_height_fetcher = fetcher_builder.build("block_by_height")?;
         let block_by_hash_fetcher = fetcher_builder.build("block")?;
-        let trie_fetcher = fetcher_builder.build("trie")?;
         let block_header_and_finality_signatures_by_height_fetcher =
             fetcher_builder.build("block_header_by_height")?;
         let block_header_by_hash_fetcher = fetcher_builder.build("block_header")?;
+
+        let trie_or_chunk_fetcher = fetcher_builder.build("trie_or_chunk")?;
+        let trie_fetcher = TrieFetcher::new();
 
         let deploy_acceptor = DeployAcceptor::new(
             config.deploy_acceptor,
@@ -570,11 +586,12 @@ impl reactor::Reactor for Reactor {
                 contract_runtime,
                 chain_synchronizer,
                 block_by_hash_fetcher,
-                trie_fetcher,
                 deploy_fetcher,
                 block_by_height_fetcher,
                 block_header_by_hash_fetcher,
                 block_header_and_finality_signatures_by_height_fetcher,
+                trie_or_chunk_fetcher,
+                trie_fetcher,
                 deploy_acceptor,
                 event_queue_metrics,
                 rest_server,
@@ -664,10 +681,6 @@ impl reactor::Reactor for Reactor {
                 self.block_by_height_fetcher
                     .handle_event(effect_builder, rng, event),
             ),
-            JoinerEvent::TrieFetcher(event) => reactor::wrap_effects(
-                JoinerEvent::TrieFetcher,
-                self.trie_fetcher.handle_event(effect_builder, rng, event),
-            ),
             JoinerEvent::BlockHeaderFetcher(event) => reactor::wrap_effects(
                 JoinerEvent::BlockHeaderFetcher,
                 self.block_header_by_hash_fetcher
@@ -692,15 +705,19 @@ impl reactor::Reactor for Reactor {
                 rng,
                 JoinerEvent::BlockByHeightFetcher(request.into()),
             ),
-            JoinerEvent::TrieFetcherRequest(request) => self.dispatch_event(
-                effect_builder,
-                rng,
-                JoinerEvent::TrieFetcher(request.into()),
-            ),
             JoinerEvent::BlockHeaderFetcherRequest(request) => self.dispatch_event(
                 effect_builder,
                 rng,
                 JoinerEvent::BlockHeaderFetcher(request.into()),
+            ),
+            JoinerEvent::TrieOrChunkFetcher(event) => reactor::wrap_effects(
+                JoinerEvent::TrieOrChunkFetcher,
+                self.trie_or_chunk_fetcher
+                    .handle_event(effect_builder, rng, event),
+            ),
+            JoinerEvent::TrieFetcher(event) => reactor::wrap_effects(
+                JoinerEvent::TrieFetcher,
+                self.trie_fetcher.handle_event(effect_builder, rng, event),
             ),
             JoinerEvent::ContractRuntime(event) => reactor::wrap_effects(
                 JoinerEvent::ContractRuntime,
@@ -800,6 +817,16 @@ impl reactor::Reactor for Reactor {
                 rng,
                 JoinerEvent::BlockHeaderByHeightFetcher(request.into()),
             ),
+            JoinerEvent::TrieOrChunkFetcherRequest(request) => self.dispatch_event(
+                effect_builder,
+                rng,
+                JoinerEvent::TrieOrChunkFetcher(request.into()),
+            ),
+            JoinerEvent::TrieFetcherRequest(request) => self.dispatch_event(
+                effect_builder,
+                rng,
+                JoinerEvent::TrieFetcher(request.into()),
+            ),
             JoinerEvent::ConsensusMessageIncoming(incoming) => {
                 debug!(%incoming, "ignoring incoming consensus message");
                 Effects::new()
@@ -825,12 +852,7 @@ impl reactor::Reactor for Reactor {
                 Effects::new()
             }
             JoinerEvent::TrieResponseIncoming(TrieResponseIncoming { sender, message }) => {
-                let merkle_tree_hash_activation = self
-                    .chainspec_loader
-                    .chainspec()
-                    .protocol_config
-                    .merkle_tree_hash_activation;
-                reactor::handle_fetch_response::<Self, Trie<Key, StoredValue>>(
+                reactor::handle_fetch_response::<Self, TrieOrChunk>(
                     self,
                     effect_builder,
                     rng,

@@ -4,11 +4,8 @@ use serde::Serialize;
 use thiserror::Error;
 use tokio::task::JoinError;
 
-use casper_execution_engine::{
-    core::{engine_state, engine_state::GetEraValidatorsError},
-    storage::trie::Trie,
-};
-use casper_types::{EraId, Key, ProtocolVersion, StoredValue};
+use casper_execution_engine::core::{engine_state, engine_state::GetEraValidatorsError};
+use casper_types::{EraId, ProtocolVersion};
 
 use crate::{
     components::{contract_runtime::BlockExecutionError, fetcher::FetcherError},
@@ -71,9 +68,6 @@ pub(crate) enum Error {
 
     #[error(transparent)]
     DeployWithMetadataFetcher(#[from] FetcherError<Deploy, NodeId>),
-
-    #[error(transparent)]
-    TrieFetcher(#[from] FetcherError<Trie<Key, StoredValue>, NodeId>),
 
     #[error(
         "executed block is not the same as downloaded block. \

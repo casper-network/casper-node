@@ -179,7 +179,6 @@ impl Executor {
             match runtime.call_host_mint(
                 protocol_version,
                 entry_point.name(),
-                &mut runtime.context().named_keys().to_owned(),
                 &args,
                 Default::default(),
                 stack,
@@ -204,7 +203,6 @@ impl Executor {
             match runtime.call_host_handle_payment(
                 protocol_version,
                 entry_point.name(),
-                &mut runtime.context().named_keys().to_owned(),
                 &args,
                 Default::default(),
                 stack,
@@ -229,7 +227,6 @@ impl Executor {
             match runtime.call_host_auction(
                 protocol_version,
                 entry_point.name(),
-                &mut runtime.context().named_keys().to_owned(),
                 &args,
                 Default::default(),
                 stack,
@@ -476,11 +473,10 @@ impl Executor {
             }
         };
 
-        let mut inner_named_keys = runtime.context().named_keys().clone();
+        let inner_named_keys = runtime.context().named_keys().clone();
         let ret = direct_system_contract_call.host_exec(
             runtime,
             protocol_version,
-            &mut inner_named_keys,
             &runtime_args,
             extra_keys,
             execution_journal,
@@ -676,7 +672,6 @@ impl DirectSystemContractCall {
         &self,
         mut runtime: Runtime<R>,
         protocol_version: ProtocolVersion,
-        named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
         execution_journal: ExecutionJournal,
@@ -696,7 +691,6 @@ impl DirectSystemContractCall {
             | DirectSystemContractCall::DistributeRewards => runtime.call_host_auction(
                 protocol_version,
                 entry_point_name,
-                named_keys,
                 runtime_args,
                 extra_keys,
                 stack,
@@ -704,7 +698,6 @@ impl DirectSystemContractCall {
             DirectSystemContractCall::FinalizePayment => runtime.call_host_handle_payment(
                 protocol_version,
                 entry_point_name,
-                named_keys,
                 runtime_args,
                 extra_keys,
                 stack,
@@ -713,7 +706,6 @@ impl DirectSystemContractCall {
                 .call_host_mint(
                     protocol_version,
                     entry_point_name,
-                    named_keys,
                     runtime_args,
                     extra_keys,
                     stack,
@@ -721,7 +713,6 @@ impl DirectSystemContractCall {
             DirectSystemContractCall::GetEraValidators => runtime.call_host_auction(
                 protocol_version,
                 entry_point_name,
-                named_keys,
                 runtime_args,
                 extra_keys,
                 stack,
@@ -730,7 +721,6 @@ impl DirectSystemContractCall {
             DirectSystemContractCall::GetPaymentPurse => runtime.call_host_handle_payment(
                 protocol_version,
                 entry_point_name,
-                named_keys,
                 runtime_args,
                 extra_keys,
                 stack,
