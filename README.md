@@ -215,7 +215,7 @@ Count number of events in each queue:
 jq 'map_values(map(keys[0]))' queue_dump.json
 ```
 
-### Debug console
+### Diagnostic console
 
 If the configuration option `console.enabled` is set to `true`, a unix socket named `debug.socket` by default can be found next to the configuration while the node is running. It can be connected to by tools like `socat`:
 
