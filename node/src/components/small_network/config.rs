@@ -32,6 +32,7 @@ impl Default for Config {
             gossip_interval: TimeDiff::from_str(DEFAULT_GOSSIP_INTERVAL).unwrap(),
             initial_gossip_delay: TimeDiff::from_seconds(5),
             max_addr_pending_time: TimeDiff::from_seconds(60),
+            max_incoming_peer_connections: 0,
             max_outgoing_byte_rate_non_validators: 0,
             max_incoming_message_rate_non_validators: 0,
             estimator_weights: Default::default(),
@@ -58,6 +59,8 @@ pub struct Config {
     pub initial_gossip_delay: TimeDiff,
     /// Maximum allowed time for an address to be kept in the pending set.
     pub max_addr_pending_time: TimeDiff,
+    /// Maximum number of incoming connections per unique peer. Unlimited if `0`.
+    pub max_incoming_peer_connections: u16,
     /// Maximum number of bytes per second allowed for non-validating peers. Unlimited if 0.
     pub max_outgoing_byte_rate_non_validators: u32,
     /// Maximum of requests answered from non-validating peers. Unlimited if 0.

@@ -107,7 +107,15 @@ casper-node validator /etc/casper-node/config.toml
 
 Note how the semicolon is used to separate configuration overrides here.
 
-### Development environment variables
+### Other environment variables
+
+To force an integrity check to be run on the databases on node startup, set the following environment variable:
+
+```
+CL_RUN_INTEGRITY_CHECKS=1
+```
+
+**Note that integrity checks can run for several hours, and will hold the node in an initializing state until complete.**
 
 To set the threshold at which a warn-level log message is generated for a long-running reactor event, use the env var
 `CL_EVENT_MAX_MICROSECS`.  For example, to set the threshold to 1 millisecond:

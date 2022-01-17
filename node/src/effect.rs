@@ -191,17 +191,14 @@ where
     pub(crate) async fn respond(mut self, data: T) {
         if let Some(sender) = self.sender.take() {
             if let Err(data) = sender.send(data) {
-                if self.is_shutting_down.is_set() {
-                    debug!(
-                        ?data,
-                        "ignored failure to send response to request down oneshot channel"
-                    );
-                } else {
-                    error!(
-                        ?data,
-                        "could not send response to request down oneshot channel"
-                    );
-                }
+                // If we cannot send a response down the channel, it means the original requestor is
+                // no longer interested in our response. This typically happens during shutdowns, or
+                // in cases where an originating external request has been cancelled.
+
+                debug!(
+                    ?data,
+                    "ignored failure to send response to request down oneshot channel"
+                );
             }
         } else {
             error!(
@@ -234,6 +231,8 @@ impl<T> Drop for Responder<T> {
                 );
             } else {
                 // This is usually a very serious error, as another component will now be stuck.
+                //
+                // See the code `make_request` for more details.
                 error!(
                     responder=?self,
                     "dropped without being responded to outside of shutdown"
@@ -449,14 +448,19 @@ impl<REv> EffectBuilder<REv> {
 
     /// Performs a request.
     ///
-    /// Given a request `Q`, that when completed will yield a result of `T`, produces a future
-    /// that will
+    /// Given a request `Q`, that when completed will yield a result of `T`, produces a future that
+    /// will
     ///
     /// 1. create an event to send the request to the respective component (thus `Q: Into<REv>`),
-    /// 2. waits for a response and returns it.
+    /// 2. wait for a response and return it.
     ///
-    /// This function is usually only used internally by effects implement on the effects builder,
+    /// This function is usually only used internally by effects implemented on the effects builder,
     /// but IO components may also make use of it.
+    ///
+    /// # Cancellation safety
+    ///
+    /// This future is cancellation safe: If it is dropped without being polled, it merely indicates
+    /// the original requestor is not longer interested in the result, which will be discarded.
     pub(crate) async fn make_request<T, Q, F>(self, f: F, queue_kind: QueueKind) -> T
     where
         T: Send + 'static,
@@ -476,8 +480,10 @@ impl<REv> EffectBuilder<REv> {
         match receiver.await {
             Ok(value) => value,
             Err(err) => {
-                // The channel should never be closed, ever. If it is, we pretend nothing happened
-                // though, instead of crashing.
+                // The channel should usually not be closed except during shutdowns, as it indicates
+                // a panic or disappearance of the remote that is supposed to process the request.
+                //
+                // If it does happen, we pretend nothing happened instead of crashing.
                 if self.event_queue.shutdown_flag().is_set() {
                     debug!(%err, ?queue_kind, channel=?type_name::<T>(), "ignoring closed channel due to shutdown")
                 } else {
@@ -622,15 +628,15 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the current network peers in a random order.
-    pub async fn get_peers_in_random_order<I>(self) -> Vec<I>
+    /// Gets the current network peers in random order.
+    pub async fn get_fully_connected_peers<I>(self) -> Vec<I>
     where
         REv: From<NetworkInfoRequest<I>>,
         I: Send + 'static,
     {
         self.make_request(
-            |responder| NetworkInfoRequest::GetPeersInRandomOrder { responder },
-            QueueKind::Api,
+            |responder| NetworkInfoRequest::GetFullyConnectedPeers { responder },
+            QueueKind::Regular,
         )
         .await
     }

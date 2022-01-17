@@ -973,8 +973,9 @@ where
             }
             ProtocolOutcome::CreatedMessageToRandomPeer(payload) => {
                 let message = ConsensusMessage::Protocol { era_id, payload };
+
                 async move {
-                    let peers = effect_builder.get_peers_in_random_order().await;
+                    let peers = effect_builder.get_fully_connected_peers().await;
                     if let Some(to) = peers.into_iter().next() {
                         effect_builder.send_message(to, message.into()).await;
                     }
