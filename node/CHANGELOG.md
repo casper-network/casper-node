@@ -15,7 +15,7 @@ All notable changes to this project will be documented in this file.  The format
 ### Added
 * Add new event to the main SSE server stream across all endpoints `<IP:PORT>/events/*` which emits a shutdown event when the node shuts down.
 * Add `SIGUSR2` signal handling to dump the queue in JSON format (see "Changed" section for `SIGUSR1`).
-* A debug console can now be enabled via the `[console]` section in the configuration file. See the `README.md` for details.
+* A diagnostic console can now be enabled via the `[console]` section in the configuration file. See the `README.md` for details.
 
 ### Changed
 * `SIGUSR1` now only dumps the queue in the debug text format.
