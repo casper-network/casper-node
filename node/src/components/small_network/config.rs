@@ -22,6 +22,12 @@ const DEFAULT_PUBLIC_ADDRESS: &str = "127.0.0.1:0";
 /// Default interval for gossiping network addresses.
 const DEFAULT_GOSSIP_INTERVAL: &str = "30sec";
 
+/// Default delay until initial round of address gossiping starts.
+const DEFAULT_INITIAL_GOSSIP_DELAY: &str = "5sec";
+
+/// Default time limit for an address to be in the pending set.
+const DEFAULT_MAX_ADDR_PENDING_TIME: &str = "60sec";
+
 // Default values for networking configuration:
 impl Default for Config {
     fn default() -> Self {
@@ -30,8 +36,8 @@ impl Default for Config {
             public_address: DEFAULT_PUBLIC_ADDRESS.to_string(),
             known_addresses: Vec::new(),
             gossip_interval: TimeDiff::from_str(DEFAULT_GOSSIP_INTERVAL).unwrap(),
-            initial_gossip_delay: TimeDiff::from_seconds(5),
-            max_addr_pending_time: TimeDiff::from_seconds(60),
+            initial_gossip_delay: TimeDiff::from_str(DEFAULT_INITIAL_GOSSIP_DELAY).unwrap(),
+            max_addr_pending_time: TimeDiff::from_str(DEFAULT_MAX_ADDR_PENDING_TIME).unwrap(),
             max_incoming_peer_connections: 0,
             max_outgoing_byte_rate_non_validators: 0,
             max_incoming_message_rate_non_validators: 0,
