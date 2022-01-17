@@ -46,7 +46,7 @@ impl Display for DumpConsensusStateRequest {
         if let Some(ref era_id) = self.era_id {
             Display::fmt(era_id, f)
         } else {
-            f.write_str("for latest era")
+            f.write_str(" latest era")
         }
     }
 }
