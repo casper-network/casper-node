@@ -1044,12 +1044,6 @@ async fn should_accept_repeated_valid_deploy_from_client() {
 }
 
 #[tokio::test]
-async fn should_accept_repeated_valid_deploy_from_client() {
-    let result = run_deploy_acceptor(TestScenario::FromClientRepeatedValidDeploy).await;
-    assert!(result.is_ok())
-}
-
-#[tokio::test]
 async fn should_accept_deploy_with_valid_custom_payment_from_client() {
     let test_scenario = TestScenario::FromClientCustomPaymentContract(ContractScenario::Valid);
     let result = run_deploy_acceptor(test_scenario).await;
