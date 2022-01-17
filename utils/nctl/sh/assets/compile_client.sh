@@ -32,9 +32,9 @@ popd || exit
 pushd "$NCTL_CASPER_CLIENT_HOME" || exit
 
 if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
-    cargo build --features casper-mainnet
+    cargo build
 else
-    cargo build --release --features casper-mainnet
+    cargo build --release
 fi
 
 popd || exit

@@ -72,9 +72,9 @@ function set_stage_binaries()
     pushd "$PATH_TO_CLIENT_SOURCE" || exit
 
     if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
-        cargo build --features casper-mainnet
+        cargo build
     else
-        cargo build --release --features casper-mainnet
+        cargo build --release
     fi
 
     popd || exit
