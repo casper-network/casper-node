@@ -364,7 +364,7 @@ where
                 responder.respond(validator_changes).ignore()
             }
             Event::DumpState(req @ DumpConsensusStateRequest { era_id, .. }) => {
-                let requested_era = era_id.unwrap_or(self.current_era());
+                let requested_era = era_id.unwrap_or_else(|| self.current_era());
 
                 // We emit some log message to get some performance information and give the
                 // operator a chance to find out why their node is busy.
