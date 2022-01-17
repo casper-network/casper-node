@@ -48,7 +48,7 @@ where
     JoinerEvent: From<FetcherRequest<NodeId, T>>,
 {
     loop {
-        for peer in effect_builder.get_peers_in_random_order().await {
+        for peer in effect_builder.get_fully_connected_peers().await {
             trace!(
                 "attempting to fetch {:?} with id {:?} from {:?}",
                 T::TAG,
@@ -97,7 +97,7 @@ async fn fetch_trie_retry_forever(
     id: Digest,
 ) -> FetchedData<Trie<Key, StoredValue>, NodeId> {
     loop {
-        let peers = effect_builder.get_peers_in_random_order::<NodeId>().await;
+        let peers = effect_builder.get_fully_connected_peers::<NodeId>().await;
         trace!(?id, "attempting to fetch a trie",);
         match effect_builder.fetch_trie(id, peers).await {
             Ok(fetched_data) => {
@@ -330,7 +330,7 @@ where
         .ok_or_else(|| Error::HeightOverflow {
             parent: Box::new(parent_header.clone()),
         })?;
-    let mut peers = effect_builder.get_peers_in_random_order().await.into_iter();
+    let mut peers = effect_builder.get_fully_connected_peers().await.into_iter();
     let item = loop {
         let peer = match peers.next() {
             Some(peer) => peer,
