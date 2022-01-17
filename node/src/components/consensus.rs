@@ -364,14 +364,14 @@ where
                 responder.respond(validator_changes).ignore()
             }
             Event::DumpState(req @ DumpConsensusStateRequest { era_id, .. }) => {
-                let requested_era = era_id.unwrap_or(self.current_era);
+                let requested_era = era_id.unwrap_or(self.current_era());
 
                 // We emit some log message to get some performance information and give the
                 // operator a chance to find out why their node is busy.
                 info!(era_id=%requested_era.value(), was_latest=era_id.is_none(), "dumping era via console");
 
                 let era_dump_result = self
-                    .open_eras
+                    .open_eras()
                     .get(&requested_era)
                     .ok_or_else(|| {
                         Cow::Owned(format!(
