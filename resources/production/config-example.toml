@@ -125,6 +125,11 @@ initial_gossip_delay = '5sec'
 # How long a connection is allowed to be stuck as pending before it is abandoned.
 max_addr_pending_time = '1min'
 
+# Maximum time allowed for a connection handshake between two nodes to be completed. Connections
+# exceeding this threshold are considered unlikely to be healthy or even malicious and thus
+# terminated.
+handshake_timeout = '20sec'
+
 # Maximum number of incoming connections per unique peer allowed. If the limit is hit, additional
 # connections will be rejected. A value of `0` means unlimited.
 max_incoming_peer_connections = 3
