@@ -46,14 +46,9 @@ use super::{
 use crate::{
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert},
-    types::NodeId,
+    types::{NodeId, TimeDiff},
     utils::display_error,
 };
-
-// TODO: Constants need to be made configurable.
-
-/// Maximum time allowed to send or receive a handshake.
-const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// Low-level TLS connection function.
 ///
@@ -181,6 +176,8 @@ where
     pub(super) public_addr: SocketAddr,
     /// Optional set of consensus keys, to identify as a validator during handshake.
     pub(super) consensus_keys: Option<ConsensusKeyPair>,
+    /// Timeout for handshake completion.
+    pub(super) handshake_timeout: TimeDiff,
     /// Weights to estimate payloads with.
     pub(super) payload_weights: PayloadWeights,
 }
@@ -330,11 +327,14 @@ where
         connection_id,
     );
 
-    io_timeout(HANDSHAKE_TIMEOUT, transport.send(Arc::new(handshake)))
-        .await
-        .map_err(ConnectionError::HandshakeSend)?;
+    io_timeout(
+        context.handshake_timeout.into(),
+        transport.send(Arc::new(handshake)),
+    )
+    .await
+    .map_err(ConnectionError::HandshakeSend)?;
 
-    let remote_handshake = io_opt_timeout(HANDSHAKE_TIMEOUT, transport.next())
+    let remote_handshake = io_opt_timeout(context.handshake_timeout.into(), transport.next())
         .await
         .map_err(ConnectionError::HandshakeRecv)?;
 

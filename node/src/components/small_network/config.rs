@@ -28,6 +28,9 @@ const DEFAULT_INITIAL_GOSSIP_DELAY: &str = "5sec";
 /// Default time limit for an address to be in the pending set.
 const DEFAULT_MAX_ADDR_PENDING_TIME: &str = "60sec";
 
+/// Default timeout during which the handshake needs to be completed.
+const DEFAULT_HANDSHAKE_TIMEOUT: &str = "20sec";
+
 // Default values for networking configuration:
 impl Default for Config {
     fn default() -> Self {
@@ -38,6 +41,7 @@ impl Default for Config {
             gossip_interval: TimeDiff::from_str(DEFAULT_GOSSIP_INTERVAL).unwrap(),
             initial_gossip_delay: TimeDiff::from_str(DEFAULT_INITIAL_GOSSIP_DELAY).unwrap(),
             max_addr_pending_time: TimeDiff::from_str(DEFAULT_MAX_ADDR_PENDING_TIME).unwrap(),
+            handshake_timeout: TimeDiff::from_str(DEFAULT_HANDSHAKE_TIMEOUT).unwrap(),
             max_incoming_peer_connections: 0,
             max_outgoing_byte_rate_non_validators: 0,
             max_incoming_message_rate_non_validators: 0,
@@ -65,6 +69,8 @@ pub struct Config {
     pub initial_gossip_delay: TimeDiff,
     /// Maximum allowed time for an address to be kept in the pending set.
     pub max_addr_pending_time: TimeDiff,
+    /// Maximum allowed time for handshake completion.
+    pub handshake_timeout: TimeDiff,
     /// Maximum number of incoming connections per unique peer. Unlimited if `0`.
     pub max_incoming_peer_connections: u16,
     /// Maximum number of bytes per second allowed for non-validating peers. Unlimited if 0.
