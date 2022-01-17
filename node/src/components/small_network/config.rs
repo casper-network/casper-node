@@ -1,6 +1,5 @@
 #[cfg(test)]
 use std::net::{Ipv4Addr, SocketAddr};
-use std::str::FromStr;
 
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
@@ -20,16 +19,16 @@ const DEFAULT_BIND_ADDRESS: &str = "0.0.0.0:34553";
 const DEFAULT_PUBLIC_ADDRESS: &str = "127.0.0.1:0";
 
 /// Default interval for gossiping network addresses.
-const DEFAULT_GOSSIP_INTERVAL: &str = "30sec";
+const DEFAULT_GOSSIP_INTERVAL: TimeDiff = TimeDiff::from_seconds(30);
 
 /// Default delay until initial round of address gossiping starts.
-const DEFAULT_INITIAL_GOSSIP_DELAY: &str = "5sec";
+const DEFAULT_INITIAL_GOSSIP_DELAY: TimeDiff = TimeDiff::from_seconds(5);
 
 /// Default time limit for an address to be in the pending set.
-const DEFAULT_MAX_ADDR_PENDING_TIME: &str = "60sec";
+const DEFAULT_MAX_ADDR_PENDING_TIME: TimeDiff = TimeDiff::from_seconds(60);
 
 /// Default timeout during which the handshake needs to be completed.
-const DEFAULT_HANDSHAKE_TIMEOUT: &str = "20sec";
+const DEFAULT_HANDSHAKE_TIMEOUT: TimeDiff = TimeDiff::from_seconds(20);
 
 // Default values for networking configuration:
 impl Default for Config {
@@ -38,10 +37,10 @@ impl Default for Config {
             bind_address: DEFAULT_BIND_ADDRESS.to_string(),
             public_address: DEFAULT_PUBLIC_ADDRESS.to_string(),
             known_addresses: Vec::new(),
-            gossip_interval: TimeDiff::from_str(DEFAULT_GOSSIP_INTERVAL).unwrap(),
-            initial_gossip_delay: TimeDiff::from_str(DEFAULT_INITIAL_GOSSIP_DELAY).unwrap(),
-            max_addr_pending_time: TimeDiff::from_str(DEFAULT_MAX_ADDR_PENDING_TIME).unwrap(),
-            handshake_timeout: TimeDiff::from_str(DEFAULT_HANDSHAKE_TIMEOUT).unwrap(),
+            gossip_interval: DEFAULT_GOSSIP_INTERVAL,
+            initial_gossip_delay: DEFAULT_INITIAL_GOSSIP_DELAY,
+            max_addr_pending_time: DEFAULT_MAX_ADDR_PENDING_TIME,
+            handshake_timeout: DEFAULT_HANDSHAKE_TIMEOUT,
             max_incoming_peer_connections: 0,
             max_outgoing_byte_rate_non_validators: 0,
             max_incoming_message_rate_non_validators: 0,
@@ -83,7 +82,7 @@ pub struct Config {
 
 #[cfg(test)]
 /// Reduced gossip interval for local testing.
-const DEFAULT_TEST_GOSSIP_INTERVAL: &str = "1sec";
+const DEFAULT_TEST_GOSSIP_INTERVAL: TimeDiff = TimeDiff::from_seconds(1);
 
 #[cfg(test)]
 /// Address used to bind all local testing networking to by default.
@@ -98,7 +97,7 @@ impl Config {
             bind_address: bind_address.to_string(),
             public_address: bind_address.to_string(),
             known_addresses: vec![bind_address.to_string()],
-            gossip_interval: TimeDiff::from_str(DEFAULT_TEST_GOSSIP_INTERVAL).unwrap(),
+            gossip_interval: DEFAULT_TEST_GOSSIP_INTERVAL,
             ..Default::default()
         }
     }
@@ -116,7 +115,7 @@ impl Config {
             known_addresses: vec![
                 SocketAddr::from((TEST_BIND_INTERFACE, known_peer_port)).to_string()
             ],
-            gossip_interval: TimeDiff::from_str(DEFAULT_TEST_GOSSIP_INTERVAL).unwrap(),
+            gossip_interval: DEFAULT_TEST_GOSSIP_INTERVAL,
             ..Default::default()
         }
     }
