@@ -2,6 +2,7 @@ mod config;
 mod event;
 mod metrics;
 mod tests;
+mod trie_fetcher;
 
 use std::{collections::HashMap, fmt::Debug, time::Duration};
 
@@ -10,9 +11,7 @@ use prometheus::Registry;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, warn};
 
-use casper_execution_engine::storage::trie::Trie;
-use casper_hashing::Digest;
-use casper_types::{Key, StoredValue};
+use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
 
 use crate::{
     components::{fetcher::event::FetchResponder, Component},
@@ -33,6 +32,7 @@ use crate::effect::announcements::BlocklistAnnouncement;
 pub(crate) use config::Config;
 pub(crate) use event::{Event, FetchResult, FetchedData, FetcherError};
 use metrics::Metrics;
+pub(crate) use trie_fetcher::{Event as TrieFetcherEvent, TrieFetcher, TrieFetcherResult};
 
 /// A helper trait constraining `Fetcher` compatible reactor events.
 pub(crate) trait ReactorEventT<T>:
@@ -409,14 +409,12 @@ impl ItemFetcher<BlockHeaderWithMetadata> for Fetcher<BlockHeaderWithMetadata> {
     }
 }
 
-type GlobalStorageTrie = Trie<Key, StoredValue>;
-
-impl ItemFetcher<GlobalStorageTrie> for Fetcher<GlobalStorageTrie> {
+impl ItemFetcher<TrieOrChunk> for Fetcher<TrieOrChunk> {
     const SAFE_TO_RESPOND_TO_ALL: bool = true;
 
     fn responders(
         &mut self,
-    ) -> &mut HashMap<Digest, HashMap<NodeId, Vec<FetchResponder<GlobalStorageTrie>>>> {
+    ) -> &mut HashMap<TrieOrChunkId, HashMap<NodeId, Vec<FetchResponder<TrieOrChunk>>>> {
         &mut self.responders
     }
 
@@ -428,12 +426,12 @@ impl ItemFetcher<GlobalStorageTrie> for Fetcher<GlobalStorageTrie> {
         self.get_from_peer_timeout
     }
 
-    fn get_from_storage<REv: ReactorEventT<GlobalStorageTrie>>(
+    fn get_from_storage<REv: ReactorEventT<TrieOrChunk>>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        id: Digest,
+        id: TrieOrChunkId,
         peer: NodeId,
-    ) -> Effects<Event<GlobalStorageTrie>> {
+    ) -> Effects<Event<TrieOrChunk>> {
         async move {
             let maybe_trie = match effect_builder.get_trie(id).await {
                 Ok(maybe_trie) => maybe_trie,

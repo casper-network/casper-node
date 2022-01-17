@@ -87,7 +87,7 @@ use casper_execution_engine::{
         UpgradeSuccess,
     },
     shared::execution_journal::ExecutionJournal,
-    storage::trie::Trie,
+    storage::trie::{Trie, TrieOrChunk, TrieOrChunkId},
 };
 use casper_hashing::Digest;
 use casper_types::{
@@ -105,7 +105,7 @@ use crate::{
             BlockAndExecutionEffects, BlockExecutionError, EraValidatorsRequest, ExecutionPreState,
         },
         deploy_acceptor,
-        fetcher::FetchResult,
+        fetcher::{FetchResult, TrieFetcherResult},
         small_network::FromIncoming,
     },
     reactor::{EventQueueHandle, QueueKind},
@@ -123,10 +123,12 @@ use announcements::{
     RpcServerAnnouncement,
 };
 use requests::{
-    BeginGossipRequest, BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest,
-    ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
-    MetricsRequest, NetworkInfoRequest, NetworkRequest, StateStoreRequest, StorageRequest,
+    BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
+    ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
+    NetworkRequest, StorageRequest, TrieFetcherRequest,
 };
+
+use self::requests::{BeginGossipRequest, StateStoreRequest};
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
 static UNOBTAINABLE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
@@ -987,8 +989,26 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Get a trie by its hash key.
+    /// Get a trie or chunk by its ID.
     pub(crate) async fn get_trie(
+        self,
+        trie_or_chunk_id: TrieOrChunkId,
+    ) -> Result<Option<TrieOrChunk>, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::GetTrie {
+                trie_or_chunk_id,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Get a trie by its hash key.
+    pub(crate) async fn get_trie_full(
         self,
         trie_key: Digest,
     ) -> Result<Option<Trie<Key, StoredValue>>, engine_state::Error>
@@ -996,7 +1016,7 @@ impl<REv> EffectBuilder<REv> {
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
-            |responder| ContractRuntimeRequest::GetTrie {
+            |responder| ContractRuntimeRequest::GetTrieFull {
                 trie_key,
                 responder,
             },
@@ -1203,6 +1223,23 @@ impl<REv> EffectBuilder<REv> {
             |responder| FetcherRequest {
                 id,
                 peer,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Requests a trie node from a peer.
+    pub(crate) async fn fetch_trie<I>(self, hash: Digest, peers: Vec<I>) -> TrieFetcherResult<I>
+    where
+        REv: From<TrieFetcherRequest<I>>,
+        I: Debug + Eq + Send + Clone + 'static,
+    {
+        self.make_request(
+            |responder| TrieFetcherRequest {
+                peers,
+                hash,
                 responder,
             },
             QueueKind::Regular,
