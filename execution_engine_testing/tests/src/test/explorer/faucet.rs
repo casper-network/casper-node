@@ -700,7 +700,6 @@ fn should_fund_existing_account() {
                 ENTRY_POINT_FAUCET,
                 runtime_args! {ARG_TARGET => user_account, ARG_ID => <Option<u64>>::None},
             )
-            // U512::from(25_000_000_000u64)
             .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
             .with_deploy_hash([4; 32])
             .build();
