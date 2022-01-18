@@ -123,7 +123,7 @@ pub(crate) enum ParticipatingEvent {
     BlockValidator(#[serde(skip_serializing)] block_validator::Event<NodeId>),
     /// Linear chain event.
     #[from]
-    LinearChain(#[serde(skip_serializing)] linear_chain::Event<NodeId>),
+    LinearChain(#[serde(skip_serializing)] linear_chain::Event),
     /// Console event.
     #[from]
     Console(console::Event),
@@ -376,9 +376,6 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::ControlAnnouncement(ctrl_ann) => write!(f, "control: {}", ctrl_ann),
             ParticipatingEvent::DumpConsensusStateRequest(req) => {
                 write!(f, "dump consensus state: {}", req)
-            }
-            ParticipatingEvent::NetworkAnnouncement(ann) => {
-                write!(f, "network announcement: {}", ann)
             }
             ParticipatingEvent::RpcServerAnnouncement(ann) => {
                 write!(f, "api server announcement: {}", ann)
@@ -692,10 +689,6 @@ impl reactor::Reactor for Reactor {
             registry,
         )?;
 
-        let maybe_next_activation_point = chainspec_loader
-            .next_upgrade()
-            .map(|next_upgrade| next_upgrade.activation_point());
-
         let (block_proposer, block_proposer_effects) = BlockProposer::new(
             registry.clone(),
             effect_builder,
@@ -716,9 +709,6 @@ impl reactor::Reactor for Reactor {
             small_network_identity,
             chainspec.as_ref(),
         )?;
-
-        let mut effects =
-            reactor::wrap_effects(ParticipatingEvent::BlockProposer, block_proposer_effects);
 
         effects.extend(reactor::wrap_effects(
             ParticipatingEvent::Console,

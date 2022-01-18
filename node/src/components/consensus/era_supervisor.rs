@@ -1090,14 +1090,14 @@ where
         }
     }
 
-    /// Returns the most recent era.
-    pub(crate) fn current_era(&self) -> EraId {
-        self.current_era
-    }
-
     /// Get a reference to the era supervisor's open eras.
     pub(crate) fn open_eras(&self) -> &HashMap<EraId, Era<I>> {
         &self.open_eras
+    }
+
+    /// Returns the most recent era.
+    pub(crate) fn current_era(&self) -> EraId {
+        self.current_era
     }
 }
 
@@ -1106,16 +1106,6 @@ impl<I> EraSupervisor<I>
 where
     I: NodeIdT,
 {
-    /// Returns the most recent era.
-    pub(crate) fn current_era(&self) -> EraId {
-        self.current_era
-    }
-
-    /// Returns the list of validators who equivocated in this era.
-    pub(crate) fn validators_with_evidence(&self, era_id: EraId) -> Vec<&PublicKey> {
-        self.open_eras[&era_id].consensus.validators_with_evidence()
-    }
-
     /// Returns this node's validator key.
     pub(crate) fn public_key(&self) -> &PublicKey {
         &self.public_signing_key

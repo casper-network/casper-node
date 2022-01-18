@@ -29,7 +29,7 @@ use datasize::DataSize;
 use derive_more::From;
 use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
-use tracing::{, info};
+use tracing::info;
 
 use casper_types::{EraId, PublicKey};
 
