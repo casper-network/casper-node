@@ -31,6 +31,7 @@ use casper_execution_engine::{
 };
 
 /// Executes a finalized block.
+#[allow(clippy::too_many_arguments)]
 pub fn execute_finalized_block(
     engine_state: &EngineState<LmdbGlobalState>,
     metrics: Option<Arc<Metrics>>,
@@ -39,6 +40,7 @@ pub fn execute_finalized_block(
     finalized_block: FinalizedBlock,
     deploys: Vec<Deploy>,
     transfers: Vec<Deploy>,
+    merkle_tree_hash_activation: EraId,
 ) -> Result<BlockAndExecutionEffects, BlockExecutionError> {
     if finalized_block.height() != execution_pre_state.next_block_height {
         return Err(BlockExecutionError::WrongBlockHeight {
@@ -160,6 +162,7 @@ pub fn execute_finalized_block(
         finalized_block,
         next_era_validator_weights,
         protocol_version,
+        merkle_tree_hash_activation,
     )?);
 
     Ok(BlockAndExecutionEffects {

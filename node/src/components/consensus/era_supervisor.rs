@@ -240,6 +240,11 @@ where
         Ok((era_supervisor, effects))
     }
 
+    /// Returns the merkle tree hash activation from the chainspec.
+    fn merkle_tree_hash_activation(&self) -> EraId {
+        self.chainspec.protocol_config.merkle_tree_hash_activation
+    }
+
     /// Returns a list of status changes of active validators.
     pub(super) fn get_validator_changes(
         &self,
@@ -399,7 +404,7 @@ where
         let auction_delay = self.chainspec.core_config.auction_delay as usize;
         let booking_block_hash =
             if let Some(booking_block) = switch_blocks.iter().rev().nth(auction_delay) {
-                booking_block.hash()
+                booking_block.hash(self.merkle_tree_hash_activation())
             } else {
                 // If there's no booking block for the `era_id`
                 // (b/c it would have been from before Genesis, upgrade or emergency restart),
@@ -675,7 +680,7 @@ where
         let mut effects = if self.is_validator_in(&our_pk, era_id) {
             effect_builder
                 .announce_created_finality_signature(FinalitySignature::new(
-                    block_header.hash(),
+                    block_header.hash(self.merkle_tree_hash_activation()),
                     era_id,
                     &our_sk,
                     our_pk,

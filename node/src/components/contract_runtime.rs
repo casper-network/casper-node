@@ -35,7 +35,7 @@ use casper_execution_engine::{
     },
 };
 use casper_hashing::Digest;
-use casper_types::{Key, ProtocolVersion, StoredValue};
+use casper_types::{EraId, Key, ProtocolVersion, StoredValue};
 
 use crate::{
     components::{contract_runtime::types::StepEffectAndUpcomingEraValidators, Component},
@@ -111,6 +111,20 @@ impl ExecutionPreState {
         }
     }
 
+    /// Creates instance of `ExecutionPreState` from given block header nad merkle tree hash
+    /// activation point.
+    pub fn from_block_header(
+        block_header: &BlockHeader,
+        merkle_tree_hash_activation: EraId,
+    ) -> Self {
+        ExecutionPreState {
+            pre_state_root_hash: *block_header.state_root_hash(),
+            next_block_height: block_header.height() + 1,
+            parent_hash: block_header.hash(merkle_tree_hash_activation),
+            parent_seed: block_header.accumulated_seed(),
+        }
+    }
+
     /// Returns the height of the next `Block` to be constructed. Note that this must match the
     /// height of the `FinalizedBlock` used to generate the block.
     pub(crate) fn next_block_height(&self) -> u64 {
@@ -118,16 +132,6 @@ impl ExecutionPreState {
     }
 }
 
-impl From<&BlockHeader> for ExecutionPreState {
-    fn from(block_header: &BlockHeader) -> Self {
-        ExecutionPreState {
-            pre_state_root_hash: *block_header.state_root_hash(),
-            next_block_height: block_header.height() + 1,
-            parent_hash: block_header.hash(),
-            parent_seed: block_header.accumulated_seed(),
-        }
-    }
-}
 type ExecQueue = Arc<Mutex<BTreeMap<u64, (FinalizedBlock, Vec<Deploy>, Vec<Deploy>)>>>;
 
 /// The contract runtime components.
@@ -137,6 +141,7 @@ pub(crate) struct ContractRuntime {
     engine_state: Arc<EngineState<LmdbGlobalState>>,
     metrics: Arc<Metrics>,
     protocol_version: ProtocolVersion,
+    merkle_tree_hash_activation: EraId,
 
     /// Finalized blocks waiting for their pre-state hash to start executing.
     exec_queue: ExecQueue,
@@ -333,6 +338,7 @@ where
                 );
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
+                let merkle_tree_hash_activation = self.merkle_tree_hash_activation();
                 async move {
                     let result = run_intensive_task(move || {
                         execute_finalized_block(
@@ -343,6 +349,7 @@ where
                             finalized_block,
                             deploys,
                             transfers,
+                            merkle_tree_hash_activation,
                         )
                     })
                     .await;
@@ -377,6 +384,7 @@ where
                             finalized_block,
                             deploys,
                             transfers,
+                            self.merkle_tree_hash_activation(),
                         )
                         .ignore(),
                     )
@@ -440,6 +448,7 @@ impl ContractRuntime {
         max_associated_keys: u32,
         max_runtime_call_stack_height: u32,
         registry: &Registry,
+        merkle_tree_hash_activation: EraId,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
         let execution_pre_state = Arc::new(Mutex::new(ExecutionPreState {
@@ -481,7 +490,12 @@ impl ContractRuntime {
             exec_queue: Arc::new(Mutex::new(BTreeMap::new())),
             engine_state,
             metrics,
+            merkle_tree_hash_activation,
         })
+    }
+
+    fn merkle_tree_hash_activation(&self) -> EraId {
+        self.merkle_tree_hash_activation
     }
 
     /// Commits a genesis request.
@@ -549,6 +563,7 @@ impl ContractRuntime {
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
         transfers: Vec<Deploy>,
+        merkle_tree_hash_activation: EraId,
     ) where
         REv: From<ContractRuntimeRequest>
             + From<ContractRuntimeAnnouncement>
@@ -569,6 +584,7 @@ impl ContractRuntime {
                 finalized_block,
                 deploys,
                 transfers,
+                merkle_tree_hash_activation,
             )
         })
         .await
@@ -577,7 +593,8 @@ impl ContractRuntime {
             Err(error) => return fatal!(effect_builder, "{}", error).await,
         };
 
-        let new_execution_pre_state = ExecutionPreState::from(block.header());
+        let new_execution_pre_state =
+            ExecutionPreState::from_block_header(block.header(), merkle_tree_hash_activation);
         *execution_pre_state.lock().unwrap() = new_execution_pre_state.clone();
 
         let current_era_id = block.header().era_id();

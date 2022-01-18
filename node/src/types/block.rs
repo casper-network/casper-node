@@ -117,6 +117,7 @@ static BLOCK: Lazy<Block> = Lazy::new(|| {
     let finalized_block = FinalizedBlock::doc_example().clone();
     let parent_seed = Digest::from([9u8; Digest::LENGTH]);
     let protocol_version = ProtocolVersion::V1_0_0;
+    let merkle_tree_hash_activation = EraId::new(17_u64);
 
     let secret_key = SecretKey::doc_example();
     let public_key = PublicKey::from(secret_key);
@@ -146,6 +147,7 @@ static BLOCK: Lazy<Block> = Lazy::new(|| {
         finalized_block,
         next_era_validator_weights,
         protocol_version,
+        merkle_tree_hash_activation,
     )
     .expect("could not construct block")
 });
@@ -165,6 +167,11 @@ static JSON_BLOCK_HEADER: Lazy<JsonBlockHeader> = Lazy::new(|| {
     let block_header = Block::doc_example().header().clone();
     JsonBlockHeader::from(block_header)
 });
+
+// This should be clearly specified because the `merkle_tree_hash_activation`
+// parameter used in various tests strongly rely on this value.
+#[cfg(test)]
+const MAX_ERA_FOR_RANDOM_BLOCK: u64 = 6;
 
 /// Error returned from constructing a `Block`.
 #[derive(Debug, Error)]
@@ -684,8 +691,15 @@ pub struct BlockHeader {
 impl BlockHeader {
     /// The [`HashingAlgorithmVersion`] used for the header (as well as for its corresponding block
     /// body).
-    pub fn hashing_algorithm_version(&self) -> HashingAlgorithmVersion {
-        HashingAlgorithmVersion::from_protocol_version(&self.protocol_version)
+    pub fn hashing_algorithm_version(
+        &self,
+        merkle_tree_hash_activation: EraId,
+    ) -> HashingAlgorithmVersion {
+        if self.era_id < merkle_tree_hash_activation {
+            HashingAlgorithmVersion::V1
+        } else {
+            HashingAlgorithmVersion::V2
+        }
     }
 
     /// The parent block's hash.
@@ -773,10 +787,11 @@ impl BlockHeader {
     }
 
     /// Hash of the block header.
-    pub fn hash(&self) -> BlockHash {
-        match HashingAlgorithmVersion::from_protocol_version(&self.protocol_version) {
-            HashingAlgorithmVersion::V1 => self.hash_v1(),
-            HashingAlgorithmVersion::V2 => self.hash_v2(),
+    pub fn hash(&self, merkle_tree_hash_activation: EraId) -> BlockHash {
+        if self.era_id() < merkle_tree_hash_activation {
+            self.hash_v1()
+        } else {
+            self.hash_v2()
         }
     }
 
@@ -944,11 +959,15 @@ impl Item for BlockHeaderWithMetadata {
     const TAG: Tag = Tag::BlockHeaderAndFinalitySignaturesByHeight;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    fn validate(&self) -> Result<(), Self::ValidationError> {
-        validate_block_header_and_signature_hash(&self.block_header, &self.block_signatures)
+    fn validate(&self, merkle_tree_hash_activation: EraId) -> Result<(), Self::ValidationError> {
+        validate_block_header_and_signature_hash(
+            &self.block_header,
+            &self.block_signatures,
+            merkle_tree_hash_activation,
+        )
     }
 
-    fn id(&self) -> Self::Id {
+    fn id(&self, _merkle_tree_hash_activation: EraId) -> Self::Id {
         self.block_header.height()
     }
 }
@@ -1296,29 +1315,16 @@ pub enum HashingAlgorithmVersion {
     V2,
 }
 
-impl HashingAlgorithmVersion {
-    #[cfg(feature = "casper-mainnet")]
-    pub(crate) const HASH_V2_PROTOCOL_VERSION: ProtocolVersion =
-        ProtocolVersion::from_parts(1, 5, 0);
-
-    #[cfg(not(feature = "casper-mainnet"))]
-    pub(crate) const HASH_V2_PROTOCOL_VERSION: ProtocolVersion =
-        ProtocolVersion::from_parts(0, 0, 0);
-
-    fn from_protocol_version(protocol_version: &ProtocolVersion) -> Self {
-        if *protocol_version < Self::HASH_V2_PROTOCOL_VERSION {
-            HashingAlgorithmVersion::V1
-        } else {
-            HashingAlgorithmVersion::V2
-        }
-    }
-}
-
 impl Block {
-    fn hash_block_body(protocol_version: &ProtocolVersion, block_body: &BlockBody) -> Digest {
-        match HashingAlgorithmVersion::from_protocol_version(protocol_version) {
-            HashingAlgorithmVersion::V1 => block_body.hash_v1(),
-            HashingAlgorithmVersion::V2 => block_body.hash_v2(),
+    fn hash_block_body(
+        block_era_id: EraId,
+        block_body: &BlockBody,
+        merkle_tree_hash_activation: EraId,
+    ) -> Digest {
+        if block_era_id < merkle_tree_hash_activation {
+            block_body.hash_v1()
+        } else {
+            block_body.hash_v2()
         }
     }
 
@@ -1329,6 +1335,7 @@ impl Block {
         finalized_block: FinalizedBlock,
         next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
         protocol_version: ProtocolVersion,
+        merkle_tree_hash_activation: EraId,
     ) -> Result<Self, BlockCreationError> {
         let body = BlockBody::new(
             finalized_block.proposer.clone(),
@@ -1336,7 +1343,8 @@ impl Block {
             finalized_block.transfer_hashes,
         );
 
-        let body_hash = Self::hash_block_body(&protocol_version, &body);
+        let body_hash =
+            Self::hash_block_body(finalized_block.era_id, &body, merkle_tree_hash_activation);
 
         let era_end = match (finalized_block.era_report, next_era_validator_weights) {
             (None, None) => None,
@@ -1367,7 +1375,7 @@ impl Block {
         };
 
         Ok(Block {
-            hash: header.hash(),
+            hash: header.hash(merkle_tree_hash_activation),
             header,
             body,
         })
@@ -1376,19 +1384,21 @@ impl Block {
     pub(crate) fn new_from_header_and_body(
         header: BlockHeader,
         body: BlockBody,
+        merkle_tree_hash_activation: EraId,
     ) -> Result<Self, BlockValidationError> {
-        let hash = header.hash();
+        let hash = header.hash(merkle_tree_hash_activation);
         let block = Block { hash, header, body };
-        block.verify()?;
+        block.verify(merkle_tree_hash_activation)?;
         Ok(block)
-    }
-
-    pub(crate) fn header(&self) -> &BlockHeader {
-        &self.header
     }
 
     pub(crate) fn body(&self) -> &BlockBody {
         &self.body
+    }
+
+    /// Returns the reference to the header.
+    pub fn header(&self) -> &BlockHeader {
+        &self.header
     }
 
     /// Returns the header, consuming the block.
@@ -1441,8 +1451,8 @@ impl Block {
     }
 
     /// Check the integrity of a block by hashing its body and header
-    pub fn verify(&self) -> Result<(), BlockValidationError> {
-        let actual_block_header_hash = self.header().hash();
+    pub fn verify(&self, merkle_tree_hash_activation: EraId) -> Result<(), BlockValidationError> {
+        let actual_block_header_hash = self.header().hash(merkle_tree_hash_activation);
         if *self.hash() != actual_block_header_hash {
             return Err(BlockValidationError::UnexpectedBlockHash {
                 block: Box::new(self.to_owned()),
@@ -1450,8 +1460,11 @@ impl Block {
             });
         }
 
-        let actual_block_body_hash =
-            Self::hash_block_body(&self.header.protocol_version, &self.body);
+        let actual_block_body_hash = Self::hash_block_body(
+            self.header().era_id,
+            &self.body,
+            merkle_tree_hash_activation,
+        );
         if self.header.body_hash != actual_block_body_hash {
             return Err(BlockValidationError::UnexpectedBodyHash {
                 block: Box::new(self.to_owned()),
@@ -1464,16 +1477,38 @@ impl Block {
 
     /// Overrides the height of a block.
     #[cfg(test)]
-    pub fn set_height(&mut self, height: u64) -> &mut Self {
+    pub fn set_height(&mut self, height: u64, merkle_tree_hash_activation: EraId) -> &mut Self {
         self.header.height = height;
-        self.hash = self.header.hash();
+        self.hash = self.header.hash(merkle_tree_hash_activation);
         self
     }
 
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
-        let era = rng.gen_range(0..6);
+        let era = rng.gen_range(0..MAX_ERA_FOR_RANDOM_BLOCK);
+        let height = era * 10 + rng.gen_range(0..10);
+        let is_switch = rng.gen_bool(0.1);
+        let merkle_tree_hash_activation = EraId::from(rng.gen::<u64>());
+
+        Block::random_with_specifics(
+            rng,
+            EraId::from(era),
+            height,
+            ProtocolVersion::V1_0_0,
+            is_switch,
+            merkle_tree_hash_activation,
+        )
+    }
+
+    /// Generates a random instance using a `TestRng` with the specified
+    /// `merkle_tree_hash_activation`
+    #[cfg(test)]
+    pub fn random_with_merkle_tree_hash_activation(
+        rng: &mut TestRng,
+        merkle_tree_hash_activation: EraId,
+    ) -> Self {
+        let era = rng.gen_range(0..MAX_ERA_FOR_RANDOM_BLOCK);
         let height = era * 10 + rng.gen_range(0..10);
         let is_switch = rng.gen_bool(0.1);
 
@@ -1483,6 +1518,33 @@ impl Block {
             height,
             ProtocolVersion::V1_0_0,
             is_switch,
+            merkle_tree_hash_activation,
+        )
+    }
+
+    /// Generates random instance that is guaranteed to be using
+    /// the legacy hashing scheme. Apart from the Block itself
+    /// it also returns the EraId used as merkle_tree_hash_activation.
+    #[cfg(test)]
+    pub fn random_v1(rng: &mut TestRng) -> (Self, EraId) {
+        let merkle_tree_hash_activation = EraId::from(MAX_ERA_FOR_RANDOM_BLOCK + 1);
+
+        (
+            Self::random_with_merkle_tree_hash_activation(rng, merkle_tree_hash_activation),
+            merkle_tree_hash_activation,
+        )
+    }
+
+    /// Generates random instance that is guaranteed to be using
+    /// the merkle tree hashing scheme. Apart from the Block itself
+    /// it also returns the EraId used as merkle_tree_hash_activation.
+    #[cfg(test)]
+    pub fn random_v2(rng: &mut TestRng) -> (Self, EraId) {
+        let merkle_tree_hash_activation = EraId::from(0);
+
+        (
+            Self::random_with_merkle_tree_hash_activation(rng, merkle_tree_hash_activation),
+            merkle_tree_hash_activation,
         )
     }
 
@@ -1494,6 +1556,7 @@ impl Block {
         height: u64,
         protocol_version: ProtocolVersion,
         is_switch: bool,
+        merkle_tree_hash_activation: EraId,
     ) -> Self {
         let parent_hash = BlockHash::new(rng.gen::<[u8; Digest::LENGTH]>().into());
         let state_root_hash = rng.gen::<[u8; Digest::LENGTH]>().into();
@@ -1511,6 +1574,7 @@ impl Block {
             finalized_block,
             next_era_validator_weights,
             protocol_version,
+            merkle_tree_hash_activation,
         )
         .expect("Could not create random block with specifics")
     }
@@ -1578,11 +1642,11 @@ impl Item for Block {
     const TAG: Tag = Tag::Block;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    fn validate(&self) -> Result<(), Self::ValidationError> {
-        self.verify()
+    fn validate(&self, merkle_tree_hash_activation: EraId) -> Result<(), Self::ValidationError> {
+        self.verify(merkle_tree_hash_activation)
     }
 
-    fn id(&self) -> Self::Id {
+    fn id(&self, _merkle_tree_hash_activation: EraId) -> Self::Id {
         *self.hash()
     }
 }
@@ -1609,11 +1673,12 @@ impl Display for BlockWithMetadata {
 fn validate_block_header_and_signature_hash(
     block_header: &BlockHeader,
     finality_signatures: &BlockSignatures,
+    merkle_tree_hash_activation: EraId,
 ) -> Result<(), BlockHeaderWithMetadataValidationError> {
-    if block_header.hash() != finality_signatures.block_hash {
+    if block_header.hash(merkle_tree_hash_activation) != finality_signatures.block_hash {
         return Err(
             BlockHeaderWithMetadataValidationError::FinalitySignaturesHaveUnexpectedBlockHash {
-                expected_block_hash: block_header.hash(),
+                expected_block_hash: block_header.hash(merkle_tree_hash_activation),
                 finality_signatures_block_hash: finality_signatures.block_hash,
             },
         );
@@ -1636,13 +1701,17 @@ impl Item for BlockWithMetadata {
     const TAG: Tag = Tag::BlockAndMetadataByHeight;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    fn validate(&self) -> Result<(), Self::ValidationError> {
-        self.block.verify()?;
-        validate_block_header_and_signature_hash(self.block.header(), &self.finality_signatures)?;
+    fn validate(&self, merkle_tree_hash_activation: EraId) -> Result<(), Self::ValidationError> {
+        self.block.verify(merkle_tree_hash_activation)?;
+        validate_block_header_and_signature_hash(
+            self.block.header(),
+            &self.finality_signatures,
+            merkle_tree_hash_activation,
+        )?;
         Ok(())
     }
 
-    fn id(&self) -> Self::Id {
+    fn id(&self, _merkle_tree_hash_activation: EraId) -> Self::Id {
         self.block.height()
     }
 }
@@ -2061,52 +2130,70 @@ mod tests {
         let mut rng = TestRng::from_seed([1u8; 16]);
         let loop_iterations = 50;
         for _ in 0..loop_iterations {
-            Block::random(&mut rng)
-                .verify()
-                .expect("block hash should check");
+            let (random_v1_block, merkle_tree_hash_activation) = Block::random_v1(&mut rng);
+            random_v1_block
+                .verify(merkle_tree_hash_activation)
+                .expect("v1 (legacy) block hash should check");
+            let (random_v2_block, merkle_tree_hash_activation) = Block::random_v2(&mut rng);
+            random_v2_block
+                .verify(merkle_tree_hash_activation)
+                .expect("v2 (merkle based) block hash should check");
         }
     }
 
     #[test]
     fn block_check_bad_body_hash_sad_path() {
         let mut rng = TestRng::from_seed([2u8; 16]);
-        let mut block = Block::random(&mut rng);
 
-        let bogus_block_body_hash = Digest::hash(&[0xde, 0xad, 0xbe, 0xef]);
-        block.header.body_hash = bogus_block_body_hash;
-        block.hash = block.header.hash();
-        let bogus_block_hash = block.hash;
+        let blocks = vec![Block::random_v1(&mut rng), Block::random_v2(&mut rng)];
 
-        // No Eq trait for BlockValidationError, so pattern match
-        match block.verify() {
-            Err(BlockValidationError::UnexpectedBodyHash {
-                block,
-                actual_block_body_hash,
-            }) if block.hash == bogus_block_hash
-                && block.header.body_hash == bogus_block_body_hash
-                && block.body.hash(block.header.hashing_algorithm_version())
-                    == actual_block_body_hash => {}
-            unexpected => panic!("Bad check response: {:?}", unexpected),
-        }
+        blocks
+            .into_iter()
+            .for_each(|(mut random_block, merkle_tree_hash_activation)| {
+                let bogus_block_body_hash = Digest::hash(&[0xde, 0xad, 0xbe, 0xef]);
+                random_block.header.body_hash = bogus_block_body_hash;
+                random_block.hash = random_block.header.hash(merkle_tree_hash_activation);
+                let bogus_block_hash = random_block.hash;
+
+                match random_block.verify(merkle_tree_hash_activation) {
+                    Err(BlockValidationError::UnexpectedBodyHash {
+                        block,
+                        actual_block_body_hash,
+                    }) if block.hash == bogus_block_hash
+                        && block.header.body_hash == bogus_block_body_hash
+                        && block.body.hash(
+                            block
+                                .header
+                                .hashing_algorithm_version(merkle_tree_hash_activation),
+                        ) == actual_block_body_hash => {}
+                    unexpected => panic!("Bad check response: {:?}", unexpected),
+                }
+            });
     }
 
     #[test]
     fn block_check_bad_block_hash_sad_path() {
         let mut rng = TestRng::from_seed([3u8; 16]);
-        let mut block = Block::random(&mut rng);
 
-        let bogus_block_hash: BlockHash = Digest::hash(&[0xde, 0xad, 0xbe, 0xef]).into();
-        block.hash = bogus_block_hash;
+        let blocks = vec![Block::random_v1(&mut rng), Block::random_v2(&mut rng)];
 
-        // No Eq trait for BlockValidationError, so pattern match
-        match block.verify() {
-            Err(BlockValidationError::UnexpectedBlockHash {
-                block,
-                actual_block_header_hash,
-            }) if block.hash == bogus_block_hash
-                && block.header.hash() == actual_block_header_hash => {}
-            unexpected => panic!("Bad check response: {:?}", unexpected),
-        }
+        blocks
+            .into_iter()
+            .for_each(|(mut random_block, merkle_tree_hash_activation)| {
+                let bogus_block_hash: BlockHash = Digest::hash(&[0xde, 0xad, 0xbe, 0xef]).into();
+                random_block.hash = bogus_block_hash;
+
+                // No Eq trait for BlockValidationError, so pattern match
+                match random_block.verify(merkle_tree_hash_activation) {
+                    Err(BlockValidationError::UnexpectedBlockHash {
+                        block,
+                        actual_block_header_hash,
+                    }) if block.hash == bogus_block_hash
+                        && block.header.hash(merkle_tree_hash_activation)
+                            == actual_block_header_hash => {}
+                    unexpected => panic!("Bad check response: {:?}", unexpected),
+                }
+            });
     }
 
     #[test]
@@ -2136,13 +2223,20 @@ mod tests {
         let mut rng = TestRng::new();
         let era_id = rng.gen_range(0..10).into();
         let height = rng.gen_range(0..100);
+        let protocol_version = ProtocolVersion::from_parts(1, 5, 0);
+
+        // We set the merkle tree hash activation to the very beginning of the
+        // chain to make sure all blocks are using the Merkle hashing schema
+        let merkle_tree_hash_activation = EraId::from(0);
+
         let is_switch = rng.gen();
         let block = Block::random_with_specifics(
             &mut rng,
             era_id,
             height,
-            HashingAlgorithmVersion::HASH_V2_PROTOCOL_VERSION,
+            protocol_version,
             is_switch,
+            merkle_tree_hash_activation,
         );
 
         let merkle_block_body = block.body().merklize();

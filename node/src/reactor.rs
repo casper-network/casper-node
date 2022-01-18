@@ -55,6 +55,7 @@ use tokio::time::{Duration, Instant};
 use tracing::{debug, debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
 
+use casper_types::EraId;
 use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
 
 use crate::{
@@ -906,13 +907,18 @@ pub(crate) fn handle_fetch_response<R, T>(
     rng: &mut NodeRng,
     sender: NodeId,
     serialized_item: &[u8],
+    merkle_tree_hash_activation: EraId,
 ) -> Effects<<R as Reactor>::Event>
 where
     T: Item,
     R: Reactor,
     <R as Reactor>::Event: From<fetcher::Event<T>> + From<BlocklistAnnouncement<NodeId>>,
 {
-    match fetcher::Event::<T>::from_get_response_serialized_item(sender, serialized_item) {
+    match fetcher::Event::<T>::from_get_response_serialized_item(
+        sender,
+        serialized_item,
+        merkle_tree_hash_activation,
+    ) {
         Some(fetcher_event) => {
             Reactor::dispatch_event(reactor, effect_builder, rng, fetcher_event.into())
         }

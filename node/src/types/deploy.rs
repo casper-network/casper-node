@@ -34,7 +34,8 @@ use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     runtime_args,
     system::standard_payment::ARG_AMOUNT,
-    AsymmetricType, ExecutionResult, Motes, PublicKey, RuntimeArgs, SecretKey, Signature, U512,
+    AsymmetricType, EraId, ExecutionResult, Motes, PublicKey, RuntimeArgs, SecretKey, Signature,
+    U512,
 };
 
 use super::{BlockHash, Item, Tag, TimeDiff, Timestamp};
@@ -1346,12 +1347,12 @@ impl Item for Deploy {
     const TAG: Tag = Tag::Deploy;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    fn validate(&self) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _merkle_tree_hash_activation: EraId) -> Result<(), Self::ValidationError> {
         // TODO: Validate approvals later, and only if the approvers are actually authorized!
         validate_deploy(self)
     }
 
-    fn id(&self) -> Self::Id {
+    fn id(&self, _merkle_tree_hash_activation: EraId) -> Self::Id {
         *self.id()
     }
 }

@@ -656,7 +656,12 @@ impl reactor::Reactor for Reactor {
         )?;
 
         let deploy_acceptor = DeployAcceptor::new(config.deploy_acceptor, &*chainspec, registry)?;
-        let deploy_fetcher = Fetcher::new("deploy", config.fetcher, registry)?;
+        let deploy_fetcher = Fetcher::new(
+            "deploy",
+            config.fetcher,
+            registry,
+            chainspec.protocol_config.merkle_tree_hash_activation,
+        )?;
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
             config.gossip,
@@ -707,7 +712,10 @@ impl reactor::Reactor for Reactor {
             init_consensus_effects,
         ));
 
-        contract_runtime.set_initial_state(ExecutionPreState::from(&latest_block_header));
+        contract_runtime.set_initial_state(ExecutionPreState::from_block_header(
+            &latest_block_header,
+            chainspec.protocol_config.merkle_tree_hash_activation,
+        ));
 
         let block_validator = BlockValidator::new(Arc::clone(chainspec));
         let linear_chain = linear_chain::LinearChainComponent::new(
@@ -717,6 +725,7 @@ impl reactor::Reactor for Reactor {
             chainspec.core_config.unbonding_delay,
             chainspec.highway_config.finality_threshold_fraction,
             maybe_next_activation_point,
+            chainspec.protocol_config.merkle_tree_hash_activation,
         )?;
 
         effects.extend(reactor::wrap_effects(
@@ -935,6 +944,7 @@ impl reactor::Reactor for Reactor {
                 ));
 
                 let event = fetcher::Event::GotRemotely {
+                    merkle_tree_hash_activation: None,
                     item: deploy,
                     source,
                 };
@@ -1063,9 +1073,16 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(
                 block,
             )) => {
-                let reactor_event_consensus = ParticipatingEvent::Consensus(
-                    consensus::Event::BlockAdded(Box::new(block.header().clone())),
-                );
+                let reactor_event_consensus =
+                    ParticipatingEvent::Consensus(consensus::Event::BlockAdded {
+                        header: Box::new(block.header().clone()),
+                        header_hash: block.header().hash(
+                            self.chainspec_loader
+                                .chainspec()
+                                .protocol_config
+                                .merkle_tree_hash_activation,
+                        ),
+                    });
                 let reactor_event_es = ParticipatingEvent::EventStreamServer(
                     event_stream_server::Event::BlockAdded(block),
                 );

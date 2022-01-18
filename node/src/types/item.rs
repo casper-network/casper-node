@@ -11,7 +11,7 @@ use thiserror::Error;
 
 use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
 use casper_hashing::Digest;
-use casper_types::bytesrepr::ToBytes;
+use casper_types::{bytesrepr::ToBytes, EraId};
 
 use crate::types::{BlockHash, BlockHeader};
 
@@ -64,10 +64,10 @@ pub(crate) trait Item:
     const ID_IS_COMPLETE_ITEM: bool;
 
     /// Checks cryptographic validity of the item, and returns an error if invalid.
-    fn validate(&self) -> Result<(), Self::ValidationError>;
+    fn validate(&self, merkle_tree_hash_activation: EraId) -> Result<(), Self::ValidationError>;
 
     /// The ID of the specific item.
-    fn id(&self) -> Self::Id;
+    fn id(&self, merkle_tree_hash_activation: EraId) -> Self::Id;
 }
 
 /// Error type simply conveying that chunk validation failed.
@@ -81,7 +81,7 @@ impl Item for TrieOrChunk {
     const TAG: Tag = Tag::Trie;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    fn validate(&self) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _merkle_tree_hash_activation: EraId) -> Result<(), Self::ValidationError> {
         match self {
             TrieOrChunk::Trie(_) => Ok(()),
             TrieOrChunk::ChunkWithProof(chunk) => {
@@ -90,7 +90,7 @@ impl Item for TrieOrChunk {
         }
     }
 
-    fn id(&self) -> Self::Id {
+    fn id(&self, _merkle_tree_hash_activation: EraId) -> Self::Id {
         match self {
             TrieOrChunk::Trie(trie) => {
                 let node_bytes = trie.to_bytes().expect("Could not serialize trie to bytes");
@@ -110,11 +110,11 @@ impl Item for BlockHeader {
     const TAG: Tag = Tag::BlockHeaderByHash;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    fn validate(&self) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _merkle_tree_hash_activation: EraId) -> Result<(), Self::ValidationError> {
         Ok(())
     }
 
-    fn id(&self) -> Self::Id {
-        self.hash()
+    fn id(&self, merkle_tree_hash_activation: EraId) -> Self::Id {
+        self.hash(merkle_tree_hash_activation)
     }
 }

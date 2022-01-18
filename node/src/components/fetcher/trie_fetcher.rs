@@ -11,7 +11,7 @@ use tracing::{debug, error, warn};
 
 use casper_execution_engine::storage::trie::{Trie, TrieOrChunk, TrieOrChunkId};
 use casper_hashing::{ChunkWithProof, Digest};
-use casper_types::{bytesrepr, Key, StoredValue};
+use casper_types::{bytesrepr, EraId, Key, StoredValue};
 
 use crate::{
     components::{
@@ -113,6 +113,7 @@ where
     I: Debug + Eq + Clone,
 {
     partial_chunks: HashMap<Digest, PartialChunks<I>>,
+    merkle_tree_hash_activation: EraId,
 }
 
 #[derive(DataSize, Debug, From)]
@@ -156,9 +157,10 @@ impl<I> TrieFetcher<I>
 where
     I: Debug + Clone + Hash + Send + Eq + 'static,
 {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(merkle_tree_hash_activation: EraId) -> Self {
         TrieFetcher {
             partial_chunks: Default::default(),
+            merkle_tree_hash_activation,
         }
     }
 
@@ -174,7 +176,7 @@ where
             + From<ControlAnnouncement>
             + From<BlocklistAnnouncement<I>>,
     {
-        let TrieOrChunkId(_index, hash) = trie_or_chunk.id();
+        let TrieOrChunkId(_index, hash) = trie_or_chunk.id(self.merkle_tree_hash_activation);
         match trie_or_chunk {
             TrieOrChunk::Trie(trie) => match self.partial_chunks.remove(&hash) {
                 None => {

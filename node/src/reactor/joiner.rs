@@ -30,7 +30,7 @@ use crate::{
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server,
         event_stream_server::{DeployGetter, EventStreamServer},
-        fetcher::{self, Fetcher, TrieFetcher, TrieFetcherEvent},
+        fetcher::{self, Fetcher, FetcherBuilder, TrieFetcher, TrieFetcherEvent},
         gossiper::{self, Gossiper},
         metrics::Metrics,
         rest_server::{self, RestServer},
@@ -504,13 +504,15 @@ impl reactor::Reactor for Reactor {
 
         let metrics = Metrics::new(registry.clone());
 
+        let chainspec = chainspec_loader.chainspec().as_ref();
+
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
             config.network.clone(),
             Some(WithDir::new(&root, &config.consensus)),
             registry,
             small_network_identity,
-            chainspec_loader.chainspec().as_ref(),
+            chainspec,
         )?;
 
         let mut effects = reactor::wrap_effects(JoinerEvent::SmallNetwork, small_network_effects);
@@ -529,6 +531,10 @@ impl reactor::Reactor for Reactor {
             sync_effects,
         ));
 
+        let merkle_tree_hash_activation = chainspec_loader
+            .chainspec()
+            .protocol_config
+            .merkle_tree_hash_activation;
         let protocol_version = &chainspec_loader.chainspec().protocol_config.version;
         let rest_server = RestServer::new(
             config.rest_server.clone(),
@@ -544,19 +550,18 @@ impl reactor::Reactor for Reactor {
             DeployGetter::new(effect_builder),
         )?;
 
-        let deploy_fetcher = Fetcher::new("deploy", config.fetcher, registry)?;
+        let fetcher_builder =
+            FetcherBuilder::new(config.fetcher, registry, merkle_tree_hash_activation);
 
-        let block_by_height_fetcher = Fetcher::new("block_by_height", config.fetcher, registry)?;
-
-        let block_by_hash_fetcher = Fetcher::new("block", config.fetcher, registry)?;
+        let deploy_fetcher = fetcher_builder.build("deploy")?;
+        let block_by_height_fetcher = fetcher_builder.build("block_by_height")?;
+        let block_by_hash_fetcher = fetcher_builder.build("block")?;
         let block_header_and_finality_signatures_by_height_fetcher =
-            Fetcher::new("block_header_by_height", config.fetcher, registry)?;
+            fetcher_builder.build("block_header_by_height")?;
+        let block_header_by_hash_fetcher = fetcher_builder.build("block_header")?;
 
-        let block_header_by_hash_fetcher: Fetcher<BlockHeader> =
-            Fetcher::new("block_header", config.fetcher, registry)?;
-
-        let trie_or_chunk_fetcher = Fetcher::new("trie_or_chunk", config.fetcher, registry)?;
-        let trie_fetcher = TrieFetcher::new();
+        let trie_or_chunk_fetcher = fetcher_builder.build("trie_or_chunk")?;
+        let trie_fetcher = TrieFetcher::new(merkle_tree_hash_activation);
 
         let deploy_acceptor = DeployAcceptor::new(
             config.deploy_acceptor,
@@ -628,6 +633,7 @@ impl reactor::Reactor for Reactor {
                     self.dispatch_event(effect_builder, rng, JoinerEvent::EventStreamServer(event));
 
                 let event = fetcher::Event::GotRemotely {
+                    merkle_tree_hash_activation: None,
                     item: deploy,
                     source,
                 };
@@ -852,6 +858,10 @@ impl reactor::Reactor for Reactor {
                     rng,
                     sender,
                     &message.0,
+                    self.chainspec_loader
+                        .chainspec()
+                        .protocol_config
+                        .merkle_tree_hash_activation,
                 )
             }
 
@@ -892,6 +902,11 @@ impl Reactor {
         sender: NodeId,
         message: NetResponse,
     ) -> Effects<JoinerEvent> {
+        let merkle_tree_hash_activation = self
+            .chainspec_loader
+            .chainspec()
+            .protocol_config
+            .merkle_tree_hash_activation;
         match message {
             NetResponse::Deploy(ref serialized_item) => {
                 reactor::handle_fetch_response::<Self, Deploy>(
@@ -900,6 +915,7 @@ impl Reactor {
                     rng,
                     sender,
                     serialized_item,
+                    merkle_tree_hash_activation,
                 )
             }
             NetResponse::Block(ref serialized_item) => {
@@ -909,6 +925,7 @@ impl Reactor {
                     rng,
                     sender,
                     serialized_item,
+                    merkle_tree_hash_activation,
                 )
             }
             NetResponse::GossipedAddress(_) => {
@@ -929,6 +946,7 @@ impl Reactor {
                     rng,
                     sender,
                     serialized_item,
+                    merkle_tree_hash_activation,
                 )
             }
             NetResponse::BlockHeaderByHash(ref serialized_item) => {
@@ -938,6 +956,7 @@ impl Reactor {
                     rng,
                     sender,
                     serialized_item,
+                    merkle_tree_hash_activation,
                 )
             }
             NetResponse::BlockHeaderAndFinalitySignaturesByHeight(ref serialized_item) => {
@@ -947,6 +966,7 @@ impl Reactor {
                     rng,
                     sender,
                     serialized_item,
+                    merkle_tree_hash_activation,
                 )
             }
         }
