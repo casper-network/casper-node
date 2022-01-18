@@ -59,6 +59,7 @@
 //! some point. Failing to do so will result in a resource leak.
 
 pub(crate) mod announcements;
+pub(crate) mod console;
 pub(crate) mod incoming;
 pub(crate) mod requests;
 
@@ -100,7 +101,7 @@ use crate::{
     components::{
         block_validator::ValidatingBlock,
         chainspec_loader::{CurrentRunInfo, NextUpgrade},
-        consensus::{BlockContext, ClContext, ValidatorChange},
+        consensus::{BlockContext, ClContext, EraDump},
         contract_runtime::{
             BlockAndExecutionEffects, BlockExecutionError, EraValidatorsRequest, ExecutionPreState,
         },
@@ -128,7 +129,10 @@ use requests::{
     NetworkRequest, StorageRequest, TrieFetcherRequest,
 };
 
-use self::requests::{BeginGossipRequest, StateStoreRequest};
+use self::{
+    console::DumpConsensusStateRequest,
+    requests::{BeginGossipRequest, StateStoreRequest},
+};
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
 static UNOBTAINABLE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
@@ -1791,6 +1795,57 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(ConsensusRequest::ValidatorChanges, QueueKind::Regular)
             .await
+    }
+
+    /// Collects the key blocks for the eras identified by provided era IDs. Returns
+    /// `Some(HashMap(era_id → block_header))` if all the blocks have been read correctly, and
+    /// `None` if at least one was missing. The header for EraId `n` is from the key block for that
+    /// era, that is, the switch block of era `n-1`, ie. it contains the data necessary for
+    /// initialization of era `n`.
+    pub(crate) async fn collect_key_block_headers<I: IntoIterator<Item = EraId>>(
+        self,
+        era_ids: I,
+    ) -> Option<HashMap<EraId, BlockHeader>>
+    where
+        REv: From<StorageRequest>,
+    {
+        futures::future::join_all(
+            era_ids
+                .into_iter()
+                // we would get None for era 0 and that would make it seem like the entire
+                // function failed
+                .filter(|era_id| !era_id.is_genesis())
+                .map(|era_id| {
+                    self.get_key_block_header_for_era_id_from_storage(era_id)
+                        .map(move |maybe_header| {
+                            maybe_header.map(|block_header| (era_id, block_header))
+                        })
+                }),
+        )
+        .await
+        .into_iter()
+        .collect()
+    }
+
+    /// Dump consensus state for a specific era, using the supplied function to serialize the
+    /// output.
+    pub(crate) async fn console_dump_consensus_state(
+        self,
+        era_id: Option<EraId>,
+        serialize: fn(&EraDump<'_>) -> Result<Vec<u8>, Cow<'static, str>>,
+    ) -> Result<Vec<u8>, Cow<'static, str>>
+    where
+        REv: From<DumpConsensusStateRequest>,
+    {
+        self.make_request(
+            |responder| DumpConsensusStateRequest {
+                era_id,
+                serialize,
+                responder,
+            },
+            QueueKind::Control,
+        )
+        .await
     }
 }
 

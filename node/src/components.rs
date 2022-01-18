@@ -7,6 +7,7 @@ pub(crate) mod block_validator;
 pub(crate) mod chain_synchronizer;
 pub(crate) mod chainspec_loader;
 pub(crate) mod consensus;
+pub(crate) mod console;
 pub mod contract_runtime;
 pub(crate) mod deploy_acceptor;
 pub(crate) mod event_stream_server;
