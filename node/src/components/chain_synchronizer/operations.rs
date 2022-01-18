@@ -757,12 +757,29 @@ pub(super) async fn run_chain_sync_task(
 
     let maybe_last_emergency_restart_era_id = chainspec.protocol_config.last_emergency_restart;
     if let Some(last_emergency_restart_era) = maybe_last_emergency_restart_era_id {
-        if last_emergency_restart_era > trusted_block_header.era_id() {
+        // After an emergency restart, the old validators cannot be trusted anymore. So the last
+        // block before the restart or a later block must be given by the trusted hash. That way we
+        // never have to use the untrusted validators' finality signatures.
+        if trusted_block_header.next_block_era_id() < last_emergency_restart_era {
             return Err(Error::TryingToJoinBeforeLastEmergencyRestartEra {
                 last_emergency_restart_era,
                 trusted_hash,
                 trusted_block_header,
             });
+        }
+        // If the trusted hash specifies the last block before the emergency restart, we have to
+        // compute the immediate switch block ourselves, since there's no other way to verify that
+        // block. We just sync the trie there and return, so the upgrade can be applied.
+        if trusted_block_header.is_switch_block()
+            && trusted_block_header.next_block_era_id() == last_emergency_restart_era
+        {
+            sync_trie_store(
+                effect_builder,
+                *trusted_block_header.state_root_hash(),
+                node_config.max_parallel_trie_fetches as usize,
+            )
+            .await?;
+            return Ok(*trusted_block_header);
         }
     }
 
@@ -772,10 +789,9 @@ pub(super) async fn run_chain_sync_task(
     // 3. Try to get the next block by height; if there is `None` then switch to the participating
     //    reactor.
     if trusted_block_header.is_switch_block()
-        && trusted_block_header.era_id().successor()
+        && trusted_block_header.next_block_era_id()
             == chainspec.protocol_config.activation_point.era_id()
     {
-        // TODO: handle emergency updates
         let trusted_key_block_info =
             get_trusted_key_block_info(effect_builder, &*chainspec, &trusted_block_header).await?;
         if fetch_and_store_next::<BlockHeaderWithMetadata>(

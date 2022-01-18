@@ -1511,7 +1511,7 @@ impl Storage {
         let block_body = match maybe_block_body {
             Some(block_body) => block_body,
             None => {
-                warn!(
+                info!(
                     ?block_header,
                     "retrieved block header but block body is missing from database"
                 );
