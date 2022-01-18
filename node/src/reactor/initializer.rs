@@ -209,6 +209,10 @@ impl Reactor {
                 .chainspec()
                 .protocol_config
                 .last_emergency_restart,
+            chainspec_loader
+                .chainspec()
+                .protocol_config
+                .merkle_tree_hash_activation,
         )?;
 
         let contract_runtime = ContractRuntime::new(
@@ -223,6 +227,10 @@ impl Reactor {
                 .core_config
                 .max_runtime_call_stack_height,
             registry,
+            chainspec_loader
+                .chainspec()
+                .protocol_config
+                .merkle_tree_hash_activation,
         )?;
 
         if should_check_integrity {

@@ -18,6 +18,8 @@ use casper_node::{
 use retrieve_state::{address_to_url, storage::create_storage};
 use tracing::info;
 
+use casper_types::EraId;
+
 const DOWNLOAD_TRIES: &str = "download-tries";
 const DOWNLOAD_BLOCKS: &str = "download-blocks";
 const CONVERT_BLOCK_FILES: &str = "convert-block-files";
@@ -160,6 +162,9 @@ async fn main() -> Result<(), anyhow::Error> {
     let initial_server_address = SocketAddr::V4(SocketAddrV4::new(opts.server_ip, port));
     let url = address_to_url(initial_server_address);
 
+    // TODO: Consider reading the proper `chainspec` in the `retrieve-state` tool.
+    let merkle_tree_hash_activation = EraId::from(0u64);
+
     let maybe_highest_block = opts.highest_block;
     let maybe_download_block = opts
         .highest_block
@@ -181,7 +186,8 @@ async fn main() -> Result<(), anyhow::Error> {
                 fs::create_dir_all(&chain_download_path)?;
             }
 
-            let mut storage = create_storage(&chain_download_path).expect("should create storage");
+            let mut storage = create_storage(&chain_download_path, merkle_tree_hash_activation)
+                .expect("should create storage");
             info!("Downloading all blocks to genesis...");
             let (downloaded, read_from_disk) = retrieve_state::download_or_read_blocks(
                 &client,

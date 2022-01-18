@@ -13,33 +13,27 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
-
-
-## 2.0.3 - 2021-12-06
-
-### Added
-* Added `WasmTestBuilder::get_balance_keys` function.
-
-
-
-## 2.0.2 - 2021-11-24
-
-### Changed
-* Revert the change to the path detection logic applied in v2.0.1.
-* `WasmTestBuilder::get_transforms` is deprecated in favor of `WasmTestBuilder::get_execution_journals`.
 ### Added
 * Added `WasmTestBuilder::get_execution_journals` method for returning execution journals for all test runs.
 
+### Changed
+* `WasmTestBuilder::get_transforms` is deprecated in favor of `WasmTestBuilder::get_execution_journals`.
+
+
 
 ## 2.0.3 - 2021-12-06
 
 ### Added
 * Added `WasmTestBuilder::get_balance_keys` function.
 
+
+
 ## 2.0.2 - 2021-11-24
 
 ### Changed
 * Revert the change to the path detection logic applied in v2.0.1.
+
+
 
 ## [2.0.1] - 2021-11-4
 

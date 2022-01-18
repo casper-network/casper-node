@@ -402,6 +402,12 @@ impl reactor::Reactor for Reactor {
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
+
+        let chainspec = Chainspec::from_resources("local");
+
+        let deploy_acceptor =
+            DeployAcceptor::new(super::Config::new(VERIFY_ACCOUNTS), &chainspec, registry).unwrap();
+
         let storage = Storage::new(
             &storage_withdir,
             None,
@@ -410,13 +416,7 @@ impl reactor::Reactor for Reactor {
             "test",
             Ratio::new(1, 3),
             None,
-        )
-        .unwrap();
-
-        let deploy_acceptor = DeployAcceptor::new(
-            super::Config::new(VERIFY_ACCOUNTS),
-            &Chainspec::from_resources("local"),
-            registry,
+            chainspec.protocol_config.merkle_tree_hash_activation,
         )
         .unwrap();
 
@@ -687,7 +687,12 @@ async fn run_deploy_acceptor_without_timeout(
     let mut runner: Runner<ConditionCheckReactor<Reactor>> =
         Runner::new(test_scenario, &mut rng).await.unwrap();
 
-    let block = Box::new(Block::random(&mut rng));
+    let chainspec = Chainspec::from_resources("local");
+
+    let block = Box::new(Block::random_with_merkle_tree_hash_activation(
+        &mut rng,
+        chainspec.protocol_config.merkle_tree_hash_activation,
+    ));
     // Create a responder to assert that the block was successfully injected into storage.
     let (block_sender, block_receiver) = oneshot::channel();
     let block_responder = Responder::without_shutdown(block_sender);

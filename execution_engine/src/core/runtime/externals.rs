@@ -993,6 +993,17 @@ where
                 let ret = self.load_call_stack(call_stack_len_ptr, result_size_ptr)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
+            FunctionIndex::LoadAuthorizationKeys => {
+                // args(0) (Output) Pointer to number of authorization keys.
+                // args(1) (Output) Pointer to size in bytes of the total bytes.
+                let (len_ptr, result_size_ptr) = Args::parse(args)?;
+                self.charge_host_function_call(
+                    &HostFunction::fixed(10_000),
+                    [len_ptr, result_size_ptr],
+                )?;
+                let ret = self.load_authorization_keys(len_ptr, result_size_ptr)?;
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
+            }
         }
     }
 }

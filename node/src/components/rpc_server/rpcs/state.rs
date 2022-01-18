@@ -1065,7 +1065,7 @@ impl RpcWithParamsExt for GetTrie {
         async move {
             let trie_key = params.trie_key;
 
-            let ee_trie = match effect_builder.get_trie(trie_key).await {
+            let ee_trie = match effect_builder.get_trie_full(trie_key).await {
                 Ok(Some(trie)) => trie,
                 Ok(None) => {
                     return Ok(response_builder.success(Self::ResponseResult {

@@ -87,7 +87,7 @@ use crate::{
         global_state::{
             lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
         },
-        trie::Trie,
+        trie::{Trie, TrieOrChunk, TrieOrChunkId},
     },
 };
 
@@ -1780,8 +1780,20 @@ where
             .map_err(|err| Error::Exec(err.into()))
     }
 
-    /// Gets a trie object for given state root hash.
+    /// Gets a trie (or chunk) object for given state root hash.
     pub fn get_trie(
+        &self,
+        correlation_id: CorrelationId,
+        trie_or_chunk_id: TrieOrChunkId,
+    ) -> Result<Option<TrieOrChunk>, Error>
+    where
+        Error: From<S::Error>,
+    {
+        Ok(self.state.get_trie(correlation_id, trie_or_chunk_id)?)
+    }
+
+    /// Gets a trie object for given state root hash.
+    pub fn get_trie_full(
         &self,
         correlation_id: CorrelationId,
         trie_key: Digest,
@@ -1789,9 +1801,7 @@ where
     where
         Error: From<S::Error>,
     {
-        self.state
-            .get_trie(correlation_id, &trie_key)
-            .map_err(Error::from)
+        Ok(self.state.get_trie_full(correlation_id, &trie_key)?)
     }
 
     /// Puts a trie and finds missing descendant trie keys.
