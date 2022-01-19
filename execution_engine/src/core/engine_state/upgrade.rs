@@ -174,6 +174,7 @@ where
     S: StateProvider,
 {
     new_protocol_version: ProtocolVersion,
+    old_protocol_version: ProtocolVersion,
     tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
 }
 
@@ -184,16 +185,23 @@ where
     /// Creates new system upgrader instance.
     pub(crate) fn new(
         new_protocol_version: ProtocolVersion,
+        old_protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     ) -> Self {
         SystemUpgrader {
             new_protocol_version,
+            old_protocol_version,
             tracking_copy,
         }
     }
 
-    /// Bump major version for system contracts.
-    pub(crate) fn upgrade_system_contracts_major_version(
+    /// Check if the next version is a major version bump.
+    pub(crate) fn is_major_bump(&self) -> bool {
+        self.old_protocol_version.value().major + 1 == self.new_protocol_version.value().major
+    }
+
+    /// Bump major version and/or update the entry points for system contracts.
+    pub(crate) fn refresh_system_contracts(
         &self,
         correlation_id: CorrelationId,
         mint_hash: &ContractHash,
@@ -201,20 +209,25 @@ where
         handle_payment_hash: &ContractHash,
         standard_payment_hash: &ContractHash,
     ) -> Result<(), ProtocolUpgradeError> {
-        self.store_contract(correlation_id, *mint_hash, MINT, mint::mint_entry_points())?;
-        self.store_contract(
+        self.refresh_system_contract_entry_points(
+            correlation_id,
+            *mint_hash,
+            MINT,
+            mint::mint_entry_points(),
+        )?;
+        self.refresh_system_contract_entry_points(
             correlation_id,
             *auction_hash,
             AUCTION,
             auction::auction_entry_points(),
         )?;
-        self.store_contract(
+        self.refresh_system_contract_entry_points(
             correlation_id,
             *handle_payment_hash,
             HANDLE_PAYMENT,
             handle_payment::handle_payment_entry_points(),
         )?;
-        self.store_contract(
+        self.refresh_system_contract_entry_points(
             correlation_id,
             *standard_payment_hash,
             STANDARD_PAYMENT,
@@ -224,20 +237,46 @@ where
         Ok(())
     }
 
-    /// Store new system contract.
-    fn store_contract(
+    /// Check if a contract's entry points differ from a given set.
+    fn has_different_entry_points(
+        &self,
+        contract: &Contract,
+        entry_points_to_check: &EntryPoints,
+    ) -> bool {
+        for new_entry_point in entry_points_to_check.clone().take_entry_points().iter() {
+            match contract.entry_points().get(new_entry_point.name()) {
+                None => {
+                    // An entry point has been added.
+                    return true;
+                }
+                Some(old_entry_point) => {
+                    // An existing entry point has been modified.
+                    if !new_entry_point.eq(old_entry_point) {
+                        return true;
+                    }
+                }
+            }
+        }
+        // Return true when Entry points have been removed.
+        !contract
+            .entry_points()
+            .keys()
+            .eq(entry_points_to_check.keys())
+    }
+
+    /// Refresh the system contracts with an updated set of entry points,
+    /// and bump the contract version at a major version upgrade.
+    fn refresh_system_contract_entry_points(
         &self,
         correlation_id: CorrelationId,
         contract_hash: ContractHash,
         contract_name: &str,
         entry_points: EntryPoints,
     ) -> Result<(), ProtocolUpgradeError> {
-        let contract_key = Key::Hash(contract_hash.value());
-
         let mut contract = if let StoredValue::Contract(contract) = self
             .tracking_copy
             .borrow_mut()
-            .read(correlation_id, &contract_key)
+            .read(correlation_id, &Key::Hash(contract_hash.value()))
             .map_err(|_| {
                 ProtocolUpgradeError::UnableToRetrieveSystemContract(contract_name.to_string())
             })?
@@ -250,6 +289,10 @@ where
                 contract_name.to_string(),
             ));
         };
+
+        if !self.has_different_entry_points(&contract, &entry_points) && !self.is_major_bump() {
+            return Ok(());
+        }
 
         let contract_package_key = Key::Hash(contract.contract_package_hash().value());
 

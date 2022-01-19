@@ -332,21 +332,23 @@ where
             Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
         })?;
 
-        // 3.1.1.1.1.5 bump system contract major versions
-        if upgrade_check_result.is_major_version() {
-            let system_upgrader: SystemUpgrader<S> =
-                SystemUpgrader::new(new_protocol_version, tracking_copy.clone());
+        // Cycle through the system contracts and update
+        // their metadata if there is a change in entry points.
+        let system_upgrader: SystemUpgrader<S> = SystemUpgrader::new(
+            new_protocol_version,
+            current_protocol_version,
+            tracking_copy.clone(),
+        );
 
-            system_upgrader
-                .upgrade_system_contracts_major_version(
-                    correlation_id,
-                    mint_hash,
-                    auction_hash,
-                    handle_payment_hash,
-                    standard_payment_hash,
-                )
-                .map_err(Error::ProtocolUpgrade)?;
-        }
+        system_upgrader
+            .refresh_system_contracts(
+                correlation_id,
+                mint_hash,
+                auction_hash,
+                handle_payment_hash,
+                standard_payment_hash,
+            )
+            .map_err(Error::ProtocolUpgrade)?;
 
         // 3.1.1.1.1.7 new total validator slots is optional
         if let Some(new_validator_slots) = upgrade_config.new_validator_slots() {

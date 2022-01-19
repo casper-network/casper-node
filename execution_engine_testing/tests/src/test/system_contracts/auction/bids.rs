@@ -45,6 +45,7 @@ const CONTRACT_ADD_BID: &str = "add_bid.wasm";
 const CONTRACT_WITHDRAW_BID: &str = "withdraw_bid.wasm";
 const CONTRACT_DELEGATE: &str = "delegate.wasm";
 const CONTRACT_UNDELEGATE: &str = "undelegate.wasm";
+const CONTRACT_REDELEGATE: &str = "redelegate.wasm";
 
 const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE + 1000;
 
@@ -457,7 +458,6 @@ fn should_run_delegate_and_undelegate() {
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
             ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
             ARG_DELEGATOR => BID_ACCOUNT_1_PK.clone(),
-            ARG_NEW_VALIDATOR => Option::<PublicKey>::None
         },
     )
     .build();
@@ -1248,7 +1248,6 @@ fn undelegated_funds_should_be_released() {
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
             ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
             ARG_DELEGATOR => BID_ACCOUNT_1_PK.clone(),
-            ARG_NEW_VALIDATOR => Option::<PublicKey>::None
         },
     )
     .build();
@@ -1373,7 +1372,6 @@ fn fully_undelegated_funds_should_be_released() {
             ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
             ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
             ARG_DELEGATOR => BID_ACCOUNT_1_PK.clone(),
-            ARG_NEW_VALIDATOR => Option::<PublicKey>::None
         },
     )
     .build();
@@ -2302,7 +2300,6 @@ fn should_not_partially_undelegate_uninitialized_vesting_schedule() {
             auction::ARG_VALIDATOR => VALIDATOR_1.clone(),
             auction::ARG_DELEGATOR => DELEGATOR_1.clone(),
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE - 1),
-            auction::ARG_NEW_VALIDATOR => Option::<PublicKey>::None
         },
     )
     .build();
@@ -2377,7 +2374,6 @@ fn should_not_fully_undelegate_uninitialized_vesting_schedule() {
             auction::ARG_VALIDATOR => VALIDATOR_1.clone(),
             auction::ARG_DELEGATOR => DELEGATOR_1.clone(),
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
-            auction::ARG_NEW_VALIDATOR => Option::<PublicKey>::None
         },
     )
     .build();
@@ -2482,7 +2478,6 @@ fn should_not_undelegate_vfta_holder_stake() {
             auction::ARG_VALIDATOR => VALIDATOR_1.clone(),
             auction::ARG_DELEGATOR => DELEGATOR_1.clone(),
             ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE - 1),
-            auction::ARG_NEW_VALIDATOR => Option::<PublicKey>::None
         },
     )
     .build();
@@ -2546,7 +2541,6 @@ fn should_release_vfta_holder_stake() {
                 auction::ARG_VALIDATOR => ACCOUNT_1_PK.clone(),
                 auction::ARG_DELEGATOR => DELEGATOR_1.clone(),
                 ARG_AMOUNT => U512::from(amount),
-                auction::ARG_NEW_VALIDATOR => Option::<PublicKey>::None
             },
         )
         .build();
@@ -2562,7 +2556,6 @@ fn should_release_vfta_holder_stake() {
                 auction::ARG_VALIDATOR => ACCOUNT_1_PK.clone(),
                 auction::ARG_DELEGATOR => DELEGATOR_1.clone(),
                 ARG_AMOUNT => U512::from(amount),
-                auction::ARG_NEW_VALIDATOR => Option::<PublicKey>::None
             },
         )
         .build();
@@ -3204,12 +3197,12 @@ fn should_delegate_and_redelegate() {
 
     let delegator_1_redelegate_request = ExecuteRequestBuilder::standard(
         *BID_ACCOUNT_1_ADDR,
-        CONTRACT_UNDELEGATE,
+        CONTRACT_REDELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
             ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
             ARG_DELEGATOR => BID_ACCOUNT_1_PK.clone(),
-            ARG_NEW_VALIDATOR => Some(NON_FOUNDER_VALIDATOR_2_PK.clone())
+            ARG_NEW_VALIDATOR => NON_FOUNDER_VALIDATOR_2_PK.clone()
         },
     )
     .build();
@@ -3448,12 +3441,12 @@ fn should_handle_redelegation_to_inactive_validator() {
 
     let invalid_redelegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_1_ADDR,
-        CONTRACT_UNDELEGATE,
+        CONTRACT_REDELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
             ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
             ARG_DELEGATOR => DELEGATOR_1.clone(),
-            ARG_NEW_VALIDATOR => Some(BID_ACCOUNT_1_PK.clone())
+            ARG_NEW_VALIDATOR => BID_ACCOUNT_1_PK.clone()
         },
     )
     .build();
@@ -3478,12 +3471,12 @@ fn should_handle_redelegation_to_inactive_validator() {
 
     let valid_redelegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_2_ADDR,
-        CONTRACT_UNDELEGATE,
+        CONTRACT_REDELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
             ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
             ARG_DELEGATOR => DELEGATOR_2.clone(),
-            ARG_NEW_VALIDATOR => Some(NON_FOUNDER_VALIDATOR_2_PK.clone())
+            ARG_NEW_VALIDATOR => NON_FOUNDER_VALIDATOR_2_PK.clone()
         },
     )
     .build();
@@ -3719,12 +3712,12 @@ fn should_continue_auction_state_from_release_1_4_x() {
 
     let delegator_4_redelegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_2_ADDR,
-        CONTRACT_UNDELEGATE,
+        CONTRACT_REDELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
             ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
             ARG_DELEGATOR => DELEGATOR_2.clone(),
-            ARG_NEW_VALIDATOR => Some(GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone())
+            ARG_NEW_VALIDATOR => GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone()
         },
     )
     .build();
@@ -3981,12 +3974,12 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
 
     let delegator_4_redelegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_2_ADDR,
-        CONTRACT_UNDELEGATE,
+        CONTRACT_REDELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
             ARG_VALIDATOR => GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(),
             ARG_DELEGATOR => DELEGATOR_2.clone(),
-            ARG_NEW_VALIDATOR => Some(NON_FOUNDER_VALIDATOR_1_PK.clone())
+            ARG_NEW_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone()
         },
     )
     .build();
