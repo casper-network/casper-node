@@ -385,7 +385,9 @@ impl reactor::Reactor for Reactor {
                         ),
                     )
                 }
-                other @ (NetResponse::Block(_)
+                other
+                @
+                (NetResponse::Block(_)
                 | NetResponse::GossipedAddress(_)
                 | NetResponse::BlockAndMetadataByHeight(_)
                 | NetResponse::BlockHeaderByHash(_)
@@ -393,7 +395,9 @@ impl reactor::Reactor for Reactor {
                     fatal!(effect_builder, "unexpected net response: {:?}", other).ignore()
                 }
             },
-            other @ (Event::ConsensusMessageIncoming(_)
+            other
+            @
+            (Event::ConsensusMessageIncoming(_)
             | Event::FinalitySignatureIncoming(_)
             | Event::AddressGossiperIncoming(_)
             | Event::TrieRequestIncoming(_)
