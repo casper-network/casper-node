@@ -597,7 +597,8 @@
                 "items": {
                   "$ref": "#/components/schemas/Approval"
                 },
-                "type": "array"
+                "type": "array",
+                "uniqueItems": true
               },
               "hash": {
                 "$ref": "#/components/schemas/DeployHash"

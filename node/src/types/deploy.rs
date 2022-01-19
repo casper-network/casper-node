@@ -1624,11 +1624,20 @@ mod tests {
 
         let deploy2 = Deploy::random(&mut rng);
 
-        deploy.approvals.extend(deploy2.approvals);
+        deploy.approvals.extend(deploy2.approvals.clone());
+        // the expected index for the invalid approval will be the first index at which there is an
+        // approval coming from deploy2
+        let expected_index = deploy
+            .approvals
+            .iter()
+            .enumerate()
+            .find(|(_, approval)| deploy2.approvals.contains(approval))
+            .map(|(index, _)| index)
+            .unwrap();
         check_is_not_valid(
             deploy,
             DeployConfigurationFailure::InvalidApproval {
-                index: 1,
+                index: expected_index,
                 error_msg: String::new(), // This field is ignored in the check.
             },
         );
