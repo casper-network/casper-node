@@ -12,7 +12,7 @@ mod metrics;
 mod tests;
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     convert::Infallible,
     sync::Arc,
     time::Duration,
@@ -383,7 +383,7 @@ impl BlockProposerReady {
         &mut self,
         current_instant: Timestamp,
         hash: DeployOrTransferHash,
-        approvals: Vec<Approval>,
+        approvals: BTreeSet<Approval>,
         deploy_info: DeployInfo,
     ) {
         if deploy_info.header.expired(current_instant) {

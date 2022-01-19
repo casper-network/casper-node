@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
     fmt::{self, Display, Formatter},
     hash::Hash,
 };
@@ -27,7 +27,7 @@ impl PruneResult {
 
 #[derive(Clone, DataSize, Debug, Serialize, Deserialize)]
 pub(super) struct PendingDeployInfo {
-    pub(super) approvals: Vec<Approval>,
+    pub(super) approvals: BTreeSet<Approval>,
     pub(super) info: DeployInfo,
     pub(super) timestamp: Timestamp,
 }
@@ -171,7 +171,7 @@ mod tests {
         deploys.insert(
             *deploy_1.id(),
             PendingDeployInfo {
-                approvals: vec![],
+                approvals: BTreeSet::new(),
                 info: deploy_1.deploy_info().unwrap(),
                 timestamp: now,
             },
@@ -179,7 +179,7 @@ mod tests {
         deploys.insert(
             *deploy_2.id(),
             PendingDeployInfo {
-                approvals: vec![],
+                approvals: BTreeSet::new(),
                 info: deploy_2.deploy_info().unwrap(),
                 timestamp: now,
             },
@@ -187,7 +187,7 @@ mod tests {
         deploys.insert(
             *deploy_3.id(),
             PendingDeployInfo {
-                approvals: vec![],
+                approvals: BTreeSet::new(),
                 info: deploy_3.deploy_info().unwrap(),
                 timestamp: now,
             },
@@ -195,7 +195,7 @@ mod tests {
         deploys.insert(
             *deploy_4.id(),
             PendingDeployInfo {
-                approvals: vec![],
+                approvals: BTreeSet::new(),
                 info: deploy_4.deploy_info().unwrap(),
                 timestamp: now,
             },
@@ -203,7 +203,7 @@ mod tests {
         deploys.insert(
             *deploy_5.id(),
             PendingDeployInfo {
-                approvals: vec![],
+                approvals: BTreeSet::new(),
                 info: deploy_5.deploy_info().unwrap(),
                 timestamp: now,
             },

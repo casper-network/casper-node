@@ -1171,8 +1171,8 @@ where
                     .chain(proposed_block.transfers().iter())
                     .map(|dwa| {
                         (
-                            dwa.deploy_hash,
-                            FinalizedApprovals::new(dwa.approvals.clone()),
+                            *dwa.deploy_hash(),
+                            FinalizedApprovals::new(dwa.approvals().clone()),
                         )
                     })
                     .collect();

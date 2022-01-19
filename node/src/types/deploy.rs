@@ -3,7 +3,7 @@
 
 use std::{
     array::TryFromSliceError,
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
     error::Error as StdError,
     fmt::{self, Debug, Display, Formatter},
 };
@@ -82,13 +82,15 @@ static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
         signer: PublicKey::from(secret_key),
         signature,
     };
+    let mut approvals = BTreeSet::new();
+    approvals.insert(approval);
 
     Deploy {
         hash,
         header,
         payment,
         session,
-        approvals: vec![approval],
+        approvals,
         is_valid: None,
     }
 });
@@ -577,35 +579,45 @@ impl FromBytes for Approval {
 #[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DeployWithApprovals {
     /// The hash of the deploy.
-    pub deploy_hash: DeployHash,
+    deploy_hash: DeployHash,
     /// The approvals for the deploy.
-    pub approvals: Vec<Approval>,
+    approvals: BTreeSet<Approval>,
 }
 
 impl DeployWithApprovals {
     /// Creates a new `DeployWithApprovals`.
-    pub fn new(deploy_hash: DeployHash, approvals: Vec<Approval>) -> Self {
+    pub fn new(deploy_hash: DeployHash, approvals: BTreeSet<Approval>) -> Self {
         Self {
             deploy_hash,
             approvals,
         }
     }
+
+    /// Returns the deploy hash.
+    pub fn deploy_hash(&self) -> &DeployHash {
+        &self.deploy_hash
+    }
+
+    /// Returns the approvals.
+    pub fn approvals(&self) -> &BTreeSet<Approval> {
+        &self.approvals
+    }
 }
 
 /// A set of approvals that has been agreed upon by consensus to approve of a specific deploy.
 #[derive(DataSize, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct FinalizedApprovals(Vec<Approval>);
+pub struct FinalizedApprovals(BTreeSet<Approval>);
 
 impl FinalizedApprovals {
     /// Creates a new instance of `FinalizedApprovals`.
-    pub fn new(approvals: Vec<Approval>) -> Self {
+    pub fn new(approvals: BTreeSet<Approval>) -> Self {
         Self(approvals)
     }
 }
 
-impl AsRef<[Approval]> for FinalizedApprovals {
-    /// Returns the approvals as a slice.
-    fn as_ref(&self) -> &[Approval] {
+impl AsRef<BTreeSet<Approval>> for FinalizedApprovals {
+    /// Returns the approvals as a reference to the set.
+    fn as_ref(&self) -> &BTreeSet<Approval> {
         &self.0
     }
 }
@@ -620,7 +632,7 @@ pub struct Deploy {
     header: DeployHeader,
     payment: ExecutableDeployItem,
     session: ExecutableDeployItem,
-    approvals: Vec<Approval>,
+    approvals: BTreeSet<Approval>,
     #[serde(skip)]
     is_valid: Option<Result<(), DeployConfigurationFailure>>,
 }
@@ -663,7 +675,7 @@ impl Deploy {
             header,
             payment,
             session,
-            approvals: vec![],
+            approvals: BTreeSet::new(),
             is_valid: None,
         };
 
@@ -676,7 +688,7 @@ impl Deploy {
         let signer = PublicKey::from(secret_key);
         let signature = crypto::sign(&self.hash, secret_key, &signer);
         let approval = Approval { signer, signature };
-        self.approvals.push(approval);
+        self.approvals.insert(approval);
     }
 
     /// Returns the `DeployHash` identifying this `Deploy`.
@@ -705,7 +717,7 @@ impl Deploy {
     }
 
     /// Returns the `Approval`s for this deploy.
-    pub fn approvals(&self) -> &[Approval] {
+    pub fn approvals(&self) -> &BTreeSet<Approval> {
         &self.approvals
     }
 
@@ -1440,7 +1452,7 @@ impl FromBytes for Deploy {
         let (hash, remainder) = DeployHash::from_bytes(remainder)?;
         let (payment, remainder) = ExecutableDeployItem::from_bytes(remainder)?;
         let (session, remainder) = ExecutableDeployItem::from_bytes(remainder)?;
-        let (approvals, remainder) = Vec::<Approval>::from_bytes(remainder)?;
+        let (approvals, remainder) = BTreeSet::<Approval>::from_bytes(remainder)?;
         let maybe_valid_deploy = Deploy {
             header,
             hash,
@@ -1600,7 +1612,7 @@ mod tests {
     fn not_valid_due_to_empty_approvals() {
         let mut rng = crate::new_rng();
         let mut deploy = create_deploy(&mut rng, DeployConfig::default().max_ttl, 0, "net-1");
-        deploy.approvals = vec![];
+        deploy.approvals = BTreeSet::new();
         assert!(deploy.approvals.is_empty());
         check_is_not_valid(deploy, DeployConfigurationFailure::EmptyApprovals)
     }

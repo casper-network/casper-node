@@ -12,7 +12,7 @@ mod keyed_counter;
 mod tests;
 
 use std::{
-    collections::{hash_map::Entry, BTreeMap, HashMap, VecDeque},
+    collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, VecDeque},
     convert::Infallible,
     fmt::Debug,
     hash::Hash,
@@ -89,7 +89,7 @@ impl ValidatingBlock {
 
     fn deploys_and_transfers_iter(
         &self,
-    ) -> Box<dyn Iterator<Item = (DeployOrTransferHash, Option<Vec<Approval>>)> + '_> {
+    ) -> Box<dyn Iterator<Item = (DeployOrTransferHash, Option<BTreeSet<Approval>>)> + '_> {
         match self {
             ValidatingBlock::Block(block) => {
                 let deploys = block
@@ -105,14 +105,14 @@ impl ValidatingBlock {
             ValidatingBlock::ProposedBlock(pb) => {
                 let deploys = pb.value().deploys().iter().map(|dwa| {
                     (
-                        DeployOrTransferHash::Deploy(dwa.deploy_hash),
-                        Some(dwa.approvals.clone()),
+                        DeployOrTransferHash::Deploy(*dwa.deploy_hash()),
+                        Some(dwa.approvals().clone()),
                     )
                 });
                 let transfers = pb.value().transfers().iter().map(|dwa| {
                     (
-                        DeployOrTransferHash::Transfer(dwa.deploy_hash),
-                        Some(dwa.approvals.clone()),
+                        DeployOrTransferHash::Transfer(*dwa.deploy_hash()),
+                        Some(dwa.approvals().clone()),
                     )
                 });
                 Box::new(deploys.chain(transfers))
@@ -132,7 +132,7 @@ pub(crate) enum Event<I> {
     #[display(fmt = "{} found", dt_hash)]
     DeployFound {
         dt_hash: DeployOrTransferHash,
-        approvals: Vec<Approval>,
+        approvals: BTreeSet<Approval>,
         deploy_info: Box<DeployInfo>,
     },
 
@@ -153,7 +153,7 @@ pub(crate) struct BlockValidationState<I> {
     /// Appendable block ensuring that the deploys satisfy the validity conditions.
     appendable_block: AppendableBlock,
     /// The deploys that have not yet been "crossed off" the list of potential misses.
-    missing_deploys: HashMap<DeployOrTransferHash, Option<Vec<Approval>>>,
+    missing_deploys: HashMap<DeployOrTransferHash, Option<BTreeSet<Approval>>>,
     /// A list of responders that are awaiting an answer.
     responders: SmallVec<[Responder<bool>; 2]>,
     /// Peers that should have the data.
@@ -455,7 +455,7 @@ where
                     deploy
                         .deploy_info()
                         .ok()
-                        .map(|deploy_info| (deploy_info, deploy.approvals().to_vec()))
+                        .map(|deploy_info| (deploy_info, deploy.approvals().clone()))
                 })
                 .map_or(
                     Event::CannotConvertDeploy(dt_hash),

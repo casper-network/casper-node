@@ -157,11 +157,11 @@ async fn validate_block(
     // Assemble the block to be validated.
     let deploys_for_block = deploys
         .iter()
-        .map(|deploy| DeployWithApprovals::new(*deploy.id(), deploy.approvals().to_vec()))
+        .map(|deploy| DeployWithApprovals::new(*deploy.id(), deploy.approvals().clone()))
         .collect_vec();
     let transfers_for_block = transfers
         .iter()
-        .map(|deploy| DeployWithApprovals::new(*deploy.id(), deploy.approvals().to_vec()))
+        .map(|deploy| DeployWithApprovals::new(*deploy.id(), deploy.approvals().clone()))
         .collect_vec();
     let proposed_block = new_proposed_block(timestamp, deploys_for_block, transfers_for_block);
 

@@ -6,7 +6,7 @@ use std::iter;
 use std::{
     array::TryFromSliceError,
     cmp::Reverse,
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     error::Error as StdError,
     fmt::{self, Debug, Display, Formatter},
 };
@@ -96,7 +96,7 @@ static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
         vec![],
         transfer_hashes
             .into_iter()
-            .map(|hash| DeployWithApprovals::new(hash, vec![]))
+            .map(|hash| DeployWithApprovals::new(hash, BTreeSet::new()))
             .collect(),
         vec![],
         random_bit,
@@ -242,12 +242,12 @@ impl BlockPayload {
 
     /// An iterator over deploy hashes included in the block, excluding transfers.
     pub(crate) fn deploy_hashes(&self) -> impl Iterator<Item = &DeployHash> + Clone {
-        self.deploys.iter().map(|dwa| &dwa.deploy_hash)
+        self.deploys.iter().map(|dwa| dwa.deploy_hash())
     }
 
     /// An iterator over transfer hashes included in the block.
     pub(crate) fn transfer_hashes(&self) -> impl Iterator<Item = &DeployHash> + Clone {
-        self.transfers.iter().map(|dwa| &dwa.deploy_hash)
+        self.transfers.iter().map(|dwa| dwa.deploy_hash())
     }
 
     /// Returns an iterator over all deploys and transfers.
@@ -306,10 +306,10 @@ impl BlockPayload {
                     .min(total_approvals_left - (num_transfers + num_deploys - n - 1));
                 let n_approvals = rng.gen_range(min_approval_count..=max_approval_count);
                 total_approvals_left -= n_approvals;
-                DeployWithApprovals {
-                    deploy_hash: DeployHash::random(rng),
-                    approvals: (0..n_approvals).map(|_| Approval::random(rng)).collect(),
-                }
+                DeployWithApprovals::new(
+                    DeployHash::random(rng),
+                    (0..n_approvals).map(|_| Approval::random(rng)).collect(),
+                )
             })
             .collect();
 
@@ -326,10 +326,10 @@ impl BlockPayload {
                     MAX_APPROVALS_PER_DEPLOY.min(total_approvals_left - (num_transfers - n - 1));
                 let n_approvals = rng.gen_range(min_approval_count..=max_approval_count);
                 total_approvals_left -= n_approvals;
-                DeployWithApprovals {
-                    deploy_hash: DeployHash::random(rng),
-                    approvals: (0..n_approvals).map(|_| Approval::random(rng)).collect(),
-                }
+                DeployWithApprovals::new(
+                    DeployHash::random(rng),
+                    (0..n_approvals).map(|_| Approval::random(rng)).collect(),
+                )
             })
             .collect();
 
@@ -492,7 +492,7 @@ impl FinalizedBlock {
         let deploys = iter::repeat_with(|| {
             DeployWithApprovals::new(
                 DeployHash::new(rng.gen::<[u8; Digest::LENGTH]>().into()),
-                vec![],
+                BTreeSet::new(),
             )
         })
         .take(deploy_count)

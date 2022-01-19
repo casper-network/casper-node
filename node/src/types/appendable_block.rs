@@ -74,7 +74,10 @@ impl AppendableBlock {
         transfer: DeployWithApprovals,
         deploy_info: &DeployInfo,
     ) -> Result<(), AddError> {
-        if self.deploy_and_transfer_set.contains(&transfer.deploy_hash) {
+        if self
+            .deploy_and_transfer_set
+            .contains(transfer.deploy_hash())
+        {
             return Err(AddError::Duplicate);
         }
         if !deploy_info
@@ -86,11 +89,11 @@ impl AppendableBlock {
         if self.has_max_transfer_count() {
             return Err(AddError::TransferCount);
         }
-        if self.would_exceed_max_approvals(transfer.approvals.len()) {
+        if self.would_exceed_max_approvals(transfer.approvals().len()) {
             return Err(AddError::ApprovalCount);
         }
-        self.deploy_and_transfer_set.insert(transfer.deploy_hash);
-        self.total_approvals += transfer.approvals.len();
+        self.deploy_and_transfer_set.insert(*transfer.deploy_hash());
+        self.total_approvals += transfer.approvals().len();
         self.transfers.push(transfer);
         Ok(())
     }
@@ -105,7 +108,7 @@ impl AppendableBlock {
         deploy: DeployWithApprovals,
         deploy_info: &DeployInfo,
     ) -> Result<(), AddError> {
-        if self.deploy_and_transfer_set.contains(&deploy.deploy_hash) {
+        if self.deploy_and_transfer_set.contains(deploy.deploy_hash()) {
             return Err(AddError::Duplicate);
         }
         if !deploy_info
@@ -117,7 +120,7 @@ impl AppendableBlock {
         if self.has_max_deploy_count() {
             return Err(AddError::DeployCount);
         }
-        if self.would_exceed_max_approvals(deploy.approvals.len()) {
+        if self.would_exceed_max_approvals(deploy.approvals().len()) {
             return Err(AddError::ApprovalCount);
         }
         // Only deploys count towards the size and gas limits.
@@ -135,8 +138,8 @@ impl AppendableBlock {
         }
         self.total_gas = new_total_gas;
         self.total_size = new_total_size;
-        self.total_approvals += deploy.approvals.len();
-        self.deploy_and_transfer_set.insert(deploy.deploy_hash);
+        self.total_approvals += deploy.approvals().len();
+        self.deploy_and_transfer_set.insert(*deploy.deploy_hash());
         self.deploys.push(deploy);
         Ok(())
     }

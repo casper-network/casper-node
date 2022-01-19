@@ -162,13 +162,13 @@ fn should_add_and_take_deploys() {
     proposer.add_deploy(
         block_time2,
         deploy1.deploy_or_transfer_hash(),
-        vec![],
+        BTreeSet::new(),
         deploy1.deploy_info().unwrap(),
     );
     proposer.add_deploy(
         block_time2,
         deploy2.deploy_or_transfer_hash(),
-        vec![],
+        BTreeSet::new(),
         deploy2.deploy_info().unwrap(),
     );
 
@@ -234,13 +234,13 @@ fn should_add_and_take_deploys() {
     proposer.add_deploy(
         block_time2,
         deploy3.deploy_or_transfer_hash(),
-        vec![],
+        BTreeSet::new(),
         deploy3.deploy_info().unwrap(),
     );
     proposer.add_deploy(
         block_time2,
         deploy4.deploy_or_transfer_hash(),
-        vec![],
+        BTreeSet::new(),
         deploy4.deploy_info().unwrap(),
     );
 
@@ -304,25 +304,25 @@ fn should_successfully_prune() {
     proposer.add_deploy(
         creation_time,
         deploy1.deploy_or_transfer_hash(),
-        vec![],
+        BTreeSet::new(),
         deploy1.deploy_info().unwrap(),
     );
     proposer.add_deploy(
         creation_time,
         deploy2.deploy_or_transfer_hash(),
-        vec![],
+        BTreeSet::new(),
         deploy2.deploy_info().unwrap(),
     );
     proposer.add_deploy(
         creation_time,
         deploy3.deploy_or_transfer_hash(),
-        vec![],
+        BTreeSet::new(),
         deploy3.deploy_info().unwrap(),
     );
     proposer.add_deploy(
         creation_time,
         deploy4.deploy_or_transfer_hash(),
-        vec![],
+        BTreeSet::new(),
         deploy4.deploy_info().unwrap(),
     );
 
@@ -388,7 +388,7 @@ fn should_keep_track_of_unhandled_deploys() {
     proposer.add_deploy(
         creation_time,
         deploy1.deploy_or_transfer_hash(),
-        vec![],
+        BTreeSet::new(),
         deploy1.deploy_info().unwrap(),
     );
     // But we DO mark it as finalized, by it's hash
@@ -425,7 +425,7 @@ fn should_keep_track_of_unhandled_deploys() {
     proposer.add_deploy(
         creation_time,
         deploy2.deploy_or_transfer_hash(),
-        vec![],
+        BTreeSet::new(),
         deploy2.deploy_info().unwrap(),
     );
     assert!(
@@ -625,7 +625,7 @@ fn test_proposer_with(
         proposer.add_deploy(
             creation_time,
             deploy.deploy_or_transfer_hash(),
-            vec![],
+            BTreeSet::new(),
             deploy.deploy_info().unwrap(),
         );
     }
@@ -634,7 +634,7 @@ fn test_proposer_with(
         proposer.add_deploy(
             creation_time,
             transfer.deploy_or_transfer_hash(),
-            vec![],
+            BTreeSet::new(),
             transfer.deploy_info().unwrap(),
         );
     }
@@ -691,7 +691,7 @@ fn should_return_deploy_dependencies() {
     proposer.add_deploy(
         creation_time,
         deploy2.deploy_or_transfer_hash(),
-        vec![],
+        BTreeSet::new(),
         deploy2.deploy_info().unwrap(),
     );
 
@@ -709,7 +709,7 @@ fn should_return_deploy_dependencies() {
     proposer.add_deploy(
         creation_time,
         deploy1.deploy_or_transfer_hash(),
-        vec![],
+        BTreeSet::new(),
         deploy1.deploy_info().unwrap(),
     );
 
@@ -758,7 +758,7 @@ fn should_respect_deploy_delay() {
     proposer.add_deploy(
         100.into(),
         deploy.deploy_or_transfer_hash(),
-        vec![],
+        BTreeSet::new(),
         deploy.deploy_info().unwrap(),
     );
     let block = proposer.propose_block_payload(

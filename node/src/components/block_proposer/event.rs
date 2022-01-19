@@ -1,4 +1,7 @@
-use std::fmt::{self, Formatter};
+use std::{
+    collections::BTreeSet,
+    fmt::{self, Formatter},
+};
 
 use datasize::DataSize;
 use derive_more::From;
@@ -40,7 +43,7 @@ pub(crate) enum Event {
     /// and buffered here.
     BufferDeploy {
         hash: DeployOrTransferHash,
-        approvals: Vec<Approval>,
+        approvals: BTreeSet<Approval>,
         deploy_info: Box<DeployInfo>,
     },
     /// The block proposer has been asked to prune stale deploys.
