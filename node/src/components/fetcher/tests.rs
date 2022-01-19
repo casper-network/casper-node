@@ -92,7 +92,7 @@ reactor!(Reactor {
             chainspec_loader
                 .chainspec()
                 .protocol_config
-                .merkle_tree_hash_activation,
+                .verifiable_chunked_hash_activation,
         );
         deploy_acceptor = DeployAcceptor(cfg.deploy_acceptor_config, &*chainspec_loader.chainspec(), registry);
         deploy_fetcher = Fetcher::<Deploy>(
@@ -102,7 +102,7 @@ reactor!(Reactor {
             chainspec_loader
                 .chainspec()
                 .protocol_config
-                .merkle_tree_hash_activation);
+                .verifiable_chunked_hash_activation);
     }
 
     events: {

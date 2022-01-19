@@ -416,7 +416,7 @@ impl reactor::Reactor for Reactor {
             "test",
             Ratio::new(1, 3),
             None,
-            chainspec.protocol_config.merkle_tree_hash_activation,
+            chainspec.protocol_config.verifiable_chunked_hash_activation,
         )
         .unwrap();
 
@@ -689,9 +689,9 @@ async fn run_deploy_acceptor_without_timeout(
 
     let chainspec = Chainspec::from_resources("local");
 
-    let block = Box::new(Block::random_with_merkle_tree_hash_activation(
+    let block = Box::new(Block::random_with_verifiable_chunked_hash_activation(
         &mut rng,
-        chainspec.protocol_config.merkle_tree_hash_activation,
+        chainspec.protocol_config.verifiable_chunked_hash_activation,
     ));
     // Create a responder to assert that the block was successfully injected into storage.
     let (block_sender, block_receiver) = oneshot::channel();

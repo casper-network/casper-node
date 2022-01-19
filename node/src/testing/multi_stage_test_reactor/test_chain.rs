@@ -53,7 +53,11 @@ impl TestChain {
     /// Instantiates a new test chain configuration.
     ///
     /// Generates secret keys for `size` validators and creates a matching chainspec.
-    async fn new(size: usize, merkle_tree_hash_activation: EraId, rng: &mut NodeRng) -> Self {
+    async fn new(
+        size: usize,
+        verifiable_chunked_hash_activation: EraId,
+        rng: &mut NodeRng,
+    ) -> Self {
         assert!(
             size >= 1,
             "Network size must have at least one node (size: {})",
@@ -78,7 +82,7 @@ impl TestChain {
         Self::new_with_keys(
             first_node_secret_key_with_stake,
             other_secret_keys_with_stakes,
-            merkle_tree_hash_activation,
+            verifiable_chunked_hash_activation,
             rng,
         )
         .await
@@ -90,7 +94,7 @@ impl TestChain {
     async fn new_with_keys(
         first_node_secret_key_with_stake: SecretKeyWithStake,
         other_secret_keys_with_stakes: Vec<SecretKeyWithStake>,
-        merkle_tree_hash_activation: EraId,
+        verifiable_chunked_hash_activation: EraId,
         rng: &mut NodeRng,
     ) -> Self {
         // Load the `local` chainspec.
@@ -126,7 +130,8 @@ impl TestChain {
         chainspec.core_config.auction_delay = 1;
         chainspec.core_config.unbonding_delay = 3;
 
-        chainspec.protocol_config.merkle_tree_hash_activation = merkle_tree_hash_activation;
+        chainspec.protocol_config.verifiable_chunked_hash_activation =
+            verifiable_chunked_hash_activation;
 
         // Assign a port for the first node (TODO: this has a race condition)
         let first_node_port = testing::unused_port_on_localhost();
@@ -265,12 +270,13 @@ async fn run_participating_network() {
 
     let mut rng = crate::new_rng();
 
-    // `merkle_tree_hash_activation` can be chosen arbitrarily
-    let merkle_tree_hash_activation = EraId::from(rng.gen_range(0..=10));
+    // `verifiable_chunked_hash_activation` can be chosen arbitrarily
+    let verifiable_chunked_hash_activation = EraId::from(rng.gen_range(0..=10));
 
     // Instantiate a new chain with a fixed size.
     const NETWORK_SIZE: usize = 5;
-    let mut chain = TestChain::new(NETWORK_SIZE, merkle_tree_hash_activation, &mut rng).await;
+    let mut chain =
+        TestChain::new(NETWORK_SIZE, verifiable_chunked_hash_activation, &mut rng).await;
 
     // Wait for all nodes to agree on one era.
     for era_num in 1..=2 {
@@ -308,13 +314,13 @@ async fn run_equivocator_network() {
 
     let other_secret_keys_with_stakes = vec![alice_sk.clone(), alice_sk];
 
-    // `merkle_tree_hash_activation` can be chosen arbitrarily
-    let merkle_tree_hash_activation = EraId::from(rng.gen_range(0..=10));
+    // `verifiable_chunked_hash_activation` can be chosen arbitrarily
+    let verifiable_chunked_hash_activation = EraId::from(rng.gen_range(0..=10));
 
     let mut chain = TestChain::new_with_keys(
         first_node_secret_key_with_stake,
         other_secret_keys_with_stakes,
-        merkle_tree_hash_activation,
+        verifiable_chunked_hash_activation,
         &mut rng,
     )
     .await;
@@ -345,7 +351,7 @@ fn first_node_storage(net: &Network<MultiStageTestReactor>) -> &Storage {
 
 async fn await_switch_block(
     switch_block_era_num: u64,
-    merkle_tree_hash_activation: EraId,
+    verifiable_chunked_hash_activation: EraId,
     net: &mut Network<MultiStageTestReactor>,
     rng: &mut NodeRng,
 ) -> BlockHeader {
@@ -371,7 +377,7 @@ async fn await_switch_block(
     info!(
         "Found block hash for Era {}: {:?}",
         switch_block_era_num,
-        switch_block_header.hash(merkle_tree_hash_activation)
+        switch_block_header.hash(verifiable_chunked_hash_activation)
     );
     switch_block_header
 }
@@ -385,12 +391,16 @@ async fn test_joiner_at_genesis() {
 
     let mut rng = crate::new_rng();
 
-    // `merkle_tree_hash_activation` can be chosen arbitrarily
-    let merkle_tree_hash_activation = EraId::from(rng.gen_range(0..=10));
+    // `verifiable_chunked_hash_activation` can be chosen arbitrarily
+    let verifiable_chunked_hash_activation = EraId::from(rng.gen_range(0..=10));
 
     // Create a chain with just one node
-    let mut chain =
-        TestChain::new(INITIAL_NETWORK_SIZE, merkle_tree_hash_activation, &mut rng).await;
+    let mut chain = TestChain::new(
+        INITIAL_NETWORK_SIZE,
+        verifiable_chunked_hash_activation,
+        &mut rng,
+    )
+    .await;
 
     assert_eq!(
         chain.network.nodes().len(),
@@ -403,7 +413,7 @@ async fn test_joiner_at_genesis() {
     let start_era = 2;
     let _ = await_switch_block(
         start_era,
-        merkle_tree_hash_activation,
+        verifiable_chunked_hash_activation,
         &mut chain.network,
         &mut rng,
     )
@@ -413,7 +423,7 @@ async fn test_joiner_at_genesis() {
         .read_block_header_by_height(2)
         .expect("should not have storage error")
         .expect("should have block header")
-        .hash(merkle_tree_hash_activation);
+        .hash(verifiable_chunked_hash_activation);
 
     // Have a node join the network with that hash
     info!("Joining with trusted hash {}", trusted_hash);
@@ -458,11 +468,15 @@ async fn test_archival_sync() {
     const ERA_TO_JOIN: u64 = 3;
 
     // We need to make sure we're in the Merkle-based hashing scheme.
-    let merkle_tree_hash_activation = EraId::from(ERA_TO_JOIN - 1);
+    let verifiable_chunked_hash_activation = EraId::from(ERA_TO_JOIN - 1);
 
     // Create a chain with just one node
-    let mut chain =
-        TestChain::new(INITIAL_NETWORK_SIZE, merkle_tree_hash_activation, &mut rng).await;
+    let mut chain = TestChain::new(
+        INITIAL_NETWORK_SIZE,
+        verifiable_chunked_hash_activation,
+        &mut rng,
+    )
+    .await;
 
     assert_eq!(
         chain.network.nodes().len(),
@@ -472,10 +486,14 @@ async fn test_archival_sync() {
 
     // Get the first switch block hash
     // As part of the chain sync process, we will need to retrieve the first switch block
-    let switch_block_hash =
-        await_switch_block(1, merkle_tree_hash_activation, &mut chain.network, &mut rng)
-            .await
-            .hash(merkle_tree_hash_activation);
+    let switch_block_hash = await_switch_block(
+        1,
+        verifiable_chunked_hash_activation,
+        &mut chain.network,
+        &mut rng,
+    )
+    .await
+    .hash(verifiable_chunked_hash_activation);
 
     info!("Waiting for Era {} to end", ERA_TO_JOIN);
     chain
@@ -530,7 +548,7 @@ async fn test_archival_sync() {
             .expect("must read from storage")
             .expect("must have highest block header");
         // Check every block and its state root going back to genesis
-        let mut block_hash = highest_block_header.hash(merkle_tree_hash_activation);
+        let mut block_hash = highest_block_header.hash(verifiable_chunked_hash_activation);
         loop {
             let block = storage
                 .read_block(&block_hash)
@@ -562,17 +580,21 @@ async fn test_joiner() {
 
     const ERA_TO_JOIN: u64 = 3;
 
-    // `merkle_tree_hash_activation` can be chosen arbitrarily.
-    // Ideally, we should run this test two times with `merkle_tree_hash_activation`
+    // `verifiable_chunked_hash_activation` can be chosen arbitrarily.
+    // Ideally, we should run this test two times with `verifiable_chunked_hash_activation`
     // set to "before" and "after" the `ERA_TO_JOIN`. But because this test is
     // time consuming, we randomize the activation point so it randomly falls
     // ahead or behind the era.
-    let merkle_tree_hash_activation: u64 = rng.gen_range(0..=(ERA_TO_JOIN * 2));
-    let merkle_tree_hash_activation = EraId::from(merkle_tree_hash_activation);
+    let verifiable_chunked_hash_activation: u64 = rng.gen_range(0..=(ERA_TO_JOIN * 2));
+    let verifiable_chunked_hash_activation = EraId::from(verifiable_chunked_hash_activation);
 
     // Create a chain with just one node
-    let mut chain =
-        TestChain::new(INITIAL_NETWORK_SIZE, merkle_tree_hash_activation, &mut rng).await;
+    let mut chain = TestChain::new(
+        INITIAL_NETWORK_SIZE,
+        verifiable_chunked_hash_activation,
+        &mut rng,
+    )
+    .await;
 
     assert_eq!(
         chain.network.nodes().len(),
@@ -582,10 +604,14 @@ async fn test_joiner() {
 
     // Get the first switch block hash
     // As part of the chain sync process, we will need to retrieve the first switch block
-    let switch_block_hash =
-        await_switch_block(1, merkle_tree_hash_activation, &mut chain.network, &mut rng)
-            .await
-            .hash(merkle_tree_hash_activation);
+    let switch_block_hash = await_switch_block(
+        1,
+        verifiable_chunked_hash_activation,
+        &mut chain.network,
+        &mut rng,
+    )
+    .await
+    .hash(verifiable_chunked_hash_activation);
 
     info!("Waiting for Era {} to end", ERA_TO_JOIN);
     chain
@@ -639,16 +665,20 @@ async fn test_joiner_network() {
 
     const START_ERA: u64 = 2;
 
-    // `merkle_tree_hash_activation` can be chosen arbitrarily.
-    // Ideally, we should run this test two times with `merkle_tree_hash_activation`
+    // `verifiable_chunked_hash_activation` can be chosen arbitrarily.
+    // Ideally, we should run this test two times with `verifiable_chunked_hash_activation`
     // set to "before" and "after" the `ERA_TO_JOIN`. But because this test is
     // time consuming, we randomize the activation point so it randomly falls
     // ahead or behind the era.
-    let merkle_tree_hash_activation: u64 = rng.gen_range(0..=(START_ERA * 2));
-    let merkle_tree_hash_activation = EraId::from(merkle_tree_hash_activation);
+    let verifiable_chunked_hash_activation: u64 = rng.gen_range(0..=(START_ERA * 2));
+    let verifiable_chunked_hash_activation = EraId::from(verifiable_chunked_hash_activation);
 
-    let mut chain =
-        TestChain::new(INITIAL_NETWORK_SIZE, merkle_tree_hash_activation, &mut rng).await;
+    let mut chain = TestChain::new(
+        INITIAL_NETWORK_SIZE,
+        verifiable_chunked_hash_activation,
+        &mut rng,
+    )
+    .await;
 
     assert_eq!(
         chain.network.nodes().len(),
@@ -659,7 +689,7 @@ async fn test_joiner_network() {
     // Get the first switch block hash
     await_switch_block(
         START_ERA,
-        merkle_tree_hash_activation,
+        verifiable_chunked_hash_activation,
         &mut chain.network,
         &mut rng,
     )
@@ -669,7 +699,7 @@ async fn test_joiner_network() {
         .read_block_header_by_height(2)
         .expect("should not have storage error")
         .expect("should have block header")
-        .hash(merkle_tree_hash_activation);
+        .hash(verifiable_chunked_hash_activation);
 
     // Have a node join the network with that hash
     info!("Joining with trusted hash {}", trusted_block_hash);

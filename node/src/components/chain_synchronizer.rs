@@ -296,8 +296,11 @@ impl ChainSynchronizer {
                 let initial_pre_state = ExecutionPreState::new(
                     upgrade_block_header.height() + 1,
                     post_state_hash,
-                    upgrade_block_header
-                        .hash(self.chainspec.protocol_config.merkle_tree_hash_activation),
+                    upgrade_block_header.hash(
+                        self.chainspec
+                            .protocol_config
+                            .verifiable_chunked_hash_activation,
+                    ),
                     upgrade_block_header.accumulated_seed(),
                 );
                 let finalized_block = FinalizedBlock::new(

@@ -13,7 +13,7 @@ hard_reset = false
 # If it is an integer, it represents an era ID, meaning the protocol version becomes active at the start of this era.
 activation_point = '${TIMESTAMP}'
 # The era ID starting at which the new Merkle tree-based hashing scheme is applied.
-merkle_tree_hash_activation = 2,
+verifiable_chunked_hash_activation = 2,
 
 [network]
 # Human readable name for convenience; the genesis_hash is the true identifier.  The name influences the genesis hash by
