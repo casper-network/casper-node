@@ -5,6 +5,7 @@
 //! it assumes is the concept of era/epoch and that each era runs separate consensus instance.
 //! Most importantly, it doesn't care about what messages it's forwarding.
 
+pub(super) mod debug;
 mod era;
 
 use std::{
@@ -1088,6 +1089,16 @@ where
             Some(upgrade_point) => upgrade_point.should_upgrade(era_id),
         }
     }
+
+    /// Get a reference to the era supervisor's open eras.
+    pub(crate) fn open_eras(&self) -> &HashMap<EraId, Era<I>> {
+        &self.open_eras
+    }
+
+    /// Returns the most recent era.
+    pub(crate) fn current_era(&self) -> EraId {
+        self.current_era
+    }
 }
 
 #[cfg(test)]
@@ -1095,11 +1106,6 @@ impl<I> EraSupervisor<I>
 where
     I: NodeIdT,
 {
-    /// Returns the most recent era.
-    pub(crate) fn current_era(&self) -> EraId {
-        self.current_era
-    }
-
     /// Returns this node's validator key.
     pub(crate) fn public_key(&self) -> &PublicKey {
         &self.public_signing_key
