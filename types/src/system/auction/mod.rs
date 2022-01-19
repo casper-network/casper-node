@@ -271,7 +271,6 @@ pub trait Auction:
         delegator_public_key: PublicKey,
         validator_public_key: PublicKey,
         amount: U512,
-        new_validator: Option<PublicKey>,
     ) -> Result<U512, Error> {
         let provided_account_hash =
             AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
@@ -297,7 +296,65 @@ pub trait Auction:
                     delegator_public_key.clone(),
                     *delegator.bonding_purse(),
                     amount,
-                    new_validator,
+                    None,
+                )?;
+
+                let era_end_timestamp_millis = detail::get_era_end_timestamp_millis(self)?;
+                let updated_stake = delegator.decrease_stake(amount, era_end_timestamp_millis)?;
+                if updated_stake == U512::zero() {
+                    delegators.remove(&delegator_public_key);
+                };
+                updated_stake
+            }
+            None => return Err(Error::DelegatorNotFound),
+        };
+
+        self.write_bid(validator_account_hash, bid)?;
+
+        Ok(new_amount)
+    }
+
+    /// Removes specified amount of motes (or the value from the collection altogether, if the
+    /// remaining amount is 0) from the entry in delegators map for given validator and creates a
+    /// new unbonding request to the queue, which when proccessed will redelegate the
+    /// specified amount of motes to new validator
+    ///
+    /// The arguments are the delegator's key, the validator's key, the amount,
+    /// and the new validator's key
+    ///
+    /// Returns the remaining bid amount if the new validator is inactive.
+    fn redelegate(
+        &mut self,
+        delegator_public_key: PublicKey,
+        validator_public_key: PublicKey,
+        amount: U512,
+        new_validator: PublicKey,
+    ) -> Result<U512, Error> {
+        let provided_account_hash =
+            AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
+
+        if !self.is_allowed_session_caller(&provided_account_hash) {
+            return Err(Error::InvalidContext);
+        }
+
+        let validator_account_hash = AccountHash::from(&validator_public_key);
+
+        let mut bid = match self.read_bid(&validator_account_hash)? {
+            Some(bid) => bid,
+            None => return Err(Error::ValidatorNotFound),
+        };
+
+        let delegators = bid.delegators_mut();
+
+        let new_amount = match delegators.get_mut(&delegator_public_key) {
+            Some(delegator) => {
+                detail::create_unbonding_purse(
+                    self,
+                    validator_public_key,
+                    delegator_public_key.clone(),
+                    *delegator.bonding_purse(),
+                    amount,
+                    Some(new_validator),
                 )?;
 
                 let era_end_timestamp_millis = detail::get_era_end_timestamp_millis(self)?;
