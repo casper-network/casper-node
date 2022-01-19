@@ -12,7 +12,7 @@ use casper_types::{
     account::AccountHash,
     runtime_args,
     system::auction::{
-        Bids, DelegationRate, UnbondingPurses, ARG_DELEGATOR, ARG_NEW_VALIDATOR, ARG_VALIDATOR,
+        Bids, DelegationRate, UnbondingPurses, ARG_DELEGATOR, ARG_VALIDATOR,
         ARG_VALIDATOR_PUBLIC_KEYS, METHOD_SLASH,
     },
     Motes, PublicKey, RuntimeArgs, SecretKey, U512,
@@ -167,7 +167,7 @@ fn should_run_ee_1120_slash_delegators() {
         BTreeSet::from_iter(vec![VALIDATOR_2.clone(), VALIDATOR_1.clone()])
     );
 
-    let initial_unbond_purses: UnbondingPurses = builder.get_unbonds();
+    let initial_unbond_purses: UnbondingPurses = builder.get_withdraws();
     assert_eq!(initial_unbond_purses.len(), 0);
 
     // DELEGATOR_1 partially unbonds from VALIDATOR_1
@@ -178,7 +178,6 @@ fn should_run_ee_1120_slash_delegators() {
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
             ARG_VALIDATOR => VALIDATOR_1.clone(),
             ARG_DELEGATOR => DELEGATOR_1.clone(),
-            ARG_NEW_VALIDATOR => Option::<PublicKey>::None
         },
     )
     .build();
@@ -191,7 +190,6 @@ fn should_run_ee_1120_slash_delegators() {
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_2),
             ARG_VALIDATOR => VALIDATOR_2.clone(),
             ARG_DELEGATOR => DELEGATOR_1.clone(),
-            ARG_NEW_VALIDATOR => Option::<PublicKey>::None
         },
     )
     .build();
@@ -204,7 +202,6 @@ fn should_run_ee_1120_slash_delegators() {
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_3),
             ARG_VALIDATOR => VALIDATOR_1.clone(),
             ARG_DELEGATOR => VALIDATOR_2.clone(),
-            ARG_NEW_VALIDATOR => Option::<PublicKey>::None
         },
     )
     .build();
@@ -215,7 +212,7 @@ fn should_run_ee_1120_slash_delegators() {
 
     // Check unbonding purses before slashing
 
-    let unbond_purses_before: UnbondingPurses = builder.get_unbonds();
+    let unbond_purses_before: UnbondingPurses = builder.get_withdraws();
     assert_eq!(unbond_purses_before.len(), 2);
 
     let validator_1_unbond_list_before = unbond_purses_before
@@ -310,7 +307,7 @@ fn should_run_ee_1120_slash_delegators() {
         .delegators()
         .contains_key(&DELEGATOR_1));
 
-    let unbond_purses_after: UnbondingPurses = builder.get_unbonds();
+    let unbond_purses_after: UnbondingPurses = builder.get_withdraws();
     assert_ne!(unbond_purses_before, unbond_purses_after);
 
     let validator_1_unbond_list_after = unbond_purses_after
@@ -354,7 +351,7 @@ fn should_run_ee_1120_slash_delegators() {
     assert!(validator_1_bid.inactive());
     assert!(validator_1_bid.staked_amount().is_zero());
 
-    let unbond_purses_after: UnbondingPurses = builder.get_unbonds();
+    let unbond_purses_after: UnbondingPurses = builder.get_withdraws();
     assert!(unbond_purses_after
         .get(&VALIDATOR_1_ADDR)
         .unwrap()

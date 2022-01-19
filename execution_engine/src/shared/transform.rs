@@ -223,11 +223,6 @@ impl Transform {
                     let found = "Withdraw".to_string();
                     Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
-                StoredValue::Unbonding(_) => {
-                    let expected = "Contract or Account".to_string();
-                    let found = "Unbonding".to_string();
-                    Err(StoredValueTypeMismatch::new(expected, found).into())
-                }
             },
             Transform::Failure(error) => Err(error),
         }
@@ -365,12 +360,9 @@ impl From<&Transform> for casper_types::Transform {
             Transform::Write(StoredValue::Bid(bid)) => {
                 casper_types::Transform::WriteBid(bid.clone())
             }
-            Transform::Write(StoredValue::Unbonding(unbonding_purses)) => {
+            Transform::Write(StoredValue::Withdraw(unbonding_purses)) => {
                 casper_types::Transform::WriteWithdraw(unbonding_purses.clone())
             }
-            Transform::Write(StoredValue::Withdraw(_)) => casper_types::Transform::Failure(
-                "withdraw purses should not be be written to global state".to_string(),
-            ),
             Transform::AddInt32(value) => casper_types::Transform::AddInt32(*value),
             Transform::AddUInt64(value) => casper_types::Transform::AddUInt64(*value),
             Transform::AddUInt128(value) => casper_types::Transform::AddUInt128(*value),

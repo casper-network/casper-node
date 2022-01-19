@@ -2245,29 +2245,13 @@
                 "properties": {
                   "Withdraw": {
                     "items": {
-                      "$ref": "#/components/schemas/WithdrawPurse"
-                    },
-                    "type": "array"
-                  }
-                },
-                "required": [
-                  "Withdraw"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "description": "A collection of unbonding purses",
-                "properties": {
-                  "Unbonding": {
-                    "items": {
                       "$ref": "#/components/schemas/UnbondingPurse"
                     },
                     "type": "array"
                   }
                 },
                 "required": [
-                  "Unbonding"
+                  "Withdraw"
                 ],
                 "type": "object"
               }
@@ -2645,17 +2629,6 @@
                 ],
                 "description": "Era in which this unbonding request was created."
               },
-              "new_validator": {
-                "anyOf": [
-                  {
-                    "$ref": "#/components/schemas/PublicKey"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "The validator public key to re-delegate to."
-              },
               "unbonder_public_key": {
                 "allOf": [
                   {
@@ -2731,60 +2704,6 @@
             },
             "required": [
               "initial_release_timestamp_millis"
-            ],
-            "type": "object"
-          },
-          "WithdrawPurse": {
-            "additionalProperties": false,
-            "description": "A withdraw purse, a legacy structure.",
-            "properties": {
-              "amount": {
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/U512"
-                  }
-                ],
-                "description": "Unbonding Amount."
-              },
-              "bonding_purse": {
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/URef"
-                  }
-                ],
-                "description": "Bonding Purse"
-              },
-              "era_of_creation": {
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/EraId"
-                  }
-                ],
-                "description": "Era in which this unbonding request was created."
-              },
-              "unbonder_public_key": {
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/PublicKey"
-                  }
-                ],
-                "description": "Unbonders public key."
-              },
-              "validator_public_key": {
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/PublicKey"
-                  }
-                ],
-                "description": "Validators public key."
-              }
-            },
-            "required": [
-              "amount",
-              "bonding_purse",
-              "era_of_creation",
-              "unbonder_public_key",
-              "validator_public_key"
             ],
             "type": "object"
           }

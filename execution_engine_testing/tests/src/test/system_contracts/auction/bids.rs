@@ -5,17 +5,16 @@ use num_traits::{One, Zero};
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder,
-    UpgradeRequestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
-    DEFAULT_AUCTION_DELAY, DEFAULT_EXEC_CONFIG, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY,
-    MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
+    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_AUCTION_DELAY, DEFAULT_EXEC_CONFIG,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+    DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::core::{
     engine_state::{
         self,
         genesis::{GenesisAccount, GenesisValidator},
-        RewardItem,
     },
     execution,
 };
@@ -28,14 +27,12 @@ use casper_types::{
         self,
         auction::{
             self, Bids, DelegationRate, EraValidators, UnbondingPurses, ValidatorWeights,
-            WithdrawPurses, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_NEW_VALIDATOR,
-            ARG_PUBLIC_KEY, ARG_VALIDATOR, ERA_ID_KEY, INITIAL_ERA_ID,
+            ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_VALIDATOR,
+            ERA_ID_KEY, INITIAL_ERA_ID,
         },
     },
-    EraId, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U256, U512,
+    EraId, Motes, PublicKey, RuntimeArgs, SecretKey, U256, U512,
 };
-
-use crate::lmdb_fixture;
 
 const ARG_TARGET: &str = "target";
 
@@ -94,16 +91,6 @@ static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCO
 const ACCOUNT_2_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const ACCOUNT_2_BOND: u64 = 200_000;
 
-static GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
-    let secret_key = SecretKey::ed25519_from_bytes([200; SecretKey::ED25519_LENGTH]).unwrap();
-    PublicKey::from(&secret_key)
-});
-
-static GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
-    let secret_key = SecretKey::ed25519_from_bytes([202; SecretKey::ED25519_LENGTH]).unwrap();
-    PublicKey::from(&secret_key)
-});
-
 static BID_ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| {
     let secret_key = SecretKey::ed25519_from_bytes([204; SecretKey::ED25519_LENGTH]).unwrap();
     PublicKey::from(&secret_key)
@@ -127,7 +114,7 @@ static DELEGATOR_1: Lazy<PublicKey> = Lazy::new(|| {
     PublicKey::from(&secret_key)
 });
 static DELEGATOR_2: Lazy<PublicKey> = Lazy::new(|| {
-    let secret_key = SecretKey::ed25519_from_bytes([207; SecretKey::ED25519_LENGTH]).unwrap();
+    let secret_key = SecretKey::ed25519_from_bytes([206; SecretKey::ED25519_LENGTH]).unwrap();
     PublicKey::from(&secret_key)
 });
 static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
@@ -318,7 +305,7 @@ fn should_decrease_existing_bid() {
         // Since we don't pay out immediately `WITHDRAW_BID_AMOUNT_2` is locked in unbonding queue
         U512::from(ADD_BID_AMOUNT_1)
     );
-    let unbonding_purses: UnbondingPurses = builder.get_unbonds();
+    let unbonding_purses: UnbondingPurses = builder.get_withdraws();
     let unbond_list = unbonding_purses
         .get(&BID_ACCOUNT_1_ADDR)
         .expect("should have unbonded");
@@ -473,7 +460,7 @@ fn should_run_delegate_and_undelegate() {
         U512::from(DELEGATE_AMOUNT_1 + DELEGATE_AMOUNT_2 - UNDELEGATE_AMOUNT_1)
     );
 
-    let unbonding_purses: UnbondingPurses = builder.get_unbonds();
+    let unbonding_purses: UnbondingPurses = builder.get_withdraws();
     assert_eq!(unbonding_purses.len(), 1);
 
     let unbond_list = unbonding_purses
@@ -1533,7 +1520,7 @@ fn should_undelegate_delegators_when_validator_unbonds() {
     );
 
     // Validator partially unbonds and only one entry is present
-    let unbonding_purses_before: UnbondingPurses = builder.get_unbonds();
+    let unbonding_purses_before: UnbondingPurses = builder.get_withdraws();
     assert_eq!(unbonding_purses_before[&*VALIDATOR_1_ADDR].len(), 1);
     assert_eq!(
         unbonding_purses_before[&*VALIDATOR_1_ADDR][0].unbonder_public_key(),
@@ -1560,7 +1547,7 @@ fn should_undelegate_delegators_when_validator_unbonds() {
     assert!(validator_1_bid.inactive());
     assert!(validator_1_bid.staked_amount().is_zero());
 
-    let unbonding_purses_after: UnbondingPurses = builder.get_unbonds();
+    let unbonding_purses_after: UnbondingPurses = builder.get_withdraws();
     assert_ne!(unbonding_purses_after, unbonding_purses_before);
 
     let validator_1_unbonding_purse = unbonding_purses_after
@@ -1772,7 +1759,7 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
     assert!(validator_1_bid.inactive());
     assert!(validator_1_bid.staked_amount().is_zero());
 
-    let unbonding_purses_before: UnbondingPurses = builder.get_unbonds();
+    let unbonding_purses_before: UnbondingPurses = builder.get_withdraws();
 
     let validator_1_unbonding_purse = unbonding_purses_before
         .get(&VALIDATOR_1_ADDR)
