@@ -1,7 +1,6 @@
 use std::collections::BTreeSet;
 
 use datasize::DataSize;
-use serde::Serialize;
 
 use crate::{
     components::consensus::{
@@ -18,7 +17,7 @@ use crate::{
 /// A unit sent to or received from the network.
 ///
 /// This is only instantiated when it gets added to a `State`, and only once it has been validated.
-#[derive(Clone, DataSize, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, DataSize, Debug, Eq, PartialEq)]
 pub(crate) struct Unit<C>
 where
     C: Context,

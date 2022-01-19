@@ -691,12 +691,6 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             }
         }
     }
-
-    /// Grant read-only access to the internal `Highway` instance.
-    #[inline]
-    pub(crate) fn highway(&self) -> &Highway<C> {
-        &self.highway
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]

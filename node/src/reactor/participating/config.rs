@@ -2,7 +2,7 @@ use datasize::DataSize;
 use serde::Deserialize;
 
 use crate::{
-    logging::LoggingConfig, types::NodeConfig, BlockProposerConfig, ConsensusConfig, ConsoleConfig,
+    logging::LoggingConfig, types::NodeConfig, BlockProposerConfig, ConsensusConfig,
     ContractRuntimeConfig, DeployAcceptorConfig, EventStreamServerConfig, FetcherConfig,
     GossipConfig, LinearChainSyncConfig, RestServerConfig, RpcServerConfig, SmallNetworkConfig,
     StorageConfig,
@@ -42,6 +42,4 @@ pub(crate) struct Config {
     /// Block proposer configuration.
     #[serde(default)]
     pub(crate) block_proposer: BlockProposerConfig,
-    /// Debug console configuration.
-    pub(crate) console: ConsoleConfig,
 }

@@ -5,7 +5,6 @@ use std::{
 
 use datasize::DataSize;
 use derive_more::{Add, AddAssign, From, Sub, SubAssign, Sum};
-use serde::Serialize;
 
 /// A vote weight.
 #[derive(
@@ -19,7 +18,6 @@ use serde::Serialize;
     PartialOrd,
     Ord,
     Add,
-    Serialize,
     Sub,
     AddAssign,
     SubAssign,

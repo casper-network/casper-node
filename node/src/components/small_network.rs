@@ -284,7 +284,6 @@ where
             chain_info: chain_info_source.into(),
             public_addr,
             consensus_keys,
-            handshake_timeout: cfg.handshake_timeout,
             payload_weights: cfg.estimator_weights.clone(),
         });
 

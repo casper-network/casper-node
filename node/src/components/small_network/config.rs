@@ -1,5 +1,6 @@
 #[cfg(test)]
 use std::net::{Ipv4Addr, SocketAddr};
+use std::str::FromStr;
 
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
@@ -19,16 +20,7 @@ const DEFAULT_BIND_ADDRESS: &str = "0.0.0.0:34553";
 const DEFAULT_PUBLIC_ADDRESS: &str = "127.0.0.1:0";
 
 /// Default interval for gossiping network addresses.
-const DEFAULT_GOSSIP_INTERVAL: TimeDiff = TimeDiff::from_seconds(30);
-
-/// Default delay until initial round of address gossiping starts.
-const DEFAULT_INITIAL_GOSSIP_DELAY: TimeDiff = TimeDiff::from_seconds(5);
-
-/// Default time limit for an address to be in the pending set.
-const DEFAULT_MAX_ADDR_PENDING_TIME: TimeDiff = TimeDiff::from_seconds(60);
-
-/// Default timeout during which the handshake needs to be completed.
-const DEFAULT_HANDSHAKE_TIMEOUT: TimeDiff = TimeDiff::from_seconds(20);
+const DEFAULT_GOSSIP_INTERVAL: &str = "30sec";
 
 // Default values for networking configuration:
 impl Default for Config {
@@ -37,10 +29,9 @@ impl Default for Config {
             bind_address: DEFAULT_BIND_ADDRESS.to_string(),
             public_address: DEFAULT_PUBLIC_ADDRESS.to_string(),
             known_addresses: Vec::new(),
-            gossip_interval: DEFAULT_GOSSIP_INTERVAL,
-            initial_gossip_delay: DEFAULT_INITIAL_GOSSIP_DELAY,
-            max_addr_pending_time: DEFAULT_MAX_ADDR_PENDING_TIME,
-            handshake_timeout: DEFAULT_HANDSHAKE_TIMEOUT,
+            gossip_interval: TimeDiff::from_str(DEFAULT_GOSSIP_INTERVAL).unwrap(),
+            initial_gossip_delay: TimeDiff::from_seconds(5),
+            max_addr_pending_time: TimeDiff::from_seconds(60),
             max_incoming_peer_connections: 0,
             max_outgoing_byte_rate_non_validators: 0,
             max_incoming_message_rate_non_validators: 0,
@@ -68,8 +59,6 @@ pub struct Config {
     pub initial_gossip_delay: TimeDiff,
     /// Maximum allowed time for an address to be kept in the pending set.
     pub max_addr_pending_time: TimeDiff,
-    /// Maximum allowed time for handshake completion.
-    pub handshake_timeout: TimeDiff,
     /// Maximum number of incoming connections per unique peer. Unlimited if `0`.
     pub max_incoming_peer_connections: u16,
     /// Maximum number of bytes per second allowed for non-validating peers. Unlimited if 0.
@@ -82,7 +71,7 @@ pub struct Config {
 
 #[cfg(test)]
 /// Reduced gossip interval for local testing.
-const DEFAULT_TEST_GOSSIP_INTERVAL: TimeDiff = TimeDiff::from_seconds(1);
+const DEFAULT_TEST_GOSSIP_INTERVAL: &str = "1sec";
 
 #[cfg(test)]
 /// Address used to bind all local testing networking to by default.
@@ -97,7 +86,7 @@ impl Config {
             bind_address: bind_address.to_string(),
             public_address: bind_address.to_string(),
             known_addresses: vec![bind_address.to_string()],
-            gossip_interval: DEFAULT_TEST_GOSSIP_INTERVAL,
+            gossip_interval: TimeDiff::from_str(DEFAULT_TEST_GOSSIP_INTERVAL).unwrap(),
             ..Default::default()
         }
     }
@@ -115,7 +104,7 @@ impl Config {
             known_addresses: vec![
                 SocketAddr::from((TEST_BIND_INTERFACE, known_peer_port)).to_string()
             ],
-            gossip_interval: DEFAULT_TEST_GOSSIP_INTERVAL,
+            gossip_interval: TimeDiff::from_str(DEFAULT_TEST_GOSSIP_INTERVAL).unwrap(),
             ..Default::default()
         }
     }
