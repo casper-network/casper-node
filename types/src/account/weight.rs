@@ -17,7 +17,7 @@ pub struct Weight(u8);
 
 impl Weight {
     /// Constructs a new `Weight`.
-    pub fn new(weight: u8) -> Weight {
+    pub const fn new(weight: u8) -> Weight {
         Weight(weight)
     }
 
