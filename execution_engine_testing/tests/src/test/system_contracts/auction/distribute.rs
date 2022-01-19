@@ -4194,6 +4194,7 @@ fn should_not_restake_after_full_unbond() {
     assert!(delegator.is_none());
 }
 
+#[ignore]
 #[test]
 fn delegator_full_unbond_during_first_reward_era() {
     const DELEGATOR_1_STAKE: u64 = 1_000_000;
