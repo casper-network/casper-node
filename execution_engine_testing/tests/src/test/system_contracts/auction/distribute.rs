@@ -4028,6 +4028,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
 }
 
 #[ignore]
+#[ignore]
 #[test]
 fn should_not_restake_after_full_unbond() {
     const DELEGATOR_1_STAKE: u64 = 1_000_000;
