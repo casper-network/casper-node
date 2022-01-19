@@ -3,6 +3,7 @@
 mod memory_metrics;
 
 use std::{
+    borrow::Cow,
     collections::BTreeMap,
     fmt::{self, Display, Formatter},
     path::PathBuf,
@@ -26,6 +27,7 @@ use crate::{
     components::{
         chain_synchronizer::{self, ChainSynchronizer, JoiningOutcome},
         chainspec_loader::{self, ChainspecLoader},
+        console::{self, Console},
         contract_runtime::ContractRuntime,
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server,
@@ -44,6 +46,7 @@ use crate::{
             ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
             LinearChainAnnouncement,
         },
+        console::DumpConsensusStateRequest,
         incoming::{
             ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
             NetRequestIncoming, NetResponse, NetResponseIncoming, TrieRequestIncoming,
@@ -157,6 +160,11 @@ pub(crate) enum JoinerEvent {
     #[from]
     StorageRequest(StorageRequest),
 
+    /// Console event.
+    #[from]
+    Console(console::Event),
+
+    /// Requests.
     /// Linear chain block by hash fetcher request.
     #[from]
     BlockFetcherRequest(#[serde(skip_serializing)] FetcherRequest<NodeId, Block>),
@@ -257,6 +265,9 @@ pub(crate) enum JoinerEvent {
     /// Incoming finality signature network message.
     #[from]
     FinalitySignatureIncoming(FinalitySignatureIncoming),
+    /// Consensus dump request.
+    #[from]
+    DumpConsensusStateRequest(DumpConsensusStateRequest),
 }
 
 impl ReactorEvent for JoinerEvent {
@@ -286,11 +297,13 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::DeployAcceptor(_) => "DeployAcceptor",
             JoinerEvent::ContractRuntime(_) => "ContractRuntime",
             JoinerEvent::AddressGossiper(_) => "AddressGossiper",
+            JoinerEvent::Console(_) => "Console",
             JoinerEvent::BlockFetcherRequest(_) => "BlockFetcherRequest",
             JoinerEvent::BlockByHeightFetcherRequest(_) => "BlockByHeightFetcherRequest",
             JoinerEvent::DeployFetcherRequest(_) => "DeployFetcherRequest",
             JoinerEvent::TrieOrChunkFetcherRequest(_) => "TrieOrChunkFetcherRequest",
             JoinerEvent::TrieFetcherRequest(_) => "TrieFetcherRequest",
+            JoinerEvent::DumpConsensusStateRequest(_) => "DumpConsensusStateRequest",
             JoinerEvent::ControlAnnouncement(_) => "ControlAnnouncement",
             JoinerEvent::ContractRuntimeAnnouncement(_) => "ContractRuntimeAnnouncement",
             JoinerEvent::AddressGossiperAnnouncement(_) => "AddressGossiperAnnouncement",
@@ -388,6 +401,7 @@ impl Display for JoinerEvent {
                 write!(f, "block executor announcement: {}", announcement)
             }
             JoinerEvent::AddressGossiper(event) => write!(f, "address gossiper: {}", event),
+            JoinerEvent::Console(event) => write!(f, "console: {}", event),
             JoinerEvent::AddressGossiperAnnouncement(ann) => {
                 write!(f, "address gossiper announcement: {}", ann)
             }
@@ -430,6 +444,9 @@ impl Display for JoinerEvent {
             JoinerEvent::TrieRequestIncoming(inner) => write!(f, "incoming: {}", inner),
             JoinerEvent::TrieResponseIncoming(inner) => write!(f, "incoming: {}", inner),
             JoinerEvent::FinalitySignatureIncoming(inner) => write!(f, "incoming: {}", inner),
+            JoinerEvent::DumpConsensusStateRequest(req) => {
+                write!(f, "consensus dump request: {}", req)
+            }
         }
     }
 }
@@ -449,11 +466,12 @@ pub(crate) struct Reactor {
     deploy_fetcher: Fetcher<Deploy>,
     block_by_hash_fetcher: Fetcher<Block>,
     block_by_height_fetcher: Fetcher<BlockWithMetadata>,
-    block_header_by_hash_fetcher: Fetcher<BlockHeader>,
     block_header_and_finality_signatures_by_height_fetcher: Fetcher<BlockHeaderWithMetadata>,
     trie_or_chunk_fetcher: Fetcher<TrieOrChunk>,
     // Handles requests for fetching tries from the network.
     trie_fetcher: TrieFetcher<NodeId>,
+    console: Console,
+    block_header_by_hash_fetcher: Fetcher<BlockHeader>,
     #[data_size(skip)]
     deploy_acceptor: DeployAcceptor,
     #[data_size(skip)]
@@ -505,6 +523,8 @@ impl reactor::Reactor for Reactor {
         let metrics = Metrics::new(registry.clone());
 
         let chainspec = chainspec_loader.chainspec().as_ref();
+        let (console, console_effects) =
+            Console::new(&WithDir::new(&root, config.console.clone()), event_queue)?;
 
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
@@ -516,6 +536,7 @@ impl reactor::Reactor for Reactor {
         )?;
 
         let mut effects = reactor::wrap_effects(JoinerEvent::SmallNetwork, small_network_effects);
+        effects.extend(reactor::wrap_effects(JoinerEvent::Console, console_effects));
 
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
@@ -531,10 +552,10 @@ impl reactor::Reactor for Reactor {
             sync_effects,
         ));
 
-        let merkle_tree_hash_activation = chainspec_loader
+        let verifiable_chunked_hash_activation = chainspec_loader
             .chainspec()
             .protocol_config
-            .merkle_tree_hash_activation;
+            .verifiable_chunked_hash_activation;
         let protocol_version = &chainspec_loader.chainspec().protocol_config.version;
         let rest_server = RestServer::new(
             config.rest_server.clone(),
@@ -551,7 +572,7 @@ impl reactor::Reactor for Reactor {
         )?;
 
         let fetcher_builder =
-            FetcherBuilder::new(config.fetcher, registry, merkle_tree_hash_activation);
+            FetcherBuilder::new(config.fetcher, registry, verifiable_chunked_hash_activation);
 
         let deploy_fetcher = fetcher_builder.build("deploy")?;
         let block_by_height_fetcher = fetcher_builder.build("block_by_height")?;
@@ -561,7 +582,7 @@ impl reactor::Reactor for Reactor {
         let block_header_by_hash_fetcher = fetcher_builder.build("block_header")?;
 
         let trie_or_chunk_fetcher = fetcher_builder.build("trie_or_chunk")?;
-        let trie_fetcher = TrieFetcher::new(merkle_tree_hash_activation);
+        let trie_fetcher = TrieFetcher::new(verifiable_chunked_hash_activation);
 
         let deploy_acceptor = DeployAcceptor::new(
             config.deploy_acceptor,
@@ -598,6 +619,7 @@ impl reactor::Reactor for Reactor {
                 event_stream_server,
                 memory_metrics,
                 node_startup_instant,
+                console,
             },
             effects,
         ))
@@ -633,7 +655,7 @@ impl reactor::Reactor for Reactor {
                     self.dispatch_event(effect_builder, rng, JoinerEvent::EventStreamServer(event));
 
                 let event = fetcher::Event::GotRemotely {
-                    merkle_tree_hash_activation: None,
+                    verifiable_chunked_hash_activation: None,
                     item: deploy,
                     source,
                 };
@@ -729,6 +751,10 @@ impl reactor::Reactor for Reactor {
                 JoinerEvent::AddressGossiper,
                 self.address_gossiper
                     .handle_event(effect_builder, rng, event),
+            ),
+            JoinerEvent::Console(event) => reactor::wrap_effects(
+                JoinerEvent::Console,
+                self.console.handle_event(effect_builder, rng, event),
             ),
             JoinerEvent::AddressGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
                 gossiped_address,
@@ -861,7 +887,7 @@ impl reactor::Reactor for Reactor {
                     self.chainspec_loader
                         .chainspec()
                         .protocol_config
-                        .merkle_tree_hash_activation,
+                        .verifiable_chunked_hash_activation,
                 )
             }
 
@@ -870,6 +896,11 @@ impl reactor::Reactor for Reactor {
             }) => {
                 debug!(%sender, "finality signatures not handled in joiner reactor");
                 Effects::new()
+            }
+            JoinerEvent::DumpConsensusStateRequest(req) => {
+                // We have no consensus running in the joiner, so we answer with `None`.
+                req.answer(Err(Cow::Borrowed("node is joining, no running consensus")))
+                    .ignore()
             }
         }
     }
@@ -902,11 +933,11 @@ impl Reactor {
         sender: NodeId,
         message: NetResponse,
     ) -> Effects<JoinerEvent> {
-        let merkle_tree_hash_activation = self
+        let verifiable_chunked_hash_activation = self
             .chainspec_loader
             .chainspec()
             .protocol_config
-            .merkle_tree_hash_activation;
+            .verifiable_chunked_hash_activation;
         match message {
             NetResponse::Deploy(ref serialized_item) => {
                 reactor::handle_fetch_response::<Self, Deploy>(
@@ -915,7 +946,7 @@ impl Reactor {
                     rng,
                     sender,
                     serialized_item,
-                    merkle_tree_hash_activation,
+                    verifiable_chunked_hash_activation,
                 )
             }
             NetResponse::Block(ref serialized_item) => {
@@ -925,7 +956,7 @@ impl Reactor {
                     rng,
                     sender,
                     serialized_item,
-                    merkle_tree_hash_activation,
+                    verifiable_chunked_hash_activation,
                 )
             }
             NetResponse::GossipedAddress(_) => {
@@ -946,7 +977,7 @@ impl Reactor {
                     rng,
                     sender,
                     serialized_item,
-                    merkle_tree_hash_activation,
+                    verifiable_chunked_hash_activation,
                 )
             }
             NetResponse::BlockHeaderByHash(ref serialized_item) => {
@@ -956,7 +987,7 @@ impl Reactor {
                     rng,
                     sender,
                     serialized_item,
-                    merkle_tree_hash_activation,
+                    verifiable_chunked_hash_activation,
                 )
             }
             NetResponse::BlockHeaderAndFinalitySignaturesByHeight(ref serialized_item) => {
@@ -966,7 +997,7 @@ impl Reactor {
                     rng,
                     sender,
                     serialized_item,
-                    merkle_tree_hash_activation,
+                    verifiable_chunked_hash_activation,
                 )
             }
         }

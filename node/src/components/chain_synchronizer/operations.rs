@@ -179,13 +179,13 @@ pub(crate) struct KeyBlockInfo {
 impl KeyBlockInfo {
     pub(crate) fn maybe_from_block_header(
         block_header: &BlockHeader,
-        merkle_tree_hash_activation: EraId,
+        verifiable_chunked_hash_activation: EraId,
     ) -> Option<KeyBlockInfo> {
         block_header
             .next_era_validator_weights()
             .and_then(|next_era_validator_weights| {
                 Some(KeyBlockInfo {
-                    key_block_hash: block_header.hash(merkle_tree_hash_activation),
+                    key_block_hash: block_header.hash(verifiable_chunked_hash_activation),
                     validator_weights: next_era_validator_weights.clone(),
                     era_start: block_header.timestamp(),
                     height: block_header.height(),
@@ -255,7 +255,7 @@ async fn get_trusted_key_block_info(
 
         if let Some(key_block_info) = KeyBlockInfo::maybe_from_block_header(
             &current_header_to_walk_back_from,
-            chainspec.protocol_config.merkle_tree_hash_activation,
+            chainspec.protocol_config.verifiable_chunked_hash_activation,
         ) {
             check_block_version(trusted_header, chainspec)?;
             break Ok(key_block_info);
@@ -343,7 +343,8 @@ where
         match effect_builder.fetch::<I, NodeId>(height, peer).await {
             Ok(FetchedData::FromStorage { item }) => {
                 if *item.header().parent_hash()
-                    != parent_header.hash(chainspec.protocol_config.merkle_tree_hash_activation)
+                    != parent_header
+                        .hash(chainspec.protocol_config.verifiable_chunked_hash_activation)
                 {
                     return Err(Error::UnexpectedParentHash {
                         parent: Box::new(parent_header.clone()),
@@ -354,7 +355,8 @@ where
             }
             Ok(FetchedData::FromPeer { item, .. }) => {
                 if *item.header().parent_hash()
-                    != parent_header.hash(chainspec.protocol_config.merkle_tree_hash_activation)
+                    != parent_header
+                        .hash(chainspec.protocol_config.verifiable_chunked_hash_activation)
                 {
                     warn!(
                         ?peer,
@@ -556,7 +558,7 @@ async fn fast_sync_to_most_recent(
                 // If the new block is a switch block, update the validator weights, etc...
                 if let Some(key_block_info) = KeyBlockInfo::maybe_from_block_header(
                     &most_recent_block_header,
-                    chainspec.protocol_config.merkle_tree_hash_activation,
+                    chainspec.protocol_config.verifiable_chunked_hash_activation,
                 ) {
                     trusted_key_block_info = key_block_info;
                 }
@@ -669,7 +671,7 @@ async fn archival_sync(
 
     let trusted_block = *fetch_and_store_block_by_hash(
         effect_builder,
-        trusted_block_header.hash(chainspec.protocol_config.merkle_tree_hash_activation),
+        trusted_block_header.hash(chainspec.protocol_config.verifiable_chunked_hash_activation),
     )
     .await?;
 
@@ -709,7 +711,7 @@ async fn archival_sync(
             .await?;
         if let Some(key_block_info) = KeyBlockInfo::maybe_from_block_header(
             most_recent_block.header(),
-            chainspec.protocol_config.merkle_tree_hash_activation,
+            chainspec.protocol_config.verifiable_chunked_hash_activation,
         ) {
             trusted_key_block_info = key_block_info;
         }
@@ -834,7 +836,7 @@ pub(super) async fn run_chain_sync_task(
     // Execute blocks to get to current.
     let mut execution_pre_state = ExecutionPreState::from_block_header(
         &most_recent_block_header,
-        chainspec.protocol_config.merkle_tree_hash_activation,
+        chainspec.protocol_config.verifiable_chunked_hash_activation,
     );
     info!(
         era_id = ?most_recent_block_header.era_id(),
@@ -900,12 +902,12 @@ pub(super) async fn run_chain_sync_task(
         most_recent_block_header = block.take_header();
         execution_pre_state = ExecutionPreState::from_block_header(
             &most_recent_block_header,
-            chainspec.protocol_config.merkle_tree_hash_activation,
+            chainspec.protocol_config.verifiable_chunked_hash_activation,
         );
 
         if let Some(key_block_info) = KeyBlockInfo::maybe_from_block_header(
             &most_recent_block_header,
-            chainspec.protocol_config.merkle_tree_hash_activation,
+            chainspec.protocol_config.verifiable_chunked_hash_activation,
         ) {
             trusted_key_block_info = key_block_info;
         }
@@ -1004,7 +1006,7 @@ mod tests {
         era_id: EraId,
         height: u64,
         switch_block: bool,
-        merkle_tree_hash_activation: EraId,
+        verifiable_chunked_hash_activation: EraId,
     ) -> BlockHeader {
         let secret_key = SecretKey::doc_example();
         let public_key = PublicKey::from(secret_key);
@@ -1040,7 +1042,7 @@ mod tests {
             finalized_block,
             next_era_validator_weights,
             Default::default(), // protocol version
-            merkle_tree_hash_activation,
+            verifiable_chunked_hash_activation,
         )
         .expect("failed to create block for tests")
         .take_header()
@@ -1064,8 +1066,8 @@ mod tests {
         chainspec.core_config.era_duration = era_duration;
         chainspec.core_config.minimum_era_height = minimum_era_height;
 
-        // `merkle_tree_hash_activation` can be chosen arbitrarily
-        let merkle_tree_hash_activation = EraId::from(rng.gen_range(0..=10));
+        // `verifiable_chunked_hash_activation` can be chosen arbitrarily
+        let verifiable_chunked_hash_activation = EraId::from(rng.gen_range(0..=10));
 
         // We assume era 6 started after six minimum era durations, at block 100.
         let era6_start = genesis_time + era_duration * 6;
@@ -1074,12 +1076,14 @@ mod tests {
             EraId::from(5),
             100,
             true,
-            merkle_tree_hash_activation,
+            verifiable_chunked_hash_activation,
         );
 
-        let trusted_switch_block_info5 =
-            KeyBlockInfo::maybe_from_block_header(&switch_block5, merkle_tree_hash_activation)
-                .expect("no switch block info for switch block");
+        let trusted_switch_block_info5 = KeyBlockInfo::maybe_from_block_header(
+            &switch_block5,
+            verifiable_chunked_hash_activation,
+        )
+        .expect("no switch block info for switch block");
 
         // If we are still within the minimum era duration the era is current, even if we have the
         // required number of blocks (115 - 100 > 10).
@@ -1090,7 +1094,7 @@ mod tests {
             EraId::from(6),
             115,
             false,
-            merkle_tree_hash_activation,
+            verifiable_chunked_hash_activation,
         );
         assert!(is_current_era_given_current_timestamp(
             &block,
@@ -1109,7 +1113,7 @@ mod tests {
             EraId::from(6),
             105,
             false,
-            merkle_tree_hash_activation,
+            verifiable_chunked_hash_activation,
         );
         assert!(is_current_era_given_current_timestamp(
             &block,
@@ -1126,7 +1130,7 @@ mod tests {
             EraId::from(6),
             105,
             false,
-            merkle_tree_hash_activation,
+            verifiable_chunked_hash_activation,
         );
         assert!(!is_current_era_given_current_timestamp(
             &block,
@@ -1143,15 +1147,15 @@ mod tests {
         let v1_2_0 = ProtocolVersion::from_parts(1, 2, 0);
         let v1_3_0 = ProtocolVersion::from_parts(1, 3, 0);
 
-        // `merkle_tree_hash_activation` can be chosen arbitrarily
-        let merkle_tree_hash_activation = EraId::from(rng.gen_range(0..=10));
+        // `verifiable_chunked_hash_activation` can be chosen arbitrarily
+        let verifiable_chunked_hash_activation = EraId::from(rng.gen_range(0..=10));
         let header = Block::random_with_specifics(
             &mut rng,
             EraId::from(6),
             101,
             v1_3_0,
             false,
-            merkle_tree_hash_activation,
+            verifiable_chunked_hash_activation,
         )
         .take_header();
 

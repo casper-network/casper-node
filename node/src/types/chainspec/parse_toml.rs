@@ -36,7 +36,7 @@ struct TomlProtocol {
     hard_reset: bool,
     activation_point: ActivationPoint,
     last_emergency_restart: Option<EraId>,
-    merkle_tree_hash_activation: EraId,
+    verifiable_chunked_hash_activation: EraId,
 }
 
 /// A chainspec configuration as laid out in the TOML-encoded configuration file.
@@ -60,7 +60,9 @@ impl From<&Chainspec> for TomlChainspec {
             hard_reset: chainspec.protocol_config.hard_reset,
             activation_point: chainspec.protocol_config.activation_point,
             last_emergency_restart: chainspec.protocol_config.last_emergency_restart,
-            merkle_tree_hash_activation: chainspec.protocol_config.merkle_tree_hash_activation,
+            verifiable_chunked_hash_activation: chainspec
+                .protocol_config
+                .verifiable_chunked_hash_activation,
         };
         let network = TomlNetwork {
             name: chainspec.network_config.name.clone(),
@@ -112,7 +114,9 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<Chainspec,
         activation_point: toml_chainspec.protocol.activation_point,
         global_state_update,
         last_emergency_restart: toml_chainspec.protocol.last_emergency_restart,
-        merkle_tree_hash_activation: toml_chainspec.protocol.merkle_tree_hash_activation,
+        verifiable_chunked_hash_activation: toml_chainspec
+            .protocol
+            .verifiable_chunked_hash_activation,
     };
 
     Ok(Chainspec {

@@ -17,7 +17,7 @@ activation_point = 3000
 
 # The era ID starting at which the new Merkle tree-based hashing scheme is applied.
 # TODO: Set this to the same value as the upgrade to the first version supporting Merkle tree-based hashing.
-merkle_tree_hash_activation = 9999
+verifiable_chunked_hash_activation = 9999
 
 [network]
 # Human readable name for convenience; the genesis_hash is the true identifier.  The name influences the genesis hash by

@@ -59,6 +59,7 @@
 //! some point. Failing to do so will result in a resource leak.
 
 pub(crate) mod announcements;
+pub(crate) mod console;
 pub(crate) mod incoming;
 pub(crate) mod requests;
 
@@ -100,7 +101,7 @@ use crate::{
     components::{
         block_validator::ValidatingBlock,
         chainspec_loader::{CurrentRunInfo, NextUpgrade},
-        consensus::{BlockContext, ClContext, ValidatorChange},
+        consensus::{BlockContext, ClContext, EraDump, ValidatorChange},
         contract_runtime::{
             BlockAndExecutionEffects, BlockExecutionError, EraValidatorsRequest, ExecutionPreState,
         },
@@ -128,7 +129,10 @@ use requests::{
     NetworkRequest, StorageRequest, TrieFetcherRequest,
 };
 
-use self::requests::{BeginGossipRequest, StateStoreRequest};
+use self::{
+    console::DumpConsensusStateRequest,
+    requests::{BeginGossipRequest, StateStoreRequest},
+};
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
 static UNOBTAINABLE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
@@ -1791,6 +1795,27 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(ConsensusRequest::ValidatorChanges, QueueKind::Regular)
             .await
+    }
+
+    /// Dump consensus state for a specific era, using the supplied function to serialize the
+    /// output.
+    pub(crate) async fn console_dump_consensus_state(
+        self,
+        era_id: Option<EraId>,
+        serialize: fn(&EraDump<'_>) -> Result<Vec<u8>, Cow<'static, str>>,
+    ) -> Result<Vec<u8>, Cow<'static, str>>
+    where
+        REv: From<DumpConsensusStateRequest>,
+    {
+        self.make_request(
+            |responder| DumpConsensusStateRequest {
+                era_id,
+                serialize,
+                responder,
+            },
+            QueueKind::Control,
+        )
+        .await
     }
 }
 

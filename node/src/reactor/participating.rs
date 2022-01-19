@@ -31,6 +31,7 @@ use crate::{
         chain_synchronizer::JoiningOutcome,
         chainspec_loader::{self, ChainspecLoader},
         consensus::{self, EraSupervisor, HighwayProtocol},
+        console::{self, Console},
         contract_runtime::{BlockAndExecutionEffects, ContractRuntime, ExecutionPreState},
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server::{self, EventStreamServer},
@@ -51,6 +52,7 @@ use crate::{
             DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
             RpcServerAnnouncement,
         },
+        console::DumpConsensusStateRequest,
         incoming::{
             ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
             NetRequestIncoming, NetResponse, NetResponseIncoming, TrieRequest, TrieRequestIncoming,
@@ -122,6 +124,9 @@ pub(crate) enum ParticipatingEvent {
     /// Linear chain event.
     #[from]
     LinearChain(#[serde(skip_serializing)] linear_chain::Event),
+    /// Console event.
+    #[from]
+    Console(console::Event),
 
     // Requests
     /// Contract runtime request.
@@ -156,6 +161,9 @@ pub(crate) enum ParticipatingEvent {
     /// Request for state storage.
     #[from]
     StateStoreRequest(StateStoreRequest),
+    /// Consensus dump request.
+    #[from]
+    DumpConsensusStateRequest(DumpConsensusStateRequest),
 
     // Announcements
     /// Control announcement.
@@ -243,6 +251,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::BlockValidator(_) => "BlockValidator",
             ParticipatingEvent::LinearChain(_) => "LinearChain",
             ParticipatingEvent::ContractRuntime(_) => "ContractRuntime",
+            ParticipatingEvent::Console(_) => "Console",
             ParticipatingEvent::NetworkRequest(_) => "NetworkRequest",
             ParticipatingEvent::NetworkInfoRequest(_) => "NetworkInfoRequest",
             ParticipatingEvent::DeployFetcherRequest(_) => "DeployFetcherRequest",
@@ -252,6 +261,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::ChainspecLoaderRequest(_) => "ChainspecLoaderRequest",
             ParticipatingEvent::StorageRequest(_) => "StorageRequest",
             ParticipatingEvent::StateStoreRequest(_) => "StateStoreRequest",
+            ParticipatingEvent::DumpConsensusStateRequest(_) => "DumpConsensusStateRequest",
             ParticipatingEvent::ControlAnnouncement(_) => "ControlAnnouncement",
             ParticipatingEvent::RpcServerAnnouncement(_) => "RpcServerAnnouncement",
             ParticipatingEvent::DeployAcceptorAnnouncement(_) => "DeployAcceptorAnnouncement",
@@ -340,6 +350,7 @@ impl Display for ParticipatingEvent {
             }
             ParticipatingEvent::LinearChain(event) => write!(f, "linear-chain event {}", event),
             ParticipatingEvent::BlockValidator(event) => write!(f, "block validator: {}", event),
+            ParticipatingEvent::Console(event) => write!(f, "console: {}", event),
             ParticipatingEvent::NetworkRequest(req) => write!(f, "network request: {}", req),
             ParticipatingEvent::NetworkInfoRequest(req) => {
                 write!(f, "network info request: {}", req)
@@ -363,6 +374,9 @@ impl Display for ParticipatingEvent {
             }
             ParticipatingEvent::MetricsRequest(req) => write!(f, "metrics request: {}", req),
             ParticipatingEvent::ControlAnnouncement(ctrl_ann) => write!(f, "control: {}", ctrl_ann),
+            ParticipatingEvent::DumpConsensusStateRequest(req) => {
+                write!(f, "dump consensus state: {}", req)
+            }
             ParticipatingEvent::RpcServerAnnouncement(ann) => {
                 write!(f, "api server announcement: {}", ann)
             }
@@ -457,6 +471,7 @@ pub(crate) struct Reactor {
     block_proposer: BlockProposer,
     block_validator: BlockValidator<NodeId>,
     linear_chain: LinearChainComponent<NodeId>,
+    console: Console,
 
     // Non-components.
     #[data_size(skip)] // Never allocates heap data.
@@ -636,6 +651,11 @@ impl reactor::Reactor for Reactor {
 
         let metrics = Metrics::new(registry.clone());
 
+        let (console, console_effects) =
+            Console::new(&WithDir::new(&root, config.console.clone()), event_queue)?;
+
+        let effect_builder = EffectBuilder::new(event_queue);
+
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
 
@@ -660,7 +680,7 @@ impl reactor::Reactor for Reactor {
             "deploy",
             config.fetcher,
             registry,
-            chainspec.protocol_config.merkle_tree_hash_activation,
+            chainspec.protocol_config.verifiable_chunked_hash_activation,
         )?;
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
@@ -668,10 +688,6 @@ impl reactor::Reactor for Reactor {
             gossiper::get_deploy_from_storage::<Deploy, ParticipatingEvent>,
             registry,
         )?;
-
-        let maybe_next_activation_point = chainspec_loader
-            .next_upgrade()
-            .map(|next_upgrade| next_upgrade.activation_point());
 
         let (block_proposer, block_proposer_effects) = BlockProposer::new(
             registry.clone(),
@@ -694,6 +710,14 @@ impl reactor::Reactor for Reactor {
             chainspec.as_ref(),
         )?;
 
+        effects.extend(reactor::wrap_effects(
+            ParticipatingEvent::Console,
+            console_effects,
+        ));
+
+        let maybe_next_activation_point = chainspec_loader
+            .next_upgrade()
+            .map(|next_upgrade| next_upgrade.activation_point());
         let (consensus, init_consensus_effects) = EraSupervisor::new(
             latest_block_header.next_block_era_id(),
             storage.root_path(),
@@ -714,7 +738,7 @@ impl reactor::Reactor for Reactor {
 
         contract_runtime.set_initial_state(ExecutionPreState::from_block_header(
             &latest_block_header,
-            chainspec.protocol_config.merkle_tree_hash_activation,
+            chainspec.protocol_config.verifiable_chunked_hash_activation,
         ));
 
         let block_validator = BlockValidator::new(Arc::clone(chainspec));
@@ -725,7 +749,7 @@ impl reactor::Reactor for Reactor {
             chainspec.core_config.unbonding_delay,
             chainspec.highway_config.finality_threshold_fraction,
             maybe_next_activation_point,
-            chainspec.protocol_config.merkle_tree_hash_activation,
+            chainspec.protocol_config.verifiable_chunked_hash_activation,
         )?;
 
         effects.extend(reactor::wrap_effects(
@@ -757,6 +781,7 @@ impl reactor::Reactor for Reactor {
                 block_proposer,
                 block_validator,
                 linear_chain,
+                console,
                 memory_metrics,
                 event_queue_metrics,
             },
@@ -838,6 +863,10 @@ impl reactor::Reactor for Reactor {
                 ParticipatingEvent::LinearChain,
                 self.linear_chain.handle_event(effect_builder, rng, event),
             ),
+            ParticipatingEvent::Console(event) => reactor::wrap_effects(
+                ParticipatingEvent::Console,
+                self.console.handle_event(effect_builder, rng, event),
+            ),
 
             // Requests:
             ParticipatingEvent::NetworkRequest(req) => {
@@ -884,6 +913,10 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::StateStoreRequest(req) => reactor::wrap_effects(
                 ParticipatingEvent::Storage,
                 self.storage.handle_event(effect_builder, rng, req.into()),
+            ),
+            ParticipatingEvent::DumpConsensusStateRequest(req) => reactor::wrap_effects(
+                ParticipatingEvent::Consensus,
+                self.consensus.handle_event(effect_builder, rng, req.into()),
             ),
 
             // Announcements:
@@ -944,7 +977,7 @@ impl reactor::Reactor for Reactor {
                 ));
 
                 let event = fetcher::Event::GotRemotely {
-                    merkle_tree_hash_activation: None,
+                    verifiable_chunked_hash_activation: None,
                     item: deploy,
                     source,
                 };
@@ -1080,7 +1113,7 @@ impl reactor::Reactor for Reactor {
                             self.chainspec_loader
                                 .chainspec()
                                 .protocol_config
-                                .merkle_tree_hash_activation,
+                                .verifiable_chunked_hash_activation,
                         ),
                     });
                 let reactor_event_es = ParticipatingEvent::EventStreamServer(

@@ -118,10 +118,10 @@ impl Digest {
     /// 1 2 4 5 8 9
     /// │ │ │ │ │ │
     /// └─3 └─6 └─10
-    ///    │   │   │
-    ///    └───7   │
-    ///        │   │
-    ///        └───11
+    ///   │   │   │
+    ///   └───7   │
+    ///       │   │
+    ///       └───11
     /// ```
     ///
     /// Finally hashes the number of elements with the resulting hash. In the example above the

@@ -5,6 +5,7 @@
 //! it assumes is the concept of era/epoch and that each era runs separate consensus instance.
 //! Most importantly, it doesn't care about what messages it's forwarding.
 
+pub(super) mod debug;
 mod era;
 
 use std::{
@@ -241,8 +242,10 @@ where
     }
 
     /// Returns the merkle tree hash activation from the chainspec.
-    fn merkle_tree_hash_activation(&self) -> EraId {
-        self.chainspec.protocol_config.merkle_tree_hash_activation
+    fn verifiable_chunked_hash_activation(&self) -> EraId {
+        self.chainspec
+            .protocol_config
+            .verifiable_chunked_hash_activation
     }
 
     /// Returns a list of status changes of active validators.
@@ -404,7 +407,7 @@ where
         let auction_delay = self.chainspec.core_config.auction_delay as usize;
         let booking_block_hash =
             if let Some(booking_block) = switch_blocks.iter().rev().nth(auction_delay) {
-                booking_block.hash(self.merkle_tree_hash_activation())
+                booking_block.hash(self.verifiable_chunked_hash_activation())
             } else {
                 // If there's no booking block for the `era_id`
                 // (b/c it would have been from before Genesis, upgrade or emergency restart),
@@ -680,7 +683,7 @@ where
         let mut effects = if self.is_validator_in(&our_pk, era_id) {
             effect_builder
                 .announce_created_finality_signature(FinalitySignature::new(
-                    block_header.hash(self.merkle_tree_hash_activation()),
+                    block_header.hash(self.verifiable_chunked_hash_activation()),
                     era_id,
                     &our_sk,
                     our_pk,
@@ -1088,6 +1091,16 @@ where
             Some(upgrade_point) => upgrade_point.should_upgrade(era_id),
         }
     }
+
+    /// Get a reference to the era supervisor's open eras.
+    pub(crate) fn open_eras(&self) -> &HashMap<EraId, Era<I>> {
+        &self.open_eras
+    }
+
+    /// Returns the most recent era.
+    pub(crate) fn current_era(&self) -> EraId {
+        self.current_era
+    }
 }
 
 #[cfg(test)]
@@ -1095,11 +1108,6 @@ impl<I> EraSupervisor<I>
 where
     I: NodeIdT,
 {
-    /// Returns the most recent era.
-    pub(crate) fn current_era(&self) -> EraId {
-        self.current_era
-    }
-
     /// Returns this node's validator key.
     pub(crate) fn public_key(&self) -> &PublicKey {
         &self.public_signing_key

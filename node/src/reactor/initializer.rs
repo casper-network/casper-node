@@ -212,7 +212,7 @@ impl Reactor {
             chainspec_loader
                 .chainspec()
                 .protocol_config
-                .merkle_tree_hash_activation,
+                .verifiable_chunked_hash_activation,
         )?;
 
         let contract_runtime = ContractRuntime::new(
@@ -230,7 +230,7 @@ impl Reactor {
             chainspec_loader
                 .chainspec()
                 .protocol_config
-                .merkle_tree_hash_activation,
+                .verifiable_chunked_hash_activation,
         )?;
 
         if should_check_integrity {
