@@ -55,11 +55,11 @@ pub(crate) enum Event<T: Item> {
     },
     /// An announcement from a different component that we have accepted and stored the given item.
     GotRemotely {
-        // TODO[RC]: `merkle_tree_hash_activation` is scattered around, because this is a piece of
-        // information obtained in the top-level code (read from the chainspec), but
-        // required across all the layers, including the very bottom ones. At some point we should
-        // consider refactoring to get rid of such "tramp data".
-        merkle_tree_hash_activation: Option<EraId>,
+        // TODO[RC]: `verifiable_chunked_hash_activation` is scattered around, because this is a
+        // piece of information obtained in the top-level code (read from the chainspec),
+        // but required across all the layers, including the very bottom ones. At some
+        // point we should consider refactoring to get rid of such "tramp data".
+        verifiable_chunked_hash_activation: Option<EraId>,
         item: Box<T>,
         source: Source<NodeId>,
     },
@@ -77,11 +77,11 @@ impl<T: Item> Event<T> {
     pub(crate) fn from_get_response_serialized_item(
         peer: NodeId,
         serialized_item: &[u8],
-        merkle_tree_hash_activation: EraId,
+        verifiable_chunked_hash_activation: EraId,
     ) -> Option<Self> {
         match bincode::deserialize::<FetchedOrNotFound<T, T::Id>>(serialized_item) {
             Ok(FetchedOrNotFound::Fetched(item)) => Some(Event::GotRemotely {
-                merkle_tree_hash_activation: Some(merkle_tree_hash_activation),
+                verifiable_chunked_hash_activation: Some(verifiable_chunked_hash_activation),
                 item: Box::new(item),
                 source: Source::Peer(peer),
             }),
@@ -107,7 +107,7 @@ impl From<DeployAcceptorAnnouncement<NodeId>> for Event<Deploy> {
         match announcement {
             DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source } => {
                 Event::GotRemotely {
-                    merkle_tree_hash_activation: None,
+                    verifiable_chunked_hash_activation: None,
                     item: deploy,
                     source,
                 }
@@ -136,19 +136,21 @@ impl<T: Item> Display for Event<T> {
                 }
             }
             Event::GotRemotely {
-                merkle_tree_hash_activation,
+                verifiable_chunked_hash_activation,
                 item,
                 source,
             } => {
-                // If `merkle_tree_hash_activation` is not present here then our T is an object
-                // that doesn't require the activation point to calculate its `id`, hence we can
-                // provide any value to the `id()` method, as it'll be ignored.
-                let merkle_tree_hash_activation = merkle_tree_hash_activation.unwrap_or_default();
+                // If `verifiable_chunked_hash_activation` is not present here then our T is an
+                // object that doesn't require the activation point to calculate its
+                // `id`, hence we can provide any value to the `id()` method, as
+                // it'll be ignored.
+                let verifiable_chunked_hash_activation =
+                    verifiable_chunked_hash_activation.unwrap_or_default();
 
                 write!(
                     formatter,
                     "got {} from {}",
-                    item.id(merkle_tree_hash_activation),
+                    item.id(verifiable_chunked_hash_activation),
                     source
                 )
             }
