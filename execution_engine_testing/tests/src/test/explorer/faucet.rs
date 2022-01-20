@@ -7,19 +7,22 @@ use casper_types::{
     RuntimeArgs, SecretKey, U512,
 };
 
+// Test constants.
 const FAUCET_INSTALLER_SESSION: &str = "faucet_stored.wasm";
 const FAUCET_CONTRACT_NAMED_KEY: &str = "faucet";
-// const FAUCET_CONTRACT_PACKAGE_NAMED_KEY: &str = "faucet_package";
+const INSTALLER_FUND_AMOUNT: u64 = 500_000_000_000_000;
+const TWO_HOURS_AS_MILLIS: u64 = 7_200_000;
+const FAUCET_ID: u64 = 1337;
 
-const ENTRY_POINT_FAUCET: &str = "call_faucet";
-const ENTRY_POINT_SET_VARIABLES: &str = "set_variables";
-
+// contract args and entry points.
 const ARG_TARGET: &str = "target";
 const ARG_AMOUNT: &str = "amount";
 const ARG_ID: &str = "id";
 const ARG_AVAILABLE_AMOUNT: &str = "available_amount";
 const ARG_TIME_INTERVAL: &str = "time_interval";
 const ARG_DISTRIBUTIONS_PER_INTERVAL: &str = "distributions_per_interval";
+const ENTRY_POINT_FAUCET: &str = "call_faucet";
+const ENTRY_POINT_SET_VARIABLES: &str = "set_variables";
 
 // stored contract named keys.
 const AVAILABLE_AMOUNT_NAMED_KEY: &str = "available_amount";
@@ -45,7 +48,7 @@ fn should_install_faucet_contract() {
         *DEFAULT_ACCOUNT_ADDR,
         runtime_args! {
             mint::ARG_TARGET => installer_account,
-            mint::ARG_AMOUNT => 300_000_000_000_000u64,
+            mint::ARG_AMOUNT => INSTALLER_FUND_AMOUNT,
             mint::ARG_ID => <Option<u64>>::None
         },
     )
@@ -56,10 +59,11 @@ fn should_install_faucet_contract() {
         .expect_success()
         .commit();
 
+    let faucet_fund_amount = U512::from(500_000u64);
     let installer_session_request = ExecuteRequestBuilder::standard(
         installer_account,
         FAUCET_INSTALLER_SESSION,
-        runtime_args! {ARG_ID => 1337u64, ARG_AMOUNT => U512::from(500_000u64)},
+        runtime_args! {ARG_ID => FAUCET_ID, ARG_AMOUNT => faucet_fund_amount},
     )
     .build();
 
@@ -76,7 +80,9 @@ fn should_install_faucet_contract() {
     assert!(installer_named_keys
         .get(FAUCET_CONTRACT_NAMED_KEY)
         .is_some());
-    assert!(installer_named_keys.get("faucet_1337").is_some());
+
+    let faucet_id = format!("faucet_{}", FAUCET_ID);
+    assert!(installer_named_keys.get(&faucet_id).is_some());
 
     let faucet_named_key = installer_named_keys
         .get(FAUCET_CONTRACT_NAMED_KEY)
@@ -163,7 +169,7 @@ fn should_allow_installer_to_set_variables() {
         *DEFAULT_ACCOUNT_ADDR,
         runtime_args! {
             mint::ARG_TARGET => installer_account,
-            mint::ARG_AMOUNT => 300_000_000_000_000u64,
+            mint::ARG_AMOUNT => INSTALLER_FUND_AMOUNT,
             mint::ARG_ID => <Option<u64>>::None
         },
     )
@@ -174,10 +180,11 @@ fn should_allow_installer_to_set_variables() {
         .expect_success()
         .commit();
 
+    let faucet_fund_amount = U512::from(500_000u64);
     let installer_session_request = ExecuteRequestBuilder::standard(
         installer_account,
         FAUCET_INSTALLER_SESSION,
-        runtime_args! {ARG_ID => 1337u64, ARG_AMOUNT => U512::from(500_000u64)},
+        runtime_args! {ARG_ID => FAUCET_ID, ARG_AMOUNT => faucet_fund_amount},
     )
     .build();
 
@@ -208,7 +215,7 @@ fn should_allow_installer_to_set_variables() {
         .expect("failed to find faucet purse");
 
     let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
-    assert_eq!(faucet_purse_balance, U512::from(500_000u64));
+    assert_eq!(faucet_purse_balance, faucet_fund_amount);
 
     let available_amount = builder
         .query(
@@ -241,7 +248,7 @@ fn should_allow_installer_to_set_variables() {
         .expect("failed to convert to u64");
 
     // defaults to around two hours.
-    assert_eq!(time_interval, 7200000u64);
+    assert_eq!(time_interval, TWO_HOURS_AS_MILLIS);
 
     let distributions_per_interval = builder
         .query(
@@ -252,11 +259,14 @@ fn should_allow_installer_to_set_variables() {
         .expect("failed to find distributions per interval named key")
         .as_cl_value()
         .cloned()
-        .expect("failed to conert to cl value")
+        .expect("failed to convert to cl value")
         .into_t::<u64>()
         .expect("failed to convert to u64");
 
-    assert_eq!(distributions_per_interval, 500u64);
+    assert_eq!(distributions_per_interval, 0u64);
+
+    let assigned_time_interval = 10_000u64;
+    let assigned_distributions_per_interval = 2u64;
 
     let installer_set_variable_request = {
         let deploy_item = DeployItemBuilder::new()
@@ -266,9 +276,9 @@ fn should_allow_installer_to_set_variables() {
                 FAUCET_CONTRACT_NAMED_KEY,
                 ENTRY_POINT_SET_VARIABLES,
                 runtime_args! {
-                    ARG_AVAILABLE_AMOUNT => U512::from(500_000u64),
-                    ARG_TIME_INTERVAL => 10_000u64,
-                    ARG_DISTRIBUTIONS_PER_INTERVAL => 2u64
+                    ARG_AVAILABLE_AMOUNT => faucet_fund_amount,
+                    ARG_TIME_INTERVAL => assigned_time_interval,
+                    ARG_DISTRIBUTIONS_PER_INTERVAL => assigned_distributions_per_interval
                 },
             )
             .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
@@ -296,7 +306,7 @@ fn should_allow_installer_to_set_variables() {
         .into_t::<U512>()
         .expect("failed to convert into U512");
 
-    assert_eq!(available_amount, U512::from(500_000u64));
+    assert_eq!(available_amount, faucet_fund_amount);
 
     let time_interval = builder
         .query(
@@ -307,11 +317,11 @@ fn should_allow_installer_to_set_variables() {
         .expect("failed to find time interval named key")
         .as_cl_value()
         .cloned()
-        .expect("failed to conert to cl value")
+        .expect("failed to convert to cl value")
         .into_t::<u64>()
         .expect("failed to convert to u64");
 
-    assert_eq!(time_interval, 10_000u64);
+    assert_eq!(time_interval, assigned_time_interval);
 
     let distributions_per_interval = builder
         .query(
@@ -322,11 +332,14 @@ fn should_allow_installer_to_set_variables() {
         .expect("failed to find distributions per interval named key")
         .as_cl_value()
         .cloned()
-        .expect("failed to conert to cl value")
+        .expect("failed to convert to cl value")
         .into_t::<u64>()
         .expect("failed to convert to u64");
 
-    assert_eq!(distributions_per_interval, 2u64);
+    assert_eq!(
+        distributions_per_interval,
+        assigned_distributions_per_interval
+    );
 }
 
 #[ignore]
@@ -349,7 +362,7 @@ fn should_fund_new_account() {
         *DEFAULT_ACCOUNT_ADDR,
         runtime_args! {
             mint::ARG_TARGET => installer_account,
-            mint::ARG_AMOUNT => 300_000_000_000_000u64,
+            mint::ARG_AMOUNT => INSTALLER_FUND_AMOUNT,
             mint::ARG_ID => <Option<u64>>::None
         },
     )
@@ -360,10 +373,11 @@ fn should_fund_new_account() {
         .expect_success()
         .commit();
 
+    let faucet_fund_amount = U512::from(500_000u64);
     let installer_session_request = ExecuteRequestBuilder::standard(
         installer_account,
         FAUCET_INSTALLER_SESSION,
-        runtime_args! {ARG_ID => 1337u64, ARG_AMOUNT => U512::from(500_000u64)},
+        runtime_args! {ARG_ID => FAUCET_ID, ARG_AMOUNT => faucet_fund_amount },
     )
     .build();
 
@@ -394,7 +408,7 @@ fn should_fund_new_account() {
         .expect("failed to find faucet purse");
 
     let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
-    assert_eq!(faucet_purse_balance, U512::from(500_000u64));
+    assert_eq!(faucet_purse_balance, faucet_fund_amount);
 
     let available_amount = builder
         .query(
@@ -413,6 +427,9 @@ fn should_fund_new_account() {
     // the set_variable entrypoint to finish setup.
     assert_eq!(available_amount, U512::zero());
 
+    let assigned_time_interval = 10_000u64;
+    let assigned_distributions_per_interval = 2u64;
+    let half_of_faucet_fund_amount = faucet_fund_amount / 2;
     let installer_set_variable_request = {
         let deploy_item = DeployItemBuilder::new()
             .with_address(installer_account)
@@ -421,9 +438,9 @@ fn should_fund_new_account() {
                 FAUCET_CONTRACT_NAMED_KEY,
                 ENTRY_POINT_SET_VARIABLES,
                 runtime_args! {
-                    ARG_AVAILABLE_AMOUNT => U512::from(500_000u64),
-                    ARG_TIME_INTERVAL => 10_000u64,
-                    ARG_DISTRIBUTIONS_PER_INTERVAL => 2u64
+                    ARG_AVAILABLE_AMOUNT => faucet_fund_amount,
+                    ARG_TIME_INTERVAL => assigned_time_interval,
+                    ARG_DISTRIBUTIONS_PER_INTERVAL => assigned_distributions_per_interval
                 },
             )
             .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
@@ -451,7 +468,7 @@ fn should_fund_new_account() {
         .into_t::<U512>()
         .expect("failed to convert into U512");
 
-    assert_eq!(available_amount, U512::from(500_000u64));
+    assert_eq!(available_amount, faucet_fund_amount);
 
     let remaining_amount = builder
         .query(
@@ -466,7 +483,7 @@ fn should_fund_new_account() {
         .into_t::<U512>()
         .expect("failed to convert into U512");
 
-    assert_eq!(remaining_amount, U512::from(500_000u64));
+    assert_eq!(remaining_amount, faucet_fund_amount);
 
     let faucet_call_by_installer = {
         let deploy_item = DeployItemBuilder::new()
@@ -501,12 +518,12 @@ fn should_fund_new_account() {
         .expect("failed to find faucet purse");
 
     let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
-    assert_eq!(faucet_purse_balance, U512::from(250_000u64));
+    assert_eq!(faucet_purse_balance, half_of_faucet_fund_amount);
 
     // check the balance of the user's main purse
     let user_main_purse_balance_after =
         builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
-    assert_eq!(user_main_purse_balance_after, U512::from(250_000u64));
+    assert_eq!(user_main_purse_balance_after, half_of_faucet_fund_amount);
 }
 
 #[ignore]
@@ -529,7 +546,7 @@ fn should_fund_existing_account() {
         *DEFAULT_ACCOUNT_ADDR,
         runtime_args! {
             mint::ARG_TARGET => installer_account,
-            mint::ARG_AMOUNT => 300_000_000_000_000u64,
+            mint::ARG_AMOUNT => INSTALLER_FUND_AMOUNT,
             mint::ARG_ID => <Option<u64>>::None
         },
     )
@@ -540,10 +557,11 @@ fn should_fund_existing_account() {
         .expect_success()
         .commit();
 
+    let faucet_fund_amount = U512::from(200_000_000_000_000u64);
     let installer_session_request = ExecuteRequestBuilder::standard(
         installer_account,
         FAUCET_INSTALLER_SESSION,
-        runtime_args! {ARG_ID => 1337u64, ARG_AMOUNT => U512::from(200_000_000_000_000u64)},
+        runtime_args! {ARG_ID => FAUCET_ID, ARG_AMOUNT => faucet_fund_amount},
     )
     .build();
 
@@ -574,7 +592,7 @@ fn should_fund_existing_account() {
         .expect("failed to find faucet purse");
 
     let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
-    assert_eq!(faucet_purse_balance, U512::from(200_000_000_000_000u64));
+    assert_eq!(faucet_purse_balance, faucet_fund_amount);
 
     let available_amount = builder
         .query(
@@ -593,6 +611,8 @@ fn should_fund_existing_account() {
     // the set_variable entrypoint to finish setup.
     assert_eq!(available_amount, U512::zero());
 
+    let assigned_time_interval = 10_000u64;
+    let assigned_distributions_per_interval = 2u64;
     let installer_set_variable_request = {
         let deploy_item = DeployItemBuilder::new()
             .with_address(installer_account)
@@ -601,9 +621,9 @@ fn should_fund_existing_account() {
                 FAUCET_CONTRACT_NAMED_KEY,
                 ENTRY_POINT_SET_VARIABLES,
                 runtime_args! {
-                    ARG_AVAILABLE_AMOUNT => U512::from(200_000_000_000_000u64),
-                    ARG_TIME_INTERVAL => 10_000u64,
-                    ARG_DISTRIBUTIONS_PER_INTERVAL => 2u64
+                    ARG_AVAILABLE_AMOUNT => faucet_fund_amount,
+                    ARG_TIME_INTERVAL => assigned_time_interval,
+                    ARG_DISTRIBUTIONS_PER_INTERVAL => assigned_distributions_per_interval
                 },
             )
             .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
@@ -631,7 +651,7 @@ fn should_fund_existing_account() {
         .into_t::<U512>()
         .expect("failed to convert into U512");
 
-    assert_eq!(available_amount, U512::from(200_000_000_000_000u64));
+    assert_eq!(available_amount, faucet_fund_amount);
 
     let remaining_amount = builder
         .query(
@@ -646,7 +666,7 @@ fn should_fund_existing_account() {
         .into_t::<U512>()
         .expect("failed to convert into U512");
 
-    assert_eq!(remaining_amount, U512::from(200_000_000_000_000u64));
+    assert_eq!(remaining_amount, faucet_fund_amount);
 
     let faucet_call_by_installer = {
         let deploy_item = DeployItemBuilder::new()
@@ -680,16 +700,14 @@ fn should_fund_existing_account() {
         .and_then(Key::into_uref)
         .expect("failed to find faucet purse");
 
+    let half_of_faucet_fund_amount = faucet_fund_amount / 2;
     let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
-    assert_eq!(faucet_purse_balance, U512::from(100_000_000_000_000u64));
+    assert_eq!(faucet_purse_balance, half_of_faucet_fund_amount);
 
     // check the balance of the user's main purse
     let user_main_purse_balance_after =
         builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
-    assert_eq!(
-        user_main_purse_balance_after,
-        U512::from(100_000_000_000_000u64)
-    );
+    assert_eq!(user_main_purse_balance_after, half_of_faucet_fund_amount);
 
     let faucet_call_by_user = {
         let deploy_item = DeployItemBuilder::new()
@@ -722,14 +740,17 @@ fn should_fund_existing_account() {
         .into_t::<U512>()
         .expect("failed to convert into U512");
 
-    assert_eq!(remaining_amount, U512::from(100_000_000_000_000u64));
+    assert_eq!(remaining_amount, half_of_faucet_fund_amount);
     let user_main_purse_balance_after =
         builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
 
     assert_eq!(
         user_main_purse_balance_after,
-        U512::from(200_000_000_000_000u64) - *DEFAULT_PAYMENT
+        faucet_fund_amount - *DEFAULT_PAYMENT
     );
+
+    let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
+    assert!(faucet_purse_balance.is_zero());
 }
 
 #[ignore]
@@ -752,7 +773,7 @@ fn should_not_fund_once_exhausted() {
         *DEFAULT_ACCOUNT_ADDR,
         runtime_args! {
             mint::ARG_TARGET => installer_account,
-            mint::ARG_AMOUNT => 500_000_000_000_000u64,
+            mint::ARG_AMOUNT => INSTALLER_FUND_AMOUNT,
             mint::ARG_ID => <Option<u64>>::None
         },
     )
@@ -763,10 +784,12 @@ fn should_not_fund_once_exhausted() {
         .expect_success()
         .commit();
 
+    let faucet_fund_amount = U512::from(400_000_000_000_000u64);
+    let half_of_faucet_fund_amount = faucet_fund_amount / 2;
     let installer_session_request = ExecuteRequestBuilder::standard(
         installer_account,
         FAUCET_INSTALLER_SESSION,
-        runtime_args! {ARG_ID => 1337u64, ARG_AMOUNT => U512::from(400_000_000_000_000u64)},
+        runtime_args! {ARG_ID => FAUCET_ID, ARG_AMOUNT => faucet_fund_amount},
     )
     .build();
 
@@ -797,7 +820,7 @@ fn should_not_fund_once_exhausted() {
         .expect("failed to find faucet purse");
 
     let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
-    assert_eq!(faucet_purse_balance, U512::from(400_000_000_000_000u64));
+    assert_eq!(faucet_purse_balance, faucet_fund_amount);
 
     let available_amount = builder
         .query(
@@ -816,6 +839,10 @@ fn should_not_fund_once_exhausted() {
     // the set_variable entrypoint to finish setup.
     assert_eq!(available_amount, U512::zero());
 
+    let assigned_time_interval = 10_000u64;
+    let assigned_distributions_per_interval = 4u64;
+    let assigned_available_amount = half_of_faucet_fund_amount;
+    let one_distribution = assigned_available_amount / assigned_distributions_per_interval;
     let installer_set_variable_request = {
         let deploy_item = DeployItemBuilder::new()
             .with_address(installer_account)
@@ -824,9 +851,9 @@ fn should_not_fund_once_exhausted() {
                 FAUCET_CONTRACT_NAMED_KEY,
                 ENTRY_POINT_SET_VARIABLES,
                 runtime_args! {
-                    ARG_AVAILABLE_AMOUNT => U512::from(200_000_000_000_000u64),
-                    ARG_TIME_INTERVAL => 10_000u64,
-                    ARG_DISTRIBUTIONS_PER_INTERVAL => 4u64
+                    ARG_AVAILABLE_AMOUNT => assigned_available_amount,
+                    ARG_TIME_INTERVAL =>  assigned_time_interval,
+                    ARG_DISTRIBUTIONS_PER_INTERVAL => assigned_distributions_per_interval
                 },
             )
             .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
@@ -854,7 +881,7 @@ fn should_not_fund_once_exhausted() {
         .into_t::<U512>()
         .expect("failed to convert into U512");
 
-    assert_eq!(available_amount, U512::from(200_000_000_000_000u64));
+    assert_eq!(available_amount, half_of_faucet_fund_amount);
 
     let remaining_amount = builder
         .query(
@@ -869,7 +896,7 @@ fn should_not_fund_once_exhausted() {
         .into_t::<U512>()
         .expect("failed to convert into U512");
 
-    assert_eq!(remaining_amount, U512::from(200_000_000_000_000u64));
+    assert_eq!(remaining_amount, one_distribution * 4);
 
     let faucet_call_by_installer = {
         let deploy_item = DeployItemBuilder::new()
@@ -936,7 +963,7 @@ fn should_not_fund_once_exhausted() {
         builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
     assert_eq!(
         user_main_purse_balance_after,
-        U512::from(250_000_000_000_000u64) - *DEFAULT_PAYMENT * 4
+        one_distribution * 5 - *DEFAULT_PAYMENT * 4
     );
 
     // // call faucet again once it's exhausted.
@@ -964,7 +991,7 @@ fn should_not_fund_once_exhausted() {
         builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
     assert_eq!(
         user_main_purse_balance_after,
-        U512::from(250_000_000_000_000u64) - *DEFAULT_PAYMENT * 5
+        one_distribution * 5 - *DEFAULT_PAYMENT * 5
     );
 
     // // faucet may resume distributions once block time is > last_distribution_time
@@ -1017,14 +1044,17 @@ fn should_not_fund_once_exhausted() {
         .into_t::<U512>()
         .expect("failed to convert into U512");
 
-    assert_eq!(remaining_amount, U512::from(150_000_000_000_000u64));
+    assert_eq!(
+        remaining_amount,
+        assigned_available_amount - one_distribution
+    );
 
     let user_main_purse_balance_after =
         builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
 
     assert_eq!(
         user_main_purse_balance_after,
-        U512::from(300_000_000_000_000u64) - *DEFAULT_PAYMENT * 6
+        one_distribution * 6 - *DEFAULT_PAYMENT * 6
     );
 }
 
@@ -1048,7 +1078,7 @@ fn should_allow_installer_to_fund_freely() {
         *DEFAULT_ACCOUNT_ADDR,
         runtime_args! {
             mint::ARG_TARGET => installer_account,
-            mint::ARG_AMOUNT => 300_000_000_000_000u64,
+            mint::ARG_AMOUNT => INSTALLER_FUND_AMOUNT,
             mint::ARG_ID => <Option<u64>>::None
         },
     )
@@ -1059,10 +1089,11 @@ fn should_allow_installer_to_fund_freely() {
         .expect_success()
         .commit();
 
+    let faucet_fund_amount = U512::from(200_000_000_000u64);
     let installer_session_request = ExecuteRequestBuilder::standard(
         installer_account,
         FAUCET_INSTALLER_SESSION,
-        runtime_args! {ARG_ID => 1337u64, ARG_AMOUNT => U512::from(200_000_000_000u64)},
+        runtime_args! {ARG_ID => FAUCET_ID, ARG_AMOUNT => faucet_fund_amount},
     )
     .build();
 
@@ -1093,7 +1124,7 @@ fn should_allow_installer_to_fund_freely() {
         .expect("failed to find faucet purse");
 
     let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
-    assert_eq!(faucet_purse_balance, U512::from(200_000_000_000u64));
+    assert_eq!(faucet_purse_balance, faucet_fund_amount);
 
     let available_amount = builder
         .query(
@@ -1112,6 +1143,10 @@ fn should_allow_installer_to_fund_freely() {
     // the set_variable entrypoint to finish setup.
     assert_eq!(available_amount, U512::zero());
 
+    let assigned_time_interval = 10_000u64;
+    let assigned_distributions_per_interval = 2u64;
+    let assigned_available_amount = faucet_fund_amount / 2;
+    let one_distribution = assigned_available_amount / assigned_distributions_per_interval;
     let installer_set_variable_request = {
         let deploy_item = DeployItemBuilder::new()
             .with_address(installer_account)
@@ -1120,9 +1155,9 @@ fn should_allow_installer_to_fund_freely() {
                 FAUCET_CONTRACT_NAMED_KEY,
                 ENTRY_POINT_SET_VARIABLES,
                 runtime_args! {
-                    ARG_AVAILABLE_AMOUNT => U512::from(500_000_000u64),
-                    ARG_TIME_INTERVAL => 10_000u64,
-                    ARG_DISTRIBUTIONS_PER_INTERVAL => 2u64
+                    ARG_AVAILABLE_AMOUNT => assigned_available_amount,
+                    ARG_TIME_INTERVAL => assigned_time_interval,
+                    ARG_DISTRIBUTIONS_PER_INTERVAL => assigned_distributions_per_interval
                 },
             )
             .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
@@ -1150,7 +1185,7 @@ fn should_allow_installer_to_fund_freely() {
         .into_t::<U512>()
         .expect("failed to convert into U512");
 
-    assert_eq!(available_amount, U512::from(500_000_000u64));
+    assert_eq!(available_amount, assigned_available_amount);
 
     // This would only allow other callers to fund twice in this interval,
     // but the installer can fund as many times as they want.
@@ -1191,18 +1226,30 @@ fn should_allow_installer_to_fund_freely() {
     let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
     assert_eq!(
         faucet_purse_balance,
-        U512::from(200_000_000_000u64 - 750_000_000u64)
+        faucet_fund_amount - one_distribution * 3
     );
 
     // check the balance of the user's main purse
     let user_main_purse_balance_after =
         builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
-    //                 available_amount
-    //                 ________________
-    //                /
-    //               /  distributions_per_interval
-    //              /   __________________________
-    //  ___________/  _/
-    // (500_000_000 / 2 = 250_000_000) * 3 = 750_000_000
-    assert_eq!(user_main_purse_balance_after, U512::from(750_000_000u64));
+
+    assert_eq!(user_main_purse_balance_after, one_distribution * 3);
+}
+
+#[ignore]
+#[test]
+fn should_not_fund_if_zero_distributions_per_interval() {
+    unimplemented!()
+}
+
+#[ignore]
+#[test]
+fn should_cost_installer() {
+    unimplemented!()
+}
+
+#[ignore]
+#[test]
+fn should_cost_caller() {
+    unimplemented!()
 }

@@ -3,6 +3,10 @@
 extern crate alloc;
 
 use alloc::{vec, vec::Vec};
+use core::mem::MaybeUninit;
+
+use num::{rational::Ratio, Zero};
+
 use casper_contract::{
     contract_api::{self, runtime, storage, system},
     ext_ffi,
@@ -10,25 +14,32 @@ use casper_contract::{
 };
 use casper_types::{
     account::AccountHash,
-    api_error, bytesrepr,
-    bytesrepr::{FromBytes, ToBytes},
+    api_error,
+    bytesrepr::{self, FromBytes, ToBytes},
     ApiError, BlockTime, CLTyped, CLValue, Key, URef, U512,
 };
-use core::{cmp::Ordering, mem::MaybeUninit};
-use num::rational::Ratio;
 
-const ARG_TARGET: &str = "target";
-const ARG_ID: &str = "id";
-const ARG_TIME_INTERVAL: &str = "time_interval";
-const ARG_AVAILABLE_AMOUNT: &str = "available_amount";
-const ARG_DISTRIBUTIONS_PER_INTERVAL: &str = "distributions_per_interval";
-const REMAINING_AMOUNT: &str = "remaining_amount";
-const AVAILABLE_AMOUNT: &str = "available_amount";
-const TIME_INTERVAL: &str = "time_interval";
-const DISTRIBUTIONS_PER_INTERVAL: &str = "distributions_per_interval";
-const LAST_DISTRIBUTION_TIME: &str = "last_distribution_time";
-const FAUCET_PURSE: &str = "faucet_purse";
-const INSTALLER: &str = "installer";
+pub const ARG_AMOUNT: &str = "amount";
+pub const ARG_TARGET: &str = "target";
+pub const ARG_ID: &str = "id";
+pub const ARG_TIME_INTERVAL: &str = "time_interval";
+pub const ARG_AVAILABLE_AMOUNT: &str = "available_amount";
+pub const ARG_DISTRIBUTIONS_PER_INTERVAL: &str = "distributions_per_interval";
+pub const REMAINING_AMOUNT: &str = "remaining_amount";
+pub const AVAILABLE_AMOUNT: &str = "available_amount";
+pub const TIME_INTERVAL: &str = "time_interval";
+pub const DISTRIBUTIONS_PER_INTERVAL: &str = "distributions_per_interval";
+pub const LAST_DISTRIBUTION_TIME: &str = "last_distribution_time";
+pub const FAUCET_PURSE: &str = "faucet_purse";
+pub const INSTALLER: &str = "installer";
+pub const TWO_HOURS_AS_MILLIS: u64 = 7_200_000;
+pub const ENTRY_POINT_FAUCET: &str = "call_faucet";
+pub const ENTRY_POINT_INIT: &str = "init";
+pub const ENTRY_POINT_SET_VARIABLES: &str = "set_variables";
+pub const CONTRACT_NAME: &str = "faucet";
+pub const HASH_KEY_NAME: &str = "faucet_package";
+pub const ACCESS_KEY_NAME: &str = "faucet_package_access";
+pub const CONTRACT_VERSION: &str = "contract_version";
 
 #[repr(u16)]
 enum FaucetError {
@@ -74,12 +85,11 @@ pub fn init() {
         runtime::revert(FaucetError::InvalidAccount);
     }
 
-    runtime::put_key(TIME_INTERVAL, storage::new_uref(7_200_000u64).into());
+    runtime::put_key(TIME_INTERVAL, storage::new_uref(TWO_HOURS_AS_MILLIS).into());
     runtime::put_key(LAST_DISTRIBUTION_TIME, storage::new_uref(0u64).into());
     runtime::put_key(AVAILABLE_AMOUNT, storage::new_uref(U512::zero()).into());
     runtime::put_key(REMAINING_AMOUNT, storage::new_uref(U512::zero()).into());
-    // 20 blocks x 25 deploys = 500
-    runtime::put_key(DISTRIBUTIONS_PER_INTERVAL, storage::new_uref(500u64).into());
+    runtime::put_key(DISTRIBUTIONS_PER_INTERVAL, storage::new_uref(0u64).into());
 
     let purse = system::create_purse();
 
@@ -217,6 +227,22 @@ fn transfer(target: AccountHash, amount: U512, id: Option<u64>) {
 }
 
 fn get_distribution_amount_debounced() -> U512 {
+    let distributions_per_interval_uref = get_uref_with_user_errors(
+        DISTRIBUTIONS_PER_INTERVAL,
+        FaucetError::MissingDistributionsPerInterval,
+        FaucetError::InvalidDistributionsPerInterval,
+    );
+
+    let distributions_per_interval: u64 = read_with_user_errors(
+        distributions_per_interval_uref,
+        FaucetError::MissingDistributionsPerInterval,
+        FaucetError::InvalidDistributionsPerInterval,
+    );
+
+    if distributions_per_interval.is_zero() {
+        return U512::zero();
+    }
+
     let available_amount_uref = get_uref_with_user_errors(
         AVAILABLE_AMOUNT,
         FaucetError::MissingAvailableAmount,
@@ -241,6 +267,17 @@ fn get_distribution_amount_debounced() -> U512 {
         FaucetError::InvalidRemainingAmount,
     );
 
+    let distribution_amount =
+        Ratio::new(available_amount, U512::from(distributions_per_interval)).to_integer();
+
+    if remaining_amount >= distribution_amount {
+        distribution_amount
+    } else {
+        remaining_amount
+    }
+}
+
+fn get_distribution_amount() -> U512 {
     let distributions_per_interval_uref = get_uref_with_user_errors(
         DISTRIBUTIONS_PER_INTERVAL,
         FaucetError::MissingDistributionsPerInterval,
@@ -253,16 +290,6 @@ fn get_distribution_amount_debounced() -> U512 {
         FaucetError::InvalidDistributionsPerInterval,
     );
 
-    let distribution_amount =
-        Ratio::new(available_amount, U512::from(distributions_per_interval)).to_integer();
-
-    match remaining_amount.cmp(&distribution_amount) {
-        Ordering::Equal | Ordering::Greater => distribution_amount,
-        Ordering::Less => remaining_amount,
-    }
-}
-
-fn get_distribution_amount() -> U512 {
     let available_amount_uref = get_uref_with_user_errors(
         AVAILABLE_AMOUNT,
         FaucetError::MissingAvailableAmount,
@@ -273,18 +300,6 @@ fn get_distribution_amount() -> U512 {
         available_amount_uref,
         FaucetError::MissingAvailableAmount,
         FaucetError::InvalidAvailableAmount,
-    );
-
-    let distributions_per_interval_uref = get_uref_with_user_errors(
-        DISTRIBUTIONS_PER_INTERVAL,
-        FaucetError::MissingDistributionsPerInterval,
-        FaucetError::InvalidDistributionsPerInterval,
-    );
-
-    let distributions_per_interval: u64 = read_with_user_errors(
-        distributions_per_interval_uref,
-        FaucetError::MissingDistributionsPerInterval,
-        FaucetError::InvalidDistributionsPerInterval,
     );
 
     Ratio::new(available_amount, U512::from(distributions_per_interval)).to_integer()
