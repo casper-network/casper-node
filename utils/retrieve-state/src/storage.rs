@@ -130,7 +130,7 @@ pub fn normalize_path(path: impl AsRef<Path>) -> Result<PathBuf, anyhow::Error> 
 
 pub fn create_storage(
     chain_download_path: impl AsRef<Path>,
-    verifiable_chunked_hash_activation: EraId,
+    block_hash_v2_activation: EraId,
 ) -> Result<Storage, anyhow::Error> {
     let chain_download_path = normalize_path(chain_download_path)?;
     let mut storage_config = StorageConfig::default();
@@ -143,7 +143,7 @@ pub fn create_storage(
         "test",
         Ratio::new(1, 3),
         None,
-        verifiable_chunked_hash_activation,
+        block_hash_v2_activation,
     )?)
 }
 

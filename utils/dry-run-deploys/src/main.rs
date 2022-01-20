@@ -57,10 +57,10 @@ async fn main() -> Result<(), anyhow::Error> {
     let lmdb_path = normalize_path(&opts.lmdb_path)?;
 
     // TODO: Consider reading the proper `chainspec` in the `dry-run-deploys` tool.
-    let verifiable_chunked_hash_activation = EraId::from(0u64);
+    let block_hash_v2_activation = EraId::from(0u64);
 
     // Create a separate lmdb for block/deploy storage at chain_download_path.
-    let storage = create_storage(&chain_download_path, verifiable_chunked_hash_activation)
+    let storage = create_storage(&chain_download_path, block_hash_v2_activation)
         .expect("should create storage");
 
     let max_db_size = opts
@@ -81,10 +81,8 @@ async fn main() -> Result<(), anyhow::Error> {
         opts.manual_sync_enabled,
     )?;
 
-    let mut execution_pre_state = ExecutionPreState::from_block_header(
-        &previous_block_header,
-        verifiable_chunked_hash_activation,
-    );
+    let mut execution_pre_state =
+        ExecutionPreState::from_block_header(&previous_block_header, block_hash_v2_activation);
     let mut execute_count = 0;
 
     let highest_height_in_chain = storage.read_highest_block()?;
@@ -142,7 +140,7 @@ async fn main() -> Result<(), anyhow::Error> {
             finalized_block,
             deploys,
             transfers,
-            verifiable_chunked_hash_activation,
+            block_hash_v2_activation,
         )?;
         let elapsed_micros = start.elapsed().as_micros() as u64;
         execution_time_hist
@@ -157,7 +155,7 @@ async fn main() -> Result<(), anyhow::Error> {
             "state root hash mismatch"
         );
         execution_pre_state =
-            ExecutionPreState::from_block_header(&header, verifiable_chunked_hash_activation);
+            ExecutionPreState::from_block_header(&header, block_hash_v2_activation);
         execute_count += 1;
         if opts.verbose {
             eprintln!(

@@ -377,7 +377,7 @@ pub struct Storage {
     /// The most recent era in which the network was manually restarted.
     last_emergency_restart: Option<EraId>,
     /// The era ID starting at which the new Merkle tree-based hashing scheme is applied.
-    verifiable_chunked_hash_activation: EraId,
+    block_hash_v2_activation: EraId,
 }
 
 /// A storage component event.
@@ -471,7 +471,7 @@ impl Storage {
         network_name: &str,
         finality_threshold_fraction: Ratio<u64>,
         last_emergency_restart: Option<EraId>,
-        verifiable_chunked_hash_activation: EraId,
+        block_hash_v2_activation: EraId,
     ) -> Result<Self, FatalStorageError> {
         let config = cfg.value();
 
@@ -546,20 +546,20 @@ impl Storage {
                 if block_header.era_id() >= invalid_era
                     && block_header.protocol_version() < protocol_version
                 {
-                    if block_header.hashing_algorithm_version(verifiable_chunked_hash_activation)
+                    if block_header.hashing_algorithm_version(block_hash_v2_activation)
                         == HashingAlgorithmVersion::V1
                     {
                         let _ = deleted_block_body_hashes_v1.insert(*block_header.body_hash());
                     }
-                    let _ = deleted_block_hashes
-                        .insert(block_header.hash(verifiable_chunked_hash_activation));
+                    let _ =
+                        deleted_block_hashes.insert(block_header.hash(block_hash_v2_activation));
                     cursor.del(WriteFlags::empty())?;
                     continue;
                 }
             }
 
             if should_check_integrity {
-                let found_block_header_hash = block_header.hash(verifiable_chunked_hash_activation);
+                let found_block_header_hash = block_header.hash(block_hash_v2_activation);
                 if raw_key != found_block_header_hash.as_ref() {
                     return Err(FatalStorageError::BlockHeaderNotStoredUnderItsHash {
                         queried_block_hash_bytes: raw_key.to_vec(),
@@ -573,12 +573,12 @@ impl Storage {
                 &mut block_height_index,
                 &mut switch_block_era_id_index,
                 &block_header,
-                verifiable_chunked_hash_activation,
+                block_hash_v2_activation,
             )?;
 
             let mut body_txn = env.begin_ro_txn()?;
             let maybe_block_body =
-                match block_header.hashing_algorithm_version(verifiable_chunked_hash_activation) {
+                match block_header.hashing_algorithm_version(block_hash_v2_activation) {
                     HashingAlgorithmVersion::V1 => {
                         body_txn.get_value(block_body_v1_db, block_header.body_hash())?
                     }
@@ -597,13 +597,13 @@ impl Storage {
                     Block::new_from_header_and_body(
                         block_header.clone(),
                         block_body.clone(),
-                        verifiable_chunked_hash_activation,
+                        block_hash_v2_activation,
                     )?;
                 }
 
                 insert_to_deploy_index(
                     &mut deploy_hash_index,
-                    block_header.hash(verifiable_chunked_hash_activation),
+                    block_header.hash(block_hash_v2_activation),
                     &block_body,
                 )?;
             }
@@ -623,7 +623,7 @@ impl Storage {
                 .map(Digest::as_ref)
                 .collect(),
             should_check_integrity,
-            verifiable_chunked_hash_activation,
+            block_hash_v2_activation,
         )?;
         initialize_block_body_v2_db(
             &env,
@@ -633,7 +633,7 @@ impl Storage {
             &transfer_hashes_db,
             &proposer_db,
             should_check_integrity,
-            verifiable_chunked_hash_activation,
+            block_hash_v2_activation,
         )?;
         initialize_block_metadata_db(
             &env,
@@ -664,7 +664,7 @@ impl Storage {
             serialized_item_pool: ObjectPool::new(config.mem_pool_prune_interval),
             finality_threshold_fraction,
             last_emergency_restart,
-            verifiable_chunked_hash_activation,
+            block_hash_v2_activation,
         })
     }
 
@@ -1106,7 +1106,7 @@ impl Storage {
                 let mut txn = self.env.begin_rw_txn()?;
                 if !txn.put_value(
                     self.block_header_db,
-                    &block_header.hash(self.verifiable_chunked_hash_activation),
+                    &block_header.hash(self.block_hash_v2_activation),
                     &block_header,
                     false,
                 )? {
@@ -1121,7 +1121,7 @@ impl Storage {
                     &mut self.block_height_index,
                     &mut self.switch_block_era_id_index,
                     &block_header,
-                    self.verifiable_chunked_hash_activation,
+                    self.block_hash_v2_activation,
                 )?;
                 txn.commit()?;
                 responder.respond(true).ignore()
@@ -1156,7 +1156,7 @@ impl Storage {
     /// couldn't be written because it already existed, and `Err(_)` if there was an error.
     pub fn write_block(&mut self, block: &Block) -> Result<bool, FatalStorageError> {
         // Validate the block prior to inserting it into the database
-        block.verify(self.verifiable_chunked_hash_activation)?;
+        block.verify(self.block_hash_v2_activation)?;
         let mut txn = self.env.begin_rw_txn()?;
         // Write the block body
         {
@@ -1164,7 +1164,7 @@ impl Storage {
             let block_body = block.body();
             let success = match block
                 .header()
-                .hashing_algorithm_version(self.verifiable_chunked_hash_activation)
+                .hashing_algorithm_version(self.block_hash_v2_activation)
             {
                 HashingAlgorithmVersion::V1 => {
                     self.put_single_block_body_v1(&mut txn, block_body_hash, block_body)?
@@ -1189,11 +1189,11 @@ impl Storage {
             &mut self.block_height_index,
             &mut self.switch_block_era_id_index,
             block.header(),
-            self.verifiable_chunked_hash_activation,
+            self.block_hash_v2_activation,
         )?;
         insert_to_deploy_index(
             &mut self.deploy_hash_index,
-            block.header().hash(self.verifiable_chunked_hash_activation),
+            block.header().hash(self.block_hash_v2_activation),
             block.body(),
         )?;
         txn.commit()?;
@@ -1392,7 +1392,7 @@ impl Storage {
             Some(block_header) => block_header,
             None => return Ok(None),
         };
-        let found_block_header_hash = block_header.hash(self.verifiable_chunked_hash_activation);
+        let found_block_header_hash = block_header.hash(self.block_hash_v2_activation);
         if found_block_header_hash != *block_hash {
             return Err(FatalStorageError::BlockHeaderNotStoredUnderItsHash {
                 queried_block_hash_bytes: block_hash.as_ref().to_vec(),
@@ -1521,7 +1521,7 @@ impl Storage {
         let block = Block::new_from_header_and_body(
             block_header,
             block_body,
-            self.verifiable_chunked_hash_activation,
+            self.block_hash_v2_activation,
         )?;
         Ok(Some(block))
     }
@@ -1531,7 +1531,7 @@ impl Storage {
         tx: &mut Tx,
         block_header: &BlockHeader,
     ) -> Result<Option<BlockBody>, LmdbExtError> {
-        match block_header.hashing_algorithm_version(self.verifiable_chunked_hash_activation) {
+        match block_header.hashing_algorithm_version(self.block_hash_v2_activation) {
             HashingAlgorithmVersion::V1 => {
                 self.get_single_block_body_v1(tx, block_header.body_hash())
             }
@@ -1614,7 +1614,7 @@ impl Storage {
                 block: Block::new_from_header_and_body(
                     block_header,
                     block_body,
-                    self.verifiable_chunked_hash_activation,
+                    self.block_hash_v2_activation,
                 )?,
                 finality_signatures: block_signatures,
             }))
@@ -1668,10 +1668,9 @@ impl Storage {
                 return Ok(None);
             }
         }
-        let block_signatures = match self.get_finality_signatures(
-            tx,
-            &block_header.hash(self.verifiable_chunked_hash_activation),
-        )? {
+        let block_signatures = match self
+            .get_finality_signatures(tx, &block_header.hash(self.block_hash_v2_activation))?
+        {
             None => return Ok(None),
             Some(block_signatures) => block_signatures,
         };
@@ -1770,9 +1769,9 @@ fn insert_to_block_header_indices(
     block_height_index: &mut BTreeMap<u64, BlockHash>,
     switch_block_era_id_index: &mut BTreeMap<EraId, BlockHash>,
     block_header: &BlockHeader,
-    verifiable_chunked_hash_activation: EraId,
+    block_hash_v2_activation: EraId,
 ) -> Result<(), FatalStorageError> {
-    let block_hash = block_header.hash(verifiable_chunked_hash_activation);
+    let block_hash = block_header.hash(block_hash_v2_activation);
     if let Some(first) = block_height_index.get(&block_header.height()) {
         if *first != block_hash {
             return Err(FatalStorageError::DuplicateBlockIndex {
@@ -2063,7 +2062,7 @@ fn initialize_block_body_v1_db(
     block_body_v1_db: &Database,
     deleted_block_body_hashes_raw: &HashSet<&[u8]>,
     should_check_integrity: bool,
-    verifiable_chunked_hash_activation: EraId,
+    block_hash_v2_activation: EraId,
 ) -> Result<(), FatalStorageError> {
     info!("initializing v1 block body database");
     let mut txn = env.begin_rw_txn()?;
@@ -2097,7 +2096,7 @@ fn initialize_block_body_v1_db(
             let block_body = lmdb_ext::deserialize(raw_val)?;
             if let Some(block_header) = block_body_hash_to_header_map.get(&block_body_hash) {
                 let actual_hashing_algorithm_version =
-                    block_header.hashing_algorithm_version(verifiable_chunked_hash_activation);
+                    block_header.hashing_algorithm_version(block_hash_v2_activation);
                 if expected_hashing_algorithm_version != actual_hashing_algorithm_version {
                     return Err(FatalStorageError::UnexpectedHashingAlgorithmVersion {
                         expected_hashing_algorithm_version,
@@ -2108,7 +2107,7 @@ fn initialize_block_body_v1_db(
                 Block::new_from_header_and_body(
                     block_header.to_owned(),
                     block_body,
-                    verifiable_chunked_hash_activation,
+                    block_hash_v2_activation,
                 )?;
             } else {
                 // Should be unreachable because we just deleted all block bodies that aren't
@@ -2207,7 +2206,7 @@ fn garbage_collect_block_body_v2_db(
     transfer_hashes_db: &Database,
     proposer_db: &Database,
     block_body_hash_to_header_map: &BTreeMap<Digest, BlockHeader>,
-    verifiable_chunked_hash_activation: EraId,
+    block_hash_v2_activation: EraId,
 ) -> Result<(), FatalStorageError> {
     // This will store all the keys that are reachable from a block header, in all the parts
     // databases (we're basically doing a mark-and-sweep below).
@@ -2221,8 +2220,7 @@ fn garbage_collect_block_body_v2_db(
     ];
 
     for (body_hash, header) in block_body_hash_to_header_map {
-        if header.hashing_algorithm_version(verifiable_chunked_hash_activation)
-            != HashingAlgorithmVersion::V2
+        if header.hashing_algorithm_version(block_hash_v2_activation) != HashingAlgorithmVersion::V2
         {
             // We're only interested in body hashes for V2 blocks here
             continue;
@@ -2237,7 +2235,7 @@ fn garbage_collect_block_body_v2_db(
                     Some(slice) => slice,
                     None => {
                         return Err(FatalStorageError::CouldNotFindBlockBodyPart {
-                            block_hash: header.hash(verifiable_chunked_hash_activation),
+                            block_hash: header.hash(block_hash_v2_activation),
                             merkle_linked_list_node_hash: current_digest,
                         })
                     }
@@ -2290,7 +2288,7 @@ fn initialize_block_body_v2_db(
     transfer_hashes_db: &Database,
     proposer_db: &Database,
     should_check_integrity: bool,
-    verifiable_chunked_hash_activation: EraId,
+    block_hash_v2_activation: EraId,
 ) -> Result<(), FatalStorageError> {
     info!("initializing v2 block body database");
 
@@ -2313,7 +2311,7 @@ fn initialize_block_body_v2_db(
                 }
             };
             let actual_hashing_algorithm_version =
-                block_header.hashing_algorithm_version(verifiable_chunked_hash_activation);
+                block_header.hashing_algorithm_version(block_hash_v2_activation);
             if expected_hashing_algorithm_version != actual_hashing_algorithm_version {
                 return Err(FatalStorageError::UnexpectedHashingAlgorithmVersion {
                     expected_hashing_algorithm_version,
@@ -2336,7 +2334,7 @@ fn initialize_block_body_v2_db(
                     Block::new_from_header_and_body(
                         block_header.to_owned(),
                         block_body,
-                        verifiable_chunked_hash_activation,
+                        block_hash_v2_activation,
                     )?;
                 }
                 None => {

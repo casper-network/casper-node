@@ -212,7 +212,7 @@ impl Reactor {
             chainspec_loader
                 .chainspec()
                 .protocol_config
-                .verifiable_chunked_hash_activation,
+                .block_hash_v2_activation,
         )?;
 
         let contract_runtime = ContractRuntime::new(
@@ -230,7 +230,7 @@ impl Reactor {
             chainspec_loader
                 .chainspec()
                 .protocol_config
-                .verifiable_chunked_hash_activation,
+                .block_hash_v2_activation,
         )?;
 
         if should_check_integrity {

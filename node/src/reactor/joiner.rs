@@ -552,10 +552,10 @@ impl reactor::Reactor for Reactor {
             sync_effects,
         ));
 
-        let verifiable_chunked_hash_activation = chainspec_loader
+        let block_hash_v2_activation = chainspec_loader
             .chainspec()
             .protocol_config
-            .verifiable_chunked_hash_activation;
+            .block_hash_v2_activation;
         let protocol_version = &chainspec_loader.chainspec().protocol_config.version;
         let rest_server = RestServer::new(
             config.rest_server.clone(),
@@ -572,7 +572,7 @@ impl reactor::Reactor for Reactor {
         )?;
 
         let fetcher_builder =
-            FetcherBuilder::new(config.fetcher, registry, verifiable_chunked_hash_activation);
+            FetcherBuilder::new(config.fetcher, registry, block_hash_v2_activation);
 
         let deploy_fetcher = fetcher_builder.build("deploy")?;
         let block_by_height_fetcher = fetcher_builder.build("block_by_height")?;
@@ -582,7 +582,7 @@ impl reactor::Reactor for Reactor {
         let block_header_by_hash_fetcher = fetcher_builder.build("block_header")?;
 
         let trie_or_chunk_fetcher = fetcher_builder.build("trie_or_chunk")?;
-        let trie_fetcher = TrieFetcher::new(verifiable_chunked_hash_activation);
+        let trie_fetcher = TrieFetcher::new(block_hash_v2_activation);
 
         let deploy_acceptor = DeployAcceptor::new(
             config.deploy_acceptor,
@@ -655,7 +655,7 @@ impl reactor::Reactor for Reactor {
                     self.dispatch_event(effect_builder, rng, JoinerEvent::EventStreamServer(event));
 
                 let event = fetcher::Event::GotRemotely {
-                    verifiable_chunked_hash_activation: None,
+                    block_hash_v2_activation: None,
                     item: deploy,
                     source,
                 };
@@ -887,7 +887,7 @@ impl reactor::Reactor for Reactor {
                     self.chainspec_loader
                         .chainspec()
                         .protocol_config
-                        .verifiable_chunked_hash_activation,
+                        .block_hash_v2_activation,
                 )
             }
 
@@ -933,11 +933,11 @@ impl Reactor {
         sender: NodeId,
         message: NetResponse,
     ) -> Effects<JoinerEvent> {
-        let verifiable_chunked_hash_activation = self
+        let block_hash_v2_activation = self
             .chainspec_loader
             .chainspec()
             .protocol_config
-            .verifiable_chunked_hash_activation;
+            .block_hash_v2_activation;
         match message {
             NetResponse::Deploy(ref serialized_item) => {
                 reactor::handle_fetch_response::<Self, Deploy>(
@@ -946,7 +946,7 @@ impl Reactor {
                     rng,
                     sender,
                     serialized_item,
-                    verifiable_chunked_hash_activation,
+                    block_hash_v2_activation,
                 )
             }
             NetResponse::Block(ref serialized_item) => {
@@ -956,7 +956,7 @@ impl Reactor {
                     rng,
                     sender,
                     serialized_item,
-                    verifiable_chunked_hash_activation,
+                    block_hash_v2_activation,
                 )
             }
             NetResponse::GossipedAddress(_) => {
@@ -977,7 +977,7 @@ impl Reactor {
                     rng,
                     sender,
                     serialized_item,
-                    verifiable_chunked_hash_activation,
+                    block_hash_v2_activation,
                 )
             }
             NetResponse::BlockHeaderByHash(ref serialized_item) => {
@@ -987,7 +987,7 @@ impl Reactor {
                     rng,
                     sender,
                     serialized_item,
-                    verifiable_chunked_hash_activation,
+                    block_hash_v2_activation,
                 )
             }
             NetResponse::BlockHeaderAndFinalitySignaturesByHeight(ref serialized_item) => {
@@ -997,7 +997,7 @@ impl Reactor {
                     rng,
                     sender,
                     serialized_item,
-                    verifiable_chunked_hash_activation,
+                    block_hash_v2_activation,
                 )
             }
         }

@@ -113,7 +113,7 @@ where
     I: Debug + Eq + Clone,
 {
     partial_chunks: HashMap<Digest, PartialChunks<I>>,
-    verifiable_chunked_hash_activation: EraId,
+    block_hash_v2_activation: EraId,
 }
 
 #[derive(DataSize, Debug, From)]
@@ -157,10 +157,10 @@ impl<I> TrieFetcher<I>
 where
     I: Debug + Clone + Hash + Send + Eq + 'static,
 {
-    pub(crate) fn new(verifiable_chunked_hash_activation: EraId) -> Self {
+    pub(crate) fn new(block_hash_v2_activation: EraId) -> Self {
         TrieFetcher {
             partial_chunks: Default::default(),
-            verifiable_chunked_hash_activation,
+            block_hash_v2_activation,
         }
     }
 
@@ -176,7 +176,7 @@ where
             + From<ControlAnnouncement>
             + From<BlocklistAnnouncement<I>>,
     {
-        let TrieOrChunkId(_index, hash) = trie_or_chunk.id(self.verifiable_chunked_hash_activation);
+        let TrieOrChunkId(_index, hash) = trie_or_chunk.id(self.block_hash_v2_activation);
         match trie_or_chunk {
             TrieOrChunk::Trie(trie) => match self.partial_chunks.remove(&hash) {
                 None => {

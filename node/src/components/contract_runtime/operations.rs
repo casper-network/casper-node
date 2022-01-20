@@ -40,7 +40,7 @@ pub fn execute_finalized_block(
     finalized_block: FinalizedBlock,
     deploys: Vec<Deploy>,
     transfers: Vec<Deploy>,
-    verifiable_chunked_hash_activation: EraId,
+    block_hash_v2_activation: EraId,
 ) -> Result<BlockAndExecutionEffects, BlockExecutionError> {
     if finalized_block.height() != execution_pre_state.next_block_height {
         return Err(BlockExecutionError::WrongBlockHeight {
@@ -162,7 +162,7 @@ pub fn execute_finalized_block(
         finalized_block,
         next_era_validator_weights,
         protocol_version,
-        verifiable_chunked_hash_activation,
+        block_hash_v2_activation,
     )?);
 
     Ok(BlockAndExecutionEffects {

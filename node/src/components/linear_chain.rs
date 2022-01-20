@@ -41,7 +41,7 @@ pub(crate) struct LinearChainComponent<I> {
     metrics: Metrics,
     /// If true, the process should stop execution to allow an upgrade to proceed.
     stop_for_upgrade: bool,
-    verifiable_chunked_hash_activation: EraId,
+    block_hash_v2_activation: EraId,
     _marker: PhantomData<I>,
 }
 
@@ -53,7 +53,7 @@ impl<I> LinearChainComponent<I> {
         unbonding_delay: u64,
         finality_threshold_fraction: Ratio<u64>,
         next_upgrade_activation_point: Option<ActivationPoint>,
-        verifiable_chunked_hash_activation: EraId,
+        block_hash_v2_activation: EraId,
     ) -> Result<Self, prometheus::Error> {
         let metrics = Metrics::new(registry)?;
         let linear_chain_state = LinearChain::new(
@@ -67,7 +67,7 @@ impl<I> LinearChainComponent<I> {
             linear_chain_state,
             metrics,
             stop_for_upgrade: false,
-            verifiable_chunked_hash_activation,
+            block_hash_v2_activation,
             _marker: PhantomData,
         })
     }
@@ -76,8 +76,8 @@ impl<I> LinearChainComponent<I> {
         self.stop_for_upgrade
     }
 
-    fn verifiable_chunked_hash_activation(&self) -> EraId {
-        self.verifiable_chunked_hash_activation
+    fn block_hash_v2_activation(&self) -> EraId {
+        self.block_hash_v2_activation
     }
 }
 
@@ -181,7 +181,7 @@ where
                     .set(completion_duration as i64);
                 let outcomes = self
                     .linear_chain_state
-                    .handle_put_block(block, self.verifiable_chunked_hash_activation());
+                    .handle_put_block(block, self.block_hash_v2_activation());
                 outcomes_to_effects(effect_builder, outcomes)
             }
             Event::FinalitySignatureReceived(fs, gossiped) => {

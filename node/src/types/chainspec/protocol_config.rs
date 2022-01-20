@@ -34,7 +34,7 @@ pub struct ProtocolConfig {
     /// The era ID in which the last emergency restart happened.
     pub(crate) last_emergency_restart: Option<EraId>,
     /// The era ID starting at which the new Merkle tree-based hashing scheme is applied.
-    pub(crate) verifiable_chunked_hash_activation: EraId,
+    pub(crate) block_hash_v2_activation: EraId,
 }
 
 impl ProtocolConfig {
@@ -96,7 +96,7 @@ impl ProtocolConfig {
         );
         let activation_point = ActivationPoint::random(rng);
         let last_emergency_restart = rng.gen::<bool>().then(|| rng.gen());
-        let verifiable_chunked_hash_activation = EraId::from(rng.gen_range(0..5));
+        let block_hash_v2_activation = EraId::from(rng.gen_range(0..5));
 
         ProtocolConfig {
             version: protocol_version,
@@ -104,7 +104,7 @@ impl ProtocolConfig {
             activation_point,
             global_state_update: None,
             last_emergency_restart,
-            verifiable_chunked_hash_activation,
+            block_hash_v2_activation,
         }
     }
 }
@@ -117,7 +117,7 @@ impl ToBytes for ProtocolConfig {
         buffer.extend(self.activation_point.to_bytes()?);
         buffer.extend(self.global_state_update.to_bytes()?);
         buffer.extend(self.last_emergency_restart.to_bytes()?);
-        buffer.extend(self.verifiable_chunked_hash_activation.to_bytes()?);
+        buffer.extend(self.block_hash_v2_activation.to_bytes()?);
         Ok(buffer)
     }
 
@@ -127,7 +127,7 @@ impl ToBytes for ProtocolConfig {
             + self.activation_point.serialized_length()
             + self.global_state_update.serialized_length()
             + self.last_emergency_restart.serialized_length()
-            + self.verifiable_chunked_hash_activation.serialized_length()
+            + self.block_hash_v2_activation.serialized_length()
     }
 }
 
@@ -140,14 +140,14 @@ impl FromBytes for ProtocolConfig {
         let (activation_point, remainder) = ActivationPoint::from_bytes(remainder)?;
         let (global_state_update, remainder) = Option::<GlobalStateUpdate>::from_bytes(remainder)?;
         let (last_emergency_restart, remainder) = Option::<EraId>::from_bytes(remainder)?;
-        let (verifiable_chunked_hash_activation, remainder) = EraId::from_bytes(remainder)?;
+        let (block_hash_v2_activation, remainder) = EraId::from_bytes(remainder)?;
         let protocol_config = ProtocolConfig {
             version,
             hard_reset,
             activation_point,
             global_state_update,
             last_emergency_restart,
-            verifiable_chunked_hash_activation,
+            block_hash_v2_activation,
         };
         Ok((protocol_config, remainder))
     }
@@ -228,7 +228,7 @@ mod tests {
         let upgrade_era = EraId::from(5);
         let previous_era = upgrade_era.saturating_sub(1);
 
-        let verifiable_chunked_hash_activation = EraId::from(0);
+        let block_hash_v2_activation = EraId::from(0);
 
         let mut rng = crate::new_rng();
         let protocol_config = ProtocolConfig {
@@ -237,7 +237,7 @@ mod tests {
             activation_point: ActivationPoint::EraId(upgrade_era),
             global_state_update: None,
             last_emergency_restart: None,
-            verifiable_chunked_hash_activation,
+            block_hash_v2_activation,
         };
 
         // The block before this protocol version: a switch block with previous era and version.
@@ -247,7 +247,7 @@ mod tests {
             100,
             past_version,
             true,
-            verifiable_chunked_hash_activation,
+            block_hash_v2_activation,
         );
         assert!(protocol_config.is_last_block_before_activation(block.header()));
 
@@ -258,7 +258,7 @@ mod tests {
             100,
             past_version,
             true,
-            verifiable_chunked_hash_activation,
+            block_hash_v2_activation,
         );
         assert!(!protocol_config.is_last_block_before_activation(block.header()));
 
@@ -269,7 +269,7 @@ mod tests {
             100,
             current_version,
             true,
-            verifiable_chunked_hash_activation,
+            block_hash_v2_activation,
         );
         assert!(!protocol_config.is_last_block_before_activation(block.header()));
         let block = Block::random_with_specifics(
@@ -278,7 +278,7 @@ mod tests {
             100,
             future_version,
             true,
-            verifiable_chunked_hash_activation,
+            block_hash_v2_activation,
         );
         assert!(!protocol_config.is_last_block_before_activation(block.header()));
 
@@ -289,7 +289,7 @@ mod tests {
             100,
             past_version,
             false,
-            verifiable_chunked_hash_activation,
+            block_hash_v2_activation,
         );
         assert!(!protocol_config.is_last_block_before_activation(block.header()));
     }

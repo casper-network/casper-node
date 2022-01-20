@@ -680,7 +680,7 @@ impl reactor::Reactor for Reactor {
             "deploy",
             config.fetcher,
             registry,
-            chainspec.protocol_config.verifiable_chunked_hash_activation,
+            chainspec.protocol_config.block_hash_v2_activation,
         )?;
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
@@ -738,7 +738,7 @@ impl reactor::Reactor for Reactor {
 
         contract_runtime.set_initial_state(ExecutionPreState::from_block_header(
             &latest_block_header,
-            chainspec.protocol_config.verifiable_chunked_hash_activation,
+            chainspec.protocol_config.block_hash_v2_activation,
         ));
 
         let block_validator = BlockValidator::new(Arc::clone(chainspec));
@@ -749,7 +749,7 @@ impl reactor::Reactor for Reactor {
             chainspec.core_config.unbonding_delay,
             chainspec.highway_config.finality_threshold_fraction,
             maybe_next_activation_point,
-            chainspec.protocol_config.verifiable_chunked_hash_activation,
+            chainspec.protocol_config.block_hash_v2_activation,
         )?;
 
         effects.extend(reactor::wrap_effects(
@@ -977,7 +977,7 @@ impl reactor::Reactor for Reactor {
                 ));
 
                 let event = fetcher::Event::GotRemotely {
-                    verifiable_chunked_hash_activation: None,
+                    block_hash_v2_activation: None,
                     item: deploy,
                     source,
                 };
@@ -1113,7 +1113,7 @@ impl reactor::Reactor for Reactor {
                             self.chainspec_loader
                                 .chainspec()
                                 .protocol_config
-                                .verifiable_chunked_hash_activation,
+                                .block_hash_v2_activation,
                         ),
                     });
                 let reactor_event_es = ParticipatingEvent::EventStreamServer(

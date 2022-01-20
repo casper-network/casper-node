@@ -163,7 +163,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let url = address_to_url(initial_server_address);
 
     // TODO: Consider reading the proper `chainspec` in the `retrieve-state` tool.
-    let verifiable_chunked_hash_activation = EraId::from(0u64);
+    let block_hash_v2_activation = EraId::from(0u64);
 
     let maybe_highest_block = opts.highest_block;
     let maybe_download_block = opts
@@ -186,9 +186,8 @@ async fn main() -> Result<(), anyhow::Error> {
                 fs::create_dir_all(&chain_download_path)?;
             }
 
-            let mut storage =
-                create_storage(&chain_download_path, verifiable_chunked_hash_activation)
-                    .expect("should create storage");
+            let mut storage = create_storage(&chain_download_path, block_hash_v2_activation)
+                .expect("should create storage");
             info!("Downloading all blocks to genesis...");
             let (downloaded, read_from_disk) = retrieve_state::download_or_read_blocks(
                 &client,

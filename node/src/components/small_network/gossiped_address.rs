@@ -34,14 +34,11 @@ impl Item for GossipedAddress {
     const TAG: Tag = Tag::GossipedAddress;
     const ID_IS_COMPLETE_ITEM: bool = true;
 
-    fn validate(
-        &self,
-        _verifiable_chunked_hash_activation: EraId,
-    ) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _block_hash_v2_activation: EraId) -> Result<(), Self::ValidationError> {
         Ok(())
     }
 
-    fn id(&self, _verifiable_chunked_hash_activation: EraId) -> Self::Id {
+    fn id(&self, _block_hash_v2_activation: EraId) -> Self::Id {
         *self
     }
 }

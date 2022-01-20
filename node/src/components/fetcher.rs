@@ -260,7 +260,7 @@ where
 {
     get_from_peer_timeout: Duration,
     responders: HashMap<T::Id, HashMap<NodeId, Vec<FetchResponder<T>>>>,
-    verifiable_chunked_hash_activation: EraId,
+    block_hash_v2_activation: EraId,
     #[data_size(skip)]
     metrics: Metrics,
 }
@@ -270,18 +270,18 @@ impl<T: Item> Fetcher<T> {
         name: &str,
         config: Config,
         registry: &Registry,
-        verifiable_chunked_hash_activation: EraId,
+        block_hash_v2_activation: EraId,
     ) -> Result<Self, prometheus::Error> {
         Ok(Fetcher {
             get_from_peer_timeout: config.get_from_peer_timeout().into(),
             responders: HashMap::new(),
-            verifiable_chunked_hash_activation,
+            block_hash_v2_activation,
             metrics: Metrics::new(name, registry)?,
         })
     }
 
-    fn verifiable_chunked_hash_activation(&self) -> EraId {
-        self.verifiable_chunked_hash_activation
+    fn block_hash_v2_activation(&self) -> EraId {
+        self.block_hash_v2_activation
     }
 }
 
@@ -532,19 +532,19 @@ where
                 None => self.failed_to_get_from_storage(effect_builder, id, peer),
             },
             Event::GotRemotely {
-                verifiable_chunked_hash_activation: _,
+                block_hash_v2_activation: _,
                 item,
                 source,
             } => {
                 match source {
                     Source::Peer(peer) => {
                         self.metrics.found_on_peer.inc();
-                        if let Err(err) = item.validate(self.verifiable_chunked_hash_activation()) {
+                        if let Err(err) = item.validate(self.block_hash_v2_activation()) {
                             warn!(?peer, ?err, ?item, "Peer sent invalid item, banning peer");
                             effect_builder.announce_disconnect_from_peer(peer).ignore()
                         } else {
                             self.signal(
-                                item.id(self.verifiable_chunked_hash_activation()),
+                                item.id(self.block_hash_v2_activation()),
                                 Ok(FetchedData::FromPeer { item, peer }),
                                 peer,
                             )
@@ -573,19 +573,19 @@ where
 pub(crate) struct FetcherBuilder<'a> {
     config: FetcherConfig,
     registry: &'a Registry,
-    verifiable_chunked_hash_activation: EraId,
+    block_hash_v2_activation: EraId,
 }
 
 impl<'a> FetcherBuilder<'a> {
     pub(crate) fn new(
         config: FetcherConfig,
         registry: &'a Registry,
-        verifiable_chunked_hash_activation: EraId,
+        block_hash_v2_activation: EraId,
     ) -> Self {
         Self {
             config,
             registry,
-            verifiable_chunked_hash_activation,
+            block_hash_v2_activation,
         }
     }
 
@@ -597,7 +597,7 @@ impl<'a> FetcherBuilder<'a> {
             name,
             self.config,
             self.registry,
-            self.verifiable_chunked_hash_activation,
+            self.block_hash_v2_activation,
         )
     }
 }

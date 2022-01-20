@@ -64,13 +64,10 @@ pub(crate) trait Item:
     const ID_IS_COMPLETE_ITEM: bool;
 
     /// Checks cryptographic validity of the item, and returns an error if invalid.
-    fn validate(
-        &self,
-        verifiable_chunked_hash_activation: EraId,
-    ) -> Result<(), Self::ValidationError>;
+    fn validate(&self, block_hash_v2_activation: EraId) -> Result<(), Self::ValidationError>;
 
     /// The ID of the specific item.
-    fn id(&self, verifiable_chunked_hash_activation: EraId) -> Self::Id;
+    fn id(&self, block_hash_v2_activation: EraId) -> Self::Id;
 }
 
 /// Error type simply conveying that chunk validation failed.
@@ -84,10 +81,7 @@ impl Item for TrieOrChunk {
     const TAG: Tag = Tag::Trie;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    fn validate(
-        &self,
-        _verifiable_chunked_hash_activation: EraId,
-    ) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _block_hash_v2_activation: EraId) -> Result<(), Self::ValidationError> {
         match self {
             TrieOrChunk::Trie(_) => Ok(()),
             TrieOrChunk::ChunkWithProof(chunk) => {
@@ -96,7 +90,7 @@ impl Item for TrieOrChunk {
         }
     }
 
-    fn id(&self, _verifiable_chunked_hash_activation: EraId) -> Self::Id {
+    fn id(&self, _block_hash_v2_activation: EraId) -> Self::Id {
         match self {
             TrieOrChunk::Trie(trie) => {
                 let node_bytes = trie.to_bytes().expect("Could not serialize trie to bytes");
@@ -116,14 +110,11 @@ impl Item for BlockHeader {
     const TAG: Tag = Tag::BlockHeaderByHash;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    fn validate(
-        &self,
-        _verifiable_chunked_hash_activation: EraId,
-    ) -> Result<(), Self::ValidationError> {
+    fn validate(&self, _block_hash_v2_activation: EraId) -> Result<(), Self::ValidationError> {
         Ok(())
     }
 
-    fn id(&self, verifiable_chunked_hash_activation: EraId) -> Self::Id {
-        self.hash(verifiable_chunked_hash_activation)
+    fn id(&self, block_hash_v2_activation: EraId) -> Self::Id {
+        self.hash(block_hash_v2_activation)
     }
 }
