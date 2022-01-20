@@ -6,10 +6,11 @@ mod metrics;
 mod operations;
 mod types;
 
+use derive_more::From;
 use once_cell::sync::Lazy;
 use std::{
     collections::BTreeMap,
-    fmt::{self, Debug, Formatter},
+    fmt::{self, Debug, Display, Formatter},
     path::Path,
     sync::{Arc, Mutex},
     time::Instant,
@@ -41,6 +42,7 @@ use crate::{
     components::{contract_runtime::types::StepEffectAndUpcomingEraValidators, Component},
     effect::{
         announcements::{ContractRuntimeAnnouncement, ControlAnnouncement},
+        incoming::TrieRequestIncoming,
         requests::ContractRuntimeRequest,
         EffectBuilder, EffectExt, Effects,
     },
@@ -134,6 +136,21 @@ impl ExecutionPreState {
 
 type ExecQueue = Arc<Mutex<BTreeMap<u64, (FinalizedBlock, Vec<Deploy>, Vec<Deploy>)>>>;
 
+#[derive(Debug, From, Serialize)]
+pub(crate) enum Event {
+    #[from]
+    ContractRuntimeRequest(ContractRuntimeRequest),
+
+    #[from]
+    TrieRequestIncoming(TrieRequestIncoming),
+}
+
+impl Display for Event {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        todo!()
+    }
+}
+
 /// The contract runtime components.
 #[derive(DataSize)]
 pub(crate) struct ContractRuntime {
@@ -160,16 +177,38 @@ where
         + From<ControlAnnouncement>
         + Send,
 {
-    type Event = ContractRuntimeRequest;
+    type Event = Event;
     type ConstructionError = ConfigError;
 
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut NodeRng,
-        event: Self::Event,
+        rng: &mut NodeRng,
+        event: Event,
     ) -> Effects<Self::Event> {
         match event {
+            Event::ContractRuntimeRequest(request) => {
+                self.handle_contract_runtime_request(effect_builder, rng, request)
+            }
+            Event::TrieRequestIncoming(_) => todo!(),
+        }
+    }
+}
+
+impl ContractRuntime {
+    fn handle_contract_runtime_request<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        _rng: &mut NodeRng,
+        request: ContractRuntimeRequest,
+    ) -> Effects<Event>
+    where
+        REv: From<ContractRuntimeRequest>
+            + From<ContractRuntimeAnnouncement>
+            + From<ControlAnnouncement>
+            + Send,
+    {
+        match request {
             ContractRuntimeRequest::CommitGenesis {
                 chainspec,
                 responder,

@@ -441,7 +441,7 @@ async fn dont_upgrade_without_switch_block() {
             .await;
         let mut exec_request_received = false;
         runner.reactor_mut().inner_mut().set_filter(move |event| {
-            if let ParticipatingEvent::ContractRuntime(request) = &event {
+            if let ParticipatingEvent::ContractRuntimeRequest(request) = &event {
                 if let ContractRuntimeRequest::EnqueueBlockForExecution {
                     finalized_block, ..
                 } = request.as_ref()

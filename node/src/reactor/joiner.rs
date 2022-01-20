@@ -40,6 +40,7 @@ use crate::{
         storage::{self, Storage},
         Component,
     },
+    contract_runtime,
     effect::{
         announcements::{
             BlocklistAnnouncement, ChainspecLoaderAnnouncement, ContractRuntimeAnnouncement,
@@ -147,10 +148,6 @@ pub(crate) enum JoinerEvent {
     #[from]
     DeployAcceptor(#[serde(skip_serializing)] deploy_acceptor::Event),
 
-    /// Contract Runtime event.
-    #[from]
-    ContractRuntime(#[serde(skip_serializing)] ContractRuntimeRequest),
-
     /// Address gossiper event.
     #[from]
     AddressGossiper(gossiper::Event<GossipedAddress>),
@@ -163,6 +160,10 @@ pub(crate) enum JoinerEvent {
     /// Console event.
     #[from]
     Console(console::Event),
+
+    /// Contract runtime event.
+    #[from]
+    ContractRuntime(contract_runtime::Event),
 
     /// Requests.
     /// Linear chain block by hash fetcher request.
@@ -200,6 +201,10 @@ pub(crate) enum JoinerEvent {
     /// Address gossip request.
     #[from]
     BeginAddressGossipRequest(BeginGossipRequest<GossipedAddress>),
+
+    /// Contract runtime request.
+    #[from]
+    ContractRuntimeRequest(ContractRuntimeRequest),
 
     // Announcements
     /// A control announcement.
@@ -328,6 +333,7 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::TrieRequestIncoming(_) => "TrieRequestIncoming",
             JoinerEvent::TrieResponseIncoming(_) => "TrieResponseIncoming",
             JoinerEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
+            JoinerEvent::ContractRuntimeRequest(_) => todo!(),
         }
     }
 }
@@ -447,6 +453,7 @@ impl Display for JoinerEvent {
             JoinerEvent::DumpConsensusStateRequest(req) => {
                 write!(f, "consensus dump request: {}", req)
             }
+            JoinerEvent::ContractRuntimeRequest(_) => todo!(),
         }
     }
 }
@@ -746,6 +753,11 @@ impl reactor::Reactor for Reactor {
                 self.contract_runtime
                     .handle_event(effect_builder, rng, event),
             ),
+            JoinerEvent::ContractRuntimeRequest(req) => reactor::wrap_effects(
+                JoinerEvent::ContractRuntime,
+                self.contract_runtime
+                    .handle_event(effect_builder, rng, req.into()),
+            ),
             JoinerEvent::ContractRuntimeAnnouncement(_) => Effects::new(),
             JoinerEvent::AddressGossiper(event) => reactor::wrap_effects(
                 JoinerEvent::AddressGossiper,
@@ -770,7 +782,6 @@ impl reactor::Reactor for Reactor {
                 // We don't care about completion of gossiping an address.
                 Effects::new()
             }
-
             JoinerEvent::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(block)) => {
                 reactor::wrap_effects(
                     JoinerEvent::EventStreamServer,
@@ -874,10 +885,11 @@ impl reactor::Reactor for Reactor {
             JoinerEvent::NetResponseIncoming(NetResponseIncoming { sender, message }) => {
                 self.handle_get_response(effect_builder, rng, sender, message)
             }
-            JoinerEvent::TrieRequestIncoming(incoming) => {
-                debug!(%incoming, "trie request ignored");
-                Effects::new()
-            }
+            JoinerEvent::TrieRequestIncoming(incoming) => reactor::wrap_effects(
+                JoinerEvent::ContractRuntime,
+                self.contract_runtime
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
             JoinerEvent::TrieResponseIncoming(TrieResponseIncoming { sender, message }) => {
                 reactor::handle_fetch_response::<Self, TrieOrChunk>(
                     self,
@@ -903,6 +915,7 @@ impl reactor::Reactor for Reactor {
                 req.answer(Err(Cow::Borrowed("node is joining, no running consensus")))
                     .ignore()
             }
+            JoinerEvent::ContractRuntimeRequest(_) => todo!(),
         }
     }
 
