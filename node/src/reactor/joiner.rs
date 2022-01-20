@@ -866,10 +866,11 @@ impl reactor::Reactor for Reactor {
                 self.address_gossiper
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
-            JoinerEvent::NetRequestIncoming(incoming) => {
-                debug!(%incoming, "net request ignored");
-                Effects::new()
-            }
+            JoinerEvent::NetRequestIncoming(incoming) => reactor::wrap_effects(
+                JoinerEvent::Storage,
+                self.storage
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
             JoinerEvent::NetResponseIncoming(NetResponseIncoming { sender, message }) => {
                 self.handle_get_response(effect_builder, rng, sender, message)
             }
