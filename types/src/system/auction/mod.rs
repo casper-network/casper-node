@@ -25,7 +25,7 @@ pub use era_info::*;
 pub use error::Error;
 pub use providers::{AccountProvider, MintProvider, RuntimeProvider, StorageProvider};
 pub use seigniorage_recipient::SeigniorageRecipient;
-pub use unbonding_purse::{UnbondingPurse, WithdrawPurse};
+pub use unbonding_purse::UnbondingPurse;
 
 /// Representation of delegation rate of tokens. Range from 0..=100.
 pub type DelegationRate = u8;
@@ -47,9 +47,6 @@ pub type SeigniorageRecipientsSnapshot = BTreeMap<EraId, SeigniorageRecipients>;
 
 /// Validators and delegators mapped to their unbonding purses.
 pub type UnbondingPurses = BTreeMap<AccountHash, Vec<UnbondingPurse>>;
-
-/// Validators and delegators mapped to their withdraw purses.
-pub type WithdrawPurses = BTreeMap<AccountHash, Vec<WithdrawPurse>>;
 
 /// Bonding auction contract interface
 pub trait Auction:
@@ -205,7 +202,6 @@ pub trait Auction:
             public_key.clone(), // validator is the unbonder
             *bid.bonding_purse(),
             amount,
-            None,
         )?;
 
         if updated_stake.is_zero() {
@@ -217,7 +213,6 @@ pub trait Auction:
                     delegator_public_key.clone(),
                     *delegator.bonding_purse(),
                     *delegator.staked_amount(),
-                    None,
                 )?;
             }
 
@@ -256,7 +251,57 @@ pub trait Auction:
 
         let source = self.get_main_purse()?;
 
-        self.handle_delegation(delegator_public_key, validator_public_key, source, amount)
+        let validator_account_hash = AccountHash::from(&validator_public_key);
+
+        let mut bid = match self.read_bid(&validator_account_hash)? {
+            Some(bid) => bid,
+            None => {
+                // Return early if target validator is not in `bids`
+                return Err(Error::ValidatorNotFound);
+            }
+        };
+
+        let delegators = bid.delegators_mut();
+
+        let new_delegation_amount = match delegators.get_mut(&delegator_public_key) {
+            Some(delegator) => {
+                self.mint_transfer_direct(
+                    Some(PublicKey::System.to_account_hash()),
+                    source,
+                    *delegator.bonding_purse(),
+                    amount,
+                    None,
+                )
+                .map_err(|_| Error::TransferToDelegatorPurse)?
+                .map_err(|_| Error::TransferToDelegatorPurse)?;
+                delegator.increase_stake(amount)?;
+                *delegator.staked_amount()
+            }
+            None => {
+                let bonding_purse = self.create_purse()?;
+                self.mint_transfer_direct(
+                    Some(PublicKey::System.to_account_hash()),
+                    source,
+                    bonding_purse,
+                    amount,
+                    None,
+                )
+                .map_err(|_| Error::TransferToDelegatorPurse)?
+                .map_err(|_| Error::TransferToDelegatorPurse)?;
+                let delegator = Delegator::unlocked(
+                    delegator_public_key.clone(),
+                    amount,
+                    bonding_purse,
+                    validator_public_key,
+                );
+                delegators.insert(delegator_public_key.clone(), delegator);
+                amount
+            }
+        };
+
+        self.write_bid(validator_account_hash, bid)?;
+
+        Ok(new_delegation_amount)
     }
 
     /// Removes specified amount of motes (or the value from the collection altogether, if the
@@ -355,6 +400,7 @@ pub trait Auction:
                     *delegator.bonding_purse(),
                     amount,
                     Some(new_validator),
+
                 )?;
 
                 let era_end_timestamp_millis = detail::get_era_end_timestamp_millis(self)?;
@@ -398,13 +444,13 @@ pub trait Auction:
 
             let validator_account_hash = AccountHash::from(&validator_public_key);
             // Update unbonding entries for given validator
-            let unbonding_purses = self.read_unbond(&validator_account_hash)?;
+            let unbonding_purses = self.read_withdraw(&validator_account_hash)?;
             if !unbonding_purses.is_empty() {
                 burned_amount += unbonding_purses
                     .into_iter()
                     .map(|unbonding_purse| *unbonding_purse.amount())
                     .sum();
-                self.write_unbond(validator_account_hash, Vec::new())?;
+                self.write_withdraw(validator_account_hash, Vec::new())?;
             }
         }
 

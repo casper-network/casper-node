@@ -51,9 +51,8 @@ use casper_types::{
     bytesrepr, runtime_args,
     system::{
         auction::{
-            Bids, EraValidators, UnbondingPurses, ValidatorWeights, WithdrawPurses,
-            ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS, AUCTION_DELAY_KEY, ERA_ID_KEY,
-            METHOD_RUN_AUCTION,
+            Bids, EraValidators, UnbondingPurses, ValidatorWeights, ARG_ERA_END_TIMESTAMP_MILLIS,
+            ARG_EVICTED_VALIDATORS, AUCTION_DELAY_KEY, ERA_ID_KEY, METHOD_RUN_AUCTION,
         },
         mint::TOTAL_SUPPLY_KEY,
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
@@ -577,37 +576,6 @@ where
         let engine_state = Rc::get_mut(&mut self.engine_state).unwrap();
         engine_state.update_config(engine_config);
 
-        let empty_path: Vec<String> = vec![];
-
-        if let Ok(StoredValue::CLValue(cl_registry)) = self.query(
-            self.post_state_hash,
-            Key::SystemContractRegistry,
-            &empty_path,
-        ) {
-            let registry = CLValue::into_t::<SystemContractRegistry>(cl_registry).unwrap();
-            if self.mint_contract_hash.is_none() {
-                self.mint_contract_hash = Some(*registry.get(MINT).expect("should have mint hash"))
-            };
-            if self.handle_payment_contract_hash.is_none() {
-                self.handle_payment_contract_hash = Some(
-                    *registry
-                        .get(HANDLE_PAYMENT)
-                        .expect("should have handle payment hash"),
-                )
-            }
-            if self.standard_payment_hash.is_none() {
-                self.standard_payment_hash = Some(
-                    *registry
-                        .get(STANDARD_PAYMENT)
-                        .expect("should have standard payment hash"),
-                )
-            }
-            if self.auction_contract_hash.is_none() {
-                self.auction_contract_hash =
-                    Some(*registry.get(AUCTION).expect("should have auction hash"))
-            }
-        }
-
         let result = self
             .engine_state
             .commit_upgrade(CorrelationId::new(), upgrade_config.clone());
@@ -1014,38 +982,7 @@ where
     }
 
     /// Gets [`UnbondingPurses`].
-    pub fn get_unbonds(&mut self) -> UnbondingPurses {
-        let correlation_id = CorrelationId::new();
-        let state_root_hash = self.get_post_state_hash();
-
-        let tracking_copy = self
-            .engine_state
-            .tracking_copy(state_root_hash)
-            .unwrap()
-            .unwrap();
-
-        let reader = tracking_copy.reader();
-
-        let unbond_keys = reader
-            .keys_with_prefix(correlation_id, &[KeyTag::Unbond as u8])
-            .unwrap_or_default();
-
-        let mut ret = BTreeMap::new();
-
-        for key in unbond_keys.into_iter() {
-            let read_result = reader.read(correlation_id, &key);
-            if let (Key::Unbond(account_hash), Ok(Some(StoredValue::Unbonding(unbonding_purses)))) =
-                (key, read_result)
-            {
-                ret.insert(account_hash, unbonding_purses);
-            }
-        }
-
-        ret
-    }
-
-    /// Gets [`WithdrawPurses`].
-    pub fn get_withdraws(&mut self) -> WithdrawPurses {
+    pub fn get_withdraws(&mut self) -> UnbondingPurses {
         let correlation_id = CorrelationId::new();
         let state_root_hash = self.get_post_state_hash();
 
@@ -1065,10 +1002,12 @@ where
 
         for key in withdraws_keys.into_iter() {
             let read_result = reader.read(correlation_id, &key);
-            if let (Key::Withdraw(account_hash), Ok(Some(StoredValue::Withdraw(withdraw_purses)))) =
-                (key, read_result)
+            if let (
+                Key::Withdraw(account_hash),
+                Ok(Some(StoredValue::Withdraw(unbonding_purses))),
+            ) = (key, read_result)
             {
-                ret.insert(account_hash, withdraw_purses);
+                ret.insert(account_hash, unbonding_purses);
             }
         }
 

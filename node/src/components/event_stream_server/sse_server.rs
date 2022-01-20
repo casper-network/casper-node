@@ -112,7 +112,6 @@ pub enum SseData {
     },
     /// New finality signature received.
     FinalitySignature(Box<FinalitySignature>),
-    /// The execution effects produced by a `StepRequest`.
     Step {
         era_id: EraId,
         #[data_size(skip)]

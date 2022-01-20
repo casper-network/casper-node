@@ -525,9 +525,6 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                     return Ok(query.into_not_found_result("Bid value found."));
                 }
                 StoredValue::Withdraw(_) => {
-                    return Ok(query.into_not_found_result("WithdrawPurses value found."));
-                }
-                StoredValue::Unbonding(_) => {
                     return Ok(query.into_not_found_result("UnbondingPurses value found."));
                 }
             }

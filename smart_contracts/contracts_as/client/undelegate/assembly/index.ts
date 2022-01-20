@@ -53,7 +53,6 @@ export function call(): void {
     }
     let amount = amountResult.value;
 
-
     let runtimeArgs = RuntimeArgs.fromArray([
         new Pair(ARG_AMOUNT, CLValue.fromU512(amount)),
         new Pair(ARG_DELEGATOR, CLValue.fromPublicKey(delegator)),

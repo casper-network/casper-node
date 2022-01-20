@@ -3,6 +3,7 @@
 mod memory_metrics;
 
 use std::{
+    borrow::Cow,
     collections::BTreeMap,
     fmt::{self, Display, Formatter},
     path::PathBuf,
@@ -24,6 +25,7 @@ use crate::{
     components::{
         block_validator::{self, BlockValidator},
         chainspec_loader::{self, ChainspecLoader},
+        console::{self, Console},
         contract_runtime::{ContractRuntime, ContractRuntimeAnnouncement},
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server,
@@ -43,6 +45,7 @@ use crate::{
             ChainspecLoaderAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
             GossiperAnnouncement, LinearChainAnnouncement, LinearChainBlock, NetworkAnnouncement,
         },
+        console::DumpConsensusStateRequest,
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
             ContractRuntimeRequest, FetcherRequest, LinearChainRequest, MetricsRequest,
@@ -139,6 +142,10 @@ pub(crate) enum JoinerEvent {
     #[from]
     AddressGossiper(gossiper::Event<GossipedAddress>),
 
+    /// Console event.
+    #[from]
+    Console(console::Event),
+
     /// Requests.
     /// Linear chain block by hash fetcher request.
     #[from]
@@ -196,6 +203,10 @@ pub(crate) enum JoinerEvent {
     /// Consensus request.
     #[from]
     ConsensusRequest(#[serde(skip_serializing)] ConsensusRequest),
+
+    /// Consensus dump request.
+    #[from]
+    DumpConsensusStateRequest(DumpConsensusStateRequest),
 }
 
 impl ReactorEvent for JoinerEvent {
@@ -226,12 +237,14 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::ContractRuntime(_) => "ContractRuntime",
             JoinerEvent::LinearChain(_) => "LinearChain",
             JoinerEvent::AddressGossiper(_) => "AddressGossiper",
+            JoinerEvent::Console(_) => "Console",
             JoinerEvent::BlockFetcherRequest(_) => "BlockFetcherRequest",
             JoinerEvent::BlockByHeightFetcherRequest(_) => "BlockByHeightFetcherRequest",
             JoinerEvent::DeployFetcherRequest(_) => "DeployFetcherRequest",
             JoinerEvent::BlockValidatorRequest(_) => "BlockValidatorRequest",
             JoinerEvent::BlockProposerRequest(_) => "BlockProposerRequest",
             JoinerEvent::StateStoreRequest(_) => "StateStoreRequest",
+            JoinerEvent::DumpConsensusStateRequest(_) => "DumpConsensusStateRequest",
             JoinerEvent::ControlAnnouncement(_) => "ControlAnnouncement",
             JoinerEvent::NetworkAnnouncement(_) => "NetworkAnnouncement",
             JoinerEvent::ContractRuntimeAnnouncement(_) => "ContractRuntimeAnnouncement",
@@ -313,6 +326,7 @@ impl Display for JoinerEvent {
                 write!(f, "block executor announcement: {}", announcement)
             }
             JoinerEvent::AddressGossiper(event) => write!(f, "address gossiper: {}", event),
+            JoinerEvent::Console(event) => write!(f, "console: {}", event),
             JoinerEvent::AddressGossiperAnnouncement(ann) => {
                 write!(f, "address gossiper announcement: {}", ann)
             }
@@ -332,6 +346,9 @@ impl Display for JoinerEvent {
             }
             JoinerEvent::StateStoreRequest(req) => write!(f, "state store request: {}", req),
             JoinerEvent::ConsensusRequest(req) => write!(f, "consensus request: {:?}", req),
+            JoinerEvent::DumpConsensusStateRequest(req) => {
+                write!(f, "consensus dump request: {}", req)
+            }
         }
     }
 }
@@ -352,6 +369,7 @@ pub(crate) struct Reactor {
     block_validator: BlockValidator<NodeId>,
     deploy_fetcher: Fetcher<Deploy>,
     linear_chain: linear_chain::LinearChainComponent<NodeId>,
+    console: Console,
     // Handles request for linear chain block by height.
     block_by_height_fetcher: Fetcher<BlockByHeight>,
     pub(super) block_header_by_hash_fetcher: Fetcher<BlockHeader>,
@@ -407,6 +425,9 @@ impl reactor::Reactor for Reactor {
 
         let metrics = Metrics::new(registry.clone());
 
+        let (console, console_effects) =
+            Console::new(&WithDir::new(&root, config.console.clone()), event_queue)?;
+
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
             config.network.clone(),
@@ -419,6 +440,7 @@ impl reactor::Reactor for Reactor {
         let linear_chain_fetcher = Fetcher::new("linear_chain", config.fetcher, registry)?;
 
         let mut effects = reactor::wrap_effects(JoinerEvent::SmallNetwork, small_network_effects);
+        effects.extend(reactor::wrap_effects(JoinerEvent::Console, console_effects));
 
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
@@ -535,6 +557,7 @@ impl reactor::Reactor for Reactor {
                 block_validator,
                 deploy_fetcher,
                 linear_chain,
+                console,
                 block_by_height_fetcher,
                 block_header_by_hash_fetcher,
                 block_header_with_metadata_fetcher:
@@ -816,6 +839,10 @@ impl reactor::Reactor for Reactor {
                 self.address_gossiper
                     .handle_event(effect_builder, rng, event),
             ),
+            JoinerEvent::Console(event) => reactor::wrap_effects(
+                JoinerEvent::Console,
+                self.console.handle_event(effect_builder, rng, event),
+            ),
             JoinerEvent::AddressGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
                 gossiped_address,
             )) => {
@@ -914,6 +941,11 @@ impl reactor::Reactor for Reactor {
             JoinerEvent::ConsensusRequest(ConsensusRequest::ValidatorChanges(responder)) => {
                 // no consensus, respond with empty map
                 responder.respond(BTreeMap::new()).ignore()
+            }
+            JoinerEvent::DumpConsensusStateRequest(req) => {
+                // We have no consensus running in the joiner, so we answer with `None`.
+                req.answer(Err(Cow::Borrowed("node is joining, no running consensus")))
+                    .ignore()
             }
         }
     }

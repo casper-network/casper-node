@@ -59,6 +59,7 @@
 //! some point. Failing to do so will result in a resource leak.
 
 pub(crate) mod announcements;
+pub(crate) mod console;
 pub(crate) mod requests;
 
 use std::{
@@ -101,7 +102,7 @@ use crate::{
     components::{
         block_validator::ValidatingBlock,
         chainspec_loader::{CurrentRunInfo, NextUpgrade},
-        consensus::{BlockContext, ClContext, ValidatorChange},
+        consensus::{BlockContext, ClContext, EraDump, ValidatorChange},
         contract_runtime::EraValidatorsRequest,
         deploy_acceptor,
         fetcher::FetchResult,
@@ -126,7 +127,10 @@ use requests::{
     NetworkRequest, StateStoreRequest, StorageRequest,
 };
 
-use self::announcements::{BlockProposerAnnouncement, BlocklistAnnouncement};
+use self::{
+    announcements::{BlockProposerAnnouncement, BlocklistAnnouncement},
+    console::DumpConsensusStateRequest,
+};
 use crate::components::contract_runtime::{
     BlockAndExecutionEffects, BlockExecutionError, ExecutionPreState,
 };
@@ -1807,6 +1811,27 @@ impl<REv> EffectBuilder<REv> {
         .await
         .into_iter()
         .collect()
+    }
+
+    /// Dump consensus state for a specific era, using the supplied function to serialize the
+    /// output.
+    pub(crate) async fn console_dump_consensus_state(
+        self,
+        era_id: Option<EraId>,
+        serialize: fn(&EraDump<'_>) -> Result<Vec<u8>, Cow<'static, str>>,
+    ) -> Result<Vec<u8>, Cow<'static, str>>
+    where
+        REv: From<DumpConsensusStateRequest>,
+    {
+        self.make_request(
+            |responder| DumpConsensusStateRequest {
+                era_id,
+                serialize,
+                responder,
+            },
+            QueueKind::Control,
+        )
+        .await
     }
 }
 

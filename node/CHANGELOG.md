@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.  The format
 ### Added
 * Add new event to the main SSE server stream across all endpoints `<IP:PORT>/events/*` which emits a shutdown event when the node shuts down.
 * Add `SIGUSR2` signal handling to dump the queue in JSON format (see "Changed" section for `SIGUSR1`).
+* A diagnostic console can now be enabled via the `[console]` section in the configuration file. See the `README.md` for details.
 * Add ability to force DB integrity checks to run on node start by setting env var `CL_RUN_INTEGRITY_CHECKS=1`.
 * Add ability to force DB integrity checks to run on node start by adding non-numeric contents to the initializer.pid file.
 
@@ -22,6 +23,7 @@ All notable changes to this project will be documented in this file.  The format
 * Detection of a crash no longer triggers DB integrity checks to run on node start; the checks can be triggered manually instead.
 * `SIGUSR1` now only dumps the queue in the debug text format.
 * Incoming connections from peers are rejected if they are exceeding the default incoming connections per peer limit of 3.
+* Connection handshake timeouts can now be configured via the `handshake_timeout` variable (they were hardcoded at 20 seconds before).
 
 
 

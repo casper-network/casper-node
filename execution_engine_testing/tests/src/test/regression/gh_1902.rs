@@ -175,7 +175,6 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
             auction::ARG_DELEGATOR => ACCOUNT_1_PUBLIC_KEY.clone(),
             auction::ARG_VALIDATOR => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
             auction::ARG_AMOUNT => undelegate_amount,
-            auction::ARG_NEW_VALIDATOR => Option::<PublicKey>::None
         };
         let deploy_hash = [56; 32];
 
