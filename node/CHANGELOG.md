@@ -24,7 +24,7 @@ All notable changes to this project will be documented in this file.  The format
 * `SIGUSR1` now only dumps the queue in the debug text format.
 * Incoming connections from peers are rejected if they are exceeding the default incoming connections per peer limit of 3.
 * Connection handshake timeouts can now be configured via the `handshake_timeout` variable (they were hardcoded at 20 seconds before).
-
+* `Key::SystemContractRegistry` is now readable and can be queried via the RPC.
 
 
 ## 1.4.3 - 2021-12-06
