@@ -64,8 +64,9 @@ fn store() -> (ContractHash, ContractVersion) {
         let set_variables = EntryPoint::new(
             ENTRY_POINT_SET_VARIABLES,
             vec![
-                Parameter::new(ARG_AVAILABLE_AMOUNT, CLType::U512),
-                Parameter::new(ARG_TIME_INTERVAL, CLType::U64),
+                Parameter::new(faucet::ARG_AVAILABLE_AMOUNT, CLType::U512),
+                Parameter::new(faucet::ARG_TIME_INTERVAL, CLType::U64),
+                Parameter::new(faucet::ARG_DISTRIBUTIONS_PER_INTERVAL, CLType::U64),
             ],
             CLType::Unit,
             EntryPointAccess::Public,
