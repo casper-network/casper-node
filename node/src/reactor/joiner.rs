@@ -333,7 +333,7 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::TrieRequestIncoming(_) => "TrieRequestIncoming",
             JoinerEvent::TrieResponseIncoming(_) => "TrieResponseIncoming",
             JoinerEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
-            JoinerEvent::ContractRuntimeRequest(_) => todo!(),
+            JoinerEvent::ContractRuntimeRequest(_) => "ContractRuntimeRequest",
         }
     }
 }
@@ -450,10 +450,12 @@ impl Display for JoinerEvent {
             JoinerEvent::TrieRequestIncoming(inner) => write!(f, "incoming: {}", inner),
             JoinerEvent::TrieResponseIncoming(inner) => write!(f, "incoming: {}", inner),
             JoinerEvent::FinalitySignatureIncoming(inner) => write!(f, "incoming: {}", inner),
+            JoinerEvent::ContractRuntimeRequest(req) => {
+                write!(f, "contract runtime request: {}", req)
+            }
             JoinerEvent::DumpConsensusStateRequest(req) => {
                 write!(f, "consensus dump request: {}", req)
             }
-            JoinerEvent::ContractRuntimeRequest(_) => todo!(),
         }
     }
 }
@@ -915,7 +917,11 @@ impl reactor::Reactor for Reactor {
                 req.answer(Err(Cow::Borrowed("node is joining, no running consensus")))
                     .ignore()
             }
-            JoinerEvent::ContractRuntimeRequest(_) => todo!(),
+            JoinerEvent::ContractRuntimeRequest(req) => reactor::wrap_effects(
+                JoinerEvent::ContractRuntime,
+                self.contract_runtime
+                    .handle_event(effect_builder, rng, req.into()),
+            ),
         }
     }
 

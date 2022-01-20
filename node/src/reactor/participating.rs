@@ -287,7 +287,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::TrieRequestIncoming(_) => "TrieRequestIncoming",
             ParticipatingEvent::TrieResponseIncoming(_) => "TrieResponseIncoming",
             ParticipatingEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
-            ParticipatingEvent::ContractRuntime(_) => todo!(),
+            ParticipatingEvent::ContractRuntime(_) => "ContractRuntime",
         }
     }
 }
@@ -415,7 +415,7 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::TrieRequestIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::TrieResponseIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::FinalitySignatureIncoming(inner) => Display::fmt(inner, f),
-            ParticipatingEvent::ContractRuntime(_) => todo!(),
+            ParticipatingEvent::ContractRuntime(inner) => Display::fmt(inner, f),
         }
     }
 }
@@ -497,73 +497,6 @@ impl Reactor {
     /// Inspect contract runtime.
     pub(crate) fn contract_runtime(&self) -> &ContractRuntime {
         &self.contract_runtime
-    }
-}
-
-impl Reactor {
-    /// Handles a request to get an item by id.
-    fn handle_get_request(
-        &self,
-        effect_builder: EffectBuilder<<Self as reactor::Reactor>::Event>,
-        sender: NodeId,
-        tag: Tag,
-        serialized_id: &[u8],
-    ) -> Effects<<Self as reactor::Reactor>::Event> {
-        match tag {
-            Tag::Trie => {
-                Self::respond_to_fetch(effect_builder, serialized_id, sender, |trie_or_chunk_id| {
-                    self.contract_runtime.get_trie(trie_or_chunk_id)
-                })
-            }
-            _ => {
-                warn!(%sender, ?tag, ?serialized_id, "tried to handle a non-trie get request, this should not have happened");
-                Effects::new()
-            }
-        }
-    }
-
-    fn respond_to_fetch<T, F, E>(
-        effect_builder: EffectBuilder<<Self as reactor::Reactor>::Event>,
-        serialized_id: &[u8],
-        sender: NodeId,
-        fetch_item: F,
-    ) -> Effects<<Self as reactor::Reactor>::Event>
-    where
-        T: Item,
-        F: FnOnce(T::Id) -> Result<Option<T>, E>,
-        E: Debug,
-    {
-        let id: T::Id = match bincode::deserialize(serialized_id) {
-            Ok(id) => id,
-            Err(error) => {
-                error!(
-                    tag = ?T::TAG,
-                    ?serialized_id,
-                    ?sender,
-                    ?error,
-                    "failed to decode item id"
-                );
-                return Effects::new();
-            }
-        };
-        let fetched_or_not_found = match fetch_item(id) {
-            Ok(Some(item)) => FetchedOrNotFound::Fetched(item),
-            Ok(None) => {
-                debug!(tag = ?T::TAG, ?id, ?sender, "failed to get item");
-                FetchedOrNotFound::NotFound(id)
-            }
-            Err(error) => {
-                error!(tag = ?T::TAG, ?id, ?sender, ?error, "error getting item");
-                FetchedOrNotFound::NotFound(id)
-            }
-        };
-        match Message::new_get_response(&fetched_or_not_found) {
-            Ok(message) => effect_builder.send_message(sender, message).ignore(),
-            Err(error) => {
-                error!("failed to create get-response: {}", error);
-                Effects::new()
-            }
-        }
     }
 }
 
