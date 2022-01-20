@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.  The format
 ### Changed
 * Disable checksummed-hex encoding, but leave checksummed-hex decoding in place.
 * Increase `DICTIONARY_ITEM_KEY_MAX_LENGTH` to 128.
+* Fixed some integer casts.
 
 
 

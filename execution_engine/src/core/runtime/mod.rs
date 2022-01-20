@@ -11,7 +11,7 @@ mod standard_payment_internal;
 use std::{
     cmp,
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
-    convert::TryFrom,
+    convert::{TryFrom, TryInto},
     iter::{FromIterator, IntoIterator},
 };
 
@@ -1186,8 +1186,11 @@ where
             return Err(Error::Interpreter(error.into()).into());
         }
 
-        // For all practical purposes following cast is assumed to be safe
-        let bytes_size = key_bytes.len() as u32;
+        // For all practical purposes following conversion is assumed to be safe
+        let bytes_size: u32 = key_bytes
+            .len()
+            .try_into()
+            .expect("Keys should not serialize to many bytes");
         let size_bytes = bytes_size.to_le_bytes(); // Wasm is little-endian
         if let Err(error) = self.memory.set(bytes_written_ptr, &size_bytes) {
             return Err(Error::Interpreter(error.into()).into());
@@ -1303,7 +1306,10 @@ where
             return Ok(Err(ApiError::HostBufferFull));
         }
         let call_stack = self.stack.call_stack_elements();
-        let call_stack_len = call_stack.len() as u32;
+        let call_stack_len: u32 = match call_stack.len().try_into() {
+            Ok(value) => value,
+            Err(_) => return Ok(Err(ApiError::OutOfMemory)),
+        };
         let call_stack_len_bytes = call_stack_len.to_le_bytes();
 
         if let Err(error) = self.memory.set(call_stack_len_ptr, &call_stack_len_bytes) {
@@ -1316,7 +1322,12 @@ where
 
         let call_stack_cl_value = CLValue::from_t(call_stack.clone()).map_err(Error::CLValue)?;
 
-        let call_stack_cl_value_bytes_len = call_stack_cl_value.inner_bytes().len() as u32;
+        let call_stack_cl_value_bytes_len: u32 =
+            match call_stack_cl_value.inner_bytes().len().try_into() {
+                Ok(value) => value,
+                Err(_) => return Ok(Err(ApiError::OutOfMemory)),
+            };
+
         if let Err(error) = self.write_host_buffer(call_stack_cl_value) {
             return Ok(Err(error));
         }
@@ -2377,7 +2388,10 @@ where
         result_size_ptr: u32,
         result: CLValue,
     ) -> Result<Result<(), ApiError>, Error> {
-        let result_size = result.inner_bytes().len() as u32; // considered to be safe
+        let result_size: u32 = match result.inner_bytes().len().try_into() {
+            Ok(value) => value,
+            Err(_) => return Ok(Err(ApiError::OutOfMemory)),
+        };
 
         // leave the host buffer set to `None` if there's nothing to write there
         if result_size != 0 {
@@ -2404,7 +2418,11 @@ where
             return Ok(Err(ApiError::HostBufferFull));
         }
 
-        let total_keys = self.context.named_keys().len() as u32;
+        let total_keys: u32 = match self.context.named_keys().len().try_into() {
+            Ok(value) => value,
+            Err(_) => return Ok(Err(ApiError::OutOfMemory)),
+        };
+
         let total_keys_bytes = total_keys.to_le_bytes();
         if let Err(error) = self.memory.set(total_keys_ptr, &total_keys_bytes) {
             return Err(Error::Interpreter(error.into()).into());
@@ -2418,7 +2436,11 @@ where
         let named_keys =
             CLValue::from_t(self.context.named_keys().clone()).map_err(Error::CLValue)?;
 
-        let length = named_keys.inner_bytes().len() as u32;
+        let length: u32 = match named_keys.inner_bytes().len().try_into() {
+            Ok(value) => value,
+            Err(_) => return Ok(Err(ApiError::BufferTooSmall)),
+        };
+
         if let Err(error) = self.write_host_buffer(named_keys) {
             return Ok(Err(error));
         }
@@ -2609,7 +2631,10 @@ where
             }
 
             // Following cast is assumed to be safe
-            let bytes_size = key_bytes.len() as u32;
+            let bytes_size: u32 = key_bytes
+                .len()
+                .try_into()
+                .expect("Serialized value should fit within the limit");
             let size_bytes = bytes_size.to_le_bytes(); // Wasm is little-endian
             if let Err(error) = self.memory.set(bytes_written_ptr, &size_bytes) {
                 return Err(Error::Interpreter(error.into()));
@@ -2770,7 +2795,11 @@ where
             None => return Ok(Err(ApiError::ValueNotFound)),
         };
 
-        let value_size = cl_value.inner_bytes().len() as u32;
+        let value_size: u32 = match cl_value.inner_bytes().len().try_into() {
+            Ok(value) => value,
+            Err(_) => return Ok(Err(ApiError::BufferTooSmall)),
+        };
+
         if let Err(error) = self.write_host_buffer(cl_value) {
             return Ok(Err(error));
         }
@@ -3299,7 +3328,11 @@ where
             return Err(Error::Interpreter(error.into()));
         }
 
-        let bytes_written = sliced_buf.len() as u32;
+        // Never panics because we check that `serialized_value.len()` fits in `u32`.
+        let bytes_written: u32 = sliced_buf
+            .len()
+            .try_into()
+            .expect("Size of buffer should fit within limit");
         let bytes_written_data = bytes_written.to_le_bytes();
 
         if let Err(error) = self.memory.set(bytes_written_ptr, &bytes_written_data) {
@@ -3325,11 +3358,11 @@ where
         let name_bytes = self.bytes_from_mem(name_ptr, name_size)?;
         let name = String::from_utf8_lossy(&name_bytes);
 
-        let arg_size = match self.context.args().get(&name) {
+        let arg_size: u32 = match self.context.args().get(&name) {
             Some(arg) if arg.inner_bytes().len() > u32::max_value() as usize => {
                 return Ok(Err(ApiError::OutOfMemory));
             }
-            Some(arg) => arg.inner_bytes().len() as u32,
+            Some(arg) => arg.inner_bytes().len().try_into().unwrap(),
             None => return Ok(Err(ApiError::MissingArgument)),
         };
 
@@ -3608,7 +3641,11 @@ where
             None => return Ok(Err(ApiError::ValueNotFound)),
         };
 
-        let value_size = cl_value.inner_bytes().len() as u32;
+        let value_size: u32 = match cl_value.inner_bytes().len().try_into() {
+            Ok(value) => value,
+            Err(_) => return Ok(Err(ApiError::BufferTooSmall)),
+        };
+
         if let Err(error) = self.write_host_buffer(cl_value) {
             return Ok(Err(error));
         }
@@ -3691,7 +3728,10 @@ where
         let authorization_keys =
             Vec::from_iter(self.context.authorization_keys().clone().into_iter());
 
-        let total_keys = authorization_keys.len() as u32;
+        let total_keys: u32 = match authorization_keys.len().try_into() {
+            Ok(value) => value,
+            Err(_) => return Ok(Err(ApiError::OutOfMemory)),
+        };
         let total_keys_bytes = total_keys.to_le_bytes();
         if let Err(error) = self.memory.set(len_ptr, &total_keys_bytes) {
             return Err(Error::Interpreter(error.into()).into());
@@ -3704,7 +3744,10 @@ where
 
         let authorization_keys = CLValue::from_t(authorization_keys).map_err(Error::CLValue)?;
 
-        let length = authorization_keys.inner_bytes().len() as u32;
+        let length: u32 = match authorization_keys.inner_bytes().len().try_into() {
+            Ok(value) => value,
+            Err(_) => return Ok(Err(ApiError::OutOfMemory)),
+        };
         if let Err(error) = self.write_host_buffer(authorization_keys) {
             return Ok(Err(error));
         }
