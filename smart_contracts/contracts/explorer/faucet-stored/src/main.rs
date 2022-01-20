@@ -53,6 +53,7 @@ fn store() -> (ContractHash, ContractVersion) {
             vec![
                 Parameter::new(faucet::ARG_AVAILABLE_AMOUNT, CLType::U512),
                 Parameter::new(faucet::ARG_TIME_INTERVAL, CLType::U64),
+                Parameter::new(faucet::ARG_DISTRIBUTIONS_PER_INTERVAL, CLType::U64),
             ],
             CLType::Unit,
             EntryPointAccess::Public,
