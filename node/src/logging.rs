@@ -171,7 +171,7 @@ where
                 writer,
                 " {}{:<6}{}",
                 color.prefix(),
-                meta.level().to_string(),
+                meta.level(),
                 color.suffix()
             )?;
         } else {
@@ -206,7 +206,7 @@ where
         let module = {
             let full_module_path = meta
                 .module_path()
-                .or_else(|| field_visitor.module.as_deref())
+                .or(field_visitor.module.as_deref())
                 .unwrap_or_default();
             if self.abbreviate_modules {
                 // Use a smallvec for going up to six levels deep.
@@ -229,7 +229,7 @@ where
 
         let file = if !self.abbreviate_modules {
             meta.file()
-                .or_else(|| field_visitor.file.as_deref())
+                .or(field_visitor.file.as_deref())
                 .unwrap_or_default()
                 .rsplit_once('/')
                 .map(|parts| parts.1)
