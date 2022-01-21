@@ -141,11 +141,18 @@ type ExecQueue = Arc<Mutex<BTreeMap<u64, (FinalizedBlock, Vec<Deploy>, Vec<Deplo
 
 #[derive(Debug, From, Serialize)]
 pub(crate) enum Event {
+    // TODO: Consider boxing the internals of `ContractRuntimeRequest` to make the variant smaller
     #[from]
-    ContractRuntimeRequest(ContractRuntimeRequest),
+    ContractRuntimeRequest(Box<ContractRuntimeRequest>),
 
     #[from]
     TrieRequestIncoming(TrieRequestIncoming),
+}
+
+impl From<ContractRuntimeRequest> for Event {
+    fn from(request: ContractRuntimeRequest) -> Self {
+        Event::ContractRuntimeRequest(Box::new(request))
+    }
 }
 
 impl Display for Event {
@@ -197,7 +204,7 @@ where
     ) -> Effects<Self::Event> {
         match event {
             Event::ContractRuntimeRequest(request) => {
-                self.handle_contract_runtime_request(effect_builder, rng, request)
+                self.handle_contract_runtime_request(effect_builder, rng, *request)
             }
             Event::TrieRequestIncoming(TrieRequestIncoming {
                 sender,

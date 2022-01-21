@@ -63,7 +63,13 @@ pub(crate) enum Event {
 
     /// Contract runtime request.
     #[from]
-    ContractRuntimeRequest(ContractRuntimeRequest),
+    ContractRuntimeRequest(Box<ContractRuntimeRequest>),
+}
+
+impl From<ContractRuntimeRequest> for Event {
+    fn from(request: ContractRuntimeRequest) -> Self {
+        Event::ContractRuntimeRequest(Box::new(request))
+    }
 }
 
 impl ReactorEvent for Event {

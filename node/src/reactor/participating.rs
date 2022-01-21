@@ -20,7 +20,7 @@ use derive_more::From;
 use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::Serialize;
-use tracing::{debug, error, warn};
+use tracing::error;
 
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
@@ -56,7 +56,7 @@ use crate::{
         console::DumpConsensusStateRequest,
         incoming::{
             ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
-            NetRequestIncoming, NetResponse, NetResponseIncoming, TrieRequest, TrieRequestIncoming,
+            NetRequestIncoming, NetResponse, NetResponseIncoming, TrieRequestIncoming,
             TrieResponseIncoming,
         },
         requests::{
@@ -69,7 +69,7 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
-    types::{Deploy, DeployHash, ExitCode, Item, NodeId, Tag},
+    types::{Deploy, DeployHash, ExitCode, NodeId},
     utils::{Source, WithDir},
     NodeRng,
 };
