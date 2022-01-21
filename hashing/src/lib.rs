@@ -627,15 +627,15 @@ mod tests {
         //
         // The resulting tree will look like this:
         //
-        // 1..9  a..j
+        // 1..0  a..j
         // │     │
         // └─────── R
         //
-        // The merkle root is thus: R = h( h(1..9) || h(a..j) )
+        // The merkle root is thus: R = h( h(1..0) || h(a..j) )
         //
-        // h(1..9) = 807f1ba73147c3a96c2d63b38dd5a5f514f66290a1436bb9821e9f2a72eff263
+        // h(1..0) = 807f1ba73147c3a96c2d63b38dd5a5f514f66290a1436bb9821e9f2a72eff263
         // h(a..j) = 499e1cdb476523fedafc9d9db31125e2744f271578ea95b16ab4bd1905f05fea
-        // R=h(h(1..9)||h(a..j)) = 1319394a98d0cb194f960e3748baeb2045a9ec28aa51e0d42011be43f4a91f5f
+        // R=h(h(1..0)||h(a..j)) = 1319394a98d0cb194f960e3748baeb2045a9ec28aa51e0d42011be43f4a91f5f
         // h(2u64le || R) = c31f0bb6ef569354d1a26c3a51f1ad4b6d87cef7f73a290ab6be8db6a9c7d4ee
         //
         // The final step is to hash h(2u64le || R), which is the length as little endian
