@@ -336,7 +336,7 @@ fn contract_key_addable_valid() {
         account_key,
         account.clone(),
     )));
-    tracking_copy.borrow_mut().write(contract_key, contract);
+    let _ = tracking_copy.borrow_mut().write(contract_key, contract);
 
     let default_system_registry = {
         let mut registry = SystemContractRegistry::new();
@@ -347,7 +347,7 @@ fn contract_key_addable_valid() {
         StoredValue::CLValue(CLValue::from_t(registry).unwrap())
     };
 
-    tracking_copy
+    let _ = tracking_copy
         .borrow_mut()
         .write(Key::SystemContractRegistry, default_system_registry);
 
@@ -419,7 +419,7 @@ fn contract_key_addable_invalid() {
         account.clone(),
     )));
 
-    tracking_copy.borrow_mut().write(contract_key, contract);
+    let _ = tracking_copy.borrow_mut().write(contract_key, contract);
 
     let mut named_keys = NamedKeys::new();
 

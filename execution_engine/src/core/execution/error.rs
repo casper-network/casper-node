@@ -163,6 +163,9 @@ pub enum Error {
     /// An attempt to push to the runtime stack which is already at the maximum height.
     #[error("Runtime stack overflow")]
     RuntimeStackOverflow,
+    /// An attempt to write a value to global state where its serialized size is too large.
+    #[error("Value too large")]
+    ValueTooLarge,
 }
 
 impl From<wasm_prep::PreprocessingError> for Error {

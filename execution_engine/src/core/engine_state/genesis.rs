@@ -781,7 +781,7 @@ where
         let key = Key::Account(system_account_addr);
         let value = { StoredValue::Account(virtual_system_account.clone()) };
 
-        tracking_copy.borrow_mut().write(key, value);
+        let _ = tracking_copy.borrow_mut().write(key, value);
 
         GenesisInstaller {
             genesis_config_hash,
@@ -801,28 +801,28 @@ where
     }
 
     pub(crate) fn create_mint(&mut self) -> Result<ContractHash, GenesisError> {
-        let round_seigniorage_rate_uref =
-            {
-                let round_seigniorage_rate_uref = self
-                    .address_generator
-                    .borrow_mut()
-                    .new_uref(AccessRights::READ_ADD_WRITE);
+        let round_seigniorage_rate_uref = {
+            let round_seigniorage_rate_uref = self
+                .address_generator
+                .borrow_mut()
+                .new_uref(AccessRights::READ_ADD_WRITE);
 
-                let (round_seigniorage_rate_numer, round_seigniorage_rate_denom) =
-                    self.exec_config.round_seigniorage_rate().into();
-                let round_seigniorage_rate: Ratio<U512> = Ratio::new(
-                    round_seigniorage_rate_numer.into(),
-                    round_seigniorage_rate_denom.into(),
-                );
+            let (round_seigniorage_rate_numer, round_seigniorage_rate_denom) =
+                self.exec_config.round_seigniorage_rate().into();
+            let round_seigniorage_rate: Ratio<U512> = Ratio::new(
+                round_seigniorage_rate_numer.into(),
+                round_seigniorage_rate_denom.into(),
+            );
 
+            let _ =
                 self.tracking_copy.borrow_mut().write(
                     round_seigniorage_rate_uref.into(),
                     StoredValue::CLValue(CLValue::from_t(round_seigniorage_rate).map_err(
                         |_| GenesisError::CLValue(ARG_ROUND_SEIGNIORAGE_RATE.to_string()),
                     )?),
                 );
-                round_seigniorage_rate_uref
-            };
+            round_seigniorage_rate_uref
+        };
 
         let total_supply_uref = {
             let total_supply_uref = self
@@ -830,7 +830,7 @@ where
                 .borrow_mut()
                 .new_uref(AccessRights::READ_ADD_WRITE);
 
-            self.tracking_copy.borrow_mut().write(
+            let _ = self.tracking_copy.borrow_mut().write(
                 total_supply_uref.into(),
                 StoredValue::CLValue(
                     CLValue::from_t(U512::zero())
@@ -868,7 +868,7 @@ where
             partial_registry.insert(HANDLE_PAYMENT.to_string(), DEFAULT_ADDRESS.into());
             let cl_registry = CLValue::from_t(partial_registry)
                 .map_err(|error| GenesisError::CLValue(error.to_string()))?;
-            self.tracking_copy.borrow_mut().write(
+            let _ = self.tracking_copy.borrow_mut().write(
                 Key::SystemContractRegistry,
                 StoredValue::CLValue(cl_registry),
             );
@@ -1028,7 +1028,7 @@ where
             .address_generator
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
-        self.tracking_copy.borrow_mut().write(
+        let _ = self.tracking_copy.borrow_mut().write(
             era_id_uref.into(),
             StoredValue::CLValue(
                 CLValue::from_t(INITIAL_ERA_ID)
@@ -1041,7 +1041,7 @@ where
             .address_generator
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
-        self.tracking_copy.borrow_mut().write(
+        let _ = self.tracking_copy.borrow_mut().write(
             era_end_timestamp_millis_uref.into(),
             StoredValue::CLValue(
                 CLValue::from_t(INITIAL_ERA_END_TIMESTAMP_MILLIS)
@@ -1057,7 +1057,7 @@ where
             .address_generator
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
-        self.tracking_copy.borrow_mut().write(
+        let _ = self.tracking_copy.borrow_mut().write(
             initial_seigniorage_recipients_uref.into(),
             StoredValue::CLValue(CLValue::from_t(initial_seigniorage_recipients).map_err(
                 |_| GenesisError::CLValue(SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_string()),
@@ -1070,10 +1070,10 @@ where
 
         for (validator_public_key, bid) in validators.into_iter() {
             let validator_account_hash = AccountHash::from(&validator_public_key);
-            self.tracking_copy.borrow_mut().write(
+            let _ = self.tracking_copy.borrow_mut().write(
                 Key::Bid(validator_account_hash),
                 StoredValue::Bid(Box::new(bid)),
-            )
+            );
         }
 
         let validator_slots = self.exec_config.validator_slots();
@@ -1081,7 +1081,7 @@ where
             .address_generator
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
-        self.tracking_copy.borrow_mut().write(
+        let _ = self.tracking_copy.borrow_mut().write(
             validator_slots_uref.into(),
             StoredValue::CLValue(
                 CLValue::from_t(validator_slots)
@@ -1094,7 +1094,7 @@ where
             .address_generator
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
-        self.tracking_copy.borrow_mut().write(
+        let _ = self.tracking_copy.borrow_mut().write(
             auction_delay_uref.into(),
             StoredValue::CLValue(
                 CLValue::from_t(auction_delay)
@@ -1107,7 +1107,7 @@ where
             .address_generator
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
-        self.tracking_copy.borrow_mut().write(
+        let _ = self.tracking_copy.borrow_mut().write(
             locked_funds_period_uref.into(),
             StoredValue::CLValue(
                 CLValue::from_t(locked_funds_period_millis)
@@ -1124,7 +1124,7 @@ where
             .address_generator
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
-        self.tracking_copy.borrow_mut().write(
+        let _ = self.tracking_copy.borrow_mut().write(
             unbonding_delay_uref.into(),
             StoredValue::CLValue(
                 CLValue::from_t(unbonding_delay)
@@ -1187,7 +1187,7 @@ where
                 main_purse,
             ));
 
-            self.tracking_copy.borrow_mut().write(key, stored_value);
+            let _ = self.tracking_copy.borrow_mut().write(key, stored_value);
         }
 
         Ok(())
@@ -1325,14 +1325,15 @@ where
             contract_package
         };
 
-        self.tracking_copy.borrow_mut().write(
+        let _ = self.tracking_copy.borrow_mut().write(
             contract_wasm_hash.into(),
             StoredValue::ContractWasm(contract_wasm),
         );
-        self.tracking_copy
+        let _ = self
+            .tracking_copy
             .borrow_mut()
             .write(contract_hash.into(), StoredValue::Contract(contract));
-        self.tracking_copy.borrow_mut().write(
+        let _ = self.tracking_copy.borrow_mut().write(
             contract_package_hash.into(),
             StoredValue::ContractPackage(contract_package),
         );
@@ -1361,7 +1362,7 @@ where
         partial_registry.insert(contract_name.to_string(), contract_hash);
         let cl_registry = CLValue::from_t(partial_registry)
             .map_err(|error| GenesisError::CLValue(error.to_string()))?;
-        self.tracking_copy.borrow_mut().write(
+        let _ = self.tracking_copy.borrow_mut().write(
             Key::SystemContractRegistry,
             StoredValue::CLValue(cl_registry),
         );

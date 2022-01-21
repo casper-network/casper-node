@@ -288,14 +288,18 @@ where
             entry_points,
             self.new_protocol_version,
         );
+        // This will only be called if we undergo a major version increment, but we cannot afford
+        // for it to fail, hence `force_write` is used.
         self.tracking_copy
             .borrow_mut()
-            .write(contract_hash.into(), StoredValue::Contract(new_contract));
+            .force_write(contract_hash.into(), StoredValue::Contract(new_contract));
 
         contract_package
             .insert_contract_version(self.new_protocol_version.value().major, contract_hash);
 
-        self.tracking_copy.borrow_mut().write(
+        // This will only be called if we undergo a major version increment, but we cannot afford
+        // for it to fail, hence `force_write` is used.
+        self.tracking_copy.borrow_mut().force_write(
             contract_package_key,
             StoredValue::ContractPackage(contract_package),
         );
