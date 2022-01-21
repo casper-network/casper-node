@@ -24,6 +24,7 @@ use blake2::{
 };
 use datasize::DataSize;
 use itertools::Itertools;
+use once_cell::sync::OnceCell;
 #[cfg(test)]
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 use schemars::JsonSchema;
@@ -107,6 +108,29 @@ impl Digest {
         let mut hasher = VarBlake2b::new(Digest::LENGTH).unwrap();
         hasher.update(data1);
         hasher.update(data2);
+        hasher.finalize_variable(|slice| {
+            result.copy_from_slice(slice);
+        });
+        Digest(result)
+    }
+
+    /// Hashes a Merkle root and leaf count.
+    ///
+    /// TODO: Document this function and its role in pre-image attacks.
+    fn hash_merkle_root(leaf_count: u64, root: Digest) -> Digest {
+        static PAIR_PREFIX_HASHER: OnceCell<VarBlake2b> = OnceCell::new();
+
+        let mut result = [0; Digest::LENGTH];
+        let mut hasher = PAIR_PREFIX_HASHER
+            .get_or_init(|| {
+                let mut hasher = VarBlake2b::new(Digest::LENGTH).unwrap();
+                hasher.update(&[0u8; ChunkWithProof::CHUNK_SIZE_BYTES]);
+                hasher
+            })
+            .clone();
+
+        hasher.update(leaf_count.to_le_bytes());
+        hasher.update(root);
         hasher.finalize_variable(|slice| {
             result.copy_from_slice(slice);
         });
