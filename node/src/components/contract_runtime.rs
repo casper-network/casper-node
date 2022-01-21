@@ -20,6 +20,7 @@ use datasize::DataSize;
 use lmdb::DatabaseFlags;
 use prometheus::Registry;
 use serde::Serialize;
+use thiserror::Error;
 use tracing::{debug, error, info, trace};
 
 use casper_execution_engine::{
@@ -58,6 +59,17 @@ pub use operations::execute_finalized_block;
 pub(crate) use types::{BlockAndExecutionEffects, EraValidatorsRequest};
 
 use super::fetcher::FetchedOrNotFound;
+
+/// An enum that represents all possible error conditions of a `contract_runtime` component.
+#[derive(Debug, Error)]
+pub(crate) enum ContractRuntimeError {
+    /// The provided serialized id cannot be deserialized properly.
+    #[error("error deserializing id: {0}")]
+    InvalidSerializedId(Box<str>),
+    // It was not possible to get trie with the specified id
+    #[error("error retrieving trie by id: {0}")]
+    FailedToRetrieveTrieById(Box<str>),
+}
 
 /// Maximum number of resource intensive tasks that can be run in parallel.
 ///
@@ -206,31 +218,42 @@ where
             Event::ContractRuntimeRequest(request) => {
                 self.handle_contract_runtime_request(effect_builder, rng, *request)
             }
-            Event::TrieRequestIncoming(TrieRequestIncoming {
-                sender,
-                message: TrieRequest(ref serialized_id),
-            }) => {
-                let fetched_or_not_found = match self.get_trie(serialized_id) {
-                    Some((id, maybe_trie)) => FetchedOrNotFound::from_opt(id, maybe_trie),
-                    None => {
-                        // Failed to deserialize the id, ignore the request
-                        return Effects::new();
-                    }
-                };
-
-                match Message::new_get_response(&fetched_or_not_found) {
-                    Ok(message) => effect_builder.send_message(sender, message).ignore(),
-                    Err(error) => {
-                        error!("failed to create get-response: {}", error);
-                        Effects::new()
-                    }
-                }
+            Event::TrieRequestIncoming(request) => {
+                self.handle_trie_request(effect_builder, request)
             }
         }
     }
 }
 
 impl ContractRuntime {
+    fn handle_trie_request<REv>(
+        &self,
+        effect_builder: EffectBuilder<REv>,
+        TrieRequestIncoming {
+            sender,
+            message: TrieRequest(ref serialized_id),
+        }: TrieRequestIncoming,
+    ) -> Effects<Event>
+    where
+        REv: From<NetworkRequest<NodeId, Message>> + Send,
+    {
+        let fetched_or_not_found = match self.get_trie(serialized_id) {
+            Ok(fetched_or_not_found) => fetched_or_not_found,
+            Err(error) => {
+                debug!("failed to get trie: {}", error);
+                return Effects::new();
+            }
+        };
+
+        match Message::new_get_response(&fetched_or_not_found) {
+            Ok(message) => effect_builder.send_message(sender, message).ignore(),
+            Err(error) => {
+                error!("failed to create get-response: {}", error);
+                Effects::new()
+            }
+        }
+    }
+
     fn handle_contract_runtime_request<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -710,26 +733,21 @@ impl ContractRuntime {
     pub(crate) fn get_trie(
         &self,
         serialized_id: &[u8],
-    ) -> Option<(TrieOrChunkId, Option<TrieOrChunk>)> {
+    ) -> Result<FetchedOrNotFound<TrieOrChunk, TrieOrChunkId>, ContractRuntimeError> {
         trace!(?serialized_id, "get_trie");
-        let id: TrieOrChunkId = match bincode::deserialize(serialized_id) {
-            Ok(id) => id,
-            Err(error) => {
-                debug!(?serialized_id, ?error, "failed to decode item id");
-                return None;
-            }
-        };
-        match Self::do_get_trie(&self.engine_state, &self.metrics, id) {
-            Ok(maybe_trie) => Some((id, maybe_trie)),
-            Err(error) => {
-                debug!(
-                    %id,
-                    %error,
-                    "failed to retrieve try by id"
-                );
-                Some((id, None))
-            }
-        }
+
+        let id: TrieOrChunkId = bincode::deserialize(serialized_id).map_err(|_| {
+            ContractRuntimeError::InvalidSerializedId(
+                format!("{:?}", serialized_id).into_boxed_str(),
+            )
+        })?;
+
+        let maybe_trie =
+            Self::do_get_trie(&self.engine_state, &self.metrics, id).map_err(|err| {
+                ContractRuntimeError::FailedToRetrieveTrieById(err.to_string().into_boxed_str())
+            })?;
+
+        Ok(FetchedOrNotFound::from_opt(id, maybe_trie))
     }
 
     fn do_get_trie(
