@@ -441,23 +441,23 @@ async fn dont_upgrade_without_switch_block() {
             .await;
         let mut exec_request_received = false;
         runner.reactor_mut().inner_mut().set_filter(move |event| {
-            if let ParticipatingEvent::ContractRuntimeRequest(request) = &event {
-                if let ContractRuntimeRequest::EnqueueBlockForExecution {
+            if let ParticipatingEvent::ContractRuntimeRequest(
+                ContractRuntimeRequest::EnqueueBlockForExecution {
                     finalized_block, ..
-                } = request.as_ref()
+                },
+            ) = &event
+            {
+                if finalized_block.era_report().is_some()
+                    && finalized_block.era_id() == EraId::from(1)
+                    && !exec_request_received
                 {
-                    if finalized_block.era_report().is_some()
-                        && finalized_block.era_id() == EraId::from(1)
-                        && !exec_request_received
-                    {
-                        info!("delaying {}", finalized_block);
-                        exec_request_received = true;
-                        return Either::Left(
-                            time::sleep(Duration::from_secs(10)).event(move |_| event),
-                        );
-                    }
-                    info!("not delaying {}", finalized_block);
+                    info!("delaying {}", finalized_block);
+                    exec_request_received = true;
+                    return Either::Left(
+                        time::sleep(Duration::from_secs(10)).event(move |_| event),
+                    );
                 }
+                info!("not delaying {}", finalized_block);
             }
             Either::Right(event)
         });
