@@ -64,7 +64,8 @@ enum FaucetError {
     InvalidRemainingAmount = 19,
     MissingDistributionsPerInterval = 20,
     InvalidDistributionsPerInterval = 21,
-    UnexpectedKeyVariant = 22,
+    ZeroDistributionsPerInterval = 22,
+    UnexpectedKeyVariant = 23,
 }
 
 impl From<FaucetError> for ApiError {
@@ -289,6 +290,10 @@ fn get_distribution_amount() -> U512 {
         FaucetError::MissingDistributionsPerInterval,
         FaucetError::InvalidDistributionsPerInterval,
     );
+
+    if distributions_per_interval.is_zero() {
+        runtime::revert(FaucetError::ZeroDistributionsPerInterval);
+    }
 
     let available_amount_uref = get_uref_with_user_errors(
         AVAILABLE_AMOUNT,

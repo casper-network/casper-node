@@ -3,7 +3,7 @@ use casper_engine_test_support::{
     DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_types::{
-    account::AccountHash, crypto, runtime_args, system::mint, ContractHash, Key, PublicKey,
+    account::AccountHash, crypto, runtime_args, system::mint, ContractHash, Gas, Key, PublicKey,
     RuntimeArgs, SecretKey, U512,
 };
 
@@ -1239,17 +1239,200 @@ fn should_allow_installer_to_fund_freely() {
 #[ignore]
 #[test]
 fn should_not_fund_if_zero_distributions_per_interval() {
-    unimplemented!()
+    let installer_secret_key =
+        SecretKey::ed25519_from_bytes([1; 32]).expect("failed to create secret key");
+    let installer_public_key = PublicKey::from(&installer_secret_key);
+    let installer_account = AccountHash::from_public_key(&installer_public_key, crypto::blake2b);
+
+    let user_secret_key =
+        SecretKey::ed25519_from_bytes([2; 32]).expect("failed to create secret key");
+    let user_public_key = PublicKey::from(&user_secret_key);
+    let user_account = AccountHash::from_public_key(&user_public_key, crypto::blake2b);
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST).commit();
+
+    let fund_installer_account_request = ExecuteRequestBuilder::transfer(
+        *DEFAULT_ACCOUNT_ADDR,
+        runtime_args! {
+            mint::ARG_TARGET => installer_account,
+            mint::ARG_AMOUNT => INSTALLER_FUND_AMOUNT,
+            mint::ARG_ID => <Option<u64>>::None
+        },
+    )
+    .build();
+
+    builder
+        .exec(fund_installer_account_request)
+        .expect_success()
+        .commit();
+
+    let faucet_fund_amount = U512::from(400_000_000_000_000u64);
+    let installer_session_request = ExecuteRequestBuilder::standard(
+        installer_account,
+        FAUCET_INSTALLER_SESSION,
+        runtime_args! {ARG_ID => FAUCET_ID, ARG_AMOUNT => faucet_fund_amount},
+    )
+    .build();
+
+    builder
+        .exec(installer_session_request)
+        .expect_success()
+        .commit();
+
+    let installer_call_faucet_request = ExecuteRequestBuilder::contract_call_by_name(
+        installer_account,
+        FAUCET_CONTRACT_NAMED_KEY.into(),
+        ENTRY_POINT_FAUCET,
+        runtime_args! {ARG_TARGET => user_account},
+    )
+    .build();
+
+    builder
+        .exec(installer_call_faucet_request)
+        .expect_failure()
+        .commit();
 }
 
 #[ignore]
 #[test]
-fn should_cost_installer() {
-    unimplemented!()
-}
+fn faucet_costs() {
+    let installer_secret_key =
+        SecretKey::ed25519_from_bytes([1; 32]).expect("failed to create secret key");
+    let installer_public_key = PublicKey::from(&installer_secret_key);
+    let installer_account = AccountHash::from_public_key(&installer_public_key, crypto::blake2b);
 
-#[ignore]
-#[test]
-fn should_cost_caller() {
-    unimplemented!()
+    let user_secret_key =
+        SecretKey::ed25519_from_bytes([2; 32]).expect("failed to create secret key");
+    let user_public_key = PublicKey::from(&user_secret_key);
+    let user_account = AccountHash::from_public_key(&user_public_key, crypto::blake2b);
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST).commit();
+
+    let fund_installer_account_request = ExecuteRequestBuilder::transfer(
+        *DEFAULT_ACCOUNT_ADDR,
+        runtime_args! {
+            mint::ARG_TARGET => installer_account,
+            mint::ARG_AMOUNT => INSTALLER_FUND_AMOUNT,
+            mint::ARG_ID => <Option<u64>>::None
+        },
+    )
+    .build();
+
+    builder
+        .exec(fund_installer_account_request)
+        .expect_success()
+        .commit();
+
+    let faucet_fund_amount = U512::from(400_000_000_000_000u64);
+    let installer_session_request = ExecuteRequestBuilder::standard(
+        installer_account,
+        FAUCET_INSTALLER_SESSION,
+        runtime_args! {ARG_ID => FAUCET_ID, ARG_AMOUNT => faucet_fund_amount },
+    )
+    .build();
+
+    builder
+        .exec(installer_session_request)
+        .expect_success()
+        .commit();
+
+    let expected_faucet_install_cost = Gas::from(43_468_607_450u64);
+    let faucet_install_cost = builder.last_exec_gas_cost();
+    assert_eq!(
+        faucet_install_cost, expected_faucet_install_cost,
+        "unexpected faucet install cost"
+    );
+
+    let assigned_time_interval = 10_000u64;
+    let assigned_distributions_per_interval = 2u64;
+    let installer_set_variable_request = {
+        let deploy_item = DeployItemBuilder::new()
+            .with_address(installer_account)
+            .with_authorization_keys(&[installer_account])
+            .with_stored_session_named_key(
+                FAUCET_CONTRACT_NAMED_KEY,
+                ENTRY_POINT_SET_VARIABLES,
+                runtime_args! {
+                    ARG_AVAILABLE_AMOUNT => faucet_fund_amount,
+                    ARG_TIME_INTERVAL => assigned_time_interval,
+                    ARG_DISTRIBUTIONS_PER_INTERVAL => assigned_distributions_per_interval
+                },
+            )
+            .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
+            .with_deploy_hash([3; 32])
+            .build();
+
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    };
+
+    builder
+        .exec(installer_set_variable_request)
+        .expect_success()
+        .commit();
+
+    let expected_faucet_set_variables_cost = Gas::from(54_278_330u64);
+    let faucet_set_variables_cost = builder.last_exec_gas_cost();
+    assert_eq!(
+        faucet_set_variables_cost, expected_faucet_set_variables_cost,
+        "unexpected faucet set variables cost"
+    );
+
+    let faucet_call_by_installer = {
+        let deploy_item = DeployItemBuilder::new()
+            .with_address(installer_account)
+            .with_authorization_keys(&[installer_account])
+            .with_stored_session_named_key(
+                FAUCET_CONTRACT_NAMED_KEY,
+                ENTRY_POINT_FAUCET,
+                runtime_args! {ARG_TARGET => user_account, ARG_ID => <Option<u64>>::None},
+            )
+            .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
+            .with_deploy_hash([4; 32])
+            .build();
+
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    };
+
+    builder
+        .exec(faucet_call_by_installer)
+        .expect_success()
+        .commit();
+
+    let expected_faucet_call_by_installer_cost = Gas::from(2_615_906_860u64);
+    let faucet_call_by_installer_cost = builder.last_exec_gas_cost();
+    assert_eq!(
+        faucet_call_by_installer_cost, expected_faucet_call_by_installer_cost,
+        "unexpected faucet call by installer cost"
+    );
+
+    let faucet_contract_hash = builder
+        .get_expected_account(installer_account)
+        .named_keys()
+        .get(FAUCET_CONTRACT_NAMED_KEY)
+        .cloned()
+        .and_then(Key::into_hash)
+        .map(ContractHash::new)
+        .expect("failed to find faucet contract");
+
+    let faucet_call_by_user_request = ExecuteRequestBuilder::contract_call_by_hash(
+        user_account,
+        faucet_contract_hash,
+        ENTRY_POINT_FAUCET.into(),
+        runtime_args! {ARG_TARGET => user_account, ARG_ID => <Option<u64>>::None},
+    )
+    .build();
+
+    builder
+        .exec(faucet_call_by_user_request)
+        .expect_success()
+        .commit();
+
+    let expected_faucet_call_by_user_cost = Gas::from(2_565_067_270u64);
+    let faucet_call_by_user_cost = builder.last_exec_gas_cost();
+    assert_eq!(
+        faucet_call_by_user_cost, expected_faucet_call_by_user_cost,
+        "unexpected faucet call by user cost"
+    );
 }
