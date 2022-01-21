@@ -545,7 +545,7 @@ mod tests {
 
         assert_eq!(
             hash_lower_hex,
-            "9ba070a55c7f72600d7f3fee2c0a6e52ec89237d97a8677eb0612132fb34df60"
+            "775cec8133b97b0e8d4e97659025d5bac4ed7c8927d1bd99cf62114df57f3e74"
         );
     }
 
@@ -565,7 +565,7 @@ mod tests {
 
         assert_eq!(
             hash_lower_hex,
-            "8768e1ca1b86ed3d722fb1b7d7a0228349c7d448058d0ce1e314f99dbd1c8573"
+            "4bd50b08a8366b28c35bc831b95d147123bad01c29ffbf854b659c4b3ea4086c"
         );
     }
 
@@ -583,7 +583,7 @@ mod tests {
 
         assert_eq!(
             hash_lower_hex,
-            "aae1660ca492ed9af6b2ead22f88b390aeb2ec0719654824d084aa6c6553ceeb"
+            "fd1214a627473ffc6d6cc97e7012e6344d74abbf987b48cde5d0642049a0db98"
         );
     }
 
@@ -653,7 +653,9 @@ mod tests {
             235, 32, 69, 169, 236, 40, 170, 81, 224, 212, 32, 17, 190, 67, 244, 169, 31, 95,
         ];
 
-        let short_data_hash = Digest::hash(maybe_colliding_short_data);
+        // Use `blake2b_hash` to work around the issue of the chunk size being shorter than the
+        // digest length.
+        let short_data_hash = Digest::blake2b_hash(maybe_colliding_short_data);
 
         // Ensure there is no collision. You can verify this test is correct by temporarily changing
         // the `Digest::hash_merkle_tree` function to use the unpadded `hash_pair` function, instead
