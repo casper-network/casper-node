@@ -1186,7 +1186,6 @@ impl reactor::Reactor for Reactor {
 
                 self.dispatch_event(effect_builder, rng, event)
             }
-            // self.handle_get_request(effect_builder, sender, Tag::Trie, serialized_id),
             ParticipatingEvent::TrieRequestIncoming(req) => reactor::wrap_effects(
                 ParticipatingEvent::ContractRuntime,
                 self.contract_runtime
