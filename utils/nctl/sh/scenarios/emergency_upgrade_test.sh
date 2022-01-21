@@ -54,7 +54,7 @@ function main() {
             equivocators=0 \
             doppels=0 \
             crashes=5 \
-            restarts=20 \
+            restarts=9 \
             ejections=0
 
     log "------------------------------------------------------------"

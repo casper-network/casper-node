@@ -541,10 +541,12 @@ impl reactor::Reactor for Reactor {
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
 
+        let next_upgrade_activation_point = chainspec_loader.next_upgrade_activation_point();
         let effect_builder = EffectBuilder::new(event_queue);
         let (chain_synchronizer, sync_effects) = ChainSynchronizer::new(
             Arc::clone(chainspec_loader.chainspec()),
             config.node.clone(),
+            next_upgrade_activation_point,
             effect_builder,
         );
         effects.extend(reactor::wrap_effects(
@@ -820,9 +822,17 @@ impl reactor::Reactor for Reactor {
                 ChainspecLoaderAnnouncement::UpgradeActivationPointRead(next_upgrade),
             ) => {
                 let reactor_event = JoinerEvent::ChainspecLoader(
-                    chainspec_loader::Event::GotNextUpgrade(next_upgrade),
+                    chainspec_loader::Event::GotNextUpgrade(next_upgrade.clone()),
                 );
-                self.dispatch_event(effect_builder, rng, reactor_event)
+                let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
+
+                let reactor_event = JoinerEvent::ChainSynchronizer(
+                    chain_synchronizer::Event::GotUpgradeActivationPoint(
+                        next_upgrade.activation_point(),
+                    ),
+                );
+                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                effects
             }
             // This is done to handle status requests from the RestServer
             JoinerEvent::ConsensusRequest(ConsensusRequest::Status(responder)) => {

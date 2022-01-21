@@ -68,7 +68,6 @@ fn storage_fixture(
     Storage::new(
         &WithDir::new(harness.tmp.path(), cfg),
         None,
-        ProtocolVersion::from_parts(1, 0, 0),
         false,
         "test",
         Ratio::new(1, 3),
@@ -94,7 +93,6 @@ fn storage_fixture_with_hard_reset(
     Storage::new(
         &WithDir::new(harness.tmp.path(), cfg),
         Some(reset_era_id),
-        ProtocolVersion::from_parts(1, 1, 0),
         false,
         "test",
         Ratio::new(1, 3),
@@ -114,14 +112,12 @@ fn storage_fixture_with_hard_reset(
 fn storage_fixture_with_hard_reset_and_protocol_version(
     harness: &ComponentHarness<UnitTestEvent>,
     reset_era_id: EraId,
-    protocol_version: ProtocolVersion,
     verifiable_chunked_hash_activation: EraId,
 ) -> Storage {
     let cfg = new_config(harness);
     Storage::new(
         &WithDir::new(harness.tmp.path(), cfg),
         Some(reset_era_id),
-        protocol_version,
         false,
         "test",
         Ratio::new(1, 3),
@@ -1247,7 +1243,6 @@ fn should_create_subdir_named_after_network() {
     let storage = Storage::new(
         &WithDir::new(harness.tmp.path(), cfg.clone()),
         None,
-        ProtocolVersion::from_parts(1, 0, 0),
         false,
         network_name,
         Ratio::new(1, 3),
@@ -1448,8 +1443,6 @@ fn should_garbage_collect() {
         let storage = storage_fixture_with_hard_reset_and_protocol_version(
             &harness,
             EraId::from(reset_era as u64),
-            ProtocolVersion::from_parts(1, 5, 0), /* this is needed because blocks with later
-                                                   * versions aren't removed on hard resets */
             verifiable_chunked_hash_activation,
         );
 

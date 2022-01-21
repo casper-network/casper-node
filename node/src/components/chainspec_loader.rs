@@ -258,8 +258,10 @@ impl ChainspecLoader {
         &self.chainspec
     }
 
-    pub(crate) fn next_upgrade(&self) -> Option<NextUpgrade> {
-        self.next_upgrade.clone()
+    pub(crate) fn next_upgrade_activation_point(&self) -> Option<ActivationPoint> {
+        self.next_upgrade
+            .as_ref()
+            .map(|next_upgrade| next_upgrade.activation_point())
     }
 
     /// Returns the era ID of where we should reset back to.  This means stored blocks in that and

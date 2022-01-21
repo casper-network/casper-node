@@ -215,7 +215,6 @@ impl reactor::Reactor for Reactor {
         let storage = Storage::new(
             &storage_withdir,
             None,
-            ProtocolVersion::from_parts(1, 0, 0),
             false,
             "test",
             Ratio::new(1, 3),

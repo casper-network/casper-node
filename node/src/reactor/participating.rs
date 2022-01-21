@@ -715,9 +715,7 @@ impl reactor::Reactor for Reactor {
             console_effects,
         ));
 
-        let maybe_next_activation_point = chainspec_loader
-            .next_upgrade()
-            .map(|next_upgrade| next_upgrade.activation_point());
+        let next_upgrade_activation_point = chainspec_loader.next_upgrade_activation_point();
         let (consensus, init_consensus_effects) = EraSupervisor::new(
             latest_block_header.next_block_era_id(),
             storage.root_path(),
@@ -725,7 +723,7 @@ impl reactor::Reactor for Reactor {
             effect_builder,
             chainspec.clone(),
             &latest_block_header,
-            maybe_next_activation_point,
+            next_upgrade_activation_point,
             registry,
             Box::new(HighwayProtocol::new_boxed),
             &storage,
@@ -748,7 +746,7 @@ impl reactor::Reactor for Reactor {
             chainspec.core_config.auction_delay,
             chainspec.core_config.unbonding_delay,
             chainspec.highway_config.finality_threshold_fraction,
-            maybe_next_activation_point,
+            next_upgrade_activation_point,
             chainspec.protocol_config.verifiable_chunked_hash_activation,
         )?;
 

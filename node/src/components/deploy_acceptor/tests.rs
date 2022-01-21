@@ -22,7 +22,7 @@ use casper_execution_engine::{
 };
 use casper_types::{
     account::{Account, ActionThresholds, AssociatedKeys, Weight},
-    CLValue, ProtocolVersion, StoredValue, URef, U512,
+    CLValue, StoredValue, URef, U512,
 };
 
 use super::*;
@@ -411,7 +411,6 @@ impl reactor::Reactor for Reactor {
         let storage = Storage::new(
             &storage_withdir,
             None,
-            ProtocolVersion::from_parts(1, 0, 0),
             false,
             "test",
             Ratio::new(1, 3),

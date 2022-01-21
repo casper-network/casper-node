@@ -69,7 +69,7 @@ use tracing::{debug, error, info, warn};
 use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
-    EraId, ExecutionResult, ProtocolVersion, PublicKey, Transfer, Transform,
+    EraId, ExecutionResult, PublicKey, Transfer, Transform,
 };
 
 // The reactor! macro needs this in the fetcher tests
@@ -466,7 +466,6 @@ impl Storage {
     pub fn new(
         cfg: &WithDir<Config>,
         hard_reset_to_start_of_era: Option<EraId>,
-        protocol_version: ProtocolVersion,
         should_check_integrity: bool,
         network_name: &str,
         finality_threshold_fraction: Ratio<u64>,
@@ -543,9 +542,7 @@ impl Storage {
                 // Remove blocks that are in to-be-upgraded eras, but have obsolete protocol
                 // versions - they were most likely created before the upgrade and should be
                 // reverted.
-                if block_header.era_id() >= invalid_era
-                    && block_header.protocol_version() < protocol_version
-                {
+                if block_header.era_id() >= invalid_era {
                     if block_header.hashing_algorithm_version(verifiable_chunked_hash_activation)
                         == HashingAlgorithmVersion::V1
                     {

@@ -5,7 +5,7 @@ mod operations;
 use std::{convert::Infallible, fmt::Debug, sync::Arc};
 
 use datasize::DataSize;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use casper_execution_engine::core::engine_state::{
     self, genesis::GenesisSuccess, UpgradeConfig, UpgradeSuccess,
@@ -22,7 +22,8 @@ use crate::{
     fatal,
     reactor::joiner::JoinerEvent,
     types::{
-        BlockHash, BlockHeader, BlockPayload, Chainspec, FinalizedBlock, NodeConfig, Timestamp,
+        ActivationPoint, BlockHash, BlockHeader, BlockPayload, Chainspec, FinalizedBlock,
+        NodeConfig, Timestamp,
     },
     NodeRng,
 };
@@ -51,18 +52,23 @@ pub(crate) struct ChainSynchronizer {
     /// reactor can stop running.  It is passed to the participating reactor's constructor via its
     /// config.
     joining_outcome: Option<JoiningOutcome>,
+    /// The next upgrade activation point, used to determine what action to take after completing
+    /// chain synchronization.
+    maybe_next_upgrade: Option<ActivationPoint>,
 }
 
 impl ChainSynchronizer {
     pub(crate) fn new(
         chainspec: Arc<Chainspec>,
         config: NodeConfig,
+        maybe_next_upgrade: Option<ActivationPoint>,
         effect_builder: EffectBuilder<JoinerEvent>,
     ) -> (Self, Effects<Event>) {
         let synchronizer = ChainSynchronizer {
             chainspec,
             config,
             joining_outcome: None,
+            maybe_next_upgrade,
         };
         let effects = match synchronizer.config.trusted_hash.as_ref() {
             None => {
@@ -110,6 +116,23 @@ impl ChainSynchronizer {
         match result {
             Ok(latest_block_header) => {
                 if latest_block_header.protocol_version() == self.chainspec.protocol_version() {
+                    if let Some(next_upgrade_activation_point) = self
+                        .maybe_next_upgrade
+                        .map(|next_upgrade| next_upgrade.era_id())
+                    {
+                        if latest_block_header.era_id() >= next_upgrade_activation_point {
+                            // This is an invalid run as the highest block era ID >= next activation
+                            // point, so we're running an outdated version.  Exit with success to
+                            // indicate we should upgrade.
+                            warn!(
+                                %next_upgrade_activation_point,
+                                %latest_block_header,
+                                "running outdated version: exit to upgrade"
+                            );
+                            self.joining_outcome = Some(JoiningOutcome::ShouldExitForUpgrade);
+                            return Effects::new();
+                        }
+                    }
                     self.joining_outcome = Some(JoiningOutcome::Synced {
                         latest_block_header,
                     });
@@ -369,6 +392,11 @@ impl ChainSynchronizer {
         }
     }
 
+    fn handle_got_next_upgrade(&mut self, next_upgrade: ActivationPoint) -> Effects<Event> {
+        self.maybe_next_upgrade = Some(next_upgrade);
+        Effects::new()
+    }
+
     fn genesis_timestamp(&self) -> Option<Timestamp> {
         self.chainspec
             .protocol_config
@@ -402,6 +430,9 @@ impl Component<JoinerEvent> for ChainSynchronizer {
             } => self.handle_upgrade_result(effect_builder, upgrade_block_header, result),
             Event::ExecuteBlockResult(result) => {
                 self.handle_execute_block_result(effect_builder, result)
+            }
+            Event::GotUpgradeActivationPoint(next_upgrade) => {
+                self.handle_got_next_upgrade(next_upgrade)
             }
         }
     }
