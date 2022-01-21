@@ -255,7 +255,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::AddressGossiper(_) => "AddressGossiper",
             ParticipatingEvent::BlockValidator(_) => "BlockValidator",
             ParticipatingEvent::LinearChain(_) => "LinearChain",
-            ParticipatingEvent::ContractRuntimeRequest(_) => "ContractRuntime",
+            ParticipatingEvent::ContractRuntimeRequest(_) => "ContractRuntimeRequest",
             ParticipatingEvent::Console(_) => "Console",
             ParticipatingEvent::NetworkRequest(_) => "NetworkRequest",
             ParticipatingEvent::NetworkInfoRequest(_) => "NetworkInfoRequest",
@@ -346,7 +346,7 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::DeployGossiper(event) => write!(f, "deploy gossiper: {}", event),
             ParticipatingEvent::AddressGossiper(event) => write!(f, "address gossiper: {}", event),
             ParticipatingEvent::ContractRuntimeRequest(event) => {
-                write!(f, "contract runtime: {:?}", event)
+                write!(f, "contract runtime request: {:?}", event)
             }
             ParticipatingEvent::LinearChain(event) => write!(f, "linear-chain event {}", event),
             ParticipatingEvent::BlockValidator(event) => write!(f, "block validator: {}", event),

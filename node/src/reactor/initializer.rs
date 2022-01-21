@@ -88,7 +88,7 @@ impl ReactorEvent for Event {
             Event::ContractRuntimeRequest(_) => "ContractRuntimeRequest",
             Event::ControlAnnouncement(_) => "ControlAnnouncement",
             Event::StorageRequest(_) => "StorageRequest",
-            Event::ContractRuntime(_) => "StorageRequest",
+            Event::ContractRuntime(_) => "ContractRuntime",
         }
     }
 }
@@ -135,7 +135,7 @@ impl Display for Event {
             Event::Chainspec(event) => write!(formatter, "chainspec: {}", event),
             Event::Storage(event) => write!(formatter, "storage: {}", event),
             Event::ContractRuntimeRequest(event) => {
-                write!(formatter, "contract runtime: {:?}", event)
+                write!(formatter, "contract runtime request: {:?}", event)
             }
             Event::ControlAnnouncement(ctrl_ann) => write!(formatter, "control: {}", ctrl_ann),
             Event::StorageRequest(req) => write!(formatter, "storage request: {}", req),

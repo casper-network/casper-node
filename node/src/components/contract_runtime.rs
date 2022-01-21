@@ -709,7 +709,6 @@ impl ContractRuntime {
     /// Reads the trie (or chunk of a trie) under the given key and index.
     pub(crate) fn get_trie(
         &self,
-        // trie_or_chunk_id: TrieOrChunkId,
         serialized_id: &[u8],
     ) -> Option<(TrieOrChunkId, Option<TrieOrChunk>)> {
         trace!(?serialized_id, "get_trie");
