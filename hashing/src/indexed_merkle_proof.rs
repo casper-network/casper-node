@@ -153,7 +153,7 @@ impl IndexedMerkleProof {
         };
 
         // The Merkle root is the hash of the count with the raw root.
-        Digest::hash_pair(count.to_le_bytes(), raw_root)
+        Digest::hash_merkle_root(*count, raw_root)
     }
 
     pub(crate) fn merkle_proof(&self) -> &[Digest] {
@@ -366,7 +366,7 @@ mod tests {
         }
 
         let raw_root = compute_raw_root_from_proof(index, count, proof);
-        Digest::hash_pair(count.to_le_bytes(), raw_root)
+        Digest::hash_merkle_root(count, raw_root)
     }
 
     /// Construct an `IndexedMerkleProof` with a proof of zero digests.

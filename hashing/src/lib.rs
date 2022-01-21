@@ -176,11 +176,11 @@ impl Digest {
         I::IntoIter: ExactSizeIterator,
     {
         let leaves = leaves.into_iter();
-        let leaf_count_bytes = (leaves.len() as u64).to_le_bytes();
+        let leaf_count = leaves.len() as u64;
 
         leaves.tree_fold1(Digest::hash_pair).map_or_else(
             || Digest::SENTINEL_MERKLE_TREE,
-            |raw_root| Digest::hash_pair(leaf_count_bytes, raw_root),
+            |raw_root| Digest::hash_merkle_root(leaf_count, raw_root),
         )
     }
 
