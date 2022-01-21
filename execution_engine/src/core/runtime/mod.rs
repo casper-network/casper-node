@@ -145,8 +145,7 @@ pub fn extract_access_rights_from_keys<I: IntoIterator<Item = Key>>(
 ) -> HashMap<Address, HashSet<AccessRights>> {
     input
         .into_iter()
-        .map(key_to_tuple)
-        .flatten()
+        .flat_map(key_to_tuple)
         .group_by(|(key, _)| *key)
         .into_iter()
         .map(|(key, group)| {
@@ -1149,6 +1148,7 @@ where
         }
     }
 
+    #[allow(clippy::wrong_self_convention)]
     fn is_valid_uref(&mut self, uref_ptr: u32, uref_size: u32) -> Result<bool, Trap> {
         let bytes = self.bytes_from_mem(uref_ptr, uref_size as usize)?;
         let uref: URef = bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?;
