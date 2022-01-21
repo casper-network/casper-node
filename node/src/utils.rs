@@ -330,8 +330,7 @@ pub(crate) enum Source<I> {
 }
 
 impl<I> Source<I> {
-    #[allow(clippy::wrong_self_convention)]
-    pub(crate) fn from_client(&self) -> bool {
+    pub(crate) fn is_client(&self) -> bool {
         matches!(self, Source::Client)
     }
 }
