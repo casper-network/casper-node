@@ -117,12 +117,12 @@ impl Digest {
     /// Hashes a raw Merkle root and leaf count to firm the final Merkle hash.
     ///
     /// To avoid pre-image attacks, the final hash that is based upon the number of leaves in the
-    /// merkle tree and the root hash is prepended with a padding to ensure it is longer than the
+    /// Merkle tree and the root hash is prepended with a padding to ensure it is longer than the
     /// actual chunk size.
     ///
     /// Without this feature, an attacker could construct an item that is only a few bytes long but
     /// hashes to the same value as a much longer, chunked item by hashing `(len || root hash of
-    /// longer items Merkle tree root)`.
+    /// longer item's Merkle tree root)`.
     ///
     /// This function computes the correct final hash by ensuring the hasher used has been
     /// initialized with padding before. For efficiency reasons it uses a memoized hasher state
