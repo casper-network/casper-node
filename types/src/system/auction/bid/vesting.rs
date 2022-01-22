@@ -225,9 +225,8 @@ mod tests {
         let mut vesting_schedule = VestingSchedule::new(RELEASE_TIMESTAMP);
         vesting_schedule.initialize(U512::from(STAKE));
 
-        let mut timestamp;
+        let mut timestamp = RELEASE_TIMESTAMP;
 
-        timestamp = RELEASE_TIMESTAMP;
         assert_eq!(
             vesting_schedule.locked_amount(timestamp),
             Some(U512::from(130))

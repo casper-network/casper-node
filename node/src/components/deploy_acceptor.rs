@@ -202,7 +202,7 @@ impl DeployAcceptor {
         }
 
         // We only perform expiry checks on deploys received from the client.
-        if source.from_client() {
+        if source.is_client() {
             let current_node_timestamp = Timestamp::now();
             if deploy.header().expired(current_node_timestamp) {
                 let time_of_expiry = deploy.header().expires();
@@ -261,7 +261,7 @@ impl DeployAcceptor {
         let account_hash = event_metadata.deploy.header().account().to_account_hash();
         let account_key = account_hash.into();
 
-        if event_metadata.source.from_client() {
+        if event_metadata.source.is_client() {
             effect_builder
                 .get_account_from_global_state(prestate_hash, account_key)
                 .event(move |maybe_account| Event::GetAccountResult {
@@ -361,7 +361,7 @@ impl DeployAcceptor {
         account_hash: AccountHash,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
-        if !event_metadata.source.from_client() {
+        if !event_metadata.source.is_client() {
             // This would only happen due to programmer error and should crash the node.
             // Balance checks for deploys received by from a peer will cause the network
             // to stall.
