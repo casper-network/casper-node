@@ -656,7 +656,7 @@ mod tests {
                 .map(Digest::blake2b_hash),
         );
 
-        // The concatenation of `2u64` in little endian + the merkle root hash `R`. Note that this
+        // The concatenation of `2u64` in little endian + the Merkle root hash `R`. Note that this
         // is a valid hashable object on its own.
         let maybe_colliding_short_data = [
             2, 0, 0, 0, 0, 0, 0, 0, 19, 25, 57, 74, 152, 208, 203, 25, 79, 150, 14, 55, 72, 186,
