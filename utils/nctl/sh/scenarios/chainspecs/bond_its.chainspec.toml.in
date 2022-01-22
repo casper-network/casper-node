@@ -49,6 +49,8 @@ round_seigniorage_rate = [0, 1]
 max_associated_keys = 100
 # Maximum height of contract runtime call stack.
 max_runtime_call_stack_height = 12
+# Maximum serialized size of values stored in global state.
+max_stored_value_size = 8_388_608
 
 [highway]
 # A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.

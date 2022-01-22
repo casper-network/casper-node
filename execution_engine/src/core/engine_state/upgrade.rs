@@ -3,10 +3,11 @@ use std::{cell::RefCell, collections::BTreeMap, fmt, rc::Rc};
 
 use num_rational::Ratio;
 use thiserror::Error;
+use tracing::warn;
 
 use casper_hashing::Digest;
 use casper_types::{
-    bytesrepr,
+    bytesrepr::{self, ToBytes},
     system::{
         auction, handle_payment, mint, standard_payment, AUCTION, HANDLE_PAYMENT, MINT,
         STANDARD_PAYMENT,
@@ -175,6 +176,7 @@ where
 {
     new_protocol_version: ProtocolVersion,
     tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
+    max_stored_value_size: u32,
 }
 
 impl<S> SystemUpgrader<S>
@@ -185,10 +187,12 @@ where
     pub(crate) fn new(
         new_protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
+        max_stored_value_size: u32,
     ) -> Self {
         SystemUpgrader {
             new_protocol_version,
             tracking_copy,
+            max_stored_value_size,
         }
     }
 
@@ -290,19 +294,26 @@ where
         );
         // This will only be called if we undergo a major version increment, but we cannot afford
         // for it to fail, hence `force_write` is used.
+        let stored_value = StoredValue::Contract(new_contract);
+        if stored_value.serialized_length() > self.max_stored_value_size as usize {
+            warn!(%contract_name, serialized_length=%stored_value.serialized_length(), "wrote a system contract which is too large");
+        }
         self.tracking_copy
             .borrow_mut()
-            .force_write(contract_hash.into(), StoredValue::Contract(new_contract));
+            .force_write(contract_hash.into(), stored_value);
 
         contract_package
             .insert_contract_version(self.new_protocol_version.value().major, contract_hash);
 
         // This will only be called if we undergo a major version increment, but we cannot afford
         // for it to fail, hence `force_write` is used.
-        self.tracking_copy.borrow_mut().force_write(
-            contract_package_key,
-            StoredValue::ContractPackage(contract_package),
-        );
+        let stored_value = StoredValue::ContractPackage(contract_package);
+        if stored_value.serialized_length() > self.max_stored_value_size as usize {
+            warn!(%contract_name, serialized_length=%stored_value.serialized_length(), "wrote a system contract package which is too large");
+        }
+        self.tracking_copy
+            .borrow_mut()
+            .force_write(contract_package_key, stored_value);
 
         Ok(())
     }

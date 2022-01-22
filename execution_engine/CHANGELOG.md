@@ -13,6 +13,9 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+### Changed
+* Temporarily limit the size of individual values stored in global state.
+
 
 
 ## 1.4.4 - 2021-12-29

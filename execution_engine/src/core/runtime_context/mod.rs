@@ -7,7 +7,7 @@ use std::{
     rc::Rc,
 };
 
-use tracing::error;
+use tracing::{error, warn};
 
 use casper_types::{
     account::{
@@ -515,10 +515,11 @@ where
     pub fn write_transfer(&mut self, key: Key, value: Transfer) {
         if let Key::Transfer(_) = key {
             // Writing a `Transfer` will not exceed write size limit.
-            let _ = self
-                .tracking_copy
-                .borrow_mut()
-                .write(key, StoredValue::Transfer(value));
+            let _ = self.tracking_copy.borrow_mut().write(
+                key,
+                StoredValue::Transfer(value),
+                self.engine_config.max_stored_value_size(),
+            );
         } else {
             panic!("Do not use this function for writing non-transfer keys")
         }
@@ -528,10 +529,11 @@ where
     pub fn write_era_info(&mut self, key: Key, value: EraInfo) {
         if let Key::EraInfo(_) = key {
             // Writing an `EraInfo` for 100 validators will not exceed write size limit.
-            let _ = self
-                .tracking_copy
-                .borrow_mut()
-                .write(key, StoredValue::EraInfo(value));
+            let _ = self.tracking_copy.borrow_mut().write(
+                key,
+                StoredValue::EraInfo(value),
+                self.engine_config.max_stored_value_size(),
+            );
         } else {
             panic!("Do not use this function for writing non-era-info keys")
         }
@@ -854,11 +856,11 @@ where
         let bytes_count = stored_value.serialized_length();
         self.charge_gas_storage(bytes_count)?;
 
-        match self
-            .tracking_copy
-            .borrow_mut()
-            .write(key.into(), stored_value)
-        {
+        match self.tracking_copy.borrow_mut().write(
+            key.into(),
+            stored_value,
+            self.engine_config.max_stored_value_size(),
+        ) {
             WriteResult::Success => Ok(()),
             WriteResult::ValueTooLarge => Err(Error::ValueTooLarge),
         }
@@ -896,6 +898,9 @@ where
         let bytes_count = stored_value.serialized_length();
         self.charge_gas_storage(bytes_count)?;
 
+        if stored_value.serialized_length() > self.engine_config.max_stored_value_size() as usize {
+            warn!(%key, serialized_length=%stored_value.serialized_length(), "wrote a seigniorage recipients snapshot which is too large");
+        }
         self.tracking_copy
             .borrow_mut()
             .force_write(key, stored_value);
@@ -913,11 +918,12 @@ where
         let value_bytes_count = value.serialized_length();
         self.charge_gas_storage(value_bytes_count)?;
 
-        match self
-            .tracking_copy
-            .borrow_mut()
-            .add(self.correlation_id, key, value)
-        {
+        match self.tracking_copy.borrow_mut().add(
+            self.correlation_id,
+            key,
+            value,
+            self.engine_config.max_stored_value_size(),
+        ) {
             Err(storage_error) => Err(storage_error.into()),
             Ok(AddResult::Success) => Ok(()),
             Ok(AddResult::KeyNotFound(key)) => Err(Error::KeyNotFound(key)),

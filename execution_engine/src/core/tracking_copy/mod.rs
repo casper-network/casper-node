@@ -33,8 +33,6 @@ use crate::{
     storage::{global_state::StateReader, trie::merkle_proof::TrieMerkleProof},
 };
 
-const MAX_VALUE_SIZE: usize = 8 * 1024 * 1024;
-
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum TrackingCopyQueryResult {
@@ -330,11 +328,16 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
         }
     }
 
-    /// If the serialized length of `value` is not more than `MAX_VALUE_SIZE`, writes `key,value`
+    /// If the serialized length of `value` is not more than `max_value_size`, writes `key,value`
     /// and returns `WriteResult::Success`.  Otherwise, the write fails and
     /// `WriteResult::ValueTooLarge` is returned.
-    pub(super) fn write(&mut self, key: Key, value: StoredValue) -> WriteResult {
-        if value.serialized_length() > MAX_VALUE_SIZE {
+    pub(super) fn write(
+        &mut self,
+        key: Key,
+        value: StoredValue,
+        max_value_size: u32,
+    ) -> WriteResult {
+        if value.serialized_length() > max_value_size as usize {
             warn!(?key, ?value, "attempted writing value which is too large");
             return WriteResult::ValueTooLarge;
         }
@@ -344,12 +347,8 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
         WriteResult::Success
     }
 
-    /// Writes `key,value` ignoring the `MAX_VALUE_SIZE`, other than logging a warning if it is
-    /// exceeded.
+    /// Infallible write of `key,value`, ignoring the engine config's `max_stored_value_size`.
     pub(super) fn force_write(&mut self, key: Key, value: StoredValue) {
-        if value.serialized_length() > MAX_VALUE_SIZE {
-            warn!(?key, ?value, "wrote a value which is too large");
-        }
         let normalized_key = key.normalize();
         self.cache.insert_write(normalized_key, value.clone());
         self.journal.push((normalized_key, Transform::Write(value)));
@@ -364,6 +363,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
         correlation_id: CorrelationId,
         key: Key,
         value: StoredValue,
+        max_value_size: u32,
     ) -> Result<AddResult, R::Error> {
         let normalized_key = key.normalize();
         let current_value = match self.get(correlation_id, &normalized_key)? {
@@ -420,7 +420,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
 
         match transform.clone().apply(current_value) {
             Ok(new_value) => {
-                if new_value.serialized_length() > MAX_VALUE_SIZE {
+                if new_value.serialized_length() > max_value_size as usize {
                     return Ok(AddResult::ValueTooLarge);
                 }
                 self.cache.insert_write(normalized_key, new_value);

@@ -322,6 +322,7 @@ fn contract_key_not_writeable() {
 
 #[test]
 fn contract_key_addable_valid() {
+    const MAX_VALUE_SIZE: u32 = 8 * 1024 * 1024;
     // Contract key is addable if it is a "base" key - current context of the execution.
     let account_hash = AccountHash::new([0u8; 32]);
     let (account_key, account) = mock_account(account_hash);
@@ -336,7 +337,9 @@ fn contract_key_addable_valid() {
         account_key,
         account.clone(),
     )));
-    let _ = tracking_copy.borrow_mut().write(contract_key, contract);
+    let _ = tracking_copy
+        .borrow_mut()
+        .write(contract_key, contract, MAX_VALUE_SIZE);
 
     let default_system_registry = {
         let mut registry = SystemContractRegistry::new();
@@ -347,9 +350,11 @@ fn contract_key_addable_valid() {
         StoredValue::CLValue(CLValue::from_t(registry).unwrap())
     };
 
-    let _ = tracking_copy
-        .borrow_mut()
-        .write(Key::SystemContractRegistry, default_system_registry);
+    let _ = tracking_copy.borrow_mut().write(
+        Key::SystemContractRegistry,
+        default_system_registry,
+        MAX_VALUE_SIZE,
+    );
 
     let mut named_keys = NamedKeys::new();
     let uref = create_uref(&mut address_generator, AccessRights::WRITE);
@@ -405,6 +410,7 @@ fn contract_key_addable_valid() {
 
 #[test]
 fn contract_key_addable_invalid() {
+    const MAX_VALUE_SIZE: u32 = 8 * 1024 * 1024;
     let account_hash = AccountHash::new([0u8; 32]);
     let (account_key, account) = mock_account(account_hash);
     let authorization_keys = BTreeSet::from_iter(vec![account_hash]);
@@ -419,7 +425,9 @@ fn contract_key_addable_invalid() {
         account.clone(),
     )));
 
-    let _ = tracking_copy.borrow_mut().write(contract_key, contract);
+    let _ = tracking_copy
+        .borrow_mut()
+        .write(contract_key, contract, MAX_VALUE_SIZE);
 
     let mut named_keys = NamedKeys::new();
 
