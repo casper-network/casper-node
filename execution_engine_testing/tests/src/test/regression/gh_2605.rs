@@ -40,6 +40,7 @@ static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
 });
 const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 const BIG_TRIE_LEAF_CONTRACT: &str = "big_trie_leaf.wasm";
+const NAMED_KEYS_BLOAT_CONTRACT: &str = "named_keys_bloat.wasm";
 
 enum Setup {
     Default,
@@ -146,7 +147,7 @@ fn gh_2605_should_not_allow_to_exceed_8mb_named_keys() {
 
         let deploy = DeployItemBuilder::new()
             .with_address(account_hash)
-            .with_session_code("named_keys_bloat.wasm", session_args)
+            .with_session_code(NAMED_KEYS_BLOAT_CONTRACT, session_args)
             .with_empty_payment_bytes(runtime_args! {
                 // Use full balance to cover huge gas cost of this operation
                 ARG_AMOUNT => U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE),
