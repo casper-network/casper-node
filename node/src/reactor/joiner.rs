@@ -917,12 +917,6 @@ impl reactor::Reactor for Reactor {
                 req.answer(Err(Cow::Borrowed("node is joining, no running consensus")))
                     .ignore()
             }
-            #[allow(unused)]
-            JoinerEvent::ContractRuntimeRequest(req) => reactor::wrap_effects(
-                JoinerEvent::ContractRuntime,
-                self.contract_runtime
-                    .handle_event(effect_builder, rng, req.into()),
-            ),
         }
     }
 
