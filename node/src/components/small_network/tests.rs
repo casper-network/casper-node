@@ -50,11 +50,11 @@ enum Event {
     #[from]
     AddressGossiper(#[serde(skip_serializing)] gossiper::Event<GossipedAddress>),
     #[from]
-    NetworkRequest(#[serde(skip_serializing)] NetworkRequest<NodeId, Message>),
+    NetworkRequest(#[serde(skip_serializing)] NetworkRequest<Message>),
     #[from]
     ControlAnnouncement(ControlAnnouncement),
     #[from]
-    NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, Message>),
+    NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<Message>),
     #[from]
     AddressGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<GossipedAddress>),
 }
@@ -69,22 +69,22 @@ impl ReactorEvent for Event {
     }
 }
 
-impl From<NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>> for Event {
-    fn from(request: NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>) -> Self {
+impl From<NetworkRequest<gossiper::Message<GossipedAddress>>> for Event {
+    fn from(request: NetworkRequest<gossiper::Message<GossipedAddress>>) -> Self {
         Event::NetworkRequest(request.map_payload(Message::from))
     }
 }
 
-impl From<NetworkRequest<NodeId, Message>> for SmallNetworkEvent<Message> {
-    fn from(request: NetworkRequest<NodeId, Message>) -> SmallNetworkEvent<Message> {
+impl From<NetworkRequest<Message>> for SmallNetworkEvent<Message> {
+    fn from(request: NetworkRequest<Message>) -> SmallNetworkEvent<Message> {
         SmallNetworkEvent::NetworkRequest {
             req: Box::new(request),
         }
     }
 }
 
-impl From<NetworkRequest<NodeId, protocol::Message>> for Event {
-    fn from(_request: NetworkRequest<NodeId, protocol::Message>) -> Self {
+impl From<NetworkRequest<protocol::Message>> for Event {
+    fn from(_request: NetworkRequest<protocol::Message>) -> Self {
         unreachable!()
     }
 }
@@ -202,7 +202,7 @@ impl Reactor for TestReactor {
             Event::NetworkAnnouncement(NetworkAnnouncement::GossipOurAddress(gossiped_address)) => {
                 let event = gossiper::Event::ItemReceived {
                     item_id: gossiped_address,
-                    source: Source::<NodeId>::Ourself,
+                    source: Source::Ourself,
                 };
                 self.dispatch_event(effect_builder, rng, Event::AddressGossiper(event))
             }

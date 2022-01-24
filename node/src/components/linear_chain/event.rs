@@ -12,10 +12,10 @@ use crate::{
 };
 
 #[derive(Debug, From)]
-pub(crate) enum Event<I> {
+pub(crate) enum Event {
     /// A linear chain request issued by another node in the network.
     #[from]
-    Request(LinearChainRequest<I>),
+    Request(LinearChainRequest),
     /// New linear chain block has been produced.
     NewLinearChainBlock {
         /// The block.
@@ -37,7 +37,7 @@ pub(crate) enum Event<I> {
     IsBonded(Option<Box<BlockSignatures>>, Box<FinalitySignature>, bool),
 }
 
-impl<I: Display> Display for Event<I> {
+impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::Request(req) => write!(f, "linear chain request: {}", req),

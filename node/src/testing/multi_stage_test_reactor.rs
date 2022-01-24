@@ -120,7 +120,7 @@ pub(crate) enum MultiStageTestReactor {
 }
 
 impl MultiStageTestReactor {
-    pub(crate) fn consensus(&self) -> Option<&EraSupervisor<NodeId>> {
+    pub(crate) fn consensus(&self) -> Option<&EraSupervisor> {
         match self {
             MultiStageTestReactor::Deactivated => unreachable!(),
             MultiStageTestReactor::Initializer { .. }

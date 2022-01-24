@@ -37,7 +37,7 @@ use crate::{
     },
     types::{
         appendable_block::AppendableBlock, Block, Chainspec, Deploy, DeployHash,
-        DeployOrTransferHash, Timestamp,
+        DeployOrTransferHash, NodeId, Timestamp,
     },
     NodeRng,
 };
@@ -102,10 +102,10 @@ impl ValidatingBlock {
 
 /// Block validator component event.
 #[derive(Debug, From, Display)]
-pub(crate) enum Event<I> {
+pub(crate) enum Event {
     /// A request made of the block validator component.
     #[from]
-    Request(BlockValidationRequest<I>),
+    Request(BlockValidationRequest),
 
     /// A deploy has been successfully found.
     #[display(fmt = "{} found", dt_hash)]
@@ -127,7 +127,7 @@ pub(crate) enum Event<I> {
 ///
 /// Tracks whether or not there are deploys still missing and who is interested in the final result.
 #[derive(DataSize, Debug)]
-pub(crate) struct BlockValidationState<I> {
+pub(crate) struct BlockValidationState {
     /// Appendable block ensuring that the deploys satisfy the validity conditions.
     appendable_block: AppendableBlock,
     /// The deploys that have not yet been "crossed off" the list of potential misses.
@@ -135,16 +135,13 @@ pub(crate) struct BlockValidationState<I> {
     /// A list of responders that are awaiting an answer.
     responders: SmallVec<[Responder<bool>; 2]>,
     /// Peers that should have the data.
-    sources: VecDeque<I>,
+    sources: VecDeque<NodeId>,
 }
 
-impl<I> BlockValidationState<I>
-where
-    I: PartialEq + Eq + 'static,
-{
+impl BlockValidationState {
     /// Adds alternative source of data.
     /// Returns true if we already know about the peer.
-    fn add_source(&mut self, peer: I) -> bool {
+    fn add_source(&mut self, peer: NodeId) -> bool {
         if self.sources.contains(&peer) {
             true
         } else {
@@ -154,7 +151,7 @@ where
     }
 
     /// Returns a peer, if there is any, that we haven't yet tried.
-    fn source(&mut self) -> Option<I> {
+    fn source(&mut self) -> Option<NodeId> {
         self.sources.pop_front()
     }
 
@@ -167,20 +164,17 @@ where
 }
 
 #[derive(DataSize, Debug)]
-pub(crate) struct BlockValidator<I> {
+pub(crate) struct BlockValidator {
     /// Chainspec loaded for deploy validation.
     #[data_size(skip)]
     chainspec: Arc<Chainspec>,
     /// State of validation of a specific block.
-    validation_states: HashMap<ValidatingBlock, BlockValidationState<I>>,
+    validation_states: HashMap<ValidatingBlock, BlockValidationState>,
     /// Number of requests for a specific deploy hash still in flight.
     in_flight: KeyedCounter<DeployHash>,
 }
 
-impl<I> BlockValidator<I>
-where
-    I: Clone + Debug + Send + 'static + Send,
-{
+impl BlockValidator {
     /// Creates a new block validator instance.
     pub(crate) fn new(chainspec: Arc<Chainspec>) -> Self {
         BlockValidator {
@@ -191,7 +185,7 @@ where
     }
 
     /// Prints a log message about an invalid block with duplicated deploys.
-    fn log_block_with_replay(&self, sender: I, block: &ValidatingBlock) {
+    fn log_block_with_replay(&self, sender: NodeId, block: &ValidatingBlock) {
         let mut deploy_counts = BTreeMap::new();
         for dt_hash in block.deploys_and_transfers_iter() {
             *deploy_counts.entry(dt_hash).or_default() += 1;
@@ -209,16 +203,15 @@ where
     }
 }
 
-impl<I, REv> Component<REv> for BlockValidator<I>
+impl<REv> Component<REv> for BlockValidator
 where
-    I: Clone + Debug + Send + PartialEq + Eq + 'static,
-    REv: From<Event<I>>
-        + From<BlockValidationRequest<I>>
-        + From<FetcherRequest<I, Deploy>>
+    REv: From<Event>
+        + From<BlockValidationRequest>
+        + From<FetcherRequest<Deploy>>
         + From<StorageRequest>
         + Send,
 {
-    type Event = Event<I>;
+    type Event = Event;
     type ConstructionError = Infallible;
 
     fn handle_event(
@@ -402,20 +395,19 @@ where
 }
 
 /// Returns effects that fetch the deploy and validate it.
-fn fetch_deploy<REv, I>(
+fn fetch_deploy<REv>(
     effect_builder: EffectBuilder<REv>,
     dt_hash: DeployOrTransferHash,
-    sender: I,
-) -> Effects<Event<I>>
+    sender: NodeId,
+) -> Effects<Event>
 where
-    REv: From<Event<I>>
-        + From<BlockValidationRequest<I>>
+    REv: From<Event>
+        + From<BlockValidationRequest>
         + From<StorageRequest>
-        + From<FetcherRequest<I, Deploy>>
+        + From<FetcherRequest<Deploy>>
         + Send,
-    I: Clone + Send + PartialEq + Eq + 'static,
 {
-    let validate_deploy = move |result: FetchResult<Deploy, I>| match result {
+    let validate_deploy = move |result: FetchResult<Deploy>| match result {
         FetchResult::FromStorage(deploy) | FetchResult::FromPeer(deploy, _) => {
             (deploy.deploy_or_transfer_hash() == dt_hash)
                 .then(|| deploy)

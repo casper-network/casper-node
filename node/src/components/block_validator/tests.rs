@@ -19,20 +19,18 @@ use crate::{
 
 use super::*;
 
-type NodeId = &'static str;
-
 #[derive(Debug, From)]
 enum ReactorEvent {
     #[from]
-    BlockValidator(Event<NodeId>),
+    BlockValidator(Event),
     #[from]
-    Fetcher(FetcherRequest<NodeId, Deploy>),
+    Fetcher(FetcherRequest<Deploy>),
     #[from]
     Storage(StorageRequest),
 }
 
-impl From<BlockValidationRequest<NodeId>> for ReactorEvent {
-    fn from(req: BlockValidationRequest<NodeId>) -> ReactorEvent {
+impl From<BlockValidationRequest> for ReactorEvent {
+    fn from(req: BlockValidationRequest) -> ReactorEvent {
         ReactorEvent::BlockValidator(req.into())
     }
 }
@@ -48,7 +46,7 @@ impl MockReactor {
         }
     }
 
-    async fn expect_block_validator_event(&self) -> Event<NodeId> {
+    async fn expect_block_validator_event(&self) -> Event {
         let ((_ancestor, reactor_event), _) = self.scheduler.pop().await;
         if let ReactorEvent::BlockValidator(event) = reactor_event {
             event
@@ -163,7 +161,7 @@ async fn validate_block(
     let reactor = MockReactor::new();
     let effect_builder = EffectBuilder::new(EventQueueHandle::without_shutdown(reactor.scheduler));
     let chainspec = Arc::new(Chainspec::from_resources("local"));
-    let mut block_validator = BlockValidator::<NodeId>::new(chainspec);
+    let mut block_validator = BlockValidator::new(chainspec);
 
     // Pass the block to the component. This future will eventually resolve to the result, i.e.
     // whether the block is valid or not.

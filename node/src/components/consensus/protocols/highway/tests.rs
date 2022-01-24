@@ -1,8 +1,5 @@
 use std::{collections::BTreeSet, sync::Arc};
 
-use datasize::DataSize;
-use derive_more::Display;
-
 use casper_types::{PublicKey, U512};
 
 use crate::{
@@ -26,11 +23,8 @@ use crate::{
         HighwayProtocol,
     },
     testing::TestRng,
-    types::{BlockPayload, TimeDiff, Timestamp},
+    types::{BlockPayload, NodeId, TimeDiff, Timestamp},
 };
-
-#[derive(DataSize, Debug, Ord, PartialOrd, Copy, Clone, Display, Hash, Eq, PartialEq)]
-pub(crate) struct NodeId(pub u8);
 
 /// Returns a new `State` with `ClContext` parameters suitable for tests.
 pub(crate) fn new_test_state<I, T>(weights: I, seed: u64) -> State<ClContext>
@@ -60,7 +54,7 @@ const STANDSTILL_TIMEOUT: &str = "1min";
 pub(crate) fn new_test_highway_protocol<I1, I2, T>(
     weights: I1,
     init_faulty: I2,
-) -> Box<dyn ConsensusProtocol<NodeId, ClContext>>
+) -> Box<dyn ConsensusProtocol<ClContext>>
 where
     I1: IntoIterator<Item = (PublicKey, T)>,
     I2: IntoIterator<Item = PublicKey>,
@@ -83,7 +77,7 @@ where
     };
     // Timestamp of the genesis era start and test start.
     let start_timestamp: Timestamp = 0.into();
-    let (hw_proto, outcomes) = HighwayProtocol::<NodeId, ClContext>::new_boxed(
+    let (hw_proto, outcomes) = HighwayProtocol::<ClContext>::new_boxed(
         ClContext::hash(INSTANCE_ID_DATA),
         weights.into_iter().collect(),
         &init_faulty.into_iter().collect(),
@@ -109,14 +103,14 @@ where
 #[test]
 fn test_highway_protocol_handle_message_parse_error() {
     // Build a highway_protocol for instrumentation
-    let mut highway_protocol: Box<dyn ConsensusProtocol<NodeId, ClContext>> =
+    let mut highway_protocol: Box<dyn ConsensusProtocol<ClContext>> =
         new_test_highway_protocol(vec![(ALICE_PUBLIC_KEY.clone(), 100)], vec![]);
 
     let mut rng = TestRng::new();
     let now = Timestamp::zero();
-    let sender = NodeId(123);
+    let sender = NodeId::random(&mut rng);
     let msg = vec![];
-    let mut effects: Vec<ProtocolOutcome<NodeId, ClContext>> =
+    let mut effects: Vec<ProtocolOutcome<ClContext>> =
         highway_protocol.handle_message(&mut rng, sender.to_owned(), msg.to_owned(), now);
 
     assert_eq!(effects.len(), 1);
@@ -162,7 +156,7 @@ fn send_a_wire_unit_with_too_small_a_round_exp() {
         SignedWireUnit::new(wunit.into_hashed(), &alice_keypair),
     ));
     let mut highway_protocol = new_test_highway_protocol(validators, vec![]);
-    let sender = NodeId(123);
+    let sender = NodeId::random(&mut rng);
     let msg = bincode::serialize(&highway_message).unwrap();
     let mut outcomes =
         highway_protocol.handle_message(&mut rng, sender.to_owned(), msg.to_owned(), now);
@@ -217,7 +211,7 @@ fn send_a_valid_wire_unit() {
     ));
 
     let mut highway_protocol = new_test_highway_protocol(validators, vec![]);
-    let sender = NodeId(123);
+    let sender = NodeId::random(&mut rng);
     let msg = bincode::serialize(&highway_message).unwrap();
 
     let mut outcomes = highway_protocol.handle_message(&mut rng, sender, msg, now);
@@ -285,7 +279,7 @@ fn detect_doppelganger() {
     // Activate ALICE as validator.
     let _ = highway_protocol.activate_validator(ALICE_PUBLIC_KEY.clone(), alice_keypair, now, None);
     assert!(highway_protocol.is_active());
-    let sender = NodeId(123);
+    let sender = NodeId::random(&mut rng);
     let msg = bincode::serialize(&highway_message).unwrap();
     // "Send" a message created by ALICE to an instance of Highway where she's an active validator.
     // An incoming unit, created by the same validator, should be properly detected as a

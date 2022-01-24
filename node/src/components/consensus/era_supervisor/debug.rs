@@ -11,7 +11,7 @@ use serde::Serialize;
 
 use crate::{
     components::consensus::{highway_core::State, ClContext, HighwayProtocol},
-    types::{NodeId, Timestamp},
+    types::Timestamp,
 };
 
 use super::Era;
@@ -53,13 +53,13 @@ impl<'a> Display for EraDump<'a> {
 
 impl<'a> EraDump<'a> {
     /// Creates a new `EraDump` from a given era.
-    pub(crate) fn dump_era<I>(era: &'a Era<I>, era_id: EraId) -> Result<Self, Cow<'static, str>> {
+    pub(crate) fn dump_era(era: &'a Era, era_id: EraId) -> Result<Self, Cow<'static, str>> {
         let highway = era
             .consensus
             .as_any()
-            .downcast_ref::<HighwayProtocol<NodeId, ClContext>>()
+            .downcast_ref::<HighwayProtocol<ClContext>>()
             .ok_or(Cow::Borrowed(
-                "could not downcast `ConsensusProtocol` into `HighwayProtocol<NodeId, ClContext>`",
+                "could not downcast `ConsensusProtocol` into `HighwayProtocol<ClContext>`",
             ))?;
 
         Ok(EraDump {

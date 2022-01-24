@@ -11,18 +11,18 @@ use crate::{
         EffectBuilder, EffectOptionExt, Effects,
     },
     fatal,
-    types::{Block, BlockByHeight, BlockHash, Deploy, FinalizedBlock},
+    types::{Block, BlockByHeight, BlockHash, Deploy, FinalizedBlock, NodeId},
 };
 
 use super::{event::BlockByHashResult, Event, ReactorEventT};
 
-pub(super) fn fetch_block_by_hash<I: Clone + Send + 'static, REv>(
+pub(super) fn fetch_block_by_hash<REv>(
     effect_builder: EffectBuilder<REv>,
-    peer: I,
+    peer: NodeId,
     block_hash: BlockHash,
-) -> Effects<Event<I>>
+) -> Effects<Event>
 where
-    REv: ReactorEventT<I>,
+    REv: ReactorEventT,
 {
     let cloned = peer.clone();
     effect_builder.fetch_block(block_hash, peer).map_or_else(
@@ -38,13 +38,13 @@ where
     )
 }
 
-pub(super) fn fetch_block_at_height<I: Send + Clone + 'static, REv>(
+pub(super) fn fetch_block_at_height<REv>(
     effect_builder: EffectBuilder<REv>,
-    peer: I,
+    peer: NodeId,
     block_height: u64,
-) -> Effects<Event<I>>
+) -> Effects<Event>
 where
-    REv: ReactorEventT<I>,
+    REv: ReactorEventT,
 {
     let cloned = peer.clone();
     effect_builder

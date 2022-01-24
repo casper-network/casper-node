@@ -90,11 +90,11 @@ reactor!(Reactor {
 
     requests: {
         // This test contains no linear chain requests, so we panic if we receive any.
-        LinearChainRequest<NodeId> -> !;
-        NetworkRequest<NodeId, Message> -> network;
+        LinearChainRequest -> !;
+        NetworkRequest<Message> -> network;
         StorageRequest -> storage;
         StateStoreRequest -> storage;
-        FetcherRequest<NodeId, Deploy> -> deploy_fetcher;
+        FetcherRequest<Deploy> -> deploy_fetcher;
 
         // The only contract runtime request will be the commit of genesis, which we discard.
         ContractRuntimeRequest -> #;
@@ -102,8 +102,8 @@ reactor!(Reactor {
 
     announcements: {
         // The deploy fetcher needs to be notified about new deploys.
-        DeployAcceptorAnnouncement<NodeId> -> [deploy_fetcher];
-        NetworkAnnouncement<NodeId, Message> -> [fn handle_message];
+        DeployAcceptorAnnouncement -> [deploy_fetcher];
+        NetworkAnnouncement<Message> -> [fn handle_message];
         // Currently the RpcServerAnnouncement is misnamed - it solely tells of new deploys arriving
         // from a client.
         RpcServerAnnouncement -> [deploy_acceptor];
@@ -116,7 +116,7 @@ impl Reactor {
         &mut self,
         effect_builder: EffectBuilder<ReactorEvent>,
         rng: &mut NodeRng,
-        network_announcement: NetworkAnnouncement<NodeId, Message>,
+        network_announcement: NetworkAnnouncement<Message>,
     ) -> Effects<ReactorEvent> {
         // TODO: Make this manual routing disappear and supply appropriate
         // announcements.
@@ -198,7 +198,7 @@ fn announce_deploy_received(
     }
 }
 
-type FetchedDeployResult = Arc<Mutex<(bool, Option<FetchResult<Deploy, NodeId>>)>>;
+type FetchedDeployResult = Arc<Mutex<(bool, Option<FetchResult<Deploy>>)>>;
 
 fn fetch_deploy(
     deploy_hash: DeployHash,
@@ -250,7 +250,7 @@ async fn store_deploy(
 async fn assert_settled(
     node_id: &NodeId,
     deploy_hash: DeployHash,
-    expected_result: Option<FetchResult<Deploy, NodeId>>,
+    expected_result: Option<FetchResult<Deploy>>,
     fetched: FetchedDeployResult,
     network: &mut Network<Reactor>,
     rng: &mut TestRng,

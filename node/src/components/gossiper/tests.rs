@@ -66,15 +66,15 @@ enum Event {
     #[from]
     DeployGossiper(super::Event<Deploy>),
     #[from]
-    NetworkRequest(NetworkRequest<NodeId, NodeMessage>),
+    NetworkRequest(NetworkRequest<NodeMessage>),
     #[from]
     ControlAnnouncement(ControlAnnouncement),
     #[from]
-    NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, NodeMessage>),
+    NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeMessage>),
     #[from]
     RpcServerAnnouncement(#[serde(skip_serializing)] RpcServerAnnouncement),
     #[from]
-    DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement<NodeId>),
+    DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement),
     #[from]
     DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
     #[from]
@@ -103,8 +103,8 @@ impl From<StorageRequest> for Event {
     }
 }
 
-impl From<NetworkRequest<NodeId, Message<Deploy>>> for Event {
-    fn from(request: NetworkRequest<NodeId, Message<Deploy>>) -> Self {
+impl From<NetworkRequest<Message<Deploy>>> for Event {
+    fn from(request: NetworkRequest<Message<Deploy>>) -> Self {
         Event::NetworkRequest(request.map_payload(NodeMessage::from))
     }
 }
@@ -115,8 +115,8 @@ impl From<ConsensusRequest> for Event {
     }
 }
 
-impl From<LinearChainRequest<NodeId>> for Event {
-    fn from(_request: LinearChainRequest<NodeId>) -> Self {
+impl From<LinearChainRequest> for Event {
+    fn from(_request: LinearChainRequest) -> Self {
         unimplemented!("not implemented for gossiper tests")
     }
 }
@@ -345,7 +345,7 @@ impl reactor::Reactor for Reactor {
             }) => {
                 let event = deploy_acceptor::Event::Accept {
                     deploy,
-                    source: Source::<NodeId>::Client,
+                    source: Source::Client,
                     maybe_responder: responder,
                 };
                 self.dispatch_event(effect_builder, rng, Event::DeployAcceptor(event))

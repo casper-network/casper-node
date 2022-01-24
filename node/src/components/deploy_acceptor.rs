@@ -33,8 +33,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     types::{
-        chainspec::DeployConfig, Block, Chainspec, Deploy, DeployConfigurationFailure, NodeId,
-        Timestamp,
+        chainspec::DeployConfig, Block, Chainspec, Deploy, DeployConfigurationFailure, Timestamp,
     },
     utils::Source,
     NodeRng,
@@ -125,7 +124,7 @@ pub(crate) enum DeployParameterFailure {
 /// A helper trait constraining `DeployAcceptor` compatible reactor events.
 pub(crate) trait ReactorEventT:
     From<Event>
-    + From<DeployAcceptorAnnouncement<NodeId>>
+    + From<DeployAcceptorAnnouncement>
     + From<StorageRequest>
     + From<ContractRuntimeRequest>
     + Send
@@ -134,7 +133,7 @@ pub(crate) trait ReactorEventT:
 
 impl<REv> ReactorEventT for REv where
     REv: From<Event>
-        + From<DeployAcceptorAnnouncement<NodeId>>
+        + From<DeployAcceptorAnnouncement>
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
         + Send
@@ -180,7 +179,7 @@ impl DeployAcceptor {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         deploy: Box<Deploy>,
-        source: Source<NodeId>,
+        source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     ) -> Effects<Event> {
         let verification_start_timestamp = Timestamp::now();
@@ -493,10 +492,7 @@ impl DeployAcceptor {
                     })
             }
             ExecutableDeployItemIdentifier::Package(
-                ref
-                contract_package_identifier
-                @
-                ContractPackageIdentifier::Hash {
+                ref contract_package_identifier @ ContractPackageIdentifier::Hash {
                     contract_package_hash,
                     ..
                 },
@@ -597,10 +593,7 @@ impl DeployAcceptor {
                     })
             }
             ExecutableDeployItemIdentifier::Package(
-                ref
-                contract_package_identifier
-                @
-                ContractPackageIdentifier::Hash {
+                ref contract_package_identifier @ ContractPackageIdentifier::Hash {
                     contract_package_hash,
                     ..
                 },
