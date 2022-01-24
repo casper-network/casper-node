@@ -61,14 +61,14 @@ pub(crate) use types::{BlockAndExecutionEffects, EraValidatorsRequest};
 use super::fetcher::FetchedOrNotFound;
 
 /// An enum that represents all possible error conditions of a `contract_runtime` component.
-#[derive(Debug, Error)]
+#[derive(Debug, Error, From)]
 pub(crate) enum ContractRuntimeError {
     /// The provided serialized id cannot be deserialized properly.
     #[error("error deserializing id: {0}")]
-    InvalidSerializedId(Box<str>),
+    InvalidSerializedId(#[source] bincode::Error),
     // It was not possible to get trie with the specified id
     #[error("error retrieving trie by id: {0}")]
-    FailedToRetrieveTrieById(Box<str>),
+    FailedToRetrieveTrieById(#[source] engine_state::Error),
 }
 
 /// Maximum number of resource intensive tasks that can be run in parallel.
@@ -731,17 +731,8 @@ impl ContractRuntime {
     ) -> Result<FetchedOrNotFound<TrieOrChunk, TrieOrChunkId>, ContractRuntimeError> {
         trace!(?serialized_id, "get_trie");
 
-        let id: TrieOrChunkId = bincode::deserialize(serialized_id).map_err(|_| {
-            ContractRuntimeError::InvalidSerializedId(
-                format!("{:?}", serialized_id).into_boxed_str(),
-            )
-        })?;
-
-        let maybe_trie =
-            Self::do_get_trie(&self.engine_state, &self.metrics, id).map_err(|err| {
-                ContractRuntimeError::FailedToRetrieveTrieById(err.to_string().into_boxed_str())
-            })?;
-
+        let id: TrieOrChunkId = bincode::deserialize(serialized_id)?;
+        let maybe_trie = Self::do_get_trie(&self.engine_state, &self.metrics, id)?;
         Ok(FetchedOrNotFound::from_opt(id, maybe_trie))
     }
 
