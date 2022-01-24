@@ -1,21 +1,20 @@
 use std::collections::BTreeSet;
 
-use derive_more::Display;
 use itertools::Itertools;
 
-use crate::components::consensus::{
-    highway_core::{
-        highway::{tests::test_validators, ValidVertex},
-        highway_testing::TEST_INSTANCE_ID,
-        state::{tests::*, State},
+use crate::{
+    components::consensus::{
+        highway_core::{
+            highway::{tests::test_validators, ValidVertex},
+            highway_testing::TEST_INSTANCE_ID,
+            state::{tests::*, State},
+        },
+        BlockContext,
     },
-    BlockContext,
+    types::NodeId,
 };
 
 use super::*;
-
-#[derive(DataSize, Debug, Ord, PartialOrd, Copy, Clone, Display, Hash, Eq, PartialEq)]
-pub(crate) struct NodeId(pub u8);
 
 #[test]
 fn purge_vertices() {
@@ -48,7 +47,7 @@ fn purge_vertices() {
 
     // Create a synchronizer with a 0x20 ms timeout, and a Highway instance.
     let max_requests_for_vertex = 5;
-    let mut sync = Synchronizer::<NodeId, TestContext>::new(WEIGHTS.len(), TEST_INSTANCE_ID);
+    let mut sync = Synchronizer::<TestContext>::new(WEIGHTS.len(), TEST_INSTANCE_ID);
     let mut highway = Highway::<TestContext>::new(TEST_INSTANCE_ID, test_validators(), params);
 
     // At time 0x20, we receive c2, b0 and b1 — the latter ahead of their timestamp.
@@ -150,7 +149,7 @@ fn do_not_download_synchronized_dependencies() {
 
     // Create a synchronizer with a 0x20 ms timeout, and a Highway instance.
     let max_requests_for_vertex = 5;
-    let mut sync = Synchronizer::<NodeId, TestContext>::new(WEIGHTS.len(), TEST_INSTANCE_ID);
+    let mut sync = Synchronizer::<TestContext>::new(WEIGHTS.len(), TEST_INSTANCE_ID);
 
     let mut highway = Highway::<TestContext>::new(TEST_INSTANCE_ID, test_validators(), params);
     let now = 0x20.into();
@@ -254,7 +253,7 @@ fn transitive_proposal_dependency() {
 
     // Create a synchronizer with a 0x200 ms timeout, and a Highway instance.
     let max_requests_for_vertex = 5;
-    let mut sync = Synchronizer::<NodeId, TestContext>::new(WEIGHTS.len(), TEST_INSTANCE_ID);
+    let mut sync = Synchronizer::<TestContext>::new(WEIGHTS.len(), TEST_INSTANCE_ID);
 
     let mut highway = Highway::<TestContext>::new(TEST_INSTANCE_ID, test_validators(), params);
     let now = 0x100.into();
@@ -363,7 +362,7 @@ fn unwrap_single<T: Debug>(vec: Vec<T>) -> T {
 }
 
 fn assert_targeted_message(
-    outcome: &ProtocolOutcome<NodeId, TestContext>,
+    outcome: &ProtocolOutcome<TestContext>,
     peer: &NodeId,
     expected: Dependency<TestContext>,
 ) {

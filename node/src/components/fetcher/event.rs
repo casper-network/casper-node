@@ -11,12 +11,12 @@ use crate::{
 };
 
 #[derive(Clone, DataSize, Debug, PartialEq)]
-pub(crate) enum FetchResult<T, I> {
+pub(crate) enum FetchResult<T> {
     FromStorage(Box<T>),
-    FromPeer(Box<T>, I),
+    FromPeer(Box<T>, NodeId),
 }
 
-pub(crate) type FetchResponder<T> = Responder<Option<FetchResult<T, NodeId>>>;
+pub(crate) type FetchResponder<T> = Responder<Option<FetchResult<T>>>;
 
 /// `Fetcher` events.
 #[derive(Debug, Serialize)]
@@ -35,25 +35,19 @@ pub(crate) enum Event<T: Item> {
         maybe_item: Box<Option<T>>,
     },
     /// An announcement from a different component that we have accepted and stored the given item.
-    GotRemotely {
-        item: Box<T>,
-        source: Source<NodeId>,
-    },
+    GotRemotely { item: Box<T>, source: Source },
     /// A different component rejected an item.
     // TODO: If having this event is not desirable, the `DeployAcceptorAnnouncement` needs to be
     //       split in two instead.
-    RejectedRemotely {
-        item: Box<T>,
-        source: Source<NodeId>,
-    },
+    RejectedRemotely { item: Box<T>, source: Source },
     /// An item was not available on the remote peer.
     AbsentRemotely { id: T::Id, peer: NodeId },
     /// The timeout has elapsed and we should clean up state.
     TimeoutPeer { id: T::Id, peer: NodeId },
 }
 
-impl<T: Item> From<FetcherRequest<NodeId, T>> for Event<T> {
-    fn from(request: FetcherRequest<NodeId, T>) -> Self {
+impl<T: Item> From<FetcherRequest<T>> for Event<T> {
+    fn from(request: FetcherRequest<T>) -> Self {
         match request {
             FetcherRequest::Fetch {
                 id,
@@ -69,9 +63,9 @@ impl<T: Item> From<FetcherRequest<NodeId, T>> for Event<T> {
 }
 
 // A deploy fetcher knows how to update its state if deploys are coming in via the deploy acceptor.
-impl From<DeployAcceptorAnnouncement<NodeId>> for Event<Deploy> {
+impl From<DeployAcceptorAnnouncement> for Event<Deploy> {
     #[inline]
-    fn from(announcement: DeployAcceptorAnnouncement<NodeId>) -> Self {
+    fn from(announcement: DeployAcceptorAnnouncement) -> Self {
         match announcement {
             DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source } => {
                 Event::GotRemotely {

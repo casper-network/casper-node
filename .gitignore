@@ -153,3 +153,6 @@ cmake-build-debug/
 
 # OS X
 .DS_Store
+
+# sw* files in vim
+.*.sw*

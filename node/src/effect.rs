@@ -112,7 +112,7 @@ use crate::{
     types::{
         Block, BlockByHeight, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Chainspec,
         ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature,
-        FinalizedBlock, Item, TimeDiff, Timestamp,
+        FinalizedBlock, Item, NodeId, TimeDiff, Timestamp,
     },
     utils::{SharedFlag, Source},
 };
@@ -554,9 +554,9 @@ impl<REv> EffectBuilder<REv> {
     ///
     /// The message is queued in "fire-and-forget" fashion, there is no guarantee that the peer
     /// will receive it.
-    pub(crate) async fn send_message<I, P>(self, dest: I, payload: P)
+    pub(crate) async fn send_message<P>(self, dest: NodeId, payload: P)
     where
-        REv: From<NetworkRequest<I, P>>,
+        REv: From<NetworkRequest<P>>,
     {
         self.make_request(
             |responder| NetworkRequest::SendMessage {
@@ -572,9 +572,9 @@ impl<REv> EffectBuilder<REv> {
     /// Broadcasts a network message.
     ///
     /// Broadcasts a network message to all peers connected at the time the message is sent.
-    pub(crate) async fn broadcast_message<I, P>(self, payload: P)
+    pub(crate) async fn broadcast_message<P>(self, payload: P)
     where
-        REv: From<NetworkRequest<I, P>>,
+        REv: From<NetworkRequest<P>>,
     {
         self.make_request(
             |responder| NetworkRequest::Broadcast {
@@ -592,15 +592,14 @@ impl<REv> EffectBuilder<REv> {
     /// excluding the indicated ones, and sends each a copy of the message.
     ///
     /// Returns the IDs of the chosen nodes.
-    pub(crate) async fn gossip_message<I, P>(
+    pub(crate) async fn gossip_message<P>(
         self,
         payload: P,
         count: usize,
-        exclude: HashSet<I>,
-    ) -> HashSet<I>
+        exclude: HashSet<NodeId>,
+    ) -> HashSet<NodeId>
     where
-        REv: From<NetworkRequest<I, P>>,
-        I: Send + 'static,
+        REv: From<NetworkRequest<P>>,
         P: Send,
     {
         self.make_request(
@@ -616,10 +615,9 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets connected network peers.
-    pub(crate) async fn network_peers<I>(self) -> BTreeMap<I, String>
+    pub(crate) async fn network_peers(self) -> BTreeMap<NodeId, String>
     where
-        REv: From<NetworkInfoRequest<I>>,
-        I: Send + 'static,
+        REv: From<NetworkInfoRequest>,
     {
         self.make_request(
             |responder| NetworkInfoRequest::GetPeers { responder },
@@ -629,10 +627,9 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the current network peers in random order.
-    pub async fn get_fully_connected_peers<I>(self) -> Vec<I>
+    pub async fn get_fully_connected_peers(self) -> Vec<NodeId>
     where
-        REv: From<NetworkInfoRequest<I>>,
-        I: Send + 'static,
+        REv: From<NetworkInfoRequest>,
     {
         self.make_request(
             |responder| NetworkInfoRequest::GetFullyConnectedPeers { responder },
@@ -655,9 +652,9 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces that a network message has been received.
-    pub(crate) async fn announce_message_received<I, P>(self, sender: I, payload: P)
+    pub(crate) async fn announce_message_received<P>(self, sender: NodeId, payload: P)
     where
-        REv: From<NetworkAnnouncement<I, P>>,
+        REv: From<NetworkAnnouncement<P>>,
     {
         self.event_queue
             .schedule(
@@ -668,9 +665,9 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces that we should gossip our own public listening address.
-    pub(crate) async fn announce_gossip_our_address<I, P>(self, our_address: GossipedAddress)
+    pub(crate) async fn announce_gossip_our_address<P>(self, our_address: GossipedAddress)
     where
-        REv: From<NetworkAnnouncement<I, P>>,
+        REv: From<NetworkAnnouncement<P>>,
     {
         self.event_queue
             .schedule(
@@ -681,9 +678,9 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces that a new peer has connected.
-    pub(crate) async fn announce_new_peer<I, P>(self, peer_id: I)
+    pub(crate) async fn announce_new_peer<P>(self, peer_id: NodeId)
     where
-        REv: From<NetworkAnnouncement<I, P>>,
+        REv: From<NetworkAnnouncement<P>>,
     {
         self.event_queue
             .schedule(
@@ -728,13 +725,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces that a deploy not previously stored has now been accepted and stored.
-    pub(crate) fn announce_new_deploy_accepted<I>(
+    pub(crate) fn announce_new_deploy_accepted(
         self,
         deploy: Box<Deploy>,
-        source: Source<I>,
+        source: Source,
     ) -> impl Future<Output = ()>
     where
-        REv: From<DeployAcceptorAnnouncement<I>>,
+        REv: From<DeployAcceptorAnnouncement>,
     {
         self.event_queue.schedule(
             DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
@@ -757,13 +754,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces that an invalid deploy has been received.
-    pub(crate) fn announce_invalid_deploy<I>(
+    pub(crate) fn announce_invalid_deploy(
         self,
         deploy: Box<Deploy>,
-        source: Source<I>,
+        source: Source,
     ) -> impl Future<Output = ()>
     where
-        REv: From<DeployAcceptorAnnouncement<I>>,
+        REv: From<DeployAcceptorAnnouncement>,
     {
         self.event_queue.schedule(
             DeployAcceptorAnnouncement::InvalidDeploy { deploy, source },
@@ -1120,14 +1117,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested deploy using the `DeployFetcher`.
-    pub(crate) async fn fetch_deploy<I>(
+    pub(crate) async fn fetch_deploy(
         self,
         deploy_hash: DeployHash,
-        peer: I,
-    ) -> Option<FetchResult<Deploy, I>>
+        peer: NodeId,
+    ) -> Option<FetchResult<Deploy>>
     where
-        REv: From<FetcherRequest<I, Deploy>>,
-        I: Send + 'static,
+        REv: From<FetcherRequest<Deploy>>,
     {
         self.make_request(
             |responder| FetcherRequest::Fetch {
@@ -1141,14 +1137,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested block using the `BlockFetcher`
-    pub(crate) async fn fetch_block<I>(
+    pub(crate) async fn fetch_block(
         self,
         block_hash: BlockHash,
-        peer: I,
-    ) -> Option<FetchResult<Block, I>>
+        peer: NodeId,
+    ) -> Option<FetchResult<Block>>
     where
-        REv: From<FetcherRequest<I, Block>>,
-        I: Send + 'static,
+        REv: From<FetcherRequest<Block>>,
     {
         self.make_request(
             |responder| FetcherRequest::Fetch {
@@ -1162,14 +1157,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Requests a linear chain block at `block_height`.
-    pub(crate) async fn fetch_block_by_height<I>(
+    pub(crate) async fn fetch_block_by_height(
         self,
         block_height: u64,
-        peer: I,
-    ) -> Option<FetchResult<BlockByHeight, I>>
+        peer: NodeId,
+    ) -> Option<FetchResult<BlockByHeight>>
     where
-        REv: From<FetcherRequest<I, BlockByHeight>>,
-        I: Send + 'static,
+        REv: From<FetcherRequest<BlockByHeight>>,
     {
         self.make_request(
             |responder| FetcherRequest::Fetch {
@@ -1263,9 +1257,9 @@ impl<REv> EffectBuilder<REv> {
 
     /// Checks whether the deploys included in the block exist on the network and the block is
     /// valid.
-    pub(crate) async fn validate_block<I, T>(self, sender: I, block: T) -> bool
+    pub(crate) async fn validate_block<T>(self, sender: NodeId, block: T) -> bool
     where
-        REv: From<BlockValidationRequest<I>>,
+        REv: From<BlockValidationRequest>,
         T: Into<ValidatingBlock>,
     {
         self.make_request(
@@ -1329,9 +1323,9 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announce the intent to disconnect from a specific peer, which consensus thinks is faulty.
-    pub(crate) async fn announce_disconnect_from_peer<I>(self, peer: I)
+    pub(crate) async fn announce_disconnect_from_peer(self, peer: NodeId)
     where
-        REv: From<BlocklistAnnouncement<I>>,
+        REv: From<BlocklistAnnouncement>,
     {
         self.event_queue
             .schedule(
