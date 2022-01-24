@@ -226,6 +226,7 @@ where
 }
 
 impl ContractRuntime {
+    /// Handles an incoming request to get a trie.
     fn handle_trie_request<REv>(
         &self,
         effect_builder: EffectBuilder<REv>,
@@ -254,6 +255,7 @@ impl ContractRuntime {
         }
     }
 
+    /// Handles a contract runtime request.
     fn handle_contract_runtime_request<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
