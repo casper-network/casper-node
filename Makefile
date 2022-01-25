@@ -131,7 +131,6 @@ check-rs: \
 	check-format \
 	doc \
 	lint \
-	audit \
 	check-std-features \
 	test-rs \
 	test-contracts-rs
