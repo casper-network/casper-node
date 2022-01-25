@@ -31,10 +31,10 @@ fn store() -> (ContractHash, ContractVersion) {
 
         let faucet = EntryPoint::new(
             faucet::ENTRY_POINT_FAUCET,
-            vec![Parameter::new(
-                faucet::ARG_ID,
-                CLType::Option(Box::new(CLType::U64)),
-            )],
+            vec![
+                Parameter::new(faucet::ARG_ID, CLType::Option(Box::new(CLType::U64))),
+                Parameter::new(faucet::ARG_TARGET, CLType::PublicKey),
+            ],
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Contract,
