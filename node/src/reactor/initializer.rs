@@ -60,10 +60,6 @@ pub(crate) enum Event {
     /// Storage request.
     #[from]
     StorageRequest(StorageRequest),
-
-    /// Contract runtime request.
-    #[from]
-    ContractRuntimeRequest(ContractRuntimeRequest),
 }
 
 impl ReactorEvent for Event {
@@ -79,11 +75,16 @@ impl ReactorEvent for Event {
         match self {
             Event::Chainspec(_) => "Chainspec",
             Event::Storage(_) => "Storage",
-            Event::ContractRuntimeRequest(_) => "ContractRuntimeRequest",
             Event::ControlAnnouncement(_) => "ControlAnnouncement",
             Event::StorageRequest(_) => "StorageRequest",
             Event::ContractRuntime(_) => "ContractRuntime",
         }
+    }
+}
+
+impl From<ContractRuntimeRequest> for Event {
+    fn from(request: ContractRuntimeRequest) -> Self {
+        Event::ContractRuntime(contract_runtime::Event::ContractRuntimeRequest(request))
     }
 }
 
@@ -128,9 +129,6 @@ impl Display for Event {
         match self {
             Event::Chainspec(event) => write!(formatter, "chainspec: {}", event),
             Event::Storage(event) => write!(formatter, "storage: {}", event),
-            Event::ContractRuntimeRequest(event) => {
-                write!(formatter, "contract runtime request: {:?}", event)
-            }
             Event::ControlAnnouncement(ctrl_ann) => write!(formatter, "control: {}", ctrl_ann),
             Event::StorageRequest(req) => write!(formatter, "storage request: {}", req),
             Event::ContractRuntime(event) => write!(formatter, "contract runtime event: {}", event),
@@ -315,11 +313,6 @@ impl reactor::Reactor for Reactor {
                 Event::ContractRuntime,
                 self.contract_runtime
                     .handle_event(effect_builder, rng, event),
-            ),
-            Event::ContractRuntimeRequest(event) => reactor::wrap_effects(
-                Event::ContractRuntime,
-                self.contract_runtime
-                    .handle_event(effect_builder, rng, event.into()),
             ),
             Event::StorageRequest(req) => reactor::wrap_effects(
                 Event::Storage,
