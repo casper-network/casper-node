@@ -22,7 +22,7 @@ fn lmdb_writer_mutex_does_not_collide_with_readers() {
     let dir = tempdir().unwrap();
     let env = Arc::new(
         LmdbEnvironment::new(
-            &dir.path().to_path_buf(),
+            &dir.path(),
             DEFAULT_TEST_MAX_DB_SIZE,
             DEFAULT_TEST_MAX_READERS,
             true,

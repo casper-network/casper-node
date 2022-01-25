@@ -48,7 +48,7 @@ fn in_memory_put_succeeds() {
 fn lmdb_put_succeeds() {
     let tmp_dir = tempdir().unwrap();
     let env = LmdbEnvironment::new(
-        &tmp_dir.path().to_path_buf(),
+        &tmp_dir.path(),
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
         true,
@@ -90,8 +90,7 @@ fn in_memory_put_get_succeeds() {
     let store = InMemoryTrieStore::new(&env, None);
     let data = &super::create_data()[0..1];
 
-    let expected: Vec<Trie<Bytes, Bytes>> =
-        data.to_vec().into_iter().map(|TestData(_, v)| v).collect();
+    let expected: Vec<Trie<Bytes, Bytes>> = data.iter().cloned().map(|TestData(_, v)| v).collect();
 
     assert_eq!(
         expected,
@@ -107,7 +106,7 @@ fn in_memory_put_get_succeeds() {
 fn lmdb_put_get_succeeds() {
     let tmp_dir = tempdir().unwrap();
     let env = LmdbEnvironment::new(
-        &tmp_dir.path().to_path_buf(),
+        &tmp_dir.path(),
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
         true,
@@ -116,8 +115,7 @@ fn lmdb_put_get_succeeds() {
     let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
     let data = &super::create_data()[0..1];
 
-    let expected: Vec<Trie<Bytes, Bytes>> =
-        data.to_vec().into_iter().map(|TestData(_, v)| v).collect();
+    let expected: Vec<Trie<Bytes, Bytes>> = data.iter().cloned().map(|TestData(_, v)| v).collect();
 
     assert_eq!(
         expected,
@@ -137,8 +135,7 @@ fn in_memory_put_get_many_succeeds() {
     let store = InMemoryTrieStore::new(&env, None);
     let data = super::create_data();
 
-    let expected: Vec<Trie<Bytes, Bytes>> =
-        data.to_vec().into_iter().map(|TestData(_, v)| v).collect();
+    let expected: Vec<Trie<Bytes, Bytes>> = data.iter().cloned().map(|TestData(_, v)| v).collect();
 
     assert_eq!(
         expected,
@@ -154,7 +151,7 @@ fn in_memory_put_get_many_succeeds() {
 fn lmdb_put_get_many_succeeds() {
     let tmp_dir = tempdir().unwrap();
     let env = LmdbEnvironment::new(
-        &tmp_dir.path().to_path_buf(),
+        &tmp_dir.path(),
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
         true,
@@ -163,8 +160,7 @@ fn lmdb_put_get_many_succeeds() {
     let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
     let data = super::create_data();
 
-    let expected: Vec<Trie<Bytes, Bytes>> =
-        data.to_vec().into_iter().map(|TestData(_, v)| v).collect();
+    let expected: Vec<Trie<Bytes, Bytes>> = data.iter().cloned().map(|TestData(_, v)| v).collect();
 
     assert_eq!(
         expected,
@@ -226,7 +222,7 @@ fn in_memory_uncommitted_read_write_txn_does_not_persist() {
 fn lmdb_uncommitted_read_write_txn_does_not_persist() {
     let tmp_dir = tempdir().unwrap();
     let env = LmdbEnvironment::new(
-        &tmp_dir.path().to_path_buf(),
+        &tmp_dir.path(),
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
         true,
@@ -275,7 +271,7 @@ fn in_memory_read_write_transaction_does_not_block_read_transaction() {
 fn lmdb_read_write_transaction_does_not_block_read_transaction() {
     let dir = tempdir().unwrap();
     let env = LmdbEnvironment::new(
-        &dir.path().to_path_buf(),
+        &dir.path(),
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
         true,
@@ -332,7 +328,7 @@ fn in_memory_reads_are_isolated() {
 fn lmdb_reads_are_isolated() {
     let dir = tempdir().unwrap();
     let env = LmdbEnvironment::new(
-        &dir.path().to_path_buf(),
+        &dir.path(),
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
         true,
@@ -394,7 +390,7 @@ fn in_memory_reads_are_isolated_2() {
 fn lmdb_reads_are_isolated_2() {
     let dir = tempdir().unwrap();
     let env = LmdbEnvironment::new(
-        &dir.path().to_path_buf(),
+        &dir.path(),
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
         true,
@@ -462,7 +458,7 @@ fn in_memory_dbs_are_isolated() {
 fn lmdb_dbs_are_isolated() {
     let dir = tempdir().unwrap();
     let env = LmdbEnvironment::new(
-        &dir.path().to_path_buf(),
+        &dir.path(),
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
         true,
@@ -526,7 +522,7 @@ fn in_memory_transactions_can_be_used_across_sub_databases() {
 fn lmdb_transactions_can_be_used_across_sub_databases() {
     let dir = tempdir().unwrap();
     let env = LmdbEnvironment::new(
-        &dir.path().to_path_buf(),
+        &dir.path(),
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
         true,
@@ -594,7 +590,7 @@ fn in_memory_uncommitted_transactions_across_sub_databases_do_not_persist() {
 fn lmdb_uncommitted_transactions_across_sub_databases_do_not_persist() {
     let dir = tempdir().unwrap();
     let env = LmdbEnvironment::new(
-        &dir.path().to_path_buf(),
+        &dir.path(),
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
         true,

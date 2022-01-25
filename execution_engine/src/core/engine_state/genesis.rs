@@ -1166,8 +1166,7 @@ where
 
     pub(crate) fn create_accounts(&self) -> Result<(), GenesisError> {
         let accounts = {
-            let mut ret: Vec<GenesisAccount> =
-                self.exec_config.accounts().to_vec().into_iter().collect();
+            let mut ret: Vec<GenesisAccount> = self.exec_config.accounts.to_vec();
             let system_account = GenesisAccount::system();
             ret.push(system_account);
             ret
