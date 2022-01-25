@@ -18,7 +18,6 @@ use casper_types::{
 
 use crate::{
     components::{chainspec_loader::NextUpgrade, gossiper, small_network, storage},
-    contract_runtime,
     crypto::AsymmetricKeyExt,
     effect::{
         requests::{ContractRuntimeRequest, NetworkRequest},
@@ -442,12 +441,10 @@ async fn dont_upgrade_without_switch_block() {
             .await;
         let mut exec_request_received = false;
         runner.reactor_mut().inner_mut().set_filter(move |event| {
-            if let ParticipatingEvent::ContractRuntime(
-                contract_runtime::Event::ContractRuntimeRequest(
-                    ContractRuntimeRequest::EnqueueBlockForExecution {
-                        finalized_block, ..
-                    },
-                ),
+            if let ParticipatingEvent::ContractRuntimeRequest(
+                ContractRuntimeRequest::EnqueueBlockForExecution {
+                    finalized_block, ..
+                },
             ) = &event
             {
                 if finalized_block.era_report().is_some()

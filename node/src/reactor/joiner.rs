@@ -202,6 +202,10 @@ pub(crate) enum JoinerEvent {
     #[from]
     BeginAddressGossipRequest(BeginGossipRequest<GossipedAddress>),
 
+    /// Contract runtime request.
+    #[from]
+    ContractRuntimeRequest(ContractRuntimeRequest),
+
     // Announcements
     /// A control announcement.
     #[from]
@@ -329,13 +333,8 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::TrieRequestIncoming(_) => "TrieRequestIncoming",
             JoinerEvent::TrieResponseIncoming(_) => "TrieResponseIncoming",
             JoinerEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
+            JoinerEvent::ContractRuntimeRequest(_) => "ContractRuntimeRequest",
         }
-    }
-}
-
-impl From<ContractRuntimeRequest> for JoinerEvent {
-    fn from(request: ContractRuntimeRequest) -> Self {
-        JoinerEvent::ContractRuntime(contract_runtime::Event::ContractRuntimeRequest(request))
     }
 }
 
@@ -451,6 +450,9 @@ impl Display for JoinerEvent {
             JoinerEvent::TrieRequestIncoming(inner) => write!(f, "incoming: {}", inner),
             JoinerEvent::TrieResponseIncoming(inner) => write!(f, "incoming: {}", inner),
             JoinerEvent::FinalitySignatureIncoming(inner) => write!(f, "incoming: {}", inner),
+            JoinerEvent::ContractRuntimeRequest(req) => {
+                write!(f, "contract runtime request: {}", req)
+            }
             JoinerEvent::DumpConsensusStateRequest(req) => {
                 write!(f, "consensus dump request: {}", req)
             }
@@ -752,6 +754,11 @@ impl reactor::Reactor for Reactor {
                 JoinerEvent::ContractRuntime,
                 self.contract_runtime
                     .handle_event(effect_builder, rng, event),
+            ),
+            JoinerEvent::ContractRuntimeRequest(req) => reactor::wrap_effects(
+                JoinerEvent::ContractRuntime,
+                self.contract_runtime
+                    .handle_event(effect_builder, rng, req.into()),
             ),
             JoinerEvent::ContractRuntimeAnnouncement(_) => Effects::new(),
             JoinerEvent::AddressGossiper(event) => reactor::wrap_effects(
