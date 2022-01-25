@@ -349,8 +349,7 @@ pub(crate) mod tests {
     }
 
     impl NetworkedReactor for Reactor {
-        type NodeId = NodeId;
-        fn node_id(&self) -> Self::NodeId {
+        fn node_id(&self) -> NodeId {
             NodeId::from(&self.small_network_identity)
         }
     }

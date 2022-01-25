@@ -512,8 +512,7 @@ impl Reactor for MultiStageTestReactor {
 }
 
 impl NetworkedReactor for MultiStageTestReactor {
-    type NodeId = NodeId;
-    fn node_id(&self) -> Self::NodeId {
+    fn node_id(&self) -> NodeId {
         match self {
             MultiStageTestReactor::Deactivated => unreachable!(),
             MultiStageTestReactor::Initializer {

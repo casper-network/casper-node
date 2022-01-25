@@ -18,12 +18,14 @@ use crate::{
             config::Config as HighwayConfig, HighwayMessage, ACTION_ID_VERTEX,
             TIMER_ID_STANDSTILL_ALERT,
         },
-        tests::utils::{new_test_chainspec, ALICE_PUBLIC_KEY, ALICE_SECRET_KEY, BOB_PUBLIC_KEY},
+        tests::utils::{
+            new_test_chainspec, ALICE_NODE_ID, ALICE_PUBLIC_KEY, ALICE_SECRET_KEY, BOB_PUBLIC_KEY,
+        },
         traits::Context,
         HighwayProtocol,
     },
     testing::TestRng,
-    types::{BlockPayload, NodeId, TimeDiff, Timestamp},
+    types::{BlockPayload, TimeDiff, Timestamp},
 };
 
 /// Returns a new `State` with `ClContext` parameters suitable for tests.
@@ -108,7 +110,7 @@ fn test_highway_protocol_handle_message_parse_error() {
 
     let mut rng = TestRng::new();
     let now = Timestamp::zero();
-    let sender = NodeId::random(&mut rng);
+    let sender = *ALICE_NODE_ID;
     let msg = vec![];
     let mut effects: Vec<ProtocolOutcome<ClContext>> =
         highway_protocol.handle_message(&mut rng, sender.to_owned(), msg.to_owned(), now);
@@ -156,7 +158,7 @@ fn send_a_wire_unit_with_too_small_a_round_exp() {
         SignedWireUnit::new(wunit.into_hashed(), &alice_keypair),
     ));
     let mut highway_protocol = new_test_highway_protocol(validators, vec![]);
-    let sender = NodeId::random(&mut rng);
+    let sender = *ALICE_NODE_ID;
     let msg = bincode::serialize(&highway_message).unwrap();
     let mut outcomes =
         highway_protocol.handle_message(&mut rng, sender.to_owned(), msg.to_owned(), now);
@@ -211,7 +213,7 @@ fn send_a_valid_wire_unit() {
     ));
 
     let mut highway_protocol = new_test_highway_protocol(validators, vec![]);
-    let sender = NodeId::random(&mut rng);
+    let sender = *ALICE_NODE_ID;
     let msg = bincode::serialize(&highway_message).unwrap();
 
     let mut outcomes = highway_protocol.handle_message(&mut rng, sender, msg, now);
@@ -279,7 +281,7 @@ fn detect_doppelganger() {
     // Activate ALICE as validator.
     let _ = highway_protocol.activate_validator(ALICE_PUBLIC_KEY.clone(), alice_keypair, now, None);
     assert!(highway_protocol.is_active());
-    let sender = NodeId::random(&mut rng);
+    let sender = *ALICE_NODE_ID;
     let msg = bincode::serialize(&highway_message).unwrap();
     // "Send" a message created by ALICE to an instance of Highway where she's an active validator.
     // An incoming unit, created by the same validator, should be properly detected as a

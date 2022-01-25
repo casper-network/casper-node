@@ -1247,8 +1247,7 @@ impl reactor::Reactor for Reactor {
 
 #[cfg(test)]
 impl NetworkedReactor for Reactor {
-    type NodeId = NodeId;
-    fn node_id(&self) -> Self::NodeId {
+    fn node_id(&self) -> NodeId {
         self.small_network.node_id()
     }
 }

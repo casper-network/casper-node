@@ -14,7 +14,7 @@ where
     REv: ReactorEventT,
 {
     effect_builder
-        .validate_block(peer.clone(), block.clone())
+        .validate_block(peer, block.clone())
         .event(move |valid| {
             if valid {
                 Event::GetDeploysResult(DeploysResult::Found(Box::new(block)))

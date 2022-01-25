@@ -66,7 +66,7 @@ impl PeersState {
 
     /// Adds a new peer.
     pub(crate) fn push(&mut self, peer: NodeId) {
-        self.peers.push(peer.clone());
+        self.peers.push(peer);
         self.peers_to_try.push(peer);
     }
 
@@ -74,7 +74,7 @@ impl PeersState {
     /// Keeps the peer in the set of `succ_peers`.
     fn next_succ(&mut self) -> Option<NodeId> {
         let peer = self.succ_peers.pop_front()?;
-        self.succ_peers.push_back(peer.clone());
+        self.succ_peers.push_back(peer);
         Some(peer)
     }
 

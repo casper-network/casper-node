@@ -230,8 +230,6 @@ impl Reactor for TestReactor {
 }
 
 impl NetworkedReactor for TestReactor {
-    type NodeId = NodeId;
-
     fn node_id(&self) -> NodeId {
         self.net.node_id()
     }
