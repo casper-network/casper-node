@@ -4,8 +4,8 @@ use num_rational::Ratio;
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY,
-    DEFAULT_WASM_CONFIG,
+    DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_STORED_VALUE_SIZE, DEFAULT_RUN_GENESIS_REQUEST,
+    DEFAULT_UNBONDING_DELAY, DEFAULT_WASM_CONFIG,
 };
 
 use casper_execution_engine::{
@@ -135,6 +135,7 @@ fn should_allow_only_wasm_costs_patch_version() {
         DEFAULT_MAX_QUERY_DEPTH,
         DEFAULT_MAX_ASSOCIATED_KEYS,
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+        DEFAULT_MAX_STORED_VALUE_SIZE,
         new_wasm_config,
         SystemConfig::default(),
     );
@@ -177,6 +178,7 @@ fn should_allow_only_wasm_costs_minor_version() {
         DEFAULT_MAX_QUERY_DEPTH,
         DEFAULT_MAX_ASSOCIATED_KEYS,
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+        DEFAULT_MAX_STORED_VALUE_SIZE,
         new_wasm_config,
         SystemConfig::default(),
     );
@@ -671,6 +673,7 @@ fn should_increase_max_associated_keys_after_upgrade() {
         DEFAULT_MAX_QUERY_DEPTH,
         DEFAULT_MAX_ASSOCIATED_KEYS + 1,
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+        DEFAULT_MAX_STORED_VALUE_SIZE,
         *DEFAULT_WASM_CONFIG,
         new_system_config,
     );

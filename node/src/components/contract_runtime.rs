@@ -407,6 +407,7 @@ impl ContractRuntime {
         system_config: SystemConfig,
         max_associated_keys: u32,
         max_runtime_call_stack_height: u32,
+        max_stored_value_size: u32,
         registry: &Registry,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
@@ -435,6 +436,7 @@ impl ContractRuntime {
             contract_runtime_config.max_query_depth(),
             max_associated_keys,
             max_runtime_call_stack_height,
+            max_stored_value_size,
             wasm_config,
             system_config,
         );

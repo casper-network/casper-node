@@ -2,8 +2,8 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_STORED_VALUE_SIZE,
+    DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{
     core::engine_state::{
@@ -714,6 +714,7 @@ fn make_engine_config(new_mint_costs: MintCosts, new_wasm_config: WasmConfig) ->
         DEFAULT_MAX_QUERY_DEPTH,
         DEFAULT_MAX_ASSOCIATED_KEYS,
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+        DEFAULT_MAX_STORED_VALUE_SIZE,
         new_wasm_config,
         new_system_config,
     )

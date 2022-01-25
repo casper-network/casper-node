@@ -240,6 +240,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 
 [[package]]
+name = "big-trie-leaf"
+version = "0.1.0"
+
+[[package]]
 name = "bincode"
 version = "1.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -466,6 +470,7 @@ dependencies = [
  "once_cell",
  "parity-wasm",
  "rand 0.8.4",
+ "regex",
  "serde",
  "serde_json",
  "tempfile",
@@ -2776,6 +2781,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "named-keys-bloat"
+version = "0.1.0"
+
+[[package]]
 name = "named-purse-payment"
 version = "0.1.0"
 dependencies = [
@@ -4788,6 +4797,10 @@ name = "treeline"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a7f741b240f1a48843f9b8e0444fb55fb2a4ff67293b50a9179dfd5ea67f8d41"
+
+[[package]]
+name = "trie-leaf-under-8mb"
+version = "0.1.0"
 
 [[package]]
 name = "try-lock"

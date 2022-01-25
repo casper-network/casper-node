@@ -12,6 +12,9 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+### Added
+* Introduce a temporary chainspec setting `max_stored_value_size` to limit the size of individual values stored in global state.
+
 
 
 ## 1.4.4 - 2021-12-29

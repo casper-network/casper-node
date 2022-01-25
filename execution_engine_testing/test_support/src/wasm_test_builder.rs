@@ -39,7 +39,7 @@ use casper_execution_engine::{
             in_memory::InMemoryGlobalState, lmdb::LmdbGlobalState, StateProvider, StateReader,
         },
         transaction_source::lmdb::LmdbEnvironment,
-        trie::merkle_proof::TrieMerkleProof,
+        trie::{merkle_proof::TrieMerkleProof, Trie},
         trie_store::lmdb::LmdbTrieStore,
     },
 };
@@ -1036,5 +1036,12 @@ where
         self.upgrade_results = Vec::new();
         self.transforms = Vec::new();
         self
+    }
+
+    /// Returns a trie by hash.
+    pub fn get_trie(&mut self, state_hash: Digest) -> Option<Trie<Key, StoredValue>> {
+        self.engine_state
+            .get_trie(CorrelationId::default(), state_hash)
+            .unwrap()
     }
 }

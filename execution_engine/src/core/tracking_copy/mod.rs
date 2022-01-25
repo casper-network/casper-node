@@ -12,11 +12,12 @@ use std::{
 
 use linked_hash_map::LinkedHashMap;
 use thiserror::Error;
+use tracing::warn;
 
 use casper_hashing::Digest;
 use casper_types::{
-    bytesrepr, CLType, CLValue, CLValueError, Key, KeyTag, StoredValue, StoredValueTypeMismatch,
-    Tagged, U512,
+    bytesrepr::{self, ToBytes, U8_SERIALIZED_LENGTH},
+    CLType, CLValue, CLValueError, Key, KeyTag, StoredValue, StoredValueTypeMismatch, Tagged, U512,
 };
 
 pub use self::ext::TrackingCopyExt;
@@ -220,6 +221,7 @@ pub enum AddResult {
     KeyNotFound(Key),
     TypeMismatch(StoredValueTypeMismatch),
     Serialization(bytesrepr::Error),
+    ValueTooLarge,
 }
 
 impl From<CLValueError> for AddResult {
@@ -235,8 +237,14 @@ impl From<CLValueError> for AddResult {
     }
 }
 
+#[derive(Debug)]
+pub(crate) enum WriteResult {
+    Success,
+    ValueTooLarge,
+}
+
 impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
-    pub fn new(reader: R) -> TrackingCopy<R> {
+    pub(super) fn new(reader: R) -> TrackingCopy<R> {
         TrackingCopy {
             reader,
             cache: TrackingCopyCache::new(1024 * 16, HeapSize),
@@ -263,11 +271,11 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
     /// `TrackingCopy`. this means the current usage requires repeated
     /// forking, however we recognize this is sub-optimal and will revisit
     /// in the future.
-    pub fn fork(&self) -> TrackingCopy<&TrackingCopy<R>> {
+    pub(super) fn fork(&self) -> TrackingCopy<&TrackingCopy<R>> {
         TrackingCopy::new(self)
     }
 
-    pub fn get(
+    pub(super) fn get(
         &mut self,
         correlation_id: CorrelationId,
         key: &Key,
@@ -283,7 +291,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
         }
     }
 
-    pub fn get_keys(
+    pub(super) fn get_keys(
         &mut self,
         correlation_id: CorrelationId,
         key_tag: &KeyTag,
@@ -306,7 +314,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
         Ok(ret)
     }
 
-    pub fn read(
+    pub(super) fn read(
         &mut self,
         correlation_id: CorrelationId,
         key: &Key,
@@ -320,7 +328,31 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
         }
     }
 
-    pub fn write(&mut self, key: Key, value: StoredValue) {
+    /// If the serialized length of `value` is not more than `max_value_size`, writes `key,value`
+    /// and returns `WriteResult::Success`.  Otherwise, the write fails and
+    /// `WriteResult::ValueTooLarge` is returned.
+    pub(super) fn write(
+        &mut self,
+        key: Key,
+        value: StoredValue,
+        max_value_size: u32,
+    ) -> WriteResult {
+        // Takes serialized trie leaf size into consideration
+        let leaf_serialized_length = U8_SERIALIZED_LENGTH
+            .saturating_add(key.serialized_length())
+            .saturating_add(value.serialized_length());
+        if leaf_serialized_length > max_value_size as usize {
+            warn!(?key, ?value, "attempted writing value which is too large");
+            return WriteResult::ValueTooLarge;
+        }
+        let normalized_key = key.normalize();
+        self.cache.insert_write(normalized_key, value.clone());
+        self.journal.push((normalized_key, Transform::Write(value)));
+        WriteResult::Success
+    }
+
+    /// Infallible write of `key,value`, ignoring the engine config's `max_stored_value_size`.
+    pub(super) fn force_write(&mut self, key: Key, value: StoredValue) {
         let normalized_key = key.normalize();
         self.cache.insert_write(normalized_key, value.clone());
         self.journal.push((normalized_key, Transform::Write(value)));
@@ -330,11 +362,12 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
     /// Ok(Some(unit)) represents successful operation.
     /// Err(error) is reserved for unexpected errors when accessing global
     /// state.
-    pub fn add(
+    pub(super) fn add(
         &mut self,
         correlation_id: CorrelationId,
         key: Key,
         value: StoredValue,
+        max_value_size: u32,
     ) -> Result<AddResult, R::Error> {
         let normalized_key = key.normalize();
         let current_value = match self.get(correlation_id, &normalized_key)? {
@@ -391,6 +424,13 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
 
         match transform.clone().apply(current_value) {
             Ok(new_value) => {
+                let leaf_serialized_length = U8_SERIALIZED_LENGTH
+                    .saturating_add(key.serialized_length())
+                    .saturating_add(new_value.serialized_length());
+
+                if leaf_serialized_length > max_value_size as usize {
+                    return Ok(AddResult::ValueTooLarge);
+                }
                 self.cache.insert_write(normalized_key, new_value);
                 self.journal.push((normalized_key, transform));
                 Ok(AddResult::Success)
@@ -402,11 +442,11 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
         }
     }
 
-    pub fn effect(&self) -> ExecutionEffect {
+    pub(super) fn effect(&self) -> ExecutionEffect {
         ExecutionEffect::from(self.journal.clone())
     }
 
-    pub fn execution_journal(&self) -> ExecutionJournal {
+    pub(super) fn execution_journal(&self) -> ExecutionJournal {
         self.journal.clone()
     }
 
@@ -417,7 +457,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
     /// The intent is that `query()` is only used to satisfy `QueryRequest`s made to the server.
     /// Other EE internal use cases should call `read()` or `get()` in order to retrieve cached
     /// values.
-    pub fn query(
+    pub(super) fn query(
         &self,
         correlation_id: CorrelationId,
         config: &EngineConfig,

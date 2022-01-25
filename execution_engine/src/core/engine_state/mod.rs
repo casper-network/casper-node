@@ -28,12 +28,12 @@ use std::{
 use num::Zero;
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
-    bytesrepr::ToBytes,
+    bytesrepr::{ToBytes, U8_SERIALIZED_LENGTH},
     contracts::NamedKeys,
     system::{
         auction::{
@@ -305,8 +305,11 @@ where
 
         // 3.1.1.1.1.5 bump system contract major versions
         if upgrade_check_result.is_major_version() {
-            let system_upgrader: SystemUpgrader<S> =
-                SystemUpgrader::new(new_protocol_version, tracking_copy.clone());
+            let system_upgrader: SystemUpgrader<S> = SystemUpgrader::new(
+                new_protocol_version,
+                tracking_copy.clone(),
+                self.config.max_stored_value_size(),
+            );
 
             system_upgrader
                 .upgrade_system_contracts_major_version(
@@ -331,7 +334,12 @@ where
                 CLValue::from_t(new_validator_slots)
                     .map_err(|_| Error::Bytesrepr("new_validator_slots".to_string()))?,
             );
-            tracking_copy.borrow_mut().write(validator_slots_key, value);
+            // Writing a `u32` will not exceed write size limit.
+            let _ = tracking_copy.borrow_mut().write(
+                validator_slots_key,
+                value,
+                self.config.max_stored_value_size(),
+            );
         }
 
         if let Some(new_auction_delay) = upgrade_config.new_auction_delay() {
@@ -344,7 +352,12 @@ where
                 CLValue::from_t(new_auction_delay)
                     .map_err(|_| Error::Bytesrepr("new_auction_delay".to_string()))?,
             );
-            tracking_copy.borrow_mut().write(auction_delay_key, value);
+            // Writing a `u64` will not exceed write size limit.
+            let _ = tracking_copy.borrow_mut().write(
+                auction_delay_key,
+                value,
+                self.config.max_stored_value_size(),
+            );
         }
 
         if let Some(new_locked_funds_period) = upgrade_config.new_locked_funds_period_millis() {
@@ -357,9 +370,12 @@ where
                 CLValue::from_t(new_locked_funds_period)
                     .map_err(|_| Error::Bytesrepr("new_locked_funds_period".to_string()))?,
             );
-            tracking_copy
-                .borrow_mut()
-                .write(locked_funds_period_key, value);
+            // Writing a `u64` will not exceed write size limit.
+            let _ = tracking_copy.borrow_mut().write(
+                locked_funds_period_key,
+                value,
+                self.config.max_stored_value_size(),
+            );
         }
 
         if let Some(new_unbonding_delay) = upgrade_config.new_unbonding_delay() {
@@ -372,7 +388,12 @@ where
                 CLValue::from_t(new_unbonding_delay)
                     .map_err(|_| Error::Bytesrepr("new_unbonding_delay".to_string()))?,
             );
-            tracking_copy.borrow_mut().write(unbonding_delay_key, value);
+            // Writing a `u64` will not exceed write size limit.
+            let _ = tracking_copy.borrow_mut().write(
+                unbonding_delay_key,
+                value,
+                self.config.max_stored_value_size(),
+            );
         }
 
         if let Some(new_round_seigniorage_rate) = upgrade_config.new_round_seigniorage_rate() {
@@ -390,14 +411,25 @@ where
                 CLValue::from_t(new_round_seigniorage_rate)
                     .map_err(|_| Error::Bytesrepr("new_round_seigniorage_rate".to_string()))?,
             );
-            tracking_copy
-                .borrow_mut()
-                .write(locked_funds_period_key, value);
+            // Writing a `Ratio<U512>` will not exceed write size limit.
+            let _ = tracking_copy.borrow_mut().write(
+                locked_funds_period_key,
+                value,
+                self.config.max_stored_value_size(),
+            );
         }
 
         // apply the arbitrary modifications
         for (key, value) in upgrade_config.global_state_update() {
-            tracking_copy.borrow_mut().write(*key, value.clone());
+            // `StoredValue`s produced for the global state update should not exceed write size
+            // limit.
+            let computed_trie_leaf_size = U8_SERIALIZED_LENGTH
+                .saturating_add(key.serialized_length())
+                .saturating_add(value.serialized_length());
+            if computed_trie_leaf_size > self.config.max_stored_value_size() as usize {
+                warn!(%key, serialized_length=%value.serialized_length(), "wrote an upgrade config value which is too large");
+            }
+            tracking_copy.borrow_mut().force_write(*key, value.clone());
         }
 
         let execution_effect = tracking_copy.borrow().effect();
@@ -789,9 +821,12 @@ where
                                 Account::create(public_key, Default::default(), main_purse);
                             mint_extra_keys.push(Key::from(main_purse));
                             // write new account
-                            tracking_copy
-                                .borrow_mut()
-                                .write(Key::Account(public_key), StoredValue::Account(new_account))
+                            // Writing a default new `Account` will not exceed write size limit.
+                            let _ = tracking_copy.borrow_mut().write(
+                                Key::Account(public_key),
+                                StoredValue::Account(new_account),
+                                self.config.max_stored_value_size(),
+                            );
                         }
                         None => {
                             // This case implies that the execution_result is a failure variant as
@@ -1130,9 +1165,11 @@ where
                 account.main_purse(),
                 cost,
             );
-            tracking_copy.borrow_mut().write(
+            // Writing a `DeployInfo` will not exceed write size limit.
+            let _ = tracking_copy.borrow_mut().write(
                 Key::DeployInfo(deploy_item.deploy_hash),
                 StoredValue::DeployInfo(deploy_info),
+                self.config.max_stored_value_size(),
             );
         }
 
@@ -1579,9 +1616,11 @@ where
                 account.main_purse(),
                 cost,
             );
-            session_tracking_copy.borrow_mut().write(
+            // Writing a `DeployInfo` will not exceed write size limit.
+            let _ = session_tracking_copy.borrow_mut().write(
                 Key::DeployInfo(deploy_hash),
                 StoredValue::DeployInfo(deploy_info),
+                self.config.max_stored_value_size(),
             );
         }
 
