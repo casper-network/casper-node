@@ -4027,6 +4027,11 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
                                                        // rate is lower than the first payout
 }
 
+// In this test, we set up a validator and a delegator, then the delegator delegates to the
+// validator. We step forward one era (auction delay is 3 eras) and then fully undelegate. We expect
+// that there is no bonding purse for this delegator / validator pair. This test should prove that
+// if you undelegate before your delegation would receive rewards from a validator, you will no
+// longer be delegated, as expected.
 #[ignore]
 #[test]
 fn should_not_restake_after_full_unbond() {
@@ -4193,6 +4198,10 @@ fn should_not_restake_after_full_unbond() {
     assert!(delegator.is_none());
 }
 
+// In this test, we set up a delegator and a validator, the delegator delegates to the validator.
+// We then undelegate during the first era where the delegator would be eligible to receive rewards
+// for their delegation and expect that there is no bonding purse for the delegator / validator pair
+// and that the delegator does not remain delegated to the validator as expected.
 #[ignore]
 #[test]
 fn delegator_full_unbond_during_first_reward_era() {
