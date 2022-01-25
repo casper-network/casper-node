@@ -23,6 +23,7 @@ use casper_execution_engine::{
         wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
     },
 };
+use casper_execution_engine::core::engine_state::engine_config::DEFAULT_MAX_DELEGATOR_SIZE_LIMIT;
 use casper_types::{
     contracts::DEFAULT_ENTRY_POINT_NAME, runtime_args, ApiError, EraId, ProtocolVersion,
     RuntimeArgs,
@@ -281,6 +282,7 @@ fn should_run_ee_966_regression_when_growing_mem_after_upgrade() {
         DEFAULT_MAX_ASSOCIATED_KEYS,
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         DEFAULT_MAX_STORED_VALUE_SIZE,
+        DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
         *DOUBLED_WASM_MEMORY_LIMIT,
         SystemConfig::default(),
     );

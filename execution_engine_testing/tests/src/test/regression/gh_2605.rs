@@ -25,6 +25,7 @@ use casper_execution_engine::{
     },
     storage::trie::Trie,
 };
+use casper_execution_engine::core::engine_state::engine_config::DEFAULT_MAX_DELEGATOR_SIZE_LIMIT;
 use casper_types::{
     bytesrepr::{Bytes, ToBytes, U8_SERIALIZED_LENGTH},
     runtime_args,
@@ -300,6 +301,7 @@ fn make_engine_config(max_memory: u32) -> EngineConfig {
         DEFAULT_MAX_ASSOCIATED_KEYS,
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         DEFAULT_MAX_STORED_VALUE_SIZE,
+        DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
         wasm_config,
         SystemConfig::default(),
     )

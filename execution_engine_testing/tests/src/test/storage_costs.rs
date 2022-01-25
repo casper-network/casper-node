@@ -22,6 +22,7 @@ use casper_execution_engine::{
         wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
     },
 };
+use casper_execution_engine::core::engine_state::engine_config::DEFAULT_MAX_DELEGATOR_SIZE_LIMIT;
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
     CLValue, ContractHash, EraId, ProtocolVersion, RuntimeArgs, StoredValue, U512,
@@ -164,6 +165,7 @@ fn initialize_isolated_storage_costs() -> InMemoryWasmTestBuilder {
         DEFAULT_MAX_ASSOCIATED_KEYS,
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         DEFAULT_MAX_STORED_VALUE_SIZE,
+        DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
         *STORAGE_COSTS_ONLY,
         SystemConfig::default(),
     );

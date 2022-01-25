@@ -11,6 +11,7 @@ use crate::{
 };
 
 const PACKAGE_NAME: &str = "contract";
+#[allow(clippy::single_char_pattern)]
 static CONTRACT_PACKAGE_ROOT: Lazy<PathBuf> =
     Lazy::new(|| ARGS.root_path().join(PACKAGE_NAME.replace("-", "_")));
 static CARGO_TOML: Lazy<PathBuf> = Lazy::new(|| CONTRACT_PACKAGE_ROOT.join("Cargo.toml"));
@@ -29,6 +30,7 @@ const CONFIG_TOML_CONTENTS: &str = r#"[build]
 target = "wasm32-unknown-unknown"
 "#;
 
+#[allow(clippy::single_char_pattern)]
 static CARGO_TOML_CONTENTS: Lazy<String> = Lazy::new(|| {
     format!(
         r#"[package]

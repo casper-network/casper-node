@@ -31,6 +31,7 @@ use casper_execution_engine::{
         wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
     },
 };
+use casper_execution_engine::core::engine_state::engine_config::DEFAULT_MAX_DELEGATOR_SIZE_LIMIT;
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     runtime_args,
@@ -136,6 +137,7 @@ fn should_allow_only_wasm_costs_patch_version() {
         DEFAULT_MAX_ASSOCIATED_KEYS,
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         DEFAULT_MAX_STORED_VALUE_SIZE,
+        DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
         new_wasm_config,
         SystemConfig::default(),
     );
@@ -179,6 +181,7 @@ fn should_allow_only_wasm_costs_minor_version() {
         DEFAULT_MAX_ASSOCIATED_KEYS,
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         DEFAULT_MAX_STORED_VALUE_SIZE,
+        DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
         new_wasm_config,
         SystemConfig::default(),
     );
@@ -674,6 +677,7 @@ fn should_increase_max_associated_keys_after_upgrade() {
         DEFAULT_MAX_ASSOCIATED_KEYS + 1,
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         DEFAULT_MAX_STORED_VALUE_SIZE,
+        DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
         *DEFAULT_WASM_CONFIG,
         new_system_config,
     );

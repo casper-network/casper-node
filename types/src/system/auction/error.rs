@@ -276,6 +276,8 @@ pub enum Error {
     /// An error that is raised when there is an error in the mint contract that cannot
     /// be mapped to a specific auction error.
     MintError = 42,
+    /// The validator has exceeded the maximum amount of delegators allowed.
+    ExceededDelegatorSizeLimit = 43,
 }
 
 impl Display for Error {
@@ -323,6 +325,7 @@ impl Display for Error {
             Error::ArithmeticOverflow => formatter.write_str("Arithmetic overflow"),
             Error::RuntimeStackOverflow => formatter.write_str("Runtime stack overflow"),
             Error::MintError => formatter.write_str("An error in the mint contract execution"),
+            Error::ExceededDelegatorSizeLimit => formatter.write_str("The amount of delegators per validator has been exceeded"),
             Error::GasLimit => formatter.write_str("GasLimit"),
         }
     }
@@ -395,6 +398,9 @@ impl TryFrom<u8> for Error {
             d if d == Error::ArithmeticOverflow as u8 => Ok(Error::ArithmeticOverflow),
             d if d == Error::RuntimeStackOverflow as u8 => Ok(Error::RuntimeStackOverflow),
             d if d == Error::MintError as u8 => Ok(Error::MintError),
+            d if d == Error::ExceededDelegatorSizeLimit as u8 => {
+                Ok(Error::ExceededDelegatorSizeLimit)
+            }
             _ => Err(TryFromU8ForError(())),
         }
     }

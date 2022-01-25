@@ -36,6 +36,9 @@ use crate::{
     NodeRng,
 };
 
+const SIZE_PER_DELEGATOR_ENTRY: u32 = 44;
+const FIXED_SIZE_PER_VALIDATOR: u32 = 11;
+
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
 #[must_use]
@@ -217,6 +220,25 @@ impl Reactor {
             &chainspec_loader.chainspec().network_config.name,
         )?;
 
+        let max_delegator_size_limit = {
+            let size_limit_per_snapshot = chainspec_loader
+                .chainspec()
+                .core_config
+                .max_stored_value_size
+                / (chainspec_loader.chainspec().core_config.auction_delay + 1) as u32;
+            let size_limit_per_validator =
+                (size_limit_per_snapshot / chainspec_loader.chainspec().core_config.validator_slots) - FIXED_SIZE_PER_VALIDATOR;
+            let max_number_of_delegators_per_validator =
+                size_limit_per_validator / SIZE_PER_DELEGATOR_ENTRY;
+            max_number_of_delegators_per_validator
+        };
+
+        info!(
+            "The maximum delegators per validator is currently set to: {}",
+            max_delegator_size_limit
+        );
+
+
         let contract_runtime = ContractRuntime::new(
             chainspec_loader.chainspec().protocol_config.version,
             storage.root_path(),
@@ -232,6 +254,7 @@ impl Reactor {
                 .chainspec()
                 .core_config
                 .max_stored_value_size,
+            max_delegator_size_limit,
             registry,
         )?;
 

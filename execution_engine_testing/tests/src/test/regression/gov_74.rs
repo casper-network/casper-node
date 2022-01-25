@@ -14,6 +14,7 @@ use casper_execution_engine::{
     },
     shared::wasm_config::{WasmConfig, DEFAULT_WASM_MAX_MEMORY},
 };
+use casper_execution_engine::core::engine_state::engine_config::DEFAULT_MAX_DELEGATOR_SIZE_LIMIT;
 use casper_types::{EraId, ProtocolVersion, RuntimeArgs};
 
 const I32_WASM_SIZE_BYTES: usize = 8;
@@ -119,6 +120,7 @@ fn should_observe_stack_height_limit() {
             DEFAULT_MAX_ASSOCIATED_KEYS,
             DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
             DEFAULT_MAX_STORED_VALUE_SIZE,
+            DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
             WasmConfig::new(
                 DEFAULT_WASM_MAX_MEMORY,
                 NEW_WASM_STACK_HEIGHT,

@@ -22,6 +22,7 @@ use casper_execution_engine::{
         wasm_config::WasmConfig,
     },
 };
+use casper_execution_engine::core::engine_state::engine_config::DEFAULT_MAX_DELEGATOR_SIZE_LIMIT;
 use casper_types::{
     account::AccountHash,
     runtime_args,
@@ -974,6 +975,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
         new_max_associated_keys,
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         DEFAULT_MAX_STORED_VALUE_SIZE,
+        DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
         WasmConfig::default(),
         new_system_config,
     );

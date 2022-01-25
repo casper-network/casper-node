@@ -36,6 +36,7 @@ use casper_execution_engine::{
         wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
     },
 };
+use casper_execution_engine::core::engine_state::engine_config::DEFAULT_MAX_DELEGATOR_SIZE_LIMIT;
 use casper_types::{
     account::AccountHash,
     runtime_args,
@@ -195,6 +196,7 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
         new_max_associated_keys,
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         DEFAULT_MAX_STORED_VALUE_SIZE,
+        DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
         WasmConfig::default(),
         new_system_config,
     );
@@ -435,6 +437,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
         new_max_associated_keys,
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         DEFAULT_MAX_STORED_VALUE_SIZE,
+        DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
         WasmConfig::default(),
         new_system_config,
     );
@@ -876,6 +879,7 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         new_max_associated_keys,
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         DEFAULT_MAX_STORED_VALUE_SIZE,
+        DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
         new_wasm_config,
         new_system_config,
     );

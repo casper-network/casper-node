@@ -1,6 +1,10 @@
 //! Support for runtime configuration of the execution engine - as an integral property of the
 //! `EngineState` instance.
 use crate::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
+use tracing::info;
+
+const FIXED_SIZE_PER_VALIDATOR: u32 = 11;
+const SIZE_PER_DELEGATOR_ENTRY: u32 = 44;
 
 /// Default value for a maximum query depth configuration option.
 pub const DEFAULT_MAX_QUERY_DEPTH: u64 = 5;
@@ -10,6 +14,8 @@ pub const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
 pub const DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT: u32 = 12;
 /// Default value for maximum StoredValue serialized size configuration option.
 pub const DEFAULT_MAX_STORED_VALUE_SIZE: u32 = 8 * 1024 * 1024;
+/// Default value for maximum delegators per validator.
+pub const DEFAULT_MAX_DELEGATOR_SIZE_LIMIT: u32 = 950;
 
 /// The runtime configuration of the execution engine
 #[derive(Debug, Copy, Clone)]
@@ -22,6 +28,7 @@ pub struct EngineConfig {
     max_associated_keys: u32,
     max_runtime_call_stack_height: u32,
     max_stored_value_size: u32,
+    max_delegator_size_limit: u32,
     wasm_config: WasmConfig,
     system_config: SystemConfig,
 }
@@ -33,6 +40,7 @@ impl Default for EngineConfig {
             max_associated_keys: DEFAULT_MAX_ASSOCIATED_KEYS,
             max_runtime_call_stack_height: DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
             max_stored_value_size: DEFAULT_MAX_STORED_VALUE_SIZE,
+            max_delegator_size_limit: DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
             wasm_config: WasmConfig::default(),
             system_config: SystemConfig::default(),
         }
@@ -46,6 +54,7 @@ impl EngineConfig {
         max_associated_keys: u32,
         max_runtime_call_stack_height: u32,
         max_stored_value_size: u32,
+        max_delegator_size_limit: u32,
         wasm_config: WasmConfig,
         system_config: SystemConfig,
     ) -> EngineConfig {
@@ -54,6 +63,7 @@ impl EngineConfig {
             max_associated_keys,
             max_runtime_call_stack_height,
             max_stored_value_size,
+            max_delegator_size_limit,
             wasm_config,
             system_config,
         }
@@ -72,6 +82,11 @@ impl EngineConfig {
     /// Returns the current max runtime call stack height config.
     pub fn max_stored_value_size(&self) -> u32 {
         self.max_stored_value_size
+    }
+
+    /// Returns the current maximum of delegators per validator.
+    pub fn max_delegator_size_limit(&self) -> u32 {
+        self.max_delegator_size_limit
     }
 
     /// Returns the current wasm config.
