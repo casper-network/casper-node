@@ -339,7 +339,7 @@ impl Source {
     /// If `self` represents a peer, returns its ID, otherwise returns `None`.
     pub(crate) fn node_id(&self) -> Option<NodeId> {
         match self {
-            Source::Peer(node_id) => Some(node_id.clone()),
+            Source::Peer(node_id) => Some(*node_id),
             Source::Client | Source::Ourself => None,
         }
     }

@@ -386,8 +386,6 @@ impl reactor::Reactor for Reactor {
 }
 
 impl NetworkedReactor for Reactor {
-    type NodeId = NodeId;
-
     fn node_id(&self) -> NodeId {
         self.network.node_id()
     }

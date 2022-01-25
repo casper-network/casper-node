@@ -692,7 +692,7 @@ impl EraSupervisor {
                 self.iter_past(era_id, self.bonded_eras())
                     .flat_map(|e_id| {
                         self.delegate_to_era(effect_builder, rng, e_id, |consensus, _| {
-                            consensus.request_evidence(sender.clone(), &pub_key)
+                            consensus.request_evidence(sender, &pub_key)
                         })
                     })
                     .collect()
@@ -1097,11 +1097,7 @@ impl EraSupervisor {
                 let mut effects = Effects::new();
                 for pub_key in missing_evidence {
                     let msg = ConsensusMessage::EvidenceRequest { era_id, pub_key };
-                    effects.extend(
-                        effect_builder
-                            .send_message(sender.clone(), msg.into())
-                            .ignore(),
-                    );
+                    effects.extend(effect_builder.send_message(sender, msg.into()).ignore());
                 }
                 effects.extend(
                     async move {
@@ -1145,7 +1141,7 @@ impl EraSupervisor {
                 .iter_past_other(era_id, self.bonded_eras())
                 .flat_map(|e_id| {
                     self.delegate_to_era(effect_builder, rng, e_id, |consensus, _| {
-                        consensus.request_evidence(sender.clone(), &pub_key)
+                        consensus.request_evidence(sender, &pub_key)
                     })
                 })
                 .collect(),
@@ -1442,14 +1438,14 @@ where
         if block_header.era_id() < proposed_block_era_id {
             return Event::ResolveValidity(ResolveValidity {
                 era_id: proposed_block_era_id,
-                sender: sender.clone(),
+                sender,
                 proposed_block: proposed_block.clone(),
                 valid: false,
             });
         }
     }
 
-    let sender_for_validate_block: NodeId = sender.clone();
+    let sender_for_validate_block: NodeId = sender;
     let valid = effect_builder
         .validate_block(sender_for_validate_block, proposed_block.clone())
         .await;

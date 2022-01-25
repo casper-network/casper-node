@@ -262,7 +262,7 @@ where
                                 // For every request, increase the number of in-flight...
                                 in_flight.inc(&dt_hash.into());
                                 // ...then request it.
-                                fetch_deploy(effect_builder, dt_hash, sender.clone())
+                                fetch_deploy(effect_builder, dt_hash, sender)
                             },
                         ));
                         let block_timestamp = entry.key().timestamp();

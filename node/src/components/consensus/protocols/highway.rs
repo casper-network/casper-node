@@ -327,7 +327,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
 
         // If the vertex is invalid, drop all vertices that depend on this one, and disconnect from
         // the faulty senders.
-        let sender = pending_vertex.sender().clone();
+        let sender = *pending_vertex.sender();
         let vv = match self.highway.validate_vertex(pending_vertex.into()) {
             Ok(vv) => vv,
             Err((pvv, err)) => {
@@ -355,7 +355,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
                     .pending_values
                     .entry(proposed_block.clone())
                     .or_default()
-                    .insert((vv, sender.clone()))
+                    .insert((vv, sender))
                 {
                     outcomes.push(ProtocolOutcome::ValidateConsensusValue {
                         sender,
@@ -891,7 +891,7 @@ where
                     .map(create_message)
                     .flat_map(|msgs| {
                         msgs.into_iter().map(|msg| {
-                            ProtocolOutcome::CreatedTargetedMessage(msg.serialize(), sender.clone())
+                            ProtocolOutcome::CreatedTargetedMessage(msg.serialize(), sender)
                         })
                     })
                     .collect()

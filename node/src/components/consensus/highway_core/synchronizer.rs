@@ -83,7 +83,7 @@ impl<C: Context> PendingVertices<C> {
         let pvv = self.0.keys().next()?.clone();
         let (sender, timestamp, is_empty) = {
             let time_by_sender = self.0.get_mut(&pvv)?;
-            let sender = time_by_sender.keys().next()?.clone();
+            let sender = *time_by_sender.keys().next()?;
             let timestamp = time_by_sender.remove(&sender)?;
             (sender, timestamp, time_by_sender.is_empty())
         };
@@ -366,7 +366,7 @@ impl<C: Context + 'static> Synchronizer<C> {
                 Some(pv) => pv,
             };
             if let Some(dep) = highway.missing_dependency(pv.pvv()) {
-                let sender = pv.sender().clone();
+                let sender = *pv.sender();
                 let time_received = pv.time_received;
                 // Find the first dependency that `pv` needs that we haven't synchronized yet
                 // and request it from the sender of `pv`. Since it relies on it, it should have
@@ -426,7 +426,7 @@ impl<C: Context + 'static> Synchronizer<C> {
                     .requests_sent
                     .entry(transitive_dependency.clone())
                     .or_default();
-                if entry.len() >= max_requests_for_vertex || !entry.insert(sender.clone()) {
+                if entry.len() >= max_requests_for_vertex || !entry.insert(sender) {
                     continue;
                 }
                 // Otherwise request the missing dependency from the sender.
@@ -463,7 +463,7 @@ impl<C: Context + 'static> Synchronizer<C> {
             .iter_mut()
             .find(|(_, pvs)| pvs.contains_dependency(&missing_dependency))
         {
-            pvs.add_holder(&missing_dependency, sender.clone(), time_received);
+            pvs.add_holder(&missing_dependency, *sender, time_received);
             missing_dependency = next_missing.clone();
         }
         missing_dependency

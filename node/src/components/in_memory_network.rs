@@ -211,8 +211,6 @@
 //! }
 //!
 //! impl NetworkedReactor for Reactor {
-//!     type NodeId = NodeId;
-//!
 //!     fn node_id(&self) -> NodeId {
 //!         self.net.node_id()
 //!     }
