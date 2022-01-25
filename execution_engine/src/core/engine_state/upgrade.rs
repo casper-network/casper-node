@@ -7,7 +7,7 @@ use tracing::warn;
 
 use casper_hashing::Digest;
 use casper_types::{
-    bytesrepr::{self, ToBytes},
+    bytesrepr::{self, ToBytes, U8_SERIALIZED_LENGTH},
     system::{
         auction, handle_payment, mint, standard_payment, AUCTION, HANDLE_PAYMENT, MINT,
         STANDARD_PAYMENT,
@@ -295,12 +295,16 @@ where
         // This will only be called if we undergo a major version increment, but we cannot afford
         // for it to fail, hence `force_write` is used.
         let stored_value = StoredValue::Contract(new_contract);
-        if stored_value.serialized_length() > self.max_stored_value_size as usize {
+        let contract_hash_key: Key = contract_hash.into();
+        let computed_trie_leaf_size = U8_SERIALIZED_LENGTH
+            .saturating_add(contract_hash_key.serialized_length())
+            .saturating_add(stored_value.serialized_length());
+        if computed_trie_leaf_size > self.max_stored_value_size as usize {
             warn!(%contract_name, serialized_length=%stored_value.serialized_length(), "wrote a system contract which is too large");
         }
         self.tracking_copy
             .borrow_mut()
-            .force_write(contract_hash.into(), stored_value);
+            .force_write(contract_hash_key, stored_value);
 
         contract_package
             .insert_contract_version(self.new_protocol_version.value().major, contract_hash);
@@ -308,7 +312,10 @@ where
         // This will only be called if we undergo a major version increment, but we cannot afford
         // for it to fail, hence `force_write` is used.
         let stored_value = StoredValue::ContractPackage(contract_package);
-        if stored_value.serialized_length() > self.max_stored_value_size as usize {
+        let computed_trie_leaf_size = U8_SERIALIZED_LENGTH
+            .saturating_add(contract_package_key.serialized_length())
+            .saturating_add(stored_value.serialized_length());
+        if computed_trie_leaf_size > self.max_stored_value_size as usize {
             warn!(%contract_name, serialized_length=%stored_value.serialized_length(), "wrote a system contract package which is too large");
         }
         self.tracking_copy

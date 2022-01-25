@@ -7,7 +7,7 @@ const USER_ERROR_CODE_OFFSET: u32 = 65536;
 const KB: usize = 1024;
 const MB: usize = 1024 * KB;
 
-const VEC_LEN: usize = 8 * MB;
+const VEC_LEN: usize = 8 * MB - 46;
 
 const KEY_TAG_UREF: u8 = 2;
 
@@ -108,7 +108,7 @@ pub extern "C" fn call() {
         pos += 4;
 
         let block_time = get_blocktime();
-        buffer[pos..pos + 8].copy_from_slice(&block_time.to_be_bytes());
+        buffer[pos..pos + 8].copy_from_slice(&block_time.to_le_bytes());
     }
 
     buffer[BUFFER_LEN - CL_TYPE.len()..].copy_from_slice(&CL_TYPE);

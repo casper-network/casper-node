@@ -16,7 +16,7 @@ use tracing::warn;
 
 use casper_hashing::Digest;
 use casper_types::{
-    bytesrepr::{self, ToBytes},
+    bytesrepr::{self, ToBytes, U8_SERIALIZED_LENGTH},
     CLType, CLValue, CLValueError, Key, KeyTag, StoredValue, StoredValueTypeMismatch, Tagged, U512,
 };
 
@@ -337,7 +337,11 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
         value: StoredValue,
         max_value_size: u32,
     ) -> WriteResult {
-        if value.serialized_length() > max_value_size as usize {
+        // Takes serialized trie leaf size into consideration
+        let leaf_serialized_length = U8_SERIALIZED_LENGTH
+            .saturating_add(key.serialized_length())
+            .saturating_add(value.serialized_length());
+        if leaf_serialized_length > max_value_size as usize {
             warn!(?key, ?value, "attempted writing value which is too large");
             return WriteResult::ValueTooLarge;
         }
@@ -420,7 +424,11 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
 
         match transform.clone().apply(current_value) {
             Ok(new_value) => {
-                if new_value.serialized_length() > max_value_size as usize {
+                let leaf_serialized_length = U8_SERIALIZED_LENGTH
+                    .saturating_add(key.serialized_length())
+                    .saturating_add(new_value.serialized_length());
+
+                if leaf_serialized_length > max_value_size as usize {
                     return Ok(AddResult::ValueTooLarge);
                 }
                 self.cache.insert_write(normalized_key, new_value);

@@ -403,6 +403,15 @@ impl<K, V> Trie<K, V> {
             _ => None,
         }
     }
+
+    /// Returns a pointer block, if possible.
+    pub fn as_pointer_block(&self) -> Option<&PointerBlock> {
+        if let Self::Node { pointer_block } = self {
+            Some(pointer_block.as_ref())
+        } else {
+            None
+        }
+    }
 }
 
 impl<K, V> ToBytes for Trie<K, V>

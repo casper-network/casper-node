@@ -33,7 +33,7 @@ use tracing::{debug, error, warn};
 use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
-    bytesrepr::ToBytes,
+    bytesrepr::{ToBytes, U8_SERIALIZED_LENGTH},
     contracts::NamedKeys,
     system::{
         auction::{
@@ -423,7 +423,10 @@ where
         for (key, value) in upgrade_config.global_state_update() {
             // `StoredValue`s produced for the global state update should not exceed write size
             // limit.
-            if value.serialized_length() > self.config.max_stored_value_size() as usize {
+            let computed_trie_leaf_size = U8_SERIALIZED_LENGTH
+                .saturating_add(key.serialized_length())
+                .saturating_add(value.serialized_length());
+            if computed_trie_leaf_size > self.config.max_stored_value_size() as usize {
                 warn!(%key, serialized_length=%value.serialized_length(), "wrote an upgrade config value which is too large");
             }
             tracking_copy.borrow_mut().force_write(*key, value.clone());

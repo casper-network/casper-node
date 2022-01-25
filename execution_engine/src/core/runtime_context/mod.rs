@@ -14,7 +14,7 @@ use casper_types::{
         Account, AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure,
         UpdateKeyFailure, Weight,
     },
-    bytesrepr::ToBytes,
+    bytesrepr::{ToBytes, U8_SERIALIZED_LENGTH},
     contracts::NamedKeys,
     system::auction::{EraInfo, SeigniorageRecipientsSnapshot},
     AccessRights, BlockTime, CLType, CLValue, Contract, ContractHash, ContractPackage,
@@ -898,7 +898,10 @@ where
         let bytes_count = stored_value.serialized_length();
         self.charge_gas_storage(bytes_count)?;
 
-        if stored_value.serialized_length() > self.engine_config.max_stored_value_size() as usize {
+        let computed_trie_leaf = U8_SERIALIZED_LENGTH
+            .saturating_add(key.serialized_length())
+            .saturating_add(stored_value.serialized_length());
+        if computed_trie_leaf > self.engine_config.max_stored_value_size() as usize {
             warn!(%key, serialized_length=%stored_value.serialized_length(), "wrote a seigniorage recipients snapshot which is too large");
         }
         self.tracking_copy
