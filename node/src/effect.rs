@@ -868,6 +868,21 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Checks if a block header exists in storage
+    pub(crate) async fn check_block_header_existence(self, block_height: u64) -> bool
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::CheckBlockHeaderExistence {
+                block_height,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Gets the requested signatures for a given block hash.
     pub(crate) async fn get_signatures_from_storage(
         self,

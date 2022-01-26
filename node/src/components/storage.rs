@@ -862,6 +862,12 @@ impl Storage {
             } => responder
                 .respond(self.get_single_block_header(&mut self.env.begin_ro_txn()?, &block_hash)?)
                 .ignore(),
+            StorageRequest::CheckBlockHeaderExistence {
+                block_height,
+                responder,
+            } => responder
+                .respond(self.block_header_exists(block_height))
+                .ignore(),
             StorageRequest::GetBlockTransfers {
                 block_hash,
                 responder,
@@ -1401,6 +1407,13 @@ impl Storage {
             });
         };
         Ok(Some(block_header))
+    }
+
+    /// Checks whether a block at the given height exists in the block height index (and, since the
+    /// index is initialized on startup based on the actual contents of storage, if it exists in
+    /// storage).
+    fn block_header_exists(&self, block_height: u64) -> bool {
+        self.block_height_index.contains_key(&block_height)
     }
 
     /// Retrieves a single Merklized block body in a separate transaction from storage.

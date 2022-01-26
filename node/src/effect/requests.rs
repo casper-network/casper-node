@@ -283,6 +283,13 @@ pub(crate) enum StorageRequest {
         /// local storage.
         responder: Responder<Option<BlockHeader>>,
     },
+    /// Checks if a header at the given height exists in storage.
+    CheckBlockHeaderExistence {
+        /// Height of the block to check.
+        block_height: u64,
+        /// Responder to call with the result.
+        responder: Responder<bool>,
+    },
     /// Retrieve block header with sufficient finality signatures by height.
     GetBlockHeaderAndSufficientFinalitySignaturesByHeight {
         /// Height of block to get header of.
@@ -410,6 +417,9 @@ impl Display for StorageRequest {
             }
             StorageRequest::GetBlockHeader { block_hash, .. } => {
                 write!(formatter, "get {}", block_hash)
+            }
+            StorageRequest::CheckBlockHeaderExistence { block_height, .. } => {
+                write!(formatter, "check existence {}", block_height)
             }
             StorageRequest::GetBlockTransfers { block_hash, .. } => {
                 write!(formatter, "get transfers for {}", block_hash)
