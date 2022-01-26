@@ -277,6 +277,10 @@ pub enum Error {
     /// be mapped to a specific auction error.
     MintError = 42,
     /// The validator has exceeded the maximum amount of delegators allowed.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(43, Error::ExceededDelegatorSizeLimit as u8);
+    /// ```
     ExceededDelegatorSizeLimit = 43,
 }
 
