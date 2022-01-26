@@ -434,7 +434,11 @@ where
             .flat_map(|era_end| era_end.era_report().equivocators.clone())
             .collect();
 
-        let instance_id = instance_id(self.chainspec.hash(), era_id);
+        let instance_id = instance_id(
+            self.chainspec.hash(),
+            era_id,
+            key_block.hash(self.verifiable_chunked_hash_activation()),
+        );
         let now = Timestamp::now();
 
         info!(
@@ -1213,10 +1217,11 @@ async fn execute_finalized_block<REv>(
 }
 
 /// Computes the instance ID for an era, given the era ID and the chainspec hash.
-fn instance_id(chainspec_hash: Digest, era_id: EraId) -> Digest {
-    Digest::hash_pair(chainspec_hash, era_id.to_le_bytes())
-        .value()
-        .into()
+fn instance_id(chainspec_hash: Digest, era_id: EraId, key_block_hash: BlockHash) -> Digest {
+    Digest::hash_pair(
+        key_block_hash.inner().value(),
+        Digest::hash_pair(chainspec_hash, era_id.to_le_bytes()).value(),
+    )
 }
 
 /// Checks that a [BlockPayload] does not have deploys we have already included in blocks in
