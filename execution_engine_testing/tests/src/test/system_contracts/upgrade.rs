@@ -10,7 +10,8 @@ use casper_engine_test_support::{
 
 use casper_execution_engine::{
     core::engine_state::{
-        EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+        engine_config::DEFAULT_MAX_DELEGATOR_SIZE_LIMIT, EngineConfig, DEFAULT_MAX_QUERY_DEPTH,
+        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
     },
     shared::{
         host_function_costs::HostFunctionCosts,
@@ -31,7 +32,6 @@ use casper_execution_engine::{
         wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
     },
 };
-use casper_execution_engine::core::engine_state::engine_config::DEFAULT_MAX_DELEGATOR_SIZE_LIMIT;
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     runtime_args,

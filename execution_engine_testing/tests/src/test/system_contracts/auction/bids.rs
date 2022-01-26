@@ -12,21 +12,21 @@ use casper_engine_test_support::{
     DEFAULT_UNBONDING_DELAY, MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
     TIMESTAMP_MILLIS_INCREMENT,
 };
-use casper_execution_engine::core::{
-    engine_state::{
-        self,
-        engine_config::{
-            DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_QUERY_DEPTH,
-            DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-            DEFAULT_MAX_STORED_VALUE_SIZE,
+use casper_execution_engine::{
+    core::{
+        engine_state::{
+            self,
+            engine_config::{
+                DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_QUERY_DEPTH,
+                DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT, DEFAULT_MAX_STORED_VALUE_SIZE,
+            },
+            genesis::{GenesisAccount, GenesisValidator},
+            EngineConfig, RewardItem,
         },
-        genesis::{GenesisAccount, GenesisValidator},
-        EngineConfig, RewardItem,
+        execution,
     },
-    execution,
+    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
-use casper_execution_engine::shared::system_config::SystemConfig;
-use casper_execution_engine::shared::wasm_config::{WasmConfig};
 use casper_types::{
     self,
     account::AccountHash,

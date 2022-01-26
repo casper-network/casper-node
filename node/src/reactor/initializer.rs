@@ -11,6 +11,7 @@ use thiserror::Error;
 use tracing::info;
 
 use casper_execution_engine::core::engine_state;
+use casper_types::bytesrepr::U8_SERIALIZED_LENGTH;
 
 use crate::{
     components::{
@@ -221,23 +222,24 @@ impl Reactor {
         )?;
 
         let max_delegator_size_limit = {
-            let size_limit_per_snapshot = chainspec_loader
+            let size_limit_per_snapshot = (chainspec_loader
                 .chainspec()
                 .core_config
                 .max_stored_value_size
+                - U8_SERIALIZED_LENGTH as u32)
                 / (chainspec_loader.chainspec().core_config.auction_delay + 1) as u32;
-            let size_limit_per_validator =
-                (size_limit_per_snapshot / chainspec_loader.chainspec().core_config.validator_slots) - FIXED_SIZE_PER_VALIDATOR;
-            let max_number_of_delegators_per_validator =
-                size_limit_per_validator / SIZE_PER_DELEGATOR_ENTRY;
-            max_number_of_delegators_per_validator
+            let size_limit_per_validator = (size_limit_per_snapshot
+                / chainspec_loader.chainspec().core_config.validator_slots)
+                - FIXED_SIZE_PER_VALIDATOR;
+            // The max number of the delegators per validator is the size limit allotted
+            // to a single validator divided by the size of a single delegator entry.
+            size_limit_per_validator / SIZE_PER_DELEGATOR_ENTRY
         };
 
         info!(
             "The maximum delegators per validator is currently set to: {}",
             max_delegator_size_limit
         );
-
 
         let contract_runtime = ContractRuntime::new(
             chainspec_loader.chainspec().protocol_config.version,

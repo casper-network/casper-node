@@ -1,10 +1,6 @@
 //! Support for runtime configuration of the execution engine - as an integral property of the
 //! `EngineState` instance.
 use crate::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
-use tracing::info;
-
-const FIXED_SIZE_PER_VALIDATOR: u32 = 11;
-const SIZE_PER_DELEGATOR_ENTRY: u32 = 44;
 
 /// Default value for a maximum query depth configuration option.
 pub const DEFAULT_MAX_QUERY_DEPTH: u64 = 5;

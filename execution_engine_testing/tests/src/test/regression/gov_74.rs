@@ -8,13 +8,13 @@ use casper_engine_test_support::{
 use casper_execution_engine::{
     core::{
         engine_state::{
-            EngineConfig, Error, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+            engine_config::DEFAULT_MAX_DELEGATOR_SIZE_LIMIT, EngineConfig, Error,
+            DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         },
         execution::Error as ExecError,
     },
     shared::wasm_config::{WasmConfig, DEFAULT_WASM_MAX_MEMORY},
 };
-use casper_execution_engine::core::engine_state::engine_config::DEFAULT_MAX_DELEGATOR_SIZE_LIMIT;
 use casper_types::{EraId, ProtocolVersion, RuntimeArgs};
 
 const I32_WASM_SIZE_BYTES: usize = 8;
