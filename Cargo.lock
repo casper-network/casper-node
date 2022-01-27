@@ -3689,6 +3689,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "regression_20220119"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "remove-associated-key"
 version = "0.1.0"
 dependencies = [

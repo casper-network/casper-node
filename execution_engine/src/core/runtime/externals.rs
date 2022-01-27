@@ -9,8 +9,8 @@ use casper_types::{
     bytesrepr::{self, ToBytes},
     contracts::{ContractPackageStatus, EntryPoints, NamedKeys},
     system::auction::EraInfo,
-    ContractHash, ContractPackageHash, ContractVersion, EraId, Gas, Group, Key, StoredValue, URef,
-    U512,
+    ApiError, ContractHash, ContractPackageHash, ContractVersion, EraId, Gas, Group, Key,
+    StoredValue, URef, U512, UREF_SERIALIZED_LENGTH,
 };
 
 use super::{args::Args, scoped_instrumenter::ScopedInstrumenter, Error, Runtime};
@@ -289,17 +289,24 @@ where
                 // args(0) = pointer to array for return value
                 // args(1) = length of array for return value
                 let (dest_ptr, dest_size) = Args::parse(args)?;
+
                 self.charge_host_function_call(
                     &host_function_costs.create_purse,
                     [dest_ptr, dest_size],
                 )?;
-                let purse = self.create_purse()?;
-                let purse_bytes = purse.into_bytes().map_err(Error::BytesRepr)?;
-                assert_eq!(dest_size, purse_bytes.len() as u32);
-                self.memory
-                    .set(dest_ptr, &purse_bytes)
-                    .map_err(|e| Error::Interpreter(e.into()))?;
-                Ok(Some(RuntimeValue::I32(0)))
+
+                let result = if (dest_size as usize) < UREF_SERIALIZED_LENGTH {
+                    Err(ApiError::PurseNotCreated)
+                } else {
+                    let purse = self.create_purse()?;
+                    let purse_bytes = purse.into_bytes().map_err(Error::BytesRepr)?;
+                    self.memory
+                        .set(dest_ptr, &purse_bytes)
+                        .map_err(|e| Error::Interpreter(e.into()))?;
+                    Ok(())
+                };
+
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(result))))
             }
 
             FunctionIndex::TransferToAccountIndex => {
