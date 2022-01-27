@@ -11,7 +11,7 @@ use thiserror::Error;
 use tracing::info;
 
 use casper_execution_engine::core::engine_state;
-use casper_types::bytesrepr::U8_SERIALIZED_LENGTH;
+use casper_types::{bytesrepr::U8_SERIALIZED_LENGTH, KEY_HASH_LENGTH};
 
 use crate::{
     components::{
@@ -37,8 +37,15 @@ use crate::{
     NodeRng,
 };
 
+// The size in bytes per delegator entry in SeigniorageRecipient struct.
+// 34 bytes PublicKey + 10 bytes U512 for the delegated amount
 const SIZE_PER_DELEGATOR_ENTRY: u32 = 44;
+// The fixed portion, in bytes, of the SeigniorageRecipient struct.
+// 10 bytes validator weight + 1 byte for delegation rate.
 const FIXED_SIZE_PER_VALIDATOR: u32 = 11;
+// The overhead of the Key::Hash under which the seigniorage snapshot lives.
+// The hash length plus an additional byte for the tag.
+const KEY_HASH_SERIALIZED_LENGTH: u32 = KEY_HASH_LENGTH as u32 + 1;
 
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
@@ -226,18 +233,24 @@ impl Reactor {
                 .chainspec()
                 .core_config
                 .max_stored_value_size
-                - U8_SERIALIZED_LENGTH as u32)
+                - U8_SERIALIZED_LENGTH as u32
+                - KEY_HASH_SERIALIZED_LENGTH)
                 / (chainspec_loader.chainspec().core_config.auction_delay + 1) as u32;
             let size_limit_per_validator = (size_limit_per_snapshot
                 / chainspec_loader.chainspec().core_config.validator_slots)
                 - FIXED_SIZE_PER_VALIDATOR;
             // The max number of the delegators per validator is the size limit allotted
             // to a single validator divided by the size of a single delegator entry.
+            // For the given:
+            // 1. max limit of 8MB
+            // 2. 100 validator slots
+            // 3. an auction delay of 1
+            // There will be a maximum of roughly 953 delegators per validator.
             size_limit_per_validator / SIZE_PER_DELEGATOR_ENTRY
         };
 
         info!(
-            "The maximum delegators per validator is currently set to: {}",
+            "the maximum delegators per validator is currently set to: {}",
             max_delegator_size_limit
         );
 

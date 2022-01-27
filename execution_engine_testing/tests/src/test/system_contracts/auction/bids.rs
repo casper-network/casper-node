@@ -3071,6 +3071,7 @@ fn should_run_genesis_with_exact_validator_slots() {
 #[ignore]
 #[test]
 fn should_not_allow_delegations_past_limit() {
+    const NEW_MAX_DELEGATOR_SIZE_LIMIT: u32 = 2;
     let mut builder = InMemoryWasmTestBuilder::default();
 
     let old_protocol_version = *DEFAULT_PROTOCOL_VERSION;
@@ -3087,7 +3088,7 @@ fn should_not_allow_delegations_past_limit() {
         DEFAULT_MAX_ASSOCIATED_KEYS,
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         DEFAULT_MAX_STORED_VALUE_SIZE,
-        2,
+        NEW_MAX_DELEGATOR_SIZE_LIMIT,
         WasmConfig::default(),
         SystemConfig::default(),
     );
@@ -3214,6 +3215,7 @@ fn should_not_allow_delegations_past_limit() {
 #[ignore]
 #[test]
 fn should_continue_running_auction_despite_execeeded_delegator_limit() {
+    const NEW_MAX_DELEGATOR_SIZE_LIMIT: u32 = 2;
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
@@ -3350,7 +3352,7 @@ fn should_continue_running_auction_despite_execeeded_delegator_limit() {
         DEFAULT_MAX_ASSOCIATED_KEYS,
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         DEFAULT_MAX_STORED_VALUE_SIZE,
-        2,
+        NEW_MAX_DELEGATOR_SIZE_LIMIT,
         WasmConfig::default(),
         SystemConfig::default(),
     );
