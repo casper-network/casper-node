@@ -85,7 +85,9 @@ enum Event {
     #[from]
     DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
     #[from]
-    ContractRuntime(#[serde(skip_serializing)] Box<ContractRuntimeRequest>),
+    ContractRuntime(contract_runtime::Event),
+    #[from]
+    ContractRuntimeRequest(ContractRuntimeRequest),
     #[from]
     ConsensusMessageIncoming(ConsensusMessageIncoming<NodeId>),
     #[from]
@@ -111,12 +113,6 @@ impl ReactorEvent for Event {
         } else {
             None
         }
-    }
-}
-
-impl From<ContractRuntimeRequest> for Event {
-    fn from(contract_runtime_request: ContractRuntimeRequest) -> Self {
-        Event::ContractRuntime(Box::new(contract_runtime_request))
     }
 }
 
@@ -147,6 +143,7 @@ impl Display for Event {
             Event::DeployGossiper(event) => write!(formatter, "deploy gossiper: {}", event),
             Event::StorageRequest(req) => write!(formatter, "storage request: {}", req),
             Event::NetworkRequest(req) => write!(formatter, "network request: {}", req),
+            Event::ContractRuntimeRequest(req) => write!(formatter, "incoming: {}", req),
             Event::ControlAnnouncement(ctrl_ann) => write!(formatter, "control: {}", ctrl_ann),
             Event::RpcServerAnnouncement(ann) => {
                 write!(formatter, "api server announcement: {}", ann)
@@ -332,10 +329,15 @@ impl reactor::Reactor for Reactor {
                 Event::Network,
                 self.network.handle_event(effect_builder, rng, event),
             ),
-            Event::ContractRuntime(event) => reactor::wrap_effects(
-                Into::into,
+            Event::ContractRuntimeRequest(req) => reactor::wrap_effects(
+                Event::ContractRuntime,
                 self.contract_runtime
-                    .handle_event(effect_builder, rng, *event),
+                    .handle_event(effect_builder, rng, req.into()),
+            ),
+            Event::ContractRuntime(event) => reactor::wrap_effects(
+                Event::ContractRuntime,
+                self.contract_runtime
+                    .handle_event(effect_builder, rng, event),
             ),
             Event::DeployGossiperIncoming(incoming) => reactor::wrap_effects(
                 Event::DeployGossiper,

@@ -6,20 +6,22 @@ mod metrics;
 mod operations;
 mod types;
 
-use once_cell::sync::Lazy;
 use std::{
     collections::BTreeMap,
-    fmt::{self, Debug, Formatter},
+    fmt::{self, Debug, Display, Formatter},
     path::Path,
     sync::{Arc, Mutex},
     time::Instant,
 };
 
 use datasize::DataSize;
+use derive_more::From;
 use lmdb::DatabaseFlags;
+use once_cell::sync::Lazy;
 use prometheus::Registry;
 use serde::Serialize;
-use tracing::{debug, info, trace};
+use thiserror::Error;
+use tracing::{debug, error, info, trace};
 
 use casper_execution_engine::{
     core::engine_state::{
@@ -41,11 +43,13 @@ use crate::{
     components::{contract_runtime::types::StepEffectAndUpcomingEraValidators, Component},
     effect::{
         announcements::{ContractRuntimeAnnouncement, ControlAnnouncement},
-        requests::ContractRuntimeRequest,
+        incoming::{TrieRequest, TrieRequestIncoming},
+        requests::{ContractRuntimeRequest, NetworkRequest},
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
-    types::{BlockHash, BlockHeader, Chainspec, Deploy, FinalizedBlock},
+    protocol::Message,
+    types::{BlockHash, BlockHeader, Chainspec, Deploy, FinalizedBlock, NodeId},
     NodeRng,
 };
 pub(crate) use config::Config;
@@ -53,6 +57,19 @@ pub(crate) use error::{BlockExecutionError, ConfigError};
 use metrics::Metrics;
 pub use operations::execute_finalized_block;
 pub(crate) use types::{BlockAndExecutionEffects, EraValidatorsRequest};
+
+use super::fetcher::FetchedOrNotFound;
+
+/// An enum that represents all possible error conditions of a `contract_runtime` component.
+#[derive(Debug, Error, From)]
+pub(crate) enum ContractRuntimeError {
+    /// The provided serialized id cannot be deserialized properly.
+    #[error("error deserializing id: {0}")]
+    InvalidSerializedId(#[source] bincode::Error),
+    // It was not possible to get trie with the specified id
+    #[error("error retrieving trie by id: {0}")]
+    FailedToRetrieveTrieById(#[source] engine_state::Error),
+}
 
 /// Maximum number of resource intensive tasks that can be run in parallel.
 ///
@@ -134,6 +151,26 @@ impl ExecutionPreState {
 
 type ExecQueue = Arc<Mutex<BTreeMap<u64, (FinalizedBlock, Vec<Deploy>, Vec<Deploy>)>>>;
 
+#[derive(Debug, From, Serialize)]
+pub(crate) enum Event {
+    #[from]
+    ContractRuntimeRequest(ContractRuntimeRequest),
+
+    #[from]
+    TrieRequestIncoming(TrieRequestIncoming),
+}
+
+impl Display for Event {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Event::ContractRuntimeRequest(req) => {
+                write!(f, "contract runtime request: {}", req)
+            }
+            Event::TrieRequestIncoming(req) => write!(f, "trie request incoming: {}", req),
+        }
+    }
+}
+
 /// The contract runtime components.
 #[derive(DataSize)]
 pub(crate) struct ContractRuntime {
@@ -158,18 +195,73 @@ where
     REv: From<ContractRuntimeRequest>
         + From<ContractRuntimeAnnouncement>
         + From<ControlAnnouncement>
+        + From<NetworkRequest<NodeId, Message>>
         + Send,
 {
-    type Event = ContractRuntimeRequest;
+    type Event = Event;
     type ConstructionError = ConfigError;
 
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut NodeRng,
-        event: Self::Event,
+        rng: &mut NodeRng,
+        event: Event,
     ) -> Effects<Self::Event> {
         match event {
+            Event::ContractRuntimeRequest(request) => {
+                self.handle_contract_runtime_request(effect_builder, rng, request)
+            }
+            Event::TrieRequestIncoming(request) => {
+                self.handle_trie_request(effect_builder, request)
+            }
+        }
+    }
+}
+
+impl ContractRuntime {
+    /// Handles an incoming request to get a trie.
+    fn handle_trie_request<REv>(
+        &self,
+        effect_builder: EffectBuilder<REv>,
+        TrieRequestIncoming {
+            sender,
+            message: TrieRequest(ref serialized_id),
+        }: TrieRequestIncoming,
+    ) -> Effects<Event>
+    where
+        REv: From<NetworkRequest<NodeId, Message>> + Send,
+    {
+        let fetched_or_not_found = match self.get_trie(serialized_id) {
+            Ok(fetched_or_not_found) => fetched_or_not_found,
+            Err(error) => {
+                debug!("failed to get trie: {}", error);
+                return Effects::new();
+            }
+        };
+
+        match Message::new_get_response(&fetched_or_not_found) {
+            Ok(message) => effect_builder.send_message(sender, message).ignore(),
+            Err(error) => {
+                error!("failed to create get-response: {}", error);
+                Effects::new()
+            }
+        }
+    }
+
+    /// Handles a contract runtime request.
+    fn handle_contract_runtime_request<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        _rng: &mut NodeRng,
+        request: ContractRuntimeRequest,
+    ) -> Effects<Event>
+    where
+        REv: From<ContractRuntimeRequest>
+            + From<ContractRuntimeAnnouncement>
+            + From<ControlAnnouncement>
+            + Send,
+    {
+        match request {
             ContractRuntimeRequest::CommitGenesis {
                 chainspec,
                 responder,
@@ -635,10 +727,13 @@ impl ContractRuntime {
     /// Reads the trie (or chunk of a trie) under the given key and index.
     pub(crate) fn get_trie(
         &self,
-        trie_or_chunk_id: TrieOrChunkId,
-    ) -> Result<Option<TrieOrChunk>, engine_state::Error> {
-        trace!(?trie_or_chunk_id, "read_trie");
-        Self::do_get_trie(&self.engine_state, &self.metrics, trie_or_chunk_id)
+        serialized_id: &[u8],
+    ) -> Result<FetchedOrNotFound<TrieOrChunk, TrieOrChunkId>, ContractRuntimeError> {
+        trace!(?serialized_id, "get_trie");
+
+        let id: TrieOrChunkId = bincode::deserialize(serialized_id)?;
+        let maybe_trie = Self::do_get_trie(&self.engine_state, &self.metrics, id)?;
+        Ok(FetchedOrNotFound::from_opt(id, maybe_trie))
     }
 
     fn do_get_trie(

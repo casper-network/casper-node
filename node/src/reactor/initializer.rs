@@ -50,7 +50,8 @@ pub(crate) enum Event {
     Storage(storage::Event),
 
     /// Contract runtime event.
-    ContractRuntime(#[serde(skip_serializing)] Box<ContractRuntimeRequest>),
+    #[from]
+    ContractRuntime(contract_runtime::Event),
 
     /// Control announcement.
     #[from]
@@ -59,12 +60,10 @@ pub(crate) enum Event {
     /// Storage request.
     #[from]
     StorageRequest(StorageRequest),
-}
 
-impl From<ContractRuntimeRequest> for Event {
-    fn from(contract_runtime_request: ContractRuntimeRequest) -> Self {
-        Event::ContractRuntime(Box::new(contract_runtime_request))
-    }
+    /// Contract runtime request.
+    #[from]
+    ContractRuntimeRequest(ContractRuntimeRequest),
 }
 
 impl ReactorEvent for Event {
@@ -80,9 +79,10 @@ impl ReactorEvent for Event {
         match self {
             Event::Chainspec(_) => "Chainspec",
             Event::Storage(_) => "Storage",
-            Event::ContractRuntime(_) => "ContractRuntime",
+            Event::ContractRuntimeRequest(_) => "ContractRuntimeRequest",
             Event::ControlAnnouncement(_) => "ControlAnnouncement",
             Event::StorageRequest(_) => "StorageRequest",
+            Event::ContractRuntime(_) => "ContractRuntime",
         }
     }
 }
@@ -128,9 +128,12 @@ impl Display for Event {
         match self {
             Event::Chainspec(event) => write!(formatter, "chainspec: {}", event),
             Event::Storage(event) => write!(formatter, "storage: {}", event),
-            Event::ContractRuntime(event) => write!(formatter, "contract runtime: {:?}", event),
+            Event::ContractRuntimeRequest(event) => {
+                write!(formatter, "contract runtime request: {:?}", event)
+            }
             Event::ControlAnnouncement(ctrl_ann) => write!(formatter, "control: {}", ctrl_ann),
             Event::StorageRequest(req) => write!(formatter, "storage request: {}", req),
+            Event::ContractRuntime(event) => write!(formatter, "contract runtime event: {}", event),
         }
     }
 }
@@ -309,9 +312,14 @@ impl reactor::Reactor for Reactor {
                 self.storage.handle_event(effect_builder, rng, event),
             ),
             Event::ContractRuntime(event) => reactor::wrap_effects(
-                Event::from,
+                Event::ContractRuntime,
                 self.contract_runtime
-                    .handle_event(effect_builder, rng, *event),
+                    .handle_event(effect_builder, rng, event),
+            ),
+            Event::ContractRuntimeRequest(event) => reactor::wrap_effects(
+                Event::ContractRuntime,
+                self.contract_runtime
+                    .handle_event(effect_builder, rng, event.into()),
             ),
             Event::StorageRequest(req) => reactor::wrap_effects(
                 Event::Storage,
