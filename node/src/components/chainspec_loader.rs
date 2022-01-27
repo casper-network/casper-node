@@ -34,12 +34,13 @@ use crate::{
     components::Component,
     effect::{
         announcements::ChainspecLoaderAnnouncement, requests::ChainspecLoaderRequest,
-        EffectBuilder, EffectExt, EffectOptionExt, Effects,
+        EffectBuilder, EffectExt, Effects,
     },
     reactor::ReactorExit,
+    storage::StorageRequest,
     types::{
         chainspec::{Error, ProtocolConfig, CHAINSPEC_NAME},
-        ActivationPoint, Chainspec, ChainspecInfo, ExitCode,
+        ActivationPoint, Block, Chainspec, ChainspecInfo, ExitCode,
     },
     utils::{self, Loadable},
     NodeRng,
@@ -51,7 +52,9 @@ const UPGRADE_CHECK_INTERVAL: Duration = Duration::from_secs(60);
 #[derive(Debug, From, Serialize)]
 pub(crate) enum Event {
     /// The result of getting the highest block from storage.
-    Initialize,
+    Initialize {
+        maybe_highest_block: Option<Box<Block>>,
+    },
     #[from]
     Request(ChainspecLoaderRequest),
     /// Check config dir to see if an upgrade activation point is available, and if so announce it.
@@ -63,8 +66,16 @@ pub(crate) enum Event {
 impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::Initialize => {
-                write!(formatter, "initialize")
+            Event::Initialize {
+                maybe_highest_block,
+            } => {
+                write!(
+                    formatter,
+                    "initialize(maybe_highest_block: {})",
+                    maybe_highest_block
+                        .as_ref()
+                        .map_or_else(|| "None".to_string(), |block| block.to_string())
+                )
             }
             Event::Request(req) => write!(formatter, "chainspec_loader request: {}", req),
             Event::CheckForNextUpgrade => {
@@ -134,7 +145,7 @@ pub(crate) struct ChainspecLoader {
     /// The path to the folder where all chainspec and upgrade_point files will be stored in
     /// subdirs corresponding to their versions.
     root_dir: PathBuf,
-    reactor_exit: ReactorExit,
+    reactor_exit: Option<ReactorExit>,
     next_upgrade: Option<NextUpgrade>,
 }
 
@@ -145,7 +156,7 @@ impl ChainspecLoader {
     ) -> Result<(Self, Effects<Event>), Error>
     where
         P: AsRef<Path>,
-        REv: From<Event> + Send,
+        REv: From<Event> + From<StorageRequest> + Send,
     {
         Ok(Self::new_with_chainspec_and_path(
             Arc::new(Chainspec::from_path(&chainspec_dir.as_ref())?),
@@ -160,7 +171,7 @@ impl ChainspecLoader {
         effect_builder: EffectBuilder<REv>,
     ) -> (Self, Effects<Event>)
     where
-        REv: From<Event> + Send,
+        REv: From<Event> + From<StorageRequest> + Send,
     {
         Self::new_with_chainspec_and_path(chainspec, &RESOURCES_PATH.join("local"), effect_builder)
     }
@@ -172,7 +183,7 @@ impl ChainspecLoader {
     ) -> (Self, Effects<Event>)
     where
         P: AsRef<Path>,
-        REv: From<Event> + Send,
+        REv: From<Event> + From<StorageRequest> + Send,
     {
         let root_dir = chainspec_dir
             .as_ref()
@@ -187,7 +198,7 @@ impl ChainspecLoader {
             let chainspec_loader = ChainspecLoader {
                 chainspec,
                 root_dir,
-                reactor_exit: ReactorExit::ProcessShouldExit(ExitCode::Abort),
+                reactor_exit: Some(ReactorExit::ProcessShouldExit(ExitCode::Abort)),
                 next_upgrade: None,
             };
             return (chainspec_loader, Effects::new());
@@ -210,7 +221,11 @@ impl ChainspecLoader {
         let mut effects = if should_stop {
             Effects::new()
         } else {
-            async { Some(Event::Initialize) }.map_some(std::convert::identity)
+            effect_builder
+                .get_highest_block_from_storage()
+                .event(|highest_block| Event::Initialize {
+                    maybe_highest_block: highest_block.map(Box::new),
+                })
         };
 
         // Start regularly checking for the next upgrade.
@@ -220,11 +235,7 @@ impl ChainspecLoader {
                 .event(|_| Event::CheckForNextUpgrade),
         );
 
-        let reactor_exit = if should_stop {
-            ReactorExit::ProcessShouldExit(ExitCode::Success)
-        } else {
-            ReactorExit::ProcessShouldContinue
-        };
+        let reactor_exit = should_stop.then(|| ReactorExit::ProcessShouldExit(ExitCode::Success));
 
         let chainspec_loader = ChainspecLoader {
             chainspec,
@@ -234,6 +245,30 @@ impl ChainspecLoader {
         };
 
         (chainspec_loader, effects)
+    }
+
+    fn handle_initialize<REv>(
+        &mut self,
+        _effect_builder: EffectBuilder<REv>,
+        maybe_highest_block: Option<Box<Block>>,
+    ) -> Effects<Event>
+    where
+        REv: Send,
+    {
+        self.reactor_exit =
+            maybe_highest_block.map_or(Some(ReactorExit::ProcessShouldContinue), |highest_block| {
+                if highest_block.header().era_id()
+                    >= self.chainspec.protocol_config.activation_point.era_id()
+                {
+                    // This is an invalid run as the highest block era ID >= next activation
+                    // point, so we're running an outdated version.  Exit with success to
+                    // indicate we should upgrade.
+                    Some(ReactorExit::ProcessShouldExit(ExitCode::Success))
+                } else {
+                    Some(ReactorExit::ProcessShouldContinue)
+                }
+            });
+        Effects::new()
     }
 
     /// This is a workaround while we have multiple reactors.  It should be used in the joiner and
@@ -250,7 +285,7 @@ impl ChainspecLoader {
         self.check_for_next_upgrade(effect_builder)
     }
 
-    pub(crate) fn reactor_exit(&self) -> ReactorExit {
+    pub(crate) fn reactor_exit(&self) -> Option<ReactorExit> {
         self.reactor_exit
     }
 
@@ -348,7 +383,9 @@ where
     ) -> Effects<Self::Event> {
         trace!("{}", event);
         match event {
-            Event::Initialize => Effects::new(),
+            Event::Initialize {
+                maybe_highest_block,
+            } => self.handle_initialize(effect_builder, maybe_highest_block),
             Event::Request(ChainspecLoaderRequest::GetChainspecInfo(responder)) => {
                 responder.respond(self.new_chainspec_info()).ignore()
             }

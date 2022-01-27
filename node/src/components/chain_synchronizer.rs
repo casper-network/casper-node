@@ -5,7 +5,7 @@ mod operations;
 use std::{convert::Infallible, fmt::Debug, sync::Arc};
 
 use datasize::DataSize;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 use casper_execution_engine::core::engine_state::{
     self, genesis::GenesisSuccess, UpgradeConfig, UpgradeSuccess,
@@ -116,23 +116,6 @@ impl ChainSynchronizer {
         match result {
             Ok(latest_block_header) => {
                 if latest_block_header.protocol_version() == self.chainspec.protocol_version() {
-                    if let Some(next_upgrade_activation_point) = self
-                        .maybe_next_upgrade
-                        .map(|next_upgrade| next_upgrade.era_id())
-                    {
-                        if latest_block_header.era_id() >= next_upgrade_activation_point {
-                            // This is an invalid run as the highest block era ID >= next activation
-                            // point, so we're running an outdated version.  Exit with success to
-                            // indicate we should upgrade.
-                            warn!(
-                                %next_upgrade_activation_point,
-                                %latest_block_header,
-                                "running outdated version: exit to upgrade"
-                            );
-                            self.joining_outcome = Some(JoiningOutcome::ShouldExitForUpgrade);
-                            return Effects::new();
-                        }
-                    }
                     self.joining_outcome = Some(JoiningOutcome::Synced {
                         latest_block_header,
                     });
