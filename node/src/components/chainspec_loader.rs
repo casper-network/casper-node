@@ -257,12 +257,17 @@ impl ChainspecLoader {
     {
         self.reactor_exit =
             maybe_highest_block.map_or(Some(ReactorExit::ProcessShouldContinue), |highest_block| {
-                if highest_block.header().era_id()
-                    >= self.chainspec.protocol_config.activation_point.era_id()
-                {
+                let highest_block_header = highest_block.header();
+                let activation_point = self.chainspec.protocol_config.activation_point;
+                if highest_block_header.era_id() >= activation_point.era_id() {
                     // This is an invalid run as the highest block era ID >= next activation
                     // point, so we're running an outdated version.  Exit with success to
                     // indicate we should upgrade.
+                    warn!(
+                        %activation_point,
+                        %highest_block_header,
+                        "running outdated version: exit to upgrade"
+                    );
                     Some(ReactorExit::ProcessShouldExit(ExitCode::Success))
                 } else {
                     Some(ReactorExit::ProcessShouldContinue)
