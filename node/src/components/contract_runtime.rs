@@ -6,8 +6,6 @@ mod metrics;
 mod operations;
 mod types;
 
-use derive_more::From;
-use once_cell::sync::Lazy;
 use std::{
     collections::BTreeMap,
     fmt::{self, Debug, Display, Formatter},
@@ -17,7 +15,9 @@ use std::{
 };
 
 use datasize::DataSize;
+use derive_more::From;
 use lmdb::DatabaseFlags;
+use once_cell::sync::Lazy;
 use prometheus::Registry;
 use serde::Serialize;
 use thiserror::Error;
