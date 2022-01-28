@@ -113,7 +113,7 @@ function _step_06()
 
     log_step_upgrades 6 "asserting node has no peers connected"
 
-    local COUNT=$(curl -s "$(get_node_address_rest "$NODE_ID")/status" | jq '.peers' | jq length)
+    local COUNT=$(get_node_connected_peer_count $NODE_ID)
 
     if [ "$COUNT" -ne "0" ]; then
         log "ERROR: We have $COUNT peers connected, but expected 0"
