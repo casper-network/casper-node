@@ -34,6 +34,7 @@ use casper_types::{
     checksummed_hex,
 };
 pub use chunk_with_proof::ChunkWithProof;
+pub use error::MerkleConstructionError;
 
 /// Possible hashing errors.
 #[derive(Debug, thiserror::Error)]
@@ -65,22 +66,6 @@ impl Digest {
 
     /// Creates a 32-byte BLAKE2b hash digest from a given a piece of data.
     pub fn hash<T: AsRef<[u8]>>(data: T) -> Digest {
-        // TODO:
-        // Temporarily, to avoid potential regression, we always use the original hashing method.
-        // After the `ChunkWithProof` is thoroughly tested we should replace
-        // the current implementation with the commented one.
-        // This change may require updating the hashes in the `test_hash_btreemap'
-        // and `hash_known` tests.
-        //
-        // if Self::should_hash_with_chunks(&data) {
-        //     Self::hash_merkle_tree(
-        //         data.as_ref()
-        //             .chunks(ChunkWithProof::CHUNK_SIZE_BYTES)
-        //             .map(Self::blake2b_hash),
-        //     )
-        // } else {
-        //     Self::blake2b_hash(data)
-        // }
         Self::blake2b_hash(data)
     }
 
@@ -133,10 +118,10 @@ impl Digest {
     /// 1 2 4 5 8 9
     /// │ │ │ │ │ │
     /// └─3 └─6 └─10
-    ///    │   │   │
-    ///    └───7   │
-    ///        │   │
-    ///        └───11
+    ///   │   │   │
+    ///   └───7   │
+    ///       │   │
+    ///       └───11
     /// ```
     ///
     /// Finally hashes the number of elements with the resulting hash. In the example above the

@@ -59,6 +59,7 @@ use crate::{
 };
 
 const MAX_ASSOCIATED_KEYS: u32 = 100;
+
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
 #[must_use]
@@ -84,7 +85,9 @@ enum Event {
     #[from]
     DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
     #[from]
-    ContractRuntime(#[serde(skip_serializing)] Box<ContractRuntimeRequest>),
+    ContractRuntime(contract_runtime::Event),
+    #[from]
+    ContractRuntimeRequest(ContractRuntimeRequest),
     #[from]
     ConsensusMessageIncoming(ConsensusMessageIncoming<NodeId>),
     #[from]
@@ -110,12 +113,6 @@ impl ReactorEvent for Event {
         } else {
             None
         }
-    }
-}
-
-impl From<ContractRuntimeRequest> for Event {
-    fn from(contract_runtime_request: ContractRuntimeRequest) -> Self {
-        Event::ContractRuntime(Box::new(contract_runtime_request))
     }
 }
 
@@ -146,6 +143,7 @@ impl Display for Event {
             Event::DeployGossiper(event) => write!(formatter, "deploy gossiper: {}", event),
             Event::StorageRequest(req) => write!(formatter, "storage request: {}", req),
             Event::NetworkRequest(req) => write!(formatter, "network request: {}", req),
+            Event::ContractRuntimeRequest(req) => write!(formatter, "incoming: {}", req),
             Event::ControlAnnouncement(ctrl_ann) => write!(formatter, "control: {}", ctrl_ann),
             Event::RpcServerAnnouncement(ann) => {
                 write!(formatter, "api server announcement: {}", ann)
@@ -206,6 +204,9 @@ impl reactor::Reactor for Reactor {
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let network = NetworkController::create_node(event_queue, rng);
 
+        // `verifiable_chunked_hash_activation` can be chosen arbitrarily
+        let verifiable_chunked_hash_activation = rng.gen_range(0..=10);
+
         let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
         let storage = Storage::new(
@@ -216,6 +217,7 @@ impl reactor::Reactor for Reactor {
             "test",
             Ratio::new(1, 3),
             None,
+            verifiable_chunked_hash_activation.into(),
         )
         .unwrap();
 
@@ -229,6 +231,7 @@ impl reactor::Reactor for Reactor {
             MAX_ASSOCIATED_KEYS,
             DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
             registry,
+            verifiable_chunked_hash_activation.into(),
         )
         .unwrap();
 
@@ -326,10 +329,15 @@ impl reactor::Reactor for Reactor {
                 Event::Network,
                 self.network.handle_event(effect_builder, rng, event),
             ),
-            Event::ContractRuntime(event) => reactor::wrap_effects(
-                Into::into,
+            Event::ContractRuntimeRequest(req) => reactor::wrap_effects(
+                Event::ContractRuntime,
                 self.contract_runtime
-                    .handle_event(effect_builder, rng, *event),
+                    .handle_event(effect_builder, rng, req.into()),
+            ),
+            Event::ContractRuntime(event) => reactor::wrap_effects(
+                Event::ContractRuntime,
+                self.contract_runtime
+                    .handle_event(effect_builder, rng, event),
             ),
             Event::DeployGossiperIncoming(incoming) => reactor::wrap_effects(
                 Event::DeployGossiper,

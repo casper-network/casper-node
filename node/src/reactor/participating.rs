@@ -20,7 +20,7 @@ use derive_more::From;
 use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::Serialize;
-use tracing::{debug, error, warn};
+use tracing::error;
 
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
@@ -31,6 +31,7 @@ use crate::{
         chain_synchronizer::JoiningOutcome,
         chainspec_loader::{self, ChainspecLoader},
         consensus::{self, EraSupervisor, HighwayProtocol},
+        console::{self, Console},
         contract_runtime::{BlockAndExecutionEffects, ContractRuntime, ExecutionPreState},
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server::{self, EventStreamServer},
@@ -44,6 +45,7 @@ use crate::{
         storage::{self, Storage},
         Component,
     },
+    contract_runtime,
     effect::{
         announcements::{
             BlockProposerAnnouncement, BlocklistAnnouncement, ChainspecLoaderAnnouncement,
@@ -51,9 +53,10 @@ use crate::{
             DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
             RpcServerAnnouncement,
         },
+        console::DumpConsensusStateRequest,
         incoming::{
             ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
-            NetRequestIncoming, NetResponse, NetResponseIncoming, TrieRequest, TrieRequestIncoming,
+            NetRequestIncoming, NetResponse, NetResponseIncoming, TrieRequestIncoming,
             TrieResponseIncoming,
         },
         requests::{
@@ -66,7 +69,7 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
-    types::{Deploy, DeployHash, ExitCode, Item, NodeId, Tag},
+    types::{Deploy, DeployHash, ExitCode, NodeId},
     utils::{Source, WithDir},
     NodeRng,
 };
@@ -122,10 +125,17 @@ pub(crate) enum ParticipatingEvent {
     /// Linear chain event.
     #[from]
     LinearChain(#[serde(skip_serializing)] linear_chain::Event),
+    /// Console event.
+    #[from]
+    Console(console::Event),
+    /// Contract runtime event.
+    #[from]
+    ContractRuntime(contract_runtime::Event),
 
     // Requests
     /// Contract runtime request.
-    ContractRuntime(#[serde(skip_serializing)] Box<ContractRuntimeRequest>),
+    #[from]
+    ContractRuntimeRequest(ContractRuntimeRequest),
     /// Network request.
     #[from]
     NetworkRequest(#[serde(skip_serializing)] NetworkRequest<NodeId, Message>),
@@ -156,6 +166,9 @@ pub(crate) enum ParticipatingEvent {
     /// Request for state storage.
     #[from]
     StateStoreRequest(StateStoreRequest),
+    /// Consensus dump request.
+    #[from]
+    DumpConsensusStateRequest(DumpConsensusStateRequest),
 
     // Announcements
     /// Control announcement.
@@ -242,7 +255,8 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::AddressGossiper(_) => "AddressGossiper",
             ParticipatingEvent::BlockValidator(_) => "BlockValidator",
             ParticipatingEvent::LinearChain(_) => "LinearChain",
-            ParticipatingEvent::ContractRuntime(_) => "ContractRuntime",
+            ParticipatingEvent::ContractRuntimeRequest(_) => "ContractRuntimeRequest",
+            ParticipatingEvent::Console(_) => "Console",
             ParticipatingEvent::NetworkRequest(_) => "NetworkRequest",
             ParticipatingEvent::NetworkInfoRequest(_) => "NetworkInfoRequest",
             ParticipatingEvent::DeployFetcherRequest(_) => "DeployFetcherRequest",
@@ -252,6 +266,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::ChainspecLoaderRequest(_) => "ChainspecLoaderRequest",
             ParticipatingEvent::StorageRequest(_) => "StorageRequest",
             ParticipatingEvent::StateStoreRequest(_) => "StateStoreRequest",
+            ParticipatingEvent::DumpConsensusStateRequest(_) => "DumpConsensusStateRequest",
             ParticipatingEvent::ControlAnnouncement(_) => "ControlAnnouncement",
             ParticipatingEvent::RpcServerAnnouncement(_) => "RpcServerAnnouncement",
             ParticipatingEvent::DeployAcceptorAnnouncement(_) => "DeployAcceptorAnnouncement",
@@ -272,13 +287,8 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::TrieRequestIncoming(_) => "TrieRequestIncoming",
             ParticipatingEvent::TrieResponseIncoming(_) => "TrieResponseIncoming",
             ParticipatingEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
+            ParticipatingEvent::ContractRuntime(_) => "ContractRuntime",
         }
-    }
-}
-
-impl From<ContractRuntimeRequest> for ParticipatingEvent {
-    fn from(contract_runtime_request: ContractRuntimeRequest) -> Self {
-        ParticipatingEvent::ContractRuntime(Box::new(contract_runtime_request))
     }
 }
 
@@ -335,11 +345,12 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::DeployFetcher(event) => write!(f, "deploy fetcher: {}", event),
             ParticipatingEvent::DeployGossiper(event) => write!(f, "deploy gossiper: {}", event),
             ParticipatingEvent::AddressGossiper(event) => write!(f, "address gossiper: {}", event),
-            ParticipatingEvent::ContractRuntime(event) => {
-                write!(f, "contract runtime: {:?}", event)
+            ParticipatingEvent::ContractRuntimeRequest(event) => {
+                write!(f, "contract runtime request: {:?}", event)
             }
             ParticipatingEvent::LinearChain(event) => write!(f, "linear-chain event {}", event),
             ParticipatingEvent::BlockValidator(event) => write!(f, "block validator: {}", event),
+            ParticipatingEvent::Console(event) => write!(f, "console: {}", event),
             ParticipatingEvent::NetworkRequest(req) => write!(f, "network request: {}", req),
             ParticipatingEvent::NetworkInfoRequest(req) => {
                 write!(f, "network info request: {}", req)
@@ -363,6 +374,9 @@ impl Display for ParticipatingEvent {
             }
             ParticipatingEvent::MetricsRequest(req) => write!(f, "metrics request: {}", req),
             ParticipatingEvent::ControlAnnouncement(ctrl_ann) => write!(f, "control: {}", ctrl_ann),
+            ParticipatingEvent::DumpConsensusStateRequest(req) => {
+                write!(f, "dump consensus state: {}", req)
+            }
             ParticipatingEvent::RpcServerAnnouncement(ann) => {
                 write!(f, "api server announcement: {}", ann)
             }
@@ -401,6 +415,7 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::TrieRequestIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::TrieResponseIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::FinalitySignatureIncoming(inner) => Display::fmt(inner, f),
+            ParticipatingEvent::ContractRuntime(inner) => Display::fmt(inner, f),
         }
     }
 }
@@ -457,6 +472,7 @@ pub(crate) struct Reactor {
     block_proposer: BlockProposer,
     block_validator: BlockValidator<NodeId>,
     linear_chain: LinearChainComponent<NodeId>,
+    console: Console,
 
     // Non-components.
     #[data_size(skip)] // Never allocates heap data.
@@ -481,73 +497,6 @@ impl Reactor {
     /// Inspect contract runtime.
     pub(crate) fn contract_runtime(&self) -> &ContractRuntime {
         &self.contract_runtime
-    }
-}
-
-impl Reactor {
-    /// Handles a request to get an item by id.
-    fn handle_get_request(
-        &self,
-        effect_builder: EffectBuilder<<Self as reactor::Reactor>::Event>,
-        sender: NodeId,
-        tag: Tag,
-        serialized_id: &[u8],
-    ) -> Effects<<Self as reactor::Reactor>::Event> {
-        match tag {
-            Tag::Trie => {
-                Self::respond_to_fetch(effect_builder, serialized_id, sender, |trie_key| {
-                    self.contract_runtime.get_trie(trie_key)
-                })
-            }
-            _ => {
-                warn!(%sender, ?tag, ?serialized_id, "tried to handle a non-trie get request, this should not have happened");
-                Effects::new()
-            }
-        }
-    }
-
-    fn respond_to_fetch<T, F, E>(
-        effect_builder: EffectBuilder<<Self as reactor::Reactor>::Event>,
-        serialized_id: &[u8],
-        sender: NodeId,
-        fetch_item: F,
-    ) -> Effects<<Self as reactor::Reactor>::Event>
-    where
-        T: Item,
-        F: FnOnce(T::Id) -> Result<Option<T>, E>,
-        E: Debug,
-    {
-        let id: T::Id = match bincode::deserialize(serialized_id) {
-            Ok(id) => id,
-            Err(error) => {
-                error!(
-                    tag = ?T::TAG,
-                    ?serialized_id,
-                    ?sender,
-                    ?error,
-                    "failed to decode item id"
-                );
-                return Effects::new();
-            }
-        };
-        let fetched_or_not_found = match fetch_item(id) {
-            Ok(Some(item)) => FetchedOrNotFound::Fetched(item),
-            Ok(None) => {
-                debug!(tag = ?T::TAG, ?id, ?sender, "failed to get item");
-                FetchedOrNotFound::NotFound(id)
-            }
-            Err(error) => {
-                error!(tag = ?T::TAG, ?id, ?sender, ?error, "error getting item");
-                FetchedOrNotFound::NotFound(id)
-            }
-        };
-        match Message::new_get_response(&fetched_or_not_found) {
-            Ok(message) => effect_builder.send_message(sender, message).ignore(),
-            Err(error) => {
-                error!("failed to create get-response: {}", error);
-                Effects::new()
-            }
-        }
     }
 }
 
@@ -636,6 +585,11 @@ impl reactor::Reactor for Reactor {
 
         let metrics = Metrics::new(registry.clone());
 
+        let (console, console_effects) =
+            Console::new(&WithDir::new(&root, config.console.clone()), event_queue)?;
+
+        let effect_builder = EffectBuilder::new(event_queue);
+
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
 
@@ -656,17 +610,18 @@ impl reactor::Reactor for Reactor {
         )?;
 
         let deploy_acceptor = DeployAcceptor::new(config.deploy_acceptor, &*chainspec, registry)?;
-        let deploy_fetcher = Fetcher::new("deploy", config.fetcher, registry)?;
+        let deploy_fetcher = Fetcher::new(
+            "deploy",
+            config.fetcher,
+            registry,
+            chainspec.protocol_config.verifiable_chunked_hash_activation,
+        )?;
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
             config.gossip,
             gossiper::get_deploy_from_storage::<Deploy, ParticipatingEvent>,
             registry,
         )?;
-
-        let maybe_next_activation_point = chainspec_loader
-            .next_upgrade()
-            .map(|next_upgrade| next_upgrade.activation_point());
 
         let (block_proposer, block_proposer_effects) = BlockProposer::new(
             registry.clone(),
@@ -689,6 +644,14 @@ impl reactor::Reactor for Reactor {
             chainspec.as_ref(),
         )?;
 
+        effects.extend(reactor::wrap_effects(
+            ParticipatingEvent::Console,
+            console_effects,
+        ));
+
+        let maybe_next_activation_point = chainspec_loader
+            .next_upgrade()
+            .map(|next_upgrade| next_upgrade.activation_point());
         let (consensus, init_consensus_effects) = EraSupervisor::new(
             latest_block_header.next_block_era_id(),
             storage.root_path(),
@@ -707,7 +670,10 @@ impl reactor::Reactor for Reactor {
             init_consensus_effects,
         ));
 
-        contract_runtime.set_initial_state(ExecutionPreState::from(&latest_block_header));
+        contract_runtime.set_initial_state(ExecutionPreState::from_block_header(
+            &latest_block_header,
+            chainspec.protocol_config.verifiable_chunked_hash_activation,
+        ));
 
         let block_validator = BlockValidator::new(Arc::clone(chainspec));
         let linear_chain = linear_chain::LinearChainComponent::new(
@@ -717,6 +683,7 @@ impl reactor::Reactor for Reactor {
             chainspec.core_config.unbonding_delay,
             chainspec.highway_config.finality_threshold_fraction,
             maybe_next_activation_point,
+            chainspec.protocol_config.verifiable_chunked_hash_activation,
         )?;
 
         effects.extend(reactor::wrap_effects(
@@ -748,6 +715,7 @@ impl reactor::Reactor for Reactor {
                 block_proposer,
                 block_validator,
                 linear_chain,
+                console,
                 memory_metrics,
                 event_queue_metrics,
             },
@@ -815,10 +783,10 @@ impl reactor::Reactor for Reactor {
                 self.address_gossiper
                     .handle_event(effect_builder, rng, event),
             ),
-            ParticipatingEvent::ContractRuntime(event) => reactor::wrap_effects(
-                Into::into,
+            ParticipatingEvent::ContractRuntimeRequest(req) => reactor::wrap_effects(
+                ParticipatingEvent::ContractRuntime,
                 self.contract_runtime
-                    .handle_event(effect_builder, rng, *event),
+                    .handle_event(effect_builder, rng, req.into()),
             ),
             ParticipatingEvent::BlockValidator(event) => reactor::wrap_effects(
                 ParticipatingEvent::BlockValidator,
@@ -828,6 +796,10 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::LinearChain(event) => reactor::wrap_effects(
                 ParticipatingEvent::LinearChain,
                 self.linear_chain.handle_event(effect_builder, rng, event),
+            ),
+            ParticipatingEvent::Console(event) => reactor::wrap_effects(
+                ParticipatingEvent::Console,
+                self.console.handle_event(effect_builder, rng, event),
             ),
 
             // Requests:
@@ -875,6 +847,10 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::StateStoreRequest(req) => reactor::wrap_effects(
                 ParticipatingEvent::Storage,
                 self.storage.handle_event(effect_builder, rng, req.into()),
+            ),
+            ParticipatingEvent::DumpConsensusStateRequest(req) => reactor::wrap_effects(
+                ParticipatingEvent::Consensus,
+                self.consensus.handle_event(effect_builder, rng, req.into()),
             ),
 
             // Announcements:
@@ -935,6 +911,7 @@ impl reactor::Reactor for Reactor {
                 ));
 
                 let event = fetcher::Event::GotRemotely {
+                    verifiable_chunked_hash_activation: None,
                     item: deploy,
                     source,
                 };
@@ -1063,9 +1040,16 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(
                 block,
             )) => {
-                let reactor_event_consensus = ParticipatingEvent::Consensus(
-                    consensus::Event::BlockAdded(Box::new(block.header().clone())),
-                );
+                let reactor_event_consensus =
+                    ParticipatingEvent::Consensus(consensus::Event::BlockAdded {
+                        header: Box::new(block.header().clone()),
+                        header_hash: block.header().hash(
+                            self.chainspec_loader
+                                .chainspec()
+                                .protocol_config
+                                .verifiable_chunked_hash_activation,
+                        ),
+                    });
                 let reactor_event_es = ParticipatingEvent::EventStreamServer(
                     event_stream_server::Event::BlockAdded(block),
                 );
@@ -1202,10 +1186,11 @@ impl reactor::Reactor for Reactor {
 
                 self.dispatch_event(effect_builder, rng, event)
             }
-            ParticipatingEvent::TrieRequestIncoming(TrieRequestIncoming {
-                sender,
-                message: TrieRequest(ref serialized_id),
-            }) => self.handle_get_request(effect_builder, sender, Tag::Trie, serialized_id),
+            ParticipatingEvent::TrieRequestIncoming(req) => reactor::wrap_effects(
+                ParticipatingEvent::ContractRuntime,
+                self.contract_runtime
+                    .handle_event(effect_builder, rng, req.into()),
+            ),
             ParticipatingEvent::TrieResponseIncoming(TrieResponseIncoming { sender, .. }) => {
                 error!("cannot handle get response for read-trie from {}", sender);
                 Effects::new()
@@ -1219,6 +1204,11 @@ impl reactor::Reactor for Reactor {
                 effect_builder,
                 rng,
                 ParticipatingEvent::SmallNetwork(ann.into()),
+            ),
+            ParticipatingEvent::ContractRuntime(event) => reactor::wrap_effects(
+                ParticipatingEvent::ContractRuntime,
+                self.contract_runtime
+                    .handle_event(effect_builder, rng, event),
             ),
         }
     }

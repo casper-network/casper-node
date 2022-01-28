@@ -19,10 +19,9 @@ use casper_node::{
     types::{Deploy, DeployHash},
     StorageConfig, WithDir,
 };
+use casper_types::{EraId, ProtocolVersion};
 use num_rational::Ratio;
 use tracing::info;
-
-use casper_types::ProtocolVersion;
 
 use crate::DEFAULT_MAX_READERS;
 
@@ -129,7 +128,10 @@ pub fn normalize_path(path: impl AsRef<Path>) -> Result<PathBuf, anyhow::Error> 
     }
 }
 
-pub fn create_storage(chain_download_path: impl AsRef<Path>) -> Result<Storage, anyhow::Error> {
+pub fn create_storage(
+    chain_download_path: impl AsRef<Path>,
+    verifiable_chunked_hash_activation: EraId,
+) -> Result<Storage, anyhow::Error> {
     let chain_download_path = normalize_path(chain_download_path)?;
     let mut storage_config = StorageConfig::default();
     storage_config.path = chain_download_path.clone();
@@ -141,6 +143,7 @@ pub fn create_storage(chain_download_path: impl AsRef<Path>) -> Result<Storage, 
         "test",
         Ratio::new(1, 3),
         None,
+        verifiable_chunked_hash_activation,
     )?)
 }
 
@@ -157,15 +160,17 @@ mod tests {
 
     #[test]
     fn block_with_deploys_round_trip_lmdb() {
-        let dir = tempfile::tempdir().unwrap().into_path();
-        let mut storage = create_storage(dir).expect("should create storage");
-
-        let example_deploy = GetDeployResult::doc_example().deploy.clone();
         let example_block = GetBlockResult::doc_example()
             .block
             .as_ref()
             .unwrap()
             .clone();
+
+        let dir = tempfile::tempdir().unwrap().into_path();
+        let mut storage =
+            create_storage(dir, example_block.header.height.into()).expect("should create storage");
+
+        let example_deploy = GetDeployResult::doc_example().deploy.clone();
 
         let block_with_deploys = BlockWithDeploys {
             block: example_block.clone(),

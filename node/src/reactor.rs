@@ -55,6 +55,7 @@ use tokio::time::{Duration, Instant};
 use tracing::{debug, debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
 
+use casper_types::EraId;
 use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
 
 use crate::{
@@ -71,7 +72,7 @@ use crate::{
 #[cfg(test)]
 use crate::{reactor::initializer::Reactor as InitializerReactor, types::Chainspec};
 pub(crate) use queue_kind::QueueKind;
-use stats_alloc::Stats;
+use stats_alloc::{Stats, INSTRUMENTED_SYSTEM};
 
 /// Default threshold for when an event is considered slow.  Can be overridden by setting the env
 /// var `CL_EVENT_MAX_MICROSECS=<MICROSECONDS>`.
@@ -634,12 +635,12 @@ where
             deallocations: _,
             reallocations: _,
             bytes_allocated,
-            bytes_deallocated: _,
+            bytes_deallocated,
             bytes_reallocated: _,
-        } = stats_alloc::StatsAlloc::system().stats();
+        } = INSTRUMENTED_SYSTEM.stats();
 
         Some(AllocatedMem {
-            allocated: bytes_allocated as u64,
+            allocated: bytes_allocated.saturating_sub(bytes_deallocated) as u64,
             consumed,
             total,
         })
@@ -906,13 +907,18 @@ pub(crate) fn handle_fetch_response<R, T>(
     rng: &mut NodeRng,
     sender: NodeId,
     serialized_item: &[u8],
+    verifiable_chunked_hash_activation: EraId,
 ) -> Effects<<R as Reactor>::Event>
 where
     T: Item,
     R: Reactor,
     <R as Reactor>::Event: From<fetcher::Event<T>> + From<BlocklistAnnouncement<NodeId>>,
 {
-    match fetcher::Event::<T>::from_get_response_serialized_item(sender, serialized_item) {
+    match fetcher::Event::<T>::from_get_response_serialized_item(
+        sender,
+        serialized_item,
+        verifiable_chunked_hash_activation,
+    ) {
         Some(fetcher_event) => {
             Reactor::dispatch_event(reactor, effect_builder, rng, fetcher_event.into())
         }

@@ -5,6 +5,7 @@
 //! it assumes is the concept of era/epoch and that each era runs separate consensus instance.
 //! Most importantly, it doesn't care about what messages it's forwarding.
 
+pub(super) mod debug;
 mod era;
 
 use std::{
@@ -240,6 +241,13 @@ where
         Ok((era_supervisor, effects))
     }
 
+    /// Returns the merkle tree hash activation from the chainspec.
+    fn verifiable_chunked_hash_activation(&self) -> EraId {
+        self.chainspec
+            .protocol_config
+            .verifiable_chunked_hash_activation
+    }
+
     /// Returns a list of status changes of active validators.
     pub(super) fn get_validator_changes(
         &self,
@@ -399,7 +407,7 @@ where
         let auction_delay = self.chainspec.core_config.auction_delay as usize;
         let booking_block_hash =
             if let Some(booking_block) = switch_blocks.iter().rev().nth(auction_delay) {
-                booking_block.hash()
+                booking_block.hash(self.verifiable_chunked_hash_activation())
             } else {
                 // If there's no booking block for the `era_id`
                 // (b/c it would have been from before Genesis, upgrade or emergency restart),
@@ -426,7 +434,11 @@ where
             .flat_map(|era_end| era_end.era_report().equivocators.clone())
             .collect();
 
-        let instance_id = instance_id(self.chainspec.hash(), era_id);
+        let instance_id = instance_id(
+            self.chainspec.hash(),
+            era_id,
+            key_block.hash(self.verifiable_chunked_hash_activation()),
+        );
         let now = Timestamp::now();
 
         info!(
@@ -675,7 +687,7 @@ where
         let mut effects = if self.is_validator_in(&our_pk, era_id) {
             effect_builder
                 .announce_created_finality_signature(FinalitySignature::new(
-                    block_header.hash(),
+                    block_header.hash(self.verifiable_chunked_hash_activation()),
                     era_id,
                     &our_sk,
                     our_pk,
@@ -847,8 +859,9 @@ where
             }
             ProtocolOutcome::CreatedMessageToRandomPeer(payload) => {
                 let message = ConsensusMessage::Protocol { era_id, payload };
+
                 async move {
-                    let peers = effect_builder.get_peers_in_random_order().await;
+                    let peers = effect_builder.get_fully_connected_peers().await;
                     if let Some(to) = peers.into_iter().next() {
                         effect_builder.send_message(to, message.into()).await;
                     }
@@ -1082,6 +1095,16 @@ where
             Some(upgrade_point) => upgrade_point.should_upgrade(era_id),
         }
     }
+
+    /// Get a reference to the era supervisor's open eras.
+    pub(crate) fn open_eras(&self) -> &HashMap<EraId, Era<I>> {
+        &self.open_eras
+    }
+
+    /// Returns the most recent era.
+    pub(crate) fn current_era(&self) -> EraId {
+        self.current_era
+    }
 }
 
 #[cfg(test)]
@@ -1089,11 +1112,6 @@ impl<I> EraSupervisor<I>
 where
     I: NodeIdT,
 {
-    /// Returns the most recent era.
-    pub(crate) fn current_era(&self) -> EraId {
-        self.current_era
-    }
-
     /// Returns this node's validator key.
     pub(crate) fn public_key(&self) -> &PublicKey {
         &self.public_signing_key
@@ -1199,10 +1217,11 @@ async fn execute_finalized_block<REv>(
 }
 
 /// Computes the instance ID for an era, given the era ID and the chainspec hash.
-fn instance_id(chainspec_hash: Digest, era_id: EraId) -> Digest {
-    Digest::hash_pair(chainspec_hash, era_id.to_le_bytes())
-        .value()
-        .into()
+fn instance_id(chainspec_hash: Digest, era_id: EraId, key_block_hash: BlockHash) -> Digest {
+    Digest::hash_pair(
+        key_block_hash.inner().value(),
+        Digest::hash_pair(chainspec_hash, era_id.to_le_bytes()).value(),
+    )
 }
 
 /// Checks that a [BlockPayload] does not have deploys we have already included in blocks in

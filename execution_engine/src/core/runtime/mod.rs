@@ -12,7 +12,7 @@ use std::{
     cmp,
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     convert::TryFrom,
-    iter::IntoIterator,
+    iter::{FromIterator, IntoIterator},
 };
 
 use itertools::Itertools;
@@ -47,6 +47,7 @@ use crate::{
         execution::{self, Error},
         resolvers::{create_module_resolver, memory_resolver::MemoryResolver},
         runtime_context::{self, RuntimeContext},
+        tracking_copy::TrackingCopyExt,
         Address,
     },
     shared::{
@@ -143,8 +144,7 @@ pub fn extract_access_rights_from_keys<I: IntoIterator<Item = Key>>(
 ) -> HashMap<Address, HashSet<AccessRights>> {
     input
         .into_iter()
-        .map(key_to_tuple)
-        .flatten()
+        .flat_map(key_to_tuple)
         .group_by(|(key, _)| *key)
         .into_iter()
         .map(|(key, group)| {
@@ -1147,7 +1147,7 @@ where
         }
     }
 
-    fn is_valid_uref(&mut self, uref_ptr: u32, uref_size: u32) -> Result<bool, Trap> {
+    fn is_valid_uref(&self, uref_ptr: u32, uref_size: u32) -> Result<bool, Trap> {
         let bytes = self.bytes_from_mem(uref_ptr, uref_size as usize)?;
         let uref: URef = bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?;
         Ok(self.context.validate_uref(&uref).is_ok())
@@ -1435,11 +1435,21 @@ where
         &mut self,
         protocol_version: ProtocolVersion,
         entry_point_name: &str,
-        named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
         stack: RuntimeStack,
     ) -> Result<CLValue, Error> {
+        let mut named_keys = {
+            let correlation_id = self.context.correlation_id();
+            let contract_hash = self.context.get_system_contract(MINT)?;
+            let contract = self
+                .context()
+                .state()
+                .borrow_mut()
+                .get_contract(correlation_id, contract_hash)?;
+
+            contract.named_keys().to_owned()
+        };
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
             keys.extend(extra_keys);
@@ -1462,7 +1472,7 @@ where
         let mint_context = RuntimeContext::new(
             self.context.state(),
             EntryPointType::Contract,
-            named_keys,
+            &mut named_keys,
             access_rights,
             runtime_args.to_owned(),
             authorization_keys,
@@ -1581,11 +1591,21 @@ where
         &mut self,
         protocol_version: ProtocolVersion,
         entry_point_name: &str,
-        named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
         stack: RuntimeStack,
     ) -> Result<CLValue, Error> {
+        let mut named_keys = {
+            let correlation_id = self.context.correlation_id();
+            let contract_hash = self.context.get_system_contract(HANDLE_PAYMENT)?;
+            let contract = self
+                .context()
+                .state()
+                .borrow_mut()
+                .get_contract(correlation_id, contract_hash)?;
+
+            contract.named_keys().to_owned()
+        };
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
             keys.extend(extra_keys);
@@ -1608,7 +1628,7 @@ where
         let runtime_context = RuntimeContext::new(
             self.context.state(),
             EntryPointType::Contract,
-            named_keys,
+            &mut named_keys,
             access_rights,
             runtime_args.to_owned(),
             authorization_keys,
@@ -1700,11 +1720,21 @@ where
         &mut self,
         protocol_version: ProtocolVersion,
         entry_point_name: &str,
-        named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
         stack: RuntimeStack,
     ) -> Result<CLValue, Error> {
+        let mut named_keys = {
+            let correlation_id = self.context.correlation_id();
+            let contract_hash = self.context.get_system_contract(AUCTION)?;
+            let contract = self
+                .context
+                .state()
+                .borrow_mut()
+                .get_contract(correlation_id, contract_hash)?;
+
+            contract.named_keys().to_owned()
+        };
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
             keys.extend(extra_keys);
@@ -1728,7 +1758,7 @@ where
         let runtime_context = RuntimeContext::new(
             self.context.state(),
             EntryPointType::Contract,
-            named_keys,
+            &mut named_keys,
             access_rights,
             runtime_args.to_owned(),
             authorization_keys,
@@ -2132,7 +2162,6 @@ where
                 return self.call_host_mint(
                     self.context.protocol_version(),
                     entry_point.name(),
-                    &mut named_keys,
                     &args,
                     &extra_keys,
                     stack,
@@ -2148,7 +2177,6 @@ where
                 return self.call_host_handle_payment(
                     self.context.protocol_version(),
                     entry_point.name(),
-                    &mut named_keys,
                     &args,
                     &extra_keys,
                     stack,
@@ -2164,7 +2192,6 @@ where
                 return self.call_host_auction(
                     self.context.protocol_version(),
                     entry_point.name(),
-                    &mut named_keys,
                     &args,
                     &extra_keys,
                     stack,
@@ -3647,6 +3674,46 @@ where
                 Ok(self.context.is_system_contract(contract_hash)?)
             }
         }
+    }
+
+    fn load_authorization_keys(
+        &mut self,
+        len_ptr: u32,
+        result_size_ptr: u32,
+    ) -> Result<Result<(), ApiError>, Trap> {
+        if !self.can_write_to_host_buffer() {
+            // Exit early if the host buffer is already occupied
+            return Ok(Err(ApiError::HostBufferFull));
+        }
+
+        // A set of keys is converted into a vector so it can be written to a host buffer
+        let authorization_keys =
+            Vec::from_iter(self.context.authorization_keys().clone().into_iter());
+
+        let total_keys = authorization_keys.len() as u32;
+        let total_keys_bytes = total_keys.to_le_bytes();
+        if let Err(error) = self.memory.set(len_ptr, &total_keys_bytes) {
+            return Err(Error::Interpreter(error.into()).into());
+        }
+
+        if total_keys == 0 {
+            // No need to do anything else, we leave host buffer empty.
+            return Ok(Ok(()));
+        }
+
+        let authorization_keys = CLValue::from_t(authorization_keys).map_err(Error::CLValue)?;
+
+        let length = authorization_keys.inner_bytes().len() as u32;
+        if let Err(error) = self.write_host_buffer(authorization_keys) {
+            return Ok(Err(error));
+        }
+
+        let length_bytes = length.to_le_bytes();
+        if let Err(error) = self.memory.set(result_size_ptr, &length_bytes) {
+            return Err(Error::Interpreter(error.into()).into());
+        }
+
+        Ok(Ok(()))
     }
 }
 

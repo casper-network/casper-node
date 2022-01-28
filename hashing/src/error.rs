@@ -16,15 +16,26 @@ pub enum MerkleVerificationError {
     },
 }
 
-#[derive(thiserror::Error, Debug, Eq, PartialEq)]
+/// Error during the construction of a Merkle proof.
+#[derive(thiserror::Error, Debug, Eq, PartialEq, Clone)]
 pub enum MerkleConstructionError {
+    /// Chunk index was out of bounds.
     #[error(
         "Could not construct Merkle proof. Index out of bounds. Count: {count}, index: {index}"
     )]
-    IndexOutOfBounds { count: u64, index: u64 },
+    IndexOutOfBounds {
+        /// Total chunks count.
+        count: u64,
+        /// Requested index.
+        index: u64,
+    },
+    /// Too many Merkle tree leaves.
     #[error(
         "Could not construct Merkle proof. Too many leaves. Count: {count}, max: {} (u64::MAX)",
         u64::MAX
     )]
-    TooManyLeaves { count: String },
+    TooManyLeaves {
+        /// Total chunks count.
+        count: String,
+    },
 }

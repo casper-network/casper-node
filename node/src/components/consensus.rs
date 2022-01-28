@@ -18,6 +18,7 @@ mod utils;
 mod validator_change;
 
 use std::{
+    borrow::Cow,
     convert::Infallible,
     fmt::{self, Debug, Display, Formatter},
     sync::Arc,
@@ -28,6 +29,7 @@ use datasize::DataSize;
 use derive_more::From;
 use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
+use tracing::info;
 
 use casper_types::{EraId, PublicKey};
 
@@ -35,6 +37,7 @@ use crate::{
     components::Component,
     effect::{
         announcements::{BlocklistAnnouncement, ConsensusAnnouncement},
+        console::DumpConsensusStateRequest,
         incoming::ConsensusMessageIncoming,
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
@@ -44,14 +47,14 @@ use crate::{
     },
     protocol::Message,
     reactor::ReactorEvent,
-    types::{ActivationPoint, BlockHeader, BlockPayload, Timestamp},
+    types::{ActivationPoint, BlockHash, BlockHeader, BlockPayload, Timestamp},
     NodeRng,
 };
 
 pub(crate) use cl_context::ClContext;
 pub(crate) use config::{ChainspecConsensusExt, Config};
 pub(crate) use consensus_protocol::{BlockContext, EraReport, ProposedBlock};
-pub(crate) use era_supervisor::EraSupervisor;
+pub(crate) use era_supervisor::{debug::EraDump, EraSupervisor};
 pub(crate) use protocols::highway::HighwayProtocol;
 use traits::NodeIdT;
 
@@ -111,7 +114,10 @@ pub(crate) enum Event<I> {
     #[from]
     ConsensusRequest(ConsensusRequest),
     /// A new block has been added to the linear chain.
-    BlockAdded(Box<BlockHeader>),
+    BlockAdded {
+        header: Box<BlockHeader>,
+        header_hash: BlockHash,
+    },
     /// The proto-block has been validated.
     ResolveValidity(ResolveValidity<I>),
     /// Deactivate the era with the given ID, unless the number of faulty validators increases.
@@ -127,6 +133,9 @@ pub(crate) enum Event<I> {
     },
     /// Got the result of checking for an upgrade activation point.
     GotUpgradeActivationPoint(ActivationPoint),
+    /// Dump state for debugging purposes.
+    #[from]
+    DumpState(DumpConsensusStateRequest),
 }
 
 impl Debug for ConsensusMessage {
@@ -191,10 +200,13 @@ impl<I: Debug> Display for Event<I> {
                 "A request for consensus component hash been received: {:?}",
                 request
             ),
-            Event::BlockAdded(block_header) => write!(
+            Event::BlockAdded {
+                header: _,
+                header_hash,
+            } => write!(
                 f,
                 "A block has been added to the linear chain: {}",
-                block_header.hash(),
+                header_hash,
             ),
             Event::ResolveValidity(ResolveValidity {
                 era_id,
@@ -224,6 +236,7 @@ impl<I: Debug> Display for Event<I> {
             Event::GotUpgradeActivationPoint(activation_point) => {
                 write!(f, "new upgrade activation point: {:?}", activation_point)
             }
+            Event::DumpState(req) => Display::fmt(req, f),
         }
     }
 }
@@ -291,9 +304,10 @@ where
             Event::NewBlockPayload(new_block_payload) => {
                 self.handle_new_block_payload(effect_builder, rng, new_block_payload)
             }
-            Event::BlockAdded(block_header) => {
-                self.handle_block_added(effect_builder, *block_header)
-            }
+            Event::BlockAdded {
+                header,
+                header_hash: _,
+            } => self.handle_block_added(effect_builder, *header),
             Event::ResolveValidity(resolve_validity) => {
                 self.resolve_validity(effect_builder, rng, resolve_validity)
             }
@@ -312,6 +326,29 @@ where
             Event::ConsensusRequest(ConsensusRequest::ValidatorChanges(responder)) => {
                 let validator_changes = self.get_validator_changes();
                 responder.respond(validator_changes).ignore()
+            }
+            Event::DumpState(req @ DumpConsensusStateRequest { era_id, .. }) => {
+                let requested_era = era_id.unwrap_or_else(|| self.current_era());
+
+                // We emit some log message to get some performance information and give the
+                // operator a chance to find out why their node is busy.
+                info!(era_id=%requested_era.value(), was_latest=era_id.is_none(), "dumping era via console");
+
+                let era_dump_result = self
+                    .open_eras()
+                    .get(&requested_era)
+                    .ok_or_else(|| {
+                        Cow::Owned(format!(
+                            "could not dump consensus, {} not found",
+                            requested_era
+                        ))
+                    })
+                    .and_then(|era| EraDump::dump_era(era, requested_era));
+
+                match era_dump_result {
+                    Ok(dump) => req.answer(Ok(&dump)).ignore(),
+                    Err(err) => req.answer(Err(err)).ignore(),
+                }
             }
         }
     }

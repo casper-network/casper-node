@@ -6,20 +6,22 @@ mod metrics;
 mod operations;
 mod types;
 
-use once_cell::sync::Lazy;
 use std::{
     collections::BTreeMap,
-    fmt::{self, Debug, Formatter},
+    fmt::{self, Debug, Display, Formatter},
     path::Path,
     sync::{Arc, Mutex},
     time::Instant,
 };
 
 use datasize::DataSize;
+use derive_more::From;
 use lmdb::DatabaseFlags;
+use once_cell::sync::Lazy;
 use prometheus::Registry;
 use serde::Serialize;
-use tracing::{debug, info, trace};
+use thiserror::Error;
+use tracing::{debug, error, info, trace};
 
 use casper_execution_engine::{
     core::engine_state::{
@@ -28,22 +30,26 @@ use casper_execution_engine::{
     },
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::{
-        global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment, trie::Trie,
+        global_state::lmdb::LmdbGlobalState,
+        transaction_source::lmdb::LmdbEnvironment,
+        trie::{Trie, TrieOrChunk, TrieOrChunkId},
         trie_store::lmdb::LmdbTrieStore,
     },
 };
 use casper_hashing::Digest;
-use casper_types::{Key, ProtocolVersion, StoredValue};
+use casper_types::{EraId, Key, ProtocolVersion, StoredValue};
 
 use crate::{
     components::{contract_runtime::types::StepEffectAndUpcomingEraValidators, Component},
     effect::{
         announcements::{ContractRuntimeAnnouncement, ControlAnnouncement},
-        requests::ContractRuntimeRequest,
+        incoming::{TrieRequest, TrieRequestIncoming},
+        requests::{ContractRuntimeRequest, NetworkRequest},
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
-    types::{BlockHash, BlockHeader, Chainspec, Deploy, FinalizedBlock},
+    protocol::Message,
+    types::{BlockHash, BlockHeader, Chainspec, Deploy, FinalizedBlock, NodeId},
     NodeRng,
 };
 pub(crate) use config::Config;
@@ -51,6 +57,19 @@ pub(crate) use error::{BlockExecutionError, ConfigError};
 use metrics::Metrics;
 pub use operations::execute_finalized_block;
 pub(crate) use types::{BlockAndExecutionEffects, EraValidatorsRequest};
+
+use super::fetcher::FetchedOrNotFound;
+
+/// An enum that represents all possible error conditions of a `contract_runtime` component.
+#[derive(Debug, Error, From)]
+pub(crate) enum ContractRuntimeError {
+    /// The provided serialized id cannot be deserialized properly.
+    #[error("error deserializing id: {0}")]
+    InvalidSerializedId(#[source] bincode::Error),
+    // It was not possible to get trie with the specified id
+    #[error("error retrieving trie by id: {0}")]
+    FailedToRetrieveTrieById(#[source] engine_state::Error),
+}
 
 /// Maximum number of resource intensive tasks that can be run in parallel.
 ///
@@ -109,6 +128,20 @@ impl ExecutionPreState {
         }
     }
 
+    /// Creates instance of `ExecutionPreState` from given block header nad merkle tree hash
+    /// activation point.
+    pub fn from_block_header(
+        block_header: &BlockHeader,
+        verifiable_chunked_hash_activation: EraId,
+    ) -> Self {
+        ExecutionPreState {
+            pre_state_root_hash: *block_header.state_root_hash(),
+            next_block_height: block_header.height() + 1,
+            parent_hash: block_header.hash(verifiable_chunked_hash_activation),
+            parent_seed: block_header.accumulated_seed(),
+        }
+    }
+
     /// Returns the height of the next `Block` to be constructed. Note that this must match the
     /// height of the `FinalizedBlock` used to generate the block.
     pub(crate) fn next_block_height(&self) -> u64 {
@@ -116,17 +149,27 @@ impl ExecutionPreState {
     }
 }
 
-impl From<&BlockHeader> for ExecutionPreState {
-    fn from(block_header: &BlockHeader) -> Self {
-        ExecutionPreState {
-            pre_state_root_hash: *block_header.state_root_hash(),
-            next_block_height: block_header.height() + 1,
-            parent_hash: block_header.hash(),
-            parent_seed: block_header.accumulated_seed(),
+type ExecQueue = Arc<Mutex<BTreeMap<u64, (FinalizedBlock, Vec<Deploy>, Vec<Deploy>)>>>;
+
+#[derive(Debug, From, Serialize)]
+pub(crate) enum Event {
+    #[from]
+    ContractRuntimeRequest(ContractRuntimeRequest),
+
+    #[from]
+    TrieRequestIncoming(TrieRequestIncoming),
+}
+
+impl Display for Event {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Event::ContractRuntimeRequest(req) => {
+                write!(f, "contract runtime request: {}", req)
+            }
+            Event::TrieRequestIncoming(req) => write!(f, "trie request incoming: {}", req),
         }
     }
 }
-type ExecQueue = Arc<Mutex<BTreeMap<u64, (FinalizedBlock, Vec<Deploy>, Vec<Deploy>)>>>;
 
 /// The contract runtime components.
 #[derive(DataSize)]
@@ -135,6 +178,7 @@ pub(crate) struct ContractRuntime {
     engine_state: Arc<EngineState<LmdbGlobalState>>,
     metrics: Arc<Metrics>,
     protocol_version: ProtocolVersion,
+    verifiable_chunked_hash_activation: EraId,
 
     /// Finalized blocks waiting for their pre-state hash to start executing.
     exec_queue: ExecQueue,
@@ -151,18 +195,73 @@ where
     REv: From<ContractRuntimeRequest>
         + From<ContractRuntimeAnnouncement>
         + From<ControlAnnouncement>
+        + From<NetworkRequest<NodeId, Message>>
         + Send,
 {
-    type Event = ContractRuntimeRequest;
+    type Event = Event;
     type ConstructionError = ConfigError;
 
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut NodeRng,
-        event: Self::Event,
+        rng: &mut NodeRng,
+        event: Event,
     ) -> Effects<Self::Event> {
         match event {
+            Event::ContractRuntimeRequest(request) => {
+                self.handle_contract_runtime_request(effect_builder, rng, request)
+            }
+            Event::TrieRequestIncoming(request) => {
+                self.handle_trie_request(effect_builder, request)
+            }
+        }
+    }
+}
+
+impl ContractRuntime {
+    /// Handles an incoming request to get a trie.
+    fn handle_trie_request<REv>(
+        &self,
+        effect_builder: EffectBuilder<REv>,
+        TrieRequestIncoming {
+            sender,
+            message: TrieRequest(ref serialized_id),
+        }: TrieRequestIncoming,
+    ) -> Effects<Event>
+    where
+        REv: From<NetworkRequest<NodeId, Message>> + Send,
+    {
+        let fetched_or_not_found = match self.get_trie(serialized_id) {
+            Ok(fetched_or_not_found) => fetched_or_not_found,
+            Err(error) => {
+                debug!("failed to get trie: {}", error);
+                return Effects::new();
+            }
+        };
+
+        match Message::new_get_response(&fetched_or_not_found) {
+            Ok(message) => effect_builder.send_message(sender, message).ignore(),
+            Err(error) => {
+                error!("failed to create get-response: {}", error);
+                Effects::new()
+            }
+        }
+    }
+
+    /// Handles a contract runtime request.
+    fn handle_contract_runtime_request<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        _rng: &mut NodeRng,
+        request: ContractRuntimeRequest,
+    ) -> Effects<Event>
+    where
+        REv: From<ContractRuntimeRequest>
+            + From<ContractRuntimeAnnouncement>
+            + From<ControlAnnouncement>
+            + Send,
+    {
+        match request {
             ContractRuntimeRequest::CommitGenesis {
                 chainspec,
                 responder,
@@ -262,18 +361,29 @@ where
                 .ignore()
             }
             ContractRuntimeRequest::GetTrie {
-                trie_key,
+                trie_or_chunk_id,
                 responder,
             } => {
-                trace!(?trie_key, "get_trie request");
+                trace!(?trie_or_chunk_id, "get_trie request");
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
                 async move {
-                    let correlation_id = CorrelationId::new();
-                    let start = Instant::now();
-                    let result = engine_state.get_trie(correlation_id, trie_key);
-                    metrics.get_trie.observe(start.elapsed().as_secs_f64());
+                    let result = Self::do_get_trie(&engine_state, &metrics, trie_or_chunk_id);
                     trace!(?result, "get_trie response");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            ContractRuntimeRequest::GetTrieFull {
+                trie_key,
+                responder,
+            } => {
+                trace!(?trie_key, "get_trie_full request");
+                let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
+                async move {
+                    let result = Self::get_trie_full(&engine_state, &metrics, trie_key);
+                    trace!(?result, "get_trie_full response");
                     responder.respond(result).await
                 }
                 .ignore()
@@ -320,6 +430,7 @@ where
                 );
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
+                let verifiable_chunked_hash_activation = self.verifiable_chunked_hash_activation();
                 async move {
                     let result = run_intensive_task(move || {
                         execute_finalized_block(
@@ -330,6 +441,7 @@ where
                             finalized_block,
                             deploys,
                             transfers,
+                            verifiable_chunked_hash_activation,
                         )
                     })
                     .await;
@@ -364,6 +476,7 @@ where
                             finalized_block,
                             deploys,
                             transfers,
+                            self.verifiable_chunked_hash_activation(),
                         )
                         .ignore(),
                     )
@@ -427,6 +540,7 @@ impl ContractRuntime {
         max_associated_keys: u32,
         max_runtime_call_stack_height: u32,
         registry: &Registry,
+        verifiable_chunked_hash_activation: EraId,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
         let execution_pre_state = Arc::new(Mutex::new(ExecutionPreState {
@@ -468,7 +582,12 @@ impl ContractRuntime {
             exec_queue: Arc::new(Mutex::new(BTreeMap::new())),
             engine_state,
             metrics,
+            verifiable_chunked_hash_activation,
         })
+    }
+
+    fn verifiable_chunked_hash_activation(&self) -> EraId {
+        self.verifiable_chunked_hash_activation
     }
 
     /// Commits a genesis request.
@@ -536,6 +655,7 @@ impl ContractRuntime {
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
         transfers: Vec<Deploy>,
+        verifiable_chunked_hash_activation: EraId,
     ) where
         REv: From<ContractRuntimeRequest>
             + From<ContractRuntimeAnnouncement>
@@ -556,6 +676,7 @@ impl ContractRuntime {
                 finalized_block,
                 deploys,
                 transfers,
+                verifiable_chunked_hash_activation,
             )
         })
         .await
@@ -564,7 +685,10 @@ impl ContractRuntime {
             Err(error) => return fatal!(effect_builder, "{}", error).await,
         };
 
-        let new_execution_pre_state = ExecutionPreState::from(block.header());
+        let new_execution_pre_state = ExecutionPreState::from_block_header(
+            block.header(),
+            verifiable_chunked_hash_activation,
+        );
         *execution_pre_state.lock().unwrap() = new_execution_pre_state.clone();
 
         let current_era_id = block.header().era_id();
@@ -600,15 +724,39 @@ impl ContractRuntime {
         }
     }
 
-    /// Read a [Trie<Key, StoredValue>] from the trie store.
+    /// Reads the trie (or chunk of a trie) under the given key and index.
     pub(crate) fn get_trie(
         &self,
+        serialized_id: &[u8],
+    ) -> Result<FetchedOrNotFound<TrieOrChunk, TrieOrChunkId>, ContractRuntimeError> {
+        trace!(?serialized_id, "get_trie");
+
+        let id: TrieOrChunkId = bincode::deserialize(serialized_id)?;
+        let maybe_trie = Self::do_get_trie(&self.engine_state, &self.metrics, id)?;
+        Ok(FetchedOrNotFound::from_opt(id, maybe_trie))
+    }
+
+    fn do_get_trie(
+        engine_state: &EngineState<LmdbGlobalState>,
+        metrics: &Metrics,
+        trie_or_chunk_id: TrieOrChunkId,
+    ) -> Result<Option<TrieOrChunk>, engine_state::Error> {
+        let correlation_id = CorrelationId::new();
+        let start = Instant::now();
+        let result = engine_state.get_trie(correlation_id, trie_or_chunk_id);
+        metrics.get_trie.observe(start.elapsed().as_secs_f64());
+        result
+    }
+
+    fn get_trie_full(
+        engine_state: &EngineState<LmdbGlobalState>,
+        metrics: &Metrics,
         trie_key: Digest,
     ) -> Result<Option<Trie<Key, StoredValue>>, engine_state::Error> {
         let correlation_id = CorrelationId::new();
         let start = Instant::now();
-        let result = self.engine_state.get_trie(correlation_id, trie_key);
-        self.metrics.get_trie.observe(start.elapsed().as_secs_f64());
+        let result = engine_state.get_trie_full(correlation_id, trie_key);
+        metrics.get_trie.observe(start.elapsed().as_secs_f64());
         result
     }
 

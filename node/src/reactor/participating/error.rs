@@ -1,7 +1,9 @@
 use thiserror::Error;
 
 use crate::{
-    components::{contract_runtime, contract_runtime::BlockExecutionError, small_network, storage},
+    components::{
+        console, contract_runtime, contract_runtime::BlockExecutionError, small_network, storage,
+    },
     utils::ListeningError,
 };
 use casper_execution_engine::core::engine_state;
@@ -49,6 +51,10 @@ pub(crate) enum Error {
     /// Joining outcome invalid or missing after running chain sync.
     #[error("joining outcome invalid or missing after running chain synchronization")]
     InvalidJoiningOutcome,
+
+    /// `Console` component error.
+    #[error("console error: {0}")]
+    Console(#[from] console::Error),
 }
 
 impl From<bytesrepr::Error> for Error {

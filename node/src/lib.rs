@@ -63,7 +63,7 @@ use signal_hook::{
 
 pub(crate) use components::{
     block_proposer::Config as BlockProposerConfig, consensus::Config as ConsensusConfig,
-    contract_runtime::Config as ContractRuntimeConfig,
+    console::Config as ConsoleConfig, contract_runtime::Config as ContractRuntimeConfig,
     deploy_acceptor::Config as DeployAcceptorConfig,
     event_stream_server::Config as EventStreamServerConfig, fetcher::Config as FetcherConfig,
     gossiper::Config as GossipConfig, rest_server::Config as RestServerConfig,
@@ -75,16 +75,7 @@ pub(crate) use types::NodeRng;
 pub const MAX_THREAD_COUNT: usize = 512;
 
 fn version_string(color: bool) -> String {
-    let mut version = format!(
-        "{}-{}{}",
-        env!("CARGO_PKG_VERSION"),
-        env!("VERGEN_SHA_SHORT"),
-        if cfg!(feature = "casper-mainnet") {
-            "-casper-mainnet"
-        } else {
-            ""
-        }
-    );
+    let mut version = format!("{}-{}", env!("CARGO_PKG_VERSION"), env!("VERGEN_SHA_SHORT"));
 
     // Add a `@DEBUG` (or similar) tag to release string on non-release builds.
     if env!("NODE_BUILD_PROFILE") != "release" {

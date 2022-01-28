@@ -7,10 +7,11 @@ use std::{
 use derive_more::Display;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
+use thiserror::Error;
 
-use casper_execution_engine::storage::trie::Trie;
+use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
 use casper_hashing::Digest;
-use casper_types::{bytesrepr::ToBytes, Key, StoredValue};
+use casper_types::{bytesrepr::ToBytes, EraId};
 
 use crate::types::{BlockHash, BlockHeader};
 
@@ -63,25 +64,49 @@ pub(crate) trait Item:
     const ID_IS_COMPLETE_ITEM: bool;
 
     /// Checks cryptographic validity of the item, and returns an error if invalid.
-    fn validate(&self) -> Result<(), Self::ValidationError>;
+    fn validate(
+        &self,
+        verifiable_chunked_hash_activation: EraId,
+    ) -> Result<(), Self::ValidationError>;
 
     /// The ID of the specific item.
-    fn id(&self) -> Self::Id;
+    fn id(&self, verifiable_chunked_hash_activation: EraId) -> Self::Id;
 }
 
-impl Item for Trie<Key, StoredValue> {
-    type Id = Digest;
-    type ValidationError = Infallible;
+/// Error type simply conveying that chunk validation failed.
+#[derive(Debug, Error)]
+#[error("Chunk validation failed")]
+pub(crate) struct ChunkValidationError;
+
+impl Item for TrieOrChunk {
+    type Id = TrieOrChunkId;
+    type ValidationError = ChunkValidationError;
     const TAG: Tag = Tag::Trie;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    fn validate(&self) -> Result<(), Self::ValidationError> {
-        Ok(())
+    fn validate(
+        &self,
+        _verifiable_chunked_hash_activation: EraId,
+    ) -> Result<(), Self::ValidationError> {
+        match self {
+            TrieOrChunk::Trie(_) => Ok(()),
+            TrieOrChunk::ChunkWithProof(chunk) => {
+                chunk.verify().then(|| ()).ok_or(ChunkValidationError)
+            }
+        }
     }
 
-    fn id(&self) -> Self::Id {
-        let node_bytes = self.to_bytes().expect("Could not serialize trie to bytes");
-        Digest::hash(&node_bytes)
+    fn id(&self, _verifiable_chunked_hash_activation: EraId) -> Self::Id {
+        match self {
+            TrieOrChunk::Trie(trie) => {
+                let node_bytes = trie.to_bytes().expect("Could not serialize trie to bytes");
+                TrieOrChunkId(0, Digest::hash(&node_bytes))
+            }
+            TrieOrChunk::ChunkWithProof(chunked_data) => TrieOrChunkId(
+                chunked_data.proof().index(),
+                chunked_data.proof().root_hash(),
+            ),
+        }
     }
 }
 
@@ -91,11 +116,14 @@ impl Item for BlockHeader {
     const TAG: Tag = Tag::BlockHeaderByHash;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    fn validate(&self) -> Result<(), Self::ValidationError> {
+    fn validate(
+        &self,
+        _verifiable_chunked_hash_activation: EraId,
+    ) -> Result<(), Self::ValidationError> {
         Ok(())
     }
 
-    fn id(&self) -> Self::Id {
-        self.hash()
+    fn id(&self, verifiable_chunked_hash_activation: EraId) -> Self::Id {
+        self.hash(verifiable_chunked_hash_activation)
     }
 }

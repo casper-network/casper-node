@@ -59,6 +59,7 @@
 //! some point. Failing to do so will result in a resource leak.
 
 pub(crate) mod announcements;
+pub(crate) mod console;
 pub(crate) mod incoming;
 pub(crate) mod requests;
 
@@ -87,7 +88,7 @@ use casper_execution_engine::{
         UpgradeSuccess,
     },
     shared::execution_journal::ExecutionJournal,
-    storage::trie::Trie,
+    storage::trie::{Trie, TrieOrChunk, TrieOrChunkId},
 };
 use casper_hashing::Digest;
 use casper_types::{
@@ -100,12 +101,12 @@ use crate::{
     components::{
         block_validator::ValidatingBlock,
         chainspec_loader::{CurrentRunInfo, NextUpgrade},
-        consensus::{BlockContext, ClContext, ValidatorChange},
+        consensus::{BlockContext, ClContext, EraDump, ValidatorChange},
         contract_runtime::{
             BlockAndExecutionEffects, BlockExecutionError, EraValidatorsRequest, ExecutionPreState,
         },
         deploy_acceptor,
-        fetcher::FetchResult,
+        fetcher::{FetchResult, TrieFetcherResult},
         small_network::FromIncoming,
     },
     reactor::{EventQueueHandle, QueueKind},
@@ -123,9 +124,14 @@ use announcements::{
     RpcServerAnnouncement,
 };
 use requests::{
-    BeginGossipRequest, BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest,
-    ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
-    MetricsRequest, NetworkInfoRequest, NetworkRequest, StateStoreRequest, StorageRequest,
+    BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
+    ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
+    NetworkRequest, StorageRequest, TrieFetcherRequest,
+};
+
+use self::{
+    console::DumpConsensusStateRequest,
+    requests::{BeginGossipRequest, StateStoreRequest},
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -613,15 +619,15 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the current network peers in a random order.
-    pub async fn get_peers_in_random_order<I>(self) -> Vec<I>
+    /// Gets the current network peers in random order.
+    pub async fn get_fully_connected_peers<I>(self) -> Vec<I>
     where
         REv: From<NetworkInfoRequest<I>>,
         I: Send + 'static,
     {
         self.make_request(
-            |responder| NetworkInfoRequest::GetPeersInRandomOrder { responder },
-            QueueKind::Api,
+            |responder| NetworkInfoRequest::GetFullyConnectedPeers { responder },
+            QueueKind::Regular,
         )
         .await
     }
@@ -987,8 +993,26 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Get a trie by its hash key.
+    /// Get a trie or chunk by its ID.
     pub(crate) async fn get_trie(
+        self,
+        trie_or_chunk_id: TrieOrChunkId,
+    ) -> Result<Option<TrieOrChunk>, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::GetTrie {
+                trie_or_chunk_id,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Get a trie by its hash key.
+    pub(crate) async fn get_trie_full(
         self,
         trie_key: Digest,
     ) -> Result<Option<Trie<Key, StoredValue>>, engine_state::Error>
@@ -996,7 +1020,7 @@ impl<REv> EffectBuilder<REv> {
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
-            |responder| ContractRuntimeRequest::GetTrie {
+            |responder| ContractRuntimeRequest::GetTrieFull {
                 trie_key,
                 responder,
             },
@@ -1203,6 +1227,23 @@ impl<REv> EffectBuilder<REv> {
             |responder| FetcherRequest {
                 id,
                 peer,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Requests a trie node from a peer.
+    pub(crate) async fn fetch_trie<I>(self, hash: Digest, peers: Vec<I>) -> TrieFetcherResult<I>
+    where
+        REv: From<TrieFetcherRequest<I>>,
+        I: Debug + Eq + Send + Clone + 'static,
+    {
+        self.make_request(
+            |responder| TrieFetcherRequest {
+                peers,
+                hash,
                 responder,
             },
             QueueKind::Regular,
@@ -1754,6 +1795,27 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(ConsensusRequest::ValidatorChanges, QueueKind::Regular)
             .await
+    }
+
+    /// Dump consensus state for a specific era, using the supplied function to serialize the
+    /// output.
+    pub(crate) async fn console_dump_consensus_state(
+        self,
+        era_id: Option<EraId>,
+        serialize: fn(&EraDump<'_>) -> Result<Vec<u8>, Cow<'static, str>>,
+    ) -> Result<Vec<u8>, Cow<'static, str>>
+    where
+        REv: From<DumpConsensusStateRequest>,
+    {
+        self.make_request(
+            |responder| DumpConsensusStateRequest {
+                era_id,
+                serialize,
+                responder,
+            },
+            QueueKind::Control,
+        )
+        .await
     }
 }
 

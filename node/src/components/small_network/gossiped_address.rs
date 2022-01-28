@@ -4,6 +4,7 @@ use std::{
     net::SocketAddr,
 };
 
+use casper_types::EraId;
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
@@ -33,11 +34,14 @@ impl Item for GossipedAddress {
     const TAG: Tag = Tag::GossipedAddress;
     const ID_IS_COMPLETE_ITEM: bool = true;
 
-    fn validate(&self) -> Result<(), Self::ValidationError> {
+    fn validate(
+        &self,
+        _verifiable_chunked_hash_activation: EraId,
+    ) -> Result<(), Self::ValidationError> {
         Ok(())
     }
 
-    fn id(&self) -> Self::Id {
+    fn id(&self, _verifiable_chunked_hash_activation: EraId) -> Self::Id {
         *self
     }
 }
