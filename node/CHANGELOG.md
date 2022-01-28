@@ -31,6 +31,7 @@ All notable changes to this project will be documented in this file.  The format
 * Nodes no longer connect to nodes that do not speak the same protocol version by default.
 * Chain automatically creates a switch block immediately after genesis or an upgrade.
 * Connection handshake timeouts can now be configured via the `handshake_timeout` variable (they were hardcoded at 20 seconds before).
+* `Key::SystemContractRegistry` is now readable and can be queried via the RPC.
 
 ### Deprecated
 * Deprecate the `starting_state_root_hash` field from the REST and JSON-RPC status endpoints.
