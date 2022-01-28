@@ -39,7 +39,8 @@ function _main()
     _step_03 "$STAGE_ID" "$ACTIVATION_POINT"
     _step_04 "6"
     _step_05 "6"
-    _step_06
+    _step_06 "6"
+    _step_07
 }
 
 # Step 01: Start network from pre-built stage.
@@ -98,17 +99,33 @@ function _step_05()
     log "... allowing 15 seconds for the node to report errors"
     sleep 15
 
-    COUNT=$(cat "$NCTL"/assets/net-1/nodes/node-"$NODE_ID"/logs/stdout.log 2>/dev/null | grep 'peer is running incompatible version' | wc -l)
+    local COUNT=$(cat "$NCTL"/assets/net-1/nodes/node-"$NODE_ID"/logs/stdout.log 2>/dev/null | grep 'peer is running incompatible version' | wc -l)
     if [ "$COUNT" -eq "0" ]; then
         log "ERROR: We got 0 error messages, but expected some"
         exit 1
     fi
 }
 
-# Step 06: Terminate.
+# Step 06: Assert joiner node is not connected to any peers
 function _step_06()
 {
-    log_step_upgrades 6 "test successful - tidying up"
+    local NODE_ID=${1}
+
+    log_step_upgrades 6 "asserting node has no peers connected"
+
+    local COUNT=$(curl -s "$(get_node_address_rest "$NODE_ID")/status" | jq '.peers' | jq length)
+
+    if [ "$COUNT" -ne "0" ]; then
+        log "ERROR: We have $COUNT peers connected, but expected 0"
+        exit 1
+    fi
+}
+
+
+# Step 07: Terminate.
+function _step_07()
+{
+    log_step_upgrades 7 "test successful - tidying up"
 
     source "$NCTL/sh/assets/teardown.sh"
 
