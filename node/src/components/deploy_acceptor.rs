@@ -492,15 +492,12 @@ impl DeployAcceptor {
                         verification_start_timestamp,
                     })
             }
-            ExecutableDeployItemIdentifier::Package(
-                ref contract_package_identifier @ ContractPackageIdentifier::Hash {
-                    contract_package_hash,
-                    ..
-                },
-            ) => {
+            ExecutableDeployItemIdentifier::Package(ContractPackageIdentifier::Hash {
+                contract_package_hash,
+                version: maybe_package_version,
+            }) => {
                 let query_key = Key::from(contract_package_hash);
                 let path = vec![];
-                let maybe_package_version = contract_package_identifier.version();
                 effect_builder
                     .get_contract_package_for_validation(prestate_hash, query_key, path)
                     .event(
@@ -593,15 +590,12 @@ impl DeployAcceptor {
                         verification_start_timestamp,
                     })
             }
-            ExecutableDeployItemIdentifier::Package(
-                ref contract_package_identifier @ ContractPackageIdentifier::Hash {
-                    contract_package_hash,
-                    ..
-                },
-            ) => {
+            ExecutableDeployItemIdentifier::Package(ContractPackageIdentifier::Hash {
+                contract_package_hash,
+                version: maybe_package_version,
+            }) => {
                 let query_key = Key::from(contract_package_hash);
                 let path = vec![];
-                let maybe_package_version = contract_package_identifier.version();
                 effect_builder
                     .get_contract_package_for_validation(prestate_hash, query_key, path)
                     .event(
