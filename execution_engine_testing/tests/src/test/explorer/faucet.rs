@@ -1282,7 +1282,7 @@ fn should_not_fund_if_zero_distributions_per_interval() {
 
     let installer_call_faucet_request = ExecuteRequestBuilder::contract_call_by_name(
         installer_account,
-        FAUCET_CONTRACT_NAMED_KEY.into(),
+        FAUCET_CONTRACT_NAMED_KEY,
         ENTRY_POINT_FAUCET,
         runtime_args! {ARG_TARGET => user_account},
     )
@@ -1419,7 +1419,7 @@ fn faucet_costs() {
     let faucet_call_by_user_request = ExecuteRequestBuilder::contract_call_by_hash(
         user_account,
         faucet_contract_hash,
-        ENTRY_POINT_FAUCET.into(),
+        ENTRY_POINT_FAUCET,
         runtime_args! {ARG_TARGET => user_account, ARG_ID => <Option<u64>>::None},
     )
     .build();
