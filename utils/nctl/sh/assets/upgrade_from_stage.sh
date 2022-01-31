@@ -74,9 +74,13 @@ function _main()
     local STAGE_ID=${1}
     local ACTIVATION_POINT=${2}
     local VERBOSE=${3}
+    local CHUNKED_HASH_ACTIVATION
     local PATH_TO_STAGE
     local PROTOCOL_VERSION
     local COUNT_NODES
+
+    #Set `verifiable_chunked_hash_activation` equal to upgrade activation point
+    CHUNKED_HASH_ACTIVATION="$ACTIVATION_POINT"
 
     PATH_TO_STAGE="$NCTL/stages/stage-$STAGE_ID"
     COUNT_NODES=$(get_count_of_nodes)
@@ -98,7 +102,8 @@ function _main()
                               "$(get_protocol_version_for_chainspec "$PROTOCOL_VERSION")" \
                               "$ACTIVATION_POINT" \
                               "$PATH_TO_STAGE/$PROTOCOL_VERSION/chainspec.toml" \
-                              false
+                              false \
+                              "$CHUNKED_HASH_ACTIVATION"
         setup_asset_node_configs "$COUNT_NODES" \
                                  "$PROTOCOL_VERSION" \
                                  "$PATH_TO_STAGE/$PROTOCOL_VERSION/config.toml" \
