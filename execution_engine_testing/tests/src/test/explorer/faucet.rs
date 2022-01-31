@@ -1338,7 +1338,8 @@ fn faucet_costs() {
         .expect_success()
         .commit();
 
-    let expected_faucet_install_cost = Gas::from(43_468_607_450u64);
+    let expected_faucet_install_cost = Gas::from(43_477_125_330u64);
+
     let faucet_install_cost = builder.last_exec_gas_cost();
     assert_eq!(
         faucet_install_cost, expected_faucet_install_cost,
