@@ -73,11 +73,8 @@ use casper_types::{
 };
 
 // The reactor! macro needs this in the fetcher tests
-#[cfg(test)]
 pub(crate) use crate::effect::requests::StorageRequest;
 
-#[cfg(not(test))]
-use crate::effect::requests::StorageRequest;
 use crate::{
     components::{
         consensus, consensus::error::FinalitySignatureError, fetcher::FetchedOrNotFound, Component,
