@@ -11,7 +11,10 @@ use thiserror::Error;
 use tracing::info;
 
 use casper_execution_engine::core::engine_state;
-use casper_types::{bytesrepr::U8_SERIALIZED_LENGTH, KEY_HASH_LENGTH};
+use casper_types::{
+    bytesrepr::{U64_SERIALIZED_LENGTH, U8_SERIALIZED_LENGTH},
+    KEY_HASH_LENGTH,
+};
 
 use crate::{
     components::{
@@ -37,15 +40,39 @@ use crate::{
     NodeRng,
 };
 
-// The size in bytes per delegator entry in SeigniorageRecipient struct.
-// 34 bytes PublicKey + 10 bytes U512 for the delegated amount
+/// The size in bytes per delegator entry in SeigniorageRecipient struct.
+/// 34 bytes PublicKey + 10 bytes U512 for the delegated amount
 const SIZE_PER_DELEGATOR_ENTRY: u32 = 44;
-// The fixed portion, in bytes, of the SeigniorageRecipient struct.
-// 10 bytes validator weight + 1 byte for delegation rate.
-const FIXED_SIZE_PER_VALIDATOR: u32 = 11;
-// The overhead of the Key::Hash under which the seigniorage snapshot lives.
-// The hash length plus an additional byte for the tag.
+/// The fixed portion, in bytes, of the SeigniorageRecipient struct and its key in the
+/// `SeigniorageRecipients` map.
+/// 34 bytes for the public key + 10 bytes validator weight + 1 byte for delegation rate.
+const FIXED_SIZE_PER_VALIDATOR: u32 = 45;
+/// The size of a key of the `SeigniorageRecipientsSnapshot`, i.e. an `EraId`.
+const FIXED_SIZE_PER_ERA: u32 = U64_SERIALIZED_LENGTH as u32;
+/// The overhead of the Key::Hash under which the seigniorage snapshot lives.
+/// The hash length plus an additional byte for the tag.
 const KEY_HASH_SERIALIZED_LENGTH: u32 = KEY_HASH_LENGTH as u32 + 1;
+
+fn compute_max_delegator_size_limit(
+    max_stored_value_size: u32,
+    auction_delay: u64,
+    validator_slots: u32,
+) -> u32 {
+    let size_limit_per_snapshot =
+        (max_stored_value_size - U8_SERIALIZED_LENGTH as u32 - KEY_HASH_SERIALIZED_LENGTH)
+            / (auction_delay + 1) as u32;
+    let size_per_seigniorage_recipients = size_limit_per_snapshot - FIXED_SIZE_PER_ERA;
+    let size_limit_per_validator =
+        (size_per_seigniorage_recipients / validator_slots) - FIXED_SIZE_PER_VALIDATOR;
+    // The max number of the delegators per validator is the size limit allotted
+    // to a single validator divided by the size of a single delegator entry.
+    // For the given:
+    // 1. max limit of 8MB
+    // 2. 100 validator slots
+    // 3. an auction delay of 1
+    // There will be a maximum of roughly 953 delegators per validator.
+    size_limit_per_validator / SIZE_PER_DELEGATOR_ENTRY
+}
 
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
@@ -228,26 +255,14 @@ impl Reactor {
             &chainspec_loader.chainspec().network_config.name,
         )?;
 
-        let max_delegator_size_limit = {
-            let size_limit_per_snapshot = (chainspec_loader
+        let max_delegator_size_limit = compute_max_delegator_size_limit(
+            chainspec_loader
                 .chainspec()
                 .core_config
-                .max_stored_value_size
-                - U8_SERIALIZED_LENGTH as u32
-                - KEY_HASH_SERIALIZED_LENGTH)
-                / (chainspec_loader.chainspec().core_config.auction_delay + 1) as u32;
-            let size_limit_per_validator = (size_limit_per_snapshot
-                / chainspec_loader.chainspec().core_config.validator_slots)
-                - FIXED_SIZE_PER_VALIDATOR;
-            // The max number of the delegators per validator is the size limit allotted
-            // to a single validator divided by the size of a single delegator entry.
-            // For the given:
-            // 1. max limit of 8MB
-            // 2. 100 validator slots
-            // 3. an auction delay of 1
-            // There will be a maximum of roughly 953 delegators per validator.
-            size_limit_per_validator / SIZE_PER_DELEGATOR_ENTRY
-        };
+                .max_stored_value_size,
+            chainspec_loader.chainspec().core_config.auction_delay,
+            chainspec_loader.chainspec().core_config.validator_slots,
+        );
 
         info!(
             "the maximum delegators per validator is currently set to: {}",
@@ -371,7 +386,16 @@ impl reactor::Reactor for Reactor {
 pub(crate) mod test {
     use super::*;
     use crate::{testing::network::NetworkedReactor, types::Chainspec};
-    use std::sync::Arc;
+    use casper_execution_engine::core::engine_state::engine_config::DEFAULT_MAX_STORED_VALUE_SIZE;
+    use casper_types::{
+        bytesrepr::ToBytes,
+        system::auction::{
+            DelegationRate, SeigniorageRecipient, SeigniorageRecipients,
+            SeigniorageRecipientsSnapshot,
+        },
+        EraId, PublicKey, SecretKey, U256, U512,
+    };
+    use std::{collections::BTreeMap, sync::Arc};
 
     impl Reactor {
         pub(crate) fn new_with_chainspec(
@@ -392,5 +416,84 @@ pub(crate) mod test {
         fn node_id(&self) -> Self::NodeId {
             NodeId::from(&self.small_network_identity)
         }
+    }
+
+    fn gen_public_keys() -> impl Iterator<Item = PublicKey> {
+        (1u32..)
+            .map(U256::from)
+            .map(|u256| {
+                let mut bytes = [0; 32];
+                u256.to_little_endian(&mut bytes);
+                SecretKey::secp256k1_from_bytes(&bytes).unwrap()
+            })
+            .map(|secret_key| PublicKey::from(&secret_key))
+    }
+
+    fn generate_seigniorage_snapshot(
+        number_of_delegators_per_validator: u32,
+        auction_delay: u64,
+        validator_slots: u32,
+    ) -> SeigniorageRecipientsSnapshot {
+        const CSPR: usize = 1_000_000_000;
+        const STAKE: usize = 5_000_000_000 * CSPR;
+        const DELEGATION_RATE: DelegationRate = 15;
+
+        let stake = U512::from(STAKE) * U512::from(10);
+        let mut public_keys = gen_public_keys();
+
+        let mut snapshot = SeigniorageRecipientsSnapshot::new();
+        let mut delegator_stake = BTreeMap::new();
+
+        for _ in 0..(number_of_delegators_per_validator) {
+            let delegator_public_key = public_keys.next().unwrap();
+            delegator_stake.insert(delegator_public_key, stake);
+        }
+
+        for era_id in 1..=(auction_delay + 1) {
+            let mut seigniorage_recipients = SeigniorageRecipients::new();
+            for _ in 0..validator_slots {
+                let validator_public_key = public_keys.next().unwrap();
+                let seigniorage_recipient =
+                    SeigniorageRecipient::new(stake, DELEGATION_RATE, delegator_stake.clone());
+                seigniorage_recipients.insert(validator_public_key, seigniorage_recipient);
+            }
+            snapshot.insert(EraId::new(era_id), seigniorage_recipients);
+        }
+
+        snapshot
+    }
+
+    #[test]
+    fn should_compute_and_match_size_of_seigniorage_snapshot() {
+        const AUCTION_DELAY: u64 = 1;
+        const VALIDATOR_SLOTS: u32 = 100;
+
+        let number_of_delegators_per_validator = compute_max_delegator_size_limit(
+            DEFAULT_MAX_STORED_VALUE_SIZE,
+            AUCTION_DELAY,
+            VALIDATOR_SLOTS,
+        );
+
+        // A snapshot created with a tolerable amount of delegators per validator.
+        let correct_snapshot = generate_seigniorage_snapshot(
+            number_of_delegators_per_validator,
+            AUCTION_DELAY,
+            VALIDATOR_SLOTS,
+        );
+
+        // Assert that the size of the snapshot with the correct amount of delegators
+        // doesn't exceed the maximum limit.
+        assert!(correct_snapshot.serialized_length() <= DEFAULT_MAX_STORED_VALUE_SIZE as usize);
+
+        // A snapshot created with an intolerable amount of delegators per validator.
+        let incorrect_snapshot = generate_seigniorage_snapshot(
+            number_of_delegators_per_validator + 1,
+            AUCTION_DELAY,
+            VALIDATOR_SLOTS,
+        );
+
+        // Assert that the size of the snapshot with the incorrect amount of delegators
+        // does exceed the maximum limit.
+        assert!(incorrect_snapshot.serialized_length() > DEFAULT_MAX_STORED_VALUE_SIZE as usize);
     }
 }

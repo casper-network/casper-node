@@ -3410,4 +3410,10 @@ fn should_continue_running_auction_despite_execeeded_delegator_limit() {
     builder
         .step(step_request)
         .expect("must execute step request");
+
+    let bids: Bids = builder.get_bids();
+    assert_eq!(bids.len(), 1);
+    let delegators = bids[&NON_FOUNDER_VALIDATOR_1_PK].delegators();
+    // Assert that there are three delegators despite a delegator limit of 2.
+    assert_eq!(delegators.len(), 3);
 }
