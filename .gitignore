@@ -153,3 +153,9 @@ cmake-build-debug/
 
 # OS X
 .DS_Store
+
+# notes
+notes
+
+# swp files
+.*.sw*

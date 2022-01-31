@@ -1,9 +1,14 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
-use std::fmt::{self, Display, Formatter};
+use std::{
+    convert::TryFrom,
+    fmt::{self, Display, Formatter},
+};
 
 use datasize::DataSize;
+use num_derive::{FromPrimitive, ToPrimitive};
+use num_traits::cast::{FromPrimitive, ToPrimitive};
 #[cfg(test)]
 use rand::Rng;
 use schemars::JsonSchema;
@@ -18,8 +23,19 @@ use casper_types::{
 use crate::testing::TestRng;
 use crate::types::Timestamp;
 
-const ERA_ID_TAG: u8 = 0;
-const GENESIS_TAG: u8 = 1;
+#[derive(FromPrimitive, ToPrimitive, Debug)]
+enum ActivationPointTag {
+    EraId = 0,
+    Genesis = 1,
+}
+
+impl TryFrom<u8> for ActivationPointTag {
+    type Error = bytesrepr::Error;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        FromPrimitive::from_u8(value).ok_or(bytesrepr::Error::Formatting)
+    }
+}
 
 /// The first era to which the associated protocol version applies.
 #[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
@@ -30,6 +46,18 @@ pub enum ActivationPoint {
 }
 
 impl ActivationPoint {
+    fn tag(&self) -> ActivationPointTag {
+        match self {
+            ActivationPoint::EraId(_) => ActivationPointTag::EraId,
+            ActivationPoint::Genesis(_) => ActivationPointTag::Genesis,
+        }
+    }
+
+    fn tag_byte(&self) -> u8 {
+        self.to_u8()
+            .expect("ActivationPointTag should be representable as a u8")
+    }
+
     /// Returns whether we should upgrade the node due to the next era being at or after the upgrade
     /// activation point.
     pub(crate) fn should_upgrade(&self, era_being_deactivated: &EraId) -> bool {
@@ -77,14 +105,13 @@ impl Display for ActivationPoint {
 
 impl ToBytes for ActivationPoint {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = vec![self.tag_byte()];
         match self {
             ActivationPoint::EraId(era_id) => {
-                let mut buffer = vec![ERA_ID_TAG];
                 buffer.extend(era_id.to_bytes()?);
                 Ok(buffer)
             }
             ActivationPoint::Genesis(timestamp) => {
-                let mut buffer = vec![GENESIS_TAG];
                 buffer.extend(timestamp.to_bytes()?);
                 Ok(buffer)
             }
@@ -103,16 +130,15 @@ impl ToBytes for ActivationPoint {
 impl FromBytes for ActivationPoint {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
-        match tag {
-            ERA_ID_TAG => {
+        match TryFrom::try_from(tag)? {
+            ActivationPointTag::EraId => {
                 let (era_id, remainder) = EraId::from_bytes(remainder)?;
                 Ok((ActivationPoint::EraId(era_id), remainder))
             }
-            GENESIS_TAG => {
+            ActivationPointTag::Genesis => {
                 let (timestamp, remainder) = Timestamp::from_bytes(remainder)?;
                 Ok((ActivationPoint::Genesis(timestamp), remainder))
             }
-            _ => Err(bytesrepr::Error::Formatting),
         }
     }
 }

@@ -4,6 +4,7 @@
 
 use std::{
     cell::RefCell,
+    convert::TryFrom,
     fmt::{self, Debug, Display, Formatter},
     rc::Rc,
 };
@@ -11,6 +12,8 @@ use std::{
 use datasize::DataSize;
 use hex_buffer_serde::{Hex, HexForm};
 use hex_fmt::HexFmt;
+use num_derive::{FromPrimitive, ToPrimitive};
+use num_traits::cast::{FromPrimitive, ToPrimitive};
 use parity_wasm::elements::Module;
 use rand::{
     distributions::{Alphanumeric, Distribution, Standard},
@@ -22,7 +25,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
-    bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contracts::{ContractVersion, DEFAULT_ENTRY_POINT_NAME},
     system::{mint::ARG_AMOUNT, CallStackElement, HANDLE_PAYMENT, STANDARD_PAYMENT},
     CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersionKey,
@@ -40,13 +43,66 @@ use crate::{
     storage::global_state::StateReader,
 };
 
-const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
-const MODULE_BYTES_TAG: u8 = 0;
-const STORED_CONTRACT_BY_HASH_TAG: u8 = 1;
-const STORED_CONTRACT_BY_NAME_TAG: u8 = 2;
-const STORED_VERSIONED_CONTRACT_BY_HASH_TAG: u8 = 3;
-const STORED_VERSIONED_CONTRACT_BY_NAME_TAG: u8 = 4;
-const TRANSFER_TAG: u8 = 5;
+const TAG_LENGTH: usize = 1;
+
+#[repr(u8)]
+#[derive(Debug, FromPrimitive, ToPrimitive)]
+pub enum ExecutableDeployItemTag {
+    ModuleBytes = 0,
+    StoredContractByHash = 1,
+    StoredContractByName = 2,
+    StoredVersionedContractByHash = 3,
+    StoredVersionedContractByName = 4,
+    Transfer = 5,
+}
+
+impl TryFrom<u8> for ExecutableDeployItemTag {
+    type Error = bytesrepr::Error;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        FromPrimitive::from_u8(value).ok_or(bytesrepr::Error::Formatting)
+    }
+}
+
+impl ExecutableDeployItem {
+    fn tag(&self) -> ExecutableDeployItemTag {
+        match self {
+            ExecutableDeployItem::ModuleBytes {
+                module_bytes: _,
+                args: _,
+            } => ExecutableDeployItemTag::ModuleBytes,
+            ExecutableDeployItem::StoredContractByHash {
+                hash: _,
+                entry_point: _,
+                args: _,
+            } => ExecutableDeployItemTag::StoredContractByHash,
+            ExecutableDeployItem::StoredContractByName {
+                name: _,
+                entry_point: _,
+                args: _,
+            } => ExecutableDeployItemTag::StoredContractByName,
+            ExecutableDeployItem::StoredVersionedContractByHash {
+                hash: _,
+                version: _,
+                entry_point: _,
+                args: _,
+            } => ExecutableDeployItemTag::StoredVersionedContractByHash,
+            ExecutableDeployItem::StoredVersionedContractByName {
+                name: _,
+                version: _,
+                entry_point: _,
+                args: _,
+            } => ExecutableDeployItemTag::StoredVersionedContractByName,
+            ExecutableDeployItem::Transfer { args: _ } => ExecutableDeployItemTag::Transfer,
+        }
+    }
+
+    fn tag_byte(&self) -> u8 {
+        self.tag()
+            .to_u8()
+            .expect("ExecutableDeployItemTag should be u8")
+    }
+}
 
 /// Possible ways to identify the `ExecutableDeployItem`.
 #[derive(
@@ -617,9 +673,9 @@ impl ExecutableDeployItem {
 impl ToBytes for ExecutableDeployItem {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
+        buffer.insert(0, self.tag_byte());
         match self {
             ExecutableDeployItem::ModuleBytes { module_bytes, args } => {
-                buffer.insert(0, MODULE_BYTES_TAG);
                 buffer.extend(module_bytes.to_bytes()?);
                 buffer.extend(args.to_bytes()?);
             }
@@ -628,7 +684,6 @@ impl ToBytes for ExecutableDeployItem {
                 entry_point,
                 args,
             } => {
-                buffer.insert(0, STORED_CONTRACT_BY_HASH_TAG);
                 buffer.extend(hash.to_bytes()?);
                 buffer.extend(entry_point.to_bytes()?);
                 buffer.extend(args.to_bytes()?)
@@ -638,7 +693,6 @@ impl ToBytes for ExecutableDeployItem {
                 entry_point,
                 args,
             } => {
-                buffer.insert(0, STORED_CONTRACT_BY_NAME_TAG);
                 buffer.extend(name.to_bytes()?);
                 buffer.extend(entry_point.to_bytes()?);
                 buffer.extend(args.to_bytes()?)
@@ -649,7 +703,6 @@ impl ToBytes for ExecutableDeployItem {
                 entry_point,
                 args,
             } => {
-                buffer.insert(0, STORED_VERSIONED_CONTRACT_BY_HASH_TAG);
                 buffer.extend(hash.to_bytes()?);
                 buffer.extend(version.to_bytes()?);
                 buffer.extend(entry_point.to_bytes()?);
@@ -661,16 +714,12 @@ impl ToBytes for ExecutableDeployItem {
                 entry_point,
                 args,
             } => {
-                buffer.insert(0, STORED_VERSIONED_CONTRACT_BY_NAME_TAG);
                 buffer.extend(name.to_bytes()?);
                 buffer.extend(version.to_bytes()?);
                 buffer.extend(entry_point.to_bytes()?);
                 buffer.extend(args.to_bytes()?)
             }
-            ExecutableDeployItem::Transfer { args } => {
-                buffer.insert(0, TRANSFER_TAG);
-                buffer.extend(args.to_bytes()?)
-            }
+            ExecutableDeployItem::Transfer { args } => buffer.extend(args.to_bytes()?),
         }
         Ok(buffer)
     }
@@ -729,8 +778,8 @@ impl ToBytes for ExecutableDeployItem {
 impl FromBytes for ExecutableDeployItem {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
-        match tag {
-            MODULE_BYTES_TAG => {
+        match TryFrom::try_from(tag)? {
+            ExecutableDeployItemTag::ModuleBytes => {
                 let (module_bytes, remainder) = FromBytes::from_bytes(remainder)?;
                 let (args, remainder) = FromBytes::from_bytes(remainder)?;
                 Ok((
@@ -738,7 +787,7 @@ impl FromBytes for ExecutableDeployItem {
                     remainder,
                 ))
             }
-            STORED_CONTRACT_BY_HASH_TAG => {
+            ExecutableDeployItemTag::StoredContractByHash => {
                 let (hash, remainder) = FromBytes::from_bytes(remainder)?;
                 let (entry_point, remainder) = String::from_bytes(remainder)?;
                 let (args, remainder) = FromBytes::from_bytes(remainder)?;
@@ -751,7 +800,7 @@ impl FromBytes for ExecutableDeployItem {
                     remainder,
                 ))
             }
-            STORED_CONTRACT_BY_NAME_TAG => {
+            ExecutableDeployItemTag::StoredContractByName => {
                 let (name, remainder) = String::from_bytes(remainder)?;
                 let (entry_point, remainder) = String::from_bytes(remainder)?;
                 let (args, remainder) = FromBytes::from_bytes(remainder)?;
@@ -764,7 +813,7 @@ impl FromBytes for ExecutableDeployItem {
                     remainder,
                 ))
             }
-            STORED_VERSIONED_CONTRACT_BY_HASH_TAG => {
+            ExecutableDeployItemTag::StoredVersionedContractByHash => {
                 let (hash, remainder) = FromBytes::from_bytes(remainder)?;
                 let (version, remainder) = Option::<ContractVersion>::from_bytes(remainder)?;
                 let (entry_point, remainder) = String::from_bytes(remainder)?;
@@ -779,7 +828,7 @@ impl FromBytes for ExecutableDeployItem {
                     remainder,
                 ))
             }
-            STORED_VERSIONED_CONTRACT_BY_NAME_TAG => {
+            ExecutableDeployItemTag::StoredVersionedContractByName => {
                 let (name, remainder) = String::from_bytes(remainder)?;
                 let (version, remainder) = Option::<ContractVersion>::from_bytes(remainder)?;
                 let (entry_point, remainder) = String::from_bytes(remainder)?;
@@ -794,11 +843,10 @@ impl FromBytes for ExecutableDeployItem {
                     remainder,
                 ))
             }
-            TRANSFER_TAG => {
+            ExecutableDeployItemTag::Transfer => {
                 let (args, remainder) = FromBytes::from_bytes(remainder)?;
                 Ok((ExecutableDeployItem::Transfer { args }, remainder))
             }
-            _ => Err(bytesrepr::Error::Formatting),
         }
     }
 }

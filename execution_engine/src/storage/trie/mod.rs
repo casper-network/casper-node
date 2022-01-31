@@ -1,11 +1,13 @@
 //! Core types for a Merkle Trie
 
 use std::{
-    convert::TryInto,
+    convert::{TryFrom, TryInto},
     fmt::{self, Debug, Display, Formatter},
     mem::MaybeUninit,
 };
 
+use num_derive::{FromPrimitive, ToPrimitive};
+use num_traits::cast::{FromPrimitive, ToPrimitive};
 use serde::{
     de::{self, MapAccess, Visitor},
     ser::SerializeMap,
@@ -28,6 +30,21 @@ pub(crate) const RADIX: usize = 256;
 
 /// A parent is represented as a pair of a child index and a node or extension.
 pub type Parents<K, V> = Vec<(u8, Trie<K, V>)>;
+
+#[derive(FromPrimitive, ToPrimitive)]
+#[repr(u8)]
+enum PointerTag {
+    LeafPointer = 0,
+    NodePointer = 1,
+}
+
+impl TryFrom<u8> for PointerTag {
+    type Error = bytesrepr::Error;
+
+    fn try_from(byte: u8) -> Result<PointerTag, bytesrepr::Error> {
+        FromPrimitive::from_u8(byte).ok_or(bytesrepr::Error::Formatting)
+    }
+}
 
 /// Represents a pointer to the next object in a Merkle Trie
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -64,10 +81,10 @@ impl Pointer {
     }
 
     /// Returns the `tag` value for a variant of `Pointer`.
-    fn tag(&self) -> u8 {
+    fn tag(&self) -> PointerTag {
         match self {
-            Pointer::LeafPointer(_) => 0,
-            Pointer::NodePointer(_) => 1,
+            Pointer::LeafPointer(_) => PointerTag::LeafPointer,
+            Pointer::NodePointer(_) => PointerTag::NodePointer,
         }
     }
 }
@@ -86,7 +103,11 @@ impl ToBytes for Pointer {
 
     #[inline]
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        writer.push(self.tag());
+        writer.push(
+            self.tag()
+                .to_u8()
+                .expect("PointerTag should be represented as a u8"),
+        );
         writer.extend_from_slice(self.hash().as_ref());
         Ok(())
     }
@@ -95,16 +116,15 @@ impl ToBytes for Pointer {
 impl FromBytes for Pointer {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, rem) = u8::from_bytes(bytes)?;
-        match tag {
-            0 => {
+        match TryFrom::try_from(tag)? {
+            PointerTag::LeafPointer => {
                 let (hash, rem) = Digest::from_bytes(rem)?;
                 Ok((Pointer::LeafPointer(hash), rem))
             }
-            1 => {
+            PointerTag::NodePointer => {
                 let (hash, rem) = Digest::from_bytes(rem)?;
                 Ok((Pointer::NodePointer(hash), rem))
             }
-            _ => Err(bytesrepr::Error::Formatting),
         }
     }
 }
@@ -346,6 +366,24 @@ impl ::std::fmt::Debug for PointerBlock {
     }
 }
 
+#[derive(Debug, FromPrimitive, ToPrimitive)]
+#[repr(u8)]
+enum TrieTag {
+    Leaf = 0,
+    Node = 1,
+    Extension = 2,
+}
+
+#[test]
+fn test_trie_tag_primitive() {
+    assert_eq!(
+        (0..=2)
+            .map(|i| FromPrimitive::from_u8(i).unwrap())
+            .collect(),
+        vec![TrieTag::Leaf, TrieTag::Node, TrieTag::Extension]
+    );
+}
+
 /// Represents a Merkle Trie.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Trie<K, V> {
@@ -381,11 +419,11 @@ where
 }
 
 impl<K, V> Trie<K, V> {
-    fn tag(&self) -> u8 {
+    fn tag(&self) -> TrieTag {
         match self {
-            Trie::Leaf { .. } => 0,
-            Trie::Node { .. } => 1,
-            Trie::Extension { .. } => 2,
+            Trie::Leaf { .. } => TrieTag::Leaf,
+            Trie::Node { .. } => TrieTag::Node,
+            Trie::Extension { .. } => TrieTag::Extension,
         }
     }
 
@@ -441,7 +479,11 @@ where
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        writer.push(self.tag());
+        writer.push(
+            self.tag()
+                .to_u8()
+                .expect("TrieTag should be represented as u8"),
+        );
         match self {
             Trie::Leaf { key, value } => {
                 key.write_bytes(writer)?;
@@ -460,27 +502,29 @@ where
 impl<K: FromBytes, V: FromBytes> FromBytes for Trie<K, V> {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, rem) = u8::from_bytes(bytes)?;
-        match tag {
-            0 => {
-                let (key, rem) = K::from_bytes(rem)?;
-                let (value, rem) = V::from_bytes(rem)?;
-                Ok((Trie::Leaf { key, value }, rem))
-            }
-            1 => {
-                let (pointer_block, rem) = PointerBlock::from_bytes(rem)?;
-                Ok((
-                    Trie::Node {
-                        pointer_block: Box::new(pointer_block),
-                    },
-                    rem,
-                ))
-            }
-            2 => {
-                let (affix, rem) = FromBytes::from_bytes(rem)?;
-                let (pointer, rem) = Pointer::from_bytes(rem)?;
-                Ok((Trie::Extension { affix, pointer }, rem))
-            }
-            _ => Err(bytesrepr::Error::Formatting),
+        match FromPrimitive::from_u8(tag) {
+            Some(tag) => match tag {
+                TrieTag::Leaf => {
+                    let (key, rem) = K::from_bytes(rem)?;
+                    let (value, rem) = V::from_bytes(rem)?;
+                    Ok((Trie::Leaf { key, value }, rem))
+                }
+                TrieTag::Node => {
+                    let (pointer_block, rem) = PointerBlock::from_bytes(rem)?;
+                    Ok((
+                        Trie::Node {
+                            pointer_block: Box::new(pointer_block),
+                        },
+                        rem,
+                    ))
+                }
+                TrieTag::Extension => {
+                    let (affix, rem) = FromBytes::from_bytes(rem)?;
+                    let (pointer, rem) = Pointer::from_bytes(rem)?;
+                    Ok((Trie::Extension { affix, pointer }, rem))
+                }
+            },
+            None => Err(bytesrepr::Error::Formatting),
         }
     }
 }

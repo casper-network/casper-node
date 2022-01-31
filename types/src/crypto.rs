@@ -11,10 +11,7 @@ use blake2::{
 use crate::key::BLAKE2B_DIGEST_LENGTH;
 #[cfg(any(feature = "gens", test))]
 pub use asymmetric_key::gens;
-pub use asymmetric_key::{
-    AsymmetricType, PublicKey, SecretKey, Signature, ED25519_TAG, SECP256K1_TAG, SYSTEM_ACCOUNT,
-    SYSTEM_TAG,
-};
+pub use asymmetric_key::{AsymmetricType, KeyTag, PublicKey, SecretKey, Signature};
 pub use error::Error;
 
 #[doc(hidden)]

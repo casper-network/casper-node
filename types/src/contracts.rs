@@ -780,8 +780,7 @@ impl ContractPackage {
         let contract_version_key = self
             .versions
             .iter()
-            .filter_map(|(k, v)| if *v == contract_hash { Some(*k) } else { None })
-            .next()
+            .find_map(|(k, v)| if *v == contract_hash { Some(*k) } else { None })
             .ok_or(Error::ContractNotFound)?;
 
         if !self.disabled_versions.contains(&contract_version_key) {
