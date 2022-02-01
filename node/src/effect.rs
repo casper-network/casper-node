@@ -869,7 +869,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Checks if a block header exists in storage
-    pub(crate) async fn check_block_header_existence(self, block_height: u64) -> bool
+    pub(crate) async fn block_header_exists(self, block_height: u64) -> bool
     where
         REv: From<StorageRequest>,
     {

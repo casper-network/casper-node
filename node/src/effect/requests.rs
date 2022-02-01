@@ -283,7 +283,7 @@ pub(crate) enum StorageRequest {
         /// local storage.
         responder: Responder<Option<BlockHeader>>,
     },
-    /// Checks if a header at the given height exists in storage.
+    /// Checks if a block header at the given height exists in storage.
     CheckBlockHeaderExistence {
         /// Height of the block to check.
         block_height: u64,

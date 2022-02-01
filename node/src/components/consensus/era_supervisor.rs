@@ -1174,7 +1174,7 @@ async fn execute_finalized_block<REv>(
     // if the block exists in storage, it either has been executed before, or we fast synced to a
     // higher block - skip execution
     if effect_builder
-        .check_block_header_existence(finalized_block.height())
+        .block_header_exists(finalized_block.height())
         .await
     {
         return;
