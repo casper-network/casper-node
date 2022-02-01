@@ -11,8 +11,8 @@ use casper_engine_test_support::{
 use casper_execution_engine::{
     core::{
         engine_state::{
-            EngineConfig, Error, UpgradeConfig, DEFAULT_MAX_QUERY_DEPTH,
-            DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+            engine_config::DEFAULT_MAX_DELEGATOR_SIZE_LIMIT, EngineConfig, Error, UpgradeConfig,
+            DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         },
         execution,
     },
@@ -300,6 +300,7 @@ fn make_engine_config(max_memory: u32) -> EngineConfig {
         DEFAULT_MAX_ASSOCIATED_KEYS,
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         DEFAULT_MAX_STORED_VALUE_SIZE,
+        DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
         wasm_config,
         SystemConfig::default(),
     )

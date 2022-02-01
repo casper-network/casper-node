@@ -5,18 +5,27 @@ use num_traits::{One, Zero};
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_AUCTION_DELAY, DEFAULT_EXEC_CONFIG,
-    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-    DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY, MINIMUM_ACCOUNT_CREATION_BALANCE,
-    SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
+    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder,
+    UpgradeRequestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
+    DEFAULT_AUCTION_DELAY, DEFAULT_EXEC_CONFIG, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
+    DEFAULT_UNBONDING_DELAY, MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
+    TIMESTAMP_MILLIS_INCREMENT,
 };
-use casper_execution_engine::core::{
-    engine_state::{
-        self,
-        genesis::{GenesisAccount, GenesisValidator},
+use casper_execution_engine::{
+    core::{
+        engine_state::{
+            self,
+            engine_config::{
+                DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_QUERY_DEPTH,
+                DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT, DEFAULT_MAX_STORED_VALUE_SIZE,
+            },
+            genesis::{GenesisAccount, GenesisValidator},
+            EngineConfig, RewardItem,
+        },
+        execution,
     },
-    execution,
+    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
 use casper_types::{
     self,
@@ -31,7 +40,7 @@ use casper_types::{
             ERA_ID_KEY, INITIAL_ERA_ID,
         },
     },
-    EraId, Motes, PublicKey, RuntimeArgs, SecretKey, U256, U512,
+    EraId, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U256, U512,
 };
 
 const ARG_TARGET: &str = "target";
@@ -3057,4 +3066,354 @@ fn should_fail_with_more_accounts_than_slots() {
 #[test]
 fn should_run_genesis_with_exact_validator_slots() {
     check_validator_slots_for_accounts(DEFAULT_EXEC_CONFIG.validator_slots() as usize);
+}
+
+#[ignore]
+#[test]
+fn should_not_allow_delegations_past_limit() {
+    const NEW_MAX_DELEGATOR_SIZE_LIMIT: u32 = 2;
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    let old_protocol_version = *DEFAULT_PROTOCOL_VERSION;
+    let new_protocol_version = ProtocolVersion::from_parts(
+        old_protocol_version.value().major,
+        old_protocol_version.value().minor,
+        old_protocol_version.value().patch + 1,
+    );
+
+    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+
+    let custom_engine_config = EngineConfig::new(
+        DEFAULT_MAX_QUERY_DEPTH,
+        DEFAULT_MAX_ASSOCIATED_KEYS,
+        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+        DEFAULT_MAX_STORED_VALUE_SIZE,
+        NEW_MAX_DELEGATOR_SIZE_LIMIT,
+        WasmConfig::default(),
+        SystemConfig::default(),
+    );
+
+    let mut upgrade_request = {
+        UpgradeRequestBuilder::new()
+            .with_current_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+            .with_new_protocol_version(new_protocol_version)
+            .with_activation_point(EraId::new(1))
+            .build()
+    };
+
+    // Upgrade to change the max delegator limit from its default to simply 2 for testing.
+    builder.upgrade_with_upgrade_request(custom_engine_config, &mut upgrade_request);
+
+    let transfer_to_validator = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *NON_FOUNDER_VALIDATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let transfer_to_delegator_1 = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *BID_ACCOUNT_1_ADDR,
+            ARG_AMOUNT => U512::from(BID_ACCOUNT_1_BALANCE)
+        },
+    )
+    .build();
+
+    let transfer_to_delegator_2 = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *BID_ACCOUNT_2_ADDR,
+            ARG_AMOUNT => U512::from(BID_ACCOUNT_2_BALANCE)
+        },
+    )
+    .build();
+
+    let transfer_to_delegator_3 = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *NON_FOUNDER_VALIDATOR_2_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let post_genesis_request = vec![
+        transfer_to_validator,
+        transfer_to_delegator_1,
+        transfer_to_delegator_2,
+        transfer_to_delegator_3,
+    ];
+
+    for request in post_genesis_request {
+        builder.exec(request).expect_success().commit();
+    }
+
+    let add_bid_request_1 = ExecuteRequestBuilder::standard(
+        *NON_FOUNDER_VALIDATOR_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
+            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+        },
+    )
+    .build();
+
+    builder.exec(add_bid_request_1).expect_success().commit();
+
+    let delegation_request_1 = ExecuteRequestBuilder::standard(
+        *BID_ACCOUNT_1_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK.clone(),
+        },
+    )
+    .build();
+
+    let delegation_request_2 = ExecuteRequestBuilder::standard(
+        *BID_ACCOUNT_2_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => BID_ACCOUNT_2_PK.clone(),
+        },
+    )
+    .build();
+
+    builder.exec(delegation_request_1).expect_success().commit();
+    builder.exec(delegation_request_2).expect_success().commit();
+
+    let bids: Bids = builder.get_bids();
+    assert_eq!(bids.len(), 1);
+    let delegators = bids[&NON_FOUNDER_VALIDATOR_1_PK].delegators();
+    assert_eq!(delegators.len(), 2);
+
+    let delegation_request_3 = ExecuteRequestBuilder::standard(
+        *NON_FOUNDER_VALIDATOR_2_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => NON_FOUNDER_VALIDATOR_2_PK.clone(),
+        },
+    )
+    .build();
+
+    builder.exec(delegation_request_3).expect_failure();
+}
+
+#[ignore]
+#[test]
+fn should_continue_running_auction_despite_execeeded_delegator_limit() {
+    const NEW_MAX_DELEGATOR_SIZE_LIMIT: u32 = 2;
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+
+    let transfer_to_validator = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *NON_FOUNDER_VALIDATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let transfer_to_delegator_1 = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *BID_ACCOUNT_1_ADDR,
+            ARG_AMOUNT => U512::from(BID_ACCOUNT_1_BALANCE)
+        },
+    )
+    .build();
+
+    let transfer_to_delegator_2 = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *BID_ACCOUNT_2_ADDR,
+            ARG_AMOUNT => U512::from(BID_ACCOUNT_2_BALANCE)
+        },
+    )
+    .build();
+
+    let transfer_to_delegator_3 = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *NON_FOUNDER_VALIDATOR_2_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let post_genesis_request = vec![
+        transfer_to_validator,
+        transfer_to_delegator_1,
+        transfer_to_delegator_2,
+        transfer_to_delegator_3,
+    ];
+
+    for request in post_genesis_request {
+        builder.exec(request).expect_success().commit();
+    }
+
+    let add_bid_request_1 = ExecuteRequestBuilder::standard(
+        *NON_FOUNDER_VALIDATOR_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
+            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+        },
+    )
+    .build();
+
+    builder.exec(add_bid_request_1).expect_success().commit();
+
+    for _ in 0..=DEFAULT_AUCTION_DELAY {
+        let step_request = StepRequestBuilder::new()
+            .with_parent_state_hash(builder.get_post_state_hash())
+            .with_protocol_version(ProtocolVersion::V1_0_0)
+            .with_next_era_id(builder.get_era().successor())
+            .with_run_auction(true)
+            .build();
+
+        builder
+            .step(step_request)
+            .expect("must execute step request");
+    }
+
+    let delegation_request_1 = ExecuteRequestBuilder::standard(
+        *BID_ACCOUNT_1_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK.clone(),
+        },
+    )
+    .build();
+
+    let delegation_request_2 = ExecuteRequestBuilder::standard(
+        *BID_ACCOUNT_2_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => BID_ACCOUNT_2_PK.clone(),
+        },
+    )
+    .build();
+
+    let delegation_request_3 = ExecuteRequestBuilder::standard(
+        *NON_FOUNDER_VALIDATOR_2_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => NON_FOUNDER_VALIDATOR_2_PK.clone(),
+        },
+    )
+    .build();
+
+    let delegation_requests = vec![
+        delegation_request_1,
+        delegation_request_2,
+        delegation_request_3,
+    ];
+
+    for request in delegation_requests {
+        builder.exec(request).expect_success().commit();
+    }
+
+    let old_protocol_version = *DEFAULT_PROTOCOL_VERSION;
+    let new_protocol_version = ProtocolVersion::from_parts(
+        old_protocol_version.value().major,
+        old_protocol_version.value().minor,
+        old_protocol_version.value().patch + 1,
+    );
+
+    let custom_engine_config = EngineConfig::new(
+        DEFAULT_MAX_QUERY_DEPTH,
+        DEFAULT_MAX_ASSOCIATED_KEYS,
+        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+        DEFAULT_MAX_STORED_VALUE_SIZE,
+        NEW_MAX_DELEGATOR_SIZE_LIMIT,
+        WasmConfig::default(),
+        SystemConfig::default(),
+    );
+
+    let mut upgrade_request = {
+        UpgradeRequestBuilder::new()
+            .with_current_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+            .with_new_protocol_version(new_protocol_version)
+            .with_activation_point(EraId::new(1))
+            .build()
+    };
+
+    // Upgrade to change the max delegator limit from its default to simply 2 for testing.
+    builder.upgrade_with_upgrade_request(custom_engine_config, &mut upgrade_request);
+
+    let transfer_to_delegator_4 = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *ACCOUNT_1_ADDR,
+            ARG_AMOUNT => U512::from(BID_ACCOUNT_1_BALANCE)
+        },
+    )
+    .build();
+
+    builder
+        .exec(transfer_to_delegator_4)
+        .expect_success()
+        .commit();
+
+    let delegation_request_4 = ExecuteRequestBuilder::standard(
+        *ACCOUNT_1_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => ACCOUNT_1_PK.clone(),
+        },
+    )
+    .build();
+
+    // As part of the upgrade we should disallow any more delegations.
+    builder.exec(delegation_request_4).expect_failure();
+
+    // We disallow any additional delegations, however the auction state
+    // should continue to procceed.
+    let step_request = StepRequestBuilder::new()
+        .with_parent_state_hash(builder.get_post_state_hash())
+        .with_protocol_version(ProtocolVersion::V1_0_0)
+        .with_next_era_id(builder.get_era().successor())
+        .with_reward_item(RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1))
+        .with_run_auction(true)
+        .build();
+
+    builder
+        .step(step_request)
+        .expect("must execute step request");
+
+    let bids: Bids = builder.get_bids();
+    assert_eq!(bids.len(), 1);
+    let delegators = bids[&NON_FOUNDER_VALIDATOR_1_PK].delegators();
+    // Assert that there are three delegators despite a delegator limit of 2.
+    assert_eq!(delegators.len(), 3);
 }
