@@ -1175,6 +1175,14 @@ async fn execute_finalized_block<REv>(
 ) where
     REv: From<StorageRequest> + From<ControlAnnouncement> + From<ContractRuntimeRequest>,
 {
+    // if the block exists in storage, it either has been executed before, or we fast synced to a
+    // higher block - skip execution
+    if effect_builder
+        .block_header_exists(finalized_block.height())
+        .await
+    {
+        return;
+    }
     // Get all deploys in order they appear in the finalized block.
     let deploys =
         match get_deploys_or_transfers(effect_builder, finalized_block.deploy_hashes().to_owned())
