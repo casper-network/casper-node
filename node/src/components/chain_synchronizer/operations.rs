@@ -860,6 +860,8 @@ pub(super) async fn run_chain_sync_task(
         }
     }
 
+    let max_parallel_deploy_fetches = node_config.max_parallel_deploy_fetches as usize;
+
     let (mut trusted_key_block_info, mut most_recent_block_header) = if node_config.archival_sync {
         info!("start - archival_sync - total");
         let result = archival_sync(
@@ -927,20 +929,19 @@ pub(super) async fn run_chain_sync_task(
             Some(block_with_metadata) => block_with_metadata.block,
         };
 
-        let mut deploys: Vec<Deploy> = Vec::with_capacity(block.deploy_hashes().len());
-        for deploy_hash in block.deploy_hashes() {
-            info!("start - fetching deploy - {}", *deploy_hash);
-            let result = fetch_and_store_deploy(effect_builder, *deploy_hash).await?;
-            info!("finish - fetching deploy - {}", *deploy_hash);
-            deploys.push(*result);
-        }
-        let mut transfers: Vec<Deploy> = Vec::with_capacity(block.transfer_hashes().len());
-        for transfer_hash in block.transfer_hashes() {
-            info!("start - fetching transfer - {}", *transfer_hash);
-            let result = fetch_and_store_deploy(effect_builder, *transfer_hash).await?;
-            info!("finish - fetching transfer - {}", *transfer_hash);
-            transfers.push(*result);
-        }
+        let deploys = fetch_and_store_deploys(
+            block.deploy_hashes().to_vec(),
+            max_parallel_deploy_fetches,
+            effect_builder,
+        )
+        .await?;
+
+        let transfers = fetch_and_store_deploys(
+            block.transfer_hashes().to_vec(),
+            max_parallel_deploy_fetches,
+            effect_builder,
+        )
+        .await?;
 
         info!(
             era_id = ?block.header().era_id(),
@@ -1008,6 +1009,28 @@ pub(super) async fn run_chain_sync_task(
     );
 
     Ok(most_recent_block_header)
+}
+
+async fn fetch_and_store_deploys(
+    hashes: Vec<DeployHash>,
+    max_parallel_fetches: usize,
+    effect_builder: EffectBuilder<JoinerEvent>,
+) -> Result<Vec<Deploy>, Error> {
+    let mut deploys: Vec<Deploy> = Vec::with_capacity(hashes.len());
+    let mut stream = futures::stream::iter(hashes)
+        .map(|hash| {
+            debug!("start - fetch_and_store_deploy -  {}", hash);
+            fetch_and_store_deploy(effect_builder, hash)
+        })
+        .buffer_unordered(max_parallel_fetches);
+    while let Some(result) = stream.next().await {
+        let deploy = result?;
+        debug!("finish - fetch_and_store_deploy  - {}", deploy.id());
+        trace!("fetched {:?}", deploy);
+        deploys.push(*deploy);
+    }
+
+    Ok(deploys)
 }
 
 /// Returns `true` if `most_recent_block` belongs to an era that is still ongoing.
