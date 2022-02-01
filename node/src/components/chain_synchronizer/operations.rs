@@ -832,10 +832,10 @@ pub(super) async fn run_chain_sync_task(
         && trusted_block_header.next_block_era_id()
             == chainspec.protocol_config.activation_point.era_id()
     {
-        info!("start - get_trusted_key_block_info - emergency restart");
+        info!("start - get_trusted_key_block_info - upgrade");
         let trusted_key_block_info =
             get_trusted_key_block_info(effect_builder, &*chainspec, &trusted_block_header).await?;
-        info!("finish - get_trusted_key_block_info - emergency restart");
+        info!("finish - get_trusted_key_block_info - upgrade");
 
         info!("start - fetch_and_store_next::<BlockHeaderWithMetadata> - upgrade");
         let fetch_and_store_next_result = fetch_and_store_next::<BlockHeaderWithMetadata>(
