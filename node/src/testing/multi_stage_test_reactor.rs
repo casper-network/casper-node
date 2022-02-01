@@ -428,15 +428,13 @@ impl Reactor for MultiStageTestReactor {
                         warn!("when transitioning from joiner to participating, left {} effects unhandled", dropped_events_count)
                     }
 
-                    assert_eq!(
-                        joiner_event_queue_handle
-                            .event_queues_counts()
-                            .values()
-                            .sum::<usize>(),
-                        0,
-                        "before transitioning from joiner to participating, \
-                         there should be no unprocessed events"
-                    );
+                    let joiner_event_queue_length = joiner_event_queue_handle
+                        .event_queues_counts()
+                        .values()
+                        .sum::<usize>();
+                    if joiner_event_queue_length != 0 {
+                        warn!("before transitioning from joiner to participating, there should be no unprocessed events, left {} unprocessed events", joiner_event_queue_length)
+                    }
 
                     // `into_participating_config` is just waiting for networking sockets to shut
                     // down and will not stall on disabled event processing, so
