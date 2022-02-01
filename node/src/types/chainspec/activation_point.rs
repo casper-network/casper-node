@@ -54,7 +54,8 @@ impl ActivationPoint {
     }
 
     fn tag_byte(&self) -> u8 {
-        self.to_u8()
+        self.tag()
+            .to_u8()
             .expect("ActivationPointTag should be representable as a u8")
     }
 

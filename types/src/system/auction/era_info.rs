@@ -1,8 +1,12 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
+use std::convert::TryFrom;
+
 use alloc::{boxed::Box, vec::Vec};
 
+use num::{FromPrimitive, ToPrimitive};
+use num_derive::{FromPrimitive, ToPrimitive};
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -12,8 +16,20 @@ use crate::{
     CLType, CLTyped, PublicKey, U512,
 };
 
-const SEIGNIORAGE_ALLOCATION_VALIDATOR_TAG: u8 = 0;
-const SEIGNIORAGE_ALLOCATION_DELEGATOR_TAG: u8 = 1;
+#[derive(FromPrimitive, ToPrimitive, Debug)]
+#[repr(u8)]
+enum SeigniorageAllocationTag {
+    Validator = 0,
+    Delegator = 1,
+}
+
+impl TryFrom<u8> for SeigniorageAllocationTag {
+    type Error = bytesrepr::Error;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        FromPrimitive::from_u8(value).ok_or(bytesrepr::Error::Formatting)
+    }
+}
 
 /// Information about a seigniorage allocation
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
@@ -68,10 +84,16 @@ impl SeigniorageAllocation {
         }
     }
 
-    fn tag(&self) -> u8 {
+    fn tag_byte(&self) -> u8 {
+        self.tag()
+            .to_u8()
+            .expect("SeigniorageAllocationTag should be represented as a u8")
+    }
+
+    fn tag(&self) -> SeigniorageAllocationTag {
         match self {
-            SeigniorageAllocation::Validator { .. } => SEIGNIORAGE_ALLOCATION_VALIDATOR_TAG,
-            SeigniorageAllocation::Delegator { .. } => SEIGNIORAGE_ALLOCATION_DELEGATOR_TAG,
+            SeigniorageAllocation::Validator { .. } => SeigniorageAllocationTag::Validator,
+            SeigniorageAllocation::Delegator { .. } => SeigniorageAllocationTag::Delegator,
         }
     }
 }
@@ -84,7 +106,7 @@ impl ToBytes for SeigniorageAllocation {
     }
 
     fn serialized_length(&self) -> usize {
-        self.tag().serialized_length()
+        self.tag_byte().serialized_length()
             + match self {
                 SeigniorageAllocation::Validator {
                     validator_public_key,
@@ -103,7 +125,7 @@ impl ToBytes for SeigniorageAllocation {
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        writer.push(self.tag());
+        writer.push(self.tag_byte());
         match self {
             SeigniorageAllocation::Validator {
                 validator_public_key,
@@ -129,8 +151,8 @@ impl ToBytes for SeigniorageAllocation {
 impl FromBytes for SeigniorageAllocation {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, rem) = <u8>::from_bytes(bytes)?;
-        match tag {
-            SEIGNIORAGE_ALLOCATION_VALIDATOR_TAG => {
+        match TryFrom::try_from(tag)? {
+            SeigniorageAllocationTag::Validator => {
                 let (validator_public_key, rem) = PublicKey::from_bytes(rem)?;
                 let (amount, rem) = U512::from_bytes(rem)?;
                 Ok((
@@ -138,7 +160,7 @@ impl FromBytes for SeigniorageAllocation {
                     rem,
                 ))
             }
-            SEIGNIORAGE_ALLOCATION_DELEGATOR_TAG => {
+            SeigniorageAllocationTag::Delegator => {
                 let (delegator_public_key, rem) = PublicKey::from_bytes(rem)?;
                 let (validator_public_key, rem) = PublicKey::from_bytes(rem)?;
                 let (amount, rem) = U512::from_bytes(rem)?;
@@ -151,7 +173,6 @@ impl FromBytes for SeigniorageAllocation {
                     rem,
                 ))
             }
-            _ => Err(bytesrepr::Error::Formatting),
         }
     }
 }

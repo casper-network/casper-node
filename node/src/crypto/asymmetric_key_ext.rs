@@ -9,7 +9,7 @@ use pem::Pem;
 use rand::{Rng, RngCore};
 use untrusted::Input;
 
-use casper_types::{AsymmetricType, PublicKey, SecretKey, ED25519_TAG, SECP256K1_TAG, SYSTEM_TAG};
+use casper_types::{AsymmetricType, KeyTag, PublicKey, SecretKey};
 
 #[cfg(test)]
 use crate::testing::TestRng;
@@ -177,7 +177,7 @@ impl AsymmetricKeyExt for SecretKey {
                     })?
                     .as_slice_less_safe();
 
-                    return Ok((ED25519_TAG, raw_bytes));
+                    return Ok((KeyTag::Ed25519, raw_bytes));
                 } else if tag == Tag::OctetString as u8 {
                     // Expecting a secp256k1 key.
                     if version != 1 {
@@ -202,7 +202,7 @@ impl AsymmetricKeyExt for SecretKey {
                     // with unused bytes error.
                     let _ = derp::read_tag_and_get_value(input);
 
-                    return Ok((SECP256K1_TAG, raw_bytes));
+                    return Ok((KeyTag::Ed25519, raw_bytes));
                 }
 
                 Err(derp::Error::WrongValue)
@@ -210,10 +210,9 @@ impl AsymmetricKeyExt for SecretKey {
         })?;
 
         match key_type_tag {
-            SYSTEM_TAG => Err(Error::AsymmetricKey("cannot construct variant".to_string())),
-            ED25519_TAG => SecretKey::ed25519_from_bytes(raw_bytes).map_err(Into::into),
-            SECP256K1_TAG => SecretKey::secp256k1_from_bytes(raw_bytes).map_err(Into::into),
-            _ => Err(Error::AsymmetricKey("unknown type tag".to_string())),
+            KeyTag::System => Err(Error::AsymmetricKey("cannot construct variant".to_string())),
+            KeyTag::Ed25519 => SecretKey::ed25519_from_bytes(raw_bytes).map_err(Into::into),
+            KeyTag::Secp256k1 => SecretKey::secp256k1_from_bytes(raw_bytes).map_err(Into::into),
         }
     }
 
@@ -339,7 +338,7 @@ impl AsymmetricKeyExt for PublicKey {
     fn from_der<T: AsRef<[u8]>>(input: T) -> Result<Self, Error> {
         let input = Input::from(input.as_ref());
 
-        let mut key_type_tag = ED25519_TAG;
+        let mut key_type_tag = KeyTag::Ed25519;
         let raw_bytes = input.read_all(derp::Error::Read, |input| {
             derp::nested(input, Tag::Sequence, |input| {
                 derp::nested(input, Tag::Sequence, |input| {
@@ -347,7 +346,7 @@ impl AsymmetricKeyExt for PublicKey {
                     let object_identifier =
                         derp::expect_tag_and_get_value(input, Tag::Oid)?.as_slice_less_safe();
                     if object_identifier == ED25519_OBJECT_IDENTIFIER {
-                        key_type_tag = ED25519_TAG;
+                        key_type_tag = KeyTag::Ed25519;
                         Ok(())
                     } else if object_identifier == EC_PUBLIC_KEY_OBJECT_IDENTIFIER {
                         // Assert the next object identifier is the secp256k1 ID.

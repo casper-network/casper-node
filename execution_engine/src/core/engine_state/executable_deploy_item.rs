@@ -47,7 +47,7 @@ const TAG_LENGTH: usize = 1;
 
 #[repr(u8)]
 #[derive(Debug, FromPrimitive, ToPrimitive)]
-pub enum ExecutableDeployItemTag {
+enum ExecutableDeployItemTag {
     ModuleBytes = 0,
     StoredContractByHash = 1,
     StoredContractByName = 2,
