@@ -537,16 +537,16 @@ async fn fast_sync_to_most_recent(
     chainspec: &Chainspec,
     node_config: NodeConfig,
 ) -> Result<(KeyBlockInfo, BlockHeader), Error> {
-    info!("start - get_trusted_key_block_info - fast sync");
+    info!("start - fetch the last switch block before the trusted block - fast sync");
     let mut trusted_key_block_info =
         get_trusted_key_block_info(effect_builder, chainspec, &trusted_block_header).await?;
-    info!("finish - get_trusted_key_block_info - fast sync");
+    debug!("finish - fetch the last switch block before the trusted block - fast sync");
 
     // Get the most recent header which has the same version as ours
     // We keep fetching by height until none of our peers have a block at that height and we are in
     // the current era.
     let mut most_recent_block_header = trusted_block_header;
-    info!("start - most recent header - fast sync");
+    info!("start - fetch block headers up to the most recent one - fast sync");
     loop {
         let maybe_fetched_block = fetch_and_store_next::<BlockHeaderWithMetadata>(
             effect_builder,
@@ -578,11 +578,11 @@ async fn fast_sync_to_most_recent(
             break;
         }
     }
-    info!("finish - most recent header - fast sync");
+    debug!("finish - fetch block headers up to the most recent one - fast sync");
 
     // Fetch and store all blocks that can contain not-yet-expired deploys. These are needed for
     // replay detection.
-    info!("start - fetch and store all blocks - fast sync");
+    info!("start - fetch blocks for deploy replay protection - fast sync");
     {
         let mut current_header = most_recent_block_header.clone();
         while trusted_key_block_info
@@ -597,11 +597,11 @@ async fn fast_sync_to_most_recent(
                     .take_header();
         }
     }
-    info!("finish - fetch and store all blocks - fast sync");
+    debug!("finish - fetch blocks for deploy replay protection - fast sync");
 
     // The era supervisor requires enough switch blocks to be stored in the database to be able to
     // initialize the most recent eras.
-    info!("start - for era supervisor - fast sync");
+    info!("start - fetch block headers needed for era supervisor initialization - fast sync");
     {
         let earliest_open_era = chainspec.earliest_open_era(most_recent_block_header.era_id());
         let earliest_era_needed_by_era_supervisor =
@@ -615,17 +615,17 @@ async fn fast_sync_to_most_recent(
             .await?;
         }
     }
-    info!("finish - for era supervisor - fast sync");
+    debug!("finish - fetch block headers needed for era supervisor initialization - fast sync");
 
     // Synchronize the trie store for the most recent block header.
-    info!("start - sync_trie_store - fast sync");
+    info!("start - fetch the latest block's global state - fast sync");
     sync_trie_store(
         effect_builder,
         *most_recent_block_header.state_root_hash(),
         node_config.max_parallel_trie_fetches as usize,
     )
     .await?;
-    info!("finish - sync_trie_store - fast sync");
+    debug!("finish - fetch the latest block's global state - fast sync");
 
     Ok((trusted_key_block_info, most_recent_block_header))
 }
@@ -692,18 +692,18 @@ async fn archival_sync(
 ) -> Result<(KeyBlockInfo, BlockHeader), Error> {
     // Get the trusted block info. This will fail if we are trying to join with a trusted hash in
     // era 0.
-    info!("start - get_trusted_key_block_info - archival sync");
+    info!("start - fetch the latest key block before the trusted block - archival sync");
     let mut trusted_key_block_info =
         get_trusted_key_block_info(effect_builder, chainspec, &trusted_block_header).await?;
-    info!("finish - get_trusted_key_block_info - archival sync");
+    debug!("finish - fetch the latest key block before the trusted block - archival sync");
 
-    info!("start - fetch_and_store_block_by_hash - archival sync");
+    info!("start - fetch the trusted block - archival sync");
     let trusted_block = *fetch_and_store_block_by_hash(
         effect_builder,
         trusted_block_header.hash(chainspec.protocol_config.verifiable_chunked_hash_activation),
     )
     .await?;
-    info!("finish - fetch_and_store_block_by_hash - archival sync");
+    debug!("finish - fetch the trusted block - archival sync");
 
     // Sync to genesis
     let mut walkback_block = trusted_block.clone();
@@ -720,7 +720,7 @@ async fn archival_sync(
             .await?;
         }
     }
-    info!("finish - sync to genesis - archival sync");
+    debug!("finish - sync to genesis - archival sync");
 
     // Sync forward until we are at the current version.
     info!("start - sync forward - archival sync");
@@ -749,7 +749,7 @@ async fn archival_sync(
             trusted_key_block_info = key_block_info;
         }
     }
-    info!("finish - sync forward - archival sync");
+    debug!("finish - sync forward - archival sync");
 
     Ok((trusted_key_block_info, most_recent_block.take_header()))
 }
@@ -764,7 +764,7 @@ pub(super) async fn run_chain_sync_task(
     // Fetch the trusted header
     info!("start - fetch trusted header");
     let trusted_block_header = fetch_and_store_block_header(effect_builder, trusted_hash).await?;
-    info!("finish - fetch trusted header");
+    debug!("finish - fetch trusted header");
 
     if trusted_block_header.protocol_version() > chainspec.protocol_config.version {
         return Err(Error::RetrievedBlockHeaderFromFutureVersion {
@@ -811,14 +811,14 @@ pub(super) async fn run_chain_sync_task(
         if trusted_block_header.is_switch_block()
             && trusted_block_header.next_block_era_id() == last_emergency_restart_era
         {
-            info!("start - sync_trie_store - emergency restart");
+            info!("start - fetch the global state from before the last emergency restart - emergency restart");
             sync_trie_store(
                 effect_builder,
                 *trusted_block_header.state_root_hash(),
                 node_config.max_parallel_trie_fetches as usize,
             )
             .await?;
-            info!("finish - sync_trie_store - emergency restart");
+            debug!("finish - fetch the global state from before the last emergency restart - emergency restart");
             return Ok(*trusted_block_header);
         }
     }
@@ -832,12 +832,12 @@ pub(super) async fn run_chain_sync_task(
         && trusted_block_header.next_block_era_id()
             == chainspec.protocol_config.activation_point.era_id()
     {
-        info!("start - get_trusted_key_block_info - upgrade");
+        info!("start - fetch the last switch block before the trusted block - upgrade");
         let trusted_key_block_info =
             get_trusted_key_block_info(effect_builder, &*chainspec, &trusted_block_header).await?;
-        info!("finish - get_trusted_key_block_info - upgrade");
+        debug!("finish - fetch the last switch block before the trusted block - upgrade");
 
-        info!("start - fetch_and_store_next::<BlockHeaderWithMetadata> - upgrade");
+        info!("start - try fetching the first block after the upgrade - upgrade");
         let fetch_and_store_next_result = fetch_and_store_next::<BlockHeaderWithMetadata>(
             effect_builder,
             &trusted_block_header,
@@ -845,17 +845,17 @@ pub(super) async fn run_chain_sync_task(
             &*chainspec,
         )
         .await?;
-        info!("finish - fetch_and_store_next::<BlockHeaderWithMetadata> - upgrade");
+        debug!("finish - try fetching the first block after the upgrade - upgrade");
 
         if fetch_and_store_next_result.is_none() {
-            info!("start - sync_trie_store - upgrade");
+            info!("start - fetch the global state from before the upgrade - upgrade");
             sync_trie_store(
                 effect_builder,
                 *trusted_block_header.state_root_hash(),
                 node_config.max_parallel_trie_fetches as usize,
             )
             .await?;
-            info!("finish - sync_trie_store - upgrade");
+            debug!("finish - fetch the global state from before the upgrade - upgrade");
             return Ok(*trusted_block_header);
         }
     }
@@ -871,7 +871,7 @@ pub(super) async fn run_chain_sync_task(
             node_config,
         )
         .await?;
-        info!("finish - archival_sync - total");
+        debug!("finish - archival_sync - total");
         result
     } else {
         info!("start - fast_sync_to_most_recent - total");
@@ -882,7 +882,7 @@ pub(super) async fn run_chain_sync_task(
             node_config,
         )
         .await?;
-        info!("finish - fast_sync_to_most_recent - total");
+        debug!("finish - fast_sync_to_most_recent - total");
         result
     };
 
@@ -960,7 +960,7 @@ pub(super) async fn run_chain_sync_task(
                 transfers,
             )
             .await?;
-        info!("finish - executing finalized block - {}", block.hash());
+        debug!("finish - executing finalized block - {}", block.hash());
 
         if block != *block_and_execution_effects.block() {
             return Err(Error::ExecutedBlockIsNotTheSameAsDownloadedBlock {
@@ -998,7 +998,7 @@ pub(super) async fn run_chain_sync_task(
             break;
         }
     }
-    info!("finish - fetching and executing blocks - loop total");
+    debug!("finish - fetching and executing blocks - loop total");
 
     info!(
         era_id = ?most_recent_block_header.era_id(),
