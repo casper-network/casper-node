@@ -357,11 +357,6 @@ impl BlockProposerReady {
         hash: DeployOrTransferHash,
         deploy_info: DeployInfo,
     ) {
-        if deploy_info.header.expired(current_instant) {
-            trace!(%hash, "expired deploy rejected from the buffer");
-            return;
-        }
-
         if hash.is_transfer() {
             // only add the transfer if it isn't contained in a finalized block
             if self
@@ -377,6 +372,7 @@ impl BlockProposerReady {
             self.sets
                 .pending_transfers
                 .insert(*hash.deploy_hash(), (deploy_info, current_instant));
+            info!(%hash, "added transfer to the buffer");
         } else {
             // only add the deploy if it isn't contained in a finalized block
             if self.sets.finalized_deploys.contains_key(hash.deploy_hash()) {
@@ -388,9 +384,8 @@ impl BlockProposerReady {
             self.sets
                 .pending_deploys
                 .insert(*hash.deploy_hash(), (deploy_info, current_instant));
+            info!(%hash, "added deploy to the buffer");
         }
-
-        info!(%hash, "added deploy to the buffer");
     }
 
     /// Handles finalization of a block.
