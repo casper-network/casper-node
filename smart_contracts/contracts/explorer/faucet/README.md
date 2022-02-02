@@ -30,3 +30,12 @@ After an interval passes after then last user was funded, the available amount w
 `distributions_per_interval`, `available_amount`, `time_interval` and `max_distributions_per_interval`
 must be set and must be a number greater than `0` for the contract to run properly.
 If you try to invoke the contract before these variables are set, then you'll get an error.
+
+### Costs by Entry Point
+
+| feature | cost |
+|---------|------|
+| faucet install | `40_460_926_410`|
+| faucet set variables | `53_432_090`|
+| faucet call by installer | `2_615_737_140`|
+| faucet call by user | `2_564_783_310`|

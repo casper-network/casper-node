@@ -16,7 +16,7 @@ use casper_types::{
     account::AccountHash,
     api_error,
     bytesrepr::{self, FromBytes, ToBytes},
-    ApiError, BlockTime, CLTyped, CLValue, Key, URef, U512,
+    ApiError, BlockTime, CLTyped, Key, URef, U512,
 };
 
 pub const ARG_AMOUNT: &str = "amount";
@@ -57,47 +57,20 @@ enum FaucetError {
     InvalidId = 12,
     FailedToTransfer = 13,
     FailedToGetArgBytes = 14,
-    FailedToConstructReturnData = 15,
-    MissingFaucetPurse = 16,
-    InvalidFaucetPurse = 17,
-    MissingRemainingAmount = 18,
-    InvalidRemainingAmount = 19,
-    MissingDistributionsPerInterval = 20,
-    InvalidDistributionsPerInterval = 21,
-    ZeroDistributionsPerInterval = 22,
-    UnexpectedKeyVariant = 23,
+    MissingFaucetPurse = 15,
+    InvalidFaucetPurse = 16,
+    MissingRemainingAmount = 17,
+    InvalidRemainingAmount = 18,
+    MissingDistributionsPerInterval = 19,
+    InvalidDistributionsPerInterval = 20,
+    ZeroDistributionsPerInterval = 21,
+    UnexpectedKeyVariant = 22,
 }
 
 impl From<FaucetError> for ApiError {
     fn from(e: FaucetError) -> Self {
         ApiError::User(e as u16)
     }
-}
-
-#[no_mangle]
-pub fn init() {
-    let installer = get_account_hash_with_user_errors(
-        INSTALLER,
-        FaucetError::MissingInstaller,
-        FaucetError::InvalidInstaller,
-    );
-
-    if installer != runtime::get_caller() {
-        runtime::revert(FaucetError::InvalidAccount);
-    }
-
-    runtime::put_key(TIME_INTERVAL, storage::new_uref(TWO_HOURS_AS_MILLIS).into());
-    runtime::put_key(LAST_DISTRIBUTION_TIME, storage::new_uref(0u64).into());
-    runtime::put_key(AVAILABLE_AMOUNT, storage::new_uref(U512::zero()).into());
-    runtime::put_key(REMAINING_AMOUNT, storage::new_uref(U512::zero()).into());
-    runtime::put_key(DISTRIBUTIONS_PER_INTERVAL, storage::new_uref(0u64).into());
-
-    let purse = system::create_purse();
-
-    runtime::put_key(FAUCET_PURSE, purse.into());
-    runtime::ret(
-        CLValue::from_t(purse).unwrap_or_revert_with(FaucetError::FailedToConstructReturnData),
-    )
 }
 
 #[no_mangle]
@@ -112,40 +85,55 @@ pub fn set_variables() {
         runtime::revert(FaucetError::InvalidAccount);
     }
 
-    let new_time_interval: u64 = runtime::get_named_arg(ARG_TIME_INTERVAL);
-    let time_interval_uref = get_uref_with_user_errors(
-        TIME_INTERVAL,
+    if let Some(new_time_interval) = get_optional_named_arg_with_user_errors::<u64>(
+        ARG_TIME_INTERVAL,
         FaucetError::MissingTimeInterval,
         FaucetError::InvalidTimeInterval,
-    );
-    storage::write(time_interval_uref, new_time_interval);
+    ) {
+        let time_interval_uref = get_uref_with_user_errors(
+            TIME_INTERVAL,
+            FaucetError::MissingTimeInterval,
+            FaucetError::InvalidTimeInterval,
+        );
+        storage::write(time_interval_uref, new_time_interval);
+    }
 
-    let new_available_amount: U512 = runtime::get_named_arg(ARG_AVAILABLE_AMOUNT);
-    let available_amount_uref = get_uref_with_user_errors(
-        AVAILABLE_AMOUNT,
+    if let Some(new_available_amount) = get_optional_named_arg_with_user_errors::<U512>(
+        ARG_AVAILABLE_AMOUNT,
         FaucetError::MissingAvailableAmount,
         FaucetError::InvalidAvailableAmount,
-    );
-    storage::write(available_amount_uref, new_available_amount);
+    ) {
+        let available_amount_uref = get_uref_with_user_errors(
+            AVAILABLE_AMOUNT,
+            FaucetError::MissingAvailableAmount,
+            FaucetError::InvalidAvailableAmount,
+        );
+        let remaining_amount_uref = get_uref_with_user_errors(
+            REMAINING_AMOUNT,
+            FaucetError::MissingRemainingAmount,
+            FaucetError::InvalidRemainingAmount,
+        );
 
-    let remaining_amount_uref = get_uref_with_user_errors(
-        REMAINING_AMOUNT,
-        FaucetError::MissingRemainingAmount,
-        FaucetError::InvalidRemainingAmount,
-    );
-    storage::write(remaining_amount_uref, new_available_amount);
+        // remaining amount is set to the new available amount.
+        storage::write(available_amount_uref, new_available_amount);
+        storage::write(remaining_amount_uref, new_available_amount);
+    }
 
-    let new_distributions_per_interval: u64 =
-        runtime::get_named_arg(ARG_DISTRIBUTIONS_PER_INTERVAL);
-    let distributions_per_interval_uref = get_uref_with_user_errors(
-        DISTRIBUTIONS_PER_INTERVAL,
+    if let Some(new_distributions_per_interval) = get_optional_named_arg_with_user_errors::<u64>(
+        ARG_DISTRIBUTIONS_PER_INTERVAL,
         FaucetError::MissingDistributionsPerInterval,
         FaucetError::InvalidDistributionsPerInterval,
-    );
-    storage::write(
-        distributions_per_interval_uref,
-        new_distributions_per_interval,
-    );
+    ) {
+        let distributions_per_interval_uref = get_uref_with_user_errors(
+            DISTRIBUTIONS_PER_INTERVAL,
+            FaucetError::MissingDistributionsPerInterval,
+            FaucetError::InvalidDistributionsPerInterval,
+        );
+        storage::write(
+            distributions_per_interval_uref,
+            new_distributions_per_interval,
+        );
+    }
 }
 
 /// Executes token transfer to supplied account hash.
