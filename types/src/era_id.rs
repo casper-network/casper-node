@@ -60,7 +60,6 @@ impl EraId {
     /// For `u64::MAX`, this returns `u64::MAX` again: We want to make sure this doesn't panic, and
     /// that era number will never be reached in practice.
     #[must_use]
-    #[allow(clippy::integer_arithmetic)] // The caller must make sure this doesn't overflow.
     pub fn successor(self) -> EraId {
         EraId::from(self.0.saturating_add(1))
     }
