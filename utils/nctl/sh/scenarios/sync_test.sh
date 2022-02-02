@@ -38,7 +38,7 @@ function main() {
     # 6. Wait until they're all included in the chain.
     do_await_deploy_inclusion
     # 7. Start the node in archival sync mode using hash from 4)
-    do_start_new_node "$ARCH_NODE_ID"
+    do_start_new_node "$ARCH_NODE_ID" 'true'
     # 8. Wait until archival node is synchronized.
     do_await_full_synchronization "$ARCH_NODE_ID"
     # 9. Start the node in non-archival sync mode using hash from 4)
