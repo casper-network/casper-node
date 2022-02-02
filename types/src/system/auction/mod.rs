@@ -256,7 +256,13 @@ pub trait Auction:
 
         let source = self.get_main_purse()?;
 
-        self.handle_delegation(delegator_public_key, validator_public_key, source, amount)
+        detail::handle_delegation(
+            self,
+            delegator_public_key,
+            validator_public_key,
+            source,
+            amount,
+        )
     }
 
     /// Removes specified amount of motes (or the value from the collection altogether, if the

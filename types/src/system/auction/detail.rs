@@ -7,8 +7,9 @@ use crate::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::auction::{
-        constants::*, Auction, Bids, EraId, Error, RuntimeProvider, SeigniorageAllocation,
-        SeigniorageRecipientsSnapshot, StorageProvider, UnbondingPurse, UnbondingPurses,
+        constants::*, Auction, Bids, Delegator, EraId, Error, MintProvider, RuntimeProvider,
+        SeigniorageAllocation, SeigniorageRecipientsSnapshot, StorageProvider, UnbondingPurse,
+        UnbondingPurses,
     },
     CLTyped, Key, KeyTag, PublicKey, URef, U512,
 };
@@ -208,16 +209,16 @@ pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(provider: &mut P) -> 
                 match unbonding_purse.new_validator() {
                     Some(new_validator) => {
                         match provider.read_bid(&new_validator.to_account_hash()) {
-                            Ok(Some(bid)) => {
-                                if !bid.staked_amount().is_zero() {
-                                    provider
-                                        .handle_delegation(
-                                            unbonding_purse.unbonder_public_key().clone(),
-                                            new_validator.clone(),
-                                            *unbonding_purse.bonding_purse(),
-                                            *unbonding_purse.amount(),
-                                        )
-                                        .map(|_| ())?
+                            Ok(Some(new_validator_bid)) => {
+                                if !new_validator_bid.staked_amount().is_zero() {
+                                    handle_delegation(
+                                        provider,
+                                        unbonding_purse.unbonder_public_key().clone(),
+                                        new_validator.clone(),
+                                        *unbonding_purse.bonding_purse(),
+                                        *unbonding_purse.amount(),
+                                    )
+                                    .map(|_| ())?
                                 } else {
                                     // Move funds from bid purse to unbonding purse
                                     provider
@@ -226,7 +227,7 @@ pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(provider: &mut P) -> 
                                 }
                             }
                             // Move funds from bid purse to unbonding purse
-                            Ok(_) | Err(_) => provider
+                            Ok(None) | Err(_) => provider
                                 .unbond(unbonding_purse)
                                 .map_err(|_| Error::TransferToUnbondingPurse)?,
                         }
@@ -361,4 +362,71 @@ where
     provider.write_bid(validator_account_hash, bid)?;
 
     Ok(bonding_purse)
+}
+
+pub(crate) fn handle_delegation<P>(
+    provider: &mut P,
+    delegator_public_key: PublicKey,
+    validator_public_key: PublicKey,
+    source: URef,
+    amount: U512,
+) -> Result<U512, Error>
+where
+    P: StorageProvider + MintProvider,
+{
+    let validator_account_hash = AccountHash::from(&validator_public_key);
+
+    let mut bid = match provider.read_bid(&validator_account_hash)? {
+        Some(bid) => bid,
+        None => {
+            // Return early if target validator is not in `bids`
+            return Err(Error::ValidatorNotFound);
+        }
+    };
+
+    let delegators = bid.delegators_mut();
+
+    let new_delegation_amount = match delegators.get_mut(&delegator_public_key) {
+        Some(delegator) => {
+            provider
+                .mint_transfer_direct(
+                    Some(PublicKey::System.to_account_hash()),
+                    source,
+                    *delegator.bonding_purse(),
+                    amount,
+                    None,
+                )
+                .map_err(|_| Error::TransferToDelegatorPurse)?
+                .map_err(|_| Error::TransferToDelegatorPurse)?;
+            delegator.increase_stake(amount)?;
+            *delegator.staked_amount()
+        }
+        None => {
+            let bonding_purse = provider
+                .create_purse()
+                .map_err(|_| Error::CreatePurseFailed)?;
+            provider
+                .mint_transfer_direct(
+                    Some(PublicKey::System.to_account_hash()),
+                    source,
+                    bonding_purse,
+                    amount,
+                    None,
+                )
+                .map_err(|_| Error::TransferToDelegatorPurse)?
+                .map_err(|_| Error::TransferToDelegatorPurse)?;
+            let delegator = Delegator::unlocked(
+                delegator_public_key.clone(),
+                amount,
+                bonding_purse,
+                validator_public_key,
+            );
+            delegators.insert(delegator_public_key.clone(), delegator);
+            amount
+        }
+    };
+
+    provider.write_bid(validator_account_hash, bid)?;
+
+    Ok(new_delegation_amount)
 }

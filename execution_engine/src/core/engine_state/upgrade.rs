@@ -6,12 +6,8 @@ use thiserror::Error;
 
 use casper_hashing::Digest;
 use casper_types::{
-    bytesrepr,
-    system::{
-        auction, handle_payment, mint, standard_payment, AUCTION, HANDLE_PAYMENT, MINT,
-        STANDARD_PAYMENT,
-    },
-    Contract, ContractHash, EntryPoints, EraId, Key, ProtocolVersion, StoredValue,
+    bytesrepr, system::SystemContractType, Contract, ContractHash, EntryPoints, EraId, Key,
+    ProtocolVersion, StoredValue,
 };
 
 use crate::{
@@ -195,11 +191,6 @@ where
         }
     }
 
-    /// Check if the next version is a major version bump.
-    pub(crate) fn is_major_bump(&self) -> bool {
-        self.old_protocol_version.value().major + 1 == self.new_protocol_version.value().major
-    }
-
     /// Bump major version and/or update the entry points for system contracts.
     pub(crate) fn refresh_system_contracts(
         &self,
@@ -212,26 +203,22 @@ where
         self.refresh_system_contract_entry_points(
             correlation_id,
             *mint_hash,
-            MINT,
-            mint::mint_entry_points(),
+            SystemContractType::Mint,
         )?;
         self.refresh_system_contract_entry_points(
             correlation_id,
             *auction_hash,
-            AUCTION,
-            auction::auction_entry_points(),
+            SystemContractType::Auction,
         )?;
         self.refresh_system_contract_entry_points(
             correlation_id,
             *handle_payment_hash,
-            HANDLE_PAYMENT,
-            handle_payment::handle_payment_entry_points(),
+            SystemContractType::HandlePayment,
         )?;
         self.refresh_system_contract_entry_points(
             correlation_id,
             *standard_payment_hash,
-            STANDARD_PAYMENT,
-            standard_payment::standard_payment_entry_points(),
+            SystemContractType::StandardPayment,
         )?;
 
         Ok(())
@@ -270,9 +257,11 @@ where
         &self,
         correlation_id: CorrelationId,
         contract_hash: ContractHash,
-        contract_name: &str,
-        entry_points: EntryPoints,
+        system_contract_type: SystemContractType,
     ) -> Result<(), ProtocolUpgradeError> {
+        let contract_name = system_contract_type.contract_name();
+        let entry_points = system_contract_type.contract_entry_points();
+
         let mut contract = if let StoredValue::Contract(contract) = self
             .tracking_copy
             .borrow_mut()
@@ -286,11 +275,16 @@ where
             contract
         } else {
             return Err(ProtocolUpgradeError::UnableToRetrieveSystemContract(
-                contract_name.to_string(),
+                contract_name,
             ));
         };
 
-        if !self.has_different_entry_points(&contract, &entry_points) && !self.is_major_bump() {
+        let is_major_bump = self
+            .old_protocol_version
+            .check_next_version(&self.new_protocol_version)
+            .is_major_version();
+
+        if !self.has_different_entry_points(&contract, &entry_points) && !is_major_bump {
             return Ok(());
         }
 
@@ -313,7 +307,7 @@ where
             contract_package
         } else {
             return Err(ProtocolUpgradeError::UnableToRetrieveSystemContractPackage(
-                contract_name.to_string(),
+                contract_name,
             ));
         };
 

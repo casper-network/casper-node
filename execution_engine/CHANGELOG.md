@@ -13,8 +13,10 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+### Added
+* Added a new entry point `Redelegate` which allows users to redelegate to another validator without having to unbond.
+
 ### Changed
-* Undelegate now takes an optional `new_validator` argument which will re-delegate to a validator without unbonding.
 * (Perf) Changed contract runtime to allow caching GlobalState changes during execution of a single block.
 
 

@@ -393,12 +393,12 @@ fn delegate_and_undelegate_have_expected_costs() {
             .into_hash()
             .unwrap()
             .into(),
-        auction::METHOD_UNDELEGATE,
+        auction::METHOD_REDELEGATE,
         runtime_args! {
             auction::ARG_DELEGATOR => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
             auction::ARG_VALIDATOR => VALIDATOR_1.clone(),
             auction::ARG_AMOUNT => U512::from(10u64),
-            auction::ARG_NEW_VALIDATOR => Some(VALIDATOR_2.clone())
+            auction::ARG_NEW_VALIDATOR => VALIDATOR_2.clone()
         },
     )
     .build();
@@ -423,7 +423,6 @@ fn delegate_and_undelegate_have_expected_costs() {
             auction::ARG_DELEGATOR => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
             auction::ARG_VALIDATOR => VALIDATOR_1.clone(),
             auction::ARG_AMOUNT => U512::from(BID_AMOUNT - 10u64),
-            auction::ARG_NEW_VALIDATOR => Option::<PublicKey>::None,
         },
     )
     .build();
@@ -573,12 +572,12 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
             .into_hash()
             .unwrap()
             .into(),
-        auction::METHOD_UNDELEGATE,
+        auction::METHOD_REDELEGATE,
         runtime_args! {
             auction::ARG_DELEGATOR => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
             auction::ARG_VALIDATOR => VALIDATOR_1.clone(),
             auction::ARG_AMOUNT => U512::from(10u64),
-            auction::ARG_NEW_VALIDATOR => Some(VALIDATOR_2.clone())
+            auction::ARG_NEW_VALIDATOR => VALIDATOR_2.clone()
         },
     )
     .with_protocol_version(*NEW_PROTOCOL_VERSION)
@@ -604,7 +603,6 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
             auction::ARG_DELEGATOR => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
             auction::ARG_VALIDATOR => VALIDATOR_1.clone(),
             auction::ARG_AMOUNT => U512::from(BID_AMOUNT - 10u64),
-            auction::ARG_NEW_VALIDATOR => Option::<PublicKey>::None,
         },
     )
     .with_protocol_version(*NEW_PROTOCOL_VERSION)

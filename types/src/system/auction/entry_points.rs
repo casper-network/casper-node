@@ -83,7 +83,7 @@ pub fn auction_entry_points() -> EntryPoints {
             Parameter::new(ARG_DELEGATOR, PublicKey::cl_type()),
             Parameter::new(ARG_VALIDATOR, PublicKey::cl_type()),
             Parameter::new(ARG_AMOUNT, U512::cl_type()),
-            Parameter::new(ARG_NEW_VALIDATOR, Option::<PublicKey>::cl_type()),
+            Parameter::new(ARG_NEW_VALIDATOR, PublicKey::cl_type()),
         ],
         U512::cl_type(),
         EntryPointAccess::Public,

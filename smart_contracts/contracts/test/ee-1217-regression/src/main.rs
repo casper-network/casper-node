@@ -118,7 +118,6 @@ pub extern "C" fn undelegate() {
         auction::ARG_DELEGATOR => delegator_public_key,
         auction::ARG_VALIDATOR => validator_public_key,
         auction::ARG_AMOUNT => U512::one(),
-        auction::ARG_NEW_VALIDATOR => Option::<PublicKey>::None
     };
     runtime::call_contract::<U512>(auction, auction::METHOD_UNDELEGATE, args);
 }

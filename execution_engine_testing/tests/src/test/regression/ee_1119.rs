@@ -12,7 +12,7 @@ use casper_types::{
     runtime_args,
     system::{
         auction::{
-            Bids, DelegationRate, UnbondingPurses, ARG_DELEGATOR, ARG_NEW_VALIDATOR, ARG_VALIDATOR,
+            Bids, DelegationRate, UnbondingPurses, ARG_DELEGATOR, ARG_VALIDATOR,
             ARG_VALIDATOR_PUBLIC_KEYS, METHOD_SLASH,
         },
         mint::TOTAL_SUPPLY_KEY,
@@ -133,7 +133,6 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
             ARG_VALIDATOR => VALIDATOR_1.clone(),
             ARG_DELEGATOR => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-            ARG_NEW_VALIDATOR => Option::<PublicKey>::None,
         },
     )
     .build();
