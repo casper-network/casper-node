@@ -5,7 +5,7 @@ use std::{
         atomic::{self, AtomicBool},
         Arc,
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use async_trait::async_trait;
@@ -33,6 +33,8 @@ use crate::{
     },
     utils::work_queue::WorkQueue,
 };
+
+use super::metrics::Metrics;
 
 const SLEEP_DURATION_SO_WE_DONT_SPAM: Duration = Duration::from_millis(100);
 
@@ -536,6 +538,7 @@ async fn fast_sync_to_most_recent(
     trusted_block_header: BlockHeader,
     chainspec: &Chainspec,
     node_config: NodeConfig,
+    metrics: &Metrics,
 ) -> Result<(KeyBlockInfo, BlockHeader), Error> {
     info!("start - fetch the last switch block before the trusted block - fast sync");
     let mut trusted_key_block_info =
@@ -619,12 +622,16 @@ async fn fast_sync_to_most_recent(
 
     // Synchronize the trie store for the most recent block header.
     info!("start - fetch the latest block's global state - fast sync");
+    let metric = Instant::now();
     sync_trie_store(
         effect_builder,
         *most_recent_block_header.state_root_hash(),
         node_config.max_parallel_trie_fetches as usize,
     )
     .await?;
+    metrics
+        .chain_sync_global_state_download_time_seconds
+        .set(metric.elapsed().as_secs() as i64);
     debug!("finish - fetch the latest block's global state - fast sync");
 
     Ok((trusted_key_block_info, most_recent_block_header))
@@ -760,9 +767,12 @@ pub(super) async fn run_chain_sync_task(
     trusted_hash: BlockHash,
     chainspec: Arc<Chainspec>,
     node_config: NodeConfig,
+    metrics: Metrics,
 ) -> Result<BlockHeader, Error> {
-    // Fetch the trusted header
     info!("start - fetch trusted header");
+    let metric = Instant::now();
+
+    // Fetch the trusted header
     let trusted_block_header = fetch_and_store_block_header(effect_builder, trusted_hash).await?;
     debug!("finish - fetch trusted header");
 
@@ -795,6 +805,8 @@ pub(super) async fn run_chain_sync_task(
 
     let maybe_last_emergency_restart_era_id = chainspec.protocol_config.last_emergency_restart;
     if let Some(last_emergency_restart_era) = maybe_last_emergency_restart_era_id {
+        let metric = Instant::now();
+
         // After an emergency restart, the old validators cannot be trusted anymore. So the last
         // block before the restart or a later block must be given by the trusted hash. That way we
         // never have to use the untrusted validators' finality signatures.
@@ -819,8 +831,14 @@ pub(super) async fn run_chain_sync_task(
             )
             .await?;
             debug!("finish - fetch the global state from before the last emergency restart - emergency restart");
+            metrics
+                .chain_sync_emergency_restart_time_seconds
+                .set(metric.elapsed().as_secs() as i64);
             return Ok(*trusted_block_header);
         }
+        metrics
+            .chain_sync_emergency_restart_time_seconds
+            .set(metric.elapsed().as_secs() as i64);
     }
 
     // If we are at an upgrade:
@@ -833,6 +851,8 @@ pub(super) async fn run_chain_sync_task(
             == chainspec.protocol_config.activation_point.era_id()
     {
         info!("start - fetch the last switch block before the trusted block - upgrade");
+        let metric = Instant::now();
+
         let trusted_key_block_info =
             get_trusted_key_block_info(effect_builder, &*chainspec, &trusted_block_header).await?;
         debug!("finish - fetch the last switch block before the trusted block - upgrade");
@@ -856,14 +876,22 @@ pub(super) async fn run_chain_sync_task(
             )
             .await?;
             debug!("finish - fetch the global state from before the upgrade - upgrade");
+            metrics
+                .chain_sync_upgrade_time_seconds
+                .set(metric.elapsed().as_secs() as i64);
             return Ok(*trusted_block_header);
         }
+
+        metrics
+            .chain_sync_upgrade_time_seconds
+            .set(metric.elapsed().as_secs() as i64);
     }
 
     let max_parallel_deploy_fetches = node_config.max_parallel_deploy_fetches as usize;
 
     let (mut trusted_key_block_info, mut most_recent_block_header) = if node_config.archival_sync {
         info!("start - archival_sync - total");
+        let metric = Instant::now();
         let result = archival_sync(
             effect_builder,
             *trusted_block_header,
@@ -871,17 +899,25 @@ pub(super) async fn run_chain_sync_task(
             node_config,
         )
         .await?;
+        metrics
+            .chain_archival_sync_time_seconds
+            .set(metric.elapsed().as_secs() as i64);
         debug!("finish - archival_sync - total");
         result
     } else {
         info!("start - fast_sync_to_most_recent - total");
+        let metric = Instant::now();
         let result = fast_sync_to_most_recent(
             effect_builder,
             *trusted_block_header,
             &chainspec,
             node_config,
+            &metrics,
         )
         .await?;
+        metrics
+            .chain_fast_sync_time_seconds
+            .set(metric.elapsed().as_secs() as i64);
         debug!("finish - fast_sync_to_most_recent - total");
         result
     };
@@ -900,105 +936,111 @@ pub(super) async fn run_chain_sync_task(
     );
 
     info!("start - fetching and executing blocks - loop total");
-    loop {
-        info!(
-            "start - fetching block - {}",
-            trusted_key_block_info.key_block_hash
-        );
-        let result = fetch_and_store_next::<BlockWithMetadata>(
-            effect_builder,
-            &most_recent_block_header,
-            &trusted_key_block_info,
-            &*chainspec,
-        )
-        .await?;
-        info!(
-            "finish - fetching block - {}",
-            trusted_key_block_info.key_block_hash
-        );
-        let block = match result {
-            None => {
+    {
+        let metric = Instant::now();
+        loop {
+            info!(
+                "start - fetching block - {}",
+                trusted_key_block_info.key_block_hash
+            );
+            let result = fetch_and_store_next::<BlockWithMetadata>(
+                effect_builder,
+                &most_recent_block_header,
+                &trusted_key_block_info,
+                &*chainspec,
+            )
+            .await?;
+            info!(
+                "finish - fetching block - {}",
+                trusted_key_block_info.key_block_hash
+            );
+            let block = match result {
+                None => {
+                    info!(
+                        era = most_recent_block_header.era_id().value(),
+                        height = most_recent_block_header.height(),
+                        timestamp = %most_recent_block_header.timestamp(),
+                        "couldn't download a more recent block; finishing syncing",
+                    );
+                    break;
+                }
+                Some(block_with_metadata) => block_with_metadata.block,
+            };
+
+            let deploys = fetch_and_store_deploys(
+                block.deploy_hashes().to_vec(),
+                max_parallel_deploy_fetches,
+                effect_builder,
+            )
+            .await?;
+
+            let transfers = fetch_and_store_deploys(
+                block.transfer_hashes().to_vec(),
+                max_parallel_deploy_fetches,
+                effect_builder,
+            )
+            .await?;
+
+            info!(
+                era_id = ?block.header().era_id(),
+                height = block.height(),
+                now = %Timestamp::now(),
+                block_timestamp = %block.timestamp(),
+                "executing block",
+            );
+            info!("start - executing finalized block - {}", block.hash());
+            let block_and_execution_effects = effect_builder
+                .execute_finalized_block(
+                    block.protocol_version(),
+                    execution_pre_state.clone(),
+                    FinalizedBlock::from(block.clone()),
+                    deploys,
+                    transfers,
+                )
+                .await?;
+            debug!("finish - executing finalized block - {}", block.hash());
+
+            if block != *block_and_execution_effects.block() {
+                return Err(Error::ExecutedBlockIsNotTheSameAsDownloadedBlock {
+                    executed_block: Box::new(Block::from(block_and_execution_effects)),
+                    downloaded_block: Box::new(block.clone()),
+                });
+            }
+
+            most_recent_block_header = block.take_header();
+            execution_pre_state = ExecutionPreState::from_block_header(
+                &most_recent_block_header,
+                chainspec.protocol_config.verifiable_chunked_hash_activation,
+            );
+
+            if let Some(key_block_info) = KeyBlockInfo::maybe_from_block_header(
+                &most_recent_block_header,
+                chainspec.protocol_config.verifiable_chunked_hash_activation,
+            ) {
+                trusted_key_block_info = key_block_info;
+            }
+
+            // If we managed to sync up to the current era, stop - we'll have to sync the consensus
+            // protocol state, anyway.
+            if is_current_era(
+                &most_recent_block_header,
+                &trusted_key_block_info,
+                &chainspec,
+            ) {
                 info!(
                     era = most_recent_block_header.era_id().value(),
                     height = most_recent_block_header.height(),
                     timestamp = %most_recent_block_header.timestamp(),
-                    "couldn't download a more recent block; finishing syncing",
+                    "synchronized up to the current era; finishing syncing",
                 );
                 break;
             }
-            Some(block_with_metadata) => block_with_metadata.block,
-        };
-
-        let deploys = fetch_and_store_deploys(
-            block.deploy_hashes().to_vec(),
-            max_parallel_deploy_fetches,
-            effect_builder,
-        )
-        .await?;
-
-        let transfers = fetch_and_store_deploys(
-            block.transfer_hashes().to_vec(),
-            max_parallel_deploy_fetches,
-            effect_builder,
-        )
-        .await?;
-
-        info!(
-            era_id = ?block.header().era_id(),
-            height = block.height(),
-            now = %Timestamp::now(),
-            block_timestamp = %block.timestamp(),
-            "executing block",
-        );
-        info!("start - executing finalized block - {}", block.hash());
-        let block_and_execution_effects = effect_builder
-            .execute_finalized_block(
-                block.protocol_version(),
-                execution_pre_state.clone(),
-                FinalizedBlock::from(block.clone()),
-                deploys,
-                transfers,
-            )
-            .await?;
-        debug!("finish - executing finalized block - {}", block.hash());
-
-        if block != *block_and_execution_effects.block() {
-            return Err(Error::ExecutedBlockIsNotTheSameAsDownloadedBlock {
-                executed_block: Box::new(Block::from(block_and_execution_effects)),
-                downloaded_block: Box::new(block.clone()),
-            });
         }
-
-        most_recent_block_header = block.take_header();
-        execution_pre_state = ExecutionPreState::from_block_header(
-            &most_recent_block_header,
-            chainspec.protocol_config.verifiable_chunked_hash_activation,
-        );
-
-        if let Some(key_block_info) = KeyBlockInfo::maybe_from_block_header(
-            &most_recent_block_header,
-            chainspec.protocol_config.verifiable_chunked_hash_activation,
-        ) {
-            trusted_key_block_info = key_block_info;
-        }
-
-        // If we managed to sync up to the current era, stop - we'll have to sync the consensus
-        // protocol state, anyway.
-        if is_current_era(
-            &most_recent_block_header,
-            &trusted_key_block_info,
-            &chainspec,
-        ) {
-            info!(
-                era = most_recent_block_header.era_id().value(),
-                height = most_recent_block_header.height(),
-                timestamp = %most_recent_block_header.timestamp(),
-                "synchronized up to the current era; finishing syncing",
-            );
-            break;
-        }
+        metrics
+            .chain_sync_fetch_and_execute_blocks_time_seconds
+            .set(metric.elapsed().as_secs() as i64);
+        debug!("finish - fetching and executing blocks - loop total");
     }
-    debug!("finish - fetching and executing blocks - loop total");
 
     info!(
         era_id = ?most_recent_block_header.era_id(),
@@ -1007,6 +1049,10 @@ pub(super) async fn run_chain_sync_task(
         block_timestamp = %most_recent_block_header.timestamp(),
         "finished synchronizing",
     );
+
+    metrics
+        .chain_sync_total_time_seconds
+        .set(metric.elapsed().as_secs() as i64);
 
     Ok(most_recent_block_header)
 }

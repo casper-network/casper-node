@@ -1,10 +1,12 @@
 mod error;
 mod event;
+mod metrics;
 mod operations;
 
 use std::{convert::Infallible, fmt::Debug, sync::Arc};
 
 use datasize::DataSize;
+use prometheus::Registry;
 use tracing::{debug, error, info};
 
 use casper_execution_engine::core::engine_state::{
@@ -12,6 +14,7 @@ use casper_execution_engine::core::engine_state::{
 };
 use casper_types::{EraId, PublicKey};
 
+use self::metrics::Metrics;
 use crate::{
     components::{
         consensus::EraReport,
@@ -51,6 +54,7 @@ pub(crate) struct ChainSynchronizer {
     /// reactor can stop running.  It is passed to the participating reactor's constructor via its
     /// config.
     joining_outcome: Option<JoiningOutcome>,
+    metrics: Metrics,
 }
 
 impl ChainSynchronizer {
@@ -58,11 +62,13 @@ impl ChainSynchronizer {
         chainspec: Arc<Chainspec>,
         config: NodeConfig,
         effect_builder: EffectBuilder<JoinerEvent>,
+        registry: &Registry,
     ) -> (Self, Effects<Event>) {
         let synchronizer = ChainSynchronizer {
             chainspec,
             config,
             joining_outcome: None,
+            metrics: Metrics::new(registry).expect("TODO[RC]: Unable to create metrics"),
         };
         let effects = match synchronizer.config.trusted_hash.as_ref() {
             None => {
@@ -98,6 +104,7 @@ impl ChainSynchronizer {
             trusted_hash,
             Arc::clone(&self.chainspec),
             self.config.clone(),
+            self.metrics.clone(),
         )
         .event(Event::SyncResult)
     }

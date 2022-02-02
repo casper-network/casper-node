@@ -555,6 +555,7 @@ impl reactor::Reactor for Reactor {
             Arc::clone(chainspec_loader.chainspec()),
             config.node.clone(),
             effect_builder,
+            registry
         );
         effects.extend(reactor::wrap_effects(
             JoinerEvent::ChainSynchronizer,
