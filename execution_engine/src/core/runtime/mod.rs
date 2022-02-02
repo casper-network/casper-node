@@ -1186,7 +1186,7 @@ where
             return Err(Error::Interpreter(error.into()).into());
         }
 
-        // For all practical purposes following conversion is assumed to be safe
+        // SAFETY: For all practical purposes following conversion is assumed to be safe
         let bytes_size: u32 = key_bytes
             .len()
             .try_into()
@@ -2630,7 +2630,7 @@ where
                 return Err(Error::Interpreter(error.into()));
             }
 
-            // Following cast is assumed to be safe
+            // SAFETY: For all practical purposes following conversion is assumed to be safe
             let bytes_size: u32 = key_bytes
                 .len()
                 .try_into()
@@ -3362,7 +3362,13 @@ where
             Some(arg) if arg.inner_bytes().len() > u32::max_value() as usize => {
                 return Ok(Err(ApiError::OutOfMemory));
             }
-            Some(arg) => arg.inner_bytes().len().try_into().unwrap(),
+            Some(arg) => {
+                // SAFETY: Safe to unwrap as wee asserted length above
+                arg.inner_bytes()
+                    .len()
+                    .try_into()
+                    .expect("Should fit within the range")
+            }
             None => return Ok(Err(ApiError::MissingArgument)),
         };
 
