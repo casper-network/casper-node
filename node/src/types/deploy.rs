@@ -32,7 +32,7 @@ use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     runtime_args,
     system::standard_payment::ARG_AMOUNT,
-    AsymmetricType, ExecutionResult, Motes, PublicKey, RuntimeArgs, SecretKey, Signature, U512,
+    ExecutionResult, Motes, PublicKey, RuntimeArgs, SecretKey, Signature, U512,
 };
 
 use super::{BlockHash, Item, Tag, TimeDiff, Timestamp};
@@ -72,17 +72,8 @@ static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
     let serialized_header = serialize_header(&header);
     let hash = DeployHash::new(Digest::hash(&serialized_header));
 
-    let signature = Signature::from_hex(
-        "012dbf03817a51794a8e19e0724884075e6d1fbec326b766ecfa6658b41f81290da85e23b24e88b1c8d976\
-            1185c961daee1adab0649912a6477bcd2e69bd91bd08"
-            .as_bytes(),
-    )
-    .unwrap();
-    let approval = Approval {
-        signer: PublicKey::from(secret_key),
-        signature,
-    };
     let mut approvals = BTreeSet::new();
+    let approval = Approval::create(&hash, secret_key);
     approvals.insert(approval);
 
     Deploy {
@@ -526,6 +517,13 @@ pub struct Approval {
 }
 
 impl Approval {
+    /// Creates an approval for the given deploy hash using the given secret key.
+    pub fn create(hash: &DeployHash, secret_key: &SecretKey) -> Self {
+        let signer = PublicKey::from(secret_key);
+        let signature = crypto::sign(hash, secret_key, &signer);
+        Self { signer, signature }
+    }
+
     /// Returns the public key of the approval's signer.
     pub fn signer(&self) -> &PublicKey {
         &self.signer
@@ -685,9 +683,7 @@ impl Deploy {
 
     /// Adds a signature of this deploy's hash to its approvals.
     pub fn sign(&mut self, secret_key: &SecretKey) {
-        let signer = PublicKey::from(secret_key);
-        let signature = crypto::sign(&self.hash, secret_key, &signer);
-        let approval = Approval { signer, signature };
+        let approval = Approval::create(&self.hash, secret_key);
         self.approvals.insert(approval);
     }
 

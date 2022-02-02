@@ -357,7 +357,7 @@ pub(crate) enum StorageRequest {
         responder: Responder<bool>,
     },
     /// Store a set of finalized approvals for a specific deploy.
-    FinalizeApprovals {
+    StoreFinalizedApprovals {
         /// The deploy hash to store the finalized approvals for.
         deploy_hash: DeployHash,
         /// The set of finalized approvals.
@@ -431,7 +431,7 @@ impl Display for StorageRequest {
             StorageRequest::GetFinalizedDeploys { ttl, .. } => {
                 write!(formatter, "get finalized deploys, ttl: {:?}", ttl)
             }
-            StorageRequest::FinalizeApprovals { deploy_hash, .. } => {
+            StorageRequest::StoreFinalizedApprovals { deploy_hash, .. } => {
                 write!(formatter, "finalized approvals for deploy {}", deploy_hash)
             }
         }

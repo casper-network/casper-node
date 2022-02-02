@@ -798,14 +798,8 @@ impl Storage {
                 let mut txn = self.env.begin_ro_txn()?;
 
                 let deploy = {
-                    let opt_deploy = self
-                        .get_deploys_with_finalized_approvals(&mut txn, &[deploy_hash])?
-                        .into_iter()
-                        .next()
-                        // Fold-in the case of the vec not having exactly one element. This should
-                        // never happen, but if it does, we will treat it as not found instead of
-                        // panicking.
-                        .flatten();
+                    let opt_deploy =
+                        self.get_deploy_with_finalized_approvals(&mut txn, &deploy_hash)?;
 
                     if let Some(deploy) = opt_deploy {
                         deploy
@@ -921,12 +915,12 @@ impl Storage {
             StorageRequest::GetFinalizedDeploys { ttl, responder } => {
                 responder.respond(self.get_finalized_deploys(ttl)?).ignore()
             }
-            StorageRequest::FinalizeApprovals {
+            StorageRequest::StoreFinalizedApprovals {
                 ref deploy_hash,
                 ref finalized_approvals,
                 responder,
             } => responder
-                .respond(self.finalize_approvals(deploy_hash, finalized_approvals)?)
+                .respond(self.store_finalized_approvals(deploy_hash, finalized_approvals)?)
                 .ignore(),
         })
     }
@@ -1356,21 +1350,27 @@ impl Storage {
     ) -> Result<SmallVec<[Option<DeployWithFinalizedApprovals>; 1]>, LmdbExtError> {
         deploy_hashes
             .iter()
-            .map(|deploy_hash| {
-                let original: Option<Deploy> = tx.get_value(self.deploy_db, deploy_hash)?;
-
-                if let Some(deploy) = original {
-                    let finalized_approvals: Option<FinalizedApprovals> =
-                        tx.get_value(self.finalized_approvals_db, deploy_hash)?;
-                    Ok(Some(DeployWithFinalizedApprovals::new(
-                        deploy,
-                        finalized_approvals,
-                    )))
-                } else {
-                    Ok(None)
-                }
-            })
+            .map(|deploy_hash| self.get_deploy_with_finalized_approvals(tx, deploy_hash))
             .collect()
+    }
+
+    /// Retrieves a single deploy along with its finalized approvals from storage
+    fn get_deploy_with_finalized_approvals<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        deploy_hash: &DeployHash,
+    ) -> Result<Option<DeployWithFinalizedApprovals>, LmdbExtError> {
+        let maybe_original_deploy = tx.get_value(self.deploy_db, deploy_hash)?;
+        if let Some(deploy) = maybe_original_deploy {
+            let maybe_finalized_approvals =
+                tx.get_value(self.finalized_approvals_db, deploy_hash)?;
+            Ok(Some(DeployWithFinalizedApprovals::new(
+                deploy,
+                maybe_finalized_approvals,
+            )))
+        } else {
+            Ok(None)
+        }
     }
 
     /// Returns the deploy's header.
@@ -1429,7 +1429,7 @@ impl Storage {
     }
 
     /// Stores a set of finalized approvals.
-    pub fn finalize_approvals(
+    pub fn store_finalized_approvals(
         &self,
         deploy_hash: &DeployHash,
         finalized_approvals: &FinalizedApprovals,

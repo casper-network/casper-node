@@ -1834,7 +1834,7 @@ impl<REv> EffectBuilder<REv> {
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::FinalizeApprovals {
+            |responder| StorageRequest::StoreFinalizedApprovals {
                 deploy_hash,
                 finalized_approvals,
                 responder,

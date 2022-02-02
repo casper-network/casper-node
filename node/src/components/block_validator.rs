@@ -153,6 +153,8 @@ pub(crate) struct BlockValidationState<I> {
     /// Appendable block ensuring that the deploys satisfy the validity conditions.
     appendable_block: AppendableBlock,
     /// The deploys that have not yet been "crossed off" the list of potential misses.
+    /// The set of approvals is `Some` if the deploy was included in a block received via
+    /// consensus, with a set of approvals that would be finalized with the block.
     missing_deploys: HashMap<DeployOrTransferHash, Option<BTreeSet<Approval>>>,
     /// A list of responders that are awaiting an answer.
     responders: SmallVec<[Responder<bool>; 2]>,

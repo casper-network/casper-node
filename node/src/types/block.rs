@@ -37,12 +37,13 @@ use crate::{
     rpcs::docs::DocExample,
     types::{
         error::{BlockCreationError, BlockValidationError},
-        Deploy, DeployHash, DeployOrTransferHash, DeployWithApprovals, JsonBlock, JsonBlockHeader,
+        Approval, Deploy, DeployHash, DeployOrTransferHash, DeployWithApprovals, JsonBlock,
+        JsonBlockHeader,
     },
     utils::DisplayIter,
 };
 #[cfg(test)]
-use crate::{crypto::generate_ed25519_keypair, testing::TestRng, types::Approval};
+use crate::{crypto::generate_ed25519_keypair, testing::TestRng};
 
 static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
     let secret_key_1 = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
@@ -92,11 +93,18 @@ static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
     let transfer_hashes = vec![*Deploy::doc_example().id()];
     let random_bit = true;
     let timestamp = *Timestamp::doc_example();
+    let secret_key = SecretKey::doc_example();
+    let public_key = PublicKey::from(secret_key);
     let block_payload = BlockPayload::new(
         vec![],
         transfer_hashes
             .into_iter()
-            .map(|hash| DeployWithApprovals::new(hash, BTreeSet::new()))
+            .map(|hash| {
+                let approval = Approval::create(&hash, secret_key);
+                let mut approvals = BTreeSet::new();
+                approvals.insert(approval);
+                DeployWithApprovals::new(hash, approvals)
+            })
             .collect(),
         vec![],
         random_bit,
@@ -104,8 +112,6 @@ static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
     let era_report = Some(EraReport::doc_example().clone());
     let era_id = EraId::from(1);
     let height = 10;
-    let secret_key = SecretKey::doc_example();
-    let public_key = PublicKey::from(secret_key);
     FinalizedBlock::new(
         block_payload,
         era_report,
