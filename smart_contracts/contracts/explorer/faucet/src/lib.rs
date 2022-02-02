@@ -5,8 +5,6 @@ extern crate alloc;
 use alloc::{vec, vec::Vec};
 use core::mem::MaybeUninit;
 
-use num::{rational::Ratio, Zero};
-
 use casper_contract::{
     contract_api::{self, runtime, storage, system},
     ext_ffi,
@@ -228,7 +226,7 @@ fn get_distribution_amount_debounced() -> U512 {
         FaucetError::InvalidDistributionsPerInterval,
     );
 
-    if distributions_per_interval.is_zero() {
+    if distributions_per_interval == 0 {
         return U512::zero();
     }
 
@@ -256,8 +254,7 @@ fn get_distribution_amount_debounced() -> U512 {
         FaucetError::InvalidRemainingAmount,
     );
 
-    let distribution_amount =
-        Ratio::new(available_amount, U512::from(distributions_per_interval)).to_integer();
+    let distribution_amount = available_amount / U512::from(distributions_per_interval);
 
     if remaining_amount >= distribution_amount {
         distribution_amount
@@ -279,7 +276,7 @@ fn get_distribution_amount() -> U512 {
         FaucetError::InvalidDistributionsPerInterval,
     );
 
-    if distributions_per_interval.is_zero() {
+    if distributions_per_interval == 0 {
         runtime::revert(FaucetError::ZeroDistributionsPerInterval);
     }
 
@@ -295,7 +292,7 @@ fn get_distribution_amount() -> U512 {
         FaucetError::InvalidAvailableAmount,
     );
 
-    Ratio::new(available_amount, U512::from(distributions_per_interval)).to_integer()
+    available_amount / U512::from(distributions_per_interval)
 }
 
 fn reset_remaining_amount() {
