@@ -24,6 +24,7 @@ use blake2::{
 };
 use datasize::DataSize;
 use itertools::Itertools;
+use once_cell::sync::OnceCell;
 #[cfg(test)]
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 use schemars::JsonSchema;
@@ -98,6 +99,39 @@ impl Digest {
         Digest(result)
     }
 
+    /// Hashes a raw Merkle root and leaf count to firm the final Merkle hash.
+    ///
+    /// To avoid pre-image attacks, the final hash that is based upon the number of leaves in the
+    /// Merkle tree and the root hash is prepended with a padding to ensure it is longer than the
+    /// actual chunk size.
+    ///
+    /// Without this feature, an attacker could construct an item that is only a few bytes long but
+    /// hashes to the same value as a much longer, chunked item by hashing `(len || root hash of
+    /// longer item's Merkle tree root)`.
+    ///
+    /// This function computes the correct final hash by ensuring the hasher used has been
+    /// initialized with padding before. For efficiency reasons it uses a memoized hasher state
+    /// computed on first run and cloned afterwards.
+    fn hash_merkle_root(leaf_count: u64, root: Digest) -> Digest {
+        static PAIR_PREFIX_HASHER: OnceCell<VarBlake2b> = OnceCell::new();
+
+        let mut result = [0; Digest::LENGTH];
+        let mut hasher = PAIR_PREFIX_HASHER
+            .get_or_init(|| {
+                let mut hasher = VarBlake2b::new(Digest::LENGTH).unwrap();
+                hasher.update(&[0u8; ChunkWithProof::CHUNK_SIZE_BYTES]);
+                hasher
+            })
+            .clone();
+
+        hasher.update(leaf_count.to_le_bytes());
+        hasher.update(root);
+        hasher.finalize_variable(|slice| {
+            result.copy_from_slice(slice);
+        });
+        Digest(result)
+    }
+
     /// Returns the underlying BLAKE2b hash bytes
     pub fn value(&self) -> [u8; Digest::LENGTH] {
         self.0
@@ -137,11 +171,11 @@ impl Digest {
         I::IntoIter: ExactSizeIterator,
     {
         let leaves = leaves.into_iter();
-        let leaf_count_bytes = (leaves.len() as u64).to_le_bytes();
+        let leaf_count = leaves.len() as u64;
 
         leaves.tree_fold1(Digest::hash_pair).map_or_else(
             || Digest::SENTINEL_MERKLE_TREE,
-            |raw_root| Digest::hash_pair(leaf_count_bytes, raw_root),
+            |raw_root| Digest::hash_merkle_root(leaf_count, raw_root),
         )
     }
 
@@ -506,7 +540,7 @@ mod tests {
 
         assert_eq!(
             hash_lower_hex,
-            "9ba070a55c7f72600d7f3fee2c0a6e52ec89237d97a8677eb0612132fb34df60"
+            "775cec8133b97b0e8d4e97659025d5bac4ed7c8927d1bd99cf62114df57f3e74"
         );
     }
 
@@ -526,7 +560,7 @@ mod tests {
 
         assert_eq!(
             hash_lower_hex,
-            "8768e1ca1b86ed3d722fb1b7d7a0228349c7d448058d0ce1e314f99dbd1c8573"
+            "4bd50b08a8366b28c35bc831b95d147123bad01c29ffbf854b659c4b3ea4086c"
         );
     }
 
@@ -544,7 +578,7 @@ mod tests {
 
         assert_eq!(
             hash_lower_hex,
-            "aae1660ca492ed9af6b2ead22f88b390aeb2ec0719654824d084aa6c6553ceeb"
+            "fd1214a627473ffc6d6cc97e7012e6344d74abbf987b48cde5d0642049a0db98"
         );
     }
 
@@ -570,5 +604,90 @@ mod tests {
         ];
 
         assert_eq!(expected, serialized);
+    }
+
+    #[test]
+    fn merkle_roots_are_preimage_resistent() {
+        // Input data is two chunks long.
+        //
+        // The resulting tree will look like this:
+        //
+        // 1..0  a..j
+        // │     │
+        // └─────── R
+        //
+        // The merkle root is thus: R = h( h(1..0) || h(a..j) )
+        //
+        // h(1..0) = 807f1ba73147c3a96c2d63b38dd5a5f514f66290a1436bb9821e9f2a72eff263
+        // h(a..j) = 499e1cdb476523fedafc9d9db31125e2744f271578ea95b16ab4bd1905f05fea
+        // R=h(h(1..0)||h(a..j)) = 1319394a98d0cb194f960e3748baeb2045a9ec28aa51e0d42011be43f4a91f5f
+        // h(2u64le || R) = c31f0bb6ef569354d1a26c3a51f1ad4b6d87cef7f73a290ab6be8db6a9c7d4ee
+        //
+        // The final step is to hash h(2u64le || R), which is the length as little endian
+        // concatenated with the root.
+
+        // Constants used here assume a chunk size of 10 bytes.
+        assert_eq!(ChunkWithProof::CHUNK_SIZE_BYTES, 10);
+
+        let long_data = b"1234567890abcdefghij";
+        assert_eq!(long_data.len(), ChunkWithProof::CHUNK_SIZE_BYTES * 2);
+
+        // The `long_data_hash` is constructed manually here, as `Digest::hash` still had
+        // deactivated chunking code at the time this test was written.
+        let long_data_hash = Digest::hash_merkle_tree(
+            long_data
+                .as_ref()
+                .chunks(ChunkWithProof::CHUNK_SIZE_BYTES)
+                .map(Digest::blake2b_hash),
+        );
+
+        // The concatenation of `2u64` in little endian + the Merkle root hash `R`. Note that this
+        // is a valid hashable object on its own.
+        let maybe_colliding_short_data = [
+            2, 0, 0, 0, 0, 0, 0, 0, 19, 25, 57, 74, 152, 208, 203, 25, 79, 150, 14, 55, 72, 186,
+            235, 32, 69, 169, 236, 40, 170, 81, 224, 212, 32, 17, 190, 67, 244, 169, 31, 95,
+        ];
+
+        // Use `blake2b_hash` to work around the issue of the chunk size being shorter than the
+        // digest length.
+        let short_data_hash = Digest::blake2b_hash(maybe_colliding_short_data);
+
+        // Ensure there is no collision. You can verify this test is correct by temporarily changing
+        // the `Digest::hash_merkle_tree` function to use the unpadded `hash_pair` function, instead
+        // of `hash_merkle_root`.
+        assert_ne!(long_data_hash, short_data_hash);
+
+        // The expected input for the root hash is the colliding data, but prefixed with a full
+        // chunk of zeros.
+        let expected_final_hash_input = [
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 19, 25, 57, 74, 152, 208, 203,
+            25, 79, 150, 14, 55, 72, 186, 235, 32, 69, 169, 236, 40, 170, 81, 224, 212, 32, 17,
+            190, 67, 244, 169, 31, 95,
+        ];
+        assert_eq!(
+            Digest::blake2b_hash(&expected_final_hash_input),
+            long_data_hash
+        );
+
+        // Another way to specify this sanity check is to say that the short and long data should
+        // hash differently.
+        //
+        // Note: This condition is true at the time of writing this test, where chunk hashing is
+        //       disabled. It should still hold true once enabled.
+        assert_ne!(
+            Digest::hash(maybe_colliding_short_data),
+            Digest::hash(long_data)
+        );
+
+        // In a similar manner, the internal padded data should also not hash equal to either, as it
+        // should be hashed using the chunking function.
+        assert_ne!(
+            Digest::hash(maybe_colliding_short_data),
+            Digest::hash(expected_final_hash_input)
+        );
+        assert_ne!(
+            Digest::hash(long_data),
+            Digest::hash(expected_final_hash_input)
+        );
     }
 }
