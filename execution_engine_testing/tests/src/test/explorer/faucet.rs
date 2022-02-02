@@ -1352,7 +1352,7 @@ fn faucet_costs() {
         .commit();
 
     let _faucet_install_cost = builder.last_exec_gas_cost();
-    // println!("faucet install cost: {}", faucet_install_cost);
+    // println!("faucet install cost: {}", _faucet_install_cost);
 
     let assigned_time_interval = 10_000u64;
     let assigned_distributions_per_interval = 2u64;
@@ -1382,7 +1382,7 @@ fn faucet_costs() {
         .commit();
 
     let _faucet_set_variables_cost = builder.last_exec_gas_cost();
-    // println!("faucet set variables cost: {}", faucet_set_variables_cost);
+    // println!("faucet set variables cost: {}", _faucet_set_variables_cost);
 
     let faucet_call_by_installer = {
         let deploy_item = DeployItemBuilder::new()
@@ -1408,7 +1408,7 @@ fn faucet_costs() {
     let _faucet_call_by_installer_cost = builder.last_exec_gas_cost();
     // println!(
     //     "faucet call by installer cost: {}",
-    //     faucet_call_by_installer_cost
+    //     _faucet_call_by_installer_cost
     // );
 
     let faucet_contract_hash = builder
@@ -1434,5 +1434,5 @@ fn faucet_costs() {
         .commit();
 
     let _faucet_call_by_user_cost = builder.last_exec_gas_cost();
-    // println!("faucet call by user cost: {}", faucet_call_by_user_cost);
+    // println!("faucet call by user cost: {}", _faucet_call_by_user_cost);
 }
