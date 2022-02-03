@@ -974,6 +974,11 @@ impl DeployWithFinalizedApprovals {
     pub fn discard_finalized_approvals(self) -> Deploy {
         self.deploy
     }
+
+    #[cfg(test)]
+    pub(crate) fn finalized_approvals(&self) -> Option<&FinalizedApprovals> {
+        self.finalized_approvals.as_ref()
+    }
 }
 
 #[cfg(test)]
@@ -1056,6 +1061,37 @@ impl Deploy {
             deploy.header.ttl,
             deploy.header.gas_price,
             deploy.header.dependencies,
+            deploy.header.chain_name,
+            payment,
+            session,
+            &secret_key,
+            None,
+        )
+    }
+
+    pub(crate) fn random_valid_native_transfer_without_deps(rng: &mut TestRng) -> Self {
+        let deploy = Self::random(rng);
+        let transfer_args = runtime_args! {
+            "amount" => *MAX_PAYMENT,
+            "source" => PublicKey::random(rng).to_account_hash(),
+            "target" => PublicKey::random(rng).to_account_hash(),
+        };
+        let payment_args = runtime_args! {
+            "amount" => U512::from(10),
+        };
+        let session = ExecutableDeployItem::Transfer {
+            args: transfer_args,
+        };
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: Bytes::new(),
+            args: payment_args,
+        };
+        let secret_key = SecretKey::random(rng);
+        Deploy::new(
+            Timestamp::now(),
+            deploy.header.ttl,
+            deploy.header.gas_price,
+            vec![],
             deploy.header.chain_name,
             payment,
             session,

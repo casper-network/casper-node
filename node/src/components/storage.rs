@@ -1760,6 +1760,40 @@ impl Storage {
             .expect("could not retrieve value from storage")
     }
 
+    /// Directly returns a deploy metadata from internal store.
+    ///
+    /// # Panics
+    ///
+    /// Panics if an IO error occurs.
+    pub(crate) fn get_deploy_metadata_by_hash(
+        &self,
+        deploy_hash: &DeployHash,
+    ) -> Option<DeployMetadata> {
+        let mut txn = self
+            .env
+            .begin_ro_txn()
+            .expect("could not create RO transaction");
+        self.get_deploy_metadata(&mut txn, deploy_hash)
+            .expect("could not retrieve deploy metadata from storage")
+    }
+
+    /// Directly returns a deploy with finalized approvals from internal store.
+    ///
+    /// # Panics
+    ///
+    /// Panics if an IO error occurs.
+    pub(crate) fn get_deploy_with_finalized_approvals_by_hash(
+        &self,
+        deploy_hash: &DeployHash,
+    ) -> Option<DeployWithFinalizedApprovals> {
+        let mut txn = self
+            .env
+            .begin_ro_txn()
+            .expect("could not create RO transaction");
+        self.get_deploy_with_finalized_approvals(&mut txn, deploy_hash)
+            .expect("could not retrieve a deploy with finalized approvals from storage")
+    }
+
     /// Reads all known deploy hashes from the internal store.
     ///
     /// # Panics

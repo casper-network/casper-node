@@ -34,9 +34,9 @@ use crate::{
     },
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
-        ActivationPoint, BlockHeader, Chainspec, ExitCode, Timestamp,
+        ActivationPoint, BlockHeader, Chainspec, Deploy, ExitCode, Timestamp,
     },
-    utils::{External, Loadable, WithDir, RESOURCES_PATH},
+    utils::{External, Loadable, Source, WithDir, RESOURCES_PATH},
     NodeRng,
 };
 
@@ -152,6 +152,8 @@ impl TestChain {
         }
         self.storages.push(temp_dir);
         cfg.storage = storage_cfg;
+
+        cfg.block_proposer.deploy_delay = "5sec".parse().unwrap();
 
         cfg
     }
@@ -494,5 +496,117 @@ async fn dont_upgrade_without_switch_block() {
             Some(ReactorExit::ProcessShouldExit(ExitCode::Success)),
             runner.participating().maybe_exit()
         );
+    }
+}
+
+#[tokio::test]
+async fn should_store_finalized_approvals() {
+    testing::init_logging();
+
+    let mut rng = crate::new_rng();
+
+    // Set up a network with two validators.
+    let alice_sk = Arc::new(SecretKey::random(&mut rng));
+    let alice_pk = PublicKey::from(&*alice_sk);
+    let bob_sk = Arc::new(SecretKey::random(&mut rng));
+    let keys: Vec<Arc<SecretKey>> = vec![alice_sk.clone(), bob_sk.clone()];
+    // only Alice will be proposing blocks
+    let stakes: BTreeMap<PublicKey, U512> =
+        iter::once((alice_pk.clone(), U512::from(100))).collect();
+
+    // Eras have exactly two blocks each, and there is one block per second.
+    let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
+    chain.chainspec_mut().core_config.minimum_era_height = 2;
+    chain.chainspec_mut().core_config.era_duration = 0.into();
+    chain.chainspec_mut().highway_config.minimum_round_exponent = 10;
+
+    let mut net = chain
+        .create_initialized_network(&mut rng)
+        .await
+        .expect("network initialization failed");
+
+    // Wait for all nodes to proceed to era 1.
+    net.settle_on(&mut rng, is_in_era(EraId::from(1)), Duration::from_secs(90))
+        .await;
+
+    // Submit a deploy.
+    let mut deploy = Deploy::random_valid_native_transfer_without_deps(&mut rng);
+    deploy.sign(&*alice_sk);
+    // We expect these approvals to become finalized approvals for Bob.
+    let expected_approvals = deploy.approvals().clone();
+
+    let mut deploy_copy = deploy.clone();
+    deploy_copy.sign(&*bob_sk);
+
+    let deploy_hash = *deploy.deploy_or_transfer_hash().deploy_hash();
+
+    for runner in net.runners_mut() {
+        if runner.participating().consensus().public_key() == &alice_pk {
+            // Alice will propose the deploy with just her signature
+            runner
+                .process_injected_effects(|effect_builder| {
+                    effect_builder
+                        .put_deploy_to_storage(Box::new(deploy.clone()))
+                        .ignore()
+                })
+                .await;
+            runner
+                .process_injected_effects(|effect_builder| {
+                    effect_builder
+                        .announce_new_deploy_accepted(Box::new(deploy.clone()), Source::Client)
+                        .ignore()
+                })
+                .await;
+        } else {
+            // Bob will receive the deploy with two signatures
+            runner
+                .process_injected_effects(|effect_builder| {
+                    effect_builder
+                        .put_deploy_to_storage(Box::new(deploy_copy.clone()))
+                        .ignore()
+                })
+                .await;
+            runner
+                .process_injected_effects(|effect_builder| {
+                    effect_builder
+                        .announce_new_deploy_accepted(Box::new(deploy_copy.clone()), Source::Client)
+                        .ignore()
+                })
+                .await;
+        }
+    }
+
+    // Run until the deploy gets executed.
+    let timeout = Duration::from_secs(90);
+    net.settle_on(
+        &mut rng,
+        |nodes| {
+            nodes.values().all(|runner| {
+                runner
+                    .participating()
+                    .storage()
+                    .get_deploy_metadata_by_hash(&deploy_hash)
+                    .is_some()
+            })
+        },
+        timeout,
+    )
+    .await;
+
+    // Check if the approvals agree.
+    for runner in net.nodes().values() {
+        let maybe_dwa = runner
+            .participating()
+            .storage()
+            .get_deploy_with_finalized_approvals_by_hash(&deploy_hash);
+        let maybe_finalized_approvals = maybe_dwa
+            .as_ref()
+            .and_then(|dwa| dwa.finalized_approvals())
+            .map(|fa| fa.as_ref());
+        if runner.participating().consensus().public_key() != &alice_pk {
+            assert_eq!(maybe_finalized_approvals, Some(&expected_approvals),);
+        } else {
+            assert_eq!(maybe_finalized_approvals, None);
+        }
     }
 }
