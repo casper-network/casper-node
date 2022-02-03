@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::BTreeMap,
     fmt::{self, Display, Formatter},
 };
 
@@ -32,19 +32,6 @@ pub(crate) enum ContractRuntimeAnnouncement {
         /// The validators for the eras after the `era_that_is_ending` era.
         upcoming_era_validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
     },
-}
-
-impl ContractRuntimeAnnouncement {
-    /// Creates a `ContractRuntimeAnnouncement::LinearChainBlock` from its parts.
-    pub(crate) fn linear_chain_block(
-        block: Block,
-        execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
-    ) -> Self {
-        Self::LinearChainBlock(Box::new(LinearChainBlock {
-            block,
-            execution_results,
-        }))
-    }
 }
 
 impl Display for ContractRuntimeAnnouncement {
@@ -93,7 +80,7 @@ pub(super) async fn step_success<REv>(
 pub(crate) async fn linear_chain_block<REv>(
     effect_builder: EffectBuilder<REv>,
     block: Block,
-    execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
+    execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
 ) where
     REv: From<ContractRuntimeAnnouncement>,
 {

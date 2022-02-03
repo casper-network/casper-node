@@ -7,7 +7,7 @@ use crate::{
 
 /// Network metrics to track Consensus
 #[derive(Debug)]
-pub(super) struct ConsensusMetrics {
+pub(super) struct Metrics {
     /// Gauge to track time between proposal and finalization.
     finalization_time: Gauge,
     /// Amount of finalized blocks.
@@ -22,11 +22,11 @@ pub(super) struct ConsensusMetrics {
     registry: Registry,
 }
 
-impl ConsensusMetrics {
+impl Metrics {
     pub(super) fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
         let finalization_time = Gauge::new(
             "finalization_time",
-            "the amount of time, in milliseconds, between proposal and finalization of a block",
+            "the amount of time, in milliseconds, between proposal and finalization of the latest finalized block",
         )?;
         let finalized_block_count =
             IntGauge::new("amount_of_blocks", "the number of blocks finalized so far")?;
@@ -38,13 +38,13 @@ impl ConsensusMetrics {
             "time_of_last_finalized_block",
             "timestamp of the most recently finalized block",
         )?;
-        let current_era = IntGauge::new("current_era", "The current era")?;
+        let current_era = IntGauge::new("current_era", "the current era")?;
         registry.register(Box::new(finalization_time.clone()))?;
         registry.register(Box::new(finalized_block_count.clone()))?;
         registry.register(Box::new(current_era.clone()))?;
         registry.register(Box::new(time_of_last_proposed_block.clone()))?;
         registry.register(Box::new(time_of_last_finalized_block.clone()))?;
-        Ok(ConsensusMetrics {
+        Ok(Metrics {
             finalization_time,
             finalized_block_count,
             time_of_last_proposed_block,
@@ -71,7 +71,7 @@ impl ConsensusMetrics {
     }
 }
 
-impl Drop for ConsensusMetrics {
+impl Drop for Metrics {
     fn drop(&mut self) {
         unregister_metric!(self.registry, self.finalization_time);
         unregister_metric!(self.registry, self.finalized_block_count);

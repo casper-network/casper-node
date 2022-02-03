@@ -1,6 +1,6 @@
 [package]
 name = "casper-types"
-version = "1.4.2" # when updating, also update 'html_root_url' in lib.rs
+version = "1.4.5" # when updating, also update 'html_root_url' in lib.rs
 authors = ["Fraser Hutchison <fraser@casperlabs.io>"]
 edition = "2018"
 description = "Types shared by many casper crates for use on the Casper network."
@@ -32,7 +32,6 @@ schemars = { version = "=0.8.5", features = ["preserve_order"], optional = true 
 serde = { version = "1", default-features = false, features = ["alloc", "derive"] }
 serde_bytes = { version = "0.11.5", default-features = false, features = ["alloc"] }
 serde_json = { version = "1.0.59", default-features = false, features = ["alloc"] }
-thiserror = { version = "1.0.29", optional = true }
 uint = { version = "0.9.0", default-features = false }
 version-sync = { version = "0.9", optional = true }
 
@@ -49,12 +48,9 @@ strum = { version = "0.21", features = ["derive"] }
 [features]
 json-schema = ["once_cell", "schemars"]
 gens = ["proptest"]
-std = ["thiserror"]
+# DEPRECATED - enabling `std` has no effect.
+std = []
 
 [[bench]]
 name = "bytesrepr_bench"
-harness = false
-
-[[bench]]
-name = "checksummed_hex_bench"
 harness = false

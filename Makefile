@@ -94,6 +94,13 @@ test-contracts-as: build-contracts-rs build-contracts-as
 .PHONY: test-contracts
 test-contracts: test-contracts-rs test-contracts-as
 
+.PHONY: check-std-features
+check-std-features:
+	cd types && $(CARGO) check --all-targets --no-default-features --features=std
+	cd types && $(CARGO) check --all-targets --features=std
+	cd smart_contracts/contract && $(CARGO) check --all-targets --no-default-features --features=std
+	cd smart_contracts/contract && $(CARGO) check --all-targets --features=std
+
 .PHONY: check-format
 check-format:
 	$(CARGO_PINNED_NIGHTLY) fmt --all -- --check
@@ -126,6 +133,7 @@ check-rs: \
 	doc \
 	lint \
 	audit \
+	check-std-features \
 	test-rs \
 	test-contracts-rs
 
@@ -147,14 +155,6 @@ clean:
 .PHONY: build-for-packaging
 build-for-packaging: build-client-contracts
 	$(LEGACY) $(CARGO) build --release
-
-.PHONY: deb
-deb: setup-rs build-for-packaging
-	cd client && $(LEGACY) $(CARGO) deb -p casper-client --no-build
-
-.PHONY: rpm
-rpm: setup-rs
-	cd client && $(CARGO) rpm build
 
 .PHONY: package
 package:

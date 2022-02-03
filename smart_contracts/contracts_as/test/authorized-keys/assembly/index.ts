@@ -2,28 +2,13 @@ import * as CL from "../../../../contract_as/assembly";
 import {Error, ErrorCode} from "../../../../contract_as/assembly/error";
 import {fromBytesString, fromBytesI32} from "../../../../contract_as/assembly/bytesrepr";
 import {arrayToTyped} from "../../../../contract_as/assembly/utils";
-import {Key, AccountHash} from "../../../../contract_as/assembly/key"
+import {Key} from "../../../../contract_as/assembly/key"
 import {addAssociatedKey, AddKeyFailure, ActionType, setActionThreshold, SetThresholdFailure} from "../../../../contract_as/assembly/account";
 
 const ARG_KEY_MANAGEMENT_THRESHOLD = "key_management_threshold";
 const ARG_DEPLOY_THRESHOLD = "deploy_threshold";
 
 export function call(): void {
-  let publicKeyBytes = new Array<u8>(32);
-  publicKeyBytes.fill(123);
-  let accountHash = new AccountHash(arrayToTyped(publicKeyBytes));
-
-  const addResult = addAssociatedKey(accountHash, 100);
-  switch (addResult) {
-    case AddKeyFailure.DuplicateKey:
-      break;
-    case AddKeyFailure.Ok:
-      break;
-    default:
-      Error.fromUserError(50).revert();
-      break;
-  }
-
   let keyManagementThresholdBytes = CL.getNamedArg(ARG_KEY_MANAGEMENT_THRESHOLD);
   let keyManagementThreshold = keyManagementThresholdBytes[0];
 
@@ -42,5 +27,5 @@ export function call(): void {
       return;
     }
   }
-  
+
 }

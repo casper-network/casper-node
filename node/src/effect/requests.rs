@@ -29,8 +29,8 @@ use casper_execution_engine::{
 };
 use casper_hashing::Digest;
 use casper_types::{
-    checksummed_hex, system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion,
-    PublicKey, StoredValue, Transfer, URef,
+    system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
+    StoredValue, Transfer, URef,
 };
 
 use crate::{
@@ -181,13 +181,11 @@ pub(crate) enum NetworkInfoRequest<I> {
     /// Get incoming and outgoing peers.
     GetPeers {
         /// Responder to be called with all connected peers.
-        // TODO - change the `String` field to a `libp2p::Multiaddr` once small_network is removed.
         responder: Responder<BTreeMap<I, String>>,
     },
     /// Get the peers in random order.
-    GetPeersInRandomOrder {
-        /// Responder to be called with all connected peers.
-        /// Responds with a vector in a random order.
+    GetFullyConnectedPeers {
+        /// Responder to be called with all connected in random order peers.
         responder: Responder<Vec<I>>,
     },
 }
@@ -199,8 +197,8 @@ where
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             NetworkInfoRequest::GetPeers { responder: _ } => write!(formatter, "get peers"),
-            NetworkInfoRequest::GetPeersInRandomOrder { responder: _ } => {
-                write!(formatter, "get peers in random order")
+            NetworkInfoRequest::GetFullyConnectedPeers { responder: _ } => {
+                write!(formatter, "get fully connected peers")
             }
         }
     }
@@ -455,12 +453,12 @@ impl Display for StateStoreRequest {
                 write!(
                     f,
                     "save data under {} ({} bytes)",
-                    checksummed_hex::encode(key),
+                    base16::encode_lower(key),
                     data.len()
                 )
             }
             StateStoreRequest::Load { key, .. } => {
-                write!(f, "load data from key {}", checksummed_hex::encode(key))
+                write!(f, "load data from key {}", base16::encode_lower(key))
             }
         }
     }

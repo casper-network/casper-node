@@ -3,7 +3,6 @@ use std::collections::BTreeSet;
 use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
-    contracts::NamedKeys,
     crypto,
     system::{
         auction::{
@@ -196,20 +195,20 @@ where
         .map_err(|_| Error::CLValue)?;
 
         let gas_counter = self.gas_counter();
-        let mut call_stack = self.call_stack().clone();
-        let call_stack_element = self
-            .get_system_contract_stack_frame(MINT)
-            .map_err(|_| Error::Storage)?;
-        call_stack.push(call_stack_element);
-
+        let mut stack = self.stack().clone();
+        stack
+            .push(
+                self.get_system_contract_stack_frame(MINT)
+                    .map_err(|_| Error::Storage)?,
+            )
+            .map_err(|_| Error::RuntimeStackOverflow)?;
         let cl_value = self
             .call_host_mint(
                 self.context.protocol_version(),
                 mint::METHOD_TRANSFER,
-                &mut NamedKeys::default(),
                 &args_values,
                 &[],
-                call_stack,
+                stack,
             )
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Transfer))?;
         self.set_gas_counter(gas_counter);
@@ -235,41 +234,21 @@ where
         .map_err(|_| Error::CLValue)?;
 
         let gas_counter = self.gas_counter();
-        let mut call_stack = self.call_stack().clone();
-        let call_stack_element = self
-            .get_system_contract_stack_frame(MINT)
-            .map_err(|_| Error::Storage)?;
-        call_stack.push(call_stack_element);
-
-        let mint_contract_hash = self.get_mint_contract().map_err(|exec_error| {
-            <Option<Error>>::from(exec_error).unwrap_or(Error::MissingValue)
-        })?;
-
-        let mint_contract_key: Key = mint_contract_hash.into();
-
-        let mint = match self
-            .context
-            .read_gs(&mint_contract_key)
-            .map_err(|exec_error| {
-                <Option<Error>>::from(exec_error).unwrap_or(Error::MissingValue)
-            })? {
-            Some(StoredValue::Contract(contract)) => contract,
-            Some(_) => {
-                return Err(Error::MissingValue);
-            }
-            None => return Err(Error::MissingKey),
-        };
-
-        let mut mint_named_keys = mint.named_keys().clone();
+        let mut stack = self.stack().clone();
+        stack
+            .push(
+                self.get_system_contract_stack_frame(MINT)
+                    .map_err(|_| Error::Storage)?,
+            )
+            .map_err(|_| Error::RuntimeStackOverflow)?;
 
         let cl_value = self
             .call_host_mint(
                 self.context.protocol_version(),
                 mint::METHOD_MINT_INTO_EXISTING_PURSE,
-                &mut mint_named_keys,
                 &args_values,
                 &[],
-                call_stack,
+                stack,
             )
             .map_err(|error| <Option<Error>>::from(error).unwrap_or(Error::MintError))?;
         self.set_gas_counter(gas_counter);

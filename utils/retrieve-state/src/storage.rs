@@ -4,6 +4,8 @@ use std::{
     sync::Arc,
 };
 
+use lmdb::DatabaseFlags;
+
 use casper_execution_engine::{
     core::engine_state::{EngineConfig, EngineState},
     storage::{
@@ -17,10 +19,11 @@ use casper_node::{
     types::{Deploy, DeployHash},
     StorageConfig, WithDir,
 };
+use tracing::info;
+
+use casper_types::ProtocolVersion;
 
 use crate::DEFAULT_MAX_READERS;
-use casper_types::ProtocolVersion;
-use lmdb::DatabaseFlags;
 
 /// Gets many deploys by hash.
 pub fn get_many_deploys_by_hash(
@@ -92,7 +95,7 @@ pub fn create_execution_engine(
     manual_sync_enabled: bool,
 ) -> Result<(Arc<EngineState<LmdbGlobalState>>, Arc<LmdbEnvironment>), anyhow::Error> {
     if !ee_lmdb_path.as_ref().exists() {
-        println!(
+        info!(
             "creating new lmdb data dir {}",
             ee_lmdb_path.as_ref().display()
         );

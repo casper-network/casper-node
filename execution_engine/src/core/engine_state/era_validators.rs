@@ -6,7 +6,7 @@ use datasize::DataSize;
 use casper_hashing::Digest;
 use casper_types::ProtocolVersion;
 
-use crate::core::engine_state::error::Error;
+use crate::core::{engine_state::error::Error, runtime::stack::RuntimeStackOverflow};
 
 /// An enum that represents all possible error conditions of a `get_era_validators` request.
 #[derive(Debug, Error, DataSize)]
@@ -20,6 +20,12 @@ pub enum GetEraValidatorsError {
     /// EraValidators missing
     #[error("Era validators missing")]
     EraValidatorsMissing,
+}
+
+impl From<RuntimeStackOverflow> for GetEraValidatorsError {
+    fn from(overflow: RuntimeStackOverflow) -> Self {
+        GetEraValidatorsError::Other(Error::from(overflow))
+    }
 }
 
 impl GetEraValidatorsError {

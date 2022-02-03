@@ -8,6 +8,7 @@ use num_rational::Ratio;
 use rand::Rng;
 use tempfile::TempDir;
 use tokio::time;
+use tracing::error;
 
 use casper_execution_engine::core::engine_state::GetBidsRequest;
 use casper_types::{
@@ -302,7 +303,6 @@ async fn run_participating_network() {
 }
 
 #[tokio::test]
-#[ignore = "This test fails randomly - it'll be reenabled after this issue is fixed: https://github.com/casper-network/casper-node/issues/1859"]
 async fn run_equivocator_network() {
     testing::init_logging();
 
@@ -368,6 +368,13 @@ async fn run_equivocator_network() {
     let bids: Vec<Bids> = (0..era_count)
         .map(|era_number| switch_blocks.bids(net.nodes(), era_number))
         .collect();
+
+    // Since this setup sometimes fails to produce an equivocation we return early here.
+    // TODO: Remove this once https://github.com/casper-network/casper-node/issues/1859 is fixed.
+    if switch_blocks.equivocators(0).is_empty() {
+        error!("Failed to equivocate in the first era.");
+        return;
+    }
 
     // In the genesis era, Alice equivocates. Since eviction takes place with a delay of one
     // (`auction_delay`) era, she is still included in the next era's validator set.

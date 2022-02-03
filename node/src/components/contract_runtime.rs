@@ -2,6 +2,7 @@
 pub(crate) mod announcements;
 mod config;
 mod error;
+mod metrics;
 mod operations;
 mod types;
 
@@ -16,7 +17,7 @@ use std::{
 
 use datasize::DataSize;
 use lmdb::DatabaseFlags;
-use prometheus::{self, Histogram, HistogramOpts, IntGauge, Registry};
+use prometheus::Registry;
 use serde::Serialize;
 use tracing::{debug, info, trace};
 
@@ -47,6 +48,7 @@ use crate::{
 pub(crate) use announcements::ContractRuntimeAnnouncement;
 pub(crate) use config::Config;
 pub(crate) use error::{BlockExecutionError, ConfigError};
+use metrics::Metrics;
 pub use operations::execute_finalized_block;
 pub use types::BlockAndExecutionEffects;
 pub(crate) use types::EraValidatorsRequest;
@@ -132,7 +134,7 @@ type ExecQueue = Arc<Mutex<BTreeMap<u64, (FinalizedBlock, Vec<Deploy>, Vec<Deplo
 pub(crate) struct ContractRuntime {
     execution_pre_state: Arc<Mutex<ExecutionPreState>>,
     engine_state: Arc<EngineState<LmdbGlobalState>>,
-    metrics: Arc<ContractRuntimeMetrics>,
+    metrics: Arc<Metrics>,
     protocol_version: ProtocolVersion,
 
     /// Finalized blocks waiting for their pre-state hash to start executing.
@@ -142,126 +144,6 @@ pub(crate) struct ContractRuntime {
 impl Debug for ContractRuntime {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("ContractRuntime").finish()
-    }
-}
-
-/// Metrics for the contract runtime component.
-#[derive(Debug)]
-pub struct ContractRuntimeMetrics {
-    run_execute: Histogram,
-    apply_effect: Histogram,
-    commit_upgrade: Histogram,
-    run_query: Histogram,
-    commit_step: Histogram,
-    get_balance: Histogram,
-    get_validator_weights: Histogram,
-    get_era_validators: Histogram,
-    get_bids: Histogram,
-    missing_trie_keys: Histogram,
-    put_trie: Histogram,
-    get_trie: Histogram,
-    chain_height: IntGauge,
-    exec_block: Histogram,
-}
-
-/// Value of upper bound of histogram.
-const EXPONENTIAL_BUCKET_START: f64 = 0.01;
-
-/// Multiplier of previous upper bound for next bound.
-const EXPONENTIAL_BUCKET_FACTOR: f64 = 2.0;
-
-/// Bucket count, with the last bucket going to +Inf which will not be included in the results.
-/// - start = 0.01, factor = 2.0, count = 10
-/// - start * factor ^ count = 0.01 * 2.0 ^ 10 = 10.24
-/// - Values above 10.24 (f64 seconds here) will not fall in a bucket that is kept.
-const EXPONENTIAL_BUCKET_COUNT: usize = 10;
-
-const RUN_EXECUTE_NAME: &str = "contract_runtime_run_execute";
-const RUN_EXECUTE_HELP: &str = "tracking run of engine_state.run_execute in seconds.";
-const APPLY_EFFECT_NAME: &str = "contract_runtime_apply_commit";
-const APPLY_EFFECT_HELP: &str = "tracking run of engine_state.apply_effect in seconds.";
-const RUN_QUERY_NAME: &str = "contract_runtime_run_query";
-const RUN_QUERY_HELP: &str = "tracking run of engine_state.run_query in seconds.";
-const COMMIT_STEP_NAME: &str = "contract_runtime_commit_step";
-const COMMIT_STEP_HELP: &str = "tracking run of engine_state.commit_step in seconds.";
-const COMMIT_UPGRADE_NAME: &str = "contract_runtime_commit_upgrade";
-const COMMIT_UPGRADE_HELP: &str = "tracking run of engine_state.commit_upgrade in seconds";
-const GET_BALANCE_NAME: &str = "contract_runtime_get_balance";
-const GET_BALANCE_HELP: &str = "tracking run of engine_state.get_balance in seconds.";
-const GET_VALIDATOR_WEIGHTS_NAME: &str = "contract_runtime_get_validator_weights";
-const GET_VALIDATOR_WEIGHTS_HELP: &str =
-    "tracking run of engine_state.get_validator_weights in seconds.";
-const GET_ERA_VALIDATORS_NAME: &str = "contract_runtime_get_era_validators";
-const GET_ERA_VALIDATORS_HELP: &str = "tracking run of engine_state.get_era_validators in seconds.";
-const GET_BIDS_NAME: &str = "contract_runtime_get_bids";
-const GET_BIDS_HELP: &str = "tracking run of engine_state.get_bids in seconds.";
-const GET_TRIE_NAME: &str = "contract_runtime_get_trie";
-const GET_TRIE_HELP: &str = "tracking run of engine_state.get_trie in seconds.";
-const PUT_TRIE_NAME: &str = "contract_runtime_put_trie";
-const PUT_TRIE_HELP: &str = "tracking run of engine_state.put_trie in seconds.";
-const MISSING_TRIE_KEYS_NAME: &str = "contract_runtime_missing_trie_keys";
-const MISSING_TRIE_KEYS_HELP: &str = "tracking run of engine_state.missing_trie_keys in seconds.";
-const EXEC_BLOCK_NAME: &str = "contract_runtime_execute_block";
-const EXEC_BLOCK_HELP: &str = "tracking execution of all deploys in a block.";
-
-/// Create prometheus Histogram and register.
-fn register_histogram_metric(
-    registry: &Registry,
-    metric_name: &str,
-    metric_help: &str,
-) -> Result<Histogram, prometheus::Error> {
-    let common_buckets = prometheus::exponential_buckets(
-        EXPONENTIAL_BUCKET_START,
-        EXPONENTIAL_BUCKET_FACTOR,
-        EXPONENTIAL_BUCKET_COUNT,
-    )?;
-    let histogram_opts = HistogramOpts::new(metric_name, metric_help).buckets(common_buckets);
-    let histogram = Histogram::with_opts(histogram_opts)?;
-    registry.register(Box::new(histogram.clone()))?;
-    Ok(histogram)
-}
-
-impl ContractRuntimeMetrics {
-    /// Constructor of metrics which creates and registers metrics objects for use.
-    fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
-        let chain_height = IntGauge::new("chain_height", "current chain height")?;
-        registry.register(Box::new(chain_height.clone()))?;
-        Ok(ContractRuntimeMetrics {
-            chain_height,
-            run_execute: register_histogram_metric(registry, RUN_EXECUTE_NAME, RUN_EXECUTE_HELP)?,
-            apply_effect: register_histogram_metric(
-                registry,
-                APPLY_EFFECT_NAME,
-                APPLY_EFFECT_HELP,
-            )?,
-            run_query: register_histogram_metric(registry, RUN_QUERY_NAME, RUN_QUERY_HELP)?,
-            commit_step: register_histogram_metric(registry, COMMIT_STEP_NAME, COMMIT_STEP_HELP)?,
-            commit_upgrade: register_histogram_metric(
-                registry,
-                COMMIT_UPGRADE_NAME,
-                COMMIT_UPGRADE_HELP,
-            )?,
-            get_balance: register_histogram_metric(registry, GET_BALANCE_NAME, GET_BALANCE_HELP)?,
-            get_validator_weights: register_histogram_metric(
-                registry,
-                GET_VALIDATOR_WEIGHTS_NAME,
-                GET_VALIDATOR_WEIGHTS_HELP,
-            )?,
-            get_era_validators: register_histogram_metric(
-                registry,
-                GET_ERA_VALIDATORS_NAME,
-                GET_ERA_VALIDATORS_HELP,
-            )?,
-            get_bids: register_histogram_metric(registry, GET_BIDS_NAME, GET_BIDS_HELP)?,
-            get_trie: register_histogram_metric(registry, GET_TRIE_NAME, GET_TRIE_HELP)?,
-            put_trie: register_histogram_metric(registry, PUT_TRIE_NAME, PUT_TRIE_HELP)?,
-            missing_trie_keys: register_histogram_metric(
-                registry,
-                MISSING_TRIE_KEYS_NAME,
-                MISSING_TRIE_KEYS_HELP,
-            )?,
-            exec_block: register_histogram_metric(registry, EXEC_BLOCK_NAME, EXEC_BLOCK_HELP)?,
-        })
     }
 }
 
@@ -537,6 +419,7 @@ where
 }
 
 impl ContractRuntime {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         protocol_version: ProtocolVersion,
         storage_dir: &Path,
@@ -544,6 +427,7 @@ impl ContractRuntime {
         wasm_config: WasmConfig,
         system_config: SystemConfig,
         max_associated_keys: u32,
+        max_runtime_call_stack_height: u32,
         registry: &Registry,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
@@ -571,13 +455,14 @@ impl ContractRuntime {
         let engine_config = EngineConfig::new(
             contract_runtime_config.max_query_depth(),
             max_associated_keys,
+            max_runtime_call_stack_height,
             wasm_config,
             system_config,
         );
 
         let engine_state = Arc::new(EngineState::new(global_state, engine_config));
 
-        let metrics = Arc::new(ContractRuntimeMetrics::new(registry)?);
+        let metrics = Arc::new(Metrics::new(registry)?);
 
         Ok(ContractRuntime {
             execution_pre_state,
@@ -631,7 +516,7 @@ impl ContractRuntime {
         let start = Instant::now();
         let result = self
             .engine_state
-            .missing_trie_keys(correlation_id, trie_keys);
+            .missing_trie_keys(correlation_id, trie_keys, true);
         self.metrics
             .missing_trie_keys
             .observe(start.elapsed().as_secs_f64());
@@ -645,7 +530,7 @@ impl ContractRuntime {
     #[allow(clippy::too_many_arguments)]
     async fn execute_finalized_block_or_requeue<REv>(
         engine_state: Arc<EngineState<LmdbGlobalState>>,
-        metrics: Arc<ContractRuntimeMetrics>,
+        metrics: Arc<Metrics>,
         exec_queue: ExecQueue,
         execution_pre_state: Arc<Mutex<ExecutionPreState>>,
         effect_builder: EffectBuilder<REv>,

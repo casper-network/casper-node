@@ -287,6 +287,18 @@ impl DeployHash {
     }
 }
 
+impl From<DeployHash> for casper_types::DeployHash {
+    fn from(deploy_hash: DeployHash) -> casper_types::DeployHash {
+        casper_types::DeployHash::new(deploy_hash.inner().value())
+    }
+}
+
+impl From<casper_types::DeployHash> for DeployHash {
+    fn from(deploy_hash: casper_types::DeployHash) -> DeployHash {
+        DeployHash::new(deploy_hash.value().into())
+    }
+}
+
 impl From<DeployHash> for Digest {
     fn from(deploy_hash: DeployHash) -> Self {
         deploy_hash.0
@@ -997,15 +1009,15 @@ impl Deploy {
     pub(crate) fn random_with_missing_payment_contract_by_hash(rng: &mut TestRng) -> Self {
         let payment = ExecutableDeployItem::StoredContractByHash {
             hash: [19; 32].into(),
-            entry_point: "non-existent-entry-point".to_string(),
+            entry_point: "call".to_string(),
             args: Default::default(),
         };
         Self::random_transfer_with_payment(rng, payment)
     }
 
     pub(crate) fn random_with_missing_entry_point_in_payment_contract(rng: &mut TestRng) -> Self {
-        let payment = ExecutableDeployItem::StoredContractByName {
-            name: "Test".to_string(),
+        let payment = ExecutableDeployItem::StoredContractByHash {
+            hash: [19; 32].into(),
             entry_point: "non-existent-entry-point".to_string(),
             args: Default::default(),
         };
@@ -1035,8 +1047,8 @@ impl Deploy {
     pub(crate) fn random_with_nonexistent_contract_version_in_payment_package(
         rng: &mut TestRng,
     ) -> Self {
-        let payment = ExecutableDeployItem::StoredVersionedContractByName {
-            name: "Test".to_string(),
+        let payment = ExecutableDeployItem::StoredVersionedContractByHash {
+            hash: [19; 32].into(),
             version: Some(6u32),
             entry_point: "non-existent-entry-point".to_string(),
             args: Default::default(),
@@ -1063,8 +1075,8 @@ impl Deploy {
     }
 
     pub(crate) fn random_with_missing_entry_point_in_session_contract(rng: &mut TestRng) -> Self {
-        let session = ExecutableDeployItem::StoredContractByName {
-            name: "Test".to_string(),
+        let session = ExecutableDeployItem::StoredContractByHash {
+            hash: [19; 32].into(),
             entry_point: "non-existent-entry-point".to_string(),
             args: Default::default(),
         };
@@ -1094,8 +1106,8 @@ impl Deploy {
     pub(crate) fn random_with_nonexistent_contract_version_in_session_package(
         rng: &mut TestRng,
     ) -> Self {
-        let session = ExecutableDeployItem::StoredVersionedContractByName {
-            name: "Test".to_string(),
+        let session = ExecutableDeployItem::StoredVersionedContractByHash {
+            hash: [19; 32].into(),
             version: Some(6u32),
             entry_point: "non-existent-entry-point".to_string(),
             args: Default::default(),

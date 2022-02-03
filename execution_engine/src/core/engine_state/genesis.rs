@@ -43,6 +43,7 @@ use crate::{
         engine_state::{execution_effect::ExecutionEffect, EngineConfig},
         execution,
         execution::{AddressGenerator, Executor},
+        runtime::RuntimeStack,
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
@@ -1165,8 +1166,7 @@ where
 
     pub(crate) fn create_accounts(&self) -> Result<(), GenesisError> {
         let accounts = {
-            let mut ret: Vec<GenesisAccount> =
-                self.exec_config.accounts().to_vec().into_iter().collect();
+            let mut ret: Vec<GenesisAccount> = self.exec_config.accounts.to_vec();
             let system_account = GenesisAccount::system();
             ret.push(system_account);
             ret
@@ -1248,9 +1248,13 @@ where
 
         let mut named_keys = mint.named_keys().clone();
 
-        let call_stack = vec![CallStackElement::session(
-            PublicKey::System.to_account_hash(),
-        )];
+        let mut stack =
+            RuntimeStack::new(self.executor.config().max_runtime_call_stack_height() as usize);
+        stack
+            .push(CallStackElement::session(
+                PublicKey::System.to_account_hash(),
+            ))
+            .unwrap();
 
         let (_instance, mut runtime) = self
             .executor
@@ -1271,7 +1275,7 @@ where
                 self.correlation_id,
                 Rc::clone(&self.tracking_copy),
                 Phase::System,
-                call_stack,
+                stack,
             )
             .map_err(|_| GenesisError::UnableToCreateRuntime)?;
 

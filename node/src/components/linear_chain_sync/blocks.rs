@@ -2,7 +2,9 @@ use tracing::warn;
 
 use crate::{
     components::{fetcher::FetchResult, linear_chain_sync::event::BlockByHeightResult},
-    contract_runtime::{BlockAndExecutionEffects, ContractRuntimeAnnouncement, ExecutionPreState},
+    contract_runtime::{
+        announcements, BlockAndExecutionEffects, ContractRuntimeAnnouncement, ExecutionPreState,
+    },
     effect::{
         announcements::ControlAnnouncement,
         requests::{ContractRuntimeRequest, StorageRequest},
@@ -112,11 +114,7 @@ pub(super) async fn execute_block<REv>(
     let finalized_block = FinalizedBlock::from(block_to_execute);
 
     // Get the deploy hashes for the block.
-    let deploy_hashes = finalized_block
-        .deploy_hashes()
-        .iter()
-        .copied()
-        .collect::<Vec<_>>();
+    let deploy_hashes = finalized_block.deploy_hashes().to_vec();
 
     // Get all deploys in order they appear in the finalized block.
     let mut deploys: Vec<Deploy> = Vec::with_capacity(deploy_hashes.len());
@@ -135,11 +133,7 @@ pub(super) async fn execute_block<REv>(
     }
 
     // Get the transfer hashes for the block.
-    let transfer_hashes = finalized_block
-        .transfer_hashes()
-        .iter()
-        .copied()
-        .collect::<Vec<_>>();
+    let transfer_hashes = finalized_block.transfer_hashes().to_vec();
 
     // Get all deploys in order they appear in the finalized block.
     let mut transfers: Vec<Deploy> = Vec::with_capacity(transfer_hashes.len());
@@ -180,7 +174,5 @@ pub(super) async fn execute_block<REv>(
             return;
         }
     };
-    effect_builder
-        .announce_linear_chain_block(block, execution_results)
-        .await;
+    announcements::linear_chain_block(effect_builder, block, execution_results).await;
 }

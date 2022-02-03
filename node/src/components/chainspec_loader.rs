@@ -721,6 +721,7 @@ impl UpgradePoint {
     }
 }
 
+#[allow(clippy::single_char_pattern)]
 fn dir_name_from_version(version: &ProtocolVersion) -> PathBuf {
     PathBuf::from(version.to_string().replace(".", "_"))
 }
@@ -751,6 +752,7 @@ fn next_installed_version(
         };
 
         let subdir_name = match path.file_name() {
+            #[allow(clippy::single_char_pattern)]
             Some(name) => name.to_string_lossy().replace("_", "."),
             None => continue,
         };
