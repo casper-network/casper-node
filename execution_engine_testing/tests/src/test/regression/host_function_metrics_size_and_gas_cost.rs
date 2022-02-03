@@ -19,8 +19,8 @@ use casper_types::{
 const CONTRACT_HOST_FUNCTION_METRICS: &str = "host_function_metrics.wasm";
 const CONTRACT_TRANSFER_TO_ACCOUNT_U512: &str = "transfer_to_account_u512.wasm";
 
-const HOST_FUNCTION_METRICS_STANDARD_SIZE: usize = 90_620;
-const HOST_FUNCTION_METRICS_STANDARD_GAS_COST: u64 = 144_018_843_520;
+const HOST_FUNCTION_METRICS_STANDARD_SIZE: usize = 116_800;
+const HOST_FUNCTION_METRICS_STANDARD_GAS_COST: u64 = 151_323_460_380;
 
 /// Acceptable size regression/improvement in percentage.
 const SIZE_MARGIN: usize = 5;
