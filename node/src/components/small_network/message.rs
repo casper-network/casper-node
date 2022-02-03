@@ -283,9 +283,7 @@ pub(crate) trait Payload:
     fn classify(&self) -> MessageKind;
 
     /// The penalty for resource usage of a message to be applied when processed as incoming.
-    fn incoming_resource_estimate(&self, _weights: &PayloadWeights) -> u32 {
-        0
-    }
+    fn incoming_resource_estimate(&self, _weights: &PayloadWeights) -> u32;
 }
 
 /// Network message conversion support.

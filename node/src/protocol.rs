@@ -15,7 +15,7 @@ use crate::{
         consensus,
         fetcher::FetchedOrNotFound,
         gossiper,
-        small_network::{FromIncoming, GossipedAddress, MessageKind, Payload},
+        small_network::{FromIncoming, GossipedAddress, MessageKind, Payload, PayloadWeights},
     },
     effect::incoming::{
         ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming, NetRequest,
@@ -76,6 +76,34 @@ impl Payload for Message {
                 }
             }
             Message::FinalitySignature(_) => MessageKind::Consensus,
+        }
+    }
+
+    #[inline]
+    fn incoming_resource_estimate(&self, _weights: &PayloadWeights) -> u32 {
+        match self {
+            Message::Consensus(_) => 0,
+            Message::DeployGossiper(_) => 0,
+            Message::AddressGossiper(_) => 0,
+            Message::GetRequest { tag, .. } => match tag {
+                Tag::Deploy => 1,
+                Tag::Block => 1,
+                Tag::GossipedAddress => 0,
+                Tag::BlockAndMetadataByHeight => 1,
+                Tag::BlockHeaderByHash => 1,
+                Tag::BlockHeaderAndFinalitySignaturesByHeight => 1,
+                Tag::Trie => 1,
+            },
+            Message::GetResponse { tag, .. } => match tag {
+                Tag::Deploy => 1,
+                Tag::Block => 0,
+                Tag::GossipedAddress => 0,
+                Tag::BlockAndMetadataByHeight => 0,
+                Tag::BlockHeaderByHash => 0,
+                Tag::BlockHeaderAndFinalitySignaturesByHeight => 0,
+                Tag::Trie => 0,
+            },
+            Message::FinalitySignature(_) => 0,
         }
     }
 }
