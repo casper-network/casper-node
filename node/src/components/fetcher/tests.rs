@@ -78,6 +78,7 @@ reactor!(Reactor {
         storage = Storage(
             &WithDir::new(cfg.temp_dir.path(), cfg.storage_config),
             chainspec_loader.hard_reset_to_start_of_era(),
+            chainspec_loader.chainspec().protocol_config.version,
             false,
             &chainspec_loader.chainspec().network_config.name,
             chainspec_loader

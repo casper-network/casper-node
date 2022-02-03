@@ -19,7 +19,7 @@ use casper_node::{
     types::{Deploy, DeployHash},
     StorageConfig, WithDir,
 };
-use casper_types::EraId;
+use casper_types::{EraId, ProtocolVersion};
 use num_rational::Ratio;
 use tracing::info;
 
@@ -138,6 +138,7 @@ pub fn create_storage(
     Ok(Storage::new(
         &WithDir::new(chain_download_path, storage_config),
         None,
+        ProtocolVersion::from_parts(0, 0, 0),
         false,
         "test",
         Ratio::new(1, 3),
