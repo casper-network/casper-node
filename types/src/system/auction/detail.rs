@@ -3,15 +3,10 @@ use core::convert::TryInto;
 
 use num_rational::Ratio;
 
-use crate::{
-    account::AccountHash,
-    bytesrepr::{FromBytes, ToBytes},
-    system::auction::{
-        constants::*, Auction, Bids, EraId, Error, RuntimeProvider, SeigniorageAllocation,
-        SeigniorageRecipientsSnapshot, StorageProvider, UnbondingPurse, UnbondingPurses,
-    },
-    CLTyped, Key, KeyTag, PublicKey, URef, U512,
-};
+use crate::{account::AccountHash, bytesrepr::{FromBytes, ToBytes}, system::auction::{
+    constants::*, Auction, Bids, EraId, Error, RuntimeProvider, SeigniorageAllocation,
+    SeigniorageRecipientsSnapshot, StorageProvider, UnbondingPurse, UnbondingPurses,
+}, CLTyped, Key, KeyTag, PublicKey, URef, U512};
 
 fn read_from<P, T>(provider: &mut P, name: &str) -> Result<T, Error>
 where
@@ -78,7 +73,7 @@ where
 
     for key in withdraws_keys {
         let account_hash = match key {
-            Key::Withdraw(account_ash) => account_ash,
+            Key::Withdraw(account_hash) => account_hash,
             _ => return Err(Error::InvalidKeyVariant),
         };
         let unbonding_purses = provider.read_withdraw(&account_hash)?;
@@ -333,4 +328,17 @@ where
     provider.write_bid(validator_account_hash, bid)?;
 
     Ok(bonding_purse)
+}
+
+/// Returns the current number of delegators tracked by the auction contract.
+pub(crate) fn get_total_number_of_delegators<P>(provider: &mut P) -> Result<u32, Error>
+    where
+        P: StorageProvider + RuntimeProvider + ?Sized,
+{
+    let mut total_number_of_delegtors: u32 = 0;
+    let bids = get_bids(provider)?;
+    for (_validator_public_key, bid) in bids {
+        total_number_of_delegtors += bid.delegators().len() as u32;
+    }
+    Ok(total_number_of_delegtors)
 }

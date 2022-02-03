@@ -14,6 +14,7 @@
 
 #[cfg_attr(not(test), macro_use)]
 extern crate alloc;
+extern crate core;
 
 mod access_rights;
 pub mod account;

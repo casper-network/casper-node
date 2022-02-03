@@ -282,6 +282,15 @@ pub trait Auction:
                 if delegators.len() >= max_delegator_size_limit {
                     return Err(Error::ExceededDelegatorSizeLimit);
                 }
+                let current_total_no_of_delegators = detail::get_total_number_of_delegators(self)?;
+
+                let max_global_delegator_capacity =
+                    detail::get_validator_slots(self)? * max_delegator_size_limit;
+
+                if (current_total_no_of_delegators + 1) as usize >= max_global_delegator_capacity {
+                    return Err(Error::GlobalDelegatorCapacityReached);
+                }
+
                 let bonding_purse = self.create_purse()?;
                 self.mint_transfer_direct(
                     Some(PublicKey::System.to_account_hash()),
