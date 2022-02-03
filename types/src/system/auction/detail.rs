@@ -3,10 +3,15 @@ use core::convert::TryInto;
 
 use num_rational::Ratio;
 
-use crate::{account::AccountHash, bytesrepr::{FromBytes, ToBytes}, system::auction::{
-    constants::*, Auction, Bids, EraId, Error, RuntimeProvider, SeigniorageAllocation,
-    SeigniorageRecipientsSnapshot, StorageProvider, UnbondingPurse, UnbondingPurses,
-}, CLTyped, Key, KeyTag, PublicKey, URef, U512};
+use crate::{
+    account::AccountHash,
+    bytesrepr::{FromBytes, ToBytes},
+    system::auction::{
+        constants::*, Auction, Bids, EraId, Error, RuntimeProvider, SeigniorageAllocation,
+        SeigniorageRecipientsSnapshot, StorageProvider, UnbondingPurse, UnbondingPurses,
+    },
+    CLTyped, Key, KeyTag, PublicKey, URef, U512,
+};
 
 fn read_from<P, T>(provider: &mut P, name: &str) -> Result<T, Error>
 where
@@ -332,8 +337,8 @@ where
 
 /// Returns the current number of delegators tracked by the auction contract.
 pub(crate) fn get_total_number_of_delegators<P>(provider: &mut P) -> Result<u32, Error>
-    where
-        P: StorageProvider + RuntimeProvider + ?Sized,
+where
+    P: StorageProvider + RuntimeProvider + ?Sized,
 {
     let mut total_number_of_delegtors: u32 = 0;
     let bids = get_bids(provider)?;
