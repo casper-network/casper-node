@@ -102,7 +102,7 @@ fn host_function_metrics_has_acceptable_gas_cost() {
                 },
             )
             .with_empty_payment_bytes(
-                runtime_args! { standard_payment::ARG_AMOUNT => U512::from(*DEFAULT_PAYMENT) },
+                runtime_args! { standard_payment::ARG_AMOUNT => *DEFAULT_PAYMENT },
             )
             .with_authorization_keys(&[ACCOUNT0_ADDR])
             .build();
