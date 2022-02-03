@@ -43,7 +43,7 @@ use crate::{
         },
         EffectBuilder, EffectExt, Effects, Responder,
     },
-    types::{NodeId, StatusFeed},
+    types::{NodeId, NodeState, StatusFeed},
     utils::{self, ListeningError},
     NodeRng,
 };
@@ -84,6 +84,8 @@ impl<REv> ReactorEventT for REv where
 pub(crate) struct RpcServer {
     /// The instant at which the node has started.
     node_startup_instant: Instant,
+    /// The current state of the node.
+    node_state: NodeState,
 }
 
 impl RpcServer {
@@ -92,6 +94,7 @@ impl RpcServer {
         effect_builder: EffectBuilder<REv>,
         api_version: ProtocolVersion,
         node_startup_instant: Instant,
+        node_state: NodeState,
     ) -> Result<Self, ListeningError>
     where
         REv: ReactorEventT,
@@ -106,7 +109,12 @@ impl RpcServer {
 
         Ok(RpcServer {
             node_startup_instant,
+            node_state,
         })
+    }
+
+    fn node_state(&self) -> NodeState {
+        self.node_state
     }
 }
 
@@ -266,6 +274,7 @@ where
                 }),
             Event::RpcRequest(RpcRequest::GetStatus { responder }) => {
                 let node_uptime = self.node_startup_instant.elapsed();
+                let node_state = self.node_state();
                 async move {
                     let (last_added_block, peers, chainspec_info, consensus_status) = join!(
                         effect_builder.get_highest_block_from_storage(),
@@ -279,6 +288,7 @@ where
                         chainspec_info,
                         consensus_status,
                         node_uptime,
+                        node_state,
                     );
                     responder.respond(status_feed).await;
                 }

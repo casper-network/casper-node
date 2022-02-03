@@ -7,6 +7,7 @@
     "api_version",
     "build_version",
     "chainspec_name",
+    "node_state",
     "peers",
     "starting_state_root_hash",
     "uptime"
@@ -90,6 +91,14 @@
       "allOf": [
         {
           "$ref": "#/definitions/TimeDiff"
+        }
+      ]
+    },
+    "node_state": {
+      "description": "The current state of node.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/NodeState"
         }
       ]
     }
@@ -216,6 +225,15 @@
         {
           "$ref": "#/definitions/Timestamp"
         }
+      ]
+    },
+    "NodeState": {
+      "description": "The various possible states of operation for the node.",
+      "type": "string",
+      "enum": [
+        "FastSyncing",
+        "ArchivalSyncing",
+        "Participating"
       ]
     }
   }

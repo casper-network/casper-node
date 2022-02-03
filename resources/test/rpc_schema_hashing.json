@@ -1922,6 +1922,15 @@
             ],
             "type": "object"
           },
+          "NodeState": {
+            "description": "The various possible states of operation for the node.",
+            "enum": [
+              "FastSyncing",
+              "ArchivalSyncing",
+              "Participating"
+            ],
+            "type": "string"
+          },
           "OpKind": {
             "description": "The type of operation performed while executing a deploy.",
             "enum": [
@@ -3385,6 +3394,7 @@
                     "activation_point": 42,
                     "protocol_version": "2.0.1"
                   },
+                  "node_state": "Participating",
                   "our_public_signing_key": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
                   "peers": [
                     {
@@ -3441,6 +3451,10 @@
                   ],
                   "description": "Information about the next scheduled upgrade."
                 },
+                "node_state": {
+                  "$ref": "#/components/schemas/NodeState",
+                  "description": "The current state of node."
+                },
                 "our_public_signing_key": {
                   "anyOf": [
                     {
@@ -3481,6 +3495,7 @@
                 "api_version",
                 "build_version",
                 "chainspec_name",
+                "node_state",
                 "peers",
                 "starting_state_root_hash",
                 "uptime"
