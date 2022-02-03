@@ -95,9 +95,9 @@ impl ChainSynchronizer {
         info!(%trusted_hash, "synchronizing linear chain");
         operations::run_chain_sync_task(
             effect_builder,
-            trusted_hash,
             Arc::clone(&self.chainspec),
             self.config.clone(),
+            trusted_hash,
         )
         .event(Event::SyncResult)
     }
