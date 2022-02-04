@@ -706,12 +706,7 @@ async fn sync_deploys_and_transfers_and_state(
     node_config: &NodeConfig,
 ) -> Result<(), Error> {
     fetch_and_store_deploys(
-        block
-            .deploy_hashes()
-            .iter()
-            .chain(block.transfer_hashes())
-            .cloned()
-            .collect(),
+        block.deploy_hashes().iter().chain(block.transfer_hashes()),
         node_config.max_parallel_trie_fetches as usize,
         effect_builder,
     )
@@ -1044,14 +1039,14 @@ async fn execute_blocks(
         };
 
         let deploys = fetch_and_store_deploys(
-            block.deploy_hashes().to_vec(),
+            block.deploy_hashes().iter(),
             ctx.node_config.max_parallel_deploy_fetches as usize,
             *ctx.effect_builder,
         )
         .await?;
 
         let transfers = fetch_and_store_deploys(
-            block.transfer_hashes().to_vec(),
+            block.transfer_hashes().iter(),
             ctx.node_config.max_parallel_deploy_fetches as usize,
             *ctx.effect_builder,
         )
@@ -1122,10 +1117,11 @@ async fn execute_blocks(
 }
 
 async fn fetch_and_store_deploys(
-    hashes: Vec<DeployHash>,
+    hashes: impl Iterator<Item = &DeployHash>,
     max_parallel_fetches: usize,
     effect_builder: EffectBuilder<JoinerEvent>,
 ) -> Result<Vec<Deploy>, Error> {
+    let hashes: Vec<_> = hashes.cloned().collect();
     let mut deploys: Vec<Deploy> = Vec::with_capacity(hashes.len());
     let mut stream = futures::stream::iter(hashes)
         .map(|hash| {
