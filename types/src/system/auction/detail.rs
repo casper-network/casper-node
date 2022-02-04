@@ -78,7 +78,7 @@ where
 
     for key in withdraws_keys {
         let account_hash = match key {
-            Key::Withdraw(account_ash) => account_ash,
+            Key::Withdraw(account_hash) => account_hash,
             _ => return Err(Error::InvalidKeyVariant),
         };
         let unbonding_purses = provider.read_withdraw(&account_hash)?;
@@ -333,4 +333,17 @@ where
     provider.write_bid(validator_account_hash, bid)?;
 
     Ok(bonding_purse)
+}
+
+/// Returns the current number of delegators tracked by the auction contract.
+pub(crate) fn get_total_number_of_delegators<P>(provider: &mut P) -> Result<usize, Error>
+where
+    P: StorageProvider + RuntimeProvider + ?Sized,
+{
+    let bids = get_bids(provider)?;
+    let total_number_of_delegators = bids
+        .iter()
+        .map(|(_validator_public_key, bid)| bid.delegators().len())
+        .sum();
+    Ok(total_number_of_delegators)
 }
