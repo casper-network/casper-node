@@ -150,12 +150,6 @@ max_outgoing_byte_rate_non_validators = 6553600
 # A value of `0` means unlimited.
 max_incoming_message_rate_non_validators = 3000
 
-# Weights for impact estimation of incoming messages, used in combination with
-# `max_incoming_message_rate_non_validators`.
-#
-# Any weight set to 0 means that the category of traffic is exempt from throttling.
-estimator_weights = { consensus=0, deploy_requests=1 }
-
 # Reject incompatible node versions
 #
 # Causes the node to immediately disconnect from versions on a different protocol version than
@@ -186,6 +180,21 @@ tarpit_duration = '10min'
 # set to `1/n` or higher, with `n` being the number of known nodes expected in the configuration of
 # legacy nodes running this software.
 tarpit_chance = 0.2
+
+# Weights for impact estimation of incoming messages, used in combination with
+# `max_incoming_message_rate_non_validators`.
+#
+# Any weight set to 0 means that the category of traffic is exempt from throttling.
+[network.estimator_weights]
+consensus = 0
+gossip = 0
+finality_signatures = 0
+deploy_requests = 1
+deploy_responses = 1
+block_requests = 1
+block_responses = 0
+trie_requests = 1
+trie_responses = 0
 
 
 # ==================================================

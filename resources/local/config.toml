@@ -197,6 +197,7 @@ block_responses = 0
 trie_requests = 1
 trie_responses = 0
 
+
 # ==================================================
 # Configuration options for the JSON-RPC HTTP server
 # ==================================================
