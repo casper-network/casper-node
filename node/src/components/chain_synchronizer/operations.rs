@@ -705,26 +705,17 @@ async fn sync_deploys_and_transfers_and_state(
     block: &Block,
     node_config: &NodeConfig,
 ) -> Result<(), Error> {
-    let hash_iter: Vec<_> = block
-        .deploy_hashes()
-        .iter()
-        .chain(block.transfer_hashes())
-        .cloned()
-        .collect();
-    let mut stream = futures::stream::iter(hash_iter)
-        .map(|hash| {
-            debug!("start - fetch_and_store_deploy - archival sync - {}", hash);
-            fetch_and_store_deploy(effect_builder, hash)
-        })
-        .buffer_unordered(node_config.max_parallel_deploy_fetches as usize);
-    while let Some(result) = stream.next().await {
-        let deploy = result?;
-        debug!(
-            "finish - fetch_and_store_deploy - archival sync - {}",
-            deploy.id()
-        );
-        trace!("fetched {:?}", deploy);
-    }
+    fetch_and_store_deploys(
+        block
+            .deploy_hashes()
+            .iter()
+            .chain(block.transfer_hashes())
+            .cloned()
+            .collect(),
+        node_config.max_parallel_trie_fetches as usize,
+        effect_builder,
+    )
+    .await?;
     debug!(
         "start - sync_deploys_and_transfers_and_state - sync_trie_store - archival sync - {}",
         block.hash()
