@@ -509,6 +509,7 @@ async fn should_store_finalized_approvals() {
     let alice_sk = Arc::new(SecretKey::random(&mut rng));
     let alice_pk = PublicKey::from(&*alice_sk);
     let bob_sk = Arc::new(SecretKey::random(&mut rng));
+    let charlie_sk = Arc::new(SecretKey::random(&mut rng)); // just for ordering testing purposes
     let keys: Vec<Arc<SecretKey>> = vec![alice_sk.clone(), bob_sk.clone()];
     // only Alice will be proposing blocks
     let stakes: BTreeMap<PublicKey, U512> =
@@ -530,49 +531,72 @@ async fn should_store_finalized_approvals() {
         .await;
 
     // Submit a deploy.
-    let mut deploy = Deploy::random_valid_native_transfer_without_deps(&mut rng);
-    deploy.sign(&*alice_sk);
-    // We expect these approvals to become finalized approvals for Bob.
-    let expected_approvals = deploy.approvals().clone();
+    let mut deploy_alice_bob = Deploy::random_valid_native_transfer_without_deps(&mut rng);
+    let mut deploy_alice_bob_charlie = deploy_alice_bob.clone();
+    let mut deploy_bob_alice = deploy_alice_bob.clone();
 
-    let mut deploy_copy = deploy.clone();
-    deploy_copy.sign(&*bob_sk);
-    // Save these for checks later.
-    let bobs_original_approvals = deploy_copy.approvals().clone();
+    deploy_alice_bob.sign(&*alice_sk);
+    deploy_alice_bob.sign(&*bob_sk);
+
+    deploy_alice_bob_charlie.sign(&*alice_sk);
+    deploy_alice_bob_charlie.sign(&*bob_sk);
+    deploy_alice_bob_charlie.sign(&*charlie_sk);
+
+    deploy_bob_alice.sign(&*bob_sk);
+    deploy_bob_alice.sign(&*alice_sk);
+
+    // We will be testing the correct sequence of approvals against the deploy signed by Bob and
+    // Alice.
+    // The deploy signed by Alice and Bob should give the same ordering of approvals.
+    let expected_approvals: Vec<_> = deploy_bob_alice.approvals().iter().cloned().collect();
+
+    // We'll give the deploy signed by Alice, Bob and Charlie to Bob, so these will be his original
+    // approvals. Save these for checks later.
+    let bobs_original_approvals: Vec<_> = deploy_alice_bob_charlie
+        .approvals()
+        .iter()
+        .cloned()
+        .collect();
     assert_ne!(bobs_original_approvals, expected_approvals);
 
-    let deploy_hash = *deploy.deploy_or_transfer_hash().deploy_hash();
+    let deploy_hash = *deploy_alice_bob.deploy_or_transfer_hash().deploy_hash();
 
     for runner in net.runners_mut() {
         if runner.participating().consensus().public_key() == &alice_pk {
-            // Alice will propose the deploy with just her signature
+            // Alice will propose the deploy signed by Alice and Bob.
             runner
                 .process_injected_effects(|effect_builder| {
                     effect_builder
-                        .put_deploy_to_storage(Box::new(deploy.clone()))
+                        .put_deploy_to_storage(Box::new(deploy_alice_bob.clone()))
                         .ignore()
                 })
                 .await;
             runner
                 .process_injected_effects(|effect_builder| {
                     effect_builder
-                        .announce_new_deploy_accepted(Box::new(deploy.clone()), Source::Client)
+                        .announce_new_deploy_accepted(
+                            Box::new(deploy_alice_bob.clone()),
+                            Source::Client,
+                        )
                         .ignore()
                 })
                 .await;
         } else {
-            // Bob will receive the deploy with two signatures
+            // Bob will receive the deploy signed by Alice, Bob and Charlie.
             runner
                 .process_injected_effects(|effect_builder| {
                     effect_builder
-                        .put_deploy_to_storage(Box::new(deploy_copy.clone()))
+                        .put_deploy_to_storage(Box::new(deploy_alice_bob_charlie.clone()))
                         .ignore()
                 })
                 .await;
             runner
                 .process_injected_effects(|effect_builder| {
                     effect_builder
-                        .announce_new_deploy_accepted(Box::new(deploy_copy.clone()), Source::Client)
+                        .announce_new_deploy_accepted(
+                            Box::new(deploy_alice_bob_charlie.clone()),
+                            Source::Client,
+                        )
                         .ignore()
                 })
                 .await;
@@ -605,18 +629,26 @@ async fn should_store_finalized_approvals() {
         let maybe_finalized_approvals = maybe_dwa
             .as_ref()
             .and_then(|dwa| dwa.finalized_approvals())
-            .map(|fa| fa.as_ref());
-        let maybe_original_approvals = maybe_dwa.as_ref().map(|dwa| dwa.original_approvals());
+            .map(|fa| fa.as_ref().iter().cloned().collect());
+        let maybe_original_approvals = maybe_dwa
+            .as_ref()
+            .map(|dwa| dwa.original_approvals().iter().cloned().collect());
         if runner.participating().consensus().public_key() != &alice_pk {
             // Bob should have finalized approvals, and his original approvals should be different.
-            assert_eq!(maybe_finalized_approvals, Some(&expected_approvals));
-            assert_eq!(maybe_original_approvals, Some(&bobs_original_approvals));
+            assert_eq!(
+                maybe_finalized_approvals.as_ref(),
+                Some(&expected_approvals)
+            );
+            assert_eq!(
+                maybe_original_approvals.as_ref(),
+                Some(&bobs_original_approvals)
+            );
         } else {
             // Alice should only have the correct approvals as the original ones, and no finalized
             // approvals (as they wouldn't be stored, because they would be the same as the
             // original ones).
-            assert_eq!(maybe_finalized_approvals, None);
-            assert_eq!(maybe_original_approvals, Some(&expected_approvals));
+            assert_eq!(maybe_finalized_approvals.as_ref(), None);
+            assert_eq!(maybe_original_approvals.as_ref(), Some(&expected_approvals));
         }
     }
 }
