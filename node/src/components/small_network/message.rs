@@ -300,8 +300,22 @@ pub(crate) trait FromIncoming<I, P> {
 pub struct PayloadWeights {
     /// Weight to attach to consensus traffic.
     pub consensus: u32,
+    /// Weight to attach to gossiper traffic.
+    pub gossip: u32,
+    /// Weight to attach to finality signatures traffic.
+    pub finality_signatures: u32,
     /// Weight to attach to deploy requests.
     pub deploy_requests: u32,
+    /// Weight to attach to deploy responses.
+    pub deploy_responses: u32,
+    /// Weight to attach to block requests.
+    pub block_requests: u32,
+    /// Weight to attach to block responses.
+    pub block_responses: u32,
+    /// Weight to attach to trie requests.
+    pub trie_requests: u32,
+    /// Weight to attach to trie responses.
+    pub trie_responses: u32,
 }
 
 #[cfg(test)]

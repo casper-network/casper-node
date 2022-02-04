@@ -80,30 +80,30 @@ impl Payload for Message {
     }
 
     #[inline]
-    fn incoming_resource_estimate(&self, _weights: &PayloadWeights) -> u32 {
+    fn incoming_resource_estimate(&self, weights: &PayloadWeights) -> u32 {
         match self {
-            Message::Consensus(_) => 0,
-            Message::DeployGossiper(_) => 0,
-            Message::AddressGossiper(_) => 0,
+            Message::Consensus(_) => weights.consensus,
+            Message::DeployGossiper(_) => weights.gossip,
+            Message::AddressGossiper(_) => weights.gossip,
             Message::GetRequest { tag, .. } => match tag {
-                Tag::Deploy => 1,
-                Tag::Block => 1,
-                Tag::GossipedAddress => 0,
-                Tag::BlockAndMetadataByHeight => 1,
-                Tag::BlockHeaderByHash => 1,
-                Tag::BlockHeaderAndFinalitySignaturesByHeight => 1,
-                Tag::Trie => 1,
+                Tag::Deploy => weights.deploy_requests,
+                Tag::Block => weights.block_requests,
+                Tag::GossipedAddress => weights.gossip,
+                Tag::BlockAndMetadataByHeight => weights.block_requests,
+                Tag::BlockHeaderByHash => weights.block_requests,
+                Tag::BlockHeaderAndFinalitySignaturesByHeight => weights.block_requests,
+                Tag::Trie => weights.trie_requests,
             },
             Message::GetResponse { tag, .. } => match tag {
-                Tag::Deploy => 1,
-                Tag::Block => 0,
-                Tag::GossipedAddress => 0,
-                Tag::BlockAndMetadataByHeight => 0,
-                Tag::BlockHeaderByHash => 0,
-                Tag::BlockHeaderAndFinalitySignaturesByHeight => 0,
-                Tag::Trie => 0,
+                Tag::Deploy => weights.deploy_responses,
+                Tag::Block => weights.block_responses,
+                Tag::GossipedAddress => weights.gossip,
+                Tag::BlockAndMetadataByHeight => weights.block_responses,
+                Tag::BlockHeaderByHash => weights.block_responses,
+                Tag::BlockHeaderAndFinalitySignaturesByHeight => weights.block_responses,
+                Tag::Trie => weights.trie_responses,
             },
-            Message::FinalitySignature(_) => 0,
+            Message::FinalitySignature(_) => weights.finality_signatures,
         }
     }
 }
