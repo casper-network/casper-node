@@ -390,7 +390,7 @@ where
     fn node_mut(&mut self, validator_id: &ValidatorId) -> TestResult<&mut HighwayNode> {
         self.virtual_net
             .node_mut(validator_id)
-            .ok_or_else(|| TestRunError::MissingValidator(*validator_id))
+            .ok_or(TestRunError::MissingValidator(*validator_id))
     }
 
     fn call_validator<F>(

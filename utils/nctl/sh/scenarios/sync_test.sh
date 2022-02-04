@@ -9,8 +9,8 @@ source "$NCTL"/sh/scenarios/common/itst.sh
 set -e
 
 #######################################
-# Runs an integration tests that tries to sync a new node
-# to an already running network.
+# Runs an integration tests that tries to sync 2 new nodes
+# (1 archival, 1 non-archival) to an already running network.
 #
 # Arguments:
 #   `node=XXX` ID of a new node.
@@ -29,19 +29,22 @@ function main() {
     do_send_transfers
     # 3. Wait until they're all included in the chain.
     do_await_deploy_inclusion
-    # 4. Take a note of the last finalized block hash
+    # 3a. Take a note of the last finalized block hash
     do_read_lfb_hash
-    # 5. Send batch of Wasm deploys
+    # 4. Send batch of Wasm deploys
     do_send_wasm_deploys
-    # 6. Send batch of native transfers
+    # 5. Send batch of native transfers
     do_send_transfers
-    # 7. Wait until they're all included in the chain.
-    # 8. Start the node in sync mode using hash from 4)
-    do_start_new_node "$NEW_NODE_ID"
-    # 9. Wait until it's synchronized.
-    # 10. Verify that its last finalized block matches other nodes'.
-    # nctl-view-chain-root-hash
-    do_await_full_synchronization "$NEW_NODE_ID"
+    # 6. Wait until they're all included in the chain.
+    do_await_deploy_inclusion
+    # 7. Start the node in archival sync mode using hash from 4)
+    do_start_new_node "$ARCH_NODE_ID" 'true'
+    # 8. Wait until archival node is synchronized.
+    do_await_full_synchronization "$ARCH_NODE_ID"
+    # 9. Start the node in non-archival sync mode using hash from 4)
+    do_start_new_node "$NON_ARCH_NODE_ID" 'false'
+    # 10. Wait until non-archival node is synchronized.
+    do_await_full_synchronization "$NON_ARCH_NODE_ID"
     # 11. Run Closing Health Checks
     source "$NCTL"/sh/scenarios/common/health_checks.sh \
             errors=0 \
@@ -111,8 +114,19 @@ function do_read_lfb_hash() {
 
 function do_start_new_node() {
     local NODE_ID=${1}
+    local ARCHIVAL_MODE=${2}
+    local CONFIG_PATH
+
+    CONFIG_PATH="$(find $(get_path_to_node $NODE_ID) -name config.toml)"
+
     log_step "starting new node-$NODE_ID. Syncing from hash=${LFB_HASH}"
     export RUST_LOG="info,casper_node::components::linear_chain_sync=trace"
+
+    if [ ! -z "$ARCHIVAL_MODE" ]; then
+        sed -i "s/archival_sync =.*/archival_sync = $ARCHIVAL_MODE/g" "$CONFIG_PATH"
+    fi
+    log "Archival mode: $(cat $CONFIG_PATH | grep 'archival_sync')"
+
     # TODO: Do not hardcode.
     do_node_start "$NODE_ID" "$LFB_HASH"
 }
@@ -179,7 +193,8 @@ function prepare_wasm_batch() {
 # ENTRY POINT
 # ----------------------------------------------------------------
 
-unset NEW_NODE_ID
+unset ARCH_NODE_ID
+unset NON_ARCH_NODE_ID
 unset SYNC_TIMEOUT_SEC
 unset LFB_HASH
 STEP=0
@@ -188,13 +203,15 @@ for ARGUMENT in "$@"; do
     KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
     VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
     case "$KEY" in
-        node) NEW_NODE_ID=${VALUE} ;;
+        archival_node) ARCH_NODE_ID=${VALUE} ;;
+        non_archival_node) NON_ARCH_NODE_ID=${VALUE} ;;
         timeout) SYNC_TIMEOUT_SEC=${VALUE} ;;
         *) ;;
     esac
 done
 
-NEW_NODE_ID=${NEW_NODE_ID:-"6"}
+ARCH_NODE_ID=${ARCH_NODE_ID:-"6"}
+NON_ARCH_NODE_ID=${NON_ARCH_NODE_ID:-"7"}
 SYNC_TIMEOUT_SEC=${SYNC_TIMEOUT_SEC:-"300"}
 
-main "$NEW_NODE_ID"
+main "$ARCH_NODE_ID" "$NON_ARCH_NODE_ID"

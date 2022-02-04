@@ -20,7 +20,7 @@ use derive_more::From;
 use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::Serialize;
-use tracing::{debug, error, warn};
+use tracing::error;
 
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
@@ -45,6 +45,7 @@ use crate::{
         storage::{self, Storage},
         Component,
     },
+    contract_runtime,
     effect::{
         announcements::{
             BlockProposerAnnouncement, BlocklistAnnouncement, ChainspecLoaderAnnouncement,
@@ -55,7 +56,7 @@ use crate::{
         console::DumpConsensusStateRequest,
         incoming::{
             ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
-            NetRequestIncoming, NetResponse, NetResponseIncoming, TrieRequest, TrieRequestIncoming,
+            NetRequestIncoming, NetResponse, NetResponseIncoming, TrieRequestIncoming,
             TrieResponseIncoming,
         },
         requests::{
@@ -68,7 +69,7 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
-    types::{Deploy, DeployHash, ExitCode, Item, NodeId, Tag},
+    types::{Deploy, DeployHash, ExitCode, NodeId},
     utils::{Source, WithDir},
     NodeRng,
 };
@@ -127,10 +128,14 @@ pub(crate) enum ParticipatingEvent {
     /// Console event.
     #[from]
     Console(console::Event),
+    /// Contract runtime event.
+    #[from]
+    ContractRuntime(contract_runtime::Event),
 
     // Requests
     /// Contract runtime request.
-    ContractRuntime(#[serde(skip_serializing)] Box<ContractRuntimeRequest>),
+    #[from]
+    ContractRuntimeRequest(ContractRuntimeRequest),
     /// Network request.
     #[from]
     NetworkRequest(#[serde(skip_serializing)] NetworkRequest<NodeId, Message>),
@@ -250,7 +255,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::AddressGossiper(_) => "AddressGossiper",
             ParticipatingEvent::BlockValidator(_) => "BlockValidator",
             ParticipatingEvent::LinearChain(_) => "LinearChain",
-            ParticipatingEvent::ContractRuntime(_) => "ContractRuntime",
+            ParticipatingEvent::ContractRuntimeRequest(_) => "ContractRuntimeRequest",
             ParticipatingEvent::Console(_) => "Console",
             ParticipatingEvent::NetworkRequest(_) => "NetworkRequest",
             ParticipatingEvent::NetworkInfoRequest(_) => "NetworkInfoRequest",
@@ -282,13 +287,8 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::TrieRequestIncoming(_) => "TrieRequestIncoming",
             ParticipatingEvent::TrieResponseIncoming(_) => "TrieResponseIncoming",
             ParticipatingEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
+            ParticipatingEvent::ContractRuntime(_) => "ContractRuntime",
         }
-    }
-}
-
-impl From<ContractRuntimeRequest> for ParticipatingEvent {
-    fn from(contract_runtime_request: ContractRuntimeRequest) -> Self {
-        ParticipatingEvent::ContractRuntime(Box::new(contract_runtime_request))
     }
 }
 
@@ -345,8 +345,8 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::DeployFetcher(event) => write!(f, "deploy fetcher: {}", event),
             ParticipatingEvent::DeployGossiper(event) => write!(f, "deploy gossiper: {}", event),
             ParticipatingEvent::AddressGossiper(event) => write!(f, "address gossiper: {}", event),
-            ParticipatingEvent::ContractRuntime(event) => {
-                write!(f, "contract runtime: {:?}", event)
+            ParticipatingEvent::ContractRuntimeRequest(event) => {
+                write!(f, "contract runtime request: {:?}", event)
             }
             ParticipatingEvent::LinearChain(event) => write!(f, "linear-chain event {}", event),
             ParticipatingEvent::BlockValidator(event) => write!(f, "block validator: {}", event),
@@ -415,6 +415,7 @@ impl Display for ParticipatingEvent {
             ParticipatingEvent::TrieRequestIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::TrieResponseIncoming(inner) => Display::fmt(inner, f),
             ParticipatingEvent::FinalitySignatureIncoming(inner) => Display::fmt(inner, f),
+            ParticipatingEvent::ContractRuntime(inner) => Display::fmt(inner, f),
         }
     }
 }
@@ -496,73 +497,6 @@ impl Reactor {
     /// Inspect contract runtime.
     pub(crate) fn contract_runtime(&self) -> &ContractRuntime {
         &self.contract_runtime
-    }
-}
-
-impl Reactor {
-    /// Handles a request to get an item by id.
-    fn handle_get_request(
-        &self,
-        effect_builder: EffectBuilder<<Self as reactor::Reactor>::Event>,
-        sender: NodeId,
-        tag: Tag,
-        serialized_id: &[u8],
-    ) -> Effects<<Self as reactor::Reactor>::Event> {
-        match tag {
-            Tag::Trie => {
-                Self::respond_to_fetch(effect_builder, serialized_id, sender, |trie_or_chunk_id| {
-                    self.contract_runtime.get_trie(trie_or_chunk_id)
-                })
-            }
-            _ => {
-                warn!(%sender, ?tag, ?serialized_id, "tried to handle a non-trie get request, this should not have happened");
-                Effects::new()
-            }
-        }
-    }
-
-    fn respond_to_fetch<T, F, E>(
-        effect_builder: EffectBuilder<<Self as reactor::Reactor>::Event>,
-        serialized_id: &[u8],
-        sender: NodeId,
-        fetch_item: F,
-    ) -> Effects<<Self as reactor::Reactor>::Event>
-    where
-        T: Item,
-        F: FnOnce(T::Id) -> Result<Option<T>, E>,
-        E: Debug,
-    {
-        let id: T::Id = match bincode::deserialize(serialized_id) {
-            Ok(id) => id,
-            Err(error) => {
-                error!(
-                    tag = ?T::TAG,
-                    ?serialized_id,
-                    ?sender,
-                    ?error,
-                    "failed to decode item id"
-                );
-                return Effects::new();
-            }
-        };
-        let fetched_or_not_found = match fetch_item(id) {
-            Ok(Some(item)) => FetchedOrNotFound::Fetched(item),
-            Ok(None) => {
-                debug!(tag = ?T::TAG, ?id, ?sender, "failed to get item");
-                FetchedOrNotFound::NotFound(id)
-            }
-            Err(error) => {
-                error!(tag = ?T::TAG, ?id, ?sender, ?error, "error getting item");
-                FetchedOrNotFound::NotFound(id)
-            }
-        };
-        match Message::new_get_response(&fetched_or_not_found) {
-            Ok(message) => effect_builder.send_message(sender, message).ignore(),
-            Err(error) => {
-                error!("failed to create get-response: {}", error);
-                Effects::new()
-            }
-        }
     }
 }
 
@@ -847,10 +781,10 @@ impl reactor::Reactor for Reactor {
                 self.address_gossiper
                     .handle_event(effect_builder, rng, event),
             ),
-            ParticipatingEvent::ContractRuntime(event) => reactor::wrap_effects(
-                Into::into,
+            ParticipatingEvent::ContractRuntimeRequest(req) => reactor::wrap_effects(
+                ParticipatingEvent::ContractRuntime,
                 self.contract_runtime
-                    .handle_event(effect_builder, rng, *event),
+                    .handle_event(effect_builder, rng, req.into()),
             ),
             ParticipatingEvent::BlockValidator(event) => reactor::wrap_effects(
                 ParticipatingEvent::BlockValidator,
@@ -1250,10 +1184,11 @@ impl reactor::Reactor for Reactor {
 
                 self.dispatch_event(effect_builder, rng, event)
             }
-            ParticipatingEvent::TrieRequestIncoming(TrieRequestIncoming {
-                sender,
-                message: TrieRequest(ref serialized_id),
-            }) => self.handle_get_request(effect_builder, sender, Tag::Trie, serialized_id),
+            ParticipatingEvent::TrieRequestIncoming(req) => reactor::wrap_effects(
+                ParticipatingEvent::ContractRuntime,
+                self.contract_runtime
+                    .handle_event(effect_builder, rng, req.into()),
+            ),
             ParticipatingEvent::TrieResponseIncoming(TrieResponseIncoming { sender, .. }) => {
                 error!("cannot handle get response for read-trie from {}", sender);
                 Effects::new()
@@ -1267,6 +1202,11 @@ impl reactor::Reactor for Reactor {
                 effect_builder,
                 rng,
                 ParticipatingEvent::SmallNetwork(ann.into()),
+            ),
+            ParticipatingEvent::ContractRuntime(event) => reactor::wrap_effects(
+                ParticipatingEvent::ContractRuntime,
+                self.contract_runtime
+                    .handle_event(effect_builder, rng, event),
             ),
         }
     }

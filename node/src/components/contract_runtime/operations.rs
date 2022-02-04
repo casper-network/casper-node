@@ -72,7 +72,7 @@ pub fn execute_finalized_block(
             block_time,
             vec![DeployItem::from(deploy)],
             protocol_version,
-            finalized_block.proposer().clone(),
+            *finalized_block.proposer(),
         );
 
         // TODO: this is currently working coincidentally because we are passing only one

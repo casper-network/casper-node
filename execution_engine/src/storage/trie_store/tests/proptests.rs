@@ -53,7 +53,7 @@ fn lmdb_roundtrip_succeeds(inputs: Vec<Trie<Key, StoredValue>>) -> bool {
 
     let tmp_dir = tempdir().unwrap();
     let env = LmdbEnvironment::new(
-        &tmp_dir.path().to_path_buf(),
+        &tmp_dir.path(),
         DEFAULT_TEST_MAX_DB_SIZE,
         DEFAULT_TEST_MAX_READERS,
         true,

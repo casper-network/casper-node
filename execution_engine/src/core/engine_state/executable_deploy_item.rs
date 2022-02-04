@@ -525,7 +525,7 @@ impl ExecutableDeployItem {
 
                 let contract_version_key = maybe_version_key
                     .or_else(|| contract_package.current_contract_version())
-                    .ok_or_else(|| {
+                    .ok_or({
                         error::Error::Exec(execution::Error::NoActiveContractVersions(
                             *contract_package_hash,
                         ))

@@ -333,10 +333,10 @@ pub struct FinalizedBlock {
     transfer_hashes: Vec<DeployHash>,
     timestamp: Timestamp,
     random_bit: bool,
-    era_report: Option<EraReport>,
+    era_report: Box<Option<EraReport>>,
     era_id: EraId,
     height: u64,
-    proposer: PublicKey,
+    proposer: Box<PublicKey>,
 }
 
 impl FinalizedBlock {
@@ -353,10 +353,10 @@ impl FinalizedBlock {
             transfer_hashes: block_payload.transfer_hashes,
             timestamp,
             random_bit: block_payload.random_bit,
-            era_report,
+            era_report: Box::new(era_report),
             era_id,
             height,
-            proposer,
+            proposer: Box::new(proposer),
         }
     }
 
@@ -368,7 +368,7 @@ impl FinalizedBlock {
     /// Returns slashing and reward information if this is a switch block, i.e. the last block of
     /// its era.
     pub(crate) fn era_report(&self) -> Option<&EraReport> {
-        self.era_report.as_ref()
+        (*self.era_report).as_ref()
     }
 
     /// Returns the ID of the era this block belongs to.
@@ -381,7 +381,7 @@ impl FinalizedBlock {
         self.height
     }
 
-    pub(crate) fn proposer(&self) -> PublicKey {
+    pub(crate) fn proposer(&self) -> Box<PublicKey> {
         self.proposer.clone()
     }
 
@@ -480,10 +480,10 @@ impl From<Block> for FinalizedBlock {
             transfer_hashes: block.body.transfer_hashes,
             timestamp: block.header.timestamp,
             random_bit: block.header.random_bit,
-            era_report: block.header.era_end.map(|era_end| era_end.era_report),
+            era_report: Box::new(block.header.era_end.map(|era_end| era_end.era_report)),
             era_id: block.header.era_id,
             height: block.header.height,
-            proposer: block.body.proposer,
+            proposer: Box::new(block.body.proposer),
         }
     }
 }
@@ -501,7 +501,7 @@ impl Display for FinalizedBlock {
             self.random_bit,
             self.timestamp,
         )?;
-        if let Some(ee) = &self.era_report {
+        if let Some(ee) = *self.era_report.clone() {
             write!(formatter, ", era_end: {}", ee)?;
         }
         Ok(())
@@ -1341,7 +1341,7 @@ impl Block {
         verifiable_chunked_hash_activation: EraId,
     ) -> Result<Self, BlockCreationError> {
         let body = BlockBody::new(
-            finalized_block.proposer.clone(),
+            *finalized_block.proposer,
             finalized_block.deploy_hashes,
             finalized_block.transfer_hashes,
         );
@@ -1352,7 +1352,7 @@ impl Block {
             verifiable_chunked_hash_activation,
         );
 
-        let era_end = match (finalized_block.era_report, next_era_validator_weights) {
+        let era_end = match (*finalized_block.era_report, next_era_validator_weights) {
             (None, None) => None,
             (Some(era_report), Some(next_era_validator_weights)) => {
                 Some(EraEnd::new(era_report, next_era_validator_weights))
@@ -1582,8 +1582,8 @@ impl Block {
         let finalized_block = FinalizedBlock::random_with_specifics(rng, era_id, height, is_switch);
         let parent_seed = rng.gen::<[u8; Digest::LENGTH]>().into();
         let next_era_validator_weights = finalized_block
+            .clone()
             .era_report
-            .as_ref()
             .map(|_| BTreeMap::<PublicKey, U512>::default());
 
         Block::new(
