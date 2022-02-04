@@ -287,7 +287,7 @@ pub trait Auction:
                 let max_global_delegator_capacity =
                     detail::get_validator_slots(self)? * max_delegator_size_limit;
 
-                if (current_total_no_of_delegators + 1) as usize >= max_global_delegator_capacity {
+                if (current_total_no_of_delegators + 1) >= max_global_delegator_capacity {
                     return Err(Error::GlobalDelegatorCapacityReached);
                 }
 

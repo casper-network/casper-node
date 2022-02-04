@@ -21,7 +21,7 @@ use casper_execution_engine::{
                 DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT, DEFAULT_MAX_STORED_VALUE_SIZE,
             },
             genesis::{GenesisAccount, GenesisValidator},
-            EngineConfig, RewardItem,
+            EngineConfig, Error, RewardItem,
         },
         execution,
     },
@@ -3670,4 +3670,13 @@ fn should_enforce_and_check_global_delegator_capacity() {
     builder
         .exec(delegation_to_validator_2_request)
         .expect_failure();
+
+    let error = builder.get_error();
+
+    assert!(matches!(
+        error,
+        Some(Error::Exec(execution::Error::Revert(
+            ApiError::AuctionError(44)
+        )))
+    ))
 }
