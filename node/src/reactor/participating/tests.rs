@@ -537,6 +537,9 @@ async fn should_store_finalized_approvals() {
 
     let mut deploy_copy = deploy.clone();
     deploy_copy.sign(&*bob_sk);
+    // Save these for checks later.
+    let bobs_original_approvals = deploy_copy.approvals().clone();
+    assert_ne!(bobs_original_approvals, expected_approvals);
 
     let deploy_hash = *deploy.deploy_or_transfer_hash().deploy_hash();
 
@@ -603,10 +606,17 @@ async fn should_store_finalized_approvals() {
             .as_ref()
             .and_then(|dwa| dwa.finalized_approvals())
             .map(|fa| fa.as_ref());
+        let maybe_original_approvals = maybe_dwa.as_ref().map(|dwa| dwa.original_approvals());
         if runner.participating().consensus().public_key() != &alice_pk {
-            assert_eq!(maybe_finalized_approvals, Some(&expected_approvals),);
+            // Bob should have finalized approvals, and his original approvals should be different.
+            assert_eq!(maybe_finalized_approvals, Some(&expected_approvals));
+            assert_eq!(maybe_original_approvals, Some(&bobs_original_approvals));
         } else {
+            // Alice should only have the correct approvals as the original ones, and no finalized
+            // approvals (as they wouldn't be stored, because they would be the same as the
+            // original ones).
             assert_eq!(maybe_finalized_approvals, None);
+            assert_eq!(maybe_original_approvals, Some(&expected_approvals));
         }
     }
 }

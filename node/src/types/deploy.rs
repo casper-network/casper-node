@@ -976,6 +976,11 @@ impl DeployWithFinalizedApprovals {
     }
 
     #[cfg(test)]
+    pub(crate) fn original_approvals(&self) -> &BTreeSet<Approval> {
+        self.deploy.approvals()
+    }
+
+    #[cfg(test)]
     pub(crate) fn finalized_approvals(&self) -> Option<&FinalizedApprovals> {
         self.finalized_approvals.as_ref()
     }
