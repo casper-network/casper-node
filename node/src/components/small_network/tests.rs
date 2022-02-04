@@ -148,7 +148,7 @@ impl Payload for Message {
         }
     }
 
-    fn incoming_resource_estimate(&self, _weights: &super::PayloadWeights) -> u32 {
+    fn incoming_resource_estimate(&self, _weights: &super::EstimatorWeights) -> u32 {
         0
     }
 }

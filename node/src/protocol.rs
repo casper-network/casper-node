@@ -15,7 +15,7 @@ use crate::{
         consensus,
         fetcher::FetchedOrNotFound,
         gossiper,
-        small_network::{FromIncoming, GossipedAddress, MessageKind, Payload, PayloadWeights},
+        small_network::{EstimatorWeights, FromIncoming, GossipedAddress, MessageKind, Payload},
     },
     effect::incoming::{
         ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming, NetRequest,
@@ -80,7 +80,7 @@ impl Payload for Message {
     }
 
     #[inline]
-    fn incoming_resource_estimate(&self, weights: &PayloadWeights) -> u32 {
+    fn incoming_resource_estimate(&self, weights: &EstimatorWeights) -> u32 {
         match self {
             Message::Consensus(_) => weights.consensus,
             Message::DeployGossiper(_) => weights.gossip,

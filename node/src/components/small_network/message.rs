@@ -55,7 +55,7 @@ impl<P: Payload> Message<P> {
 
     /// Returns the incoming resource estimate of the payload.
     #[inline]
-    pub(super) fn payload_incoming_resource_estimate(&self, weights: &PayloadWeights) -> u32 {
+    pub(super) fn payload_incoming_resource_estimate(&self, weights: &EstimatorWeights) -> u32 {
         match self {
             Message::Handshake { .. } => 0,
             Message::Payload(payload) => payload.incoming_resource_estimate(weights),
@@ -283,7 +283,7 @@ pub(crate) trait Payload:
     fn classify(&self) -> MessageKind;
 
     /// The penalty for resource usage of a message to be applied when processed as incoming.
-    fn incoming_resource_estimate(&self, _weights: &PayloadWeights) -> u32;
+    fn incoming_resource_estimate(&self, _weights: &EstimatorWeights) -> u32;
 }
 
 /// Network message conversion support.
@@ -297,7 +297,7 @@ pub(crate) trait FromIncoming<I, P> {
 ///
 /// The default implementation sets all weights to zero.
 #[derive(DataSize, Debug, Default, Clone, Deserialize, Serialize)]
-pub struct PayloadWeights {
+pub struct EstimatorWeights {
     /// Weight to attach to consensus traffic.
     pub consensus: u32,
     /// Weight to attach to gossiper traffic.
