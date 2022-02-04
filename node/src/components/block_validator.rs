@@ -12,7 +12,7 @@ mod keyed_counter;
 mod tests;
 
 use std::{
-    collections::{hash_map::Entry, BTreeMap, HashMap, HashSet, VecDeque},
+    collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, VecDeque},
     convert::Infallible,
     fmt::Debug,
     hash::Hash,
@@ -36,8 +36,8 @@ use crate::{
         EffectBuilder, EffectExt, EffectOptionExt, Effects, Responder,
     },
     types::{
-        appendable_block::AppendableBlock, Block, Chainspec, Deploy, DeployHash,
-        DeployOrTransferHash, Timestamp,
+        appendable_block::AppendableBlock, Approval, Block, Chainspec, Deploy, DeployHash,
+        DeployOrTransferHash, DeployWithApprovals, Timestamp,
     },
     NodeRng,
 };
@@ -73,30 +73,51 @@ impl ValidatingBlock {
         }
     }
 
-    fn deploy_hashes(&self) -> &[DeployHash] {
+    fn deploy_hashes(&self) -> Box<dyn Iterator<Item = &DeployHash> + '_> {
         match self {
-            ValidatingBlock::Block(block) => block.deploy_hashes(),
-            ValidatingBlock::ProposedBlock(pb) => pb.value().deploy_hashes(),
+            ValidatingBlock::Block(block) => Box::new(block.deploy_hashes().iter()),
+            ValidatingBlock::ProposedBlock(pb) => Box::new(pb.value().deploy_hashes()),
         }
     }
 
-    fn transfer_hashes(&self) -> &[DeployHash] {
+    fn transfer_hashes(&self) -> Box<dyn Iterator<Item = &DeployHash> + '_> {
         match self {
-            ValidatingBlock::Block(block) => block.transfer_hashes(),
-            ValidatingBlock::ProposedBlock(pb) => pb.value().transfer_hashes(),
+            ValidatingBlock::Block(block) => Box::new(block.transfer_hashes().iter()),
+            ValidatingBlock::ProposedBlock(pb) => Box::new(pb.value().transfer_hashes()),
         }
     }
 
-    fn deploys_and_transfers_iter(&self) -> impl Iterator<Item = DeployOrTransferHash> + '_ {
-        let deploys = self
-            .deploy_hashes()
-            .iter()
-            .map(|hash| DeployOrTransferHash::Deploy(*hash));
-        let transfers = self
-            .transfer_hashes()
-            .iter()
-            .map(|hash| DeployOrTransferHash::Transfer(*hash));
-        deploys.chain(transfers)
+    fn deploys_and_transfers_iter(
+        &self,
+    ) -> Box<dyn Iterator<Item = (DeployOrTransferHash, Option<BTreeSet<Approval>>)> + '_> {
+        match self {
+            ValidatingBlock::Block(block) => {
+                let deploys = block
+                    .deploy_hashes()
+                    .iter()
+                    .map(|hash| (DeployOrTransferHash::Deploy(*hash), None));
+                let transfers = block
+                    .transfer_hashes()
+                    .iter()
+                    .map(|hash| (DeployOrTransferHash::Transfer(*hash), None));
+                Box::new(deploys.chain(transfers))
+            }
+            ValidatingBlock::ProposedBlock(pb) => {
+                let deploys = pb.value().deploys().iter().map(|dwa| {
+                    (
+                        DeployOrTransferHash::Deploy(*dwa.deploy_hash()),
+                        Some(dwa.approvals().clone()),
+                    )
+                });
+                let transfers = pb.value().transfers().iter().map(|dwa| {
+                    (
+                        DeployOrTransferHash::Transfer(*dwa.deploy_hash()),
+                        Some(dwa.approvals().clone()),
+                    )
+                });
+                Box::new(deploys.chain(transfers))
+            }
+        }
     }
 }
 
@@ -111,6 +132,7 @@ pub(crate) enum Event<I> {
     #[display(fmt = "{} found", dt_hash)]
     DeployFound {
         dt_hash: DeployOrTransferHash,
+        approvals: BTreeSet<Approval>,
         deploy_info: Box<DeployInfo>,
     },
 
@@ -131,7 +153,9 @@ pub(crate) struct BlockValidationState<I> {
     /// Appendable block ensuring that the deploys satisfy the validity conditions.
     appendable_block: AppendableBlock,
     /// The deploys that have not yet been "crossed off" the list of potential misses.
-    missing_deploys: HashSet<DeployOrTransferHash>,
+    /// The set of approvals is `Some` if the deploy was included in a block received via
+    /// consensus, with a set of approvals that would be finalized with the block.
+    missing_deploys: HashMap<DeployOrTransferHash, Option<BTreeSet<Approval>>>,
     /// A list of responders that are awaiting an answer.
     responders: SmallVec<[Responder<bool>; 2]>,
     /// Peers that should have the data.
@@ -193,7 +217,7 @@ where
     /// Prints a log message about an invalid block with duplicated deploys.
     fn log_block_with_replay(&self, sender: I, block: &ValidatingBlock) {
         let mut deploy_counts = BTreeMap::new();
-        for dt_hash in block.deploys_and_transfers_iter() {
+        for (dt_hash, _) in block.deploys_and_transfers_iter() {
             *deploy_counts.entry(dt_hash).or_default() += 1;
         }
         let duplicates = deploy_counts
@@ -234,13 +258,13 @@ where
                 sender,
                 responder,
             }) => {
-                let deploy_count = block.deploy_hashes().len() + block.transfer_hashes().len();
+                let deploy_count = block.deploy_hashes().count() + block.transfer_hashes().count();
                 if deploy_count == 0 {
                     // If there are no deploys, return early.
                     return responder.respond(true).ignore();
                 }
-                // Collect the deploys in a set. If they are fewer now, then there was a duplicate!
-                let block_deploys: HashSet<_> = block.deploys_and_transfers_iter().collect();
+                // Collect the deploys in a map. If they are fewer now, then there was a duplicate!
+                let block_deploys: HashMap<_, _> = block.deploys_and_transfers_iter().collect();
                 if block_deploys.len() != deploy_count {
                     self.log_block_with_replay(sender, &block);
                     return responder.respond(false).ignore();
@@ -265,7 +289,7 @@ where
                         // Our entry is vacant - create an entry to track the state.
                         let in_flight = &mut self.in_flight;
                         effects.extend(entry.key().deploys_and_transfers_iter().flat_map(
-                            |dt_hash| {
+                            |(dt_hash, _)| {
                                 // For every request, increase the number of in-flight...
                                 in_flight.inc(&dt_hash.into());
                                 // ...then request it.
@@ -286,6 +310,7 @@ where
             }
             Event::DeployFound {
                 dt_hash,
+                approvals,
                 deploy_info,
             } => {
                 // We successfully found a hash. Decrease the number of outstanding requests.
@@ -297,15 +322,24 @@ where
 
                 // Our first pass updates all validation states, crossing off the found deploy.
                 for (key, state) in self.validation_states.iter_mut() {
-                    if state.missing_deploys.remove(&dt_hash) {
+                    if let Some(maybe_approvals) = state.missing_deploys.remove(&dt_hash) {
+                        // If we had approvals from a proposed block stored here, they should take
+                        // precedence over the ones returned in the response.
+                        let approvals = maybe_approvals.unwrap_or_else(|| approvals.clone());
                         // If the deploy is of the wrong type or would be invalid for this block,
                         // notify everyone still waiting on it that all is lost.
                         let add_result = match dt_hash {
                             DeployOrTransferHash::Deploy(hash) => {
-                                state.appendable_block.add_deploy(hash, &*deploy_info)
+                                state.appendable_block.add_deploy(
+                                    DeployWithApprovals::new(hash, approvals.clone()),
+                                    &*deploy_info,
+                                )
                             }
                             DeployOrTransferHash::Transfer(hash) => {
-                                state.appendable_block.add_transfer(hash, &*deploy_info)
+                                state.appendable_block.add_transfer(
+                                    DeployWithApprovals::new(hash, approvals.clone()),
+                                    &*deploy_info,
+                                )
                             }
                         };
                         if let Err(err) = add_result {
@@ -341,7 +375,7 @@ where
                 let mut retried = false;
 
                 self.validation_states.retain(|key, state| {
-                    if !state.missing_deploys.contains(&dt_hash) {
+                    if !state.missing_deploys.contains_key(&dt_hash) {
                         return true;
                     }
                     if retried {
@@ -381,7 +415,7 @@ where
                 self.in_flight.dec(&dt_hash.into());
 
                 self.validation_states.retain(|key, state| {
-                    if state.missing_deploys.contains(&dt_hash) {
+                    if state.missing_deploys.contains_key(&dt_hash) {
                         // Notify everyone still waiting on it that all is lost.
                         info!(
                             block = ?key, %dt_hash,
@@ -419,13 +453,20 @@ where
         FetchResult::FromStorage(deploy) | FetchResult::FromPeer(deploy, _) => {
             (deploy.deploy_or_transfer_hash() == dt_hash)
                 .then(|| deploy)
-                .and_then(|deploy| deploy.deploy_info().ok())
-                .map_or(Event::CannotConvertDeploy(dt_hash), |deploy_info| {
-                    Event::DeployFound {
-                        dt_hash,
-                        deploy_info: Box::new(deploy_info),
-                    }
+                .and_then(|deploy| {
+                    deploy
+                        .deploy_info()
+                        .ok()
+                        .map(|deploy_info| (deploy_info, deploy.approvals().clone()))
                 })
+                .map_or(
+                    Event::CannotConvertDeploy(dt_hash),
+                    |(deploy_info, approvals)| Event::DeployFound {
+                        dt_hash,
+                        approvals,
+                        deploy_info: Box::new(deploy_info),
+                    },
+                )
         }
     };
 

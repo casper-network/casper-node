@@ -39,6 +39,27 @@ mod deploy_hash {
     }
 }
 
+/// Handles providing the arg for retrieval of the finalized approvals
+mod finalized_approvals {
+    use super::*;
+
+    const ARG_NAME: &str = "finalized-approvals";
+    const ARG_HELP: &str =
+        "If present, the finalized approvals will be returned instead of the original ones";
+
+    pub(super) fn arg() -> Arg<'static, 'static> {
+        Arg::with_name(ARG_NAME)
+            .long(ARG_NAME)
+            .takes_value(false)
+            .help(ARG_HELP)
+            .display_order(DisplayOrder::DeployHash as usize)
+    }
+
+    pub(super) fn get(matches: &ArgMatches) -> bool {
+        matches.is_present(ARG_NAME)
+    }
+}
+
 #[async_trait]
 impl<'a, 'b> ClientCommand<'a, 'b> for GetDeploy {
     const NAME: &'static str = "get-deploy";
@@ -54,6 +75,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetDeploy {
             ))
             .arg(common::rpc_id::arg(DisplayOrder::RpcId as usize))
             .arg(deploy_hash::arg())
+            .arg(finalized_approvals::arg())
     }
 
     async fn run(matches: &ArgMatches<'a>) -> Result<Success, Error> {
@@ -61,9 +83,16 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetDeploy {
         let node_address = common::node_address::get(matches);
         let verbosity_level = common::verbose::get(matches);
         let deploy_hash = deploy_hash::get(matches);
+        let finalized_approvals = finalized_approvals::get(matches);
 
-        casper_client::get_deploy(maybe_rpc_id, node_address, verbosity_level, deploy_hash)
-            .await
-            .map(Success::from)
+        casper_client::get_deploy(
+            maybe_rpc_id,
+            node_address,
+            verbosity_level,
+            deploy_hash,
+            finalized_approvals,
+        )
+        .await
+        .map(Success::from)
     }
 }
