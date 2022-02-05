@@ -23,6 +23,7 @@ All notable changes to this project will be documented in this file.  The format
 * Added `max_parallel_deploy_fetches` and `max_parallel_trie_fetches` config options to the `[node]` section to control how many requests are made in parallel while syncing.
 * Added `archival_sync` to `[node]` config section, along with archival syncing capabilities
 * Introducing fast-syncing to join the network, avoiding the need to execute every block to catch up.
+* In addition to `consensus` and `deploy_requests`, the following values can now be controlled via the `[network.estimator_weights]` section in config: `gossip`, `finality_signatures`, `deploy_responses`, `block_requests`, `block_responses`, `trie_requests` and `trie_responses`.
 
 ### Changed
 * Detection of a crash no longer triggers DB integrity checks to run on node start; the checks can be triggered manually instead.

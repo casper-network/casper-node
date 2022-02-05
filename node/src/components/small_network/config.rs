@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::TimeDiff;
 
-use super::PayloadWeights;
+use super::EstimatorWeights;
 
 /// Default binding address.
 ///
@@ -82,7 +82,7 @@ pub struct Config {
     /// Maximum of requests answered from non-validating peers. Unlimited if 0.
     pub max_incoming_message_rate_non_validators: u32,
     /// Weight distribution for the payload impact estimator.
-    pub estimator_weights: PayloadWeights,
+    pub estimator_weights: EstimatorWeights,
     /// Whether or not to reject incompatible versions during handshake.
     pub reject_incompatible_versions: bool,
     /// The protocol version at which (or under) tarpitting is enabled.

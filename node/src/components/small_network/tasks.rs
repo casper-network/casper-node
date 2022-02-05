@@ -41,7 +41,7 @@ use super::{
     event::{IncomingConnection, OutgoingConnection},
     framed,
     limiter::LimiterHandle,
-    message::{ConsensusKeyPair, PayloadWeights},
+    message::{ConsensusKeyPair, EstimatorWeights},
     Event, FramedTransport, Message, Metrics, Payload, Transport,
 };
 use crate::{
@@ -180,7 +180,7 @@ where
     /// Timeout for handshake completion.
     pub(super) handshake_timeout: TimeDiff,
     /// Weights to estimate payloads with.
-    pub(super) payload_weights: PayloadWeights,
+    pub(super) payload_weights: EstimatorWeights,
     /// Whether or not to reject incompatible versions during handshake.
     pub(super) reject_incompatible_versions: bool,
     /// The protocol version at which (or under) tarpitting is enabled.

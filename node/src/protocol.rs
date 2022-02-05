@@ -15,7 +15,7 @@ use crate::{
         consensus,
         fetcher::FetchedOrNotFound,
         gossiper,
-        small_network::{FromIncoming, GossipedAddress, MessageKind, Payload},
+        small_network::{EstimatorWeights, FromIncoming, GossipedAddress, MessageKind, Payload},
     },
     effect::incoming::{
         ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming, NetRequest,
@@ -76,6 +76,34 @@ impl Payload for Message {
                 }
             }
             Message::FinalitySignature(_) => MessageKind::Consensus,
+        }
+    }
+
+    #[inline]
+    fn incoming_resource_estimate(&self, weights: &EstimatorWeights) -> u32 {
+        match self {
+            Message::Consensus(_) => weights.consensus,
+            Message::DeployGossiper(_) => weights.gossip,
+            Message::AddressGossiper(_) => weights.gossip,
+            Message::GetRequest { tag, .. } => match tag {
+                Tag::Deploy => weights.deploy_requests,
+                Tag::Block => weights.block_requests,
+                Tag::GossipedAddress => weights.gossip,
+                Tag::BlockAndMetadataByHeight => weights.block_requests,
+                Tag::BlockHeaderByHash => weights.block_requests,
+                Tag::BlockHeaderAndFinalitySignaturesByHeight => weights.block_requests,
+                Tag::Trie => weights.trie_requests,
+            },
+            Message::GetResponse { tag, .. } => match tag {
+                Tag::Deploy => weights.deploy_responses,
+                Tag::Block => weights.block_responses,
+                Tag::GossipedAddress => weights.gossip,
+                Tag::BlockAndMetadataByHeight => weights.block_responses,
+                Tag::BlockHeaderByHash => weights.block_responses,
+                Tag::BlockHeaderAndFinalitySignaturesByHeight => weights.block_responses,
+                Tag::Trie => weights.trie_responses,
+            },
+            Message::FinalitySignature(_) => weights.finality_signatures,
         }
     }
 }
