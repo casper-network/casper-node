@@ -6,7 +6,7 @@ use super::Source;
 use crate::{
     components::deploy_acceptor::Error,
     effect::{announcements::RpcServerAnnouncement, Responder},
-    types::{Block, Deploy, NodeId, Timestamp},
+    types::{BlockHeader, Deploy, NodeId, Timestamp},
 };
 
 use casper_hashing::Digest;
@@ -52,10 +52,10 @@ pub(crate) enum Event {
         is_new: bool,
         verification_start_timestamp: Timestamp,
     },
-    /// The result of querying the highest available `Block` from the storage component.
-    GetBlockResult {
+    /// The result of querying the highest available `BlockHeader` from the storage component.
+    GetBlockHeaderResult {
         event_metadata: EventMetadata,
-        maybe_block: Box<Option<Block>>,
+        maybe_block_header: Box<Option<BlockHeader>>,
         verification_start_timestamp: Timestamp,
     },
     /// The result of querying global state for the `Account` associated with the `Deploy`.
@@ -136,7 +136,7 @@ impl Display for Event {
                     )
                 }
             }
-            Event::GetBlockResult { event_metadata, .. } => {
+            Event::GetBlockHeaderResult { event_metadata, .. } => {
                 write!(
                     formatter,
                     "received highest block from storage to validate deploy with hash: {}.",

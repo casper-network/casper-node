@@ -250,6 +250,18 @@ fn get_highest_block(
     response
 }
 
+/// Requests the highest block header from a storage component.
+fn get_highest_block_header(
+    harness: &mut ComponentHarness<UnitTestEvent>,
+    storage: &mut Storage,
+) -> Option<BlockHeader> {
+    let response = harness.send_request(storage, |responder| {
+        StorageRequest::GetHighestBlockHeader { responder }.into()
+    });
+    assert!(harness.is_idle());
+    response
+}
+
 /// Stores a block in a storage component.
 fn put_block(
     harness: &mut ComponentHarness<UnitTestEvent>,
@@ -578,6 +590,7 @@ fn can_retrieve_block_by_height() {
             assert!(get_block_at_height(&mut storage, 0).is_none());
             assert!(get_block_header_at_height(&mut storage, 0).is_none());
             assert!(get_highest_block(&mut harness, &mut storage).is_none());
+            assert!(get_highest_block_header(&mut harness, &mut storage).is_none());
             assert!(get_block_at_height(&mut storage, 14).is_none());
             assert!(get_block_header_at_height(&mut storage, 14).is_none());
             assert!(get_block_at_height(&mut storage, 33).is_none());
@@ -592,6 +605,10 @@ fn can_retrieve_block_by_height() {
             assert_eq!(
                 get_highest_block(&mut harness, &mut storage).as_ref(),
                 Some(&*block_33)
+            );
+            assert_eq!(
+                get_highest_block_header(&mut harness, &mut storage).as_ref(),
+                Some(block_33.header())
             );
             assert!(get_block_at_height(&mut storage, 0).is_none());
             assert!(get_block_header_at_height(&mut storage, 0).is_none());
@@ -615,6 +632,10 @@ fn can_retrieve_block_by_height() {
             assert_eq!(
                 get_highest_block(&mut harness, &mut storage).as_ref(),
                 Some(&*block_33)
+            );
+            assert_eq!(
+                get_highest_block_header(&mut harness, &mut storage).as_ref(),
+                Some(block_33.header())
             );
             assert!(get_block_at_height(&mut storage, 0).is_none());
             assert!(get_block_header_at_height(&mut storage, 0).is_none());
@@ -644,6 +665,10 @@ fn can_retrieve_block_by_height() {
             assert_eq!(
                 get_highest_block(&mut harness, &mut storage).as_ref(),
                 Some(&*block_99)
+            );
+            assert_eq!(
+                get_highest_block_header(&mut harness, &mut storage).as_ref(),
+                Some(block_99.header())
             );
             assert!(get_block_at_height(&mut storage, 0).is_none());
             assert!(get_block_header_at_height(&mut storage, 0).is_none());

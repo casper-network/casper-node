@@ -62,6 +62,7 @@ impl ChainSynchronizer {
         chainspec: Arc<Chainspec>,
         config: NodeConfig,
         maybe_next_upgrade: Option<ActivationPoint>,
+        verifiable_chunked_hash_activation: EraId,
         effect_builder: EffectBuilder<JoinerEvent>,
     ) -> (Self, Effects<Event>) {
         let synchronizer = ChainSynchronizer {
@@ -75,9 +76,11 @@ impl ChainSynchronizer {
                 // If no trusted hash was provided in the config, get the highest block from storage
                 // in order to use its hash, or in the case of no blocks, to commit genesis.
                 effect_builder
-                    .get_highest_block_from_storage()
-                    .event(|maybe_highest_block| {
-                        Event::HighestBlockHash(maybe_highest_block.map(|block| *block.hash()))
+                    .get_highest_block_header_from_storage()
+                    .event(move |maybe_highest_block_header| {
+                        Event::HighestBlockHash(maybe_highest_block_header.map(|block_header| {
+                            block_header.hash(verifiable_chunked_hash_activation)
+                        }))
                     })
             }
             Some(trusted_hash) => synchronizer.start_syncing(effect_builder, *trusted_hash),
