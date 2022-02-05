@@ -7,6 +7,8 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
+use std::convert::TryFrom;
+
 use alloc::{
     boxed::Box,
     format,
@@ -15,6 +17,8 @@ use alloc::{
     vec::Vec,
 };
 
+use num::{FromPrimitive, ToPrimitive};
+use num_derive::{FromPrimitive, ToPrimitive};
 #[cfg(feature = "json-schema")]
 use once_cell::sync::Lazy;
 use rand::{
@@ -35,35 +39,68 @@ use crate::{
     CLValue, DeployInfo, NamedKey, Transfer, TransferAddr, U128, U256, U512,
 };
 
-/// Constants to track ExecutionResult serialization.
-const EXECUTION_RESULT_FAILURE_TAG: u8 = 0;
-const EXECUTION_RESULT_SUCCESS_TAG: u8 = 1;
+#[derive(FromPrimitive, ToPrimitive, Debug)]
+#[repr(u8)]
+enum ExecutionResultTag {
+    Failure = 0,
+    Success = 1,
+}
 
-/// Constants to track operation serialization.
-const OP_READ_TAG: u8 = 0;
-const OP_WRITE_TAG: u8 = 1;
-const OP_ADD_TAG: u8 = 2;
-const OP_NOOP_TAG: u8 = 3;
+impl TryFrom<u8> for ExecutionResultTag {
+    type Error = bytesrepr::Error;
 
-/// Constants to track Transform serialization.
-const TRANSFORM_IDENTITY_TAG: u8 = 0;
-const TRANSFORM_WRITE_CLVALUE_TAG: u8 = 1;
-const TRANSFORM_WRITE_ACCOUNT_TAG: u8 = 2;
-const TRANSFORM_WRITE_CONTRACT_WASM_TAG: u8 = 3;
-const TRANSFORM_WRITE_CONTRACT_TAG: u8 = 4;
-const TRANSFORM_WRITE_CONTRACT_PACKAGE_TAG: u8 = 5;
-const TRANSFORM_WRITE_DEPLOY_INFO_TAG: u8 = 6;
-const TRANSFORM_WRITE_TRANSFER_TAG: u8 = 7;
-const TRANSFORM_WRITE_ERA_INFO_TAG: u8 = 8;
-const TRANSFORM_WRITE_BID_TAG: u8 = 9;
-const TRANSFORM_WRITE_WITHDRAW_TAG: u8 = 10;
-const TRANSFORM_ADD_INT32_TAG: u8 = 11;
-const TRANSFORM_ADD_UINT64_TAG: u8 = 12;
-const TRANSFORM_ADD_UINT128_TAG: u8 = 13;
-const TRANSFORM_ADD_UINT256_TAG: u8 = 14;
-const TRANSFORM_ADD_UINT512_TAG: u8 = 15;
-const TRANSFORM_ADD_KEYS_TAG: u8 = 16;
-const TRANSFORM_FAILURE_TAG: u8 = 17;
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        FromPrimitive::from_u8(value).ok_or(bytesrepr::Error::Formatting)
+    }
+}
+
+#[derive(FromPrimitive, ToPrimitive, Debug)]
+#[repr(u8)]
+enum OpTag {
+    Read = 0,
+    Write = 1,
+    Add = 2,
+    NoOp = 3,
+}
+
+impl TryFrom<u8> for OpTag {
+    type Error = bytesrepr::Error;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        FromPrimitive::from_u8(value).ok_or(bytesrepr::Error::Formatting)
+    }
+}
+
+#[derive(FromPrimitive, ToPrimitive, Debug)]
+#[repr(u8)]
+enum TransformTag {
+    Identity = 0,
+    WriteCLValue = 1,
+    WriteAccount = 2,
+    WriteContractWasm = 3,
+    WriteContract = 4,
+    WriteContractPackage = 5,
+    WriteDeployInfo = 6,
+    WriteTransfer = 7,
+    WriteEraInfo = 8,
+    WriteBid = 9,
+    WriteWithdraw = 10,
+    AddInt32 = 11,
+    AddUInt64 = 12,
+    AddUInt128 = 13,
+    AddUInt256 = 14,
+    AddUInt512 = 15,
+    AddKeys = 16,
+    Failure = 17,
+}
+
+impl TryFrom<u8> for TransformTag {
+    type Error = bytesrepr::Error;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        FromPrimitive::from_u8(value).ok_or(bytesrepr::Error::Formatting)
+    }
+}
 
 #[cfg(feature = "json-schema")]
 static EXECUTION_RESULT: Lazy<ExecutionResult> = Lazy::new(|| {
@@ -144,6 +181,28 @@ impl ExecutionResult {
     pub fn example() -> &'static Self {
         &*EXECUTION_RESULT
     }
+
+    fn tag_byte(&self) -> u8 {
+        self.tag()
+            .to_u8()
+            .expect("ExecutionResultTag should be represented as u8")
+    }
+
+    fn tag(&self) -> ExecutionResultTag {
+        match self {
+            ExecutionResult::Failure {
+                effect: _,
+                transfers: _,
+                cost: _,
+                error_message: _,
+            } => ExecutionResultTag::Failure,
+            ExecutionResult::Success {
+                effect: _,
+                transfers: _,
+                cost: _,
+            } => ExecutionResultTag::Success,
+        }
+    }
 }
 
 impl Distribution<ExecutionResult> for Standard {
@@ -197,6 +256,7 @@ impl Distribution<ExecutionResult> for Standard {
 impl ToBytes for ExecutionResult {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
+        buffer.push(self.tag_byte());
         match self {
             ExecutionResult::Failure {
                 effect,
@@ -204,7 +264,6 @@ impl ToBytes for ExecutionResult {
                 cost,
                 error_message,
             } => {
-                buffer.push(EXECUTION_RESULT_FAILURE_TAG);
                 buffer.extend(effect.to_bytes()?);
                 buffer.extend(transfers.to_bytes()?);
                 buffer.extend(cost.to_bytes()?);
@@ -215,7 +274,6 @@ impl ToBytes for ExecutionResult {
                 transfers,
                 cost,
             } => {
-                buffer.push(EXECUTION_RESULT_SUCCESS_TAG);
                 buffer.extend(effect.to_bytes()?);
                 buffer.extend(transfers.to_bytes()?);
                 buffer.extend(cost.to_bytes()?);
@@ -254,8 +312,8 @@ impl ToBytes for ExecutionResult {
 impl FromBytes for ExecutionResult {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
-        match tag {
-            EXECUTION_RESULT_FAILURE_TAG => {
+        match TryFrom::try_from(tag)? {
+            ExecutionResultTag::Failure => {
                 let (effect, remainder) = ExecutionEffect::from_bytes(remainder)?;
                 let (transfers, remainder) = Vec::<TransferAddr>::from_bytes(remainder)?;
                 let (cost, remainder) = U512::from_bytes(remainder)?;
@@ -268,7 +326,7 @@ impl FromBytes for ExecutionResult {
                 };
                 Ok((execution_result, remainder))
             }
-            EXECUTION_RESULT_SUCCESS_TAG => {
+            ExecutionResultTag::Success => {
                 let (execution_effect, remainder) = ExecutionEffect::from_bytes(remainder)?;
                 let (transfers, remainder) = Vec::<TransferAddr>::from_bytes(remainder)?;
                 let (cost, remainder) = U512::from_bytes(remainder)?;
@@ -279,7 +337,6 @@ impl FromBytes for ExecutionResult {
                 };
                 Ok((execution_result, remainder))
             }
-            _ => Err(bytesrepr::Error::Formatting),
         }
     }
 }
@@ -378,14 +435,30 @@ pub enum OpKind {
     NoOp,
 }
 
+// TODO(sam)
+// See if reviewer thinks these types should be combined --
+// might more content be added to OpKind later on? I'd hope
+// not.
+impl OpKind {
+    fn tag_byte(&self) -> u8 {
+        self.tag()
+            .to_u8()
+            .expect("OpTag should be represented as u8")
+    }
+
+    fn tag(&self) -> OpTag {
+        match self {
+            OpKind::Read => OpTag::Read,
+            OpKind::Write => OpTag::Write,
+            OpKind::Add => OpTag::Add,
+            OpKind::NoOp => OpTag::NoOp,
+        }
+    }
+}
+
 impl ToBytes for OpKind {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        match self {
-            OpKind::Read => OP_READ_TAG.to_bytes(),
-            OpKind::Write => OP_WRITE_TAG.to_bytes(),
-            OpKind::Add => OP_ADD_TAG.to_bytes(),
-            OpKind::NoOp => OP_NOOP_TAG.to_bytes(),
-        }
+        self.tag_byte().to_bytes()
     }
 
     fn serialized_length(&self) -> usize {
@@ -396,12 +469,11 @@ impl ToBytes for OpKind {
 impl FromBytes for OpKind {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
-        match tag {
-            OP_READ_TAG => Ok((OpKind::Read, remainder)),
-            OP_WRITE_TAG => Ok((OpKind::Write, remainder)),
-            OP_ADD_TAG => Ok((OpKind::Add, remainder)),
-            OP_NOOP_TAG => Ok((OpKind::NoOp, remainder)),
-            _ => Err(bytesrepr::Error::Formatting),
+        match TryFrom::try_from(tag)? {
+            OpTag::Read => Ok((OpKind::Read, remainder)),
+            OpTag::Write => Ok((OpKind::Write, remainder)),
+            OpTag::Add => Ok((OpKind::Add, remainder)),
+            OpTag::NoOp => Ok((OpKind::NoOp, remainder)),
         }
     }
 }
@@ -482,70 +554,86 @@ pub enum Transform {
     Failure(String),
 }
 
+impl Transform {
+    fn tag_byte(&self) -> u8 {
+        self.tag()
+            .to_u8()
+            .expect("TransformTag should be representable as a u8")
+    }
+
+    fn tag(&self) -> TransformTag {
+        match self {
+            Transform::Identity => TransformTag::Identity,
+            Transform::WriteCLValue(_) => TransformTag::WriteCLValue,
+            Transform::WriteAccount(_) => TransformTag::WriteAccount,
+            Transform::WriteContractWasm => TransformTag::WriteContractWasm,
+            Transform::WriteContract => TransformTag::WriteContract,
+            Transform::WriteContractPackage => TransformTag::WriteContractPackage,
+            Transform::WriteDeployInfo(_) => TransformTag::WriteDeployInfo,
+            Transform::WriteEraInfo(_) => TransformTag::WriteEraInfo,
+            Transform::WriteTransfer(_) => TransformTag::WriteTransfer,
+            Transform::WriteBid(_) => TransformTag::WriteBid,
+            Transform::WriteWithdraw(_) => TransformTag::WriteWithdraw,
+            Transform::AddInt32(_) => TransformTag::AddInt32,
+            Transform::AddUInt64(_) => TransformTag::AddUInt64,
+            Transform::AddUInt128(_) => TransformTag::AddUInt128,
+            Transform::AddUInt256(_) => TransformTag::AddUInt256,
+            Transform::AddUInt512(_) => TransformTag::AddUInt512,
+            Transform::AddKeys(_) => TransformTag::AddKeys,
+            Transform::Failure(_) => TransformTag::Failure,
+        }
+    }
+}
+
 impl ToBytes for Transform {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
+        buffer.insert(0, self.tag_byte());
         match self {
-            Transform::Identity => buffer.insert(0, TRANSFORM_IDENTITY_TAG),
+            Transform::Identity => {}
             Transform::WriteCLValue(value) => {
-                buffer.insert(0, TRANSFORM_WRITE_CLVALUE_TAG);
                 buffer.extend(value.to_bytes()?);
             }
             Transform::WriteAccount(account_hash) => {
-                buffer.insert(0, TRANSFORM_WRITE_ACCOUNT_TAG);
                 buffer.extend(account_hash.to_bytes()?);
             }
-            Transform::WriteContractWasm => buffer.insert(0, TRANSFORM_WRITE_CONTRACT_WASM_TAG),
-            Transform::WriteContract => buffer.insert(0, TRANSFORM_WRITE_CONTRACT_TAG),
-            Transform::WriteContractPackage => {
-                buffer.insert(0, TRANSFORM_WRITE_CONTRACT_PACKAGE_TAG)
-            }
+            Transform::WriteContractWasm => {}
+            Transform::WriteContract => {}
+            Transform::WriteContractPackage => {}
             Transform::WriteDeployInfo(deploy_info) => {
-                buffer.insert(0, TRANSFORM_WRITE_DEPLOY_INFO_TAG);
                 buffer.extend(deploy_info.to_bytes()?);
             }
             Transform::WriteEraInfo(era_info) => {
-                buffer.insert(0, TRANSFORM_WRITE_ERA_INFO_TAG);
                 buffer.extend(era_info.to_bytes()?);
             }
             Transform::WriteTransfer(transfer) => {
-                buffer.insert(0, TRANSFORM_WRITE_TRANSFER_TAG);
                 buffer.extend(transfer.to_bytes()?);
             }
             Transform::WriteBid(bid) => {
-                buffer.insert(0, TRANSFORM_WRITE_BID_TAG);
                 buffer.extend(bid.to_bytes()?);
             }
             Transform::WriteWithdraw(unbonding_purses) => {
-                buffer.insert(0, TRANSFORM_WRITE_WITHDRAW_TAG);
                 buffer.extend(unbonding_purses.to_bytes()?);
             }
             Transform::AddInt32(value) => {
-                buffer.insert(0, TRANSFORM_ADD_INT32_TAG);
                 buffer.extend(value.to_bytes()?);
             }
             Transform::AddUInt64(value) => {
-                buffer.insert(0, TRANSFORM_ADD_UINT64_TAG);
                 buffer.extend(value.to_bytes()?);
             }
             Transform::AddUInt128(value) => {
-                buffer.insert(0, TRANSFORM_ADD_UINT128_TAG);
                 buffer.extend(value.to_bytes()?);
             }
             Transform::AddUInt256(value) => {
-                buffer.insert(0, TRANSFORM_ADD_UINT256_TAG);
                 buffer.extend(value.to_bytes()?);
             }
             Transform::AddUInt512(value) => {
-                buffer.insert(0, TRANSFORM_ADD_UINT512_TAG);
                 buffer.extend(value.to_bytes()?);
             }
             Transform::AddKeys(value) => {
-                buffer.insert(0, TRANSFORM_ADD_KEYS_TAG);
                 buffer.extend(value.to_bytes()?);
             }
             Transform::Failure(value) => {
-                buffer.insert(0, TRANSFORM_FAILURE_TAG);
                 buffer.extend(value.to_bytes()?);
             }
         }
@@ -553,88 +641,95 @@ impl ToBytes for Transform {
     }
 
     fn serialized_length(&self) -> usize {
-        match self {
-            Transform::WriteCLValue(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
-            Transform::WriteAccount(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
-            Transform::WriteDeployInfo(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
-            Transform::WriteEraInfo(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
-            Transform::WriteTransfer(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
-            Transform::AddInt32(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
-            Transform::AddUInt64(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
-            Transform::AddUInt128(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
-            Transform::AddUInt256(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
-            Transform::AddUInt512(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
-            Transform::AddKeys(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
-            Transform::Failure(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
+        let body_len = match self {
+            Transform::WriteCLValue(value) => value.serialized_length(),
+            Transform::WriteAccount(value) => value.serialized_length(),
+            Transform::WriteDeployInfo(value) => value.serialized_length(),
+            Transform::WriteEraInfo(value) => value.serialized_length(),
+            Transform::WriteTransfer(value) => value.serialized_length(),
+            Transform::AddInt32(value) => value.serialized_length(),
+            Transform::AddUInt64(value) => value.serialized_length(),
+            Transform::AddUInt128(value) => value.serialized_length(),
+            Transform::AddUInt256(value) => value.serialized_length(),
+            Transform::AddUInt512(value) => value.serialized_length(),
+            Transform::AddKeys(value) => value.serialized_length(),
+            Transform::Failure(value) => value.serialized_length(),
             Transform::Identity
             | Transform::WriteContractWasm
             | Transform::WriteContract
             | Transform::WriteContractPackage => U8_SERIALIZED_LENGTH,
-            Transform::WriteBid(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
-            Transform::WriteWithdraw(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
-        }
+            Transform::WriteBid(value) => value.serialized_length(),
+            Transform::WriteWithdraw(value) => value.serialized_length(),
+        };
+        U8_SERIALIZED_LENGTH + body_len
     }
 }
 
 impl FromBytes for Transform {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
-        match tag {
-            TRANSFORM_IDENTITY_TAG => Ok((Transform::Identity, remainder)),
-            TRANSFORM_WRITE_CLVALUE_TAG => {
+        match TryFrom::try_from(tag)? {
+            TransformTag::Identity => Ok((Transform::Identity, remainder)),
+            TransformTag::WriteCLValue => {
                 let (cl_value, remainder) = CLValue::from_bytes(remainder)?;
                 Ok((Transform::WriteCLValue(cl_value), remainder))
             }
-            TRANSFORM_WRITE_ACCOUNT_TAG => {
+            TransformTag::WriteAccount => {
                 let (account_hash, remainder) = AccountHash::from_bytes(remainder)?;
                 Ok((Transform::WriteAccount(account_hash), remainder))
             }
-            TRANSFORM_WRITE_CONTRACT_WASM_TAG => Ok((Transform::WriteContractWasm, remainder)),
-            TRANSFORM_WRITE_CONTRACT_TAG => Ok((Transform::WriteContract, remainder)),
-            TRANSFORM_WRITE_CONTRACT_PACKAGE_TAG => {
-                Ok((Transform::WriteContractPackage, remainder))
-            }
-            TRANSFORM_WRITE_DEPLOY_INFO_TAG => {
+            TransformTag::WriteContractWasm => Ok((Transform::WriteContractWasm, remainder)),
+            TransformTag::WriteContract => Ok((Transform::WriteContract, remainder)),
+            TransformTag::WriteContractPackage => Ok((Transform::WriteContractPackage, remainder)),
+            TransformTag::WriteDeployInfo => {
                 let (deploy_info, remainder) = DeployInfo::from_bytes(remainder)?;
                 Ok((Transform::WriteDeployInfo(deploy_info), remainder))
             }
-            TRANSFORM_WRITE_ERA_INFO_TAG => {
+            TransformTag::WriteEraInfo => {
                 let (era_info, remainder) = EraInfo::from_bytes(remainder)?;
                 Ok((Transform::WriteEraInfo(era_info), remainder))
             }
-            TRANSFORM_WRITE_TRANSFER_TAG => {
+            TransformTag::WriteTransfer => {
                 let (transfer, remainder) = Transfer::from_bytes(remainder)?;
                 Ok((Transform::WriteTransfer(transfer), remainder))
             }
-            TRANSFORM_ADD_INT32_TAG => {
+            TransformTag::AddInt32 => {
                 let (value_i32, remainder) = i32::from_bytes(remainder)?;
                 Ok((Transform::AddInt32(value_i32), remainder))
             }
-            TRANSFORM_ADD_UINT64_TAG => {
+            TransformTag::AddUInt64 => {
                 let (value_u64, remainder) = u64::from_bytes(remainder)?;
                 Ok((Transform::AddUInt64(value_u64), remainder))
             }
-            TRANSFORM_ADD_UINT128_TAG => {
+            TransformTag::AddUInt128 => {
                 let (value_u128, remainder) = U128::from_bytes(remainder)?;
                 Ok((Transform::AddUInt128(value_u128), remainder))
             }
-            TRANSFORM_ADD_UINT256_TAG => {
+            TransformTag::AddUInt256 => {
                 let (value_u256, remainder) = U256::from_bytes(remainder)?;
                 Ok((Transform::AddUInt256(value_u256), remainder))
             }
-            TRANSFORM_ADD_UINT512_TAG => {
+            TransformTag::AddUInt512 => {
                 let (value_u512, remainder) = U512::from_bytes(remainder)?;
                 Ok((Transform::AddUInt512(value_u512), remainder))
             }
-            TRANSFORM_ADD_KEYS_TAG => {
+            TransformTag::AddKeys => {
                 let (value, remainder) = Vec::<NamedKey>::from_bytes(remainder)?;
                 Ok((Transform::AddKeys(value), remainder))
             }
-            TRANSFORM_FAILURE_TAG => {
+            TransformTag::Failure => {
                 let (value, remainder) = String::from_bytes(remainder)?;
                 Ok((Transform::Failure(value), remainder))
             }
-            _ => Err(bytesrepr::Error::Formatting),
+            TransformTag::WriteBid => {
+                let (bid, remainder) = Bid::from_bytes(remainder)?;
+                Ok((Transform::WriteBid(Box::new(bid)), remainder))
+            }
+            TransformTag::WriteWithdraw => {
+                let (unbonding_purses, remainder) =
+                    <Vec<UnbondingPurse> as FromBytes>::from_bytes(remainder)?;
+                Ok((Transform::WriteWithdraw(unbonding_purses), remainder))
+            }
         }
     }
 }
