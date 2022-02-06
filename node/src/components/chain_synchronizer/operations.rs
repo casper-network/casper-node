@@ -918,13 +918,28 @@ pub(super) async fn run_chain_sync_task(
         );
         let block = match result {
             None => {
-                info!(
-                    era = most_recent_block_header.era_id().value(),
-                    height = most_recent_block_header.height(),
-                    timestamp = %most_recent_block_header.timestamp(),
-                    "couldn't download a more recent block; finishing syncing",
-                );
-                break;
+                if is_current_era(
+                    &most_recent_block_header,
+                    &trusted_key_block_info,
+                    &chainspec,
+                ) {
+                    info!(
+                        era = most_recent_block_header.era_id().value(),
+                        height = most_recent_block_header.height(),
+                        timestamp = %most_recent_block_header.timestamp(),
+                        "couldn't download a more recent block and synchronized up to the current \
+                        era; finishing syncing",
+                    );
+                    break;
+                } else {
+                    info!(
+                        era = most_recent_block_header.era_id().value(),
+                        height = most_recent_block_header.height(),
+                        timestamp = %most_recent_block_header.timestamp(),
+                        "couldn't download a more recent block, but not in current era; retrying",
+                    );
+                    continue;
+                }
             }
             Some(block_with_metadata) => block_with_metadata.block,
         };
