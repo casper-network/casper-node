@@ -1837,13 +1837,15 @@ impl<REv> EffectBuilder<REv> {
     /// Dump the event queue contents to the console, using the given serializer.
     pub(crate) async fn console_dump_queue(
         self,
-        serializer: fn() -> Box<dyn erased_serde::Serializer + Send + Sync>,
+        serializer: Box<dyn erased_serde::Serializer + Send + Sync>,
     ) where
         REv: From<ControlAnnouncement>,
     {
         self.event_queue
             .schedule(
-                ControlAnnouncement::QueueDump { serializer },
+                ControlAnnouncement::QueueDump {
+                    serializer: Some(serializer),
+                },
                 QueueKind::Control,
             )
             .await

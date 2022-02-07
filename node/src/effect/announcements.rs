@@ -46,7 +46,7 @@ pub(crate) enum ControlAnnouncement {
     // An external event queue dump has been requested.
     QueueDump {
         #[serde(skip)]
-        serializer: fn() -> Box<dyn erased_serde::Serializer + Send + Sync>,
+        serializer: Option<Box<dyn erased_serde::Serializer + Send + Sync>>,
     },
 }
 

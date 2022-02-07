@@ -17,6 +17,7 @@ use super::{
     util::ShowUnixAddr,
 };
 use casper_types::EraId;
+use erased_serde::Serializer as ErasedSerializer;
 use futures::future::{self, Either};
 use serde::Serialize;
 use tokio::{
@@ -118,11 +119,17 @@ impl Session {
     /// Creates a generic erased serde serializer.
     fn create_serde_serializer(
         &self,
-    ) -> Option<fn() -> Box<dyn erased_serde::Serializer + Send + Sync>> {
+        path: PathBuf,
+    ) -> Option<Box<dyn erased_serde::Serializer + Send + Sync>> {
         match self.output {
-            OutputFormat::Interactive => todo!(),
-            OutputFormat::Json => todo!(),
-            OutputFormat::Bincode => todo!(),
+            _ => todo!()
+            // OutputFormat::Interactive => None,
+            // OutputFormat::Json => Some(move || {
+            //     let serializer = serde_json::Serializer::new(fs::File::create(path).unwrap());
+
+            //     serializer.erase()
+            // }),
+            // OutputFormat::Bincode => None,
         }
     }
 
@@ -189,7 +196,7 @@ impl Session {
                             }
                         }
                     }
-                    Action::DumpQueues => match self.create_serde_serializer() {
+                    Action::DumpQueues => match self.create_serde_serializer(todo!()) {
                         Some(serializer) => {
                             self.send_outcome(writer, &Outcome::success("dumping queues"))
                                 .await?;
