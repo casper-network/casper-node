@@ -142,22 +142,6 @@ where
         dumper(&queue_dump);
     }
 
-    /// Dump the contents of the queues (`Debug` representation) to a given file.
-    pub async fn debug_dump(&self, file: &mut File) -> Result<(), io::Error> {
-        let locks = self.lock_queues().await;
-
-        let mut writer = BufWriter::new(file);
-        for (kind, guard) in locks {
-            let queue = &*guard;
-            writer.write_all(format!("Queue: {:?} ({}) [\n", kind, queue.len()).as_bytes())?;
-            for event in queue.iter() {
-                writer.write_all(format!("\t{:?}\n", event).as_bytes())?;
-            }
-            writer.write_all(b"]\n")?;
-        }
-        writer.flush()
-    }
-
     /// Lock all queues in a well-defined order to avoid deadlocks conditions.
     async fn lock_queues(&self) -> Vec<(K, MutexGuard<'_, VecDeque<I>>)> {
         let mut locks = Vec::new();
