@@ -951,6 +951,7 @@ mod tests {
             addr_a,
             &manager.learn_addr(addr_a, false, clock.now())
         ));
+        assert_eq!(manager.metrics().out_state_connecting.get(), 1);
 
         // Our first connection attempt fails. The connection should now be in waiting state, but
         // not reconnect, since the minimum delay is 2 seconds (2*base_timeout).
@@ -961,6 +962,8 @@ mod tests {
                 when: clock.now(),
             },)
             .is_none());
+        assert_eq!(manager.metrics().out_state_connecting.get(), 0);
+        assert_eq!(manager.metrics().out_state_waiting.get(), 1);
 
         // Performing housekeeping multiple times should not make a difference.
         assert!(manager.perform_housekeeping(clock.now()).is_empty());
@@ -971,6 +974,8 @@ mod tests {
         // Advancing the clock will trigger a reconnection on the next housekeeping.
         clock.advance_time(2_000);
         assert!(dials(addr_a, &manager.perform_housekeeping(clock.now())));
+        assert_eq!(manager.metrics().out_state_connecting.get(), 1);
+        assert_eq!(manager.metrics().out_state_waiting.get(), 0);
 
         // This time the connection succeeds.
         assert!(manager
@@ -980,6 +985,8 @@ mod tests {
                 node_id: id_a,
             },)
             .is_none());
+        assert_eq!(manager.metrics().out_state_connecting.get(), 0);
+        assert_eq!(manager.metrics().out_state_connected.get(), 1);
 
         // The routing table should have been updated and should return the handle.
         assert_eq!(manager.get_route(id_a), Some(&99));
@@ -992,6 +999,8 @@ mod tests {
             addr_a,
             &manager.handle_connection_drop(addr_a, clock.now())
         ));
+        assert_eq!(manager.metrics().out_state_connecting.get(), 1);
+        assert_eq!(manager.metrics().out_state_waiting.get(), 0);
 
         // The route should have been cleared.
         assert!(manager.get_route(id_a).is_none());
