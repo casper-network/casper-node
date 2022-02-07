@@ -551,18 +551,36 @@ where
                     error!(%file, %line, %msg, "fatal error via control announcement");
                     (Default::default(), false)
                 }
-                ControlAnnouncement::QueueDump { serializer } => {
-                    if let Some(mut ser) = serializer.take() {
-                        self.scheduler
-                            .dump(move |queue_dump| {
-                                if let Err(err) = queue_dump.erased_serialize(&mut ser) {
-                                    warn!(%err, "queue dump failed to serialize");
-                                }
-                            })
-                            .await;
+                ControlAnnouncement::QueueDump {
+                    serializer: serializer_cell,
+                } => {
+                    // Note: We could call `take` here, since this is the only place where the
+                    // refcell is manipulated. To avoid accidental introduction of a hidden panic in
+                    // the future, we opt for the safe route instead.
+                    match serializer_cell.try_borrow_mut().ok() {
+                        Some(mut ref_mut) => {
+                            // We got access to the cell, so now see if someone else took it
+                            // already.
+                            if let Some(mut ser) = ref_mut.take() {
+                                self.scheduler
+                                    .dump(move |queue_dump| {
+                                        if let Err(err) = queue_dump.erased_serialize(&mut ser) {
+                                            warn!(%err, "queue dump failed to serialize");
+                                        }
+                                    })
+                                    .await;
+                            } else {
+                                // This should never happen, but instead of panicking, we just warn.
+                                warn!("queue dump serializer already consumed");
+                            }
+                        }
+                        None => {
+                            // This should never happen, but instead of panicking, we just warn.
+                            warn!("queue dump serializer not available, ref cell is borrowed?");
+                        }
                     }
 
-                    // We do not support display dumps at the moment, only serde.
+                    // Note: We do not support display dumps at the moment, only serde.
 
                     // Do nothing on queue dump otherwise.
                     (Default::default(), true)
