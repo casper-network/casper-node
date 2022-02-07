@@ -1,5 +1,7 @@
 use std::{collections::BTreeSet, path::Path};
 
+use rand::Rng;
+
 use casper_execution_engine::core::engine_state::{
     deploy_item::DeployItem, executable_deploy_item::ExecutableDeployItem,
 };
@@ -279,7 +281,7 @@ impl DeployItemBuilder {
             deploy_hash: self
                 .deploy_item
                 .deploy_hash
-                .expect("should have deploy hash"),
+                .unwrap_or_else(|| rand::thread_rng().gen()),
         }
     }
 }
@@ -298,15 +300,15 @@ impl Default for DeployItemBuilder {
 mod tests {
     use super::*;
 
-    #[should_panic = "should have deploy hash"]
     #[test]
     fn should_fail_to_build_deploy_without_deploy_hash() {
         let address = AccountHash::new([42; 32]);
-        let _deploy = DeployItemBuilder::new()
+        let deploy = DeployItemBuilder::new()
             .with_address(address)
             .with_authorization_keys(&[address])
             .with_session_bytes(Vec::new(), RuntimeArgs::new())
             .with_payment_bytes(Vec::new(), RuntimeArgs::new())
             .build();
+        assert_ne!(deploy.deploy_hash, DeployHash::default());
     }
 }
