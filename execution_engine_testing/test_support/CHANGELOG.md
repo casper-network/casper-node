@@ -14,7 +14,7 @@ All notable changes to this project will be documented in this file.  The format
 ## [Unreleased]
 
 ### Changed
-* `deploy_hash` field is now required field in `DeployItemBuilder`
+* `deploy_hash` field is now defaulted to a random value rather than zeros in `DeployItemBuilder`.
 
 
 
