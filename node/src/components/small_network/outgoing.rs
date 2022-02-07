@@ -118,7 +118,7 @@ where
     /// Whether or not the address is unforgettable, see `learn_addr` for details.
     is_unforgettable: bool,
     /// The current state the connection/address is in.
-    pub(crate) state: OutgoingState<H, E>,
+    state: OutgoingState<H, E>,
 }
 
 /// Active state for a connection/address.
