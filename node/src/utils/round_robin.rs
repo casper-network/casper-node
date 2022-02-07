@@ -7,15 +7,13 @@
 use std::{
     collections::{HashMap, VecDeque},
     fmt::Debug,
-    fs::File,
     hash::Hash,
-    io::{self, BufWriter, Write},
     num::NonZeroUsize,
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
 use enum_iterator::IntoEnumIterator;
-use serde::{Serialize, Serializer};
+use serde::Serialize;
 use tokio::sync::{Mutex, MutexGuard, Semaphore};
 use tracing::debug;
 

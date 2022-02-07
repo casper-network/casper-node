@@ -59,7 +59,7 @@ use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
 
 use crate::{
     effect::{announcements::ControlAnnouncement, Effect, EffectBuilder, Effects},
-    types::{ExitCode, Timestamp},
+    types::ExitCode,
     unregister_metric,
     utils::{self, SharedFlag, WeightedRoundRobin},
     NodeRng, TERMINATION_REQUESTED,
@@ -90,15 +90,6 @@ static DISPATCH_EVENT_THRESHOLD: Lazy<Duration> = Lazy::new(|| {
 
 /// The desired limit for open files.
 const TARGET_OPEN_FILES_LIMIT: Limit = 64_000;
-
-/// Format for dump of event queue.
-#[derive(Copy, Clone, Debug)]
-enum DumpFormat {
-    /// Using serde.
-    Serde,
-    /// Text-format, typicall derived from `fmt::Debug` or `fmt::Display`.
-    Stream,
-}
 
 /// Adjusts the maximum number of open file handles upwards towards the hard limit.
 fn adjust_open_files_limit() {
@@ -359,9 +350,6 @@ where
     /// An accurate, possible TSC-supporting clock.
     clock: Clock,
 
-    /// Last queue dump timestamp
-    last_queue_dump: Option<Timestamp>,
-
     /// Flag indicating the reactor is being shut down.
     is_shutting_down: SharedFlag,
 }
@@ -502,7 +490,6 @@ where
             event_metrics_min_delay: Duration::from_secs(30),
             event_metrics_threshold: 1000,
             clock: Clock::new(),
-            last_queue_dump: None,
             is_shutting_down,
         })
     }
@@ -809,7 +796,6 @@ impl Runner<InitializerReactor> {
             event_metrics_min_delay,
             event_metrics_threshold: 1000,
             clock: Clock::new(),
-            last_queue_dump: None,
             is_shutting_down,
         })
     }
