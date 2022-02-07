@@ -77,10 +77,9 @@ check_python_has_toml
 # These are the subdirs of casper-node which contain packages for publishing.  They should remain ordered from
 # least-dependent to most.
 publish types
+publish hashing
 publish execution_engine
 publish node_macros
 publish node
-publish client
-publish smart_contracts/contract --features=std
+publish smart_contracts/contract
 publish execution_engine_testing/test_support
-publish execution_engine_testing/cargo_casper --allow-dirty

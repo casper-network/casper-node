@@ -1,10 +1,10 @@
 //! Home of the Mint contract's [`enum@Error`] type.
 
 use alloc::vec::Vec;
-use core::convert::{TryFrom, TryInto};
-
-#[cfg(feature = "std")]
-use thiserror::Error;
+use core::{
+    convert::{TryFrom, TryInto},
+    fmt::{self, Display, Formatter},
+};
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
@@ -13,83 +13,136 @@ use crate::{
 
 /// Errors which can occur while executing the Mint contract.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "std", derive(Error))]
 #[repr(u8)]
 pub enum Error {
     /// Insufficient funds to complete the transfer.
-    #[cfg_attr(feature = "std", error("Insufficient funds"))]
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(0, Error::InsufficientFunds as u8);
+    /// ```
     InsufficientFunds = 0,
     /// Source purse not found.
-    #[cfg_attr(feature = "std", error("Source not found"))]
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(1, Error::SourceNotFound as u8);
+    /// ```
     SourceNotFound = 1,
     /// Destination purse not found.
-    #[cfg_attr(feature = "std", error("Destination not found"))]
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(2, Error::DestNotFound as u8);
+    /// ```
     DestNotFound = 2,
     /// The given [`URef`](crate::URef) does not reference the account holder's purse, or such a
     /// `URef` does not have the required [`AccessRights`](crate::AccessRights).
-    #[cfg_attr(feature = "std", error("Invalid URef"))]
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(3, Error::InvalidURef as u8);
+    /// ```
     InvalidURef = 3,
     /// The source purse is not writeable (see [`URef::is_writeable`](crate::URef::is_writeable)),
     /// or the destination purse is not addable (see
     /// [`URef::is_addable`](crate::URef::is_addable)).
-    #[cfg_attr(feature = "std", error("Invalid AccessRights"))]
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(4, Error::InvalidAccessRights as u8);
+    /// ```
     InvalidAccessRights = 4,
     /// Tried to create a new purse with a non-zero initial balance.
-    #[cfg_attr(feature = "std", error("Invalid non-empty purse creation"))]
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(5, Error::InvalidNonEmptyPurseCreation as u8);
+    /// ```
     InvalidNonEmptyPurseCreation = 5,
     /// Failed to read from local or global storage.
-    #[cfg_attr(feature = "std", error("Storage error"))]
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(6, Error::Storage as u8);
+    /// ```
     Storage = 6,
     /// Purse not found while trying to get balance.
-    #[cfg_attr(feature = "std", error("Purse not found"))]
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(7, Error::PurseNotFound as u8);
+    /// ```
     PurseNotFound = 7,
     /// Unable to obtain a key by its name.
-    #[cfg_attr(feature = "std", error("Missing key"))]
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(8, Error::MissingKey as u8);
+    /// ```
     MissingKey = 8,
     /// Total supply not found.
-    #[cfg_attr(feature = "std", error("Total supply not found"))]
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(9, Error::TotalSupplyNotFound as u8);
+    /// ```
     TotalSupplyNotFound = 9,
     /// Failed to record transfer.
-    #[cfg_attr(feature = "std", error("Failed to record transfer"))]
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(10, Error::RecordTransferFailure as u8);
+    /// ```
     RecordTransferFailure = 10,
     /// Invalid attempt to reduce total supply.
-    #[cfg_attr(feature = "std", error("Invalid attempt to reduce total supply"))]
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(11, Error::InvalidTotalSupplyReductionAttempt as u8);
+    /// ```
     InvalidTotalSupplyReductionAttempt = 11,
     /// Failed to create new uref.
-    #[cfg_attr(feature = "std", error("Failed to create new uref"))]
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(12, Error::NewURef as u8);
+    /// ```
     NewURef = 12,
     /// Failed to put key.
-    #[cfg_attr(feature = "std", error("Failed to put key"))]
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(13, Error::PutKey as u8);
+    /// ```
     PutKey = 13,
     /// Failed to write to dictionary.
-    #[cfg_attr(feature = "std", error("Failed to write dictionary"))]
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(14, Error::WriteDictionary as u8);
+    /// ```
     WriteDictionary = 14,
     /// Failed to create a [`crate::CLValue`].
-    #[cfg_attr(feature = "std", error("Failed to create a CLValue"))]
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(15, Error::CLValue as u8);
+    /// ```
     CLValue = 15,
     /// Failed to serialize data.
-    #[cfg_attr(feature = "std", error("Failed to serialize data"))]
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(16, Error::Serialize as u8);
+    /// ```
     Serialize = 16,
     /// Source and target purse [`crate::URef`]s are equal.
-    #[cfg_attr(feature = "std", error("Invalid target purse"))]
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(17, Error::EqualSourceAndTarget as u8);
+    /// ```
     EqualSourceAndTarget = 17,
     /// An arithmetic overflow has occurred.
-    #[cfg_attr(feature = "std", error("Arithmetic overflow has occurred"))]
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(18, Error::ArithmeticOverflow as u8);
+    /// ```
     ArithmeticOverflow = 18,
 
     // NOTE: These variants below will be removed once support for WASM system contracts will be
     // dropped.
     #[doc(hidden)]
-    #[cfg_attr(feature = "std", error("GasLimit"))]
     GasLimit = 19,
 
     /// Raised when an entry point is called from invalid account context.
-    #[cfg_attr(feature = "std", error("Invalid context"))]
     InvalidContext = 20,
 
     #[cfg(test)]
     #[doc(hidden)]
-    #[cfg_attr(feature = "std", error("Sentinel error"))]
     Sentinel,
 }
 
@@ -164,6 +217,40 @@ impl FromBytes for Error {
             // Error::Formatting as if its unable to be correctly deserialized.
             .map_err(|_| bytesrepr::Error::Formatting)?;
         Ok((error, rem))
+    }
+}
+
+impl Display for Error {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            Error::InsufficientFunds => formatter.write_str("Insufficient funds"),
+            Error::SourceNotFound => formatter.write_str("Source not found"),
+            Error::DestNotFound => formatter.write_str("Destination not found"),
+            Error::InvalidURef => formatter.write_str("Invalid URef"),
+            Error::InvalidAccessRights => formatter.write_str("Invalid AccessRights"),
+            Error::InvalidNonEmptyPurseCreation => {
+                formatter.write_str("Invalid non-empty purse creation")
+            }
+            Error::Storage => formatter.write_str("Storage error"),
+            Error::PurseNotFound => formatter.write_str("Purse not found"),
+            Error::MissingKey => formatter.write_str("Missing key"),
+            Error::TotalSupplyNotFound => formatter.write_str("Total supply not found"),
+            Error::RecordTransferFailure => formatter.write_str("Failed to record transfer"),
+            Error::InvalidTotalSupplyReductionAttempt => {
+                formatter.write_str("Invalid attempt to reduce total supply")
+            }
+            Error::NewURef => formatter.write_str("Failed to create new uref"),
+            Error::PutKey => formatter.write_str("Failed to put key"),
+            Error::WriteDictionary => formatter.write_str("Failed to write dictionary"),
+            Error::CLValue => formatter.write_str("Failed to create a CLValue"),
+            Error::Serialize => formatter.write_str("Failed to serialize data"),
+            Error::EqualSourceAndTarget => formatter.write_str("Invalid target purse"),
+            Error::ArithmeticOverflow => formatter.write_str("Arithmetic overflow has occurred"),
+            Error::GasLimit => formatter.write_str("GasLimit"),
+            Error::InvalidContext => formatter.write_str("Invalid context"),
+            #[cfg(test)]
+            Error::Sentinel => formatter.write_str("Sentinel error"),
+        }
     }
 }
 

@@ -11,6 +11,10 @@ export NCTL="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 NCTL_CASPER_HOME="$( cd "$( dirname "${NCTL[0]}" )" && pwd )"
 export NCTL_CASPER_HOME="$( cd "$( dirname "${NCTL_CASPER_HOME[0]}" )" && pwd )"
 
+# Set casper-client root.
+NCTL_CASPER_CLIENT_ROOT=${NCTL_CASPER_CLIENT_ROOT:-$( cd "$( dirname "${NCTL_CASPER_HOME[0]}" )" && pwd )}
+export NCTL_CASPER_CLIENT_HOME="$NCTL_CASPER_CLIENT_ROOT"/casper-client-rs
+
 # Set casper-node-launcher root.
 NCTL_CASPER_NODE_LAUNCHER_ROOT=${NCTL_CASPER_NODE_LAUNCHER_ROOT:-$( cd "$( dirname "${NCTL_CASPER_HOME[0]}" )" && pwd )}
 export NCTL_CASPER_NODE_LAUNCHER_HOME="$NCTL_CASPER_NODE_LAUNCHER_ROOT"/casper-node-launcher
@@ -98,7 +102,6 @@ alias nctl-view-node-rpc-endpoint='source $NCTL/sh/views/view_node_rpc_endpoint.
 alias nctl-view-node-rpc-schema='source $NCTL/sh/views/view_node_rpc_schema.sh'
 alias nctl-view-node-status='source $NCTL/sh/views/view_node_status.sh'
 alias nctl-view-node-storage='source $NCTL/sh/views/view_node_storage.sh'
-alias nctl-view-node-storage-consensus='source $NCTL/sh/views/view_node_storage_consensus.sh'
 
 # Views #3: node metrics.
 alias nctl-view-node-metrics='source $NCTL/sh/views/view_node_metrics.sh'

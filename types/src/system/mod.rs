@@ -22,23 +22,18 @@ pub use system_contract_type::{
 };
 
 mod error {
-    #[cfg(feature = "std")]
-    use thiserror::Error;
+    use core::fmt::{self, Display, Formatter};
 
     use crate::system::{auction, handle_payment, mint};
 
     /// An aggregate enum error with variants for each system contract's error.
     #[derive(Debug, Copy, Clone)]
-    #[cfg_attr(feature = "std", derive(Error))]
     pub enum Error {
         /// Contains a [`mint::Error`].
-        #[cfg_attr(feature = "std", error("Mint error: {}", _0))]
         Mint(mint::Error),
         /// Contains a [`handle_payment::Error`].
-        #[cfg_attr(feature = "std", error("HandlePayment error: {}", _0))]
         HandlePayment(handle_payment::Error),
         /// Contains a [`auction::Error`].
-        #[cfg_attr(feature = "std", error("Auction error: {}", _0))]
         Auction(auction::Error),
     }
 
@@ -57,6 +52,16 @@ mod error {
     impl From<auction::Error> for Error {
         fn from(error: auction::Error) -> Error {
             Error::Auction(error)
+        }
+    }
+
+    impl Display for Error {
+        fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+            match self {
+                Error::Mint(error) => write!(formatter, "Mint error: {}", error),
+                Error::HandlePayment(error) => write!(formatter, "HandlePayment error: {}", error),
+                Error::Auction(error) => write!(formatter, "Auction error: {}", error),
+            }
         }
     }
 }
@@ -284,6 +289,15 @@ impl CallStackElement {
             CallStackElement::Session { .. } => CallStackElementTag::Session,
             CallStackElement::StoredSession { .. } => CallStackElementTag::StoredSession,
             CallStackElement::StoredContract { .. } => CallStackElementTag::StoredContract,
+        }
+    }
+
+    /// Gets the [`ContractHash`] for both stored session and stored contract variants.
+    pub fn contract_hash(&self) -> Option<&ContractHash> {
+        match self {
+            CallStackElement::Session { .. } => None,
+            CallStackElement::StoredSession { contract_hash, .. }
+            | CallStackElement::StoredContract { contract_hash, .. } => Some(contract_hash),
         }
     }
 }

@@ -3,7 +3,7 @@ use std::convert::TryFrom;
 use num_traits::Zero;
 use once_cell::sync::Lazy;
 
-use casper_engine_test_support::internal::{
+use casper_engine_test_support::{
     utils, InMemoryWasmTestBuilder, StepRequestBuilder, WasmTestBuilder, DEFAULT_ACCOUNTS,
 };
 use casper_execution_engine::{
@@ -11,7 +11,6 @@ use casper_execution_engine::{
         genesis::{GenesisAccount, GenesisValidator},
         RewardItem, SlashItem,
     },
-    shared::motes::Motes,
     storage::global_state::in_memory::InMemoryGlobalState,
 };
 use casper_types::{
@@ -22,7 +21,7 @@ use casper_types::{
         },
         mint::TOTAL_SUPPLY_KEY,
     },
-    CLValue, ContractHash, EraId, Key, ProtocolVersion, PublicKey, SecretKey, U512,
+    CLValue, ContractHash, EraId, Key, Motes, ProtocolVersion, PublicKey, SecretKey, U512,
 };
 
 static ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| {
@@ -116,7 +115,7 @@ fn should_step() {
         bids_before_slashing
     );
 
-    builder.step(step_request);
+    builder.step(step_request).unwrap();
 
     let bids_after_slashing: Bids = builder.get_bids();
     let account_1_bid = bids_after_slashing.get(&ACCOUNT_1_PK).unwrap();
@@ -174,7 +173,7 @@ fn should_adjust_total_supply() {
         .with_next_era_id(EraId::from(1))
         .build();
 
-    builder.step(step_request);
+    builder.step(step_request).unwrap();
     let maybe_post_state_hash = Some(builder.get_post_state_hash());
 
     // should check total supply after step

@@ -1,11 +1,13 @@
+//! WASM host function resolver for protocol version 1.x.x.
 use std::convert::TryFrom;
 
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
 
+/// Enum representing unique IDs of host functions supported in major version 1.
 #[derive(Debug, PartialEq, FromPrimitive, ToPrimitive, Clone, Copy)]
 #[repr(usize)]
-pub enum FunctionIndex {
+pub(crate) enum FunctionIndex {
     WriteFuncIndex,
     ReadFuncIndex,
     AddFuncIndex,
@@ -54,6 +56,7 @@ pub enum FunctionIndex {
     DictionaryGetFuncIndex,
     DictionaryPutFuncIndex,
     LoadCallStack,
+    LoadAuthorizationKeys,
 }
 
 impl From<FunctionIndex> for usize {

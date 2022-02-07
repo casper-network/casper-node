@@ -6,8 +6,7 @@ use num_rational::Ratio;
 use rand::Rng;
 use tempfile::TempDir;
 
-use casper_execution_engine::shared::motes::Motes;
-use casper_types::{system::auction::DelegationRate, EraId, PublicKey, SecretKey, U512};
+use casper_types::{system::auction::DelegationRate, EraId, Motes, PublicKey, SecretKey, U512};
 
 use crate::{
     components::{gossiper, small_network, storage, storage::Storage},
@@ -183,7 +182,6 @@ impl TestChain {
                 .expect("could not write secret key");
             participating_config.consensus.secret_key_path = External::Path(secret_key_path);
         }
-        participating_config.consensus.highway.unit_hashes_folder = temp_dir.path().to_path_buf();
         self.storages.push(temp_dir);
         participating_config.storage = storage_config;
 

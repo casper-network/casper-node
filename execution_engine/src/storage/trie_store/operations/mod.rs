@@ -10,10 +10,11 @@ use std::{
 
 use tracing::warn;
 
+use casper_hashing::Digest;
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 use crate::{
-    shared::newtypes::{Blake2bHash, CorrelationId},
+    shared::newtypes::CorrelationId,
     storage::{
         transaction_source::{Readable, Writable},
         trie::{
@@ -24,6 +25,7 @@ use crate::{
     },
 };
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, PartialEq, Eq)]
 pub enum ReadResult<V> {
     Found(V),
@@ -43,7 +45,7 @@ pub fn read<K, V, T, S, E>(
     _correlation_id: CorrelationId,
     txn: &T,
     store: &S,
-    root: &Blake2bHash,
+    root: &Digest,
     key: &K,
 ) -> Result<ReadResult<V>, E>
 where
@@ -135,7 +137,7 @@ pub fn read_with_proof<K, V, T, S, E>(
     _correlation_id: CorrelationId,
     txn: &T,
     store: &S,
-    root: &Blake2bHash,
+    root: &Digest,
     key: &K,
 ) -> Result<ReadResult<TrieMerkleProof<K, V>>, E>
 where
@@ -230,14 +232,16 @@ where
 
 /// Given a root hash, find any try keys that are descendant from it that are:
 /// 1. referenced but not present in the database
-/// 2. referenced and present but whose values' hashes do not equal their keys (ie, corrupted)
+/// 2. (Optionally, when `check_integrity` is `true`) referenced and present but whose values'
+/// hashes do not equal their keys (ie, corrupted)
 // TODO: We only need to check one trie key at a time
 pub fn missing_trie_keys<K, V, T, S, E>(
     _correlation_id: CorrelationId,
     txn: &T,
     store: &S,
-    mut trie_keys_to_visit: Vec<Blake2bHash>,
-) -> Result<Vec<Blake2bHash>, E>
+    mut trie_keys_to_visit: Vec<Digest>,
+    check_integrity: bool,
+) -> Result<Vec<Digest>, E>
 where
     K: ToBytes + FromBytes + Eq + std::fmt::Debug,
     V: ToBytes + FromBytes + std::fmt::Debug,
@@ -253,19 +257,22 @@ where
             continue;
         }
         let maybe_retrieved_trie: Option<Trie<K, V>> = store.get(txn, &trie_key)?;
-        if let Some(trie_value) = &maybe_retrieved_trie {
-            let hash_of_trie_value = {
-                let node_bytes = trie_value.to_bytes()?;
-                Blake2bHash::new(&node_bytes)
-            };
-            if trie_key != hash_of_trie_value {
-                warn!(
-                    "Trie key {:?} has corrupted value {:?} (hash of value is {:?}); \
+        // Perform an optional integrity check on the retrieved node.
+        if check_integrity {
+            if let Some(trie_value) = &maybe_retrieved_trie {
+                let hash_of_trie_value = {
+                    let node_bytes = trie_value.to_bytes()?;
+                    Digest::hash(&node_bytes)
+                };
+                if trie_key != hash_of_trie_value {
+                    warn!(
+                        "Trie key {:?} has corrupted value {:?} (hash of value is {:?}); \
                      adding to list of missing nodes",
-                    trie_key, trie_value, hash_of_trie_value
-                );
-                missing_descendants.push(trie_key);
-                continue;
+                        trie_key, trie_value, hash_of_trie_value
+                    );
+                    missing_descendants.push(trie_key);
+                    continue;
+                }
             }
         }
         match maybe_retrieved_trie {
@@ -300,7 +307,7 @@ pub fn check_integrity<K, V, T, S, E>(
     _correlation_id: CorrelationId,
     txn: &T,
     store: &S,
-    trie_keys_to_visit: Vec<Blake2bHash>,
+    trie_keys_to_visit: Vec<Digest>,
 ) -> Result<(), E>
 where
     K: ToBytes + FromBytes + Eq + std::fmt::Debug,
@@ -316,7 +323,7 @@ where
             _ => panic!("Should have a pointer block node as state root"),
         }
     }
-    let mut trie_keys_to_visit: Vec<(Vec<u8>, Blake2bHash)> = trie_keys_to_visit
+    let mut trie_keys_to_visit: Vec<(Vec<u8>, Digest)> = trie_keys_to_visit
         .into_iter()
         .map(|blake2b_hash| (Vec::new(), blake2b_hash))
         .collect();
@@ -329,7 +336,7 @@ where
         if let Some(trie_value) = &maybe_retrieved_trie {
             let hash_of_trie_value = {
                 let node_bytes = trie_value.to_bytes()?;
-                Blake2bHash::new(&node_bytes)
+                Digest::hash(&node_bytes)
             };
             if trie_key != hash_of_trie_value {
                 panic!(
@@ -480,7 +487,7 @@ where
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum DeleteResult {
-    Deleted(Blake2bHash),
+    Deleted(Digest),
     DoesNotExist,
     RootNotFound,
 }
@@ -490,7 +497,7 @@ fn delete<K, V, T, S, E>(
     correlation_id: CorrelationId,
     txn: &mut T,
     store: &S,
-    root: &Blake2bHash,
+    root: &Digest,
     key_to_delete: &K,
 ) -> Result<DeleteResult, E>
 where
@@ -516,7 +523,7 @@ where
         _ => return Ok(DeleteResult::DoesNotExist),
     }
 
-    let mut new_elements: Vec<(Blake2bHash, Trie<K, V>)> = Vec::new();
+    let mut new_elements: Vec<(Digest, Trie<K, V>)> = Vec::new();
 
     while let Some((idx, parent)) = parents.pop() {
         match (new_elements.last_mut(), parent) {
@@ -530,7 +537,7 @@ where
                     pointer_block[idx as usize] = None;
                     Trie::Node { pointer_block }
                 };
-                let trie_key = Blake2bHash::new(&trie_node.to_bytes()?);
+                let trie_key = Digest::hash(&trie_node.to_bytes()?);
                 new_elements.push((trie_key, trie_node))
             }
             // The parent is the node which pointed to the leaf we deleted, and that leaf had one or
@@ -547,7 +554,7 @@ where
                         let trie_node = Trie::Node {
                             pointer_block: Box::new(PointerBlock::new()),
                         };
-                        let trie_key = Blake2bHash::new(&trie_node.to_bytes()?);
+                        let trie_key = Digest::hash(&trie_node.to_bytes()?);
                         new_elements.push((trie_key, trie_node));
                         break;
                     }
@@ -561,7 +568,7 @@ where
                     (_, None) => {
                         pointer_block[idx as usize] = None;
                         let trie_node = Trie::Node { pointer_block };
-                        let trie_key = Blake2bHash::new(&trie_node.to_bytes()?);
+                        let trie_key = Digest::hash(&trie_node.to_bytes()?);
                         new_elements.push((trie_key, trie_node));
                         break;
                     }
@@ -570,7 +577,7 @@ where
                     (Pointer::LeafPointer(..), Some((idx, Trie::Node { mut pointer_block }))) => {
                         pointer_block[idx as usize] = Some(sibling_pointer);
                         let trie_node = Trie::Node { pointer_block };
-                        let trie_key = Blake2bHash::new(&trie_node.to_bytes()?);
+                        let trie_key = Digest::hash(&trie_node.to_bytes()?);
                         new_elements.push((trie_key, trie_node))
                     }
                     // The sibling is a leaf and the grandparent is an extension.
@@ -586,7 +593,7 @@ where
                             Some((idx, Trie::Node { mut pointer_block })) => {
                                 pointer_block[idx as usize] = Some(sibling_pointer);
                                 let trie_node = Trie::Node { pointer_block };
-                                let trie_key = Blake2bHash::new(&trie_node.to_bytes()?);
+                                let trie_key = Digest::hash(&trie_node.to_bytes()?);
                                 new_elements.push((trie_key, trie_node))
                             }
                         }
@@ -616,7 +623,7 @@ where
                                     affix: vec![sibling_idx].into(),
                                     pointer: sibling_pointer,
                                 };
-                                let trie_key = Blake2bHash::new(&new_extension.to_bytes()?);
+                                let trie_key = Digest::hash(&new_extension.to_bytes()?);
                                 new_elements.push((trie_key, new_extension))
                             }
                             // The single sibling is a extension.  We output an extension to replace
@@ -633,7 +640,7 @@ where
                                     affix: new_affix.into(),
                                     pointer,
                                 };
-                                let trie_key = Blake2bHash::new(&new_extension.to_bytes()?);
+                                let trie_key = Digest::hash(&new_extension.to_bytes()?);
                                 new_elements.push((trie_key, new_extension))
                             }
                         }
@@ -648,7 +655,7 @@ where
                     pointer_block[idx as usize] = Some(Pointer::NodePointer(*trie_key));
                     Trie::Node { pointer_block }
                 };
-                let trie_key = Blake2bHash::new(&trie_node.to_bytes()?);
+                let trie_key = Digest::hash(&trie_node.to_bytes()?);
                 new_elements.push((trie_key, trie_node))
             }
             // The parent is an extension, and we are outputting an extension.  Prepend the parent
@@ -672,7 +679,7 @@ where
                         affix: child_affix.to_owned(),
                         pointer: pointer.to_owned(),
                     };
-                    Blake2bHash::new(&new_extension.to_bytes()?)
+                    Digest::hash(&new_extension.to_bytes()?)
                 }
             }
             // The parent is an extension and the new element is a pointer block.  The next element
@@ -680,7 +687,7 @@ where
             (Some((trie_key, Trie::Node { .. })), Trie::Extension { affix, .. }) => {
                 let pointer = Pointer::NodePointer(*trie_key);
                 let trie_extension = Trie::Extension { affix, pointer };
-                let trie_key = Blake2bHash::new(&trie_extension.to_bytes()?);
+                let trie_key = Digest::hash(&trie_extension.to_bytes()?);
                 new_elements.push((trie_key, trie_extension))
             }
         }
@@ -700,15 +707,15 @@ where
 fn rehash<K, V>(
     mut tip: Trie<K, V>,
     parents: Parents<K, V>,
-) -> Result<Vec<(Blake2bHash, Trie<K, V>)>, bytesrepr::Error>
+) -> Result<Vec<(Digest, Trie<K, V>)>, bytesrepr::Error>
 where
     K: ToBytes + Clone,
     V: ToBytes + Clone,
 {
-    let mut ret: Vec<(Blake2bHash, Trie<K, V>)> = Vec::new();
+    let mut ret: Vec<(Digest, Trie<K, V>)> = Vec::new();
     let mut tip_hash = {
         let node_bytes = tip.to_bytes()?;
-        Blake2bHash::new(&node_bytes)
+        Digest::hash(&node_bytes)
     };
     ret.push((tip_hash, tip.to_owned()));
 
@@ -729,7 +736,7 @@ where
                 };
                 tip_hash = {
                     let node_bytes = tip.to_bytes()?;
-                    Blake2bHash::new(&node_bytes)
+                    Digest::hash(&node_bytes)
                 };
                 ret.push((tip_hash, tip.to_owned()))
             }
@@ -740,7 +747,7 @@ where
                 };
                 tip_hash = {
                     let extension_bytes = tip.to_bytes()?;
-                    Blake2bHash::new(&extension_bytes)
+                    Digest::hash(&extension_bytes)
                 };
                 ret.push((tip_hash, tip.to_owned()))
             }
@@ -854,7 +861,7 @@ where
     // to parents.
     if !affix.is_empty() {
         let new_node_bytes = new_node.to_bytes()?;
-        let new_node_hash = Blake2bHash::new(&new_node_bytes);
+        let new_node_hash = Digest::hash(&new_node_bytes);
         let new_extension = Trie::extension(affix.to_vec(), Pointer::NodePointer(new_node_hash));
         parents.push((child_index, new_extension));
     }
@@ -864,7 +871,7 @@ where
 struct SplitResult<K, V> {
     new_node: Trie<K, V>,
     parents: Parents<K, V>,
-    maybe_hashed_child_extension: Option<(Blake2bHash, Trie<K, V>)>,
+    maybe_hashed_child_extension: Option<(Digest, Trie<K, V>)>,
 }
 
 /// Takes a path to a new leaf, an existing extension that leaf collides with,
@@ -902,13 +909,13 @@ where
     // node and the node that the existing extension pointed to.
     let child_extension_affix = affix[parent_extension_affix.len() + 1..].to_vec();
     // Create a child extension (paired with its hash) if necessary
-    let maybe_hashed_child_extension: Option<(Blake2bHash, Trie<K, V>)> =
+    let maybe_hashed_child_extension: Option<(Digest, Trie<K, V>)> =
         if child_extension_affix.is_empty() {
             None
         } else {
             let child_extension = Trie::extension(child_extension_affix.to_vec(), pointer);
             let child_extension_bytes = child_extension.to_bytes()?;
-            let child_extension_hash = Blake2bHash::new(&child_extension_bytes);
+            let child_extension_hash = Digest::hash(&child_extension_bytes);
             Some((child_extension_hash, child_extension))
         };
     // Assemble a new node.
@@ -922,7 +929,7 @@ where
     // Create a parent extension if necessary
     if !parent_extension_affix.is_empty() {
         let new_node_bytes = new_node.to_bytes()?;
-        let new_node_hash = Blake2bHash::new(&new_node_bytes);
+        let new_node_hash = Digest::hash(&new_node_bytes);
         let parent_extension = Trie::extension(
             parent_extension_affix.to_vec(),
             Pointer::NodePointer(new_node_hash),
@@ -938,7 +945,7 @@ where
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum WriteResult {
-    Written(Blake2bHash),
+    Written(Digest),
     AlreadyExists,
     RootNotFound,
 }
@@ -947,7 +954,7 @@ pub fn write<K, V, T, S, E>(
     correlation_id: CorrelationId,
     txn: &mut T,
     store: &S,
-    root: &Blake2bHash,
+    root: &Digest,
     key: &K,
     value: &V,
 ) -> Result<WriteResult, E>
@@ -969,7 +976,7 @@ where
             let path: Vec<u8> = key.to_bytes()?;
             let TrieScan { tip, parents } =
                 scan::<K, V, T, S, E>(correlation_id, txn, store, &path, &current_root)?;
-            let new_elements: Vec<(Blake2bHash, Trie<K, V>)> = match tip {
+            let new_elements: Vec<(Digest, Trie<K, V>)> = match tip {
                 // If the "tip" is the same as the new leaf, then the leaf
                 // is already in the Trie.
                 Trie::Leaf { .. } if new_leaf == tip => Vec::new(),
@@ -1038,7 +1045,7 @@ pub fn put_trie<K, V, T, S, E>(
     txn: &mut T,
     store: &S,
     trie: &Trie<K, V>,
-) -> Result<Blake2bHash, E>
+) -> Result<Digest, E>
 where
     K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
     V: ToBytes + FromBytes + Clone + Eq,
@@ -1049,7 +1056,7 @@ where
 {
     let trie_hash = {
         let node_bytes = trie.to_bytes()?;
-        Blake2bHash::new(&node_bytes)
+        Digest::hash(&node_bytes)
     };
     store.put(txn, &trie_hash, trie)?;
     Ok(trie_hash)
@@ -1207,7 +1214,7 @@ pub fn keys<'a, 'b, K, V, T, S>(
     correlation_id: CorrelationId,
     txn: &'b T,
     store: &'a S,
-    root: &Blake2bHash,
+    root: &Digest,
 ) -> KeysIterator<'a, 'b, K, V, T, S>
 where
     K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
@@ -1226,7 +1233,7 @@ pub fn keys_with_prefix<'a, 'b, K, V, T, S>(
     _correlation_id: CorrelationId,
     txn: &'b T,
     store: &'a S,
-    root: &Blake2bHash,
+    root: &Digest,
     prefix: &[u8],
 ) -> KeysIterator<'a, 'b, K, V, T, S>
 where

@@ -31,6 +31,18 @@ function main() {
     do_start_node "6" "$LFB_HASH"
     # 6. Look for one of the two nodes to report as faulty
     assert_equivication "5" "6"
+    # 7. Run Health Checks
+    # ... errors=1: due to doppels being logged at ERROR level
+    # ... doppels=ignore: doppelganger purposely created in this test
+    # ... equivocators=ignore: doppelganger can cause an equivocation
+    source "$NCTL"/sh/scenarios/common/health_checks.sh \
+            errors='ignore' \
+            equivocators='ignore' \
+            doppels='ignore' \
+            crashes=0 \
+            restarts=0 \
+            ejections=0
+
     log "------------------------------------------------------------"
     log "Scenario itst11 complete"
     log "------------------------------------------------------------"

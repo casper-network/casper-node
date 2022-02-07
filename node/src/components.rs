@@ -6,6 +6,7 @@ pub(crate) mod block_proposer;
 pub(crate) mod block_validator;
 pub(crate) mod chainspec_loader;
 pub(crate) mod consensus;
+pub(crate) mod console;
 pub mod contract_runtime;
 pub(crate) mod deploy_acceptor;
 pub(crate) mod event_stream_server;
@@ -19,9 +20,8 @@ pub mod rpc_server;
 #[cfg(test)]
 pub mod in_memory_network;
 pub(crate) mod metrics;
-pub(crate) mod networking_metrics;
 pub(crate) mod small_network;
-pub(crate) mod storage;
+pub mod storage;
 
 use crate::{
     effect::{EffectBuilder, Effects},

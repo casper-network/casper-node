@@ -1,4 +1,5 @@
 mod block;
+mod index_panorama;
 mod panorama;
 mod params;
 mod tallies;
@@ -10,8 +11,10 @@ pub(crate) mod tests;
 
 pub(crate) use params::Params;
 use quanta::Clock;
+use serde::{Deserialize, Serialize};
 pub(crate) use weight::Weight;
 
+pub(crate) use index_panorama::{IndexObservation, IndexPanorama};
 pub(crate) use panorama::{Observation, Panorama};
 pub(super) use unit::Unit;
 
@@ -35,6 +38,7 @@ use crate::{
             evidence::Evidence,
             highway::{Endorsements, HashedWireUnit, SignedWireUnit, WireUnit},
             validators::{ValidatorIndex, ValidatorMap},
+            ENABLE_ENDORSEMENTS,
         },
         traits::Context,
     },
@@ -110,7 +114,7 @@ pub(crate) enum UnitError {
 /// The `Banned` state is fixed from the beginning and can't be replaced. However, `Indirect` can
 /// be replaced with `Direct` evidence, which has the same effect but doesn't rely on information
 /// from other consensus protocol instances.
-#[derive(Clone, DataSize, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, DataSize, Debug, Deserialize, Eq, PartialEq, Hash, Serialize)]
 pub(crate) enum Fault<C>
 where
     C: Context,
@@ -138,7 +142,7 @@ impl<C: Context> Fault<C> {
 /// Both observers and active validators must instantiate this, pass in all incoming vertices from
 /// peers, and use a [FinalityDetector](../finality_detector/struct.FinalityDetector.html) to
 /// determine the outcome of the consensus process.
-#[derive(Debug, Clone, DataSize)]
+#[derive(Debug, Clone, DataSize, Serialize)]
 pub(crate) struct State<C>
 where
     C: Context,
@@ -184,6 +188,8 @@ where
     pings: ValidatorMap<Timestamp>,
     /// Clock to measure time spent in fork choice computation.
     #[data_size(skip)] // Not implemented for Clock; probably negligible.
+    #[serde(skip, default)]
+    // Serialization is used by external tools only, which cannot make sense of `Clock`.
     clock: Clock,
 }
 
@@ -726,7 +732,8 @@ impl<C: Context> State<C> {
 
     /// Returns the ancestor of the block with the given `hash`, on the specified `height`, or
     /// `None` if the block's height is lower than that.
-    pub(crate) fn find_ancestor<'a>(
+    /// NOTE: Panics if used on non-proposal hashes. For those use [`find_ancestor_unit`].
+    pub(crate) fn find_ancestor_proposal<'a>(
         &'a self,
         hash: &'a C::Hash,
         height: u64,
@@ -745,7 +752,7 @@ impl<C: Context> State<C> {
         // A block at height > 0 always has at least its parent entry in skip_idx.
         #[allow(clippy::integer_arithmetic)]
         let i = max_i.min(block.skip_idx.len() - 1);
-        self.find_ancestor(&block.skip_idx[i], height)
+        self.find_ancestor_proposal(&block.skip_idx[i], height)
     }
 
     /// Returns an error if `swunit` is invalid. This can be called even if the dependencies are
@@ -812,16 +819,26 @@ impl<C: Context> State<C> {
                 }
             }
         }
-        // All endorsed units from the panorama of this wunit.
-        let endorsements_in_panorama = panorama
-            .iter_correct_hashes()
-            .flat_map(|hash| self.unit(hash).claims_endorsed())
-            .collect::<HashSet<_>>();
-        if endorsements_in_panorama
-            .iter()
-            .any(|&e| !wunit.endorsed.iter().any(|h| h == e))
-        {
-            return Err(UnitError::EndorsementsNotMonotonic);
+        if ENABLE_ENDORSEMENTS {
+            // All endorsed units from the panorama of this wunit.
+            let endorsements_in_panorama = panorama
+                .iter_correct_hashes()
+                .flat_map(|hash| self.unit(hash).claims_endorsed())
+                .collect::<HashSet<_>>();
+            if endorsements_in_panorama
+                .iter()
+                .any(|&e| !wunit.endorsed.iter().any(|h| h == e))
+            {
+                return Err(UnitError::EndorsementsNotMonotonic);
+            }
+            for hash in &wunit.endorsed {
+                if !wunit.panorama.sees(self, hash) {
+                    return Err(UnitError::EndorsedButUnseen {
+                        hash: format!("{:?}", hash),
+                        wire_unit: format!("{:?}", wunit),
+                    });
+                }
+            }
         }
         if wunit.value.is_some() {
             // If this unit is a block, it must be the first unit in this round, its timestamp must
@@ -836,14 +853,6 @@ impl<C: Context> State<C> {
             let is_terminal = |hash: &C::Hash| self.is_terminal_block(hash);
             if self.fork_choice(panorama).map_or(false, is_terminal) {
                 return Err(UnitError::ValueAfterTerminalBlock);
-            }
-        }
-        for hash in &wunit.endorsed {
-            if !wunit.panorama.sees(self, hash) {
-                return Err(UnitError::EndorsedButUnseen {
-                    hash: format!("{:?}", hash),
-                    wire_unit: format!("{:?}", wunit),
-                });
             }
         }
         match self.validate_lnc(creator, panorama, &wunit.endorsed) {
@@ -869,7 +878,11 @@ impl<C: Context> State<C> {
 
     /// Returns the hash of the message with the given sequence number from the creator of `hash`,
     /// or `None` if the sequence number is higher than that of the unit with `hash`.
-    fn find_in_swimlane<'a>(&'a self, hash: &'a C::Hash, seq_number: u64) -> Option<&'a C::Hash> {
+    pub(crate) fn find_in_swimlane<'a>(
+        &'a self,
+        hash: &'a C::Hash,
+        seq_number: u64,
+    ) -> Option<&'a C::Hash> {
         let unit = self.unit(hash);
         match unit.seq_number.checked_sub(seq_number) {
             None => None,          // There is no unit with seq_number in our swimlane.
@@ -928,6 +941,9 @@ impl<C: Context> State<C> {
 
     /// Returns the set of units (by hash) that are endorsed and seen from the panorama.
     pub(crate) fn seen_endorsed(&self, pan: &Panorama<C>) -> BTreeSet<C::Hash> {
+        if !ENABLE_ENDORSEMENTS {
+            return Default::default();
+        };
         // First we collect all units that were already seen as endorsed by earlier units.
         let mut result: BTreeSet<C::Hash> = pan
             .iter_correct_hashes()
@@ -957,7 +973,7 @@ impl<C: Context> State<C> {
     }
 
     /// Validates whether a unit with the given panorama and `endorsed` set satisfies the
-    /// Limited Naïveté Criterion (LNC).
+    /// Limited Naivety Criterion (LNC).
     /// Returns index of the first equivocator that was cited naively in violation of the LNC, or
     /// `None` if the LNC is satisfied.
     fn validate_lnc(
@@ -966,6 +982,9 @@ impl<C: Context> State<C> {
         panorama: &Panorama<C>,
         endorsed: &BTreeSet<C::Hash>,
     ) -> Option<ValidatorIndex> {
+        if !ENABLE_ENDORSEMENTS {
+            return None;
+        }
         let violates_lnc =
             |eq_idx: &ValidatorIndex| !self.satisfies_lnc_for(creator, panorama, endorsed, *eq_idx);
         panorama.iter_faulty().find(violates_lnc)

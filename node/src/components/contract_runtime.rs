@@ -2,9 +2,11 @@
 pub(crate) mod announcements;
 mod config;
 mod error;
+mod metrics;
 mod operations;
 mod types;
 
+use once_cell::sync::Lazy;
 use std::{
     collections::BTreeMap,
     fmt::{self, Debug, Formatter},
@@ -13,37 +15,28 @@ use std::{
     time::Instant,
 };
 
-pub(crate) use announcements::ContractRuntimeAnnouncement;
-pub(crate) use config::Config;
-pub(crate) use error::{BlockExecutionError, ConfigError};
-pub(crate) use types::{BlockAndExecutionEffects, EraValidatorsRequest};
-
 use datasize::DataSize;
 use lmdb::DatabaseFlags;
-use prometheus::{self, Histogram, HistogramOpts, IntGauge, Registry};
+use prometheus::Registry;
 use serde::Serialize;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, info, trace};
 
 use casper_execution_engine::{
     core::engine_state::{
         self, genesis::GenesisSuccess, EngineConfig, EngineState, GetEraValidatorsError,
-        GetEraValidatorsRequest,
+        GetEraValidatorsRequest, UpgradeConfig, UpgradeSuccess,
     },
-    shared::{
-        newtypes::{Blake2bHash, CorrelationId},
-        system_config::SystemConfig,
-        wasm_config::WasmConfig,
-    },
+    shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::{
-        global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment, trie::Trie,
+        global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment,
         trie_store::lmdb::LmdbTrieStore,
     },
 };
-use casper_types::{Key, ProtocolVersion, StoredValue};
+use casper_hashing::Digest;
+use casper_types::ProtocolVersion;
 
 use crate::{
     components::{contract_runtime::types::StepEffectAndUpcomingEraValidators, Component},
-    crypto::hash::Digest,
     effect::{
         announcements::ControlAnnouncement, requests::ContractRuntimeRequest, EffectBuilder,
         EffectExt, Effects,
@@ -52,11 +45,44 @@ use crate::{
     types::{BlockHash, BlockHeader, Chainspec, Deploy, FinalizedBlock},
     NodeRng,
 };
+pub(crate) use announcements::ContractRuntimeAnnouncement;
+pub(crate) use config::Config;
+pub(crate) use error::{BlockExecutionError, ConfigError};
+use metrics::Metrics;
+pub use operations::execute_finalized_block;
+pub use types::BlockAndExecutionEffects;
+pub(crate) use types::EraValidatorsRequest;
+
+/// Maximum number of resource intensive tasks that can be run in parallel.
+///
+/// TODO: Fine tune this constant to the machine executing the node.
+const MAX_PARALLEL_INTENSIVE_TASKS: usize = 4;
+
+/// Semaphore enforcing maximum number of parallel resource intensive tasks.
+static INTENSIVE_TASKS_SEMAPHORE: Lazy<tokio::sync::Semaphore> =
+    Lazy::new(|| tokio::sync::Semaphore::new(MAX_PARALLEL_INTENSIVE_TASKS));
+
+/// Asynchronously runs a resource intensive task.
+/// At most `MAX_PARALLEL_INTENSIVE_TASKS` are being run in parallel at any time.
+///
+/// The task is a closure that takes no arguments and returns a value.
+/// This function returns a future for that value.
+async fn run_intensive_task<T, V>(task: T) -> V
+where
+    T: 'static + Send + FnOnce() -> V,
+    V: 'static + Send,
+{
+    // This will never panic since the semaphore is never closed.
+    let _permit = INTENSIVE_TASKS_SEMAPHORE.acquire().await.unwrap();
+    tokio::task::spawn_blocking(task)
+        .await
+        .expect("task panicked")
+}
 
 /// State to use to construct the next block in the blockchain. Includes the state root hash for the
 /// execution engine as well as certain values the next header will be based on.
 #[derive(DataSize, Debug, Clone, Serialize)]
-pub(crate) struct ExecutionPreState {
+pub struct ExecutionPreState {
     /// The height of the next `Block` to be constructed. Note that this must match the height of
     /// the `FinalizedBlock` used to generate the block.
     next_block_height: u64,
@@ -101,14 +127,14 @@ impl From<&BlockHeader> for ExecutionPreState {
     }
 }
 
-type ExecQueue = Arc<Mutex<BTreeMap<u64, (FinalizedBlock, Vec<Deploy>)>>>;
+type ExecQueue = Arc<Mutex<BTreeMap<u64, (FinalizedBlock, Vec<Deploy>, Vec<Deploy>)>>>;
 
 /// The contract runtime components.
 #[derive(DataSize)]
 pub(crate) struct ContractRuntime {
     execution_pre_state: Arc<Mutex<ExecutionPreState>>,
     engine_state: Arc<EngineState<LmdbGlobalState>>,
-    metrics: Arc<ContractRuntimeMetrics>,
+    metrics: Arc<Metrics>,
     protocol_version: ProtocolVersion,
 
     /// Finalized blocks waiting for their pre-state hash to start executing.
@@ -118,122 +144,6 @@ pub(crate) struct ContractRuntime {
 impl Debug for ContractRuntime {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("ContractRuntime").finish()
-    }
-}
-
-/// Metrics for the contract runtime component.
-#[derive(Debug)]
-pub(crate) struct ContractRuntimeMetrics {
-    run_execute: Histogram,
-    apply_effect: Histogram,
-    commit_upgrade: Histogram,
-    run_query: Histogram,
-    commit_step: Histogram,
-    get_balance: Histogram,
-    get_validator_weights: Histogram,
-    get_era_validators: Histogram,
-    get_bids: Histogram,
-    missing_trie_keys: Histogram,
-    put_trie: Histogram,
-    read_trie: Histogram,
-    chain_height: IntGauge,
-}
-
-/// Value of upper bound of histogram.
-const EXPONENTIAL_BUCKET_START: f64 = 0.01;
-
-/// Multiplier of previous upper bound for next bound.
-const EXPONENTIAL_BUCKET_FACTOR: f64 = 2.0;
-
-/// Bucket count, with the last bucket going to +Inf which will not be included in the results.
-/// - start = 0.01, factor = 2.0, count = 10
-/// - start * factor ^ count = 0.01 * 2.0 ^ 10 = 10.24
-/// - Values above 10.24 (f64 seconds here) will not fall in a bucket that is kept.
-const EXPONENTIAL_BUCKET_COUNT: usize = 10;
-
-const RUN_EXECUTE_NAME: &str = "contract_runtime_run_execute";
-const RUN_EXECUTE_HELP: &str = "tracking run of engine_state.run_execute in seconds.";
-const APPLY_EFFECT_NAME: &str = "contract_runtime_apply_commit";
-const APPLY_EFFECT_HELP: &str = "tracking run of engine_state.apply_effect in seconds.";
-const RUN_QUERY_NAME: &str = "contract_runtime_run_query";
-const RUN_QUERY_HELP: &str = "tracking run of engine_state.run_query in seconds.";
-const COMMIT_STEP_NAME: &str = "contract_runtime_commit_step";
-const COMMIT_STEP_HELP: &str = "tracking run of engine_state.commit_step in seconds.";
-const COMMIT_UPGRADE_NAME: &str = "contract_runtime_commit_upgrade";
-const COMMIT_UPGRADE_HELP: &str = "tracking run of engine_state.commit_upgrade in seconds";
-const GET_BALANCE_NAME: &str = "contract_runtime_get_balance";
-const GET_BALANCE_HELP: &str = "tracking run of engine_state.get_balance in seconds.";
-const GET_VALIDATOR_WEIGHTS_NAME: &str = "contract_runtime_get_validator_weights";
-const GET_VALIDATOR_WEIGHTS_HELP: &str =
-    "tracking run of engine_state.get_validator_weights in seconds.";
-const GET_ERA_VALIDATORS_NAME: &str = "contract_runtime_get_era_validators";
-const GET_ERA_VALIDATORS_HELP: &str = "tracking run of engine_state.get_era_validators in seconds.";
-const GET_BIDS_NAME: &str = "contract_runtime_get_bids";
-const GET_BIDS_HELP: &str = "tracking run of engine_state.get_bids in seconds.";
-const READ_TRIE_NAME: &str = "contract_runtime_read_trie";
-const READ_TRIE_HELP: &str = "tracking run of engine_state.read_trie in seconds.";
-const PUT_TRIE_NAME: &str = "contract_runtime_put_trie";
-const PUT_TRIE_HELP: &str = "tracking run of engine_state.put_trie in seconds.";
-const MISSING_TRIE_KEYS_NAME: &str = "contract_runtime_missing_trie_keys";
-const MISSING_TRIE_KEYS_HELP: &str = "tracking run of engine_state.missing_trie_keys in seconds.";
-
-/// Create prometheus Histogram and register.
-fn register_histogram_metric(
-    registry: &Registry,
-    metric_name: &str,
-    metric_help: &str,
-) -> Result<Histogram, prometheus::Error> {
-    let common_buckets = prometheus::exponential_buckets(
-        EXPONENTIAL_BUCKET_START,
-        EXPONENTIAL_BUCKET_FACTOR,
-        EXPONENTIAL_BUCKET_COUNT,
-    )?;
-    let histogram_opts = HistogramOpts::new(metric_name, metric_help).buckets(common_buckets);
-    let histogram = Histogram::with_opts(histogram_opts)?;
-    registry.register(Box::new(histogram.clone()))?;
-    Ok(histogram)
-}
-
-impl ContractRuntimeMetrics {
-    /// Constructor of metrics which creates and registers metrics objects for use.
-    fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
-        let chain_height = IntGauge::new("chain_height", "current chain height")?;
-        registry.register(Box::new(chain_height.clone()))?;
-        Ok(ContractRuntimeMetrics {
-            chain_height,
-            run_execute: register_histogram_metric(registry, RUN_EXECUTE_NAME, RUN_EXECUTE_HELP)?,
-            apply_effect: register_histogram_metric(
-                registry,
-                APPLY_EFFECT_NAME,
-                APPLY_EFFECT_HELP,
-            )?,
-            run_query: register_histogram_metric(registry, RUN_QUERY_NAME, RUN_QUERY_HELP)?,
-            commit_step: register_histogram_metric(registry, COMMIT_STEP_NAME, COMMIT_STEP_HELP)?,
-            commit_upgrade: register_histogram_metric(
-                registry,
-                COMMIT_UPGRADE_NAME,
-                COMMIT_UPGRADE_HELP,
-            )?,
-            get_balance: register_histogram_metric(registry, GET_BALANCE_NAME, GET_BALANCE_HELP)?,
-            get_validator_weights: register_histogram_metric(
-                registry,
-                GET_VALIDATOR_WEIGHTS_NAME,
-                GET_VALIDATOR_WEIGHTS_HELP,
-            )?,
-            get_era_validators: register_histogram_metric(
-                registry,
-                GET_ERA_VALIDATORS_NAME,
-                GET_ERA_VALIDATORS_HELP,
-            )?,
-            get_bids: register_histogram_metric(registry, GET_BIDS_NAME, GET_BIDS_HELP)?,
-            read_trie: register_histogram_metric(registry, READ_TRIE_NAME, READ_TRIE_HELP)?,
-            put_trie: register_histogram_metric(registry, PUT_TRIE_NAME, PUT_TRIE_HELP)?,
-            missing_trie_keys: register_histogram_metric(
-                registry,
-                MISSING_TRIE_KEYS_NAME,
-                MISSING_TRIE_KEYS_HELP,
-            )?,
-        })
     }
 }
 
@@ -259,26 +169,34 @@ where
                 responder,
             } => {
                 let result = self.commit_genesis(&chainspec);
-                responder.respond(result).ignore()
+                if let Err(lmdb_error) = self.engine_state.flush_environment() {
+                    fatal!(
+                        effect_builder,
+                        "error flushing lmdb environment {:?}",
+                        lmdb_error
+                    )
+                    .ignore()
+                } else {
+                    trace!(?result, "commit_genesis response");
+                    responder.respond(result).ignore()
+                }
             }
             ContractRuntimeRequest::Upgrade {
                 upgrade_config,
                 responder,
             } => {
-                debug!(?upgrade_config, "upgrade");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let correlation_id = CorrelationId::new();
-                    let start = Instant::now();
-                    let result = engine_state.commit_upgrade(correlation_id, *upgrade_config);
-                    metrics
-                        .commit_upgrade
-                        .observe(start.elapsed().as_secs_f64());
-                    debug!(?result, "upgrade result");
-                    responder.respond(result).await
+                let result = self.commit_upgrade(*upgrade_config);
+                if let Err(lmdb_error) = self.engine_state.flush_environment() {
+                    fatal!(
+                        effect_builder,
+                        "error flushing lmdb environment {:?}",
+                        lmdb_error
+                    )
+                    .ignore()
+                } else {
+                    trace!(?result, "commit_upgrade response");
+                    responder.respond(result).ignore()
                 }
-                .ignore()
             }
             ContractRuntimeRequest::Query {
                 query_request,
@@ -328,8 +246,7 @@ where
                 trace!(era=%era_id, public_key = %validator_key, "is validator bonded request");
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
-                let request =
-                    GetEraValidatorsRequest::new(state_root_hash.into(), protocol_version);
+                let request = GetEraValidatorsRequest::new(state_root_hash, protocol_version);
                 async move {
                     let correlation_id = CorrelationId::new();
                     let start = Instant::now();
@@ -366,21 +283,19 @@ where
                 }
                 .ignore()
             }
-            ContractRuntimeRequest::ReadTrie {
+            ContractRuntimeRequest::GetTrie {
                 trie_key,
                 responder,
             } => {
-                trace!(?trie_key, "read_trie request");
-                let result = self.read_trie(trie_key);
+                trace!(?trie_key, "get_trie request");
+                let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
                 async move {
-                    let result = match result {
-                        Ok(result) => result,
-                        Err(error) => {
-                            error!(?error, "read_trie_request");
-                            None
-                        }
-                    };
-                    trace!(?result, "read_trie response");
+                    let correlation_id = CorrelationId::new();
+                    let start = Instant::now();
+                    let result = engine_state.get_trie(correlation_id, trie_key);
+                    metrics.get_trie.observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "get_trie response");
                     responder.respond(result).await
                 }
                 .ignore()
@@ -415,6 +330,7 @@ where
                 execution_pre_state,
                 finalized_block,
                 deploys,
+                transfers,
                 responder,
             } => {
                 trace!(
@@ -426,23 +342,28 @@ where
                 );
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
-                tokio::task::unconstrained(async move {
-                    let result = operations::execute_finalized_block(
-                        engine_state.as_ref(),
-                        metrics.as_ref(),
-                        protocol_version,
-                        execution_pre_state,
-                        finalized_block,
-                        deploys,
-                    );
+                async move {
+                    let result = run_intensive_task(move || {
+                        execute_finalized_block(
+                            engine_state.as_ref(),
+                            Some(metrics),
+                            protocol_version,
+                            execution_pre_state,
+                            finalized_block,
+                            deploys,
+                            transfers,
+                        )
+                    })
+                    .await;
                     trace!(?result, "execute block response");
                     responder.respond(result).await
-                })
+                }
                 .ignore()
             }
             ContractRuntimeRequest::EnqueueBlockForExecution {
                 finalized_block,
                 deploys,
+                transfers,
             } => {
                 info!(?finalized_block, "enqueuing finalized block for execution");
                 let mut effects = Effects::new();
@@ -464,14 +385,15 @@ where
                             protocol_version,
                             finalized_block,
                             deploys,
+                            transfers,
                         )
                         .ignore(),
                     )
                 } else {
-                    exec_queue
-                        .lock()
-                        .unwrap()
-                        .insert(finalized_block.height(), (finalized_block, deploys));
+                    exec_queue.lock().unwrap().insert(
+                        finalized_block.height(),
+                        (finalized_block, deploys, transfers),
+                    );
                 }
                 effects
             }
@@ -497,12 +419,15 @@ where
 }
 
 impl ContractRuntime {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         protocol_version: ProtocolVersion,
         storage_dir: &Path,
         contract_runtime_config: &Config,
         wasm_config: WasmConfig,
         system_config: SystemConfig,
+        max_associated_keys: u32,
+        max_runtime_call_stack_height: u32,
         registry: &Registry,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
@@ -529,13 +454,15 @@ impl ContractRuntime {
         let global_state = LmdbGlobalState::empty(environment, trie_store)?;
         let engine_config = EngineConfig::new(
             contract_runtime_config.max_query_depth(),
+            max_associated_keys,
+            max_runtime_call_stack_height,
             wasm_config,
             system_config,
         );
 
         let engine_state = Arc::new(EngineState::new(global_state, engine_config));
 
-        let metrics = Arc::new(ContractRuntimeMetrics::new(registry)?);
+        let metrics = Arc::new(Metrics::new(registry)?);
 
         Ok(ContractRuntime {
             execution_pre_state,
@@ -558,22 +485,42 @@ impl ContractRuntime {
         let ee_config = chainspec.into();
         self.engine_state.commit_genesis(
             correlation_id,
-            genesis_config_hash.into(),
+            genesis_config_hash,
             protocol_version,
             &ee_config,
         )
     }
 
-    /// Retrieve trie keys for the integrity check.
-    pub(crate) fn trie_store_check(&self, trie_keys: Vec<Blake2bHash>) -> Vec<Blake2bHash> {
-        let correlation_id = CorrelationId::new();
-        match self
+    fn commit_upgrade(
+        &self,
+        upgrade_config: UpgradeConfig,
+    ) -> Result<UpgradeSuccess, engine_state::Error> {
+        debug!(?upgrade_config, "upgrade");
+        let start = Instant::now();
+        let result = self
             .engine_state
-            .missing_trie_keys(correlation_id, trie_keys)
-        {
-            Ok(keys) => keys,
-            Err(error) => panic!("Error in retrieving keys for DB check: {:?}", error),
-        }
+            .commit_upgrade(CorrelationId::new(), upgrade_config);
+        self.metrics
+            .commit_upgrade
+            .observe(start.elapsed().as_secs_f64());
+        debug!(?result, "upgrade result");
+        result
+    }
+
+    /// Retrieve trie keys for the integrity check.
+    pub(crate) fn trie_store_check(
+        &self,
+        trie_keys: Vec<Digest>,
+    ) -> Result<Vec<Digest>, engine_state::Error> {
+        let correlation_id = CorrelationId::new();
+        let start = Instant::now();
+        let result = self
+            .engine_state
+            .missing_trie_keys(correlation_id, trie_keys, true);
+        self.metrics
+            .missing_trie_keys
+            .observe(start.elapsed().as_secs_f64());
+        result
     }
 
     pub(crate) fn set_initial_state(&mut self, sequential_block_state: ExecutionPreState) {
@@ -583,13 +530,14 @@ impl ContractRuntime {
     #[allow(clippy::too_many_arguments)]
     async fn execute_finalized_block_or_requeue<REv>(
         engine_state: Arc<EngineState<LmdbGlobalState>>,
-        metrics: Arc<ContractRuntimeMetrics>,
+        metrics: Arc<Metrics>,
         exec_queue: ExecQueue,
         execution_pre_state: Arc<Mutex<ExecutionPreState>>,
         effect_builder: EffectBuilder<REv>,
         protocol_version: ProtocolVersion,
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
+        transfers: Vec<Deploy>,
     ) where
         REv: From<ContractRuntimeRequest>
             + From<ContractRuntimeAnnouncement>
@@ -601,14 +549,15 @@ impl ContractRuntime {
             block,
             execution_results,
             maybe_step_effect_and_upcoming_era_validators,
-        } = match tokio::task::unconstrained(async move {
-            operations::execute_finalized_block(
+        } = match run_intensive_task(move || {
+            execute_finalized_block(
                 engine_state.as_ref(),
-                metrics.as_ref(),
+                Some(metrics),
                 protocol_version,
                 current_execution_pre_state,
                 finalized_block,
                 deploys,
+                transfers,
             )
         })
         .await
@@ -625,11 +574,11 @@ impl ContractRuntime {
         announcements::linear_chain_block(effect_builder, block, execution_results).await;
 
         if let Some(StepEffectAndUpcomingEraValidators {
-            step_execution_effect,
+            step_execution_journal,
             upcoming_era_validators,
         }) = maybe_step_effect_and_upcoming_era_validators
         {
-            announcements::step_success(effect_builder, current_era_id, step_execution_effect)
+            announcements::step_success(effect_builder, current_era_id, step_execution_journal)
                 .await;
 
             announcements::upcoming_era_validators(
@@ -646,25 +595,11 @@ impl ContractRuntime {
             let queue = &mut *exec_queue.lock().expect("mutex poisoned");
             queue.remove(&new_execution_pre_state.next_block_height)
         };
-        if let Some((finalized_block, deploys)) = next_block {
+        if let Some((finalized_block, deploys, transfers)) = next_block {
             effect_builder
-                .enqueue_block_for_execution(finalized_block, deploys)
+                .enqueue_block_for_execution(finalized_block, deploys, transfers)
                 .await
         }
-    }
-
-    /// Read a [Trie<Key, StoredValue>] from the trie store.
-    pub(crate) fn read_trie(
-        &self,
-        trie_key: Blake2bHash,
-    ) -> Result<Option<Trie<Key, StoredValue>>, engine_state::Error> {
-        let correlation_id = CorrelationId::new();
-        let start = Instant::now();
-        let result = self.engine_state.read_trie(correlation_id, trie_key);
-        self.metrics
-            .read_trie
-            .observe(start.elapsed().as_secs_f64());
-        result
     }
 
     /// Returns the engine state, for testing only.

@@ -34,6 +34,7 @@ mod message;
 mod message_pack_format;
 // Note: `outgoing` is only public because currently the metrics live outside this component.
 pub(crate) mod outgoing;
+mod metrics;
 mod symmetry;
 pub(crate) mod tasks;
 #[cfg(test)]
@@ -56,7 +57,7 @@ use futures::{future::BoxFuture, FutureExt};
 use openssl::{error::ErrorStack as OpenSslErrorStack, pkey};
 use pkey::{PKey, Private};
 use prometheus::Registry;
-use rand::seq::IteratorRandom;
+use rand::{prelude::SliceRandom, seq::IteratorRandom};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::{
@@ -72,24 +73,28 @@ use tokio_util::codec::LengthDelimitedCodec;
 use tracing::{debug, error, info, trace, warn, Instrument, Span};
 
 use self::{
+    chain_info::ChainInfo,
     counting_format::{ConnectionId, CountingFormat, Role},
     error::{ConnectionError, Result},
     event::{IncomingConnection, OutgoingConnection},
     limiter::Limiter,
     message::ConsensusKeyPair,
     message_pack_format::MessagePackFormat,
+    metrics::Metrics,
     outgoing::{DialOutcome, DialRequest, OutgoingConfig, OutgoingManager},
     symmetry::ConnectionSymmetry,
     tasks::NetworkContext,
 };
 pub(crate) use self::{
+    config::Config,
+    error::Error,
     event::Event,
     gossiped_address::GossipedAddress,
-    message::{Message, MessageKind, Payload},
+    message::{Message, MessageKind, Payload, PayloadWeights},
 };
 use super::{consensus, contract_runtime::ContractRuntimeAnnouncement};
 use crate::{
-    components::{networking_metrics::NetworkingMetrics, Component},
+    components::Component,
     effect::{
         announcements::{BlocklistAnnouncement, NetworkAnnouncement},
         requests::{NetworkInfoRequest, NetworkRequest, StorageRequest},
@@ -101,9 +106,6 @@ use crate::{
     utils::{self, display_error, WithDir},
     NodeRng,
 };
-use chain_info::ChainInfo;
-pub(crate) use config::Config;
-pub(crate) use error::Error;
 
 const MAX_METRICS_DROP_ATTEMPTS: usize = 25;
 const DROP_RETRY_DELAY: Duration = Duration::from_millis(100);
@@ -167,7 +169,7 @@ where
 
     /// Networking metrics.
     #[data_size(skip)]
-    net_metrics: Arc<NetworkingMetrics>,
+    net_metrics: Arc<Metrics>,
 
     /// The outgoing bandwidth limiter.
     #[data_size(skip)]
@@ -246,7 +248,7 @@ where
         let mut public_addr =
             utils::resolve_address(&cfg.public_address).map_err(Error::ResolveAddr)?;
 
-        let net_metrics = Arc::new(NetworkingMetrics::new(registry)?);
+        let net_metrics = Arc::new(Metrics::new(registry)?);
 
         // We can now create a listener.
         let bind_address = utils::resolve_address(&cfg.bind_address).map_err(Error::ResolveAddr)?;
@@ -283,6 +285,8 @@ where
             chain_info: chain_info_source.into(),
             public_addr,
             consensus_keys,
+            handshake_timeout: cfg.handshake_timeout,
+            payload_weights: cfg.estimator_weights.clone(),
         });
 
         // Run the server task.
@@ -443,6 +447,25 @@ where
                 peer_consensus_public_key,
                 stream,
             } => {
+                if self.cfg.max_incoming_peer_connections != 0 {
+                    if let Some(symmetries) = self.connection_symmetries.get(&peer_id) {
+                        let incoming_count = symmetries
+                            .incoming_addrs()
+                            .map(|addrs| addrs.len())
+                            .unwrap_or_default();
+
+                        if incoming_count >= self.cfg.max_incoming_peer_connections as usize {
+                            info!(%public_addr,
+                                  %peer_id,
+                                  count=incoming_count,
+                                  limit=self.cfg.max_incoming_peer_connections,
+                                  "rejecting new incoming connection, limit for peer exceeded"
+                            );
+                            return Effects::new();
+                        }
+                    }
+                }
+
                 info!(%public_addr, "new incoming connection established");
 
                 // Learn the address the peer gave us.
@@ -860,6 +883,19 @@ where
                 NetworkInfoRequest::GetPeers { responder } => {
                     responder.respond(self.peers()).ignore()
                 }
+                NetworkInfoRequest::GetFullyConnectedPeers { responder } => {
+                    let mut symmetric_peers: Vec<NodeId> = self
+                        .connection_symmetries
+                        .iter()
+                        .filter_map(|(node_id, sym)| {
+                            matches!(sym, ConnectionSymmetry::Symmetric { .. }).then(|| *node_id)
+                        })
+                        .collect();
+
+                    symmetric_peers.shuffle(rng);
+
+                    responder.respond(symmetric_peers).ignore()
+                }
             },
             Event::PeerAddressReceived(gossiped_address) => {
                 let requests = self.outgoing_manager.learn_addr(
@@ -1022,7 +1058,7 @@ pub(crate) type FramedTransport<P> = tokio_serde::Framed<
 
 /// Constructs a new framed transport on a stream.
 fn framed<P>(
-    metrics: Weak<NetworkingMetrics>,
+    metrics: Weak<Metrics>,
     connection_id: ConnectionId,
     stream: Transport,
     role: Role,

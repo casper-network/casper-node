@@ -13,6 +13,7 @@ use std::{
 use linked_hash_map::LinkedHashMap;
 use thiserror::Error;
 
+use casper_hashing::Digest;
 use casper_types::{
     bytesrepr, CLType, CLValue, CLValueError, Key, KeyTag, StoredValue, StoredValueTypeMismatch,
     Tagged, U512,
@@ -20,22 +21,19 @@ use casper_types::{
 
 pub use self::ext::TrackingCopyExt;
 use self::meter::{heap_meter::HeapSize, Meter};
+use super::engine_state::EngineConfig;
 use crate::{
-    core::{
-        engine_state::{execution_effect::ExecutionEffect, op::Op},
-        runtime_context::dictionary,
-    },
+    core::{engine_state::execution_effect::ExecutionEffect, runtime_context::dictionary},
     shared::{
-        additive_map::AdditiveMap,
-        newtypes::{Blake2bHash, CorrelationId},
+        execution_journal::ExecutionJournal,
+        newtypes::CorrelationId,
         transform::{self, Transform},
     },
     storage::{global_state::StateReader, trie::merkle_proof::TrieMerkleProof},
 };
 
-use super::engine_state::EngineConfig;
-
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum TrackingCopyQueryResult {
     Success {
         value: StoredValue,
@@ -213,8 +211,7 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
 pub struct TrackingCopy<R> {
     reader: R,
     cache: TrackingCopyCache<HeapSize>,
-    ops: AdditiveMap<Key, Op>,
-    fns: AdditiveMap<Key, Transform>,
+    journal: ExecutionJournal,
 }
 
 #[derive(Debug)]
@@ -246,8 +243,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
             /* TODO: Should `max_cache_size`
              * be fraction of wasm memory
              * limit? */
-            ops: AdditiveMap::new(),
-            fns: AdditiveMap::new(),
+            journal: Default::default(),
         }
     }
 
@@ -317,8 +313,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
     ) -> Result<Option<StoredValue>, R::Error> {
         let normalized_key = key.normalize();
         if let Some(value) = self.get(correlation_id, &normalized_key)? {
-            self.ops.insert_add(normalized_key, Op::Read);
-            self.fns.insert_add(normalized_key, Transform::Identity);
+            self.journal.push((normalized_key, Transform::Identity));
             Ok(Some(value))
         } else {
             Ok(None)
@@ -328,8 +323,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
     pub fn write(&mut self, key: Key, value: StoredValue) {
         let normalized_key = key.normalize();
         self.cache.insert_write(normalized_key, value.clone());
-        self.ops.insert_add(normalized_key, Op::Write);
-        self.fns.insert_add(normalized_key, Transform::Write(value));
+        self.journal.push((normalized_key, Transform::Write(value)));
     }
 
     /// Ok(None) represents missing key to which we want to "add" some value.
@@ -398,8 +392,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
         match transform.clone().apply(current_value) {
             Ok(new_value) => {
                 self.cache.insert_write(normalized_key, new_value);
-                self.ops.insert_add(normalized_key, Op::Add);
-                self.fns.insert_add(normalized_key, transform);
+                self.journal.push((normalized_key, transform));
                 Ok(AddResult::Success)
             }
             Err(transform::Error::TypeMismatch(type_mismatch)) => {
@@ -410,7 +403,11 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
     }
 
     pub fn effect(&self) -> ExecutionEffect {
-        ExecutionEffect::new(self.ops.clone(), self.fns.clone())
+        ExecutionEffect::from(self.journal.clone())
+    }
+
+    pub fn execution_journal(&self) -> ExecutionJournal {
+        self.journal.clone()
     }
 
     /// Calling `query()` avoids calling into `self.cache`, so this will not return any values
@@ -575,32 +572,42 @@ impl<R: StateReader<Key, StoredValue>> StateReader<Key, StoredValue> for &Tracki
     }
 }
 
+/// Error conditions of a proof validation.
 #[derive(Error, Debug, PartialEq, Eq)]
 pub enum ValidationError {
+    /// The path should not have a different length than the proof less one.
     #[error("The path should not have a different length than the proof less one.")]
     PathLengthDifferentThanProofLessOne,
 
+    /// The provided key does not match the key in the proof.
     #[error("The provided key does not match the key in the proof.")]
     UnexpectedKey,
 
+    /// The provided value does not match the value in the proof.
     #[error("The provided value does not match the value in the proof.")]
     UnexpectedValue,
 
+    /// The proof hash is invalid.
     #[error("The proof hash is invalid.")]
     InvalidProofHash,
 
+    /// The path went cold.
     #[error("The path went cold.")]
     PathCold,
 
+    /// (De)serialization error.
     #[error("Serialization error: {0}")]
     BytesRepr(bytesrepr::Error),
 
+    /// Key is not a URef.
     #[error("Key is not a URef")]
     KeyIsNotAURef(Key),
 
+    /// Error converting a stored value to a [`Key`].
     #[error("Failed to convert stored value to key")]
     ValueToCLValueConversion,
 
+    /// CLValue conversion error.
     #[error("{0}")]
     CLValueError(CLValueError),
 }
@@ -617,8 +624,11 @@ impl From<bytesrepr::Error> for ValidationError {
     }
 }
 
+/// Validates proof of the query.
+///
+/// Returns [`ValidationError`] for any of
 pub fn validate_query_proof(
-    hash: &Blake2bHash,
+    hash: &Digest,
     proofs: &[TrieMerkleProof<Key, StoredValue>],
     expected_first_key: &Key,
     path: &[String],
@@ -673,8 +683,9 @@ pub fn validate_query_proof(
     Ok(())
 }
 
+/// Validates a proof of a balance request.
 pub fn validate_balance_proof(
-    hash: &Blake2bHash,
+    hash: &Digest,
     balance_proof: &TrieMerkleProof<Key, StoredValue>,
     expected_purse_key: Key,
     expected_motes: &U512,

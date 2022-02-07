@@ -13,7 +13,6 @@ use std::{
 };
 
 use bytes::{Bytes, BytesMut};
-use hex_fmt::HexFmt;
 use openssl::ssl::SslRef;
 use pin_project::pin_project;
 #[cfg(test)]
@@ -22,15 +21,12 @@ use static_assertions::const_assert;
 use tokio_serde::{Deserializer, Serializer};
 use tracing::{trace, warn};
 
-use super::{tls::KeyFingerprint, Message, Payload};
+use casper_hashing::Digest;
+
+use super::{tls::KeyFingerprint, Message, Metrics, Payload};
 #[cfg(test)]
 use crate::testing::TestRng;
-use crate::{
-    components::networking_metrics::NetworkingMetrics,
-    crypto::hash::{self, Digest},
-    types::NodeId,
-    utils,
-};
+use crate::{types::NodeId, utils};
 
 /// Lazily-evaluated network message ID generator.
 ///
@@ -40,7 +36,7 @@ struct TraceId([u8; 8]);
 
 impl Display for TraceId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(&format!("{:x}", HexFmt(&self.0)))
+        f.write_str(&base16::encode_lower(&self.0))
     }
 }
 
@@ -64,14 +60,14 @@ pub struct CountingFormat<F> {
     /// Our role in the connection.
     role: Role,
     /// Metrics to update.
-    metrics: Weak<NetworkingMetrics>,
+    metrics: Weak<Metrics>,
 }
 
 impl<F> CountingFormat<F> {
     /// Creates a new counting formatter.
     #[inline]
     pub(super) fn new(
-        metrics: Weak<NetworkingMetrics>,
+        metrics: Weak<Metrics>,
         connection_id: ConnectionId,
         role: Role,
         inner: F,
@@ -102,7 +98,7 @@ where
         let serialized = F::serialize(projection, item)?;
         let msg_size = serialized.len() as u64;
         let msg_kind = item.classify();
-        NetworkingMetrics::record_payload_out(this.metrics, msg_kind, msg_size);
+        Metrics::record_payload_out(this.metrics, msg_kind, msg_size);
 
         let trace_id = this
             .connection_id
@@ -228,7 +224,7 @@ impl ConnectionId {
     /// node IDs.
     fn create(random_data: TlsRandomData, our_id: NodeId, their_id: NodeId) -> ConnectionId {
         // Hash the resulting random values.
-        let mut id = hash::hash(random_data.combined_random).to_array();
+        let mut id = Digest::hash(random_data.combined_random).value();
 
         // We XOR in a hashes of server and client fingerprint, to ensure that in the case of an
         // accidental collision (e.g. when `server_random` and `client_random` turn out to be all
@@ -254,11 +250,10 @@ impl ConnectionId {
         utils::xor(&mut buffer[4..12], &count.to_ne_bytes());
 
         // Hash again and truncate.
-        let full_hash = hash::hash(&buffer);
+        let full_hash = Digest::hash(&buffer);
 
         // Safe to expect here, as we assert earlier that `Digest` is at least 12 bytes.
-        let truncated =
-            TryFrom::try_from(&full_hash.to_array()[0..8]).expect("buffer size mismatch");
+        let truncated = TryFrom::try_from(&full_hash.value()[0..8]).expect("buffer size mismatch");
 
         TraceId(truncated)
     }
@@ -273,6 +268,16 @@ impl ConnectionId {
     #[inline]
     pub(crate) fn from_connection(ssl: &SslRef, our_id: NodeId, their_id: NodeId) -> Self {
         Self::create(TlsRandomData::collect(ssl), our_id, their_id)
+    }
+
+    /// Creates a random `ConnectionId`.
+    #[cfg(test)]
+    pub(super) fn random(rng: &mut TestRng) -> Self {
+        ConnectionId::create(
+            TlsRandomData::random(rng),
+            NodeId::random(rng),
+            NodeId::random(rng),
+        )
     }
 }
 

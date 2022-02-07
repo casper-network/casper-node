@@ -1,11 +1,8 @@
 use num_traits::One;
 
 use casper_engine_test_support::{
-    internal::{
-        ExecuteRequestBuilder, InMemoryWasmTestBuilder, WasmTestBuilder,
-        DEFAULT_RUN_GENESIS_REQUEST,
-    },
-    DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, WasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::storage::global_state::in_memory::InMemoryGlobalState;
 use casper_types::{
@@ -324,8 +321,9 @@ fn assert_call_stack_matches_calls(call_stack: Vec<CallStackElement>, calls: &[C
 }
 
 mod session {
-    use casper_engine_test_support::{internal::ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR};
-    use casper_types::{runtime_args, RuntimeArgs};
+    use casper_engine_test_support::{ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR};
+    use casper_execution_engine::shared::transform::Transform;
+    use casper_types::{runtime_args, Key, RuntimeArgs};
 
     use super::{
         AccountExt, ARG_CALLS, ARG_CURRENT_DEPTH, CONTRACT_CALL_RECURSIVE_SUBCALL,
@@ -957,6 +955,15 @@ mod session {
 
             builder.exec(execute_request).commit().expect_success();
 
+            let transforms = builder.get_execution_journals().last().unwrap().clone();
+
+            assert!(
+                transforms.iter().any(|(key, transform)| key
+                    == &Key::Hash(current_contract_package_hash)
+                    && transform == &Transform::Identity),
+                "Missing `Identity` transform for a contract package being called."
+            );
+
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
                 super::stored_versioned_contract(current_contract_package_hash.into()),
@@ -1092,6 +1099,16 @@ mod session {
             .build();
 
             builder.exec(execute_request).commit().expect_success();
+
+            let transforms = builder.get_execution_journals().last().unwrap().clone();
+
+            assert!(
+                transforms
+                    .iter()
+                    .any(|(key, transform)| key == &Key::Hash(current_contract_hash)
+                        && transform == &Transform::Identity),
+                "Missing `Identity` transform for a contract being called."
+            );
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -2507,8 +2524,7 @@ mod payment {
     use rand::Rng;
 
     use casper_engine_test_support::{
-        internal::{DeployItemBuilder, ExecuteRequestBuilder},
-        DEFAULT_ACCOUNT_ADDR,
+        DeployItemBuilder, ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR,
     };
     use casper_execution_engine::shared::wasm;
     use casper_types::{runtime_args, RuntimeArgs};

@@ -4,10 +4,10 @@ use num::Zero;
 use rand::{distributions::Standard, prelude::*};
 use serde::{Deserialize, Serialize};
 
-use casper_execution_engine::{core::engine_state::GenesisAccount, shared::motes::Motes};
+use casper_execution_engine::core::engine_state::GenesisAccount;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    PublicKey,
+    Motes, PublicKey,
 };
 #[cfg(test)]
 use casper_types::{SecretKey, U512};

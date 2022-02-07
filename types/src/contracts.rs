@@ -14,8 +14,9 @@ use core::{
     fmt::{self, Debug, Display, Formatter},
 };
 
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
@@ -23,6 +24,7 @@ use crate::{
     account,
     account::TryFromSliceForAccountHashError,
     bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
+    checksummed_hex,
     contract_wasm::ContractWasmHash,
     uref,
     uref::URef,
@@ -44,27 +46,83 @@ pub enum Error {
     /// Attempt to override an existing or previously existing version with a
     /// new header (this is not allowed to ensure immutability of a given
     /// version).
+    /// ```
+    /// # use casper_types::contracts::Error;
+    /// assert_eq!(1, Error::PreviouslyUsedVersion as u8);
+    /// ```
     PreviouslyUsedVersion = 1,
     /// Attempted to disable a contract that does not exist.
+    /// ```
+    /// # use casper_types::contracts::Error;
+    /// assert_eq!(2, Error::ContractNotFound as u8);
+    /// ```
     ContractNotFound = 2,
     /// Attempted to create a user group which already exists (use the update
     /// function to change an existing user group).
+    /// ```
+    /// # use casper_types::contracts::Error;
+    /// assert_eq!(3, Error::GroupAlreadyExists as u8);
+    /// ```
     GroupAlreadyExists = 3,
     /// Attempted to add a new user group which exceeds the allowed maximum
     /// number of groups.
+    /// ```
+    /// # use casper_types::contracts::Error;
+    /// assert_eq!(4, Error::MaxGroupsExceeded as u8);
+    /// ```
     MaxGroupsExceeded = 4,
     /// Attempted to add a new URef to a group, which resulted in the total
     /// number of URefs across all user groups to exceed the allowed maximum.
+    /// ```
+    /// # use casper_types::contracts::Error;
+    /// assert_eq!(5, Error::MaxTotalURefsExceeded as u8);
+    /// ```
     MaxTotalURefsExceeded = 5,
     /// Attempted to remove a URef from a group, which does not exist in the
     /// group.
+    /// ```
+    /// # use casper_types::contracts::Error;
+    /// assert_eq!(6, Error::GroupDoesNotExist as u8);
+    /// ```
     GroupDoesNotExist = 6,
     /// Attempted to remove unknown URef from the group.
+    /// ```
+    /// # use casper_types::contracts::Error;
+    /// assert_eq!(7, Error::UnableToRemoveURef as u8);
+    /// ```
     UnableToRemoveURef = 7,
     /// Group is use by at least one active contract.
+    /// ```
+    /// # use casper_types::contracts::Error;
+    /// assert_eq!(8, Error::GroupInUse as u8);
+    /// ```
     GroupInUse = 8,
     /// URef already exists in given group.
+    /// ```
+    /// # use casper_types::contracts::Error;
+    /// assert_eq!(9, Error::URefAlreadyExists as u8);
+    /// ```
     URefAlreadyExists = 9,
+}
+
+impl TryFrom<u8> for Error {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        let error = match value {
+            v if v == Self::PreviouslyUsedVersion as u8 => Self::PreviouslyUsedVersion,
+            v if v == Self::ContractNotFound as u8 => Self::ContractNotFound,
+            v if v == Self::GroupAlreadyExists as u8 => Self::GroupAlreadyExists,
+            v if v == Self::MaxGroupsExceeded as u8 => Self::MaxGroupsExceeded,
+            v if v == Self::MaxTotalURefsExceeded as u8 => Self::MaxTotalURefsExceeded,
+            v if v == Self::GroupDoesNotExist as u8 => Self::GroupDoesNotExist,
+            v if v == Self::UnableToRemoveURef as u8 => Self::UnableToRemoveURef,
+            v if v == Self::GroupInUse as u8 => Self::GroupInUse,
+            v if v == Self::URefAlreadyExists as u8 => Self::URefAlreadyExists,
+            _ => return Err(()),
+        };
+        Ok(error)
+    }
 }
 
 /// Associated error type of `TryFrom<&[u8]>` for `ContractHash`.
@@ -142,7 +200,7 @@ impl Display for FromStrError {
 /// A (labelled) "user group". Each method of a versioned contract may be
 /// associated with one or more user groups which are allowed to call it.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Group(String);
 
 impl Group {
@@ -170,6 +228,11 @@ impl ToBytes for Group {
 
     fn serialized_length(&self) -> usize {
         self.0.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.value().write_bytes(writer)?;
+        Ok(())
     }
 }
 
@@ -233,6 +296,12 @@ impl ToBytes for ContractVersionKey {
     fn serialized_length(&self) -> usize {
         CONTRACT_VERSION_KEY_SERIALIZED_LENGTH
     }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.0.write_bytes(writer)?;
+        self.1.write_bytes(writer)?;
+        Ok(())
+    }
 }
 
 impl FromBytes for ContractVersionKey {
@@ -259,9 +328,9 @@ pub type DisabledVersions = BTreeSet<ContractVersionKey>;
 /// Collection of named groups.
 pub type Groups = BTreeMap<Group, BTreeSet<URef>>;
 
-/// A newtype wrapping a `HashAddr` which is the raw bytes of
-/// the ContractHash
-#[derive(DataSize, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+/// A newtype wrapping a `HashAddr` which references a [`Contract`] in the global state.
+#[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ContractHash(HashAddr);
 
 impl ContractHash {
@@ -295,7 +364,7 @@ impl ContractHash {
         let remainder = input
             .strip_prefix(CONTRACT_STRING_PREFIX)
             .ok_or(FromStrError::InvalidPrefix)?;
-        let bytes = HashAddr::try_from(base16::decode(remainder)?.as_ref())?;
+        let bytes = HashAddr::try_from(checksummed_hex::decode(remainder)?.as_ref())?;
         Ok(ContractHash(bytes))
     }
 }
@@ -327,6 +396,12 @@ impl ToBytes for ContractHash {
     #[inline(always)]
     fn serialized_length(&self) -> usize {
         self.0.serialized_length()
+    }
+
+    #[inline(always)]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        writer.extend_from_slice(&self.0);
+        Ok(())
     }
 }
 
@@ -391,7 +466,7 @@ impl TryFrom<&Vec<u8>> for ContractHash {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 impl JsonSchema for ContractHash {
     fn schema_name() -> String {
         String::from("ContractHash")
@@ -405,9 +480,9 @@ impl JsonSchema for ContractHash {
     }
 }
 
-/// A newtype wrapping a `HashAddr` which is the raw bytes of
-/// the ContractPackageHash
-#[derive(DataSize, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+/// A newtype wrapping a `HashAddr` which references a [`ContractPackage`] in the global state.
+#[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ContractPackageHash(HashAddr);
 
 impl ContractPackageHash {
@@ -437,7 +512,7 @@ impl ContractPackageHash {
         let remainder = input
             .strip_prefix(PACKAGE_STRING_PREFIX)
             .ok_or(FromStrError::InvalidPrefix)?;
-        let bytes = HashAddr::try_from(base16::decode(remainder)?.as_ref())?;
+        let bytes = HashAddr::try_from(checksummed_hex::decode(remainder)?.as_ref())?;
         Ok(ContractPackageHash(bytes))
     }
 }
@@ -469,6 +544,12 @@ impl ToBytes for ContractPackageHash {
     #[inline(always)]
     fn serialized_length(&self) -> usize {
         self.0.serialized_length()
+    }
+
+    #[inline(always)]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        writer.extend_from_slice(&self.0);
+        Ok(())
     }
 }
 
@@ -533,7 +614,7 @@ impl TryFrom<&Vec<u8>> for ContractPackageHash {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 impl JsonSchema for ContractPackageHash {
     fn schema_name() -> String {
         String::from("ContractPackageHash")
@@ -589,6 +670,14 @@ impl ToBytes for ContractPackageStatus {
             ContractPackageStatus::Unlocked => false.serialized_length(),
             ContractPackageStatus::Locked => true.serialized_length(),
         }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            ContractPackageStatus::Locked => writer.push(u8::from(true)),
+            ContractPackageStatus::Unlocked => writer.push(u8::from(false)),
+        }
+        Ok(())
     }
 }
 
@@ -789,13 +878,11 @@ impl ContractPackage {
 impl ToBytes for ContractPackage {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-
-        result.append(&mut self.access_key.to_bytes()?);
-        result.append(&mut self.versions.to_bytes()?);
-        result.append(&mut self.disabled_versions.to_bytes()?);
-        result.append(&mut self.groups.to_bytes()?);
-        result.append(&mut self.lock_status.to_bytes()?);
-
+        self.access_key().write_bytes(&mut result)?;
+        self.versions().write_bytes(&mut result)?;
+        self.disabled_versions().write_bytes(&mut result)?;
+        self.groups().write_bytes(&mut result)?;
+        self.lock_status.write_bytes(&mut result)?;
         Ok(result)
     }
 
@@ -805,6 +892,15 @@ impl ToBytes for ContractPackage {
             + self.disabled_versions.serialized_length()
             + self.groups.serialized_length()
             + self.lock_status.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.access_key().write_bytes(writer)?;
+        self.versions().write_bytes(writer)?;
+        self.disabled_versions().write_bytes(writer)?;
+        self.groups().write_bytes(writer)?;
+        self.lock_status.write_bytes(writer)?;
+        Ok(())
     }
 }
 
@@ -849,6 +945,11 @@ impl ToBytes for EntryPoints {
     }
     fn serialized_length(&self) -> usize {
         self.0.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        (&self.0).write_bytes(writer)?;
+        Ok(())
     }
 }
 
@@ -1026,11 +1127,11 @@ impl Contract {
 impl ToBytes for Contract {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-        result.append(&mut self.contract_package_hash.to_bytes()?);
-        result.append(&mut self.contract_wasm_hash.to_bytes()?);
-        result.append(&mut self.named_keys.to_bytes()?);
-        result.append(&mut self.entry_points.to_bytes()?);
-        result.append(&mut self.protocol_version.to_bytes()?);
+        self.contract_package_hash().write_bytes(&mut result)?;
+        self.contract_wasm_hash().write_bytes(&mut result)?;
+        self.named_keys().write_bytes(&mut result)?;
+        self.entry_points().write_bytes(&mut result)?;
+        self.protocol_version().write_bytes(&mut result)?;
         Ok(result)
     }
 
@@ -1040,6 +1141,15 @@ impl ToBytes for Contract {
             + ToBytes::serialized_length(&self.contract_wasm_hash)
             + ToBytes::serialized_length(&self.protocol_version)
             + ToBytes::serialized_length(&self.named_keys)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.contract_package_hash().write_bytes(writer)?;
+        self.contract_wasm_hash().write_bytes(writer)?;
+        self.named_keys().write_bytes(writer)?;
+        self.entry_points().write_bytes(writer)?;
+        self.protocol_version().write_bytes(writer)?;
+        Ok(())
     }
 }
 
@@ -1078,7 +1188,7 @@ impl Default for Contract {
 /// Context of method execution
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum EntryPointType {
     /// Runs as session code
     Session = 0,
@@ -1093,6 +1203,11 @@ impl ToBytes for EntryPointType {
 
     fn serialized_length(&self) -> usize {
         1
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        writer.push(*self as u8);
+        Ok(())
     }
 }
 
@@ -1122,7 +1237,7 @@ pub type Parameters = Vec<Parameter>;
 /// Type signature of a method. Order of arguments matter since can be
 /// referenced by index as well as name.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct EntryPoint {
     name: String,
     args: Parameters,
@@ -1227,6 +1342,15 @@ impl ToBytes for EntryPoint {
             + self.access.serialized_length()
             + self.entry_point_type.serialized_length()
     }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.name().write_bytes(writer)?;
+        self.args.write_bytes(writer)?;
+        self.ret.append_bytes(writer)?;
+        self.access().write_bytes(writer)?;
+        self.entry_point_type().write_bytes(writer)?;
+        Ok(())
+    }
 }
 
 impl FromBytes for EntryPoint {
@@ -1253,7 +1377,7 @@ impl FromBytes for EntryPoint {
 /// Enum describing the possible access control options for a contract entry
 /// point (method).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum EntryPointAccess {
     /// Anyone can call this method (no access controls).
     Public,
@@ -1296,6 +1420,19 @@ impl ToBytes for EntryPointAccess {
             EntryPointAccess::Groups(groups) => 1 + groups.serialized_length(),
         }
     }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            EntryPointAccess::Public => {
+                writer.push(ENTRYPOINTACCESS_PUBLIC_TAG);
+            }
+            EntryPointAccess::Groups(groups) => {
+                writer.push(ENTRYPOINTACCESS_GROUPS_TAG);
+                groups.write_bytes(writer)?;
+            }
+        }
+        Ok(())
+    }
 }
 
 impl FromBytes for EntryPointAccess {
@@ -1316,7 +1453,7 @@ impl FromBytes for EntryPointAccess {
 
 /// Parameter to a method
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Parameter {
     name: String,
     cl_type: CLType,
@@ -1358,6 +1495,11 @@ impl ToBytes for Parameter {
 
     fn serialized_length(&self) -> usize {
         ToBytes::serialized_length(&self.name) + self.cl_type.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        (&self.name).write_bytes(writer)?;
+        self.cl_type.append_bytes(writer)
     }
 }
 
@@ -1607,5 +1749,29 @@ mod tests {
         let json_string = serde_json::to_string_pretty(&contract_hash).unwrap();
         let decoded = serde_json::from_str(&json_string).unwrap();
         assert_eq!(contract_hash, decoded)
+    }
+}
+
+#[cfg(test)]
+mod prop_tests {
+    use proptest::prelude::*;
+
+    use crate::{bytesrepr, gens};
+
+    proptest! {
+        // #![proptest_config(ProptestConfig {
+        //     cases: 1024,
+        //     .. ProptestConfig::default()
+        // })]
+
+        #[test]
+        fn test_value_contract(contract in gens::contract_arb()) {
+            bytesrepr::test_serialization_roundtrip(&contract);
+        }
+
+        #[test]
+        fn test_value_contract_package(contract_pkg in gens::contract_package_arb()) {
+            bytesrepr::test_serialization_roundtrip(&contract_pkg);
+        }
     }
 }

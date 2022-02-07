@@ -1,6 +1,6 @@
 use proptest::{collection::vec, option, prelude::*};
 
-use crate::shared::newtypes::Blake2bHash;
+use casper_hashing::Digest;
 use casper_types::{
     gens::{key_arb, stored_value_arb},
     Key, StoredValue,
@@ -8,8 +8,8 @@ use casper_types::{
 
 use super::{Pointer, PointerBlock, Trie};
 
-pub fn blake2b_hash_arb() -> impl Strategy<Value = Blake2bHash> {
-    vec(any::<u8>(), 0..1000).prop_map(|b| Blake2bHash::new(&b))
+pub fn blake2b_hash_arb() -> impl Strategy<Value = Digest> {
+    vec(any::<u8>(), 0..1000).prop_map(|b| Digest::hash(&b))
 }
 
 pub fn trie_pointer_arb() -> impl Strategy<Value = Pointer> {
@@ -27,17 +27,19 @@ pub fn trie_pointer_block_arb() -> impl Strategy<Value = PointerBlock> {
     })
 }
 
-pub fn trie_arb() -> impl Strategy<Value = Trie<Key, StoredValue>> {
-    prop_oneof![
-        (key_arb(), stored_value_arb()).prop_map(|(key, value)| Trie::Leaf { key, value }),
-        trie_pointer_block_arb().prop_map(|pointer_block| Trie::Node {
-            pointer_block: Box::new(pointer_block)
-        }),
-        (vec(any::<u8>(), 0..32), trie_pointer_arb()).prop_map(|(affix, pointer)| {
-            Trie::Extension {
-                affix: affix.into(),
-                pointer,
-            }
-        })
-    ]
+pub fn trie_leaf_arb() -> impl Strategy<Value = Trie<Key, StoredValue>> {
+    (key_arb(), stored_value_arb()).prop_map(|(key, value)| Trie::Leaf { key, value })
+}
+
+pub fn trie_extension_arb() -> impl Strategy<Value = Trie<Key, StoredValue>> {
+    (vec(any::<u8>(), 0..32), trie_pointer_arb()).prop_map(|(affix, pointer)| Trie::Extension {
+        affix: affix.into(),
+        pointer,
+    })
+}
+
+pub fn trie_node_arb() -> impl Strategy<Value = Trie<Key, StoredValue>> {
+    trie_pointer_block_arb().prop_map(|pointer_block| Trie::Node {
+        pointer_block: Box::new(pointer_block),
+    })
 }

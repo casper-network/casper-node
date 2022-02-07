@@ -5,7 +5,7 @@ use crate::{
     bytesrepr::{FromBytes, ToBytes},
     system::{
         auction::{Bid, EraId, EraInfo, Error, UnbondingPurse},
-        mint, CallStackElement,
+        mint,
     },
     CLTyped, Key, KeyTag, URef, BLAKE2B_DIGEST_LENGTH, U512,
 };
@@ -15,8 +15,8 @@ pub trait RuntimeProvider {
     /// This method should return the caller of the current context.
     fn get_caller(&self) -> AccountHash;
 
-    /// This method should return the immediate caller of the current call.
-    fn get_immediate_caller(&self) -> Option<&CallStackElement>;
+    /// Checks if account_hash matches the active session's account.
+    fn is_allowed_session_caller(&self, account_hash: &AccountHash) -> bool;
 
     /// Gets named key under a `name`.
     fn named_keys_get(&self, name: &str) -> Option<Key>;
@@ -71,6 +71,11 @@ pub trait MintProvider {
         amount: U512,
         id: Option<u64>,
     ) -> Result<Result<(), mint::Error>, Error>;
+
+    /// Mint `amount` new token into `existing_purse`.
+    /// Returns unit on success, otherwise an error.
+    fn mint_into_existing_purse(&mut self, amount: U512, existing_purse: URef)
+        -> Result<(), Error>;
 
     /// Creates new purse.
     fn create_purse(&mut self) -> Result<URef, Error>;

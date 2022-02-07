@@ -390,7 +390,7 @@ where
     fn node_mut(&mut self, validator_id: &ValidatorId) -> TestResult<&mut HighwayNode> {
         self.virtual_net
             .node_mut(validator_id)
-            .ok_or_else(|| TestRunError::MissingValidator(*validator_id))
+            .ok_or(TestRunError::MissingValidator(*validator_id))
     }
 
     fn call_validator<F>(
@@ -1005,7 +1005,7 @@ pub(crate) struct SignatureWrapper(u64);
 
 impl Debug for SignatureWrapper {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{:10}", HexFmt(self.0.to_le_bytes()))
+        write!(f, "{:10}", HexFmt(&self.0.to_le_bytes()))
     }
 }
 
@@ -1016,7 +1016,7 @@ pub(crate) struct HashWrapper(u64);
 
 impl Debug for HashWrapper {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{:10}", HexFmt(self.0.to_le_bytes()))
+        write!(f, "{:10}", HexFmt(&self.0.to_le_bytes()))
     }
 }
 

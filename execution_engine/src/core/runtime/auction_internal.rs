@@ -1,15 +1,15 @@
 use std::collections::BTreeSet;
 
 use casper_types::{
-    account::{self, AccountHash},
+    account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
-    contracts::NamedKeys,
+    crypto,
     system::{
         auction::{
             AccountProvider, Auction, Bid, EraInfo, Error, MintProvider, RuntimeProvider,
             StorageProvider, UnbondingPurse,
         },
-        mint, CallStackElement,
+        mint, MINT,
     },
     CLTyped, CLValue, EraId, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue, URef,
     BLAKE2B_DIGEST_LENGTH, U512,
@@ -117,8 +117,8 @@ where
         self.context.get_caller()
     }
 
-    fn get_immediate_caller(&self) -> Option<&CallStackElement> {
-        Runtime::<'a, R>::get_immediate_caller(self)
+    fn is_allowed_session_caller(&self, account_hash: &AccountHash) -> bool {
+        Runtime::is_allowed_session_caller(self, account_hash)
     }
 
     fn named_keys_get(&self, name: &str) -> Option<Key> {
@@ -130,7 +130,7 @@ where
     }
 
     fn blake2b<T: AsRef<[u8]>>(&self, data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
-        account::blake2b(data)
+        crypto::blake2b(data)
     }
 }
 
@@ -141,7 +141,7 @@ where
 {
     fn unbond(&mut self, unbonding_purse: &UnbondingPurse) -> Result<(), Error> {
         let account_hash =
-            AccountHash::from_public_key(unbonding_purse.unbonder_public_key(), account::blake2b);
+            AccountHash::from_public_key(unbonding_purse.unbonder_public_key(), crypto::blake2b);
         let maybe_value = self
             .context
             .read_gs_direct(&Key::Account(account_hash))
@@ -195,19 +195,67 @@ where
         .map_err(|_| Error::CLValue)?;
 
         let gas_counter = self.gas_counter();
-        let call_stack = self.call_stack().clone();
+        let mut stack = self.stack().clone();
+        stack
+            .push(
+                self.get_system_contract_stack_frame(MINT)
+                    .map_err(|_| Error::Storage)?,
+            )
+            .map_err(|_| Error::RuntimeStackOverflow)?;
         let cl_value = self
             .call_host_mint(
                 self.context.protocol_version(),
                 mint::METHOD_TRANSFER,
-                &mut NamedKeys::default(),
                 &args_values,
                 &[],
-                call_stack,
+                stack,
             )
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Transfer))?;
         self.set_gas_counter(gas_counter);
         cl_value.into_t().map_err(|_| Error::CLValue)
+    }
+
+    fn mint_into_existing_purse(
+        &mut self,
+        amount: U512,
+        existing_purse: URef,
+    ) -> Result<(), Error> {
+        if self.context.get_caller() != PublicKey::System.to_account_hash()
+            && self.context.validate_uref(&existing_purse).is_err()
+        {
+            return Err(Error::InvalidCaller);
+        }
+
+        let args_values = RuntimeArgs::try_new(|args| {
+            args.insert(mint::ARG_AMOUNT, amount)?;
+            args.insert(mint::ARG_PURSE, existing_purse)?;
+            Ok(())
+        })
+        .map_err(|_| Error::CLValue)?;
+
+        let gas_counter = self.gas_counter();
+        let mut stack = self.stack().clone();
+        stack
+            .push(
+                self.get_system_contract_stack_frame(MINT)
+                    .map_err(|_| Error::Storage)?,
+            )
+            .map_err(|_| Error::RuntimeStackOverflow)?;
+
+        let cl_value = self
+            .call_host_mint(
+                self.context.protocol_version(),
+                mint::METHOD_MINT_INTO_EXISTING_PURSE,
+                &args_values,
+                &[],
+                stack,
+            )
+            .map_err(|error| <Option<Error>>::from(error).unwrap_or(Error::MintError))?;
+        self.set_gas_counter(gas_counter);
+        cl_value
+            .into_t::<Result<(), mint::Error>>()
+            .map_err(|_| Error::CLValue)?
+            .map_err(|_| Error::MintError)
     }
 
     fn create_purse(&mut self) -> Result<URef, Error> {

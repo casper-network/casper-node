@@ -9,20 +9,20 @@ use core::{
     num::ParseIntError,
 };
 
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
-use hex_fmt::HexFmt;
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
     bytesrepr,
     bytesrepr::{Error, FromBytes},
-    AccessRights, ApiError, Key, ACCESS_RIGHTS_SERIALIZED_LENGTH,
+    checksummed_hex, AccessRights, ApiError, Key, ACCESS_RIGHTS_SERIALIZED_LENGTH,
 };
 
 /// The number of bytes in a [`URef`] address.
@@ -92,7 +92,8 @@ impl Display for FromStrError {
 /// the [`AccessRights`] of the reference.
 ///
 /// A `URef` can be used to index entities such as [`CLValue`](crate::CLValue)s, or smart contracts.
-#[derive(Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Default, DataSize)]
+#[derive(Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct URef(URefAddr, AccessRights);
 
 impl URef {
@@ -112,11 +113,13 @@ impl URef {
     }
 
     /// Returns a new [`URef`] with the same address and updated access rights.
+    #[must_use]
     pub fn with_access_rights(self, access_rights: AccessRights) -> Self {
         URef(self.0, access_rights)
     }
 
     /// Removes the access rights from this [`URef`].
+    #[must_use]
     pub fn remove_access_rights(self) -> Self {
         URef(self.0, AccessRights::NONE)
     }
@@ -128,28 +131,33 @@ impl URef {
     }
 
     /// Returns a new [`URef`] with the same address and [`AccessRights::READ`] permission.
+    #[must_use]
     pub fn into_read(self) -> URef {
         URef(self.0, AccessRights::READ)
     }
 
     /// Returns a new [`URef`] with the same address and [`AccessRights::WRITE`] permission.
+    #[must_use]
     pub fn into_write(self) -> URef {
         URef(self.0, AccessRights::WRITE)
     }
 
     /// Returns a new [`URef`] with the same address and [`AccessRights::ADD`] permission.
+    #[must_use]
     pub fn into_add(self) -> URef {
         URef(self.0, AccessRights::ADD)
     }
 
     /// Returns a new [`URef`] with the same address and [`AccessRights::READ_ADD_WRITE`]
     /// permission.
+    #[must_use]
     pub fn into_read_add_write(self) -> URef {
         URef(self.0, AccessRights::READ_ADD_WRITE)
     }
 
     /// Returns a new [`URef`] with the same address and [`AccessRights::READ_WRITE`]
     /// permission.
+    #[must_use]
     pub fn into_read_write(self) -> URef {
         URef(self.0, AccessRights::READ_WRITE)
     }
@@ -190,7 +198,7 @@ impl URef {
         if parts.len() != 2 {
             return Err(FromStrError::MissingSuffix);
         }
-        let addr = URefAddr::try_from(base16::decode(parts[0])?.as_ref())?;
+        let addr = URefAddr::try_from(checksummed_hex::decode(parts[0])?.as_ref())?;
         let access_rights_value = u8::from_str_radix(parts[1], 8)?;
         let access_rights = AccessRights::from_bits(access_rights_value)
             .ok_or(FromStrError::InvalidAccessRights)?;
@@ -198,7 +206,7 @@ impl URef {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 impl JsonSchema for URef {
     fn schema_name() -> String {
         String::from("URef")
@@ -207,7 +215,7 @@ impl JsonSchema for URef {
     fn json_schema(gen: &mut SchemaGenerator) -> Schema {
         let schema = gen.subschema_for::<String>();
         let mut schema_object = schema.into_object();
-        schema_object.metadata().description = Some("Hex-encoded, formatted URef.".to_string());
+        schema_object.metadata().description = Some(String::from("Hex-encoded, formatted URef."));
         schema_object.into()
     }
 }
@@ -216,7 +224,12 @@ impl Display for URef {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         let addr = self.addr();
         let access_rights = self.access_rights();
-        write!(f, "URef({}, {})", HexFmt(&addr), access_rights)
+        write!(
+            f,
+            "URef({}, {})",
+            base16::encode_lower(&addr),
+            access_rights
+        )
     }
 }
 
@@ -236,6 +249,12 @@ impl bytesrepr::ToBytes for URef {
 
     fn serialized_length(&self) -> usize {
         UREF_SERIALIZED_LENGTH
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), self::Error> {
+        writer.extend_from_slice(&self.0);
+        self.1.write_bytes(writer)?;
+        Ok(())
     }
 }
 

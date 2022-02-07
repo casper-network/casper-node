@@ -1,10 +1,7 @@
 //! Functions for accessing and mutating local and global state.
 
-#[cfg(feature = "no-std")]
 use alloc::{collections::BTreeSet, string::String, vec, vec::Vec};
 use core::{convert::From, mem::MaybeUninit};
-#[cfg(feature = "std")]
-use std::collections::BTreeSet;
 
 use casper_types::{
     api_error,
@@ -424,4 +421,28 @@ pub fn dictionary_put<V: CLTyped + ToBytes>(
     };
 
     result.unwrap_or_revert()
+}
+
+fn get_named_uref(name: &str) -> URef {
+    match runtime::get_key(name).unwrap_or_revert_with(ApiError::GetKey) {
+        Key::URef(uref) => uref,
+        _ => revert(ApiError::UnexpectedKeyVariant),
+    }
+}
+
+/// Gets a value out of a named dictionary.
+pub fn named_dictionary_get<V: CLTyped + FromBytes>(
+    dictionary_name: &str,
+    dictionary_item_key: &str,
+) -> Result<Option<V>, bytesrepr::Error> {
+    dictionary_get(get_named_uref(dictionary_name), dictionary_item_key)
+}
+
+/// Writes a value in a named dictionary.
+pub fn named_dictionary_put<V: CLTyped + ToBytes>(
+    dictionary_name: &str,
+    dictionary_item_key: &str,
+    value: V,
+) {
+    dictionary_put(get_named_uref(dictionary_name), dictionary_item_key, value)
 }

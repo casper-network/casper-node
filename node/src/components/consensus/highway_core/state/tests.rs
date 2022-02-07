@@ -329,6 +329,9 @@ fn fork_choice() -> Result<(), AddUnitError<TestContext>> {
 
 #[test]
 fn validate_lnc_no_equivocation() -> Result<(), AddUnitError<TestContext>> {
+    if !ENABLE_ENDORSEMENTS {
+        return Ok(());
+    }
     let mut state = State::new_test(WEIGHTS, 0);
 
     // No equivocations – incoming vote doesn't violate LNC.
@@ -347,6 +350,9 @@ fn validate_lnc_no_equivocation() -> Result<(), AddUnitError<TestContext>> {
 
 #[test]
 fn validate_lnc_fault_seen_directly() -> Result<(), AddUnitError<TestContext>> {
+    if !ENABLE_ENDORSEMENTS {
+        return Ok(());
+    }
     // Equivocation cited by one honest validator in the vote's panorama.
     // Does NOT violate LNC.
     //
@@ -369,6 +375,9 @@ fn validate_lnc_fault_seen_directly() -> Result<(), AddUnitError<TestContext>> {
 
 #[test]
 fn validate_lnc_one_equivocator() -> Result<(), AddUnitError<TestContext>> {
+    if !ENABLE_ENDORSEMENTS {
+        return Ok(());
+    }
     // Equivocation cited by two honest validators in the vote's panorama – their votes need to
     // be endorsed.
     //
@@ -404,6 +413,9 @@ fn validate_lnc_one_equivocator() -> Result<(), AddUnitError<TestContext>> {
 
 #[test]
 fn validate_lnc_two_equivocators() -> Result<(), AddUnitError<TestContext>> {
+    if !ENABLE_ENDORSEMENTS {
+        return Ok(());
+    }
     // Multiple equivocators and indirect equivocations.
     // Votes are seen as endorsed by `state` – does not violate LNC.
     //
@@ -445,6 +457,9 @@ fn validate_lnc_two_equivocators() -> Result<(), AddUnitError<TestContext>> {
 
 #[test]
 fn validate_lnc_own_naive_citation() -> Result<(), AddUnitError<TestContext>> {
+    if !ENABLE_ENDORSEMENTS {
+        return Ok(());
+    }
     //           a0'<-----+
     // Alice              |
     //           a0 <--+  |
@@ -483,6 +498,9 @@ fn validate_lnc_own_naive_citation() -> Result<(), AddUnitError<TestContext>> {
 
 #[test]
 fn validate_lnc_mixed_citations() -> Result<(), AddUnitError<TestContext>> {
+    if !ENABLE_ENDORSEMENTS {
+        return Ok(());
+    }
     // Eric's vote should not require an endorsement as his unit e0 cites equivocator Carol before
     // the fork.
     //
@@ -525,6 +543,9 @@ fn validate_lnc_mixed_citations() -> Result<(), AddUnitError<TestContext>> {
 
 #[test]
 fn validate_lnc_transitive_endorsement() -> Result<(), AddUnitError<TestContext>> {
+    if !ENABLE_ENDORSEMENTS {
+        return Ok(());
+    }
     // Endorsements should be transitive to descendants.
     // c1 doesn't have to be endorsed, it is enough that c0 is.
     //
@@ -559,6 +580,9 @@ fn validate_lnc_transitive_endorsement() -> Result<(), AddUnitError<TestContext>
 
 #[test]
 fn validate_lnc_cite_descendant_of_equivocation() -> Result<(), AddUnitError<TestContext>> {
+    if !ENABLE_ENDORSEMENTS {
+        return Ok(());
+    }
     // a0 cites a descendant b1 of an equivocation vote (b0 and b0').
     // This is still detected as violation of the LNC.
     //
@@ -591,6 +615,9 @@ fn validate_lnc_cite_descendant_of_equivocation() -> Result<(), AddUnitError<Tes
 
 #[test]
 fn validate_lnc_endorse_mix_pairs() -> Result<(), AddUnitError<TestContext>> {
+    if !ENABLE_ENDORSEMENTS {
+        return Ok(());
+    }
     // Diagram of the DAG can be found under
     // /resources/test/dags/validate_lnc_endorse_mix_pairs.png
     //
@@ -626,6 +653,9 @@ fn validate_lnc_endorse_mix_pairs() -> Result<(), AddUnitError<TestContext>> {
 
 #[test]
 fn validate_lnc_shared_equiv_unit() -> Result<(), AddUnitError<TestContext>> {
+    if !ENABLE_ENDORSEMENTS {
+        return Ok(());
+    }
     // Diagram of the DAG can be found under
     // /resources/test/dags/validate_lnc_shared_equiv_unit.png
     let weights = &[
@@ -671,6 +701,9 @@ fn validate_lnc_shared_equiv_unit() -> Result<(), AddUnitError<TestContext>> {
 
 #[test]
 fn validate_lnc_four_forks() -> Result<(), AddUnitError<TestContext>> {
+    if !ENABLE_ENDORSEMENTS {
+        return Ok(());
+    }
     // Diagram of the DAG can be found under
     // /resources/test/dags/validate_lnc_four_forks.png
     let weights = &[

@@ -28,6 +28,10 @@ pub struct CoreConfig {
     /// Round seigniorage rate represented as a fractional number.
     #[data_size(skip)]
     pub(crate) round_seigniorage_rate: Ratio<u64>,
+    /// Maximum number of associated keys for a single account.
+    pub(crate) max_associated_keys: u32,
+    /// Maximum height of contract runtime call stack.
+    pub(crate) max_runtime_call_stack_height: u32,
 }
 
 #[cfg(test)]
@@ -44,6 +48,8 @@ impl CoreConfig {
             rng.gen_range(1..1_000_000_000),
             rng.gen_range(1..1_000_000_000),
         );
+        let max_associated_keys = rng.gen();
+        let max_runtime_call_stack_height = rng.gen();
 
         CoreConfig {
             era_duration,
@@ -53,6 +59,8 @@ impl CoreConfig {
             locked_funds_period,
             unbonding_delay,
             round_seigniorage_rate,
+            max_associated_keys,
+            max_runtime_call_stack_height,
         }
     }
 }
@@ -67,6 +75,8 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.locked_funds_period.to_bytes()?);
         buffer.extend(self.unbonding_delay.to_bytes()?);
         buffer.extend(self.round_seigniorage_rate.to_bytes()?);
+        buffer.extend(self.max_associated_keys.to_bytes()?);
+        buffer.extend(self.max_runtime_call_stack_height.to_bytes()?);
         Ok(buffer)
     }
 
@@ -78,6 +88,8 @@ impl ToBytes for CoreConfig {
             + self.locked_funds_period.serialized_length()
             + self.unbonding_delay.serialized_length()
             + self.round_seigniorage_rate.serialized_length()
+            + self.max_associated_keys.serialized_length()
+            + self.max_runtime_call_stack_height.serialized_length()
     }
 }
 
@@ -90,6 +102,8 @@ impl FromBytes for CoreConfig {
         let (locked_funds_period, remainder) = TimeDiff::from_bytes(remainder)?;
         let (unbonding_delay, remainder) = u64::from_bytes(remainder)?;
         let (round_seigniorage_rate, remainder) = Ratio::<u64>::from_bytes(remainder)?;
+        let (max_associated_keys, remainder) = FromBytes::from_bytes(remainder)?;
+        let (max_runtime_call_stack_height, remainder) = FromBytes::from_bytes(remainder)?;
         let config = CoreConfig {
             era_duration,
             minimum_era_height,
@@ -98,6 +112,8 @@ impl FromBytes for CoreConfig {
             locked_funds_period,
             unbonding_delay,
             round_seigniorage_rate,
+            max_associated_keys,
+            max_runtime_call_stack_height,
         };
         Ok((config, remainder))
     }

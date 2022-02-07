@@ -15,9 +15,9 @@ use alloc::{collections::BTreeMap, vec::Vec};
 use num_rational::Ratio;
 use num_traits::{CheckedMul, CheckedSub};
 
-use crate::{account::AccountHash, system::CallStackElement, EraId, PublicKey, U512};
+use crate::{account::AccountHash, EraId, PublicKey, U512};
 
-pub use bid::Bid;
+pub use bid::{Bid, VESTING_SCHEDULE_LENGTH_MILLIS};
 pub use constants::*;
 pub use delegator::Delegator;
 pub use entry_points::auction_entry_points;
@@ -107,18 +107,6 @@ pub trait Auction:
         amount: U512,
     ) -> Result<U512, Error> {
         let provided_account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
-        match self.get_immediate_caller() {
-            Some(&CallStackElement::Session { account_hash })
-                if account_hash != provided_account_hash =>
-            {
-                return Err(Error::InvalidContext)
-            }
-            Some(&CallStackElement::StoredSession { .. }) => {
-                // stored session code is not allowed to call this method
-                return Err(Error::InvalidContext);
-            }
-            _ => {}
-        };
 
         if amount.is_zero() {
             return Err(Error::BondTooSmall);
@@ -126,6 +114,10 @@ pub trait Auction:
 
         if delegation_rate > DELEGATION_RATE_DENOMINATOR {
             return Err(Error::DelegationRateTooLarge);
+        }
+
+        if !self.is_allowed_session_caller(&provided_account_hash) {
+            return Err(Error::InvalidContext);
         }
 
         let source = self.get_main_purse()?;
@@ -189,18 +181,10 @@ pub trait Auction:
     /// not exist, the function call returns an error.
     fn withdraw_bid(&mut self, public_key: PublicKey, amount: U512) -> Result<U512, Error> {
         let provided_account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
-        match self.get_immediate_caller() {
-            Some(&CallStackElement::Session { account_hash })
-                if account_hash != provided_account_hash =>
-            {
-                return Err(Error::InvalidContext)
-            }
-            Some(&CallStackElement::StoredSession { .. }) => {
-                // stored session code is not allowed to call this method
-                return Err(Error::InvalidContext);
-            }
-            _ => {}
-        };
+
+        if !self.is_allowed_session_caller(&provided_account_hash) {
+            return Err(Error::InvalidContext);
+        }
 
         let mut bid = self
             .read_bid(&provided_account_hash)?
@@ -246,7 +230,7 @@ pub trait Auction:
     /// is missing, the function call returns an error and does nothing.
     ///
     /// The function transfers motes from the source purse to the delegator's bonding purse.
-    ///    
+    ///
     /// This entry point returns the number of tokens currently delegated to a given validator.
     fn delegate(
         &mut self,
@@ -256,21 +240,13 @@ pub trait Auction:
     ) -> Result<U512, Error> {
         let provided_account_hash =
             AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
-        match self.get_immediate_caller() {
-            Some(&CallStackElement::Session { account_hash })
-                if account_hash != provided_account_hash =>
-            {
-                return Err(Error::InvalidContext)
-            }
-            Some(&CallStackElement::StoredSession { .. }) => {
-                // stored session code is not allowed to call this method
-                return Err(Error::InvalidContext);
-            }
-            _ => {}
-        };
 
         if amount.is_zero() {
             return Err(Error::BondTooSmall);
+        }
+
+        if !self.is_allowed_session_caller(&provided_account_hash) {
+            return Err(Error::InvalidContext);
         }
 
         let source = self.get_main_purse()?;
@@ -343,20 +319,13 @@ pub trait Auction:
     ) -> Result<U512, Error> {
         let provided_account_hash =
             AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
-        match self.get_immediate_caller() {
-            Some(&CallStackElement::Session { account_hash })
-                if account_hash != provided_account_hash =>
-            {
-                return Err(Error::InvalidContext)
-            }
-            Some(&CallStackElement::StoredSession { .. }) => {
-                // stored session code is not allowed to call this method
-                return Err(Error::InvalidContext);
-            }
-            _ => {}
-        };
+
+        if !self.is_allowed_session_caller(&provided_account_hash) {
+            return Err(Error::InvalidContext);
+        }
 
         let validator_account_hash = AccountHash::from(&validator_public_key);
+
         let mut bid = match self.read_bid(&validator_account_hash)? {
             Some(bid) => bid,
             None => return Err(Error::ValidatorNotFound),
@@ -467,9 +436,11 @@ pub trait Auction:
 
         // Compute next auction winners
         let winners: ValidatorWeights = {
-            let founder_weights: ValidatorWeights = bids
+            let locked_validators: ValidatorWeights = bids
                 .iter()
-                .filter(|(_public_key, bid)| bid.vesting_schedule().is_some() && !bid.inactive())
+                .filter(|(_public_key, bid)| {
+                    bid.is_locked(era_end_timestamp_millis) && !bid.inactive()
+                })
                 .map(|(public_key, bid)| {
                     let total_staked_amount = bid.total_staked_amount()?;
                     Ok((public_key.clone(), total_staked_amount))
@@ -477,28 +448,30 @@ pub trait Auction:
                 .collect::<Result<ValidatorWeights, Error>>()?;
 
             // We collect these into a vec for sorting
-            let mut non_founder_weights: Vec<(PublicKey, U512)> = bids
+            let mut unlocked_validators: Vec<(PublicKey, U512)> = bids
                 .iter()
-                .filter(|(_public_key, bid)| bid.vesting_schedule().is_none() && !bid.inactive())
+                .filter(|(_public_key, bid)| {
+                    !bid.is_locked(era_end_timestamp_millis) && !bid.inactive()
+                })
                 .map(|(public_key, bid)| {
                     let total_staked_amount = bid.total_staked_amount()?;
                     Ok((public_key.clone(), total_staked_amount))
                 })
                 .collect::<Result<Vec<(PublicKey, U512)>, Error>>()?;
 
-            non_founder_weights.sort_by(|(_, lhs), (_, rhs)| rhs.cmp(lhs));
+            unlocked_validators.sort_by(|(_, lhs), (_, rhs)| rhs.cmp(lhs));
 
             // This assumes that amount of founding validators does not exceed configured validator
             // slots. For a case where there are exactly N validators and the limit is N, only
             // founding validators will be the in the winning set. It is advised to set
             // `validator_slots` larger than amount of founding validators in accounts.toml to
             // accomodate non-genesis validators.
-            let remaining_auction_slots = validator_slots.saturating_sub(founder_weights.len());
+            let remaining_auction_slots = validator_slots.saturating_sub(locked_validators.len());
 
-            founder_weights
+            locked_validators
                 .into_iter()
                 .chain(
-                    non_founder_weights
+                    unlocked_validators
                         .into_iter()
                         .take(remaining_auction_slots),
                 )
@@ -559,7 +532,7 @@ pub trait Auction:
         }
 
         let mut era_info = EraInfo::new();
-        let mut seigniorage_allocations = era_info.seigniorage_allocations_mut();
+        let seigniorage_allocations = era_info.seigniorage_allocations_mut();
 
         for (public_key, reward_factor) in reward_factors {
             let recipient = seigniorage_recipients
@@ -611,11 +584,11 @@ pub trait Auction:
                     });
             let delegator_payouts = detail::reinvest_delegator_rewards(
                 self,
-                &mut seigniorage_allocations,
+                seigniorage_allocations,
                 public_key.clone(),
                 delegator_rewards,
             )?;
-            let total_delegator_payout = delegator_payouts
+            let total_delegator_payout: U512 = delegator_payouts
                 .iter()
                 .map(|(_delegator_hash, amount, _bonding_purse)| *amount)
                 .sum();
@@ -624,38 +597,17 @@ pub trait Auction:
             let validator_reward = validators_part.to_integer();
             let validator_bonding_purse = detail::reinvest_validator_reward(
                 self,
-                &mut seigniorage_allocations,
+                seigniorage_allocations,
                 public_key.clone(),
                 validator_reward,
             )?;
-            // TODO: add "mint into existing purse" facility
-            let tmp_validator_reward_purse =
-                self.mint(validator_reward).map_err(|_| Error::MintReward)?;
 
-            self.mint_transfer_direct(
-                Some(public_key.to_account_hash()),
-                tmp_validator_reward_purse,
-                validator_bonding_purse,
-                validator_reward,
-                None,
-            )
-            .map_err(|_| Error::ValidatorRewardTransfer)?
-            .map_err(|_| Error::ValidatorRewardTransfer)?;
+            self.mint_into_existing_purse(validator_reward, validator_bonding_purse)
+                .map_err(Error::from)?;
 
-            // TODO: add "mint into existing purse" facility
-            let tmp_delegator_reward_purse = self
-                .mint(total_delegator_payout)
-                .map_err(|_| Error::MintReward)?;
-            for (delegator_account_hash, delegator_payout, bonding_purse) in delegator_payouts {
-                self.mint_transfer_direct(
-                    Some(delegator_account_hash),
-                    tmp_delegator_reward_purse,
-                    bonding_purse,
-                    delegator_payout,
-                    None,
-                )
-                .map_err(|_| Error::DelegatorRewardTransfer)?
-                .map_err(|_| Error::DelegatorRewardTransfer)?;
+            for (_delegator_account_hash, delegator_payout, bonding_purse) in delegator_payouts {
+                self.mint_into_existing_purse(delegator_payout, bonding_purse)
+                    .map_err(Error::from)?;
             }
         }
 
@@ -674,18 +626,10 @@ pub trait Auction:
     fn activate_bid(&mut self, validator_public_key: PublicKey) -> Result<(), Error> {
         let provided_account_hash =
             AccountHash::from_public_key(&validator_public_key, |x| self.blake2b(x));
-        match self.get_immediate_caller() {
-            Some(&CallStackElement::Session { account_hash })
-                if account_hash != provided_account_hash =>
-            {
-                return Err(Error::InvalidContext)
-            }
-            Some(&CallStackElement::StoredSession { .. }) => {
-                // stored session code is not allowed to call this method
-                return Err(Error::InvalidContext);
-            }
-            _ => {}
-        };
+
+        if !self.is_allowed_session_caller(&provided_account_hash) {
+            return Err(Error::InvalidContext);
+        }
 
         let mut bid = match self.read_bid(&provided_account_hash)? {
             Some(bid) => bid,

@@ -9,12 +9,13 @@ use core::{
     str::FromStr,
 };
 
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -25,20 +26,10 @@ use crate::{
 
 /// Era ID newtype.
 #[derive(
-    DataSize,
-    Debug,
-    Default,
-    Clone,
-    Copy,
-    Hash,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Serialize,
-    Deserialize,
+    Debug, Default, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize,
 )]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct EraId(u64);
 
@@ -65,6 +56,7 @@ impl EraId {
     }
 
     /// Returns a successor to current era.
+    #[must_use]
     #[allow(clippy::integer_arithmetic)] // The caller must make sure this doesn't overflow.
     pub fn successor(self) -> EraId {
         EraId::from(self.0 + 1)
@@ -81,16 +73,19 @@ impl EraId {
     }
 
     /// Returns the current era minus `x`, or `0` if that would be less than `0`.
+    #[must_use]
     pub fn saturating_sub(&self, x: u64) -> EraId {
         EraId::from(self.0.saturating_sub(x))
     }
 
     /// Returns the current era plus `x`, or [`EraId::MAX`] if overflow would occur.
+    #[must_use]
     pub fn saturating_add(self, rhs: EraId) -> EraId {
         EraId(self.0.saturating_add(rhs.0))
     }
 
     /// Returns the current era times `x`, or [`EraId::MAX`] if overflow would occur.
+    #[must_use]
     pub fn saturating_mul(&self, x: u64) -> EraId {
         EraId::from(self.0.saturating_mul(x))
     }
@@ -170,6 +165,12 @@ impl ToBytes for EraId {
 
     fn serialized_length(&self) -> usize {
         self.0.serialized_length()
+    }
+
+    #[inline(always)]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.0.write_bytes(writer)?;
+        Ok(())
     }
 }
 

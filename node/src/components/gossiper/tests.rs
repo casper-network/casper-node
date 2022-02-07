@@ -17,7 +17,10 @@ use thiserror::Error;
 use tokio::time;
 use tracing::debug;
 
-use casper_execution_engine::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
+use casper_execution_engine::{
+    core::engine_state::DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
+};
 use casper_types::ProtocolVersion;
 
 use super::*;
@@ -48,6 +51,8 @@ use crate::{
     NodeRng,
 };
 
+const MAX_ASSOCIATED_KEYS: u32 = 100;
+
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
 #[must_use]
@@ -73,7 +78,7 @@ enum Event {
     #[from]
     DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
     #[from]
-    ContractRuntime(#[serde(skip_serializing)] ContractRuntimeRequest),
+    ContractRuntime(#[serde(skip_serializing)] Box<ContractRuntimeRequest>),
 }
 
 impl ReactorEvent for Event {
@@ -83,6 +88,12 @@ impl ReactorEvent for Event {
         } else {
             None
         }
+    }
+}
+
+impl From<ContractRuntimeRequest> for Event {
+    fn from(contract_runtime_request: ContractRuntimeRequest) -> Self {
+        Event::ContractRuntime(Box::new(contract_runtime_request))
     }
 }
 
@@ -195,6 +206,8 @@ impl reactor::Reactor for Reactor {
             &contract_runtime_config,
             WasmConfig::default(),
             SystemConfig::default(),
+            MAX_ASSOCIATED_KEYS,
+            DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
             registry,
         )
         .unwrap();
@@ -202,7 +215,9 @@ impl reactor::Reactor for Reactor {
         let deploy_acceptor = DeployAcceptor::new(
             deploy_acceptor::Config::new(false),
             &Chainspec::from_resources("local"),
-        );
+            registry,
+        )
+        .unwrap();
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
             config,
@@ -307,7 +322,7 @@ impl reactor::Reactor for Reactor {
                         Event::DeployAcceptor(deploy_acceptor::Event::Accept {
                             deploy,
                             source: Source::Peer(sender),
-                            responder: None,
+                            maybe_responder: None,
                         })
                     }
                     NodeMessage::DeployGossiper(message) => {
@@ -331,7 +346,7 @@ impl reactor::Reactor for Reactor {
                 let event = deploy_acceptor::Event::Accept {
                     deploy,
                     source: Source::<NodeId>::Client,
-                    responder,
+                    maybe_responder: responder,
                 };
                 self.dispatch_event(effect_builder, rng, Event::DeployAcceptor(event))
             }
@@ -358,9 +373,9 @@ impl reactor::Reactor for Reactor {
                 self.network.handle_event(effect_builder, rng, event),
             ),
             Event::ContractRuntime(event) => reactor::wrap_effects(
-                Event::ContractRuntime,
+                Into::into,
                 self.contract_runtime
-                    .handle_event(effect_builder, rng, event),
+                    .handle_event(effect_builder, rng, *event),
             ),
         }
     }
@@ -401,7 +416,7 @@ async fn run_gossip(rng: &mut TestRng, network_size: usize, deploy_count: usize)
 
     // Create `deploy_count` random deploys.
     let (all_deploy_hashes, mut deploys): (BTreeSet<_>, Vec<_>) = iter::repeat_with(|| {
-        let deploy = Box::new(Deploy::random(rng));
+        let deploy = Box::new(Deploy::random_valid_native_transfer(rng));
         (*deploy.id(), deploy)
     })
     .take(deploy_count)
@@ -458,7 +473,7 @@ async fn should_get_from_alternate_source() {
     let node_ids = network.add_nodes(&mut rng, NETWORK_SIZE).await;
 
     // Create random deploy.
-    let deploy = Box::new(Deploy::random(&mut rng));
+    let deploy = Box::new(Deploy::random_valid_native_transfer(&mut rng));
     let deploy_id = *deploy.id();
 
     // Give the deploy to nodes 0 and 1 to be gossiped.
@@ -537,7 +552,7 @@ async fn should_timeout_gossip_response() {
         .await;
 
     // Create random deploy.
-    let deploy = Box::new(Deploy::random(&mut rng));
+    let deploy = Box::new(Deploy::random_valid_native_transfer(&mut rng));
     let deploy_id = *deploy.id();
 
     // Give the deploy to node 0 to be gossiped.

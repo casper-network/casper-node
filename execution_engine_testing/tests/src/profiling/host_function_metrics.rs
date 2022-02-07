@@ -19,17 +19,15 @@ use log::LevelFilter;
 use rand::{self, Rng};
 use serde_json::Value;
 
-use casper_engine_test_support::internal::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder,
-};
+use casper_engine_test_support::{DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder};
 use casper_execution_engine::{
     core::engine_state::EngineConfig,
     shared::logging::{self, Settings},
 };
-use casper_types::{runtime_args, ApiError, RuntimeArgs};
+use casper_types::{bytesrepr::Bytes, runtime_args, ApiError, RuntimeArgs, U512};
 
 use casper_engine_tests::profiling;
-use casper_execution_engine::shared::newtypes::Blake2bHash;
+use casper_hashing::Digest;
 
 const ABOUT: &str =
     "Executes a contract which logs metrics for all host functions.  Note that the \
@@ -57,7 +55,7 @@ const OUTPUT_DIR_ARG_HELP: &str =
 
 const HOST_FUNCTION_METRICS_CONTRACT: &str = "host_function_metrics.wasm";
 const PAYMENT_AMOUNT: u64 = profiling::ACCOUNT_1_INITIAL_AMOUNT - 1_000_000_000;
-const EXPECTED_REVERT_VALUE: u16 = 10;
+const EXPECTED_REVERT_VALUE: u16 = 9;
 const CSV_HEADER: &str = "args,n_exec,total_elapsed_time";
 const ARG_AMOUNT: &str = "amount";
 const ARG_SEED: &str = "seed";
@@ -148,7 +146,7 @@ fn run_test(root_hash: Vec<u8>, repetitions: usize, data_dir: &Path) {
     let engine_config = EngineConfig::default();
 
     let mut test_builder =
-        LmdbWasmTestBuilder::open(data_dir, engine_config, Blake2bHash::new(&root_hash));
+        LmdbWasmTestBuilder::open(data_dir, engine_config, Digest::hash(&root_hash));
 
     let mut rng = rand::thread_rng();
 
@@ -165,10 +163,10 @@ fn run_test(root_hash: Vec<u8>, repetitions: usize, data_dir: &Path) {
                 HOST_FUNCTION_METRICS_CONTRACT,
                 runtime_args! {
                     ARG_SEED => seed,
-                    ARG_OTHERS => (random_bytes, account_1_account_hash, account_2_account_hash),
+                    ARG_OTHERS => (Bytes::from(random_bytes), account_1_account_hash, account_2_account_hash),
                 },
             )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => PAYMENT_AMOUNT })
+            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => U512::from(PAYMENT_AMOUNT) })
             .with_authorization_keys(&[account_1_account_hash])
             .build();
         let exec_request = ExecuteRequestBuilder::new()

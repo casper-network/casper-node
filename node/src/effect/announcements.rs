@@ -3,11 +3,9 @@
 //! Announcements indicate new incoming data or events from various sources. See the top-level
 //! module documentation for details.
 
-use std::{
-    collections::HashMap,
-    fmt::{self, Display, Formatter},
-};
+use std::fmt::{self, Display, Formatter};
 
+use itertools::Itertools;
 use serde::Serialize;
 
 use casper_types::{EraId, ExecutionResult, PublicKey};
@@ -155,6 +153,23 @@ impl<I: Display> Display for DeployAcceptorAnnouncement<I> {
     }
 }
 
+// A block proposer announcement.
+#[derive(Debug, Serialize)]
+pub(crate) enum BlockProposerAnnouncement {
+    /// Hashes of the deploys that expired.
+    DeploysExpired(Vec<DeployHash>),
+}
+
+impl Display for BlockProposerAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            BlockProposerAnnouncement::DeploysExpired(hashes) => {
+                write!(f, "pruned hashes: {}", hashes.iter().join(", "))
+            }
+        }
+    }
+}
+
 /// A consensus announcement.
 #[derive(Debug)]
 pub(crate) enum ConsensusAnnouncement {
@@ -221,7 +236,7 @@ pub(crate) struct LinearChainBlock {
     /// The block.
     pub(crate) block: Block,
     /// The results of executing the deploys in this block.
-    pub(crate) execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
+    pub(crate) execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
 }
 
 /// A Gossiper announcement.

@@ -1,16 +1,18 @@
+//! This module contains executor state of the WASM code.
 mod args;
 mod auction_internal;
 mod externals;
 mod handle_payment_internal;
+mod host_function_flag;
 mod mint_internal;
-mod scoped_instrumenter;
+pub mod stack;
 mod standard_payment_internal;
 
 use std::{
     cmp,
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     convert::TryFrom,
-    iter::IntoIterator,
+    iter::{FromIterator, IntoIterator},
 };
 
 use itertools::Itertools;
@@ -34,38 +36,50 @@ use casper_types::{
         CallStackElement, SystemContractType, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, ApiError, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash,
-    ContractVersionKey, ContractWasm, DeployHash, EntryPointType, EraId, Key, NamedArg, Parameter,
-    Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferResult,
-    TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U128, U256, U512,
+    ContractVersionKey, ContractWasm, DeployHash, EntryPointType, EraId, Gas, Key, NamedArg,
+    Parameter, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer,
+    TransferResult, TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U128, U256, U512,
 };
 
 use crate::{
     core::{
-        engine_state::{system_contract_cache::SystemContractCache, EngineConfig},
+        engine_state::EngineConfig,
         execution::{self, Error},
         resolvers::{create_module_resolver, memory_resolver::MemoryResolver},
-        runtime::scoped_instrumenter::ScopedInstrumenter,
         runtime_context::{self, RuntimeContext},
+        tracking_copy::TrackingCopyExt,
         Address,
     },
     shared::{
-        gas::Gas,
         host_function_costs::{Cost, HostFunction},
         wasm_config::WasmConfig,
     },
     storage::global_state::StateReader,
 };
+pub use stack::{RuntimeStack, RuntimeStackFrame, RuntimeStackOverflow};
 
+use self::host_function_flag::HostFunctionFlag;
+
+/// Represents the runtime properties of a WASM execution.
 pub struct Runtime<'a, R> {
-    system_contract_cache: SystemContractCache,
     config: EngineConfig,
     memory: MemoryRef,
     module: Module,
     host_buffer: Option<CLValue>,
     context: RuntimeContext<'a, R>,
-    call_stack: Vec<CallStackElement>,
+    stack: RuntimeStack,
+    host_function_flag: HostFunctionFlag,
 }
 
+/// Creates an WASM module instance and a memory instance.
+///
+/// This ensures that a memory instance is properly resolved into a pre-allocated memory area, and a
+/// host function resolver is attached to the module.
+///
+/// The WASM module is also validated to not have a "start" section as we currently don't support
+/// running it.
+///
+/// Both [`ModuleRef`] and a [`MemoryRef`] are ready to be executed.
 pub fn instance_and_memory(
     parity_module: Module,
     protocol_version: ProtocolVersion,
@@ -130,8 +144,7 @@ pub fn extract_access_rights_from_keys<I: IntoIterator<Item = Key>>(
 ) -> HashMap<Address, HashSet<AccessRights>> {
     input
         .into_iter()
-        .map(key_to_tuple)
-        .flatten()
+        .flat_map(key_to_tuple)
         .group_by(|(key, _)| *key)
         .into_iter()
         .map(|(key, group)| {
@@ -968,33 +981,66 @@ where
     R: StateReader<Key, StoredValue>,
     R::Error: Into<Error>,
 {
-    pub fn new(
+    /// Creates a new runtime instance.
+    pub(crate) fn new(
         config: EngineConfig,
-        system_contract_cache: SystemContractCache,
         memory: MemoryRef,
         module: Module,
         context: RuntimeContext<'a, R>,
-        call_stack: Vec<CallStackElement>,
+        stack: RuntimeStack,
     ) -> Self {
+        Self::check_preconditions(&stack);
         Runtime {
             config,
-            system_contract_cache,
             memory,
             module,
             host_buffer: None,
             context,
-            call_stack,
+            stack,
+            host_function_flag: HostFunctionFlag::default(),
         }
     }
 
+    /// Creates a new runtime instance by cloning the config, memory, module and host function flag
+    /// from `self`.
+    fn new_from_self(&self, context: RuntimeContext<'a, R>, stack: RuntimeStack) -> Self {
+        Self::check_preconditions(&stack);
+        Runtime {
+            config: self.config,
+            memory: self.memory.clone(),
+            module: self.module.clone(),
+            host_buffer: None,
+            context,
+            stack,
+            host_function_flag: self.host_function_flag.clone(),
+        }
+    }
+
+    /// Preconditions that would render the system inconsistent if violated. Those are strictly
+    /// programming errors.
+    fn check_preconditions(stack: &RuntimeStack) {
+        if stack.is_empty() {
+            error!("Call stack should not be empty while creating a new Runtime instance");
+            debug_assert!(false);
+        }
+
+        if stack.first_frame().unwrap().contract_hash().is_some() {
+            error!("First element of the call stack should always represent a Session call");
+            debug_assert!(false);
+        }
+    }
+
+    /// Returns a memory instance.
     pub fn memory(&self) -> &MemoryRef {
         &self.memory
     }
 
+    /// Returns a WASM module instance.
     pub fn module(&self) -> &Module {
         &self.module
     }
 
+    /// Returns the context.
     pub fn context(&self) -> &RuntimeContext<'a, R> {
         &self.context
     }
@@ -1003,29 +1049,47 @@ where
         self.context.charge_gas(amount)
     }
 
+    /// Returns current gas counter.
     fn gas_counter(&self) -> Gas {
         self.context.gas_counter()
     }
 
+    /// Sets new gas counter value.
     fn set_gas_counter(&mut self, new_gas_counter: Gas) {
         self.context.set_gas_counter(new_gas_counter);
     }
 
+    /// Charge for a system contract call.
+    ///
+    /// This method does not charge for system contract calls if the immediate caller is a system
+    /// contract or if we're currently within the scope of a host function call. This avoids
+    /// misleading gas charges if one system contract calls other system contract (e.g. auction
+    /// contract calls into mint to create new purses).
     pub(crate) fn charge_system_contract_call<T>(&mut self, amount: T) -> Result<(), Error>
     where
         T: Into<Gas>,
     {
+        if self.host_function_flag.is_in_host_function_scope()
+            || self.is_system_immediate_caller()?
+        {
+            // This avoids charging the user in situation when the runtime is in the middle of
+            // handling a host function call or a system contract calls other system contract.
+            return Ok(());
+        }
         self.context.charge_system_contract_call(amount)
     }
 
-    pub fn call_stack(&self) -> &Vec<CallStackElement> {
-        &self.call_stack
+    /// Runtime stack.
+    pub(crate) fn stack(&self) -> &RuntimeStack {
+        &self.stack
     }
 
+    /// Returns bytes from the WASM memory instance.
     fn bytes_from_mem(&self, ptr: u32, size: usize) -> Result<Vec<u8>, Error> {
         self.memory.get(ptr, size).map_err(Into::into)
     }
 
+    /// Returns a deserialized type from the WASM memory instance.
     fn t_from_mem<T: FromBytes>(&self, ptr: u32, size: u32) -> Result<T, Error> {
         let bytes = self.bytes_from_mem(ptr, size as usize)?;
         bytesrepr::deserialize(bytes).map_err(Into::into)
@@ -1047,6 +1111,7 @@ where
         bytesrepr::deserialize(bytes).map_err(Into::into)
     }
 
+    /// Returns a deserialized string from the WASM memory instance.
     fn string_from_mem(&self, ptr: u32, size: u32) -> Result<String, Trap> {
         let bytes = self.bytes_from_mem(ptr, size as usize)?;
         bytesrepr::deserialize(bytes).map_err(|e| Error::BytesRepr(e).into())
@@ -1082,7 +1147,7 @@ where
         }
     }
 
-    fn is_valid_uref(&mut self, uref_ptr: u32, uref_size: u32) -> Result<bool, Trap> {
+    fn is_valid_uref(&self, uref_ptr: u32, uref_size: u32) -> Result<bool, Trap> {
         let bytes = self.bytes_from_mem(uref_ptr, uref_size as usize)?;
         let uref: URef = bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?;
         Ok(self.context.validate_uref(&uref).is_ok())
@@ -1191,10 +1256,16 @@ where
 
     /// Gets the immediate caller of the current execution
     fn get_immediate_caller(&self) -> Option<&CallStackElement> {
-        let call_stack = self.call_stack();
-        let mut call_stack_iter = call_stack.iter().rev();
-        call_stack_iter.next()?;
-        call_stack_iter.next()
+        self.stack.previous_frame()
+    }
+
+    /// Checks if immediate caller is of session type of the same account as the provided account
+    /// hash.
+    fn is_allowed_session_caller(&self, provided_account_hash: &AccountHash) -> bool {
+        if let Some(CallStackElement::Session { account_hash }) = self.get_immediate_caller() {
+            return account_hash == provided_account_hash;
+        }
+        false
     }
 
     /// Writes runtime context's phase to dest_ptr in the Wasm memory.
@@ -1230,7 +1301,7 @@ where
             // Exit early if the host buffer is already occupied
             return Ok(Err(ApiError::HostBufferFull));
         }
-        let call_stack = self.call_stack();
+        let call_stack = self.stack.call_stack_elements();
         let call_stack_len = call_stack.len() as u32;
         let call_stack_len_bytes = call_stack_len.to_le_bytes();
 
@@ -1263,13 +1334,7 @@ where
 
     /// Return some bytes from the memory and terminate the current `sub_call`. Note that the return
     /// type is `Trap`, indicating that this function will always kill the current Wasm instance.
-    fn ret(
-        &mut self,
-        value_ptr: u32,
-        value_size: usize,
-        scoped_instrumenter: &mut ScopedInstrumenter,
-    ) -> Trap {
-        const UREF_COUNT: &str = "uref_count";
+    fn ret(&mut self, value_ptr: u32, value_size: usize) -> Trap {
         self.host_buffer = None;
         let mem_get = self
             .memory
@@ -1286,24 +1351,16 @@ where
                     None => Ok(vec![]),
                 };
                 match urefs {
-                    Ok(urefs) => {
-                        scoped_instrumenter.add_property(UREF_COUNT, urefs.len());
-                        Error::Ret(urefs).into()
-                    }
-                    Err(e) => {
-                        scoped_instrumenter.add_property(UREF_COUNT, 0);
-                        e.into()
-                    }
+                    Ok(urefs) => Error::Ret(urefs).into(),
+                    Err(e) => e.into(),
                 }
             }
-            Err(e) => {
-                scoped_instrumenter.add_property(UREF_COUNT, 0);
-                e.into()
-            }
+            Err(e) => e.into(),
         }
     }
 
-    pub fn is_mint(&self, key: Key) -> bool {
+    /// Checks if current context is the mint system contract.
+    pub(crate) fn is_mint(&self, key: Key) -> bool {
         let hash = match self.context.get_system_contract(MINT) {
             Ok(hash) => hash,
             Err(_) => {
@@ -1314,7 +1371,8 @@ where
         key.into_hash() == Some(hash.value())
     }
 
-    pub fn is_handle_payment(&self, key: Key) -> bool {
+    /// Checks if current context is the `handle_payment` system contract.
+    pub(crate) fn is_handle_payment(&self, key: Key) -> bool {
         let hash = match self.context.get_system_contract(HANDLE_PAYMENT) {
             Ok(hash) => hash,
             Err(_) => {
@@ -1325,7 +1383,8 @@ where
         key.into_hash() == Some(hash.value())
     }
 
-    pub fn is_auction(&self, key: Key) -> bool {
+    /// Checks if current context is the auction system contract.
+    pub(crate) fn is_auction(&self, key: Key) -> bool {
         let hash = match self.context.get_system_contract(AUCTION) {
             Ok(hash) => hash,
             Err(_) => {
@@ -1371,15 +1430,26 @@ where
         }
     }
 
+    /// Calls host mint contract.
     pub fn call_host_mint(
         &mut self,
         protocol_version: ProtocolVersion,
         entry_point_name: &str,
-        named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
-        call_stack: Vec<CallStackElement>,
+        stack: RuntimeStack,
     ) -> Result<CLValue, Error> {
+        let mut named_keys = {
+            let correlation_id = self.context.correlation_id();
+            let contract_hash = self.context.get_system_contract(MINT)?;
+            let contract = self
+                .context()
+                .state()
+                .borrow_mut()
+                .get_contract(correlation_id, contract_hash)?;
+
+            contract.named_keys().to_owned()
+        };
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
             keys.extend(extra_keys);
@@ -1394,9 +1464,7 @@ where
         let deploy_hash = self.context.get_deploy_hash();
         let gas_limit = self.context.gas_limit();
         let gas_counter = self.context.gas_counter();
-        let hash_address_generator = self.context.hash_address_generator();
-        let uref_address_generator = self.context.uref_address_generator();
-        let transfer_address_generator = self.context.transfer_address_generator();
+        let address_generator = self.context.address_generator();
         let correlation_id = self.context.correlation_id();
         let phase = self.context.phase();
         let transfers = self.context.transfers().to_owned();
@@ -1404,7 +1472,7 @@ where
         let mint_context = RuntimeContext::new(
             self.context.state(),
             EntryPointType::Contract,
-            named_keys,
+            &mut named_keys,
             access_rights,
             runtime_args.to_owned(),
             authorization_keys,
@@ -1414,9 +1482,7 @@ where
             deploy_hash,
             gas_limit,
             gas_counter,
-            hash_address_generator,
-            uref_address_generator,
-            transfer_address_generator,
+            address_generator,
             protocol_version,
             correlation_id,
             phase,
@@ -1424,14 +1490,7 @@ where
             transfers,
         );
 
-        let mut mint_runtime = Runtime::new(
-            self.config,
-            SystemContractCache::clone(&self.system_contract_cache),
-            self.memory.clone(),
-            self.module.clone(),
-            mint_context,
-            call_stack,
-        );
+        let mut mint_runtime = self.new_from_self(mint_context, stack);
 
         let system_config = self.config.system_config();
         let mint_costs = system_config.mint_costs();
@@ -1495,6 +1554,16 @@ where
                     .map_err(Self::reverter)?;
                 CLValue::from_t(result).map_err(Self::reverter)
             })(),
+            mint::METHOD_MINT_INTO_EXISTING_PURSE => (|| {
+                mint_runtime.charge_system_contract_call(mint_costs.mint)?;
+
+                let amount: U512 = Self::get_named_argument(runtime_args, mint::ARG_AMOUNT)?;
+                let existing_purse: URef = Self::get_named_argument(runtime_args, mint::ARG_PURSE)?;
+
+                let result: Result<(), mint::Error> =
+                    mint_runtime.mint_into_existing_purse(existing_purse, amount);
+                CLValue::from_t(result).map_err(Self::reverter)
+            })(),
 
             _ => CLValue::from_t(()).map_err(Self::reverter),
         };
@@ -1517,15 +1586,26 @@ where
         Ok(ret)
     }
 
+    /// Calls host `handle_payment` contract.
     pub fn call_host_handle_payment(
         &mut self,
         protocol_version: ProtocolVersion,
         entry_point_name: &str,
-        named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
-        call_stack: Vec<CallStackElement>,
+        stack: RuntimeStack,
     ) -> Result<CLValue, Error> {
+        let mut named_keys = {
+            let correlation_id = self.context.correlation_id();
+            let contract_hash = self.context.get_system_contract(HANDLE_PAYMENT)?;
+            let contract = self
+                .context()
+                .state()
+                .borrow_mut()
+                .get_contract(correlation_id, contract_hash)?;
+
+            contract.named_keys().to_owned()
+        };
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
             keys.extend(extra_keys);
@@ -1540,9 +1620,7 @@ where
         let deploy_hash = self.context.get_deploy_hash();
         let gas_limit = self.context.gas_limit();
         let gas_counter = self.context.gas_counter();
-        let fn_store_id = self.context.hash_address_generator();
-        let address_generator = self.context.uref_address_generator();
-        let transfer_address_generator = self.context.transfer_address_generator();
+        let address_generator = self.context.address_generator();
         let correlation_id = self.context.correlation_id();
         let phase = self.context.phase();
         let transfers = self.context.transfers().to_owned();
@@ -1550,7 +1628,7 @@ where
         let runtime_context = RuntimeContext::new(
             self.context.state(),
             EntryPointType::Contract,
-            named_keys,
+            &mut named_keys,
             access_rights,
             runtime_args.to_owned(),
             authorization_keys,
@@ -1560,9 +1638,7 @@ where
             deploy_hash,
             gas_limit,
             gas_counter,
-            fn_store_id,
             address_generator,
-            transfer_address_generator,
             protocol_version,
             correlation_id,
             phase,
@@ -1570,14 +1646,7 @@ where
             transfers,
         );
 
-        let mut runtime = Runtime::new(
-            self.config,
-            SystemContractCache::clone(&self.system_contract_cache),
-            self.memory.clone(),
-            self.module.clone(),
-            runtime_context,
-            call_stack,
-        );
+        let mut runtime = self.new_from_self(runtime_context, stack);
 
         let system_config = self.config.system_config();
         let handle_payment_costs = system_config.handle_payment_costs();
@@ -1634,6 +1703,7 @@ where
         Ok(ret)
     }
 
+    /// Calls host standard payment contract.
     pub fn call_host_standard_payment(&mut self) -> Result<(), Error> {
         // NOTE: This method (unlike other call_host_* methods) already runs on its own runtime
         // context.
@@ -1645,15 +1715,26 @@ where
         result
     }
 
+    /// Calls host auction contract.
     pub fn call_host_auction(
         &mut self,
         protocol_version: ProtocolVersion,
         entry_point_name: &str,
-        named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
-        call_stack: Vec<CallStackElement>,
+        stack: RuntimeStack,
     ) -> Result<CLValue, Error> {
+        let mut named_keys = {
+            let correlation_id = self.context.correlation_id();
+            let contract_hash = self.context.get_system_contract(AUCTION)?;
+            let contract = self
+                .context
+                .state()
+                .borrow_mut()
+                .get_contract(correlation_id, contract_hash)?;
+
+            contract.named_keys().to_owned()
+        };
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
             keys.extend(extra_keys);
@@ -1668,9 +1749,7 @@ where
         let deploy_hash = self.context.get_deploy_hash();
         let gas_limit = self.context.gas_limit();
         let gas_counter = self.context.gas_counter();
-        let fn_store_id = self.context.hash_address_generator();
-        let address_generator = self.context.uref_address_generator();
-        let transfer_address_generator = self.context.transfer_address_generator();
+        let address_generator = self.context.address_generator();
         let correlation_id = self.context.correlation_id();
         let phase = self.context.phase();
 
@@ -1679,7 +1758,7 @@ where
         let runtime_context = RuntimeContext::new(
             self.context.state(),
             EntryPointType::Contract,
-            named_keys,
+            &mut named_keys,
             access_rights,
             runtime_args.to_owned(),
             authorization_keys,
@@ -1689,9 +1768,7 @@ where
             deploy_hash,
             gas_limit,
             gas_counter,
-            fn_store_id,
             address_generator,
-            transfer_address_generator,
             protocol_version,
             correlation_id,
             phase,
@@ -1699,14 +1776,7 @@ where
             transfers,
         );
 
-        let mut runtime = Runtime::new(
-            self.config,
-            SystemContractCache::clone(&self.system_contract_cache),
-            self.memory.clone(),
-            self.module.clone(),
-            runtime_context,
-            call_stack,
-        );
+        let mut runtime = self.new_from_self(runtime_context, stack);
 
         let system_config = self.config.system_config();
         let auction_costs = system_config.auction_costs();
@@ -2082,62 +2152,56 @@ where
             }
 
             if self.is_mint(key) {
-                let mut call_stack = self.call_stack.to_owned();
+                let mut stack = self.stack.clone();
                 let call_stack_element = CallStackElement::stored_contract(
                     contract.contract_package_hash(),
                     contract_hash,
                 );
-                call_stack.push(call_stack_element);
+                stack.push(call_stack_element)?;
 
                 return self.call_host_mint(
                     self.context.protocol_version(),
                     entry_point.name(),
-                    &mut named_keys,
                     &args,
                     &extra_keys,
-                    call_stack,
+                    stack,
                 );
             } else if self.is_handle_payment(key) {
-                let mut call_stack = self.call_stack.to_owned();
+                let mut stack = self.stack.clone();
                 let call_stack_element = CallStackElement::stored_contract(
                     contract.contract_package_hash(),
                     contract_hash,
                 );
-                call_stack.push(call_stack_element);
+                stack.push(call_stack_element)?;
 
                 return self.call_host_handle_payment(
                     self.context.protocol_version(),
                     entry_point.name(),
-                    &mut named_keys,
                     &args,
                     &extra_keys,
-                    call_stack,
+                    stack,
                 );
             } else if self.is_auction(key) {
-                let mut call_stack = self.call_stack.to_owned();
+                let mut stack = self.stack.clone();
                 let call_stack_element = CallStackElement::stored_contract(
                     contract.contract_package_hash(),
                     contract_hash,
                 );
-                call_stack.push(call_stack_element);
+                stack.push(call_stack_element)?;
 
                 return self.call_host_auction(
                     self.context.protocol_version(),
                     entry_point.name(),
-                    &mut named_keys,
                     &args,
                     &extra_keys,
-                    call_stack,
+                    stack,
                 );
             }
 
             extra_keys
         };
 
-        let module = {
-            let maybe_module = key
-                .into_hash()
-                .and_then(|hash_addr| self.system_contract_cache.get(hash_addr.into()));
+        let module: Module = {
             let wasm_key = contract.contract_wasm_key();
 
             let contract_wasm: ContractWasm = match self.context.read_gs(&wasm_key)? {
@@ -2145,10 +2209,8 @@ where
                 Some(_) => return Err(Error::InvalidContractWasm(contract.contract_wasm_hash())),
                 None => return Err(Error::KeyNotFound(key)),
             };
-            match maybe_module {
-                Some(module) => module,
-                None => parity_wasm::deserialize_buffer(contract_wasm.bytes())?,
-            }
+
+            parity_wasm::deserialize_buffer(contract_wasm.bytes())?
         };
 
         let entry_point_name = entry_point.name();
@@ -2164,11 +2226,7 @@ where
             extract_access_rights_from_keys(keys)
         };
 
-        let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
-
         let config = self.config;
-
-        let host_buffer = None;
 
         let context = RuntimeContext::new(
             self.context.state(),
@@ -2183,9 +2241,7 @@ where
             self.context.get_deploy_hash(),
             self.context.gas_limit(),
             self.context.gas_counter(),
-            self.context.hash_address_generator(),
-            self.context.uref_address_generator(),
-            self.context.transfer_address_generator(),
+            self.context.address_generator(),
             protocol_version,
             self.context.correlation_id(),
             self.context.phase(),
@@ -2193,7 +2249,7 @@ where
             self.context.transfers().to_owned(),
         );
 
-        let mut call_stack = self.call_stack.to_owned();
+        let mut stack = self.stack.clone();
 
         let call_stack_element = match entry_point.entry_point_type() {
             EntryPointType::Session => CallStackElement::stored_session(
@@ -2206,17 +2262,9 @@ where
             }
         };
 
-        call_stack.push(call_stack_element);
+        stack.push(call_stack_element)?;
 
-        let mut runtime = Runtime {
-            system_contract_cache,
-            config,
-            memory,
-            module,
-            host_buffer,
-            context,
-            call_stack,
-        };
+        let mut runtime = Runtime::new(config, memory, module, context, stack);
 
         let result = instance.invoke_export(entry_point_name, &[], &mut runtime);
 
@@ -2283,16 +2331,13 @@ where
         entry_point_name: &str,
         args_bytes: Vec<u8>,
         result_size_ptr: u32,
-        scoped_instrumenter: &mut ScopedInstrumenter,
     ) -> Result<Result<(), ApiError>, Error> {
         // Exit early if the host buffer is already occupied
         if let Err(err) = self.check_host_buffer() {
             return Ok(Err(err));
         }
         let args: RuntimeArgs = bytesrepr::deserialize(args_bytes)?;
-        scoped_instrumenter.pause();
         let result = self.call_contract(contract_hash, entry_point_name, args)?;
-        scoped_instrumenter.unpause();
         self.manage_call_contract_host_buffer(result_size_ptr, result)
     }
 
@@ -2303,21 +2348,18 @@ where
         entry_point_name: String,
         args_bytes: Vec<u8>,
         result_size_ptr: u32,
-        scoped_instrumenter: &mut ScopedInstrumenter,
     ) -> Result<Result<(), ApiError>, Error> {
         // Exit early if the host buffer is already occupied
         if let Err(err) = self.check_host_buffer() {
             return Ok(Err(err));
         }
         let args: RuntimeArgs = bytesrepr::deserialize(args_bytes)?;
-        scoped_instrumenter.pause();
         let result = self.call_versioned_contract(
             contract_package_hash,
             contract_version,
             entry_point_name,
             args,
         )?;
-        scoped_instrumenter.unpause();
         self.manage_call_contract_host_buffer(result_size_ptr, result)
     }
 
@@ -2355,17 +2397,7 @@ where
         &mut self,
         total_keys_ptr: u32,
         result_size_ptr: u32,
-        scoped_instrumenter: &mut ScopedInstrumenter,
     ) -> Result<Result<(), ApiError>, Trap> {
-        scoped_instrumenter.add_property(
-            "names_total_length",
-            self.context
-                .named_keys()
-                .keys()
-                .map(|name| name.len())
-                .sum::<usize>(),
-        );
-
         if !self.can_write_to_host_buffer() {
             // Exit early if the host buffer is already occupied
             return Ok(Err(ApiError::HostBufferFull));
@@ -2856,6 +2888,22 @@ where
         self.context.get_system_contract(MINT)
     }
 
+    fn get_system_contract_stack_frame(&mut self, name: &str) -> Result<CallStackElement, Error> {
+        let contract_hash = self.context.get_system_contract(name)?;
+        let key = Key::from(contract_hash);
+        let contract = match self.context.read_gs(&key)? {
+            Some(StoredValue::Contract(contract)) => contract,
+            Some(_) => {
+                return Err(Error::InvalidContract(contract_hash));
+            }
+            None => return Err(Error::KeyNotFound(key)),
+        };
+        Ok(CallStackElement::StoredContract {
+            contract_package_hash: contract.contract_package_hash(),
+            contract_hash,
+        })
+    }
+
     /// Looks up the public handle payment contract key in the context's protocol data.
     ///
     /// Returned URef is already attenuated depending on the calling account.
@@ -2938,16 +2986,14 @@ where
     /// Calls the "create" method on the mint contract at the given mint
     /// contract key
     fn mint_create(&mut self, mint_contract_hash: ContractHash) -> Result<URef, Error> {
-        let gas_counter = self.gas_counter();
         let result =
             self.call_contract(mint_contract_hash, mint::METHOD_CREATE, RuntimeArgs::new());
-        self.set_gas_counter(gas_counter);
-
         let purse = result?.into_t()?;
         Ok(purse)
     }
 
     fn create_purse(&mut self) -> Result<URef, Error> {
+        let _scoped_host_function_flag = self.host_function_flag.enter_host_function_scope();
         self.mint_create(self.get_mint_contract()?)
     }
 
@@ -3065,6 +3111,8 @@ where
         amount: U512,
         id: Option<u64>,
     ) -> Result<TransferResult, Error> {
+        let _scoped_host_function_flag = self.host_function_flag.enter_host_function_scope();
+
         let target_key = Key::Account(target);
         // Look up the account at the given public key's address
         match self.context.read_account(&target_key)? {
@@ -3600,6 +3648,71 @@ where
         {
             return Err(Trap::from(e));
         }
+        Ok(Ok(()))
+    }
+
+    /// Checks if immediate caller is a system contract or account.
+    ///
+    /// For cases where call stack is only the session code, then this method returns `true` if the
+    /// caller is system, or `false` otherwise.
+    fn is_system_immediate_caller(&self) -> Result<bool, Error> {
+        let immediate_caller = match self.get_immediate_caller() {
+            Some(call_stack_element) => call_stack_element,
+            None => {
+                // Immediate caller is assumed to exist at a time this check is run.
+                return Ok(false);
+            }
+        };
+
+        match immediate_caller {
+            CallStackElement::Session { account_hash } => {
+                // This case can happen during genesis where we're setting up purses for accounts.
+                Ok(account_hash == &PublicKey::System.to_account_hash())
+            }
+            CallStackElement::StoredSession { contract_hash, .. }
+            | CallStackElement::StoredContract { contract_hash, .. } => {
+                Ok(self.context.is_system_contract(contract_hash)?)
+            }
+        }
+    }
+
+    fn load_authorization_keys(
+        &mut self,
+        len_ptr: u32,
+        result_size_ptr: u32,
+    ) -> Result<Result<(), ApiError>, Trap> {
+        if !self.can_write_to_host_buffer() {
+            // Exit early if the host buffer is already occupied
+            return Ok(Err(ApiError::HostBufferFull));
+        }
+
+        // A set of keys is converted into a vector so it can be written to a host buffer
+        let authorization_keys =
+            Vec::from_iter(self.context.authorization_keys().clone().into_iter());
+
+        let total_keys = authorization_keys.len() as u32;
+        let total_keys_bytes = total_keys.to_le_bytes();
+        if let Err(error) = self.memory.set(len_ptr, &total_keys_bytes) {
+            return Err(Error::Interpreter(error.into()).into());
+        }
+
+        if total_keys == 0 {
+            // No need to do anything else, we leave host buffer empty.
+            return Ok(Ok(()));
+        }
+
+        let authorization_keys = CLValue::from_t(authorization_keys).map_err(Error::CLValue)?;
+
+        let length = authorization_keys.inner_bytes().len() as u32;
+        if let Err(error) = self.write_host_buffer(authorization_keys) {
+            return Ok(Err(error));
+        }
+
+        let length_bytes = length.to_le_bytes();
+        if let Err(error) = self.memory.set(result_size_ptr, &length_bytes) {
+            return Err(Error::Interpreter(error.into()).into());
+        }
+
         Ok(Ok(()))
     }
 }

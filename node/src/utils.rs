@@ -5,9 +5,10 @@ mod display_error;
 pub(crate) mod ds;
 mod external;
 pub(crate) mod pid_file;
-#[cfg(target_os = "linux")]
 pub(crate) mod rlimit;
 mod round_robin;
+pub(crate) mod umask;
+pub mod work_queue;
 
 use std::{
     any,
@@ -19,12 +20,18 @@ use std::{
     ops::{Add, BitXorAssign, Div},
     os::unix::fs::OpenOptionsExt,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     time::Duration,
 };
 
 use datasize::DataSize;
 use hyper::server::{conn::AddrIncoming, Builder, Server};
+#[cfg(test)]
+use once_cell::sync::Lazy;
+use prometheus::{self, Histogram, HistogramOpts, Registry};
 use serde::Serialize;
 use thiserror::Error;
 use tracing::{error, warn};
@@ -84,7 +91,7 @@ pub(crate) fn resolve_address(address: &str) -> Result<SocketAddr, ResolveAddres
 
 /// An error starting one of the HTTP servers.
 #[derive(Debug, Error)]
-pub enum ListeningError {
+pub(crate) enum ListeningError {
     /// Failed to resolve address.
     #[error("failed to resolve network address: {0}")]
     ResolveAddress(ResolveAddressError),
@@ -118,6 +125,45 @@ pub(crate) fn start_listening(address: &str) -> Result<Builder<AddrIncoming>, Li
 #[inline]
 pub(crate) fn leak<T>(value: T) -> &'static T {
     Box::leak(Box::new(value))
+}
+
+/// A flag shared across multiple subsystem.
+#[derive(Copy, Clone, DataSize, Debug)]
+pub(crate) struct SharedFlag(&'static AtomicBool);
+
+impl SharedFlag {
+    /// Creates a new shared flag.
+    ///
+    /// The flag is initially not set.
+    pub(crate) fn new() -> Self {
+        SharedFlag(leak(AtomicBool::new(false)))
+    }
+
+    /// Checks whether the flag is set.
+    pub(crate) fn is_set(self) -> bool {
+        self.0.load(Ordering::SeqCst)
+    }
+
+    /// Set the flag.
+    pub(crate) fn set(self) {
+        self.0.store(true, Ordering::SeqCst)
+    }
+
+    /// Returns a shared instance of the flag for testing.
+    ///
+    /// The returned flag should **never** have `set` be called upon it.
+    #[cfg(test)]
+    pub(crate) fn global_shared() -> Self {
+        static SHARED_FLAG: Lazy<SharedFlag> = Lazy::new(SharedFlag::new);
+
+        *SHARED_FLAG
+    }
+}
+
+impl Default for SharedFlag {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// A display-helper that shows iterators display joined by ",".
@@ -274,7 +320,7 @@ impl<T> WithDir<T> {
 
 /// The source of a piece of data.
 #[derive(Clone, Debug, Serialize)]
-pub enum Source<I> {
+pub(crate) enum Source<I> {
     /// A peer with the wrapped ID.
     Peer(I),
     /// A client.
@@ -284,7 +330,7 @@ pub enum Source<I> {
 }
 
 impl<I> Source<I> {
-    pub(crate) fn from_client(&self) -> bool {
+    pub(crate) fn is_client(&self) -> bool {
         matches!(self, Source::Client)
     }
 }
@@ -319,7 +365,20 @@ where
     (numerator + denominator / T::from(2)) / denominator
 }
 
-/// Used to unregister a metric from the Prometheus registry.
+/// Creates a prometheus Histogram and registers it.
+pub(crate) fn register_histogram_metric(
+    registry: &Registry,
+    metric_name: &str,
+    metric_help: &str,
+    buckets: Vec<f64>,
+) -> Result<Histogram, prometheus::Error> {
+    let histogram_opts = HistogramOpts::new(metric_name, metric_help).buckets(buckets);
+    let histogram = Histogram::with_opts(histogram_opts)?;
+    registry.register(Box::new(histogram.clone()))?;
+    Ok(histogram)
+}
+
+/// Unregisters a metric from the Prometheus registry.
 #[macro_export]
 macro_rules! unregister_metric {
     ($registry:expr, $metric:expr) => {
@@ -340,7 +399,7 @@ macro_rules! unregister_metric {
 ///
 /// Panics if `lhs` and `rhs` are not of equal length.
 #[inline]
-pub fn xor(lhs: &mut [u8], rhs: &[u8]) {
+pub(crate) fn xor(lhs: &mut [u8], rhs: &[u8]) {
     // Implementing SIMD support is left as an exercise for the reader.
     assert_eq!(lhs.len(), rhs.len(), "xor inputs should have equal length");
     lhs.iter_mut()
@@ -359,7 +418,11 @@ pub fn xor(lhs: &mut [u8], rhs: &[u8]) {
 ///
 /// Using this function is usually a potential architectural issue and it should be used very
 /// sparingly. Consider introducing a different access pattern for the value under `Arc`.
-pub async fn wait_for_arc_drop<T>(arc: Arc<T>, attempts: usize, retry_delay: Duration) -> bool {
+pub(crate) async fn wait_for_arc_drop<T>(
+    arc: Arc<T>,
+    attempts: usize,
+    retry_delay: Duration,
+) -> bool {
     // Ensure that if we do hold the last reference, we are now going to 0.
     let weak = Arc::downgrade(&arc);
     drop(arc);
@@ -386,6 +449,8 @@ pub async fn wait_for_arc_drop<T>(arc: Arc<T>, attempts: usize, retry_delay: Dur
 #[cfg(test)]
 mod tests {
     use std::{sync::Arc, time::Duration};
+
+    use crate::utils::SharedFlag;
 
     use super::{wait_for_arc_drop, xor};
 
@@ -442,5 +507,23 @@ mod tests {
         // Immedetialy after, we should not be able to obtain a strong reference anymore.
         // This test fails only if we have a race condition, so false positive tests are possible.
         assert!(weak.upgrade().is_none());
+    }
+
+    #[test]
+    fn shared_flag_sanity_check() {
+        let flag = SharedFlag::new();
+        let copied = flag;
+
+        assert!(!flag.is_set());
+        assert!(!copied.is_set());
+        assert!(!flag.is_set());
+        assert!(!copied.is_set());
+
+        flag.set();
+
+        assert!(flag.is_set());
+        assert!(copied.is_set());
+        assert!(flag.is_set());
+        assert!(copied.is_set());
     }
 }

@@ -12,7 +12,6 @@ use std::{
 };
 
 use datasize::DataSize;
-use hex_fmt::HexFmt;
 use serde::Serialize;
 use static_assertions::const_assert;
 
@@ -22,13 +21,13 @@ use casper_execution_engine::{
         balance::{BalanceRequest, BalanceResult},
         era_validators::GetEraValidatorsError,
         genesis::GenesisSuccess,
-        query::{GetBidsRequest, GetBidsResult, QueryRequest, QueryResult},
+        get_bids::{GetBidsRequest, GetBidsResult},
+        query::{QueryRequest, QueryResult},
         upgrade::{UpgradeConfig, UpgradeSuccess},
     },
-    shared::newtypes::Blake2bHash,
     storage::trie::Trie,
 };
-
+use casper_hashing::Digest;
 use casper_types::{
     system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
     StoredValue, Transfer, URef,
@@ -38,14 +37,13 @@ use crate::{
     components::{
         block_validator::ValidatingBlock,
         chainspec_loader::CurrentRunInfo,
-        consensus::{BlockContext, ClContext},
+        consensus::{BlockContext, ClContext, ValidatorChange},
         contract_runtime::{
             BlockAndExecutionEffects, BlockExecutionError, EraValidatorsRequest, ExecutionPreState,
         },
         deploy_acceptor::Error,
         fetcher::FetchResult,
     },
-    crypto::hash::Digest,
     effect::Responder,
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
@@ -183,8 +181,12 @@ pub(crate) enum NetworkInfoRequest<I> {
     /// Get incoming and outgoing peers.
     GetPeers {
         /// Responder to be called with all connected peers.
-        // TODO - change the `String` field to a `libp2p::Multiaddr` once small_network is removed.
         responder: Responder<BTreeMap<I, String>>,
+    },
+    /// Get the peers in random order.
+    GetFullyConnectedPeers {
+        /// Responder to be called with all connected in random order peers.
+        responder: Responder<Vec<I>>,
     },
 }
 
@@ -195,6 +197,9 @@ where
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             NetworkInfoRequest::GetPeers { responder: _ } => write!(formatter, "get peers"),
+            NetworkInfoRequest::GetFullyConnectedPeers { responder: _ } => {
+                write!(formatter, "get fully connected peers")
+            }
         }
     }
 }
@@ -432,7 +437,6 @@ pub(crate) enum StateStoreRequest {
         /// Notification when storing is complete.
         responder: Responder<()>,
     },
-    #[cfg(test)]
     /// Loads a piece of state from storage.
     Load {
         /// Key to load from.
@@ -446,11 +450,15 @@ impl Display for StateStoreRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             StateStoreRequest::Save { key, data, .. } => {
-                write!(f, "save data under {} ({} bytes)", HexFmt(key), data.len())
+                write!(
+                    f,
+                    "save data under {} ({} bytes)",
+                    base16::encode_lower(key),
+                    data.len()
+                )
             }
-            #[cfg(test)]
             StateStoreRequest::Load { key, .. } => {
-                write!(f, "load data from key {}", HexFmt(key))
+                write!(f, "load data from key {}", base16::encode_lower(key))
             }
         }
     }
@@ -558,7 +566,6 @@ pub(crate) enum RpcRequest<I> {
         /// Responder to call with the result.
         responder: Responder<Result<GetBidsResult, engine_state::Error>>,
     },
-
     /// Query the global state at the given root hash.
     GetBalance {
         /// The state root hash.
@@ -682,6 +689,8 @@ pub(crate) enum ContractRuntimeRequest {
         finalized_block: FinalizedBlock,
         /// The deploys for that `FinalizedBlock`
         deploys: Vec<Deploy>,
+        /// The transfers for that `FinalizedBlock`
+        transfers: Vec<Deploy>,
     },
 
     /// Commit genesis chainspec.
@@ -744,19 +753,19 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder,
         responder: Responder<Result<bool, GetEraValidatorsError>>,
     },
-    /// Read a trie by its hash key
-    ReadTrie {
-        /// The hash of the value to get from the `TrieStore`
-        trie_key: Blake2bHash,
+    /// Get a trie by its hash key.
+    GetTrie {
+        /// The hash of the value to get from the `TrieStore`.
+        trie_key: Digest,
         /// Responder to call with the result.
-        responder: Responder<Option<Trie<Key, StoredValue>>>,
+        responder: Responder<Result<Option<Trie<Key, StoredValue>>, engine_state::Error>>,
     },
     /// Insert a trie into global storage
     PutTrie {
         /// The hash of the value to get from the `TrieStore`
         trie: Box<Trie<Key, StoredValue>>,
         /// Responder to call with the result.
-        responder: Responder<Result<Vec<Blake2bHash>, engine_state::Error>>,
+        responder: Responder<Result<Vec<Digest>, engine_state::Error>>,
     },
     /// Execute a provided protoblock
     ExecuteBlock {
@@ -770,6 +779,9 @@ pub(crate) enum ContractRuntimeRequest {
         /// The deploys for the block to execute; must correspond to the deploy and execution
         /// hashes of the `finalized_block` in that order.
         deploys: Vec<Deploy>,
+        /// The transfers for the block to execute; must correspond to the transfer and execution
+        /// hashes of the `finalized_block` in that order.
+        transfers: Vec<Deploy>,
         /// Responder to call with the result.
         responder: Responder<Result<BlockAndExecutionEffects, BlockExecutionError>>,
     },
@@ -781,6 +793,7 @@ impl Display for ContractRuntimeRequest {
             ContractRuntimeRequest::EnqueueBlockForExecution {
                 finalized_block,
                 deploys: _,
+                transfers: _,
             } => {
                 write!(formatter, "finalized_block: {}", finalized_block)
             }
@@ -819,7 +832,7 @@ impl Display for ContractRuntimeRequest {
             } => {
                 write!(formatter, "is {} bonded in era {}", public_key, era_id)
             }
-            ContractRuntimeRequest::ReadTrie { trie_key, .. } => {
+            ContractRuntimeRequest::GetTrie { trie_key, .. } => {
                 write!(formatter, "get trie_key: {}", trie_key)
             }
             ContractRuntimeRequest::PutTrie { trie, .. } => {
@@ -908,6 +921,8 @@ impl<I: Display> Display for LinearChainRequest<I> {
 pub(crate) enum ConsensusRequest {
     /// Request for our public key, and if we're a validator, the next round length.
     Status(Responder<Option<(PublicKey, Option<TimeDiff>)>>),
+    /// Request for a list of validator status changes, by public key.
+    ValidatorChanges(Responder<BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>>>),
 }
 
 /// ChainspecLoader component requests.

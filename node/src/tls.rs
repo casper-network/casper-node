@@ -738,7 +738,7 @@ impl PartialOrd for Sha512 {
 
 impl Debug for Sha512 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", HexFmt(&self.0[..]))
+        write!(f, "{}", base16::encode_lower(&self.0[..]))
     }
 }
 
@@ -798,7 +798,7 @@ impl Hash for Sha512 {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use super::{generate_node_cert, mkname, name_to_string, validate_cert, TlsCert};
 
     #[test]

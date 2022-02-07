@@ -31,6 +31,7 @@ use crate::{
         block_validator::{self, BlockValidator},
         chainspec_loader::{self, ChainspecLoader},
         consensus::{self, EraSupervisor, HighwayProtocol},
+        console::{self, Console},
         contract_runtime::{ContractRuntime, ContractRuntimeAnnouncement, ExecutionPreState},
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server::{self, EventStreamServer},
@@ -46,10 +47,12 @@ use crate::{
     },
     effect::{
         announcements::{
-            BlocklistAnnouncement, ChainspecLoaderAnnouncement, ConsensusAnnouncement,
-            ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
-            LinearChainAnnouncement, LinearChainBlock, NetworkAnnouncement, RpcServerAnnouncement,
+            BlockProposerAnnouncement, BlocklistAnnouncement, ChainspecLoaderAnnouncement,
+            ConsensusAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
+            GossiperAnnouncement, LinearChainAnnouncement, LinearChainBlock, NetworkAnnouncement,
+            RpcServerAnnouncement,
         },
+        console::DumpConsensusStateRequest,
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
             ContractRuntimeRequest, FetcherRequest, LinearChainRequest, MetricsRequest,
@@ -59,7 +62,9 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     protocol::Message,
-    reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
+    reactor::{
+        self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, Reactor as _, ReactorExit,
+    },
     types::{BlockHash, BlockHeader, Deploy, ExitCode, NodeId, Tag},
     utils::{Source, WithDir},
     NodeRng,
@@ -117,11 +122,13 @@ pub(crate) enum ParticipatingEvent {
     /// Linear chain event.
     #[from]
     LinearChain(#[serde(skip_serializing)] linear_chain::Event<NodeId>),
+    /// Console event.
+    #[from]
+    Console(console::Event),
 
     // Requests
     /// Contract runtime request.
-    #[from]
-    ContractRuntime(#[serde(skip_serializing)] ContractRuntimeRequest),
+    ContractRuntime(#[serde(skip_serializing)] Box<ContractRuntimeRequest>),
     /// Network request.
     #[from]
     NetworkRequest(#[serde(skip_serializing)] NetworkRequest<NodeId, Message>),
@@ -149,6 +156,9 @@ pub(crate) enum ParticipatingEvent {
     /// Request for state storage.
     #[from]
     StateStoreRequest(StateStoreRequest),
+    /// Consensus dump request.
+    #[from]
+    DumpConsensusStateRequest(DumpConsensusStateRequest),
 
     // Announcements
     /// Control announcement.
@@ -184,6 +194,9 @@ pub(crate) enum ParticipatingEvent {
     /// Blocklist announcement.
     #[from]
     BlocklistAnnouncement(BlocklistAnnouncement<NodeId>),
+    /// Block proposer announcement.
+    #[from]
+    BlockProposerAnnouncement(#[serde(skip_serializing)] BlockProposerAnnouncement),
 }
 
 impl ReactorEvent for ParticipatingEvent {
@@ -193,6 +206,56 @@ impl ReactorEvent for ParticipatingEvent {
         } else {
             None
         }
+    }
+
+    #[inline]
+    fn description(&self) -> &'static str {
+        match self {
+            ParticipatingEvent::SmallNetwork(_) => "SmallNetwork",
+            ParticipatingEvent::BlockProposer(_) => "BlockProposer",
+            ParticipatingEvent::Storage(_) => "Storage",
+            ParticipatingEvent::RpcServer(_) => "RpcServer",
+            ParticipatingEvent::RestServer(_) => "RestServer",
+            ParticipatingEvent::EventStreamServer(_) => "EventStreamServer",
+            ParticipatingEvent::ChainspecLoader(_) => "ChainspecLoader",
+            ParticipatingEvent::Consensus(_) => "Consensus",
+            ParticipatingEvent::DeployAcceptor(_) => "DeployAcceptor",
+            ParticipatingEvent::DeployFetcher(_) => "DeployFetcher",
+            ParticipatingEvent::DeployGossiper(_) => "DeployGossiper",
+            ParticipatingEvent::AddressGossiper(_) => "AddressGossiper",
+            ParticipatingEvent::BlockValidator(_) => "BlockValidator",
+            ParticipatingEvent::LinearChain(_) => "LinearChain",
+            ParticipatingEvent::ContractRuntime(_) => "ContractRuntime",
+            ParticipatingEvent::Console(_) => "Console",
+            ParticipatingEvent::NetworkRequest(_) => "NetworkRequest",
+            ParticipatingEvent::NetworkInfoRequest(_) => "NetworkInfoRequest",
+            ParticipatingEvent::DeployFetcherRequest(_) => "DeployFetcherRequest",
+            ParticipatingEvent::BlockProposerRequest(_) => "BlockProposerRequest",
+            ParticipatingEvent::BlockValidatorRequest(_) => "BlockValidatorRequest",
+            ParticipatingEvent::MetricsRequest(_) => "MetricsRequest",
+            ParticipatingEvent::ChainspecLoaderRequest(_) => "ChainspecLoaderRequest",
+            ParticipatingEvent::StorageRequest(_) => "StorageRequest",
+            ParticipatingEvent::StateStoreRequest(_) => "StateStoreRequest",
+            ParticipatingEvent::DumpConsensusStateRequest(_) => "DumpConsensusStateRequest",
+            ParticipatingEvent::ControlAnnouncement(_) => "ControlAnnouncement",
+            ParticipatingEvent::NetworkAnnouncement(_) => "NetworkAnnouncement",
+            ParticipatingEvent::RpcServerAnnouncement(_) => "RpcServerAnnouncement",
+            ParticipatingEvent::DeployAcceptorAnnouncement(_) => "DeployAcceptorAnnouncement",
+            ParticipatingEvent::ConsensusAnnouncement(_) => "ConsensusAnnouncement",
+            ParticipatingEvent::ContractRuntimeAnnouncement(_) => "ContractRuntimeAnnouncement",
+            ParticipatingEvent::DeployGossiperAnnouncement(_) => "DeployGossiperAnnouncement",
+            ParticipatingEvent::AddressGossiperAnnouncement(_) => "AddressGossiperAnnouncement",
+            ParticipatingEvent::LinearChainAnnouncement(_) => "LinearChainAnnouncement",
+            ParticipatingEvent::ChainspecLoaderAnnouncement(_) => "ChainspecLoaderAnnouncement",
+            ParticipatingEvent::BlocklistAnnouncement(_) => "BlocklistAnnouncement",
+            ParticipatingEvent::BlockProposerAnnouncement(_) => "BlockProposerAnnouncement",
+        }
+    }
+}
+
+impl From<ContractRuntimeRequest> for ParticipatingEvent {
+    fn from(contract_runtime_request: ContractRuntimeRequest) -> Self {
+        ParticipatingEvent::ContractRuntime(Box::new(contract_runtime_request))
     }
 }
 
@@ -260,6 +323,7 @@ impl Display for ParticipatingEvent {
             }
             ParticipatingEvent::LinearChain(event) => write!(f, "linear-chain event {}", event),
             ParticipatingEvent::BlockValidator(event) => write!(f, "block validator: {}", event),
+            ParticipatingEvent::Console(event) => write!(f, "console: {}", event),
             ParticipatingEvent::NetworkRequest(req) => write!(f, "network request: {}", req),
             ParticipatingEvent::NetworkInfoRequest(req) => {
                 write!(f, "network info request: {}", req)
@@ -280,6 +344,9 @@ impl Display for ParticipatingEvent {
             }
             ParticipatingEvent::MetricsRequest(req) => write!(f, "metrics request: {}", req),
             ParticipatingEvent::ControlAnnouncement(ctrl_ann) => write!(f, "control: {}", ctrl_ann),
+            ParticipatingEvent::DumpConsensusStateRequest(req) => {
+                write!(f, "dump consensus state: {}", req)
+            }
             ParticipatingEvent::NetworkAnnouncement(ann) => {
                 write!(f, "network announcement: {}", ann)
             }
@@ -303,6 +370,9 @@ impl Display for ParticipatingEvent {
             }
             ParticipatingEvent::LinearChainAnnouncement(ann) => {
                 write!(f, "linear chain announcement: {}", ann)
+            }
+            ParticipatingEvent::BlockProposerAnnouncement(ann) => {
+                write!(f, "block proposer announcement: {}", ann)
             }
             ParticipatingEvent::ChainspecLoaderAnnouncement(ann) => {
                 write!(f, "chainspec loader announcement: {}", ann)
@@ -361,6 +431,7 @@ pub(crate) struct Reactor {
     block_proposer: BlockProposer,
     block_validator: BlockValidator<NodeId>,
     linear_chain: LinearChainComponent<NodeId>,
+    console: Console,
 
     // Non-components.
     #[data_size(skip)] // Never allocates heap data.
@@ -385,6 +456,125 @@ impl Reactor {
     /// Inspect contract runtime.
     pub(crate) fn contract_runtime(&self) -> &ContractRuntime {
         &self.contract_runtime
+    }
+}
+
+impl Reactor {
+    /// Handles a request to get an item by id.
+    fn handle_get_request(
+        &mut self,
+        effect_builder: EffectBuilder<<Self as reactor::Reactor>::Event>,
+        rng: &mut NodeRng,
+        sender: NodeId,
+        tag: Tag,
+        serialized_id: &[u8],
+    ) -> Effects<<Self as reactor::Reactor>::Event> {
+        match tag {
+            Tag::Deploy => {
+                let deploy_hash = match bincode::deserialize(serialized_id) {
+                    Ok(hash) => hash,
+                    Err(error) => {
+                        error!(
+                            "failed to decode {:?} from {}: {}",
+                            serialized_id, sender, error
+                        );
+                        return Effects::new();
+                    }
+                };
+
+                match self
+                    .storage
+                    .handle_deduplicated_legacy_direct_deploy_request(deploy_hash)
+                {
+                    Some(serialized_item) => {
+                        let message =
+                            Message::new_get_response_raw_unchecked::<Deploy>(serialized_item);
+                        return effect_builder.send_message(sender, message).ignore();
+                    }
+                    None => debug!(%sender, %deploy_hash, "failed to get deploy (not found)"),
+                }
+            }
+            Tag::Block => match bincode::deserialize(serialized_id) {
+                Ok(block_hash) => {
+                    let req = LinearChainRequest::BlockRequest(block_hash, sender);
+                    let event = ParticipatingEvent::LinearChain(linear_chain::Event::Request(req));
+                    return self.dispatch_event(effect_builder, rng, event);
+                }
+                Err(error) => error!(
+                    "failed to decode {:?} from {}: {}",
+                    serialized_id, sender, error
+                ),
+            },
+            Tag::BlockByHeight => match bincode::deserialize(serialized_id) {
+                Ok(height) => {
+                    let req = LinearChainRequest::BlockAtHeight(height, sender);
+                    let event = ParticipatingEvent::LinearChain(linear_chain::Event::Request(req));
+                    return self.dispatch_event(effect_builder, rng, event);
+                }
+                Err(error) => error!(
+                    "failed to decode {:?} from {}: {}",
+                    serialized_id, sender, error
+                ),
+            },
+            Tag::GossipedAddress => {
+                warn!("received get request for gossiped-address from {}", sender)
+            }
+            Tag::BlockHeaderByHash => {
+                let block_hash: BlockHash = match bincode::deserialize(serialized_id) {
+                    Ok(block_hash) => block_hash,
+                    Err(error) => {
+                        error!(
+                            "failed to decode {:?} from {}: {}",
+                            serialized_id, sender, error
+                        );
+                        return Effects::new();
+                    }
+                };
+
+                match self.storage.get_block_header_by_hash(&block_hash) {
+                    Ok(Some(block_header)) => {
+                        match Message::new_get_response(&block_header) {
+                            Err(error) => error!("failed to create get-response: {}", error),
+                            Ok(message) => {
+                                return effect_builder.send_message(sender, message).ignore();
+                            }
+                        };
+                    }
+                    Ok(None) => debug!("failed to get {} for {}", block_hash, sender),
+                    Err(error) => error!("failed to get {} for {}: {}", block_hash, sender, error),
+                }
+            }
+            Tag::BlockHeaderAndFinalitySignaturesByHeight => {
+                let block_height = match bincode::deserialize(serialized_id) {
+                    Ok(block_height) => block_height,
+                    Err(error) => {
+                        error!(
+                            "failed to decode {:?} from {}: {}",
+                            serialized_id, sender, error
+                        );
+                        return Effects::new();
+                    }
+                };
+                match self
+                    .storage
+                    .read_block_header_and_finality_signatures_by_height(block_height)
+                {
+                    Ok(Some(block_header)) => {
+                        match Message::new_get_response(&block_header) {
+                            Ok(message) => {
+                                return effect_builder.send_message(sender, message).ignore();
+                            }
+                            Err(error) => error!("failed to create get-response: {}", error),
+                        };
+                    }
+                    Ok(None) => debug!("failed to get {} for {}", block_height, sender),
+                    Err(error) => {
+                        error!("failed to get {} for {}: {}", block_height, sender, error)
+                    }
+                }
+            }
+        }
+        Effects::new()
     }
 }
 
@@ -420,6 +610,9 @@ impl reactor::Reactor for Reactor {
 
         let metrics = Metrics::new(registry.clone());
 
+        let (console, console_effects) =
+            Console::new(&WithDir::new(&root, config.console.clone()), event_queue)?;
+
         let effect_builder = EffectBuilder::new(event_queue);
 
         let address_gossiper =
@@ -439,8 +632,12 @@ impl reactor::Reactor for Reactor {
             node_startup_instant,
         )?;
 
-        let deploy_acceptor =
-            DeployAcceptor::new(config.deploy_acceptor, &*chainspec_loader.chainspec());
+        let deploy_acceptor = DeployAcceptor::new(
+            config.deploy_acceptor,
+            &*chainspec_loader.chainspec(),
+            registry,
+        )?;
+
         let deploy_fetcher = Fetcher::new("deploy", config.fetcher, registry)?;
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
@@ -476,11 +673,17 @@ impl reactor::Reactor for Reactor {
         let mut effects =
             reactor::wrap_effects(ParticipatingEvent::BlockProposer, block_proposer_effects);
 
+        effects.extend(reactor::wrap_effects(
+            ParticipatingEvent::Console,
+            console_effects,
+        ));
+
         let maybe_next_activation_point = chainspec_loader
             .next_upgrade()
             .map(|next_upgrade| next_upgrade.activation_point());
         let (consensus, init_consensus_effects) = EraSupervisor::new(
             initial_era,
+            storage.root_path(),
             WithDir::new(root, config.consensus),
             effect_builder,
             chainspec_loader.chainspec().as_ref().into(),
@@ -547,6 +750,7 @@ impl reactor::Reactor for Reactor {
                 block_proposer,
                 block_validator,
                 linear_chain,
+                console,
                 memory_metrics,
                 event_queue_metrics,
             },
@@ -615,9 +819,9 @@ impl reactor::Reactor for Reactor {
                     .handle_event(effect_builder, rng, event),
             ),
             ParticipatingEvent::ContractRuntime(event) => reactor::wrap_effects(
-                ParticipatingEvent::ContractRuntime,
+                Into::into,
                 self.contract_runtime
-                    .handle_event(effect_builder, rng, event),
+                    .handle_event(effect_builder, rng, *event),
             ),
             ParticipatingEvent::BlockValidator(event) => reactor::wrap_effects(
                 ParticipatingEvent::BlockValidator,
@@ -627,6 +831,10 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::LinearChain(event) => reactor::wrap_effects(
                 ParticipatingEvent::LinearChain,
                 self.linear_chain.handle_event(effect_builder, rng, event),
+            ),
+            ParticipatingEvent::Console(event) => reactor::wrap_effects(
+                ParticipatingEvent::Console,
+                self.console.handle_event(effect_builder, rng, event),
             ),
 
             // Requests:
@@ -668,6 +876,10 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::StateStoreRequest(req) => {
                 self.dispatch_event(effect_builder, rng, ParticipatingEvent::Storage(req.into()))
             }
+            ParticipatingEvent::DumpConsensusStateRequest(req) => reactor::wrap_effects(
+                ParticipatingEvent::Consensus,
+                self.consensus.handle_event(effect_builder, rng, req.into()),
+            ),
 
             // Announcements:
             ParticipatingEvent::ControlAnnouncement(ctrl_ann) => {
@@ -696,151 +908,15 @@ impl reactor::Reactor for Reactor {
                             message,
                         })
                     }
-                    Message::GetRequest { tag, serialized_id } => match tag {
-                        Tag::Deploy => {
-                            let deploy_hash = match bincode::deserialize(&serialized_id) {
-                                Ok(hash) => hash,
-                                Err(error) => {
-                                    error!(
-                                        "failed to decode {:?} from {}: {}",
-                                        serialized_id, sender, error
-                                    );
-                                    return Effects::new();
-                                }
-                            };
-
-                            match self
-                                .storage
-                                .handle_deduplicated_legacy_direct_deploy_request(deploy_hash)
-                            {
-                                Some(serialized_item) => {
-                                    let message = Message::new_get_response_raw_unchecked::<Deploy>(
-                                        serialized_item,
-                                    );
-                                    return effect_builder.send_message(sender, message).ignore();
-                                }
-
-                                None => {
-                                    debug!(%sender, %deploy_hash, "failed to get deploy (not found)");
-                                    return Effects::new();
-                                }
-                            }
-                        }
-                        Tag::Block => {
-                            let block_hash = match bincode::deserialize(&serialized_id) {
-                                Ok(hash) => hash,
-                                Err(error) => {
-                                    error!(
-                                        "failed to decode {:?} from {}: {}",
-                                        serialized_id, sender, error
-                                    );
-                                    return Effects::new();
-                                }
-                            };
-                            ParticipatingEvent::LinearChain(linear_chain::Event::Request(
-                                LinearChainRequest::BlockRequest(block_hash, sender),
-                            ))
-                        }
-                        Tag::BlockByHeight => {
-                            let height = match bincode::deserialize(&serialized_id) {
-                                Ok(block_by_height) => block_by_height,
-                                Err(error) => {
-                                    error!(
-                                        "failed to decode {:?} from {}: {}",
-                                        serialized_id, sender, error
-                                    );
-                                    return Effects::new();
-                                }
-                            };
-                            ParticipatingEvent::LinearChain(linear_chain::Event::Request(
-                                LinearChainRequest::BlockAtHeight(height, sender),
-                            ))
-                        }
-                        Tag::GossipedAddress => {
-                            warn!("received get request for gossiped-address from {}", sender);
-                            return Effects::new();
-                        }
-                        Tag::BlockHeaderByHash => {
-                            let block_hash: BlockHash = match bincode::deserialize(&serialized_id) {
-                                Ok(block_hash) => block_hash,
-                                Err(error) => {
-                                    error!(
-                                        "failed to decode {:?} from {}: {}",
-                                        serialized_id, sender, error
-                                    );
-                                    return Effects::new();
-                                }
-                            };
-
-                            match self.storage.read_block_header_by_hash(&block_hash) {
-                                Ok(Some(block_header)) => {
-                                    match Message::new_get_response(&block_header) {
-                                        Err(error) => {
-                                            error!("failed to create get-response: {}", error);
-                                            return Effects::new();
-                                        }
-                                        Ok(message) => {
-                                            return effect_builder
-                                                .send_message(sender, message)
-                                                .ignore();
-                                        }
-                                    };
-                                }
-                                Ok(None) => {
-                                    debug!("failed to get {} for {}", block_hash, sender);
-                                    return Effects::new();
-                                }
-                                Err(error) => {
-                                    error!(
-                                        "failed to get {} for {}: {}",
-                                        block_hash, sender, error
-                                    );
-                                    return Effects::new();
-                                }
-                            }
-                        }
-                        Tag::BlockHeaderAndFinalitySignaturesByHeight => {
-                            let block_height = match bincode::deserialize(&serialized_id) {
-                                Ok(block_height) => block_height,
-                                Err(error) => {
-                                    error!(
-                                        "failed to decode {:?} from {}: {}",
-                                        serialized_id, sender, error
-                                    );
-                                    return Effects::new();
-                                }
-                            };
-                            match self
-                                .storage
-                                .read_block_header_and_finality_signatures_by_height(block_height)
-                            {
-                                Ok(Some(block_header)) => {
-                                    match Message::new_get_response(&block_header) {
-                                        Ok(message) => {
-                                            return effect_builder
-                                                .send_message(sender, message)
-                                                .ignore();
-                                        }
-                                        Err(error) => {
-                                            error!("failed to create get-response: {}", error);
-                                            return Effects::new();
-                                        }
-                                    };
-                                }
-                                Ok(None) => {
-                                    debug!("failed to get {} for {}", block_height, sender);
-                                    return Effects::new();
-                                }
-                                Err(error) => {
-                                    error!(
-                                        "failed to get {} for {}: {}",
-                                        block_height, sender, error
-                                    );
-                                    return Effects::new();
-                                }
-                            }
-                        }
-                    },
+                    Message::GetRequest { tag, serialized_id } => {
+                        return self.handle_get_request(
+                            effect_builder,
+                            rng,
+                            sender,
+                            tag,
+                            &serialized_id,
+                        )
+                    }
                     Message::GetResponse {
                         tag,
                         serialized_item,
@@ -856,7 +932,7 @@ impl reactor::Reactor for Reactor {
                             ParticipatingEvent::DeployAcceptor(deploy_acceptor::Event::Accept {
                                 deploy,
                                 source: Source::Peer(sender),
-                                responder: None,
+                                maybe_responder: None,
                             })
                         }
                         Tag::Block => {
@@ -926,7 +1002,7 @@ impl reactor::Reactor for Reactor {
                 let event = deploy_acceptor::Event::Accept {
                     deploy,
                     source: Source::<NodeId>::Client,
-                    responder,
+                    maybe_responder: responder,
                 };
                 self.dispatch_event(
                     effect_builder,
@@ -1037,13 +1113,13 @@ impl reactor::Reactor for Reactor {
                         block: Box::new(block),
                         execution_results: execution_results
                             .iter()
-                            .map(|(hash, (_header, results))| (*hash, results.clone()))
+                            .map(|(hash, _header, results)| (*hash, results.clone()))
                             .collect(),
                     });
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
 
                 // send to event stream
-                for (deploy_hash, (deploy_header, execution_result)) in execution_results {
+                for (deploy_hash, deploy_header, execution_result) in execution_results {
                     let reactor_event = ParticipatingEvent::EventStreamServer(
                         event_stream_server::Event::DeployProcessed {
                             deploy_hash,
@@ -1080,7 +1156,7 @@ impl reactor::Reactor for Reactor {
                 GossiperAnnouncement::FinishedGossiping(_gossiped_deploy_id),
             ) => {
                 // let reactor_event =
-                //     Event::BlockProposer(block_proposer::Event::
+                //     ParticipatingEvent::BlockProposer(block_proposer::Event::
                 // BufferDeploy(gossiped_deploy_id));
                 // self.dispatch_event(effect_builder, rng, reactor_event)
                 Effects::new()
@@ -1112,6 +1188,14 @@ impl reactor::Reactor for Reactor {
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event_consensus));
 
                 effects
+            }
+            ParticipatingEvent::BlockProposerAnnouncement(
+                BlockProposerAnnouncement::DeploysExpired(hashes),
+            ) => {
+                let reactor_event = ParticipatingEvent::EventStreamServer(
+                    event_stream_server::Event::DeploysExpired(hashes),
+                );
+                self.dispatch_event(effect_builder, rng, reactor_event)
             }
             ParticipatingEvent::LinearChainAnnouncement(
                 LinearChainAnnouncement::NewFinalitySignature(fs),

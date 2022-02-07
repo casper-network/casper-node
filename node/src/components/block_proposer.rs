@@ -3,6 +3,7 @@
 //! The block proposer stores deploy hashes in memory, tracking their suitability for inclusion into
 //! a new block. Upon request, it returns a list of candidates that can be included.
 
+mod cached_state;
 mod config;
 mod deploy_sets;
 mod event;
@@ -17,9 +18,8 @@ use std::{
     time::Duration,
 };
 
-pub use config::Config;
 use datasize::DataSize;
-use itertools::Itertools;
+use futures::join;
 use prometheus::{self, Registry};
 use tracing::{debug, error, info, trace, warn};
 
@@ -31,7 +31,8 @@ use crate::{
         Component,
     },
     effect::{
-        requests::{BlockPayloadRequest, BlockProposerRequest, StorageRequest},
+        announcements::BlockProposerAnnouncement,
+        requests::{BlockPayloadRequest, BlockProposerRequest, StateStoreRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
     types::{
@@ -41,9 +42,11 @@ use crate::{
     },
     NodeRng,
 };
-use deploy_sets::BlockProposerDeploySets;
+use cached_state::CachedState;
+pub use config::Config;
+use deploy_sets::{BlockProposerDeploySets, PruneResult};
 pub(crate) use event::{DeployInfo, Event};
-use metrics::BlockProposerMetrics;
+use metrics::Metrics;
 
 /// Block proposer component.
 #[derive(DataSize, Debug)]
@@ -52,8 +55,10 @@ pub(crate) struct BlockProposer {
     state: BlockProposerState,
 
     /// Metrics, present in all states.
-    metrics: BlockProposerMetrics,
+    metrics: Metrics,
 }
+
+const STATE_KEY: &[u8] = b"block proposer";
 
 /// Interval after which a pruning of the internal sets is triggered.
 // TODO: Make configurable.
@@ -103,15 +108,23 @@ impl BlockProposer {
         local_config: Config,
     ) -> Result<(Self, Effects<Event>), prometheus::Error>
     where
-        REv: From<Event> + From<StorageRequest> + Send + 'static,
+        REv: From<Event> + From<StorageRequest> + From<StateStoreRequest> + Send + 'static,
     {
         debug!(%next_finalized_block, "creating block proposer");
-        let effects = effect_builder
-            .get_finalized_deploys(chainspec.deploy_config.max_ttl)
-            .event(move |finalized_deploys| Event::Loaded {
+        let max_ttl = chainspec.deploy_config.max_ttl;
+        let effects = async move {
+            join!(
+                effect_builder.get_finalized_deploys(max_ttl),
+                effect_builder.load_state::<CachedState>(STATE_KEY.into())
+            )
+        }
+        .event(
+            move |(finalized_deploys, maybe_cached_state)| Event::Loaded {
                 finalized_deploys,
                 next_finalized_block,
-            });
+                cached_state: maybe_cached_state.unwrap_or_default(),
+            },
+        );
 
         let block_proposer = BlockProposer {
             state: BlockProposerState::Initializing {
@@ -119,7 +132,7 @@ impl BlockProposer {
                 deploy_config: chainspec.deploy_config,
                 local_config,
             },
-            metrics: BlockProposerMetrics::new(registry)?,
+            metrics: Metrics::new(registry)?,
         };
 
         Ok((block_proposer, effects))
@@ -128,7 +141,12 @@ impl BlockProposer {
 
 impl<REv> Component<REv> for BlockProposer
 where
-    REv: From<Event> + From<StorageRequest> + Send + 'static,
+    REv: From<Event>
+        + From<StorageRequest>
+        + From<StateStoreRequest>
+        + From<BlockProposerAnnouncement>
+        + Send
+        + 'static,
 {
     type Event = Event;
     type ConstructionError = Infallible;
@@ -154,18 +172,38 @@ where
                 Event::Loaded {
                     finalized_deploys,
                     next_finalized_block,
+                    cached_state,
                 },
             ) => {
+                let (sets, pruned_hashes) = BlockProposerDeploySets::new(
+                    finalized_deploys,
+                    next_finalized_block,
+                    cached_state,
+                );
+
                 let mut new_ready_state = BlockProposerReady {
-                    sets: BlockProposerDeploySets::from_finalized(
-                        finalized_deploys,
-                        next_finalized_block,
-                    ),
+                    sets,
                     unhandled_finalized: Default::default(),
                     deploy_config: *deploy_config,
                     request_queue: Default::default(),
                     local_config: local_config.clone(),
                 };
+
+                // Announce pruned hashes.
+                let pruned_count = pruned_hashes.total_pruned;
+                debug!(%pruned_count, "pruned deploys from buffer on loading");
+                effects.extend(
+                    effect_builder
+                        .announce_expired_deploys(pruned_hashes.expired_hashes_to_be_announced)
+                        .ignore(),
+                );
+
+                // After pruning, we store a state snapshot.
+                effects.extend(
+                    effect_builder
+                        .save_state(STATE_KEY.into(), CachedState::from(&new_ready_state.sets))
+                        .ignore(),
+                );
 
                 // Replay postponed events onto new state.
                 for ev in pending.drain(..) {
@@ -174,7 +212,7 @@ where
 
                 self.state = BlockProposerState::Ready(new_ready_state);
 
-                // Start pruning deploys after delay.
+                // Start pruning deploys after a delay.
                 effects.extend(
                     effect_builder
                         .set_timeout(PRUNE_INTERVAL)
@@ -213,8 +251,8 @@ struct BlockProposerReady {
     /// Set of deploys currently stored in the block proposer.
     sets: BlockProposerDeploySets,
     /// `unhandled_finalized` is a set of hashes for deploys that the `BlockProposer` has not yet
-    /// seen but were reported as reported to `finalized_deploys()`. They are used to
-    /// filter deploys for proposal, similar to `self.sets.finalized_deploys`.
+    /// seen but were reported via `finalized_deploys()`. They are used to filter deploys for
+    /// proposal, similar to `self.sets.finalized_deploys`.
     unhandled_finalized: HashSet<DeployHash>,
     /// We don't need the whole Chainspec here, just the deploy config.
     deploy_config: DeployConfig,
@@ -231,7 +269,7 @@ impl BlockProposerReady {
         event: Event,
     ) -> Effects<Event>
     where
-        REv: Send,
+        REv: Send + From<StateStoreRequest> + From<BlockProposerAnnouncement>,
     {
         match event {
             Event::Request(BlockProposerRequest::RequestBlockPayload(request)) => {
@@ -263,13 +301,29 @@ impl BlockProposerReady {
                 Effects::new()
             }
             Event::Prune => {
-                let pruned = self.prune(Timestamp::now());
-                debug!(%pruned, "pruned deploys from buffer");
-
                 // Re-trigger timer after `PRUNE_INTERVAL`.
-                effect_builder
+                let mut effects = effect_builder
                     .set_timeout(PRUNE_INTERVAL)
-                    .event(|_| Event::Prune)
+                    .event(|_| Event::Prune);
+
+                // Announce pruned hashes.
+                let pruned_hashes = self.prune(Timestamp::now());
+                let pruned_count = pruned_hashes.total_pruned;
+                debug!(%pruned_count, "pruned deploys from buffer");
+                effects.extend(
+                    effect_builder
+                        .announce_expired_deploys(pruned_hashes.expired_hashes_to_be_announced)
+                        .ignore(),
+                );
+
+                // After pruning, we store a state snapshot.
+                effects.extend(
+                    effect_builder
+                        .save_state(STATE_KEY.into(), CachedState::from(&self.sets))
+                        .ignore(),
+                );
+
+                effects
             }
             Event::Loaded { .. } => {
                 // This should never happen, but we can just ignore the event and carry on.
@@ -277,7 +331,19 @@ impl BlockProposerReady {
                 Effects::new()
             }
             Event::FinalizedBlock(block) => {
-                let deploys = block.deploys_and_transfers_iter().collect_vec();
+                let deploys = block
+                    .deploy_hashes()
+                    .iter()
+                    .copied()
+                    .map(DeployOrTransferHash::Deploy)
+                    .chain(
+                        block
+                            .transfer_hashes()
+                            .iter()
+                            .copied()
+                            .map(DeployOrTransferHash::Transfer),
+                    )
+                    .collect();
                 let mut height = block.height();
 
                 if height > self.sets.next_finalized {
@@ -492,8 +558,9 @@ impl BlockProposerReady {
         Arc::new(appendable_block.into_block_payload(accusations, random_bit))
     }
 
-    /// Prunes expired deploy information from the BlockProposer, returns the total deploys pruned.
-    fn prune(&mut self, current_instant: Timestamp) -> usize {
+    /// Prunes expired deploy information from the BlockProposer, returns the hashes of deploys
+    /// pruned.
+    fn prune(&mut self, current_instant: Timestamp) -> PruneResult {
         self.sets.prune(current_instant)
     }
 

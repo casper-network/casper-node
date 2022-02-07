@@ -1,3 +1,5 @@
+//! Key types.
+
 use alloc::{
     format,
     string::{String, ToString},
@@ -14,8 +16,8 @@ use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,
 };
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
-use hex_fmt::HexFmt;
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
@@ -25,6 +27,7 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 use crate::{
     account::{self, AccountHash, ACCOUNT_HASH_LENGTH},
     bytesrepr::{self, Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH},
+    checksummed_hex,
     contract_wasm::ContractWasmHash,
     contracts::{ContractHash, ContractPackageHash},
     uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
@@ -52,7 +55,7 @@ pub const KEY_DEPLOY_INFO_LENGTH: usize = DEPLOY_HASH_LENGTH;
 /// The number of bytes in a [`Key::Dictionary`].
 pub const KEY_DICTIONARY_LENGTH: usize = 32;
 /// The maximum length for a `dictionary_item_key`.
-pub const DICTIONARY_ITEM_KEY_MAX_LENGTH: usize = 64;
+pub const DICTIONARY_ITEM_KEY_MAX_LENGTH: usize = 128;
 
 const SYSTEM_CONTRACT_REGISTRY_KEY: [u8; 32] = [0u8; 32];
 const KEY_ID_SERIALIZED_LENGTH: usize = 1;
@@ -95,7 +98,8 @@ pub enum KeyTag {
 /// The type under which data (e.g. [`CLValue`](crate::CLValue)s, smart contracts, user accounts)
 /// are indexed on the network.
 #[repr(C)]
-#[derive(PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash, DataSize)]
+#[derive(PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub enum Key {
     /// A `Key` under which a user account is stored.
     Account(AccountHash),
@@ -122,19 +126,32 @@ pub enum Key {
     SystemContractRegistry,
 }
 
+/// Errors produced when converting a `String` into a `Key`.
 #[derive(Debug)]
 pub enum FromStrError {
+    /// Account parse error.
     Account(account::FromStrError),
+    /// Hash parse error.
     Hash(String),
+    /// URef parse error.
     URef(uref::FromStrError),
+    /// Transfer parse error.
     Transfer(TransferFromStrError),
+    /// DeployInfo parse error.
     DeployInfo(String),
+    /// EraInfo parse error.
     EraInfo(String),
+    /// Balance parse error.
     Balance(String),
+    /// Bid parse error.
     Bid(String),
+    /// Withdraw parse error.
     Withdraw(String),
+    /// Dictionary parse error.
     Dictionary(String),
+    /// System contract registry parse error.
     SystemContractRegistry(String),
+    /// Unknown prefix.
     UnknownPrefix,
 }
 
@@ -212,6 +229,7 @@ impl Key {
     /// If `self` is of type [`Key::URef`], returns `self` with the
     /// [`AccessRights`](crate::AccessRights) stripped from the wrapped [`URef`], otherwise
     /// returns `self` unmodified.
+    #[must_use]
     pub fn normalize(self) -> Key {
         match self {
             Key::URef(uref) => Key::URef(uref.remove_access_rights()),
@@ -271,16 +289,16 @@ impl Key {
         }
 
         if let Some(hex) = input.strip_prefix(HASH_PREFIX) {
-            let addr =
-                base16::decode(hex).map_err(|error| FromStrError::Hash(error.to_string()))?;
+            let addr = checksummed_hex::decode(hex)
+                .map_err(|error| FromStrError::Hash(error.to_string()))?;
             let hash_addr = HashAddr::try_from(addr.as_ref())
                 .map_err(|error| FromStrError::Hash(error.to_string()))?;
             return Ok(Key::Hash(hash_addr));
         }
 
         if let Some(hex) = input.strip_prefix(DEPLOY_INFO_PREFIX) {
-            let hash =
-                base16::decode(hex).map_err(|error| FromStrError::DeployInfo(error.to_string()))?;
+            let hash = checksummed_hex::decode(hex)
+                .map_err(|error| FromStrError::DeployInfo(error.to_string()))?;
             let hash_array = <[u8; DEPLOY_HASH_LENGTH]>::try_from(hash.as_ref())
                 .map_err(|error| FromStrError::DeployInfo(error.to_string()))?;
             return Ok(Key::DeployInfo(DeployHash::new(hash_array)));
@@ -305,30 +323,31 @@ impl Key {
         }
 
         if let Some(hex) = input.strip_prefix(BALANCE_PREFIX) {
-            let addr =
-                base16::decode(hex).map_err(|error| FromStrError::Balance(error.to_string()))?;
+            let addr = checksummed_hex::decode(hex)
+                .map_err(|error| FromStrError::Balance(error.to_string()))?;
             let uref_addr = URefAddr::try_from(addr.as_ref())
                 .map_err(|error| FromStrError::Balance(error.to_string()))?;
             return Ok(Key::Balance(uref_addr));
         }
 
         if let Some(hex) = input.strip_prefix(BID_PREFIX) {
-            let hash = base16::decode(hex).map_err(|error| FromStrError::Bid(error.to_string()))?;
+            let hash = checksummed_hex::decode(hex)
+                .map_err(|error| FromStrError::Bid(error.to_string()))?;
             let account_hash = <[u8; ACCOUNT_HASH_LENGTH]>::try_from(hash.as_ref())
                 .map_err(|error| FromStrError::Bid(error.to_string()))?;
             return Ok(Key::Bid(AccountHash::new(account_hash)));
         }
 
         if let Some(hex) = input.strip_prefix(WITHDRAW_PREFIX) {
-            let hash =
-                base16::decode(hex).map_err(|error| FromStrError::Withdraw(error.to_string()))?;
+            let hash = checksummed_hex::decode(hex)
+                .map_err(|error| FromStrError::Withdraw(error.to_string()))?;
             let account_hash = <[u8; ACCOUNT_HASH_LENGTH]>::try_from(hash.as_ref())
                 .map_err(|error| FromStrError::Withdraw(error.to_string()))?;
             return Ok(Key::Withdraw(AccountHash::new(account_hash)));
         }
 
         if let Some(dictionary_addr) = input.strip_prefix(DICTIONARY_PREFIX) {
-            let dictionary_addr_bytes = base16::decode(dictionary_addr)
+            let dictionary_addr_bytes = checksummed_hex::decode(dictionary_addr)
                 .map_err(|error| FromStrError::Dictionary(error.to_string()))?;
             let addr = DictionaryAddr::try_from(dictionary_addr_bytes.as_ref())
                 .map_err(|error| FromStrError::Dictionary(error.to_string()))?;
@@ -336,7 +355,7 @@ impl Key {
         }
 
         if let Some(registry_padding) = input.strip_prefix(SYSTEM_CONTRACT_REGISTRY_PREFIX) {
-            let padded_bytes = base16::decode(registry_padding)
+            let padded_bytes = checksummed_hex::decode(registry_padding)
                 .map_err(|error| FromStrError::SystemContractRegistry(error.to_string()))?;
             let _padding: [u8; 32] = TryFrom::try_from(padded_bytes.as_ref()).map_err(|_| {
                 FromStrError::SystemContractRegistry(
@@ -373,6 +392,16 @@ impl Key {
         match self {
             Key::URef(uref) => Some(uref),
             _ => None,
+        }
+    }
+
+    /// Returns a reference to the inner `URefAddr` if `self` is of type [`Key::Balance`],
+    /// otherwise returns `None`.
+    pub fn as_balance(&self) -> Option<&URefAddr> {
+        if let Self::Balance(v) = self {
+            Some(v)
+        } else {
+            None
         }
     }
 
@@ -418,19 +447,27 @@ impl Display for Key {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             Key::Account(account_hash) => write!(f, "Key::Account({})", account_hash),
-            Key::Hash(addr) => write!(f, "Key::Hash({})", HexFmt(addr)),
+            Key::Hash(addr) => write!(f, "Key::Hash({})", base16::encode_lower(&addr)),
             Key::URef(uref) => write!(f, "Key::{}", uref), /* Display impl for URef will append */
             Key::Transfer(transfer_addr) => write!(f, "Key::Transfer({})", transfer_addr),
-            Key::DeployInfo(addr) => write!(f, "Key::DeployInfo({})", HexFmt(addr.as_bytes())),
+            Key::DeployInfo(addr) => write!(
+                f,
+                "Key::DeployInfo({})",
+                base16::encode_lower(addr.as_bytes())
+            ),
             Key::EraInfo(era_id) => write!(f, "Key::EraInfo({})", era_id),
-            Key::Balance(uref_addr) => write!(f, "Key::Balance({})", HexFmt(uref_addr)),
+            Key::Balance(uref_addr) => {
+                write!(f, "Key::Balance({})", base16::encode_lower(uref_addr))
+            }
             Key::Bid(account_hash) => write!(f, "Key::Bid({})", account_hash),
             Key::Withdraw(account_hash) => write!(f, "Key::Withdraw({})", account_hash),
-            Key::Dictionary(addr) => write!(f, "Key::Dictionary({})", HexFmt(addr)),
+            Key::Dictionary(addr) => {
+                write!(f, "Key::Dictionary({})", base16::encode_lower(addr))
+            }
             Key::SystemContractRegistry => write!(
                 f,
                 "Key::SystemContractRegistry({})",
-                HexFmt(SYSTEM_CONTRACT_REGISTRY_KEY)
+                base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_KEY)
             ),
         }
     }
@@ -561,6 +598,47 @@ impl ToBytes for Key {
             Key::Dictionary(_) => KEY_DICTIONARY_SERIALIZED_LENGTH,
             Key::SystemContractRegistry => KEY_SYSTEM_CONTRACT_REGISTRY_SERIALIZED_LENGTH,
         }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        writer.push(self.tag());
+        match self {
+            Key::Account(account_hash) => {
+                writer.extend_from_slice(account_hash.as_bytes());
+            }
+            Key::Hash(hash) => {
+                writer.extend_from_slice(hash);
+            }
+            Key::URef(uref) => {
+                writer.extend_from_slice(&uref.addr());
+                writer.push(uref.access_rights().bits());
+            }
+            Key::Transfer(addr) => {
+                writer.extend_from_slice(addr.as_bytes());
+            }
+            Key::DeployInfo(addr) => {
+                writer.extend_from_slice(addr.as_bytes());
+            }
+            Key::EraInfo(era_id) => {
+                writer.extend_from_slice(&era_id.to_le_bytes());
+            }
+            Key::Balance(uref_addr) => {
+                writer.extend_from_slice(uref_addr);
+            }
+            Key::Bid(account_hash) => {
+                writer.extend_from_slice(account_hash.as_bytes());
+            }
+            Key::Withdraw(account_hash) => {
+                writer.extend_from_slice(account_hash.as_bytes());
+            }
+            Key::Dictionary(addr) => {
+                writer.extend_from_slice(addr);
+            }
+            Key::SystemContractRegistry => {
+                writer.extend_from_slice(&[0u8; 32]);
+            }
+        };
+        Ok(())
     }
 }
 
@@ -917,7 +995,7 @@ mod tests {
             format!("{}", REGISTRY_KEY),
             format!(
                 "Key::SystemContractRegistry({})",
-                HexFmt(SYSTEM_CONTRACT_REGISTRY_KEY)
+                base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_KEY)
             )
         )
     }
@@ -1076,7 +1154,7 @@ mod tests {
             format!(r#"{{"Dictionary":"dictionary-{}"}}"#, HEX_STRING),
             format!(
                 r#"{{"SystemContractRegistry":"system-contract-registry-{}"}}"#,
-                HexFmt(SYSTEM_CONTRACT_REGISTRY_KEY)
+                base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_KEY)
             ),
         ];
 

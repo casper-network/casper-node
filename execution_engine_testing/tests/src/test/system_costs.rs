@@ -2,21 +2,18 @@ use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    internal::{
-        utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
-        UpgradeRequestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_PAYMENT,
-        DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
-    },
-    AccountHash, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
+    utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+    UpgradeRequestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
+    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PAYMENT,
+    DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     core::engine_state::{
         genesis::GenesisValidator, EngineConfig, GenesisAccount, DEFAULT_MAX_QUERY_DEPTH,
+        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
     },
     shared::{
-        gas::Gas,
         host_function_costs::{Cost, HostFunction, HostFunctionCosts},
-        motes::Motes,
         opcode_costs::OpcodeCosts,
         storage_costs::StorageCosts,
         system_config::{
@@ -40,12 +37,13 @@ use casper_execution_engine::{
     },
 };
 use casper_types::{
+    account::AccountHash,
     runtime_args,
     system::{
         auction::{self, DelegationRate},
         handle_payment, mint, AUCTION,
     },
-    EraId, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
+    EraId, Gas, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const SYSTEM_CONTRACT_HASHES_NAME: &str = "system_contract_hashes.wasm";
@@ -173,6 +171,7 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
 #[test]
 fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
     let new_wasmless_transfer_cost = DEFAULT_WASMLESS_TRANSFER_COST;
+    let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
 
     let new_auction_costs = AuctionCosts {
         add_bid: NEW_ADD_BID_COST,
@@ -193,6 +192,8 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
 
     let new_engine_config = EngineConfig::new(
         DEFAULT_MAX_QUERY_DEPTH,
+        new_max_associated_keys,
+        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         WasmConfig::default(),
         new_system_config,
     );
@@ -409,6 +410,7 @@ fn delegate_and_undelegate_have_expected_costs() {
 #[test]
 fn upgraded_delegate_and_undelegate_have_expected_costs() {
     let new_wasmless_transfer_cost = DEFAULT_WASMLESS_TRANSFER_COST;
+    let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
 
     let new_auction_costs = AuctionCosts {
         delegate: NEW_DELEGATE_COST,
@@ -429,6 +431,8 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
 
     let new_engine_config = EngineConfig::new(
         DEFAULT_MAX_QUERY_DEPTH,
+        new_max_associated_keys,
+        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         WasmConfig::default(),
         new_system_config,
     );
@@ -701,8 +705,7 @@ fn should_charge_for_erroneous_system_contract_calls() {
         builder.exec(exec_request).commit();
 
         let _error = builder
-            .get_exec_results()
-            .last()
+            .get_last_exec_results()
             .expect("should have results")
             .get(0)
             .expect("should have first result")
@@ -851,6 +854,7 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
     );
 
     let new_wasmless_transfer_cost = 0;
+    let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
     let new_auction_costs = AuctionCosts::default();
     let new_mint_costs = MintCosts::default();
     let new_standard_payment_costs = StandardPaymentCosts::default();
@@ -864,8 +868,13 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         new_standard_payment_costs,
     );
 
-    let new_engine_config =
-        EngineConfig::new(DEFAULT_MAX_QUERY_DEPTH, new_wasm_config, new_system_config);
+    let new_engine_config = EngineConfig::new(
+        DEFAULT_MAX_QUERY_DEPTH,
+        new_max_associated_keys,
+        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+        new_wasm_config,
+        new_system_config,
+    );
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()

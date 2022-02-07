@@ -1,16 +1,18 @@
 use casper_engine_test_support::{
-    internal::{
-        ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_PUBLIC_KEY,
-        DEFAULT_RUN_GENESIS_REQUEST,
-    },
-    AccountHash, Code, SessionBuilder, TestContextBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, ARG_AMOUNT,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
+    DEFAULT_GENESIS_CONFIG, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_PAYMENT,
+    DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::core::{engine_state::Error as EngineError, execution::Error};
+use casper_execution_engine::core::{
+    engine_state::{run_genesis_request::RunGenesisRequest, Error as EngineError, GenesisAccount},
+    execution::Error,
+};
 use casper_types::{
-    runtime_args, system::mint, AccessRights, ApiError, CLType, ContractHash, Key, RuntimeArgs,
-    U512,
+    account::AccountHash, runtime_args, system::mint, AccessRights, ApiError, CLType, CLValue,
+    ContractHash, Key, Motes, RuntimeArgs, StoredValue, U512,
 };
+use std::{convert::TryFrom, path::PathBuf};
 
 use dictionary_call::{NEW_DICTIONARY_ITEM_KEY, NEW_DICTIONARY_VALUE};
 
@@ -68,6 +70,46 @@ fn setup() -> (InMemoryWasmTestBuilder, ContractHash) {
         .expect("should have hash");
 
     (builder, contract_hash)
+}
+
+fn query_dictionary_item(
+    builder: &InMemoryWasmTestBuilder,
+    key: Key,
+    dictionary_name: Option<String>,
+    dictionary_item_key: String,
+) -> Result<StoredValue, String> {
+    let empty_path = vec![];
+    let dictionary_key_bytes = dictionary_item_key.as_bytes();
+    let address = match key {
+        Key::Account(_) | Key::Hash(_) => {
+            if let Some(name) = dictionary_name {
+                let stored_value = builder.query(None, key, &[])?;
+
+                let named_keys = match &stored_value {
+                    StoredValue::Account(account) => account.named_keys(),
+                    StoredValue::Contract(contract) => contract.named_keys(),
+                    _ => {
+                        return Err(
+                            "Provided base key is nether an account or a contract".to_string()
+                        )
+                    }
+                };
+
+                let dictionary_uref = named_keys
+                    .get(&name)
+                    .and_then(Key::as_uref)
+                    .ok_or_else(|| "No dictionary uref was found in named keys".to_string())?;
+
+                Key::dictionary(*dictionary_uref, dictionary_key_bytes)
+            } else {
+                return Err("No dictionary name was provided".to_string());
+            }
+        }
+        Key::URef(uref) => Key::dictionary(uref, dictionary_key_bytes),
+        Key::Dictionary(address) => Key::Dictionary(address),
+        _ => return Err("Unsupported key type for a query to a dictionary item".to_string()),
+    };
+    builder.query(None, address, &empty_path)
 }
 
 #[ignore]
@@ -129,8 +171,8 @@ fn should_modify_with_owned_access_rights() {
         .cloned()
         .expect("should have cl value");
 
-    let s: String = dictionary_value.into_t().expect("should be a string");
-    assert_eq!(s, "Hello, world!");
+    let value: String = dictionary_value.into_t().expect("should be a string");
+    assert_eq!(value, "Hello, world!");
 
     builder
         .exec(modify_write_request_2)
@@ -145,8 +187,8 @@ fn should_modify_with_owned_access_rights() {
         .cloned()
         .expect("should have cl value");
 
-    let s: String = dictionary_value.into_t().expect("should be a string");
-    assert_eq!(s, "Hello, world! Hello, world!");
+    let value: String = dictionary_value.into_t().expect("should be a string");
+    assert_eq!(value, "Hello, world! Hello, world!");
 }
 
 #[ignore]
@@ -168,8 +210,7 @@ fn should_not_write_with_read_access_rights() {
     builder.exec(call_request).commit();
 
     let exec_results = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have results");
     assert_eq!(exec_results.len(), 1);
     let error = exec_results[0].as_error().expect("should have error");
@@ -223,9 +264,9 @@ fn should_not_read_with_write_access_rights() {
     builder.exec(call_request).commit();
 
     let exec_results = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have results");
+
     assert_eq!(exec_results.len(), 1);
     let error = exec_results[0].as_error().expect("should have error");
     assert!(
@@ -273,9 +314,9 @@ fn should_write_with_write_access_rights() {
     let result = builder
         .query(None, dictionary_key, &[])
         .expect("should query");
-    let cl_value = result.as_cl_value().cloned().expect("should have cl value");
-    let written_value: String = cl_value.into_t().expect("should get string");
-    assert_eq!(written_value, NEW_DICTIONARY_VALUE);
+    let value = result.as_cl_value().cloned().expect("should have cl value");
+    let value: String = value.into_t().expect("should get string");
+    assert_eq!(value, NEW_DICTIONARY_VALUE);
 }
 
 #[ignore]
@@ -309,8 +350,7 @@ fn should_not_write_with_forged_uref() {
     builder.exec(call_request).commit();
 
     let exec_results = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have results");
     assert_eq!(exec_results.len(), 1);
     let error = exec_results[0].as_error().expect("should have error");
@@ -350,8 +390,7 @@ fn should_fail_put_with_invalid_dictionary_item_key() {
 
     builder.exec(call_request).commit();
     let exec_results = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have results");
     assert_eq!(exec_results.len(), 1);
     let error = exec_results[0].as_error().expect("should have error");
@@ -390,8 +429,7 @@ fn should_fail_get_with_invalid_dictionary_item_key() {
 
     builder.exec(call_request).commit();
     let exec_results = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have results");
     assert_eq!(exec_results.len(), 1);
     let error = exec_results[0].as_error().expect("should have error");
@@ -434,8 +472,7 @@ fn dictionary_put_should_fail_with_large_item_key() {
     builder.exec(fund_request).commit().expect_success();
     builder.exec(install_contract_request).commit();
     let exec_results = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have results");
     assert_eq!(exec_results.len(), 1);
     let error = exec_results[0].as_error().expect("should have error");
@@ -478,8 +515,7 @@ fn dictionary_get_should_fail_with_large_item_key() {
     builder.exec(fund_request).commit().expect_success();
     builder.exec(install_contract_request).commit();
     let exec_results = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have results");
     assert_eq!(exec_results.len(), 1);
     let error = exec_results[0].as_error().expect("should have error");
@@ -495,23 +531,37 @@ fn dictionary_get_should_fail_with_large_item_key() {
 
 #[ignore]
 #[test]
-fn should_query_dictionary_items_with_test_context() {
-    let mut test_context = TestContextBuilder::new()
-        .with_public_key(
-            DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-            U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE),
-        )
-        .build();
+fn should_query_dictionary_items_with_test_builder() {
+    let genesis_account = GenesisAccount::account(
+        DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
+        Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE)),
+        None,
+    );
 
-    let dictionary_code = Code::from(DICTIONARY_WASM);
-    let install_session = SessionBuilder::new(dictionary_code, RuntimeArgs::new())
+    let mut genesis_config = DEFAULT_GENESIS_CONFIG.clone();
+    genesis_config.ee_config_mut().push_account(genesis_account);
+    let run_genesis_request = RunGenesisRequest::new(
+        *DEFAULT_GENESIS_CONFIG_HASH,
+        genesis_config.protocol_version(),
+        genesis_config.take_ee_config(),
+    );
+
+    let dictionary_code = PathBuf::from(DICTIONARY_WASM);
+    let deploy_item = DeployItemBuilder::new()
+        .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
+        .with_session_code(dictionary_code, RuntimeArgs::new())
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
         .build();
 
-    test_context.run(install_session);
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
 
-    let default_account = test_context
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&run_genesis_request).commit();
+
+    builder.exec(exec_request).commit().expect_success();
+
+    let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let contract_hash = default_account
@@ -530,53 +580,57 @@ fn should_query_dictionary_items_with_test_context() {
 
     {
         // Query through account's named keys
-        let queried_value = test_context
-            .query_dictionary_item(
-                Key::from(*DEFAULT_ACCOUNT_ADDR),
-                Some(dictionary::DICTIONARY_REF.to_string()),
-                dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
-            )
-            .expect("should query");
-        let value: String = queried_value.into_t().expect("should be string");
+        let queried_value = query_dictionary_item(
+            &builder,
+            Key::from(*DEFAULT_ACCOUNT_ADDR),
+            Some(dictionary::DICTIONARY_REF.to_string()),
+            dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
+        )
+        .expect("should query");
+        let value = CLValue::try_from(queried_value).expect("should have cl value");
+        let value: String = value.into_t().expect("should be string");
         assert_eq!(value, dictionary::DEFAULT_DICTIONARY_VALUE);
     }
 
     {
         // Query through account's named keys
-        let queried_value = test_context
-            .query_dictionary_item(
-                Key::from(*DEFAULT_ACCOUNT_ADDR),
-                Some(dictionary::DICTIONARY_REF.to_string()),
-                dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
-            )
-            .expect("should query");
-        let value: String = queried_value.into_t().expect("should be string");
+        let queried_value = query_dictionary_item(
+            &builder,
+            Key::from(*DEFAULT_ACCOUNT_ADDR),
+            Some(dictionary::DICTIONARY_REF.to_string()),
+            dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
+        )
+        .expect("should query");
+        let value = CLValue::try_from(queried_value).expect("should have cl value");
+        let value: String = value.into_t().expect("should be string");
         assert_eq!(value, dictionary::DEFAULT_DICTIONARY_VALUE);
     }
 
     {
         // Query through contract's named keys
-        let queried_value = test_context
-            .query_dictionary_item(
-                Key::from(contract_hash),
-                Some(dictionary::DICTIONARY_NAME.to_string()),
-                dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
-            )
-            .expect("should query");
-        let value: String = queried_value.into_t().expect("should be string");
+        let queried_value = query_dictionary_item(
+            &builder,
+            Key::from(contract_hash),
+            Some(dictionary::DICTIONARY_NAME.to_string()),
+            dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
+        )
+        .expect("should query");
+        let value = CLValue::try_from(queried_value).expect("should have cl value");
+        let value: String = value.into_t().expect("should be string");
         assert_eq!(value, dictionary::DEFAULT_DICTIONARY_VALUE);
     }
 
     {
         // Query through dictionary URef itself
-        let queried_value = test_context
-            .query_dictionary_item(
-                Key::from(dictionary_uref),
-                None,
-                dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
-            )
-            .expect("should query");
-        let value: String = queried_value.into_t().expect("should be string");
+        let queried_value = query_dictionary_item(
+            &builder,
+            Key::from(dictionary_uref),
+            None,
+            dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
+        )
+        .expect("should query");
+        let value = CLValue::try_from(queried_value).expect("should have cl value");
+        let value: String = value.into_t().expect("should be string");
         assert_eq!(value, dictionary::DEFAULT_DICTIONARY_VALUE);
     }
 
@@ -585,10 +639,11 @@ fn should_query_dictionary_items_with_test_context() {
         let dictionary_item_name = dictionary::DEFAULT_DICTIONARY_NAME.as_bytes();
         let dictionary_item_key = Key::dictionary(dictionary_uref, dictionary_item_name);
 
-        let queried_value = test_context
-            .query_dictionary_item(dictionary_item_key, None, String::new())
-            .expect("should query");
-        let value: String = queried_value.into_t().expect("should be string");
+        let queried_value =
+            query_dictionary_item(&builder, dictionary_item_key, None, String::new())
+                .expect("should query");
+        let value = CLValue::try_from(queried_value).expect("should have cl value");
+        let value: String = value.into_t().expect("should be string");
         assert_eq!(value, dictionary::DEFAULT_DICTIONARY_VALUE);
     }
 }

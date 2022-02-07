@@ -188,3 +188,40 @@ impl Finalize for RestServer {
         .boxed()
     }
 }
+
+#[cfg(test)]
+mod schema_tests {
+    use crate::{
+        rpcs::{docs::OpenRpcSchema, info::GetValidatorChangesResult},
+        testing::assert_schema,
+        types::GetStatusResult,
+    };
+    use schemars::schema_for;
+
+    #[test]
+    fn schema_status() {
+        let schema_path = format!(
+            "{}/../resources/test/rest_schema_status.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        assert_schema(schema_path, schema_for!(GetStatusResult));
+    }
+
+    #[test]
+    fn schema_validator_changes() {
+        let schema_path = format!(
+            "{}/../resources/test/rest_schema_validator_changes.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        assert_schema(schema_path, schema_for!(GetValidatorChangesResult));
+    }
+
+    #[test]
+    fn schema_rpc_schema() {
+        let schema_path = format!(
+            "{}/../resources/test/rest_schema_rpc_schema.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        assert_schema(schema_path, schema_for!(OpenRpcSchema));
+    }
+}

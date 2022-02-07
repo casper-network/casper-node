@@ -10,10 +10,11 @@
 //! Serialization errors are unified into a generic, type erased `std` error to allow for easy
 //! interchange of the serialization format if desired.
 
-use crate::{crypto::hash::Digest, types::BlockHash};
 use lmdb::{Database, RwTransaction, Transaction, WriteFlags};
 use serde::{de::DeserializeOwned, Serialize};
 use thiserror::Error;
+
+use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 /// Error wrapper for lower-level storage errors.
 ///
@@ -37,26 +38,11 @@ pub enum LmdbExtError {
     /// Error neither corruption nor resource exhaustion occurred, likely a programming error.
     #[error("unknown LMDB or serialization error, likely from a bug: {0}")]
     Other(Box<dyn std::error::Error + Send + Sync>),
-    /// The internal database is corrupted and can probably not be salvaged.
-    #[error(
-        "Block header not stored under its hash. \
-         Queried block hash: {queried_block_hash}, \
-         Found block header hash: {found_block_header_hash}"
-    )]
-    BlockHeaderNotStoredUnderItsHash {
-        queried_block_hash: BlockHash,
-        found_block_header_hash: BlockHash,
-    },
-    #[error(
-        "Block body not stored under the hash in its header. \
-         Queried block body hash: {queried_block_body_hash}, \
-         Found block body hash: {found_block_body_hash}"
-    )]
-    BlockBodyNotStoredUnderItsHash {
-        queried_block_body_hash: Digest,
-        found_block_body_hash: Digest,
-    },
 }
+
+#[derive(Debug, Error)]
+#[error("{0}")]
+pub struct BytesreprError(pub bytesrepr::Error);
 
 // Classifies an `lmdb::Error` according to our scheme. This one of the rare cases where we accept a
 // blanked `From<>` implementation for error type conversion.
@@ -98,6 +84,14 @@ pub(super) trait TransactionExt {
         db: Database,
         key: &K,
     ) -> Result<Option<V>, LmdbExtError>;
+
+    /// Helper function to load a value from a database using the `bytesrepr` `ToBytes`/`FromBytes`
+    /// serialization.
+    fn get_value_bytesrepr<K: AsRef<[u8]>, V: FromBytes>(
+        &mut self,
+        db: Database,
+        key: &K,
+    ) -> Result<Option<V>, LmdbExtError>;
 }
 
 /// Additional methods on write transactions.
@@ -108,6 +102,20 @@ pub(super) trait WriteTransactionExt {
     ///
     /// Setting `overwrite` to true will cause the value to always be written instead.
     fn put_value<K: AsRef<[u8]>, V: Serialize>(
+        &mut self,
+        db: Database,
+        key: &K,
+        value: &V,
+        overwrite: bool,
+    ) -> Result<bool, LmdbExtError>;
+
+    /// Helper function to write a value to a database using the `bytesrepr` `ToBytes`/`FromBytes`
+    /// serialization.
+    ///
+    /// Returns `true` if the value has actually been written, `false` if the key already existed.
+    ///
+    /// Setting `overwrite` to true will cause the value to always be written instead.
+    fn put_value_bytesrepr<K: AsRef<[u8]>, V: ToBytes>(
         &mut self,
         db: Database,
         key: &K,
@@ -129,6 +137,20 @@ where
         match self.get(db, key) {
             // Deserialization failures are likely due to storage corruption.
             Ok(raw) => deserialize(raw).map(Some),
+            Err(lmdb::Error::NotFound) => Ok(None),
+            Err(err) => Err(err.into()),
+        }
+    }
+
+    #[inline]
+    fn get_value_bytesrepr<K: AsRef<[u8]>, V: FromBytes>(
+        &mut self,
+        db: Database,
+        key: &K,
+    ) -> Result<Option<V>, LmdbExtError> {
+        match self.get(db, key) {
+            // Deserialization failures are likely due to storage corruption.
+            Ok(raw) => deserialize_bytesrepr(raw).map(Some),
             Err(lmdb::Error::NotFound) => Ok(None),
             Err(err) => Err(err.into()),
         }
@@ -158,6 +180,29 @@ impl WriteTransactionExt for RwTransaction<'_> {
             Err(err) => Err(err.into()),
         }
     }
+
+    fn put_value_bytesrepr<K: AsRef<[u8]>, V: ToBytes>(
+        &mut self,
+        db: Database,
+        key: &K,
+        value: &V,
+        overwrite: bool,
+    ) -> Result<bool, LmdbExtError> {
+        let buffer = serialize_bytesrepr(value)?;
+
+        let flags = if overwrite {
+            WriteFlags::empty()
+        } else {
+            WriteFlags::NO_OVERWRITE
+        };
+
+        match self.put(db, key, &buffer, flags) {
+            Ok(()) => Ok(true),
+            // If we did not add the value due to it already existing, just return `false`.
+            Err(lmdb::Error::KeyExist) => Ok(false),
+            Err(err) => Err(err.into()),
+        }
+    }
 }
 
 /// Deserializes from a buffer.
@@ -170,4 +215,20 @@ pub(super) fn deserialize<T: DeserializeOwned>(raw: &[u8]) -> Result<T, LmdbExtE
 #[inline(always)]
 pub(super) fn serialize<T: Serialize>(value: &T) -> Result<Vec<u8>, LmdbExtError> {
     bincode::serialize(value).map_err(|err| LmdbExtError::Other(Box::new(err)))
+}
+
+/// Deserializes from a buffer.
+#[inline(always)]
+pub(super) fn deserialize_bytesrepr<T: FromBytes>(raw: &[u8]) -> Result<T, LmdbExtError> {
+    T::from_bytes(raw)
+        .map(|val| val.0)
+        .map_err(|err| LmdbExtError::DataCorrupted(Box::new(BytesreprError(err))))
+}
+
+/// Serializes into a buffer.
+#[inline(always)]
+pub(super) fn serialize_bytesrepr<T: ToBytes>(value: &T) -> Result<Vec<u8>, LmdbExtError> {
+    value
+        .to_bytes()
+        .map_err(|err| LmdbExtError::Other(Box::new(BytesreprError(err))))
 }

@@ -5,8 +5,9 @@ use core::{
     fmt::{self, Debug, Display, Formatter},
 };
 
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
@@ -14,7 +15,7 @@ use crate::{
     account,
     account::TryFromSliceForAccountHashError,
     bytesrepr::{Bytes, Error, FromBytes, ToBytes},
-    uref, CLType, CLTyped, HashAddr,
+    checksummed_hex, uref, CLType, CLTyped, HashAddr,
 };
 
 const CONTRACT_WASM_MAX_DISPLAY_LEN: usize = 16;
@@ -82,7 +83,8 @@ impl Display for FromStrError {
 
 /// A newtype wrapping a `HashAddr` which is the raw bytes of
 /// the ContractWasmHash
-#[derive(DataSize, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ContractWasmHash(HashAddr);
 
 impl ContractWasmHash {
@@ -112,7 +114,7 @@ impl ContractWasmHash {
         let remainder = input
             .strip_prefix(WASM_STRING_PREFIX)
             .ok_or(FromStrError::InvalidPrefix)?;
-        let bytes = HashAddr::try_from(base16::decode(remainder)?.as_ref())?;
+        let bytes = HashAddr::try_from(checksummed_hex::decode(remainder)?.as_ref())?;
         Ok(ContractWasmHash(bytes))
     }
 }
@@ -128,6 +130,7 @@ impl Debug for ContractWasmHash {
         write!(f, "ContractWasmHash({})", base16::encode_lower(&self.0))
     }
 }
+
 impl CLTyped for ContractWasmHash {
     fn cl_type() -> CLType {
         CLType::ByteArray(KEY_HASH_LENGTH as u32)
@@ -143,6 +146,12 @@ impl ToBytes for ContractWasmHash {
     #[inline(always)]
     fn serialized_length(&self) -> usize {
         self.0.serialized_length()
+    }
+
+    #[inline(always)]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        self.0.write_bytes(writer)?;
+        Ok(())
     }
 }
 
@@ -207,7 +216,7 @@ impl TryFrom<&Vec<u8>> for ContractWasmHash {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 impl JsonSchema for ContractWasmHash {
     fn schema_name() -> String {
         String::from("ContractWasmHash")
@@ -268,6 +277,11 @@ impl ToBytes for ContractWasm {
 
     fn serialized_length(&self) -> usize {
         self.bytes.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        (&self.bytes).write_bytes(writer)?;
+        Ok(())
     }
 }
 

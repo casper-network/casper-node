@@ -2,11 +2,8 @@ use assert_matches::assert_matches;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    internal::{
-        DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
-        DEFAULT_RUN_GENESIS_REQUEST,
-    },
-    DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::core::{engine_state::Error, execution};
 use casper_types::{
@@ -232,8 +229,7 @@ fn should_not_call_restricted_session_from_wrong_account() {
         .expect("should be account");
 
     let response = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");
@@ -314,8 +310,7 @@ fn should_not_call_restricted_session_caller_from_wrong_account() {
         .expect("should be account");
 
     let response = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");
@@ -457,8 +452,7 @@ fn should_not_call_group_restricted_contract_from_wrong_account() {
     builder.exec(exec_request_3).commit();
 
     let response = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");
@@ -728,8 +722,7 @@ fn should_call_group_restricted_contract_as_session_from_wrong_account() {
     builder.exec(exec_request_3).commit();
 
     let response = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");
@@ -796,8 +789,7 @@ fn should_not_call_uncallable_contract_from_deploy() {
 
     builder.exec(exec_request_2).commit();
     let response = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");
@@ -886,8 +878,7 @@ fn should_not_call_uncallable_session_from_deploy() {
 
     builder.exec(exec_request_2).commit();
     let response = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");

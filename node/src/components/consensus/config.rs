@@ -3,11 +3,11 @@ use std::{path::Path, sync::Arc};
 use datasize::DataSize;
 use serde::Deserialize;
 
-use casper_types::{ProtocolVersion, PublicKey, SecretKey};
+use casper_hashing::Digest;
+use casper_types::{PublicKey, SecretKey};
 
 use crate::{
     components::consensus::{protocols::highway::config::Config as HighwayConfig, EraId},
-    crypto::hash::Digest,
     types::{chainspec::HighwayConfig as HighwayProtocolConfig, Chainspec, TimeDiff, Timestamp},
     utils::{External, LoadError, Loadable},
 };
@@ -48,7 +48,7 @@ impl Config {
 /// Consensus protocol configuration.
 #[derive(DataSize, Debug)]
 pub(crate) struct ProtocolConfig {
-    pub(crate) highway_config: HighwayProtocolConfig,
+    pub(crate) highway: HighwayProtocolConfig,
     pub(crate) era_duration: TimeDiff,
     pub(crate) minimum_era_height: u64,
     /// Number of eras before an auction actually defines the set of validators.
@@ -57,8 +57,6 @@ pub(crate) struct ProtocolConfig {
     pub(crate) auction_delay: u64,
     pub(crate) unbonding_delay: u64,
     /// The network protocol version.
-    #[data_size(skip)]
-    pub(crate) protocol_version: ProtocolVersion,
     /// The first era ID after the last upgrade
     pub(crate) last_activation_point: EraId,
     /// Name of the network.
@@ -72,12 +70,11 @@ pub(crate) struct ProtocolConfig {
 impl From<&Chainspec> for ProtocolConfig {
     fn from(chainspec: &Chainspec) -> Self {
         ProtocolConfig {
-            highway_config: chainspec.highway_config,
+            highway: chainspec.highway_config,
             era_duration: chainspec.core_config.era_duration,
             minimum_era_height: chainspec.core_config.minimum_era_height,
             auction_delay: chainspec.core_config.auction_delay,
             unbonding_delay: chainspec.core_config.unbonding_delay,
-            protocol_version: chainspec.protocol_config.version,
             last_activation_point: chainspec.protocol_config.activation_point.era_id(),
             name: chainspec.network_config.name.clone(),
             genesis_timestamp: chainspec

@@ -161,6 +161,12 @@ impl EventStreamServer {
     }
 }
 
+impl Drop for EventStreamServer {
+    fn drop(&mut self) {
+        let _ = self.broadcast(SseData::Shutdown);
+    }
+}
+
 impl<REv> Component<REv> for EventStreamServer
 where
     REv: ReactorEventT,
@@ -194,6 +200,10 @@ where
                 block_hash: Box::new(block_hash),
                 execution_result,
             }),
+            Event::DeploysExpired(deploy_hashes) => deploy_hashes
+                .into_iter()
+                .flat_map(|deploy_hash| self.broadcast(SseData::DeployExpired { deploy_hash }))
+                .collect(),
             Event::Fault {
                 era_id,
                 public_key,

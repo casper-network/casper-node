@@ -3,19 +3,20 @@ use core::{
     convert::{From, TryFrom},
     fmt::{Debug, Display, Formatter},
 };
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
-use super::{blake2b, FromStrError};
+use super::FromStrError;
 use crate::{
     bytesrepr::{Error, FromBytes, ToBytes},
-    CLType, CLTyped, PublicKey, BLAKE2B_DIGEST_LENGTH,
+    checksummed_hex, crypto, CLType, CLTyped, PublicKey, BLAKE2B_DIGEST_LENGTH,
 };
 
 /// The length in bytes of a [`AccountHash`].
@@ -26,7 +27,8 @@ pub const ACCOUNT_HASH_FORMATTED_STRING_PREFIX: &str = "account-hash-";
 
 /// A newtype wrapping an array which contains the raw bytes of
 /// the AccountHash, a hash of Public Key and Algorithm
-#[derive(DataSize, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct AccountHash(pub [u8; ACCOUNT_HASH_LENGTH]);
 
 impl AccountHash {
@@ -59,11 +61,12 @@ impl AccountHash {
         let remainder = input
             .strip_prefix(ACCOUNT_HASH_FORMATTED_STRING_PREFIX)
             .ok_or(FromStrError::InvalidPrefix)?;
-        let bytes = <[u8; ACCOUNT_HASH_LENGTH]>::try_from(base16::decode(remainder)?.as_ref())?;
+        let bytes =
+            <[u8; ACCOUNT_HASH_LENGTH]>::try_from(checksummed_hex::decode(remainder)?.as_ref())?;
         Ok(AccountHash(bytes))
     }
 
-    #[doc(hidden)]
+    /// Parses a `PublicKey` and outputs the corresponding account hash.
     pub fn from_public_key(
         public_key: &PublicKey,
         blake2b_hash_fn: impl Fn(Vec<u8>) -> [u8; BLAKE2B_DIGEST_LENGTH],
@@ -93,7 +96,7 @@ impl AccountHash {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 impl JsonSchema for AccountHash {
     fn schema_name() -> String {
         String::from("AccountHash")
@@ -151,7 +154,7 @@ impl TryFrom<&alloc::vec::Vec<u8>> for AccountHash {
 
 impl From<&PublicKey> for AccountHash {
     fn from(public_key: &PublicKey) -> Self {
-        AccountHash::from_public_key(public_key, blake2b)
+        AccountHash::from_public_key(public_key, crypto::blake2b)
     }
 }
 
@@ -182,6 +185,12 @@ impl ToBytes for AccountHash {
     #[inline(always)]
     fn serialized_length(&self) -> usize {
         self.0.serialized_length()
+    }
+
+    #[inline(always)]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.extend_from_slice(&self.0);
+        Ok(())
     }
 }
 

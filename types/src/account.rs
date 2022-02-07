@@ -7,19 +7,13 @@ pub mod associated_keys;
 mod error;
 mod weight;
 
-use crate::{
-    bytesrepr::{self, FromBytes, ToBytes},
-    contracts::NamedKeys,
-    AccessRights, URef, BLAKE2B_DIGEST_LENGTH,
-};
+use serde::Serialize;
+
 use alloc::{collections::BTreeSet, vec::Vec};
-use blake2::{
-    digest::{Update, VariableOutput},
-    VarBlake2b,
+use core::{
+    convert::TryFrom,
+    fmt::{self, Debug, Display, Formatter},
 };
-use core::{convert::TryFrom, fmt::Debug};
-#[cfg(feature = "std")]
-use thiserror::Error;
 
 pub use self::{
     account_hash::{AccountHash, ACCOUNT_HASH_FORMATTED_STRING_PREFIX, ACCOUNT_HASH_LENGTH},
@@ -29,9 +23,14 @@ pub use self::{
     error::{FromStrError, SetThresholdFailure, TryFromIntError, TryFromSliceForAccountHashError},
     weight::{Weight, WEIGHT_SERIALIZED_LENGTH},
 };
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    contracts::NamedKeys,
+    crypto, AccessRights, URef, BLAKE2B_DIGEST_LENGTH,
+};
 
 /// Represents an Account in the global state.
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize)]
 pub struct Account {
     account_hash: AccountHash,
     named_keys: NamedKeys,
@@ -106,8 +105,8 @@ impl Account {
     }
 
     /// Returns associated keys.
-    pub fn associated_keys(&self) -> impl Iterator<Item = (&AccountHash, &Weight)> {
-        self.associated_keys.iter()
+    pub fn associated_keys(&self) -> &AssociatedKeys {
+        &self.associated_keys
     }
 
     /// Returns action thresholds.
@@ -246,11 +245,11 @@ impl Account {
 impl ToBytes for Account {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-        result.append(&mut self.account_hash.to_bytes()?);
-        result.append(&mut self.named_keys.to_bytes()?);
-        result.append(&mut self.main_purse.to_bytes()?);
-        result.append(&mut self.associated_keys.to_bytes()?);
-        result.append(&mut self.action_thresholds.to_bytes()?);
+        self.account_hash().write_bytes(&mut result)?;
+        self.named_keys().write_bytes(&mut result)?;
+        self.main_purse.write_bytes(&mut result)?;
+        self.associated_keys().write_bytes(&mut result)?;
+        self.action_thresholds().write_bytes(&mut result)?;
         Ok(result)
     }
 
@@ -260,6 +259,15 @@ impl ToBytes for Account {
             + self.main_purse.serialized_length()
             + self.associated_keys.serialized_length()
             + self.action_thresholds.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.account_hash().write_bytes(writer)?;
+        self.named_keys().write_bytes(writer)?;
+        self.main_purse().write_bytes(writer)?;
+        self.associated_keys().write_bytes(writer)?;
+        self.action_thresholds().write_bytes(writer)?;
+        Ok(())
     }
 }
 
@@ -282,48 +290,41 @@ impl FromBytes for Account {
         ))
     }
 }
-/// Maximum number of associated keys (i.e. map of [`AccountHash`]s to [`Weight`]s) for a single
-/// account.
-pub const MAX_ASSOCIATED_KEYS: usize = 10;
 
 #[doc(hidden)]
+#[deprecated(
+    since = "1.4.4",
+    note = "function moved to casper_types::crypto::blake2b"
+)]
 pub fn blake2b<T: AsRef<[u8]>>(data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
-    let mut result = [0; BLAKE2B_DIGEST_LENGTH];
-    // NOTE: Assumed safe as `BLAKE2B_DIGEST_LENGTH` is a valid value for a hasher
-    let mut hasher = VarBlake2b::new(BLAKE2B_DIGEST_LENGTH).expect("should create hasher");
-
-    hasher.update(data);
-    hasher.finalize_variable(|slice| {
-        result.copy_from_slice(slice);
-    });
-    result
+    crypto::blake2b(data)
 }
 
 /// Errors that can occur while adding a new [`AccountHash`] to an account's associated keys map.
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
-#[cfg_attr(feature = "std", derive(Error))]
 #[repr(i32)]
 pub enum AddKeyFailure {
-    /// There are already [`MAX_ASSOCIATED_KEYS`] [`AccountHash`]s associated with the given
-    /// account.
-    #[cfg_attr(
-        feature = "std",
-        error("Unable to add new associated key because maximum amount of keys is reached")
-    )]
+    /// There are already maximum [`AccountHash`]s associated with the given account.
     MaxKeysLimit = 1,
     /// The given [`AccountHash`] is already associated with the given account.
-    #[cfg_attr(
-        feature = "std",
-        error("Unable to add new associated key because given key already exists")
-    )]
     DuplicateKey = 2,
     /// Caller doesn't have sufficient permissions to associate a new [`AccountHash`] with the
     /// given account.
-    #[cfg_attr(
-        feature = "std",
-        error("Unable to add new associated key due to insufficient permissions")
-    )]
     PermissionDenied = 3,
+}
+
+impl Display for AddKeyFailure {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            AddKeyFailure::MaxKeysLimit => formatter.write_str(
+                "Unable to add new associated key because maximum amount of keys is reached",
+            ),
+            AddKeyFailure::DuplicateKey => formatter
+                .write_str("Unable to add new associated key because given key already exists"),
+            AddKeyFailure::PermissionDenied => formatter
+                .write_str("Unable to add new associated key due to insufficient permissions"),
+        }
+    }
 }
 
 // This conversion is not intended to be used by third party crates.
@@ -343,26 +344,31 @@ impl TryFrom<i32> for AddKeyFailure {
 
 /// Errors that can occur while removing a [`AccountHash`] from an account's associated keys map.
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
-#[cfg_attr(feature = "std", derive(Error))]
 #[repr(i32)]
 pub enum RemoveKeyFailure {
     /// The given [`AccountHash`] is not associated with the given account.
-    #[cfg_attr(feature = "std", error("Unable to remove a key that does not exist"))]
     MissingKey = 1,
     /// Caller doesn't have sufficient permissions to remove an associated [`AccountHash`] from the
     /// given account.
-    #[cfg_attr(
-        feature = "std",
-        error("Unable to remove associated key due to insufficient permissions")
-    )]
     PermissionDenied = 2,
     /// Removing the given associated [`AccountHash`] would cause the total weight of all remaining
     /// `AccountHash`s to fall below one of the action thresholds for the given account.
-    #[cfg_attr(
-        feature = "std",
-        error("Unable to remove a key which would violate action threshold constraints")
-    )]
     ThresholdViolation = 3,
+}
+
+impl Display for RemoveKeyFailure {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            RemoveKeyFailure::MissingKey => {
+                formatter.write_str("Unable to remove a key that does not exist")
+            }
+            RemoveKeyFailure::PermissionDenied => formatter
+                .write_str("Unable to remove associated key due to insufficient permissions"),
+            RemoveKeyFailure::ThresholdViolation => formatter.write_str(
+                "Unable to remove a key which would violate action threshold constraints",
+            ),
+        }
+    }
 }
 
 // This conversion is not intended to be used by third party crates.
@@ -387,30 +393,32 @@ impl TryFrom<i32> for RemoveKeyFailure {
 /// Errors that can occur while updating the [`Weight`] of a [`AccountHash`] in an account's
 /// associated keys map.
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
-#[cfg_attr(feature = "std", derive(Error))]
 #[repr(i32)]
 pub enum UpdateKeyFailure {
     /// The given [`AccountHash`] is not associated with the given account.
-    #[cfg_attr(
-        feature = "std",
-        error("Unable to update the value under an associated key that does not exist")
-    )]
     MissingKey = 1,
     /// Caller doesn't have sufficient permissions to update an associated [`AccountHash`] from the
     /// given account.
-    #[cfg_attr(
-        feature = "std",
-        error("Unable to update associated key due to insufficient permissions")
-    )]
     PermissionDenied = 2,
     /// Updating the [`Weight`] of the given associated [`AccountHash`] would cause the total
     /// weight of all `AccountHash`s to fall below one of the action thresholds for the given
     /// account.
-    #[cfg_attr(
-        feature = "std",
-        error("Unable to update weight that would fall below any of action thresholds")
-    )]
     ThresholdViolation = 3,
+}
+
+impl Display for UpdateKeyFailure {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            UpdateKeyFailure::MissingKey => formatter.write_str(
+                "Unable to update the value under an associated key that does not exist",
+            ),
+            UpdateKeyFailure::PermissionDenied => formatter
+                .write_str("Unable to update associated key due to insufficient permissions"),
+            UpdateKeyFailure::ThresholdViolation => formatter.write_str(
+                "Unable to update weight that would fall below any of action thresholds",
+            ),
+        }
+    }
 }
 
 // This conversion is not intended to be used by third party crates.

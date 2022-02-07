@@ -5,9 +5,10 @@ mod auction_state;
 mod contracts;
 mod stored_value;
 
+use casper_types::{contracts::NamedKeys, NamedKey};
+
 pub use account::Account;
 pub use auction_state::AuctionState;
-use casper_types::{contracts::NamedKeys, NamedKey};
 pub use contracts::{Contract, ContractPackage};
 pub use stored_value::StoredValue;
 

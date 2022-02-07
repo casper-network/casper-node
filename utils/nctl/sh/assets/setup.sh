@@ -76,7 +76,6 @@ function _set_nodes()
             "import toml;"
             "cfg=toml.load('$PATH_TO_FILE');"
             "cfg['consensus']['secret_key_path']='../../keys/secret_key.pem';"
-            "cfg['consensus']['highway']['unit_hashes_folder']='../../storage-consensus';"
             "cfg['logging']['format']='$NCTL_NODE_LOG_FORMAT';"
             "cfg['network']['bind_address']='$(get_network_bind_address "$IDX")';"
             "cfg['network']['known_addresses']=[$(get_network_known_addresses "$IDX")];"
@@ -126,14 +125,14 @@ function _main()
     if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
         setup_asset_binaries "1_0_0" \
                              "$(get_count_of_nodes)" \
-                             "$NCTL_CASPER_HOME/target/debug/casper-client" \
+                             "$NCTL_CASPER_CLIENT_HOME/target/debug/casper-client" \
                              "$NCTL_CASPER_HOME/target/debug/casper-node" \
                              "$NCTL_CASPER_NODE_LAUNCHER_HOME/target/debug/casper-node-launcher" \
                              "$NCTL_CASPER_HOME/target/wasm32-unknown-unknown/release"
     else
         setup_asset_binaries "1_0_0" \
                              "$(get_count_of_nodes)" \
-                             "$NCTL_CASPER_HOME/target/release/casper-client" \
+                             "$NCTL_CASPER_CLIENT_HOME/target/release/casper-client" \
                              "$NCTL_CASPER_HOME/target/release/casper-node" \
                              "$NCTL_CASPER_NODE_LAUNCHER_HOME/target/release/casper-node-launcher" \
                              "$NCTL_CASPER_HOME/target/wasm32-unknown-unknown/release"

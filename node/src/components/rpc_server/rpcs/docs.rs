@@ -30,12 +30,13 @@ use crate::{
     effect::EffectBuilder,
     rpcs::{
         chain::GetEraInfoBySwitchBlock,
+        info::GetValidatorChanges,
         state::{GetAccountInfo, GetDictionaryItem, QueryGlobalState},
     },
 };
 
 pub(crate) const DOCS_EXAMPLE_PROTOCOL_VERSION: ProtocolVersion =
-    ProtocolVersion::from_parts(1, 0, 0);
+    ProtocolVersion::from_parts(1, 4, 3);
 
 const DEFINITIONS_PATH: &str = "#/components/schemas/";
 
@@ -82,6 +83,8 @@ pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
     );
     schema.push_without_params::<GetPeers>("returns a list of peers connected to the node");
     schema.push_without_params::<GetStatus>("returns the current status of the node");
+    schema
+        .push_without_params::<GetValidatorChanges>("returns status changes of active validators");
     schema.push_with_optional_params::<GetBlock>("returns a Block from the network");
     schema.push_with_optional_params::<GetBlockTransfers>(
         "returns all transfers for a Block from the network",
@@ -114,7 +117,7 @@ pub trait DocExample {
 
 /// The main schema for the casper node's RPC server, compliant with
 /// [the OpenRPC Specification](https://spec.open-rpc.org).
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, JsonSchema)]
 pub struct OpenRpcSchema {
     openrpc: String,
     info: OpenRpcInfoField,
@@ -285,7 +288,7 @@ impl OpenRpcSchema {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, JsonSchema)]
 struct OpenRpcInfoField {
     version: String,
     title: String,
@@ -294,26 +297,26 @@ struct OpenRpcInfoField {
     license: OpenRpcLicenseField,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, JsonSchema)]
 struct OpenRpcContactField {
     name: String,
     url: String,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, JsonSchema)]
 struct OpenRpcLicenseField {
     name: String,
     url: String,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, JsonSchema)]
 struct OpenRpcServerEntry {
     name: String,
     url: String,
 }
 
 /// The struct containing the documentation for the RPCs.
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, JsonSchema)]
 pub struct Method {
     name: String,
     summary: String,
@@ -322,21 +325,21 @@ pub struct Method {
     examples: Vec<Example>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, JsonSchema)]
 struct SchemaParam {
     name: String,
     schema: Schema,
     required: bool,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, JsonSchema)]
 struct ResponseResult {
     name: String,
     schema: Schema,
 }
 
 /// An example pair of request params and response result.
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, JsonSchema)]
 pub struct Example {
     name: String,
     params: Vec<ExampleParam>,
@@ -390,19 +393,19 @@ impl Example {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, JsonSchema)]
 struct ExampleParam {
     name: String,
     value: Value,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, JsonSchema)]
 struct ExampleResult {
     name: String,
     value: Value,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, JsonSchema)]
 struct Components {
     schemas: Map<String, Schema>,
 }

@@ -5,8 +5,9 @@
 
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
 
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(feature = "std")]
+#[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -16,9 +17,10 @@ use crate::{
 };
 
 /// Named arguments to a contract
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Serialize, Deserialize, Debug, DataSize)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
-pub struct NamedArg(#[data_size(skip)] String, CLValue);
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+pub struct NamedArg(String, CLValue);
 
 impl NamedArg {
     /// ctor
@@ -63,11 +65,10 @@ impl FromBytes for NamedArg {
 }
 
 /// Represents a collection of arguments passed to a smart contract.
-#[derive(
-    PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Serialize, Deserialize, Debug, Default, DataSize,
-)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
-pub struct RuntimeArgs(#[data_size(skip)] Vec<NamedArg>);
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Serialize, Deserialize, Debug, Default)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+pub struct RuntimeArgs(Vec<NamedArg>);
 
 impl RuntimeArgs {
     /// Create an empty [`RuntimeArgs`] instance.

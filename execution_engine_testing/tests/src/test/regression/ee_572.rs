@@ -1,9 +1,6 @@
 use casper_engine_test_support::{
-    internal::{
-        utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
-        DEFAULT_RUN_GENESIS_REQUEST,
-    },
-    DEFAULT_ACCOUNT_ADDR,
+    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
+    DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, StoredValue, U512};
 
@@ -85,8 +82,7 @@ fn should_run_ee_572_regression() {
     let response = builder
         .exec(exec_request_4)
         .get_exec_result(3)
-        .expect("should have a response")
-        .to_owned();
+        .expect("should have a response");
 
     let error_message = utils::get_error_message(response);
 

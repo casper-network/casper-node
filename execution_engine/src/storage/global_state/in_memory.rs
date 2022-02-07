@@ -1,26 +1,27 @@
 use std::{ops::Deref, sync::Arc};
 
-use crate::shared::{
-    additive_map::AdditiveMap,
-    newtypes::{Blake2bHash, CorrelationId},
-    transform::Transform,
-};
+use casper_hashing::Digest;
 use casper_types::{Key, StoredValue};
 
-use crate::storage::{
-    error::{self, in_memory},
-    global_state::{commit, StateProvider, StateReader},
-    store::Store,
-    transaction_source::{
-        in_memory::{InMemoryEnvironment, InMemoryReadTransaction, InMemoryReadWriteTransaction},
-        Transaction, TransactionSource,
-    },
-    trie::{merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie},
-    trie_store::{
-        in_memory::InMemoryTrieStore,
-        operations::{
-            self, keys_with_prefix, missing_trie_keys, put_trie, read, read_with_proof, ReadResult,
-            WriteResult,
+use crate::{
+    shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
+    storage::{
+        error::{self, in_memory},
+        global_state::{commit, CommitProvider, StateProvider, StateReader},
+        store::Store,
+        transaction_source::{
+            in_memory::{
+                InMemoryEnvironment, InMemoryReadTransaction, InMemoryReadWriteTransaction,
+            },
+            Transaction, TransactionSource,
+        },
+        trie::{merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie},
+        trie_store::{
+            in_memory::InMemoryTrieStore,
+            operations::{
+                self, keys_with_prefix, missing_trie_keys, put_trie, read, read_with_proof,
+                ReadResult, WriteResult,
+            },
         },
     },
 };
@@ -34,7 +35,7 @@ pub struct InMemoryGlobalState {
     /// Trie store for `InMemoryGlobalState`.
     pub(crate) trie_store: Arc<InMemoryTrieStore>,
     /// Empty state root hash.
-    pub(crate) empty_root_hash: Blake2bHash,
+    pub(crate) empty_root_hash: Digest,
 }
 
 /// Represents a "view" of global state at a particular root hash.
@@ -44,7 +45,7 @@ pub struct InMemoryGlobalStateView {
     /// Trie store for `InMemoryGlobalState`.
     pub(crate) store: Arc<InMemoryTrieStore>,
     /// State root hash for this "view".
-    pub(crate) root_hash: Blake2bHash,
+    pub(crate) root_hash: Digest,
 }
 
 impl InMemoryGlobalState {
@@ -52,7 +53,7 @@ impl InMemoryGlobalState {
     pub fn empty() -> Result<Self, error::Error> {
         let environment = Arc::new(InMemoryEnvironment::new());
         let trie_store = Arc::new(InMemoryTrieStore::new(&environment, None));
-        let root_hash: Blake2bHash = {
+        let root_hash: Digest = {
             let (root_hash, root) = create_hashed_empty_trie::<Key, StoredValue>()?;
             let mut txn = environment.create_read_write_txn()?;
             trie_store.put(&mut txn, &root_hash, &root)?;
@@ -67,7 +68,7 @@ impl InMemoryGlobalState {
     pub(crate) fn new(
         environment: Arc<InMemoryEnvironment>,
         trie_store: Arc<InMemoryTrieStore>,
-        empty_root_hash: Blake2bHash,
+        empty_root_hash: Digest,
     ) -> Self {
         InMemoryGlobalState {
             environment,
@@ -81,7 +82,7 @@ impl InMemoryGlobalState {
     pub fn from_pairs(
         correlation_id: CorrelationId,
         pairs: &[(Key, StoredValue)],
-    ) -> Result<(Self, Blake2bHash), error::Error> {
+    ) -> Result<(Self, Digest), error::Error> {
         let state = InMemoryGlobalState::empty()?;
         let mut current_root = state.empty_root_hash;
         {
@@ -109,7 +110,7 @@ impl InMemoryGlobalState {
     }
 
     /// Returns the empty root hash owned by this `InMemoryGlobalState`.
-    pub fn empty_root_hash(&self) -> Blake2bHash {
+    pub fn empty_root_hash(&self) -> Digest {
         self.empty_root_hash
     }
 }
@@ -196,12 +197,30 @@ impl StateReader<Key, StoredValue> for InMemoryGlobalStateView {
     }
 }
 
+impl CommitProvider for InMemoryGlobalState {
+    fn commit(
+        &self,
+        correlation_id: CorrelationId,
+        prestate_hash: Digest,
+        effects: AdditiveMap<Key, Transform>,
+    ) -> Result<Digest, Self::Error> {
+        commit::<InMemoryEnvironment, InMemoryTrieStore, _, Self::Error>(
+            &self.environment,
+            &self.trie_store,
+            correlation_id,
+            prestate_hash,
+            effects,
+        )
+        .map_err(Into::into)
+    }
+}
+
 impl StateProvider for InMemoryGlobalState {
     type Error = error::Error;
 
     type Reader = InMemoryGlobalStateView;
 
-    fn checkout(&self, prestate_hash: Blake2bHash) -> Result<Option<Self::Reader>, Self::Error> {
+    fn checkout(&self, prestate_hash: Digest) -> Result<Option<Self::Reader>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
         let maybe_root: Option<Trie<Key, StoredValue>> =
             self.trie_store.get(&txn, &prestate_hash)?;
@@ -214,30 +233,14 @@ impl StateProvider for InMemoryGlobalState {
         Ok(maybe_state)
     }
 
-    fn commit(
-        &self,
-        correlation_id: CorrelationId,
-        prestate_hash: Blake2bHash,
-        effects: AdditiveMap<Key, Transform>,
-    ) -> Result<Blake2bHash, Self::Error> {
-        commit::<InMemoryEnvironment, InMemoryTrieStore, _, Self::Error>(
-            &self.environment,
-            &self.trie_store,
-            correlation_id,
-            prestate_hash,
-            effects,
-        )
-        .map_err(Into::into)
-    }
-
-    fn empty_root(&self) -> Blake2bHash {
+    fn empty_root(&self) -> Digest {
         self.empty_root_hash
     }
 
-    fn read_trie(
+    fn get_trie(
         &self,
         _correlation_id: CorrelationId,
-        trie_key: &Blake2bHash,
+        trie_key: &Digest,
     ) -> Result<Option<Trie<Key, StoredValue>>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
         let ret: Option<Trie<Key, StoredValue>> = self.trie_store.get(&txn, trie_key)?;
@@ -249,7 +252,7 @@ impl StateProvider for InMemoryGlobalState {
         &self,
         correlation_id: CorrelationId,
         trie: &Trie<Key, StoredValue>,
-    ) -> Result<Blake2bHash, Self::Error> {
+    ) -> Result<Digest, Self::Error> {
         let mut txn = self.environment.create_read_write_txn()?;
         let trie_hash = put_trie::<
             Key,
@@ -262,21 +265,28 @@ impl StateProvider for InMemoryGlobalState {
         Ok(trie_hash)
     }
 
-    /// Finds all of the keys of missing descendant `Trie<Key,StoredValue>` values
+    /// Finds all of the keys of missing descendant `Trie<Key,StoredValue>` values and optionally
+    /// performs an integrity check on each node
     fn missing_trie_keys(
         &self,
         correlation_id: CorrelationId,
-        trie_keys: Vec<Blake2bHash>,
-    ) -> Result<Vec<Blake2bHash>, Self::Error> {
+        trie_keys: Vec<Digest>,
+        check_integrity: bool,
+    ) -> Result<Vec<Digest>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
-        let missing_descendants =
-            missing_trie_keys::<
-                Key,
-                StoredValue,
-                InMemoryReadTransaction,
-                InMemoryTrieStore,
-                Self::Error,
-            >(correlation_id, &txn, self.trie_store.deref(), trie_keys)?;
+        let missing_descendants = missing_trie_keys::<
+            Key,
+            StoredValue,
+            InMemoryReadTransaction,
+            InMemoryTrieStore,
+            Self::Error,
+        >(
+            correlation_id,
+            &txn,
+            self.trie_store.deref(),
+            trie_keys,
+            check_integrity,
+        )?;
         txn.commit()?;
         Ok(missing_descendants)
     }
@@ -284,7 +294,7 @@ impl StateProvider for InMemoryGlobalState {
 
 #[cfg(test)]
 mod tests {
-    use crate::shared::newtypes::Blake2bHash;
+    use casper_hashing::Digest;
     use casper_types::{account::AccountHash, CLValue};
 
     use super::*;
@@ -325,7 +335,7 @@ mod tests {
         ]
     }
 
-    fn create_test_state() -> (InMemoryGlobalState, Blake2bHash) {
+    fn create_test_state() -> (InMemoryGlobalState, Digest) {
         InMemoryGlobalState::from_pairs(
             CorrelationId::new(),
             &create_test_pairs()
@@ -350,7 +360,7 @@ mod tests {
     #[test]
     fn checkout_fails_if_unknown_hash_is_given() {
         let (state, _) = create_test_state();
-        let fake_hash = Blake2bHash::new(&[1, 2, 3]);
+        let fake_hash = Digest::hash(&[1, 2, 3]);
         let result = state.checkout(fake_hash).unwrap();
         assert!(result.is_none());
     }

@@ -5,23 +5,18 @@ use num_traits::{One, Zero};
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    internal::{
-        utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
-        DEFAULT_AUCTION_DELAY, DEFAULT_EXEC_CONFIG, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-        DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY,
-        SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
-    },
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_AUCTION_DELAY, DEFAULT_EXEC_CONFIG,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+    DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
-use casper_execution_engine::{
-    core::{
-        engine_state::{
-            self,
-            genesis::{GenesisAccount, GenesisValidator},
-        },
-        execution,
+use casper_execution_engine::core::{
+    engine_state::{
+        self,
+        genesis::{GenesisAccount, GenesisValidator},
     },
-    shared::motes::Motes,
+    execution,
 };
 use casper_types::{
     self,
@@ -36,7 +31,7 @@ use casper_types::{
             ERA_ID_KEY, INITIAL_ERA_ID,
         },
     },
-    EraId, PublicKey, RuntimeArgs, SecretKey, U256, U512,
+    EraId, Motes, PublicKey, RuntimeArgs, SecretKey, U256, U512,
 };
 
 const ARG_TARGET: &str = "target";
@@ -796,11 +791,13 @@ fn should_release_founder_stake() {
 
         let error = {
             let response = builder
-                .get_exec_results()
-                .last()
+                .get_last_exec_results()
                 .expect("should have last exec result");
             let exec_response = response.last().expect("should have response");
-            exec_response.as_error().expect("should have error")
+            exec_response
+                .as_error()
+                .cloned()
+                .expect("should have error")
         };
         assert_matches!(
             error,
@@ -2296,17 +2293,19 @@ fn should_not_partially_undelegate_uninitialized_vesting_schedule() {
     builder.exec(partial_undelegate).commit();
     let error = {
         let response = builder
-            .get_exec_results()
-            .last()
+            .get_last_exec_results()
             .expect("should have last exec result");
         let exec_response = response.last().expect("should have response");
-        exec_response.as_error().expect("should have error")
+        exec_response
+            .as_error()
+            .cloned()
+            .expect("should have error")
     };
 
     assert!(matches!(
         error,
         engine_state::Error::Exec(execution::Error::Revert(ApiError::AuctionError(auction_error)))
-        if *auction_error == system::auction::Error::DelegatorFundsLocked as u8
+        if auction_error == system::auction::Error::DelegatorFundsLocked as u8
     ));
 }
 
@@ -2368,17 +2367,19 @@ fn should_not_fully_undelegate_uninitialized_vesting_schedule() {
     builder.exec(full_undelegate).commit();
     let error = {
         let response = builder
-            .get_exec_results()
-            .last()
+            .get_last_exec_results()
             .expect("should have last exec result");
         let exec_response = response.last().expect("should have response");
-        exec_response.as_error().expect("should have error")
+        exec_response
+            .as_error()
+            .cloned()
+            .expect("should have error")
     };
 
     assert!(matches!(
         error,
         engine_state::Error::Exec(execution::Error::Revert(ApiError::AuctionError(auction_error)))
-        if *auction_error == system::auction::Error::DelegatorFundsLocked as u8
+        if auction_error == system::auction::Error::DelegatorFundsLocked as u8
     ));
 }
 
@@ -2484,17 +2485,19 @@ fn should_not_undelegate_vfta_holder_stake() {
     builder.exec(partial_unbond).commit();
     let error = {
         let response = builder
-            .get_exec_results()
-            .last()
+            .get_last_exec_results()
             .expect("should have last exec result");
         let exec_response = response.last().expect("should have response");
-        exec_response.as_error().expect("should have error")
+        exec_response
+            .as_error()
+            .cloned()
+            .expect("should have error")
     };
 
     assert!(matches!(
         error,
         engine_state::Error::Exec(execution::Error::Revert(ApiError::AuctionError(auction_error)))
-        if *auction_error == system::auction::Error::DelegatorFundsLocked as u8
+        if auction_error == system::auction::Error::DelegatorFundsLocked as u8
     ));
 }
 
@@ -2547,18 +2550,20 @@ fn should_release_vfta_holder_stake() {
 
         let error = {
             let response = builder
-                .get_exec_results()
-                .last()
+                .get_last_exec_results()
                 .expect("should have last exec result");
             let exec_response = response.last().expect("should have response");
-            exec_response.as_error().expect("should have error")
+            exec_response
+                .as_error()
+                .cloned()
+                .expect("should have error")
         };
 
         assert!(
             matches!(
                 error,
                 engine_state::Error::Exec(execution::Error::Revert(ApiError::AuctionError(auction_error)))
-                if *auction_error == system::auction::Error::DelegatorFundsLocked as u8
+                if auction_error == system::auction::Error::DelegatorFundsLocked as u8
             ),
             "{:?}",
             error

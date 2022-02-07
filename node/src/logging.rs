@@ -171,7 +171,7 @@ where
                 writer,
                 " {}{:<6}{}",
                 color.prefix(),
-                meta.level().to_string(),
+                meta.level(),
                 color.suffix()
             )?;
         } else {
@@ -231,8 +231,8 @@ where
             meta.file()
                 .or_else(|| field_visitor.file.as_deref())
                 .unwrap_or_default()
-                .rsplitn(2, '/')
-                .next()
+                .rsplit_once('/')
+                .map(|parts| parts.1)
                 .unwrap_or_default()
         } else {
             ""

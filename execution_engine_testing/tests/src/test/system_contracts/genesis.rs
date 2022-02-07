@@ -2,22 +2,17 @@ use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    internal::{
-        InMemoryWasmTestBuilder, DEFAULT_AUCTION_DELAY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-        DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG,
-        DEFAULT_UNBONDING_DELAY, DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
-    },
-    AccountHash,
+    InMemoryWasmTestBuilder, DEFAULT_AUCTION_DELAY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG,
+    DEFAULT_UNBONDING_DELAY, DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
-use casper_execution_engine::{
-    core::engine_state::{
-        genesis::{ExecConfig, GenesisAccount, GenesisValidator},
-        run_genesis_request::RunGenesisRequest,
-    },
-    shared::motes::Motes,
+use casper_execution_engine::core::engine_state::{
+    genesis::{ExecConfig, GenesisAccount, GenesisValidator},
+    run_genesis_request::RunGenesisRequest,
 };
 use casper_types::{
-    system::auction::DelegationRate, ProtocolVersion, PublicKey, SecretKey, StoredValue, U512,
+    account::AccountHash, system::auction::DelegationRate, Motes, ProtocolVersion, PublicKey,
+    SecretKey, StoredValue, U512,
 };
 
 const GENESIS_CONFIG_HASH: [u8; 32] = [127; 32];

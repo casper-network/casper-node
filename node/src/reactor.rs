@@ -46,7 +46,6 @@ use std::{
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
-use jemalloc_ctl::{epoch as jemalloc_epoch, stats::allocated as jemalloc_allocated};
 use once_cell::sync::Lazy;
 use prometheus::{self, Histogram, HistogramOpts, IntCounter, IntGauge, Registry};
 use quanta::{Clock, IntoNanoseconds};
@@ -56,34 +55,19 @@ use tokio::time::{Duration, Instant};
 use tracing::{debug, debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
 
-#[cfg(target_os = "linux")]
 use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
 
 use crate::{
     effect::{announcements::ControlAnnouncement, Effect, EffectBuilder, Effects},
     types::{ExitCode, Timestamp},
     unregister_metric,
-    utils::{self, WeightedRoundRobin},
-    NodeRng, QUEUE_DUMP_REQUESTED, TERMINATION_REQUESTED,
+    utils::{self, SharedFlag, WeightedRoundRobin},
+    NodeRng, DEBUG_DUMP_REQUESTED, JSON_DUMP_REQUESTED, TERMINATION_REQUESTED,
 };
 #[cfg(test)]
 use crate::{reactor::initializer::Reactor as InitializerReactor, types::Chainspec};
 pub(crate) use queue_kind::QueueKind;
-
-/// Optional upper threshold for total RAM allocated in mB before dumping queues to disk.
-const MEM_DUMP_THRESHOLD_MB_ENV_VAR: &str = "CL_MEM_DUMP_THRESHOLD_MB";
-static MEM_DUMP_THRESHOLD_MB: Lazy<Option<u64>> = Lazy::new(|| {
-    env::var(MEM_DUMP_THRESHOLD_MB_ENV_VAR)
-        .map(|threshold_str| {
-            u64::from_str(&threshold_str).unwrap_or_else(|error| {
-                panic!(
-                    "can't parse env var {}={} as a u64: {}",
-                    MEM_DUMP_THRESHOLD_MB_ENV_VAR, threshold_str, error
-                )
-            })
-        })
-        .ok()
-});
+use stats_alloc::{Stats, INSTRUMENTED_SYSTEM};
 
 /// Default threshold for when an event is considered slow.  Can be overridden by setting the env
 /// var `CL_EVENT_MAX_MICROSECS=<MICROSECONDS>`.
@@ -104,11 +88,18 @@ static DISPATCH_EVENT_THRESHOLD: Lazy<Duration> = Lazy::new(|| {
         .unwrap_or_else(|_| DEFAULT_DISPATCH_EVENT_THRESHOLD)
 });
 
-#[cfg(target_os = "linux")]
 /// The desired limit for open files.
 const TARGET_OPEN_FILES_LIMIT: Limit = 64_000;
 
-#[cfg(target_os = "linux")]
+/// Format for dump of event queue.
+#[derive(Copy, Clone, Debug)]
+enum DumpFormat {
+    /// JSON-encoded (using serde).
+    Json,
+    /// Text-format derived from `fmt::Debug`.
+    Debug,
+}
+
 /// Adjusts the maximum number of open file handles upwards towards the hard limit.
 fn adjust_open_files_limit() {
     // Ensure we have reasonable ulimits.
@@ -146,12 +137,6 @@ fn adjust_open_files_limit() {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
-/// File handle limit adjustment shim.
-fn adjust_open_files_limit() {
-    info!("not on linux, not adjusting open files limit");
-}
-
 /// The value returned by a reactor on completion of the `run()` loop.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, DataSize)]
 pub(crate) enum ReactorExit {
@@ -179,21 +164,42 @@ pub(crate) type Scheduler<Ev> = WeightedRoundRobin<(Option<NonZeroU64>, Ev), Que
 /// outside of the normal event loop. It gives different parts a chance to schedule messages that
 /// stem from things like external IO.
 #[derive(DataSize, Debug)]
-pub(crate) struct EventQueueHandle<REv>(&'static Scheduler<REv>)
+pub(crate) struct EventQueueHandle<REv>
 where
-    REv: 'static;
+    REv: 'static,
+{
+    /// A reference to the scheduler of the event queue.
+    scheduler: &'static Scheduler<REv>,
+    /// Flag indicating whether or not the reactor processing this event queue is shutting down.
+    is_shutting_down: SharedFlag,
+}
 
 // Implement `Clone` and `Copy` manually, as `derive` will make it depend on `R` and `Ev` otherwise.
 impl<REv> Clone for EventQueueHandle<REv> {
     fn clone(&self) -> Self {
-        EventQueueHandle(self.0)
+        EventQueueHandle {
+            scheduler: self.scheduler,
+            is_shutting_down: self.is_shutting_down,
+        }
     }
 }
 impl<REv> Copy for EventQueueHandle<REv> {}
 
 impl<REv> EventQueueHandle<REv> {
-    pub(crate) fn new(scheduler: &'static Scheduler<REv>) -> Self {
-        EventQueueHandle(scheduler)
+    /// Creates a new event queue handle.
+    pub(crate) fn new(scheduler: &'static Scheduler<REv>, is_shutting_down: SharedFlag) -> Self {
+        EventQueueHandle {
+            scheduler,
+            is_shutting_down,
+        }
+    }
+
+    /// Creates a new event queue handle that is not connected to a shutdown flag.
+    ///
+    /// This method is used in tests, where we are never disabling shutdown warnings anyway.
+    #[cfg(test)]
+    pub(crate) fn without_shutdown(scheduler: &'static Scheduler<REv>) -> Self {
+        EventQueueHandle::new(scheduler, SharedFlag::global_shared())
     }
 
     /// Schedule an event on a specific queue.
@@ -215,12 +221,19 @@ impl<REv> EventQueueHandle<REv> {
     ) where
         REv: From<Ev>,
     {
-        self.0.push((ancestor, event.into()), queue_kind).await
+        self.scheduler
+            .push((ancestor, event.into()), queue_kind)
+            .await
     }
 
     /// Returns number of events in each of the scheduler's queues.
     pub(crate) fn event_queues_counts(&self) -> HashMap<QueueKind, usize> {
-        self.0.event_queues_counts()
+        self.scheduler.event_queues_counts()
+    }
+
+    /// Returns whether the associated reactor is currently shutting down.
+    pub(crate) fn shutdown_flag(&self) -> SharedFlag {
+        self.is_shutting_down
     }
 }
 
@@ -283,6 +296,11 @@ pub(crate) trait ReactorEvent: Send + Debug + From<ControlAnnouncement> + 'stati
     /// [`ControlAnnouncement`](`crate::effect::announcements::ControlAnnouncement`) if the event
     /// is indeed a control announcement variant.
     fn as_control(&self) -> Option<&ControlAnnouncement>;
+
+    /// Returns a cheap but human-readable description of the event.
+    fn description(&self) -> &'static str {
+        "anonymous event"
+    }
 }
 
 /// A drop-like trait for `async` compatible drop-and-wait.
@@ -343,6 +361,9 @@ where
 
     /// Last queue dump timestamp
     last_queue_dump: Option<Timestamp>,
+
+    /// Flag indicating the reactor is being shut down.
+    is_shutting_down: SharedFlag,
 }
 
 /// Metric data for the Runner
@@ -352,7 +373,7 @@ struct RunnerMetrics {
     events: IntCounter,
     /// Histogram of how long it took to dispatch an event.
     event_dispatch_duration: Histogram,
-    /// Total allocated RAM in bytes, as reported by jemalloc.
+    /// Total allocated RAM in bytes, as reported by stats_alloc.
     allocated_ram_bytes: IntGauge,
     /// Total consumed RAM in bytes, as reported by sys-info.
     consumed_ram_bytes: IntGauge,
@@ -365,13 +386,16 @@ struct RunnerMetrics {
 impl RunnerMetrics {
     /// Create and register new runner metrics.
     fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
-        let events = IntCounter::new("runner_events", "total event count")?;
+        let events = IntCounter::new(
+            "runner_events",
+            "running total count of events handled by this reactor",
+        )?;
 
         // Create an event dispatch histogram, putting extra emphasis on the area between 1-10 us.
         let event_dispatch_duration = Histogram::with_opts(
             HistogramOpts::new(
                 "event_dispatch_duration",
-                "duration of complete dispatch of a single event in nanoseconds",
+                "time in nanoseconds to dispatch an event",
             )
             .buckets(vec![
                 100.0,
@@ -457,8 +481,9 @@ where
         }
 
         let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
+        let is_shutting_down = SharedFlag::new();
 
-        let event_queue = EventQueueHandle::new(scheduler);
+        let event_queue = EventQueueHandle::new(scheduler, is_shutting_down);
         let (reactor, initial_effects) = R::new(cfg, registry, event_queue, rng)?;
 
         // Run all effects from component instantiation.
@@ -478,6 +503,7 @@ where
             event_metrics_threshold: 1000,
             clock: Clock::new(),
             last_queue_dump: None,
+            is_shutting_down,
         })
     }
 
@@ -488,7 +514,7 @@ where
     pub(crate) async fn crank(&mut self, rng: &mut NodeRng) -> bool {
         self.metrics.events.inc();
 
-        let event_queue = EventQueueHandle::new(self.scheduler);
+        let event_queue = EventQueueHandle::new(self.scheduler, self.is_shutting_down);
         let effect_builder = EffectBuilder::new(event_queue);
 
         // Update metrics like memory usage and event queue sizes.
@@ -513,31 +539,26 @@ where
                 self.metrics.allocated_ram_bytes.set(allocated as i64);
                 self.metrics.consumed_ram_bytes.set(consumed as i64);
                 self.metrics.total_ram_bytes.set(total as i64);
-                if let Some(threshold_mb) = *MEM_DUMP_THRESHOLD_MB {
-                    let threshold_bytes = threshold_mb * 1024 * 1024;
-                    if allocated >= threshold_bytes && self.last_queue_dump.is_none() {
-                        info!(
-                            %allocated,
-                            %total,
-                            %threshold_bytes,
-                            "node has allocated enough memory to trigger queue dump"
-                        );
-                        self.dump_queues().await;
-                    }
-                }
             }
         }
 
+        // Dump event queue in JSON format if requested, stopping the world.
+        if JSON_DUMP_REQUESTED.load(Ordering::SeqCst) {
+            debug!("dumping event queue in JSON format as requested");
+            self.dump_queues(DumpFormat::Json).await;
+            JSON_DUMP_REQUESTED.store(false, Ordering::SeqCst);
+        }
+
         // Dump event queue if requested, stopping the world.
-        if QUEUE_DUMP_REQUESTED.load(Ordering::SeqCst) {
-            debug!("dumping event queue as requested");
-            self.dump_queues().await;
-            // Indicate we are done with the dump.
-            QUEUE_DUMP_REQUESTED.store(false, Ordering::SeqCst);
+        if DEBUG_DUMP_REQUESTED.load(Ordering::SeqCst) {
+            debug!("dumping event queue in debug format as requested");
+            self.dump_queues(DumpFormat::Debug).await;
+            DEBUG_DUMP_REQUESTED.store(false, Ordering::SeqCst);
         }
 
         let ((ancestor, event), queue) = self.scheduler.pop().await;
         trace!(%event, %queue, "current");
+        let event_desc = event.description();
 
         // Create another span for tracing the processing of one event.
         Span::current().record("ev", &self.current_event_id);
@@ -570,7 +591,7 @@ where
         // Warn if processing took a long time, record to histogram.
         let delta = self.clock.delta(start, end);
         if delta > *DISPATCH_EVENT_THRESHOLD {
-            warn!(ns = delta.into_nanos(), "event took very long to dispatch");
+            warn!(%event_desc, ns = delta.into_nanos(), "event took very long to dispatch");
         }
         self.metrics
             .event_dispatch_duration
@@ -600,73 +621,60 @@ where
             }
         };
 
-        // mem_info gives us kB
+        // mem_info gives us kilobytes
         let total = mem_info.total * 1024;
-        let consumed = total - (mem_info.free * 1024);
+        let consumed = total - (mem_info.avail * 1024);
 
-        // whereas jemalloc_ctl gives us the numbers in bytes
-        match jemalloc_epoch::mib() {
-            Ok(mib) => {
-                // jemalloc_ctl requires you to advance the epoch to update its stats
-                if let Err(advance_error) = mib.advance() {
-                    warn!(%advance_error, "unable to advance jemalloc epoch");
-                }
-            }
-            Err(error) => {
-                warn!(%error, "unable to get epoch::mib from jemalloc");
-                return None;
-            }
-        }
-        let allocated = match jemalloc_allocated::mib() {
-            Ok(allocated_mib) => match allocated_mib.read() {
-                Ok(value) => value as u64,
-                Err(error) => {
-                    warn!(%error, "unable to read allocated mib using jemalloc");
-                    return None;
-                }
-            },
-            Err(error) => {
-                warn!(%error, "unable to get allocated mib using jemalloc");
-                return None;
-            }
-        };
+        let Stats {
+            allocations: _,
+            deallocations: _,
+            reallocations: _,
+            bytes_allocated,
+            bytes_deallocated,
+            bytes_reallocated: _,
+        } = INSTRUMENTED_SYSTEM.stats();
 
         Some(AllocatedMem {
-            allocated,
+            allocated: bytes_allocated.saturating_sub(bytes_deallocated) as u64,
             consumed,
             total,
         })
     }
 
     /// Handles dumping queue contents to files in /tmp.
-    async fn dump_queues(&mut self) {
+    async fn dump_queues(&mut self, format: DumpFormat) {
         let timestamp = Timestamp::now();
         self.last_queue_dump = Some(timestamp);
-        let output_fn = format!("/tmp/queue_dump-{}.json", timestamp);
-        let mut serializer = serde_json::Serializer::pretty(match File::create(&output_fn) {
-            Ok(file) => file,
-            Err(error) => {
-                warn!(%error, "could not create output file ({}) for queue snapshot", output_fn);
-                return;
-            }
-        });
 
-        if let Err(error) = self.scheduler.snapshot(&mut serializer).await {
-            warn!(%error, "could not serialize snapshot to {}", output_fn);
-            return;
-        }
-
-        let debug_dump_filename = format!("/tmp/queue_dump_debug-{}.txt", timestamp);
-        let mut file = match File::create(&debug_dump_filename) {
-            Ok(file) => file,
-            Err(error) => {
-                warn!(%error, "could not create debug output file ({}) for queue snapshot", debug_dump_filename);
-                return;
+        match format {
+            DumpFormat::Json => {
+                let output_fn = format!("/tmp/queue_dump-{}.json", timestamp);
+                let mut serializer = serde_json::Serializer::pretty(
+                    match File::create(&output_fn) {
+                        Ok(file) => file,
+                        Err(error) => {
+                            warn!(%error, "could not create output file ({}) for queue snapshot", output_fn);
+                            return;
+                        }
+                    },
+                );
+                if let Err(error) = self.scheduler.snapshot(&mut serializer).await {
+                    warn!(%error, "could not serialize snapshot to {}", output_fn);
+                }
             }
-        };
-        if let Err(error) = self.scheduler.debug_dump(&mut file).await {
-            warn!(%error, "could not serialize debug snapshot to {}", debug_dump_filename);
-            return;
+            DumpFormat::Debug => {
+                let output_fn = format!("/tmp/queue_dump_debug-{}.txt", timestamp);
+                let mut file = match File::create(&output_fn) {
+                    Ok(file) => file,
+                    Err(error) => {
+                        warn!(%error, "could not create debug output file ({}) for queue snapshot", output_fn);
+                        return;
+                    }
+                };
+                if let Err(error) = self.scheduler.debug_dump(&mut file).await {
+                    warn!(%error, "could not serialize debug snapshot to {}", output_fn);
+                }
+            }
         }
     }
 
@@ -677,6 +685,8 @@ where
             match TERMINATION_REQUESTED.load(Ordering::SeqCst) as i32 {
                 0 => {
                     if let Some(reactor_exit) = self.reactor.maybe_exit() {
+                        self.is_shutting_down.set();
+
                         // TODO: Workaround, until we actually use control announcements for
                         // exiting: Go over the entire remaining event queue and look for a control
                         // announcement. This approach is hacky, and should be replaced with
@@ -705,12 +715,22 @@ where
                         break reactor_exit;
                     }
                     if !self.crank(rng).await {
+                        self.is_shutting_down.set();
                         break ReactorExit::ProcessShouldExit(ExitCode::Abort);
                     }
                 }
-                SIGINT => break ReactorExit::ProcessShouldExit(ExitCode::SigInt),
-                SIGQUIT => break ReactorExit::ProcessShouldExit(ExitCode::SigQuit),
-                SIGTERM => break ReactorExit::ProcessShouldExit(ExitCode::SigTerm),
+                SIGINT => {
+                    self.is_shutting_down.set();
+                    break ReactorExit::ProcessShouldExit(ExitCode::SigInt);
+                }
+                SIGQUIT => {
+                    self.is_shutting_down.set();
+                    break ReactorExit::ProcessShouldExit(ExitCode::SigQuit);
+                }
+                SIGTERM => {
+                    self.is_shutting_down.set();
+                    break ReactorExit::ProcessShouldExit(ExitCode::SigTerm);
+                }
                 _ => error!("should be unreachable - bug in signal handler"),
             }
         }
@@ -718,6 +738,7 @@ where
 
     /// Shuts down a reactor, sealing and draining the entire queue before returning it.
     pub(crate) async fn drain_into_inner(self) -> R {
+        self.is_shutting_down.set();
         self.scheduler.seal();
         for (ancestor, event) in self.scheduler.drain_queues().await {
             debug!(?ancestor, %event, "drained event");
@@ -749,7 +770,7 @@ where
     where
         F: FnOnce(EffectBuilder<R::Event>) -> Effects<R::Event>,
     {
-        let event_queue = EventQueueHandle::new(self.scheduler);
+        let event_queue = EventQueueHandle::new(self.scheduler, self.is_shutting_down);
         let effect_builder = EffectBuilder::new(event_queue);
 
         let effects = create_effects(effect_builder);
@@ -791,7 +812,8 @@ impl Runner<InitializerReactor> {
         let registry = Registry::new();
         let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
 
-        let event_queue = EventQueueHandle::new(scheduler);
+        let is_shutting_down = SharedFlag::new();
+        let event_queue = EventQueueHandle::new(scheduler, is_shutting_down);
         let (reactor, initial_effects) =
             InitializerReactor::new_with_chainspec(cfg, &registry, event_queue, chainspec)?;
 
@@ -819,6 +841,7 @@ impl Runner<InitializerReactor> {
             event_metrics_threshold: 1000,
             clock: Clock::new(),
             last_queue_dump: None,
+            is_shutting_down,
         })
     }
 }

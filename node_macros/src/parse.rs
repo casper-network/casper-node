@@ -221,8 +221,7 @@ impl Parse for ReactorDefinition {
         // Ensure that requests are not routed to non-existing events.
         let announce_target_keys: IndexSet<_> = announcements
             .iter()
-            .map(|ann| ann.targets.iter())
-            .flatten()
+            .flat_map(|ann| ann.targets.iter())
             .filter_map(Target::as_dest)
             .collect();
 
@@ -504,8 +503,8 @@ impl Debug for Target {
         match self {
             Target::Discard => write!(f, "#"),
             Target::Panic => write!(f, "!"),
-            Target::Dest(id) => write!(f, "{}", id.to_string()),
-            Target::Dispatch(id) => write!(f, "{}()", id.to_string()),
+            Target::Dest(id) => write!(f, "{}", id),
+            Target::Dispatch(id) => write!(f, "{}()", id),
         }
     }
 }

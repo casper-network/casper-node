@@ -5,12 +5,13 @@ use derive_more::From;
 use fmt::Display;
 use serde::{Deserialize, Serialize};
 
-use super::BlockHeight;
+use casper_types::Motes;
+
+use super::{BlockHeight, CachedState};
 use crate::{
     effect::requests::BlockProposerRequest,
     types::{DeployHash, DeployHeader, DeployOrTransferHash, FinalizedBlock},
 };
-use casper_execution_engine::shared::motes::Motes;
 
 /// Information about a deploy.
 #[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
@@ -32,6 +33,8 @@ pub(crate) enum Event {
         finalized_deploys: Vec<(DeployHash, DeployHeader)>,
         /// The height of the next expected finalized block.
         next_finalized_block: BlockHeight,
+        /// The cached state retrieved from storage.
+        cached_state: CachedState,
     },
     /// A new deploy has been received by this node and stored: it should be retrieved from storage
     /// and buffered here.

@@ -1,21 +1,19 @@
 use casper_engine_test_support::{
-    internal::{
-        DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_GAS_PRICE,
-        DEFAULT_RUN_GENESIS_REQUEST,
-    },
-    AccountHash, DEFAULT_ACCOUNT_ADDR,
+    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_GAS_PRICE, DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     core::{
         engine_state::{Error, ExecuteRequest, WASMLESS_TRANSFER_FIXED_GAS_PRICE},
         execution,
     },
-    shared::{gas::Gas, motes::Motes, system_config::DEFAULT_WASMLESS_TRANSFER_COST},
+    shared::system_config::DEFAULT_WASMLESS_TRANSFER_COST,
 };
 use casper_types::{
+    account::AccountHash,
     runtime_args,
     system::{handle_payment, mint},
-    ApiError, RuntimeArgs, U512,
+    ApiError, Gas, Motes, RuntimeArgs, U512,
 };
 
 const PRIORITIZED_GAS_PRICE: u64 = DEFAULT_GAS_PRICE * 7;
@@ -51,6 +49,7 @@ fn should_charge_for_user_error(
         .get_exec_result(0)
         .expect("should have result")
         .get(0)
+        .cloned()
         .expect("should have first result");
     assert_eq!(response.cost(), transfer_cost);
     assert_eq!(
@@ -140,6 +139,7 @@ fn should_properly_charge_fixed_cost_with_nondefault_gas_price() {
         mint::ARG_AMOUNT => transfer_amount.value(),
         mint::ARG_ID => id,
     };
+
     let transfer_request = {
         let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
@@ -169,8 +169,14 @@ fn should_properly_charge_fixed_cost_with_nondefault_gas_price() {
         .get_exec_result(0)
         .expect("should have result")
         .get(0)
+        .cloned()
         .expect("should have first result");
-    assert_eq!(response.cost(), transfer_cost);
+    assert_eq!(
+        response.cost(),
+        transfer_cost,
+        "expected actual cost is {}",
+        transfer_cost
+    );
     assert_eq!(
         purse_balance_before - transfer_cost_motes.value() - transfer_amount.value(),
         purse_balance_after

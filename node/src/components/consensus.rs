@@ -13,8 +13,10 @@ mod protocols;
 #[cfg(test)]
 mod tests;
 mod traits;
+mod validator_change;
 
 use std::{
+    borrow::Cow,
     collections::{BTreeMap, HashMap},
     convert::Infallible,
     fmt::{self, Debug, Display, Formatter},
@@ -26,7 +28,7 @@ use datasize::DataSize;
 use derive_more::From;
 use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
-use tracing::error;
+use tracing::{error, info};
 
 use casper_types::{EraId, PublicKey, U512};
 
@@ -34,9 +36,11 @@ use crate::{
     components::Component,
     effect::{
         announcements::{BlocklistAnnouncement, ConsensusAnnouncement},
+        console::DumpConsensusStateRequest,
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
-            ContractRuntimeRequest, LinearChainRequest, NetworkRequest, StorageRequest,
+            ContractRuntimeRequest, LinearChainRequest, NetworkInfoRequest, NetworkRequest,
+            StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -49,12 +53,11 @@ use crate::{
 
 pub(crate) use cl_context::ClContext;
 pub(crate) use config::Config;
-#[cfg(test)]
-pub(crate) use config::ProtocolConfig;
 pub(crate) use consensus_protocol::{BlockContext, EraReport, ProposedBlock};
-pub(crate) use era_supervisor::EraSupervisor;
+pub(crate) use era_supervisor::{debug::EraDump, EraSupervisor};
 pub(crate) use protocols::highway::HighwayProtocol;
 use traits::NodeIdT;
+pub(crate) use validator_change::ValidatorChange;
 
 #[derive(DataSize, Clone, Serialize, Deserialize)]
 pub(crate) enum ConsensusMessage {
@@ -135,6 +138,9 @@ pub(crate) enum Event<I> {
     },
     /// Got the result of checking for an upgrade activation point.
     GotUpgradeActivationPoint(ActivationPoint),
+    /// Dump state for debugging purposes.
+    #[from]
+    DumpState(DumpConsensusStateRequest),
 }
 
 impl Debug for ConsensusMessage {
@@ -234,6 +240,7 @@ impl<I: Debug> Display for Event<I> {
             Event::GotUpgradeActivationPoint(activation_point) => {
                 write!(f, "new upgrade activation point: {:?}", activation_point)
             }
+            Event::DumpState(req) => Display::fmt(req, f),
         }
     }
 }
@@ -245,6 +252,7 @@ pub(crate) trait ReactorEventT<I>:
     + From<Event<I>>
     + Send
     + From<NetworkRequest<I, Message>>
+    + From<NetworkInfoRequest<I>>
     + From<BlockProposerRequest>
     + From<ConsensusAnnouncement>
     + From<BlockValidationRequest<I>>
@@ -261,6 +269,7 @@ impl<REv, I> ReactorEventT<I> for REv where
         + From<Event<I>>
         + Send
         + From<NetworkRequest<I, Message>>
+        + From<NetworkInfoRequest<I>>
         + From<BlockProposerRequest>
         + From<ConsensusAnnouncement>
         + From<BlockValidationRequest<I>>
@@ -283,30 +292,35 @@ where
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        mut rng: &mut NodeRng,
+        rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        let mut handling_es = self.handling_wrapper(effect_builder, &mut rng);
         match event {
             Event::Timer {
                 era_id,
                 timestamp,
                 timer_id,
-            } => handling_es.handle_timer(era_id, timestamp, timer_id),
-            Event::Action { era_id, action_id } => handling_es.handle_action(era_id, action_id),
-            Event::MessageReceived { sender, msg } => handling_es.handle_message(sender, msg),
-            Event::NewBlockPayload(new_block_payload) => {
-                handling_es.handle_new_block_payload(new_block_payload)
+            } => self.handle_timer(effect_builder, rng, era_id, timestamp, timer_id),
+            Event::Action { era_id, action_id } => {
+                self.handle_action(effect_builder, rng, era_id, action_id)
             }
-            Event::BlockAdded(block_header) => handling_es.handle_block_added(*block_header),
+            Event::MessageReceived { sender, msg } => {
+                self.handle_message(effect_builder, rng, sender, msg)
+            }
+            Event::NewBlockPayload(new_block_payload) => {
+                self.handle_new_block_payload(effect_builder, rng, new_block_payload)
+            }
+            Event::BlockAdded(block_header) => {
+                self.handle_block_added(effect_builder, *block_header)
+            }
             Event::ResolveValidity(resolve_validity) => {
-                handling_es.resolve_validity(resolve_validity)
+                self.resolve_validity(effect_builder, rng, resolve_validity)
             }
             Event::DeactivateEra {
                 era_id,
                 faulty_num,
                 delay,
-            } => handling_es.handle_deactivate_era(era_id, faulty_num, delay),
+            } => self.handle_deactivate_era(effect_builder, era_id, faulty_num, delay),
             Event::CreateNewEra {
                 switch_block_header,
                 booking_block_hash,
@@ -319,25 +333,58 @@ where
                             era_id,
                             switch_block_header.era_id().successor()
                         );
-                        return fatal!(
-                            handling_es.effect_builder,
-                            "couldn't get the booking block hash"
-                        )
-                        .ignore();
+                        return fatal!(effect_builder, "couldn't get the booking block hash")
+                            .ignore();
                     }
                 };
-                handling_es.handle_create_new_era(*switch_block_header, booking_block_hash)
+                self.handle_create_new_era(
+                    effect_builder,
+                    rng,
+                    *switch_block_header,
+                    booking_block_hash,
+                )
             }
             Event::InitializeEras {
                 key_blocks,
                 booking_blocks,
                 validators,
-            } => handling_es.handle_initialize_eras(key_blocks, booking_blocks, validators),
+            } => self.handle_initialize_eras(
+                effect_builder,
+                rng,
+                key_blocks,
+                booking_blocks,
+                validators,
+            ),
             Event::GotUpgradeActivationPoint(activation_point) => {
-                handling_es.got_upgrade_activation_point(activation_point)
+                self.got_upgrade_activation_point(activation_point)
             }
-            Event::ConsensusRequest(ConsensusRequest::Status(responder)) => {
-                handling_es.status(responder)
+            Event::ConsensusRequest(ConsensusRequest::Status(responder)) => self.status(responder),
+            Event::ConsensusRequest(ConsensusRequest::ValidatorChanges(responder)) => {
+                let validator_changes = self.get_validator_changes();
+                responder.respond(validator_changes).ignore()
+            }
+            Event::DumpState(req @ DumpConsensusStateRequest { era_id, .. }) => {
+                let requested_era = era_id.unwrap_or_else(|| self.current_era());
+
+                // We emit some log message to get some performance information and give the
+                // operator a chance to find out why their node is busy.
+                info!(era_id=%requested_era.value(), was_latest=era_id.is_none(), "dumping era via console");
+
+                let era_dump_result = self
+                    .open_eras()
+                    .get(&requested_era)
+                    .ok_or_else(|| {
+                        Cow::Owned(format!(
+                            "could not dump consensus, {} not found",
+                            requested_era
+                        ))
+                    })
+                    .and_then(|era| EraDump::dump_era(era, requested_era));
+
+                match era_dump_result {
+                    Ok(dump) => req.answer(Ok(&dump)).ignore(),
+                    Err(err) => req.answer(Err(err)).ignore(),
+                }
             }
         }
     }

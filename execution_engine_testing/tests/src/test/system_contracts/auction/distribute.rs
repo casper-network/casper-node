@@ -4,22 +4,21 @@ use num_rational::Ratio;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    internal::{
-        ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-        DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_RUN_GENESIS_REQUEST,
-        SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
-    },
-    DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder, UpgradeRequestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+    DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_RUN_GENESIS_REQUEST,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
+use casper_execution_engine::core::engine_state::step::RewardItem;
 use casper_types::{
     self,
     account::AccountHash,
     runtime_args,
     system::auction::{
-        self, Bid, Bids, DelegationRate, Delegator, SeigniorageAllocation, ARG_AMOUNT,
-        ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS, ARG_VALIDATOR,
-        BLOCK_REWARD, DELEGATION_RATE_DENOMINATOR, METHOD_DISTRIBUTE,
+        self, Bid, Bids, DelegationRate, Delegator, SeigniorageAllocation,
+        SeigniorageRecipientsSnapshot, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
+        ARG_PUBLIC_KEY, ARG_REWARD_FACTORS, ARG_VALIDATOR, BLOCK_REWARD,
+        DELEGATION_RATE_DENOMINATOR, METHOD_DISTRIBUTE, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
     EraId, Key, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
@@ -3576,6 +3575,192 @@ fn should_increase_total_supply_after_distribute() {
 
 #[ignore]
 #[test]
+fn should_not_create_purses_during_distribute() {
+    const VALIDATOR_1_STAKE: u64 = 1_000_000;
+
+    const DELEGATION_RATE: DelegationRate = DELEGATION_RATE_DENOMINATOR / 2;
+
+    const VALIDATOR_1_REWARD_FACTOR: u64 = 333333333334;
+
+    const DELEGATOR_1_STAKE: u64 = 1_000_000;
+
+    let system_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *SYSTEM_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let validator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *VALIDATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let delegator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *DELEGATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let delegator_2_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *DELEGATOR_2_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let delegator_3_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *DELEGATOR_3_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
+        *VALIDATOR_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
+            ARG_DELEGATION_RATE => DELEGATION_RATE,
+            ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
+        },
+    )
+    .build();
+
+    let delegator_1_validator_1_delegate_request = ExecuteRequestBuilder::standard(
+        *DELEGATOR_1_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_1.clone(),
+        },
+    )
+    .build();
+
+    let delegator_2_validator_1_delegate_request = ExecuteRequestBuilder::standard(
+        *DELEGATOR_2_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_2.clone(),
+        },
+    )
+    .build();
+
+    let delegator_3_validator_1_delegate_request = ExecuteRequestBuilder::standard(
+        *DELEGATOR_3_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_3.clone(),
+        },
+    )
+    .build();
+
+    let post_genesis_requests = vec![
+        system_fund_request,
+        validator_1_fund_request,
+        delegator_1_fund_request,
+        delegator_2_fund_request,
+        delegator_3_fund_request,
+        validator_1_add_bid_request,
+        delegator_1_validator_1_delegate_request,
+        delegator_2_validator_1_delegate_request,
+        delegator_3_validator_1_delegate_request,
+    ];
+
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    // initial token supply
+    let initial_supply = builder.total_supply(None);
+
+    for request in post_genesis_requests {
+        builder.exec(request).commit().expect_success();
+    }
+
+    let post_genesis_supply = builder.total_supply(None);
+
+    assert_eq!(
+        initial_supply, post_genesis_supply,
+        "total supply should remain unchanged prior to first distribution"
+    );
+
+    // run auction
+    for _ in 0..5 {
+        builder.run_auction(timestamp_millis, Vec::new());
+        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
+    }
+
+    let post_auction_supply = builder.total_supply(None);
+    assert_eq!(
+        initial_supply, post_auction_supply,
+        "total supply should remain unchanged regardless of auction"
+    );
+
+    let reward_factors: BTreeMap<PublicKey, u64> = {
+        let mut tmp = BTreeMap::new();
+        tmp.insert(VALIDATOR_1.clone(), VALIDATOR_1_REWARD_FACTOR);
+        tmp
+    };
+
+    let distribute_request = ExecuteRequestBuilder::standard(
+        *SYSTEM_ADDR,
+        CONTRACT_AUCTION_BIDS,
+        runtime_args! {
+            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
+            ARG_REWARD_FACTORS => reward_factors
+        },
+    )
+    .build();
+
+    let number_of_purses_before_distribute = builder.get_balance_keys().len();
+
+    builder.exec(distribute_request).commit().expect_success();
+
+    let number_of_purses_after_distribute = builder.get_balance_keys().len();
+
+    assert_eq!(
+        number_of_purses_after_distribute,
+        number_of_purses_before_distribute
+    );
+
+    let post_distribute_supply = builder.total_supply(None);
+    assert!(
+        initial_supply < post_distribute_supply,
+        "total supply should increase after distribute ({} >= {})",
+        initial_supply,
+        post_distribute_supply
+    );
+}
+
+#[ignore]
+#[test]
 fn should_distribute_delegation_rate_full_after_upgrading() {
     const VALIDATOR_1_STAKE: u64 = 1_000_000;
     const DELEGATOR_1_STAKE: u64 = 1_000_000;
@@ -3840,4 +4025,351 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
     assert!(expected_validator_1_payout_before > expected_validator_1_balance_after); // expected amount after decreasing seigniorage rate is lower than the first amount
     assert!(total_payout_before > total_payout_after); // expected total payout after decreasing
                                                        // rate is lower than the first payout
+}
+
+// In this test, we set up a validator and a delegator, then the delegator delegates to the
+// validator. We step forward one era (auction delay is 3 eras) and then fully undelegate. We expect
+// that there is no bonding purse for this delegator / validator pair. This test should prove that
+// if you undelegate before your delegation would receive rewards from a validator, you will no
+// longer be delegated, as expected.
+#[ignore]
+#[test]
+fn should_not_restake_after_full_unbond() {
+    const DELEGATOR_1_STAKE: u64 = 1_000_000;
+    const VALIDATOR_1_STAKE: u64 = 1_000_000;
+    const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    // advance past the initial auction delay due to special condition of post-genesis behavior.
+    for _ in 0..4 {
+        let step_request = StepRequestBuilder::new()
+            .with_parent_state_hash(builder.get_post_state_hash())
+            .with_protocol_version(ProtocolVersion::V1_0_0)
+            .with_next_era_id(builder.get_era() + 1)
+            .build();
+
+        builder.step(step_request).expect("should step");
+    }
+
+    let validator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *VALIDATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    builder
+        .exec(validator_1_fund_request)
+        .expect_success()
+        .commit();
+
+    let delegator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *DELEGATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    builder
+        .exec(delegator_1_fund_request)
+        .expect_success()
+        .commit();
+
+    let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
+        *VALIDATOR_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
+            ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
+            ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
+        },
+    )
+    .build();
+
+    builder
+        .exec(validator_1_add_bid_request)
+        .expect_success()
+        .commit();
+
+    let delegator_1_validator_1_delegate_request = ExecuteRequestBuilder::standard(
+        *DELEGATOR_1_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_1.clone(),
+        },
+    )
+    .build();
+
+    builder
+        .exec(delegator_1_validator_1_delegate_request)
+        .expect_success()
+        .commit();
+
+    // advance the era.
+    let mut next_era = builder.get_era() + 1;
+
+    // first step after funding, adding bid and delegating.
+    let step_request = StepRequestBuilder::new()
+        .with_parent_state_hash(builder.get_post_state_hash())
+        .with_protocol_version(ProtocolVersion::V1_0_0)
+        .with_next_era_id(next_era)
+        .build();
+
+    builder.step(step_request).expect("should step");
+
+    let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
+
+    assert!(delegator.is_some());
+    assert_eq!(
+        delegator.unwrap().staked_amount().to_owned(),
+        U512::from(DELEGATOR_1_STAKE)
+    );
+
+    next_era += 1;
+
+    let step_request = StepRequestBuilder::new()
+        .with_parent_state_hash(builder.get_post_state_hash())
+        .with_protocol_version(ProtocolVersion::V1_0_0)
+        .with_next_era_id(next_era)
+        .build();
+
+    builder.step(step_request).expect("should step");
+
+    // undelegate in the era right after we delegated.
+    undelegate(
+        &mut builder,
+        *DELEGATOR_1_ADDR,
+        DELEGATOR_1.clone(),
+        VALIDATOR_1.clone(),
+        U512::from(DELEGATOR_1_STAKE),
+    );
+    let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
+    assert!(delegator.is_none());
+
+    let withdraws = builder.get_withdraws();
+    let unbonding_purses = withdraws
+        .get(&VALIDATOR_1_ADDR)
+        .expect("should have validator entry");
+    let delegator_unbond_amount = unbonding_purses
+        .iter()
+        .find(|up| *up.unbonder_public_key() == DELEGATOR_1.clone())
+        .expect("should be unbonding purse");
+
+    assert_eq!(
+        *delegator_unbond_amount.amount(),
+        U512::from(DELEGATOR_1_STAKE),
+        "unbond purse amount should match staked amount"
+    );
+
+    // step until validator receives rewards.
+    for _ in 0..2 {
+        let step_request = StepRequestBuilder::new()
+            .with_parent_state_hash(builder.get_post_state_hash())
+            .with_protocol_version(ProtocolVersion::V1_0_0)
+            .with_next_era_id(builder.get_era() + 1)
+            .build();
+
+        builder.step(step_request).expect("should step");
+    }
+
+    // validator receives rewards after this step.
+    let step_request = StepRequestBuilder::new()
+        .with_parent_state_hash(builder.get_post_state_hash())
+        .with_protocol_version(ProtocolVersion::V1_0_0)
+        .with_reward_item(RewardItem::new(VALIDATOR_1.clone(), BLOCK_REWARD))
+        .with_next_era_id(builder.get_era() + 1)
+        .build();
+
+    builder.step(step_request).expect("should step");
+
+    // Delegator should not remain delegated even though they were eligible for rewards in the
+    // second era.
+    let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
+    assert!(delegator.is_none());
+}
+
+// In this test, we set up a delegator and a validator, the delegator delegates to the validator.
+// We then undelegate during the first era where the delegator would be eligible to receive rewards
+// for their delegation and expect that there is no bonding purse for the delegator / validator pair
+// and that the delegator does not remain delegated to the validator as expected.
+#[ignore]
+#[test]
+fn delegator_full_unbond_during_first_reward_era() {
+    const DELEGATOR_1_STAKE: u64 = 1_000_000;
+    const VALIDATOR_1_STAKE: u64 = 1_000_000;
+    const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    // advance past the initial auction delay due to special condition of post-genesis behavior.
+    for _ in 0..4 {
+        let step_request = StepRequestBuilder::new()
+            .with_parent_state_hash(builder.get_post_state_hash())
+            .with_protocol_version(ProtocolVersion::V1_0_0)
+            .with_next_era_id(builder.get_era() + 1)
+            .build();
+
+        builder.step(step_request).expect("should step");
+    }
+
+    let validator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *VALIDATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    builder
+        .exec(validator_1_fund_request)
+        .expect_success()
+        .commit();
+
+    let delegator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *DELEGATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    builder
+        .exec(delegator_1_fund_request)
+        .expect_success()
+        .commit();
+
+    let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
+        *VALIDATOR_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
+            ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
+            ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
+        },
+    )
+    .build();
+
+    builder
+        .exec(validator_1_add_bid_request)
+        .expect_success()
+        .commit();
+
+    let delegator_1_validator_1_delegate_request = ExecuteRequestBuilder::standard(
+        *DELEGATOR_1_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATOR_1_STAKE),
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_1.clone(),
+        },
+    )
+    .build();
+
+    builder
+        .exec(delegator_1_validator_1_delegate_request)
+        .expect_success()
+        .commit();
+
+    // first step after funding, adding bid and delegating.
+    let step_request = StepRequestBuilder::new()
+        .with_parent_state_hash(builder.get_post_state_hash())
+        .with_protocol_version(ProtocolVersion::V1_0_0)
+        .with_next_era_id(builder.get_era() + 1)
+        .build();
+
+    builder.step(step_request).expect("should step");
+
+    let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone())
+        .expect("should be delegator");
+
+    assert_eq!(
+        delegator.staked_amount().to_owned(),
+        U512::from(DELEGATOR_1_STAKE)
+    );
+
+    // step until validator receives rewards.
+    for _ in 0..3 {
+        // auction delay is 3.
+        let step_request = StepRequestBuilder::new()
+            .with_parent_state_hash(builder.get_post_state_hash())
+            .with_protocol_version(ProtocolVersion::V1_0_0)
+            .with_next_era_id(builder.get_era() + 1)
+            .build();
+
+        builder.step(step_request).expect("should step");
+    }
+    // assert that the validator should indeed receive rewards and that
+    // the delegator is scheduled to receive rewards this era.
+
+    let auction_hash = builder.get_auction_contract_hash();
+    let seigniorage_snapshot: SeigniorageRecipientsSnapshot =
+        builder.get_value(auction_hash, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY);
+
+    let validator_seigniorage = seigniorage_snapshot
+        .get(&builder.get_era())
+        .expect("should be seigniorage for era")
+        .get(&VALIDATOR_1)
+        .expect("should be validator seigniorage for era");
+
+    let delegator_seigniorage = validator_seigniorage
+        .delegator_stake()
+        .get(&DELEGATOR_1)
+        .expect("should be delegator seigniorage");
+    assert_eq!(*delegator_seigniorage, U512::from(DELEGATOR_1_STAKE));
+
+    // undelegate in the first era that the delegator will receive rewards.
+    undelegate(
+        &mut builder,
+        *DELEGATOR_1_ADDR,
+        DELEGATOR_1.clone(),
+        VALIDATOR_1.clone(),
+        U512::from(DELEGATOR_1_STAKE),
+    );
+    let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
+    assert!(delegator.is_none());
+
+    let withdraws = builder.get_withdraws();
+    let unbonding_purses = withdraws
+        .get(&VALIDATOR_1_ADDR)
+        .expect("should have validator entry");
+    let delegator_unbond_amount = unbonding_purses
+        .iter()
+        .find(|up| *up.unbonder_public_key() == DELEGATOR_1.clone())
+        .expect("should be unbonding purse");
+
+    assert_eq!(
+        *delegator_unbond_amount.amount(),
+        U512::from(DELEGATOR_1_STAKE),
+        "unbond purse amount should match staked amount"
+    );
+
+    // validator receives rewards after this step.
+    let step_request = StepRequestBuilder::new()
+        .with_parent_state_hash(builder.get_post_state_hash())
+        .with_protocol_version(ProtocolVersion::V1_0_0)
+        .with_reward_item(RewardItem::new(VALIDATOR_1.clone(), BLOCK_REWARD))
+        .with_next_era_id(builder.get_era() + 1)
+        .build();
+
+    builder.step(step_request).expect("should step");
+
+    // Delegator should not remain delegated even though they were eligible for rewards in the
+    // second era.
+    let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
+    assert!(delegator.is_none());
 }

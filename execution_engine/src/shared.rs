@@ -1,11 +1,8 @@
-#![allow(missing_docs)]
-
+//! The shared logic of the execution engine.
 pub mod additive_map;
-#[macro_use]
-pub mod gas;
+pub mod execution_journal;
 pub mod host_function_costs;
 pub mod logging;
-pub mod motes;
 pub mod newtypes;
 pub mod opcode_costs;
 pub mod storage_costs;

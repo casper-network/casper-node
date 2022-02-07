@@ -1,3 +1,4 @@
+//!  This module contains all the execution related code.
 pub mod balance;
 pub mod deploy_item;
 pub mod engine_config;
@@ -8,11 +9,11 @@ pub mod execute_request;
 pub mod execution_effect;
 pub mod execution_result;
 pub mod genesis;
+pub mod get_bids;
 pub mod op;
 pub mod query;
 pub mod run_genesis_request;
 pub mod step;
-pub mod system_contract_cache;
 mod transfer;
 pub mod upgrade;
 
@@ -24,10 +25,12 @@ use std::{
     rc::Rc,
 };
 
+use num::Zero;
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
 use tracing::{debug, error};
 
+use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::ToBytes,
@@ -43,23 +46,24 @@ use casper_types::{
         CallStackElement, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, ApiError, BlockTime, CLValue, Contract, ContractHash, DeployHash, DeployInfo,
-    Key, KeyTag, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
+    Gas, Key, KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef,
+    U512,
 };
 
 pub use self::{
     balance::{BalanceRequest, BalanceResult},
     deploy_item::DeployItem,
-    engine_config::{EngineConfig, DEFAULT_MAX_QUERY_DEPTH},
+    engine_config::{EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT},
     era_validators::{GetEraValidatorsError, GetEraValidatorsRequest},
     error::Error,
-    executable_deploy_item::ExecutableDeployItem,
+    executable_deploy_item::{ExecutableDeployItem, ExecutableDeployItemIdentifier},
     execute_request::ExecuteRequest,
     execution::Error as ExecError,
-    execution_result::{ExecutionResult, ExecutionResults, ForcedTransferResult},
+    execution_result::{ExecutionResult, ForcedTransferResult},
     genesis::{ExecConfig, GenesisAccount, GenesisSuccess, SystemContractRegistry},
-    query::{GetBidsRequest, GetBidsResult, QueryRequest, QueryResult},
+    get_bids::{GetBidsRequest, GetBidsResult},
+    query::{QueryRequest, QueryResult},
     step::{RewardItem, SlashItem, StepError, StepRequest, StepSuccess},
-    system_contract_cache::SystemContractCache,
     transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
     upgrade::{UpgradeConfig, UpgradeSuccess},
 };
@@ -67,39 +71,55 @@ use crate::{
     core::{
         engine_state::{
             executable_deploy_item::DeployKind,
-            execution_result::ExecutionResultBuilder,
+            execution_result::{ExecutionResultBuilder, ExecutionResults},
             genesis::GenesisInstaller,
             upgrade::{ProtocolUpgradeError, SystemUpgrader},
         },
         execution::{self, DirectSystemContractCall, Executor},
+        runtime::RuntimeStack,
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
     shared::{
-        additive_map::AdditiveMap,
-        gas::Gas,
-        motes::Motes,
-        newtypes::{Blake2bHash, CorrelationId},
-        transform::Transform,
+        additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform,
         wasm_prep::Preprocessor,
     },
     storage::{
-        global_state::{lmdb::LmdbGlobalState, StateProvider},
+        global_state::{
+            lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
+        },
         trie::Trie,
     },
 };
 
+/// The maximum amount of motes that payment code execution can cost.
 pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
+/// The maximum amount of gas a payment code can use.
+///
+/// This value also indicates the minimum balance of the main purse of an account when
+/// executing payment code, as such amount is held as collateral to compensate for
+/// code execution.
 pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT));
 
 /// Gas/motes conversion rate of wasmless transfer cost is always 1 regardless of what user wants to
 /// pay.
 pub const WASMLESS_TRANSFER_FIXED_GAS_PRICE: u64 = 1;
 
+/// Main implementation of an execution engine state.
+///
+/// Takes an engine's configuration and a provider of a state (aka the global state) to operate on.
+/// Methods implemented on this structure are the external API intended to be used by the users such
+/// as the node, test framework, and others.
 #[derive(Debug)]
 pub struct EngineState<S> {
     config: EngineConfig,
-    system_contract_cache: SystemContractCache,
     state: S,
+}
+
+impl EngineState<ScratchGlobalState> {
+    /// Returns the inner state
+    pub fn into_inner(self) -> ScratchGlobalState {
+        self.state
+    }
 }
 
 impl EngineState<LmdbGlobalState> {
@@ -110,34 +130,63 @@ impl EngineState<LmdbGlobalState> {
         }
         Ok(())
     }
+
+    /// Provide a local cached-only version of engine-state.
+    pub fn get_scratch_engine_state(&self) -> EngineState<ScratchGlobalState> {
+        EngineState {
+            config: self.config,
+            state: self.state.create_scratch(),
+        }
+    }
+
+    /// Writes state cached in an EngineState<ScratchEngineState> to LMDB.
+    pub fn write_scratch_to_lmdb(
+        &self,
+        state_root_hash: Digest,
+        scratch_global_state: ScratchGlobalState,
+    ) -> Result<Digest, Error> {
+        let stored_values = scratch_global_state.into_inner();
+        self.state
+            .put_stored_values(CorrelationId::new(), state_root_hash, stored_values)
+            .map_err(Into::into)
+    }
 }
 
 impl<S> EngineState<S>
 where
-    S: StateProvider,
+    S: StateProvider + CommitProvider,
     S::Error: Into<execution::Error>,
 {
+    /// Creates new engine state.
     pub fn new(state: S, config: EngineConfig) -> EngineState<S> {
-        let system_contract_cache = Default::default();
-        EngineState {
-            config,
-            system_contract_cache,
-            state,
-        }
+        EngineState { config, state }
     }
 
+    /// Returns engine config.
     pub fn config(&self) -> &EngineConfig {
         &self.config
     }
 
+    /// Updates current engine config with a new instance.
     pub fn update_config(&mut self, new_config: EngineConfig) {
         self.config = new_config
     }
 
+    /// Commits genesis process.
+    ///
+    /// This process is run only once per network to initiate the system. By definition users are
+    /// unable to execute smart contracts on a network without a genesis.
+    ///
+    /// Takes genesis configuration passed through [`ExecConfig`] and creates the system contracts,
+    /// sets up the genesis accounts, and sets up the auction state based on that. At the end of
+    /// the process, [`SystemContractRegistry`] is persisted under the special global state space
+    /// [`Key::SystemContractRegistry`].
+    ///
+    /// Returns a [`GenesisSuccess`] for a successful operation, or an error otherwise.
     pub fn commit_genesis(
         &self,
         correlation_id: CorrelationId,
-        genesis_config_hash: Blake2bHash,
+        genesis_config_hash: Digest,
         protocol_version: ProtocolVersion,
         ee_config: &ExecConfig,
     ) -> Result<GenesisSuccess, Error> {
@@ -146,7 +195,7 @@ where
 
         let tracking_copy = match self.tracking_copy(initial_root_hash) {
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
-            // NOTE: As genesis is ran once per instance condition below is considered programming
+            // NOTE: As genesis is run once per instance condition below is considered programming
             // error
             Ok(None) => panic!("state has not been initialized properly"),
             Err(error) => return Err(error),
@@ -202,6 +251,11 @@ where
         })
     }
 
+    /// Commits upgrade.
+    ///
+    /// This process applies changes to the global state.
+    ///
+    /// Returns [`UpgradeSuccess`].
     pub fn commit_upgrade(
         &self,
         correlation_id: CorrelationId,
@@ -394,16 +448,19 @@ where
         })
     }
 
-    pub fn tracking_copy(
-        &self,
-        hash: Blake2bHash,
-    ) -> Result<Option<TrackingCopy<S::Reader>>, Error> {
+    /// Creates a new tracking copy instance.
+    pub fn tracking_copy(&self, hash: Digest) -> Result<Option<TrackingCopy<S::Reader>>, Error> {
         match self.state.checkout(hash).map_err(Into::into)? {
             Some(tc) => Ok(Some(TrackingCopy::new(tc))),
             None => Ok(None),
         }
     }
 
+    /// Executes a query.
+    ///
+    /// For a given root [`Key`] it does a path lookup through the named keys.
+    ///
+    /// Returns the value stored under a [`URef`] wrapped in a [`QueryResult`].
     pub fn run_query(
         &self,
         correlation_id: CorrelationId,
@@ -427,6 +484,13 @@ where
             .into())
     }
 
+    /// Runs a deploy execution request.
+    ///
+    /// For each deploy stored in the request it will execute it.
+    ///
+    /// Currently a special shortcut is taken to distinguish a native transfer, from a deploy.
+    ///
+    /// Return execution results which contains results from each deploy ran.
     pub fn run_execute(
         &self,
         correlation_id: CorrelationId,
@@ -499,10 +563,11 @@ where
         Ok(account)
     }
 
+    /// Get the balance of a passed purse referenced by its [`URef`].
     pub fn get_purse_balance(
         &self,
         correlation_id: CorrelationId,
-        state_hash: Blake2bHash,
+        state_hash: Digest,
         purse_uref: URef,
     ) -> Result<BalanceResult, Error> {
         let tracking_copy = match self.tracking_copy(state_hash)? {
@@ -518,13 +583,19 @@ where
         Ok(BalanceResult::Success { motes, proof })
     }
 
+    /// Executes a native transfer.
+    ///
+    /// Native transfers do not involve WASM at all, and also skip executing payment code.
+    /// Therefore this is the fastest and cheapest way to transfer tokens from account to account.
+    ///
+    /// Returns an [`ExecutionResult`] for a successful native transfer.
     #[allow(clippy::too_many_arguments)]
     pub fn transfer(
         &self,
         correlation_id: CorrelationId,
         executor: &Executor,
         protocol_version: ProtocolVersion,
-        prestate_hash: Blake2bHash,
+        prestate_hash: Digest,
         blocktime: BlockTime,
         deploy_item: DeployItem,
         proposer: PublicKey,
@@ -551,7 +622,7 @@ where
 
         let base_key = Key::Account(deploy_item.address);
 
-        let account_public_key = match base_key.into_account() {
+        let account_hash = match base_key.into_account() {
             Some(account_addr) => account_addr,
             None => {
                 return Ok(ExecutionResult::precondition_failure(
@@ -564,7 +635,7 @@ where
 
         let account = match self.get_authorized_account(
             correlation_id,
-            account_public_key,
+            account_hash,
             &authorization_keys,
             Rc::clone(&tracking_copy),
         ) {
@@ -697,10 +768,7 @@ where
             proposer_main_purse_balance_key,
         ) {
             Ok(execution_result) => execution_result,
-            Err(error) => {
-                let exec_error = ExecError::from(error);
-                ExecutionResult::precondition_failure(exec_error.into())
-            }
+            Err(error) => ExecutionResult::precondition_failure(error),
         };
 
         // All wasmless transfer preconditions are met.
@@ -713,13 +781,17 @@ where
             Ok(mode) => match mode {
                 TransferTargetMode::Unknown | TransferTargetMode::PurseExists(_) => { /* noop */ }
                 TransferTargetMode::CreateAccount(public_key) => {
-                    let create_purse_call_stack = {
+                    let create_purse_stack = {
                         let system = CallStackElement::session(PublicKey::System.to_account_hash());
                         let mint = CallStackElement::stored_contract(
                             mint_contract.contract_package_hash(),
                             *mint_contract_hash,
                         );
-                        vec![system, mint]
+                        let mut stack =
+                            RuntimeStack::new(self.config.max_runtime_call_stack_height() as usize);
+                        stack.push(system)?;
+                        stack.push(mint)?;
+                        stack
                     };
                     let (maybe_uref, execution_result): (Option<URef>, ExecutionResult) = executor
                         .exec_system_contract(
@@ -738,8 +810,7 @@ where
                             correlation_id,
                             Rc::clone(&tracking_copy),
                             Phase::Session,
-                            SystemContractCache::clone(&self.system_contract_cache),
-                            create_purse_call_stack,
+                            create_purse_stack,
                         );
                     match maybe_uref {
                         Some(main_purse) => {
@@ -813,13 +884,17 @@ where
                 Some(_) => {}
             }
 
-            let get_payment_purse_call_stack = {
+            let get_payment_purse_stack = {
                 let system = CallStackElement::session(PublicKey::System.to_account_hash());
                 let handle_payment = CallStackElement::stored_contract(
                     handle_payment_contract.contract_package_hash(),
                     *handle_payment_contract_hash,
                 );
-                vec![system, handle_payment]
+                let mut stack =
+                    RuntimeStack::new(self.config.max_runtime_call_stack_height() as usize);
+                stack.push(system)?;
+                stack.push(handle_payment)?;
+                stack
             };
             let (maybe_payment_uref, get_payment_purse_result): (Option<URef>, ExecutionResult) =
                 executor.exec_system_contract(
@@ -838,8 +913,7 @@ where
                     correlation_id,
                     Rc::clone(&tracking_copy),
                     Phase::Payment,
-                    SystemContractCache::clone(&self.system_contract_cache),
-                    get_payment_purse_call_stack,
+                    get_payment_purse_stack,
                 );
 
             payment_uref = match maybe_payment_uref {
@@ -866,13 +940,17 @@ where
                 Err(error) => return Ok(make_charged_execution_failure(Error::Exec(error.into()))),
             };
 
-            let transfer_to_payment_purse_call_stack = {
+            let transfer_to_payment_purse_stack = {
                 let system = CallStackElement::session(PublicKey::System.to_account_hash());
                 let mint = CallStackElement::stored_contract(
                     mint_contract.contract_package_hash(),
                     *mint_contract_hash,
                 );
-                vec![system, mint]
+                let mut stack =
+                    RuntimeStack::new(self.config.max_runtime_call_stack_height() as usize);
+                stack.push(system)?;
+                stack.push(mint)?;
+                stack
             };
             let (actual_result, payment_result): (Option<Result<(), u8>>, ExecutionResult) =
                 executor.exec_system_contract(
@@ -891,8 +969,7 @@ where
                     correlation_id,
                     Rc::clone(&tracking_copy),
                     Phase::Payment,
-                    SystemContractCache::clone(&self.system_contract_cache),
-                    transfer_to_payment_purse_call_stack,
+                    transfer_to_payment_purse_stack,
                 );
 
             if let Some(error) = payment_result.as_error().cloned() {
@@ -961,13 +1038,16 @@ where
             }
         };
 
-        let transfer_call_stack = {
+        let transfer_stack = {
             let deploy_account = CallStackElement::session(deploy_item.address);
             let mint = CallStackElement::stored_contract(
                 mint_contract.contract_package_hash(),
                 *mint_contract_hash,
             );
-            vec![deploy_account, mint]
+            let mut stack = RuntimeStack::new(self.config.max_runtime_call_stack_height() as usize);
+            stack.push(deploy_account)?;
+            stack.push(mint)?;
+            stack
         };
         let (_, mut session_result): (Option<Result<(), u8>>, ExecutionResult) = executor
             .exec_system_contract(
@@ -986,8 +1066,7 @@ where
                 correlation_id,
                 Rc::clone(&tracking_copy),
                 Phase::Session,
-                SystemContractCache::clone(&self.system_contract_cache),
-                transfer_call_stack,
+                transfer_stack,
             );
 
         // User is already charged fee for wasmless contract, and we need to make sure we will not
@@ -1032,13 +1111,17 @@ where
             let tc = tracking_copy.borrow();
             let finalization_tc = Rc::new(RefCell::new(tc.fork()));
 
-            let finalize_payment_call_stack = {
+            let finalize_payment_stack = {
                 let system = CallStackElement::session(PublicKey::System.to_account_hash());
                 let handle_payment = CallStackElement::stored_contract(
                     handle_payment_contract.contract_package_hash(),
                     *handle_payment_contract_hash,
                 );
-                vec![system, handle_payment]
+                let mut stack =
+                    RuntimeStack::new(self.config.max_runtime_call_stack_height() as usize);
+                stack.push(system)?;
+                stack.push(handle_payment)?;
+                stack
             };
             let extra_keys = [Key::from(payment_uref), Key::from(proposer_purse)];
 
@@ -1059,8 +1142,7 @@ where
                     correlation_id,
                     finalization_tc,
                     Phase::FinalizePayment,
-                    SystemContractCache::clone(&self.system_contract_cache),
-                    finalize_payment_call_stack,
+                    finalize_payment_stack,
                 );
 
             finalize_result
@@ -1084,7 +1166,7 @@ where
         }
 
         if session_result.is_success() {
-            session_result = session_result.with_effect(tracking_copy.borrow_mut().effect())
+            session_result = session_result.with_journal(tracking_copy.borrow().execution_journal())
         }
 
         let mut execution_result_builder = ExecutionResultBuilder::new();
@@ -1093,19 +1175,29 @@ where
         execution_result_builder.set_finalize_execution_result(finalize_result);
 
         let execution_result = execution_result_builder
-            .build(tracking_copy.borrow().reader(), correlation_id)
+            .build()
             .expect("ExecutionResultBuilder not initialized properly");
 
         Ok(execution_result)
     }
 
+    /// Executes a deploy.
+    ///
+    /// A deploy execution consists of running the payment code, which is expected to deposit funds
+    /// into the payment purse, and then running the session code with a specific gas limit. For
+    /// running payment code, we lock [`MAX_PAYMENT`] amount of motes from the user as collateral.
+    /// If both the payment code and the session code execute successfully, a fraction of the
+    /// unspent collateral will be transferred back to the proposer of the deploy, as specified
+    /// in the request.
+    ///
+    /// Returns [`ExecutionResult`], or an error condition.
     #[allow(clippy::too_many_arguments)]
     pub fn deploy(
         &self,
         correlation_id: CorrelationId,
         executor: &Executor,
         protocol_version: ProtocolVersion,
-        prestate_hash: Blake2bHash,
+        prestate_hash: Digest,
         blocktime: BlockTime,
         deploy_item: DeployItem,
         proposer: PublicKey,
@@ -1263,7 +1355,10 @@ where
                 }
             };
 
-            let payment_call_stack = payment_metadata.initial_call_stack()?;
+            let payment_stack = RuntimeStack::from_call_stack_elements(
+                payment_metadata.initial_call_stack()?,
+                self.config.max_runtime_call_stack_height() as usize,
+            )?;
 
             // payment_code_spec_2: execute payment code
             let payment_base_key = payment_metadata.base_key;
@@ -1278,7 +1373,6 @@ where
             let payment_entry_point = payment_metadata.entry_point;
 
             let payment_args = payment.args().clone();
-            let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
             if is_standard_payment {
                 executor.exec_standard_payment(
@@ -1295,8 +1389,7 @@ where
                     correlation_id,
                     Rc::clone(&tracking_copy),
                     phase,
-                    system_contract_cache,
-                    payment_call_stack,
+                    payment_stack,
                 )
             } else {
                 executor.exec(
@@ -1314,9 +1407,8 @@ where
                     correlation_id,
                     Rc::clone(&tracking_copy),
                     phase,
-                    system_contract_cache,
                     &payment_package,
-                    payment_call_stack,
+                    payment_stack,
                 )
             }
         };
@@ -1394,25 +1486,25 @@ where
             proposer_account.main_purse()
         };
 
+        let proposer_main_purse_balance_key = {
+            // Get reward purse Key from handle payment contract
+            // payment_code_spec_6: system contract validity
+            match tracking_copy
+                .borrow_mut()
+                .get_purse_balance_key(correlation_id, proposer_purse.into())
+            {
+                Ok(key) => key,
+                Err(error) => {
+                    return Ok(ExecutionResult::precondition_failure(error.into()));
+                }
+            }
+        };
+
         if let Some(forced_transfer) =
             payment_result.check_forced_transfer(payment_purse_balance, deploy_item.gas_price)
         {
             // Get rewards purse balance key
             // payment_code_spec_6: system contract validity
-            let proposer_main_purse_balance_key = {
-                // Get reward purse Key from handle payment contract
-                // payment_code_spec_6: system contract validity
-                match tracking_copy
-                    .borrow_mut()
-                    .get_purse_balance_key(correlation_id, proposer_purse.into())
-                {
-                    Ok(key) => key,
-                    Err(error) => {
-                        return Ok(ExecutionResult::precondition_failure(error.into()));
-                    }
-                }
-            };
-
             let error = match forced_transfer {
                 ForcedTransferResult::InsufficientPayment => Error::InsufficientPayment,
                 ForcedTransferResult::GasConversionOverflow => Error::GasConversionOverflow,
@@ -1439,10 +1531,7 @@ where
                 proposer_main_purse_balance_key,
             ) {
                 Ok(execution_result) => return Ok(execution_result),
-                Err(error) => {
-                    let exec_error = ExecError::from(error);
-                    return Ok(ExecutionResult::precondition_failure(exec_error.into()));
-                }
+                Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
             }
         };
 
@@ -1453,7 +1542,10 @@ where
         let post_payment_tracking_copy = tracking_copy.borrow();
         let session_tracking_copy = Rc::new(RefCell::new(post_payment_tracking_copy.fork()));
 
-        let session_call_stack = session_metadata.initial_call_stack()?;
+        let session_stack = RuntimeStack::from_call_stack_elements(
+            session_metadata.initial_call_stack()?,
+            self.config.max_runtime_call_stack_height() as usize,
+        )?;
 
         let session_base_key = session_metadata.base_key;
         let session_module = session_metadata.module;
@@ -1483,7 +1575,6 @@ where
                         ))
                     }
                 };
-            let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
             executor.exec(
                 session_module,
@@ -1500,9 +1591,8 @@ where
                 correlation_id,
                 Rc::clone(&session_tracking_copy),
                 Phase::Session,
-                system_contract_cache,
                 &session_package,
-                session_call_stack,
+                session_stack,
             )
         };
         debug!("Session result: {:?}", session_result);
@@ -1524,12 +1614,36 @@ where
             );
         }
 
+        // Session execution was zero cost.
+        // Check if the payment purse can cover the minimum floor for session execution.
+        if session_result.cost().is_zero() && payment_purse_balance < max_payment_cost {
+            // When session code structure is valid but still has 0 cost we should propagate the
+            // error.
+            let error = session_result
+                .as_error()
+                .cloned()
+                .unwrap_or(Error::InsufficientPayment);
+
+            match ExecutionResult::new_payment_code_error(
+                error,
+                max_payment_cost,
+                account_main_purse_balance,
+                session_result.cost(),
+                account_main_purse_balance_key,
+                proposer_main_purse_balance_key,
+            ) {
+                Ok(execution_result) => return Ok(execution_result),
+                Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
+            }
+        }
+
         let post_session_rc = if session_result.is_failure() {
             // If session code fails we do not include its effects,
             // so we start again from the post-payment state.
             Rc::new(RefCell::new(post_payment_tracking_copy.fork()))
         } else {
-            session_result = session_result.with_effect(session_tracking_copy.borrow().effect());
+            session_result =
+                session_result.with_journal(session_tracking_copy.borrow().execution_journal());
             session_tracking_copy
         };
 
@@ -1595,15 +1709,18 @@ where
             let mut handle_payment_keys = handle_payment_contract.named_keys().to_owned();
 
             let gas_limit = Gas::new(U512::from(std::u64::MAX));
-            let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
-            let handle_payment_call_stack = {
+            let handle_payment_stack = {
                 let deploy_account = CallStackElement::session(deploy_item.address);
                 let handle_payment = CallStackElement::stored_contract(
                     handle_payment_contract.contract_package_hash(),
                     *handle_payment_contract_hash,
                 );
-                vec![deploy_account, handle_payment]
+                let mut stack =
+                    RuntimeStack::new(self.config.max_runtime_call_stack_height() as usize);
+                stack.push(deploy_account)?;
+                stack.push(handle_payment)?;
+                stack
             };
             let extra_keys = [
                 payment_purse_key,
@@ -1627,8 +1744,7 @@ where
                     correlation_id,
                     finalization_tc,
                     Phase::FinalizePayment,
-                    system_contract_cache,
-                    handle_payment_call_stack,
+                    handle_payment_stack,
                 );
 
             finalize_result
@@ -1638,7 +1754,7 @@ where
 
         // We panic here to indicate that the builder was not used properly.
         let ret = execution_result_builder
-            .build(tracking_copy.borrow().reader(), correlation_id)
+            .build()
             .expect("ExecutionResultBuilder not initialized properly");
 
         // NOTE: payment_code_spec_5_a is enforced in execution_result_builder.build()
@@ -1647,58 +1763,66 @@ where
         Ok(ret)
     }
 
+    /// Apply effects of the execution.
+    ///
+    /// This is also referred to as "committing" the effects into the global state. This method has
+    /// to be run after an execution has been made to persists the effects of it.
+    ///
+    /// Returns new state root hash.
     pub fn apply_effect(
         &self,
         correlation_id: CorrelationId,
-        pre_state_hash: Blake2bHash,
+        pre_state_hash: Digest,
         effects: AdditiveMap<Key, Transform>,
-    ) -> Result<Blake2bHash, Error>
-    where
-        Error: From<S::Error>,
-    {
+    ) -> Result<Digest, Error> {
         self.state
             .commit(correlation_id, pre_state_hash, effects)
-            .map_err(Error::from)
+            .map_err(|err| Error::Exec(err.into()))
     }
 
-    pub fn read_trie(
+    /// Gets a trie object for given state root hash.
+    pub fn get_trie(
         &self,
         correlation_id: CorrelationId,
-        trie_key: Blake2bHash,
+        trie_key: Digest,
     ) -> Result<Option<Trie<Key, StoredValue>>, Error>
     where
         Error: From<S::Error>,
     {
         self.state
-            .read_trie(correlation_id, &trie_key)
+            .get_trie(correlation_id, &trie_key)
             .map_err(Error::from)
     }
 
+    /// Puts a trie and finds missing descendant trie keys.
     pub fn put_trie_and_find_missing_descendant_trie_keys(
         &self,
         correlation_id: CorrelationId,
         trie: &Trie<Key, StoredValue>,
-    ) -> Result<Vec<Blake2bHash>, Error>
+    ) -> Result<Vec<Digest>, Error>
     where
         Error: From<S::Error>,
     {
         let inserted_trie_key = self.state.put_trie(correlation_id, trie)?;
-        let missing_descendant_trie_keys = self
-            .state
-            .missing_trie_keys(correlation_id, vec![inserted_trie_key])?;
+        let missing_descendant_trie_keys =
+            self.state
+                .missing_trie_keys(correlation_id, vec![inserted_trie_key], false)?;
         Ok(missing_descendant_trie_keys)
     }
 
+    /// Performs a lookup for a list of missing root hashes and optionally performs an integrity
+    /// check on each node
     pub fn missing_trie_keys(
         &self,
         correlation_id: CorrelationId,
-        trie_keys: Vec<Blake2bHash>,
-    ) -> Result<Vec<Blake2bHash>, Error>
+        trie_keys: Vec<Digest>,
+        check_integrity: bool,
+    ) -> Result<Vec<Digest>, Error>
     where
         Error: From<S::Error>,
     {
         self.state
-            .missing_trie_keys(correlation_id, trie_keys)
+            .missing_trie_keys(correlation_id, trie_keys, check_integrity)
             .map_err(Error::from)
     }
 
@@ -1762,16 +1886,19 @@ where
                 .into_bytes()
                 .map_err(Error::from)?
                 .to_vec();
-            DeployHash::new(Blake2bHash::new(&bytes).value())
+            DeployHash::new(Digest::hash(&bytes).value())
         };
 
-        let get_era_validators_call_stack = {
+        let get_era_validators_stack = {
             let system = CallStackElement::session(PublicKey::System.to_account_hash());
             let auction = CallStackElement::stored_contract(
                 auction_contract.contract_package_hash(),
                 *auction_contract_hash,
             );
-            vec![system, auction]
+            let mut stack = RuntimeStack::new(self.config.max_runtime_call_stack_height() as usize);
+            stack.push(system)?;
+            stack.push(auction)?;
+            stack
         };
         let (era_validators, execution_result): (Option<EraValidators>, ExecutionResult) = executor
             .exec_system_contract(
@@ -1790,8 +1917,7 @@ where
                 correlation_id,
                 Rc::clone(&tracking_copy),
                 Phase::Session,
-                SystemContractCache::clone(&self.system_contract_cache),
-                get_era_validators_call_stack,
+                get_era_validators_stack,
             );
 
         if let Some(error) = execution_result.take_error() {
@@ -1804,6 +1930,7 @@ where
         }
     }
 
+    /// Gets current bids from the auction system.
     pub fn get_bids(
         &self,
         correlation_id: CorrelationId,
@@ -1833,6 +1960,7 @@ where
         Ok(GetBidsResult::Success { bids })
     }
 
+    /// Executes a step request.
     pub fn commit_step(
         &self,
         correlation_id: CorrelationId,
@@ -1894,9 +2022,10 @@ where
         let mut named_keys = auction_contract.named_keys().to_owned();
         let gas_limit = Gas::new(U512::from(std::u64::MAX));
         let deploy_hash = {
-            // seeds address generator w/ protocol version
-            let bytes: Vec<u8> = step_request.protocol_version.value().into_bytes()?.to_vec();
-            DeployHash::new(Blake2bHash::new(&bytes).value())
+            // seeds address generator w/ era_end_timestamp_millis
+            let mut bytes = step_request.era_end_timestamp_millis.into_bytes()?;
+            bytes.append(&mut step_request.next_era_id.into_bytes()?);
+            DeployHash::new(Digest::hash(&bytes).value())
         };
 
         let base_key = Key::from(*auction_contract_hash);
@@ -1917,13 +2046,16 @@ where
             Ok(())
         })?;
 
-        let distribute_rewards_call_stack = {
+        let distribute_rewards_stack = {
             let system = CallStackElement::session(PublicKey::System.to_account_hash());
             let auction = CallStackElement::stored_contract(
                 auction_contract.contract_package_hash(),
                 *auction_contract_hash,
             );
-            vec![system, auction]
+            let mut stack = RuntimeStack::new(self.config.max_runtime_call_stack_height() as usize);
+            stack.push(system)?;
+            stack.push(auction)?;
+            stack
         };
         let (_, execution_result): (Option<()>, ExecutionResult) = executor.exec_system_contract(
             DirectSystemContractCall::DistributeRewards,
@@ -1941,100 +2073,46 @@ where
             correlation_id,
             Rc::clone(&tracking_copy),
             Phase::Session,
-            SystemContractCache::clone(&self.system_contract_cache),
-            distribute_rewards_call_stack,
+            distribute_rewards_stack,
         );
 
         if let Some(exec_error) = execution_result.take_error() {
             return Err(StepError::DistributeError(exec_error));
         }
 
-        let slashed_validators = match step_request.slashed_validators() {
-            Ok(slashed_validators) => slashed_validators,
-            Err(error) => {
-                error!(
-                    "failed to deserialize validator_ids for slashing: {}",
-                    error.to_string()
-                );
-                return Err(StepError::BytesRepr(error));
-            }
-        };
+        let slashed_validators: Vec<PublicKey> = step_request.slashed_validators();
 
-        let slash_args = {
-            let mut runtime_args = RuntimeArgs::new();
-            runtime_args
-                .insert(ARG_VALIDATOR_PUBLIC_KEYS, slashed_validators)
-                .map_err(|e| Error::Exec(e.into()))?;
-            runtime_args
-        };
+        if !slashed_validators.is_empty() {
+            let slash_args = {
+                let mut runtime_args = RuntimeArgs::new();
+                runtime_args
+                    .insert(ARG_VALIDATOR_PUBLIC_KEYS, slashed_validators)
+                    .map_err(|e| Error::Exec(e.into()))?;
+                runtime_args
+            };
 
-        let slash_call_stack = {
-            let system = CallStackElement::session(PublicKey::System.to_account_hash());
-            let auction = CallStackElement::stored_contract(
-                auction_contract.contract_package_hash(),
-                *auction_contract_hash,
-            );
-            vec![system, auction]
-        };
-        let (_, execution_result): (Option<()>, ExecutionResult) = executor.exec_system_contract(
-            DirectSystemContractCall::Slash,
-            system_module.clone(),
-            slash_args,
-            &mut named_keys,
-            Default::default(),
-            base_key,
-            &virtual_system_account,
-            authorization_keys.clone(),
-            BlockTime::default(),
-            deploy_hash,
-            gas_limit,
-            step_request.protocol_version,
-            correlation_id,
-            Rc::clone(&tracking_copy),
-            Phase::Session,
-            SystemContractCache::clone(&self.system_contract_cache),
-            slash_call_stack,
-        );
-
-        if let Some(exec_error) = execution_result.take_error() {
-            return Err(StepError::SlashingError(exec_error));
-        }
-
-        if step_request.run_auction {
-            let run_auction_args = RuntimeArgs::try_new(|args| {
-                args.insert(
-                    ARG_ERA_END_TIMESTAMP_MILLIS,
-                    step_request.era_end_timestamp_millis,
-                )?;
-                args.insert(
-                    ARG_EVICTED_VALIDATORS,
-                    step_request
-                        .evict_items
-                        .iter()
-                        .map(|item| item.validator_id.clone())
-                        .collect::<Vec<PublicKey>>(),
-                )?;
-                Ok(())
-            })?;
-
-            let run_auction_call_stack = {
+            let slash_stack = {
                 let system = CallStackElement::session(PublicKey::System.to_account_hash());
                 let auction = CallStackElement::stored_contract(
                     auction_contract.contract_package_hash(),
                     *auction_contract_hash,
                 );
-                vec![system, auction]
+                let mut stack =
+                    RuntimeStack::new(self.config.max_runtime_call_stack_height() as usize);
+                stack.push(system)?;
+                stack.push(auction)?;
+                stack
             };
             let (_, execution_result): (Option<()>, ExecutionResult) = executor
                 .exec_system_contract(
-                    DirectSystemContractCall::RunAuction,
-                    system_module,
-                    run_auction_args,
+                    DirectSystemContractCall::Slash,
+                    system_module.clone(),
+                    slash_args,
                     &mut named_keys,
                     Default::default(),
                     base_key,
                     &virtual_system_account,
-                    authorization_keys,
+                    authorization_keys.clone(),
                     BlockTime::default(),
                     deploy_hash,
                     gas_limit,
@@ -2042,16 +2120,66 @@ where
                     correlation_id,
                     Rc::clone(&tracking_copy),
                     Phase::Session,
-                    SystemContractCache::clone(&self.system_contract_cache),
-                    run_auction_call_stack,
+                    slash_stack,
                 );
 
             if let Some(exec_error) = execution_result.take_error() {
-                return Err(StepError::AuctionError(exec_error));
+                return Err(StepError::SlashingError(exec_error));
             }
         }
 
+        let run_auction_args = RuntimeArgs::try_new(|args| {
+            args.insert(
+                ARG_ERA_END_TIMESTAMP_MILLIS,
+                step_request.era_end_timestamp_millis,
+            )?;
+            args.insert(
+                ARG_EVICTED_VALIDATORS,
+                step_request
+                    .evict_items
+                    .iter()
+                    .map(|item| item.validator_id.clone())
+                    .collect::<Vec<PublicKey>>(),
+            )?;
+            Ok(())
+        })?;
+
+        let run_auction_stack = {
+            let system = CallStackElement::session(PublicKey::System.to_account_hash());
+            let auction = CallStackElement::stored_contract(
+                auction_contract.contract_package_hash(),
+                *auction_contract_hash,
+            );
+            let mut stack = RuntimeStack::new(self.config.max_runtime_call_stack_height() as usize);
+            stack.push(system)?;
+            stack.push(auction)?;
+            stack
+        };
+        let (_, execution_result): (Option<()>, ExecutionResult) = executor.exec_system_contract(
+            DirectSystemContractCall::RunAuction,
+            system_module,
+            run_auction_args,
+            &mut named_keys,
+            Default::default(),
+            base_key,
+            &virtual_system_account,
+            authorization_keys,
+            BlockTime::default(),
+            deploy_hash,
+            gas_limit,
+            step_request.protocol_version,
+            correlation_id,
+            Rc::clone(&tracking_copy),
+            Phase::Session,
+            run_auction_stack,
+        );
+
+        if let Some(exec_error) = execution_result.take_error() {
+            return Err(StepError::AuctionError(exec_error));
+        }
+
         let execution_effect = tracking_copy.borrow().effect();
+        let execution_journal = tracking_copy.borrow().execution_journal();
 
         // commit
         let post_state_hash = self
@@ -2059,20 +2187,21 @@ where
             .commit(
                 correlation_id,
                 step_request.pre_state_hash,
-                execution_effect.transforms.clone(),
+                execution_effect.transforms,
             )
             .map_err(Into::into)?;
 
         Ok(StepSuccess {
             post_state_hash,
-            execution_effect,
+            execution_journal,
         })
     }
 
+    /// Gets the balance of a given public key.
     pub fn get_balance(
         &self,
         correlation_id: CorrelationId,
-        state_hash: Blake2bHash,
+        state_hash: Digest,
         public_key: PublicKey,
     ) -> Result<BalanceResult, Error> {
         // Look up the account, get the main purse, and then do the existing balance check
@@ -2119,7 +2248,7 @@ where
     fn get_system_contract_registry(
         &self,
         correlation_id: CorrelationId,
-        state_root_hash: Blake2bHash,
+        state_root_hash: Digest,
     ) -> Result<SystemContractRegistry, Error> {
         let tracking_copy = match self.tracking_copy(state_root_hash)? {
             None => return Err(Error::RootNotFound(state_root_hash)),
@@ -2135,10 +2264,11 @@ where
         result
     }
 
+    /// Returns mint system contract hash.
     pub fn get_system_mint_hash(
         &self,
         correlation_id: CorrelationId,
-        state_hash: Blake2bHash,
+        state_hash: Digest,
     ) -> Result<ContractHash, Error> {
         let registry = self.get_system_contract_registry(correlation_id, state_hash)?;
         let mint_hash = registry.get(MINT).ok_or_else(|| {
@@ -2148,10 +2278,11 @@ where
         Ok(*mint_hash)
     }
 
+    /// Returns auction system contract hash.
     pub fn get_system_auction_hash(
         &self,
         correlation_id: CorrelationId,
-        state_hash: Blake2bHash,
+        state_hash: Digest,
     ) -> Result<ContractHash, Error> {
         let registry = self.get_system_contract_registry(correlation_id, state_hash)?;
         let auction_hash = registry.get(AUCTION).ok_or_else(|| {
@@ -2161,10 +2292,11 @@ where
         Ok(*auction_hash)
     }
 
+    /// Returns handle payment system contract hash.
     pub fn get_handle_payment_hash(
         &self,
         correlation_id: CorrelationId,
-        state_hash: Blake2bHash,
+        state_hash: Digest,
     ) -> Result<ContractHash, Error> {
         let registry = self.get_system_contract_registry(correlation_id, state_hash)?;
         let handle_payment = registry.get(HANDLE_PAYMENT).ok_or_else(|| {
@@ -2174,10 +2306,11 @@ where
         Ok(*handle_payment)
     }
 
+    /// Returns standard payment system contract hash.
     pub fn get_standard_payment_hash(
         &self,
         correlation_id: CorrelationId,
-        state_hash: Blake2bHash,
+        state_hash: Digest,
     ) -> Result<ContractHash, Error> {
         let registry = self.get_system_contract_registry(correlation_id, state_hash)?;
         let standard_payment = registry.get(STANDARD_PAYMENT).ok_or_else(|| {

@@ -7,10 +7,10 @@ use std::{collections::HashMap, fmt::Debug, time::Duration};
 
 use datasize::DataSize;
 use prometheus::Registry;
-use smallvec::smallvec;
 use tracing::{debug, error, info};
 
-use casper_execution_engine::{shared::newtypes::Blake2bHash, storage::trie::Trie};
+use casper_execution_engine::storage::trie::Trie;
+use casper_hashing::Digest;
 use casper_types::{Key, StoredValue};
 
 use crate::{
@@ -27,7 +27,7 @@ use crate::{
 
 pub(crate) use config::Config;
 pub(crate) use event::{Event, FetchResult};
-use metrics::FetcherMetrics;
+use metrics::Metrics;
 
 /// A helper trait constraining `Fetcher` compatible reactor events.
 pub(crate) trait ReactorEventT<T>:
@@ -175,7 +175,7 @@ where
     get_from_peer_timeout: Duration,
     responders: HashMap<T::Id, HashMap<NodeId, Vec<FetchResponder<T>>>>,
     #[data_size(skip)]
-    metrics: FetcherMetrics,
+    metrics: Metrics,
 }
 
 impl<T: Item> Fetcher<T> {
@@ -187,7 +187,7 @@ impl<T: Item> Fetcher<T> {
         Ok(Fetcher {
             get_from_peer_timeout: config.get_from_peer_timeout().into(),
             responders: HashMap::new(),
-            metrics: FetcherMetrics::new(name, registry)?,
+            metrics: Metrics::new(name, registry)?,
         })
     }
 }
@@ -211,7 +211,7 @@ impl ItemFetcher<Deploy> for Fetcher<Deploy> {
         peer: NodeId,
     ) -> Effects<Event<Deploy>> {
         effect_builder
-            .get_deploys_from_storage(smallvec![id])
+            .get_deploys_from_storage(vec![id])
             .event(move |mut results| Event::GetFromStorageResult {
                 id,
                 peer,
@@ -279,7 +279,7 @@ type GlobalStorageTrie = Trie<Key, StoredValue>;
 impl ItemFetcher<GlobalStorageTrie> for Fetcher<GlobalStorageTrie> {
     fn responders(
         &mut self,
-    ) -> &mut HashMap<Blake2bHash, HashMap<NodeId, Vec<FetchResponder<GlobalStorageTrie>>>> {
+    ) -> &mut HashMap<Digest, HashMap<NodeId, Vec<FetchResponder<GlobalStorageTrie>>>> {
         &mut self.responders
     }
 
@@ -290,16 +290,24 @@ impl ItemFetcher<GlobalStorageTrie> for Fetcher<GlobalStorageTrie> {
     fn get_from_storage<REv: ReactorEventT<GlobalStorageTrie>>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        id: Blake2bHash,
+        id: Digest,
         peer: NodeId,
     ) -> Effects<Event<GlobalStorageTrie>> {
-        effect_builder
-            .read_trie(id)
-            .event(move |maybe_trie| Event::GetFromStorageResult {
+        async move {
+            let maybe_trie = match effect_builder.get_trie(id).await {
+                Ok(maybe_trie) => maybe_trie,
+                Err(error) => {
+                    error!(?error, "get_trie_request");
+                    None
+                }
+            };
+            Event::GetFromStorageResult {
                 id,
                 peer,
                 maybe_item: Box::new(maybe_trie),
-            })
+            }
+        }
+        .event(std::convert::identity)
     }
 }
 

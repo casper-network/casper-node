@@ -1,29 +1,30 @@
 [package]
 name = "casper-engine-test-support"
-version = "1.0.0" # when updating, also update 'html_root_url' in lib.rs
+version = "2.0.3" # when updating, also update 'html_root_url' in lib.rs
 authors = ["Fraser Hutchison <fraser@casperlabs.io>"]
 edition = "2018"
 description = "Library to support testing of Wasm smart contracts for use on the Casper network."
-readme = "README.md"
 documentation = "https://docs.rs/casper-engine-test-support"
+readme = "README.md"
 homepage = "https://casperlabs.io"
 repository = "https://github.com/CasperLabs/casper-node/tree/master/execution_engine_testing/test_support"
-license-file = "../../LICENSE"
+license = "Apache-2.0"
 
 [dependencies]
-casper-contract = { version = "1.0.0", path = "../../smart_contracts/contract", default-features = false, features = ["std"] }
-casper-execution-engine = { version = "1.0.0", path = "../../execution_engine", features = ["gens"] }
-casper-types = { version = "1.0.0", path = "../../types", default-features = false, features = ["std"] }
+casper-execution-engine = { version = "1.4.3", path = "../../execution_engine", features = ["test-support"] }
+casper-hashing = { version = "1.4.2", path = "../../hashing" }
+casper-types = { version = "1.4.5", path = "../../types" }
 lmdb = "0.8.0"
-log = "0.4.8"
+log = "0.4.14"
 num-rational = "0.4.0"
-num-traits = "0.2.10"
-once_cell = "1.5.2"
-rand = "0.8.3"
+num-traits = "0.2.14"
+once_cell = "1.8.0"
+rand = "0.8.4"
 
 [dev-dependencies]
-version-sync = "0.9"
+version-sync = "0.9.3"
 
 [features]
 use-as-wasm = []
-test-support = ["casper-contract/test-support"]
+# deprecated - has no effect
+test-support = []

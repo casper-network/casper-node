@@ -15,9 +15,11 @@ use tracing::{error, info};
 use warp_json_rpc::Builder;
 
 use casper_execution_engine::core::engine_state::{BalanceResult, GetBidsResult, QueryResult};
+use casper_hashing::Digest;
 use casper_types::{
-    bytesrepr::ToBytes, CLValue, Key, ProtocolVersion, PublicKey, SecretKey,
-    StoredValue as DomainStoredValue, URef, U512,
+    bytesrepr::{Bytes, ToBytes},
+    CLValue, Key, ProtocolVersion, PublicKey, SecretKey, StoredValue as DomainStoredValue, URef,
+    U512,
 };
 
 use super::{
@@ -26,7 +28,6 @@ use super::{
 };
 use crate::{
     components::rpc_server::rpcs::RpcWithOptionalParams,
-    crypto::hash::Digest,
     effect::EffectBuilder,
     reactor::QueueKind,
     rpcs::{
@@ -111,6 +112,14 @@ static QUERY_GLOBAL_STATE_RESULT: Lazy<QueryGlobalStateResult> =
         stored_value: StoredValue::Account(JsonAccount::doc_example().clone()),
         merkle_proof: MERKLE_PROOF.clone(),
     });
+static GET_TRIE_PARAMS: Lazy<GetTrieParams> = Lazy::new(|| GetTrieParams {
+    trie_key: *Block::doc_example().header().state_root_hash(),
+});
+static GET_TRIE_RESULT: Lazy<GetTrieResult> = Lazy::new(|| GetTrieResult {
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    maybe_trie_bytes: None,
+});
+
 /// Params for "state_get_item" RPC request.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -205,7 +214,7 @@ impl RpcWithParamsExt for GetItem {
             let result = Self::ResponseResult {
                 api_version,
                 stored_value,
-                merkle_proof: hex::encode(proof_bytes),
+                merkle_proof: base16::encode_lower(&proof_bytes),
             };
 
             Ok(response_builder.success(result)?)
@@ -320,7 +329,7 @@ impl RpcWithParamsExt for GetBalance {
                 }
             };
 
-            let merkle_proof = hex::encode(proof_bytes);
+            let merkle_proof = base16::encode_lower(&proof_bytes);
 
             // Return the result.
             let result = Self::ResponseResult {
@@ -428,11 +437,26 @@ impl RpcWithOptionalParamsExt for GetAuctionInfo {
                 )
                 .await;
 
-            let maybe_bids = if let Ok(GetBidsResult::Success { bids, .. }) = get_bids_result {
-                Some(bids)
-            } else {
-                None
+            let bids = match get_bids_result {
+                Ok(get_bids_result) => match get_bids_result {
+                    GetBidsResult::RootNotFound => {
+                        error!(block_hash=?block.hash(), ?state_root_hash, "failed to get bids");
+                        return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                            ErrorCode::InternalError as i64,
+                            format!("get-auction-info failed to get bids at block={:?}", block.hash()),
+                        ))?);
+                    }
+                    GetBidsResult::Success { bids } => bids,
+                },
+                Err(err) => {
+                    error!(block_hash=?block.hash(), ?state_root_hash, ?err, "failed to get bids");
+                    return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                        ErrorCode::InternalError as i64,
+                        format!("get-auction-info failed to get bids at block={:?}", block.hash()),
+                    ))?);
+                }
             };
+
             let era_validators_result = effect_builder
                 .make_request(
                     |responder| RpcRequest::QueryEraValidators {
@@ -444,10 +468,19 @@ impl RpcWithOptionalParamsExt for GetAuctionInfo {
                 )
                 .await;
 
-            let era_validators = era_validators_result.ok();
+            let era_validators = match era_validators_result {
+                Ok(validators) => validators,
+                Err(err) => {
+                    error!(block_hash=?block.hash(), ?state_root_hash, ?err, "failed to get era validators");
+                    return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                        ErrorCode::InternalError as i64,
+                        format!("get-auction-info failed to get validators at block={:?}", block.hash()),
+                    ))?);
+                }
+            };
 
             let auction_state =
-                AuctionState::new(state_root_hash, block_height, era_validators, maybe_bids);
+                AuctionState::new(state_root_hash, block_height, era_validators, bids);
 
             let result = Self::ResponseResult {
                 api_version,
@@ -581,7 +614,7 @@ impl RpcWithParamsExt for GetAccountInfo {
             let result = Self::ResponseResult {
                 api_version,
                 account,
-                merkle_proof: hex::encode(proof_bytes),
+                merkle_proof: base16::encode_lower(&proof_bytes),
             };
 
             Ok(response_builder.success(result)?)
@@ -832,7 +865,7 @@ impl RpcWithParamsExt for GetDictionaryItem {
                 api_version,
                 dictionary_key: dictionary_query_key.to_formatted_string(),
                 stored_value,
-                merkle_proof: hex::encode(proof_bytes),
+                merkle_proof: base16::encode_lower(&proof_bytes),
             };
 
             Ok(response_builder.success(result)?)
@@ -970,7 +1003,96 @@ impl RpcWithParamsExt for QueryGlobalState {
                 api_version,
                 block_header: maybe_block_header,
                 stored_value,
-                merkle_proof: hex::encode(proof_bytes),
+                merkle_proof: base16::encode_lower(&proof_bytes),
+            };
+
+            Ok(response_builder.success(result)?)
+        }
+        .boxed()
+    }
+}
+
+/// Parameters for "state_get_trie" RPC request.
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+pub struct GetTrieParams {
+    /// A trie key.
+    pub trie_key: Digest,
+}
+
+impl DocExample for GetTrieParams {
+    fn doc_example() -> &'static Self {
+        &*GET_TRIE_PARAMS
+    }
+}
+
+/// Result for "state_get_trie" RPC response.
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetTrieResult {
+    /// The RPC API version.
+    #[schemars(with = "String")]
+    pub api_version: ProtocolVersion,
+    /// A list of keys read under the specified prefix.
+    #[schemars(
+        with = "Option<String>",
+        description = "A trie from global state storage, bytesrepr serialized and hex-encoded."
+    )]
+    pub maybe_trie_bytes: Option<Bytes>,
+}
+
+impl DocExample for GetTrieResult {
+    fn doc_example() -> &'static Self {
+        &*GET_TRIE_RESULT
+    }
+}
+
+/// `state_get_trie` RPC.
+pub struct GetTrie {}
+
+impl RpcWithParams for GetTrie {
+    const METHOD: &'static str = "state_get_trie";
+    type RequestParams = GetTrieParams;
+    type ResponseResult = GetTrieResult;
+}
+
+impl RpcWithParamsExt for GetTrie {
+    fn handle_request<REv: ReactorEventT>(
+        effect_builder: EffectBuilder<REv>,
+        response_builder: Builder,
+        params: Self::RequestParams,
+        api_version: ProtocolVersion,
+    ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
+        async move {
+            let trie_key = params.trie_key;
+
+            let ee_trie = match effect_builder.get_trie(trie_key).await {
+                Ok(Some(trie)) => trie,
+                Ok(None) => {
+                    return Ok(response_builder.success(Self::ResponseResult {
+                        api_version,
+                        maybe_trie_bytes: None,
+                    })?)
+                }
+                Err(error) => {
+                    error!(?error, "failed to get trie");
+                    return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                        ErrorCode::FailedToGetTrie as i64,
+                        format!("failed to get trie: {:?}", error),
+                    ))?);
+                }
+            };
+
+            let trie_bytes = match ee_trie.to_bytes() {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    error!(?error, "failed to serialize trie");
+                    return Ok(response_builder.error(warp_json_rpc::Error::INTERNAL_ERROR)?);
+                }
+            };
+
+            let result = Self::ResponseResult {
+                api_version,
+                maybe_trie_bytes: Some(trie_bytes.into()),
             };
 
             Ok(response_builder.success(result)?)

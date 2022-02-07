@@ -9,6 +9,13 @@ name: pre-checks
 
 # Steps perform as fast serially, due to file thrashing.
 steps:
+
+    # TODO: re-enable once we figure out publishing
+    # - name: markdown-link-check
+    #   image: casperlabs/node-build-u1804
+    #   commands:
+    #     - "./ci/markdown_link_check.sh"
+
   - name: cargo-fmt
     image: casperlabs/node-build-u1804
     commands:
@@ -103,16 +110,6 @@ steps:
   - make test CARGO_FLAGS=--release
   - make test-contracts CARGO_FLAGS=--release
 
-- name: client-ffi-tests-and-examples
-  image: casperlabs/node-build-u1804
-  commands:
-  - make setup-rs
-  - cmake -Hclient/examples/ffi -Btarget/build -DCMAKE_BUILD_TYPE=Debug
-  - cmake --build target/build
-  - ./target/build/ffi-tests
-  - ./target/build/get-auction-info
-  - ./target/build/put-deploy
-
 depends_on:
   - pre-checks
 
@@ -135,53 +132,28 @@ type: docker
 name: package
 
 steps:
-- name: build-deb-update-revision
+- name: build-client-contracts
   image: casperlabs/node-build-u1804
   commands:
-    - "./update-rev.sh"
-
-- name: build-deb
-  image: casperlabs/node-build-u1804
-  commands:
-    - make setup-rs
-    - "make deb"
-
-- name: test-deb
-  image: ubuntu:bionic
-  commands:
-    - "apt update"
-    - "$(pwd)/ci/test_deb_install.sh $(pwd) casper-client"
-
-- name: put-drone-s3-cache
-  image: plugins/s3-sync:latest
-  settings:
-    bucket:
-      from_secret: put-drone-s3-bucket
-    access_key:
-      from_secret: put-drone-aws-ak
-    secret_key:
-      from_secret: put-drone-aws-sk
-    region: us-east-2
-    source: target/debian/
-    target: "/drone_temp/${DRONE_BUILD_NUMBER}_${DRONE_REPO_OWNER}_${DRONE_REPO_NAME}/debian/"
+    - make build-client-contracts
   when:
     branch:
-      - master
-      - dev
-      - "release-*"
-      - "feat-*"
+    - master
+    - dev
+    - "release-*"
+    - "feat-*"
     event:
-      - push
+    - push
 
 - name: build-wasm-package-push-to-s3
   image: casperlabs/s3cmd-build:latest
   commands:
     - "./build_wasm_package.sh"
   environment:
-    CL_VAULT_TOKEN:
-      from_secret: vault_token
-    CL_VAULT_HOST:
-      from_secret: vault_host
+    AWS_ACCESS_KEY_ID:
+      from_secret: put-drone-aws-ak
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: put-drone-aws-sk
   when:
     branch:
     - master
@@ -221,24 +193,6 @@ steps:
       - "feat-*"
     event:
       - push
-
-- name: s3-genesis-rel-pr
-  image: plugins/s3
-  settings:
-    bucket: 'genesis.casperlabs.io'
-    region: 'us-east-2'
-    access_key:
-      from_secret: drone_genesis_key_id
-    secret_key:
-      from_secret: drone_genesis_secret
-    source: "target/upgrade_build/**/*"
-    strip_prefix: 'target/upgrade_build/'
-    target: "/drone/${DRONE_COMMIT}/"
-  when:
-    branch:
-      - "release-*"
-    event:
-      - pull_request
 
 - name: nctl-upgrade-assets-stage-rc
   image: casperlabs/node-build-u1804
@@ -490,35 +444,6 @@ type: docker
 name: release-by-tag
 
 steps:
-- name: build-deb
-  image: casperlabs/node-build-u1804
-  commands:
-    - "make deb"
-
-- name: publish-repo-prod
-  image: casperlabs/aptly:latest
-  failure: ignore
-  environment:
-    AWS_SECRET_ACCESS_KEY:
-      from_secret: aptly_prod_secret_key
-    AWS_ACCESS_KEY_ID:
-      from_secret: aptly_prod_key_id
-  settings:
-    repo_name:
-      from_secret: aptly_prod_repo
-    region:
-      from_secret: aptly_prod_region
-    gpg_key:
-      from_secret: aptly_prod_gpg_key
-    gpg_pass:
-      from_secret: aptly_prod_gpg_pass
-    distribution_id:
-      from_secret: aptly_prod_dist_id
-    acl: 'public-read'
-    prefix: 'releases'
-    deb_path: './target/debian'
-    deb_name: '*.deb'
-
 - name: build-upgrade-package
   image: casperlabs/node-build-u1804
   commands:
@@ -533,7 +458,6 @@ steps:
     - sha256
     - md5
     files:
-    - "./target/debian/*.deb"
     - "./target/upgrade_build/*.gz"
     prerelease:
     - true
@@ -651,6 +575,11 @@ name: nightly-tests-cron
 steps:
 - name: nctl-nighly-script
   image: casperlabs/node-build-u1804
+  environment:
+    AWS_ACCESS_KEY_ID:
+      from_secret: put-drone-aws-ak
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: put-drone-aws-sk
   commands:
   - "python3 -m pip install supervisor toml"
   - "apt update && apt install lsof -y"

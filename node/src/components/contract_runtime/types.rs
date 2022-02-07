@@ -1,9 +1,9 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
 use casper_execution_engine::{
-    core::engine_state::{execution_effect::ExecutionEffect, GetEraValidatorsRequest},
-    shared::newtypes::Blake2bHash,
+    core::engine_state::GetEraValidatorsRequest, shared::execution_journal::ExecutionJournal,
 };
+use casper_hashing::Digest;
 use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, U512};
 
 use crate::types::{Block, DeployHash, DeployHeader};
@@ -11,14 +11,14 @@ use crate::types::{Block, DeployHash, DeployHeader};
 /// Request for validator weights for a specific era.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidatorWeightsByEraIdRequest {
-    state_hash: Blake2bHash,
+    state_hash: Digest,
     era_id: EraId,
     protocol_version: ProtocolVersion,
 }
 
 impl ValidatorWeightsByEraIdRequest {
     /// Constructs a new ValidatorWeightsByEraIdRequest.
-    pub fn new(state_hash: Blake2bHash, era_id: EraId, protocol_version: ProtocolVersion) -> Self {
+    pub fn new(state_hash: Digest, era_id: EraId, protocol_version: ProtocolVersion) -> Self {
         ValidatorWeightsByEraIdRequest {
             state_hash,
             era_id,
@@ -27,7 +27,7 @@ impl ValidatorWeightsByEraIdRequest {
     }
 
     /// Get the state hash.
-    pub fn state_hash(&self) -> Blake2bHash {
+    pub fn state_hash(&self) -> Digest {
         self.state_hash
     }
 
@@ -51,13 +51,13 @@ impl From<ValidatorWeightsByEraIdRequest> for GetEraValidatorsRequest {
 /// Request for era validators.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EraValidatorsRequest {
-    state_hash: Blake2bHash,
+    state_hash: Digest,
     protocol_version: ProtocolVersion,
 }
 
 impl EraValidatorsRequest {
     /// Constructs a new EraValidatorsRequest.
-    pub fn new(state_hash: Blake2bHash, protocol_version: ProtocolVersion) -> Self {
+    pub fn new(state_hash: Digest, protocol_version: ProtocolVersion) -> Self {
         EraValidatorsRequest {
             state_hash,
             protocol_version,
@@ -65,7 +65,7 @@ impl EraValidatorsRequest {
     }
 
     /// Get the state hash.
-    pub fn state_hash(&self) -> Blake2bHash {
+    pub fn state_hash(&self) -> Digest {
         self.state_hash
     }
 
@@ -84,10 +84,10 @@ impl From<EraValidatorsRequest> for GetEraValidatorsRequest {
 /// Effects from running step and the next era validators that are gathered when an era ends.
 #[derive(Debug)]
 pub struct StepEffectAndUpcomingEraValidators {
-    /// An [`ExecutionEffect`] created by an era ending.
-    pub step_execution_effect: ExecutionEffect,
     /// Validator sets for all upcoming eras that have already been determined.
     pub upcoming_era_validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
+    /// An [`ExecutionJournal`] created by an era ending.
+    pub step_execution_journal: ExecutionJournal,
 }
 
 /// A [`Block`] that was the result of execution in the `ContractRuntime` along with any execution
@@ -97,7 +97,7 @@ pub struct BlockAndExecutionEffects {
     /// The [`Block`] the contract runtime executed.
     pub block: Block,
     /// The results from executing the deploys in the block.
-    pub execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
-    /// The [`ExecutionEffect`] and the upcoming validator sets determined by the `step`
+    pub execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
+    /// The [`ExecutionJournal`] and the upcoming validator sets determined by the `step`
     pub maybe_step_effect_and_upcoming_era_validators: Option<StepEffectAndUpcomingEraValidators>,
 }

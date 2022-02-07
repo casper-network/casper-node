@@ -1,6 +1,5 @@
 //! Functions for interacting with the system contracts.
 
-#[cfg(feature = "no-std")]
 use alloc::vec::Vec;
 use core::mem::MaybeUninit;
 
@@ -11,7 +10,7 @@ use casper_types::{
         auction::{self, EraInfo},
         SystemContractType,
     },
-    ApiError, ContractHash, EraId, HashAddr, TransferResult, TransferredTo, URef, U512,
+    ApiError, ContractHash, EraId, HashAddr, PublicKey, TransferResult, TransferredTo, URef, U512,
     UREF_SERIALIZED_LENGTH,
 };
 
@@ -36,6 +35,7 @@ fn get_system_contract(system_contract: SystemContractType) -> ContractHash {
             api_error::result_from(value).map(|_| hash_data_raw)
         };
         // Revert for any possible error that happened on host side
+        #[allow(clippy::redundant_closure)] // false positive
         let contract_hash_bytes = result.unwrap_or_else(|e| runtime::revert(e));
         // Deserializes a valid URef passed from the host side
         bytesrepr::deserialize(contract_hash_bytes.to_vec()).unwrap_or_revert()
@@ -72,7 +72,6 @@ pub fn get_auction() -> ContractHash {
 }
 
 /// Creates a new empty purse and returns its [`URef`].
-#[doc(hidden)]
 pub fn create_purse() -> URef {
     let purse_non_null_ptr = contract_api::alloc_bytes(UREF_SERIALIZED_LENGTH);
     unsafe {
@@ -91,7 +90,6 @@ pub fn create_purse() -> URef {
 }
 
 /// Returns the balance in motes of the given purse.
-#[doc(hidden)]
 pub fn get_purse_balance(purse: URef) -> Option<U512> {
     let (purse_ptr, purse_size, _bytes) = contract_api::to_ptr(purse);
 
@@ -143,9 +141,15 @@ pub fn transfer_to_account(target: AccountHash, amount: U512, id: Option<u64>) -
     TransferredTo::result_from(transferred_to_value)
 }
 
+/// Transfers `amount` of motes from the main purse of the caller's account to the main purse of
+/// `target`.  If the account referenced by `target` does not exist, it will be created.
+pub fn transfer_to_public_key(target: PublicKey, amount: U512, id: Option<u64>) -> TransferResult {
+    let target = AccountHash::from(&target);
+    transfer_to_account(target, amount, id)
+}
+
 /// Transfers `amount` of motes from `source` purse to `target` account.  If `target` does not exist
 /// it will be created.
-#[doc(hidden)]
 pub fn transfer_from_purse_to_account(
     source: URef,
     target: AccountHash,
@@ -180,9 +184,20 @@ pub fn transfer_from_purse_to_account(
     TransferredTo::result_from(transferred_to_value)
 }
 
+/// Transfers `amount` of motes from `source` to the main purse of `target`.  If the account
+/// referenced by `target` does not exist, it will be created.
+pub fn transfer_from_purse_to_public_key(
+    source: URef,
+    target: PublicKey,
+    amount: U512,
+    id: Option<u64>,
+) -> TransferResult {
+    let target = AccountHash::from(&target);
+    transfer_from_purse_to_account(source, target, amount, id)
+}
+
 /// Transfers `amount` of motes from `source` purse to `target` purse.  If `target` does not exist
 /// the transfer fails.
-#[doc(hidden)]
 pub fn transfer_from_purse_to_purse(
     source: URef,
     target: URef,

@@ -52,6 +52,9 @@ function _main()
     _step_06
     _step_07
     _step_08 "$STAGE_ID"
+
+    _copy_new_client_binary "$STAGE_ID"
+
     _step_09 "$INITIAL_PROTOCOL_VERSION"
     _step_10
     _step_11
@@ -60,6 +63,35 @@ function _main()
     _step_14
     _step_15
     _step_16
+}
+
+function _copy_new_client_binary()
+{
+    local STAGE_ID=${1}
+    local PATH_TO_STAGE
+    local PATH_TO_STAGE_SETTINGS
+    local HIGHEST_VERSION_AND_TYPE
+    local HIGHEST_VERSION
+    local UPGRADED_CLIENT_PATH
+    local CLIENT_PATH
+
+    # Source the settings.sh file.
+    PATH_TO_STAGE="$(get_path_to_stage $STAGE_ID)"
+    PATH_TO_STAGE_SETTINGS="$PATH_TO_STAGE/settings.sh"
+    source "$PATH_TO_STAGE_SETTINGS"
+
+    # Read the last line - will be e.g. "1_5_0:local".
+    HIGHEST_VERSION_AND_TYPE="${NCTL_STAGE_TARGETS[-1]}"
+
+    # Extract the version from the line.
+    IFS=':' read -ra SPLIT_LINE <<< "$HIGHEST_VERSION_AND_TYPE"
+    HIGHEST_VERSION="${SPLIT_LINE[0]}"
+
+    UPGRADED_CLIENT_PATH="$PATH_TO_STAGE/$HIGHEST_VERSION/casper-client"
+    CLIENT_PATH="$(get_path_to_client)"
+    log "Replacing client binary at $CLIENT_PATH with $UPGRADED_CLIENT_PATH"
+
+    cp "$UPGRADED_CLIENT_PATH" "$CLIENT_PATH"
 }
 
 # Step 01: Start network from pre-built stage.
@@ -71,8 +103,7 @@ function _step_01()
 
     source "$NCTL/sh/assets/setup_from_stage.sh" \
             stage="$STAGE_ID" \
-            accounts_path="$NCTL/sh/scenarios/accounts_toml/upgrade_scenario_3.accounts.toml" \
-            chainspec_path="$NCTL/sh/scenarios/chainspecs/upgrade_scenario_3.chainspec.toml.in"
+            accounts_path="$NCTL/sh/scenarios/accounts_toml/upgrade_scenario_3.accounts.toml"
     source "$NCTL/sh/node/start.sh" node=all
 }
 
@@ -137,8 +168,8 @@ function _step_06()
     local AUCTION_INFO_FOR_HEX
 
     NODE_PATH=$(get_path_to_node "$NODE_ID")
-    HEX=$(cat "$NODE_PATH"/keys/public_key_hex)
-    AUCTION_INFO_FOR_HEX=$(nctl-view-chain-auction-info | jq --arg node_hex "$HEX" '.auction_state.bids[]| select(.public_key == $node_hex)')
+    HEX=$(cat "$NODE_PATH"/keys/public_key_hex | tr '[:upper:]' '[:lower:]')
+    AUCTION_INFO_FOR_HEX=$(nctl-view-chain-auction-info | jq --arg node_hex "$HEX" '.auction_state.bids[]| select(.public_key | ascii_downcase == $node_hex)')
 
     log_step_upgrades 6 "Asserting node-$NODE_ID is a validator"
 
@@ -164,12 +195,12 @@ function _step_07()
     TIMEOUT_SEC='0'
 
     USER_PATH=$(get_path_to_user "$USER_ID")
-    HEX=$(cat "$USER_PATH"/public_key_hex)
+    HEX=$(cat "$USER_PATH"/public_key_hex | tr '[:upper:]' '[:lower:]')
 
     log_step_upgrades 7 "Asserting user-$USER_ID is a delegatee"
 
     while [ "$TIMEOUT_SEC" -le "60" ]; do
-        AUCTION_INFO_FOR_HEX=$(nctl-view-chain-auction-info | jq --arg node_hex "$HEX" '.auction_state.bids[]| select(.bid.delegators[].public_key == $node_hex)')
+        AUCTION_INFO_FOR_HEX=$(nctl-view-chain-auction-info | jq --arg node_hex "$HEX" '.auction_state.bids[]| select(.bid.delegators[].public_key | ascii_downcase == $node_hex)')
         if [ ! -z "$AUCTION_INFO_FOR_HEX" ]; then
             log "... user-$USER_ID found in auction info delegators!"
             log "... public_key_hex: $HEX"
@@ -326,8 +357,8 @@ function _step_14()
     local STAKED_AMOUNT
 
     NODE_PATH=$(get_path_to_node "$NODE_ID")
-    HEX=$(cat "$NODE_PATH"/keys/public_key_hex)
-    AUCTION_INFO_FOR_HEX=$(nctl-view-chain-auction-info | jq --arg node_hex "$HEX" '.auction_state.bids[]| select(.public_key == $node_hex)')
+    HEX=$(cat "$NODE_PATH"/keys/public_key_hex | tr '[:upper:]' '[:lower:]')
+    AUCTION_INFO_FOR_HEX=$(nctl-view-chain-auction-info | jq --arg node_hex "$HEX" '.auction_state.bids[]| select(.public_key | ascii_downcase == $node_hex)')
 
     INACTIVE_STATUS=$(echo "$AUCTION_INFO_FOR_HEX" | grep 'inactive' | grep 'true' | sed 's/^ *//g')
     STAKED_AMOUNT=$(echo "$AUCTION_INFO_FOR_HEX" | grep 'staked_amount' | awk '{print $2}' | tr -d '[:punct:]')
@@ -364,8 +395,8 @@ function _step_15()
     local AUCTION_INFO_FOR_HEX
 
     USER_PATH=$(get_path_to_user "$USER_ID")
-    HEX=$(cat "$USER_PATH"/public_key_hex)
-    AUCTION_INFO_FOR_HEX=$(nctl-view-chain-auction-info | jq --arg node_hex "$HEX" '.auction_state.bids[]| select(.bid.delegators[].public_key == $node_hex)')
+    HEX=$(cat "$USER_PATH"/public_key_hex | tr '[:upper:]' '[:lower:]')
+    AUCTION_INFO_FOR_HEX=$(nctl-view-chain-auction-info | jq --arg node_hex "$HEX" '.auction_state.bids[]| select(.bid.delegators[].public_key | ascii_downcase == $node_hex)')
 
     log_step_upgrades 15 "Asserting user-$USER_ID is NOT a delegatee"
 

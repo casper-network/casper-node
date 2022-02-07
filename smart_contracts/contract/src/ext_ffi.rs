@@ -63,6 +63,15 @@ extern "C" {
     /// * `value_ptr` - pointer to bytes representing the value to write under the new `URef`
     /// * `value_size` - size of the value (in bytes)
     pub fn casper_new_uref(uref_ptr: *mut u8, value_ptr: *const u8, value_size: usize);
+    /// This function loads a set of authorized keys used to sign this deploy from the host.
+    /// The data will be available through the host buffer and can be copied to Wasm memory through
+    /// [`casper_read_host_buffer`].
+    ///
+    /// # Arguments
+    ///
+    /// * `total_keys`: number of authorization keys used to sign this deploy
+    /// * `result_size`: size of the data loaded in the host
+    pub fn casper_load_authorization_keys(total_keys: *mut usize, result_size: *mut usize) -> i32;
     ///
     pub fn casper_load_named_keys(total_keys: *mut usize, result_size: *mut usize) -> i32;
     /// This function causes a `Trap`, terminating the currently running module,
@@ -242,7 +251,6 @@ extern "C" {
     ///
     /// * `purse_ptr` - pointer to position in wasm memory where to write the created `URef`
     /// * `purse_size` - allocated size for the `URef`
-    #[doc(hidden)]
     pub fn casper_create_purse(purse_ptr: *const u8, purse_size: usize) -> i32;
     /// This function uses the mint contract’s transfer function to transfer
     /// tokens from the current account’s main purse to the main purse of the
@@ -313,7 +321,6 @@ extern "C" {
     /// * `id_size` - size of the id (in bytes)
     /// * `result_ptr` - pointer in wasm memory to a value where `TransferredTo` value would be set
     ///   on successful transfer.
-    #[doc(hidden)]
     pub fn casper_transfer_from_purse_to_account(
         source_ptr: *const u8,
         source_size: usize,
@@ -351,7 +358,6 @@ extern "C" {
     /// * `amount_size` - size of the amount (in bytes)
     /// * `id_ptr` - pointer in wasm memory to bytes representing the user-defined transaction id
     /// * `id_size` - size of the id (in bytes)
-    #[doc(hidden)]
     pub fn casper_transfer_from_purse_to_purse(
         source_ptr: *const u8,
         source_size: usize,
@@ -447,7 +453,6 @@ extern "C" {
         dest_size: usize,
     ) -> i32;
     ///
-    #[doc(hidden)]
     pub fn casper_get_main_purse(dest_ptr: *mut u8);
     /// This function copies the contents of the current runtime buffer into the
     /// wasm memory, beginning at the provided offset. It is intended that this

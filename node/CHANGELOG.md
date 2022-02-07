@@ -10,13 +10,66 @@ All notable changes to this project will be documented in this file.  The format
 [comment]: <> (Security:   in case of vulnerabilities)
 
 
-
 ## [Unreleased]
 
 ### Added
-* Added `enable_manual_sync` boolean option to `[contract_runtime]` in the config.toml which enables manual LMDB sync.
+* Add new event to the main SSE server stream across all endpoints `<IP:PORT>/events/*` which emits a shutdown event when the node shuts down.
+* Add `SIGUSR2` signal handling to dump the queue in JSON format (see "Changed" section for `SIGUSR1`).
+* A diagnostic console can now be enabled via the `[console]` section in the configuration file. See the `README.md` for details.
+* Add ability to force DB integrity checks to run on node start by setting env var `CL_RUN_INTEGRITY_CHECKS=1`.
+* Add ability to force DB integrity checks to run on node start by adding non-numeric contents to the initializer.pid file.
 
 ### Changed
+* Detection of a crash no longer triggers DB integrity checks to run on node start; the checks can be triggered manually instead.
+* `SIGUSR1` now only dumps the queue in the debug text format.
+* Incoming connections from peers are rejected if they are exceeding the default incoming connections per peer limit of 3.
+* Connection handshake timeouts can now be configured via the `handshake_timeout` variable (they were hardcoded at 20 seconds before).
+* `Key::SystemContractRegistry` is now readable and can be queried via the RPC.
+
+
+## 1.4.3 - 2021-12-06
+
+### Added
+* Add new event to the main SSE server stream accessed via `<IP:Port>/events/main` which emits hashes of expired deploys.
+
+### Changed
+* `enable_manual_sync` configuration parameter defaults to `true`.
+* Default behavior of LMDB changed to use [`NO_READAHEAD`](https://docs.rs/lmdb/0.8.0/lmdb/struct.EnvironmentFlags.html#associatedconstant.NO_READAHEAD).
+
+
+
+## [1.4.2] - 2021-11-11
+
+### Changed
+* There are now less false warnings/errors regarding dropped responders or closed channels during a shutdown, where they are expected and harmless.
+* Execution transforms are ordered by insertion order.
+
+### Removed
+* The config option `consensus.highway.unit_hashes_folder` has been removed.
+
+### Fixed
+* The block proposer component now retains pending deploys and transfers across a restart.
+
+
+
+## [1.4.0] - 2021-10-04
+
+### Added
+* Add `enable_manual_sync` boolean option to `[contract_runtime]` in the config.toml which enables manual LMDB sync.
+* Add `contract_runtime_execute_block` histogram tracking execution time of a whole block.
+* Long-running events now log their event type.
+* Individual weights for traffic throttling can now be set through the configuration value `network.estimator_weights`.
+* Add `consensus.highway.max_request_batch_size` configuration parameter. Defaults to 20.
+* New histogram metrics `deploy_acceptor_accepted_deploy` and `deploy_acceptor_rejected_deploy` that track how long the initial verification took.
+* Add gzip content negotiation (using accept-encoding header) to rpc endpoints.
+* Add `state_get_trie` JSON-RPC endpoint.
+* Add `info_get_validator_changes` JSON-RPC endpoint and REST endpoint `validator-changes` that return the status changes of active validators.
+
+### Changed
+* The following Highway timers are now separate, configurable, and optional (if the entry is not in the config, the timer is never called):
+  * `standstill_timeout` causes the node to restart if no progress is made.
+  * `request_state_interval` makes the node periodically request the latest state from a peer.
+  * `log_synchronizer_interval` periodically logs the number of entries in the synchronizer queues.
 * Add support for providing node uptime via the addition of an `uptime` parameter in the response to the `/status` endpoint and the `info_get_status` JSON-RPC.
 * Support building and testing using stable Rust.
 * Log chattiness in `debug` or lower levels has been reduced and performance at `info` or higher slightly improved.
@@ -31,13 +84,31 @@ All notable changes to this project will be documented in this file.  The format
   * `[gossip][get_remainder_timeout]`
   * `[fetcher][get_from_peer_timeout]`
 
-
 ### Removed
 * The unofficial support for nix-related derivations and support tooling has been removed.
 * Experimental, nix-based kubernetes testing support has been removed.
 * Experimental support for libp2p has been removed.
 * The `isolation_reconnect_delay` configuration, which has been ignored since 1.3, has been removed.
 * The libp2p-exclusive metrics of `read_futures_in_flight`, `read_futures_total`, `write_futures_in_flight`, `write_futures_total` have been removed.
+
+### Fixed
+* Resolve an issue where `Deploys` with payment amounts exceeding the block gas limit would not be rejected.
+* Resolve issue of duplicated config option `max_associated_keys`.
+
+
+
+## [1.3.2] - 2021-08-02
+
+### Fixed
+* Resolve an issue in the `state_get_dictionary_item` JSON-RPC when a `ContractHash` is used.
+* Corrected network state engine to hold in blocked state for full 10 minutes when encountering out of order race condition.
+
+
+
+## [1.3.1] - 2021-07-26
+
+### Fixed
+* Parametrized sync_timeout and increased value to stop possible post upgrade restart loop.
 
 
 
@@ -188,7 +259,9 @@ All notable changes to this project will be documented in this file.  The format
 
 
 [Keep a Changelog]: https://keepachangelog.com/en/1.0.0
-[unreleased]: https://github.com/casper-network/casper-node/compare/v1.3.0...dev
+[unreleased]: https://github.com/casper-network/casper-node/compare/37d561634adf73dab40fffa7f1f1ee47e80bf8a1...dev
+[1.4.2]: https://github.com/casper-network/casper-node/compare/v1.4.0...37d561634adf73dab40fffa7f1f1ee47e80bf8a1
+[1.4.0]: https://github.com/casper-network/casper-node/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/casper-network/casper-node/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/casper-network/casper-node/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/casper-network/casper-node/compare/v1.0.1...v1.1.1

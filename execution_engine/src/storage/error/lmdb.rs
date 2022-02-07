@@ -15,8 +15,8 @@ pub enum Error {
     Lmdb(#[from] lmdb_external::Error),
 
     /// (De)serialization error.
-    #[error(transparent)]
-    BytesRepr(#[from] bytesrepr::Error),
+    #[error("{0}")]
+    BytesRepr(bytesrepr::Error),
 
     /// Concurrency error.
     #[error("Another thread panicked while holding a lock")]
@@ -28,6 +28,12 @@ pub enum Error {
 }
 
 impl wasmi::HostError for Error {}
+
+impl From<bytesrepr::Error> for Error {
+    fn from(error: bytesrepr::Error) -> Self {
+        Error::BytesRepr(error)
+    }
+}
 
 impl<T> From<sync::PoisonError<T>> for Error {
     fn from(_error: sync::PoisonError<T>) -> Self {

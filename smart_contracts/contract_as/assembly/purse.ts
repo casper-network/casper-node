@@ -9,6 +9,8 @@ import {Option} from "./option";
 import {Ref} from "./ref";
 import {getMainPurse} from "./account";
 import {arrayToTyped} from "./utils";
+import {PublicKey} from "./public_key";
+import {AccountHash} from "./key";
 
 /**
  * The result of a successful transfer between purses.
@@ -74,7 +76,6 @@ function makeTransferredTo(value: u32): Ref<TransferredTo> | null {
 /**
  * Creates a new empty purse and returns its [[URef]], or a null in case a
  * purse couldn't be created.
- * @hidden
  */
 export function createPurse(): URef {
     let bytes = new Uint8Array(UREF_SERIALIZED_LENGTH);
@@ -139,7 +140,6 @@ export function getBalance(): U512 | null {
  * @returns This function will return a [[TransferredTo.TransferError]] in
  * case of transfer error, in case of any other variant the transfer itself
  * can be considered successful.
- * @hidden
  */
 export function transferFromPurseToAccount(sourcePurse: URef, targetAccount: Uint8Array, amount: U512, id: Ref<u64> | null = null): TransferResult {
     let purseBytes = sourcePurse.toBytes();
@@ -189,7 +189,6 @@ export function transferFromPurseToAccount(sourcePurse: URef, targetAccount: Uin
  * the transfer fails.
  *
  * @returns This function returns non-zero value on error.
- * @hidden
  */
 export function transferFromPurseToPurse(sourcePurse: URef, targetPurse: URef, amount: U512, id: Ref<u64> | null = null): Error | null {
     let sourceBytes = sourcePurse.toBytes();
@@ -219,6 +218,25 @@ export function transferFromPurseToPurse(sourcePurse: URef, targetPurse: URef, a
 
     return Error.fromResult(ret);
 }
+
+/**
+ * Transfers `amount` of motes from `source` purse to an account referenced by a `targetPublicKey` public key.
+ * If `target` does not exist it will be created.
+ *
+ * @param amount Amount is denominated in motes
+ * @returns This function will return a [[TransferredTo.TransferError]] in
+ * case of transfer error, in case of any other variant the transfer itself
+ * can be considered successful.
+ * @hidden
+ */
+ export function transferFromPurseToPublicKey(sourcePurse: URef, targetPublicKey: PublicKey, amount: U512, id: Ref<u64> | null = null): TransferResult {
+    const accountHash = AccountHash.fromPublicKey(targetPublicKey);
+    const accountHashBytes = accountHash.toBytes();
+
+    const targetAccount = arrayToTyped(accountHashBytes);
+
+    return transferFromPurseToAccount(sourcePurse, targetAccount, amount, id);
+ }
 
 /**
  * Transfers `amount` of motes from main purse purse to `target` account.
@@ -267,4 +285,21 @@ export function transferToAccount(targetAccount: Uint8Array, amount: U512, id: R
         return TransferResult.makeOk(transferredTo);
     }
     return TransferResult.makeErr(Error.fromErrorCode(ErrorCode.Transfer));
+}
+
+/**
+ * Transfers `amount` of motes from main purse to `target` public key.
+ * If account referenced by a `target` public key does not exist it will be created.
+ *
+ * @param amount Amount is denominated in motes
+ * @returns This function will return a [[TransferredTo.TransferError]] in
+ * case of transfer error, in case of any other variant the transfer itself
+ * can be considered successful.
+ */
+ export function transferToPublicKey(targetPublicKey: PublicKey, amount: U512, id: Ref<u64> | null = null): TransferResult {
+    const accountHash = AccountHash.fromPublicKey(targetPublicKey);
+    const accountHashBytes = accountHash.toBytes();
+
+    const targetAccount = arrayToTyped(accountHashBytes);
+    return transferToAccount(targetAccount, amount, id);
 }

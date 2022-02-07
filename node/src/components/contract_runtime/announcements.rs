@@ -1,18 +1,17 @@
 use std::{
-    collections::HashMap,
+    collections::BTreeMap,
     fmt::{self, Display, Formatter},
 };
 
 use serde::Serialize;
 
-use casper_execution_engine::core::engine_state::execution_effect::ExecutionEffect as ExecutionEngineExecutionEffect;
+use casper_execution_engine::shared::execution_journal::ExecutionJournal;
 use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey, U512};
 
 use crate::{
     effect::{announcements::LinearChainBlock, EffectBuilder},
     types::{Block, DeployHash, DeployHeader},
 };
-use std::collections::BTreeMap;
 
 /// A ContractRuntime announcement.
 #[derive(Debug, Serialize)]
@@ -33,19 +32,6 @@ pub(crate) enum ContractRuntimeAnnouncement {
         /// The validators for the eras after the `era_that_is_ending` era.
         upcoming_era_validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
     },
-}
-
-impl ContractRuntimeAnnouncement {
-    /// Creates a `ContractRuntimeAnnouncement::LinearChainBlock` from its parts.
-    pub(crate) fn linear_chain_block(
-        block: Block,
-        execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
-    ) -> Self {
-        Self::LinearChainBlock(Box::new(LinearChainBlock {
-            block,
-            execution_results,
-        }))
-    }
 }
 
 impl Display for ContractRuntimeAnnouncement {
@@ -78,14 +64,14 @@ impl Display for ContractRuntimeAnnouncement {
 pub(super) async fn step_success<REv>(
     effect_builder: EffectBuilder<REv>,
     era_id: EraId,
-    execution_effect: ExecutionEngineExecutionEffect,
+    execution_journal: ExecutionJournal,
 ) where
     REv: From<ContractRuntimeAnnouncement>,
 {
     effect_builder
         .schedule_regular(ContractRuntimeAnnouncement::StepSuccess {
             era_id,
-            execution_effect: (&execution_effect).into(),
+            execution_effect: casper_types::ExecutionEffect::from(&execution_journal),
         })
         .await
 }
@@ -94,7 +80,7 @@ pub(super) async fn step_success<REv>(
 pub(crate) async fn linear_chain_block<REv>(
     effect_builder: EffectBuilder<REv>,
     block: Block,
-    execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
+    execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
 ) where
     REv: From<ContractRuntimeAnnouncement>,
 {

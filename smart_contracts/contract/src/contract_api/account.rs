@@ -1,6 +1,5 @@
 //! Functions for managing accounts.
 
-#[cfg(feature = "no-std")]
 use alloc::vec::Vec;
 use core::convert::TryFrom;
 
@@ -16,7 +15,6 @@ use super::to_ptr;
 use crate::{contract_api, ext_ffi, unwrap_or_revert::UnwrapOrRevert};
 
 /// Retrieves the ID of the account's main purse.
-#[doc(hidden)]
 pub fn get_main_purse() -> URef {
     let dest_non_null_ptr = contract_api::alloc_bytes(UREF_SERIALIZED_LENGTH);
     let bytes = unsafe {

@@ -1,3 +1,4 @@
+//! Configuration of the Wasm execution engine.
 use datasize::DataSize;
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
@@ -8,24 +9,31 @@ use super::{
     host_function_costs::HostFunctionCosts, opcode_costs::OpcodeCosts, storage_costs::StorageCosts,
 };
 
+/// Default maximum number of pages of the Wasm memory.
 pub const DEFAULT_WASM_MAX_MEMORY: u32 = 64;
-pub const DEFAULT_MAX_STACK_HEIGHT: u32 = 64 * 1024;
+/// Default maximum stack height.
+pub const DEFAULT_MAX_STACK_HEIGHT: u32 = 188;
 
+/// Configuration of the Wasm execution environment.
+///
+/// This structure contains various Wasm execution configuration options, such as memory limits,
+/// stack limits and costs.
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct WasmConfig {
-    /// Maximum amount of a heap memory (represented in 64kb pages) each contract can use.
+    /// Maximum amount of heap memory (represented in 64kB pages) each contract can use.
     pub max_memory: u32,
-    /// Max stack height (native WebAssembly stack limiter)
+    /// Max stack height (native WebAssembly stack limiter).
     pub max_stack_height: u32,
-    /// Wasm opcode costs table
+    /// Wasm opcode costs table.
     opcode_costs: OpcodeCosts,
-    /// Storage costs
+    /// Storage costs.
     storage_costs: StorageCosts,
-    /// Host function costs table
+    /// Host function costs table.
     host_function_costs: HostFunctionCosts,
 }
 
 impl WasmConfig {
+    /// Creates new Wasm config.
     pub const fn new(
         max_memory: u32,
         max_stack_height: u32,
@@ -42,14 +50,17 @@ impl WasmConfig {
         }
     }
 
+    /// Returns opcode costs.
     pub fn opcode_costs(&self) -> OpcodeCosts {
         self.opcode_costs
     }
 
+    /// Returns storage costs.
     pub fn storage_costs(&self) -> StorageCosts {
         self.storage_costs
     }
 
+    /// Returns host function costs and consumes this object.
     pub fn take_host_function_costs(self) -> HostFunctionCosts {
         self.host_function_costs
     }
@@ -122,6 +133,7 @@ impl Distribution<WasmConfig> for Standard {
     }
 }
 
+#[doc(hidden)]
 #[cfg(any(feature = "gens", test))]
 pub mod gens {
     use proptest::{num, prop_compose};

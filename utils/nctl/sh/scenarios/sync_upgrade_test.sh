@@ -50,8 +50,16 @@ function main() {
     # 11. Wait until it's synchronized
     #     and verify that its last finalized block matches other nodes'.
     do_await_full_synchronization "$NEW_NODE_ID"
-    # 12. Check for equivocators
-    assert_no_equivocators_logs
+    # 12. Run Closing Health Checks
+    # ... restarts=6: due to nodes being stopped and started
+    # ... errors=ignore: ticket sre issue 78
+    source "$NCTL"/sh/scenarios/common/health_checks.sh \
+            errors='ignore' \
+            equivocators=0 \
+            doppels=0 \
+            crashes=0 \
+            restarts=7 \
+            ejections=0
 
     log "------------------------------------------------------------"
     log "Syncing node complete"

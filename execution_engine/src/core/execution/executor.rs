@@ -8,23 +8,20 @@ use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::FromBytes,
     contracts::NamedKeys,
-    system::{auction, handle_payment, mint, CallStackElement, AUCTION, HANDLE_PAYMENT, MINT},
-    BlockTime, CLTyped, CLValue, ContractPackage, DeployHash, EntryPoint, EntryPointType, Key,
+    system::{auction, handle_payment, mint, AUCTION, HANDLE_PAYMENT, MINT},
+    BlockTime, CLTyped, CLValue, ContractPackage, DeployHash, EntryPoint, EntryPointType, Gas, Key,
     Phase, ProtocolVersion, RuntimeArgs, StoredValue,
 };
 
 use crate::{
     core::{
-        engine_state::{
-            execution_effect::ExecutionEffect, execution_result::ExecutionResult,
-            system_contract_cache::SystemContractCache, EngineConfig,
-        },
+        engine_state::{execution_result::ExecutionResult, EngineConfig},
         execution::{address_generator::AddressGenerator, Error},
-        runtime::{extract_access_rights_from_keys, instance_and_memory, Runtime},
+        runtime::{extract_access_rights_from_keys, instance_and_memory, Runtime, RuntimeStack},
         runtime_context::{self, RuntimeContext},
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
-    shared::{gas::Gas, newtypes::CorrelationId},
+    shared::{execution_journal::ExecutionJournal, newtypes::CorrelationId},
     storage::global_state::StateReader,
 };
 
@@ -47,14 +44,14 @@ macro_rules! on_fail_charge {
                 warn!("Execution failed: {:?}", exec_err);
                 return ExecutionResult::Failure {
                     error: exec_err.into(),
-                    execution_effect: Default::default(),
+                    execution_journal: Default::default(),
                     transfers: $transfers,
                     cost: $cost,
                 };
             }
         }
     };
-    ($fn:expr, $cost:expr, $execution_effect:expr, $transfers:expr) => {
+    ($fn:expr, $cost:expr, $execution_journal:expr, $transfers:expr) => {
         match $fn {
             Ok(res) => res,
             Err(e) => {
@@ -62,7 +59,7 @@ macro_rules! on_fail_charge {
                 warn!("Execution failed: {:?}", exec_err);
                 return ExecutionResult::Failure {
                     error: exec_err.into(),
-                    execution_effect: $execution_effect,
+                    execution_journal: $execution_journal,
                     transfers: $transfers,
                     cost: $cost,
                 };
@@ -71,20 +68,28 @@ macro_rules! on_fail_charge {
     };
 }
 
+/// Executor object deals with execution of WASM modules.
 pub struct Executor {
     config: EngineConfig,
 }
 
 #[allow(clippy::too_many_arguments)]
 impl Executor {
+    /// Creates new executor object.
     pub fn new(config: EngineConfig) -> Self {
         Executor { config }
     }
 
+    /// Returns config.
     pub fn config(&self) -> EngineConfig {
         self.config
     }
 
+    /// Executes a WASM module.
+    ///
+    /// This method checks if a given contract hash is a system contract, and then short circuits to
+    /// a specific native implementation of it. Otherwise, a supplied WASM module is executed.
+    #[allow(clippy::too_many_arguments)]
     pub fn exec<R>(
         &self,
         module: Module,
@@ -101,9 +106,8 @@ impl Executor {
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
-        system_contract_cache: SystemContractCache,
         contract_package: &ContractPackage,
-        call_stack: Vec<CallStackElement>,
+        stack: RuntimeStack,
     ) -> ExecutionResult
     where
         R: StateReader<Key, StoredValue>,
@@ -124,24 +128,16 @@ impl Executor {
             extract_access_rights_from_keys(keys)
         };
 
-        let hash_address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
-            Rc::new(RefCell::new(generator))
-        };
-        let uref_address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
-            Rc::new(RefCell::new(generator))
-        };
-        let target_address_generator = {
+        let address_generator = {
             let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
             Rc::new(RefCell::new(generator))
         };
         let gas_counter: Gas = Gas::default();
         let transfers = Vec::default();
 
-        // Snapshot of effects before execution, so in case of error
-        // only nonce update can be returned.
-        let execution_effect = tracking_copy.borrow().effect();
+        // Snapshot of the journal before execution, so in case of an error
+        // we don't apply the execution changes but keep the payment code effects.
+        let execution_journal = tracking_copy.borrow().execution_journal();
 
         let context = RuntimeContext::new(
             tracking_copy,
@@ -156,9 +152,7 @@ impl Executor {
             deploy_hash,
             gas_limit,
             gas_counter,
-            hash_address_generator,
-            uref_address_generator,
-            target_address_generator,
+            address_generator,
             protocol_version,
             correlation_id,
             phase,
@@ -166,14 +160,7 @@ impl Executor {
             transfers,
         );
 
-        let mut runtime = Runtime::new(
-            self.config,
-            system_contract_cache,
-            memory,
-            module,
-            context,
-            call_stack,
-        );
+        let mut runtime = Runtime::new(self.config, memory, module, context, stack);
 
         let accounts_access_rights = {
             let keys: Vec<Key> = account.named_keys().values().cloned().collect();
@@ -186,20 +173,19 @@ impl Executor {
             |uref| runtime_context::uref_has_access_rights(uref, &accounts_access_rights)
         ));
 
-        let call_stack = runtime.call_stack().to_owned();
+        let stack = runtime.stack().clone();
 
         if runtime.is_mint(base_key) {
             match runtime.call_host_mint(
                 protocol_version,
                 entry_point.name(),
-                &mut runtime.context().named_keys().to_owned(),
                 &args,
                 Default::default(),
-                call_stack,
+                stack,
             ) {
                 Ok(_value) => {
                     return ExecutionResult::Success {
-                        execution_effect: runtime.context().effect(),
+                        execution_journal: runtime.context().execution_journal(),
                         transfers: runtime.context().transfers().to_owned(),
                         cost: runtime.context().gas_counter(),
                     };
@@ -207,7 +193,7 @@ impl Executor {
                 Err(error) => {
                     return ExecutionResult::Failure {
                         error: error.into(),
-                        execution_effect,
+                        execution_journal,
                         transfers: runtime.context().transfers().to_owned(),
                         cost: runtime.context().gas_counter(),
                     };
@@ -217,14 +203,13 @@ impl Executor {
             match runtime.call_host_handle_payment(
                 protocol_version,
                 entry_point.name(),
-                &mut runtime.context().named_keys().to_owned(),
                 &args,
                 Default::default(),
-                call_stack,
+                stack,
             ) {
                 Ok(_value) => {
                     return ExecutionResult::Success {
-                        execution_effect: runtime.context().effect(),
+                        execution_journal: runtime.context().execution_journal(),
                         transfers: runtime.context().transfers().to_owned(),
                         cost: runtime.context().gas_counter(),
                     };
@@ -232,8 +217,8 @@ impl Executor {
                 Err(error) => {
                     return ExecutionResult::Failure {
                         error: error.into(),
-                        execution_effect,
                         transfers: runtime.context().transfers().to_owned(),
+                        execution_journal,
                         cost: runtime.context().gas_counter(),
                     };
                 }
@@ -242,22 +227,21 @@ impl Executor {
             match runtime.call_host_auction(
                 protocol_version,
                 entry_point.name(),
-                &mut runtime.context().named_keys().to_owned(),
                 &args,
                 Default::default(),
-                call_stack,
+                stack,
             ) {
                 Ok(_value) => {
                     return ExecutionResult::Success {
-                        execution_effect: runtime.context().effect(),
+                        execution_journal: runtime.context().execution_journal(),
                         transfers: runtime.context().transfers().to_owned(),
                         cost: runtime.context().gas_counter(),
                     }
                 }
                 Err(error) => {
                     return ExecutionResult::Failure {
+                        execution_journal,
                         error: error.into(),
-                        execution_effect,
                         transfers: runtime.context().transfers().to_owned(),
                         cost: runtime.context().gas_counter(),
                     }
@@ -267,17 +251,18 @@ impl Executor {
         on_fail_charge!(
             instance.invoke_export(entry_point_name, &[], &mut runtime),
             runtime.context().gas_counter(),
-            execution_effect,
+            execution_journal,
             runtime.context().transfers().to_owned()
         );
 
         ExecutionResult::Success {
-            execution_effect: runtime.context().effect(),
+            execution_journal: runtime.context().execution_journal(),
             transfers: runtime.context().transfers().to_owned(),
             cost: runtime.context().gas_counter(),
         }
     }
 
+    /// Executes a standard payment code natively.
     pub fn exec_standard_payment<R>(
         &self,
         system_module: Module,
@@ -293,23 +278,14 @@ impl Executor {
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
-        system_contract_cache: SystemContractCache,
-        call_stack: Vec<CallStackElement>,
+        stack: RuntimeStack,
     ) -> ExecutionResult
     where
         R: StateReader<Key, StoredValue>,
         R::Error: Into<Error>,
     {
         // use host side standard payment
-        let hash_address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
-            Rc::new(RefCell::new(generator))
-        };
-        let uref_address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
-            Rc::new(RefCell::new(generator))
-        };
-        let transfer_address_generator = {
+        let address_generator = {
             let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
             Rc::new(RefCell::new(generator))
         };
@@ -326,44 +302,47 @@ impl Executor {
             blocktime,
             deploy_hash,
             payment_gas_limit,
-            hash_address_generator,
-            uref_address_generator,
-            transfer_address_generator,
+            address_generator,
             protocol_version,
             correlation_id,
             Rc::clone(&tracking_copy),
             phase,
-            system_contract_cache,
-            call_stack,
+            stack,
         ) {
             Ok((_instance, runtime)) => runtime,
             Err(error) => {
                 return ExecutionResult::Failure {
                     error: error.into(),
-                    execution_effect: Default::default(),
+                    execution_journal: Default::default(),
                     transfers: Vec::default(),
                     cost: Gas::default(),
                 };
             }
         };
 
-        let execution_effect = tracking_copy.borrow().effect();
+        let execution_journal = tracking_copy.borrow().execution_journal();
 
         match runtime.call_host_standard_payment() {
             Ok(()) => ExecutionResult::Success {
-                execution_effect: runtime.context().effect(),
+                execution_journal: runtime.context().execution_journal(),
                 transfers: runtime.context().transfers().to_owned(),
                 cost: runtime.context().gas_counter(),
             },
             Err(error) => ExecutionResult::Failure {
+                execution_journal,
                 error: error.into(),
-                execution_effect,
                 transfers: runtime.context().transfers().to_owned(),
                 cost: runtime.context().gas_counter(),
             },
         }
     }
 
+    /// Executes a system contract.
+    ///
+    /// System contracts are implemented as a native code, and no WASM execution is involved at all.
+    /// This approach has a benefit of speed as compared to executing WASM modules.
+    ///
+    /// Returns an optional return value from the system contract call, and an [`ExecutionResult`].
     pub fn exec_system_contract<R, T>(
         &self,
         direct_system_contract_call: DirectSystemContractCall,
@@ -381,8 +360,7 @@ impl Executor {
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
-        system_contract_cache: SystemContractCache,
-        call_stack: Vec<CallStackElement>,
+        stack: RuntimeStack,
     ) -> (Option<T>, ExecutionResult)
     where
         R: StateReader<Key, StoredValue>,
@@ -452,15 +430,7 @@ impl Executor {
             }
         }
 
-        let hash_address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
-            Rc::new(RefCell::new(generator))
-        };
-        let uref_address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
-            Rc::new(RefCell::new(generator))
-        };
-        let transfer_address_generator = {
+        let address_generator = {
             let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
             Rc::new(RefCell::new(generator))
         };
@@ -468,7 +438,7 @@ impl Executor {
 
         // Snapshot of effects before execution, so in case of error only nonce update
         // can be returned.
-        let execution_effect = tracking_copy.borrow().effect();
+        let execution_journal = tracking_copy.borrow().execution_journal();
 
         let transfers = Vec::default();
 
@@ -484,20 +454,17 @@ impl Executor {
             blocktime,
             deploy_hash,
             gas_limit,
-            hash_address_generator,
-            uref_address_generator,
-            transfer_address_generator,
+            address_generator,
             protocol_version,
             correlation_id,
             tracking_copy,
             phase,
-            system_contract_cache,
-            call_stack,
+            stack,
         ) {
             Ok((instance, runtime)) => (instance, runtime),
             Err(error) => {
                 return ExecutionResult::Failure {
-                    execution_effect,
+                    execution_journal,
                     transfers,
                     cost: gas_counter,
                     error: error.into(),
@@ -506,14 +473,13 @@ impl Executor {
             }
         };
 
-        let mut inner_named_keys = runtime.context().named_keys().clone();
+        let inner_named_keys = runtime.context().named_keys().clone();
         let ret = direct_system_contract_call.host_exec(
             runtime,
             protocol_version,
-            &mut inner_named_keys,
             &runtime_args,
             extra_keys,
-            execution_effect,
+            execution_journal,
         );
         *named_keys = inner_named_keys;
         ret
@@ -531,15 +497,12 @@ impl Executor {
         blocktime: BlockTime,
         deploy_hash: DeployHash,
         gas_limit: Gas,
-        hash_address_generator: Rc<RefCell<AddressGenerator>>,
-        uref_address_generator: Rc<RefCell<AddressGenerator>>,
-        transfer_address_generator: Rc<RefCell<AddressGenerator>>,
+        address_generator: Rc<RefCell<AddressGenerator>>,
         protocol_version: ProtocolVersion,
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
-        system_contract_cache: SystemContractCache,
-        call_stack: Vec<CallStackElement>,
+        stack: RuntimeStack,
     ) -> Result<T, Error>
     where
         R: StateReader<Key, StoredValue>,
@@ -561,15 +524,12 @@ impl Executor {
             blocktime,
             deploy_hash,
             gas_limit,
-            hash_address_generator,
-            uref_address_generator,
-            transfer_address_generator,
+            address_generator,
             protocol_version,
             correlation_id,
             tracking_copy,
             phase,
-            system_contract_cache,
-            call_stack,
+            stack,
         )?;
 
         let error: wasmi::Error = match instance.invoke_export(entry_point_name, &[], &mut runtime)
@@ -605,7 +565,13 @@ impl Executor {
         Ok(ret)
     }
 
-    pub fn create_runtime<'a, R>(
+    /// Creates new runtime object.
+    ///
+    /// This method also deals with proper initialiation of a WASM module by pre-allocating a memory
+    /// instance, and attaching a host function resolver.
+    ///
+    /// Returns a module and an instance of [`Runtime`] which is ready to execute the WASM modules.
+    pub(crate) fn create_runtime<'a, R>(
         &self,
         module: Module,
         entry_point_type: EntryPointType,
@@ -618,15 +584,12 @@ impl Executor {
         blocktime: BlockTime,
         deploy_hash: DeployHash,
         gas_limit: Gas,
-        hash_address_generator: Rc<RefCell<AddressGenerator>>,
-        uref_address_generator: Rc<RefCell<AddressGenerator>>,
-        transfer_address_generator: Rc<RefCell<AddressGenerator>>,
+        address_generator: Rc<RefCell<AddressGenerator>>,
         protocol_version: ProtocolVersion,
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
-        system_contract_cache: SystemContractCache,
-        call_stack: Vec<CallStackElement>,
+        stack: RuntimeStack,
     ) -> Result<(ModuleRef, Runtime<'a, R>), Error>
     where
         R: StateReader<Key, StoredValue>,
@@ -654,9 +617,7 @@ impl Executor {
             deploy_hash,
             gas_limit,
             gas_counter,
-            hash_address_generator,
-            uref_address_generator,
-            transfer_address_generator,
+            address_generator,
             protocol_version,
             correlation_id,
             phase,
@@ -667,27 +628,29 @@ impl Executor {
         let (instance, memory) =
             instance_and_memory(module.clone(), protocol_version, self.config.wasm_config())?;
 
-        let runtime = Runtime::new(
-            self.config,
-            system_contract_cache,
-            memory,
-            module,
-            runtime_context,
-            call_stack,
-        );
+        let runtime = Runtime::new(self.config, memory, module, runtime_context, stack);
 
         Ok((instance, runtime))
     }
 }
 
+/// Represents a variant of a system contract call.
 pub enum DirectSystemContractCall {
+    /// Calls auction's `slash` entry point.
     Slash,
+    /// Calls auction's `run_auction` entry point.
     RunAuction,
+    /// Calls auction's `distribute` entry point.
     DistributeRewards,
+    /// Calls handle payment's `finalize` entry point.
     FinalizePayment,
+    /// Calls mint's `create` entry point.
     CreatePurse,
+    /// Calls mint's `transfer` entry point.
     Transfer,
+    /// Calls auction's `get_era_validators` entry point.
     GetEraValidators,
+    /// Calls handle payment's `
     GetPaymentPurse,
 }
 
@@ -709,10 +672,9 @@ impl DirectSystemContractCall {
         &self,
         mut runtime: Runtime<R>,
         protocol_version: ProtocolVersion,
-        named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
-        execution_effect: ExecutionEffect,
+        execution_journal: ExecutionJournal,
     ) -> (Option<T>, ExecutionResult)
     where
         R: StateReader<Key, StoredValue>,
@@ -721,7 +683,7 @@ impl DirectSystemContractCall {
     {
         let entry_point_name = self.entry_point_name();
 
-        let call_stack = runtime.call_stack().to_owned();
+        let stack = runtime.stack().clone();
 
         let result = match self {
             DirectSystemContractCall::Slash
@@ -729,66 +691,61 @@ impl DirectSystemContractCall {
             | DirectSystemContractCall::DistributeRewards => runtime.call_host_auction(
                 protocol_version,
                 entry_point_name,
-                named_keys,
                 runtime_args,
                 extra_keys,
-                call_stack,
+                stack,
             ),
             DirectSystemContractCall::FinalizePayment => runtime.call_host_handle_payment(
                 protocol_version,
                 entry_point_name,
-                named_keys,
                 runtime_args,
                 extra_keys,
-                call_stack,
+                stack,
             ),
             DirectSystemContractCall::CreatePurse | DirectSystemContractCall::Transfer => runtime
                 .call_host_mint(
                     protocol_version,
                     entry_point_name,
-                    named_keys,
                     runtime_args,
                     extra_keys,
-                    call_stack,
+                    stack,
                 ),
             DirectSystemContractCall::GetEraValidators => runtime.call_host_auction(
                 protocol_version,
                 entry_point_name,
-                named_keys,
                 runtime_args,
                 extra_keys,
-                call_stack,
+                stack,
             ),
 
             DirectSystemContractCall::GetPaymentPurse => runtime.call_host_handle_payment(
                 protocol_version,
                 entry_point_name,
-                named_keys,
                 runtime_args,
                 extra_keys,
-                call_stack,
+                stack,
             ),
         };
 
         match result {
             Ok(value) => match value.into_t() {
                 Ok(ret) => ExecutionResult::Success {
-                    execution_effect: runtime.context().effect(),
+                    execution_journal: runtime.context().execution_journal(),
                     transfers: runtime.context().transfers().to_owned(),
                     cost: runtime.context().gas_counter(),
                 }
                 .take_with_ret(ret),
                 Err(error) => ExecutionResult::Failure {
+                    execution_journal,
                     error: Error::CLValue(error).into(),
-                    execution_effect,
                     transfers: runtime.context().transfers().to_owned(),
                     cost: runtime.context().gas_counter(),
                 }
                 .take_without_ret(),
             },
             Err(error) => ExecutionResult::Failure {
+                execution_journal,
                 error: error.into(),
-                execution_effect,
                 transfers: runtime.context().transfers().to_owned(),
                 cost: runtime.context().gas_counter(),
             }

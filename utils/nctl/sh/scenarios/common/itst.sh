@@ -18,27 +18,23 @@ function clean_up() {
         rm -f "$DEPLOY_LOG"
     fi
 
-    # Prints stderr of nodes on failures
-    for i in $(seq 1 $(get_count_of_nodes)); do
-        STDOUT=$(tail "$NCTL"/assets/net-1/nodes/node-"$i"/logs/stdout.log 2>/dev/null) || true
-        STDERR=$(cat "$NCTL"/assets/net-1/nodes/node-"$i"/logs/stderr.log 2>/dev/null) || true
-        if [ ! -z "$STDERR" ]; then
-            echo ""
-            log "##############################################"
-            log " Node-$i Error Outputs "
-            log "##############################################"
-            # true to ignore "No such file" error from cat
-            echo ""
-            log "STDERR:"
-            echo "$STDERR"
-            echo ""
-            log "Tailed STDOUT:"
-            echo "$STDOUT"
-            echo ""
-        fi
-    done
-
     log "Test exited with exit code $EXIT_CODE"
+
+    # On failure dump the logs
+    if [ "$EXIT_CODE" == '1' ]; then
+        log "Dumping logs..."
+        nctl-assets-dump
+        # If CI, upload to s3
+        if [ ! -z "$AWS_ACCESS_KEY_ID" ] && [ ! -z "$AWS_SECRET_ACCESS_KEY" ] && [ "$DRONE" == 'true' ]; then
+            log "Uploading dump to s3..."
+            pushd $(get_path_to_net_dump)
+            tar -cvzf "${DRONE_BUILD_NUMBER}"_nctl_dump.tar.gz * > /dev/null 2>&1
+            aws s3 cp ./"${DRONE_BUILD_NUMBER}"_nctl_dump.tar.gz s3://nctl.casperlabs.io/nightly-logs/ > /dev/null 2>&1
+            log "Download the dump file: curl -O https://s3.us-east-2.amazonaws.com/nctl.casperlabs.io/nightly-logs/${DRONE_BUILD_NUMBER}_nctl_dump.tar.gz"
+            popd
+        fi
+    fi
+
     exit $EXIT_CODE
 }
 
@@ -66,6 +62,16 @@ function do_start_node() {
     local NODE_ID=${1}
     local LFB_HASH=${2}
     log_step "starting node-$NODE_ID. Syncing from hash=${LFB_HASH}"
+
+    # Deleting the pid due to crash that gets logged
+    if [ -f "$(get_path_to_node_storage $NODE_ID)/initializer.pid" ]; then
+        log "... pid file detected, removing (<= 1.3)"
+        rm -f "$(get_path_to_node_storage $NODE_ID)/initializer.pid"
+    elif [ -f "$(get_path_to_node_storage $NODE_ID)/casper-net-1/initializer.pid" ]; then
+        log "... pid file detected, removing (1.4+)"
+        rm -f "$(get_path_to_node_storage $NODE_ID)/casper-net-1/initializer.pid"
+    fi
+
     do_node_start "$NODE_ID" "$LFB_HASH"
     sleep 1
     if [ "$(do_node_status ${NODE_ID} | awk '{ print $2 }')" != "RUNNING" ]; then
@@ -314,6 +320,10 @@ function assert_no_proposal_walkback() {
     local JSON_OUT
     local PROPOSER
 
+    # normalize hashes
+    WALKBACK_HASH=$(echo $WALKBACK_HASH |  tr '[:upper:]' '[:lower:]')
+    CHECK_HASH=$(echo $CHECK_HASH | tr '[:upper:]' '[:lower:]')
+
     log_step "Checking proposers: Walking back to hash $WALKBACK_HASH..."
 
     while [ "$CHECK_HASH" != "$WALKBACK_HASH" ]; do
@@ -328,9 +338,13 @@ function assert_no_proposal_walkback() {
             log "BLOCK HASH $CHECK_HASH: PROPOSER=$PROPOSER, NODE_KEY_HEX=$PUBLIC_KEY_HEX"
             unset CHECK_HASH
             CHECK_HASH=$(echo $JSON_OUT | jq -r '.result.block.header.parent_hash')
+            # normalize
+            CHECK_HASH=$(echo $CHECK_HASH | tr '[:upper:]' '[:lower:]')
             log "Checking next hash: $CHECK_HASH"
         fi
     done
+    log "Walkback Completed!"
+    log "CHECK_HASH: $CHECK_HASH = WALKBACK_HASH: $WALKBACK_HASH"
     log "Node $NODE_ID didn't propose! [expected]"
 }
 

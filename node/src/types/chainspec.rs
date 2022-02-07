@@ -24,6 +24,7 @@ use casper_execution_engine::{
     core::engine_state::genesis::ExecConfig,
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
+use casper_hashing::{ChunkWithProof, Digest};
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     ProtocolVersion,
@@ -39,10 +40,7 @@ pub(crate) use self::{
 };
 #[cfg(test)]
 use crate::testing::TestRng;
-use crate::{
-    crypto::hash::{self, Digest},
-    utils::Loadable,
-};
+use crate::utils::Loadable;
 
 /// The name of the chainspec file on disk.
 pub const CHAINSPEC_NAME: &str = "chainspec.toml";
@@ -70,6 +68,16 @@ pub struct Chainspec {
 impl Chainspec {
     /// Returns `false` and logs errors if the values set in the config don't make sense.
     pub(crate) fn is_valid(&self) -> bool {
+        if (self.network_config.maximum_net_message_size as usize)
+            < ChunkWithProof::CHUNK_SIZE_BYTES * 3
+        {
+            warn!(
+                "config value [network][maximum_net_message_size] should be set to at least
+            CHUNK_SIZE_BYTES * 3 ({})",
+                ChunkWithProof::CHUNK_SIZE_BYTES * 3
+            );
+        }
+
         let min_era_ms = 1u64 << self.highway_config.minimum_round_exponent;
         // If the era duration is set to zero, we will treat it as explicitly stating that eras
         // should be defined by height only.
@@ -89,7 +97,7 @@ impl Chainspec {
             error!(%error, "failed to serialize chainspec");
             vec![]
         });
-        hash::hash(&serialized_chainspec)
+        Digest::hash(&serialized_chainspec)
     }
 
     /// Returns true if this chainspec has an activation_point specifying era ID 0.
@@ -210,12 +218,11 @@ mod tests {
 
     use casper_execution_engine::shared::{
         host_function_costs::{HostFunction, HostFunctionCosts},
-        motes::Motes,
         opcode_costs::OpcodeCosts,
         storage_costs::StorageCosts,
         wasm_config::WasmConfig,
     };
-    use casper_types::{EraId, ProtocolVersion, StoredValue, U512};
+    use casper_types::{EraId, Motes, ProtocolVersion, StoredValue, U512};
 
     use super::*;
     use crate::{

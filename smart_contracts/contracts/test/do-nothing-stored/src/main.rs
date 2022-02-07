@@ -20,7 +20,9 @@ const CONTRACT_VERSION: &str = "contract_version";
 const ARG_PURSE_NAME: &str = "purse_name";
 
 #[no_mangle]
-pub extern "C" fn delegate() {}
+pub extern "C" fn delegate() {
+    let _named_keys = runtime::list_named_keys();
+}
 
 #[no_mangle]
 pub extern "C" fn call() {

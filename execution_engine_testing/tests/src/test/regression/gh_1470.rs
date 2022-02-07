@@ -1,20 +1,17 @@
 use std::collections::BTreeMap;
 
 use casper_engine_test_support::{
-    internal::{
-        ExecuteRequestBuilder, InMemoryWasmTestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder,
-        DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_RUN_GENESIS_REQUEST,
-    },
-    AccountHash, DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_RUN_GENESIS_REQUEST,
+    MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::{
-    core::{
-        engine_state::{Error, SystemContractRegistry},
-        execution,
-    },
-    shared::newtypes::Blake2bHash,
+use casper_execution_engine::core::{
+    engine_state::{Error, SystemContractRegistry},
+    execution,
 };
+use casper_hashing::Digest;
 use casper_types::{
+    account::AccountHash,
     runtime_args,
     system::{auction, auction::DelegationRate, mint},
     AccessRights, CLTyped, CLValue, ContractHash, ContractPackageHash, EraId, Key, ProtocolVersion,
@@ -57,7 +54,7 @@ fn setup() -> InMemoryWasmTestBuilder {
 
 fn apply_global_state_update(
     builder: &LmdbWasmTestBuilder,
-    post_state_hash: Blake2bHash,
+    post_state_hash: Digest,
 ) -> BTreeMap<Key, StoredValue> {
     let key = URef::new([0u8; 32], AccessRights::all()).into();
 
@@ -129,8 +126,7 @@ fn gh_1470_call_contract_should_verify_group_access() {
     builder.exec(call_contract_request).commit();
 
     let response = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");
@@ -150,8 +146,7 @@ fn gh_1470_call_contract_should_verify_group_access() {
     builder.exec(call_versioned_contract_request).commit();
 
     let response = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");
@@ -225,8 +220,7 @@ fn gh_1470_call_contract_should_verify_invalid_arguments_length() {
     builder.exec(call_contract_request).commit();
 
     let response = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");
@@ -247,8 +241,7 @@ fn gh_1470_call_contract_should_verify_invalid_arguments_length() {
     builder.exec(call_versioned_contract_request).commit();
 
     let response = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");
@@ -473,8 +466,7 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
     builder.exec(call_contract_request).commit();
 
     let response = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");
@@ -495,8 +487,7 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
     builder.exec(call_versioned_contract_request).commit();
 
     let response = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");
@@ -580,8 +571,7 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
     builder.exec(call_contract_request).commit();
 
     let response = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");
@@ -602,8 +592,7 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
     builder.exec(call_versioned_contract_request).commit();
 
     let response = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");

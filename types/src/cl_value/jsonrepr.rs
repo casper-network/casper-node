@@ -55,7 +55,8 @@ fn to_json<'a>(cl_type: &CLType, bytes: &'a [u8]) -> Option<(Value, &'a [u8])> {
         }
         CLType::ByteArray(length) => {
             let (bytes, remainder) = bytesrepr::safe_split_at(bytes, *length as usize).ok()?;
-            Some((json![hex::encode(bytes)], remainder))
+            let hex_encoded_bytes = base16::encode_lower(&bytes);
+            Some((json![hex_encoded_bytes], remainder))
         }
         CLType::Result { ok, err } => {
             let (variant, remainder) = u8::from_bytes(bytes).ok()?;
@@ -204,7 +205,7 @@ mod tests {
         let bytes = [1_u8, 2];
         let cl_value = CLValue::from_t(bytes).unwrap();
         let cl_value_as_json = cl_value_to_json(&cl_value).unwrap();
-        let expected = json!(hex::encode(&bytes));
+        let expected = json!(base16::encode_lower(&bytes));
         assert_eq!(cl_value_as_json, expected);
     }
 

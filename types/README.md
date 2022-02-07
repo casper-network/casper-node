@@ -1,23 +1,22 @@
 # `casper-types`
 
-[![LOGO](https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Horizontal_RGB.png)](https://casperlabs.io/)
+[![LOGO](https://raw.githubusercontent.com/casper-network/casper-node/master/images/casper-association-logo-primary.svg)](https://casper.network/)
 
-[![Build Status](https://drone-auto.casperlabs.io/api/badges/CasperLabs/casper-node/status.svg?branch=master)](http://drone-auto.casperlabs.io/CasperLabs/casper-node)
+[![Build Status](https://drone-auto-casper-network.casperlabs.io/api/badges/casper-network/casper-node/status.svg?branch=dev)](http://drone-auto-casper-network.casperlabs.io/casper-network/casper-node)
 [![Crates.io](https://img.shields.io/crates/v/casper-types)](https://crates.io/crates/casper-types)
 [![Documentation](https://docs.rs/casper-types/badge.svg)](https://docs.rs/casper-types)
-[![License](https://img.shields.io/badge/license-COSL-blue.svg)](https://github.com/CasperLabs/casper-node/blob/master/LICENSE)
+[![License](https://img.shields.io/badge/license-Apache-blue)](https://github.com/CasperLabs/casper-node/blob/master/LICENSE)
 
-Types used by nodes and clients on the Casper network.
+Types shared by many casper crates for use on the Casper network.
 
 ## `no_std`
 
-By default, the `no-std` feature is enabled which in turn enables a similar feature on many dependent crates.  To use
-the library in a `std` environment, disable the default features and enable the `std` feature.  For example:
+The crate is `no_std` (using the `core` and `alloc` crates) unless any of the following features are enabled:
 
-```toml
-casper-types = { version = "1.0.0", default-features = false, features = ["std"] }
-```
+* `json-schema` to enable many types to be used to produce JSON-schema data via the [`schemars`](https://crates.io/crates/schemars) crate
+* `datasize` to enable many types to derive the [`DataSize`](https://github.com/casperlabs/datasize-rs) trait
+* `gens` to enable many types to be produced in accordance with [`proptest`](https://crates.io/crates/proptest) usage for consumption within dependee crates' property testing suites
 
 ## License
 
-Licensed under the [CasperLabs Open Source License (COSL)](https://github.com/CasperLabs/casper-node/blob/master/LICENSE).
+Licensed under the [Apache License Version 2.0](https://github.com/casper-network/casper-node/blob/master/LICENSE).

@@ -2,24 +2,18 @@ use assert_matches::assert_matches;
 use num_traits::Zero;
 
 use casper_engine_test_support::{
-    internal::{
-        utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
-        DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-        DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT, DEFAULT_PROPOSER_PUBLIC_KEY,
-        DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY,
-        SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
-    },
-    DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNTS,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT, DEFAULT_PROPOSER_PUBLIC_KEY,
+    DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
-use casper_execution_engine::{
-    core::{
-        engine_state::{
-            genesis::{GenesisAccount, GenesisValidator},
-            Error as EngineError,
-        },
-        execution::Error,
+use casper_execution_engine::core::{
+    engine_state::{
+        genesis::{GenesisAccount, GenesisValidator},
+        Error as EngineError,
     },
-    shared::motes::Motes,
+    execution::Error,
 };
 
 use casper_types::{
@@ -32,7 +26,7 @@ use casper_types::{
         },
         mint,
     },
-    ApiError, EraId, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
+    ApiError, EraId, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
@@ -295,10 +289,7 @@ fn should_fail_bonding_with_insufficient_funds() {
 
     builder.exec(exec_request_2).commit();
 
-    let response = builder
-        .get_exec_result(1)
-        .expect("should have a response")
-        .to_owned();
+    let response = builder.get_exec_result(1).expect("should have a response");
 
     assert_eq!(response.len(), 1);
     let exec_result = response[0].as_error().expect("should have error");
@@ -347,10 +338,7 @@ fn should_fail_unbonding_validator_with_locked_funds() {
 
     builder.exec(exec_request_2).commit();
 
-    let response = builder
-        .get_exec_result(0)
-        .expect("should have a response")
-        .to_owned();
+    let response = builder.get_exec_result(0).expect("should have a response");
 
     let error_message = utils::get_error_message(response);
 
@@ -384,10 +372,7 @@ fn should_fail_unbonding_validator_without_bonding_first() {
 
     builder.exec(exec_request).commit();
 
-    let response = builder
-        .get_exec_result(0)
-        .expect("should have a response")
-        .to_owned();
+    let response = builder.get_exec_result(0).expect("should have a response");
 
     let error_message = utils::get_error_message(response);
 

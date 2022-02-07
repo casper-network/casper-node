@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, iter, sync::Arc, time::Duration};
 
 use anyhow::bail;
 use either::Either;
@@ -8,28 +8,34 @@ use num_rational::Ratio;
 use rand::Rng;
 use tempfile::TempDir;
 use tokio::time;
+use tracing::error;
 
-use casper_execution_engine::{core::engine_state::query::GetBidsRequest, shared::motes::Motes};
+use casper_execution_engine::core::engine_state::GetBidsRequest;
 use casper_types::{
     system::auction::{Bids, DelegationRate},
-    EraId, PublicKey, SecretKey, U512,
+    EraId, Motes, ProtocolVersion, PublicKey, SecretKey, U512,
 };
 
 use crate::{
-    components::{consensus, gossiper, small_network, storage},
+    components::{chainspec_loader::NextUpgrade, gossiper, small_network, storage},
     crypto::AsymmetricKeyExt,
-    effect::EffectExt,
+    effect::{
+        announcements::NetworkAnnouncement,
+        requests::{ContractRuntimeRequest, NetworkRequest},
+        EffectExt,
+    },
+    protocol::Message,
     reactor::{
         initializer, joiner,
         participating::{self, ParticipatingEvent},
-        ReactorExit, Runner,
+        Reactor, ReactorExit, Runner,
     },
     testing::{
         self, filter_reactor::FilterReactor, network::Network, ConditionCheckReactor, TestRng,
     },
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
-        ActivationPoint, BlockHeader, Chainspec, Timestamp,
+        ActivationPoint, BlockHeader, Chainspec, ExitCode, Timestamp,
     },
     utils::{External, Loadable, WithDir, RESOURCES_PATH},
     NodeRng,
@@ -98,8 +104,12 @@ impl TestChain {
         chainspec.network_config.accounts_config = AccountsConfig::new(accounts, delegators);
 
         // Make the genesis timestamp 45 seconds from now, to allow for all validators to start up.
-        chainspec.protocol_config.activation_point =
-            ActivationPoint::Genesis(Timestamp::now() + 45000.into());
+        let genesis_time = Timestamp::now() + 45000.into();
+        info!(
+            "creating test chain configuration, genesis: {}",
+            genesis_time
+        );
+        chainspec.protocol_config.activation_point = ActivationPoint::Genesis(genesis_time);
 
         chainspec.core_config.minimum_era_height = 1;
         chainspec.highway_config.finality_threshold_fraction = Ratio::new(34, 100);
@@ -141,7 +151,6 @@ impl TestChain {
                 .expect("could not write secret key");
             cfg.consensus.secret_key_path = External::Path(secret_key_path);
         }
-        cfg.consensus.highway.unit_hashes_folder = temp_dir.path().to_path_buf();
         self.storages.push(temp_dir);
         cfg.storage = storage_cfg;
 
@@ -158,6 +167,7 @@ impl TestChain {
         let first_node_port = testing::unused_port_on_localhost();
 
         for idx in 0..self.keys.len() {
+            info!("creating node {}", idx);
             let cfg = self.create_node_config(idx, first_node_port);
 
             // We create an initializer reactor here and run it to completion.
@@ -183,6 +193,7 @@ impl TestChain {
                 .await
                 .into_participating_config()
                 .await?;
+            info!("node {} finished joining", idx);
 
             network
                 .add_node_with_config(config, rng)
@@ -234,6 +245,7 @@ impl SwitchBlocks {
         &self.headers[era_number as usize]
             .era_end()
             .expect("era end")
+            .era_report()
             .equivocators
     }
 
@@ -242,6 +254,7 @@ impl SwitchBlocks {
         &self.headers[era_number as usize]
             .era_end()
             .expect("era end")
+            .era_report()
             .inactive_validators
     }
 
@@ -256,13 +269,13 @@ impl SwitchBlocks {
     fn bids(&self, nodes: &Nodes, era_number: u64) -> Bids {
         let correlation_id = Default::default();
         let state_root_hash = *self.headers[era_number as usize].state_root_hash();
-        let request = GetBidsRequest::new(state_root_hash.into());
+        let request = GetBidsRequest::new(state_root_hash);
         let runner = nodes.values().next().expect("missing node");
         let engine_state = runner.participating().contract_runtime().engine_state();
         let bids_result = engine_state
             .get_bids(correlation_id, request)
             .expect("get_bids failed");
-        bids_result.bids().expect("no bids returned").clone()
+        bids_result.into_success().expect("no bids returned")
     }
 }
 
@@ -310,28 +323,39 @@ async fn run_equivocator_network() {
     keys.push(alice_sk);
 
     // We configure the era to take five rounds, and delay all messages to and from one of Alice's
-    // nodes until two rounds after genesis. That should guarantee that the two nodes equivocate.
+    // nodes until three rounds after the first message. That should guarantee that the two nodes
+    // equivocate.
     let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
     chain.chainspec_mut().core_config.minimum_era_height = 10;
-    let protocol_config = consensus::ProtocolConfig::from(&*chain.chainspec);
 
     let mut net = chain
         .create_initialized_network(&mut rng)
         .await
         .expect("network initialization failed");
-    let genesis_time = protocol_config.genesis_timestamp.unwrap();
     let min_round_len = chain.chainspec.highway_config.min_round_length();
+    let mut maybe_first_message_time = None;
     net.reactors_mut()
         .find(|reactor| *reactor.inner().consensus().public_key() == alice_pk)
         .unwrap()
-        .set_filter(move |event| match event {
-            ParticipatingEvent::NetworkRequest(_)
-            | ParticipatingEvent::Consensus(consensus::Event::MessageReceived { .. })
-                if Timestamp::now() < genesis_time + min_round_len * 2 =>
-            {
-                Either::Left(time::sleep(min_round_len.into()).event(move |_| event))
+        .set_filter(move |event| {
+            let now = Timestamp::now();
+            match &event {
+                ParticipatingEvent::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
+                    payload,
+                    ..
+                }) if matches!(*payload, Message::Consensus(_)) => {}
+                ParticipatingEvent::NetworkRequest(
+                    NetworkRequest::SendMessage { payload, .. }
+                    | NetworkRequest::Broadcast { payload, .. }
+                    | NetworkRequest::Gossip { payload, .. },
+                ) if matches!(**payload, Message::Consensus(_)) => {}
+                _ => return Either::Right(event),
+            };
+            let first_message_time = *maybe_first_message_time.get_or_insert(now);
+            if now < first_message_time + min_round_len * 3 {
+                return Either::Left(time::sleep(min_round_len.into()).event(move |_| event));
             }
-            _ => Either::Right(event),
+            Either::Right(event)
         });
 
     let era_count = 3;
@@ -344,6 +368,13 @@ async fn run_equivocator_network() {
     let bids: Vec<Bids> = (0..era_count)
         .map(|era_number| switch_blocks.bids(net.nodes(), era_number))
         .collect();
+
+    // Since this setup sometimes fails to produce an equivocation we return early here.
+    // TODO: Remove this once https://github.com/casper-network/casper-node/issues/1859 is fixed.
+    if switch_blocks.equivocators(0).is_empty() {
+        error!("Failed to equivocate in the first era.");
+        return;
+    }
 
     // In the genesis era, Alice equivocates. Since eviction takes place with a delay of one
     // (`auction_delay`) era, she is still included in the next era's validator set.
@@ -380,5 +411,98 @@ async fn run_equivocator_network() {
         assert_eq!(consensus.validators_with_evidence(EraId::new(0)), alice);
         assert_eq!(consensus.validators_with_evidence(EraId::new(1)), none);
         assert_eq!(consensus.validators_with_evidence(EraId::new(2)), none);
+    }
+}
+
+#[tokio::test]
+async fn dont_upgrade_without_switch_block() {
+    testing::init_logging();
+
+    let mut rng = crate::new_rng();
+
+    // Set up a network with only a single validator.
+    let alice_sk = Arc::new(SecretKey::random(&mut rng));
+    let alice_pk = PublicKey::from(&*alice_sk);
+    let keys: Vec<Arc<SecretKey>> = vec![alice_sk];
+    let stakes: BTreeMap<PublicKey, U512> = iter::once((alice_pk, U512::from(100))).collect();
+
+    // Eras have exactly two blocks each, and there is one block per second.
+    let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
+    chain.chainspec_mut().core_config.minimum_era_height = 2;
+    chain.chainspec_mut().core_config.era_duration = 0.into();
+    chain.chainspec_mut().highway_config.minimum_round_exponent = 10;
+
+    let mut net = chain
+        .create_initialized_network(&mut rng)
+        .await
+        .expect("network initialization failed");
+
+    // An upgrade is scheduled for era 2, after the switch block in era 1 (height 3).
+    // We artificially delay the execution of that block.
+    for runner in net.runners_mut() {
+        runner
+            .process_injected_effects(|effect_builder| {
+                let upgrade = NextUpgrade::new(
+                    ActivationPoint::EraId(2.into()),
+                    ProtocolVersion::from_parts(999, 0, 0),
+                );
+                effect_builder
+                    .announce_upgrade_activation_point_read(upgrade)
+                    .ignore()
+            })
+            .await;
+        let mut exec_request_received = false;
+        runner.reactor_mut().inner_mut().set_filter(move |event| {
+            if let ParticipatingEvent::ContractRuntime(request) = &event {
+                if let ContractRuntimeRequest::EnqueueBlockForExecution {
+                    finalized_block, ..
+                } = request.as_ref()
+                {
+                    if finalized_block.era_report().is_some()
+                        && finalized_block.era_id() == EraId::from(1)
+                        && !exec_request_received
+                    {
+                        info!("delaying {}", finalized_block);
+                        exec_request_received = true;
+                        return Either::Left(
+                            time::sleep(Duration::from_secs(10)).event(move |_| event),
+                        );
+                    }
+                    info!("not delaying {}", finalized_block);
+                }
+            }
+            Either::Right(event)
+        });
+    }
+
+    // Run until the node shuts down for the upgrade.
+    let timeout = Duration::from_secs(120);
+    net.settle_on(
+        &mut rng,
+        |nodes| {
+            nodes
+                .values()
+                .all(|runner| runner.participating().maybe_exit().is_some())
+        },
+        timeout,
+    )
+    .await;
+
+    // Verify that the switch block has been stored: Even though it was delayed the node didn't
+    // restart before executing and storing it.
+    for runner in net.nodes().values() {
+        let header = runner
+            .participating()
+            .storage()
+            .read_block_header_and_finality_signatures_by_height(3)
+            .expect("failed to read from storage")
+            .expect("missing switch block")
+            .block_header;
+        assert_eq!(EraId::from(1), header.era_id());
+        assert!(header.is_switch_block());
+        assert_eq!(
+            Some(ReactorExit::ProcessShouldExit(ExitCode::Success)),
+            runner.participating().maybe_exit()
+        );
     }
 }

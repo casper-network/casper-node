@@ -15,6 +15,7 @@ use super::{
     highway::{Ping, ValidVertex, Vertex, WireUnit},
     state::{self, Panorama, State, Unit, Weight},
     validators::ValidatorIndex,
+    ENABLE_ENDORSEMENTS,
 };
 
 use crate::{
@@ -281,6 +282,9 @@ impl<C: Context> ActiveValidator<C> {
         evidence: &Evidence<C>,
         state: &State<C>,
     ) -> Vec<Effect<C>> {
+        if !ENABLE_ENDORSEMENTS {
+            return Vec::new();
+        }
         let vidx = evidence.perpetrator();
         state
             .iter_correct_hashes()
@@ -545,6 +549,9 @@ impl<C: Context> ActiveValidator<C> {
     /// We should endorse unit from honest validator that cites _an_ equivocator
     /// as honest and it cites some new message by that validator.
     fn should_endorse(&self, vhash: &C::Hash, state: &State<C>) -> bool {
+        if !ENABLE_ENDORSEMENTS {
+            return false;
+        }
         let unit = state.unit(vhash);
         !state.is_faulty(unit.creator)
             && unit
@@ -1014,8 +1021,8 @@ mod tests {
 
         let unit_file = {
             let tmp_dir = tempdir().unwrap();
-            let unit_hashes_folder = tmp_dir.path().to_path_buf();
-            Some(unit_hashes_folder.join(format!("unit_hash_{:?}.dat", instance_id)))
+            let unit_files_folder = tmp_dir.path().to_path_buf();
+            Some(unit_files_folder.join(format!("unit_{:?}.dat", instance_id)))
         };
 
         // Store `a2` unit as the Alice's last unit.
