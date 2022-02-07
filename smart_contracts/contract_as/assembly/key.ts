@@ -45,7 +45,7 @@ export class AccountHash {
     }
 
     @operator(">")
-    graterThan(other: AccountHash): bool {
+    greaterThan(other: AccountHash): bool {
         for (let i = 0; i < 32; i++) {
             if (this.bytes[i] > other.bytes[i]) {
                 return true;
