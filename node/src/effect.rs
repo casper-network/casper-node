@@ -1833,6 +1833,21 @@ impl<REv> EffectBuilder<REv> {
         )
         .await
     }
+
+    /// Dump the event queue contents to the console, using the given serializer.
+    pub(crate) async fn console_dump_queue(self)
+    where
+        REv: From<ControlAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                ControlAnnouncement::QueueDump {
+                    serializer: todo!(),
+                },
+                QueueKind::Control,
+            )
+            .await
+    }
 }
 
 /// Construct a fatal error effect.

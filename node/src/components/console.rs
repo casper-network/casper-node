@@ -17,7 +17,10 @@ use tracing::debug;
 
 use super::Component;
 use crate::{
-    effect::{console::DumpConsensusStateRequest, EffectBuilder, EffectExt, Effects},
+    effect::{
+        announcements::ControlAnnouncement, console::DumpConsensusStateRequest, EffectBuilder,
+        EffectExt, Effects,
+    },
     reactor::EventQueueHandle,
     types::NodeRng,
     utils::umask,
@@ -66,7 +69,7 @@ impl Console {
         event_queue: EventQueueHandle<REv>,
     ) -> Result<(Self, Effects<Event>), Error>
     where
-        REv: From<DumpConsensusStateRequest> + Send,
+        REv: From<DumpConsensusStateRequest> + From<ControlAnnouncement> + Send,
     {
         let config = cfg.value();
         let (shutdown_sender, shutdown_receiver) = watch::channel(());

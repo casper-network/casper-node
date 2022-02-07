@@ -7,7 +7,9 @@ use std::{
 
 use crate::{
     components::consensus::EraDump,
-    effect::{console::DumpConsensusStateRequest, EffectBuilder},
+    effect::{
+        announcements::ControlAnnouncement, console::DumpConsensusStateRequest, EffectBuilder,
+    },
 };
 
 use super::{
@@ -121,7 +123,7 @@ impl Session {
         line: &str,
     ) -> io::Result<()>
     where
-        REv: From<DumpConsensusStateRequest> + Send,
+        REv: From<DumpConsensusStateRequest> + From<ControlAnnouncement> + Send,
     {
         debug!(%line, "line received");
         match Command::from_line(line) {
@@ -175,6 +177,10 @@ impl Session {
                                 self.send_outcome(writer, &Outcome::failed(err)).await?;
                             }
                         }
+                    }
+                    Action::DumpQueues => {
+                        // TODO: Create serializer.
+                        effect_builder.console_dump_queue().await;
                     }
                 };
             }
@@ -247,7 +253,7 @@ async fn handler<REv>(
     mut shutdown_receiver: watch::Receiver<()>,
 ) -> io::Result<()>
 where
-    REv: From<DumpConsensusStateRequest> + Send,
+    REv: From<DumpConsensusStateRequest> + From<ControlAnnouncement> + Send,
 {
     debug!("accepted new connection on console socket");
 
@@ -284,7 +290,7 @@ pub(super) async fn server<REv>(
     listener: UnixListener,
     mut shutdown_receiver: watch::Receiver<()>,
 ) where
-    REv: From<DumpConsensusStateRequest> + Send,
+    REv: From<DumpConsensusStateRequest> + From<ControlAnnouncement> + Send,
 {
     let handling_shutdown_receiver = shutdown_receiver.clone();
     let mut next_client_id: u64 = 0;

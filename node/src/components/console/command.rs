@@ -84,6 +84,8 @@ pub(super) enum Action {
         /// Era to dump. If omitted, dumps the latest era.
         era: Option<u64>,
     },
+    /// Dump the event queues.
+    DumpQueues,
 }
 
 /// A command to be performed on the node's console.
