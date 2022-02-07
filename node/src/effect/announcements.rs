@@ -3,7 +3,10 @@
 //! Announcements indicate new incoming data or events from various sources. See the top-level
 //! module documentation for details.
 
-use std::fmt::{self, Display, Formatter};
+use std::{
+    cell::RefCell,
+    fmt::{self, Display, Formatter},
+};
 
 use itertools::Itertools;
 use serde::Serialize;
@@ -45,8 +48,9 @@ pub(crate) enum ControlAnnouncement {
     },
     // An external event queue dump has been requested.
     QueueDump {
+        /// One-shot serializer for queue dumps.
         #[serde(skip)]
-        serializer: Option<Box<dyn erased_serde::Serializer + Send + Sync>>,
+        serializer: RefCell<Option<Box<dyn erased_serde::Serializer + Send + Sync>>>,
     },
 }
 

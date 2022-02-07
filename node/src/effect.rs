@@ -65,6 +65,7 @@ pub(crate) mod requests;
 use std::{
     any::type_name,
     borrow::Cow,
+    cell::RefCell,
     collections::{BTreeMap, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     future::Future,
@@ -1844,7 +1845,7 @@ impl<REv> EffectBuilder<REv> {
         self.event_queue
             .schedule(
                 ControlAnnouncement::QueueDump {
-                    serializer: Some(serializer),
+                    serializer: RefCell::new(Some(serializer)),
                 },
                 QueueKind::Control,
             )

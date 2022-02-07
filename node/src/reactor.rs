@@ -288,14 +288,6 @@ pub(crate) trait ReactorEvent: Send + Debug + From<ControlAnnouncement> + 'stati
     /// is indeed a control announcement variant.
     fn as_control(&self) -> Option<&ControlAnnouncement>;
 
-    /// Returns a mutable control event.
-    ///
-    /// See `as_control`.
-    fn as_control_mut(&mut self) -> Option<&mut ControlAnnouncement> {
-        todo!()
-        // TODO: Consider making `as_control` mutable instead.
-    }
-
     /// Returns a cheap but human-readable description of the event.
     fn description(&self) -> &'static str {
         "anonymous event"
@@ -537,7 +529,7 @@ where
             }
         }
 
-        let ((ancestor, mut event), queue) = self.scheduler.pop().await;
+        let ((ancestor, event), queue) = self.scheduler.pop().await;
         trace!(%event, %queue, "current");
         let event_desc = event.description();
 
@@ -552,7 +544,7 @@ where
         // Dispatch the event, then execute the resulting effect.
         let start = self.clock.start();
 
-        let (effects, keep_going) = if let Some(ctrl_ann) = event.as_control_mut() {
+        let (effects, keep_going) = if let Some(ctrl_ann) = event.as_control() {
             // We've received a control event, which will _not_ be handled by the reactor.
             match ctrl_ann {
                 ControlAnnouncement::FatalError { file, line, msg } => {
