@@ -24,7 +24,7 @@ fn should_query_contract_package() {
         .clone()
         .get(CONTRACT_PACKAGE_NAMED_KEY)
         .expect("failed to get contract package named key.")
-        .clone();
+        .to_owned();
 
     let contract_package = builder
         .query(None, contract_package_hash, &[])
