@@ -45,10 +45,13 @@ export class AccountHash {
     }
 
     @operator(">")
-    graterThan(other: AccountHash): bool {
+    greaterThan(other: AccountHash): bool {
         for (let i = 0; i < 32; i++) {
-            if (this.bytes[0] > other.bytes[0]) {
+            if (this.bytes[i] > other.bytes[i]) {
                 return true;
+            }
+            if (this.bytes[i] < other.bytes[i]) {
+                return false;
             }
         }
         return false;
@@ -57,8 +60,11 @@ export class AccountHash {
     @operator("<")
     lowerThan(other: AccountHash): bool {
         for (let i = 0; i < 32; i++) {
-            if (this.bytes[0] < other.bytes[0]) {
+            if (this.bytes[i] < other.bytes[i]) {
                 return true;
+            }
+            if (this.bytes[i] > other.bytes[i]) {
+                return false;
             }
         }
         return false;
