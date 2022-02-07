@@ -29,7 +29,7 @@ use crate::{
 /// Control announcements also use a priority queue to ensure that a component that reports a fatal
 /// error is given as few follow-up events as possible. However, there currently is no guarantee
 /// that this happens.
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
 #[must_use]
 pub(crate) enum ControlAnnouncement {
     /// The component has encountered a fatal error and cannot continue.
@@ -43,6 +43,25 @@ pub(crate) enum ControlAnnouncement {
         /// Error message.
         msg: String,
     },
+    // An external event queue dump has been requested.
+    QueueDump {
+        #[serde(skip)]
+        serializer: fn() -> Box<dyn erased_serde::Serializer + Send + Sync>,
+    },
+}
+
+impl std::fmt::Debug for ControlAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::FatalError { file, line, msg } => f
+                .debug_struct("FatalError")
+                .field("file", file)
+                .field("line", line)
+                .field("msg", msg)
+                .finish(),
+            Self::QueueDump { .. } => f.debug_struct("QueueDump").finish_non_exhaustive(),
+        }
+    }
 }
 
 impl Display for ControlAnnouncement {
@@ -51,6 +70,7 @@ impl Display for ControlAnnouncement {
             ControlAnnouncement::FatalError { file, line, msg } => {
                 write!(f, "fatal error [{}:{}]: {}", file, line, msg)
             }
+            _ => todo!(),
         }
     }
 }

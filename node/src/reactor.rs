@@ -37,7 +37,6 @@ use std::{
     collections::HashMap,
     env,
     fmt::{Debug, Display},
-    fs::File,
     mem,
     num::NonZeroU64,
     str::FromStr,
@@ -45,6 +44,7 @@ use std::{
 };
 
 use datasize::DataSize;
+use erased_serde::Serialize as ErasedSerialize;
 use futures::{future::BoxFuture, FutureExt};
 use once_cell::sync::Lazy;
 use prometheus::{self, Histogram, HistogramOpts, IntCounter, IntGauge, Registry};
@@ -62,7 +62,7 @@ use crate::{
     types::{ExitCode, Timestamp},
     unregister_metric,
     utils::{self, SharedFlag, WeightedRoundRobin},
-    NodeRng, DEBUG_DUMP_REQUESTED, JSON_DUMP_REQUESTED, TERMINATION_REQUESTED,
+    NodeRng, TERMINATION_REQUESTED,
 };
 #[cfg(test)]
 use crate::{reactor::initializer::Reactor as InitializerReactor, types::Chainspec};
@@ -94,10 +94,10 @@ const TARGET_OPEN_FILES_LIMIT: Limit = 64_000;
 /// Format for dump of event queue.
 #[derive(Copy, Clone, Debug)]
 enum DumpFormat {
-    /// JSON-encoded (using serde).
-    Json,
-    /// Text-format derived from `fmt::Debug`.
-    Debug,
+    /// Using serde.
+    Serde,
+    /// Text-format, typicall derived from `fmt::Debug` or `fmt::Display`.
+    Stream,
 }
 
 /// Adjusts the maximum number of open file handles upwards towards the hard limit.
@@ -542,20 +542,6 @@ where
             }
         }
 
-        // Dump event queue in JSON format if requested, stopping the world.
-        if JSON_DUMP_REQUESTED.load(Ordering::SeqCst) {
-            debug!("dumping event queue in JSON format as requested");
-            self.dump_queues(DumpFormat::Json).await;
-            JSON_DUMP_REQUESTED.store(false, Ordering::SeqCst);
-        }
-
-        // Dump event queue if requested, stopping the world.
-        if DEBUG_DUMP_REQUESTED.load(Ordering::SeqCst) {
-            debug!("dumping event queue in debug format as requested");
-            self.dump_queues(DumpFormat::Debug).await;
-            DEBUG_DUMP_REQUESTED.store(false, Ordering::SeqCst);
-        }
-
         let ((ancestor, event), queue) = self.scheduler.pop().await;
         trace!(%event, %queue, "current");
         let event_desc = event.description();
@@ -577,6 +563,21 @@ where
                 ControlAnnouncement::FatalError { file, line, msg } => {
                     error!(%file, %line, %msg, "fatal error via control announcement");
                     (Default::default(), false)
+                }
+                ControlAnnouncement::QueueDump { serializer } => {
+                    let mut ser = (*serializer)();
+                    self.scheduler
+                        .dump(move |queue_dump| {
+                            if let Err(err) = queue_dump.erased_serialize(&mut ser) {
+                                warn!(%err, "queue dump failed to serialize");
+                            }
+                        })
+                        .await;
+
+                    // We do not support display dumps at the moment, only serde.
+
+                    // Do nothing on queue dump otherwise.
+                    (Default::default(), true)
                 }
             }
         } else {
@@ -641,43 +642,6 @@ where
         })
     }
 
-    /// Handles dumping queue contents to files in /tmp.
-    async fn dump_queues(&mut self, format: DumpFormat) {
-        let timestamp = Timestamp::now();
-        self.last_queue_dump = Some(timestamp);
-
-        match format {
-            DumpFormat::Json => {
-                let output_fn = format!("/tmp/queue_dump-{}.json", timestamp);
-                let mut serializer = serde_json::Serializer::pretty(
-                    match File::create(&output_fn) {
-                        Ok(file) => file,
-                        Err(error) => {
-                            warn!(%error, "could not create output file ({}) for queue snapshot", output_fn);
-                            return;
-                        }
-                    },
-                );
-                if let Err(error) = self.scheduler.snapshot(&mut serializer).await {
-                    warn!(%error, "could not serialize snapshot to {}", output_fn);
-                }
-            }
-            DumpFormat::Debug => {
-                let output_fn = format!("/tmp/queue_dump_debug-{}.txt", timestamp);
-                let mut file = match File::create(&output_fn) {
-                    Ok(file) => file,
-                    Err(error) => {
-                        warn!(%error, "could not create debug output file ({}) for queue snapshot", output_fn);
-                        return;
-                    }
-                };
-                if let Err(error) = self.scheduler.debug_dump(&mut file).await {
-                    warn!(%error, "could not serialize debug snapshot to {}", output_fn);
-                }
-            }
-        }
-    }
-
     /// Runs the reactor until `maybe_exit()` returns `Some` or we get interrupted by a termination
     /// signal.
     pub(crate) async fn run(&mut self, rng: &mut NodeRng) -> ReactorExit {
@@ -705,6 +669,11 @@ where
                                     ControlAnnouncement::FatalError { file, line, msg } => {
                                         warn!(%file, line=*line, %msg, "exiting due to fatal error scheduled before reactor completion");
                                         return ReactorExit::ProcessShouldExit(ExitCode::Abort);
+                                    }
+                                    ControlAnnouncement::QueueDump { .. } => {
+                                        // Queue dumps are not handled when shutting down. TODO:
+                                        // Maybe return an error instead, something like "reactor is
+                                        // shutting down"?
                                     }
                                 }
                             } else {
