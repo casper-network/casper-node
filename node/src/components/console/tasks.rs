@@ -115,6 +115,17 @@ impl Session {
         }
     }
 
+    /// Creates a generic erased serde serializer.
+    fn create_serde_serializer(
+        &self,
+    ) -> Option<fn() -> Box<dyn erased_serde::Serializer + Send + Sync>> {
+        match self.output {
+            OutputFormat::Interactive => todo!(),
+            OutputFormat::Json => todo!(),
+            OutputFormat::Bincode => todo!(),
+        }
+    }
+
     /// Processes a single command line sent from a client.
     async fn process_line<REv>(
         &mut self,
@@ -178,10 +189,20 @@ impl Session {
                             }
                         }
                     }
-                    Action::DumpQueues => {
-                        // TODO: Create serializer.
-                        effect_builder.console_dump_queue().await;
-                    }
+                    Action::DumpQueues => match self.create_serde_serializer() {
+                        Some(serializer) => {
+                            self.send_outcome(writer, &Outcome::success("dumping queues"))
+                                .await?;
+                            effect_builder.console_dump_queue(serializer).await;
+                        }
+                        None => {
+                            self.send_outcome(
+                                writer,
+                                &Outcome::failed("cannot dump queues in requested format"),
+                            )
+                            .await?;
+                        }
+                    },
                 };
             }
             Err(err) => {

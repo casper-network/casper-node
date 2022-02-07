@@ -15,7 +15,7 @@ use std::{
 };
 
 use enum_iterator::IntoEnumIterator;
-use serde::{ser::SerializeMap, Serialize, Serializer};
+use serde::{Serialize, Serializer};
 use tokio::sync::{Mutex, MutexGuard, Semaphore};
 use tracing::debug;
 
