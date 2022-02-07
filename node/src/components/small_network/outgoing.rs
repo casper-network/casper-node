@@ -299,11 +299,13 @@ where
     /// the destination is not connected.
     routes: HashMap<NodeId, SocketAddr>,
     /// A set of outgoing metrics.
+    #[data_size(skip)]
     metrics: OutgoingMetrics,
 }
 
-#[derive(Debug, Default)]
-struct OutgoingMetrics {
+/// A set of metrics used by the outgoing component.
+#[derive(Clone, Debug)]
+pub(super) struct OutgoingMetrics {
     /// Number of outgoing connections in connecting state.
     pub(super) out_state_connecting: IntGauge,
     /// Number of outgoing connections in waiting state.
@@ -316,25 +318,56 @@ struct OutgoingMetrics {
     pub(super) out_state_loopback: IntGauge,
 }
 
+// Note: We only implement `Default` here for use in testing with `OutgoingManager::new`.
+#[cfg(test)]
+impl Default for OutgoingMetrics {
+    fn default() -> Self {
+        Self {
+            out_state_connecting: IntGauge::new(
+                "out_state_connecting",
+                "internal out_state_connecting",
+            )
+            .unwrap(),
+            out_state_waiting: IntGauge::new("out_state_waiting", "internal out_state_waiting")
+                .unwrap(),
+            out_state_connected: IntGauge::new(
+                "out_state_connected",
+                "internal out_state_connected",
+            )
+            .unwrap(),
+            out_state_blocked: IntGauge::new("out_state_blocked", "internal out_state_blocked")
+                .unwrap(),
+            out_state_loopback: IntGauge::new("out_state_loopback", "internal loopback").unwrap(),
+        }
+    }
+}
+
 impl<H, E> OutgoingManager<H, E>
 where
     H: DataSize,
     E: DataSize,
 {
-    /// Creates a new outgoing manager.
+    /// Creates a new outgoing manager with a set of metrics that is not connected to any registry.
+    #[cfg(test)]
     #[inline]
     pub(super) fn new(config: OutgoingConfig) -> Self {
         Self::with_metrics(config, Default::default())
     }
 
     /// Creates a new outgoing manager with an already existing set of metrics.
-    pub(super) fn with_metrics(config: OutgoingConfig, metrics: OutgoingMetrics) {
+    pub(super) fn with_metrics(config: OutgoingConfig, metrics: OutgoingMetrics) -> Self {
         Self {
             config,
             outgoing: Default::default(),
             routes: Default::default(),
             metrics,
         }
+    }
+
+    /// Returns a reference to the internal metrics.
+    #[cfg(test)]
+    fn metrics(&self) -> &OutgoingMetrics {
+        &self.metrics
     }
 }
 
@@ -469,11 +502,6 @@ where
     /// Iterates over all connected peer IDs.
     pub(crate) fn connected_peers(&'_ self) -> impl Iterator<Item = NodeId> + '_ {
         self.routes.keys().cloned()
-    }
-
-    /// Iterates over all outgoing connections.
-    pub(crate) fn iter_outgoing(&self) -> impl Iterator<Item = (&SocketAddr, &Outgoing<H, E>)> {
-        self.outgoing.iter()
     }
 
     /// Notify about a potentially new address that has been discovered.

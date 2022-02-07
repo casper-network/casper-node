@@ -1,13 +1,9 @@
-use std::{error, sync::Weak};
+use std::sync::Weak;
 
-use datasize::DataSize;
 use prometheus::{IntCounter, IntGauge, Registry};
 use tracing::debug;
 
-use super::{
-    outgoing::{OutgoingManager, OutgoingState},
-    MessageKind,
-};
+use super::{outgoing::OutgoingMetrics, MessageKind};
 use crate::unregister_metric;
 
 /// Network-type agnostic networking metrics.
@@ -260,42 +256,15 @@ impl Metrics {
         }
     }
 
-    pub(crate) fn update_outgoing<H, E>(&self, manager: &OutgoingManager<H, E>)
-    where
-        H: Clone + DataSize,
-        E: DataSize + error::Error,
-    {
-        let mut connecting = 0;
-        let mut waiting = 0;
-        let mut connected = 0;
-        let mut blocked = 0;
-        let mut loopback = 0;
-
-        for (_, outgoing) in manager.iter_outgoing() {
-            match outgoing.state {
-                OutgoingState::Connecting { .. } => {
-                    connecting += 1;
-                }
-                OutgoingState::Waiting { .. } => {
-                    waiting += 1;
-                }
-                OutgoingState::Connected { .. } => {
-                    connected += 1;
-                }
-                OutgoingState::Blocked { .. } => {
-                    blocked += 1;
-                }
-                OutgoingState::Loopback => {
-                    loopback += 1;
-                }
-            }
+    /// Creates a set of outgoing metrics that is connected to this set of metrics.
+    pub(super) fn create_outgoing_metrics(&self) -> OutgoingMetrics {
+        OutgoingMetrics {
+            out_state_connecting: self.out_state_connecting.clone(),
+            out_state_waiting: self.out_state_waiting.clone(),
+            out_state_connected: self.out_state_connected.clone(),
+            out_state_blocked: self.out_state_blocked.clone(),
+            out_state_loopback: self.out_state_loopback.clone(),
         }
-
-        self.out_state_connecting.set(connecting);
-        self.out_state_waiting.set(waiting);
-        self.out_state_connected.set(connected);
-        self.out_state_blocked.set(blocked);
-        self.out_state_loopback.set(loopback);
     }
 }
 
