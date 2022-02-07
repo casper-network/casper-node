@@ -16,6 +16,10 @@ use super::{
     command::{Action, Command, OutputFormat},
     util::ShowUnixAddr,
 };
+use bincode::{
+    config::{AllowTrailing, FixintEncoding, WithOtherIntEncoding, WithOtherTrailing},
+    DefaultOptions, Options,
+};
 use casper_types::EraId;
 use erased_serde::Serializer as ErasedSerializer;
 use futures::future::{self, Either};
@@ -89,6 +93,29 @@ impl Display for Session {
     }
 }
 
+pub enum TempFileSerializer {
+    Json(serde_json::Serializer<fs::File>),
+    Bincode(
+        bincode::Serializer<
+            fs::File,
+            WithOtherTrailing<WithOtherIntEncoding<DefaultOptions, FixintEncoding>, AllowTrailing>,
+        >,
+    ),
+    // TODO: Can use Debug here.
+}
+
+impl TempFileSerializer {
+    /// Converts the temp file serializer into an actual erased serializer.
+    pub fn as_serializer<'a>(&'a mut self) -> Box<dyn ErasedSerializer + 'a> {
+        match self {
+            TempFileSerializer::Json(json) => Box::new(<dyn erased_serde::Serializer>::erase(json)),
+            TempFileSerializer::Bincode(bincode) => {
+                Box::new(<dyn erased_serde::Serializer>::erase(bincode))
+            }
+        }
+    }
+}
+
 impl Session {
     /// Creates a serializer for an `EraDump`.
     fn create_era_dump_serializer(&self) -> fn(&EraDump<'_>) -> Result<Vec<u8>, Cow<'static, str>> {
@@ -116,20 +143,21 @@ impl Session {
         }
     }
 
-    /// Creates a generic erased serde serializer.
-    fn create_serde_serializer(
-        &self,
-        path: PathBuf,
-    ) -> Option<Box<dyn erased_serde::Serializer + Send + Sync>> {
+    /// Creates a generic serializer that is writing to a temporary file.
+    ///
+    /// The resulting serializer will write to the given file.
+    fn create_temp_file_serializer(&self, file: fs::File) -> Option<TempFileSerializer> {
         match self.output {
-            _ => todo!()
-            // OutputFormat::Interactive => None,
-            // OutputFormat::Json => Some(move || {
-            //     let serializer = serde_json::Serializer::new(fs::File::create(path).unwrap());
-
-            //     serializer.erase()
-            // }),
-            // OutputFormat::Bincode => None,
+            OutputFormat::Interactive => None,
+            OutputFormat::Json => Some(TempFileSerializer::Json(serde_json::Serializer::new(file))),
+            OutputFormat::Bincode => Some(TempFileSerializer::Bincode(bincode::Serializer::new(
+                file,
+                // TODO: Do not use `bincode::serialize` above, but rather always instantiate
+                // options across the file to ensure it is always the same.
+                DefaultOptions::new()
+                    .with_fixint_encoding()
+                    .allow_trailing_bytes(),
+            ))),
         }
     }
 
@@ -196,7 +224,7 @@ impl Session {
                             }
                         }
                     }
-                    Action::DumpQueues => match self.create_serde_serializer(todo!()) {
+                    Action::DumpQueues => match self.create_temp_file_serializer(todo!()) {
                         Some(serializer) => {
                             self.send_outcome(writer, &Outcome::success("dumping queues"))
                                 .await?;

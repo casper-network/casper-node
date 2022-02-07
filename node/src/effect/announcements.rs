@@ -15,7 +15,8 @@ use casper_types::{EraId, ExecutionResult, PublicKey};
 
 use crate::{
     components::{
-        chainspec_loader::NextUpgrade, deploy_acceptor::Error, small_network::GossipedAddress,
+        chainspec_loader::NextUpgrade, console::TempFileSerializer, deploy_acceptor::Error,
+        small_network::GossipedAddress,
     },
     effect::Responder,
     types::{
@@ -50,7 +51,7 @@ pub(crate) enum ControlAnnouncement {
     QueueDump {
         /// One-shot serializer for queue dumps.
         #[serde(skip)]
-        serializer: RefCell<Option<Box<dyn erased_serde::Serializer + Send + Sync>>>,
+        serializer: RefCell<Option<TempFileSerializer>>,
     },
 }
 

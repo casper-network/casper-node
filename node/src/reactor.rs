@@ -564,7 +564,9 @@ where
                             if let Some(mut ser) = ref_mut.take() {
                                 self.scheduler
                                     .dump(move |queue_dump| {
-                                        if let Err(err) = queue_dump.erased_serialize(&mut ser) {
+                                        if let Err(err) =
+                                            queue_dump.erased_serialize(&mut ser.as_serializer())
+                                        {
                                             warn!(%err, "queue dump failed to serialize");
                                         }
                                     })

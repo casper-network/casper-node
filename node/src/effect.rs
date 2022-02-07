@@ -104,6 +104,7 @@ use crate::{
         block_validator::ValidatingBlock,
         chainspec_loader::{CurrentRunInfo, NextUpgrade},
         consensus::{BlockContext, ClContext, EraDump, ValidatorChange},
+        console::TempFileSerializer,
         contract_runtime::EraValidatorsRequest,
         deploy_acceptor,
         fetcher::FetchResult,
@@ -1836,10 +1837,8 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Dump the event queue contents to the console, using the given serializer.
-    pub(crate) async fn console_dump_queue(
-        self,
-        serializer: Box<dyn erased_serde::Serializer + Send + Sync>,
-    ) where
+    pub(crate) async fn console_dump_queue(self, serializer: TempFileSerializer)
+    where
         REv: From<ControlAnnouncement>,
     {
         self.event_queue

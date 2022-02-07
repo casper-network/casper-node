@@ -3,6 +3,10 @@
 //! The console listens on a configurable unix socket for incoming connections and allows deep debug
 //! access to a running node via special commands.
 
+mod command;
+mod tasks;
+mod util;
+
 use std::{
     fmt::{self, Display, Formatter},
     fs, io,
@@ -28,9 +32,7 @@ use crate::{
 };
 use util::ShowUnixAddr;
 
-mod command;
-mod tasks;
-mod util;
+pub use tasks::TempFileSerializer;
 
 /// Unix console component.
 #[derive(Debug, DataSize)]
