@@ -1810,9 +1810,16 @@ where
                 let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
 
                 let max_delegator_size_limit = self.config.max_delegator_size_limit() as usize;
+                let minimum_delegation_amount = self.config.minimum_delegation_amount();
 
                 let result = runtime
-                    .delegate(delegator, validator, amount, max_delegator_size_limit)
+                    .delegate(
+                        delegator,
+                        validator,
+                        amount,
+                        max_delegator_size_limit,
+                        minimum_delegation_amount,
+                    )
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)

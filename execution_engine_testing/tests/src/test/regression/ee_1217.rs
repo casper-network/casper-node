@@ -3,7 +3,8 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::core::{
-    engine_state::Error as CoreError, execution::Error as ExecError,
+    engine_state::{engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, Error as CoreError},
+    execution::Error as ExecError,
 };
 use casper_types::{
     runtime_args, system::auction, ApiError, PublicKey, RuntimeArgs, SecretKey, U512,
@@ -438,7 +439,7 @@ fn should_fail_to_undelegate_from_stored_session_code() {
         runtime_args! {
             auction::ARG_DELEGATOR => default_public_key_arg.clone(),
             auction::ARG_VALIDATOR => validator_public_key_arg.clone(),
-            auction::ARG_AMOUNT => U512::one(),
+            auction::ARG_AMOUNT => U512::from(DEFAULT_MINIMUM_DELEGATION_AMOUNT),
         },
     )
     .build();
@@ -532,7 +533,7 @@ fn should_fail_to_undelegate_from_stored_contract_code() {
         runtime_args! {
             auction::ARG_DELEGATOR => default_public_key_arg.clone(),
             auction::ARG_VALIDATOR => validator_public_key_arg.clone(),
-            auction::ARG_AMOUNT => U512::one(),
+            auction::ARG_AMOUNT => U512::from(DEFAULT_MINIMUM_DELEGATION_AMOUNT),
         },
     )
     .build();
