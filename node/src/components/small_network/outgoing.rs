@@ -103,6 +103,7 @@ use std::{
 
 use datasize::DataSize;
 
+use prometheus::IntGauge;
 use tracing::{debug, error_span, field::Empty, info, trace, warn, Span};
 
 use super::{display_error, NodeId};
@@ -297,6 +298,22 @@ where
     /// Contains a mapping from node IDs to connected socket addresses. A missing entry means that
     /// the destination is not connected.
     routes: HashMap<NodeId, SocketAddr>,
+    /// A set of outgoing metrics.
+    metrics: OutgoingMetrics,
+}
+
+#[derive(Debug, Default)]
+struct OutgoingMetrics {
+    /// Number of outgoing connections in connecting state.
+    pub(super) out_state_connecting: IntGauge,
+    /// Number of outgoing connections in waiting state.
+    pub(super) out_state_waiting: IntGauge,
+    /// Number of outgoing connections in connected state.
+    pub(super) out_state_connected: IntGauge,
+    /// Number of outgoing connections in blocked state.
+    pub(super) out_state_blocked: IntGauge,
+    /// Number of outgoing connections in loopback state.
+    pub(super) out_state_loopback: IntGauge,
 }
 
 impl<H, E> OutgoingManager<H, E>
@@ -305,11 +322,18 @@ where
     E: DataSize,
 {
     /// Creates a new outgoing manager.
-    pub(crate) fn new(config: OutgoingConfig) -> Self {
+    #[inline]
+    pub(super) fn new(config: OutgoingConfig) -> Self {
+        Self::with_metrics(config, Default::default())
+    }
+
+    /// Creates a new outgoing manager with an already existing set of metrics.
+    pub(super) fn with_metrics(config: OutgoingConfig, metrics: OutgoingMetrics) {
         Self {
             config,
             outgoing: Default::default(),
             routes: Default::default(),
+            metrics,
         }
     }
 }
@@ -396,6 +420,28 @@ where
             _ => {
                 trace!("route unchanged");
             }
+        }
+
+        // Update the metrics, decreasing the count of the state that was left, while increasing
+        // the new state. Note that this will lead to a non-atomic dec/inc if the previous state
+        // was the same as before.
+        match prev_state {
+            Some(OutgoingState::Blocked { .. }) => self.metrics.out_state_blocked.dec(),
+            Some(OutgoingState::Connected { .. }) => self.metrics.out_state_connected.dec(),
+            Some(OutgoingState::Connecting { .. }) => self.metrics.out_state_connecting.dec(),
+            Some(OutgoingState::Loopback) => self.metrics.out_state_loopback.dec(),
+            Some(OutgoingState::Waiting { .. }) => self.metrics.out_state_waiting.dec(),
+            None => {
+                // Nothing to do, there was no previous state.
+            }
+        }
+
+        match new_outgoing.state {
+            OutgoingState::Blocked { .. } => self.metrics.out_state_blocked.inc(),
+            OutgoingState::Connected { .. } => self.metrics.out_state_connected.inc(),
+            OutgoingState::Connecting { .. } => self.metrics.out_state_connecting.inc(),
+            OutgoingState::Loopback => self.metrics.out_state_loopback.inc(),
+            OutgoingState::Waiting { .. } => self.metrics.out_state_waiting.inc(),
         }
 
         new_outgoing
