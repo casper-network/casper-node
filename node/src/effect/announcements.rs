@@ -70,7 +70,9 @@ impl Display for ControlAnnouncement {
             ControlAnnouncement::FatalError { file, line, msg } => {
                 write!(f, "fatal error [{}:{}]: {}", file, line, msg)
             }
-            _ => todo!(),
+            ControlAnnouncement::QueueDump { .. } => {
+                write!(f, "dump event queue")
+            }
         }
     }
 }
