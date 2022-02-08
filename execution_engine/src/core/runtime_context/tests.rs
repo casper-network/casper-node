@@ -136,6 +136,7 @@ fn mock_runtime_context<'a>(
         Phase::Session,
         *TEST_ENGINE_CONFIG,
         Vec::default(),
+        U512::MAX,
     )
 }
 
@@ -383,6 +384,7 @@ fn contract_key_addable_valid() {
         PHASE,
         EngineConfig::default(),
         Vec::default(),
+        U512::zero(),
     );
 
     runtime_context
@@ -455,6 +457,7 @@ fn contract_key_addable_invalid() {
         PHASE,
         EngineConfig::default(),
         Vec::default(),
+        U512::zero(),
     );
 
     let result = runtime_context.metered_add_gs(contract_key, named_uref_tuple);

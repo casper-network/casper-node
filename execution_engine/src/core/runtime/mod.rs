@@ -1493,6 +1493,8 @@ where
             phase,
             self.config,
             transfers,
+            // This doesn't even matter b/c this runtime's limit is not used anywhere.
+            *self.context().main_purse_spending_limit(),
         );
 
         let mut mint_runtime = self.new_from_self(mint_context, stack);
@@ -1581,6 +1583,9 @@ where
         // Result still contains a result, but the entrypoints logic does not exit early on errors.
         let ret = result?;
 
+        // Update outer CSPR approved limit.
+        self.context.cspr_left(*mint_runtime.context.main_purse_spending_limit());
+
         let urefs = extract_urefs(&ret)?;
         let access_rights = extract_access_rights_from_urefs(urefs);
         self.context.access_rights_extend(access_rights);
@@ -1639,6 +1644,7 @@ where
             phase,
             self.config,
             transfers,
+            *self.context.main_purse_spending_limit(),
         );
 
         let mut runtime = self.new_from_self(runtime_context, stack);
@@ -1759,6 +1765,8 @@ where
             phase,
             self.config,
             transfers,
+            // We should not spend any CSPR when executing auction contract.
+            U512::zero(),
         );
 
         let mut runtime = self.new_from_self(runtime_context, stack);
@@ -2237,6 +2245,7 @@ where
             self.context.phase(),
             self.config,
             self.context.transfers().to_owned(),
+            *self.context().main_purse_spending_limit(),
         );
 
         let mut stack = self.stack.clone();
@@ -2282,6 +2291,7 @@ where
                     // running session code
                     *self.context.named_keys_mut() = runtime.context.named_keys().clone();
                 }
+                self.context.cspr_left(*runtime.context.main_purse_spending_limit());
                 return Ok(runtime.take_host_buffer().unwrap_or(CLValue::from_t(())?));
             }
         };

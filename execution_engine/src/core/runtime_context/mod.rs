@@ -20,7 +20,7 @@ use casper_types::{
     AccessRights, BlockTime, CLType, CLValue, Contract, ContractHash, ContractPackage,
     ContractPackageHash, DeployHash, DeployInfo, EntryPointAccess, EntryPointType, Gas, Key,
     KeyTag, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferAddr,
-    URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH,
+    URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
 
 use crate::{
@@ -118,6 +118,7 @@ pub struct RuntimeContext<'a, R> {
     engine_config: EngineConfig,
     entry_point_type: EntryPointType,
     transfers: Vec<TransferAddr>,
+    main_purse_spending_limit: U512,
 }
 
 impl<'a, R> RuntimeContext<'a, R>
@@ -146,6 +147,7 @@ where
         phase: Phase,
         engine_config: EngineConfig,
         transfers: Vec<TransferAddr>,
+        main_purse_spending_limit: U512,
     ) -> Self {
         RuntimeContext {
             tracking_copy,
@@ -166,6 +168,7 @@ where
             phase,
             engine_config,
             transfers,
+            main_purse_spending_limit,
         }
     }
 
@@ -801,6 +804,11 @@ where
         }
     }
 
+    /// Returns remaining spending limit on account's main purse.
+    pub fn main_purse_spending_limit(&self) -> &U512 {
+        &self.main_purse_spending_limit
+    }
+
     /// Checks if we are calling a system contract.
     pub(crate) fn is_system_contract(&self, contract_hash: &ContractHash) -> Result<bool, Error> {
         Ok(self
@@ -1242,5 +1250,22 @@ where
                 error!("Missing system contract registry");
                 Error::MissingSystemContractRegistry
             })
+    }
+
+    /// Subtract spent amount from the main purse spending limit.
+    pub(crate) fn cspr_spent(&mut self, amount: U512) -> Option<U512> {
+        if let Some(res) = self.main_purse_spending_limit.checked_sub(amount) {
+            self.main_purse_spending_limit = res;
+            Some(self.main_purse_spending_limit)
+        } else {
+            None
+        }
+    }
+
+    /// Sets a new spending limit.
+    /// Should be called after inner context returns - if CSPR were there
+    /// it should count towards global limit for the whole deploy execution.
+    pub(crate) fn cspr_left(&mut self, amount: U512) {
+        self.main_purse_spending_limit = amount;
     }
 }

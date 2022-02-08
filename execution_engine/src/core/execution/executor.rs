@@ -9,8 +9,8 @@ use casper_types::{
     bytesrepr::FromBytes,
     contracts::NamedKeys,
     system::{auction, handle_payment, mint, AUCTION, HANDLE_PAYMENT, MINT},
-    BlockTime, CLTyped, CLValue, ContractPackage, DeployHash, EntryPoint, EntryPointType, Gas, Key,
-    Phase, ProtocolVersion, RuntimeArgs, StoredValue,
+    BlockTime, CLTyped, ContractPackage, DeployHash, EntryPoint, EntryPointType, Gas, Key, Phase,
+    ProtocolVersion, RuntimeArgs, StoredValue, U512,
 };
 
 use crate::{
@@ -139,6 +139,15 @@ impl Executor {
         // we don't apply the execution changes but keep the payment code effects.
         let execution_journal = tracking_copy.borrow().execution_journal();
 
+        let main_purse_spending_limit: U512 =
+            match crate::core::get_approved_cspr(&args, U512::zero()) {
+                Ok(spending_limit) => spending_limit,
+                Err(error) => {
+                    let exec_error = Error::from(error);
+                    return ExecutionResult::precondition_failure(exec_error.into());
+                }
+            };
+
         let context = RuntimeContext::new(
             tracking_copy,
             entry_point_type,
@@ -158,6 +167,7 @@ impl Executor {
             phase,
             self.config,
             transfers,
+            main_purse_spending_limit,
         );
 
         let mut runtime = Runtime::new(self.config, memory, module, context, stack);
@@ -293,6 +303,15 @@ impl Executor {
             Rc::new(RefCell::new(generator))
         };
 
+        let main_purse_spending_limit: U512 =
+            match crate::core::get_approved_cspr(&payment_args, U512::zero()) {
+                Ok(spending_limit) => spending_limit,
+                Err(error) => {
+                    let exec_error = Error::from(error);
+                    return ExecutionResult::precondition_failure(exec_error.into());
+                }
+            };
+
         let mut runtime = match self.create_runtime(
             system_module,
             EntryPointType::Session,
@@ -311,6 +330,7 @@ impl Executor {
             Rc::clone(&tracking_copy),
             phase,
             stack,
+            main_purse_spending_limit,
         ) {
             Ok((_instance, runtime)) => runtime,
             Err(error) => {
@@ -364,6 +384,7 @@ impl Executor {
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
         stack: RuntimeStack,
+        main_purse_spending_limit: U512,
     ) -> (Option<T>, ExecutionResult)
     where
         R: StateReader<Key, StoredValue>,
@@ -463,6 +484,7 @@ impl Executor {
             tracking_copy,
             phase,
             stack,
+            main_purse_spending_limit,
         ) {
             Ok((instance, runtime)) => (instance, runtime),
             Err(error) => {
@@ -487,86 +509,6 @@ impl Executor {
         );
         *named_keys = inner_named_keys;
         ret
-    }
-
-    /// Used to execute arbitrary wasm; necessary for running system contract installers / upgraders
-    /// This is not meant to be used for executing system contracts.
-    pub fn exec_wasm_direct<R, T>(
-        &self,
-        module: Module,
-        entry_point_name: &str,
-        args: RuntimeArgs,
-        account: &mut Account,
-        authorization_keys: BTreeSet<AccountHash>,
-        blocktime: BlockTime,
-        deploy_hash: DeployHash,
-        gas_limit: Gas,
-        address_generator: Rc<RefCell<AddressGenerator>>,
-        protocol_version: ProtocolVersion,
-        correlation_id: CorrelationId,
-        tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
-        phase: Phase,
-        stack: RuntimeStack,
-    ) -> Result<T, Error>
-    where
-        R: StateReader<Key, StoredValue>,
-        R::Error: Into<Error>,
-        T: FromBytes + CLTyped,
-    {
-        let mut named_keys: NamedKeys = account.named_keys().clone();
-        let base_key = account.account_hash().into();
-
-        let (instance, mut runtime) = self.create_runtime(
-            module,
-            EntryPointType::Session,
-            args,
-            &mut named_keys,
-            Default::default(),
-            base_key,
-            account,
-            authorization_keys,
-            blocktime,
-            deploy_hash,
-            gas_limit,
-            address_generator,
-            protocol_version,
-            correlation_id,
-            tracking_copy,
-            phase,
-            stack,
-        )?;
-
-        let error: wasmi::Error = match instance.invoke_export(entry_point_name, &[], &mut runtime)
-        {
-            Err(error) => error,
-            Ok(_) => {
-                // This duplicates the behavior of runtime sub_call.
-                // If `instance.invoke_export` returns `Ok` and the `host_buffer` is `None`, the
-                // contract's execution succeeded but did not explicitly call `runtime::ret()`.
-                // Treat as though the execution returned the unit type `()` as per Rust
-                // functions which don't specify a return value.
-                let result = runtime.take_host_buffer().unwrap_or(CLValue::from_t(())?);
-                let ret = result.into_t()?;
-                *account.named_keys_mut() = named_keys;
-                return Ok(ret);
-            }
-        };
-
-        let return_value: CLValue = match error
-            .as_host_error()
-            .and_then(|host_error| host_error.downcast_ref::<Error>())
-        {
-            Some(Error::Ret(_)) => runtime
-                .take_host_buffer()
-                .ok_or(Error::ExpectedReturnValue)?,
-            Some(Error::Revert(code)) => return Err(Error::Revert(*code)),
-            Some(error) => return Err(error.clone()),
-            _ => return Err(Error::Interpreter(error.into())),
-        };
-
-        let ret = return_value.into_t()?;
-        *account.named_keys_mut() = named_keys;
-        Ok(ret)
     }
 
     /// Creates new runtime object.
@@ -594,6 +536,7 @@ impl Executor {
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
         stack: RuntimeStack,
+        main_purse_spending_limit: U512,
     ) -> Result<(ModuleRef, Runtime<'a, R>), Error>
     where
         R: StateReader<Key, StoredValue>,
@@ -627,6 +570,7 @@ impl Executor {
             phase,
             self.config,
             transfers,
+            main_purse_spending_limit,
         );
 
         let (instance, memory) =

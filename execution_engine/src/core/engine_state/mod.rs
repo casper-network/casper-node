@@ -814,6 +814,8 @@ where
                             Rc::clone(&tracking_copy),
                             Phase::Session,
                             create_purse_stack,
+                            // We're just creating a purse.
+                            U512::zero(),
                         );
                     match maybe_uref {
                         Some(main_purse) => {
@@ -920,6 +922,8 @@ where
                     Rc::clone(&tracking_copy),
                     Phase::Payment,
                     get_payment_purse_stack,
+                    // Getting payment purse does not require transfering tokens.
+                    U512::zero(),
                 );
 
             payment_uref = match maybe_payment_uref {
@@ -976,6 +980,9 @@ where
                     Rc::clone(&tracking_copy),
                     Phase::Payment,
                     transfer_to_payment_purse_stack,
+                    // We should use only as much as transfer costs.
+                    // We're not changing the allowed spending limit since this is a system cost.
+                    wasmless_transfer_motes.value(),
                 );
 
             if let Some(error) = payment_result.as_error().cloned() {
@@ -1073,6 +1080,8 @@ where
                 Rc::clone(&tracking_copy),
                 Phase::Session,
                 transfer_stack,
+                // We limit native transfer to the amount that user signed over as `amount` argument.
+                transfer_args.amount()
             );
 
         // User is already charged fee for wasmless contract, and we need to make sure we will not
@@ -1149,6 +1158,10 @@ where
                     finalization_tc,
                     Phase::FinalizePayment,
                     finalize_payment_stack,
+                    // Spending limit is what user agreed to pay for the execution.
+                    U512::from(
+                        self.config().system_config().wasmless_transfer_cost(),
+                    ),
                 );
 
             finalize_result
@@ -1212,11 +1225,7 @@ where
     ) -> Result<ExecutionResult, Error> {
         // spec: https://casperlabs.atlassian.net/wiki/spaces/EN/pages/123404576/Payment+code+execution+specification
 
-        let preprocessor = {
-            let config = self.config();
-            let wasm_config = config.wasm_config();
-            Preprocessor::new(*wasm_config)
-        };
+        let preprocessor = Preprocessor::new(*self.config().wasm_config());
 
         // Create tracking copy (which functions as a deploy context)
         // validation_spec_2: prestate_hash check
@@ -1755,6 +1764,7 @@ where
                     finalization_tc,
                     Phase::FinalizePayment,
                     handle_payment_stack,
+                    U512::zero(),
                 );
 
             finalize_result
@@ -1929,6 +1939,8 @@ where
                 Rc::clone(&tracking_copy),
                 Phase::Session,
                 get_era_validators_stack,
+                // No need to transfer tokens when query state.
+                U512::zero(),
             );
 
         if let Some(error) = execution_result.take_error() {
@@ -2085,6 +2097,8 @@ where
             Rc::clone(&tracking_copy),
             Phase::Session,
             distribute_rewards_stack,
+            // There should be no CSPRs transferred during reawrds distribution.
+            U512::zero(),
         );
 
         if let Some(exec_error) = execution_result.take_error() {
@@ -2132,6 +2146,8 @@ where
                     Rc::clone(&tracking_copy),
                     Phase::Session,
                     slash_stack,
+                    // No transfer should occur when slashing.
+                    U512::zero(),
                 );
 
             if let Some(exec_error) = execution_result.take_error() {
@@ -2183,6 +2199,8 @@ where
             Rc::clone(&tracking_copy),
             Phase::Session,
             run_auction_stack,
+            // RunAuction should not consume tokens.
+            U512::zero(),
         );
 
         if let Some(exec_error) = execution_result.take_error() {
