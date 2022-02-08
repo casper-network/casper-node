@@ -135,6 +135,7 @@ steps:
 - name: build-client-contracts
   image: casperlabs/node-build-u1804
   commands:
+    - make setup
     - make build-client-contracts
   when:
     branch:
