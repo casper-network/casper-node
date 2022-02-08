@@ -37,9 +37,9 @@ use casper_types::{
     system::{
         self,
         auction::{
-            self, Bids, DelegationRate, EraValidators, UnbondingPurses, ValidatorWeights,
-            ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_VALIDATOR,
-            ERA_ID_KEY, INITIAL_ERA_ID,
+            self, Bids, DelegationRate, EraValidators, Error as AuctionError, UnbondingPurses,
+            ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY,
+            ARG_VALIDATOR, ERA_ID_KEY, INITIAL_ERA_ID,
         },
     },
     EraId, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U256, U512,
@@ -3692,14 +3692,12 @@ fn should_enforce_and_check_global_delegator_capacity() {
         .exec(delegation_to_validator_2_request)
         .expect_failure();
 
-    let error = builder.get_error();
+    let error = builder.get_error().expect("must get error");
 
     assert!(matches!(
         error,
-        Some(Error::Exec(execution::Error::Revert(
-            ApiError::AuctionError(44)
-        )))
-    ))
+        Error::Exec(execution::Error::Revert(ApiError::AuctionError(auction_error)))
+        if auction_error == AuctionError::GlobalDelegatorCapacityReached as u8));
 }
 
 #[ignore]
@@ -3776,11 +3774,118 @@ fn should_enforce_minimum_delegation_amount() {
     // therefore the delegation should not succeed.
     builder.exec(delegation_request_1).expect_failure();
 
-    let error = builder.get_error();
+    let error = builder.get_error().expect("must get error");
     assert!(matches!(
         error,
-        Some(Error::Exec(execution::Error::Revert(
-            ApiError::AuctionError(45)
-        )))
-    ))
+        Error::Exec(execution::Error::Revert(ApiError::AuctionError(auction_error)))
+        if auction_error == AuctionError::DelegationAmountTooSmall as u8));
+}
+
+#[ignore]
+#[test]
+fn should_allow_delegations_with_minimal_floor_amount() {
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+
+    let transfer_to_validator_1 = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *NON_FOUNDER_VALIDATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let transfer_to_delegator_1 = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *BID_ACCOUNT_1_ADDR,
+            ARG_AMOUNT => U512::from(BID_ACCOUNT_1_BALANCE)
+        },
+    )
+    .build();
+
+    let transfer_to_delegator_2 = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *BID_ACCOUNT_2_ADDR,
+            ARG_AMOUNT => U512::from(BID_ACCOUNT_1_BALANCE)
+        },
+    )
+    .build();
+
+    let post_genesis_request = vec![
+        transfer_to_validator_1,
+        transfer_to_delegator_1,
+        transfer_to_delegator_2,
+    ];
+
+    for request in post_genesis_request {
+        builder.exec(request).expect_success().commit();
+    }
+
+    let add_bid_request_1 = ExecuteRequestBuilder::standard(
+        *NON_FOUNDER_VALIDATOR_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
+            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+        },
+    )
+    .build();
+
+    builder.exec(add_bid_request_1).expect_success().commit();
+
+    for _ in 0..=DEFAULT_AUCTION_DELAY {
+        let step_request = StepRequestBuilder::new()
+            .with_parent_state_hash(builder.get_post_state_hash())
+            .with_protocol_version(ProtocolVersion::V1_0_0)
+            .with_next_era_id(builder.get_era().successor())
+            .with_run_auction(true)
+            .build();
+
+        builder
+            .step(step_request)
+            .expect("must execute step request");
+    }
+
+    let delegation_request_1 = ExecuteRequestBuilder::standard(
+        *BID_ACCOUNT_1_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DEFAULT_MINIMUM_DELEGATION_AMOUNT - 1),
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK.clone(),
+        },
+    )
+    .build();
+
+    // The delegation amount is below the default value of 500 CSPR,
+    // therefore the delegation should not succeed.
+    builder.exec(delegation_request_1).expect_failure();
+
+    let error = builder.get_error().expect("must get error");
+
+    assert!(matches!(
+        error,
+        Error::Exec(execution::Error::Revert(ApiError::AuctionError(auction_error)))
+        if auction_error == AuctionError::DelegationAmountTooSmall as u8));
+
+    let delegation_request_2 = ExecuteRequestBuilder::standard(
+        *BID_ACCOUNT_2_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DEFAULT_MINIMUM_DELEGATION_AMOUNT),
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => BID_ACCOUNT_2_PK.clone(),
+        },
+    )
+    .build();
+
+    builder.exec(delegation_request_2).expect_success().commit();
 }
