@@ -343,7 +343,7 @@ impl Display for Error {
             Error::MintError => formatter.write_str("An error in the mint contract execution"),
             Error::ExceededDelegatorSizeLimit => formatter.write_str("The amount of delegators per validator has been exceeded"),
             Error::GlobalDelegatorCapacityReached => formatter.write_str("The global delegator capacity has been reached"),
-            Error::DelegationAmountTooSmall => formatter.write_str("The delegated amount if below the minimum allowed"),
+            Error::DelegationAmountTooSmall => formatter.write_str("The delegated amount is below the minimum allowed"),
             Error::GasLimit => formatter.write_str("GasLimit"),
         }
     }
