@@ -605,4 +605,4 @@ steps:
   - nctl-nighly-script
 
 trigger:
-  cron: [ nightly-tests-cron ]
+  cron: [ nightly-tests-cron, feat-fast-sync ]
