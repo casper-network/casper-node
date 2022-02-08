@@ -62,7 +62,7 @@ where
 
     fn get_main_purse(&self) -> URef {
         self.context.account().main_purse()
-    } 
+    }
 }
 
 // TODO: update Mint + StorageProvider to better handle errors

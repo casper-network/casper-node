@@ -5,7 +5,7 @@ use casper_contract::{
     contract_api::{self, account, runtime},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::{URef, U512, account::AccountHash};
+use casper_types::{account::AccountHash, URef, U512};
 
 const ARG_TARGET: &str = "target";
 const ARG_AMOUNT_TO_SEND: &str = "amount_to_send";

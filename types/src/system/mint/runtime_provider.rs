@@ -1,7 +1,7 @@
 use crate::{
     account::AccountHash,
     system::{mint::Error, CallStackElement},
-    Key, Phase, U512, URef,
+    Key, Phase, URef, U512,
 };
 
 /// Provider of runtime host functionality.

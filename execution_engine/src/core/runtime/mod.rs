@@ -1584,7 +1584,8 @@ where
         let ret = result?;
 
         // Update outer CSPR approved limit.
-        self.context.cspr_left(*mint_runtime.context.main_purse_spending_limit());
+        self.context
+            .cspr_left(*mint_runtime.context.main_purse_spending_limit());
 
         let urefs = extract_urefs(&ret)?;
         let access_rights = extract_access_rights_from_urefs(urefs);
@@ -2291,7 +2292,8 @@ where
                     // running session code
                     *self.context.named_keys_mut() = runtime.context.named_keys().clone();
                 }
-                self.context.cspr_left(*runtime.context.main_purse_spending_limit());
+                self.context
+                    .cspr_left(*runtime.context.main_purse_spending_limit());
                 return Ok(runtime.take_host_buffer().unwrap_or(CLValue::from_t(())?));
             }
         };

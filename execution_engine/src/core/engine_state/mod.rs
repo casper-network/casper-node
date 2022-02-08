@@ -1080,8 +1080,9 @@ where
                 Rc::clone(&tracking_copy),
                 Phase::Session,
                 transfer_stack,
-                // We limit native transfer to the amount that user signed over as `amount` argument.
-                transfer_args.amount()
+                // We limit native transfer to the amount that user signed over as `amount`
+                // argument.
+                transfer_args.amount(),
             );
 
         // User is already charged fee for wasmless contract, and we need to make sure we will not
@@ -1159,9 +1160,7 @@ where
                     Phase::FinalizePayment,
                     finalize_payment_stack,
                     // Spending limit is what user agreed to pay for the execution.
-                    U512::from(
-                        self.config().system_config().wasmless_transfer_cost(),
-                    ),
+                    U512::from(self.config().system_config().wasmless_transfer_cost()),
                 );
 
             finalize_result
