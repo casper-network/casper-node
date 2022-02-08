@@ -322,7 +322,7 @@ pub trait Auction:
 
     /// Removes specified amount of motes (or the value from the collection altogether, if the
     /// remaining amount is 0) from the entry in delegators map for given validator and creates a
-    /// new unbonding request to the queue, which when proccessed will redelegate the
+    /// new unbonding request to the queue, which when processed will redelegate the
     /// specified amount of motes to new validator
     ///
     /// The arguments are the delegator's key, the validator's key, the amount,

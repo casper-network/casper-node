@@ -6,8 +6,8 @@ use thiserror::Error;
 
 use casper_hashing::Digest;
 use casper_types::{
-    bytesrepr, system::SystemContractType, Contract, ContractHash, EntryPoints, EraId, Key,
-    ProtocolVersion, StoredValue,
+    bytesrepr, system::SystemContractType, Contract, ContractHash, EraId, Key, ProtocolVersion,
+    StoredValue,
 };
 
 use crate::{
@@ -16,7 +16,7 @@ use crate::{
     storage::global_state::StateProvider,
 };
 
-/// Represents a successfuly executed upgrade.
+/// Represents a successfully executed upgrade.
 #[derive(Debug, Clone)]
 pub struct UpgradeSuccess {
     /// New state root hash generated after effects were applied.
@@ -224,30 +224,6 @@ where
         Ok(())
     }
 
-    /// Check if a contract's entry points differ from a given set.
-    fn has_different_entry_points(
-        &self,
-        contract: &Contract,
-        entry_points_to_check: &EntryPoints,
-    ) -> bool {
-        for new_entry_point in entry_points_to_check.clone().take_entry_points().iter() {
-            match contract.entry_points().get(new_entry_point.name()) {
-                None => {
-                    // An entry point has been added.
-                    return true;
-                }
-                Some(old_entry_point) => {
-                    // An existing entry point has been modified.
-                    if !new_entry_point.eq(old_entry_point) {
-                        return true;
-                    }
-                }
-            }
-        }
-        // Return true when Entry points have been removed.
-        !contract.entry_points().len() == entry_points_to_check.len()
-    }
-
     /// Refresh the system contracts with an updated set of entry points,
     /// and bump the contract version at a major version upgrade.
     fn refresh_system_contract_entry_points(
@@ -281,7 +257,8 @@ where
             .check_next_version(&self.new_protocol_version)
             .is_major_version();
 
-        if !self.has_different_entry_points(&contract, &entry_points) && !is_major_bump {
+        let entry_points_unchanged = *contract.entry_points() == entry_points;
+        if entry_points_unchanged && !is_major_bump {
             return Ok(());
         }
 
