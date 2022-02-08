@@ -245,10 +245,7 @@ where
             }
         }
         // Return true when Entry points have been removed.
-        !contract
-            .entry_points()
-            .keys()
-            .eq(entry_points_to_check.keys())
+        !contract.entry_points().len() == entry_points_to_check.len()
     }
 
     /// Refresh the system contracts with an updated set of entry points,
