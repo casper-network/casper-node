@@ -22,8 +22,9 @@ use casper_execution_engine::{
             execution_result::ExecutionResult,
             run_genesis_request::RunGenesisRequest,
             step::{StepRequest, StepSuccess},
-            BalanceResult, EngineConfig, EngineState, GenesisSuccess, GetBidsRequest, QueryRequest,
-            QueryResult, StepError, SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
+            BalanceResult, EngineConfig, EngineState, Error, GenesisSuccess, GetBidsRequest,
+            QueryRequest, QueryResult, StepError, SystemContractRegistry, UpgradeConfig,
+            UpgradeSuccess,
         },
         execution,
     },
@@ -864,7 +865,7 @@ where
         utils::get_exec_costs(exec_results)
     }
 
-    /// Returns the `Gas` const of the last exec.
+    /// Returns the `Gas` cost of the last exec.
     pub fn last_exec_gas_cost(&self) -> Gas {
         let exec_results = self
             .exec_results
@@ -872,6 +873,30 @@ where
             .expect("Expected to be called after run()");
         let exec_result = exec_results.get(0).expect("should have result");
         exec_result.cost()
+    }
+
+    /// Returns the result of the last exec.
+    pub fn last_exec_result(&self) -> &ExecutionResult {
+        let exec_results = self
+            .exec_results
+            .last()
+            .expect("Expected to be called after run()");
+        exec_results.get(0).expect("should have result").as_ref()
+    }
+
+    /// Assert that last error is the expected one.
+    ///
+    /// NOTE: we're using stringe-based representation for checking equality
+    /// as the `Error` type does not implement `Eq` (many of its subvariants don't).
+    pub fn assert_error(&self, expected_error: Error) {
+        match self.last_exec_result() {
+            ExecutionResult::Failure { error, .. } => {
+                assert_eq!(format!("{:?}", expected_error), format!("{:?}", error))
+            }
+            ExecutionResult::Success { .. } => {
+                panic!("expected error ({:?}) got success", expected_error)
+            }
+        }
     }
 
     /// Returns the error message of the last exec.
