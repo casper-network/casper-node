@@ -2507,7 +2507,7 @@ mod payment {
         DeployItemBuilder, ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR,
     };
     use casper_execution_engine::shared::wasm;
-    use casper_types::{runtime_args, RuntimeArgs};
+    use casper_types::{runtime_args, system::mint, RuntimeArgs, U512};
 
     use super::{
         AccountExt, ARG_CALLS, ARG_CURRENT_DEPTH, CONTRACT_CALL_RECURSIVE_SUBCALL,
@@ -2528,6 +2528,11 @@ mod payment {
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
+            // In the payment phase, this test will try to transfer `len + 1` times
+            // a fixed amount of `1_500_000_000_000` from the main purse of the account.
+            // We need to provide an explicit approval via passing that as an `amount` argument.
+            let approved_amount = U512::from(1_500_000_000_000u64 * (*len + 1) as u64);
+
             let mut subcalls =
                 vec![
                     super::stored_versioned_session(current_contract_package_hash.into());
@@ -2546,6 +2551,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount,
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -2576,6 +2582,11 @@ mod payment {
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
+            // In the payment phase, this test will try to transfer `len + 1` times
+            // a fixed amount of `1_500_000_000_000` from the main purse of the account.
+            // We need to provide an explicit approval via passing that as an `amount` argument.
+            let approved_amount = U512::from(1_500_000_000_000u64 * (*len + 1) as u64);
+
             let mut subcalls =
                 vec![
                     super::stored_versioned_session(current_contract_package_hash.into());
@@ -2592,6 +2603,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount,
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -2622,6 +2634,11 @@ mod payment {
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
+            // In the payment phase, this test will try to transfer `len + 1` times
+            // a fixed amount of `1_500_000_000_000` from the main purse of the account.
+            // We need to provide an explicit approval via passing that as an `amount` argument.
+            let approved_amount = U512::from(1_500_000_000_000u64 * (*len + 1) as u64);
+
             let mut subcalls =
                 vec![super::stored_session(current_contract_hash.into()); len.saturating_sub(1)];
             if *len > 0 {
@@ -2637,6 +2654,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount,
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -2667,6 +2685,11 @@ mod payment {
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
+            // In the payment phase, this test will try to transfer `len + 1` times
+            // a fixed amount of `1_500_000_000_000` from the main purse of the account.
+            // We need to provide an explicit approval via passing that as an `amount` argument.
+            let approved_amount = U512::from(1_500_000_000_000u64 * (*len + 1) as u64);
+
             let mut subcalls =
                 vec![super::stored_session(current_contract_hash.into()); len.saturating_sub(1)];
             if *len > 0 {
@@ -2680,6 +2703,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount,
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -2711,6 +2735,11 @@ mod payment {
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
+            // In the payment phase, this test will try to transfer `len + 1` times
+            // a fixed amount of `1_500_000_000_000` from the main purse of the account.
+            // We need to provide an explicit approval via passing that as an `amount` argument.
+            let approved_amount = U512::from(1_500_000_000_000u64 * (*len + 1) as u64);
+
             let mut subcalls =
                 vec![
                     super::stored_versioned_contract(current_contract_package_hash.into());
@@ -2729,6 +2758,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount,
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -2755,6 +2785,11 @@ mod payment {
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
+            // In the payment phase, this test will try to transfer `len + 1` times
+            // a fixed amount of `1_500_000_000_000` from the main purse of the account.
+            // We need to provide an explicit approval via passing that as an `amount` argument.
+            let approved_amount = U512::from(1_500_000_000_000u64 * (*len + 1) as u64);
+
             let mut subcalls =
                 vec![
                     super::stored_versioned_contract(current_contract_package_hash.into());
@@ -2771,6 +2806,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount,
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -2797,6 +2833,11 @@ mod payment {
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
+            // In the payment phase, this test will try to transfer `len + 1` times
+            // a fixed amount of `1_500_000_000_000` from the main purse of the account.
+            // We need to provide an explicit approval via passing that as an `amount` argument.
+            let approved_amount = U512::from(1_500_000_000_000u64 * (*len + 1) as u64);
+
             let mut subcalls =
                 vec![super::stored_contract(current_contract_hash.into()); len.saturating_sub(1)];
             if *len > 0 {
@@ -2812,6 +2853,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount,
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -2837,6 +2879,11 @@ mod payment {
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
+            // In the payment phase, this test will try to transfer `len + 1` times
+            // a fixed amount of `1_500_000_000_000` from the main purse of the account.
+            // We need to provide an explicit approval via passing that as an `amount` argument.
+            let approved_amount = U512::from(1_500_000_000_000u64 * (*len + 1) as u64);
+
             let mut subcalls =
                 vec![super::stored_contract(current_contract_hash.into()); len.saturating_sub(1)];
             if *len > 0 {
@@ -2850,6 +2897,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount,
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)

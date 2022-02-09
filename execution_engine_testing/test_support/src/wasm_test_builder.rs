@@ -889,13 +889,9 @@ where
     /// NOTE: we're using stringe-based representation for checking equality
     /// as the `Error` type does not implement `Eq` (many of its subvariants don't).
     pub fn assert_error(&self, expected_error: Error) {
-        match self.last_exec_result() {
-            ExecutionResult::Failure { error, .. } => {
-                assert_eq!(format!("{:?}", expected_error), format!("{:?}", error))
-            }
-            ExecutionResult::Success { .. } => {
-                panic!("expected error ({:?}) got success", expected_error)
-            }
+        match self.get_error() {
+            Some(error) => assert_eq!(format!("{:?}", expected_error), format!("{:?}", error)),
+            None => panic!("expected error ({:?}) got success", expected_error),
         }
     }
 

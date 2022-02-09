@@ -1258,6 +1258,7 @@ where
             self.main_purse_spending_limit = res;
             Some(self.main_purse_spending_limit)
         } else {
+            self.main_purse_spending_limit = U512::zero();
             None
         }
     }
