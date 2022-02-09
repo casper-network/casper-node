@@ -150,9 +150,9 @@ fn get_delegator_staked_amount(
 #[ignore]
 #[test]
 fn should_distribute_delegation_rate_zero() {
-    const VALIDATOR_1_STAKE: u64 = 1_000_000_000_000;
-    const DELEGATOR_1_STAKE: u64 = 1_000_000_000_000;
-    const DELEGATOR_2_STAKE: u64 = 1_000_000_000_000;
+    const VALIDATOR_1_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
+    const DELEGATOR_1_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
+    const DELEGATOR_2_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 

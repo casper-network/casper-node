@@ -2509,7 +2509,7 @@ fn should_not_undelegate_vfta_holder_stake() {
 fn should_release_vfta_holder_stake() {
     const EXPECTED_WEEKLY_RELEASE: u64 =
         (DELEGATOR_1_STAKE - DEFAULT_MINIMUM_DELEGATION_AMOUNT) / 14;
-
+    const DELEGATOR_VFTA_STAKE: u64 = DELEGATOR_1_STAKE - DEFAULT_MINIMUM_DELEGATION_AMOUNT;
     const EXPECTED_REMAINDER: u64 = 12;
 
     const EXPECTED_LOCKED_AMOUNTS: [u64; 14] = [
@@ -2572,7 +2572,7 @@ fn should_release_vfta_holder_stake() {
         );
     };
 
-    let delegator_1_stake = DELEGATOR_1_STAKE - DEFAULT_MINIMUM_DELEGATION_AMOUNT;
+
 
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
@@ -2588,7 +2588,7 @@ fn should_release_vfta_holder_stake() {
             ACCOUNT_1_PK.clone(),
             DELEGATOR_1.clone(),
             Motes::new(DELEGATOR_1_BALANCE.into()),
-            Motes::new(delegator_1_stake.into()),
+            Motes::new(DELEGATOR_VFTA_STAKE.into()),
         );
         tmp.push(account_1);
         tmp.push(delegator_1);
@@ -2687,7 +2687,7 @@ fn should_release_vfta_holder_stake() {
 
     {
         // Attempt full unbond
-        expect_undelegate_failure(&mut builder, delegator_1_stake);
+        expect_undelegate_failure(&mut builder, DELEGATOR_VFTA_STAKE);
 
         // Attempt unbond of released amount
         expect_undelegate_success(&mut builder, EXPECTED_WEEKLY_RELEASE);
@@ -2695,7 +2695,7 @@ fn should_release_vfta_holder_stake() {
         total_unbonded += EXPECTED_WEEKLY_RELEASE;
 
         assert_eq!(
-            delegator_1_stake - total_unbonded,
+            DELEGATOR_VFTA_STAKE - total_unbonded,
             EXPECTED_LOCKED_AMOUNTS[0]
         )
     }
@@ -2719,7 +2719,7 @@ fn should_release_vfta_holder_stake() {
         total_unbonded += EXPECTED_WEEKLY_RELEASE;
 
         assert_eq!(
-            delegator_1_stake - total_unbonded,
+            DELEGATOR_VFTA_STAKE - total_unbonded,
             EXPECTED_LOCKED_AMOUNTS[i]
         )
     }
@@ -2740,12 +2740,12 @@ fn should_release_vfta_holder_stake() {
         total_unbonded += EXPECTED_WEEKLY_RELEASE + EXPECTED_REMAINDER;
 
         assert_eq!(
-            delegator_1_stake - total_unbonded,
+            DELEGATOR_VFTA_STAKE - total_unbonded,
             EXPECTED_LOCKED_AMOUNTS[13]
         )
     }
 
-    assert_eq!(delegator_1_stake, total_unbonded);
+    assert_eq!(DELEGATOR_VFTA_STAKE, total_unbonded);
 }
 
 #[ignore]
