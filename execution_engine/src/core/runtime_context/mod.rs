@@ -1258,6 +1258,11 @@ where
             self.main_purse_spending_limit = res;
             Some(self.main_purse_spending_limit)
         } else {
+            error!(
+                limit = %self.main_purse_spending_limit,
+                spent = %amount,
+                "exceeded main purse spending limit"
+            );
             self.main_purse_spending_limit = U512::zero();
             None
         }
