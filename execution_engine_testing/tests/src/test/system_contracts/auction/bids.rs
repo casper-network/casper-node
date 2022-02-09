@@ -2572,8 +2572,6 @@ fn should_release_vfta_holder_stake() {
         );
     };
 
-
-
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account_1 = GenesisAccount::account(
