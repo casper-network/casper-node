@@ -139,14 +139,13 @@ impl Executor {
         // we don't apply the execution changes but keep the payment code effects.
         let execution_journal = tracking_copy.borrow().execution_journal();
 
-        let main_purse_spending_limit: U512 =
-            match crate::core::get_approved_cspr(&args, U512::zero()) {
-                Ok(spending_limit) => spending_limit,
-                Err(error) => {
-                    let exec_error = Error::from(error);
-                    return ExecutionResult::precondition_failure(exec_error.into());
-                }
-            };
+        let main_purse_spending_limit: U512 = match crate::core::get_approved_amount(&args) {
+            Ok(spending_limit) => spending_limit,
+            Err(error) => {
+                let exec_error = Error::from(error);
+                return ExecutionResult::precondition_failure(exec_error.into());
+            }
+        };
 
         let context = RuntimeContext::new(
             tracking_copy,
@@ -303,14 +302,14 @@ impl Executor {
             Rc::new(RefCell::new(generator))
         };
 
-        let main_purse_spending_limit: U512 =
-            match crate::core::get_approved_cspr(&payment_args, U512::zero()) {
-                Ok(spending_limit) => spending_limit,
-                Err(error) => {
-                    let exec_error = Error::from(error);
-                    return ExecutionResult::precondition_failure(exec_error.into());
-                }
-            };
+        let main_purse_spending_limit: U512 = match crate::core::get_approved_amount(&payment_args)
+        {
+            Ok(spending_limit) => spending_limit,
+            Err(error) => {
+                let exec_error = Error::from(error);
+                return ExecutionResult::precondition_failure(exec_error.into());
+            }
+        };
 
         let mut runtime = match self.create_runtime(
             system_module,
