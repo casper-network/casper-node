@@ -30,3 +30,35 @@ pub(crate) fn get_approved_amount(runtime_args: &RuntimeArgs) -> Result<U512, CL
         _ => Ok(U512::zero()),
     }
 }
+
+#[cfg(test)]
+mod test {
+    use casper_types::{system::mint, RuntimeArgs, U512};
+
+    use crate::core::get_approved_amount;
+
+    #[test]
+    fn get_approved_amount_test() {
+        let mut args = RuntimeArgs::new();
+        args.insert(mint::ARG_AMOUNT, 0u64).expect("is ok");
+        assert_eq!(get_approved_amount(&args).unwrap(), U512::zero());
+
+        let mut args = RuntimeArgs::new();
+        args.insert(mint::ARG_AMOUNT, U512::zero()).expect("is ok");
+        assert_eq!(get_approved_amount(&args).unwrap(), U512::zero());
+
+        let args = RuntimeArgs::new();
+        assert_eq!(get_approved_amount(&args).unwrap(), U512::zero());
+
+        let hundred = 100u64;
+
+        let mut args = RuntimeArgs::new();
+        let input = U512::from(hundred);
+        args.insert(mint::ARG_AMOUNT, input.clone()).expect("is ok");
+        assert_eq!(get_approved_amount(&args).unwrap(), input);
+
+        let mut args = RuntimeArgs::new();
+        args.insert(mint::ARG_AMOUNT, hundred).expect("is ok");
+        assert_eq!(get_approved_amount(&args).unwrap(), U512::from(hundred));
+    }
+}
