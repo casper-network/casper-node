@@ -2511,7 +2511,7 @@ fn should_release_vfta_holder_stake() {
         (DELEGATOR_1_STAKE - DEFAULT_MINIMUM_DELEGATION_AMOUNT) / 14;
     const DELEGATOR_VFTA_STAKE: u64 = DELEGATOR_1_STAKE - DEFAULT_MINIMUM_DELEGATION_AMOUNT;
     const EXPECTED_REMAINDER: u64 = 12;
-
+    const NEW_MINIMUM_DELEGATION_AMOUNT: u64 = 0;
     const EXPECTED_LOCKED_AMOUNTS: [u64; 14] = [
         1392858, 1285716, 1178574, 1071432, 964290, 857148, 750006, 642864, 535722, 428580, 321438,
         214296, 107154, 0,
@@ -2601,7 +2601,7 @@ fn should_release_vfta_holder_stake() {
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         DEFAULT_MAX_STORED_VALUE_SIZE,
         DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
-        0,
+        NEW_MINIMUM_DELEGATION_AMOUNT,
         WasmConfig::default(),
         SystemConfig::default(),
     );
