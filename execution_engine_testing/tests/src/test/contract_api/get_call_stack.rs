@@ -2524,8 +2524,8 @@ mod payment {
     // In the payment phase, this test will try to transfer `len + 1` times
     // a fixed amount of `1_500_000_000_000` from the main purse of the account.
     // We need to provide an explicit approval via passing that as an `amount` argument.
-    fn approved_amount(idx: U512) -> U512 {
-        U512::from(LARGE_AMOUNT * (*idx + 1) as u64)
+    fn approved_amount(idx: usize) -> U512 {
+        U512::from(LARGE_AMOUNT * (idx + 1) as u64)
     }
 
     // Session + recursive subcall
@@ -2556,7 +2556,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(len),
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -2603,7 +2603,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(len),
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -2649,7 +2649,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(len),
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -2693,7 +2693,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(len),
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -2743,7 +2743,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(len),
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -2786,7 +2786,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(len),
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -2828,7 +2828,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(len),
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -2867,7 +2867,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(len),
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
