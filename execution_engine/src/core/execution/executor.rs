@@ -303,8 +303,7 @@ impl Executor {
             Rc::new(RefCell::new(generator))
         };
 
-        let main_purse_spending_limit: U512 = match crate::core::get_approved_amount(&payment_args)
-        {
+        let main_purse_spending_limit: U512 = match get_approved_amount(&payment_args) {
             Ok(spending_limit) => spending_limit,
             Err(error) => {
                 let exec_error = Error::from(error);

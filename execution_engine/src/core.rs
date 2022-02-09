@@ -54,7 +54,7 @@ mod test {
 
         let mut args = RuntimeArgs::new();
         let input = U512::from(hundred);
-        args.insert(mint::ARG_AMOUNT, input.clone()).expect("is ok");
+        args.insert(mint::ARG_AMOUNT, input).expect("is ok");
         assert_eq!(get_approved_amount(&args).unwrap(), input);
 
         let mut args = RuntimeArgs::new();
