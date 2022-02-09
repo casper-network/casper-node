@@ -17,6 +17,7 @@ use crate::{
     core::{
         engine_state::{execution_result::ExecutionResult, EngineConfig},
         execution::{address_generator::AddressGenerator, Error},
+        get_approved_amount,
         runtime::{extract_access_rights_from_keys, instance_and_memory, Runtime, RuntimeStack},
         runtime_context::{self, RuntimeContext},
         tracking_copy::{TrackingCopy, TrackingCopyExt},
@@ -139,7 +140,7 @@ impl Executor {
         // we don't apply the execution changes but keep the payment code effects.
         let execution_journal = tracking_copy.borrow().execution_journal();
 
-        let main_purse_spending_limit: U512 = match crate::core::get_approved_amount(&args) {
+        let main_purse_spending_limit: U512 = match get_approved_amount(&args) {
             Ok(spending_limit) => spending_limit,
             Err(error) => {
                 let exec_error = Error::from(error);
