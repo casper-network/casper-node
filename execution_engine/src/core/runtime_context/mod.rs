@@ -805,7 +805,7 @@ where
     }
 
     /// Returns remaining spending limit on account's main purse.
-    pub fn main_purse_spending_limit(&self) -> &U512 {
+    pub(super) fn main_purse_spending_limit(&self) -> &U512 {
         &self.main_purse_spending_limit
     }
 
