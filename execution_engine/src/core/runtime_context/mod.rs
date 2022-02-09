@@ -1253,7 +1253,7 @@ where
     }
 
     /// Subtract spent amount from the main purse spending limit.
-    pub(crate) fn cspr_spent(&mut self, amount: U512) -> Option<U512> {
+    pub(crate) fn subtract_amount_spent(&mut self, amount: U512) -> Option<U512> {
         if let Some(res) = self.main_purse_spending_limit.checked_sub(amount) {
             self.main_purse_spending_limit = res;
             Some(self.main_purse_spending_limit)
@@ -1266,7 +1266,7 @@ where
     /// Sets a new spending limit.
     /// Should be called after inner context returns - if CSPR were there
     /// it should count towards global limit for the whole deploy execution.
-    pub(crate) fn cspr_left(&mut self, amount: U512) {
+    pub(crate) fn set_spending_limit(&mut self, amount: U512) {
         self.main_purse_spending_limit = amount;
     }
 }
