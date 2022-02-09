@@ -164,14 +164,14 @@ impl InMemoryWasmTestBuilder {
     pub fn new(
         global_state: InMemoryGlobalState,
         engine_config: EngineConfig,
-        post_state_hash: Digest,
+        maybe_post_state_hash: Option<Digest>,
     ) -> Self {
         Self::initialize_logging();
         let engine_state = EngineState::new(global_state, engine_config);
         WasmTestBuilder {
             engine_state: Rc::new(engine_state),
-            genesis_hash: Some(post_state_hash),
-            post_state_hash: Some(post_state_hash),
+            genesis_hash: maybe_post_state_hash,
+            post_state_hash: maybe_post_state_hash,
             ..Default::default()
         }
     }

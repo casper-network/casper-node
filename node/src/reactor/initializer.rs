@@ -285,6 +285,10 @@ impl Reactor {
                 .core_config
                 .max_stored_value_size,
             max_delegator_size_limit,
+            chainspec_loader
+                .chainspec()
+                .core_config
+                .minimum_delegation_amount,
             registry,
         )?;
 

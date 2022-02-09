@@ -288,6 +288,12 @@ pub enum Error {
     /// assert_eq!(44, Error::GlobalDelegatorCapacityReached as u8);
     /// ```
     GlobalDelegatorCapacityReached = 44,
+    /// The delegated amount is below the minimum allowed.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(45, Error::DelegationAmountTooSmall as u8);
+    /// ```
+    DelegationAmountTooSmall = 45,
 }
 
 impl Display for Error {
@@ -337,6 +343,7 @@ impl Display for Error {
             Error::MintError => formatter.write_str("An error in the mint contract execution"),
             Error::ExceededDelegatorSizeLimit => formatter.write_str("The amount of delegators per validator has been exceeded"),
             Error::GlobalDelegatorCapacityReached => formatter.write_str("The global delegator capacity has been reached"),
+            Error::DelegationAmountTooSmall => formatter.write_str("The delegated amount is below the minimum allowed"),
             Error::GasLimit => formatter.write_str("GasLimit"),
         }
     }
@@ -415,6 +422,7 @@ impl TryFrom<u8> for Error {
             d if d == Error::GlobalDelegatorCapacityReached as u8 => {
                 Ok(Error::GlobalDelegatorCapacityReached)
             }
+            d if d == Error::DelegationAmountTooSmall as u8 => Ok(Error::DelegationAmountTooSmall),
             _ => Err(TryFromU8ForError(())),
         }
     }

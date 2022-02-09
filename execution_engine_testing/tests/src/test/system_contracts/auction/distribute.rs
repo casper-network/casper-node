@@ -9,6 +9,7 @@ use casper_engine_test_support::{
     DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
     SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
+use casper_execution_engine::core::engine_state::engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 use casper_types::{
     self,
     account::AccountHash,
@@ -149,9 +150,9 @@ fn get_delegator_staked_amount(
 #[ignore]
 #[test]
 fn should_distribute_delegation_rate_zero() {
-    const VALIDATOR_1_STAKE: u64 = 1_000_000;
-    const DELEGATOR_1_STAKE: u64 = 1_000_000;
-    const DELEGATOR_2_STAKE: u64 = 1_000_000;
+    const VALIDATOR_1_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
+    const DELEGATOR_1_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
+    const DELEGATOR_2_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 
@@ -387,9 +388,9 @@ fn should_distribute_delegation_rate_zero() {
 #[ignore]
 #[test]
 fn should_withdraw_bids_after_distribute() {
-    const VALIDATOR_1_STAKE: u64 = 1_000_000;
-    const DELEGATOR_1_STAKE: u64 = 1_000_000;
-    const DELEGATOR_2_STAKE: u64 = 1_000_000;
+    const VALIDATOR_1_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
+    const DELEGATOR_1_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
+    const DELEGATOR_2_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 
@@ -661,9 +662,9 @@ fn should_withdraw_bids_after_distribute() {
 #[ignore]
 #[test]
 fn should_distribute_rewards_after_restaking_delegated_funds() {
-    const VALIDATOR_1_STAKE: u64 = 1_000_000;
-    const DELEGATOR_1_STAKE: u64 = 1_000_000;
-    const DELEGATOR_2_STAKE: u64 = 1_000_000;
+    const VALIDATOR_1_STAKE: u64 = 1_000_000_000_000;
+    const DELEGATOR_1_STAKE: u64 = 1_000_000_000_000;
+    const DELEGATOR_2_STAKE: u64 = 1_000_000_000_000;
 
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 
@@ -979,7 +980,6 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
 
     // Withdraw delegator rewards
     let delegator_1_rewards = delegator_1_updated_stake_1 + delegator_1_updated_stake_2;
-    assert!(delegator_1_rewards > U512::from(DELEGATOR_1_STAKE));
     undelegate(
         &mut builder,
         *DELEGATOR_1_ADDR,
@@ -996,7 +996,6 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
     );
 
     let delegator_2_rewards = delegator_2_updated_stake_1 + delegator_2_updated_stake_2;
-    assert!(delegator_2_rewards > U512::from(DELEGATOR_2_STAKE));
     undelegate(
         &mut builder,
         *DELEGATOR_2_ADDR,
@@ -1014,7 +1013,6 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
 
     // Withdraw validator rewards
     let validator_1_rewards = validator_1_updated_stake_1 + validator_1_updated_stake_2;
-    assert!(validator_1_rewards > U512::from(VALIDATOR_1_STAKE));
     withdraw_bid(
         &mut builder,
         *VALIDATOR_1_ADDR,
@@ -1425,9 +1423,9 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
 #[ignore]
 #[test]
 fn should_distribute_delegation_rate_half() {
-    const VALIDATOR_1_STAKE: u64 = 1_000_000;
-    const DELEGATOR_1_STAKE: u64 = 1_000_000;
-    const DELEGATOR_2_STAKE: u64 = 1_000_000;
+    const VALIDATOR_1_STAKE: u64 = 1_000_000_000_000;
+    const DELEGATOR_1_STAKE: u64 = 1_000_000_000_000;
+    const DELEGATOR_2_STAKE: u64 = 1_000_000_000_000;
 
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = DELEGATION_RATE_DENOMINATOR / 2;
 
@@ -1629,9 +1627,9 @@ fn should_distribute_delegation_rate_half() {
 #[ignore]
 #[test]
 fn should_distribute_delegation_rate_full() {
-    const VALIDATOR_1_STAKE: u64 = 1_000_000;
-    const DELEGATOR_1_STAKE: u64 = 1_000_000;
-    const DELEGATOR_2_STAKE: u64 = 1_000_000;
+    const VALIDATOR_1_STAKE: u64 = 1_000_000_000_000;
+    const DELEGATOR_1_STAKE: u64 = 1_000_000_000_000;
+    const DELEGATOR_2_STAKE: u64 = 1_000_000_000_000;
 
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = DELEGATION_RATE_DENOMINATOR;
 
@@ -1824,9 +1822,9 @@ fn should_distribute_delegation_rate_full() {
 #[ignore]
 #[test]
 fn should_distribute_uneven_delegation_rate_zero() {
-    const VALIDATOR_1_STAKE: u64 = 1_000_000;
-    const DELEGATOR_1_STAKE: u64 = 3_000_000;
-    const DELEGATOR_2_STAKE: u64 = 4_000_000;
+    const VALIDATOR_1_STAKE: u64 = 200_000_000_000;
+    const DELEGATOR_1_STAKE: u64 = 600_000_000_000;
+    const DELEGATOR_2_STAKE: u64 = 800_000_000_000;
 
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 
@@ -2667,9 +2665,9 @@ fn should_distribute_with_multiple_validators_and_delegators() {
     const VALIDATOR_2_REWARD_FACTOR: u64 = 300000000000;
     const VALIDATOR_3_REWARD_FACTOR: u64 = 500000000000;
 
-    const DELEGATOR_1_STAKE: u64 = 3_000_000;
-    const DELEGATOR_2_STAKE: u64 = 4_000_000;
-    const DELEGATOR_3_STAKE: u64 = 1_000_000;
+    const DELEGATOR_1_STAKE: u64 = 6_000_000_000_000;
+    const DELEGATOR_2_STAKE: u64 = 8_000_000_000_000;
+    const DELEGATOR_3_STAKE: u64 = 2_000_000_000_000;
 
     let remainder = U512::one();
 
@@ -2978,9 +2976,9 @@ fn should_distribute_with_multiple_validators_and_delegators() {
 #[ignore]
 #[test]
 fn should_distribute_with_multiple_validators_and_shared_delegator() {
-    const VALIDATOR_1_STAKE: u64 = 1_000_000;
-    const VALIDATOR_2_STAKE: u64 = 1_000_000;
-    const VALIDATOR_3_STAKE: u64 = 1_000_000;
+    const VALIDATOR_1_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
+    const VALIDATOR_2_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
+    const VALIDATOR_3_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 
     const DELEGATION_RATE: DelegationRate = DELEGATION_RATE_DENOMINATOR / 2;
 
@@ -2988,7 +2986,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     const VALIDATOR_2_REWARD_FACTOR: u64 = 333333333333;
     const VALIDATOR_3_REWARD_FACTOR: u64 = 333333333333;
 
-    const DELEGATOR_1_STAKE: u64 = 1_000_000;
+    const DELEGATOR_1_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 
     let validator_1_portion = Ratio::new(U512::from(1), U512::from(4));
     let validator_2_portion = Ratio::new(U512::from(1), U512::from(4));
@@ -3345,9 +3343,9 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
 #[ignore]
 #[test]
 fn should_increase_total_supply_after_distribute() {
-    const VALIDATOR_1_STAKE: u64 = 1_000_000;
-    const VALIDATOR_2_STAKE: u64 = 1_000_000;
-    const VALIDATOR_3_STAKE: u64 = 1_000_000;
+    const VALIDATOR_1_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
+    const VALIDATOR_2_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
+    const VALIDATOR_3_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 
     const DELEGATION_RATE: DelegationRate = DELEGATION_RATE_DENOMINATOR / 2;
 
@@ -3355,7 +3353,7 @@ fn should_increase_total_supply_after_distribute() {
     const VALIDATOR_2_REWARD_FACTOR: u64 = 333333333333;
     const VALIDATOR_3_REWARD_FACTOR: u64 = 333333333333;
 
-    const DELEGATOR_1_STAKE: u64 = 1_000_000;
+    const DELEGATOR_1_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 
     let system_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -3574,13 +3572,13 @@ fn should_increase_total_supply_after_distribute() {
 #[ignore]
 #[test]
 fn should_not_create_purses_during_distribute() {
-    const VALIDATOR_1_STAKE: u64 = 1_000_000;
+    const VALIDATOR_1_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 
     const DELEGATION_RATE: DelegationRate = DELEGATION_RATE_DENOMINATOR / 2;
 
     const VALIDATOR_1_REWARD_FACTOR: u64 = 333333333334;
 
-    const DELEGATOR_1_STAKE: u64 = 1_000_000;
+    const DELEGATOR_1_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 
     let system_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -3760,9 +3758,9 @@ fn should_not_create_purses_during_distribute() {
 #[ignore]
 #[test]
 fn should_distribute_delegation_rate_full_after_upgrading() {
-    const VALIDATOR_1_STAKE: u64 = 1_000_000;
-    const DELEGATOR_1_STAKE: u64 = 1_000_000;
-    const DELEGATOR_2_STAKE: u64 = 1_000_000;
+    const VALIDATOR_1_STAKE: u64 = 1_000_000_000_000;
+    const DELEGATOR_1_STAKE: u64 = 1_000_000_000_000;
+    const DELEGATOR_2_STAKE: u64 = 1_000_000_000_000;
 
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = DELEGATION_RATE_DENOMINATOR;
 

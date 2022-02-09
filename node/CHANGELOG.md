@@ -14,7 +14,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Added
 * Introduce a temporary chainspec setting `max_stored_value_size` to limit the size of individual values stored in global state.
-
+* Introduce a temporary chainspec setting `minimum_delegation_amount` to limit the minimal amount of motes that can be delegated by a first time delegator.
 
 
 ## 1.4.4 - 2021-12-29

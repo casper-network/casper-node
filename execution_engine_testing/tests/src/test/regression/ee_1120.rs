@@ -7,7 +7,10 @@ use casper_engine_test_support::{
     utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
 };
-use casper_execution_engine::core::engine_state::genesis::{GenesisAccount, GenesisValidator};
+use casper_execution_engine::core::engine_state::{
+    engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT,
+    genesis::{GenesisAccount, GenesisValidator},
+};
 use casper_types::{
     account::AccountHash,
     runtime_args,
@@ -22,9 +25,9 @@ const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
 const CONTRACT_DELEGATE: &str = "delegate.wasm";
 const CONTRACT_UNDELEGATE: &str = "undelegate.wasm";
 
-const DELEGATE_AMOUNT_1: u64 = 95_000;
-const DELEGATE_AMOUNT_2: u64 = 42_000;
-const DELEGATE_AMOUNT_3: u64 = 13_000;
+const DELEGATE_AMOUNT_1: u64 = 95_000 + DEFAULT_MINIMUM_DELEGATION_AMOUNT;
+const DELEGATE_AMOUNT_2: u64 = 42_000 + DEFAULT_MINIMUM_DELEGATION_AMOUNT;
+const DELEGATE_AMOUNT_3: u64 = 13_000 + DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 const UNDELEGATE_AMOUNT_1: u64 = 17_000;
 const UNDELEGATE_AMOUNT_2: u64 = 24_500;
 const UNDELEGATE_AMOUNT_3: u64 = 7_500;

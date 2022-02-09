@@ -17,8 +17,9 @@ use casper_execution_engine::{
         engine_state::{
             self,
             engine_config::{
-                DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_QUERY_DEPTH,
-                DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT, DEFAULT_MAX_STORED_VALUE_SIZE,
+                DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
+                DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+                DEFAULT_MAX_STORED_VALUE_SIZE, DEFAULT_MINIMUM_DELEGATION_AMOUNT,
             },
             genesis::{GenesisAccount, GenesisValidator},
             EngineConfig, Error, RewardItem,
@@ -26,6 +27,7 @@ use casper_execution_engine::{
         execution,
     },
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
+    storage::global_state::in_memory::InMemoryGlobalState,
 };
 use casper_types::{
     self,
@@ -35,9 +37,9 @@ use casper_types::{
     system::{
         self,
         auction::{
-            self, Bids, DelegationRate, EraValidators, UnbondingPurses, ValidatorWeights,
-            ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_VALIDATOR,
-            ERA_ID_KEY, INITIAL_ERA_ID,
+            self, Bids, DelegationRate, EraValidators, Error as AuctionError, UnbondingPurses,
+            ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY,
+            ARG_VALIDATOR, ERA_ID_KEY, INITIAL_ERA_ID,
         },
     },
     EraId, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U256, U512,
@@ -61,8 +63,8 @@ const BID_AMOUNT_2: u64 = 5_000;
 const ADD_BID_DELEGATION_RATE_2: DelegationRate = 15;
 const WITHDRAW_BID_AMOUNT_2: u64 = 15_000;
 
-const DELEGATE_AMOUNT_1: u64 = 125_000;
-const DELEGATE_AMOUNT_2: u64 = 15_000;
+const DELEGATE_AMOUNT_1: u64 = 125_000 + DEFAULT_MINIMUM_DELEGATION_AMOUNT;
+const DELEGATE_AMOUNT_2: u64 = 15_000 + DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 const UNDELEGATE_AMOUNT_1: u64 = 35_000;
 
 const SYSTEM_TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
@@ -129,9 +131,9 @@ static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VA
 static DELEGATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*DELEGATOR_1));
 static DELEGATOR_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*DELEGATOR_2));
 const VALIDATOR_1_STAKE: u64 = 1_000_000;
-const DELEGATOR_1_STAKE: u64 = 1_500_000;
+const DELEGATOR_1_STAKE: u64 = 1_500_000 + DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 const DELEGATOR_1_BALANCE: u64 = DEFAULT_ACCOUNT_INITIAL_BALANCE;
-const DELEGATOR_2_STAKE: u64 = 2_000_000;
+const DELEGATOR_2_STAKE: u64 = 2_000_000 + DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 const DELEGATOR_2_BALANCE: u64 = DEFAULT_ACCOUNT_INITIAL_BALANCE;
 
 const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
@@ -2505,10 +2507,11 @@ fn should_not_undelegate_vfta_holder_stake() {
 #[ignore]
 #[test]
 fn should_release_vfta_holder_stake() {
-    const EXPECTED_WEEKLY_RELEASE: u64 = DELEGATOR_1_STAKE / 14;
-
+    const EXPECTED_WEEKLY_RELEASE: u64 =
+        (DELEGATOR_1_STAKE - DEFAULT_MINIMUM_DELEGATION_AMOUNT) / 14;
+    const DELEGATOR_VFTA_STAKE: u64 = DELEGATOR_1_STAKE - DEFAULT_MINIMUM_DELEGATION_AMOUNT;
     const EXPECTED_REMAINDER: u64 = 12;
-
+    const NEW_MINIMUM_DELEGATION_AMOUNT: u64 = 0;
     const EXPECTED_LOCKED_AMOUNTS: [u64; 14] = [
         1392858, 1285716, 1178574, 1071432, 964290, 857148, 750006, 642864, 535722, 428580, 321438,
         214296, 107154, 0,
@@ -2583,7 +2586,7 @@ fn should_release_vfta_holder_stake() {
             ACCOUNT_1_PK.clone(),
             DELEGATOR_1.clone(),
             Motes::new(DELEGATOR_1_BALANCE.into()),
-            Motes::new(DELEGATOR_1_STAKE.into()),
+            Motes::new(DELEGATOR_VFTA_STAKE.into()),
         );
         tmp.push(account_1);
         tmp.push(delegator_1);
@@ -2592,7 +2595,20 @@ fn should_release_vfta_holder_stake() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let custom_engine_config = EngineConfig::new(
+        DEFAULT_MAX_QUERY_DEPTH,
+        DEFAULT_MAX_ASSOCIATED_KEYS,
+        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+        DEFAULT_MAX_STORED_VALUE_SIZE,
+        DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
+        NEW_MINIMUM_DELEGATION_AMOUNT,
+        WasmConfig::default(),
+        SystemConfig::default(),
+    );
+
+    let global_state = InMemoryGlobalState::empty().expect("should create global state");
+
+    let mut builder = InMemoryWasmTestBuilder::new(global_state, custom_engine_config, None);
 
     builder.run_genesis(&run_genesis_request);
 
@@ -2669,7 +2685,7 @@ fn should_release_vfta_holder_stake() {
 
     {
         // Attempt full unbond
-        expect_undelegate_failure(&mut builder, DELEGATOR_1_STAKE);
+        expect_undelegate_failure(&mut builder, DELEGATOR_VFTA_STAKE);
 
         // Attempt unbond of released amount
         expect_undelegate_success(&mut builder, EXPECTED_WEEKLY_RELEASE);
@@ -2677,7 +2693,7 @@ fn should_release_vfta_holder_stake() {
         total_unbonded += EXPECTED_WEEKLY_RELEASE;
 
         assert_eq!(
-            DELEGATOR_1_STAKE - total_unbonded,
+            DELEGATOR_VFTA_STAKE - total_unbonded,
             EXPECTED_LOCKED_AMOUNTS[0]
         )
     }
@@ -2701,7 +2717,7 @@ fn should_release_vfta_holder_stake() {
         total_unbonded += EXPECTED_WEEKLY_RELEASE;
 
         assert_eq!(
-            DELEGATOR_1_STAKE - total_unbonded,
+            DELEGATOR_VFTA_STAKE - total_unbonded,
             EXPECTED_LOCKED_AMOUNTS[i]
         )
     }
@@ -2722,12 +2738,12 @@ fn should_release_vfta_holder_stake() {
         total_unbonded += EXPECTED_WEEKLY_RELEASE + EXPECTED_REMAINDER;
 
         assert_eq!(
-            DELEGATOR_1_STAKE - total_unbonded,
+            DELEGATOR_VFTA_STAKE - total_unbonded,
             EXPECTED_LOCKED_AMOUNTS[13]
         )
     }
 
-    assert_eq!(DELEGATOR_1_STAKE, total_unbonded);
+    assert_eq!(DELEGATOR_VFTA_STAKE, total_unbonded);
 }
 
 #[ignore]
@@ -3089,6 +3105,7 @@ fn should_not_allow_delegations_past_limit() {
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         DEFAULT_MAX_STORED_VALUE_SIZE,
         NEW_MAX_DELEGATOR_SIZE_LIMIT,
+        DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         WasmConfig::default(),
         SystemConfig::default(),
     );
@@ -3353,6 +3370,7 @@ fn should_continue_running_auction_despite_execeeded_delegator_limit() {
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         DEFAULT_MAX_STORED_VALUE_SIZE,
         NEW_MAX_DELEGATOR_SIZE_LIMIT,
+        DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         WasmConfig::default(),
         SystemConfig::default(),
     );
@@ -3606,6 +3624,7 @@ fn should_enforce_and_check_global_delegator_capacity() {
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         DEFAULT_MAX_STORED_VALUE_SIZE,
         NEW_MAX_DELEGATOR_SIZE_LIMIT,
+        DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         WasmConfig::default(),
         SystemConfig::default(),
     );
@@ -3671,12 +3690,200 @@ fn should_enforce_and_check_global_delegator_capacity() {
         .exec(delegation_to_validator_2_request)
         .expect_failure();
 
-    let error = builder.get_error();
+    let error = builder.get_error().expect("must get error");
 
     assert!(matches!(
         error,
-        Some(Error::Exec(execution::Error::Revert(
-            ApiError::AuctionError(44)
-        )))
-    ))
+        Error::Exec(execution::Error::Revert(ApiError::AuctionError(auction_error)))
+        if auction_error == AuctionError::GlobalDelegatorCapacityReached as u8));
+}
+
+#[ignore]
+#[test]
+fn should_enforce_minimum_delegation_amount() {
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+
+    let transfer_to_validator_1 = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *NON_FOUNDER_VALIDATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let transfer_to_delegator_1 = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *BID_ACCOUNT_1_ADDR,
+            ARG_AMOUNT => U512::from(BID_ACCOUNT_1_BALANCE)
+        },
+    )
+    .build();
+
+    let post_genesis_request = vec![transfer_to_validator_1, transfer_to_delegator_1];
+
+    for request in post_genesis_request {
+        builder.exec(request).expect_success().commit();
+    }
+
+    let add_bid_request_1 = ExecuteRequestBuilder::standard(
+        *NON_FOUNDER_VALIDATOR_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
+            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+        },
+    )
+    .build();
+
+    builder.exec(add_bid_request_1).expect_success().commit();
+
+    for _ in 0..=DEFAULT_AUCTION_DELAY {
+        let step_request = StepRequestBuilder::new()
+            .with_parent_state_hash(builder.get_post_state_hash())
+            .with_protocol_version(ProtocolVersion::V1_0_0)
+            .with_next_era_id(builder.get_era().successor())
+            .with_run_auction(true)
+            .build();
+
+        builder
+            .step(step_request)
+            .expect("must execute step request");
+    }
+
+    let delegation_request_1 = ExecuteRequestBuilder::standard(
+        *BID_ACCOUNT_1_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(100u64),
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK.clone(),
+        },
+    )
+    .build();
+
+    // The delegation amount is below the default value of 500 CSPR,
+    // therefore the delegation should not succeed.
+    builder.exec(delegation_request_1).expect_failure();
+
+    let error = builder.get_error().expect("must get error");
+    assert!(matches!(
+        error,
+        Error::Exec(execution::Error::Revert(ApiError::AuctionError(auction_error)))
+        if auction_error == AuctionError::DelegationAmountTooSmall as u8));
+}
+
+#[ignore]
+#[test]
+fn should_allow_delegations_with_minimal_floor_amount() {
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+
+    let transfer_to_validator_1 = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *NON_FOUNDER_VALIDATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let transfer_to_delegator_1 = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *BID_ACCOUNT_1_ADDR,
+            ARG_AMOUNT => U512::from(BID_ACCOUNT_1_BALANCE)
+        },
+    )
+    .build();
+
+    let transfer_to_delegator_2 = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *BID_ACCOUNT_2_ADDR,
+            ARG_AMOUNT => U512::from(BID_ACCOUNT_1_BALANCE)
+        },
+    )
+    .build();
+
+    let post_genesis_request = vec![
+        transfer_to_validator_1,
+        transfer_to_delegator_1,
+        transfer_to_delegator_2,
+    ];
+
+    for request in post_genesis_request {
+        builder.exec(request).expect_success().commit();
+    }
+
+    let add_bid_request_1 = ExecuteRequestBuilder::standard(
+        *NON_FOUNDER_VALIDATOR_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
+            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+        },
+    )
+    .build();
+
+    builder.exec(add_bid_request_1).expect_success().commit();
+
+    for _ in 0..=DEFAULT_AUCTION_DELAY {
+        let step_request = StepRequestBuilder::new()
+            .with_parent_state_hash(builder.get_post_state_hash())
+            .with_protocol_version(ProtocolVersion::V1_0_0)
+            .with_next_era_id(builder.get_era().successor())
+            .with_run_auction(true)
+            .build();
+
+        builder
+            .step(step_request)
+            .expect("must execute step request");
+    }
+
+    let delegation_request_1 = ExecuteRequestBuilder::standard(
+        *BID_ACCOUNT_1_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DEFAULT_MINIMUM_DELEGATION_AMOUNT - 1),
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK.clone(),
+        },
+    )
+    .build();
+
+    // The delegation amount is below the default value of 500 CSPR,
+    // therefore the delegation should not succeed.
+    builder.exec(delegation_request_1).expect_failure();
+
+    let error = builder.get_error().expect("must get error");
+
+    assert!(matches!(
+        error,
+        Error::Exec(execution::Error::Revert(ApiError::AuctionError(auction_error)))
+        if auction_error == AuctionError::DelegationAmountTooSmall as u8));
+
+    let delegation_request_2 = ExecuteRequestBuilder::standard(
+        *BID_ACCOUNT_2_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DEFAULT_MINIMUM_DELEGATION_AMOUNT),
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => BID_ACCOUNT_2_PK.clone(),
+        },
+    )
+    .build();
+
+    builder.exec(delegation_request_2).expect_success().commit();
 }

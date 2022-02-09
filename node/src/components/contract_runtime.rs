@@ -409,6 +409,7 @@ impl ContractRuntime {
         max_runtime_call_stack_height: u32,
         max_stored_value_size: u32,
         max_delegator_size_limit: u32,
+        minimum_delegation_amount: u64,
         registry: &Registry,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
@@ -439,6 +440,7 @@ impl ContractRuntime {
             max_runtime_call_stack_height,
             max_stored_value_size,
             max_delegator_size_limit,
+            minimum_delegation_amount,
             wasm_config,
             system_config,
         );
