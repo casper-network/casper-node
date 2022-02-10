@@ -26,7 +26,7 @@ use crate::{
     core::{
         engine_state::{EngineConfig, SystemContractRegistry},
         execution::AddressGenerator,
-        runtime::extract_access_rights_from_keys,
+        runtime,
         tracking_copy::TrackingCopy,
     },
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
@@ -186,7 +186,7 @@ fn use_uref_valid() {
     // Test fixture
     let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
     let uref = create_uref(&mut rng, AccessRights::READ_WRITE);
-    let access_rights = extract_access_rights_from_keys(vec![uref]);
+    let access_rights = runtime::extract_access_rights_from_keys(vec![uref]);
     // Use uref as the key to perform an action on the global state.
     // This should succeed because the uref is valid.
     let value = StoredValue::CLValue(CLValue::from_t(43_i32).unwrap());
@@ -255,7 +255,7 @@ fn account_key_addable_valid() {
     // execution.
     let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
     let uref = create_uref(&mut rng, AccessRights::READ);
-    let access_rights = extract_access_rights_from_keys(vec![uref]);
+    let access_rights = runtime::extract_access_rights_from_keys(vec![uref]);
     let query_result = test(access_rights, |mut rc| {
         let base_key = rc.base_key();
         let uref_name = "NewURef".to_owned();
@@ -363,7 +363,7 @@ fn contract_key_addable_valid() {
     let named_uref_tuple =
         StoredValue::CLValue(CLValue::from_t((uref_name.clone(), uref)).unwrap());
 
-    let access_rights = extract_access_rights_from_keys(vec![uref]);
+    let access_rights = runtime::extract_access_rights_from_keys(vec![uref]);
 
     let mut runtime_context = RuntimeContext::new(
         Rc::clone(&tracking_copy),
@@ -437,7 +437,7 @@ fn contract_key_addable_invalid() {
     let uref_name = "NewURef".to_owned();
     let named_uref_tuple = StoredValue::CLValue(CLValue::from_t((uref_name, uref)).unwrap());
 
-    let access_rights = extract_access_rights_from_keys(vec![uref]);
+    let access_rights = runtime::extract_access_rights_from_keys(vec![uref]);
     let mut runtime_context = RuntimeContext::new(
         Rc::clone(&tracking_copy),
         EntryPointType::Session,
@@ -469,7 +469,7 @@ fn contract_key_addable_invalid() {
 fn uref_key_readable_valid() {
     let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
     let uref_key = create_uref(&mut rng, AccessRights::READ);
-    let access_rights = extract_access_rights_from_keys(vec![uref_key]);
+    let access_rights = runtime::extract_access_rights_from_keys(vec![uref_key]);
     let query_result = test(access_rights, |mut rc| rc.read_gs(&uref_key));
     assert!(query_result.is_ok());
 }
@@ -478,7 +478,7 @@ fn uref_key_readable_valid() {
 fn uref_key_readable_invalid() {
     let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
     let uref_key = create_uref(&mut rng, AccessRights::WRITE);
-    let access_rights = extract_access_rights_from_keys(vec![uref_key]);
+    let access_rights = runtime::extract_access_rights_from_keys(vec![uref_key]);
     let query_result = test(access_rights, |mut rc| rc.read_gs(&uref_key));
     assert_invalid_access(query_result, AccessRights::READ);
 }
@@ -487,7 +487,7 @@ fn uref_key_readable_invalid() {
 fn uref_key_writeable_valid() {
     let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
     let uref_key = create_uref(&mut rng, AccessRights::WRITE);
-    let access_rights = extract_access_rights_from_keys(vec![uref_key]);
+    let access_rights = runtime::extract_access_rights_from_keys(vec![uref_key]);
     let query_result = test(access_rights, |mut rc| {
         rc.metered_write_gs(
             uref_key,
@@ -501,7 +501,7 @@ fn uref_key_writeable_valid() {
 fn uref_key_writeable_invalid() {
     let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
     let uref_key = create_uref(&mut rng, AccessRights::READ);
-    let access_rights = extract_access_rights_from_keys(vec![uref_key]);
+    let access_rights = runtime::extract_access_rights_from_keys(vec![uref_key]);
     let query_result = test(access_rights, |mut rc| {
         rc.metered_write_gs(
             uref_key,
@@ -515,7 +515,7 @@ fn uref_key_writeable_invalid() {
 fn uref_key_addable_valid() {
     let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
     let uref_key = create_uref(&mut rng, AccessRights::ADD_WRITE);
-    let access_rights = extract_access_rights_from_keys(vec![uref_key]);
+    let access_rights = runtime::extract_access_rights_from_keys(vec![uref_key]);
     let query_result = test(access_rights, |mut rc| {
         rc.metered_write_gs(uref_key, CLValue::from_t(10_i32).unwrap())
             .expect("Writing to the GlobalState should work.");
@@ -528,7 +528,7 @@ fn uref_key_addable_valid() {
 fn uref_key_addable_invalid() {
     let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
     let uref_key = create_uref(&mut rng, AccessRights::WRITE);
-    let access_rights = extract_access_rights_from_keys(vec![uref_key]);
+    let access_rights = runtime::extract_access_rights_from_keys(vec![uref_key]);
     let query_result = test(access_rights, |mut rc| {
         rc.metered_add_gs(
             uref_key,
@@ -819,12 +819,36 @@ fn remove_uref_works() {
 }
 
 #[test]
+fn should_not_special_case_main_purse() {
+    let mock_main_purse = URef::new([42u8; 32], AccessRights::READ_ADD_WRITE);
+    let access_rights = Default::default();
+    let deploy_hash = [1u8; 32];
+    let (base_key, account) =
+        mock_account_with_purse(AccountHash::new([0u8; 32]), mock_main_purse.addr());
+    let address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
+    let mut named_keys = NamedKeys::new();
+    let runtime_context = mock_runtime_context(
+        &account,
+        base_key,
+        &mut named_keys,
+        access_rights,
+        address_generator,
+    );
+    // `access_rights` is empty
+    assert!(
+        runtime_context.validate_uref(&mock_main_purse).is_err(),
+        "Main purse should not have special access rights"
+    );
+}
+
+#[test]
 fn validate_valid_purse_of_an_account() {
     // Tests that URef which matches a purse of a given context gets validated
-    let mock_purse = [42u8; 32];
-    let access_rights = HashMap::new();
+    let mock_main_purse = URef::new([42u8; 32], AccessRights::READ_ADD_WRITE);
+    let access_rights = runtime::extract_access_rights_from_keys([Key::from(mock_main_purse)]);
     let deploy_hash = [1u8; 32];
-    let (base_key, account) = mock_account_with_purse(AccountHash::new([0u8; 32]), mock_purse);
+    let (base_key, account) =
+        mock_account_with_purse(AccountHash::new([0u8; 32]), mock_main_purse.addr());
     let mut named_keys = NamedKeys::new();
     let address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
     let runtime_context = mock_runtime_context(
@@ -837,16 +861,13 @@ fn validate_valid_purse_of_an_account() {
 
     // URef that has the same id as purse of an account gets validated
     // successfully.
-    let purse = URef::new(mock_purse, AccessRights::READ_ADD_WRITE);
-    assert!(runtime_context.validate_uref(&purse).is_ok());
+    assert!(runtime_context.validate_uref(&mock_main_purse).is_ok());
 
-    // URef that has the same id as purse of an account gets validated
-    // successfully as the passed purse has only subset of the privileges
-    let purse = URef::new(mock_purse, AccessRights::READ);
+    let purse = mock_main_purse.with_access_rights(AccessRights::READ);
     assert!(runtime_context.validate_uref(&purse).is_ok());
-    let purse = URef::new(mock_purse, AccessRights::ADD);
+    let purse = mock_main_purse.with_access_rights(AccessRights::ADD);
     assert!(runtime_context.validate_uref(&purse).is_ok());
-    let purse = URef::new(mock_purse, AccessRights::WRITE);
+    let purse = mock_main_purse.with_access_rights(AccessRights::WRITE);
     assert!(runtime_context.validate_uref(&purse).is_ok());
 
     // Purse ID that doesn't match account's purse should fail as it's also not
@@ -860,7 +881,7 @@ fn should_meter_for_gas_storage_write() {
     // Test fixture
     let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
     let uref = create_uref(&mut rng, AccessRights::READ_WRITE);
-    let access_rights = extract_access_rights_from_keys(vec![uref]);
+    let access_rights = runtime::extract_access_rights_from_keys(vec![uref]);
     let value = StoredValue::CLValue(CLValue::from_t(43_i32).unwrap());
     let expected_write_cost = TEST_ENGINE_CONFIG
         .wasm_config()
@@ -890,7 +911,7 @@ fn should_meter_for_gas_storage_add() {
     // Test fixture
     let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
     let uref = create_uref(&mut rng, AccessRights::ADD_WRITE);
-    let access_rights = extract_access_rights_from_keys(vec![uref]);
+    let access_rights = runtime::extract_access_rights_from_keys(vec![uref]);
     let value = StoredValue::CLValue(CLValue::from_t(43_i32).unwrap());
     let expected_add_cost = TEST_ENGINE_CONFIG
         .wasm_config()
