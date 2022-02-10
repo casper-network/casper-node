@@ -18,7 +18,7 @@ use crate::{
         engine_state::{execution_result::ExecutionResult, EngineConfig},
         execution::{address_generator::AddressGenerator, Error},
         get_approved_amount,
-        runtime::{extract_access_rights_from_keys, instance_and_memory, Runtime, RuntimeStack},
+        runtime::{self, instance_and_memory, Runtime, RuntimeStack},
         runtime_context::{self, RuntimeContext},
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
@@ -125,8 +125,26 @@ impl Executor {
         ));
 
         let access_rights = {
-            let keys: Vec<Key> = named_keys.values().cloned().collect();
-            extract_access_rights_from_keys(keys)
+            let mut extra_keys: Vec<Key> = named_keys.values().cloned().collect();
+
+            // Extract all urefs from args and check if user passed his main purse. We only consider
+            // main purse, as there's no other way to parse extra urefs i.e. all other urefs that
+            // are not main purse, or named keys, are considered forged.
+            if let Ok(extracted_keys) = runtime::extract_keys_from_args(&args) {
+                // If any of the keys passed in args is a uref and the addr matches account's main
+                // purse
+                if let Some(shared_main_purse_uref) = extracted_keys
+                    .into_iter()
+                    .filter_map(|extra_key| extra_key.into_uref())
+                    .find(|extra_uref| extra_uref.addr() == account.main_purse().addr())
+                {
+                    // We can extend extra keys with user's main purse because we know it's in the
+                    // args
+                    extra_keys.push(Key::from(shared_main_purse_uref));
+                }
+            }
+
+            runtime::extract_access_rights_from_keys(extra_keys)
         };
 
         let address_generator = {
@@ -174,7 +192,7 @@ impl Executor {
 
         let accounts_access_rights = {
             let keys: Vec<Key> = account.named_keys().values().cloned().collect();
-            extract_access_rights_from_keys(keys)
+            runtime::extract_access_rights_from_keys(keys)
         };
 
         on_fail_charge!(runtime_context::validate_entry_point_access_with(
@@ -311,12 +329,14 @@ impl Executor {
             }
         };
 
+        let extra_keys = vec![Key::from(account.main_purse())];
+
         let mut runtime = match self.create_runtime(
             system_module,
             EntryPointType::Session,
             payment_args,
             payment_named_keys,
-            Default::default(),
+            &extra_keys,
             payment_base_key,
             account,
             authorization_keys,
@@ -544,7 +564,7 @@ impl Executor {
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
             keys.extend(extra_keys);
-            extract_access_rights_from_keys(keys)
+            runtime::extract_access_rights_from_keys(keys)
         };
 
         let gas_counter = Gas::default();

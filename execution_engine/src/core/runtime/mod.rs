@@ -3702,6 +3702,18 @@ where
     }
 }
 
+pub(crate) fn extract_keys_from_args(args: &RuntimeArgs) -> Result<Vec<Key>, Error> {
+    let mut extra_keys = Vec::new();
+    for arg in args.to_values() {
+        extra_keys.extend(
+            extract_urefs(arg)?
+                .into_iter()
+                .map(<Key as From<URef>>::from),
+        );
+    }
+    Ok(extra_keys)
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
