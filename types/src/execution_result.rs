@@ -435,10 +435,6 @@ pub enum OpKind {
     NoOp,
 }
 
-// TODO(sam)
-// See if reviewer thinks these types should be combined --
-// might more content be added to OpKind later on? I'd hope
-// not.
 impl OpKind {
     fn tag_byte(&self) -> u8 {
         self.tag()
