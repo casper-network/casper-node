@@ -657,7 +657,7 @@ impl ToBytes for Transform {
             Transform::Identity
             | Transform::WriteContractWasm
             | Transform::WriteContract
-            | Transform::WriteContractPackage => U8_SERIALIZED_LENGTH,
+            | Transform::WriteContractPackage => 0,
             Transform::WriteBid(value) => value.serialized_length(),
             Transform::WriteWithdraw(value) => value.serialized_length(),
         };
