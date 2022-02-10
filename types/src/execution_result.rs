@@ -7,7 +7,7 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
-use std::convert::TryFrom;
+use core::convert::TryFrom;
 
 use alloc::{
     boxed::Box,
