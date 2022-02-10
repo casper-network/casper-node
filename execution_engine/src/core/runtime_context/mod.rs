@@ -1269,8 +1269,8 @@ where
     }
 
     /// Sets a new spending limit.
-    /// Should be called after inner context returns - if CSPR were there
-    /// it should count towards global limit for the whole deploy execution.
+    /// Should be called after inner context returns - if tokens were there
+    /// spent there, it must count towards global limit for the whole deploy execution.
     pub(crate) fn set_spending_limit(&mut self, amount: U512) {
         self.main_purse_spending_limit = amount;
     }

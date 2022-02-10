@@ -1159,7 +1159,7 @@ where
                     finalization_tc,
                     Phase::FinalizePayment,
                     finalize_payment_stack,
-                    // Spending limit is what user agreed to pay for the execution.
+                    // Spending limit is cost of wasmless execution.
                     U512::from(self.config().system_config().wasmless_transfer_cost()),
                 );
 
@@ -2096,7 +2096,7 @@ where
             Rc::clone(&tracking_copy),
             Phase::Session,
             distribute_rewards_stack,
-            // There should be no CSPRs transferred during reawrds distribution.
+            // There should be no tokens transferred during rewards distribution.
             U512::zero(),
         );
 

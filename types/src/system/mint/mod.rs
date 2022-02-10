@@ -108,7 +108,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             (Phase::Session | Phase::Payment, Some(&CallStackElement::Session { .. })) => {
                 if self.get_main_purse().addr() == source.addr() {
                     is_main_purse = true;
-                    if amount > self.get_approved_cspr_limit() {
+                    if amount > self.get_approved_spending_limit() {
                         // transferring more than user approved for is invalid.
                         return Err(Error::UnapprovedSpendingAmount);
                     }
@@ -136,7 +136,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         self.write_balance(source, source_balance - amount)?;
         self.add_balance(target, amount)?;
         if is_main_purse {
-            self.sub_approved_cspr_limit(amount);
+            self.sub_approved_spending_limit(amount);
         }
         self.record_transfer(maybe_to, source, target, amount, id)?;
         Ok(())

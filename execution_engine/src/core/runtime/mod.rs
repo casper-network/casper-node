@@ -1493,7 +1493,7 @@ where
             phase,
             self.config,
             transfers,
-            // This doesn't even matter b/c this runtime's limit is not used anywhere.
+            // Pass on this deploy's spending limit to the inner context.
             *self.context().main_purse_spending_limit(),
         );
 

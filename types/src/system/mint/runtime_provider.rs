@@ -22,10 +22,10 @@ pub trait RuntimeProvider {
     fn get_key(&self, name: &str) -> Option<Key>;
 
     /// Returns approved CSPR spending limit.
-    fn get_approved_cspr_limit(&self) -> U512;
+    fn get_approved_spending_limit(&self) -> U512;
 
     /// Signal to host that `transferred` amount of tokens has been transferred.
-    fn sub_approved_cspr_limit(&mut self, transferred: U512);
+    fn sub_approved_spending_limit(&mut self, transferred: U512);
 
     /// Returns main purse of the sender account.
     fn get_main_purse(&self) -> URef;
