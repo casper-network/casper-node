@@ -114,7 +114,13 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
                     }
                 }
             }
-            _ => {}
+            (
+                Phase::System | Phase::Payment | Phase::Session | Phase::FinalizePayment,
+                Some(&CallStackElement::Session { .. })
+                | Some(&CallStackElement::StoredSession { .. })
+                | Some(&CallStackElement::StoredContract { .. })
+                | None,
+            ) => {}
         }
 
         if !source.is_readable() {
