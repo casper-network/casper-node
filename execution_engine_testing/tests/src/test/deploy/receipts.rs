@@ -8,8 +8,8 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::shared::system_config::DEFAULT_WASMLESS_TRANSFER_COST;
 use casper_types::{
-    account::AccountHash, runtime_args, AccessRights, DeployHash, PublicKey, RuntimeArgs,
-    SecretKey, Transfer, TransferAddr, U512,
+    account::AccountHash, runtime_args, system::mint, AccessRights, DeployHash, PublicKey,
+    RuntimeArgs, SecretKey, Transfer, TransferAddr, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
@@ -270,6 +270,7 @@ fn should_record_wasm_transfers() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_PURSE_TO_ACCOUNTS,
         runtime_args! {
+            mint::ARG_AMOUNT => *TRANSFER_AMOUNT_1 + *TRANSFER_AMOUNT_2 + *TRANSFER_AMOUNT_3,
             TRANSFER_ARG_SOURCE => default_account.main_purse(),
             TRANSFER_ARG_TARGETS => targets,
         },
@@ -416,6 +417,7 @@ fn should_record_wasm_transfers_with_subcall() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_PURSE_TO_ACCOUNTS_SUBCALL,
         runtime_args! {
+            mint::ARG_AMOUNT => *TRANSFER_AMOUNT_1 + *TRANSFER_AMOUNT_2 + *TRANSFER_AMOUNT_3,
             TRANSFER_ARG_SOURCE => default_account.main_purse(),
             TRANSFER_ARG_TARGETS => targets,
         },

@@ -1275,6 +1275,9 @@ where
             ))
             .unwrap();
 
+        // There should be no motes transferred as part of the genesis operations.
+        let main_purse_spending_limit: U512 = U512::zero();
+
         let (_instance, mut runtime) = self
             .executor
             .create_runtime(
@@ -1295,6 +1298,7 @@ where
                 Rc::clone(&self.tracking_copy),
                 Phase::System,
                 stack,
+                main_purse_spending_limit,
             )
             .map_err(|_| GenesisError::UnableToCreateRuntime)?;
 

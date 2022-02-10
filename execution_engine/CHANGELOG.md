@@ -15,7 +15,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Changed
 * Temporarily limit the size of individual values stored in global state.
-
+* `amount` argument is now required for transactions wanting to send tokens using account's main purse. It is now an upper limit on all tokens being transferred within the transaction.
 
 
 ## 1.4.4 - 2021-12-29

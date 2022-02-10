@@ -24,8 +24,8 @@ use casper_execution_engine::{
     },
 };
 use casper_types::{
-    account::AccountHash, runtime_args, ContractHash, EraId, Gas, Key, Motes, ProtocolVersion,
-    PublicKey, RuntimeArgs, SecretKey, U512,
+    account::AccountHash, runtime_args, system::mint, ContractHash, EraId, Gas, Key, Motes,
+    ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const TRANSFER_TO_ACCOUNT_CONTRACT: &str = "transfer_to_account.wasm";
@@ -679,6 +679,7 @@ fn setup() -> (InMemoryWasmTestBuilder, TestContext) {
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
     let session_args = runtime_args! {
+        mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
         ARG_FAUCET_FUNDS => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
     };
     let install_request = ExecuteRequestBuilder::standard(

@@ -49,6 +49,20 @@ where
     fn get_key(&self, name: &str) -> Option<Key> {
         self.context.named_keys_get(name).cloned()
     }
+
+    fn get_approved_spending_limit(&self) -> U512 {
+        *self.context.main_purse_spending_limit()
+    }
+
+    fn sub_approved_spending_limit(&mut self, transferred: U512) {
+        // We're ignoring the result here since we always check first
+        // if there is still enough spending limit left.
+        self.context.subtract_amount_spent(transferred);
+    }
+
+    fn get_main_purse(&self) -> URef {
+        self.context.account().main_purse()
+    }
 }
 
 // TODO: update Mint + StorageProvider to better handle errors
