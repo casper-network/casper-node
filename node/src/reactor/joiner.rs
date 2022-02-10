@@ -555,6 +555,7 @@ impl reactor::Reactor for Reactor {
         let (chain_synchronizer, sync_effects) = ChainSynchronizer::new(
             Arc::clone(chainspec_loader.chainspec()),
             config.node.clone(),
+            config.network.clone(),
             next_upgrade_activation_point,
             chainspec.protocol_config.verifiable_chunked_hash_activation,
             effect_builder,
