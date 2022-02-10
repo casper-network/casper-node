@@ -512,8 +512,8 @@ impl Executor {
 
     /// Creates new runtime object.
     ///
-    /// This method also deals with proper initialiation of a WASM module by pre-allocating a memory
-    /// instance, and attaching a host function resolver.
+    /// This method also deals with proper initialization of a WASM module by pre-allocating a
+    /// memory instance, and attaching a host function resolver.
     ///
     /// Returns a module and an instance of [`Runtime`] which is ready to execute the WASM modules.
     pub(crate) fn create_runtime<'a, R>(

@@ -886,7 +886,7 @@ where
 
     /// Assert that last error is the expected one.
     ///
-    /// NOTE: we're using stringe-based representation for checking equality
+    /// NOTE: we're using string-based representation for checking equality
     /// as the `Error` type does not implement `Eq` (many of its subvariants don't).
     pub fn assert_error(&self, expected_error: Error) {
         match self.get_error() {

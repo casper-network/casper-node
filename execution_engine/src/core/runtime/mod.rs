@@ -1583,7 +1583,7 @@ where
         // Result still contains a result, but the entrypoints logic does not exit early on errors.
         let ret = result?;
 
-        // Update outer CSPR approved limit.
+        // Update outer spending approved limit.
         self.context
             .set_spending_limit(*mint_runtime.context.main_purse_spending_limit());
 
@@ -1766,7 +1766,7 @@ where
             phase,
             self.config,
             transfers,
-            // We should not spend any CSPR when executing auction contract.
+            // We should not spend any tokens when executing auction contract.
             U512::zero(),
         );
 

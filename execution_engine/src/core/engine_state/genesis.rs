@@ -1275,7 +1275,7 @@ where
             ))
             .unwrap();
 
-        // There should be on CSPR transferred as part of the genesis operations.
+        // There should be no motes transferred as part of the genesis operations.
         let main_purse_spending_limit: U512 = U512::zero();
 
         let (_instance, mut runtime) = self
