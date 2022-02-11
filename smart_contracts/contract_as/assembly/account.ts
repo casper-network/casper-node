@@ -3,6 +3,9 @@ import {arrayToTyped} from "./utils";
 import {UREF_SERIALIZED_LENGTH} from "./constants";
 import {URef} from "./uref";
 import {AccountHash} from "./key";
+import { fromBytesArray } from "./bytesrepr";
+import {Error, ErrorCode} from "./error";
+import {readHostBuffer} from "./index";
 
 /**
  * Enum representing the possible results of adding an associated key to an account.
@@ -178,4 +181,37 @@ export function getMainPurse(): URef {
     externals.get_main_purse(data.dataStart);
     let urefResult = URef.fromBytes(data);
     return urefResult.unwrap();
+}
+
+/**
+ * Returns the set of [[AccountHash]] from the calling account's context `authorization_keys`.
+ */
+export function listAuthorizationKeys(): Array<AccountHash> {
+    let totalKeys = new Uint32Array(1);
+    let resultSize = new Uint32Array(1);
+
+    const res = externals.load_authorization_keys(totalKeys.dataStart, resultSize.dataStart);
+    const error = Error.fromResult(res);
+    if (error !== null) {
+        error.revert();
+        unreachable();
+    }
+
+    if (totalKeys[0] == 0) {
+        return new Array<AccountHash>();
+    }
+
+    let keyBytes = readHostBuffer(resultSize[0]);
+    let maybeKeys = fromBytesArray<AccountHash>(
+        keyBytes,
+        AccountHash.fromBytes);
+
+    if (maybeKeys.hasError()) {
+      Error.fromErrorCode(ErrorCode.Deserialize).revert();
+      unreachable();
+    }
+
+    let result = maybeKeys.value;
+    result.sort();
+    return result;
 }

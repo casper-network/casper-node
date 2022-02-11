@@ -38,6 +38,7 @@ mod gh_2280;
 mod gov_116;
 mod gov_74;
 mod gov_89_regression;
+mod host_function_metrics_size_and_gas_cost;
 mod regression_20210707;
 mod regression_20210831;
 mod regression_20210924;

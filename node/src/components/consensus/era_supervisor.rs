@@ -5,6 +5,7 @@
 //! it assumes is the concept of era/epoch and that each era runs separate consensus instance.
 //! Most importantly, it doesn't care about what messages it's forwarding.
 
+pub(super) mod debug;
 mod era;
 
 use std::{
@@ -273,6 +274,7 @@ where
         &mut self,
         era_id: EraId,
         now: Timestamp,
+        key_block_hash: BlockHash,
         validators: BTreeMap<PublicKey, U512>,
         new_faulty: Vec<PublicKey>,
         faulty: HashSet<PublicKey>,
@@ -284,7 +286,7 @@ where
         if self.open_eras.contains_key(&era_id) {
             panic!("{} already exists", era_id);
         }
-        let instance_id = instance_id(&self.protocol_config, era_id);
+        let instance_id = instance_id(&self.protocol_config, era_id, key_block_hash);
 
         info!(
             ?validators,
@@ -496,6 +498,7 @@ where
             let start_height;
             let era_start_time;
             let seed;
+            let key_block_hash;
 
             let booking_block_hash = booking_blocks
                 .get(&era_id)
@@ -512,9 +515,11 @@ where
                     .genesis_timestamp
                     .expect("must have genesis start time if era ID is 0");
                 seed = 0;
+                key_block_hash = BlockHash::default();
             } else {
                 // If this is not era 0, there must be a key block for it.
                 let key_block = key_blocks.get(&era_id).expect("missing key block");
+                key_block_hash = key_block.hash();
                 start_height = key_block.height() + 1;
                 era_start_time = key_block.timestamp();
                 seed = Self::era_seed(*booking_block_hash, key_block.accumulated_seed());
@@ -549,6 +554,7 @@ where
             let results = self.new_era(
                 era_id,
                 now,
+                key_block_hash,
                 validators,
                 new_faulty,
                 faulty,
@@ -855,6 +861,7 @@ where
         let mut outcomes = self.new_era(
             era_id,
             now,
+            switch_block_header.hash(),
             next_era_validators_weights.clone(),
             new_faulty,
             faulty,
@@ -972,8 +979,9 @@ where
             }
             ProtocolOutcome::CreatedMessageToRandomPeer(payload) => {
                 let message = ConsensusMessage::Protocol { era_id, payload };
+
                 async move {
-                    let peers = effect_builder.get_peers_in_random_order().await;
+                    let peers = effect_builder.get_fully_connected_peers().await;
                     if let Some(to) = peers.into_iter().next() {
                         effect_builder.send_message(to, message.into()).await;
                     }
@@ -1205,6 +1213,16 @@ where
             Some(upgrade_point) => upgrade_point.should_upgrade(era_id),
         }
     }
+
+    /// Returns the most recent era.
+    pub(crate) fn current_era(&self) -> EraId {
+        self.current_era
+    }
+
+    /// Get a reference to the era supervisor's open eras.
+    pub(crate) fn open_eras(&self) -> &HashMap<EraId, Era<I>> {
+        &self.open_eras
+    }
 }
 
 #[cfg(test)]
@@ -1212,11 +1230,6 @@ impl<I> EraSupervisor<I>
 where
     I: NodeIdT,
 {
-    /// Returns the most recent era.
-    pub(crate) fn current_era(&self) -> EraId {
-        self.current_era
-    }
-
     /// Returns the list of validators who equivocated in this era.
     pub(crate) fn validators_with_evidence(&self, era_id: EraId) -> Vec<&PublicKey> {
         self.open_eras[&era_id].consensus.validators_with_evidence()
@@ -1376,11 +1389,16 @@ async fn execute_finalized_block<REv>(
         .await
 }
 
-/// Computes the instance ID for an era, given the era ID and the chainspec hash.
-fn instance_id(protocol_config: &ProtocolConfig, era_id: EraId) -> Digest {
-    Digest::hash_pair(protocol_config.chainspec_hash, era_id.to_le_bytes())
-        .value()
-        .into()
+/// Computes the instance ID for an era, given the chainspec hash, era ID and the key block hash.
+fn instance_id(
+    protocol_config: &ProtocolConfig,
+    era_id: EraId,
+    key_block_hash: BlockHash,
+) -> Digest {
+    Digest::hash_pair(
+        key_block_hash.inner().value(),
+        Digest::hash_pair(protocol_config.chainspec_hash, era_id.to_le_bytes()).value(),
+    )
 }
 
 /// The number of past eras whose validators are still bonded. After this many eras, a former

@@ -129,6 +129,15 @@ initial_gossip_delay = '5sec'
 # How long a connection is allowed to be stuck as pending before it is abandoned.
 max_addr_pending_time = '1min'
 
+# Maximum time allowed for a connection handshake between two nodes to be completed. Connections
+# exceeding this threshold are considered unlikely to be healthy or even malicious and thus
+# terminated.
+handshake_timeout = '20sec'
+
+# Maximum number of incoming connections per unique peer allowed. If the limit is hit, additional
+# connections will be rejected. A value of `0` means unlimited.
+max_incoming_peer_connections = 3
+
 # The maximum amount of upstream bandwidth in bytes per second allocated to non-validating peers.
 # A value of `0` means unlimited.
 max_outgoing_byte_rate_non_validators = 0
@@ -345,3 +354,20 @@ sync_timeout = '1hr'
 # A longer delay makes it more likely that many proposed deploys are already known by the
 # other nodes, and don't have to be requested from the proposer afterwards.
 #deploy_delay = '1min'
+
+
+# ===========================================
+# Configuration options for the debug console
+# ===========================================
+[console]
+
+# If set, the debug console will be available on a UNIX socket.
+enabled = true
+
+# Filename for the UNIX domain socket the console listens on.
+socket_path = "debug.socket"
+
+# The umask to set before creating the socket. A restrictive mask like `0o077` will cause the
+# socket to be only accessible by the user the node runs as. A more relaxed variant is `0o007`,
+# which allows for group access as well.
+socket_umask = 0o077

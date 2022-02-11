@@ -107,7 +107,15 @@ casper-node validator /etc/casper-node/config.toml
 
 Note how the semicolon is used to separate configuration overrides here.
 
-### Development environment variables
+### Other environment variables
+
+To force an integrity check to be run on the databases on node startup, set the following environment variable:
+
+```
+CL_RUN_INTEGRITY_CHECKS=1
+```
+
+**Note that integrity checks can run for several hours, and will hold the node in an initializing state until complete.**
 
 To set the threshold at which a warn-level log message is generated for a long-running reactor event, use the env var
 `CL_EVENT_MAX_MICROSECS`.  For example, to set the threshold to 1 millisecond:
@@ -128,7 +136,7 @@ RUST_LOG=info cargo run --release -- validator resources/local/config.toml
 
 If the environment variable is unset, it is equivalent to setting `RUST_LOG=error`.
 
-#### Log message format
+### Log message format
 
 A typical log message will look like:
 
@@ -143,7 +151,7 @@ This is comprised of the following parts:
 * filename and line number of the source of the message
 * message
 
-#### Filtering log messages
+### Filtering log messages
 
 `RUST_LOG` can be set to enable varying levels for different modules.  Simply set it to a comma-separated list of
 `module-path=level`, where the module path is as shown above in the typical log message, with the end truncated to suit.
@@ -155,19 +163,39 @@ modules in `components`, and `warn` level for the remaining codebase:
 RUST_LOG=casper_node::components::small=trace,casper_node::comp=info,warn
 ```
 
+### Logging network messages and tracing events
+
+Special logging targets exist in `net_in` and `net_out` which can be used to log every single network message leaving or
+entering a node when set to trace level:
+
+```
+RUST_LOG=net_in::TRACE,net_out::TRACE
+```
+
+All messages in these logs are also assigned a unique ID that is different even if the same message is sent to multiple
+nodes. The receiving node will log them using the same ID as the sender, thus enabling the tracing of a message across
+multiple nodes provided all logs are available.
+
+Another helpful logging feature is ancestor logging. If the target `dispatch` is set to at least debug level, events
+being dispatched will be logged as well. Any event has an id (`ev`) and may have an ancestor (`a`), which is the previous
+event whose effects caused the resulting event to be scheduled. As an example, if an incoming network message gets
+asssigned an ID of `ev=123`, the first round of subsequent events will show `a=123` as their ancestor in the logs.
+
 ## Debugging
 
 Some additional debug functionality is available, mainly allowed for inspections of the internal event queue.
 
 ### Event queue dump
 
-The event queue can be dumped by sending a `SIGUSR1` to the running node process, e.g. if the node's process ID was `$NODE_PID`:
+The event queue can be dumped by sending a `SIGUSR1` or `SIGUSR2` to the running node process, e.g. if the node's process ID was `$NODE_PID`:
 
 ```console
 kill -USR1 $NODE_PID
 ```
 
-This will create a `queue_dump.json` in the working directory of the node. A tool like [jq](https://stedolan.github.io/jq/) can then be used to format and display it:
+`USR1` will cause a debug/text representation to be dumped, `USR2` a JSON formatted version, which is likely much larger.
+
+Both variants will create a dump file in the working directory of the node. A tool like [jq](https://stedolan.github.io/jq/) can then be used to format and display the JSON representation:
 
 ```console
 $ jq < queue_dump.json
@@ -181,7 +209,7 @@ $ jq < queue_dump.json
 }
 ```
 
-#### jq Examples
+### jq Examples
 
 Dump the type of events:
 
@@ -194,6 +222,23 @@ Count number of events in each queue:
 ```console
 jq 'map_values(map(keys[0]))' queue_dump.json
 ```
+
+### Diagnostic console
+
+If the configuration option `console.enabled` is set to `true`, a unix socket named `debug.socket` by default can be found next to the configuration while the node is running. It can be connected to by tools like `socat`:
+
+```sh
+$ socat - unix:/path/to/debug.socket
+```
+
+Entering `help` will show available commands. The interface can also be scripted, it may be helpful to change some of the per-connection settings in this case:
+
+```sh
+echo -e 'set -q true -o bincode\nexample-command' | socat - unix-client:/path/to/debug.socket > output.dump
+```
+
+This calls `example-command` on the console, but disables the command confirmation (`-q true`) and changes the output format to bincode (`-o bincode`) before doing so.
+
 
 ## Running a client
 

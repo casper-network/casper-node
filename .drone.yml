@@ -132,6 +132,20 @@ type: docker
 name: package
 
 steps:
+- name: build-client-contracts
+  image: casperlabs/node-build-u1804
+  commands:
+    - make setup
+    - make build-client-contracts
+  when:
+    branch:
+    - master
+    - dev
+    - "release-*"
+    - "feat-*"
+    event:
+    - push
+
 - name: build-wasm-package-push-to-s3
   image: casperlabs/s3cmd-build:latest
   commands:

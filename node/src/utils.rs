@@ -7,6 +7,7 @@ mod external;
 pub(crate) mod pid_file;
 pub(crate) mod rlimit;
 mod round_robin;
+pub(crate) mod umask;
 pub mod work_queue;
 
 use std::{
@@ -329,7 +330,7 @@ pub(crate) enum Source<I> {
 }
 
 impl<I> Source<I> {
-    pub(crate) fn from_client(&self) -> bool {
+    pub(crate) fn is_client(&self) -> bool {
         matches!(self, Source::Client)
     }
 }
