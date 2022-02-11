@@ -3681,6 +3681,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "regression-20220204"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "regression-20220204-call"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "regression-20220207"
 version = "0.1.0"
 dependencies = [

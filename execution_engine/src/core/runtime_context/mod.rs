@@ -666,17 +666,6 @@ where
     /// Returns unit if [`URef`]s address exists in the context, and has correct access rights bit
     /// set.
     pub(crate) fn validate_uref(&self, uref: &URef) -> Result<(), Error> {
-        if self.account.main_purse().addr() == uref.addr() {
-            // If passed uref matches account's purse then we have to also validate their
-            // access rights.
-            let rights = self.account.main_purse().access_rights();
-            let uref_rights = uref.access_rights();
-            // Access rights of the passed uref, and the account's purse should match
-            if rights & uref_rights == uref_rights {
-                return Ok(());
-            }
-        }
-
         // Check if the `key` is known
         if uref_has_access_rights(uref, &self.access_rights) {
             Ok(())
@@ -1141,11 +1130,14 @@ where
     }
 
     /// Gets main purse id
-    pub fn get_main_purse(&self) -> Result<URef, Error> {
+    pub fn get_main_purse(&mut self) -> Result<URef, Error> {
         if !self.is_valid_context() {
             return Err(Error::InvalidContext);
         }
-        Ok(self.account().main_purse())
+
+        let main_purse = self.account().main_purse();
+        self.insert_uref(main_purse);
+        Ok(main_purse)
     }
 
     /// Gets entry point type.

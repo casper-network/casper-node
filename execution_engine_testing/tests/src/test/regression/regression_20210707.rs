@@ -88,7 +88,7 @@ fn assert_forged_uref_error(error: CoreError, forged_uref: URef) {
 
 #[ignore]
 #[test]
-fn should_not_transfer_funds_from_forged_purse_to_account() {
+fn should_not_transfer_funds_from_forged_purse_to_new_account() {
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
@@ -103,6 +103,59 @@ fn should_not_transfer_funds_from_forged_purse_to_account() {
 
     builder.exec(store_request).commit().expect_success();
     builder.exec(fund_request).commit().expect_success();
+
+    let account = builder.get_expected_account(*DEFAULT_ACCOUNT_ADDR);
+
+    let take_from = builder.get_expected_account(*ALICE_ADDR);
+    let alice_main_purse = take_from.main_purse();
+
+    let contract_hash = get_account_contract_hash(&account);
+
+    assert!(builder.get_account(*BOB_ADDR).is_none());
+
+    let call_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        contract_hash,
+        METHOD_SEND_TO_ACCOUNT,
+        runtime_args! {
+            ARG_SOURCE => alice_main_purse,
+            ARG_RECIPIENT => *BOB_ADDR,
+            ARG_AMOUNT => U512::from(700_000_000_000u64),
+        },
+    )
+    .build();
+
+    builder.exec(call_request).commit();
+
+    let error = builder.get_error().expect("should have error");
+
+    assert_forged_uref_error(error, alice_main_purse);
+}
+
+#[ignore]
+#[test]
+fn should_not_transfer_funds_from_forged_purse_to_existing_account() {
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+
+    let store_request = setup_regression_contract();
+
+    let fund_request_1 = transfer(
+        *DEFAULT_ACCOUNT_ADDR,
+        *ALICE_ADDR,
+        MINIMUM_ACCOUNT_CREATION_BALANCE,
+    );
+
+    let fund_request_2 = transfer(
+        *DEFAULT_ACCOUNT_ADDR,
+        *BOB_ADDR,
+        MINIMUM_ACCOUNT_CREATION_BALANCE,
+    );
+
+    builder.exec(store_request).commit().expect_success();
+    builder.exec(fund_request_1).commit().expect_success();
+    builder.exec(fund_request_2).commit().expect_success();
 
     let account = builder.get_expected_account(*DEFAULT_ACCOUNT_ADDR);
 

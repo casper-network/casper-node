@@ -186,14 +186,6 @@ where
         amount: U512,
         id: Option<u64>,
     ) -> Result<Result<(), mint::Error>, Error> {
-        // if caller is system proceed
-        // else if caller has access to uref proceed
-        if self.context.get_caller() != PublicKey::System.to_account_hash()
-            && self.context.validate_uref(&source).is_err()
-        {
-            return Err(Error::InvalidCaller);
-        }
-
         let args_values = RuntimeArgs::try_new(|args| {
             args.insert(mint::ARG_TO, to)?;
             args.insert(mint::ARG_SOURCE, source)?;
@@ -205,7 +197,11 @@ where
         .map_err(|_| Error::CLValue)?;
 
         let gas_counter = self.gas_counter();
+
+        let extra_keys = [Key::from(self.context.account().main_purse())];
+
         let mut stack = self.stack().clone();
+
         stack
             .push(
                 self.get_system_contract_stack_frame(MINT)
@@ -218,7 +214,7 @@ where
                 mint::METHOD_TRANSFER,
                 &mut NamedKeys::default(),
                 &args_values,
-                &[],
+                &extra_keys,
                 stack,
             )
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Transfer))?;
