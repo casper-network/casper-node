@@ -403,6 +403,12 @@ pub(crate) enum StorageRequest {
         /// stored.
         responder: Responder<bool>,
     },
+    /// Retrieve the lowest height from which we have an unbroken chain of stored blocks (not just
+    /// headers) ending in the highest stored block.
+    GetLowestContiguousBlockHeight {
+        /// Responder to call with the result.
+        responder: Responder<u64>,
+    },
 }
 
 impl Display for StorageRequest {
@@ -491,6 +497,9 @@ impl Display for StorageRequest {
                     "get block and sufficient finality signatures by height: {}",
                     block_height
                 )
+            }
+            StorageRequest::GetLowestContiguousBlockHeight { .. } => {
+                write!(formatter, "get lowest contiguous block height",)
             }
         }
     }
@@ -666,6 +675,11 @@ pub(crate) enum RpcRequest {
         /// Responder to call with the result.
         responder: Responder<StatusFeed>,
     },
+    /// Return the lowest contiguous block height.
+    GetLowestContiguousBlockHeight {
+        /// Responder to call with the result.
+        responder: Responder<u64>,
+    },
 }
 
 impl Display for RpcRequest {
@@ -715,6 +729,9 @@ impl Display for RpcRequest {
             RpcRequest::GetDeploy { hash, .. } => write!(formatter, "get {}", hash),
             RpcRequest::GetPeers { .. } => write!(formatter, "get peers"),
             RpcRequest::GetStatus { .. } => write!(formatter, "get status"),
+            RpcRequest::GetLowestContiguousBlockHeight { .. } => {
+                write!(formatter, "get lowest contiguous block height")
+            }
         }
     }
 }

@@ -55,6 +55,10 @@ pub(crate) enum Event {
         result: Result<BalanceResult, engine_state::Error>,
         main_responder: Responder<Result<BalanceResult, engine_state::Error>>,
     },
+    GetLowestContiguousBlockHeightResult {
+        height: u64,
+        main_responder: Responder<u64>,
+    },
 }
 
 impl Display for Event {
@@ -99,6 +103,11 @@ impl Display for Event {
                 write!(formatter, "get deploy result for {}: {:?}", hash, result)
             }
             Event::GetPeersResult { peers, .. } => write!(formatter, "get peers: {}", peers.len()),
+            Event::GetLowestContiguousBlockHeightResult { height, .. } => write!(
+                formatter,
+                "get lowest contiguous block height result: {}",
+                height
+            ),
         }
     }
 }
