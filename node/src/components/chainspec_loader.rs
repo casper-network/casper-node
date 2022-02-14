@@ -412,6 +412,14 @@ where
             Event::Request(ChainspecLoaderRequest::GetCurrentRunInfo(responder)) => {
                 responder.respond(self.get_current_run_info()).ignore()
             }
+            Event::Request(ChainspecLoaderRequest::GetChainspecFile(responder)) => {
+                let file_path = self
+                    .root_dir
+                    .join(dir_name_from_version(&self.chainspec.protocol_version()))
+                    .join(CHAINSPEC_NAME);
+
+                responder.respond(fs::read_file(file_path)?).ignore()
+            }
             Event::CheckForNextUpgrade => self.check_for_next_upgrade(effect_builder),
             Event::GotNextUpgrade(next_upgrade) => self.handle_got_next_upgrade(next_upgrade),
         }

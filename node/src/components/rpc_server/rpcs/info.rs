@@ -53,6 +53,10 @@ static GET_VALIDATOR_CHANGES_RESULT: Lazy<GetValidatorChangesResult> = Lazy::new
         changes,
     }
 });
+static GET_CHAINSPEC_RESULT: Lazy<GetChainspecResult> = Lazy::new(|| GetChainspecResult {
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    chainspec: vec![42, 42, 42],
+});
 
 /// Params for "info_get_deploy" RPC request.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
@@ -337,6 +341,54 @@ impl RpcWithoutParamsExt for GetValidatorChanges {
         async move {
             let changes = effect_builder.get_consensus_validator_changes().await;
             let result = Self::ResponseResult::new(api_version, changes);
+            Ok(response_builder.success(result)?)
+        }
+        .boxed()
+    }
+}
+
+/// Result for the "info_get_chainspec" RPC.
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+pub struct GetChainspecResult {
+    /// The RPC API version.
+    #[schemars(with = "String")]
+    pub api_version: ProtocolVersion,
+    /// The chainspec file bytes.
+    pub chainspec: Vec<u8>,
+}
+
+impl GetChainspecResult {
+    pub(crate) fn new(api_version: ProtocolVersion, chainspec: Vec<u8>) -> Self {
+        Self {
+            api_version,
+            chainspec,
+        }
+    }
+}
+
+impl DocExample for GetChainspecResult {
+    fn doc_example() -> &'static Self {
+        &*GET_CHAINSPEC_RESULT
+    }
+}
+
+/// "info_get_chainspec" RPC.
+pub struct GetChainspec {}
+
+impl RpcWithoutParams for GetChainspec {
+    const METHOD: &'static str = "info_get_chainspec";
+    type ResponseResult = GetChainspecResult;
+}
+
+impl RpcWithoutParamsExt for GetChainspec {
+    fn handle_request<REv: ReactorEventT>(
+        effect_builder: EffectBuilder<REv>,
+        response_builder: Builder,
+        api_version: ProtocolVersion,
+    ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
+        async move {
+            let chainspec = effect_builder.get_chainspec_file().await;
+            let result = Self::ResponseResult::new(api_version, chainspec);
             Ok(response_builder.success(result)?)
         }
         .boxed()

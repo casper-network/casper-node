@@ -1844,6 +1844,14 @@ impl<REv> EffectBuilder<REv> {
         )
         .await
     }
+    /// Gets the chainspec file.
+    pub(crate) async fn get_chainspec_file(self) -> Vec<u8>
+    where
+        REv: From<ChainspecLoaderRequest> + Send,
+    {
+        self.make_request(ChainspecLoaderRequest::GetChainspecFile, QueueKind::Regular)
+            .await
+    }
 }
 
 /// Construct a fatal error effect.
