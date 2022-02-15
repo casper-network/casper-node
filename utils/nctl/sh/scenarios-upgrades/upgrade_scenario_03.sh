@@ -142,7 +142,7 @@ function _step_04()
 {
     local NODE_ID=${1:-'5'}
     local ACCOUNT_ID=${2:-'7'}
-    local AMOUNT=${3:-'1'}
+    local AMOUNT=${3:-'500000000000'}
 
     log_step_upgrades 4 "Delegating $AMOUNT from account-$ACCOUNT_ID to validator-$NODE_ID"
 
@@ -329,7 +329,7 @@ function _step_12()
 {
     local NODE_ID=${1:-'5'}
     local ACCOUNT_ID=${2:-'7'}
-    local AMOUNT=${3:-'1'}
+    local AMOUNT=${3:-'500000000000'}
 
     log_step_upgrades 12 "Undelegating $AMOUNT to account-$ACCOUNT_ID from validator-$NODE_ID"
 
