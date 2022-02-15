@@ -1,7 +1,8 @@
 use std::{
     borrow::Cow,
     fmt::{self, Debug, Display, Formatter},
-    fs, io,
+    fs,
+    io::{self, Seek, SeekFrom},
     path::PathBuf,
 };
 
@@ -25,7 +26,7 @@ use erased_serde::Serializer as ErasedSerializer;
 use futures::future::{self, Either};
 use serde::Serialize;
 use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader},
     net::{unix::OwnedWriteHalf, UnixListener, UnixStream},
     sync::watch,
 };
@@ -226,20 +227,59 @@ impl Session {
                     }
                     Action::DumpQueues => {
                         match tempfile::tempfile() {
-                            Ok(tmp) => match self.create_temp_file_serializer(tmp) {
-                                Some(serializer) => {
-                                    self.send_outcome(writer, &Outcome::success("dumping queues"))
+                            Ok(mut tmp) => {
+                                // We create a second handle to the serializer temporary file. It
+                                // will be discard once serialization is finished.
+                                let serializer = tmp
+                                    .try_clone()
+                                    .map_err(|err| {
+                                        warn!(%err, "could not clone temporary file handle");
+                                    })
+                                    .ok()
+                                    .and_then(|tmp_copy| {
+                                        self.create_temp_file_serializer(tmp_copy)
+                                    });
+
+                                match serializer {
+                                    Some(serializer) => {
+                                        effect_builder.console_dump_queue(serializer).await;
+                                        if let Err(err) = tmp.seek(SeekFrom::Start(0)) {
+                                            self.send_outcome(
+                                                writer,
+                                                &Outcome::failed(format!(
+                                                    "could not seek spooled temporary file: {}",
+                                                    err
+                                                )),
+                                            )
+                                            .await?;
+                                        } else {
+                                            self.send_outcome(
+                                                writer,
+                                                &Outcome::success("dumping queues"),
+                                            )
+                                            .await?;
+
+                                            // At this point, we have a complete queue dump in the
+                                            // requested format stored inside the temporary file.
+
+                                            self.stream_to_client(
+                                                writer,
+                                                &mut tokio::fs::File::from_std(tmp),
+                                            )
+                                            .await?;
+                                        }
+                                    }
+                                    None => {
+                                        self.send_outcome(
+                                            writer,
+                                            &Outcome::failed(
+                                                "cannot dump queues in requested format",
+                                            ),
+                                        )
                                         .await?;
-                                    effect_builder.console_dump_queue(serializer).await;
+                                    }
                                 }
-                                None => {
-                                    self.send_outcome(
-                                        writer,
-                                        &Outcome::failed("cannot dump queues in requested format"),
-                                    )
-                                    .await?;
-                                }
-                            },
+                            }
                             Err(err) => {
                                 self.send_outcome(
                                     writer,
@@ -305,6 +345,17 @@ impl Session {
         }
 
         Ok(())
+    }
+
+    /// Streams data from a source to the client.
+    ///
+    /// Returns the number of bytes sent.
+    async fn stream_to_client<R: AsyncRead + Unpin + ?Sized>(
+        &self,
+        writer: &mut OwnedWriteHalf,
+        src: &mut R,
+    ) -> io::Result<u64> {
+        tokio::io::copy(src, writer).await
     }
 }
 
