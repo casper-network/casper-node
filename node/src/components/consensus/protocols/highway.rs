@@ -1068,12 +1068,6 @@ where
         self.highway.validators_with_evidence().collect()
     }
 
-    fn has_received_messages(&self) -> bool {
-        !self.highway.state().is_empty()
-            || !self.synchronizer.is_empty()
-            || !self.pending_values.is_empty()
-    }
-
     fn as_any(&self) -> &dyn Any {
         self
     }

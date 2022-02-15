@@ -55,7 +55,7 @@ pub(crate) use cl_context::ClContext;
 pub(crate) use config::Config;
 pub(crate) use consensus_protocol::{BlockContext, EraReport, ProposedBlock};
 pub(crate) use era_supervisor::{debug::EraDump, EraSupervisor};
-pub(crate) use protocols::highway::HighwayProtocol;
+pub(crate) use protocols::{highway::HighwayProtocol, simple_consensus::SimpleConsensus};
 pub(crate) use validator_change::ValidatorChange;
 
 #[derive(DataSize, Clone, Serialize, Deserialize)]

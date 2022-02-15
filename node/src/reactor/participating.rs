@@ -30,7 +30,7 @@ use crate::{
         block_proposer::{self, BlockProposer},
         block_validator::{self, BlockValidator},
         chainspec_loader::{self, ChainspecLoader},
-        consensus::{self, EraSupervisor, HighwayProtocol},
+        consensus::{self, EraSupervisor},
         console::{self, Console},
         contract_runtime::{ContractRuntime, ContractRuntimeAnnouncement, ExecutionPreState},
         deploy_acceptor::{self, DeployAcceptor},
@@ -690,7 +690,6 @@ impl reactor::Reactor for Reactor {
             maybe_latest_block_header.as_ref(),
             maybe_next_activation_point,
             registry,
-            Box::new(HighwayProtocol::new_boxed),
         )?;
         effects.extend(reactor::wrap_effects(
             ParticipatingEvent::Consensus,

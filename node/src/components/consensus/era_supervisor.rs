@@ -40,8 +40,8 @@ use crate::{
         },
         metrics::Metrics,
         validator_change::ValidatorChanges,
-        ActionId, Config, ConsensusMessage, Event, NewBlockPayload, ReactorEventT, ResolveValidity,
-        TimerId, ValidatorChange,
+        ActionId, Config, ConsensusMessage, Event, HighwayProtocol, NewBlockPayload, ReactorEventT,
+        ResolveValidity, SimpleConsensus, TimerId, ValidatorChange,
     },
     effect::{
         announcements::ControlAnnouncement,
@@ -91,8 +91,6 @@ pub struct EraSupervisor {
     current_era: EraId,
     protocol_config: ProtocolConfig,
     config: Config,
-    #[data_size(skip)] // Negligible for most closures, zero for functions.
-    new_consensus: Box<ConsensusConstructor>,
     /// The height of the next block to be finalized.
     /// We keep that in order to be able to signal to the Block Proposer how many blocks have been
     /// finalized when we request a new block. This way the Block Proposer can know whether it's up
@@ -135,7 +133,6 @@ impl EraSupervisor {
         maybe_latest_block_header: Option<&BlockHeader>,
         next_upgrade_activation_point: Option<ActivationPoint>,
         registry: &Registry,
-        new_consensus: Box<ConsensusConstructor>,
     ) -> Result<(Self, Effects<Event>), Error> {
         if current_era < protocol_config.last_activation_point {
             panic!(
@@ -162,7 +159,6 @@ impl EraSupervisor {
             current_era,
             protocol_config,
             config,
-            new_consensus,
             next_block_height: next_height,
             metrics,
             unit_files_folder,
@@ -321,7 +317,14 @@ impl EraSupervisor {
             .checked_sub(1)
             .and_then(|last_era_id| self.open_eras.get(&last_era_id));
 
-        let (mut consensus, mut outcomes) = (self.new_consensus)(
+        // TODO: This is for testing. Make configurable or remove one.
+        let new_consensus: &ConsensusConstructor = if era_id.value() % 3 == 0 {
+            &HighwayProtocol::new_boxed
+        } else {
+            &SimpleConsensus::new_boxed
+        };
+
+        let (mut consensus, mut outcomes) = new_consensus(
             instance_id,
             validators.clone(),
             &faulty,

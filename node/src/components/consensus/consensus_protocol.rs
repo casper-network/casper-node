@@ -25,6 +25,8 @@ where
     C: Context,
 {
     timestamp: Timestamp,
+    /// The ancestors of the new block, in reverse chronological order, i.e. the first entry is the
+    /// new block's parent.
     ancestor_values: Vec<C::ConsensusValue>,
 }
 
@@ -296,9 +298,6 @@ pub(crate) trait ConsensusProtocol<C: Context>: Send {
 
     /// Returns the list of all validators that were observed as faulty in this consensus instance.
     fn validators_with_evidence(&self) -> Vec<&C::ValidatorId>;
-
-    /// Returns true if the protocol has received some messages since initialization.
-    fn has_received_messages(&self) -> bool;
 
     /// Returns whether this instance of a protocol is an active validator.
     fn is_active(&self) -> bool;
