@@ -7,13 +7,16 @@ SCENARIOS_CHAINSPEC_DIR="$SCENARIOS_DIR/chainspecs"
 SCENARIOS_ACCOUNTS_DIR="$SCENARIOS_DIR/accounts_toml"
 SCENARIOS_CONFIGS_DIR="$SCENARIOS_DIR/configs"
 
+NCTL_CLIENT_BRANCH="${DRONE_BRANCH:='dev'}"
+
 # Activate Environment
 pushd "$DRONE_ROOT_DIR"
 source "$(pwd)"/utils/nctl/activate
 
 # Clone the client and launcher repos if required.
 if [ ! -d "$NCTL_CASPER_CLIENT_HOME" ]; then
-    git clone https://github.com/casper-ecosystem/casper-client-rs "$NCTL_CASPER_CLIENT_HOME"
+    echo "Checking out $NCTL_CLIENT_BRANCH of casper-client-rs..."
+    git clone -b "$NCTL_CLIENT_BRANCH" https://github.com/casper-ecosystem/casper-client-rs "$NCTL_CASPER_CLIENT_HOME"
 fi
 if [ ! -d "$NCTL_CASPER_NODE_LAUNCHER_HOME" ]; then
     git clone https://github.com/casper-network/casper-node-launcher "$NCTL_CASPER_NODE_LAUNCHER_HOME"

@@ -147,6 +147,10 @@ impl Payload for Message {
             Message::AddressGossiper(_) => MessageKind::AddressGossip,
         }
     }
+
+    fn incoming_resource_estimate(&self, _weights: &super::EstimatorWeights) -> u32 {
+        0
+    }
 }
 
 /// Test reactor.

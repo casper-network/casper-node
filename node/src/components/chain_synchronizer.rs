@@ -22,7 +22,8 @@ use crate::{
     fatal,
     reactor::joiner::JoinerEvent,
     types::{
-        BlockHash, BlockHeader, BlockPayload, Chainspec, FinalizedBlock, NodeConfig, Timestamp,
+        ActivationPoint, BlockHash, BlockHeader, BlockPayload, Chainspec, FinalizedBlock,
+        NodeConfig, Timestamp,
     },
     NodeRng,
 };
@@ -51,27 +52,35 @@ pub(crate) struct ChainSynchronizer {
     /// reactor can stop running.  It is passed to the participating reactor's constructor via its
     /// config.
     joining_outcome: Option<JoiningOutcome>,
+    /// The next upgrade activation point, used to determine what action to take after completing
+    /// chain synchronization.
+    maybe_next_upgrade: Option<ActivationPoint>,
 }
 
 impl ChainSynchronizer {
     pub(crate) fn new(
         chainspec: Arc<Chainspec>,
         config: NodeConfig,
+        maybe_next_upgrade: Option<ActivationPoint>,
+        verifiable_chunked_hash_activation: EraId,
         effect_builder: EffectBuilder<JoinerEvent>,
     ) -> (Self, Effects<Event>) {
         let synchronizer = ChainSynchronizer {
             chainspec,
             config,
             joining_outcome: None,
+            maybe_next_upgrade,
         };
         let effects = match synchronizer.config.trusted_hash.as_ref() {
             None => {
                 // If no trusted hash was provided in the config, get the highest block from storage
                 // in order to use its hash, or in the case of no blocks, to commit genesis.
                 effect_builder
-                    .get_highest_block_from_storage()
-                    .event(|maybe_highest_block| {
-                        Event::HighestBlockHash(maybe_highest_block.map(|block| *block.hash()))
+                    .get_highest_block_header_from_storage()
+                    .event(move |maybe_highest_block_header| {
+                        Event::HighestBlockHash(maybe_highest_block_header.map(|block_header| {
+                            block_header.hash(verifiable_chunked_hash_activation)
+                        }))
                     })
             }
             Some(trusted_hash) => synchronizer.start_syncing(effect_builder, *trusted_hash),
@@ -369,6 +378,11 @@ impl ChainSynchronizer {
         }
     }
 
+    fn handle_got_next_upgrade(&mut self, next_upgrade: ActivationPoint) -> Effects<Event> {
+        self.maybe_next_upgrade = Some(next_upgrade);
+        Effects::new()
+    }
+
     fn genesis_timestamp(&self) -> Option<Timestamp> {
         self.chainspec
             .protocol_config
@@ -402,6 +416,9 @@ impl Component<JoinerEvent> for ChainSynchronizer {
             } => self.handle_upgrade_result(effect_builder, upgrade_block_header, result),
             Event::ExecuteBlockResult(result) => {
                 self.handle_execute_block_result(effect_builder, result)
+            }
+            Event::GotUpgradeActivationPoint(next_upgrade) => {
+                self.handle_got_next_upgrade(next_upgrade)
             }
         }
     }

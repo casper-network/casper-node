@@ -89,7 +89,7 @@ pub(crate) use self::{
     error::Error,
     event::Event,
     gossiped_address::GossipedAddress,
-    message::{FromIncoming, Message, MessageKind, Payload, PayloadWeights},
+    message::{EstimatorWeights, FromIncoming, Message, MessageKind, Payload},
 };
 use crate::{
     components::{consensus, Component},

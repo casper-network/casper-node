@@ -7,7 +7,7 @@ use casper_execution_engine::core::engine_state::{self, genesis::GenesisSuccess,
 use super::Error;
 use crate::{
     contract_runtime::{BlockAndExecutionEffects, BlockExecutionError},
-    types::{BlockHash, BlockHeader},
+    types::{ActivationPoint, BlockHash, BlockHeader},
 };
 
 #[derive(Debug, Serialize)]
@@ -28,6 +28,8 @@ pub(crate) enum Event {
     ExecuteBlockResult(
         #[serde(skip_serializing)] Result<BlockAndExecutionEffects, BlockExecutionError>,
     ),
+    /// A new upgrade activation point was announced.
+    GotUpgradeActivationPoint(ActivationPoint),
 }
 
 impl Display for Event {
@@ -50,6 +52,13 @@ impl Display for Event {
             }
             Event::ExecuteBlockResult(result) => {
                 write!(formatter, "execute block result: {:?}", result)
+            }
+            Event::GotUpgradeActivationPoint(activation_point) => {
+                write!(
+                    formatter,
+                    "new upgrade activation point: {:?}",
+                    activation_point
+                )
             }
         }
     }
