@@ -4,7 +4,7 @@ mod panorama;
 mod params;
 mod tallies;
 mod unit;
-mod weight;
+pub(crate) mod weight;
 
 #[cfg(test)]
 pub(crate) mod tests;

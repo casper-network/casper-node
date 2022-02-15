@@ -31,7 +31,7 @@ use crate::{
         block_accumulator::{self, BlockAccumulator},
         block_synchronizer::{self, BlockSynchronizer},
         block_validator::{self, BlockValidator},
-        consensus::{self, ChainspecConsensusExt, EraSupervisor, HighwayProtocol},
+        consensus::{self, ChainspecConsensusExt, EraSupervisor},
         contract_runtime::ContractRuntime,
         deploy_acceptor::{self, DeployAcceptor},
         deploy_buffer::{self, DeployBuffer},
@@ -264,7 +264,6 @@ impl reactor::Reactor for MainReactor {
             config.consensus,
             chainspec.clone(),
             registry,
-            Box::new(HighwayProtocol::new_boxed),
         )?;
 
         // chain / deploy management

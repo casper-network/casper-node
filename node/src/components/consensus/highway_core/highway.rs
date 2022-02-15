@@ -138,7 +138,7 @@ pub(crate) enum GetDepOutcome<C: Context> {
     Evidence(C::ValidatorId),
 }
 
-/// A passive instance of the Highway protocol, containing its local state.
+/// An instance of the Highway protocol, containing its local state.
 ///
 /// Both observers and active validators must instantiate this, pass in all incoming vertices from
 /// peers, and use a [FinalityDetector](../finality_detector/struct.FinalityDetector.html) to
