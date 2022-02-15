@@ -500,19 +500,20 @@ async fn fast_sync_to_most_recent(
         get_trusted_key_block_info(*ctx.effect_builder, ctx.chainspec, ctx.trusted_block_header)
             .await?;
 
-    let most_recent_block_header = fetch_block_headers_up_to_the_most_recent_one(
-        *ctx.effect_builder,
-        ctx.chainspec,
-        ctx.trusted_block_header,
-        &trusted_key_block_info,
-    )
-    .await?;
+    let (most_recent_block_header, most_recent_key_block_info) =
+        fetch_block_headers_up_to_the_most_recent_one(
+            *ctx.effect_builder,
+            ctx.chainspec,
+            ctx.trusted_block_header,
+            &trusted_key_block_info,
+        )
+        .await?;
 
     fetch_blocks_for_deploy_replay_protection(
         *ctx.effect_builder,
         ctx.chainspec,
         &most_recent_block_header,
-        &trusted_key_block_info,
+        &most_recent_key_block_info,
     )
     .await?;
 
@@ -611,15 +612,15 @@ async fn fetch_block_headers_up_to_the_most_recent_one(
     chainspec: &Chainspec,
     trusted_block_header: &BlockHeader,
     trusted_key_block_info: &KeyBlockInfo,
-) -> Result<BlockHeader, Error> {
+) -> Result<(BlockHeader, KeyBlockInfo), Error> {
     let mut most_recent_block_header = trusted_block_header.clone();
-    let mut current_trusted_key_block_info = trusted_key_block_info.clone();
+    let mut most_recent_key_block_info = trusted_key_block_info.clone();
     info!("start - fetch block headers up to the most recent one - fast sync");
     loop {
         let maybe_fetched_block = fetch_and_store_next::<BlockHeaderWithMetadata>(
             effect_builder,
             &most_recent_block_header,
-            &current_trusted_key_block_info,
+            &most_recent_key_block_info,
             chainspec,
         )
         .await?;
@@ -632,7 +633,7 @@ async fn fetch_block_headers_up_to_the_most_recent_one(
                 &most_recent_block_header,
                 chainspec.protocol_config.verifiable_chunked_hash_activation,
             ) {
-                current_trusted_key_block_info = key_block_info;
+                most_recent_key_block_info = key_block_info;
             }
         } else {
             // If we timed out, consider syncing done.
@@ -642,14 +643,14 @@ async fn fetch_block_headers_up_to_the_most_recent_one(
         // If we synced up to the current era, we can also consider syncing done.
         if is_current_era(
             &most_recent_block_header,
-            &current_trusted_key_block_info,
+            &most_recent_key_block_info,
             chainspec,
         ) {
             break;
         }
     }
     debug!("finish - fetch block headers up to the most recent one - fast sync");
-    Ok(most_recent_block_header)
+    Ok((most_recent_block_header, most_recent_key_block_info))
 }
 
 /// Fetch and store all blocks that can contain not-yet-expired deploys. These are needed for
@@ -658,11 +659,11 @@ async fn fetch_blocks_for_deploy_replay_protection(
     effect_builder: EffectBuilder<JoinerEvent>,
     chainspec: &Chainspec,
     most_recent_block_header: &BlockHeader,
-    trusted_key_block_info: &KeyBlockInfo,
+    most_recent_key_block_info: &KeyBlockInfo,
 ) -> Result<(), Error> {
     info!("start - fetch blocks for deploy replay protection - fast sync");
     let mut current_header = most_recent_block_header.clone();
-    while trusted_key_block_info
+    while most_recent_key_block_info
         .era_start
         .saturating_diff(current_header.timestamp())
         < chainspec.deploy_config.max_ttl
