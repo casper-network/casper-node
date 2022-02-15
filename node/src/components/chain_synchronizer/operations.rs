@@ -627,8 +627,7 @@ async fn fetch_block_headers_up_to_the_most_recent_one(
         if let Some(more_recent_block_header_with_metadata) = maybe_fetched_block {
             most_recent_block_header = more_recent_block_header_with_metadata.block_header;
 
-            // If the new block is a switch block, update the validator weights, etc...
-            // TODO[RC]: Is the comment above a TODO?
+            // TODO: If the new block is a switch block, update the validator weights, etc...
             if let Some(key_block_info) = KeyBlockInfo::maybe_from_block_header(
                 &most_recent_block_header,
                 chainspec.protocol_config.verifiable_chunked_hash_activation,
