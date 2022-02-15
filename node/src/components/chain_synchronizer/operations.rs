@@ -41,6 +41,7 @@ struct ChainSyncContext<'a> {
     chainspec: &'a Chainspec,
     node_config: &'a NodeConfig,
     trusted_block_header: &'a BlockHeader,
+    trusted_hash: &'a BlockHash,
 }
 
 impl<'a> ChainSyncContext<'a> {
@@ -49,12 +50,14 @@ impl<'a> ChainSyncContext<'a> {
         chainspec: &'a Chainspec,
         node_config: &'a NodeConfig,
         trusted_block_header: &'a BlockHeader,
+        trusted_hash: &'a BlockHash,
     ) -> Self {
         Self {
             effect_builder,
             chainspec,
             node_config,
             trusted_block_header,
+            trusted_hash,
         }
     }
 }
@@ -750,15 +753,8 @@ async fn archival_sync(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, Bloc
     debug!("finish - fetch the latest key block before the trusted block - archival sync");
 
     info!("start - fetch the trusted block - archival sync");
-    let trusted_block = *fetch_and_store_block_by_hash(
-        *ctx.effect_builder,
-        ctx.trusted_block_header.hash(
-            ctx.chainspec
-                .protocol_config
-                .verifiable_chunked_hash_activation,
-        ),
-    )
-    .await?;
+    let trusted_block =
+        *fetch_and_store_block_by_hash(*ctx.effect_builder, *ctx.trusted_hash).await?;
     debug!("finish - fetch the trusted block - archival sync");
 
     // Sync to genesis
@@ -835,11 +831,12 @@ pub(super) async fn run_chain_sync_task(
         &chainspec,
         &node_config,
         &trusted_block_header,
+        &trusted_hash,
     );
 
     verify_trusted_block_header(&chain_sync_context)?;
 
-    if handle_emergency_restart(&chain_sync_context, trusted_hash).await? {
+    if handle_emergency_restart(&chain_sync_context).await? {
         return Ok(*trusted_block_header);
     }
 
@@ -904,10 +901,7 @@ fn verify_trusted_block_header(ctx: &ChainSyncContext<'_>) -> Result<(), Error> 
     Ok(())
 }
 
-async fn handle_emergency_restart(
-    ctx: &ChainSyncContext<'_>,
-    trusted_hash: BlockHash,
-) -> Result<bool, Error> {
+async fn handle_emergency_restart(ctx: &ChainSyncContext<'_>) -> Result<bool, Error> {
     let maybe_last_emergency_restart_era_id = ctx.chainspec.protocol_config.last_emergency_restart;
     if let Some(last_emergency_restart_era) = maybe_last_emergency_restart_era_id {
         // After an emergency restart, the old validators cannot be trusted anymore. So the last
@@ -916,7 +910,7 @@ async fn handle_emergency_restart(
         if ctx.trusted_block_header.next_block_era_id() < last_emergency_restart_era {
             return Err(Error::TryingToJoinBeforeLastEmergencyRestartEra {
                 last_emergency_restart_era,
-                trusted_hash,
+                trusted_hash: *ctx.trusted_hash,
                 trusted_block_header: Box::new(ctx.trusted_block_header.clone()),
             });
         }
