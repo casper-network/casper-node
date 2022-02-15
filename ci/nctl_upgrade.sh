@@ -19,14 +19,27 @@ fi
 nctl-compile
 
 function main() {
-    # Stage
-    get_remotes
-    stage_remotes "$1"
-    build_from_settings_file
+    local TEST_ID=${1}
+    local SKIP_SETUP=${2}
+    if [ "$SKIP_SETUP" != "true" ]; then
 
-    # Start
-    start_upgrade_scenario_1
-    start_upgrade_scenario_3
+        # NCTL Build
+        pushd "$ROOT_DIR"
+        nctl-compile
+
+        # Stage
+        get_remotes
+        stage_remotes
+        build_from_settings_file
+    fi
+
+    if [ -z "$TEST_ID" ]; then
+        # PR CI tests
+        start_upgrade_scenario_1
+        start_upgrade_scenario_3
+    else
+        start_upgrade_scenario_"$TEST_ID"
+    fi
 }
 
 # Pulls down all remotely staged files
@@ -64,16 +77,10 @@ function get_remotes() {
 # and use whats currently in settings.sh
 #   arg: local is for debug testing only
 function stage_remotes() {
-    local BRANCH=${1}
     local PATH_TO_STAGE
 
     PATH_TO_STAGE="$(get_path_to_stage 1)"
-
-    if [ "$BRANCH" != "local" ]; then
-        log "... CI branch detected"
-        log "... setting up stage dir: $PATH_TO_STAGE"
-        dev_branch_settings "$PATH_TO_STAGE"
-    fi
+    dev_branch_settings "$PATH_TO_STAGE"
 }
 
 # Generates stage-1 directory for test execution
@@ -126,4 +133,42 @@ function start_upgrade_scenario_3() {
     log "... Starting Upgrade Scenario 3"
     nctl-exec-upgrade-scenario-3
 }
-main "$1"
+
+function start_upgrade_scenario_4() {
+    log "... Starting Upgrade Scenario 4"
+    nctl-exec-upgrade-scenario-4
+}
+
+function start_upgrade_scenario_5() {
+    log "... Starting Upgrade Scenario 5"
+    nctl-exec-upgrade-scenario-5
+}
+
+function start_upgrade_scenario_6() {
+    log "... Starting Upgrade Scenario 6"
+    nctl-exec-upgrade-scenario-6
+}
+
+function start_upgrade_scenario_7() {
+    log "... Starting Upgrade Scenario 7"
+    nctl-exec-upgrade-scenario-7
+}
+
+# ----------------------------------------------------------------
+# ENTRY POINT
+# ----------------------------------------------------------------
+
+unset TEST_ID
+unset SKIP_SETUP
+
+for ARGUMENT in "$@"; do
+    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
+    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
+    case "$KEY" in
+        test_id) TEST_ID=${VALUE} ;;
+        skip_setup) SKIP_SETUP=${VALUE} ;;
+        *) ;;
+    esac
+done
+
+main "$TEST_ID" "$SKIP_SETUP"
