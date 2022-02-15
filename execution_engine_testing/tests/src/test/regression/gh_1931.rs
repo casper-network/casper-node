@@ -7,6 +7,7 @@ use casper_types::{RuntimeArgs, StoredValue};
 const CONTRACT_NAME: &str = "do_nothing_stored.wasm";
 const CONTRACT_PACKAGE_NAMED_KEY: &str = "do_nothing_package_hash";
 
+#[ignore]
 #[test]
 fn should_query_contract_package() {
     let mut builder = InMemoryWasmTestBuilder::default();
