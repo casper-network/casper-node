@@ -224,20 +224,34 @@ impl Session {
                             }
                         }
                     }
-                    Action::DumpQueues => match self.create_temp_file_serializer(todo!()) {
-                        Some(serializer) => {
-                            self.send_outcome(writer, &Outcome::success("dumping queues"))
+                    Action::DumpQueues => {
+                        match tempfile::tempfile() {
+                            Ok(tmp) => match self.create_temp_file_serializer(tmp) {
+                                Some(serializer) => {
+                                    self.send_outcome(writer, &Outcome::success("dumping queues"))
+                                        .await?;
+                                    effect_builder.console_dump_queue(serializer).await;
+                                }
+                                None => {
+                                    self.send_outcome(
+                                        writer,
+                                        &Outcome::failed("cannot dump queues in requested format"),
+                                    )
+                                    .await?;
+                                }
+                            },
+                            Err(err) => {
+                                self.send_outcome(
+                                    writer,
+                                    &Outcome::failed(format!(
+                                        "could not create a temporary file for queue dump: {}",
+                                        err
+                                    )),
+                                )
                                 .await?;
-                            effect_builder.console_dump_queue(serializer).await;
-                        }
-                        None => {
-                            self.send_outcome(
-                                writer,
-                                &Outcome::failed("cannot dump queues in requested format"),
-                            )
-                            .await?;
-                        }
-                    },
+                            }
+                        };
+                    }
                 };
             }
             Err(err) => {
