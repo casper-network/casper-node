@@ -290,9 +290,8 @@ function _step_11()
     local NODES_IN_SYNC
     local LOOPS_ALLOWED
 
-    # Workaround for: https://app.zenhub.com/workspaces/engineering-60953fafb1945f0011a3592d/issues/casper-network/governance/69
-    # Retry 20mins
-    LOOPS_ALLOWED=1200
+    # allow 5 minutes
+    LOOPS_ALLOWED=300
 
     log_step_upgrades 11 "Asserting all nodes are in sync..."
 
