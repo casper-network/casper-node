@@ -10,8 +10,8 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
 use thiserror::Error;
 
 use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
-use casper_hashing::Digest;
-use casper_types::{bytesrepr::ToBytes, EraId};
+use casper_hashing::{error::ChunkWithProofVerificationError, Digest};
+use casper_types::EraId;
 
 use crate::types::{BlockHash, BlockHeader};
 
@@ -44,8 +44,8 @@ pub enum Tag {
     BlockHeaderByHash,
     /// A block header and its finality signatures requested by its height in the linear chain.
     BlockHeaderAndFinalitySignaturesByHeight,
-    /// A trie from the global Merkle tree in the execution engine.
-    Trie,
+    /// A trie or chunk from the global Merkle tree in the execution engine.
+    TrieOrChunk,
 }
 
 /// A trait which allows an implementing type to be used by the gossiper and fetcher components, and
@@ -80,8 +80,8 @@ pub(crate) struct ChunkValidationError;
 
 impl Item for TrieOrChunk {
     type Id = TrieOrChunkId;
-    type ValidationError = ChunkValidationError;
-    const TAG: Tag = Tag::Trie;
+    type ValidationError = ChunkWithProofVerificationError;
+    const TAG: Tag = Tag::TrieOrChunk;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
     fn validate(
@@ -90,18 +90,13 @@ impl Item for TrieOrChunk {
     ) -> Result<(), Self::ValidationError> {
         match self {
             TrieOrChunk::Trie(_) => Ok(()),
-            TrieOrChunk::ChunkWithProof(chunk) => {
-                chunk.verify().then(|| ()).ok_or(ChunkValidationError)
-            }
+            TrieOrChunk::ChunkWithProof(chunk_with_proof) => chunk_with_proof.verify(),
         }
     }
 
     fn id(&self, _verifiable_chunked_hash_activation: EraId) -> Self::Id {
         match self {
-            TrieOrChunk::Trie(trie) => {
-                let node_bytes = trie.to_bytes().expect("Could not serialize trie to bytes");
-                TrieOrChunkId(0, Digest::hash(&node_bytes))
-            }
+            TrieOrChunk::Trie(node_bytes) => TrieOrChunkId(0, Digest::hash(&node_bytes)),
             TrieOrChunk::ChunkWithProof(chunked_data) => TrieOrChunkId(
                 chunked_data.proof().index(),
                 chunked_data.proof().root_hash(),

@@ -72,7 +72,7 @@ impl Payload for Message {
                     Tag::BlockAndMetadataByHeight => MessageKind::BlockTransfer,
                     Tag::BlockHeaderByHash => MessageKind::BlockTransfer,
                     Tag::BlockHeaderAndFinalitySignaturesByHeight => MessageKind::BlockTransfer,
-                    Tag::Trie => MessageKind::TrieTransfer,
+                    Tag::TrieOrChunk => MessageKind::TrieTransfer,
                 }
             }
             Message::FinalitySignature(_) => MessageKind::Consensus,
@@ -86,7 +86,7 @@ impl Payload for Message {
             Message::Consensus(_) => false,
             Message::DeployGossiper(_) => false,
             Message::AddressGossiper(_) => false,
-            Message::GetRequest { tag, .. } if *tag == Tag::Trie => true,
+            Message::GetRequest { tag, .. } if *tag == Tag::TrieOrChunk => true,
             Message::GetRequest { .. } => false,
             Message::GetResponse { .. } => false,
             Message::FinalitySignature(_) => false,
@@ -106,7 +106,7 @@ impl Payload for Message {
                 Tag::BlockAndMetadataByHeight => weights.block_requests,
                 Tag::BlockHeaderByHash => weights.block_requests,
                 Tag::BlockHeaderAndFinalitySignaturesByHeight => weights.block_requests,
-                Tag::Trie => weights.trie_requests,
+                Tag::TrieOrChunk => weights.trie_requests,
             },
             Message::GetResponse { tag, .. } => match tag {
                 Tag::Deploy => weights.deploy_responses,
@@ -115,7 +115,7 @@ impl Payload for Message {
                 Tag::BlockAndMetadataByHeight => weights.block_responses,
                 Tag::BlockHeaderByHash => weights.block_responses,
                 Tag::BlockHeaderAndFinalitySignaturesByHeight => weights.block_responses,
-                Tag::Trie => weights.trie_responses,
+                Tag::TrieOrChunk => weights.trie_responses,
             },
             Message::FinalitySignature(_) => weights.finality_signatures,
         }
@@ -246,7 +246,7 @@ where
                     message: NetRequest::BlockHeaderAndFinalitySignaturesByHeight(serialized_id),
                 }
                 .into(),
-                Tag::Trie => TrieRequestIncoming {
+                Tag::TrieOrChunk => TrieRequestIncoming {
                     sender,
                     message: TrieRequest(serialized_id),
                 }
@@ -286,7 +286,7 @@ where
                     message: NetResponse::BlockHeaderAndFinalitySignaturesByHeight(serialized_item),
                 }
                 .into(),
-                Tag::Trie => TrieResponseIncoming {
+                Tag::TrieOrChunk => TrieResponseIncoming {
                     sender,
                     message: TrieResponse(serialized_item.to_vec()),
                 }
