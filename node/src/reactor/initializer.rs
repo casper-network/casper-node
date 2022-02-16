@@ -11,6 +11,7 @@ use thiserror::Error;
 use tracing::info;
 
 use casper_execution_engine::core::engine_state;
+use casper_hashing::Digest;
 
 use crate::{
     components::{
@@ -239,13 +240,8 @@ impl Reactor {
         if should_check_integrity {
             info!("running trie-store integrity check, this may take a while");
             let state_roots = storage.read_state_root_hashes_for_trie_check()?;
-            let missing_trie_keys = contract_runtime.trie_store_check(state_roots.clone())?;
-            if !missing_trie_keys.is_empty() {
-                return Err(Error::MissingTrieKeys {
-                    state_root_count: state_roots.len(),
-                    missing_trie_key_count: missing_trie_keys.len(),
-                });
-            }
+            let missing_trie_keys = contract_runtime.trie_store_check(state_roots.to_vec())?;
+            check_integrity(&state_roots, &missing_trie_keys)?;
         }
 
         let effects = reactor::wrap_effects(Event::Chainspec, chainspec_effects);
@@ -261,6 +257,29 @@ impl Reactor {
         };
         Ok((reactor, effects))
     }
+}
+
+fn check_integrity(state_roots: &[Digest], missing_trie_keys: &[Digest]) -> Result<(), Error> {
+    if missing_trie_keys.is_empty() {
+        // No missing trie keys; integrity ok.
+        return Ok(());
+    }
+
+    // There are some missing trie keys present. Check if they are all
+    // state root hashes.
+    let mut missing_trie_keys = missing_trie_keys.to_vec();
+    missing_trie_keys.retain(|missing_trie_key| !state_roots.contains(missing_trie_key));
+    if missing_trie_keys.is_empty() {
+        // All missing trie keys are state root hashes; integrity ok.
+        return Ok(());
+    }
+
+    // There are some descendant keys among the reported missing trie keys.
+    // This is an integrity error.
+    Err(Error::MissingTrieKeys {
+        state_root_count: state_roots.len(),
+        missing_trie_key_count: missing_trie_keys.len(),
+    })
 }
 
 #[cfg(test)]
@@ -359,5 +378,38 @@ pub(crate) mod tests {
         fn node_id(&self) -> Self::NodeId {
             NodeId::from(&self.small_network_identity)
         }
+    }
+
+    #[test]
+    fn integrity_check_ok_when_no_missing_trie_keys() {
+        let state_roots = vec![Digest::from([1; 32]), Digest::from([2; 32])];
+        let missing_trie_keys = [];
+        assert!(check_integrity(state_roots.as_slice(), &missing_trie_keys).is_ok())
+    }
+
+    #[test]
+    fn integrity_check_ok_when_all_missing_trie_keys_are_state_roots() {
+        let state_roots = vec![Digest::from([1; 32]), Digest::from([2; 32])];
+        let missing_trie_keys = state_roots.clone();
+        assert!(check_integrity(state_roots.as_slice(), missing_trie_keys.as_slice()).is_ok())
+    }
+
+    #[test]
+    fn integrity_check_fails_when_not_all_missing_trie_keys_are_state_roots() {
+        let state_roots = vec![Digest::from([1; 32]), Digest::from([2; 32])];
+        let mut missing_trie_keys = state_roots.clone();
+
+        // Add missing trie key which is not a state root
+        missing_trie_keys.push(Digest::from([3; 32]));
+
+        let result = check_integrity(state_roots.as_slice(), missing_trie_keys.as_slice())
+            .expect_err("should return error");
+        assert!(matches!(
+            result,
+            Error::MissingTrieKeys {
+                state_root_count: 2,
+                missing_trie_key_count: 1
+            }
+        ))
     }
 }
