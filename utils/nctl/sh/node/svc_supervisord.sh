@@ -108,7 +108,7 @@ function do_node_stop_all()
 {
     if [ -e "$(get_path_net_supervisord_sock)" ]; then
         log "... stopping supervisord"
-        supervisorctl -c "$(get_path_net_supervisord_cfg)" shutdown > /dev/null 2>&1
+        supervisorctl -c "$(get_path_net_supervisord_cfg)" shutdown > /dev/null 2>&1 || true
         sleep 2.0
     fi
 }
