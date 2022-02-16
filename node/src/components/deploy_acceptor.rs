@@ -600,7 +600,7 @@ impl DeployAcceptor {
             ) => {
                 let query_key = Key::from(contract_package_hash);
                 let path = vec![];
-                let maybe_contract_version = contract_package_identifier.version();
+                let maybe_package_version = contract_package_identifier.version();
                 effect_builder
                     .get_contract_package_for_validation(prestate_hash, query_key, path)
                     .event(
