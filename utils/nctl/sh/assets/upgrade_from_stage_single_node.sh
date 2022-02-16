@@ -146,7 +146,7 @@ function _setup_asset_chainspec()
 }
 
 #######################################
-# Sets node confgiuration files.
+# Sets node configuration files.
 # Arguments:
 #   Count of nodes to setup (default=5).
 #   Version of protocol being ran.
