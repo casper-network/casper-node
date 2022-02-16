@@ -492,10 +492,7 @@ impl DeployAcceptor {
                     })
             }
             ExecutableDeployItemIdentifier::Package(
-                ref
-                contract_package_identifier
-                @
-                ContractPackageIdentifier::Hash {
+                ref contract_package_identifier @ ContractPackageIdentifier::Hash {
                     contract_package_hash,
                     ..
                 },
@@ -596,10 +593,7 @@ impl DeployAcceptor {
                     })
             }
             ExecutableDeployItemIdentifier::Package(
-                ref
-                contract_package_identifier
-                @
-                ContractPackageIdentifier::Hash {
+                ref contract_package_identifier @ ContractPackageIdentifier::Hash {
                     contract_package_hash,
                     ..
                 },
