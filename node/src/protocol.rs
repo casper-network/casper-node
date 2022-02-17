@@ -80,11 +80,14 @@ impl Payload for Message {
     }
 
     fn is_low_priority(&self) -> bool {
+        // We only deprioritize requested trie nodes, as they are the most commonly requested item
+        // during fast sync.
         match self {
             Message::Consensus(_) => false,
             Message::DeployGossiper(_) => false,
             Message::AddressGossiper(_) => false,
-            Message::GetRequest { .. } => true,
+            Message::GetRequest { tag, .. } if *tag == Tag::Trie => true,
+            Message::GetRequest { .. } => false,
             Message::GetResponse { .. } => false,
             Message::FinalitySignature(_) => false,
         }
