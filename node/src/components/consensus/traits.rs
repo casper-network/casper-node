@@ -6,9 +6,6 @@ use std::{
 use datasize::DataSize;
 use serde::{de::DeserializeOwned, Serialize};
 
-pub trait NodeIdT: Clone + Display + Debug + Send + Eq + Hash + DataSize + 'static {}
-impl<I> NodeIdT for I where I: Clone + Display + Debug + Send + Eq + Hash + DataSize + 'static {}
-
 /// A validator identifier.
 pub trait ValidatorIdT: Eq + Ord + Clone + Debug + Hash + Send + DataSize + Display {}
 impl<VID> ValidatorIdT for VID where VID: Eq + Ord + Clone + Debug + Hash + Send + DataSize + Display

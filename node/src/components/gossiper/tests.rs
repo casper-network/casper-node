@@ -73,7 +73,7 @@ enum Event {
     #[from]
     DeployGossiper(super::Event<Deploy>),
     #[from]
-    NetworkRequest(NetworkRequest<NodeId, NodeMessage>),
+    NetworkRequest(NetworkRequest<NodeMessage>),
     #[from]
     StorageRequest(StorageRequest),
     #[from]
@@ -81,7 +81,7 @@ enum Event {
     #[from]
     RpcServerAnnouncement(#[serde(skip_serializing)] RpcServerAnnouncement),
     #[from]
-    DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement<NodeId>),
+    DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement),
     #[from]
     DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
     #[from]
@@ -302,7 +302,7 @@ impl reactor::Reactor for Reactor {
             }) => {
                 let event = deploy_acceptor::Event::Accept {
                     deploy,
-                    source: Source::<NodeId>::Client,
+                    source: Source::Client,
                     maybe_responder: responder,
                 };
                 self.dispatch_event(effect_builder, rng, Event::DeployAcceptor(event))
@@ -411,8 +411,6 @@ impl reactor::Reactor for Reactor {
 }
 
 impl NetworkedReactor for Reactor {
-    type NodeId = NodeId;
-
     fn node_id(&self) -> NodeId {
         self.network.node_id()
     }

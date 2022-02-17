@@ -112,10 +112,10 @@ reactor!(Reactor {
 
     requests: {
         // This test contains no linear chain requests, so we panic if we receive any.
-        NetworkRequest<NodeId, Message> -> network;
+        NetworkRequest<Message> -> network;
         StorageRequest -> storage;
         StateStoreRequest -> storage;
-        FetcherRequest<NodeId, Deploy> -> deploy_fetcher;
+        FetcherRequest<Deploy> -> deploy_fetcher;
 
         // The only contract runtime request will be the commit of genesis, which we discard.
         ContractRuntimeRequest -> #;
@@ -123,7 +123,7 @@ reactor!(Reactor {
 
     announcements: {
         // The deploy fetcher needs to be notified about new deploys.
-        DeployAcceptorAnnouncement<NodeId> -> [deploy_fetcher];
+        DeployAcceptorAnnouncement -> [deploy_fetcher];
         // Currently the RpcServerAnnouncement is misnamed - it solely tells of new deploys arriving
         // from a client.
         RpcServerAnnouncement -> [deploy_acceptor];
@@ -204,8 +204,6 @@ impl Reactor {
 }
 
 impl NetworkedReactor for Reactor {
-    type NodeId = NodeId;
-
     fn node_id(&self) -> NodeId {
         self.network.node_id()
     }
@@ -222,7 +220,7 @@ fn announce_deploy_received(
     }
 }
 
-type FetchedDeployResult = Arc<Mutex<(bool, Option<FetchResult<Deploy, NodeId>>)>>;
+type FetchedDeployResult = Arc<Mutex<(bool, Option<FetchResult<Deploy>>)>>;
 
 fn fetch_deploy(
     deploy_hash: DeployHash,

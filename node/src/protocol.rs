@@ -185,9 +185,9 @@ impl Display for Message {
     }
 }
 
-impl<REv> FromIncoming<NodeId, Message> for REv
+impl<REv> FromIncoming<Message> for REv
 where
-    REv: From<ConsensusMessageIncoming<NodeId>>
+    REv: From<ConsensusMessageIncoming>
         + From<GossiperIncoming<Deploy>>
         + From<GossiperIncoming<GossipedAddress>>
         + From<NetRequestIncoming>
