@@ -504,7 +504,7 @@ where
                         )
                         .await;
 
-                    let queue_kind = if msg.is_low_priority(false) {
+                    let queue_kind = if msg.is_low_priority() {
                         QueueKind::NetworkLowPriority
                     } else {
                         QueueKind::NetworkIncoming

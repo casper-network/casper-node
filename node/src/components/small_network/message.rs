@@ -55,10 +55,10 @@ impl<P: Payload> Message<P> {
 
     /// Determines whether or not a message is low priority.
     #[inline]
-    pub(super) fn is_low_priority(&self, from_validator: bool) -> bool {
+    pub(super) fn is_low_priority(&self) -> bool {
         match self {
             Message::Handshake { .. } => false,
-            Message::Payload(payload) => payload.is_low_priority(from_validator),
+            Message::Payload(payload) => payload.is_low_priority(),
         }
     }
 
@@ -295,10 +295,8 @@ pub(crate) trait Payload:
     fn incoming_resource_estimate(&self, _weights: &EstimatorWeights) -> u32;
 
     /// Determines if the payload should be considered low priority.
-    ///
-    /// If `from_validator` is true, the message was received from an active validator.
-    fn is_low_priority(&self, from_validator: bool) -> bool {
-        !from_validator
+    fn is_low_priority(&self) -> bool {
+        false
     }
 }
 
