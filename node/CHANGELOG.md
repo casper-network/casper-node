@@ -33,6 +33,7 @@ All notable changes to this project will be documented in this file.  The format
 * Chain automatically creates a switch block immediately after genesis or an upgrade.
 * Connection handshake timeouts can now be configured via the `handshake_timeout` variable (they were hardcoded at 20 seconds before).
 * `Key::SystemContractRegistry` is now readable and can be queried via the RPC.
+* Requests for data from a peer are now de-prioritized over networking message necessary for consensus and chain advancement.
 
 ### Deprecated
 * Deprecate the `starting_state_root_hash` field from the REST and JSON-RPC status endpoints.
