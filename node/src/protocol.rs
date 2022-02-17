@@ -79,6 +79,17 @@ impl Payload for Message {
         }
     }
 
+    fn is_low_priority(&self) -> bool {
+        match self {
+            Message::Consensus(_) => false,
+            Message::DeployGossiper(_) => false,
+            Message::AddressGossiper(_) => false,
+            Message::GetRequest { .. } => true,
+            Message::GetResponse { .. } => false,
+            Message::FinalitySignature(_) => false,
+        }
+    }
+
     #[inline]
     fn incoming_resource_estimate(&self, weights: &EstimatorWeights) -> u32 {
         match self {
