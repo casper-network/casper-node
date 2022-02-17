@@ -25,8 +25,10 @@ use tracing::{debug, error, info, trace};
 
 use casper_execution_engine::{
     core::engine_state::{
-        self, genesis::GenesisSuccess, EngineConfig, EngineState, GetEraValidatorsError,
-        GetEraValidatorsRequest, UpgradeConfig, UpgradeSuccess,
+        self,
+        genesis::{ChainspecRegistry, GenesisSuccess, CHAINSPEC_RAW, GENESIS_ACCOUNTS_RAW},
+        EngineConfig, EngineState, GetEraValidatorsError, GetEraValidatorsRequest, UpgradeConfig,
+        UpgradeSuccess,
     },
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::{
@@ -44,7 +46,7 @@ use crate::{
     effect::{
         announcements::{ContractRuntimeAnnouncement, ControlAnnouncement},
         incoming::{TrieRequest, TrieRequestIncoming},
-        requests::{ContractRuntimeRequest, NetworkRequest},
+        requests::{ChainspecLoaderRequest, ContractRuntimeRequest, NetworkRequest},
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
@@ -196,6 +198,7 @@ where
         + From<ContractRuntimeAnnouncement>
         + From<ControlAnnouncement>
         + From<NetworkRequest<NodeId, Message>>
+        + From<ChainspecLoaderRequest>
         + Send,
 {
     type Event = Event;
@@ -259,6 +262,7 @@ impl ContractRuntime {
         REv: From<ContractRuntimeRequest>
             + From<ContractRuntimeAnnouncement>
             + From<ControlAnnouncement>
+            + From<ChainspecLoaderRequest>
             + Send,
     {
         match request {
@@ -266,15 +270,41 @@ impl ContractRuntime {
                 chainspec,
                 responder,
             } => {
-                let result = self.commit_genesis(&chainspec);
-                responder.respond(result).ignore()
+                let engine_state = Arc::clone(&self.engine_state);
+                async move {
+                    let mut chainspec_registry = effect_builder.create_chainspec_registry().await;
+                    let chainspec_file = effect_builder.get_chainspec_file().await;
+                    let genesis_accounts_file = effect_builder.get_genesis_accounts_file().await;
+                    let chainspec_file_hash = Digest::hash(chainspec_file);
+                    let genesis_accounts_file_hash = Digest::hash(genesis_accounts_file);
+
+                    chainspec_registry.insert(CHAINSPEC_RAW, chainspec_file_hash);
+                    chainspec_registry.insert(GENESIS_ACCOUNTS_RAW, genesis_accounts_file_hash);
+
+                    let result =
+                        Self::commit_genesis(&engine_state, &chainspec, chainspec_registry);
+                    responder.respond(result).await
+                }
+                .ignore()
             }
             ContractRuntimeRequest::Upgrade {
                 upgrade_config,
                 responder,
-            } => responder
-                .respond(self.commit_upgrade(*upgrade_config))
-                .ignore(),
+            } => async move {
+                let mut chainspec_registry = effect_builder.create_chainspec_registry().await;
+                let chainspec_file = effect_builder.get_chainspec_file().await;
+                let genesis_accounts_file = effect_builder.get_genesis_accounts_file().await;
+                let chainspec_file_hash = Digest::hash(chainspec_file);
+                let genesis_accounts_file_hash = Digest::hash(genesis_accounts_file);
+
+                chainspec_registry.insert(CHAINSPEC_RAW, chainspec_file_hash);
+                chainspec_registry.insert(GENESIS_ACCOUNTS_RAW, genesis_accounts_file_hash);
+
+                responder
+                    .respond(self.commit_upgrade(*upgrade_config, &chainspec_registry))
+                    .await
+            }
+            .ignore(),
             ContractRuntimeRequest::Query {
                 query_request,
                 responder,
@@ -591,25 +621,31 @@ impl ContractRuntime {
     }
 
     /// Commits a genesis request.
-    fn commit_genesis(&self, chainspec: &Chainspec) -> Result<GenesisSuccess, engine_state::Error> {
+    fn commit_genesis(
+        engine_state: &EngineState<LmdbGlobalState>,
+        chainspec: &Chainspec,
+        chainspec_registry: ChainspecRegistry,
+    ) -> Result<GenesisSuccess, engine_state::Error> {
         let correlation_id = CorrelationId::new();
         let genesis_config_hash = chainspec.hash();
         let protocol_version = chainspec.protocol_config.version;
         // Transforms a chainspec into a valid genesis config for execution engine.
         let ee_config = chainspec.into();
-        let result = self.engine_state.commit_genesis(
+        let result = engine_state.commit_genesis(
             correlation_id,
             genesis_config_hash,
             protocol_version,
             &ee_config,
+            &chainspec_registry,
         );
-        self.engine_state.flush_environment()?;
+        engine_state.flush_environment()?;
         result
     }
 
     fn commit_upgrade(
         &self,
         upgrade_config: UpgradeConfig,
+        chainspec_registry: &ChainspecRegistry,
     ) -> Result<UpgradeSuccess, engine_state::Error> {
         debug!(?upgrade_config, "upgrade");
         let start = Instant::now();

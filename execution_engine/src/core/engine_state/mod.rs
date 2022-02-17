@@ -50,6 +50,7 @@ use casper_types::{
     U512,
 };
 
+use self::genesis::ChainspecRegistry;
 pub use self::{
     balance::{BalanceRequest, BalanceResult},
     deploy_item::DeployItem,
@@ -189,6 +190,7 @@ where
         genesis_config_hash: Digest,
         protocol_version: ProtocolVersion,
         ee_config: &ExecConfig,
+        chainspec_registry: &ChainspecRegistry,
     ) -> Result<GenesisSuccess, Error> {
         // Preliminaries
         let initial_root_hash = self.state.empty_root();

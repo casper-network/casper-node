@@ -283,6 +283,10 @@ where
                 error!("should not remove the system contract registry key");
                 Err(Error::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied))
             }
+            Key::ChainspecRegistry => {
+                error!("should not remove the chainspec registry key");
+                Err(Error::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied))
+            }
         }
     }
 
@@ -727,6 +731,7 @@ where
                 false
             }
             Key::SystemContractRegistry => true,
+            Key::ChainspecRegistry => true,
         }
     }
 
@@ -747,6 +752,7 @@ where
                 false
             }
             Key::SystemContractRegistry => false,
+            Key::ChainspecRegistry => false,
         }
     }
 
@@ -767,6 +773,7 @@ where
                 false
             }
             Key::SystemContractRegistry => false,
+            Key::ChainspecRegistry => false,
         }
     }
 

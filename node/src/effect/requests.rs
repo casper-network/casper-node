@@ -20,7 +20,7 @@ use casper_execution_engine::{
         self,
         balance::{BalanceRequest, BalanceResult},
         era_validators::GetEraValidatorsError,
-        genesis::GenesisSuccess,
+        genesis::{ChainspecRegistry, GenesisSuccess},
         get_bids::{GetBidsRequest, GetBidsResult},
         query::{QueryRequest, QueryResult},
         UpgradeConfig, UpgradeSuccess,
@@ -1035,6 +1035,8 @@ pub(crate) enum ChainspecLoaderRequest {
     GetCurrentRunInfo(Responder<CurrentRunInfo>),
     /// Request for the chainspec file.
     GetChainspecFile(Responder<Vec<u8>>),
+    GetGenesisAccountsFile(Responder<Vec<u8>>),
+    CreateChainspecRegistry(Responder<ChainspecRegistry>),
 }
 
 impl Display for ChainspecLoaderRequest {
@@ -1043,6 +1045,12 @@ impl Display for ChainspecLoaderRequest {
             ChainspecLoaderRequest::GetChainspecInfo(_) => write!(f, "get chainspec info"),
             ChainspecLoaderRequest::GetCurrentRunInfo(_) => write!(f, "get current run info"),
             ChainspecLoaderRequest::GetChainspecFile(_) => write!(f, "get chainspec file"),
+            ChainspecLoaderRequest::GetGenesisAccountsFile(_) => {
+                write!(f, "get genesis accounts file")
+            }
+            ChainspecLoaderRequest::CreateChainspecRegistry(_) => {
+                write!(f, "create chainspec registry")
+            }
         }
     }
 }

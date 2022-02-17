@@ -45,6 +45,9 @@ use crate::utils::Loadable;
 /// The name of the chainspec file on disk.
 pub const CHAINSPEC_NAME: &str = "chainspec.toml";
 
+// The name of the genesis accounts file on disk.
+pub const GENESIS_ACCOUNTS_NAME: &str = "accounts.toml";
+
 /// A collection of configuration settings describing the state of the system at genesis and after
 /// upgrades to basic system functionality occurring after genesis.
 #[derive(DataSize, PartialEq, Eq, Serialize, Debug)]

@@ -55,6 +55,12 @@ const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
 /// Type alias for the system contract registry.
 pub type SystemContractRegistry = BTreeMap<String, ContractHash>;
 
+/// Type alias for the chainspec registry.
+pub type ChainspecRegistry = BTreeMap<String, Digest>;
+
+pub const CHAINSPEC_RAW: &str = "chainspec_raw";
+pub const GENESIS_ACCOUNTS_RAW: &str = "genesis_accounts_raw";
+
 /// Represents an outcome of a successful genesis run.
 #[derive(Debug)]
 pub struct GenesisSuccess {

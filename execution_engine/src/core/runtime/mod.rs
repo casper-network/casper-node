@@ -115,6 +115,7 @@ pub fn key_to_tuple(key: Key) -> Option<([u8; 32], AccessRights)> {
         Key::Withdraw(_) => None,
         Key::Dictionary(_) => None,
         Key::SystemContractRegistry => None,
+        Key::ChainspecRegistry => None,
     }
 }
 

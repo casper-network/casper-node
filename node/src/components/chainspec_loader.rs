@@ -19,6 +19,7 @@ use std::{
     time::Duration,
 };
 
+use casper_execution_engine::core::engine_state::genesis::ChainspecRegistry;
 use datasize::DataSize;
 use derive_more::From;
 use schemars::JsonSchema;
@@ -39,7 +40,7 @@ use crate::{
     reactor::ReactorExit,
     storage::StorageRequest,
     types::{
-        chainspec::{Error, ProtocolConfig, CHAINSPEC_NAME},
+        chainspec::{Error, ProtocolConfig, CHAINSPEC_NAME, GENESIS_ACCOUNTS_NAME},
         ActivationPoint, BlockHeader, Chainspec, ChainspecInfo, ExitCode,
     },
     utils::{self, Loadable},
@@ -418,7 +419,34 @@ where
                     .join(dir_name_from_version(&self.chainspec.protocol_version()))
                     .join(CHAINSPEC_NAME);
 
-                responder.respond(fs::read_file(file_path)?).ignore()
+                let data = match fs::read(file_path) {
+                    Ok(file_bytes) => file_bytes,
+                    Err(e) => {
+                        error!("failed to read file: {}", e);
+                        vec![]
+                    }
+                };
+
+                responder.respond(data).ignore()
+            }
+            Event::Request(ChainspecLoaderRequest::GetGenesisAccountsFile(responder)) => {
+                let file_path = self
+                    .root_dir
+                    .join(dir_name_from_version(&self.chainspec.protocol_version()))
+                    .join(GENESIS_ACCOUNTS_NAME);
+
+                let data = match fs::read(file_path) {
+                    Ok(file_bytes) => file_bytes,
+                    Err(e) => {
+                        error!("failed to read file: {}", e);
+                        vec![]
+                    }
+                };
+
+                responder.respond(data).ignore()
+            }
+            Event::Request(ChainspecLoaderRequest::CreateChainspecRegistry(responder)) => {
+                responder.respond(ChainspecRegistry::new()).ignore()
             }
             Event::CheckForNextUpgrade => self.check_for_next_upgrade(effect_builder),
             Event::GotNextUpgrade(next_upgrade) => self.handle_got_next_upgrade(next_upgrade),
