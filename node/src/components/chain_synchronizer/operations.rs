@@ -5,7 +5,6 @@ use std::{
         atomic::{self, AtomicBool},
         Arc,
     },
-    time::Duration,
 };
 
 use async_trait::async_trait;
@@ -15,12 +14,13 @@ use tracing::{debug, info, trace, warn};
 
 use casper_execution_engine::storage::trie::Trie;
 use casper_hashing::Digest;
-use casper_types::{EraId, Key, PublicKey, StoredValue, U512};
+use casper_types::{EraId, Key, ProtocolVersion, PublicKey, StoredValue, U512};
 
+use super::Config;
 use crate::{
     components::{
         chain_synchronizer::error::Error,
-        consensus::{check_sufficient_finality_signatures, ChainspecConsensusExt},
+        consensus,
         contract_runtime::ExecutionPreState,
         fetcher::{FetchResult, FetchedData, FetcherError},
     },
@@ -28,19 +28,17 @@ use crate::{
     reactor::joiner::JoinerEvent,
     types::{
         Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata,
-        Chainspec, Deploy, DeployHash, FinalizedBlock, Item, NodeConfig, NodeId, TimeDiff,
-        Timestamp,
+        Deploy, DeployHash, FinalizedBlock, Item, NodeId, TimeDiff, Timestamp,
     },
     utils::work_queue::WorkQueue,
 };
-
-const SLEEP_DURATION_SO_WE_DONT_SPAM: Duration = Duration::from_millis(100);
 
 /// Fetches an item. Keeps retrying to fetch until it is successful. Assumes no integrity check is
 /// necessary for the item. Not suited to fetching a block header or block by height, which require
 /// verification with finality signatures.
 async fn fetch_retry_forever<T>(
     effect_builder: EffectBuilder<JoinerEvent>,
+    config: &Config,
     id: T::Id,
 ) -> FetchResult<T, NodeId>
 where
@@ -88,12 +86,13 @@ where
                 Err(error @ FetcherError::CouldNotConstructGetRequest { .. }) => return Err(error),
             }
         }
-        tokio::time::sleep(SLEEP_DURATION_SO_WE_DONT_SPAM).await
+        tokio::time::sleep(config.retry_interval()).await
     }
 }
 
 async fn fetch_trie_retry_forever(
     effect_builder: EffectBuilder<JoinerEvent>,
+    config: &Config,
     id: Digest,
 ) -> FetchedData<Trie<Key, StoredValue>, NodeId> {
     loop {
@@ -108,13 +107,14 @@ async fn fetch_trie_retry_forever(
                 warn!(?id, %error, "fast sync could not fetch a trie; trying again")
             }
         }
-        tokio::time::sleep(SLEEP_DURATION_SO_WE_DONT_SPAM).await
+        tokio::time::sleep(config.retry_interval()).await
     }
 }
 
 /// Fetches and stores a block header from the network.
 async fn fetch_and_store_block_header(
     effect_builder: EffectBuilder<JoinerEvent>,
+    config: &Config,
     block_hash: BlockHash,
 ) -> Result<Box<BlockHeader>, Error> {
     // Only genesis should have this as previous hash, so no block should ever have it...
@@ -124,7 +124,7 @@ async fn fetch_and_store_block_header(
         });
     }
     let fetched_block_header =
-        fetch_retry_forever::<BlockHeader>(effect_builder, block_hash).await?;
+        fetch_retry_forever::<BlockHeader>(effect_builder, config, block_hash).await?;
     match fetched_block_header {
         FetchedData::FromStorage { item: block_header } => Ok(block_header),
         FetchedData::FromPeer {
@@ -141,10 +141,11 @@ async fn fetch_and_store_block_header(
 /// Fetches and stores a deploy.
 async fn fetch_and_store_deploy(
     effect_builder: EffectBuilder<JoinerEvent>,
+    config: &Config,
     deploy_or_transfer_hash: DeployHash,
 ) -> Result<Box<Deploy>, FetcherError<Deploy, NodeId>> {
     let fetched_deploy =
-        fetch_retry_forever::<Deploy>(effect_builder, deploy_or_transfer_hash).await?;
+        fetch_retry_forever::<Deploy>(effect_builder, config, deploy_or_transfer_hash).await?;
     match fetched_deploy {
         FetchedData::FromStorage { item: deploy } => Ok(deploy),
         FetchedData::FromPeer { item: deploy, .. } => {
@@ -213,23 +214,23 @@ impl KeyBlockInfo {
 /// Gets the trusted key block info for a trusted block header.
 async fn get_trusted_key_block_info(
     effect_builder: EffectBuilder<JoinerEvent>,
-    chainspec: &Chainspec,
+    config: &Config,
     trusted_header: &BlockHeader,
 ) -> Result<KeyBlockInfo, Error> {
     // If the trusted block's version is newer than ours we return an error
-    if trusted_header.protocol_version() > chainspec.protocol_config.version {
+    if trusted_header.protocol_version() > config.protocol_version() {
         return Err(Error::RetrievedBlockHeaderFromFutureVersion {
-            current_version: chainspec.protocol_config.version,
+            current_version: config.protocol_version(),
             block_header_with_future_version: Box::new(trusted_header.clone()),
         });
     }
     // If the trusted block's version is older than ours we also return an error, except if we are
     // at the current activation point, i.e. at an upgrade.
-    if trusted_header.protocol_version() < chainspec.protocol_config.version
-        && trusted_header.next_block_era_id() != chainspec.protocol_config.activation_point.era_id()
+    if trusted_header.protocol_version() < config.protocol_version()
+        && trusted_header.next_block_era_id() != config.activation_point()
     {
         return Err(Error::TrustedBlockHasOldVersion {
-            current_version: chainspec.protocol_config.version,
+            current_version: config.protocol_version(),
             block_header_with_old_version: Box::new(trusted_header.clone()),
         });
     }
@@ -239,15 +240,13 @@ async fn get_trusted_key_block_info(
     let mut current_header_to_walk_back_from = trusted_header.clone();
     loop {
         // Check that we are not restarting right after an emergency restart, which is too early
-        match chainspec.protocol_config.last_emergency_restart {
+        match config.last_emergency_restart() {
             Some(last_emergency_restart)
                 if last_emergency_restart > current_header_to_walk_back_from.era_id() =>
             {
                 return Err(Error::TrustedHeaderEraTooEarly {
                     trusted_header: Box::new(trusted_header.clone()),
-                    maybe_last_emergency_restart_era_id: chainspec
-                        .protocol_config
-                        .last_emergency_restart,
+                    maybe_last_emergency_restart_era_id: config.last_emergency_restart(),
                 })
             }
             _ => {}
@@ -255,9 +254,9 @@ async fn get_trusted_key_block_info(
 
         if let Some(key_block_info) = KeyBlockInfo::maybe_from_block_header(
             &current_header_to_walk_back_from,
-            chainspec.protocol_config.verifiable_chunked_hash_activation,
+            config.verifiable_chunked_hash_activation(),
         ) {
-            check_block_version(trusted_header, chainspec)?;
+            check_block_version(trusted_header, config.protocol_version())?;
             break Ok(key_block_info);
         }
 
@@ -269,6 +268,7 @@ async fn get_trusted_key_block_info(
 
         current_header_to_walk_back_from = *fetch_and_store_block_header(
             effect_builder,
+            config,
             *current_header_to_walk_back_from.parent_hash(),
         )
         .await?;
@@ -319,9 +319,9 @@ impl BlockOrHeaderWithMetadata for BlockHeaderWithMetadata {
 /// Fetches the next block or block header from the network by height.
 async fn fetch_and_store_next<I>(
     effect_builder: EffectBuilder<JoinerEvent>,
+    config: &Config,
     parent_header: &BlockHeader,
     trusted_key_block_info: &KeyBlockInfo,
-    chainspec: &Chainspec,
 ) -> Result<Option<Box<I>>, Error>
 where
     I: BlockOrHeaderWithMetadata,
@@ -334,17 +334,27 @@ where
         .ok_or_else(|| Error::HeightOverflow {
             parent: Box::new(parent_header.clone()),
         })?;
-    let mut peers = effect_builder.get_fully_connected_peers().await.into_iter();
+
+    // Ensure we have at least one peer to which we're bidirectionally connected before trying to
+    // fetch the data.
+    let mut peers = vec![];
+    for _ in 0..config.max_retries_while_not_connected() {
+        peers = effect_builder.get_fully_connected_peers().await;
+        if !peers.is_empty() {
+            break;
+        }
+        tokio::time::sleep(config.retry_interval()).await;
+    }
+
     let item = loop {
-        let peer = match peers.next() {
+        let peer = match peers.pop() {
             Some(peer) => peer,
             None => return Ok(None),
         };
         match effect_builder.fetch::<I, NodeId>(height, peer).await {
             Ok(FetchedData::FromStorage { item }) => {
                 if *item.header().parent_hash()
-                    != parent_header
-                        .hash(chainspec.protocol_config.verifiable_chunked_hash_activation)
+                    != parent_header.hash(config.verifiable_chunked_hash_activation())
                 {
                     return Err(Error::UnexpectedParentHash {
                         parent: Box::new(parent_header.clone()),
@@ -355,8 +365,7 @@ where
             }
             Ok(FetchedData::FromPeer { item, .. }) => {
                 if *item.header().parent_hash()
-                    != parent_header
-                        .hash(chainspec.protocol_config.verifiable_chunked_hash_activation)
+                    != parent_header.hash(config.verifiable_chunked_hash_activation())
                 {
                     warn!(
                         ?peer,
@@ -368,12 +377,12 @@ where
                     continue;
                 }
 
-                if let Err(error) = check_sufficient_finality_signatures(
+                if let Err(error) = consensus::check_sufficient_finality_signatures(
                     trusted_key_block_info.validator_weights(),
-                    chainspec.highway_config.finality_threshold_fraction,
+                    config.finality_threshold_fraction(),
                     item.finality_signatures(),
                 ) {
-                    warn!(?error, ?peer, "insufficient finality signatures from peer",);
+                    warn!(?error, ?peer, "insufficient finality signatures from peer");
                     effect_builder.announce_disconnect_from_peer(peer).await;
                     continue;
                 }
@@ -382,7 +391,7 @@ where
                     warn!(
                         ?error,
                         ?peer,
-                        "error validating finality signatures from peer",
+                        "error validating finality signatures from peer"
                     );
                     effect_builder.announce_disconnect_from_peer(peer).await;
                     continue;
@@ -416,16 +425,17 @@ where
         });
     }
 
-    check_block_version(item.header(), chainspec)?;
+    check_block_version(item.header(), config.protocol_version())?;
 
     Ok(Some(item))
 }
 
 /// Compares the block's version with the current and parent version and returns an error if it is
 /// too new or old.
-fn check_block_version(header: &BlockHeader, chainspec: &Chainspec) -> Result<(), Error> {
-    let current_version = chainspec.protocol_config.version;
-
+fn check_block_version(
+    header: &BlockHeader,
+    current_version: ProtocolVersion,
+) -> Result<(), Error> {
     if header.protocol_version() > current_version {
         return Err(Error::RetrievedBlockHeaderFromFutureVersion {
             current_version,
@@ -440,9 +450,10 @@ fn check_block_version(header: &BlockHeader, chainspec: &Chainspec) -> Result<()
 /// returns any outstanding descendant tries.
 async fn fetch_and_store_trie(
     effect_builder: EffectBuilder<JoinerEvent>,
+    config: &Config,
     trie_key: Digest,
 ) -> Result<Vec<Digest>, Error> {
-    let fetched_trie = fetch_trie_retry_forever(effect_builder, trie_key).await;
+    let fetched_trie = fetch_trie_retry_forever(effect_builder, config, trie_key).await;
     match fetched_trie {
         FetchedData::FromStorage { .. } => Ok(effect_builder
             .find_missing_descendant_trie_keys(trie_key)
@@ -456,9 +467,10 @@ async fn fetch_and_store_trie(
 /// Downloads and stores a block.
 async fn fetch_and_store_block_by_hash(
     effect_builder: EffectBuilder<JoinerEvent>,
+    config: &Config,
     block_hash: BlockHash,
 ) -> Result<Box<Block>, FetcherError<Block, NodeId>> {
-    let fetched_block = fetch_retry_forever::<Block>(effect_builder, block_hash).await?;
+    let fetched_block = fetch_retry_forever::<Block>(effect_builder, config, block_hash).await?;
     match fetched_block {
         FetchedData::FromStorage { item: block, .. } => Ok(block),
         FetchedData::FromPeer { item: block, .. } => {
@@ -472,12 +484,13 @@ async fn fetch_and_store_block_by_hash(
 async fn sync_trie_store_worker(
     worker_id: usize,
     effect_builder: EffectBuilder<JoinerEvent>,
+    config: &Config,
     abort: Arc<AtomicBool>,
     queue: Arc<WorkQueue<Digest>>,
 ) -> Result<(), Error> {
     while let Some(job) = queue.next_job().await {
         trace!(worker_id, trie_key = %job.inner(), "worker downloading trie");
-        let child_jobs = fetch_and_store_trie(effect_builder, *job.inner())
+        let child_jobs = fetch_and_store_trie(effect_builder, config, *job.inner())
             .await
             .map_err(|err| {
                 abort.store(true, atomic::Ordering::Relaxed);
@@ -499,6 +512,7 @@ async fn sync_trie_store_worker(
 /// Synchronizes the trie store under a given state root hash.
 async fn sync_trie_store(
     effect_builder: EffectBuilder<JoinerEvent>,
+    config: &Config,
     state_root_hash: Digest,
     max_parallel_trie_fetches: usize,
 ) -> Result<(), Error> {
@@ -511,7 +525,13 @@ async fn sync_trie_store(
     queue.push_job(state_root_hash);
     let mut workers: FuturesUnordered<_> = (0..max_parallel_trie_fetches)
         .map(|worker_id| {
-            sync_trie_store_worker(worker_id, effect_builder, abort.clone(), queue.clone())
+            sync_trie_store_worker(
+                worker_id,
+                effect_builder,
+                config,
+                abort.clone(),
+                queue.clone(),
+            )
         })
         .collect();
     while let Some(result) = workers.next().await {
@@ -533,13 +553,12 @@ async fn sync_trie_store(
 /// validation.
 async fn fast_sync_to_most_recent(
     effect_builder: EffectBuilder<JoinerEvent>,
+    config: &Config,
     trusted_block_header: BlockHeader,
-    chainspec: &Chainspec,
-    node_config: NodeConfig,
 ) -> Result<(KeyBlockInfo, BlockHeader), Error> {
     info!("start - fetch the last switch block before the trusted block - fast sync");
     let mut trusted_key_block_info =
-        get_trusted_key_block_info(effect_builder, chainspec, &trusted_block_header).await?;
+        get_trusted_key_block_info(effect_builder, config, &trusted_block_header).await?;
     debug!("finish - fetch the last switch block before the trusted block - fast sync");
 
     // Get the most recent header which has the same version as ours
@@ -550,9 +569,9 @@ async fn fast_sync_to_most_recent(
     loop {
         let maybe_fetched_block = fetch_and_store_next::<BlockHeaderWithMetadata>(
             effect_builder,
+            config,
             &most_recent_block_header,
             &trusted_key_block_info,
-            chainspec,
         )
         .await?;
         match maybe_fetched_block {
@@ -561,7 +580,7 @@ async fn fast_sync_to_most_recent(
                 // If the new block is a switch block, update the validator weights, etc...
                 if let Some(key_block_info) = KeyBlockInfo::maybe_from_block_header(
                     &most_recent_block_header,
-                    chainspec.protocol_config.verifiable_chunked_hash_activation,
+                    config.verifiable_chunked_hash_activation(),
                 ) {
                     trusted_key_block_info = key_block_info;
                 }
@@ -570,11 +589,7 @@ async fn fast_sync_to_most_recent(
             None => break,
         }
         // If we synced up to the current era, we can also consider syncing done.
-        if is_current_era(
-            &most_recent_block_header,
-            &trusted_key_block_info,
-            chainspec,
-        ) {
+        if is_current_era(&most_recent_block_header, &trusted_key_block_info, config) {
             break;
         }
     }
@@ -588,13 +603,16 @@ async fn fast_sync_to_most_recent(
         while trusted_key_block_info
             .era_start
             .saturating_diff(current_header.timestamp())
-            < chainspec.deploy_config.max_ttl
+            < config.deploy_max_ttl()
             && current_header.height() != 0
         {
-            current_header =
-                fetch_and_store_block_by_hash(effect_builder, *current_header.parent_hash())
-                    .await?
-                    .take_header();
+            current_header = fetch_and_store_block_by_hash(
+                effect_builder,
+                config,
+                *current_header.parent_hash(),
+            )
+            .await?
+            .take_header();
         }
     }
     debug!("finish - fetch blocks for deploy replay protection - fast sync");
@@ -603,13 +621,14 @@ async fn fast_sync_to_most_recent(
     // initialize the most recent eras.
     info!("start - fetch block headers needed for era supervisor initialization - fast sync");
     {
-        let earliest_open_era = chainspec.earliest_open_era(most_recent_block_header.era_id());
+        let earliest_open_era = config.earliest_open_era(most_recent_block_header.era_id());
         let earliest_era_needed_by_era_supervisor =
-            chainspec.earliest_switch_block_needed(earliest_open_era);
+            config.earliest_switch_block_needed(earliest_open_era);
         let mut current_walk_back_header = most_recent_block_header.clone();
         while current_walk_back_header.era_id() > earliest_era_needed_by_era_supervisor {
             current_walk_back_header = *fetch_and_store_block_header(
                 effect_builder,
+                config,
                 *current_walk_back_header.parent_hash(),
             )
             .await?;
@@ -621,8 +640,9 @@ async fn fast_sync_to_most_recent(
     info!("start - fetch the latest block's global state - fast sync");
     sync_trie_store(
         effect_builder,
+        config,
         *most_recent_block_header.state_root_hash(),
-        node_config.max_parallel_trie_fetches as usize,
+        config.max_parallel_trie_fetches(),
     )
     .await?;
     debug!("finish - fetch the latest block's global state - fast sync");
@@ -633,8 +653,8 @@ async fn fast_sync_to_most_recent(
 /// Downloads and saves the deploys and transfers for a block.
 async fn sync_deploys_and_transfers_and_state(
     effect_builder: EffectBuilder<JoinerEvent>,
+    config: &Config,
     block: &Block,
-    node_config: &NodeConfig,
 ) -> Result<(), Error> {
     let hash_iter: Vec<_> = block
         .deploy_hashes()
@@ -645,9 +665,9 @@ async fn sync_deploys_and_transfers_and_state(
     let mut stream = futures::stream::iter(hash_iter)
         .map(|hash| {
             debug!("start - fetch_and_store_deploy - archival sync - {}", hash);
-            fetch_and_store_deploy(effect_builder, hash)
+            fetch_and_store_deploy(effect_builder, config, hash)
         })
-        .buffer_unordered(node_config.max_parallel_deploy_fetches as usize);
+        .buffer_unordered(config.max_parallel_deploy_fetches());
     while let Some(result) = stream.next().await {
         let deploy = result?;
         debug!(
@@ -662,8 +682,9 @@ async fn sync_deploys_and_transfers_and_state(
     );
     let result = sync_trie_store(
         effect_builder,
+        config,
         *block.header().state_root_hash(),
-        node_config.max_parallel_trie_fetches as usize,
+        config.max_parallel_trie_fetches(),
     )
     .await;
     debug!(
@@ -686,21 +707,21 @@ async fn sync_deploys_and_transfers_and_state(
 /// validation.
 async fn archival_sync(
     effect_builder: EffectBuilder<JoinerEvent>,
+    config: &Config,
     trusted_block_header: BlockHeader,
-    chainspec: &Chainspec,
-    node_config: NodeConfig,
 ) -> Result<(KeyBlockInfo, BlockHeader), Error> {
     // Get the trusted block info. This will fail if we are trying to join with a trusted hash in
     // era 0.
     info!("start - fetch the latest key block before the trusted block - archival sync");
     let mut trusted_key_block_info =
-        get_trusted_key_block_info(effect_builder, chainspec, &trusted_block_header).await?;
+        get_trusted_key_block_info(effect_builder, config, &trusted_block_header).await?;
     debug!("finish - fetch the latest key block before the trusted block - archival sync");
 
     info!("start - fetch the trusted block - archival sync");
     let trusted_block = *fetch_and_store_block_by_hash(
         effect_builder,
-        trusted_block_header.hash(chainspec.protocol_config.verifiable_chunked_hash_activation),
+        config,
+        trusted_block_header.hash(config.verifiable_chunked_hash_activation()),
     )
     .await?;
     debug!("finish - fetch the trusted block - archival sync");
@@ -709,12 +730,13 @@ async fn archival_sync(
     let mut walkback_block = trusted_block.clone();
     info!("start - sync to genesis - archival sync");
     loop {
-        sync_deploys_and_transfers_and_state(effect_builder, &walkback_block, &node_config).await?;
+        sync_deploys_and_transfers_and_state(effect_builder, config, &walkback_block).await?;
         if walkback_block.height() == 0 {
             break;
         } else {
             walkback_block = *fetch_and_store_block_by_hash(
                 effect_builder,
+                config,
                 *walkback_block.header().parent_hash(),
             )
             .await?;
@@ -725,26 +747,25 @@ async fn archival_sync(
     // Sync forward until we are at the current version.
     info!("start - sync forward - archival sync");
     let mut most_recent_block = trusted_block;
-    while most_recent_block.header().protocol_version() < chainspec.protocol_config.version {
+    while most_recent_block.header().protocol_version() < config.protocol_version() {
         let maybe_fetched_block_with_metadata = fetch_and_store_next::<BlockWithMetadata>(
             effect_builder,
+            config,
             most_recent_block.header(),
             &trusted_key_block_info,
-            chainspec,
         )
         .await?;
         most_recent_block = match maybe_fetched_block_with_metadata {
             Some(block_with_metadata) => block_with_metadata.block,
             None => {
-                tokio::time::sleep(SLEEP_DURATION_SO_WE_DONT_SPAM).await;
+                tokio::time::sleep(config.retry_interval()).await;
                 continue;
             }
         };
-        sync_deploys_and_transfers_and_state(effect_builder, &most_recent_block, &node_config)
-            .await?;
+        sync_deploys_and_transfers_and_state(effect_builder, config, &most_recent_block).await?;
         if let Some(key_block_info) = KeyBlockInfo::maybe_from_block_header(
             most_recent_block.header(),
-            chainspec.protocol_config.verifiable_chunked_hash_activation,
+            config.verifiable_chunked_hash_activation(),
         ) {
             trusted_key_block_info = key_block_info;
         }
@@ -757,33 +778,32 @@ async fn archival_sync(
 /// Runs the chain synchronization task.
 pub(super) async fn run_chain_sync_task(
     effect_builder: EffectBuilder<JoinerEvent>,
+    config: Config,
     trusted_hash: BlockHash,
-    chainspec: Arc<Chainspec>,
-    node_config: NodeConfig,
 ) -> Result<BlockHeader, Error> {
     // Fetch the trusted header
     info!("start - fetch trusted header");
-    let trusted_block_header = fetch_and_store_block_header(effect_builder, trusted_hash).await?;
+    let trusted_block_header =
+        fetch_and_store_block_header(effect_builder, &config, trusted_hash).await?;
     debug!("finish - fetch trusted header");
 
-    if trusted_block_header.protocol_version() > chainspec.protocol_config.version {
+    if trusted_block_header.protocol_version() > config.protocol_version() {
         return Err(Error::RetrievedBlockHeaderFromFutureVersion {
-            current_version: chainspec.protocol_config.version,
+            current_version: config.protocol_version(),
             block_header_with_future_version: trusted_block_header,
         });
     }
 
     let era_duration: TimeDiff = cmp::max(
-        chainspec.highway_config.min_round_length() * chainspec.core_config.minimum_era_height,
-        chainspec.core_config.era_duration,
+        config.min_round_length() * config.min_era_height(),
+        config.era_duration(),
     );
 
     if trusted_block_header.timestamp()
         + era_duration
-            * chainspec
-                .core_config
-                .unbonding_delay
-                .saturating_sub(chainspec.core_config.auction_delay)
+            * config
+                .unbonding_delay()
+                .saturating_sub(config.auction_delay())
         < Timestamp::now()
     {
         warn!(
@@ -793,7 +813,7 @@ pub(super) async fn run_chain_sync_task(
         );
     }
 
-    let maybe_last_emergency_restart_era_id = chainspec.protocol_config.last_emergency_restart;
+    let maybe_last_emergency_restart_era_id = config.last_emergency_restart();
     if let Some(last_emergency_restart_era) = maybe_last_emergency_restart_era_id {
         // After an emergency restart, the old validators cannot be trusted anymore. So the last
         // block before the restart or a later block must be given by the trusted hash. That way we
@@ -814,8 +834,9 @@ pub(super) async fn run_chain_sync_task(
             info!("start - fetch the global state from before the last emergency restart - emergency restart");
             sync_trie_store(
                 effect_builder,
+                &config,
                 *trusted_block_header.state_root_hash(),
-                node_config.max_parallel_trie_fetches as usize,
+                config.max_parallel_trie_fetches(),
             )
             .await?;
             debug!("finish - fetch the global state from before the last emergency restart - emergency restart");
@@ -829,20 +850,19 @@ pub(super) async fn run_chain_sync_task(
     // 3. Try to get the next block by height; if there is `None` then switch to the participating
     //    reactor.
     if trusted_block_header.is_switch_block()
-        && trusted_block_header.next_block_era_id()
-            == chainspec.protocol_config.activation_point.era_id()
+        && trusted_block_header.next_block_era_id() == config.activation_point()
     {
         info!("start - fetch the last switch block before the trusted block - upgrade");
         let trusted_key_block_info =
-            get_trusted_key_block_info(effect_builder, &*chainspec, &trusted_block_header).await?;
+            get_trusted_key_block_info(effect_builder, &config, &trusted_block_header).await?;
         debug!("finish - fetch the last switch block before the trusted block - upgrade");
 
         info!("start - try fetching the first block after the upgrade - upgrade");
         let fetch_and_store_next_result = fetch_and_store_next::<BlockHeaderWithMetadata>(
             effect_builder,
+            &config,
             &trusted_block_header,
             &trusted_key_block_info,
-            &*chainspec,
         )
         .await?;
         debug!("finish - try fetching the first block after the upgrade - upgrade");
@@ -851,8 +871,9 @@ pub(super) async fn run_chain_sync_task(
             info!("start - fetch the global state from before the upgrade - upgrade");
             sync_trie_store(
                 effect_builder,
+                &config,
                 *trusted_block_header.state_root_hash(),
-                node_config.max_parallel_trie_fetches as usize,
+                config.max_parallel_trie_fetches(),
             )
             .await?;
             debug!("finish - fetch the global state from before the upgrade - upgrade");
@@ -860,28 +881,17 @@ pub(super) async fn run_chain_sync_task(
         }
     }
 
-    let max_parallel_deploy_fetches = node_config.max_parallel_deploy_fetches as usize;
+    let max_parallel_deploy_fetches = config.max_parallel_deploy_fetches();
 
-    let (mut trusted_key_block_info, mut most_recent_block_header) = if node_config.archival_sync {
+    let (mut trusted_key_block_info, mut most_recent_block_header) = if config.archival_sync() {
         info!("start - archival_sync - total");
-        let result = archival_sync(
-            effect_builder,
-            *trusted_block_header,
-            &chainspec,
-            node_config,
-        )
-        .await?;
+        let result = archival_sync(effect_builder, &config, *trusted_block_header).await?;
         debug!("finish - archival_sync - total");
         result
     } else {
         info!("start - fast_sync_to_most_recent - total");
-        let result = fast_sync_to_most_recent(
-            effect_builder,
-            *trusted_block_header,
-            &chainspec,
-            node_config,
-        )
-        .await?;
+        let result =
+            fast_sync_to_most_recent(effect_builder, &config, *trusted_block_header).await?;
         debug!("finish - fast_sync_to_most_recent - total");
         result
     };
@@ -889,7 +899,7 @@ pub(super) async fn run_chain_sync_task(
     // Execute blocks to get to current.
     let mut execution_pre_state = ExecutionPreState::from_block_header(
         &most_recent_block_header,
-        chainspec.protocol_config.verifiable_chunked_hash_activation,
+        config.verifiable_chunked_hash_activation(),
     );
     info!(
         era_id = ?most_recent_block_header.era_id(),
@@ -907,9 +917,9 @@ pub(super) async fn run_chain_sync_task(
         );
         let result = fetch_and_store_next::<BlockWithMetadata>(
             effect_builder,
+            &config,
             &most_recent_block_header,
             &trusted_key_block_info,
-            &*chainspec,
         )
         .await?;
         info!(
@@ -918,8 +928,11 @@ pub(super) async fn run_chain_sync_task(
         );
         let block = match result {
             None => {
+                let in_current_era =
+                    is_current_era(&most_recent_block_header, &trusted_key_block_info, &config);
                 info!(
                     era = most_recent_block_header.era_id().value(),
+                    in_current_era,
                     height = most_recent_block_header.height(),
                     timestamp = %most_recent_block_header.timestamp(),
                     "couldn't download a more recent block; finishing syncing",
@@ -933,6 +946,7 @@ pub(super) async fn run_chain_sync_task(
             block.deploy_hashes().to_vec(),
             max_parallel_deploy_fetches,
             effect_builder,
+            &config,
         )
         .await?;
 
@@ -940,6 +954,7 @@ pub(super) async fn run_chain_sync_task(
             block.transfer_hashes().to_vec(),
             max_parallel_deploy_fetches,
             effect_builder,
+            &config,
         )
         .await?;
 
@@ -972,23 +987,19 @@ pub(super) async fn run_chain_sync_task(
         most_recent_block_header = block.take_header();
         execution_pre_state = ExecutionPreState::from_block_header(
             &most_recent_block_header,
-            chainspec.protocol_config.verifiable_chunked_hash_activation,
+            config.verifiable_chunked_hash_activation(),
         );
 
         if let Some(key_block_info) = KeyBlockInfo::maybe_from_block_header(
             &most_recent_block_header,
-            chainspec.protocol_config.verifiable_chunked_hash_activation,
+            config.verifiable_chunked_hash_activation(),
         ) {
             trusted_key_block_info = key_block_info;
         }
 
         // If we managed to sync up to the current era, stop - we'll have to sync the consensus
         // protocol state, anyway.
-        if is_current_era(
-            &most_recent_block_header,
-            &trusted_key_block_info,
-            &chainspec,
-        ) {
+        if is_current_era(&most_recent_block_header, &trusted_key_block_info, &config) {
             info!(
                 era = most_recent_block_header.era_id().value(),
                 height = most_recent_block_header.height(),
@@ -1015,12 +1026,13 @@ async fn fetch_and_store_deploys(
     hashes: Vec<DeployHash>,
     max_parallel_fetches: usize,
     effect_builder: EffectBuilder<JoinerEvent>,
+    config: &Config,
 ) -> Result<Vec<Deploy>, Error> {
     let mut deploys: Vec<Deploy> = Vec::with_capacity(hashes.len());
     let mut stream = futures::stream::iter(hashes)
         .map(|hash| {
             debug!("start - fetch_and_store_deploy -  {}", hash);
-            fetch_and_store_deploy(effect_builder, hash)
+            fetch_and_store_deploy(effect_builder, config, hash)
         })
         .buffer_unordered(max_parallel_fetches);
     while let Some(result) = stream.next().await {
@@ -1037,12 +1049,12 @@ async fn fetch_and_store_deploys(
 pub(super) fn is_current_era(
     most_recent_block: &BlockHeader,
     trusted_key_block_info: &KeyBlockInfo,
-    chainspec: &Chainspec,
+    config: &Config,
 ) -> bool {
     is_current_era_given_current_timestamp(
         most_recent_block,
         trusted_key_block_info,
-        chainspec,
+        config,
         Timestamp::now(),
     )
 }
@@ -1050,7 +1062,7 @@ pub(super) fn is_current_era(
 fn is_current_era_given_current_timestamp(
     most_recent_block: &BlockHeader,
     trusted_key_block_info: &KeyBlockInfo,
-    chainspec: &Chainspec,
+    config: &Config,
     current_timestamp: Timestamp,
 ) -> bool {
     let KeyBlockInfo {
@@ -1058,19 +1070,17 @@ fn is_current_era_given_current_timestamp(
     } = trusted_key_block_info;
 
     // If the minimum era duration has not yet run out, the era is still current.
-    if current_timestamp.saturating_diff(*era_start) < chainspec.core_config.era_duration {
+    if current_timestamp.saturating_diff(*era_start) < config.era_duration() {
         return true;
     }
 
     // Otherwise estimate the earliest possible end of this era based on how many blocks remain.
-    let remaining_blocks_in_this_era = chainspec
-        .core_config
-        .minimum_era_height
+    let remaining_blocks_in_this_era = config
+        .min_era_height()
         .saturating_sub(most_recent_block.height() - *height);
-    let min_round_length = chainspec.highway_config.min_round_length();
     let time_since_most_recent_block =
         current_timestamp.saturating_diff(most_recent_block.timestamp());
-    time_since_most_recent_block < min_round_length * remaining_blocks_in_this_era
+    time_since_most_recent_block < config.min_round_length() * remaining_blocks_in_this_era
 }
 
 #[cfg(test)]
@@ -1082,13 +1092,13 @@ mod tests {
     use casper_types::{EraId, ProtocolVersion, PublicKey, SecretKey};
 
     use super::*;
-
     use crate::{
         components::consensus::EraReport,
         crypto::AsymmetricKeyExt,
         testing::TestRng,
-        types::{Block, BlockPayload, FinalizedBlock},
+        types::{Block, BlockPayload, Chainspec, FinalizedBlock, NodeConfig},
         utils::Loadable,
+        SmallNetworkConfig,
     };
 
     /// Creates a block for testing, with the given data, and returns its header.
@@ -1158,6 +1168,11 @@ mod tests {
         let minimum_era_height = 10;
         chainspec.core_config.era_duration = era_duration;
         chainspec.core_config.minimum_era_height = minimum_era_height;
+        let config = Config::new(
+            Arc::new(chainspec),
+            NodeConfig::default(),
+            SmallNetworkConfig::default(),
+        );
 
         // `verifiable_chunked_hash_activation` can be chosen arbitrarily
         let verifiable_chunked_hash_activation = EraId::from(rng.gen_range(0..=10));
@@ -1192,7 +1207,7 @@ mod tests {
         assert!(is_current_era_given_current_timestamp(
             &block,
             &trusted_switch_block_info5,
-            &chainspec,
+            &config,
             now
         ));
 
@@ -1211,7 +1226,7 @@ mod tests {
         assert!(is_current_era_given_current_timestamp(
             &block,
             &trusted_switch_block_info5,
-            &chainspec,
+            &config,
             now
         ));
 
@@ -1228,7 +1243,7 @@ mod tests {
         assert!(!is_current_era_given_current_timestamp(
             &block,
             &trusted_switch_block_info5,
-            &chainspec,
+            &config,
             now
         ));
     }
@@ -1236,7 +1251,6 @@ mod tests {
     #[test]
     fn test_check_block_version() {
         let mut rng = TestRng::new();
-        let mut chainspec = Chainspec::from_resources("local");
         let v1_2_0 = ProtocolVersion::from_parts(1, 2, 0);
         let v1_3_0 = ProtocolVersion::from_parts(1, 3, 0);
 
@@ -1253,12 +1267,10 @@ mod tests {
         .take_header();
 
         // The new block's protocol version is the current one, 1.3.0.
-        chainspec.protocol_config.version = v1_3_0;
-        check_block_version(&header, &chainspec).expect("versions are valid");
+        check_block_version(&header, v1_3_0).expect("versions are valid");
 
         // If the current version is only 1.2.0 but the block's is 1.3.0, we have to upgrade.
-        chainspec.protocol_config.version = v1_2_0;
-        match check_block_version(&header, &chainspec) {
+        match check_block_version(&header, v1_2_0) {
             Err(Error::RetrievedBlockHeaderFromFutureVersion {
                 current_version,
                 block_header_with_future_version,
