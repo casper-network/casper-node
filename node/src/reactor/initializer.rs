@@ -31,7 +31,7 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, participating, EventQueueHandle, ReactorExit},
-    types::{chainspec, NodeId},
+    types::chainspec,
     utils::WithDir,
     NodeRng,
 };
@@ -93,8 +93,8 @@ impl From<StorageRequest> for Event {
     }
 }
 
-impl From<NetworkRequest<NodeId, Message>> for Event {
-    fn from(_request: NetworkRequest<NodeId, Message>) -> Self {
+impl From<NetworkRequest<Message>> for Event {
+    fn from(_request: NetworkRequest<Message>) -> Self {
         unreachable!("no network traffic happens during initialization")
     }
 }
@@ -105,14 +105,14 @@ impl From<ChainspecLoaderAnnouncement> for Event {
     }
 }
 
-impl From<LinearChainRequest<NodeId>> for Event {
-    fn from(_req: LinearChainRequest<NodeId>) -> Self {
+impl From<LinearChainRequest> for Event {
+    fn from(_req: LinearChainRequest) -> Self {
         unreachable!("no linear chain events happen during initialization")
     }
 }
 
-impl From<NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>> for Event {
-    fn from(_request: NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>) -> Self {
+impl From<NetworkRequest<gossiper::Message<GossipedAddress>>> for Event {
+    fn from(_request: NetworkRequest<gossiper::Message<GossipedAddress>>) -> Self {
         unreachable!("no gossiper events happen during initialization")
     }
 }
@@ -123,8 +123,8 @@ impl From<ConsensusRequest> for Event {
     }
 }
 
-impl From<RestRequest<NodeId>> for Event {
-    fn from(_request: RestRequest<NodeId>) -> Self {
+impl From<RestRequest> for Event {
+    fn from(_request: RestRequest) -> Self {
         unreachable!("no rest requests happen during initialization")
     }
 }
@@ -328,7 +328,10 @@ impl reactor::Reactor for Reactor {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use crate::{testing::network::NetworkedReactor, types::Chainspec};
+    use crate::{
+        testing::network::NetworkedReactor,
+        types::{Chainspec, NodeId},
+    };
     use std::sync::Arc;
 
     impl Reactor {
@@ -346,8 +349,7 @@ pub(crate) mod tests {
     }
 
     impl NetworkedReactor for Reactor {
-        type NodeId = NodeId;
-        fn node_id(&self) -> Self::NodeId {
+        fn node_id(&self) -> NodeId {
             NodeId::from(&self.small_network_identity)
         }
     }

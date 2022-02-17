@@ -81,7 +81,7 @@ type SslResult<T> = Result<T, ErrorStack>;
 
 /// SHA512 hash.
 #[derive(Copy, Clone, DataSize, Deserialize, Serialize)]
-struct Sha512(#[serde(with = "big_array::BigArray")] [u8; Sha512::SIZE]);
+pub struct Sha512(#[serde(with = "big_array::BigArray")] [u8; Sha512::SIZE]);
 
 impl Sha512 {
     /// Size of digest in bytes.
@@ -91,7 +91,7 @@ impl Sha512 {
     const NID: Nid = Nid::SHA512;
 
     /// Create a new Sha512 by hashing a slice.
-    fn new<B: AsRef<[u8]>>(data: B) -> Self {
+    pub fn new<B: AsRef<[u8]>>(data: B) -> Self {
         let mut openssl_sha = sha::Sha512::new();
         openssl_sha.update(data.as_ref());
         Sha512(openssl_sha.finish())
@@ -163,6 +163,12 @@ impl Debug for KeyFingerprint {
 impl From<[u8; KeyFingerprint::LENGTH]> for KeyFingerprint {
     fn from(raw_bytes: [u8; KeyFingerprint::LENGTH]) -> Self {
         KeyFingerprint(Sha512(raw_bytes))
+    }
+}
+
+impl From<Sha512> for KeyFingerprint {
+    fn from(hash: Sha512) -> Self {
+        Self(hash)
     }
 }
 

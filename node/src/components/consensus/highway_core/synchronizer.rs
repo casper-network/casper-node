@@ -13,9 +13,9 @@ use crate::{
     components::consensus::{
         consensus_protocol::{ProposedBlock, ProtocolOutcome, ProtocolOutcomes},
         protocols::highway::{HighwayMessage, ACTION_ID_VERTEX},
-        traits::{Context, NodeIdT},
+        traits::Context,
     },
-    types::Timestamp,
+    types::{NodeId, Timestamp},
 };
 
 use super::{
@@ -29,17 +29,17 @@ mod tests;
 /// Incoming pre-validated vertices that we haven't added to the protocol state yet, and the
 /// timestamp when we received them.
 #[derive(DataSize, Debug)]
-pub(crate) struct PendingVertices<I, C>(HashMap<PreValidatedVertex<C>, HashMap<I, Timestamp>>)
+pub(crate) struct PendingVertices<C>(HashMap<PreValidatedVertex<C>, HashMap<NodeId, Timestamp>>)
 where
     C: Context;
 
-impl<I, C: Context> Default for PendingVertices<I, C> {
+impl<C: Context> Default for PendingVertices<C> {
     fn default() -> Self {
         PendingVertices(Default::default())
     }
 }
 
-impl<I: NodeIdT, C: Context> PendingVertices<I, C> {
+impl<C: Context> PendingVertices<C> {
     /// Removes expired vertices.
     fn remove_expired(&mut self, oldest: Timestamp) -> Vec<C::Hash> {
         let mut removed = vec![];
@@ -58,7 +58,7 @@ impl<I: NodeIdT, C: Context> PendingVertices<I, C> {
     }
 
     /// Adds a vertex, or updates its timestamp.
-    fn add(&mut self, sender: I, pvv: PreValidatedVertex<C>, time_received: Timestamp) {
+    fn add(&mut self, sender: NodeId, pvv: PreValidatedVertex<C>, time_received: Timestamp) {
         self.0
             .entry(pvv)
             .or_default()
@@ -68,22 +68,22 @@ impl<I: NodeIdT, C: Context> PendingVertices<I, C> {
     }
 
     /// Adds a holder to the vertex that satisfies `dep`.
-    fn add_holder(&mut self, dep: &Dependency<C>, sender: I, time_received: Timestamp) {
+    fn add_holder(&mut self, dep: &Dependency<C>, sender: NodeId, time_received: Timestamp) {
         if let Some((_, holders)) = self.0.iter_mut().find(|(pvv, _)| pvv.inner().id() == *dep) {
             holders.entry(sender).or_insert(time_received);
         }
     }
 
     /// Adds a vertex, or updates its timestamp.
-    fn push(&mut self, pv: PendingVertex<I, C>) {
+    fn push(&mut self, pv: PendingVertex<C>) {
         self.add(pv.sender, pv.pvv, pv.time_received)
     }
 
-    fn pop(&mut self) -> Option<PendingVertex<I, C>> {
+    fn pop(&mut self) -> Option<PendingVertex<C>> {
         let pvv = self.0.keys().next()?.clone();
         let (sender, timestamp, is_empty) = {
             let time_by_sender = self.0.get_mut(&pvv)?;
-            let sender = time_by_sender.keys().next()?.clone();
+            let sender = *time_by_sender.keys().next()?;
             let timestamp = time_by_sender.remove(&sender)?;
             (sender, timestamp, time_by_sender.is_empty())
         };
@@ -113,8 +113,8 @@ impl<I: NodeIdT, C: Context> PendingVertices<I, C> {
     }
 }
 
-impl<I: NodeIdT, C: Context> Iterator for PendingVertices<I, C> {
-    type Item = PendingVertex<I, C>;
+impl<C: Context> Iterator for PendingVertices<C> {
+    type Item = PendingVertex<C>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.pop()
@@ -123,21 +123,25 @@ impl<I: NodeIdT, C: Context> Iterator for PendingVertices<I, C> {
 
 /// An incoming pre-validated vertex that we haven't added to the protocol state yet.
 #[derive(DataSize, Debug)]
-pub(crate) struct PendingVertex<I, C>
+pub(crate) struct PendingVertex<C>
 where
     C: Context,
 {
     /// The peer who sent it to us.
-    sender: I,
+    sender: NodeId,
     /// The pre-validated vertex.
     pvv: PreValidatedVertex<C>,
     /// The time when we received it.
     time_received: Timestamp,
 }
 
-impl<I, C: Context> PendingVertex<I, C> {
+impl<C: Context> PendingVertex<C> {
     /// Returns a new pending vertex with the current timestamp.
-    pub(crate) fn new(sender: I, pvv: PreValidatedVertex<C>, time_received: Timestamp) -> Self {
+    pub(crate) fn new(
+        sender: NodeId,
+        pvv: PreValidatedVertex<C>,
+        time_received: Timestamp,
+    ) -> Self {
         Self {
             sender,
             pvv,
@@ -146,7 +150,7 @@ impl<I, C: Context> PendingVertex<I, C> {
     }
 
     /// Returns the peer from which we received this vertex.
-    pub(crate) fn sender(&self) -> &I {
+    pub(crate) fn sender(&self) -> &NodeId {
         &self.sender
     }
 
@@ -161,25 +165,25 @@ impl<I, C: Context> PendingVertex<I, C> {
     }
 }
 
-impl<I, C: Context> From<PendingVertex<I, C>> for PreValidatedVertex<C> {
-    fn from(vertex: PendingVertex<I, C>) -> Self {
+impl<C: Context> From<PendingVertex<C>> for PreValidatedVertex<C> {
+    fn from(vertex: PendingVertex<C>) -> Self {
         vertex.pvv
     }
 }
 
 #[derive(DataSize, Debug)]
-pub(crate) struct Synchronizer<I, C>
+pub(crate) struct Synchronizer<C>
 where
     C: Context,
 {
     /// Incoming vertices we can't add yet because they are still missing a dependency.
-    vertices_awaiting_deps: BTreeMap<Dependency<C>, PendingVertices<I, C>>,
+    vertices_awaiting_deps: BTreeMap<Dependency<C>, PendingVertices<C>>,
     /// The vertices that are scheduled to be processed at a later time.  The keys of this
     /// `BTreeMap` are timestamps when the corresponding vector of vertices will be added.
-    vertices_to_be_added_later: BTreeMap<Timestamp, PendingVertices<I, C>>,
+    vertices_to_be_added_later: BTreeMap<Timestamp, PendingVertices<C>>,
     /// Vertices that might be ready to add to the protocol state: We are not currently waiting for
     /// a requested dependency.
-    vertices_no_deps: PendingVertices<I, C>,
+    vertices_no_deps: PendingVertices<C>,
     /// Instance ID of an era for which this synchronizer is constructed.
     instance_id: C::InstanceId,
     /// Keeps track of the lowest/oldest seen unit per validator when syncing.
@@ -187,12 +191,12 @@ where
     oldest_seen_panorama: ValidatorMap<Option<u64>>,
     /// Keeps track of the requests we've sent so far and the recipients.
     /// Used to decide whether we should ask more nodes for a particular dependency.
-    requests_sent: BTreeMap<Dependency<C>, HashSet<I>>,
+    requests_sent: BTreeMap<Dependency<C>, HashSet<NodeId>>,
     /// Boolean flag indicating whether we're synchronizing current era.
     pub(crate) current_era: bool,
 }
 
-impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
+impl<C: Context + 'static> Synchronizer<C> {
     /// Creates a new synchronizer with the specified timeout for pending vertices.
     pub(crate) fn new(validator_len: usize, instance_id: C::InstanceId) -> Self {
         Synchronizer {
@@ -270,7 +274,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         &mut self,
         future_timestamp: Timestamp,
         now: Timestamp,
-        sender: I,
+        sender: NodeId,
         pvv: PreValidatedVertex<C>,
     ) {
         self.vertices_to_be_added_later
@@ -286,7 +290,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     pub(crate) fn add_past_due_stored_vertices(
         &mut self,
         timestamp: Timestamp,
-    ) -> ProtocolOutcomes<I, C> {
+    ) -> ProtocolOutcomes<C> {
         let mut results = vec![];
         let past_due_timestamps: Vec<Timestamp> = self
             .vertices_to_be_added_later
@@ -306,10 +310,10 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     /// Schedules a vertex to be added to the protocol state.
     pub(crate) fn schedule_add_vertex(
         &mut self,
-        sender: I,
+        sender: NodeId,
         pvv: PreValidatedVertex<C>,
         now: Timestamp,
-    ) -> ProtocolOutcomes<I, C> {
+    ) -> ProtocolOutcomes<C> {
         self.update_last_seen(&pvv);
         let pv = PendingVertex::new(sender, pvv, now);
         self.schedule_add_vertices(iter::once(pv))
@@ -325,7 +329,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
 
     /// Moves all vertices whose known missing dependency is now satisfied into the
     /// `vertices_to_be_added` queue.
-    pub(crate) fn remove_satisfied_deps(&mut self, highway: &Highway<C>) -> ProtocolOutcomes<I, C> {
+    pub(crate) fn remove_satisfied_deps(&mut self, highway: &Highway<C>) -> ProtocolOutcomes<C> {
         let satisfied_deps = self
             .vertices_awaiting_deps
             .keys()
@@ -349,9 +353,9 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     pub(crate) fn pop_vertex_to_add(
         &mut self,
         highway: &Highway<C>,
-        pending_values: &HashMap<ProposedBlock<C>, HashSet<(ValidVertex<C>, I)>>,
+        pending_values: &HashMap<ProposedBlock<C>, HashSet<(ValidVertex<C>, NodeId)>>,
         max_requests_for_vertex: usize,
-    ) -> (Option<PendingVertex<I, C>>, ProtocolOutcomes<I, C>) {
+    ) -> (Option<PendingVertex<C>>, ProtocolOutcomes<C>) {
         let mut outcomes = Vec::new();
         // Get the next vertex to be added; skip the ones that are already in the protocol state,
         // and the ones that are still missing dependencies.
@@ -362,7 +366,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
                 Some(pv) => pv,
             };
             if let Some(dep) = highway.missing_dependency(pv.pvv()) {
-                let sender = pv.sender().clone();
+                let sender = *pv.sender();
                 let time_received = pv.time_received;
                 // Find the first dependency that `pv` needs that we haven't synchronized yet
                 // and request it from the sender of `pv`. Since it relies on it, it should have
@@ -422,7 +426,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
                     .requests_sent
                     .entry(transitive_dependency.clone())
                     .or_default();
-                if entry.len() >= max_requests_for_vertex || !entry.insert(sender.clone()) {
+                if entry.len() >= max_requests_for_vertex || !entry.insert(sender) {
                     continue;
                 }
                 // Otherwise request the missing dependency from the sender.
@@ -447,7 +451,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     fn find_transitive_dependency(
         &mut self,
         mut missing_dependency: Dependency<C>,
-        sender: &I,
+        sender: &NodeId,
         time_received: Timestamp,
     ) -> Dependency<C> {
         // If `missing_dependency` is already downloaded and waiting for its dependency to be
@@ -459,14 +463,14 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
             .iter_mut()
             .find(|(_, pvs)| pvs.contains_dependency(&missing_dependency))
         {
-            pvs.add_holder(&missing_dependency, sender.clone(), time_received);
+            pvs.add_holder(&missing_dependency, *sender, time_received);
             missing_dependency = next_missing.clone();
         }
         missing_dependency
     }
 
     /// Adds a vertex with a known missing dependency to the queue.
-    fn add_missing_dependency(&mut self, dep: Dependency<C>, pv: PendingVertex<I, C>) {
+    fn add_missing_dependency(&mut self, dep: Dependency<C>, pv: PendingVertex<C>) {
         self.vertices_awaiting_deps.entry(dep).or_default().push(pv)
     }
 
@@ -485,7 +489,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     /// Drops all vertices that (directly or indirectly) have the specified dependencies, and
     /// returns the set of their senders. If the specified dependencies are known to be invalid,
     /// those senders must be faulty.
-    pub(crate) fn invalid_vertices(&mut self, mut vertices: Vec<Dependency<C>>) -> HashSet<I> {
+    pub(crate) fn invalid_vertices(&mut self, mut vertices: Vec<Dependency<C>>) -> HashSet<NodeId> {
         let mut senders = HashSet::new();
         while !vertices.is_empty() {
             let (new_vertices, new_senders) = self.do_drop_dependent_vertices(vertices);
@@ -504,9 +508,9 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     }
 
     /// Schedules vertices to be added to the protocol state.
-    fn schedule_add_vertices<T>(&mut self, pending_vertices: T) -> ProtocolOutcomes<I, C>
+    fn schedule_add_vertices<T>(&mut self, pending_vertices: T) -> ProtocolOutcomes<C>
     where
-        T: IntoIterator<Item = PendingVertex<I, C>>,
+        T: IntoIterator<Item = PendingVertex<C>>,
     {
         let was_empty = self.vertices_no_deps.is_empty();
         for pv in pending_vertices {
@@ -524,7 +528,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     fn do_drop_dependent_vertices(
         &mut self,
         vertices: Vec<Dependency<C>>,
-    ) -> (Vec<Dependency<C>>, HashSet<I>) {
+    ) -> (Vec<Dependency<C>>, HashSet<NodeId>) {
         // collect the vertices that depend on the ones we got in the argument and their senders
         vertices
             .into_iter()
@@ -540,7 +544,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
 
     /// Removes all expired entries from a `BTreeMap` of `Vec`s.
     fn remove_expired<T: Ord + Clone>(
-        map: &mut BTreeMap<T, PendingVertices<I, C>>,
+        map: &mut BTreeMap<T, PendingVertices<C>>,
         oldest: Timestamp,
     ) -> Vec<C::Hash> {
         let mut expired = vec![];

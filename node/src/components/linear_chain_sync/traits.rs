@@ -10,11 +10,11 @@ use crate::{
     types::{Block, BlockByHeight},
 };
 
-pub(crate) trait ReactorEventT<I>:
+pub(crate) trait ReactorEventT:
     From<StorageRequest>
-    + From<FetcherRequest<I, Block>>
-    + From<FetcherRequest<I, BlockByHeight>>
-    + From<BlockValidationRequest<I>>
+    + From<FetcherRequest<Block>>
+    + From<FetcherRequest<BlockByHeight>>
+    + From<BlockValidationRequest>
     + From<ContractRuntimeRequest>
     + From<StateStoreRequest>
     + From<ControlAnnouncement>
@@ -23,11 +23,11 @@ pub(crate) trait ReactorEventT<I>:
 {
 }
 
-impl<I, REv> ReactorEventT<I> for REv where
+impl<REv> ReactorEventT for REv where
     REv: From<StorageRequest>
-        + From<FetcherRequest<I, Block>>
-        + From<FetcherRequest<I, BlockByHeight>>
-        + From<BlockValidationRequest<I>>
+        + From<FetcherRequest<Block>>
+        + From<FetcherRequest<BlockByHeight>>
+        + From<BlockValidationRequest>
         + From<ContractRuntimeRequest>
         + From<StateStoreRequest>
         + From<ControlAnnouncement>

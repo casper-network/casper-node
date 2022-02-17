@@ -70,14 +70,14 @@ pub(crate) enum Event<P> {
     #[from]
     NetworkRequest {
         #[serde(skip_serializing)]
-        req: Box<NetworkRequest<NodeId, P>>,
+        req: Box<NetworkRequest<P>>,
     },
 
     /// Incoming network info request.
     #[from]
     NetworkInfoRequest {
         #[serde(skip_serializing)]
-        req: Box<NetworkInfoRequest<NodeId>>,
+        req: Box<NetworkInfoRequest>,
     },
 
     /// The node should gossip its own public listening address.
@@ -91,21 +91,21 @@ pub(crate) enum Event<P> {
 
     /// Blocklist announcement.
     #[from]
-    BlocklistAnnouncement(BlocklistAnnouncement<NodeId>),
+    BlocklistAnnouncement(BlocklistAnnouncement),
 
     /// Contract runtime announcement.
     #[from]
     ContractRuntimeAnnouncement(ContractRuntimeAnnouncement),
 }
 
-impl From<NetworkRequest<NodeId, ProtocolMessage>> for Event<ProtocolMessage> {
-    fn from(req: NetworkRequest<NodeId, ProtocolMessage>) -> Self {
+impl From<NetworkRequest<ProtocolMessage>> for Event<ProtocolMessage> {
+    fn from(req: NetworkRequest<ProtocolMessage>) -> Self {
         Self::NetworkRequest { req: Box::new(req) }
     }
 }
 
-impl From<NetworkInfoRequest<NodeId>> for Event<ProtocolMessage> {
-    fn from(req: NetworkInfoRequest<NodeId>) -> Self {
+impl From<NetworkInfoRequest> for Event<ProtocolMessage> {
+    fn from(req: NetworkInfoRequest) -> Self {
         Self::NetworkInfoRequest { req: Box::new(req) }
     }
 }
