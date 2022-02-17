@@ -41,7 +41,6 @@ struct ChainSyncContext<'a> {
     chainspec: &'a Chainspec,
     node_config: &'a NodeConfig,
     trusted_block_header: &'a BlockHeader,
-    trusted_hash: &'a BlockHash,
 }
 
 impl<'a> ChainSyncContext<'a> {
@@ -50,15 +49,21 @@ impl<'a> ChainSyncContext<'a> {
         chainspec: &'a Chainspec,
         node_config: &'a NodeConfig,
         trusted_block_header: &'a BlockHeader,
-        trusted_hash: &'a BlockHash,
     ) -> Self {
         Self {
             effect_builder,
             chainspec,
             node_config,
             trusted_block_header,
-            trusted_hash,
         }
+    }
+
+    fn trusted_hash(&self) -> BlockHash {
+        self.trusted_block_header.hash(
+            self.chainspec
+                .protocol_config
+                .verifiable_chunked_hash_activation,
+        )
     }
 }
 
@@ -754,7 +759,7 @@ async fn archival_sync(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, Bloc
 
     info!("start - fetch the trusted block - archival sync");
     let trusted_block =
-        *fetch_and_store_block_by_hash(*ctx.effect_builder, *ctx.trusted_hash).await?;
+        *fetch_and_store_block_by_hash(*ctx.effect_builder, ctx.trusted_hash()).await?;
     debug!("finish - fetch the trusted block - archival sync");
 
     // Sync to genesis
@@ -831,7 +836,6 @@ pub(super) async fn run_chain_sync_task(
         &chainspec,
         &node_config,
         &trusted_block_header,
-        &trusted_hash,
     );
 
     verify_trusted_block_header(&chain_sync_context)?;
@@ -910,7 +914,7 @@ async fn handle_emergency_restart(ctx: &ChainSyncContext<'_>) -> Result<bool, Er
         if ctx.trusted_block_header.next_block_era_id() < last_emergency_restart_era {
             return Err(Error::TryingToJoinBeforeLastEmergencyRestartEra {
                 last_emergency_restart_era,
-                trusted_hash: *ctx.trusted_hash,
+                trusted_hash: ctx.trusted_hash(),
                 trusted_block_header: Box::new(ctx.trusted_block_header.clone()),
             });
         }
