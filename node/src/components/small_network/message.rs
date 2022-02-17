@@ -53,6 +53,15 @@ impl<P: Payload> Message<P> {
         }
     }
 
+    /// Determines whether or not a message is low priority.
+    #[inline]
+    pub(super) fn is_low_priority(&self, from_validator: bool) -> bool {
+        match self {
+            Message::Handshake { .. } => false,
+            Message::Payload(payload) => payload.is_low_priority(from_validator),
+        }
+    }
+
     /// Returns the incoming resource estimate of the payload.
     #[inline]
     pub(super) fn payload_incoming_resource_estimate(&self, weights: &EstimatorWeights) -> u32 {
@@ -284,6 +293,13 @@ pub(crate) trait Payload:
 
     /// The penalty for resource usage of a message to be applied when processed as incoming.
     fn incoming_resource_estimate(&self, _weights: &EstimatorWeights) -> u32;
+
+    /// Determines if the payload should be considered low priority.
+    ///
+    /// If `from_validator` is true, the message was received from an active validator.
+    fn is_low_priority(&self, from_validator: bool) -> bool {
+        !from_validator
+    }
 }
 
 /// Network message conversion support.
