@@ -60,6 +60,7 @@ pub(super) fn attenuate_uref_in_args(
     Ok(args)
 }
 
+/// Extracts a copy of every uref able to be deserialized from `cl_value`.
 pub(super) fn extract_urefs(cl_value: &CLValue) -> Result<Vec<URef>, Error> {
     let mut vec: Vec<URef> = Vec::new();
     rewrite_urefs(cl_value.clone(), |uref| {
@@ -68,11 +69,10 @@ pub(super) fn extract_urefs(cl_value: &CLValue) -> Result<Vec<URef>, Error> {
     Ok(vec)
 }
 
+/// Executes `func` on every uref able to be deserialized from `cl_value` and returns the resulting
+/// re-serialized `CLValue`.
 #[allow(clippy::cognitive_complexity)]
-pub(super) fn rewrite_urefs(
-    cl_value: CLValue,
-    mut func: impl FnMut(&mut URef),
-) -> Result<CLValue, Error> {
+fn rewrite_urefs(cl_value: CLValue, mut func: impl FnMut(&mut URef)) -> Result<CLValue, Error> {
     let ret = match cl_value.cl_type() {
         CLType::Bool
         | CLType::I32

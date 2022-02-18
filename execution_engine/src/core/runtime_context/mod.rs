@@ -824,11 +824,6 @@ where
         }
     }
 
-    /// Returns remaining spending limit on account's main purse.
-    pub(super) fn main_purse_spending_limit(&self) -> &U512 {
-        &self.remaining_spending_limit
-    }
-
     /// Checks if we are calling a system contract.
     pub(crate) fn is_system_contract(&self, contract_hash: &ContractHash) -> Result<bool, Error> {
         Ok(self
@@ -1270,7 +1265,7 @@ where
             })
     }
 
-    pub(crate) fn remaining_spending_limit(&self) -> U512 {
+    pub(super) fn remaining_spending_limit(&self) -> U512 {
         self.remaining_spending_limit
     }
 

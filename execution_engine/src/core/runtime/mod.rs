@@ -701,7 +701,7 @@ where
 
         // Update outer spending approved limit.
         self.context
-            .set_remaining_spending_limit(*mint_runtime.context.main_purse_spending_limit());
+            .set_remaining_spending_limit(mint_runtime.context.remaining_spending_limit());
 
         let urefs = utils::extract_urefs(&ret)?;
         self.context.access_rights_extend(&urefs);
@@ -1349,7 +1349,7 @@ where
             &mut named_keys,
             access_rights,
             context_args,
-            *self.context().main_purse_spending_limit(),
+            self.context().remaining_spending_limit(),
         );
         let protocol_version = self.context.protocol_version();
         let (instance, memory) = utils::instance_and_memory(
@@ -1385,7 +1385,7 @@ where
                     *self.context.named_keys_mut() = runtime.context.named_keys().clone();
                 }
                 self.context
-                    .set_remaining_spending_limit(*runtime.context.main_purse_spending_limit());
+                    .set_remaining_spending_limit(runtime.context.remaining_spending_limit());
                 return Ok(runtime.take_host_buffer().unwrap_or(CLValue::from_t(())?));
             }
         };
