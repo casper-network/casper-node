@@ -35,6 +35,7 @@ const GROUP_NAME_ARG: &str = "group_name";
 const UREFS_ARG: &str = "urefs";
 const TOTAL_NEW_UREFS_ARG: &str = "total_new_urefs";
 const TOTAL_EXISTING_UREFS_ARG: &str = "total_existing_urefs";
+const UREF_INDICES_ARG: &str = "uref_indices";
 
 #[no_mangle]
 pub extern "C" fn create_group() {
@@ -140,7 +141,7 @@ pub extern "C" fn remove_group_urefs() {
         .try_into()
         .unwrap();
     let group_name: String = runtime::get_named_arg(GROUP_NAME_ARG);
-    let ordinals: Vec<u64> = runtime::get_named_arg("uref_indexes");
+    let ordinals: Vec<u64> = runtime::get_named_arg(UREF_INDICES_ARG);
 
     let contract_package: ContractPackage = read_contract_package(package_hash)
         .unwrap_or_revert()

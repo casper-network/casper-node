@@ -13,11 +13,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     bytesrepr::{self, Error, FromBytes, ToBytes},
-    system::mint,
     CLType, CLTyped, CLValue, CLValueError, U512,
 };
 
-const ARG_AMOUNT: &str = mint::ARG_AMOUNT;
+const ARG_AMOUNT: &str = "amount";
 
 /// Named arguments to a contract.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Serialize, Deserialize, Debug)]

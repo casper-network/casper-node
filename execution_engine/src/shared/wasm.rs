@@ -23,9 +23,3 @@ pub fn do_nothing_bytes() -> Vec<u8> {
         .build();
     parity_wasm::serialize(module).expect("should serialize")
 }
-
-// /// Creates a module which is a valid Wasm but does nothing.
-// pub fn do_nothing_module(preprocessor: &Preprocessor) -> Result<Module, PreprocessingError> {
-//     let do_nothing_bytes = do_nothing_bytes();
-//     preprocessor.preprocess(&do_nothing_bytes)
-// }

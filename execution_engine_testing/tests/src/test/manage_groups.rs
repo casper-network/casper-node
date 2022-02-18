@@ -26,6 +26,7 @@ const GROUP_1_NAME: &str = "Group 1";
 const TOTAL_NEW_UREFS_ARG: &str = "total_new_urefs";
 const TOTAL_EXISTING_UREFS_ARG: &str = "total_existing_urefs";
 const ARG_AMOUNT: &str = "amount";
+const ARG_UREF_INDICES: &str = "uref_indices";
 
 static DEFAULT_CREATE_GROUP_ARGS: Lazy<RuntimeArgs> = Lazy::new(|| {
     runtime_args! {
@@ -327,7 +328,7 @@ fn should_create_and_remove_urefs_from_group() {
         // code.
         let args = runtime_args! {
             GROUP_NAME_ARG => GROUP_1_NAME,
-            "uref_indexes" => vec![0u64, 1u64],
+            ARG_UREF_INDICES => vec![0u64, 1u64],
         };
         let deploy = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)

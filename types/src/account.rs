@@ -9,10 +9,7 @@ mod weight;
 
 use serde::Serialize;
 
-use alloc::{
-    collections::{BTreeMap, BTreeSet},
-    vec::Vec,
-};
+use alloc::{collections::BTreeSet, vec::Vec};
 use core::{
     convert::TryFrom,
     fmt::{self, Debug, Display, Formatter},
@@ -85,20 +82,12 @@ impl Account {
 
     /// Extracts the access rights from the named keys and main purse of the account.
     pub fn extract_access_rights(&self) -> ContextAccessRights {
-        let mut access_rights = BTreeMap::new();
-
-        for uref in self
+        let urefs_iter = self
             .named_keys
             .values()
-            .filter_map(|key| key.as_uref())
-            .chain(iter::once(&self.main_purse))
-        {
-            let access_rights = access_rights
-                .entry(uref.addr())
-                .or_insert_with(AccessRights::default);
-            *access_rights = access_rights.union(uref.access_rights());
-        }
-        ContextAccessRights::new(Key::from(self.account_hash), access_rights)
+            .filter_map(|key| key.as_uref().copied())
+            .chain(iter::once(self.main_purse));
+        ContextAccessRights::new(Key::from(self.account_hash), urefs_iter)
     }
 
     /// Appends named keys to an account's named_keys field.
@@ -960,21 +949,26 @@ mod tests {
 
     #[test]
     fn should_extract_access_rights() {
+        const MAIN_PURSE: URef = URef::new([2; 32], AccessRights::READ_ADD_WRITE);
+        const OTHER_UREF: URef = URef::new([3; 32], AccessRights::READ);
+
         let account_hash = AccountHash::new([1u8; 32]);
+        let mut named_keys = NamedKeys::new();
+        named_keys.insert("a".to_string(), Key::URef(OTHER_UREF));
         let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
         let account = Account::new(
             account_hash,
-            NamedKeys::new(),
-            URef::new([0u8; 32], AccessRights::READ_ADD_WRITE),
+            named_keys,
+            MAIN_PURSE,
             associated_keys,
             ActionThresholds::new(Weight::new(1), Weight::new(1))
                 .expect("should create thresholds"),
         );
+
         let actual_access_rights = account.extract_access_rights();
-        let mut inner_rights = BTreeMap::new();
-        inner_rights.insert([0u8; 32], AccessRights::READ_ADD_WRITE);
+
         let expected_access_rights =
-            ContextAccessRights::new(Key::from(account_hash), inner_rights);
+            ContextAccessRights::new(Key::from(account_hash), vec![MAIN_PURSE, OTHER_UREF]);
         assert_eq!(actual_access_rights, expected_access_rights)
     }
 }

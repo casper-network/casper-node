@@ -1,8 +1,0 @@
-# Seeds for failure cases proptest has generated in the past. It is
-# automatically read and these particular cases re-run before any
-# novel cases are generated.
-#
-# It is recommended to check this file in to source control so that
-# everyone who runs the test benefits from these saved cases.
-cc df4f55f0cebdc2737ab1efbe6d17f7a9f68b3fc18ae5cba50d69a5369379c9d9 # shrinks to (cl_value, urefs) = (CLValue { cl_type: Map { key: URef, value: Key }, bytes: Bytes([2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 42, 140, 38, 9, 131, 83, 85, 161, 203, 168, 114, 214, 28, 188, 154, 70, 20]) }, [URef(0000000000000000000000000000000000000000000000000000000000000000, NONE), URef(0000000000000000000000000000000000000000000000000000000000000000, READ), URef(0000000000000000000000000000000000000000000000000000000000000000, NONE)])
-cc 416bdc090a12ed0d0b2705c1ad565696e2078c7a1f1dc7aa049d3ceb61d71c24 # shrinks to (cl_value, urefs) = (CLValue { cl_type: Map { key: Key, value: Key }, bytes: Bytes([1, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]) }, [URef(0000000000000000000000000000000000000000000000000000000000000000, NONE), URef(0000000000000000000000000000000000000000000000000000000000000000, NONE)])

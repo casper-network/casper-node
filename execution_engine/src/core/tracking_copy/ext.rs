@@ -79,8 +79,6 @@ pub trait TrackingCopyExt<R> {
         contract_package_hash: ContractPackageHash,
     ) -> Result<ContractPackage, Self::Error>;
 
-    // fn get_system_module(&mut self, preprocessor: &Preprocessor) -> Result<Module, Self::Error>;
-
     fn get_system_contracts(
         &mut self,
         correlation_id: CorrelationId,

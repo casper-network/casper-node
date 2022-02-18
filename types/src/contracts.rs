@@ -28,8 +28,7 @@ use crate::{
     contract_wasm::ContractWasmHash,
     uref,
     uref::URef,
-    AccessRights, CLType, CLTyped, ContextAccessRights, HashAddr, Key, ProtocolVersion,
-    KEY_HASH_LENGTH,
+    CLType, CLTyped, ContextAccessRights, HashAddr, Key, ProtocolVersion, KEY_HASH_LENGTH,
 };
 
 /// Maximum number of distinct user groups.
@@ -1089,14 +1088,11 @@ impl Contract {
 
     /// Extracts the access rights from the named keys of the contract.
     pub fn extract_access_rights(&self, contract_hash: ContractHash) -> ContextAccessRights {
-        let mut access_rights = BTreeMap::new();
-        for uref in self.named_keys.values().filter_map(|key| key.as_uref()) {
-            let access_rights = access_rights
-                .entry(uref.addr())
-                .or_insert_with(AccessRights::default);
-            *access_rights = access_rights.union(uref.access_rights());
-        }
-        ContextAccessRights::new(contract_hash.into(), access_rights)
+        let urefs_iter = self
+            .named_keys
+            .values()
+            .filter_map(|key| key.as_uref().copied());
+        ContextAccessRights::new(contract_hash.into(), urefs_iter)
     }
 }
 
@@ -1223,23 +1219,6 @@ impl From<EntryPoint> for (String, Parameters, CLType, EntryPointAccess, EntryPo
 impl EntryPoint {
     /// `EntryPoint` constructor.
     pub fn new<T: Into<String>>(
-        name: T,
-        args: Parameters,
-        ret: CLType,
-        access: EntryPointAccess,
-        entry_point_type: EntryPointType,
-    ) -> Self {
-        EntryPoint {
-            name: name.into(),
-            args,
-            ret,
-            access,
-            entry_point_type,
-        }
-    }
-
-    /// Returns a session entry point type.
-    pub fn session<T: Into<String>>(
         name: T,
         args: Parameters,
         ret: CLType,
@@ -1725,11 +1704,11 @@ mod tests {
         let access_rights = contract.extract_access_rights(contract_hash);
         let expected_uref = URef::new([42; UREF_ADDR_LENGTH], AccessRights::READ_ADD_WRITE);
         assert!(
-            access_rights.uref_has_access_rights(&uref),
+            access_rights.has_access_rights_to_uref(&uref),
             "urefs in named keys should be included in access rights"
         );
         assert!(
-            access_rights.uref_has_access_rights(&expected_uref),
+            access_rights.has_access_rights_to_uref(&expected_uref),
             "multiple access right bits to the same uref should coalesce"
         );
     }

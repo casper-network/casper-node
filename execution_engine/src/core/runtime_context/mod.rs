@@ -698,7 +698,7 @@ where
     /// Returns unit if [`URef`]s address exists in the context, and has correct access rights bit
     /// set.
     pub(crate) fn validate_uref(&self, uref: &URef) -> Result<(), Error> {
-        if self.access_rights.uref_has_access_rights(uref) {
+        if self.access_rights.has_access_rights_to_uref(uref) {
             Ok(())
         } else {
             Err(Error::ForgedReference(*uref))

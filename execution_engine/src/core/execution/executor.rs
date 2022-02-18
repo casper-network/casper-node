@@ -98,50 +98,28 @@ impl Executor {
 
         let mut runtime = Runtime::new(self.config, context);
 
-        match execution_kind {
+        let result = match execution_kind {
             ExecutionKind::Module(module_bytes) => {
-                match runtime.execute_module_bytes(&module_bytes, stack) {
-                    Ok(_result) => ExecutionResult::Success {
-                        execution_journal: runtime.context().execution_journal(),
-                        transfers: runtime.context().transfers().to_owned(),
-                        cost: runtime.context().gas_counter(),
-                    },
-                    Err(error) => {
-                        return ExecutionResult::Failure {
-                            error: error.into(),
-                            execution_journal: runtime.context().execution_journal(),
-                            transfers: runtime.context().transfers().to_owned(),
-                            cost: runtime.context().gas_counter(),
-                        }
-                    }
-                }
+                runtime.execute_module_bytes(&module_bytes, stack)
             }
             ExecutionKind::Contract {
                 contract_hash,
                 entry_point_name,
-            } => {
-                let _result = match runtime.call_contract_with_stack(
-                    contract_hash,
-                    &entry_point_name,
-                    args,
-                    stack,
-                ) {
-                    Ok(result) => result,
-                    Err(error) => {
-                        return ExecutionResult::Failure {
-                            error: error.into(),
-                            execution_journal: runtime.context().execution_journal(),
-                            transfers: runtime.context().transfers().to_owned(),
-                            cost: runtime.context().gas_counter(),
-                        }
-                    }
-                };
-                ExecutionResult::Success {
-                    execution_journal: runtime.context().execution_journal(),
-                    transfers: runtime.context().transfers().to_owned(),
-                    cost: runtime.context().gas_counter(),
-                }
-            }
+            } => runtime.call_contract_with_stack(contract_hash, &entry_point_name, args, stack),
+        };
+
+        match result {
+            Ok(_) => ExecutionResult::Success {
+                execution_journal: runtime.context().execution_journal(),
+                transfers: runtime.context().transfers().to_owned(),
+                cost: runtime.context().gas_counter(),
+            },
+            Err(error) => ExecutionResult::Failure {
+                error: error.into(),
+                execution_journal: runtime.context().execution_journal(),
+                transfers: runtime.context().transfers().to_owned(),
+                cost: runtime.context().gas_counter(),
+            },
         }
     }
 

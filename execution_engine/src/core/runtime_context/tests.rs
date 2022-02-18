@@ -897,7 +897,7 @@ fn an_accounts_access_rights_should_include_main_purse() {
     );
     let access_rights = account.extract_access_rights();
     assert!(
-        access_rights.uref_has_access_rights(&test_main_purse),
+        access_rights.has_access_rights_to_uref(&test_main_purse),
         "Main purse should be included in access rights"
     );
 }
