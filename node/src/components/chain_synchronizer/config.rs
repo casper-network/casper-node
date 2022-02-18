@@ -55,6 +55,7 @@ impl Config {
         self.chainspec.protocol_config.version
     }
 
+    #[allow(dead_code)]
     pub(super) fn activation_point(&self) -> EraId {
         self.chainspec.protocol_config.activation_point.era_id()
     }
@@ -66,6 +67,7 @@ impl Config {
             .genesis_timestamp()
     }
 
+    #[allow(dead_code)]
     pub(super) fn last_emergency_restart(&self) -> Option<EraId> {
         self.chainspec.protocol_config.last_emergency_restart
     }
@@ -84,10 +86,12 @@ impl Config {
         self.chainspec.core_config.minimum_era_height
     }
 
+    #[allow(dead_code)]
     pub(super) fn auction_delay(&self) -> u64 {
         self.chainspec.core_config.auction_delay
     }
 
+    #[allow(dead_code)]
     pub(super) fn unbonding_delay(&self) -> u64 {
         self.chainspec.core_config.unbonding_delay
     }
@@ -96,6 +100,7 @@ impl Config {
         self.chainspec.highway_config.finality_threshold_fraction
     }
 
+    #[allow(dead_code)]
     pub(super) fn deploy_max_ttl(&self) -> TimeDiff {
         self.chainspec.deploy_config.max_ttl
     }
@@ -133,11 +138,13 @@ impl Config {
     }
 
     /// Returns `ChainspecConsensusExt::earliest_open_era`.
+    #[allow(dead_code)]
     pub(super) fn earliest_open_era(&self, current_era: EraId) -> EraId {
         self.chainspec.earliest_open_era(current_era)
     }
 
     /// Returns `ChainspecConsensusExt::earliest_switch_block_needed`.
+    #[allow(dead_code)]
     pub(super) fn earliest_switch_block_needed(&self, era_id: EraId) -> EraId {
         self.chainspec.earliest_switch_block_needed(era_id)
     }
