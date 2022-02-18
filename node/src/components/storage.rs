@@ -1389,18 +1389,15 @@ impl Storage {
     /// Retrieves the state root hashes from storage to check the integrity of the trie store.
     pub(crate) fn read_state_root_hashes_for_trie_check(
         &self,
-    ) -> Result<Vec<Digest>, FatalStorageError> {
-        let mut hashes: Vec<Digest> = Vec::new();
+    ) -> Result<HashSet<Digest>, FatalStorageError> {
+        let mut hashes = HashSet::new();
         let txn = self.env.begin_ro_txn()?;
         let mut cursor = txn.open_ro_cursor(self.block_header_db)?;
         for (_, raw_val) in cursor.iter() {
             let header: BlockHeader = lmdb_ext::deserialize(raw_val)?;
             let hash = *header.state_root_hash();
-            hashes.push(hash);
+            hashes.insert(hash);
         }
-
-        hashes.sort();
-        hashes.dedup();
 
         Ok(hashes)
     }

@@ -627,13 +627,16 @@ impl ContractRuntime {
     /// Retrieve trie keys for the integrity check.
     pub(crate) fn trie_store_check(
         &self,
-        trie_keys: Vec<Digest>,
+        trie_keys: impl Iterator<Item = Digest>,
     ) -> Result<Vec<Digest>, engine_state::Error> {
         let correlation_id = CorrelationId::new();
         let start = Instant::now();
+
+        // TODO: `missing_trie_keys()` could possibly accept an iterator instead of consuming a vec.
+        // Then we could possibly avoid cloning potentially huge set of Digests.
         let result = self
             .engine_state
-            .missing_trie_keys(correlation_id, trie_keys, true);
+            .missing_trie_keys(correlation_id, trie_keys.collect(), true);
         self.metrics
             .missing_trie_keys
             .observe(start.elapsed().as_secs_f64());

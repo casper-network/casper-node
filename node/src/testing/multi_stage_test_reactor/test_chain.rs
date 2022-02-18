@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{iter, sync::Arc, time::Duration};
 
 use log::info;
 use num::Zero;
@@ -257,7 +257,7 @@ fn all_have_genesis_state(nodes: &Nodes<MultiStageTestReactor>) -> bool {
             .contract_runtime()
             .map_or(false, move |contract_runtime| {
                 contract_runtime
-                    .trie_store_check(vec![genesis_state_root])
+                    .trie_store_check(iter::once(genesis_state_root))
                     .expect("Could not read DB")
                     .is_empty()
             })
@@ -557,7 +557,7 @@ async fn test_archival_sync() {
             let missing_tries = reactor
                 .contract_runtime()
                 .expect("must have contract runtime")
-                .trie_store_check(vec![*block.state_root_hash()])
+                .trie_store_check(iter::once(*block.state_root_hash()))
                 .expect("must read tries");
             assert_eq!(missing_tries, vec![], "should be no missing tries");
             if let Some(parent_hash) = block.parent() {

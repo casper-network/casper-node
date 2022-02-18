@@ -1,6 +1,9 @@
 //! Reactor used to initialize a node.
 
-use std::fmt::{self, Display, Formatter};
+use std::{
+    collections::HashSet,
+    fmt::{self, Display, Formatter},
+};
 
 use datasize::DataSize;
 use derive_more::From;
@@ -240,7 +243,8 @@ impl Reactor {
         if should_check_integrity {
             info!("running trie-store integrity check, this may take a while");
             let state_roots = storage.read_state_root_hashes_for_trie_check()?;
-            let missing_trie_keys = contract_runtime.trie_store_check(state_roots.to_vec())?;
+            let missing_trie_keys =
+                contract_runtime.trie_store_check(state_roots.iter().cloned())?;
             check_integrity(&state_roots, &missing_trie_keys)?;
         }
 
@@ -259,7 +263,10 @@ impl Reactor {
     }
 }
 
-fn check_integrity(state_roots: &[Digest], missing_trie_keys: &[Digest]) -> Result<(), Error> {
+fn check_integrity(
+    state_roots: &HashSet<Digest>,
+    missing_trie_keys: &[Digest],
+) -> Result<(), Error> {
     if missing_trie_keys.is_empty() {
         // No missing trie keys; integrity ok.
         return Ok(());
@@ -382,27 +389,36 @@ pub(crate) mod tests {
 
     #[test]
     fn integrity_check_ok_when_no_missing_trie_keys() {
-        let state_roots = vec![Digest::from([1; 32]), Digest::from([2; 32])];
+        let state_roots: HashSet<_> = [Digest::from([1; 32]), Digest::from([2; 32])]
+            .iter()
+            .cloned()
+            .collect();
         let missing_trie_keys = [];
-        assert!(check_integrity(state_roots.as_slice(), &missing_trie_keys).is_ok())
+        assert!(check_integrity(&state_roots, &missing_trie_keys).is_ok())
     }
 
     #[test]
     fn integrity_check_ok_when_all_missing_trie_keys_are_state_roots() {
-        let state_roots = vec![Digest::from([1; 32]), Digest::from([2; 32])];
-        let missing_trie_keys = state_roots.clone();
-        assert!(check_integrity(state_roots.as_slice(), missing_trie_keys.as_slice()).is_ok())
+        let state_roots: HashSet<_> = [Digest::from([1; 32]), Digest::from([2; 32])]
+            .iter()
+            .cloned()
+            .collect();
+        let missing_trie_keys: Vec<_> = state_roots.iter().cloned().collect();
+        assert!(check_integrity(&state_roots, missing_trie_keys.as_slice()).is_ok())
     }
 
     #[test]
     fn integrity_check_fails_when_not_all_missing_trie_keys_are_state_roots() {
-        let state_roots = vec![Digest::from([1; 32]), Digest::from([2; 32])];
-        let mut missing_trie_keys = state_roots.clone();
+        let state_roots: HashSet<_> = [Digest::from([1; 32]), Digest::from([2; 32])]
+            .iter()
+            .cloned()
+            .collect();
+        let mut missing_trie_keys: Vec<_> = state_roots.iter().cloned().collect();
 
         // Add missing trie key which is not a state root
         missing_trie_keys.push(Digest::from([3; 32]));
 
-        let result = check_integrity(state_roots.as_slice(), missing_trie_keys.as_slice())
+        let result = check_integrity(&state_roots, missing_trie_keys.as_slice())
             .expect_err("should return error");
         assert!(matches!(
             result,
