@@ -1,4 +1,4 @@
-use crate::types::{ActivationPoint, Block, BlockHash};
+use crate::types::{ActivationPoint, Block, BlockHash, NodeId};
 
 use std::fmt::{Debug, Display};
 
@@ -11,13 +11,13 @@ pub enum StopReason {
 }
 
 #[derive(Debug)]
-pub enum Event<I> {
-    Start(I),
-    GetBlockHashResult(BlockHash, BlockByHashResult<I>),
-    GetBlockHeightResult(u64, BlockByHeightResult<I>),
-    GetDeploysResult(DeploysResult<I>),
+pub enum Event {
+    Start(NodeId),
+    GetBlockHashResult(BlockHash, BlockByHashResult),
+    GetBlockHeightResult(u64, BlockByHeightResult),
+    GetDeploysResult(DeploysResult),
     StartDownloadingDeploys,
-    NewPeerConnected(I),
+    NewPeerConnected(NodeId),
     BlockHandled(Box<Block>),
     GotUpgradeActivationPoint(ActivationPoint),
     InitUpgradeShutdown,
@@ -27,29 +27,26 @@ pub enum Event<I> {
 }
 
 #[derive(Debug)]
-pub enum DeploysResult<I> {
+pub enum DeploysResult {
     Found(Box<Block>),
-    NotFound(Box<Block>, I),
+    NotFound(Box<Block>, NodeId),
 }
 
 #[derive(Debug)]
-pub enum BlockByHashResult<I> {
-    Absent(I),
+pub enum BlockByHashResult {
+    Absent(NodeId),
     FromStorage(Box<Block>),
-    FromPeer(Box<Block>, I),
+    FromPeer(Box<Block>, NodeId),
 }
 
 #[derive(Debug)]
-pub enum BlockByHeightResult<I> {
-    Absent(I),
+pub enum BlockByHeightResult {
+    Absent(NodeId),
     FromStorage(Box<Block>),
-    FromPeer(Box<Block>, I),
+    FromPeer(Box<Block>, NodeId),
 }
 
-impl<I> Display for Event<I>
-where
-    I: Debug + Display,
-{
+impl Display for Event {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Event::Start(init_peer) => write!(f, "Start syncing from peer {}.", init_peer),

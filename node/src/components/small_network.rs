@@ -187,8 +187,7 @@ where
 impl<REv, P> SmallNetwork<REv, P>
 where
     P: Payload + 'static,
-    REv:
-        ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>> + From<StorageRequest>,
+    REv: ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<P>> + From<StorageRequest>,
 {
     /// Creates a new small network component instance.
     #[allow(clippy::type_complexity)]
@@ -720,7 +719,7 @@ where
         span: Span,
     ) -> Effects<Event<P>>
     where
-        REv: From<NetworkAnnouncement<NodeId, P>>,
+        REv: From<NetworkAnnouncement<P>>,
     {
         span.in_scope(|| match msg {
             Message::Handshake { .. } => {
@@ -806,8 +805,7 @@ where
 
 impl<REv, P> Component<REv> for SmallNetwork<REv, P>
 where
-    REv:
-        ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<NodeId, P>> + From<StorageRequest>,
+    REv: ReactorEvent + From<Event<P>> + From<NetworkAnnouncement<P>> + From<StorageRequest>,
     P: Payload,
 {
     type Event = Event<P>;

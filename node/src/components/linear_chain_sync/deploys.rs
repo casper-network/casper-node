@@ -1,20 +1,20 @@
 use crate::{
     effect::{EffectBuilder, EffectExt, Effects},
-    types::Block,
+    types::{Block, NodeId},
 };
 
 use super::{event::DeploysResult, Event, ReactorEventT};
 
-pub(super) fn fetch_block_deploys<I: Clone + Send + 'static, REv>(
+pub(super) fn fetch_block_deploys<REv>(
     effect_builder: EffectBuilder<REv>,
-    peer: I,
+    peer: NodeId,
     block: Block,
-) -> Effects<Event<I>>
+) -> Effects<Event>
 where
-    REv: ReactorEventT<I>,
+    REv: ReactorEventT,
 {
     effect_builder
-        .validate_block(peer.clone(), block.clone())
+        .validate_block(peer, block.clone())
         .event(move |valid| {
             if valid {
                 Event::GetDeploysResult(DeploysResult::Found(Box::new(block)))

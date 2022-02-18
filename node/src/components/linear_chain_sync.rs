@@ -32,7 +32,7 @@ mod peers;
 mod state;
 mod traits;
 
-use std::{cmp::Ordering, convert::Infallible, fmt::Display, mem};
+use std::{cmp::Ordering, convert::Infallible, mem};
 
 use datasize::DataSize;
 use prometheus::Registry;
@@ -61,8 +61,8 @@ pub(crate) use state::State;
 pub(crate) use traits::ReactorEventT;
 
 #[derive(DataSize, Debug)]
-pub(crate) struct LinearChainSync<I> {
-    peers: PeersState<I>,
+pub(crate) struct LinearChainSync {
+    peers: PeersState,
     state: State,
     #[data_size(skip)]
     metrics: Metrics,
@@ -84,7 +84,7 @@ pub(crate) struct LinearChainSync<I> {
     initial_execution_pre_state: ExecutionPreState,
 }
 
-impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
+impl LinearChainSync {
     // TODO: fix this
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new<REv, Err>(
@@ -98,9 +98,9 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         next_upgrade_activation_point: Option<ActivationPoint>,
         initial_execution_pre_state: ExecutionPreState,
         config: Config,
-    ) -> Result<(Self, Effects<Event<I>>), Err>
+    ) -> Result<(Self, Effects<Event>), Err>
     where
-        REv: From<Event<I>> + Send,
+        REv: From<Event> + Send,
         Err: From<prometheus::Error> + From<storage::Error>,
     {
         let timeout_event = effect_builder
@@ -267,10 +267,9 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         rng: &mut NodeRng,
         effect_builder: EffectBuilder<REv>,
         block: &Block,
-    ) -> Effects<Event<I>>
+    ) -> Effects<Event>
     where
-        I: Send + 'static,
-        REv: ReactorEventT<I>,
+        REv: ReactorEventT,
     {
         self.peers.reset(rng);
         self.state.block_downloaded(block);
@@ -320,10 +319,9 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         rng: &mut NodeRng,
         effect_builder: EffectBuilder<REv>,
         block: &Block,
-    ) -> Effects<Event<I>>
+    ) -> Effects<Event>
     where
-        I: Send + 'static,
-        REv: ReactorEventT<I>,
+        REv: ReactorEventT,
     {
         let height = block.height();
         let hash = block.hash();
@@ -466,10 +464,9 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     fn fetch_next_block_deploys<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-    ) -> Effects<Event<I>>
+    ) -> Effects<Event>
     where
-        I: Send + 'static,
-        REv: ReactorEventT<I>,
+        REv: ReactorEventT,
     {
         let peer = self.peers.random_unsafe();
 
@@ -515,10 +512,9 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         effect_builder: EffectBuilder<REv>,
         rng: &mut NodeRng,
         block: &Block,
-    ) -> Effects<Event<I>>
+    ) -> Effects<Event>
     where
-        I: Send + 'static,
-        REv: ReactorEventT<I>,
+        REv: ReactorEventT,
     {
         self.peers.reset(rng);
         let peer = self.peers.random_unsafe();
@@ -544,13 +540,9 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         }
     }
 
-    fn handle_upgrade_shutdown<REv>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-    ) -> Effects<Event<I>>
+    fn handle_upgrade_shutdown<REv>(&mut self, effect_builder: EffectBuilder<REv>) -> Effects<Event>
     where
-        I: Send + 'static,
-        REv: ReactorEventT<I>,
+        REv: ReactorEventT,
     {
         if self.state.is_done() || self.state.is_none() {
             error!(state=?self.state, "shutdown for upgrade initiated when in wrong state");
@@ -601,12 +593,11 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     }
 }
 
-impl<I, REv> Component<REv> for LinearChainSync<I>
+impl<REv> Component<REv> for LinearChainSync
 where
-    I: Display + Clone + Send + PartialEq + 'static,
-    REv: ReactorEventT<I>,
+    REv: ReactorEventT,
 {
-    type Event = Event<I>;
+    type Event = Event;
     type ConstructionError = Infallible;
 
     fn handle_event(
@@ -893,11 +884,10 @@ where
                 let mut effects = Effects::new();
                 if self.peers.is_empty() {
                     // First peer connected, start downloading.
-                    let cloned_peer_id = peer_id.clone();
                     effects.extend(
                         effect_builder
                             .immediately()
-                            .event(move |_| Event::Start(cloned_peer_id)),
+                            .event(move |_| Event::Start(peer_id)),
                     );
                 }
                 self.peers.push(peer_id);

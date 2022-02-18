@@ -156,3 +156,6 @@ cmake-build-debug/
 
 # Notes
 notes
+
+# sw* files in vim
+.*.sw*
