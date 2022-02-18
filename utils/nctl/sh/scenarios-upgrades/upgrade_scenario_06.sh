@@ -38,13 +38,14 @@ function _main()
     local ACTIVATION_POINT
     local UPGRADE_HASH
 
+    # Establish consistent activation point for use later.
+    ACTIVATION_POINT='3'
+
     _step_01
     _step_02
 
     # Set initial protocol version for use later.
     INITIAL_PROTOCOL_VERSION=$(get_node_protocol_version 1)
-    # Establish consistent activation point for use later.
-    ACTIVATION_POINT="$(($(get_chain_era) + 2))"
 
     _step_03 "$PROTOCOL_VERSION" "$ACTIVATION_POINT"
     _step_04 "$INITIAL_PROTOCOL_VERSION"
@@ -53,14 +54,7 @@ function _main()
     _step_07
     _step_08
 
-    # Workaround for https://github.com/casper-network/casper-node/pull/2101#issuecomment-923205726
-    if [ "$(echo $INITIAL_PROTOCOL_VERSION | tr -d '.')" -ge "140" ]; then
-        log "... using latest block hash (post version 1.4.0) [expected]"
-        UPGRADE_HASH="$($(get_path_to_client) get-block --node-address "$(get_node_address_rpc '2')" | jq -r '.result.block.hash')"
-    else
-        log "... using block 1 hash (pre version 1.4.0) [expected]"
-        UPGRADE_HASH="$($(get_path_to_client) get-block -b 1 --node-address "$(get_node_address_rpc '2')" | jq -r '.result.block.hash')"
-    fi
+    UPGRADE_HASH="$($(get_path_to_client) get-block --node-address "$(get_node_address_rpc '2')" | jq -r '.result.block.hash')"
 
     _step_09 "$PROTOCOL_VERSION" "$ACTIVATION_POINT" "$UPGRADE_HASH"
     _step_10
@@ -76,7 +70,7 @@ function _step_01()
 
     log_step_upgrades 1 "Begin upgrade_scenario_06"
 
-    nctl-assets-setup
+    nctl-assets-setup "chainspec_path=$NCTL/sh/scenarios/chainspecs/upgrade_scenario_6.chainspec.toml.in"
     
     # Force Hard Reset
     PATH_TO_CHAINSPEC="$(get_path_to_net)/chainspec/chainspec.toml"
