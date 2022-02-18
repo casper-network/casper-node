@@ -1,6 +1,6 @@
 //! Runtime stacks.
 
-use casper_types::system::CallStackElement;
+use casper_types::{account::AccountHash, system::CallStackElement};
 
 /// A runtime stack frame.
 ///
@@ -33,6 +33,13 @@ impl RuntimeStack {
             frames: Vec::with_capacity(max_height),
             max_height,
         }
+    }
+
+    /// Creates a stack with one entry.
+    pub fn new_with_frame(max_height: usize, frame: RuntimeStackFrame) -> Self {
+        let mut frames = Vec::with_capacity(max_height);
+        frames.push(frame);
+        Self { frames, max_height }
     }
 
     /// Is the stack empty?
@@ -83,16 +90,11 @@ impl RuntimeStack {
         &self.frames
     }
 
-    // It is here for backwards compatibility only.
-    /// Creates a stack from the previous stack format.
-    pub fn from_call_stack_elements(
-        frames: Vec<CallStackElement>,
-        max_height: usize,
-    ) -> Result<Self, RuntimeStackOverflow> {
-        if frames.len() > max_height {
-            Err(RuntimeStackOverflow)
-        } else {
-            Ok(RuntimeStack { frames, max_height })
+    /// Returns a stack with exactly one session element with the associated account hash.
+    pub fn from_account_hash(account_hash: AccountHash, max_height: usize) -> Self {
+        RuntimeStack {
+            frames: vec![CallStackElement::session(account_hash)],
+            max_height,
         }
     }
 }

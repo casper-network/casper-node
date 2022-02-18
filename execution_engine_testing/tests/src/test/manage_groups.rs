@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, iter::FromIterator};
+use std::collections::BTreeSet;
 
 use assert_matches::assert_matches;
 use once_cell::sync::Lazy;
@@ -21,7 +21,6 @@ const REMOVE_GROUP: &str = "remove_group";
 const EXTEND_GROUP_UREFS: &str = "extend_group_urefs";
 const REMOVE_GROUP_UREFS: &str = "remove_group_urefs";
 const GROUP_NAME_ARG: &str = "group_name";
-const UREFS_ARG: &str = "urefs";
 const NEW_UREFS_COUNT: u64 = 3;
 const GROUP_1_NAME: &str = "Group 1";
 const TOTAL_NEW_UREFS_ARG: &str = "total_new_urefs";
@@ -322,15 +321,13 @@ fn should_create_and_remove_urefs_from_group() {
         .expect("should have group");
     assert_eq!(group_1.len(), 2);
 
-    let urefs_to_remove = Vec::from_iter(group_1.to_owned());
-
     let exec_request_3 = {
         // This inserts package as an argument because this test
         // can work from different accounts which might not have the same keys in their session
         // code.
         let args = runtime_args! {
             GROUP_NAME_ARG => GROUP_1_NAME,
-            UREFS_ARG => urefs_to_remove,
+            "uref_indexes" => vec![0u64, 1u64],
         };
         let deploy = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)

@@ -837,7 +837,7 @@
       }
     },
     "NamedArg": {
-      "description": "Named arguments to a contract",
+      "description": "Named arguments to a contract.",
       "type": "array",
       "items": [
         {

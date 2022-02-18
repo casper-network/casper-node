@@ -3,10 +3,13 @@ use casper_engine_test_support::{
     WasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_KEY,
     DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::storage::global_state::in_memory::InMemoryGlobalState;
+use casper_execution_engine::{
+    core::{engine_state::Error, execution},
+    storage::global_state::in_memory::InMemoryGlobalState,
+};
 use casper_types::{
     account::{Account, AccountHash},
-    contracts::{ContractVersion, CONTRACT_INITIAL_VERSION, DEFAULT_ENTRY_POINT_NAME},
+    contracts::{ContractVersion, CONTRACT_INITIAL_VERSION},
     runtime_args, ContractHash, EraId, Key, ProtocolVersion, RuntimeArgs, U512,
 };
 
@@ -27,6 +30,7 @@ const TRANSFER_PURSE_TO_ACCOUNT_CONTRACT_NAME: &str = "transfer_purse_to_account
 // message
 const EXPECTED_ERROR_MESSAGE: &str = "IncompatibleProtocolMajorVersion { expected: 2, actual: 1 }";
 const EXPECTED_VERSION_ERROR_MESSAGE: &str = "InvalidContractVersion(ContractVersionKey(2, 1))";
+const EXPECTED_MISSING_ENTRY_POINT_MESSAGE: &str = "NoSuchMethod";
 
 const ARG_TARGET: &str = "target";
 const ARG_AMOUNT: &str = "amount";
@@ -125,6 +129,68 @@ fn should_exec_non_stored_code() {
         initial_balance, tally,
         "no net resources should be gained or lost post-distribution"
     );
+}
+
+#[ignore]
+#[test]
+fn should_fail_if_calling_non_existent_entry_point() {
+    let payment_purse_amount = *DEFAULT_PAYMENT;
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    // first, store payment contract with entry point named "pay"
+    let exec_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        STORED_PAYMENT_CONTRACT_NAME,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    builder.exec(exec_request).commit();
+
+    let query_result = builder
+        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
+        .expect("should query default account");
+    let default_account = query_result
+        .as_account()
+        .expect("query result should be an account");
+    let stored_payment_contract_hash = default_account
+        .named_keys()
+        .get(STORED_PAYMENT_CONTRACT_HASH_NAME)
+        .expect("should have standard_payment named key")
+        .into_hash()
+        .expect("standard_payment should be an uref");
+
+    // next make another deploy that attempts to use the stored payment logic
+    // but passing the name for an entry point that does not exist.
+    let exec_request_stored_payment = {
+        let deploy = DeployItemBuilder::new()
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
+            .with_session_code(&format!("{}.wasm", DO_NOTHING_NAME), RuntimeArgs::default())
+            .with_stored_payment_hash(
+                stored_payment_contract_hash.into(),
+                "electric-boogaloo",
+                runtime_args! { ARG_AMOUNT => payment_purse_amount },
+            )
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
+            .with_deploy_hash([1; 32])
+            .build();
+
+        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    };
+
+    builder.exec(exec_request_stored_payment).commit();
+
+    assert!(
+        builder.is_error(),
+        "calling a non-existent entry point should not work"
+    );
+
+    let error_message = builder
+        .exec_error_message(1)
+        .expect("should have exec error");
+    assert!(error_message.contains(EXPECTED_MISSING_ENTRY_POINT_MESSAGE));
 }
 
 #[ignore]
@@ -438,7 +504,7 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
             .with_session_code(&format!("{}.wasm", DO_NOTHING_NAME), RuntimeArgs::default())
             .with_stored_payment_hash(
                 stored_payment_contract_hash.into(),
-                DEFAULT_ENTRY_POINT_NAME,
+                "pay",
                 runtime_args! { ARG_AMOUNT => payment_purse_amount },
             )
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
@@ -457,6 +523,7 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
         builder.is_error(),
         "calling a payment module with increased major protocol version should be error"
     );
+
     let error_message = builder
         .exec_error_message(1)
         .expect("should have exec error");
@@ -468,6 +535,9 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
 fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
 
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
     // first, store payment contract for v1.0.0
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -476,10 +546,16 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
-
     builder.exec(exec_request_1).commit();
+
+    let exec_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        STORED_PAYMENT_CONTRACT_NAME,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    builder.exec(exec_request).commit();
 
     let query_result = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -494,6 +570,12 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
         "do_nothing should be present in named keys"
     );
 
+    let stored_payment_contract_hash = default_account
+        .named_keys()
+        .get(STORED_PAYMENT_CONTRACT_HASH_NAME)
+        .expect("should have standard_payment named key")
+        .into_hash()
+        .expect("standard_payment should be an uref");
     //
     // upgrade with new wasm costs with modified mint for given version
     //
@@ -517,11 +599,10 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
                 ENTRY_FUNCTION_NAME,
                 RuntimeArgs::new(),
             )
-            .with_payment_code(
-                STORED_PAYMENT_CONTRACT_NAME,
-                runtime_args! {
-                    ARG_AMOUNT => payment_purse_amount,
-                },
+            .with_stored_payment_hash(
+                stored_payment_contract_hash.into(),
+                "pay",
+                runtime_args! { ARG_AMOUNT => payment_purse_amount },
             )
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .with_deploy_hash([2; 32])
@@ -539,14 +620,14 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
         builder.is_error(),
         "calling a session module with increased major protocol version should be error",
     );
-    let error_message = builder
-        .exec_error_message(1)
-        .expect("should have exec error");
-    assert!(
-        error_message.contains(EXPECTED_ERROR_MESSAGE),
-        "{:?}",
-        error_message
-    );
+    let error = builder.get_error().expect("must have error");
+    assert!(matches!(
+        error,
+        Error::Exec(execution::Error::IncompatibleProtocolMajorVersion {
+            expected: 2,
+            actual: 1
+        })
+    ))
 }
 
 #[ignore]
@@ -641,6 +722,9 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
 fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
 
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
     // first, store payment contract for v1.0.0
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -649,10 +733,16 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
-
     builder.exec(exec_request_1).commit();
+
+    let exec_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        STORED_PAYMENT_CONTRACT_NAME,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    builder.exec(exec_request).commit();
 
     //
     // upgrade with new wasm costs with modified mint for given version
@@ -669,6 +759,20 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
 
     // Call stored session code
 
+    // query both stored contracts by their named keys
+    let query_result = builder
+        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
+        .expect("should query default account");
+    let default_account = query_result
+        .as_account()
+        .expect("query result should be an account");
+    let test_payment_stored_hash = default_account
+        .named_keys()
+        .get(STORED_PAYMENT_CONTRACT_HASH_NAME)
+        .expect("standard_payment should be present in named keys")
+        .into_hash()
+        .expect("standard_payment named key should be hash");
+
     let exec_request_stored_payment = {
         let deploy = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
@@ -677,11 +781,10 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
                 ENTRY_FUNCTION_NAME,
                 RuntimeArgs::new(),
             )
-            .with_payment_code(
-                STORED_PAYMENT_CONTRACT_NAME,
-                runtime_args! {
-                    ARG_AMOUNT => payment_purse_amount,
-                },
+            .with_stored_payment_hash(
+                test_payment_stored_hash.into(),
+                "pay",
+                runtime_args! { ARG_AMOUNT => payment_purse_amount },
             )
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .with_deploy_hash([2; 32])
@@ -699,14 +802,18 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
         builder.is_error(),
         "calling a session module with increased major protocol version should be error",
     );
-    let error_message = builder
-        .exec_error_message(1)
-        .expect("should have exec error");
+    let error = builder.get_error().expect("must have error");
     assert!(
-        error_message.contains(EXPECTED_ERROR_MESSAGE),
-        "{:?}",
-        error_message
-    );
+        matches!(
+            error,
+            Error::Exec(execution::Error::IncompatibleProtocolMajorVersion {
+                expected: 2,
+                actual: 1
+            }),
+        ),
+        "Error does not match: {:?}",
+        error
+    )
 }
 
 #[ignore]

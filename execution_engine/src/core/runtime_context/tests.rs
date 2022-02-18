@@ -1,6 +1,6 @@
 use std::{
     cell::RefCell,
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::BTreeSet,
     iter::{self, FromIterator},
     rc::Rc,
 };
@@ -16,17 +16,16 @@ use casper_types::{
     bytesrepr::ToBytes,
     contracts::NamedKeys,
     system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
-    AccessRights, BlockTime, CLValue, Contract, ContractHash, DeployHash, EntryPointType,
-    EntryPoints, Gas, Key, Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue,
-    URef, KEY_HASH_LENGTH, U256, U512,
+    AccessRights, BlockTime, CLValue, ContextAccessRights, Contract, ContractHash, DeployHash,
+    EntryPointType, EntryPoints, Gas, Key, Phase, ProtocolVersion, PublicKey, RuntimeArgs,
+    SecretKey, StoredValue, URef, KEY_HASH_LENGTH, U256, U512,
 };
 
-use super::{Address, Error, RuntimeContext};
+use super::{Error, RuntimeContext};
 use crate::{
     core::{
         engine_state::{EngineConfig, SystemContractRegistry},
         execution::AddressGenerator,
-        runtime,
         tracking_copy::TrackingCopy,
     },
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
@@ -42,7 +41,7 @@ const GAS_LIMIT: u64 = 500_000_000_000_000u64;
 
 static TEST_ENGINE_CONFIG: Lazy<EngineConfig> = Lazy::new(EngineConfig::default);
 
-fn mock_tracking_copy(
+fn new_tracking_copy(
     init_key: Key,
     init_account: Account,
 ) -> TrackingCopy<InMemoryGlobalStateView> {
@@ -55,7 +54,7 @@ fn mock_tracking_copy(
     m.insert(init_key, transform);
     let new_hash = hist
         .commit(correlation_id, root_hash, m)
-        .expect("Creation of mocked account should be a success.");
+        .expect("Creation of account should be a success.");
 
     let reader = hist
         .checkout(new_hash)
@@ -65,11 +64,15 @@ fn mock_tracking_copy(
     TrackingCopy::new(reader)
 }
 
-fn mock_account_with_purse(account_hash: AccountHash, purse: [u8; 32]) -> (Key, Account) {
+fn new_account_with_purse(
+    account_hash: AccountHash,
+    purse: [u8; 32],
+    named_keys: NamedKeys,
+) -> (Key, Account) {
     let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
     let account = Account::new(
         account_hash,
-        NamedKeys::new(),
+        named_keys,
         URef::new(purse, AccessRights::READ_ADD_WRITE),
         associated_keys,
         Default::default(),
@@ -79,8 +82,8 @@ fn mock_account_with_purse(account_hash: AccountHash, purse: [u8; 32]) -> (Key, 
     (key, account)
 }
 
-fn mock_account(account_hash: AccountHash) -> (Key, Account) {
-    mock_account_with_purse(account_hash, [0; 32])
+fn new_account(account_hash: AccountHash, named_keys: NamedKeys) -> (Key, Account) {
+    new_account_with_purse(account_hash, [0; 32], named_keys)
 }
 
 // create random account key.
@@ -98,7 +101,7 @@ fn random_contract_key<G: RngCore>(entropy_source: &mut G) -> Key {
 }
 
 // Create URef Key.
-fn create_uref(address_generator: &mut AddressGenerator, rights: AccessRights) -> Key {
+fn create_uref_as_key(address_generator: &mut AddressGenerator, rights: AccessRights) -> Key {
     let address = address_generator.create_address();
     Key::URef(URef::new(address, rights))
 }
@@ -109,14 +112,14 @@ fn random_hash<G: RngCore>(entropy_source: &mut G) -> Key {
     Key::Hash(key)
 }
 
-fn mock_runtime_context<'a>(
+fn new_runtime_context<'a>(
     account: &'a Account,
     base_key: Key,
     named_keys: &'a mut NamedKeys,
-    access_rights: HashMap<Address, HashSet<AccessRights>>,
+    access_rights: ContextAccessRights,
     address_generator: AddressGenerator,
 ) -> RuntimeContext<'a, InMemoryGlobalStateView> {
-    let tracking_copy = mock_tracking_copy(base_key, account.clone());
+    let tracking_copy = new_tracking_copy(base_key, account.clone());
     RuntimeContext::new(
         Rc::new(RefCell::new(tracking_copy)),
         EntryPointType::Session,
@@ -159,7 +162,10 @@ fn assert_invalid_access<T: std::fmt::Debug>(result: Result<T, Error>, expecting
     }
 }
 
-fn test<T, F>(access_rights: HashMap<Address, HashSet<AccessRights>>, query: F) -> Result<T, Error>
+fn build_runtime_context_and_execute<T, F>(
+    mut named_keys: NamedKeys,
+    functor: F,
+) -> Result<T, Error>
 where
     F: FnOnce(RuntimeContext<InMemoryGlobalStateView>) -> Result<T, Error>,
 {
@@ -167,30 +173,33 @@ where
         .expect("should create secret key");
     let public_key = PublicKey::from(&secret_key);
     let deploy_hash = [1u8; 32];
-    let (base_key, account) = mock_account(public_key.to_account_hash());
+    let (base_key, account) = new_account(public_key.to_account_hash(), named_keys.clone());
 
-    let mut named_keys = NamedKeys::new();
     let address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
-    let runtime_context = mock_runtime_context(
+    let access_rights = account.extract_access_rights();
+    let runtime_context = new_runtime_context(
         &account,
         base_key,
         &mut named_keys,
         access_rights,
         address_generator,
     );
-    query(runtime_context)
+    functor(runtime_context)
 }
 
 #[test]
 fn use_uref_valid() {
     // Test fixture
     let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
-    let uref = create_uref(&mut rng, AccessRights::READ_WRITE);
-    let access_rights = runtime::extract_access_rights_from_keys(vec![uref]);
+    let uref_as_key = create_uref_as_key(&mut rng, AccessRights::READ_WRITE);
+    let mut named_keys = NamedKeys::new();
+    named_keys.insert(String::new(), uref_as_key);
     // Use uref as the key to perform an action on the global state.
     // This should succeed because the uref is valid.
     let value = StoredValue::CLValue(CLValue::from_t(43_i32).unwrap());
-    let query_result = test(access_rights, |mut rc| rc.metered_write_gs(uref, value));
+    let query_result = build_runtime_context_and_execute(named_keys, |mut rc| {
+        rc.metered_write_gs(uref_as_key, value)
+    });
     query_result.expect("writing using valid uref should succeed");
 }
 
@@ -198,10 +207,12 @@ fn use_uref_valid() {
 fn use_uref_forged() {
     // Test fixture
     let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
-    let uref = create_uref(&mut rng, AccessRights::READ_WRITE);
-    let access_rights = HashMap::new();
+    let uref = create_uref_as_key(&mut rng, AccessRights::READ_WRITE);
+    let named_keys = NamedKeys::new();
+    // named_keys.insert(String::new(), Key::from(uref));
     let value = StoredValue::CLValue(CLValue::from_t(43_i32).unwrap());
-    let query_result = test(access_rights, |mut rc| rc.metered_write_gs(uref, value));
+    let query_result =
+        build_runtime_context_and_execute(named_keys, |mut rc| rc.metered_write_gs(uref, value));
 
     assert_forged_reference(query_result);
 }
@@ -210,7 +221,7 @@ fn use_uref_forged() {
 fn account_key_not_writeable() {
     let mut rng = rand::thread_rng();
     let acc_key = random_account_key(&mut rng);
-    let query_result = test(HashMap::new(), |mut rc| {
+    let query_result = build_runtime_context_and_execute(NamedKeys::new(), |mut rc| {
         rc.metered_write_gs(
             acc_key,
             StoredValue::CLValue(CLValue::from_t(1_i32).unwrap()),
@@ -223,7 +234,7 @@ fn account_key_not_writeable() {
 fn account_key_readable_valid() {
     // Account key is readable if it is a "base" key - current context of the
     // execution.
-    let query_result = test(HashMap::new(), |mut rc| {
+    let query_result = build_runtime_context_and_execute(NamedKeys::new(), |mut rc| {
         let base_key = rc.base_key();
 
         let result = rc
@@ -244,7 +255,8 @@ fn account_key_readable_invalid() {
     let mut rng = rand::thread_rng();
     let other_acc_key = random_account_key(&mut rng);
 
-    let query_result = test(HashMap::new(), |mut rc| rc.read_gs(&other_acc_key));
+    let query_result =
+        build_runtime_context_and_execute(NamedKeys::new(), |mut rc| rc.read_gs(&other_acc_key));
 
     assert_invalid_access(query_result, AccessRights::READ);
 }
@@ -254,17 +266,20 @@ fn account_key_addable_valid() {
     // Account key is addable if it is a "base" key - current context of the
     // execution.
     let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
-    let uref = create_uref(&mut rng, AccessRights::READ);
-    let access_rights = runtime::extract_access_rights_from_keys(vec![uref]);
-    let query_result = test(access_rights, |mut rc| {
+    let uref_as_key = create_uref_as_key(&mut rng, AccessRights::READ);
+    let mut named_keys = NamedKeys::new();
+    named_keys.insert(String::new(), uref_as_key);
+    let query_result = build_runtime_context_and_execute(named_keys, |mut rc| {
         let base_key = rc.base_key();
         let uref_name = "NewURef".to_owned();
-        let named_key = StoredValue::CLValue(CLValue::from_t((uref_name.clone(), uref)).unwrap());
+        let named_key =
+            StoredValue::CLValue(CLValue::from_t((uref_name.clone(), uref_as_key)).unwrap());
 
         rc.metered_add_gs(base_key, named_key)
             .expect("Adding should work.");
 
-        let named_key_transform = Transform::AddKeys(iter::once((uref_name, uref)).collect());
+        let named_key_transform =
+            Transform::AddKeys(iter::once((uref_name, uref_as_key)).collect());
 
         assert_eq!(
             *rc.effect().transforms.get(&base_key).unwrap(),
@@ -284,7 +299,7 @@ fn account_key_addable_invalid() {
     let mut rng = rand::thread_rng();
     let other_acc_key = random_account_key(&mut rng);
 
-    let query_result = test(HashMap::new(), |mut rc| {
+    let query_result = build_runtime_context_and_execute(NamedKeys::new(), |mut rc| {
         rc.metered_add_gs(
             other_acc_key,
             StoredValue::CLValue(CLValue::from_t(1_i32).unwrap()),
@@ -300,7 +315,8 @@ fn contract_key_readable_valid() {
     // execution.
     let mut rng = rand::thread_rng();
     let contract_key = random_contract_key(&mut rng);
-    let query_result = test(HashMap::new(), |mut rc| rc.read_gs(&contract_key));
+    let query_result =
+        build_runtime_context_and_execute(NamedKeys::new(), |mut rc| rc.read_gs(&contract_key));
 
     assert!(query_result.is_ok());
 }
@@ -311,7 +327,7 @@ fn contract_key_not_writeable() {
     // execution.
     let mut rng = rand::thread_rng();
     let contract_key = random_contract_key(&mut rng);
-    let query_result = test(HashMap::new(), |mut rc| {
+    let query_result = build_runtime_context_and_execute(NamedKeys::new(), |mut rc| {
         rc.metered_write_gs(
             contract_key,
             StoredValue::CLValue(CLValue::from_t(1_i32).unwrap()),
@@ -326,15 +342,19 @@ fn contract_key_addable_valid() {
     const MAX_VALUE_SIZE: u32 = 8 * 1024 * 1024;
     // Contract key is addable if it is a "base" key - current context of the execution.
     let account_hash = AccountHash::new([0u8; 32]);
-    let (account_key, account) = mock_account(account_hash);
+    let (account_key, account) = new_account(account_hash, NamedKeys::new());
     let authorization_keys = BTreeSet::from_iter(vec![account_hash]);
     let mut address_generator = AddressGenerator::new(&DEPLOY_HASH, PHASE);
 
     let mut rng = rand::thread_rng();
     let contract_key = random_contract_key(&mut rng);
     let contract = StoredValue::Contract(Contract::default());
+    let mut access_rights = contract
+        .as_contract()
+        .unwrap()
+        .extract_access_rights(ContractHash::default());
 
-    let tracking_copy = Rc::new(RefCell::new(mock_tracking_copy(
+    let tracking_copy = Rc::new(RefCell::new(new_tracking_copy(
         account_key,
         account.clone(),
     )));
@@ -357,13 +377,14 @@ fn contract_key_addable_valid() {
         MAX_VALUE_SIZE,
     );
 
-    let mut named_keys = NamedKeys::new();
-    let uref = create_uref(&mut address_generator, AccessRights::WRITE);
+    let uref_as_key = create_uref_as_key(&mut address_generator, AccessRights::WRITE);
     let uref_name = "NewURef".to_owned();
     let named_uref_tuple =
-        StoredValue::CLValue(CLValue::from_t((uref_name.clone(), uref)).unwrap());
+        StoredValue::CLValue(CLValue::from_t((uref_name.clone(), uref_as_key)).unwrap());
+    let mut named_keys = NamedKeys::new();
+    named_keys.insert(uref_name.clone(), uref_as_key);
 
-    let access_rights = runtime::extract_access_rights_from_keys(vec![uref]);
+    access_rights.extend(&[uref_as_key.into_uref().expect("should be a URef")]);
 
     let mut runtime_context = RuntimeContext::new(
         Rc::clone(&tracking_copy),
@@ -394,7 +415,7 @@ fn contract_key_addable_valid() {
     let updated_contract = StoredValue::Contract(Contract::new(
         [0u8; 32].into(),
         [0u8; 32].into(),
-        iter::once((uref_name, uref)).collect(),
+        iter::once((uref_name, uref_as_key)).collect(),
         EntryPoints::default(),
         ProtocolVersion::V1_0_0,
     ));
@@ -414,7 +435,7 @@ fn contract_key_addable_valid() {
 fn contract_key_addable_invalid() {
     const MAX_VALUE_SIZE: u32 = 8 * 1024 * 1024;
     let account_hash = AccountHash::new([0u8; 32]);
-    let (account_key, account) = mock_account(account_hash);
+    let (account_key, account) = new_account(account_hash, NamedKeys::new());
     let authorization_keys = BTreeSet::from_iter(vec![account_hash]);
     let mut address_generator = AddressGenerator::new(&DEPLOY_HASH, PHASE);
     let mut rng = rand::thread_rng();
@@ -422,7 +443,11 @@ fn contract_key_addable_invalid() {
 
     let other_contract_key = random_contract_key(&mut rng);
     let contract = StoredValue::Contract(Contract::default());
-    let tracking_copy = Rc::new(RefCell::new(mock_tracking_copy(
+    let mut access_rights = contract
+        .as_contract()
+        .unwrap()
+        .extract_access_rights(ContractHash::default());
+    let tracking_copy = Rc::new(RefCell::new(new_tracking_copy(
         account_key,
         account.clone(),
     )));
@@ -431,13 +456,15 @@ fn contract_key_addable_invalid() {
         .borrow_mut()
         .write(contract_key, contract, MAX_VALUE_SIZE);
 
-    let mut named_keys = NamedKeys::new();
-
-    let uref = create_uref(&mut address_generator, AccessRights::WRITE);
+    let uref_as_key = create_uref_as_key(&mut address_generator, AccessRights::WRITE);
     let uref_name = "NewURef".to_owned();
-    let named_uref_tuple = StoredValue::CLValue(CLValue::from_t((uref_name, uref)).unwrap());
+    let named_uref_tuple = StoredValue::CLValue(CLValue::from_t((uref_name, uref_as_key)).unwrap());
 
-    let access_rights = runtime::extract_access_rights_from_keys(vec![uref]);
+    let mut named_keys = NamedKeys::new();
+    named_keys.insert(String::new(), uref_as_key);
+
+    access_rights.extend(&[uref_as_key.into_uref().expect("should be a URef")]);
+
     let mut runtime_context = RuntimeContext::new(
         Rc::clone(&tracking_copy),
         EntryPointType::Session,
@@ -468,27 +495,38 @@ fn contract_key_addable_invalid() {
 #[test]
 fn uref_key_readable_valid() {
     let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
-    let uref_key = create_uref(&mut rng, AccessRights::READ);
-    let access_rights = runtime::extract_access_rights_from_keys(vec![uref_key]);
-    let query_result = test(access_rights, |mut rc| rc.read_gs(&uref_key));
+    let uref_key = create_uref_as_key(&mut rng, AccessRights::READ);
+
+    let mut named_keys = NamedKeys::new();
+    named_keys.insert(String::new(), uref_key);
+
+    let query_result =
+        build_runtime_context_and_execute(named_keys, |mut rc| rc.read_gs(&uref_key));
     assert!(query_result.is_ok());
 }
 
 #[test]
 fn uref_key_readable_invalid() {
     let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
-    let uref_key = create_uref(&mut rng, AccessRights::WRITE);
-    let access_rights = runtime::extract_access_rights_from_keys(vec![uref_key]);
-    let query_result = test(access_rights, |mut rc| rc.read_gs(&uref_key));
+    let uref_key = create_uref_as_key(&mut rng, AccessRights::WRITE);
+
+    let mut named_keys = NamedKeys::new();
+    named_keys.insert(String::new(), uref_key);
+
+    let query_result =
+        build_runtime_context_and_execute(named_keys, |mut rc| rc.read_gs(&uref_key));
     assert_invalid_access(query_result, AccessRights::READ);
 }
 
 #[test]
 fn uref_key_writeable_valid() {
     let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
-    let uref_key = create_uref(&mut rng, AccessRights::WRITE);
-    let access_rights = runtime::extract_access_rights_from_keys(vec![uref_key]);
-    let query_result = test(access_rights, |mut rc| {
+    let uref_key = create_uref_as_key(&mut rng, AccessRights::WRITE);
+
+    let mut named_keys = NamedKeys::new();
+    named_keys.insert(String::new(), uref_key);
+
+    let query_result = build_runtime_context_and_execute(named_keys, |mut rc| {
         rc.metered_write_gs(
             uref_key,
             StoredValue::CLValue(CLValue::from_t(1_i32).unwrap()),
@@ -500,9 +538,12 @@ fn uref_key_writeable_valid() {
 #[test]
 fn uref_key_writeable_invalid() {
     let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
-    let uref_key = create_uref(&mut rng, AccessRights::READ);
-    let access_rights = runtime::extract_access_rights_from_keys(vec![uref_key]);
-    let query_result = test(access_rights, |mut rc| {
+    let uref_key = create_uref_as_key(&mut rng, AccessRights::READ);
+
+    let mut named_keys = NamedKeys::new();
+    named_keys.insert(String::new(), uref_key);
+
+    let query_result = build_runtime_context_and_execute(named_keys, |mut rc| {
         rc.metered_write_gs(
             uref_key,
             StoredValue::CLValue(CLValue::from_t(1_i32).unwrap()),
@@ -514,9 +555,12 @@ fn uref_key_writeable_invalid() {
 #[test]
 fn uref_key_addable_valid() {
     let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
-    let uref_key = create_uref(&mut rng, AccessRights::ADD_WRITE);
-    let access_rights = runtime::extract_access_rights_from_keys(vec![uref_key]);
-    let query_result = test(access_rights, |mut rc| {
+    let uref_key = create_uref_as_key(&mut rng, AccessRights::ADD_WRITE);
+
+    let mut named_keys = NamedKeys::new();
+    named_keys.insert(String::new(), uref_key);
+
+    let query_result = build_runtime_context_and_execute(named_keys, |mut rc| {
         rc.metered_write_gs(uref_key, CLValue::from_t(10_i32).unwrap())
             .expect("Writing to the GlobalState should work.");
         rc.metered_add_gs(uref_key, CLValue::from_t(1_i32).unwrap())
@@ -527,9 +571,12 @@ fn uref_key_addable_valid() {
 #[test]
 fn uref_key_addable_invalid() {
     let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
-    let uref_key = create_uref(&mut rng, AccessRights::WRITE);
-    let access_rights = runtime::extract_access_rights_from_keys(vec![uref_key]);
-    let query_result = test(access_rights, |mut rc| {
+    let uref_key = create_uref_as_key(&mut rng, AccessRights::WRITE);
+
+    let mut named_keys = NamedKeys::new();
+    named_keys.insert(String::new(), uref_key);
+
+    let query_result = build_runtime_context_and_execute(named_keys, |mut rc| {
         rc.metered_add_gs(
             uref_key,
             StoredValue::CLValue(CLValue::from_t(1_i32).unwrap()),
@@ -546,7 +593,7 @@ fn hash_key_readable() {
         let key = random_hash(&mut rng);
         runtime_context.validate_readable(&key)
     };
-    let query_result = test(HashMap::new(), query);
+    let query_result = build_runtime_context_and_execute(NamedKeys::new(), query);
     assert!(query_result.is_ok())
 }
 
@@ -558,7 +605,7 @@ fn hash_key_writeable() {
         let key = random_hash(&mut rng);
         runtime_context.validate_writeable(&key)
     };
-    let query_result = test(HashMap::new(), query);
+    let query_result = build_runtime_context_and_execute(NamedKeys::new(), query);
     assert!(query_result.is_err())
 }
 
@@ -570,7 +617,7 @@ fn hash_key_addable_invalid() {
         let key = random_hash(&mut rng);
         runtime_context.validate_addable(&key)
     };
-    let query_result = test(HashMap::new(), query);
+    let query_result = build_runtime_context_and_execute(NamedKeys::new(), query);
     assert!(query_result.is_err())
 }
 
@@ -578,7 +625,7 @@ fn hash_key_addable_invalid() {
 fn manage_associated_keys() {
     // Testing a valid case only - successfully added a key, and successfully removed,
     // making sure `account_dirty` mutated
-    let access_rights = HashMap::new();
+    let named_keys = NamedKeys::new();
     let query = |mut runtime_context: RuntimeContext<InMemoryGlobalStateView>| {
         let account_hash = AccountHash::new([42; 32]);
         let weight = Weight::new(155);
@@ -642,14 +689,14 @@ fn manage_associated_keys() {
 
         Ok(())
     };
-    let _ = test(access_rights, query);
+    let _ = build_runtime_context_and_execute(named_keys, query);
 }
 
 #[test]
 fn action_thresholds_management() {
     // Testing a valid case only - successfully added a key, and successfully removed,
     // making sure `account_dirty` mutated
-    let access_rights = HashMap::new();
+    let named_keys = NamedKeys::new();
     let query = |mut runtime_context: RuntimeContext<InMemoryGlobalStateView>| {
         runtime_context
             .add_associated_key(AccountHash::new([42; 32]), Weight::new(254))
@@ -683,14 +730,14 @@ fn action_thresholds_management() {
 
         Ok(())
     };
-    let _ = test(access_rights, query);
+    let _ = build_runtime_context_and_execute(named_keys, query);
 }
 
 #[test]
 fn should_verify_ownership_before_adding_key() {
     // Testing a valid case only - successfully added a key, and successfully removed,
     // making sure `account_dirty` mutated
-    let access_rights = HashMap::new();
+    let named_keys = NamedKeys::new();
     let query = |mut runtime_context: RuntimeContext<InMemoryGlobalStateView>| {
         // Overwrites a `base_key` to a different one before doing any operation as
         // account `[0; 32]`
@@ -707,14 +754,14 @@ fn should_verify_ownership_before_adding_key() {
 
         Ok(())
     };
-    let _ = test(access_rights, query);
+    let _ = build_runtime_context_and_execute(named_keys, query);
 }
 
 #[test]
 fn should_verify_ownership_before_removing_a_key() {
     // Testing a valid case only - successfully added a key, and successfully removed,
     // making sure `account_dirty` mutated
-    let access_rights = HashMap::new();
+    let named_keys = NamedKeys::new();
     let query = |mut runtime_context: RuntimeContext<InMemoryGlobalStateView>| {
         // Overwrites a `base_key` to a different one before doing any operation as
         // account `[0; 32]`
@@ -731,14 +778,14 @@ fn should_verify_ownership_before_removing_a_key() {
 
         Ok(())
     };
-    let _ = test(access_rights, query);
+    let _ = build_runtime_context_and_execute(named_keys, query);
 }
 
 #[test]
 fn should_verify_ownership_before_setting_action_threshold() {
     // Testing a valid case only - successfully added a key, and successfully removed,
     // making sure `account_dirty` mutated
-    let access_rights = HashMap::new();
+    let named_keys = NamedKeys::new();
     let query = |mut runtime_context: RuntimeContext<InMemoryGlobalStateView>| {
         // Overwrites a `base_key` to a different one before doing any operation as
         // account `[0; 32]`
@@ -755,19 +802,19 @@ fn should_verify_ownership_before_setting_action_threshold() {
 
         Ok(())
     };
-    let _ = test(access_rights, query);
+    let _ = build_runtime_context_and_execute(named_keys, query);
 }
 
 #[test]
 fn can_roundtrip_key_value_pairs() {
-    let access_rights = HashMap::new();
+    let named_keys = NamedKeys::new();
     let query = |mut runtime_context: RuntimeContext<InMemoryGlobalStateView>| {
         let deploy_hash = [1u8; 32];
         let mut uref_address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
-        let test_uref = create_uref(&mut uref_address_generator, AccessRights::default())
+        let test_uref = create_uref_as_key(&mut uref_address_generator, AccessRights::default())
             .as_uref()
             .cloned()
-            .unwrap();
+            .expect("must have created URef from the key");
         let test_value = CLValue::from_t("test_value".to_string()).unwrap();
 
         runtime_context
@@ -780,7 +827,7 @@ fn can_roundtrip_key_value_pairs() {
 
         Ok(result == Some(test_value))
     };
-    let query_result = test(access_rights, query).expect("should be ok");
+    let query_result = build_runtime_context_and_execute(named_keys, query).expect("should be ok");
     assert!(query_result)
 }
 
@@ -790,14 +837,16 @@ fn remove_uref_works() {
     // which is one of the current RuntimeContext, and also puts that change
     // into the `TrackingCopy` so that it's later committed to the GlobalState.
 
-    let access_rights = HashMap::new();
     let deploy_hash = [1u8; 32];
-    let (base_key, account) = mock_account(AccountHash::new([0u8; 32]));
     let mut address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
     let uref_name = "Foo".to_owned();
-    let uref_key = create_uref(&mut address_generator, AccessRights::READ);
-    let mut named_keys = iter::once((uref_name.clone(), uref_key)).collect();
-    let mut runtime_context = mock_runtime_context(
+    let uref_key = create_uref_as_key(&mut address_generator, AccessRights::READ);
+    let mut named_keys: NamedKeys = iter::once((uref_name.clone(), uref_key)).collect();
+    let (base_key, account) = new_account(AccountHash::new([0u8; 32]), named_keys.clone());
+
+    let access_rights = account.extract_access_rights();
+
+    let mut runtime_context = new_runtime_context(
         &account,
         base_key,
         &mut named_keys,
@@ -807,7 +856,9 @@ fn remove_uref_works() {
 
     assert!(runtime_context.named_keys_contains_key(&uref_name));
     assert!(runtime_context.remove_key(&uref_name).is_ok());
-    assert!(runtime_context.validate_key(&uref_key).is_err());
+    // It is valid to retain the access right for the given runtime context
+    // even if you remove the URef from the named keys.
+    assert!(runtime_context.validate_key(&uref_key).is_ok());
     assert!(!runtime_context.named_keys_contains_key(&uref_name));
     let effects = runtime_context.effect();
     let transform = effects.transforms.get(&base_key).unwrap();
@@ -816,42 +867,61 @@ fn remove_uref_works() {
         _ => panic!("Invalid transform operation found"),
     };
     assert!(!account.named_keys().contains_key(&uref_name));
+    // The next time the account is used, the access right is gone for the removed
+    // named key.
+    let next_session_access_rights = account.extract_access_rights();
+    let address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
+    let runtime_context = new_runtime_context(
+        account,
+        base_key,
+        &mut named_keys,
+        next_session_access_rights,
+        address_generator,
+    );
+    assert!(runtime_context.validate_key(&uref_key).is_err());
 }
 
 #[test]
-fn should_not_special_case_main_purse() {
-    let mock_main_purse = URef::new([42u8; 32], AccessRights::READ_ADD_WRITE);
-    let access_rights = Default::default();
-    let deploy_hash = [1u8; 32];
-    let (base_key, account) =
-        mock_account_with_purse(AccountHash::new([0u8; 32]), mock_main_purse.addr());
-    let address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
-    let mut named_keys = NamedKeys::new();
-    let runtime_context = mock_runtime_context(
-        &account,
-        base_key,
-        &mut named_keys,
-        access_rights,
-        address_generator,
+fn an_accounts_access_rights_should_include_main_purse() {
+    let test_main_purse = URef::new([42u8; 32], AccessRights::READ_ADD_WRITE);
+    // All other access rights except for main purse are extracted from named keys.
+    let named_keys = NamedKeys::new();
+    let (_base_key, account) = new_account_with_purse(
+        AccountHash::new([0u8; 32]),
+        test_main_purse.addr(),
+        named_keys,
     );
-    // `access_rights` is empty
     assert!(
-        runtime_context.validate_uref(&mock_main_purse).is_err(),
-        "Main purse should not have special access rights"
+        account.named_keys().is_empty(),
+        "Named keys does not contain main purse"
+    );
+    let access_rights = account.extract_access_rights();
+    assert!(
+        access_rights.uref_has_access_rights(&test_main_purse),
+        "Main purse should be included in access rights"
     );
 }
 
 #[test]
 fn validate_valid_purse_of_an_account() {
     // Tests that URef which matches a purse of a given context gets validated
-    let mock_main_purse = URef::new([42u8; 32], AccessRights::READ_ADD_WRITE);
-    let access_rights = runtime::extract_access_rights_from_keys([Key::from(mock_main_purse)]);
-    let deploy_hash = [1u8; 32];
-    let (base_key, account) =
-        mock_account_with_purse(AccountHash::new([0u8; 32]), mock_main_purse.addr());
+    let test_main_purse = URef::new([42u8; 32], AccessRights::READ_ADD_WRITE);
+
     let mut named_keys = NamedKeys::new();
+    named_keys.insert("entry".to_string(), Key::from(test_main_purse));
+
+    let deploy_hash = [1u8; 32];
+    let (base_key, account) = new_account_with_purse(
+        AccountHash::new([0u8; 32]),
+        test_main_purse.addr(),
+        named_keys.clone(),
+    );
+
+    let mut access_rights = account.extract_access_rights();
+    access_rights.extend(&[test_main_purse]);
+
     let address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
-    let runtime_context = mock_runtime_context(
+    let runtime_context = new_runtime_context(
         &account,
         base_key,
         &mut named_keys,
@@ -861,13 +931,13 @@ fn validate_valid_purse_of_an_account() {
 
     // URef that has the same id as purse of an account gets validated
     // successfully.
-    assert!(runtime_context.validate_uref(&mock_main_purse).is_ok());
+    assert!(runtime_context.validate_uref(&test_main_purse).is_ok());
 
-    let purse = mock_main_purse.with_access_rights(AccessRights::READ);
+    let purse = test_main_purse.with_access_rights(AccessRights::READ);
     assert!(runtime_context.validate_uref(&purse).is_ok());
-    let purse = mock_main_purse.with_access_rights(AccessRights::ADD);
+    let purse = test_main_purse.with_access_rights(AccessRights::ADD);
     assert!(runtime_context.validate_uref(&purse).is_ok());
-    let purse = mock_main_purse.with_access_rights(AccessRights::WRITE);
+    let purse = test_main_purse.with_access_rights(AccessRights::WRITE);
     assert!(runtime_context.validate_uref(&purse).is_ok());
 
     // Purse ID that doesn't match account's purse should fail as it's also not
@@ -880,21 +950,26 @@ fn validate_valid_purse_of_an_account() {
 fn should_meter_for_gas_storage_write() {
     // Test fixture
     let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
-    let uref = create_uref(&mut rng, AccessRights::READ_WRITE);
-    let access_rights = runtime::extract_access_rights_from_keys(vec![uref]);
+    let uref_as_key = create_uref_as_key(&mut rng, AccessRights::READ_WRITE);
+
+    let mut named_keys = NamedKeys::new();
+    named_keys.insert("entry".to_string(), uref_as_key);
+
     let value = StoredValue::CLValue(CLValue::from_t(43_i32).unwrap());
     let expected_write_cost = TEST_ENGINE_CONFIG
         .wasm_config()
         .storage_costs()
         .calculate_gas_cost(value.serialized_length());
 
-    let (gas_usage_before, gas_usage_after) = test(access_rights, |mut rc| {
-        let gas_before = rc.gas_counter();
-        rc.metered_write_gs(uref, value).expect("should write");
-        let gas_after = rc.gas_counter();
-        Ok((gas_before, gas_after))
-    })
-    .expect("should run test");
+    let (gas_usage_before, gas_usage_after) =
+        build_runtime_context_and_execute(named_keys, |mut rc| {
+            let gas_before = rc.gas_counter();
+            rc.metered_write_gs(uref_as_key, value)
+                .expect("should write");
+            let gas_after = rc.gas_counter();
+            Ok((gas_before, gas_after))
+        })
+        .expect("should run test");
 
     assert!(
         gas_usage_after > gas_usage_before,
@@ -910,23 +985,27 @@ fn should_meter_for_gas_storage_write() {
 fn should_meter_for_gas_storage_add() {
     // Test fixture
     let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
-    let uref = create_uref(&mut rng, AccessRights::ADD_WRITE);
-    let access_rights = runtime::extract_access_rights_from_keys(vec![uref]);
+    let uref_as_key = create_uref_as_key(&mut rng, AccessRights::ADD_WRITE);
+
+    let mut named_keys = NamedKeys::new();
+    named_keys.insert("entry".to_string(), uref_as_key);
+
     let value = StoredValue::CLValue(CLValue::from_t(43_i32).unwrap());
     let expected_add_cost = TEST_ENGINE_CONFIG
         .wasm_config()
         .storage_costs()
         .calculate_gas_cost(value.serialized_length());
 
-    let (gas_usage_before, gas_usage_after) = test(access_rights, |mut rc| {
-        rc.metered_write_gs(uref, value.clone())
-            .expect("should write");
-        let gas_before = rc.gas_counter();
-        rc.metered_add_gs(uref, value).expect("should add");
-        let gas_after = rc.gas_counter();
-        Ok((gas_before, gas_after))
-    })
-    .expect("should run test");
+    let (gas_usage_before, gas_usage_after) =
+        build_runtime_context_and_execute(named_keys, |mut rc| {
+            rc.metered_write_gs(uref_as_key, value.clone())
+                .expect("should write");
+            let gas_before = rc.gas_counter();
+            rc.metered_add_gs(uref_as_key, value).expect("should add");
+            let gas_after = rc.gas_counter();
+            Ok((gas_before, gas_after))
+        })
+        .expect("should run test");
 
     assert!(
         gas_usage_after > gas_usage_before,
@@ -940,11 +1019,10 @@ fn should_meter_for_gas_storage_add() {
 
 #[test]
 fn associated_keys_add_full() {
-    let final_add_result = test(Default::default(), |mut rc| {
+    let final_add_result = build_runtime_context_and_execute(Default::default(), |mut rc| {
         let associated_keys_before = rc.account().associated_keys().len();
 
-        for count in 0..(rc.engine_config().max_associated_keys() as usize - associated_keys_before)
-        {
+        for count in 0..(rc.engine_config.max_associated_keys() as usize - associated_keys_before) {
             let account_hash = {
                 let mut addr = [0; ACCOUNT_HASH_LENGTH];
                 U256::from(count).to_big_endian(&mut addr);

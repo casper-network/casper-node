@@ -197,6 +197,11 @@ impl URef {
             .ok_or(FromStrError::InvalidAccessRights)?;
         Ok(URef(addr, access_rights))
     }
+
+    /// Removes specific access rights from this URef if present.
+    pub fn disable_access_rights(&mut self, access_rights: AccessRights) {
+        self.1.remove(access_rights)
+    }
 }
 
 #[cfg(feature = "json-schema")]
@@ -378,5 +383,30 @@ mod tests {
         let json_string = serde_json::to_string_pretty(&uref).unwrap();
         let decoded = serde_json::from_str(&json_string).unwrap();
         assert_eq!(uref, decoded);
+    }
+
+    #[test]
+    fn should_disable_access_rights() {
+        let mut uref = URef::new([255; 32], AccessRights::READ_ADD_WRITE);
+        assert!(uref.is_writeable());
+        uref.disable_access_rights(AccessRights::WRITE);
+        assert_eq!(uref.access_rights(), AccessRights::READ_ADD);
+
+        uref.disable_access_rights(AccessRights::WRITE);
+        assert!(
+            !uref.is_writeable(),
+            "Disabling access bit twice should be a noop"
+        );
+
+        assert_eq!(uref.access_rights(), AccessRights::READ_ADD);
+
+        uref.disable_access_rights(AccessRights::READ_ADD);
+        assert_eq!(uref.access_rights(), AccessRights::NONE);
+
+        uref.disable_access_rights(AccessRights::READ_ADD);
+        assert_eq!(uref.access_rights(), AccessRights::NONE);
+
+        uref.disable_access_rights(AccessRights::NONE);
+        assert_eq!(uref.access_rights(), AccessRights::NONE);
     }
 }

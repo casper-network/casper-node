@@ -9,10 +9,14 @@ mod weight;
 
 use serde::Serialize;
 
-use alloc::{collections::BTreeSet, vec::Vec};
+use alloc::{
+    collections::{BTreeMap, BTreeSet},
+    vec::Vec,
+};
 use core::{
     convert::TryFrom,
     fmt::{self, Debug, Display, Formatter},
+    iter,
 };
 
 use blake2::{
@@ -31,7 +35,7 @@ pub use self::{
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::NamedKeys,
-    AccessRights, URef, BLAKE2B_DIGEST_LENGTH,
+    AccessRights, ContextAccessRights, Key, URef, BLAKE2B_DIGEST_LENGTH,
 };
 
 /// Represents an Account in the global state.
@@ -77,6 +81,24 @@ impl Account {
             associated_keys,
             action_thresholds,
         )
+    }
+
+    /// Extracts the access rights from the named keys and main purse of the account.
+    pub fn extract_access_rights(&self) -> ContextAccessRights {
+        let mut access_rights = BTreeMap::new();
+
+        for uref in self
+            .named_keys
+            .values()
+            .filter_map(|key| key.as_uref())
+            .chain(iter::once(&self.main_purse))
+        {
+            let access_rights = access_rights
+                .entry(uref.addr())
+                .or_insert_with(AccessRights::default);
+            *access_rights = access_rights.union(uref.access_rights());
+        }
+        ContextAccessRights::new(Key::from(self.account_hash), access_rights)
     }
 
     /// Appends named keys to an account's named_keys field.
@@ -934,6 +956,26 @@ mod tests {
         account
             .update_associated_key(key_1, Weight::new(1))
             .expect("should work");
+    }
+
+    #[test]
+    fn should_extract_access_rights() {
+        let account_hash = AccountHash::new([1u8; 32]);
+        let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
+        let account = Account::new(
+            account_hash,
+            NamedKeys::new(),
+            URef::new([0u8; 32], AccessRights::READ_ADD_WRITE),
+            associated_keys,
+            ActionThresholds::new(Weight::new(1), Weight::new(1))
+                .expect("should create thresholds"),
+        );
+        let actual_access_rights = account.extract_access_rights();
+        let mut inner_rights = BTreeMap::new();
+        inner_rights.insert([0u8; 32], AccessRights::READ_ADD_WRITE);
+        let expected_access_rights =
+            ContextAccessRights::new(Key::from(account_hash), inner_rights);
+        assert_eq!(actual_access_rights, expected_access_rights)
     }
 }
 

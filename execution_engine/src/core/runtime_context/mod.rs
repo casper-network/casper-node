@@ -1,7 +1,7 @@
 //! The context of execution of WASM code.
 use std::{
     cell::RefCell,
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::BTreeSet,
     convert::{TryFrom, TryInto},
     fmt::Debug,
     rc::Rc,
@@ -17,10 +17,10 @@ use casper_types::{
     bytesrepr::{ToBytes, U8_SERIALIZED_LENGTH},
     contracts::NamedKeys,
     system::auction::{EraInfo, SeigniorageRecipientsSnapshot},
-    AccessRights, BlockTime, CLType, CLValue, Contract, ContractHash, ContractPackage,
-    ContractPackageHash, DeployHash, DeployInfo, EntryPointAccess, EntryPointType, Gas, Key,
-    KeyTag, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferAddr,
-    URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
+    AccessRights, BlockTime, CLType, CLValue, ContextAccessRights, Contract, ContractHash,
+    ContractPackage, ContractPackageHash, DeployHash, DeployInfo, EntryPointAccess, EntryPointType,
+    Gas, Key, KeyTag, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer,
+    TransferAddr, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
 
 use crate::{
@@ -29,7 +29,6 @@ use crate::{
         execution::{AddressGenerator, Error},
         runtime_context::dictionary::DictionaryValue,
         tracking_copy::{AddResult, TrackingCopy, TrackingCopyExt, WriteResult},
-        Address,
     },
     shared::{execution_journal::ExecutionJournal, newtypes::CorrelationId},
     storage::global_state::StateReader,
@@ -38,23 +37,6 @@ use crate::{
 pub(crate) mod dictionary;
 #[cfg(test)]
 mod tests;
-
-/// Checks whether given uref has enough access rights.
-pub(crate) fn uref_has_access_rights(
-    uref: &URef,
-    access_rights: &HashMap<Address, HashSet<AccessRights>>,
-) -> bool {
-    if let Some(known_rights) = access_rights.get(&uref.addr()) {
-        let new_rights = uref.access_rights();
-        // check if we have sufficient access rights
-        known_rights
-            .iter()
-            .any(|right| *right & new_rights == new_rights)
-    } else {
-        // URef is not known
-        false
-    }
-}
 
 /// Validates an entry point access with a special validator callback.
 ///
@@ -66,7 +48,7 @@ pub(crate) fn uref_has_access_rights(
 ///
 /// Otherwise, if `access` object is a `Public` variant, then the entry point is considered callable
 /// and an unit value is returned.
-pub fn validate_entry_point_access_with(
+pub fn validate_group_membership(
     contract_package: &ContractPackage,
     access: &EntryPointAccess,
     validator: impl Fn(&URef) -> bool,
@@ -99,7 +81,7 @@ pub struct RuntimeContext<'a, R> {
     // Enables look up of specific uref based on human-readable name
     named_keys: &'a mut NamedKeys,
     // Used to check uref is known before use (prevents forging urefs)
-    access_rights: HashMap<Address, HashSet<AccessRights>>,
+    access_rights: ContextAccessRights,
     // Original account for read only tasks taken before execution
     account: &'a Account,
     args: RuntimeArgs,
@@ -118,7 +100,7 @@ pub struct RuntimeContext<'a, R> {
     engine_config: EngineConfig,
     entry_point_type: EntryPointType,
     transfers: Vec<TransferAddr>,
-    main_purse_spending_limit: U512,
+    remaining_spending_limit: U512,
 }
 
 impl<'a, R> RuntimeContext<'a, R>
@@ -126,13 +108,15 @@ where
     R: StateReader<Key, StoredValue>,
     R::Error: Into<Error>,
 {
-    /// Creates new runtime context.
+    /// Creates new runtime context where we don't already have one.
+    ///
+    /// Where we already have a runtime context, consider using `new_from_self()`.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         entry_point_type: EntryPointType,
         named_keys: &'a mut NamedKeys,
-        access_rights: HashMap<Address, HashSet<AccessRights>>,
+        access_rights: ContextAccessRights,
         runtime_args: RuntimeArgs,
         authorization_keys: BTreeSet<AccountHash>,
         account: &'a Account,
@@ -147,7 +131,7 @@ where
         phase: Phase,
         engine_config: EngineConfig,
         transfers: Vec<TransferAddr>,
-        main_purse_spending_limit: U512,
+        remaining_spending_limit: U512,
     ) -> Self {
         RuntimeContext {
             tracking_copy,
@@ -168,7 +152,56 @@ where
             phase,
             engine_config,
             transfers,
-            main_purse_spending_limit,
+            remaining_spending_limit,
+        }
+    }
+
+    /// Creates new runtime context cloning values from self.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_from_self(
+        &self,
+        base_key: Key,
+        tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
+        entry_point_type: EntryPointType,
+        named_keys: &'a mut NamedKeys,
+        access_rights: ContextAccessRights,
+        runtime_args: RuntimeArgs,
+        remaining_spending_limit: U512,
+    ) -> Self {
+        // debug_assert!(base_key != self.base_key);
+        let authorization_keys = self.authorization_keys.clone();
+        let account = self.account;
+        let blocktime = self.blocktime;
+        let deploy_hash = self.deploy_hash;
+        let gas_limit = self.gas_limit;
+        let gas_counter = self.gas_counter;
+        let address_generator = self.address_generator.clone();
+        let protocol_version = self.protocol_version;
+        let correlation_id = self.correlation_id;
+        let phase = self.phase;
+        let engine_config = self.engine_config;
+        let transfers = self.transfers.clone();
+
+        RuntimeContext {
+            tracking_copy,
+            entry_point_type,
+            named_keys,
+            access_rights,
+            args: runtime_args,
+            account,
+            authorization_keys,
+            blocktime,
+            deploy_hash,
+            base_key,
+            gas_limit,
+            gas_counter,
+            address_generator,
+            protocol_version,
+            correlation_id,
+            phase,
+            engine_config,
+            transfers,
+            remaining_spending_limit,
         }
     }
 
@@ -305,12 +338,12 @@ where
     }
 
     /// Extends access rights with a new map.
-    pub fn access_rights_extend(&mut self, access_rights: HashMap<Address, HashSet<AccessRights>>) {
-        self.access_rights.extend(access_rights);
+    pub fn access_rights_extend(&mut self, urefs: &[URef]) {
+        self.access_rights.extend(urefs);
     }
 
     /// Returns a mapping of access rights for each [`URef`]s address.
-    pub fn access_rights(&self) -> &HashMap<Address, HashSet<AccessRights>> {
+    pub fn access_rights(&self) -> &ContextAccessRights {
         &self.access_rights
     }
 
@@ -322,6 +355,10 @@ where
     /// Returns arguments.
     pub fn args(&self) -> &RuntimeArgs {
         &self.args
+    }
+
+    pub(crate) fn set_args(&mut self, args: RuntimeArgs) {
+        self.args = args
     }
 
     /// Returns new shared instance of an address generator.
@@ -556,12 +593,7 @@ where
     ///
     /// Once an [`URef`] is inserted, it's considered a valid [`URef`] in this runtime context.
     pub fn insert_uref(&mut self, uref: URef) {
-        let rights = uref.access_rights();
-        let entry = self
-            .access_rights
-            .entry(uref.addr())
-            .or_insert_with(|| std::iter::empty().collect());
-        entry.insert(rights);
+        self.access_rights.extend(&[uref])
     }
 
     /// Returns current effects of a tracking copy.
@@ -666,8 +698,7 @@ where
     /// Returns unit if [`URef`]s address exists in the context, and has correct access rights bit
     /// set.
     pub(crate) fn validate_uref(&self, uref: &URef) -> Result<(), Error> {
-        // Check if the `key` is known
-        if uref_has_access_rights(uref, &self.access_rights) {
+        if self.access_rights.uref_has_access_rights(uref) {
             Ok(())
         } else {
             Err(Error::ForgedReference(*uref))
@@ -795,7 +826,7 @@ where
 
     /// Returns remaining spending limit on account's main purse.
     pub(super) fn main_purse_spending_limit(&self) -> &U512 {
-        &self.main_purse_spending_limit
+        &self.remaining_spending_limit
     }
 
     /// Checks if we are calling a system contract.
@@ -816,7 +847,7 @@ where
             }
         }
 
-        let storage_costs = self.engine_config().wasm_config().storage_costs();
+        let storage_costs = self.engine_config.wasm_config().storage_costs();
 
         let gas_cost = storage_costs.calculate_gas_cost(bytes_count);
 
@@ -1112,11 +1143,6 @@ where
         Ok(())
     }
 
-    /// Returns borrowed instance of engine config.
-    pub fn engine_config(&self) -> &EngineConfig {
-        &self.engine_config
-    }
-
     /// Creates validated instance of `StoredValue` from `account`.
     fn account_to_validated_value(&self, account: Account) -> Result<StoredValue, Error> {
         let value = StoredValue::Account(account);
@@ -1244,26 +1270,30 @@ where
             })
     }
 
+    pub(crate) fn remaining_spending_limit(&self) -> U512 {
+        self.remaining_spending_limit
+    }
+
     /// Subtract spent amount from the main purse spending limit.
     pub(crate) fn subtract_amount_spent(&mut self, amount: U512) -> Option<U512> {
-        if let Some(res) = self.main_purse_spending_limit.checked_sub(amount) {
-            self.main_purse_spending_limit = res;
-            Some(self.main_purse_spending_limit)
+        if let Some(res) = self.remaining_spending_limit.checked_sub(amount) {
+            self.remaining_spending_limit = res;
+            Some(self.remaining_spending_limit)
         } else {
             error!(
-                limit = %self.main_purse_spending_limit,
+                limit = %self.remaining_spending_limit,
                 spent = %amount,
                 "exceeded main purse spending limit"
             );
-            self.main_purse_spending_limit = U512::zero();
+            self.remaining_spending_limit = U512::zero();
             None
         }
     }
 
     /// Sets a new spending limit.
-    /// Should be called after inner context returns - if tokens were there
-    /// spent there, it must count towards global limit for the whole deploy execution.
-    pub(crate) fn set_spending_limit(&mut self, amount: U512) {
-        self.main_purse_spending_limit = amount;
+    /// Should be called after inner context returns - if tokens were spent there, it must count
+    /// towards global limit for the whole deploy execution.
+    pub(crate) fn set_remaining_spending_limit(&mut self, amount: U512) {
+        self.remaining_spending_limit = amount;
     }
 }

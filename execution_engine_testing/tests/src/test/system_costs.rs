@@ -39,7 +39,6 @@ use casper_execution_engine::{
     },
 };
 use casper_types::{
-    account::AccountHash,
     runtime_args,
     system::{
         auction::{self, DelegationRate},
@@ -54,11 +53,9 @@ const CONTRACT_ADD_BID: &str = "add_bid.wasm";
 static VALIDATOR_1_SECRET_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::ed25519_from_bytes([123; SecretKey::ED25519_LENGTH]).unwrap());
 static VALIDATOR_1: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*VALIDATOR_1_SECRET_KEY));
-static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
 const VALIDATOR_1_STAKE: u64 = 250_000;
 const BOND_AMOUNT: u64 = 42;
 const BID_AMOUNT: u64 = 99 + DEFAULT_MINIMUM_DELEGATION_AMOUNT;
-const TRANSFER_AMOUNT: u64 = 123;
 const BID_DELEGATION_RATE: DelegationRate = auction::DELEGATION_RATE_DENOMINATOR;
 const UPDATED_CALL_CONTRACT_COST: Cost = 12_345;
 const NEW_ADD_BID_COST: u32 = DEFAULT_ADD_BID_COST * 2;
@@ -559,78 +556,6 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
     let call_cost = U512::from(NEW_UNDELEGATE_COST);
     assert_eq!(balance_after, balance_before - transaction_fee_2);
     assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
-}
-
-#[ignore]
-#[test]
-fn mint_transfer_has_expected_costs() {
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    let accounts = {
-        let validator_1 = GenesisAccount::account(
-            VALIDATOR_1.clone(),
-            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
-            Some(GenesisValidator::new(
-                Motes::new(VALIDATOR_1_STAKE.into()),
-                DelegationRate::zero(),
-            )),
-        );
-
-        let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
-        tmp.push(validator_1);
-        tmp
-    };
-
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
-
-    builder.run_genesis(&run_genesis_request);
-
-    let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
-        .expect("should have account");
-
-    let validator_1_account = builder
-        .get_account(*VALIDATOR_1_ADDR)
-        .expect("should have account");
-
-    let mint_hash = builder.get_mint_contract_hash();
-
-    let source = default_account.main_purse();
-    let target = validator_1_account.main_purse();
-
-    let id = Some(0u64);
-
-    let transfer_amount = U512::from(TRANSFER_AMOUNT);
-
-    let transfer_request = ExecuteRequestBuilder::contract_call_by_hash(
-        *DEFAULT_ACCOUNT_ADDR,
-        mint_hash,
-        mint::METHOD_TRANSFER,
-        runtime_args! {
-            mint::ARG_TO => Some(*VALIDATOR_1_ADDR),
-            mint::ARG_SOURCE => source,
-            mint::ARG_TARGET => target,
-            mint::ARG_AMOUNT => U512::from(TRANSFER_AMOUNT),
-            mint::ARG_ID => id,
-        },
-    )
-    .build();
-
-    let balance_before = builder.get_purse_balance(source);
-
-    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
-
-    builder.exec(transfer_request).expect_success().commit();
-    let balance_after = builder.get_purse_balance(source);
-
-    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
-
-    let expected_call_cost = U512::from(DEFAULT_TRANSFER_COST);
-    assert_eq!(
-        balance_after,
-        balance_before - transfer_amount - transaction_fee,
-    );
-    assert_eq!(builder.last_exec_gas_cost().value(), expected_call_cost);
 }
 
 #[ignore]

@@ -2765,6 +2765,22 @@ name = "named-keys-bloat"
 version = "0.1.0"
 
 [[package]]
+name = "named-keys-stored"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "named-keys-stored-call"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "named-purse-payment"
 version = "0.1.0"
 dependencies = [
@@ -3697,6 +3713,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "regression-20220204-nontrivial"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "regression-20220207"
 version = "0.1.0"
 dependencies = [
@@ -3706,6 +3730,22 @@ dependencies = [
 
 [[package]]
 name = "regression-20220208"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "regression-20220211"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "regression-20220211-call"
 version = "0.1.0"
 dependencies = [
  "casper-contract",
@@ -4770,6 +4810,14 @@ dependencies = [
 
 [[package]]
 name = "transfer-to-existing-account"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "transfer-to-named-purse"
 version = "0.1.0"
 dependencies = [
  "casper-contract",

@@ -1,4 +1,4 @@
-use alloc::vec::Vec;
+use alloc::{collections::BTreeMap, vec::Vec};
 use core::fmt::{self, Display, Formatter};
 
 use bitflags::bitflags;
@@ -10,7 +10,7 @@ use rand::{
 };
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::bytesrepr;
+use crate::{bytesrepr, Key, URef, URefAddr};
 
 /// The number of bytes in a serialized [`AccessRights`].
 pub const ACCESS_RIGHTS_SERIALIZED_LENGTH: usize = 1;
@@ -133,9 +133,66 @@ impl Distribution<AccessRights> for Standard {
     }
 }
 
+/// Access rights for a given runtime context.
+#[derive(Debug, PartialEq)]
+pub struct ContextAccessRights {
+    context_key: Key,
+    access_rights: BTreeMap<URefAddr, AccessRights>,
+}
+
+impl ContextAccessRights {
+    /// Creates a new instance of access rights.
+    pub fn new(context_key: Key, access_rights: BTreeMap<URefAddr, AccessRights>) -> Self {
+        ContextAccessRights {
+            context_key,
+            access_rights,
+        }
+    }
+
+    /// Returns the current context key.
+    pub fn context_key(&self) -> Key {
+        self.context_key
+    }
+
+    /// Extends the current access rights from a given set of URefs.
+    pub fn extend(&mut self, urefs: &[URef]) {
+        for uref in urefs {
+            let access_rights = self
+                .access_rights
+                .entry(uref.addr())
+                .or_insert_with(AccessRights::default);
+            *access_rights = access_rights.union(uref.access_rights());
+        }
+    }
+
+    /// Merges two given sets of access rights which returns the union between the two.
+    pub fn merge(&mut self, other: Self) {
+        for (uref_addr, bits) in other.access_rights {
+            let access_rights = self
+                .access_rights
+                .entry(uref_addr)
+                .or_insert_with(AccessRights::default);
+            *access_rights = access_rights.union(bits);
+        }
+    }
+
+    /// Checks whether given uref has enough access rights.
+    pub fn uref_has_access_rights(&self, uref: &URef) -> bool {
+        if let Some(known_rights) = self.access_rights.get(&uref.addr()) {
+            let rights_to_check = uref.access_rights();
+            known_rights.contains(rights_to_check)
+        } else {
+            // URef is not known
+            false
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const UREF_ADDR: [u8; 32] = [1u8; 32];
 
     fn test_readable(right: AccessRights, is_true: bool) {
         assert_eq!(right.is_readable(), is_true)
@@ -180,5 +237,32 @@ mod tests {
         test_addable(AccessRights::READ, false);
         test_addable(AccessRights::WRITE, false);
         test_addable(AccessRights::READ_ADD_WRITE, true);
+    }
+
+    #[test]
+    fn should_check_uref_has_access_rights() {
+        let uref = URef::new(UREF_ADDR, AccessRights::READ_ADD_WRITE);
+        let mut access_rights = BTreeMap::new();
+        access_rights.insert(UREF_ADDR, AccessRights::READ_ADD_WRITE);
+        let context_rights = ContextAccessRights::new(Key::from(uref), access_rights);
+        assert!(context_rights.uref_has_access_rights(&uref))
+    }
+
+    #[test]
+    fn should_check_uref_does_not_have_access_rights() {
+        let uref = URef::new(UREF_ADDR, AccessRights::READ_ADD_WRITE);
+        let mut access_rights = BTreeMap::new();
+        access_rights.insert(UREF_ADDR, AccessRights::READ_ADD);
+        let context_rights = ContextAccessRights::new(Key::from(uref), access_rights);
+        assert!(!context_rights.uref_has_access_rights(&uref))
+    }
+
+    #[test]
+    fn should_perform_union_of_access_rights() {
+        let uref = URef::new(UREF_ADDR, AccessRights::READ_ADD);
+        let mut access_rights = BTreeMap::new();
+        access_rights.insert(UREF_ADDR, AccessRights::READ_ADD_WRITE);
+        let context_rights = ContextAccessRights::new(Key::from(uref), access_rights);
+        assert!(context_rights.uref_has_access_rights(&uref))
     }
 }

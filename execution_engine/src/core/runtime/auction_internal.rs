@@ -3,7 +3,6 @@ use std::collections::BTreeSet;
 use casper_types::{
     account::{self, AccountHash},
     bytesrepr::{FromBytes, ToBytes},
-    contracts::NamedKeys,
     system::{
         auction::{
             AccountProvider, Auction, Bid, EraInfo, Error, MintProvider, RuntimeProvider,
@@ -186,6 +185,12 @@ where
         amount: U512,
         id: Option<u64>,
     ) -> Result<Result<(), mint::Error>, Error> {
+        if !(self.context.account().main_purse().addr() == source.addr()
+            || self.context.get_caller() == PublicKey::System.to_account_hash())
+        {
+            return Err(Error::InvalidCaller);
+        }
+
         let args_values = RuntimeArgs::try_new(|args| {
             args.insert(mint::ARG_TO, to)?;
             args.insert(mint::ARG_SOURCE, source)?;
@@ -198,26 +203,17 @@ where
 
         let gas_counter = self.gas_counter();
 
-        let extra_keys = [Key::from(self.context.account().main_purse())];
+        self.context
+            .access_rights_extend(&[source, target.into_add()]);
 
-        let mut stack = self.stack().clone();
-
-        stack
-            .push(
-                self.get_system_contract_stack_frame(MINT)
-                    .map_err(|_| Error::Storage)?,
-            )
-            .map_err(|_| Error::RuntimeStackOverflow)?;
         let cl_value = self
-            .call_host_mint(
-                self.context.protocol_version(),
+            .call_contract(
+                self.get_mint_contract().unwrap(),
                 mint::METHOD_TRANSFER,
-                &mut NamedKeys::default(),
-                &args_values,
-                &extra_keys,
-                stack,
+                args_values,
             )
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Transfer))?;
+
         self.set_gas_counter(gas_counter);
         cl_value.into_t().map_err(|_| Error::CLValue)
     }
@@ -227,9 +223,7 @@ where
         amount: U512,
         existing_purse: URef,
     ) -> Result<(), Error> {
-        if self.context.get_caller() != PublicKey::System.to_account_hash()
-            && self.context.validate_uref(&existing_purse).is_err()
-        {
+        if self.context.get_caller() != PublicKey::System.to_account_hash() {
             return Err(Error::InvalidCaller);
         }
 
@@ -241,42 +235,21 @@ where
         .map_err(|_| Error::CLValue)?;
 
         let gas_counter = self.gas_counter();
-        let mut stack = self.stack().clone();
-        stack
-            .push(
-                self.get_system_contract_stack_frame(MINT)
-                    .map_err(|_| Error::Storage)?,
-            )
-            .map_err(|_| Error::RuntimeStackOverflow)?;
+
+        let frame = self
+            .get_system_contract_stack_frame(MINT)
+            .map_err(|_| Error::Storage)?;
+        self.try_push_stack(frame)
+            .map_err(|_| Error::RuntimeStack)?;
         let mint_contract_hash = self.get_mint_contract().map_err(|exec_error| {
             <Option<Error>>::from(exec_error).unwrap_or(Error::MissingValue)
         })?;
 
-        let mint_contract_key: Key = mint_contract_hash.into();
-
-        let mint = match self
-            .context
-            .read_gs(&mint_contract_key)
-            .map_err(|exec_error| {
-                <Option<Error>>::from(exec_error).unwrap_or(Error::MissingValue)
-            })? {
-            Some(StoredValue::Contract(contract)) => contract,
-            Some(_) => {
-                return Err(Error::MissingValue);
-            }
-            None => return Err(Error::MissingKey),
-        };
-
-        let mut mint_named_keys = mint.named_keys().clone();
-
         let cl_value = self
-            .call_host_mint(
-                self.context.protocol_version(),
+            .call_contract(
+                mint_contract_hash,
                 mint::METHOD_MINT_INTO_EXISTING_PURSE,
-                &mut mint_named_keys,
-                &args_values,
-                &[],
-                stack,
+                args_values,
             )
             .map_err(|error| <Option<Error>>::from(error).unwrap_or(Error::MintError))?;
         self.set_gas_counter(gas_counter);

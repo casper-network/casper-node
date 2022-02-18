@@ -28,7 +28,8 @@ use crate::{
     contract_wasm::ContractWasmHash,
     uref,
     uref::URef,
-    CLType, CLTyped, HashAddr, Key, ProtocolVersion, KEY_HASH_LENGTH,
+    AccessRights, CLType, CLTyped, ContextAccessRights, HashAddr, Key, ProtocolVersion,
+    KEY_HASH_LENGTH,
 };
 
 /// Maximum number of distinct user groups.
@@ -676,6 +677,12 @@ pub struct ContractPackage {
     lock_status: ContractPackageStatus,
 }
 
+impl CLTyped for ContractPackage {
+    fn cl_type() -> CLType {
+        CLType::Any
+    }
+}
+
 impl ContractPackage {
     /// Create new `ContractPackage` (with no versions) from given access key.
     pub fn new(
@@ -1079,6 +1086,18 @@ impl Contract {
     pub fn is_compatible_protocol_version(&self, protocol_version: ProtocolVersion) -> bool {
         self.protocol_version.value().major == protocol_version.value().major
     }
+
+    /// Extracts the access rights from the named keys of the contract.
+    pub fn extract_access_rights(&self, contract_hash: ContractHash) -> ContextAccessRights {
+        let mut access_rights = BTreeMap::new();
+        for uref in self.named_keys.values().filter_map(|key| key.as_uref()) {
+            let access_rights = access_rights
+                .entry(uref.addr())
+                .or_insert_with(AccessRights::default);
+            *access_rights = access_rights.union(uref.access_rights());
+        }
+        ContextAccessRights::new(contract_hash.into(), access_rights)
+    }
 }
 
 impl ToBytes for Contract {
@@ -1204,6 +1223,23 @@ impl From<EntryPoint> for (String, Parameters, CLType, EntryPointAccess, EntryPo
 impl EntryPoint {
     /// `EntryPoint` constructor.
     pub fn new<T: Into<String>>(
+        name: T,
+        args: Parameters,
+        ret: CLType,
+        access: EntryPointAccess,
+        entry_point_type: EntryPointType,
+    ) -> Self {
+        EntryPoint {
+            name: name.into(),
+            args,
+            ret,
+            access,
+            entry_point_type,
+        }
+    }
+
+    /// Returns a session entry point type.
+    pub fn session<T: Into<String>>(
         name: T,
         args: Parameters,
         ret: CLType,
@@ -1431,7 +1467,7 @@ impl FromBytes for Parameter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{AccessRights, URef};
+    use crate::{AccessRights, URef, UREF_ADDR_LENGTH};
     use alloc::borrow::ToOwned;
 
     fn make_contract_package() -> ContractPackage {
@@ -1665,5 +1701,36 @@ mod tests {
         let json_string = serde_json::to_string_pretty(&contract_hash).unwrap();
         let decoded = serde_json::from_str(&json_string).unwrap();
         assert_eq!(contract_hash, decoded)
+    }
+
+    #[test]
+    fn should_extract_access_rights() {
+        let contract_hash = ContractHash([255; 32]);
+        let uref = URef::new([84; UREF_ADDR_LENGTH], AccessRights::READ_ADD);
+        let uref_r = URef::new([42; UREF_ADDR_LENGTH], AccessRights::READ);
+        let uref_a = URef::new([42; UREF_ADDR_LENGTH], AccessRights::ADD);
+        let uref_w = URef::new([42; UREF_ADDR_LENGTH], AccessRights::WRITE);
+        let mut named_keys = NamedKeys::new();
+        named_keys.insert("a".to_string(), Key::URef(uref_r));
+        named_keys.insert("b".to_string(), Key::URef(uref_a));
+        named_keys.insert("c".to_string(), Key::URef(uref_w));
+        named_keys.insert("d".to_string(), Key::URef(uref));
+        let contract = Contract::new(
+            ContractPackageHash::new([254; 32]),
+            ContractWasmHash::new([253; 32]),
+            named_keys,
+            EntryPoints::default(),
+            ProtocolVersion::V1_0_0,
+        );
+        let access_rights = contract.extract_access_rights(contract_hash);
+        let expected_uref = URef::new([42; UREF_ADDR_LENGTH], AccessRights::READ_ADD_WRITE);
+        assert!(
+            access_rights.uref_has_access_rights(&uref),
+            "urefs in named keys should be included in access rights"
+        );
+        assert!(
+            access_rights.uref_has_access_rights(&expected_uref),
+            "multiple access right bits to the same uref should coalesce"
+        );
     }
 }

@@ -2,7 +2,7 @@
 #![no_main]
 
 use casper_contract::contract_api::{account, runtime};
-use casper_types::URef;
+use casper_types::{AccessRights, ApiError, URef};
 
 const ARG_PURSE: &str = "purse";
 
@@ -10,8 +10,10 @@ const ARG_PURSE: &str = "purse";
 pub extern "C" fn call() {
     let known_main_purse: URef = runtime::get_named_arg(ARG_PURSE);
     let main_purse: URef = account::get_main_purse();
-    assert_eq!(
-        main_purse, known_main_purse,
-        "main purse was not known purse"
-    );
+    if known_main_purse.is_writeable() {
+        runtime::revert(ApiError::User(1))
+    }
+    if main_purse.with_access_rights(AccessRights::READ_ADD) != known_main_purse {
+        runtime::revert(ApiError::User(2));
+    }
 }

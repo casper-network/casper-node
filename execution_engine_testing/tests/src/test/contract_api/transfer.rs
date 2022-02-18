@@ -15,7 +15,6 @@ use casper_types::{
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
-const CONTRACT_TRANSFER_PURSE_TO_PUBLIC_KEY: &str = "transfer_purse_to_public_key.wasm";
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
 const CONTRACT_TRANSFER_TO_PUBLIC_KEY: &str = "transfer_to_public_key.wasm";
 
@@ -40,7 +39,6 @@ static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| ACCOUNT_2_PUBLIC_KEY.to_
 
 const ARG_TARGET: &str = "target";
 const ARG_AMOUNT: &str = "amount";
-const ARG_SOURCE_PURSE: &str = "source_purse";
 
 #[ignore]
 #[test]
@@ -120,63 +118,6 @@ fn should_transfer_to_public_key() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_PUBLIC_KEY,
         runtime_args! { ARG_TARGET => ACCOUNT_1_PUBLIC_KEY.clone(), ARG_AMOUNT => *TRANSFER_1_AMOUNT },
-    )
-    .build();
-
-    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
-
-    builder.exec(exec_request_1).expect_success().commit();
-
-    // Check genesis account balance
-
-    let modified_balance = builder.get_purse_balance(default_account_purse);
-
-    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
-
-    assert_eq!(
-        modified_balance,
-        initial_account_balance - transaction_fee - transfer_amount
-    );
-
-    let handle_payment = builder.get_handle_payment_contract();
-    let payment_purse = (*handle_payment
-        .named_keys()
-        .get(handle_payment::PAYMENT_PURSE_KEY)
-        .unwrap())
-    .into_uref()
-    .unwrap();
-    assert_eq!(builder.get_purse_balance(payment_purse), U512::zero());
-}
-
-#[ignore]
-#[test]
-fn should_transfer_from_purse_to_public_key() {
-    let transfer_amount: U512 = *TRANSFER_1_AMOUNT;
-
-    // Run genesis
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
-
-    let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
-        .expect("should get account");
-
-    let default_account_purse = default_account.main_purse();
-
-    // Check genesis account balance
-    let initial_account_balance = builder.get_purse_balance(default_account_purse);
-
-    // Exec transfer contract
-
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_TRANSFER_PURSE_TO_PUBLIC_KEY,
-        runtime_args! {
-            ARG_SOURCE_PURSE => default_account_purse,
-            ARG_TARGET => ACCOUNT_1_PUBLIC_KEY.clone(),
-            ARG_AMOUNT => *TRANSFER_1_AMOUNT,
-        },
     )
     .build();
 

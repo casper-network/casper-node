@@ -1875,7 +1875,7 @@
             "type": "object"
           },
           "NamedArg": {
-            "description": "Named arguments to a contract",
+            "description": "Named arguments to a contract.",
             "items": [
               {
                 "type": "string"
