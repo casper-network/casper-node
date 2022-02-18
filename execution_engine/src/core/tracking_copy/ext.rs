@@ -238,10 +238,6 @@ where
         }
     }
 
-    // fn get_system_module(&mut self, preprocessor: &Preprocessor) -> Result<Module, Self::Error> {
-    //     Ok(wasm::do_nothing_module(preprocessor)?)
-    // }
-
     fn get_system_contracts(
         &mut self,
         correlation_id: CorrelationId,
