@@ -53,7 +53,8 @@ use crate::{
     fatal,
     types::{
         ActivationPoint, BlockHash, BlockHeader, Chainspec, Deploy, DeployHash,
-        DeployOrTransferHash, FinalitySignature, FinalizedApprovals, FinalizedBlock, TimeDiff, Timestamp,
+        DeployOrTransferHash, FinalitySignature, FinalizedApprovals, FinalizedBlock, TimeDiff,
+        Timestamp,
     },
     utils::WithDir,
     NodeRng,
