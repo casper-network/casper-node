@@ -166,7 +166,6 @@ async fn fetch_and_store_block_header(
 }
 
 /// Fetches and stores a deploy.
-/// Fetches and stores a deploy.
 async fn fetch_and_store_deploy(
     deploy_or_transfer_hash: DeployHash,
     ctx: &ChainSyncContext<'_>,
