@@ -81,7 +81,7 @@ impl PartialChunks {
         // set used for filtering out duplicates
         let mut filter_peers: HashSet<NodeId> = self.peers.iter().cloned().collect();
         for peer in other.peers {
-            if filter_peers.insert(peer.clone()) {
+            if filter_peers.insert(peer) {
                 self.peers.push(peer);
             }
         }
@@ -198,7 +198,7 @@ impl TrieFetcher {
         match partial_chunks.missing_chunk(count) {
             Some(missing_index) => {
                 let peer = match partial_chunks.peers.last() {
-                    Some(peer) => peer.clone(),
+                    Some(peer) => peer,
                     None => {
                         debug!(
                             %digest, %missing_index,
@@ -209,11 +209,11 @@ impl TrieFetcher {
                     }
                 };
                 let next_id = TrieOrChunkId(missing_index, digest);
-                self.try_download_chunk(effect_builder, next_id, peer, partial_chunks)
+                self.try_download_chunk(effect_builder, next_id, *peer, partial_chunks)
             }
             None => match partial_chunks.assemble_chunks(count) {
                 Ok(trie) => {
-                    let sender = partial_chunks.sender.clone();
+                    let sender = partial_chunks.sender;
                     partial_chunks.respond(into_response(Box::new(trie), sender))
                 }
                 Err(error) => {
@@ -284,7 +284,7 @@ where
             }) => {
                 let trie_id = TrieOrChunkId(0, hash);
                 let peer = match peers.last() {
-                    Some(peer) => peer.clone(),
+                    Some(peer) => peer,
                     None => {
                         error!(%hash, "tried to fetch trie with no peers available");
                         return Effects::new();
@@ -292,11 +292,11 @@ where
                 };
                 let partial_chunks = PartialChunks {
                     responders: vec![responder],
-                    peers,
+                    peers: peers.clone(),
                     chunks: Default::default(),
                     sender: None,
                 };
-                self.try_download_chunk(effect_builder, trie_id, peer, partial_chunks)
+                self.try_download_chunk(effect_builder, trie_id, *peer, partial_chunks)
             }
             Event::TrieOrChunkFetched { id, fetch_result } => {
                 let hash = id.digest();
@@ -312,7 +312,7 @@ where
                         Some(mut partial_chunks) => {
                             warn!(%error, %id, "error fetching trie chunk");
                             // try with the next peer, if possible
-                            match partial_chunks.next_peer().cloned() {
+                            match partial_chunks.next_peer().copied() {
                                 Some(next_peer) => self.try_download_chunk(
                                     effect_builder,
                                     id,

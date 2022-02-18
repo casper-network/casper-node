@@ -64,7 +64,7 @@ enum Event {
     #[from]
     StorageRequest(StorageRequest),
     #[from]
-    NetworkRequest(NetworkRequest<NodeId, Message>),
+    NetworkRequest(NetworkRequest<Message>),
 }
 
 impl ReactorEvent for Event {

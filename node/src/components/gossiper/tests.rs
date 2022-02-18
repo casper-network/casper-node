@@ -89,7 +89,7 @@ enum Event {
     #[from]
     ContractRuntimeRequest(ContractRuntimeRequest),
     #[from]
-    ConsensusMessageIncoming(ConsensusMessageIncoming<NodeId>),
+    ConsensusMessageIncoming(ConsensusMessageIncoming),
     #[from]
     DeployGossiperIncoming(GossiperIncoming<Deploy>),
     #[from]
@@ -116,8 +116,8 @@ impl ReactorEvent for Event {
     }
 }
 
-impl From<NetworkRequest<NodeId, Message<Deploy>>> for Event {
-    fn from(request: NetworkRequest<NodeId, Message<Deploy>>) -> Self {
+impl From<NetworkRequest<Message<Deploy>>> for Event {
+    fn from(request: NetworkRequest<Message<Deploy>>) -> Self {
         Event::NetworkRequest(request.map_payload(NodeMessage::from))
     }
 }

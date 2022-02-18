@@ -1055,7 +1055,7 @@ impl Reactor {
 
 #[cfg(test)]
 impl NetworkedReactor for Reactor {
-    fn node_id(&self) -> crate::types::NodeId {
+    fn node_id(&self) -> NodeId {
         self.small_network.node_id()
     }
 }

@@ -145,9 +145,9 @@ reactor!(Reactor {
         TrieResponseIncoming -> [!];
 
         // No consensus component.
-        ConsensusMessageIncoming<NodeId> -> [!];
+        ConsensusMessageIncoming -> [!];
         FinalitySignatureIncoming -> [!];
-        BlocklistAnnouncement<NodeId> -> [!];
+        BlocklistAnnouncement -> [!];
     }
 });
 
@@ -229,7 +229,7 @@ fn fetch_deploy(
 ) -> impl FnOnce(EffectBuilder<ReactorEvent>) -> Effects<ReactorEvent> {
     move |effect_builder: EffectBuilder<ReactorEvent>| {
         effect_builder
-            .fetch::<Deploy, NodeId>(deploy_hash, node_id)
+            .fetch::<Deploy>(deploy_hash, node_id)
             .then(move |deploy| async move {
                 let mut result = fetched.lock().unwrap();
                 result.0 = true;
@@ -259,7 +259,7 @@ async fn store_deploy(
             move |event: &ReactorEvent| {
                 matches!(
                     event,
-                    ReactorEvent::DeployAcceptorAnnouncementNodeId(
+                    ReactorEvent::DeployAcceptorAnnouncement(
                         DeployAcceptorAnnouncement::AcceptedNewDeploy { .. },
                     )
                 )
@@ -470,7 +470,7 @@ async fn should_timeout_fetch_from_peer() {
             &requesting_node,
             &mut rng,
             move |event: &ReactorEvent| {
-                if let ReactorEvent::NetworkRequestNodeIdMessage(NetworkRequest::SendMessage {
+                if let ReactorEvent::NetworkRequestMessage(NetworkRequest::SendMessage {
                     payload,
                     ..
                 }) = event
@@ -490,7 +490,7 @@ async fn should_timeout_fetch_from_peer() {
             &holding_node,
             &mut rng,
             move |event: &ReactorEvent| {
-                if let ReactorEvent::NetworkRequestNodeIdMessage(NetworkRequest::SendMessage {
+                if let ReactorEvent::NetworkRequestMessage(NetworkRequest::SendMessage {
                     payload,
                     ..
                 }) = event

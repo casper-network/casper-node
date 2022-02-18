@@ -112,7 +112,7 @@ impl From<ContractRuntimeRequest> for Event {
     }
 }
 
-impl FromIncoming<NodeId, Message> for Event {
+impl FromIncoming<Message> for Event {
     fn from_incoming(sender: NodeId, payload: Message) -> Self {
         match payload {
             Message::AddressGossiper(message) => {
