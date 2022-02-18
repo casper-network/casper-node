@@ -54,6 +54,15 @@ impl<P: Payload> Message<P> {
         }
     }
 
+    /// Determines whether or not a message is low priority.
+    #[inline]
+    pub(super) fn is_low_priority(&self) -> bool {
+        match self {
+            Message::Handshake { .. } => false,
+            Message::Payload(payload) => payload.is_low_priority(),
+        }
+    }
+
     /// Returns the incoming resource estimate of the payload.
     #[inline]
     pub(super) fn payload_incoming_resource_estimate(&self, weights: &EstimatorWeights) -> u32 {
@@ -285,6 +294,11 @@ pub(crate) trait Payload:
 
     /// The penalty for resource usage of a message to be applied when processed as incoming.
     fn incoming_resource_estimate(&self, _weights: &EstimatorWeights) -> u32;
+
+    /// Determines if the payload should be considered low priority.
+    fn is_low_priority(&self) -> bool {
+        false
+    }
 }
 
 /// Network message conversion support.

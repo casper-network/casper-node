@@ -503,6 +503,13 @@ where
                             msg.payload_incoming_resource_estimate(&context.payload_weights),
                         )
                         .await;
+
+                    let queue_kind = if msg.is_low_priority() {
+                        QueueKind::NetworkLowPriority
+                    } else {
+                        QueueKind::NetworkIncoming
+                    };
+
                     context
                         .event_queue
                         .schedule(
@@ -511,7 +518,7 @@ where
                                 msg: Box::new(msg),
                                 span: span.clone(),
                             },
-                            QueueKind::NetworkIncoming,
+                            queue_kind,
                         )
                         .await;
                 }
