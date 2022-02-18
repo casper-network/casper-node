@@ -54,16 +54,8 @@ function _main()
     _step_07
     _step_08
 
-    # Workaround for https://github.com/casper-network/casper-node/pull/2101#issuecomment-923205726
-#    if [ "$(echo $INITIAL_PROTOCOL_VERSION | tr -d '.')" -ge "140" ]; then
-#        log "... using latest block hash (post version 1.4.0) [expected]"
-#        UPGRADE_HASH="$($(get_path_to_client) get-block --node-address "$(get_node_address_rpc '2')" | jq -r '.result.block.hash')"
-#    else
-#        log "... using block 1 hash (pre version 1.4.0) [expected]"
-#        UPGRADE_HASH="$($(get_path_to_client) get-block -b 1 --node-address "$(get_node_address_rpc '2')" | jq -r '.result.block.hash')"
-#    fi
-
     UPGRADE_HASH="$($(get_path_to_client) get-block --node-address "$(get_node_address_rpc '2')" | jq -r '.result.block.hash')"
+
     _step_09 "$PROTOCOL_VERSION" "$ACTIVATION_POINT" "$UPGRADE_HASH"
     _step_10
     _step_11
