@@ -11,12 +11,11 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
-use crate::crypto;
 #[cfg(test)]
 use crate::crypto::AsymmetricKeyExt;
 #[cfg(test)]
 use crate::testing::TestRng;
-use crate::types::NodeId;
+use crate::{crypto, types::NodeId};
 
 use super::counting_format::ConnectionId;
 
