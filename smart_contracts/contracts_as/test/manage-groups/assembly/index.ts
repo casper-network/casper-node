@@ -97,18 +97,17 @@ export function remove_group_urefs(): void {
   }
   let groupName: String = fromBytesString(CL.getNamedArg(GROUP_NAME_ARG)).unwrap();
 
-  // let ordinalsBytes = runtime::get_named_arg()
   let ordinals = fromBytesArray(CL.getNamedArg(GROUP_NAME_ARG), fromBytesU64);
 
-  let bytes = packageHashKey.read();
-  if (bytes === null) {
+  let contractPackageBytes = packageHashKey.read();
+  if (contractPackageBytes === null) {
     Error.fromErrorCode(ErrorCode.GetKey).revert();
     return;
   }
 
-  // Finds last uref in the groups in the package
-
-  let urefBytes = bytes.slice(bytes.length - 1 - 33, bytes.length - 1);
+  // Finds last uref in the groups in the contract package bytes.
+  // ContractPackage serialization structure is defined in `types/src/contracts.rs`
+  let urefBytes = contractPackageBytes.slice(contractPackageBytes.length - 1 - 33, contractPackageBytes.length - 1);
   let uref = URef.fromBytes(urefBytes).unwrap();
 
   let urefs = new Array<URef>();

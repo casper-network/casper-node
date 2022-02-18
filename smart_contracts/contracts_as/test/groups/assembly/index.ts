@@ -67,6 +67,7 @@ export function uncallable_session(): void { }
 export function uncallable_contract(): void { }
 
 export function restricted_standard_payment(): void {
+  // Performs standard payment operation as a restricted session entrypoint.
 
   let amountBytes = CL.getNamedArg("amount");
   if (amountBytes === null) {
