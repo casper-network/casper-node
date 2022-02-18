@@ -14,7 +14,7 @@ use crate::{
 
 #[derive(Clone, DataSize, Debug)]
 pub(super) struct Config {
-    chainspec: Arc<Chainspec>,
+    pub chainspec: Arc<Chainspec>, // TODO[RC]: `pub` temporarily
     /// Hash used as a trust anchor when joining, if any.
     trusted_hash: Option<BlockHash>,
     /// Maximum number of deploys to fetch in parallel.
