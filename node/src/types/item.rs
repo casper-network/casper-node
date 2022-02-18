@@ -34,6 +34,8 @@ use crate::types::{BlockHash, BlockHeader};
 pub enum Tag {
     /// A deploy.
     Deploy,
+    /// Finalized approvals for a deploy.
+    FinalizedApprovals,
     /// A block.
     Block,
     /// A gossiped public listening address.

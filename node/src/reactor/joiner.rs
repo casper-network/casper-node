@@ -69,7 +69,8 @@ use crate::{
         EventQueueHandle, Finalize, ReactorExit,
     },
     types::{
-        Block, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy, ExitCode, NodeId,
+        Block, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy, ExitCode,
+        FinalizedApprovalsWithId, NodeId,
     },
     utils::WithDir,
     NodeRng,
@@ -132,9 +133,13 @@ pub(crate) enum JoinerEvent {
     #[from]
     BlockByHeightFetcher(#[serde(skip_serializing)] fetcher::Event<BlockWithMetadata>),
 
-    /// Deploy fetcher event.
+    /// Finalized approvals fetcher event.
     #[from]
     DeployFetcher(#[serde(skip_serializing)] fetcher::Event<Deploy>),
+
+    /// Finalized approvals fetcher event.
+    #[from]
+    FinalizedApprovalsFetcher(#[serde(skip_serializing)] fetcher::Event<FinalizedApprovalsWithId>),
 
     /// Trie or chunk fetcher event.
     #[from]
@@ -197,6 +202,12 @@ pub(crate) enum JoinerEvent {
     /// Deploy fetcher request.
     #[from]
     DeployFetcherRequest(#[serde(skip_serializing)] FetcherRequest<NodeId, Deploy>),
+
+    /// Finalized approvals fetcher request.
+    #[from]
+    FinalizedApprovalsFetcherRequest(
+        #[serde(skip_serializing)] FetcherRequest<NodeId, FinalizedApprovalsWithId>,
+    ),
 
     /// Address gossip request.
     #[from]
@@ -297,6 +308,7 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::BlockFetcher(_) => "BlockFetcher",
             JoinerEvent::BlockByHeightFetcher(_) => "BlockByHeightFetcher",
             JoinerEvent::DeployFetcher(_) => "DeployFetcher",
+            JoinerEvent::FinalizedApprovalsFetcher(_) => "FinalizedApprovalsFetcher",
             JoinerEvent::TrieOrChunkFetcher(_) => "TrieOrChunkFetcher",
             JoinerEvent::TrieFetcher(_) => "TrieFetcher",
             JoinerEvent::DeployAcceptor(_) => "DeployAcceptor",
@@ -306,6 +318,7 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::BlockFetcherRequest(_) => "BlockFetcherRequest",
             JoinerEvent::BlockByHeightFetcherRequest(_) => "BlockByHeightFetcherRequest",
             JoinerEvent::DeployFetcherRequest(_) => "DeployFetcherRequest",
+            JoinerEvent::FinalizedApprovalsFetcherRequest(_) => "FinalizedApprovalsFetcherRequest",
             JoinerEvent::TrieOrChunkFetcherRequest(_) => "TrieOrChunkFetcherRequest",
             JoinerEvent::TrieFetcherRequest(_) => "TrieFetcherRequest",
             JoinerEvent::DumpConsensusStateRequest(_) => "DumpConsensusStateRequest",
@@ -384,6 +397,9 @@ impl Display for JoinerEvent {
             JoinerEvent::DeployFetcherRequest(request) => {
                 write!(f, "deploy fetcher request: {}", request)
             }
+            JoinerEvent::FinalizedApprovalsFetcherRequest(request) => {
+                write!(f, "finalized approvals fetcher request: {}", request)
+            }
             JoinerEvent::BeginAddressGossipRequest(request) => {
                 write!(f, "begin address gossip request: {}", request)
             }
@@ -402,6 +418,9 @@ impl Display for JoinerEvent {
             }
             JoinerEvent::TrieFetcher(event) => write!(f, "trie fetcher: {}", event),
             JoinerEvent::DeployFetcher(event) => write!(f, "deploy fetcher event: {}", event),
+            JoinerEvent::FinalizedApprovalsFetcher(event) => {
+                write!(f, "finalized approvals fetcher event: {}", event)
+            }
             JoinerEvent::ContractRuntime(event) => write!(f, "contract runtime event: {:?}", event),
             JoinerEvent::ContractRuntimeAnnouncement(announcement) => {
                 write!(f, "block executor announcement: {}", announcement)
@@ -473,6 +492,7 @@ pub(crate) struct Reactor {
     contract_runtime: ContractRuntime,
     chain_synchronizer: ChainSynchronizer,
     deploy_fetcher: Fetcher<Deploy>,
+    finalized_approvals_fetcher: Fetcher<FinalizedApprovalsWithId>,
     block_by_hash_fetcher: Fetcher<Block>,
     block_by_height_fetcher: Fetcher<BlockWithMetadata>,
     block_header_and_finality_signatures_by_height_fetcher: Fetcher<BlockHeaderWithMetadata>,
@@ -587,6 +607,7 @@ impl reactor::Reactor for Reactor {
             FetcherBuilder::new(config.fetcher, registry, verifiable_chunked_hash_activation);
 
         let deploy_fetcher = fetcher_builder.build("deploy")?;
+        let finalized_approvals_fetcher = fetcher_builder.build("finalized_approvals")?;
         let block_by_height_fetcher = fetcher_builder.build("block_by_height")?;
         let block_by_hash_fetcher = fetcher_builder.build("block")?;
         let block_header_and_finality_signatures_by_height_fetcher =
@@ -620,6 +641,7 @@ impl reactor::Reactor for Reactor {
                 chain_synchronizer,
                 block_by_hash_fetcher,
                 deploy_fetcher,
+                finalized_approvals_fetcher,
                 block_by_height_fetcher,
                 block_header_by_hash_fetcher,
                 block_header_and_finality_signatures_by_height_fetcher,
@@ -710,6 +732,11 @@ impl reactor::Reactor for Reactor {
                 JoinerEvent::DeployFetcher,
                 self.deploy_fetcher.handle_event(effect_builder, rng, event),
             ),
+            JoinerEvent::FinalizedApprovalsFetcher(event) => reactor::wrap_effects(
+                JoinerEvent::FinalizedApprovalsFetcher,
+                self.finalized_approvals_fetcher
+                    .handle_event(effect_builder, rng, event),
+            ),
             JoinerEvent::BlockByHeightFetcher(event) => reactor::wrap_effects(
                 JoinerEvent::BlockByHeightFetcher,
                 self.block_by_height_fetcher
@@ -724,6 +751,11 @@ impl reactor::Reactor for Reactor {
                 effect_builder,
                 rng,
                 JoinerEvent::DeployFetcher(request.into()),
+            ),
+            JoinerEvent::FinalizedApprovalsFetcherRequest(request) => self.dispatch_event(
+                effect_builder,
+                rng,
+                JoinerEvent::FinalizedApprovalsFetcher(request.into()),
             ),
             JoinerEvent::StorageRequest(req) => reactor::wrap_effects(
                 JoinerEvent::Storage,
@@ -967,6 +999,16 @@ impl Reactor {
         match message {
             NetResponse::Deploy(ref serialized_item) => {
                 reactor::handle_fetch_response::<Self, Deploy>(
+                    self,
+                    effect_builder,
+                    rng,
+                    sender,
+                    serialized_item,
+                    verifiable_chunked_hash_activation,
+                )
+            }
+            NetResponse::FinalizedApprovals(ref serialized_item) => {
+                reactor::handle_fetch_response::<Self, FinalizedApprovalsWithId>(
                     self,
                     effect_builder,
                     rng,

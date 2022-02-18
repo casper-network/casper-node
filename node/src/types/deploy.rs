@@ -5,6 +5,7 @@ use std::{
     array::TryFromSliceError,
     cmp,
     collections::{BTreeSet, HashMap},
+    convert::Infallible,
     error::Error as StdError,
     fmt::{self, Debug, Display, Formatter},
     hash,
@@ -619,7 +620,7 @@ impl DeployWithApprovals {
 }
 
 /// A set of approvals that has been agreed upon by consensus to approve of a specific deploy.
-#[derive(DataSize, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(DataSize, Debug, Deserialize, Eq, PartialEq, Serialize, Clone)]
 pub struct FinalizedApprovals(BTreeSet<Approval>);
 
 impl FinalizedApprovals {
@@ -627,12 +628,66 @@ impl FinalizedApprovals {
     pub fn new(approvals: BTreeSet<Approval>) -> Self {
         Self(approvals)
     }
+
+    /// Return the inner set of approvals.
+    pub fn into_inner(self) -> BTreeSet<Approval> {
+        self.0
+    }
 }
 
 impl AsRef<BTreeSet<Approval>> for FinalizedApprovals {
     /// Returns the approvals as a reference to the set.
     fn as_ref(&self) -> &BTreeSet<Approval> {
         &self.0
+    }
+}
+
+/// A set of finalized approvals together with data identifying the deploy.
+#[derive(DataSize, Debug, Deserialize, Eq, PartialEq, Serialize, Clone)]
+pub struct FinalizedApprovalsWithId {
+    id: DeployHash,
+    approvals: FinalizedApprovals,
+}
+
+impl FinalizedApprovalsWithId {
+    /// Creates a new instance of `FinalizedApprovalsWithId`.
+    pub fn new(id: DeployHash, approvals: FinalizedApprovals) -> Self {
+        Self { id, approvals }
+    }
+
+    /// Return the inner set of approvals.
+    pub fn into_inner(self) -> BTreeSet<Approval> {
+        self.approvals.into_inner()
+    }
+}
+
+impl Item for FinalizedApprovalsWithId {
+    type Id = DeployHash;
+    type ValidationError = Infallible;
+
+    const TAG: Tag = Tag::FinalizedApprovals;
+    const ID_IS_COMPLETE_ITEM: bool = false;
+
+    fn validate(
+        &self,
+        _verifiable_chunked_hash_activation: EraId,
+    ) -> Result<(), Self::ValidationError> {
+        Ok(())
+    }
+
+    fn id(&self, _verifiable_chunked_hash_activation: EraId) -> Self::Id {
+        self.id
+    }
+}
+
+impl Display for FinalizedApprovalsWithId {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        write!(
+            formatter,
+            "finalized approvals for {}: {}",
+            self.id,
+            DisplayIter::new(self.approvals.0.iter())
+        )
     }
 }
 
@@ -793,6 +848,11 @@ impl Deploy {
     /// Returns the `Approval`s for this deploy.
     pub fn approvals(&self) -> &BTreeSet<Approval> {
         &self.approvals
+    }
+
+    /// Replaces the set of approvals attached to this deploy.
+    pub fn replace_approvals(&mut self, approvals: BTreeSet<Approval>) {
+        self.approvals = approvals;
     }
 
     /// Returns the hash of this deploy wrapped in `DeployOrTransferHash`.

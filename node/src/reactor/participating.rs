@@ -1145,6 +1145,13 @@ impl reactor::Reactor for Reactor {
                             maybe_responder: None,
                         })
                     }
+                    NetResponse::FinalizedApprovals(_) => {
+                        error!(
+                            "cannot handle get response for finalized approvals from {}",
+                            sender
+                        );
+                        return Effects::new();
+                    }
                     NetResponse::Block(_) => {
                         error!(
                             "cannot handle get response for block-by-hash from {}",

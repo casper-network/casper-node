@@ -92,8 +92,9 @@ use crate::{
     types::{
         error::BlockValidationError, Block, BlockBody, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, Deploy, DeployHash,
-        DeployMetadata, DeployWithFinalizedApprovals, FinalizedApprovals, HashingAlgorithmVersion,
-        Item, MerkleBlockBody, MerkleBlockBodyPart, MerkleLinkedListNode, NodeId, TimeDiff,
+        DeployMetadata, DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedApprovalsWithId,
+        HashingAlgorithmVersion, Item, MerkleBlockBody, MerkleBlockBodyPart, MerkleLinkedListNode,
+        NodeId, TimeDiff,
     },
     utils::{display_error, WithDir},
     NodeRng,
@@ -761,6 +762,31 @@ impl Storage {
             NetRequest::Deploy(ref serialized_id) => {
                 let id = decode_item_id::<Deploy>(serialized_id)?;
                 let opt_item = self.get_deploy(id).map_err(FatalStorageError::from)?;
+
+                Ok(self.update_pool_and_send(
+                    effect_builder,
+                    incoming.sender,
+                    serialized_id,
+                    id,
+                    opt_item,
+                )?)
+            }
+            NetRequest::FinalizedApprovals(ref serialized_id) => {
+                let id = decode_item_id::<FinalizedApprovalsWithId>(serialized_id)?;
+                let opt_item = self
+                    .env
+                    .begin_ro_txn()
+                    .map_err(Into::into)
+                    .and_then(|mut tx| {
+                        self.get_deploy_with_finalized_approvals(&mut tx, &id)
+                            .map_err(FatalStorageError::from)
+                    })?
+                    .map(|deploy| {
+                        FinalizedApprovalsWithId::new(
+                            id,
+                            FinalizedApprovals::new(deploy.into_naive().approvals().clone()),
+                        )
+                    });
 
                 Ok(self.update_pool_and_send(
                     effect_builder,

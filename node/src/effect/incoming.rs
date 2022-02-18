@@ -60,6 +60,8 @@ pub(crate) type FinalitySignatureIncoming = MessageIncoming<NodeId, Box<Finality
 pub(crate) enum NetRequest {
     /// Request for a deploy.
     Deploy(Vec<u8>),
+    /// Request for finalized approvals.
+    FinalizedApprovals(Vec<u8>),
     /// Request for a block.
     Block(Vec<u8>),
     /// Request for a gossiped public listening address.
@@ -77,6 +79,7 @@ impl Display for NetRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             NetRequest::Deploy(_) => f.write_str("request for deploy"),
+            NetRequest::FinalizedApprovals(_) => f.write_str("request for finalized approvals"),
             NetRequest::Block(_) => f.write_str("request for block"),
             NetRequest::GossipedAddress(_) => f.write_str("request for gossiped address"),
             NetRequest::BlockAndMetadataByHeight(_) => {
@@ -99,6 +102,7 @@ impl NetRequest {
     pub(crate) fn unique_id(&self) -> Vec<u8> {
         let id = match self {
             NetRequest::Deploy(ref id) => id,
+            NetRequest::FinalizedApprovals(ref id) => id,
             NetRequest::Block(ref id) => id,
             NetRequest::GossipedAddress(ref id) => id,
             NetRequest::BlockAndMetadataByHeight(ref id) => id,
@@ -116,6 +120,7 @@ impl NetRequest {
     pub(crate) fn tag(&self) -> Tag {
         match self {
             NetRequest::Deploy(_) => Tag::Deploy,
+            NetRequest::FinalizedApprovals(_) => Tag::FinalizedApprovals,
             NetRequest::Block(_) => Tag::Block,
             NetRequest::GossipedAddress(_) => Tag::GossipedAddress,
             NetRequest::BlockAndMetadataByHeight(_) => Tag::BlockAndMetadataByHeight,
@@ -144,6 +149,8 @@ impl Display for TrieRequest {
 pub(crate) enum NetResponse {
     /// Response of a deploy.
     Deploy(Arc<[u8]>),
+    /// Response of finalize_approvals.
+    FinalizedApprovals(Arc<[u8]>),
     /// Response of a block.
     Block(Arc<[u8]>),
     /// Response of a gossiped public listening address.
@@ -171,6 +178,7 @@ impl Display for NetResponse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             NetResponse::Deploy(_) => f.write_str("response, deploy"),
+            NetResponse::FinalizedApprovals(_) => f.write_str("response, finalized approvals"),
             NetResponse::Block(_) => f.write_str("response, block"),
             NetResponse::GossipedAddress(_) => f.write_str("response, gossiped address"),
             NetResponse::BlockAndMetadataByHeight(_) => {
