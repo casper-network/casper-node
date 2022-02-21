@@ -33,7 +33,7 @@ fn should_run_stored_named_keys_session() {
     let exec_request_1 = ExecuteRequestBuilder::contract_call_by_name(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_HASH_NAME,
-        ENTRY_POINT_CONTRACT,
+        ENTRY_POINT_SESSION,
         RuntimeArgs::default(),
     )
     .build();
