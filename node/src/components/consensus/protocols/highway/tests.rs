@@ -15,14 +15,13 @@ use crate::{
             State,
         },
         protocols::highway::{
-            config::Config as HighwayConfig, HighwayMessage, ACTION_ID_VERTEX,
+            config::Config as HighwayConfig, HighwayMessage, HighwayProtocol, ACTION_ID_VERTEX,
             TIMER_ID_STANDSTILL_ALERT,
         },
         tests::utils::{
             new_test_chainspec, ALICE_NODE_ID, ALICE_PUBLIC_KEY, ALICE_SECRET_KEY, BOB_PUBLIC_KEY,
         },
         traits::Context,
-        HighwayProtocol,
     },
     testing::TestRng,
     types::{BlockPayload, TimeDiff, Timestamp},
