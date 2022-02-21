@@ -14,12 +14,13 @@ use crate::{
             validators::ValidatorIndex,
             State,
         },
-        protocols::highway::{config::Config as HighwayConfig, HighwayMessage, ACTION_ID_VERTEX},
+        protocols::highway::{
+            config::Config as HighwayConfig, HighwayMessage, HighwayProtocol, ACTION_ID_VERTEX,
+        },
         tests::utils::{
             new_test_chainspec, ALICE_NODE_ID, ALICE_PUBLIC_KEY, ALICE_SECRET_KEY, BOB_PUBLIC_KEY,
         },
         traits::Context,
-        HighwayProtocol,
     },
     types::BlockPayload,
 };
