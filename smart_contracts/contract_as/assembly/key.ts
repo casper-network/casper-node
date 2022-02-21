@@ -44,12 +44,38 @@ export class AccountHash {
         return !this.equalsTo(other);
     }
 
+    @operator(">")
+    greaterThan(other: AccountHash): bool {
+        for (let i = 0; i < 32; i++) {
+            if (this.bytes[i] > other.bytes[i]) {
+                return true;
+            }
+            if (this.bytes[i] < other.bytes[i]) {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    @operator("<")
+    lowerThan(other: AccountHash): bool {
+        for (let i = 0; i < 32; i++) {
+            if (this.bytes[i] < other.bytes[i]) {
+                return true;
+            }
+            if (this.bytes[i] > other.bytes[i]) {
+                return false;
+            }
+        }
+        return false;
+    }
+
     static fromPublicKey(publicKey: PublicKey) : AccountHash {
         let algorithmName = publicKey.getAlgorithmName();
         let algorithmNameBytes = encodeUTF8(algorithmName);
         let publicKeyBytes = publicKey.getRawBytes();
         let dataLength = algorithmNameBytes.length + publicKeyBytes.length + 1;
-        
+
         let data = new Array<u8>(dataLength);
         for (let i=0; i < algorithmNameBytes.length; i++){
             data[i]=algorithmNameBytes[i];
@@ -60,7 +86,7 @@ export class AccountHash {
         for (let i=0; i < publicKeyBytes.length; i++) {
             data[algorithmNameBytes.length + 1 + i] = publicKeyBytes[i];
         }
-        
+
         const accountHashBytes = runtime.blake2b(data);
         return new AccountHash(accountHashBytes);
     }

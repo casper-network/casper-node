@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "asbuild:optimized": "asc --lib ../../.. assembly/index.ts -b ../../../../target_as/authorized_keys.wasm   --optimize --use abort=",
+    "asbuild:optimized": "asc --lib ../../.. assembly/index.ts -b ../../../../target_as/set_action_thresholds.wasm   --optimize --use abort=",
     "asbuild": "npm run asbuild:optimized"
   },
   "devDependencies": {

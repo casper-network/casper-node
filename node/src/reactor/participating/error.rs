@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 use crate::{
-    components::{contract_runtime, small_network, storage},
+    components::{console, contract_runtime, small_network, storage},
     utils::ListeningError,
 };
 
@@ -31,4 +31,8 @@ pub(crate) enum Error {
     /// `ContractRuntime` component error.
     #[error("contract runtime config error: {0}")]
     ContractRuntime(#[from] contract_runtime::ConfigError),
+
+    /// `Console` component error.
+    #[error("console error: {0}")]
+    Console(#[from] console::Error),
 }

@@ -1,4 +1,4 @@
-use std::{ops::Deref, sync::Arc};
+use std::{collections::HashMap, ops::Deref, sync::Arc};
 
 use casper_hashing::Digest;
 use casper_types::{Key, StoredValue};
@@ -7,7 +7,10 @@ use crate::{
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
     storage::{
         error,
-        global_state::{commit, StateProvider, StateReader},
+        global_state::{
+            commit, put_stored_values, scratch::ScratchGlobalState, CommitProvider, StateProvider,
+            StateReader,
+        },
         store::Store,
         transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
         trie::{merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie},
@@ -70,6 +73,32 @@ impl LmdbGlobalState {
             trie_store,
             empty_root_hash,
         }
+    }
+
+    /// Creates an in-memory cache for changes written.
+    pub fn create_scratch(&self) -> ScratchGlobalState {
+        ScratchGlobalState::new(
+            Arc::clone(&self.environment),
+            Arc::clone(&self.trie_store),
+            self.empty_root_hash,
+        )
+    }
+
+    /// Write stored values to LMDB.
+    pub fn put_stored_values(
+        &self,
+        correlation_id: CorrelationId,
+        prestate_hash: Digest,
+        stored_values: HashMap<Key, StoredValue>,
+    ) -> Result<Digest, error::Error> {
+        put_stored_values::<LmdbEnvironment, LmdbTrieStore, error::Error>(
+            &self.environment,
+            &self.trie_store,
+            correlation_id,
+            prestate_hash,
+            stored_values,
+        )
+        .map_err(Into::into)
     }
 }
 
@@ -149,6 +178,24 @@ impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
     }
 }
 
+impl CommitProvider for LmdbGlobalState {
+    fn commit(
+        &self,
+        correlation_id: CorrelationId,
+        prestate_hash: Digest,
+        effects: AdditiveMap<Key, Transform>,
+    ) -> Result<Digest, Self::Error> {
+        commit::<LmdbEnvironment, LmdbTrieStore, _, Self::Error>(
+            &self.environment,
+            &self.trie_store,
+            correlation_id,
+            prestate_hash,
+            effects,
+        )
+        .map_err(Into::into)
+    }
+}
+
 impl StateProvider for LmdbGlobalState {
     type Error = error::Error;
 
@@ -164,22 +211,6 @@ impl StateProvider for LmdbGlobalState {
         });
         txn.commit()?;
         Ok(maybe_state)
-    }
-
-    fn commit(
-        &self,
-        correlation_id: CorrelationId,
-        prestate_hash: Digest,
-        effects: AdditiveMap<Key, Transform>,
-    ) -> Result<Digest, Self::Error> {
-        commit::<LmdbEnvironment, LmdbTrieStore, _, Self::Error>(
-            &self.environment,
-            &self.trie_store,
-            correlation_id,
-            prestate_hash,
-            effects,
-        )
-        .map_err(Into::into)
     }
 
     fn empty_root(&self) -> Digest {
@@ -214,11 +245,13 @@ impl StateProvider for LmdbGlobalState {
         Ok(trie_hash)
     }
 
-    /// Finds all of the keys of missing descendant `Trie<K,V>` values
+    /// Finds all of the keys of missing descendant `Trie<K,V>` values and optionally performs an
+    /// integrity check on each node
     fn missing_trie_keys(
         &self,
         correlation_id: CorrelationId,
         trie_keys: Vec<Digest>,
+        check_integrity: bool,
     ) -> Result<Vec<Digest>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
         let missing_descendants =
@@ -227,6 +260,7 @@ impl StateProvider for LmdbGlobalState {
                 &txn,
                 self.trie_store.deref(),
                 trie_keys,
+                check_integrity,
             )?;
         txn.commit()?;
         Ok(missing_descendants)
@@ -288,7 +322,7 @@ mod tests {
         let temp_dir = tempdir().unwrap();
         let environment = Arc::new(
             LmdbEnvironment::new(
-                &temp_dir.path().to_path_buf(),
+                &temp_dir.path(),
                 DEFAULT_TEST_MAX_DB_SIZE,
                 DEFAULT_TEST_MAX_READERS,
                 true,

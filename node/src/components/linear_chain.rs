@@ -6,14 +6,14 @@ mod signature_cache;
 mod state;
 
 use datasize::DataSize;
-use std::{convert::Infallible, fmt::Display, marker::PhantomData};
+use std::convert::Infallible;
 
 use itertools::Itertools;
 use prometheus::Registry;
 use tracing::{debug, error};
 
 use self::{
-    metrics::LinearChainMetrics,
+    metrics::Metrics,
     state::{Outcome, Outcomes},
 };
 use super::Component;
@@ -36,42 +36,39 @@ pub(crate) use event::Event;
 use state::LinearChain;
 
 #[derive(DataSize, Debug)]
-pub(crate) struct LinearChainComponent<I> {
+pub(crate) struct LinearChainComponent {
     linear_chain_state: LinearChain,
     #[data_size(skip)]
-    metrics: LinearChainMetrics,
-    _marker: PhantomData<I>,
+    metrics: Metrics,
 }
 
-impl<I> LinearChainComponent<I> {
+impl LinearChainComponent {
     pub(crate) fn new(
         registry: &Registry,
         protocol_version: ProtocolVersion,
         auction_delay: u64,
         unbonding_delay: u64,
     ) -> Result<Self, prometheus::Error> {
-        let metrics = LinearChainMetrics::new(registry)?;
+        let metrics = Metrics::new(registry)?;
         let linear_chain_state = LinearChain::new(protocol_version, auction_delay, unbonding_delay);
         Ok(LinearChainComponent {
             linear_chain_state,
             metrics,
-            _marker: PhantomData,
         })
     }
 }
 
-fn outcomes_to_effects<REv, I>(
+fn outcomes_to_effects<REv>(
     effect_builder: EffectBuilder<REv>,
     outcomes: Outcomes,
-) -> Effects<Event<I>>
+) -> Effects<Event>
 where
     REv: From<StorageRequest>
-        + From<NetworkRequest<I, Message>>
+        + From<NetworkRequest<Message>>
         + From<LinearChainAnnouncement>
         + From<ContractRuntimeRequest>
         + From<ChainspecLoaderRequest>
         + Send,
-    I: Display + Send + 'static,
 {
     outcomes
         .into_iter()
@@ -121,17 +118,16 @@ where
         .concat()
 }
 
-impl<I, REv> Component<REv> for LinearChainComponent<I>
+impl<REv> Component<REv> for LinearChainComponent
 where
     REv: From<StorageRequest>
-        + From<NetworkRequest<I, Message>>
+        + From<NetworkRequest<Message>>
         + From<LinearChainAnnouncement>
         + From<ContractRuntimeRequest>
         + From<ChainspecLoaderRequest>
         + Send,
-    I: Display + Send + 'static,
 {
-    type Event = Event<I>;
+    type Event = Event;
     type ConstructionError = Infallible;
 
     fn handle_event(

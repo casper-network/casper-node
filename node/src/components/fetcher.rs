@@ -27,16 +27,16 @@ use crate::{
 
 pub(crate) use config::Config;
 pub(crate) use event::{Event, FetchResult};
-use metrics::FetcherMetrics;
+use metrics::Metrics;
 
 /// A helper trait constraining `Fetcher` compatible reactor events.
 pub(crate) trait ReactorEventT<T>:
     From<Event<T>>
-    + From<NetworkRequest<NodeId, Message>>
+    + From<NetworkRequest<Message>>
     + From<StorageRequest>
     + From<ContractRuntimeRequest>
     // Won't be needed when we implement "get block by height" feature in storage.
-    + From<LinearChainRequest<NodeId>>
+    + From<LinearChainRequest>
     + Send
     + 'static
 where
@@ -50,10 +50,10 @@ where
     T: Item + 'static,
     <T as Item>::Id: 'static,
     REv: From<Event<T>>
-        + From<NetworkRequest<NodeId, Message>>
+        + From<NetworkRequest<Message>>
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
-        + From<LinearChainRequest<NodeId>>
+        + From<LinearChainRequest>
         + Send
         + 'static,
 {
@@ -136,7 +136,7 @@ pub(crate) trait ItemFetcher<T: Item + 'static> {
     fn signal(
         &mut self,
         id: T::Id,
-        result: Option<FetchResult<T, NodeId>>,
+        result: Option<FetchResult<T>>,
         peer: NodeId,
     ) -> Effects<Event<T>> {
         let mut effects = Effects::new();
@@ -175,7 +175,7 @@ where
     get_from_peer_timeout: Duration,
     responders: HashMap<T::Id, HashMap<NodeId, Vec<FetchResponder<T>>>>,
     #[data_size(skip)]
-    metrics: FetcherMetrics,
+    metrics: Metrics,
 }
 
 impl<T: Item> Fetcher<T> {
@@ -187,7 +187,7 @@ impl<T: Item> Fetcher<T> {
         Ok(Fetcher {
             get_from_peer_timeout: config.get_from_peer_timeout().into(),
             responders: HashMap::new(),
-            metrics: FetcherMetrics::new(name, registry)?,
+            metrics: Metrics::new(name, registry)?,
         })
     }
 }

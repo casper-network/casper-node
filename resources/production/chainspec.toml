@@ -149,7 +149,7 @@ add_associated_key = { cost = 9_000, arguments = [0, 0, 0] }
 add_contract_version = { cost = 200, arguments = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] }
 blake2b = { cost = 200, arguments = [0, 0, 0, 0] }
 call_contract = { cost = 4_500, arguments = [0, 0, 0, 0, 0, 420, 0] }
-call_versioned_contract = { cost = 200, arguments = [0, 0, 0, 0, 0, 0, 0, 0, 0] }
+call_versioned_contract = { cost = 4_500, arguments = [0, 0, 0, 0, 0, 0, 0, 420, 0] }
 create_contract_package_at_hash = { cost = 200, arguments = [0, 0] }
 create_contract_user_group = { cost = 200, arguments = [0, 0, 0, 0, 0, 0, 0, 0] }
 create_purse = { cost = 2_500_000_000, arguments = [0, 0] }

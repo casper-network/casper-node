@@ -31,6 +31,7 @@ use crate::{
         block_validator::{self, BlockValidator},
         chainspec_loader::{self, ChainspecLoader},
         consensus::{self, EraSupervisor, HighwayProtocol},
+        console::{self, Console},
         contract_runtime::{ContractRuntime, ContractRuntimeAnnouncement, ExecutionPreState},
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server::{self, EventStreamServer},
@@ -51,6 +52,7 @@ use crate::{
             GossiperAnnouncement, LinearChainAnnouncement, LinearChainBlock, NetworkAnnouncement,
             RpcServerAnnouncement,
         },
+        console::DumpConsensusStateRequest,
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
             ContractRuntimeRequest, FetcherRequest, LinearChainRequest, MetricsRequest,
@@ -101,7 +103,7 @@ pub(crate) enum ParticipatingEvent {
     ChainspecLoader(#[serde(skip_serializing)] chainspec_loader::Event),
     #[from]
     /// Consensus event.
-    Consensus(#[serde(skip_serializing)] consensus::Event<NodeId>),
+    Consensus(#[serde(skip_serializing)] consensus::Event),
     /// Deploy acceptor event.
     #[from]
     DeployAcceptor(#[serde(skip_serializing)] deploy_acceptor::Event),
@@ -116,29 +118,32 @@ pub(crate) enum ParticipatingEvent {
     AddressGossiper(gossiper::Event<GossipedAddress>),
     /// Block validator event.
     #[from]
-    BlockValidator(#[serde(skip_serializing)] block_validator::Event<NodeId>),
+    BlockValidator(#[serde(skip_serializing)] block_validator::Event),
     /// Linear chain event.
     #[from]
-    LinearChain(#[serde(skip_serializing)] linear_chain::Event<NodeId>),
+    LinearChain(#[serde(skip_serializing)] linear_chain::Event),
+    /// Console event.
+    #[from]
+    Console(console::Event),
 
     // Requests
     /// Contract runtime request.
     ContractRuntime(#[serde(skip_serializing)] Box<ContractRuntimeRequest>),
     /// Network request.
     #[from]
-    NetworkRequest(#[serde(skip_serializing)] NetworkRequest<NodeId, Message>),
+    NetworkRequest(#[serde(skip_serializing)] NetworkRequest<Message>),
     /// Network info request.
     #[from]
-    NetworkInfoRequest(#[serde(skip_serializing)] NetworkInfoRequest<NodeId>),
+    NetworkInfoRequest(#[serde(skip_serializing)] NetworkInfoRequest),
     /// Deploy fetcher request.
     #[from]
-    DeployFetcherRequest(#[serde(skip_serializing)] FetcherRequest<NodeId, Deploy>),
+    DeployFetcherRequest(#[serde(skip_serializing)] FetcherRequest<Deploy>),
     /// Block proposer request.
     #[from]
     BlockProposerRequest(#[serde(skip_serializing)] BlockProposerRequest),
     /// Block validator request.
     #[from]
-    BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest<NodeId>),
+    BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest),
     /// Metrics request.
     #[from]
     MetricsRequest(#[serde(skip_serializing)] MetricsRequest),
@@ -151,6 +156,9 @@ pub(crate) enum ParticipatingEvent {
     /// Request for state storage.
     #[from]
     StateStoreRequest(StateStoreRequest),
+    /// Consensus dump request.
+    #[from]
+    DumpConsensusStateRequest(DumpConsensusStateRequest),
 
     // Announcements
     /// Control announcement.
@@ -158,13 +166,13 @@ pub(crate) enum ParticipatingEvent {
     ControlAnnouncement(ControlAnnouncement),
     /// Network announcement.
     #[from]
-    NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, Message>),
+    NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<Message>),
     /// API server announcement.
     #[from]
     RpcServerAnnouncement(#[serde(skip_serializing)] RpcServerAnnouncement),
     /// DeployAcceptor announcement.
     #[from]
-    DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement<NodeId>),
+    DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement),
     /// Consensus announcement.
     #[from]
     ConsensusAnnouncement(#[serde(skip_serializing)] ConsensusAnnouncement),
@@ -185,7 +193,7 @@ pub(crate) enum ParticipatingEvent {
     ChainspecLoaderAnnouncement(#[serde(skip_serializing)] ChainspecLoaderAnnouncement),
     /// Blocklist announcement.
     #[from]
-    BlocklistAnnouncement(BlocklistAnnouncement<NodeId>),
+    BlocklistAnnouncement(BlocklistAnnouncement),
     /// Block proposer announcement.
     #[from]
     BlockProposerAnnouncement(#[serde(skip_serializing)] BlockProposerAnnouncement),
@@ -218,6 +226,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::BlockValidator(_) => "BlockValidator",
             ParticipatingEvent::LinearChain(_) => "LinearChain",
             ParticipatingEvent::ContractRuntime(_) => "ContractRuntime",
+            ParticipatingEvent::Console(_) => "Console",
             ParticipatingEvent::NetworkRequest(_) => "NetworkRequest",
             ParticipatingEvent::NetworkInfoRequest(_) => "NetworkInfoRequest",
             ParticipatingEvent::DeployFetcherRequest(_) => "DeployFetcherRequest",
@@ -227,6 +236,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::ChainspecLoaderRequest(_) => "ChainspecLoaderRequest",
             ParticipatingEvent::StorageRequest(_) => "StorageRequest",
             ParticipatingEvent::StateStoreRequest(_) => "StateStoreRequest",
+            ParticipatingEvent::DumpConsensusStateRequest(_) => "DumpConsensusStateRequest",
             ParticipatingEvent::ControlAnnouncement(_) => "ControlAnnouncement",
             ParticipatingEvent::NetworkAnnouncement(_) => "NetworkAnnouncement",
             ParticipatingEvent::RpcServerAnnouncement(_) => "RpcServerAnnouncement",
@@ -249,32 +259,32 @@ impl From<ContractRuntimeRequest> for ParticipatingEvent {
     }
 }
 
-impl From<RpcRequest<NodeId>> for ParticipatingEvent {
-    fn from(request: RpcRequest<NodeId>) -> Self {
+impl From<RpcRequest> for ParticipatingEvent {
+    fn from(request: RpcRequest) -> Self {
         ParticipatingEvent::RpcServer(rpc_server::Event::RpcRequest(request))
     }
 }
 
-impl From<RestRequest<NodeId>> for ParticipatingEvent {
-    fn from(request: RestRequest<NodeId>) -> Self {
+impl From<RestRequest> for ParticipatingEvent {
+    fn from(request: RestRequest) -> Self {
         ParticipatingEvent::RestServer(rest_server::Event::RestRequest(request))
     }
 }
 
-impl From<NetworkRequest<NodeId, consensus::ConsensusMessage>> for ParticipatingEvent {
-    fn from(request: NetworkRequest<NodeId, consensus::ConsensusMessage>) -> Self {
+impl From<NetworkRequest<consensus::ConsensusMessage>> for ParticipatingEvent {
+    fn from(request: NetworkRequest<consensus::ConsensusMessage>) -> Self {
         ParticipatingEvent::NetworkRequest(request.map_payload(Message::from))
     }
 }
 
-impl From<NetworkRequest<NodeId, gossiper::Message<Deploy>>> for ParticipatingEvent {
-    fn from(request: NetworkRequest<NodeId, gossiper::Message<Deploy>>) -> Self {
+impl From<NetworkRequest<gossiper::Message<Deploy>>> for ParticipatingEvent {
+    fn from(request: NetworkRequest<gossiper::Message<Deploy>>) -> Self {
         ParticipatingEvent::NetworkRequest(request.map_payload(Message::from))
     }
 }
 
-impl From<NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>> for ParticipatingEvent {
-    fn from(request: NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>) -> Self {
+impl From<NetworkRequest<gossiper::Message<GossipedAddress>>> for ParticipatingEvent {
+    fn from(request: NetworkRequest<gossiper::Message<GossipedAddress>>) -> Self {
         ParticipatingEvent::NetworkRequest(request.map_payload(Message::from))
     }
 }
@@ -285,8 +295,8 @@ impl From<ConsensusRequest> for ParticipatingEvent {
     }
 }
 
-impl From<LinearChainRequest<NodeId>> for ParticipatingEvent {
-    fn from(request: LinearChainRequest<NodeId>) -> Self {
+impl From<LinearChainRequest> for ParticipatingEvent {
+    fn from(request: LinearChainRequest) -> Self {
         ParticipatingEvent::LinearChain(linear_chain::Event::Request(request))
     }
 }
@@ -313,6 +323,7 @@ impl Display for ParticipatingEvent {
             }
             ParticipatingEvent::LinearChain(event) => write!(f, "linear-chain event {}", event),
             ParticipatingEvent::BlockValidator(event) => write!(f, "block validator: {}", event),
+            ParticipatingEvent::Console(event) => write!(f, "console: {}", event),
             ParticipatingEvent::NetworkRequest(req) => write!(f, "network request: {}", req),
             ParticipatingEvent::NetworkInfoRequest(req) => {
                 write!(f, "network info request: {}", req)
@@ -333,6 +344,9 @@ impl Display for ParticipatingEvent {
             }
             ParticipatingEvent::MetricsRequest(req) => write!(f, "metrics request: {}", req),
             ParticipatingEvent::ControlAnnouncement(ctrl_ann) => write!(f, "control: {}", ctrl_ann),
+            ParticipatingEvent::DumpConsensusStateRequest(req) => {
+                write!(f, "dump consensus state: {}", req)
+            }
             ParticipatingEvent::NetworkAnnouncement(ann) => {
                 write!(f, "network announcement: {}", ann)
             }
@@ -409,14 +423,15 @@ pub(crate) struct Reactor {
     rest_server: RestServer,
     event_stream_server: EventStreamServer,
     chainspec_loader: ChainspecLoader,
-    consensus: EraSupervisor<NodeId>,
+    consensus: EraSupervisor,
     #[data_size(skip)]
     deploy_acceptor: DeployAcceptor,
     deploy_fetcher: Fetcher<Deploy>,
     deploy_gossiper: Gossiper<Deploy, ParticipatingEvent>,
     block_proposer: BlockProposer,
-    block_validator: BlockValidator<NodeId>,
-    linear_chain: LinearChainComponent<NodeId>,
+    block_validator: BlockValidator,
+    linear_chain: LinearChainComponent,
+    console: Console,
 
     // Non-components.
     #[data_size(skip)] // Never allocates heap data.
@@ -429,7 +444,7 @@ pub(crate) struct Reactor {
 #[cfg(test)]
 impl Reactor {
     /// Inspect consensus.
-    pub(crate) fn consensus(&self) -> &EraSupervisor<NodeId> {
+    pub(crate) fn consensus(&self) -> &EraSupervisor {
         &self.consensus
     }
 
@@ -595,6 +610,9 @@ impl reactor::Reactor for Reactor {
 
         let metrics = Metrics::new(registry.clone());
 
+        let (console, console_effects) =
+            Console::new(&WithDir::new(&root, config.console.clone()), event_queue)?;
+
         let effect_builder = EffectBuilder::new(event_queue);
 
         let address_gossiper =
@@ -654,6 +672,11 @@ impl reactor::Reactor for Reactor {
 
         let mut effects =
             reactor::wrap_effects(ParticipatingEvent::BlockProposer, block_proposer_effects);
+
+        effects.extend(reactor::wrap_effects(
+            ParticipatingEvent::Console,
+            console_effects,
+        ));
 
         let maybe_next_activation_point = chainspec_loader
             .next_upgrade()
@@ -727,6 +750,7 @@ impl reactor::Reactor for Reactor {
                 block_proposer,
                 block_validator,
                 linear_chain,
+                console,
                 memory_metrics,
                 event_queue_metrics,
             },
@@ -808,6 +832,10 @@ impl reactor::Reactor for Reactor {
                 ParticipatingEvent::LinearChain,
                 self.linear_chain.handle_event(effect_builder, rng, event),
             ),
+            ParticipatingEvent::Console(event) => reactor::wrap_effects(
+                ParticipatingEvent::Console,
+                self.console.handle_event(effect_builder, rng, event),
+            ),
 
             // Requests:
             ParticipatingEvent::NetworkRequest(req) => {
@@ -848,6 +876,10 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::StateStoreRequest(req) => {
                 self.dispatch_event(effect_builder, rng, ParticipatingEvent::Storage(req.into()))
             }
+            ParticipatingEvent::DumpConsensusStateRequest(req) => reactor::wrap_effects(
+                ParticipatingEvent::Consensus,
+                self.consensus.handle_event(effect_builder, rng, req.into()),
+            ),
 
             // Announcements:
             ParticipatingEvent::ControlAnnouncement(ctrl_ann) => {
@@ -951,7 +983,7 @@ impl reactor::Reactor for Reactor {
             )) => {
                 let event = gossiper::Event::ItemReceived {
                     item_id: gossiped_address,
-                    source: Source::<NodeId>::Ourself,
+                    source: Source::Ourself,
                 };
                 self.dispatch_event(
                     effect_builder,
@@ -969,7 +1001,7 @@ impl reactor::Reactor for Reactor {
             }) => {
                 let event = deploy_acceptor::Event::Accept {
                     deploy,
-                    source: Source::<NodeId>::Client,
+                    source: Source::Client,
                     maybe_responder: responder,
                 };
                 self.dispatch_event(
@@ -1215,8 +1247,7 @@ impl reactor::Reactor for Reactor {
 
 #[cfg(test)]
 impl NetworkedReactor for Reactor {
-    type NodeId = NodeId;
-    fn node_id(&self) -> Self::NodeId {
+    fn node_id(&self) -> NodeId {
         self.small_network.node_id()
     }
 }

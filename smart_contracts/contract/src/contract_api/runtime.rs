@@ -1,6 +1,6 @@
 //! Functions for interacting with the current runtime.
 
-use alloc::{vec, vec::Vec};
+use alloc::{collections::BTreeSet, vec, vec::Vec};
 use core::mem::MaybeUninit;
 
 use casper_types::{
@@ -272,6 +272,31 @@ pub fn put_key(name: &str, key: Key) {
 pub fn remove_key(name: &str) {
     let (name_ptr, name_size, _bytes) = contract_api::to_ptr(name);
     unsafe { ext_ffi::casper_remove_key(name_ptr, name_size) }
+}
+
+/// Returns the set of [`AccountHash`] from the calling account's context `authorization_keys`.
+pub fn list_authorization_keys() -> BTreeSet<AccountHash> {
+    let (total_authorization_keys, result_size) = {
+        let mut authorization_keys = MaybeUninit::uninit();
+        let mut result_size = MaybeUninit::uninit();
+        let ret = unsafe {
+            ext_ffi::casper_load_authorization_keys(
+                authorization_keys.as_mut_ptr(),
+                result_size.as_mut_ptr(),
+            )
+        };
+        api_error::result_from(ret).unwrap_or_revert();
+        let total_authorization_keys = unsafe { authorization_keys.assume_init() };
+        let result_size = unsafe { result_size.assume_init() };
+        (total_authorization_keys, result_size)
+    };
+
+    if total_authorization_keys == 0 {
+        return BTreeSet::new();
+    }
+
+    let bytes = read_host_buffer(result_size).unwrap_or_revert();
+    bytesrepr::deserialize(bytes).unwrap_or_revert()
 }
 
 /// Returns the named keys of the current context.

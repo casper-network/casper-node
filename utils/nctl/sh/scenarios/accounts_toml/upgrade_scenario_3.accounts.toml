@@ -46,7 +46,7 @@ balance = "1000000000000000000000000000000000"
 
 [accounts.validator]
 bonded_amount = "1"
-delegation_rate = 5
+delegation_rate = 100
 
 # VALIDATOR 6.
 [[accounts]]

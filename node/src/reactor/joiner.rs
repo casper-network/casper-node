@@ -3,6 +3,7 @@
 mod memory_metrics;
 
 use std::{
+    borrow::Cow,
     collections::BTreeMap,
     fmt::{self, Display, Formatter},
     path::PathBuf,
@@ -24,6 +25,7 @@ use crate::{
     components::{
         block_validator::{self, BlockValidator},
         chainspec_loader::{self, ChainspecLoader},
+        console::{self, Console},
         contract_runtime::{ContractRuntime, ContractRuntimeAnnouncement},
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server,
@@ -43,6 +45,7 @@ use crate::{
             ChainspecLoaderAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
             GossiperAnnouncement, LinearChainAnnouncement, LinearChainBlock, NetworkAnnouncement,
         },
+        console::DumpConsensusStateRequest,
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
             ContractRuntimeRequest, FetcherRequest, LinearChainRequest, MetricsRequest,
@@ -59,7 +62,7 @@ use crate::{
         EventQueueHandle, Finalize, ReactorExit,
     },
     types::{
-        Block, BlockByHeight, BlockHeader, BlockHeaderWithMetadata, Deploy, ExitCode, NodeId, Tag,
+        Block, BlockByHeight, BlockHeader, BlockHeaderWithMetadata, Deploy, ExitCode, Tag,
         Timestamp,
     },
     utils::{Source, WithDir},
@@ -101,7 +104,7 @@ pub(crate) enum JoinerEvent {
 
     /// Network info request.
     #[from]
-    NetworkInfoRequest(#[serde(skip_serializing)] NetworkInfoRequest<NodeId>),
+    NetworkInfoRequest(#[serde(skip_serializing)] NetworkInfoRequest),
 
     /// Linear chain fetcher event.
     #[from]
@@ -121,11 +124,11 @@ pub(crate) enum JoinerEvent {
 
     /// Block validator event.
     #[from]
-    BlockValidator(#[serde(skip_serializing)] block_validator::Event<NodeId>),
+    BlockValidator(#[serde(skip_serializing)] block_validator::Event),
 
     /// Linear chain event.
     #[from]
-    LinearChainSync(#[serde(skip_serializing)] linear_chain_sync::Event<NodeId>),
+    LinearChainSync(#[serde(skip_serializing)] linear_chain_sync::Event),
 
     /// Contract Runtime event.
     #[from]
@@ -133,28 +136,32 @@ pub(crate) enum JoinerEvent {
 
     /// Linear chain event.
     #[from]
-    LinearChain(#[serde(skip_serializing)] linear_chain::Event<NodeId>),
+    LinearChain(#[serde(skip_serializing)] linear_chain::Event),
 
     /// Address gossiper event.
     #[from]
     AddressGossiper(gossiper::Event<GossipedAddress>),
 
+    /// Console event.
+    #[from]
+    Console(console::Event),
+
     /// Requests.
     /// Linear chain block by hash fetcher request.
     #[from]
-    BlockFetcherRequest(#[serde(skip_serializing)] FetcherRequest<NodeId, Block>),
+    BlockFetcherRequest(#[serde(skip_serializing)] FetcherRequest<Block>),
 
     /// Linear chain block by height fetcher request.
     #[from]
-    BlockByHeightFetcherRequest(#[serde(skip_serializing)] FetcherRequest<NodeId, BlockByHeight>),
+    BlockByHeightFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockByHeight>),
 
     /// Deploy fetcher request.
     #[from]
-    DeployFetcherRequest(#[serde(skip_serializing)] FetcherRequest<NodeId, Deploy>),
+    DeployFetcherRequest(#[serde(skip_serializing)] FetcherRequest<Deploy>),
 
     /// Block validation request.
     #[from]
-    BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest<NodeId>),
+    BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest),
 
     /// Block proposer request.
     #[from]
@@ -171,7 +178,7 @@ pub(crate) enum JoinerEvent {
 
     /// Network announcement.
     #[from]
-    NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, Message>),
+    NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<Message>),
 
     /// Block executor announcement.
     #[from]
@@ -183,7 +190,7 @@ pub(crate) enum JoinerEvent {
 
     /// DeployAcceptor announcement.
     #[from]
-    DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement<NodeId>),
+    DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement),
 
     /// Linear chain announcement.
     #[from]
@@ -196,6 +203,10 @@ pub(crate) enum JoinerEvent {
     /// Consensus request.
     #[from]
     ConsensusRequest(#[serde(skip_serializing)] ConsensusRequest),
+
+    /// Consensus dump request.
+    #[from]
+    DumpConsensusStateRequest(DumpConsensusStateRequest),
 }
 
 impl ReactorEvent for JoinerEvent {
@@ -226,12 +237,14 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::ContractRuntime(_) => "ContractRuntime",
             JoinerEvent::LinearChain(_) => "LinearChain",
             JoinerEvent::AddressGossiper(_) => "AddressGossiper",
+            JoinerEvent::Console(_) => "Console",
             JoinerEvent::BlockFetcherRequest(_) => "BlockFetcherRequest",
             JoinerEvent::BlockByHeightFetcherRequest(_) => "BlockByHeightFetcherRequest",
             JoinerEvent::DeployFetcherRequest(_) => "DeployFetcherRequest",
             JoinerEvent::BlockValidatorRequest(_) => "BlockValidatorRequest",
             JoinerEvent::BlockProposerRequest(_) => "BlockProposerRequest",
             JoinerEvent::StateStoreRequest(_) => "StateStoreRequest",
+            JoinerEvent::DumpConsensusStateRequest(_) => "DumpConsensusStateRequest",
             JoinerEvent::ControlAnnouncement(_) => "ControlAnnouncement",
             JoinerEvent::NetworkAnnouncement(_) => "NetworkAnnouncement",
             JoinerEvent::ContractRuntimeAnnouncement(_) => "ContractRuntimeAnnouncement",
@@ -244,8 +257,8 @@ impl ReactorEvent for JoinerEvent {
     }
 }
 
-impl From<LinearChainRequest<NodeId>> for JoinerEvent {
-    fn from(req: LinearChainRequest<NodeId>) -> Self {
+impl From<LinearChainRequest> for JoinerEvent {
+    fn from(req: LinearChainRequest) -> Self {
         JoinerEvent::LinearChain(linear_chain::Event::Request(req))
     }
 }
@@ -256,22 +269,22 @@ impl From<StorageRequest> for JoinerEvent {
     }
 }
 
-impl From<NetworkRequest<NodeId, Message>> for JoinerEvent {
-    fn from(request: NetworkRequest<NodeId, Message>) -> Self {
+impl From<NetworkRequest<Message>> for JoinerEvent {
+    fn from(request: NetworkRequest<Message>) -> Self {
         JoinerEvent::SmallNetwork(small_network::Event::from(request))
     }
 }
 
-impl From<NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>> for JoinerEvent {
-    fn from(request: NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>) -> Self {
+impl From<NetworkRequest<gossiper::Message<GossipedAddress>>> for JoinerEvent {
+    fn from(request: NetworkRequest<gossiper::Message<GossipedAddress>>) -> Self {
         JoinerEvent::SmallNetwork(small_network::Event::from(
             request.map_payload(Message::from),
         ))
     }
 }
 
-impl From<RestRequest<NodeId>> for JoinerEvent {
-    fn from(request: RestRequest<NodeId>) -> Self {
+impl From<RestRequest> for JoinerEvent {
+    fn from(request: RestRequest) -> Self {
         JoinerEvent::RestServer(rest_server::Event::RestRequest(request))
     }
 }
@@ -313,6 +326,7 @@ impl Display for JoinerEvent {
                 write!(f, "block executor announcement: {}", announcement)
             }
             JoinerEvent::AddressGossiper(event) => write!(f, "address gossiper: {}", event),
+            JoinerEvent::Console(event) => write!(f, "console: {}", event),
             JoinerEvent::AddressGossiperAnnouncement(ann) => {
                 write!(f, "address gossiper announcement: {}", ann)
             }
@@ -332,6 +346,9 @@ impl Display for JoinerEvent {
             }
             JoinerEvent::StateStoreRequest(req) => write!(f, "state store request: {}", req),
             JoinerEvent::ConsensusRequest(req) => write!(f, "consensus request: {:?}", req),
+            JoinerEvent::DumpConsensusStateRequest(req) => {
+                write!(f, "consensus dump request: {}", req)
+            }
         }
     }
 }
@@ -348,10 +365,11 @@ pub(crate) struct Reactor {
     storage: Storage,
     contract_runtime: ContractRuntime,
     linear_chain_fetcher: Fetcher<Block>,
-    linear_chain_sync: LinearChainSync<NodeId>,
-    block_validator: BlockValidator<NodeId>,
+    linear_chain_sync: LinearChainSync,
+    block_validator: BlockValidator,
     deploy_fetcher: Fetcher<Deploy>,
-    linear_chain: linear_chain::LinearChainComponent<NodeId>,
+    linear_chain: linear_chain::LinearChainComponent,
+    console: Console,
     // Handles request for linear chain block by height.
     block_by_height_fetcher: Fetcher<BlockByHeight>,
     pub(super) block_header_by_hash_fetcher: Fetcher<BlockHeader>,
@@ -407,6 +425,9 @@ impl reactor::Reactor for Reactor {
 
         let metrics = Metrics::new(registry.clone());
 
+        let (console, console_effects) =
+            Console::new(&WithDir::new(&root, config.console.clone()), event_queue)?;
+
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
             config.network.clone(),
@@ -419,6 +440,7 @@ impl reactor::Reactor for Reactor {
         let linear_chain_fetcher = Fetcher::new("linear_chain", config.fetcher, registry)?;
 
         let mut effects = reactor::wrap_effects(JoinerEvent::SmallNetwork, small_network_effects);
+        effects.extend(reactor::wrap_effects(JoinerEvent::Console, console_effects));
 
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
@@ -535,6 +557,7 @@ impl reactor::Reactor for Reactor {
                 block_validator,
                 deploy_fetcher,
                 linear_chain,
+                console,
                 block_by_height_fetcher,
                 block_header_by_hash_fetcher,
                 block_header_with_metadata_fetcher:
@@ -579,7 +602,7 @@ impl reactor::Reactor for Reactor {
             )) => {
                 let event = gossiper::Event::ItemReceived {
                     item_id: gossiped_address,
-                    source: Source::<NodeId>::Ourself,
+                    source: Source::Ourself,
                 };
                 self.dispatch_event(effect_builder, rng, JoinerEvent::AddressGossiper(event))
             }
@@ -816,6 +839,10 @@ impl reactor::Reactor for Reactor {
                 self.address_gossiper
                     .handle_event(effect_builder, rng, event),
             ),
+            JoinerEvent::Console(event) => reactor::wrap_effects(
+                JoinerEvent::Console,
+                self.console.handle_event(effect_builder, rng, event),
+            ),
             JoinerEvent::AddressGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
                 gossiped_address,
             )) => {
@@ -915,6 +942,11 @@ impl reactor::Reactor for Reactor {
                 // no consensus, respond with empty map
                 responder.respond(BTreeMap::new()).ignore()
             }
+            JoinerEvent::DumpConsensusStateRequest(req) => {
+                // We have no consensus running in the joiner, so we answer with `None`.
+                req.answer(Err(Cow::Borrowed("node is joining, no running consensus")))
+                    .ignore()
+            }
         }
     }
 
@@ -968,8 +1000,7 @@ impl Reactor {
 
 #[cfg(test)]
 impl NetworkedReactor for Reactor {
-    type NodeId = NodeId;
-    fn node_id(&self) -> Self::NodeId {
+    fn node_id(&self) -> crate::types::NodeId {
         self.small_network.node_id()
     }
 }

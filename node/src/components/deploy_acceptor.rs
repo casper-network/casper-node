@@ -33,8 +33,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     types::{
-        chainspec::DeployConfig, Block, Chainspec, Deploy, DeployConfigurationFailure, NodeId,
-        Timestamp,
+        chainspec::DeployConfig, Block, Chainspec, Deploy, DeployConfigurationFailure, Timestamp,
     },
     utils::Source,
     NodeRng,
@@ -125,7 +124,7 @@ pub(crate) enum DeployParameterFailure {
 /// A helper trait constraining `DeployAcceptor` compatible reactor events.
 pub(crate) trait ReactorEventT:
     From<Event>
-    + From<DeployAcceptorAnnouncement<NodeId>>
+    + From<DeployAcceptorAnnouncement>
     + From<StorageRequest>
     + From<ContractRuntimeRequest>
     + Send
@@ -134,7 +133,7 @@ pub(crate) trait ReactorEventT:
 
 impl<REv> ReactorEventT for REv where
     REv: From<Event>
-        + From<DeployAcceptorAnnouncement<NodeId>>
+        + From<DeployAcceptorAnnouncement>
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
         + Send
@@ -180,7 +179,7 @@ impl DeployAcceptor {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         deploy: Box<Deploy>,
-        source: Source<NodeId>,
+        source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     ) -> Effects<Event> {
         let verification_start_timestamp = Timestamp::now();
@@ -202,7 +201,7 @@ impl DeployAcceptor {
         }
 
         // We only perform expiry checks on deploys received from the client.
-        if source.from_client() {
+        if source.is_client() {
             let current_node_timestamp = Timestamp::now();
             if deploy.header().expired(current_node_timestamp) {
                 let time_of_expiry = deploy.header().expires();
@@ -261,7 +260,7 @@ impl DeployAcceptor {
         let account_hash = event_metadata.deploy.header().account().to_account_hash();
         let account_key = account_hash.into();
 
-        if event_metadata.source.from_client() {
+        if event_metadata.source.is_client() {
             effect_builder
                 .get_account_from_global_state(prestate_hash, account_key)
                 .event(move |maybe_account| Event::GetAccountResult {
@@ -361,7 +360,7 @@ impl DeployAcceptor {
         account_hash: AccountHash,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
-        if !event_metadata.source.from_client() {
+        if !event_metadata.source.is_client() {
             // This would only happen due to programmer error and should crash the node.
             // Balance checks for deploys received by from a peer will cause the network
             // to stall.
@@ -493,10 +492,7 @@ impl DeployAcceptor {
                     })
             }
             ExecutableDeployItemIdentifier::Package(
-                ref
-                contract_package_identifier
-                @
-                ContractPackageIdentifier::Hash {
+                ref contract_package_identifier @ ContractPackageIdentifier::Hash {
                     contract_package_hash,
                     ..
                 },
@@ -597,10 +593,7 @@ impl DeployAcceptor {
                     })
             }
             ExecutableDeployItemIdentifier::Package(
-                ref
-                contract_package_identifier
-                @
-                ContractPackageIdentifier::Hash {
+                ref contract_package_identifier @ ContractPackageIdentifier::Hash {
                     contract_package_hash,
                     ..
                 },

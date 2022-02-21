@@ -15,10 +15,16 @@ All notable changes to this project will be documented in this file.  The format
 ### Added
 * Add new event to the main SSE server stream across all endpoints `<IP:PORT>/events/*` which emits a shutdown event when the node shuts down.
 * Add `SIGUSR2` signal handling to dump the queue in JSON format (see "Changed" section for `SIGUSR1`).
+* A diagnostic console can now be enabled via the `[console]` section in the configuration file. See the `README.md` for details.
+* Add ability to force DB integrity checks to run on node start by setting env var `CL_RUN_INTEGRITY_CHECKS=1`.
+* Add ability to force DB integrity checks to run on node start by adding non-numeric contents to the initializer.pid file.
 
 ### Changed
+* Detection of a crash no longer triggers DB integrity checks to run on node start; the checks can be triggered manually instead.
 * `SIGUSR1` now only dumps the queue in the debug text format.
-
+* Incoming connections from peers are rejected if they are exceeding the default incoming connections per peer limit of 3.
+* Connection handshake timeouts can now be configured via the `handshake_timeout` variable (they were hardcoded at 20 seconds before).
+* `Key::SystemContractRegistry` is now readable and can be queried via the RPC.
 
 
 ## 1.4.3 - 2021-12-06
@@ -28,7 +34,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Changed
 * `enable_manual_sync` configuration parameter defaults to `true`.
-* Default behavior of LMDB changed to use [`NO_READAHEAD`](https://docs.rs/lmdb/0.8.0/lmdb/struct.EnvironmentFlags.html#associatedconstant.NO_READAHEAD)
+* Default behavior of LMDB changed to use [`NO_READAHEAD`](https://docs.rs/lmdb/0.8.0/lmdb/struct.EnvironmentFlags.html#associatedconstant.NO_READAHEAD).
 
 
 
@@ -43,6 +49,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Fixed
 * The block proposer component now retains pending deploys and transfers across a restart.
+
 
 
 ## [1.4.0] - 2021-10-04

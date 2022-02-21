@@ -5,6 +5,7 @@
 //! it assumes is the concept of era/epoch and that each era runs separate consensus instance.
 //! Most importantly, it doesn't care about what messages it's forwarding.
 
+pub(super) mod debug;
 mod era;
 
 use std::{
@@ -37,8 +38,7 @@ use crate::{
             ConsensusProtocol, EraReport, FinalizedBlock as CpFinalizedBlock, ProposedBlock,
             ProtocolOutcome,
         },
-        metrics::ConsensusMetrics,
-        traits::NodeIdT,
+        metrics::Metrics,
         validator_change::ValidatorChanges,
         ActionId, Config, ConsensusMessage, Event, NewBlockPayload, ReactorEventT, ResolveValidity,
         TimerId, ValidatorChange,
@@ -51,7 +51,7 @@ use crate::{
     fatal,
     types::{
         ActivationPoint, BlockHash, BlockHeader, Deploy, DeployHash, DeployOrTransferHash,
-        FinalitySignature, FinalizedBlock, TimeDiff, Timestamp,
+        FinalitySignature, FinalizedBlock, NodeId, TimeDiff, Timestamp,
     },
     utils::WithDir,
     NodeRng,
@@ -61,7 +61,7 @@ use crate::{
 /// fault tolerance threshold.
 const FTT_EXCEEDED_SHUTDOWN_DELAY_MILLIS: u64 = 60 * 1000;
 
-type ConsensusConstructor<I> = dyn Fn(
+type ConsensusConstructor = dyn Fn(
         Digest,                    // the era's unique instance ID
         BTreeMap<PublicKey, U512>, // validator weights
         &HashSet<PublicKey>,       /* faulty validators that are banned in
@@ -69,30 +69,30 @@ type ConsensusConstructor<I> = dyn Fn(
         &HashSet<PublicKey>, // inactive validators that can't be leaders
         &ProtocolConfig,     // the network's chainspec
         &Config,             // The consensus part of the node config.
-        Option<&dyn ConsensusProtocol<I, ClContext>>, // previous era's consensus instance
+        Option<&dyn ConsensusProtocol<ClContext>>, // previous era's consensus instance
         Timestamp,           // start time for this era
         u64,                 // random seed
         Timestamp,           // now timestamp
     ) -> (
-        Box<dyn ConsensusProtocol<I, ClContext>>,
-        Vec<ProtocolOutcome<I, ClContext>>,
+        Box<dyn ConsensusProtocol<ClContext>>,
+        Vec<ProtocolOutcome<ClContext>>,
     ) + Send;
 
 #[derive(DataSize)]
-pub struct EraSupervisor<I> {
+pub struct EraSupervisor {
     /// A map of consensus protocol instances.
     /// A value is a trait so that we can run different consensus protocols per era.
     ///
     /// This map always contains exactly `2 * bonded_eras + 1` entries, with the last one being the
     /// current one.
-    open_eras: HashMap<EraId, Era<I>>,
+    open_eras: HashMap<EraId, Era>,
     secret_signing_key: Arc<SecretKey>,
     public_signing_key: PublicKey,
     current_era: EraId,
     protocol_config: ProtocolConfig,
     config: Config,
     #[data_size(skip)] // Negligible for most closures, zero for functions.
-    new_consensus: Box<ConsensusConstructor<I>>,
+    new_consensus: Box<ConsensusConstructor>,
     /// The height of the next block to be finalized.
     /// We keep that in order to be able to signal to the Block Proposer how many blocks have been
     /// finalized when we request a new block. This way the Block Proposer can know whether it's up
@@ -103,7 +103,7 @@ pub struct EraSupervisor<I> {
     /// The height of the next block to be executed. If this falls too far behind, we pause.
     next_executed_height: u64,
     #[data_size(skip)]
-    metrics: ConsensusMetrics,
+    metrics: Metrics,
     /// The path to the folder where unit files will be stored.
     unit_files_folder: PathBuf,
     /// The next upgrade activation point. When the era immediately before the activation point is
@@ -116,20 +116,17 @@ pub struct EraSupervisor<I> {
     era_where_we_joined: EraId,
 }
 
-impl<I> Debug for EraSupervisor<I> {
+impl Debug for EraSupervisor {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         let ae: Vec<_> = self.open_eras.keys().collect();
         write!(formatter, "EraSupervisor {{ open_eras: {:?}, .. }}", ae)
     }
 }
 
-impl<I> EraSupervisor<I>
-where
-    I: NodeIdT,
-{
+impl EraSupervisor {
     /// Creates a new `EraSupervisor`, starting in the indicated current era.
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn new<REv: ReactorEventT<I>>(
+    pub(crate) fn new<REv: ReactorEventT>(
         current_era: EraId,
         storage_dir: &Path,
         config: WithDir<Config>,
@@ -138,8 +135,8 @@ where
         maybe_latest_block_header: Option<&BlockHeader>,
         next_upgrade_activation_point: Option<ActivationPoint>,
         registry: &Registry,
-        new_consensus: Box<ConsensusConstructor<I>>,
-    ) -> Result<(Self, Effects<Event<I>>), Error> {
+        new_consensus: Box<ConsensusConstructor>,
+    ) -> Result<(Self, Effects<Event>), Error> {
         if current_era < protocol_config.last_activation_point {
             panic!(
                 "Current era ({:?}) is before the last activation point ({:?}) - no eras would \
@@ -151,8 +148,8 @@ where
         let (root, config) = config.into_parts();
         let (secret_signing_key, public_signing_key) = config.load_keys(root)?;
         info!(our_id = %public_signing_key, "EraSupervisor pubkey",);
-        let metrics = ConsensusMetrics::new(registry)
-            .expect("failure to setup and register ConsensusMetrics");
+        let metrics =
+            Metrics::new(registry).expect("failed to set up and register consensus metrics");
         let activation_era_id = protocol_config.last_activation_point;
         let auction_delay = protocol_config.auction_delay;
         #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
@@ -273,6 +270,7 @@ where
         &mut self,
         era_id: EraId,
         now: Timestamp,
+        key_block_hash: BlockHash,
         validators: BTreeMap<PublicKey, U512>,
         new_faulty: Vec<PublicKey>,
         faulty: HashSet<PublicKey>,
@@ -280,11 +278,11 @@ where
         seed: u64,
         start_time: Timestamp,
         start_height: u64,
-    ) -> Vec<ProtocolOutcome<I, ClContext>> {
+    ) -> Vec<ProtocolOutcome<ClContext>> {
         if self.open_eras.contains_key(&era_id) {
             panic!("{} already exists", era_id);
         }
-        let instance_id = instance_id(&self.protocol_config, era_id);
+        let instance_id = instance_id(&self.protocol_config, era_id, key_block_hash);
 
         info!(
             ?validators,
@@ -447,7 +445,7 @@ where
 
     /// Returns whether the validator with the given public key is bonded in that era.
     fn is_validator_in(&self, pub_key: &PublicKey, era_id: EraId) -> bool {
-        let has_validator = |era: &Era<I>| era.validators().contains_key(pub_key);
+        let has_validator = |era: &Era| era.validators().contains_key(pub_key);
         self.open_eras.get(&era_id).map_or(false, has_validator)
     }
 
@@ -479,14 +477,14 @@ where
         }
     }
 
-    pub(super) fn handle_initialize_eras<REv: ReactorEventT<I>>(
+    pub(super) fn handle_initialize_eras<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         rng: &mut NodeRng,
         key_blocks: HashMap<EraId, BlockHeader>,
         booking_blocks: HashMap<EraId, BlockHash>,
         activation_era_validators: BTreeMap<PublicKey, U512>,
-    ) -> Effects<Event<I>> {
+    ) -> Effects<Event> {
         let mut effects = Effects::new();
         let now = Timestamp::now();
 
@@ -496,6 +494,7 @@ where
             let start_height;
             let era_start_time;
             let seed;
+            let key_block_hash;
 
             let booking_block_hash = booking_blocks
                 .get(&era_id)
@@ -512,9 +511,11 @@ where
                     .genesis_timestamp
                     .expect("must have genesis start time if era ID is 0");
                 seed = 0;
+                key_block_hash = BlockHash::default();
             } else {
                 // If this is not era 0, there must be a key block for it.
                 let key_block = key_blocks.get(&era_id).expect("missing key block");
+                key_block_hash = key_block.hash();
                 start_height = key_block.height() + 1;
                 era_start_time = key_block.timestamp();
                 seed = Self::era_seed(*booking_block_hash, key_block.accumulated_seed());
@@ -549,6 +550,7 @@ where
             let results = self.new_era(
                 era_id,
                 now,
+                key_block_hash,
                 validators,
                 new_faulty,
                 faulty,
@@ -612,18 +614,18 @@ where
     }
 
     /// Applies `f` to the consensus protocol of the specified era.
-    fn delegate_to_era<REv: ReactorEventT<I>, F>(
+    fn delegate_to_era<REv: ReactorEventT, F>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         rng: &mut NodeRng,
         era_id: EraId,
         f: F,
-    ) -> Effects<Event<I>>
+    ) -> Effects<Event>
     where
         F: FnOnce(
-            &mut dyn ConsensusProtocol<I, ClContext>,
+            &mut dyn ConsensusProtocol<ClContext>,
             &mut NodeRng,
-        ) -> Vec<ProtocolOutcome<I, ClContext>>,
+        ) -> Vec<ProtocolOutcome<ClContext>>,
     {
         match self.open_eras.get_mut(&era_id) {
             None => {
@@ -641,38 +643,38 @@ where
         }
     }
 
-    pub(super) fn handle_timer<REv: ReactorEventT<I>>(
+    pub(super) fn handle_timer<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         rng: &mut NodeRng,
         era_id: EraId,
         timestamp: Timestamp,
         timer_id: TimerId,
-    ) -> Effects<Event<I>> {
+    ) -> Effects<Event> {
         self.delegate_to_era(effect_builder, rng, era_id, move |consensus, _| {
             consensus.handle_timer(timestamp, timer_id)
         })
     }
 
-    pub(super) fn handle_action<REv: ReactorEventT<I>>(
+    pub(super) fn handle_action<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         rng: &mut NodeRng,
         era_id: EraId,
         action_id: ActionId,
-    ) -> Effects<Event<I>> {
+    ) -> Effects<Event> {
         self.delegate_to_era(effect_builder, rng, era_id, move |consensus, _| {
             consensus.handle_action(action_id, Timestamp::now())
         })
     }
 
-    pub(super) fn handle_message<REv: ReactorEventT<I>>(
+    pub(super) fn handle_message<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         rng: &mut NodeRng,
-        sender: I,
+        sender: NodeId,
         msg: ConsensusMessage,
-    ) -> Effects<Event<I>> {
+    ) -> Effects<Event> {
         match msg {
             ConsensusMessage::Protocol { era_id, payload } => {
                 // If the era is already unbonded, only accept new evidence, because still-bonded
@@ -690,7 +692,7 @@ where
                 self.iter_past(era_id, self.bonded_eras())
                     .flat_map(|e_id| {
                         self.delegate_to_era(effect_builder, rng, e_id, |consensus, _| {
-                            consensus.request_evidence(sender.clone(), &pub_key)
+                            consensus.request_evidence(sender, &pub_key)
                         })
                     })
                     .collect()
@@ -698,12 +700,12 @@ where
         }
     }
 
-    pub(super) fn handle_new_block_payload<REv: ReactorEventT<I>>(
+    pub(super) fn handle_new_block_payload<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         rng: &mut NodeRng,
         new_block_payload: NewBlockPayload,
-    ) -> Effects<Event<I>> {
+    ) -> Effects<Event> {
         let NewBlockPayload {
             era_id,
             block_payload,
@@ -719,11 +721,11 @@ where
         })
     }
 
-    pub(super) fn handle_block_added<REv: ReactorEventT<I>>(
+    pub(super) fn handle_block_added<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         block_header: BlockHeader,
-    ) -> Effects<Event<I>> {
+    ) -> Effects<Event> {
         let our_pk = self.public_signing_key.clone();
         let our_sk = self.secret_signing_key.clone();
         let era_id = block_header.era_id();
@@ -779,13 +781,13 @@ where
         effects
     }
 
-    pub(super) fn handle_deactivate_era<REv: ReactorEventT<I>>(
+    pub(super) fn handle_deactivate_era<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         era_id: EraId,
         old_faulty_num: usize,
         delay: Duration,
-    ) -> Effects<Event<I>> {
+    ) -> Effects<Event> {
         let era = if let Some(era) = self.open_eras.get_mut(&era_id) {
             era
         } else {
@@ -813,13 +815,13 @@ where
     }
 
     /// Creates a new era.
-    pub(super) fn handle_create_new_era<REv: ReactorEventT<I>>(
+    pub(super) fn handle_create_new_era<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         rng: &mut NodeRng,
         switch_block_header: BlockHeader,
         booking_block_hash: BlockHash,
-    ) -> Effects<Event<I>> {
+    ) -> Effects<Event> {
         let (era_report, next_era_validators_weights) = match (
             switch_block_header.era_end(),
             switch_block_header.next_era_validator_weights(),
@@ -839,10 +841,8 @@ where
         let new_faulty = era_report.equivocators.clone();
         let era_id = switch_block_header.era_id().successor();
         info!(era = era_id.value(), "era created");
-        let seed = EraSupervisor::<I>::era_seed(
-            booking_block_hash,
-            switch_block_header.accumulated_seed(),
-        );
+        let seed =
+            EraSupervisor::era_seed(booking_block_hash, switch_block_header.accumulated_seed());
         trace!(%seed, "the seed for {}: {}", era_id, seed);
         let faulty = self
             .iter_past_other(era_id, self.banning_period())
@@ -855,6 +855,7 @@ where
         let mut outcomes = self.new_era(
             era_id,
             now,
+            switch_block_header.hash(),
             next_era_validators_weights.clone(),
             new_faulty,
             faulty,
@@ -868,12 +869,12 @@ where
         self.handle_consensus_outcomes(effect_builder, rng, era_id, outcomes)
     }
 
-    pub(super) fn resolve_validity<REv: ReactorEventT<I>>(
+    pub(super) fn resolve_validity<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         rng: &mut NodeRng,
-        resolve_validity: ResolveValidity<I>,
-    ) -> Effects<Event<I>> {
+        resolve_validity: ResolveValidity,
+    ) -> Effects<Event> {
         let ResolveValidity {
             era_id,
             sender,
@@ -904,15 +905,15 @@ where
         effects
     }
 
-    fn handle_consensus_outcomes<REv: ReactorEventT<I>, T>(
+    fn handle_consensus_outcomes<REv: ReactorEventT, T>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         rng: &mut NodeRng,
         era_id: EraId,
         outcomes: T,
-    ) -> Effects<Event<I>>
+    ) -> Effects<Event>
     where
-        T: IntoIterator<Item = ProtocolOutcome<I, ClContext>>,
+        T: IntoIterator<Item = ProtocolOutcome<ClContext>>,
     {
         outcomes
             .into_iter()
@@ -928,23 +929,23 @@ where
     }
 
     /// Returns the era with the specified ID. Panics if it does not exist.
-    fn era(&self, era_id: EraId) -> &Era<I> {
+    fn era(&self, era_id: EraId) -> &Era {
         &self.open_eras[&era_id]
     }
 
     /// Returns the era with the specified ID mutably. Panics if it does not exist.
-    fn era_mut(&mut self, era_id: EraId) -> &mut Era<I> {
+    fn era_mut(&mut self, era_id: EraId) -> &mut Era {
         self.open_eras.get_mut(&era_id).unwrap()
     }
 
     #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
-    fn handle_consensus_outcome<REv: ReactorEventT<I>>(
+    fn handle_consensus_outcome<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         rng: &mut NodeRng,
         era_id: EraId,
-        consensus_result: ProtocolOutcome<I, ClContext>,
-    ) -> Effects<Event<I>> {
+        consensus_result: ProtocolOutcome<ClContext>,
+    ) -> Effects<Event> {
         match consensus_result {
             ProtocolOutcome::InvalidIncomingMessage(_, sender, error) => {
                 warn!(
@@ -972,8 +973,9 @@ where
             }
             ProtocolOutcome::CreatedMessageToRandomPeer(payload) => {
                 let message = ConsensusMessage::Protocol { era_id, payload };
+
                 async move {
-                    let peers = effect_builder.get_peers_in_random_order().await;
+                    let peers = effect_builder.get_fully_connected_peers().await;
                     if let Some(to) = peers.into_iter().next() {
                         effect_builder.send_message(to, message.into()).await;
                     }
@@ -1095,11 +1097,7 @@ where
                 let mut effects = Effects::new();
                 for pub_key in missing_evidence {
                     let msg = ConsensusMessage::EvidenceRequest { era_id, pub_key };
-                    effects.extend(
-                        effect_builder
-                            .send_message(sender.clone(), msg.into())
-                            .ignore(),
-                    );
+                    effects.extend(effect_builder.send_message(sender, msg.into()).ignore());
                 }
                 effects.extend(
                     async move {
@@ -1143,7 +1141,7 @@ where
                 .iter_past_other(era_id, self.bonded_eras())
                 .flat_map(|e_id| {
                     self.delegate_to_era(effect_builder, rng, e_id, |consensus, _| {
-                        consensus.request_evidence(sender.clone(), &pub_key)
+                        consensus.request_evidence(sender, &pub_key)
                     })
                 })
                 .collect(),
@@ -1171,7 +1169,7 @@ where
     pub(super) fn got_upgrade_activation_point(
         &mut self,
         activation_point: ActivationPoint,
-    ) -> Effects<Event<I>> {
+    ) -> Effects<Event> {
         debug!("got {}", activation_point);
         self.next_upgrade_activation_point = Some(activation_point);
         Effects::new()
@@ -1180,7 +1178,7 @@ where
     pub(super) fn status(
         &self,
         responder: Responder<Option<(PublicKey, Option<TimeDiff>)>>,
-    ) -> Effects<Event<I>> {
+    ) -> Effects<Event> {
         let public_key = self.public_signing_key.clone();
         let round_length = self
             .open_eras
@@ -1189,11 +1187,11 @@ where
         responder.respond(Some((public_key, round_length))).ignore()
     }
 
-    fn disconnect<REv: ReactorEventT<I>>(
+    fn disconnect<REv: ReactorEventT>(
         &self,
         effect_builder: EffectBuilder<REv>,
-        sender: I,
-    ) -> Effects<Event<I>> {
+        sender: NodeId,
+    ) -> Effects<Event> {
         effect_builder
             .announce_disconnect_from_peer(sender)
             .ignore()
@@ -1205,18 +1203,20 @@ where
             Some(upgrade_point) => upgrade_point.should_upgrade(era_id),
         }
     }
-}
 
-#[cfg(test)]
-impl<I> EraSupervisor<I>
-where
-    I: NodeIdT,
-{
     /// Returns the most recent era.
     pub(crate) fn current_era(&self) -> EraId {
         self.current_era
     }
 
+    /// Get a reference to the era supervisor's open eras.
+    pub(crate) fn open_eras(&self) -> &HashMap<EraId, Era> {
+        &self.open_eras
+    }
+}
+
+#[cfg(test)]
+impl EraSupervisor {
     /// Returns the list of validators who equivocated in this era.
     pub(crate) fn validators_with_evidence(&self, era_id: EraId) -> Vec<&PublicKey> {
         self.open_eras[&era_id].consensus.validators_with_evidence()
@@ -1376,11 +1376,16 @@ async fn execute_finalized_block<REv>(
         .await
 }
 
-/// Computes the instance ID for an era, given the era ID and the chainspec hash.
-fn instance_id(protocol_config: &ProtocolConfig, era_id: EraId) -> Digest {
-    Digest::hash_pair(protocol_config.chainspec_hash, era_id.to_le_bytes())
-        .value()
-        .into()
+/// Computes the instance ID for an era, given the chainspec hash, era ID and the key block hash.
+fn instance_id(
+    protocol_config: &ProtocolConfig,
+    era_id: EraId,
+    key_block_hash: BlockHash,
+) -> Digest {
+    Digest::hash_pair(
+        key_block_hash.inner().value(),
+        Digest::hash_pair(protocol_config.chainspec_hash, era_id.to_le_bytes()).value(),
+    )
 }
 
 /// The number of past eras whose validators are still bonded. After this many eras, a former
@@ -1406,15 +1411,14 @@ pub(crate) fn oldest_bonded_era(protocol_config: &ProtocolConfig, current_era: E
 /// previous eras. This is done by repeatedly querying storage for deploy metadata. When metadata is
 /// found storage is queried again to get the era id for the included deploy. That era id must *not*
 /// be less than the current era, otherwise the deploy is a replay attack.
-async fn check_deploys_for_replay_in_previous_eras_and_validate_block<REv, I>(
+async fn check_deploys_for_replay_in_previous_eras_and_validate_block<REv>(
     effect_builder: EffectBuilder<REv>,
     proposed_block_era_id: EraId,
-    sender: I,
+    sender: NodeId,
     proposed_block: ProposedBlock<ClContext>,
-) -> Event<I>
+) -> Event
 where
-    REv: From<BlockValidationRequest<I>> + From<StorageRequest>,
-    I: Clone + Send + 'static,
+    REv: From<BlockValidationRequest> + From<StorageRequest>,
 {
     for deploy_hash in proposed_block.value().deploys_and_transfers_iter() {
         let block_header = match effect_builder
@@ -1434,14 +1438,14 @@ where
         if block_header.era_id() < proposed_block_era_id {
             return Event::ResolveValidity(ResolveValidity {
                 era_id: proposed_block_era_id,
-                sender: sender.clone(),
+                sender,
                 proposed_block: proposed_block.clone(),
                 valid: false,
             });
         }
     }
 
-    let sender_for_validate_block: I = sender.clone();
+    let sender_for_validate_block: NodeId = sender;
     let valid = effect_builder
         .validate_block(sender_for_validate_block, proposed_block.clone())
         .await;

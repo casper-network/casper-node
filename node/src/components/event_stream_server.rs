@@ -202,8 +202,7 @@ where
             }),
             Event::DeploysExpired(deploy_hashes) => deploy_hashes
                 .into_iter()
-                .map(|deploy_hash| self.broadcast(SseData::DeployExpired { deploy_hash }))
-                .flatten()
+                .flat_map(|deploy_hash| self.broadcast(SseData::DeployExpired { deploy_hash }))
                 .collect(),
             Event::Fault {
                 era_id,

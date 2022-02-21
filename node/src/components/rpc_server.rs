@@ -43,7 +43,7 @@ use crate::{
         },
         EffectBuilder, EffectExt, Effects, Responder,
     },
-    types::{NodeId, StatusFeed},
+    types::StatusFeed,
     utils::{self, ListeningError},
     NodeRng,
 };
@@ -53,14 +53,14 @@ pub(crate) use event::Event;
 /// A helper trait capturing all of this components Request type dependencies.
 pub(crate) trait ReactorEventT:
     From<Event>
-    + From<RpcRequest<NodeId>>
+    + From<RpcRequest>
     + From<RpcServerAnnouncement>
     + From<ChainspecLoaderRequest>
     + From<ContractRuntimeRequest>
     + From<ConsensusRequest>
-    + From<LinearChainRequest<NodeId>>
+    + From<LinearChainRequest>
     + From<MetricsRequest>
-    + From<NetworkInfoRequest<NodeId>>
+    + From<NetworkInfoRequest>
     + From<StorageRequest>
     + Send
 {
@@ -68,14 +68,14 @@ pub(crate) trait ReactorEventT:
 
 impl<REv> ReactorEventT for REv where
     REv: From<Event>
-        + From<RpcRequest<NodeId>>
+        + From<RpcRequest>
         + From<RpcServerAnnouncement>
         + From<ChainspecLoaderRequest>
         + From<ContractRuntimeRequest>
         + From<ConsensusRequest>
-        + From<LinearChainRequest<NodeId>>
+        + From<LinearChainRequest>
         + From<MetricsRequest>
-        + From<NetworkInfoRequest<NodeId>>
+        + From<NetworkInfoRequest>
         + From<StorageRequest>
         + Send
         + 'static
@@ -327,13 +327,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
-
-    use assert_json_diff::assert_json_eq;
     use schemars::schema_for_value;
-    use serde_json::Value;
 
-    use crate::rpcs::docs::OPEN_RPC_SCHEMA;
+    use crate::{rpcs::docs::OPEN_RPC_SCHEMA, testing::assert_schema};
 
     #[test]
     fn schema() {
@@ -362,15 +358,6 @@ mod tests {
             env!("CARGO_MANIFEST_DIR")
         );
 
-        let expected_schema = fs::read_to_string(schema_path).unwrap();
-        let expected_schema: Value = serde_json::from_str(expected_schema.trim()).unwrap();
-
-        let actual_schema = schema_for_value!(OPEN_RPC_SCHEMA.clone());
-        let actual_schema_string = serde_json::to_string_pretty(&actual_schema).unwrap();
-        let actual_schema: Value = serde_json::from_str(&actual_schema_string).unwrap();
-
-        // println!("{}", actual_schema_string);
-
-        assert_json_eq!(actual_schema, expected_schema);
+        assert_schema(schema_path, schema_for_value!(OPEN_RPC_SCHEMA.clone()));
     }
 }
