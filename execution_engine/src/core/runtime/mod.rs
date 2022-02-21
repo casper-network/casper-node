@@ -3363,7 +3363,7 @@ where
                 return Ok(Err(ApiError::OutOfMemory));
             }
             Some(arg) => {
-                // SAFETY: Safe to unwrap as wee asserted length above
+                // SAFETY: Safe to unwrap as we asserted length above
                 arg.inner_bytes()
                     .len()
                     .try_into()
