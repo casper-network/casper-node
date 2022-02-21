@@ -301,7 +301,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn should_fail_to_build_deploy_without_deploy_hash() {
+    fn should_not_default_deploy_hash_to_zeros_if_not_specified() {
         let address = AccountHash::new([42; 32]);
         let deploy = DeployItemBuilder::new()
             .with_address(address)
