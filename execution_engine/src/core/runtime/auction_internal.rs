@@ -8,7 +8,7 @@ use casper_types::{
             AccountProvider, Auction, Bid, EraInfo, Error, MintProvider, RuntimeProvider,
             SeigniorageRecipientsSnapshot, StorageProvider, UnbondingPurse,
         },
-        mint, MINT,
+        mint,
     },
     CLTyped, CLValue, EraId, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue, URef,
     BLAKE2B_DIGEST_LENGTH, U512,
@@ -236,11 +236,6 @@ where
 
         let gas_counter = self.gas_counter();
 
-        let frame = self
-            .get_system_contract_stack_frame(MINT)
-            .map_err(|_| Error::Storage)?;
-        self.try_push_stack(frame)
-            .map_err(|_| Error::RuntimeStack)?;
         let mint_contract_hash = self.get_mint_contract().map_err(|exec_error| {
             <Option<Error>>::from(exec_error).unwrap_or(Error::MissingValue)
         })?;

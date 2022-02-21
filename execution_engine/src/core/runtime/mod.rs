@@ -1183,12 +1183,6 @@ where
         self.stack.as_ref().ok_or(Error::MissingRuntimeStack)
     }
 
-    fn try_push_stack(&mut self, frame: RuntimeStackFrame) -> Result<(), Error> {
-        let stack = self.stack.as_mut().ok_or(Error::MissingRuntimeStack)?;
-        stack.push(frame)?;
-        Ok(())
-    }
-
     fn execute_contract(
         &mut self,
         contract_package: ContractPackage,
@@ -2008,22 +2002,6 @@ where
     /// Returned URef is already attenuated depending on the calling account.
     fn get_mint_contract(&self) -> Result<ContractHash, Error> {
         self.context.get_system_contract(MINT)
-    }
-
-    fn get_system_contract_stack_frame(&mut self, name: &str) -> Result<CallStackElement, Error> {
-        let contract_hash = self.context.get_system_contract(name)?;
-        let key = Key::from(contract_hash);
-        let contract = match self.context.read_gs(&key)? {
-            Some(StoredValue::Contract(contract)) => contract,
-            Some(_) => {
-                return Err(Error::InvalidContract(contract_hash));
-            }
-            None => return Err(Error::KeyNotFound(key)),
-        };
-        Ok(CallStackElement::StoredContract {
-            contract_package_hash: contract.contract_package_hash(),
-            contract_hash,
-        })
     }
 
     /// Looks up the public handle payment contract key in the context's protocol data.
