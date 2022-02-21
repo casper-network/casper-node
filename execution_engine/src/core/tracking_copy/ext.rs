@@ -205,7 +205,7 @@ where
         match self.get(correlation_id, &key).map_err(Into::into)? {
             Some(StoredValue::ContractWasm(contract_wasm)) => Ok(contract_wasm),
             Some(other) => Err(execution::Error::TypeMismatch(
-                StoredValueTypeMismatch::new("ContractHeader".to_string(), other.type_name()),
+                StoredValueTypeMismatch::new("ContractWasm".to_string(), other.type_name()),
             )),
             None => Err(execution::Error::KeyNotFound(key)),
         }
