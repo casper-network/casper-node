@@ -9,6 +9,7 @@ mod era_supervisor;
 #[macro_use]
 mod highway_core;
 pub(crate) mod error;
+mod leader_sequence;
 mod metrics;
 mod protocols;
 #[cfg(test)]
@@ -49,12 +50,13 @@ use crate::{
     types::{BlockHash, BlockHeader, BlockPayload, NodeId},
     NodeRng,
 };
+use protocols::{highway::HighwayProtocol, simple_consensus::SimpleConsensus};
 
 pub(crate) use cl_context::ClContext;
 pub(crate) use config::{ChainspecConsensusExt, Config};
 pub(crate) use consensus_protocol::{BlockContext, EraReport, ProposedBlock};
 pub(crate) use era_supervisor::{debug::EraDump, EraSupervisor};
-pub(crate) use protocols::{highway::HighwayProtocol, simple_consensus::SimpleConsensus};
+pub(crate) use leader_sequence::LeaderSequence;
 pub(crate) use validator_change::ValidatorChange;
 
 #[derive(DataSize, Clone, Serialize, Deserialize)]
