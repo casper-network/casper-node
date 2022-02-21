@@ -172,11 +172,10 @@ where
     /// round ID and the parent's round ID, if there is a parent.
     pending_proposal_round_ids: Option<(RoundId, Option<RoundId>)>,
     leader_sequence: LeaderSequence,
-
-    // TODO: Split out protocol state.
     /// Incoming blocks we can't add yet because we are waiting for validation.
     rounds: BTreeMap<RoundId, Round<C>>,
-    evidence: ValidatorMap<Option<()>>, // TODO: Define evidence.
+    /// List of faulty validators and their type of fault.
+    faults: HashMap<ValidatorIndex, Fault<C>>,
     ftt: Weight,
     config: super::highway::config::Config,
     /// The validator's voting weights.
@@ -248,10 +247,10 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         for vidx in validators.iter_cannot_propose_idx() {
             can_propose[vidx] = false;
         }
-        let mut evidence: ValidatorMap<Option<()>> = validators.iter().map(|_| None).collect();
-        for vidx in validators.iter_banned_idx() {
-            evidence[vidx] = Some(());
-        }
+        let faults: HashMap<_, _> = validators
+            .iter_banned_idx()
+            .map(|idx| (idx, Fault::Banned))
+            .collect();
         let leader_sequence = LeaderSequence::new(seed, &weights, can_propose);
 
         info!(
@@ -281,7 +280,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             first_non_finalized_round_id: 0,
             current_timeout: Timestamp::from(u64::MAX),
             evidence_only: false,
-            evidence,
+            faults,
             config: config.highway.clone(),
             params,
             instance_id,
@@ -314,7 +313,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
 
     /// Returns whether the switch block has already been finalized.
     fn finalized_switch_block(&self) -> bool {
-        // TODO: Deduplicate
         let round_id = if let Some(round_id) = self.first_non_finalized_round_id.checked_sub(1) {
             round_id
         } else {
@@ -324,6 +322,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             .accepted_proposal
             .as_ref()
             .expect("missing finalized proposal");
+        // TODO: Don't require computing ancestor values. (Add height to proposal?)
         let relative_height_plus_1 = self
             .ancestor_values(round_id)
             .expect("missing ancestors of finalized block")
@@ -701,17 +700,13 @@ impl<C: Context + 'static> SimpleConsensus<C> {
 
     /// Returns `true` if the given validators, together will all faulty validators, form a quorum.
     fn is_quorum(&self, vidxs: impl Iterator<Item = ValidatorIndex>) -> bool {
-        let mut sum: Weight = self
-            .evidence
-            .iter_some()
-            .map(|(vidx, _)| self.weights[vidx])
-            .sum();
+        let mut sum: Weight = self.faults.keys().map(|vidx| self.weights[*vidx]).sum();
         let quorum_threshold = self.quorum_threshold();
         if sum >= quorum_threshold {
             return true;
         }
         for vidx in vidxs {
-            if self.evidence[vidx].is_none() {
+            if !self.faults.contains_key(&vidx) {
                 sum += self.weights[vidx];
                 if sum >= quorum_threshold {
                     return true;
@@ -887,9 +882,13 @@ where
             return err_msg("invalid signature");
         }
 
-        if self.evidence.get(validator_idx) == Some(&Some(())) {
-            debug!("message from faulty validator");
-            // TODO: Determine when we need to store this.
+        if self
+            .faults
+            .get(&validator_idx)
+            .map_or(false, Fault::is_banned)
+        {
+            debug!("message from banned validator");
+            // TODO: Also drop messages from other faulty validators?
         }
 
         match content {
@@ -1135,14 +1134,13 @@ where
     fn has_evidence(&self, vid: &C::ValidatorId) -> bool {
         self.validators
             .get_index(vid)
-            .map_or(false, |idx| self.evidence[idx].is_some())
+            .and_then(|idx| self.faults.get(&idx))
+            .map_or(false, Fault::is_direct)
     }
 
     fn mark_faulty(&mut self, vid: &C::ValidatorId) {
         if let Some(idx) = self.validators.get_index(vid) {
-            if self.evidence[idx].is_none() {
-                self.evidence[idx] = Some(());
-            }
+            self.faults.entry(idx).or_insert(Fault::Indirect);
         }
     }
 
@@ -1166,7 +1164,11 @@ where
     fn set_paused(&mut self, paused: bool) {}
 
     fn validators_with_evidence(&self) -> Vec<&C::ValidatorId> {
-        vec![] // TODO: Return all validators who double-signed in this instance.
+        self.faults
+            .iter()
+            .filter(|(_, fault)| fault.is_direct())
+            .filter_map(|(vidx, _)| self.validators.id(*vidx))
+            .collect()
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -1183,5 +1185,34 @@ where
 
     fn next_round_length(&self) -> Option<TimeDiff> {
         Some(self.params.min_round_length())
+    }
+}
+
+/// A reason for a validator to be marked as faulty.
+///
+/// The `Banned` state is fixed from the beginning and can't be replaced. However, `Indirect` can
+/// be replaced with `Direct` evidence, which has the same effect but doesn't rely on information
+/// from other consensus protocol instances.
+#[derive(DataSize, Debug)]
+pub(crate) enum Fault<C>
+where
+    C: Context,
+{
+    /// The validator was known to be malicious from the beginning. All their messages are
+    /// considered invalid in this Highway instance.
+    Banned,
+    /// We have direct evidence of the validator's fault.
+    Direct(Message<C>, Message<C>),
+    /// The validator is known to be faulty, but the evidence is not in this era.
+    Indirect,
+}
+
+impl<C: Context> Fault<C> {
+    fn is_direct(&self) -> bool {
+        matches!(self, Fault::Direct(_, _))
+    }
+
+    fn is_banned(&self) -> bool {
+        matches!(self, Fault::Banned)
     }
 }
