@@ -144,6 +144,19 @@ pub fn deserialize<T: FromBytes>(bytes: Vec<u8>) -> Result<T, Error> {
     }
 }
 
+/// Deserializes a slice of bytes into an instance of `T`.
+///
+/// Returns an error if the bytes cannot be deserialized into `T` or if not all of the input bytes
+/// are consumed in the operation.
+pub fn deserialize_from_slice<I: AsRef<[u8]>, O: FromBytes>(bytes: I) -> Result<O, Error> {
+    let (t, remainder) = O::from_bytes(bytes.as_ref())?;
+    if remainder.is_empty() {
+        Ok(t)
+    } else {
+        Err(Error::LeftOverBytes)
+    }
+}
+
 /// Serializes `t` into a `Vec<u8>`.
 pub fn serialize(t: impl ToBytes) -> Result<Vec<u8>, Error> {
     t.into_bytes()
@@ -1277,8 +1290,14 @@ where
     t.write_bytes(&mut written_bytes)
         .expect("Unable to serialize data via write_bytes");
     assert_eq!(serialized, written_bytes);
+
+    let deserialized_from_slice =
+        deserialize_from_slice(&serialized).expect("Unable to deserialize data");
+    // assert!(*t == deserialized);
+    assert_eq!(*t, deserialized_from_slice);
+
     let deserialized = deserialize::<T>(serialized).expect("Unable to deserialize data");
-    assert!(*t == deserialized);
+    assert_eq!(*t, deserialized);
 }
 #[cfg(test)]
 mod tests {

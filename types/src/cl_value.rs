@@ -89,7 +89,7 @@ impl CLValue {
         let expected = T::cl_type();
 
         if self.cl_type == expected {
-            Ok(bytesrepr::deserialize(self.bytes.into())?)
+            Ok(bytesrepr::deserialize_from_slice(&self.bytes)?)
         } else {
             Err(CLValueError::Type(CLTypeMismatch {
                 expected,
