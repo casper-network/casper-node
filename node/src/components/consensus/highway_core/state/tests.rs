@@ -7,7 +7,6 @@ use std::{
 };
 
 use datasize::DataSize;
-use rand::{Rng, RngCore};
 
 use super::*;
 use crate::components::consensus::{
@@ -901,41 +900,4 @@ fn test_leader() {
             .map(|r_id| state.leader(r_id.into()).0)
             .collect_vec()
     );
-}
-
-#[test]
-fn test_leader_prng() {
-    let mut rng = crate::new_rng();
-
-    // Repeat a few times to make it likely that the inner loop runs more than once.
-    for _ in 0..10 {
-        let upper = rng.gen_range(1..u64::MAX);
-        let seed = rng.next_u64();
-
-        // This tests that the rand crate's gen_range implementation, which is used in
-        // leader_prng, doesn't change, and uses this algorithm:
-        // https://github.com/rust-random/rand/blob/73befa480c58dd0461da5f4469d5e04c564d4de3/src/distributions/uniform.rs#L515
-        let mut prng = ChaCha8Rng::seed_from_u64(seed);
-        let zone = upper << upper.leading_zeros(); // A multiple of upper that fits into a u64.
-        let expected = loop {
-            // Multiply a random u64 by upper. This is between 0 and u64::MAX * upper.
-            let prod = (prng.next_u64() as u128) * (upper as u128);
-            // So prod >> 64 is between 0 and upper - 1. Each interval from (N << 64) to
-            // (N << 64) + zone contains the same number of such values.
-            // If the value is in such an interval, return N + 1; otherwise retry.
-            if (prod as u64) < zone {
-                break (prod >> 64) as u64 + 1;
-            }
-        };
-
-        assert_eq!(expected, leader_prng(upper, seed));
-    }
-}
-
-#[test]
-fn test_leader_prng_values() {
-    // Test a few concrete values, to detect if the ChaCha8Rng impl changes.
-    assert_eq!(12578764544318200737, leader_prng(u64::MAX, 42));
-    assert_eq!(12358540700710939054, leader_prng(u64::MAX, 1337));
-    assert_eq!(4134160578770126600, leader_prng(u64::MAX, 0x1020304050607));
 }

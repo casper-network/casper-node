@@ -8,8 +8,6 @@ use std::{
 use datasize::DataSize;
 use itertools::Itertools;
 use num_traits::AsPrimitive;
-use rand::{Rng, SeedableRng};
-use rand_chacha::ChaCha8Rng;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
@@ -27,7 +25,7 @@ use crate::{
             validators::{ValidatorIndex, ValidatorMap, Validators},
         },
         traits::{ConsensusValueT, Context, ValidatorSecret},
-        ActionId, TimerId,
+        ActionId, LeaderSequence, TimerId,
     },
     types::{NodeId, TimeDiff, Timestamp},
     utils::ds,
@@ -124,7 +122,7 @@ impl<C: Context> Round<C> {
             votes_map[validator_idx] = Some(signature);
             true
         } else {
-            return false;
+            false
         }
         // TODO: Detect double-signing!
     }
@@ -150,7 +148,7 @@ impl<C: Context> Round<C> {
                 .echos
                 .get(hash)
                 .map_or(false, |echo_map| echo_map.contains_key(&validator_idx)),
-            Content::Vote(vote) => self.votes[&vote][validator_idx].is_some(),
+            Content::Vote(vote) => self.votes[vote][validator_idx].is_some(),
         }
     }
 }
@@ -173,6 +171,7 @@ where
     /// If we requested a new block from the block proposer component this contains the proposal's
     /// round ID and the parent's round ID, if there is a parent.
     pending_proposal_round_ids: Option<(RoundId, Option<RoundId>)>,
+    leader_sequence: LeaderSequence,
 
     // TODO: Split out protocol state.
     /// Incoming blocks we can't add yet because we are waiting for validation.
@@ -186,16 +185,6 @@ where
     first_non_finalized_round_id: RoundId,
     /// The timeout for the current round.
     current_timeout: Timestamp,
-
-    // TODO: Split out leader sequence.
-    /// Cumulative validator weights: Entry `i` contains the sum of the weights of validators `0`
-    /// through `i`.
-    cumulative_w: ValidatorMap<Weight>,
-    /// Cumulative validator weights, but with the weight of banned validators set to `0`.
-    cumulative_w_leaders: ValidatorMap<Weight>,
-    /// A map with `true` for all validators that should be assign slots as leaders, and are
-    /// allowed to propose blocks.
-    can_propose: ValidatorMap<bool>,
 }
 
 impl<C: Context + 'static> SimpleConsensus<C> {
@@ -263,20 +252,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         for vidx in validators.iter_banned_idx() {
             evidence[vidx] = Some(());
         }
-
-        // For leader selection, we need the list of cumulative weights of the first n validators.
-        let sums = |mut sums: Vec<Weight>, w: Weight| {
-            let sum = sums.last().copied().unwrap_or(Weight(0));
-            // This can't panic: We already scaled down the weights so they're  < 2^64.
-            sums.push(sum.checked_add(w).expect("total weight must be < 2^64"));
-            sums
-        };
-        let cumulative_w = ValidatorMap::from(weights.iter().copied().fold(vec![], sums));
-        let cumulative_w_leaders = weights
-            .enumerate()
-            .map(|(idx, weight)| can_propose[idx].then(|| *weight).unwrap_or(Weight(0)))
-            .fold(vec![], sums)
-            .into();
+        let leader_sequence = LeaderSequence::new(seed, &weights, can_propose);
 
         info!(
             %proposal_timeout,
@@ -298,6 +274,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         );
 
         let sc = Box::new(SimpleConsensus {
+            leader_sequence,
             proposals_waiting_for_parent: HashMap::new(),
             proposals_waiting_for_validation: HashMap::new(),
             rounds: BTreeMap::new(),
@@ -312,10 +289,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             validators,
             ftt,
             active_validator: None,
-            can_propose,
             weights,
-            cumulative_w,
-            cumulative_w_leaders,
             pending_proposal_round_ids: None,
         });
 
@@ -431,45 +405,9 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         vec![]
     }
 
-    /// Returns the leader in the specified time slot.
-    ///
-    /// First the assignment is computed ignoring the `can_propose` flags. Only if the selected
-    /// leader's entry is `false`, the computation is repeated, this time with the flagged
-    /// validators excluded. This ensures that once the validator set has been decided, correct
-    /// validators' slots never get reassigned to someone else, even if after the fact someone is
-    /// excluded as a leader.
+    /// Returns the leader in the specified round.
     pub(crate) fn leader(&self, round_id: RoundId) -> ValidatorIndex {
-        // The binary search cannot return None; if it does, it's a programming error. In that case,
-        // we want the tests to panic but production to pick a default.
-        let panic_or_0 = || {
-            if cfg!(test) {
-                panic!("random number out of range");
-            } else {
-                error!("random number out of range");
-                ValidatorIndex(0)
-            }
-        };
-        let seed = self.params.seed().wrapping_add(round_id as u64);
-        // We select a random one out of the `total_weight` weight units, starting numbering at 1.
-        let r = Weight(leader_prng(self.validators.total_weight().0, seed));
-        // The weight units are subdivided into intervals that belong to some validator.
-        // `cumulative_w[i]` denotes the last weight unit that belongs to validator `i`.
-        // `binary_search` returns the first `i` with `cumulative_w[i] >= r`, i.e. the validator
-        // who owns the randomly selected weight unit.
-        let leader_index = self
-            .cumulative_w
-            .binary_search(&r)
-            .unwrap_or_else(panic_or_0);
-        if self.can_propose[leader_index] {
-            return leader_index;
-        }
-        // If the selected leader is excluded, we reassign the slot to someone else. This time we
-        // consider only the non-banned validators.
-        let total_w_leaders = *self.cumulative_w_leaders.as_ref().last().unwrap();
-        let r = Weight(leader_prng(total_w_leaders.0, seed.wrapping_add(1)));
-        self.cumulative_w_leaders
-            .binary_search(&r)
-            .unwrap_or_else(panic_or_0)
+        self.leader_sequence.leader(u64::from(round_id))
     }
 
     /// Returns the first round that is neither skippable nor has an accepted proposal.
@@ -529,7 +467,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 {
                     // The proposal is new; send an Echo and check if it's already accepted.
                     outcomes.extend(self.check_proposal(round_id));
-                    if let Some((our_idx, secret_key)) = &self.active_validator {
+                    if let Some((our_idx, _)) = &self.active_validator {
                         if !self.rounds[&round_id].has_echoed(*our_idx) {
                             outcomes.extend(self.create_message(round_id, Content::Echo(hash)));
                         }
@@ -602,18 +540,17 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         } else {
             return vec![]; // We have a quorum of Echos but no proposal yet.
         };
-        let first_skipped_round_id;
-        if let Some(parent_round_id) = proposal.maybe_parent_round_id {
+        let first_skipped_round_id = if let Some(parent_round_id) = proposal.maybe_parent_round_id {
             if self
                 .round(parent_round_id)
                 .map_or(true, |round| round.accepted_proposal.is_none())
             {
                 return vec![]; // Parent is not accepted yet.
             }
-            first_skipped_round_id = parent_round_id.saturating_add(1);
+            parent_round_id.saturating_add(1)
         } else {
-            first_skipped_round_id = 0;
-        }
+            0
+        };
         if (first_skipped_round_id..round_id)
             .any(|skipped_round_id| !self.is_skippable_round(skipped_round_id))
         {
@@ -622,7 +559,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
 
         // We have a proposal with accepted parent, a quorum of Echos, and all rounds since the
         // parent are skippable. That means the proposal is now accepted.
-        self.round_mut(round_id).accepted_proposal = Some(proposal.clone());
+        self.round_mut(round_id).accepted_proposal = Some(proposal);
 
         let mut outcomes = vec![];
 
@@ -638,7 +575,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         }
 
         // If we haven't already voted, we vote to commit and finalize the accepted proposal.
-        if let Some((our_idx, secret_key)) = &self.active_validator {
+        if let Some((our_idx, _)) = &self.active_validator {
             if !self.rounds[&round_id].has_voted(*our_idx) {
                 outcomes.extend(self.create_message(round_id, Content::Vote(true)));
             }
@@ -677,7 +614,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         let validator_idx = self.leader(round_id);
         if proposal.block.needs_validation() {
             self.log_proposal(&proposal, validator_idx, "requesting proposal validation");
-            let block_context = BlockContext::new(proposal.timestamp, ancestor_values.clone());
+            let block_context = BlockContext::new(proposal.timestamp, ancestor_values);
             let proposed_block = ProposedBlock::new(proposal.block.clone(), block_context);
             if self
                 .proposals_waiting_for_validation
@@ -700,7 +637,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             );
             self.handle_content(
                 round_id,
-                Content::Proposal(proposal.clone()),
+                Content::Proposal(proposal),
                 validator_idx,
                 signature,
             )
@@ -736,7 +673,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             rewards: self
                 .validators
                 .iter()
-                .map(|v| (v.id().clone(), v.weight().0.into()))
+                .map(|v| (v.id().clone(), v.weight().0))
                 .collect(), // TODO
             inactive_validators: Default::default(), // TODO
         });
@@ -819,13 +756,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             btree_map::Entry::Vacant(entry) => entry.insert(Round::new(self.weights.len())),
         }
     }
-}
-
-/// Returns a pseudorandom `u64` between `1` and `upper` (inclusive).
-fn leader_prng(upper: u64, seed: u64) -> u64 {
-    ChaCha8Rng::seed_from_u64(seed)
-        .gen_range(0..upper)
-        .saturating_add(1)
 }
 
 #[derive(Clone, Hash, Serialize, Deserialize, Debug, PartialEq, Eq, DataSize)]
@@ -993,7 +923,7 @@ where
                         self.proposals_waiting_for_parent
                             .entry(parent_round_id)
                             .or_insert_with(HashMap::new)
-                            .entry(proposal.clone())
+                            .entry(proposal)
                             .or_insert_with(HashSet::new)
                             .insert((round_id, sender, signature));
                         return vec![];
@@ -1020,7 +950,6 @@ where
                     TIMER_ID_PROPOSAL_TIMEOUT,
                 )];
                 let current_round = self.current_round();
-                let validator_count = self.weights.len();
                 if let Some((our_idx, _)) = self.active_validator {
                     if our_idx == self.leader(current_round)
                         && self.pending_proposal_round_ids.is_none()
@@ -1048,7 +977,7 @@ where
             TIMER_ID_PROPOSAL_TIMEOUT => {
                 let round_id = self.current_round();
                 self.round_mut(round_id);
-                if let Some((our_idx, secret_key)) = &self.active_validator {
+                if let Some((our_idx, _)) = &self.active_validator {
                     if now >= self.current_timeout && !self.rounds[&round_id].has_voted(*our_idx) {
                         return self.create_message(round_id, Content::Vote(false));
                     }
@@ -1143,7 +1072,7 @@ where
         if valid {
             let (block, block_context) = proposed_block.destructure();
             let mut outcomes = vec![];
-            for (round_id, maybe_parent_round_id, sender, signature) in rounds_and_node_ids {
+            for (round_id, maybe_parent_round_id, _sender, signature) in rounds_and_node_ids {
                 let proposal = Proposal {
                     block: block.clone(),
                     timestamp: block_context.timestamp(),

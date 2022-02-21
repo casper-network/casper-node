@@ -26,8 +26,6 @@ use std::{
 
 use datasize::DataSize;
 use itertools::Itertools;
-use rand::{Rng, SeedableRng};
-use rand_chacha::ChaCha8Rng;
 use thiserror::Error;
 use tracing::{error, info, trace, warn};
 
@@ -41,6 +39,7 @@ use crate::{
             ENABLE_ENDORSEMENTS,
         },
         traits::Context,
+        LeaderSequence,
     },
     types::{TimeDiff, Timestamp},
     utils::ds,
@@ -151,11 +150,8 @@ where
     params: Params,
     /// The validator's voting weights.
     weights: ValidatorMap<Weight>,
-    /// Cumulative validator weights: Entry `i` contains the sum of the weights of validators `0`
-    /// through `i`.
-    cumulative_w: ValidatorMap<Weight>,
-    /// Cumulative validator weights, but with the weight of banned validators set to `0`.
-    cumulative_w_leaders: ValidatorMap<Weight>,
+    /// The pseudorandom sequence of round leaders.
+    leader_sequence: LeaderSequence,
     /// All units imported so far, by hash.
     /// This is a downward closed set: A unit must only be added here once all of its dependencies
     /// have been added as well, and it has been fully validated.
@@ -169,9 +165,6 @@ where
     /// Every validator that has an equivocation in `units` must have an entry here, but there can
     /// be additional entries for other kinds of faults.
     faults: HashMap<ValidatorIndex, Fault<C>>,
-    /// A map with `true` for all validators that should be assign slots as leaders, and are
-    /// allowed to propose blocks.
-    can_propose: ValidatorMap<bool>,
     /// The full panorama, corresponding to the complete protocol state.
     /// This points to the latest unit of every honest validator.
     panorama: Panorama<C>,
@@ -211,25 +204,7 @@ impl<C: Context> State<C> {
             weights.len() > 0,
             "cannot initialize Highway with no validators"
         );
-        let sums = |mut sums: Vec<Weight>, w: Weight| {
-            let sum = sums.last().copied().unwrap_or(Weight(0));
-            sums.push(sum.checked_add(w).expect("total weight must be < 2^64"));
-            sums
-        };
-        let cumulative_w = ValidatorMap::from(weights.iter().copied().fold(vec![], sums));
-        assert!(
-            *cumulative_w.as_ref().last().unwrap() > Weight(0),
-            "total weight must not be zero"
-        );
         let mut panorama = Panorama::new(weights.len());
-        let mut can_propose: ValidatorMap<bool> = weights.iter().map(|_| true).collect();
-        for idx in cannot_propose {
-            assert!(
-                idx.0 < weights.len() as u32,
-                "invalid validator index for exclusion from leader sequence"
-            );
-            can_propose[idx] = false;
-        }
         let faults: HashMap<_, _> = banned.into_iter().map(|idx| (idx, Fault::Banned)).collect();
         for idx in faults.keys() {
             assert!(
@@ -238,23 +213,25 @@ impl<C: Context> State<C> {
             );
             panorama[*idx] = Observation::Faulty;
         }
-        let cumulative_w_leaders = weights
-            .enumerate()
-            .map(|(idx, weight)| can_propose[idx].then(|| *weight).unwrap_or(Weight(0)))
-            .fold(vec![], sums)
-            .into();
+        let mut can_propose: ValidatorMap<bool> = weights.iter().map(|_| true).collect();
+        for idx in cannot_propose {
+            assert!(
+                idx.0 < weights.len() as u32,
+                "invalid validator index for exclusion from leader sequence"
+            );
+            can_propose[idx] = false;
+        }
+        let leader_sequence = LeaderSequence::new(params.seed(), &weights, can_propose);
         let pings = iter::repeat(params.start_timestamp())
             .take(weights.len())
             .collect();
         State {
             params,
             weights,
-            cumulative_w,
-            cumulative_w_leaders,
+            leader_sequence,
             units: HashMap::new(),
             blocks: HashMap::new(),
             faults,
-            can_propose,
             panorama,
             endorsements: HashMap::new(),
             incomplete_endorsements: HashMap::new(),
@@ -300,11 +277,7 @@ impl<C: Context> State<C> {
 
     /// Returns the sum of all validators' voting weights.
     pub(crate) fn total_weight(&self) -> Weight {
-        *self
-            .cumulative_w
-            .as_ref()
-            .last()
-            .expect("weight list cannot be empty")
+        self.leader_sequence.total_weight()
     }
 
     /// Returns evidence against validator nr. `idx`, if present.
@@ -425,37 +398,7 @@ impl<C: Context> State<C> {
     /// validators' slots never get reassigned to someone else, even if after the fact someone is
     /// excluded as a leader.
     pub(crate) fn leader(&self, timestamp: Timestamp) -> ValidatorIndex {
-        // The binary search cannot return None; if it does, it's a programming error. In that case,
-        // we want the tests to panic but production to pick a default.
-        let panic_or_0 = || {
-            if cfg!(test) {
-                panic!("random number out of range");
-            } else {
-                error!("random number out of range");
-                ValidatorIndex(0)
-            }
-        };
-        let seed = self.params.seed().wrapping_add(timestamp.millis());
-        // We select a random one out of the `total_weight` weight units, starting numbering at 1.
-        let r = Weight(leader_prng(self.total_weight().0, seed));
-        // The weight units are subdivided into intervals that belong to some validator.
-        // `cumulative_w[i]` denotes the last weight unit that belongs to validator `i`.
-        // `binary_search` returns the first `i` with `cumulative_w[i] >= r`, i.e. the validator
-        // who owns the randomly selected weight unit.
-        let leader_index = self
-            .cumulative_w
-            .binary_search(&r)
-            .unwrap_or_else(panic_or_0);
-        if self.can_propose[leader_index] {
-            return leader_index;
-        }
-        // If the selected leader is excluded, we reassign the slot to someone else. This time we
-        // consider only the non-banned validators.
-        let total_w_leaders = *self.cumulative_w_leaders.as_ref().last().unwrap();
-        let r = Weight(leader_prng(total_w_leaders.0, seed.wrapping_add(1)));
-        self.cumulative_w_leaders
-            .binary_search(&r)
-            .unwrap_or_else(panic_or_0)
+        self.leader_sequence.leader(timestamp.millis())
     }
 
     /// Adds the unit to the protocol state.
@@ -928,11 +871,6 @@ impl<C: Context> State<C> {
         })
     }
 
-    /// Returns `true` if the state contains no units.
-    pub(crate) fn is_empty(&self) -> bool {
-        self.units.is_empty()
-    }
-
     /// Returns the number of units received.
     #[cfg(test)]
     pub(crate) fn unit_count(&self) -> usize {
@@ -1206,11 +1144,4 @@ fn log2(x: u64) -> u32 {
         .unwrap_or(0)
         .trailing_zeros()
         .saturating_sub(1)
-}
-
-/// Returns a pseudorandom `u64` between `1` and `upper` (inclusive).
-fn leader_prng(upper: u64, seed: u64) -> u64 {
-    ChaCha8Rng::seed_from_u64(seed)
-        .gen_range(0..upper)
-        .saturating_add(1)
 }

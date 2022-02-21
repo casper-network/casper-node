@@ -614,7 +614,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         let request: HighwayMessage<C> = HighwayMessage::LatestStateRequest(
             IndexPanorama::from_panorama(self.highway.state().panorama(), self.highway.state()),
         );
-        let payload = (&request).serialize();
+        let payload = request.serialize();
         vec![ProtocolOutcome::CreatedMessageToRandomPeer(payload)]
     }
 
