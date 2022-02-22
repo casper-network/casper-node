@@ -20,7 +20,7 @@ use casper_types::{
     AccessRights, BlockTime, CLType, CLValue, ContextAccessRights, Contract, ContractHash,
     ContractPackage, ContractPackageHash, DeployHash, DeployInfo, EntryPointAccess, EntryPointType,
     Gas, Key, KeyTag, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer,
-    TransferAddr, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
+    TransferAddr, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512, URefAddr,
 };
 
 use crate::{
@@ -37,6 +37,17 @@ use crate::{
 pub(crate) mod dictionary;
 #[cfg(test)]
 mod tests;
+
+/// Used to indicate if a granted [`URef`] was already held by the context.
+pub enum GrantedAccess {
+    /// Pre-existing URef.
+    PreExisting,
+    /// Access to URef was granted.
+    Granted {
+        uref_addr: URefAddr,
+        newly_granted_access_rights: AccessRights,
+    },
+}
 
 /// Validates an entry point access with a special validator callback.
 ///
@@ -594,6 +605,31 @@ where
     /// Once an [`URef`] is inserted, it's considered a valid [`URef`] in this runtime context.
     pub fn insert_uref(&mut self, uref: URef) {
         self.access_rights.extend(&[uref])
+    }
+
+    /// Grants access to a [`URef`]; unless access was pre-existing.
+    pub fn grant_access(&mut self, uref: URef) -> GrantedAccess {
+        let pre_existing = self.access_rights.get(uref);
+
+        let access_rights = match pre_existing {
+            Some(pre_existing_access_rights) => {
+                // if pre_existing.contains(uref.access_rights()) {
+                //     return GrantedAccess::PreExisting;
+                // }
+                // else {
+                uref.access_rights().difference(pre_existing_access_rights)
+                // }
+            },
+            None => {
+                uref.access_rights()
+            }
+        };
+
+        self.insert_uref(uref);
+        GrantedAccess::Granted {
+            uref_addr: uref.addr(),
+            newly_granted_access_rights: access_rights,
+        }
     }
 
     /// Returns current effects of a tracking copy.

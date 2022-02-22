@@ -143,6 +143,10 @@ pub struct ContextAccessRights {
     access_rights: BTreeMap<URefAddr, AccessRights>,
 }
 
+// A 0b001
+// B 0b010
+// C 0b100
+
 impl ContextAccessRights {
     /// Creates a new instance of access rights from an iterator of URefs merging any duplicates,
     /// taking the union of their rights.
@@ -187,6 +191,24 @@ impl ContextAccessRights {
         } else {
             // URef is not known
             false
+        }
+    }
+
+    /// Checks whether given uref has enough access rights and returns it.
+    pub fn get(&self, uref: URef) -> Option<URef> {
+        match self.access_rights.get(&uref.addr()) {
+            Some(known_rights) => {
+                let rights_to_check = uref.access_rights();
+                if known_rights.contains(rights_to_check) {
+                    return Some(uref)
+                }
+                else {
+                    None
+                }
+            },
+            None => {
+                None
+            }
         }
     }
 }
