@@ -144,8 +144,8 @@ pub struct ContextAccessRights {
 }
 
 impl ContextAccessRights {
-    /// Creates a new instance of access rights by extracting the URefs from the `named_keys` and
-    /// merging any duplicates, taking the union of their rights.
+    /// Creates a new instance of access rights from an iterator of URefs merging any duplicates,
+    /// taking the union of their rights.
     pub fn new<T: IntoIterator<Item = URef>>(context_key: Key, uref_iter: T) -> Self {
         let mut context_access_rights = ContextAccessRights {
             context_key,

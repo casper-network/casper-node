@@ -24,6 +24,14 @@ use crate::{
     storage::global_state::StateReader,
 };
 
+const ARG_AMOUNT: &str = "amount";
+
+fn try_get_amount(runtime_args: &RuntimeArgs) -> Result<U512, ExecError> {
+    runtime_args
+        .try_get_number(ARG_AMOUNT)
+        .map_err(ExecError::from)
+}
+
 /// Executor object deals with execution of WASM modules.
 pub struct Executor {
     config: EngineConfig,
@@ -33,10 +41,6 @@ impl Executor {
     /// Creates new executor object.
     pub fn new(config: EngineConfig) -> Self {
         Executor { config }
-    }
-
-    fn try_get_amount(&self, runtime_args: &RuntimeArgs) -> Result<U512, ExecError> {
-        runtime_args.try_get_amount().map_err(ExecError::from)
     }
 
     /// Executes a WASM module.
@@ -65,7 +69,7 @@ impl Executor {
         R: StateReader<Key, StoredValue>,
         R::Error: Into<Error>,
     {
-        let main_purse_spending_limit: U512 = match self.try_get_amount(&args) {
+        let main_purse_spending_limit: U512 = match try_get_amount(&args) {
             Ok(spending_limit) => spending_limit,
             Err(error) => {
                 return ExecutionResult::precondition_failure(error.into());
@@ -77,6 +81,10 @@ impl Executor {
             Rc::new(RefCell::new(generator))
         };
 
+        // For `execute_module_bytes`, the args are already inside in runtime,
+        // object but for `ExecutionKind::Contract` we need to pass args forward
+        // as call_contract_with_stack will eventually create separate Runtime
+        // object for smart contract invocation.
         let context = self.create_runtime_context(
             EntryPointType::Session,
             args.clone(),
@@ -146,11 +154,10 @@ impl Executor {
         R: StateReader<Key, StoredValue>,
         R::Error: Into<Error>,
     {
-        let main_purse_spending_limit: U512 = match payment_args.try_get_amount() {
+        let main_purse_spending_limit: U512 = match try_get_amount(&payment_args) {
             Ok(spending_limit) => spending_limit,
             Err(error) => {
-                let exec_error = Error::from(error);
-                return ExecutionResult::precondition_failure(exec_error.into());
+                return ExecutionResult::precondition_failure(error.into());
             }
         };
 

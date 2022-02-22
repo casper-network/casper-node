@@ -15,9 +15,6 @@ use crate::{
     bytesrepr::{self, Error, FromBytes, ToBytes},
     CLType, CLTyped, CLValue, CLValueError, U512,
 };
-
-const ARG_AMOUNT: &str = "amount";
-
 /// Named arguments to a contract.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -156,12 +153,14 @@ impl RuntimeArgs {
         self.0.iter_mut()
     }
 
-    /// Returns the value of `ARG_AMOUNT` from the runtime arguments or defaults to 0 if that arg
-    /// doesn't exist or is not an integer type.
+    /// Returns the numeric value of `name` arg from the runtime arguments or defaults to
+    /// 0 if that arg doesn't exist or is not an integer type.
+    ///
+    /// Supported [`CLType`]s for numeric conversions are U64, and U512.
     ///
     /// Returns an error if parsing the arg fails.
-    pub fn try_get_amount(&self) -> Result<U512, CLValueError> {
-        let amount_arg = match self.get(ARG_AMOUNT) {
+    pub fn try_get_number(&self, name: &str) -> Result<U512, CLValueError> {
+        let amount_arg = match self.get(name) {
             None => return Ok(U512::zero()),
             Some(arg) => arg,
         };
@@ -244,6 +243,8 @@ macro_rules! runtime_args {
 mod tests {
     use super::*;
 
+    const ARG_AMOUNT: &str = "amount";
+
     #[test]
     fn test_runtime_args() {
         let arg1 = CLValue::from_t(1).unwrap();
@@ -319,45 +320,48 @@ mod tests {
     }
 
     #[test]
-    fn try_get_amount_should_work() {
+    fn try_get_number_should_work() {
         let mut args = RuntimeArgs::new();
         args.insert(ARG_AMOUNT, 0u64).expect("is ok");
-        assert_eq!(args.try_get_amount().unwrap(), U512::zero());
+        assert_eq!(args.try_get_number(ARG_AMOUNT).unwrap(), U512::zero());
 
         let mut args = RuntimeArgs::new();
         args.insert(ARG_AMOUNT, U512::zero()).expect("is ok");
-        assert_eq!(args.try_get_amount().unwrap(), U512::zero());
+        assert_eq!(args.try_get_number(ARG_AMOUNT).unwrap(), U512::zero());
 
         let args = RuntimeArgs::new();
-        assert_eq!(args.try_get_amount().unwrap(), U512::zero());
+        assert_eq!(args.try_get_number(ARG_AMOUNT).unwrap(), U512::zero());
 
         let hundred = 100u64;
 
         let mut args = RuntimeArgs::new();
         let input = U512::from(hundred);
         args.insert(ARG_AMOUNT, input).expect("is ok");
-        assert_eq!(args.try_get_amount().unwrap(), input);
+        assert_eq!(args.try_get_number(ARG_AMOUNT).unwrap(), input);
 
         let mut args = RuntimeArgs::new();
         args.insert(ARG_AMOUNT, hundred).expect("is ok");
-        assert_eq!(args.try_get_amount().unwrap(), U512::from(hundred));
+        assert_eq!(
+            args.try_get_number(ARG_AMOUNT).unwrap(),
+            U512::from(hundred)
+        );
     }
 
     #[test]
-    fn try_get_amount_should_return_zero_for_non_numeric_type() {
+    fn try_get_number_should_return_zero_for_non_numeric_type() {
         let mut args = RuntimeArgs::new();
         args.insert(ARG_AMOUNT, "Non-numeric-string").unwrap();
         assert_eq!(
-            args.try_get_amount().expect("should get amount"),
+            args.try_get_number(ARG_AMOUNT).expect("should get amount"),
             U512::zero()
         );
     }
 
     #[test]
-    fn try_get_amount_should_return_zero_if_amount_is_missing() {
+    fn try_get_number_should_return_zero_if_amount_is_missing() {
         let args = RuntimeArgs::new();
         assert_eq!(
-            args.try_get_amount().expect("should get amount"),
+            args.try_get_number(ARG_AMOUNT).expect("should get amount"),
             U512::zero()
         );
     }
