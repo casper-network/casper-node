@@ -17,7 +17,7 @@ use memory_metrics::MemoryMetrics;
 use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::Serialize;
-use tracing::{debug, warn};
+use tracing::{debug, error, warn};
 
 use casper_execution_engine::storage::trie::TrieOrChunk;
 
@@ -32,7 +32,9 @@ use crate::{
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server,
         event_stream_server::{DeployGetter, EventStreamServer},
-        fetcher::{self, Fetcher, FetcherBuilder, TrieFetcher, TrieFetcherEvent},
+        fetcher::{
+            self, FetchedOrNotFound, Fetcher, FetcherBuilder, TrieFetcher, TrieFetcherEvent,
+        },
         gossiper::{self, Gossiper},
         metrics::Metrics,
         rest_server::{self, RestServer},
@@ -69,9 +71,10 @@ use crate::{
         EventQueueHandle, Finalize, ReactorExit,
     },
     types::{
-        Block, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy, ExitCode, NodeId,
+        Block, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy, DeployHash,
+        ExitCode, NodeId,
     },
-    utils::WithDir,
+    utils::{Source, WithDir},
     NodeRng,
 };
 
@@ -152,6 +155,10 @@ pub(crate) enum JoinerEvent {
     #[from]
     AddressGossiper(gossiper::Event<GossipedAddress>),
 
+    /// Deploy gossiper event.
+    #[from]
+    DeployGossiper(#[serde(skip_serializing)] gossiper::Event<Deploy>),
+
     // Requests.
     /// Storage request.
     #[from]
@@ -226,6 +233,9 @@ pub(crate) enum JoinerEvent {
     /// DeployAcceptor announcement.
     #[from]
     DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement<NodeId>),
+
+    #[from]
+    DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
 
     /// Linear chain announcement.
     #[from]
@@ -334,6 +344,8 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::TrieResponseIncoming(_) => "TrieResponseIncoming",
             JoinerEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
             JoinerEvent::ContractRuntimeRequest(_) => "ContractRuntimeRequest",
+            JoinerEvent::DeployGossiper(_) => "DeployGossiper",
+            JoinerEvent::DeployGossiperAnnouncement(_) => "DeployGossiperAnnouncement",
         }
     }
 }
@@ -346,6 +358,14 @@ impl From<NetworkRequest<NodeId, Message>> for JoinerEvent {
 
 impl From<NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>> for JoinerEvent {
     fn from(request: NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>) -> Self {
+        JoinerEvent::SmallNetwork(small_network::Event::from(
+            request.map_payload(Message::from),
+        ))
+    }
+}
+
+impl From<NetworkRequest<NodeId, gossiper::Message<Deploy>>> for JoinerEvent {
+    fn from(request: NetworkRequest<NodeId, gossiper::Message<Deploy>>) -> Self {
         JoinerEvent::SmallNetwork(small_network::Event::from(
             request.map_payload(Message::from),
         ))
@@ -456,6 +476,10 @@ impl Display for JoinerEvent {
             JoinerEvent::DumpConsensusStateRequest(req) => {
                 write!(f, "consensus dump request: {}", req)
             }
+            JoinerEvent::DeployGossiper(event) => write!(f, "deploy gossiper: {}", event),
+            JoinerEvent::DeployGossiperAnnouncement(ann) => {
+                write!(f, "deploy gossiper announcement: {}", ann)
+            }
         }
     }
 }
@@ -493,6 +517,7 @@ pub(crate) struct Reactor {
     #[data_size(skip)] // Never allocates data on the heap.
     memory_metrics: MemoryMetrics,
     node_startup_instant: Instant,
+    deploy_gossiper: Gossiper<Deploy, JoinerEvent>,
 }
 
 impl reactor::Reactor for Reactor {
@@ -603,6 +628,13 @@ impl reactor::Reactor for Reactor {
             registry,
         )?;
 
+        let deploy_gossiper = Gossiper::new_for_partial_items(
+            "deploy_gossiper",
+            config.gossip,
+            gossiper::get_deploy_from_storage::<Deploy, JoinerEvent>,
+            registry,
+        )?;
+
         effects.extend(reactor::wrap_effects(
             JoinerEvent::ChainspecLoader,
             chainspec_loader.start_checking_for_upgrades(effect_builder),
@@ -633,6 +665,7 @@ impl reactor::Reactor for Reactor {
                 memory_metrics,
                 node_startup_instant,
                 console,
+                deploy_gossiper,
             },
             effects,
         ))
@@ -663,9 +696,24 @@ impl reactor::Reactor for Reactor {
             JoinerEvent::DeployAcceptorAnnouncement(
                 DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
             ) => {
+                if let Err(error) = deploy.deploy_info() {
+                    error!(%error, "invalid deploy");
+                    return Effects::new();
+                };
+
                 let event = event_stream_server::Event::DeployAccepted(*deploy.id());
                 let mut effects =
                     self.dispatch_event(effect_builder, rng, JoinerEvent::EventStreamServer(event));
+
+                let event = gossiper::Event::ItemReceived {
+                    item_id: *deploy.id(),
+                    source: source.clone(),
+                };
+                effects.extend(self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    JoinerEvent::DeployGossiper(event),
+                ));
 
                 let event = fetcher::Event::GotRemotely {
                     verifiable_chunked_hash_activation: None,
@@ -882,10 +930,11 @@ impl reactor::Reactor for Reactor {
                 debug!(%incoming, "ignoring incoming consensus message");
                 Effects::new()
             }
-            JoinerEvent::DeployGossiperIncoming(incoming) => {
-                debug!(%incoming, "ignoring incoming deploy gossiper message");
-                Effects::new()
-            }
+            JoinerEvent::DeployGossiperIncoming(incoming) => reactor::wrap_effects(
+                JoinerEvent::DeployGossiper,
+                self.deploy_gossiper
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
             JoinerEvent::AddressGossiperIncoming(incoming) => reactor::wrap_effects(
                 JoinerEvent::AddressGossiper,
                 self.address_gossiper
@@ -929,6 +978,23 @@ impl reactor::Reactor for Reactor {
                 req.answer(Err(Cow::Borrowed("node is joining, no running consensus")))
                     .ignore()
             }
+            JoinerEvent::DeployGossiper(event) => reactor::wrap_effects(
+                JoinerEvent::DeployGossiper,
+                self.deploy_gossiper
+                    .handle_event(effect_builder, rng, event),
+            ),
+            JoinerEvent::DeployGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
+                gossiped_deploy_id,
+            )) => {
+                error!(%gossiped_deploy_id, "gossiper should not announce new deploy");
+                Effects::new()
+            }
+            JoinerEvent::DeployGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
+                _gossiped_deploy_id,
+            )) => {
+                // We never process any deploys onwards, so we can ignore successful gossip outcome
+                Effects::new()
+            }
         }
     }
 
@@ -967,14 +1033,30 @@ impl Reactor {
             .verifiable_chunked_hash_activation;
         match message {
             NetResponse::Deploy(ref serialized_item) => {
-                reactor::handle_fetch_response::<Self, Deploy>(
-                    self,
-                    effect_builder,
-                    rng,
-                    sender,
-                    serialized_item,
-                    verifiable_chunked_hash_activation,
-                )
+                let deploy: Box<Deploy> = match bincode::deserialize::<
+                    FetchedOrNotFound<Deploy, DeployHash>,
+                >(serialized_item)
+                {
+                    Ok(FetchedOrNotFound::Fetched(deploy)) => Box::new(deploy),
+                    Ok(FetchedOrNotFound::NotFound(deploy_hash)) => {
+                        error!(
+                            "peer did not have deploy with hash {}: {}",
+                            sender, deploy_hash
+                        );
+                        return Effects::new();
+                    }
+                    Err(error) => {
+                        error!("failed to decode deploy from {}: {}", sender, error);
+                        return Effects::new();
+                    }
+                };
+
+                let event = JoinerEvent::DeployAcceptor(deploy_acceptor::Event::Accept {
+                    deploy,
+                    source: Source::Peer(sender),
+                    maybe_responder: None,
+                });
+                <Reactor as reactor::Reactor>::dispatch_event(self, effect_builder, rng, event)
             }
             NetResponse::Block(ref serialized_item) => {
                 reactor::handle_fetch_response::<Self, Block>(

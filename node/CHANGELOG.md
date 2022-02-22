@@ -25,6 +25,7 @@ All notable changes to this project will be documented in this file.  The format
 * Add capabilities for known nodes to slow down the reconnection process of outdated legacy nodes still out on the internet.
 * Add `verifiable_chunked_hash_activation` to the chainspec to specify the first era in which the new Merkle tree-based hashing scheme is used.
 * In addition to `consensus` and `deploy_requests`, the following values can now be controlled via the `[network.estimator_weights]` section in config: `gossip`, `finality_signatures`, `deploy_responses`, `block_requests`, `block_responses`, `trie_requests` and `trie_responses`.
+* Nodes will now also gossip deploys onwards while joining.
 
 ### Changed
 * Detection of a crash no longer triggers DB integrity checks to run on node start; the checks can be triggered manually instead.
