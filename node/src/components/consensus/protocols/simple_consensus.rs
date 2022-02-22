@@ -60,7 +60,9 @@ where
     echos: HashMap<C::Hash, BTreeMap<ValidatorIndex, C::Signature>>,
     votes: BTreeMap<bool, ValidatorMap<Option<C::Signature>>>,
 
-    accepted_proposal: Option<Proposal<C>>,
+    /// The unique proposal with a quorum of echos, once its parent is accepted and all rounds
+    /// since the parent are skippable. The u64 is the block height relative to the era start.
+    accepted_proposal: Option<(u64, Proposal<C>)>,
     quorum_echos: Option<C::Hash>,
     quorum_votes: Option<bool>,
 }
@@ -310,22 +312,37 @@ impl<C: Context + 'static> SimpleConsensus<C> {
 
     /// Returns whether the switch block has already been finalized.
     fn finalized_switch_block(&self) -> bool {
-        let round_id = if let Some(round_id) = self.first_non_finalized_round_id.checked_sub(1) {
-            round_id
+        if let Some(round_id) = self.first_non_finalized_round_id.checked_sub(1) {
+            self.accepted_switch_block(round_id)
         } else {
-            return false;
-        };
-        let proposal = self.rounds[&round_id]
-            .accepted_proposal
-            .as_ref()
-            .expect("missing finalized proposal");
-        // TODO: Don't require computing ancestor values. (Add height to proposal?)
-        let relative_height_plus_1 = self
-            .ancestor_values(round_id)
-            .expect("missing ancestors of finalized block")
-            .len() as u64;
-        relative_height_plus_1 >= self.params.end_height()
-            && proposal.timestamp >= self.params.end_timestamp()
+            false
+        }
+    }
+
+    /// Returns whether a block was accepted that, if finalized, would be the last one.
+    fn accepted_switch_block(&self, round_id: RoundId) -> bool {
+        match self
+            .round(round_id)
+            .and_then(|round| round.accepted_proposal.as_ref())
+        {
+            None => false,
+            Some((relative_height, proposal)) => {
+                relative_height.saturating_add(1) >= self.params.end_height()
+                    && proposal.timestamp >= self.params.end_timestamp()
+            }
+        }
+    }
+
+    /// Returns whether a proposal without a block was accepted, i.e. whether some ancestor of the
+    /// accepted proposal is a switch block.
+    fn accepted_dummy_proposal(&self, round_id: RoundId) -> bool {
+        match self
+            .round(round_id)
+            .and_then(|round| round.accepted_proposal.as_ref())
+        {
+            None => false,
+            Some((_, proposal)) => proposal.maybe_block.is_none(),
+        }
     }
 
     /// Request the latest state from a random peer.
@@ -621,17 +638,22 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         } else {
             return vec![]; // We have a quorum of Echos but no proposal yet.
         };
-        let first_skipped_round_id = if let Some(parent_round_id) = proposal.maybe_parent_round_id {
-            if self
-                .round(parent_round_id)
-                .map_or(true, |round| round.accepted_proposal.is_none())
-            {
-                return vec![]; // Parent is not accepted yet.
-            }
-            parent_round_id.saturating_add(1)
-        } else {
-            0
-        };
+        let (first_skipped_round_id, rel_height) =
+            if let Some(parent_round_id) = proposal.maybe_parent_round_id {
+                if let Some((parent_height, _)) = self
+                    .round(parent_round_id)
+                    .and_then(|round| round.accepted_proposal.as_ref())
+                {
+                    (
+                        parent_round_id.saturating_add(1),
+                        parent_height.saturating_add(1),
+                    )
+                } else {
+                    return vec![]; // Parent is not accepted yet.
+                }
+            } else {
+                (0, 0)
+            };
         if (first_skipped_round_id..round_id)
             .any(|skipped_round_id| !self.is_skippable_round(skipped_round_id))
         {
@@ -640,7 +662,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
 
         // We have a proposal with accepted parent, a quorum of Echos, and all rounds since the
         // parent are skippable. That means the proposal is now accepted.
-        self.round_mut(round_id).accepted_proposal = Some(proposal);
+        self.round_mut(round_id).accepted_proposal = Some((rel_height, proposal));
 
         let mut outcomes = vec![];
 
@@ -693,10 +715,23 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         signature: C::Signature,
     ) -> ProtocolOutcomes<C> {
         let validator_idx = self.leader(round_id);
-        if proposal.block.needs_validation() {
+        if let Some((_, parent_proposal)) = proposal
+            .maybe_parent_round_id
+            .and_then(|parent_round_id| self.rounds[&parent_round_id].accepted_proposal.as_ref())
+        {
+            if parent_proposal.timestamp > proposal.timestamp {
+                error!("proposal with timestamp earlier than the parent");
+                return vec![];
+            }
+        }
+        if let Some(block) = proposal
+            .maybe_block
+            .clone()
+            .filter(ConsensusValueT::needs_validation)
+        {
             self.log_proposal(&proposal, validator_idx, "requesting proposal validation");
             let block_context = BlockContext::new(proposal.timestamp, ancestor_values);
-            let proposed_block = ProposedBlock::new(proposal.block.clone(), block_context);
+            let proposed_block = ProposedBlock::new(block, block_context);
             if self
                 .proposals_waiting_for_validation
                 .entry(proposed_block.clone())
@@ -730,45 +765,43 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         if round_id < self.first_non_finalized_round_id {
             return outcomes; // This round was already finalized.
         }
-        let proposal = self.rounds[&round_id]
+        let (relative_height, proposal) = self.rounds[&round_id]
             .accepted_proposal
             .as_ref()
             .expect("missing finalized proposal")
             .clone();
-        let relative_height = if let Some(parent_round_id) = proposal.maybe_parent_round_id {
+        if let Some(parent_round_id) = proposal.maybe_parent_round_id {
             // Output the parent first if it isn't already finalized.
             outcomes.extend(self.finalize_round(parent_round_id));
-            self.ancestor_values(parent_round_id)
-                .expect("missing ancestors of accepted block")
-                .len() as u64
-        } else {
-            0
-        };
-        if self.finalized_switch_block() {
-            return outcomes; // This era's last block is already finalized.
         }
         self.first_non_finalized_round_id = round_id.saturating_add(1);
-        let terminal_block_data = (relative_height.saturating_add(1) >= self.params.end_height()
-            && proposal.timestamp >= self.params.end_timestamp())
-        .then(|| TerminalBlockData {
-            rewards: self
-                .validators
-                .iter()
-                .map(|v| (v.id().clone(), v.weight().0))
-                .collect(), // TODO
-            inactive_validators: Default::default(), // TODO
-        });
+        let value = if let Some(block) = proposal.maybe_block.clone() {
+            block
+        } else {
+            return outcomes; // This era's last block is already finalized.
+        };
+        let proposer = self
+            .validators
+            .id(self.leader(round_id))
+            .expect("validator not found")
+            .clone();
+        let terminal_block_data = self
+            .accepted_switch_block(round_id)
+            .then(|| TerminalBlockData {
+                rewards: self
+                    .validators
+                    .iter()
+                    .map(|v| (v.id().clone(), v.weight().0))
+                    .collect(), // TODO
+                inactive_validators: Default::default(), // TODO
+            });
         let finalized_block = FinalizedBlock {
-            value: proposal.block.clone(),
+            value,
             timestamp: proposal.timestamp,
             relative_height,
             equivocators: vec![], // TODO
             terminal_block_data,
-            proposer: self
-                .validators
-                .id(self.leader(round_id))
-                .expect("validator not found")
-                .clone(),
+            proposer,
         };
         outcomes.push(ProtocolOutcome::FinalizedBlock(finalized_block));
         outcomes
@@ -803,8 +836,8 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     fn ancestor_values(&self, mut round_id: RoundId) -> Option<Vec<C::ConsensusValue>> {
         let mut ancestor_values = vec![];
         loop {
-            let proposal = self.rounds.get(&round_id)?.accepted_proposal.as_ref()?;
-            ancestor_values.push(proposal.block.clone());
+            let (_, proposal) = self.rounds.get(&round_id)?.accepted_proposal.as_ref()?;
+            ancestor_values.extend(proposal.maybe_block.clone());
             match proposal.maybe_parent_round_id {
                 None => return Some(ancestor_values),
                 Some(parent_round_id) => round_id = parent_round_id,
@@ -828,7 +861,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         self.faults.keys().map(|vidx| self.weights[*vidx]).sum()
     }
 
-    fn round(&mut self, round_id: RoundId) -> Option<&Round<C>> {
+    fn round(&self, round_id: RoundId) -> Option<&Round<C>> {
         self.rounds.get(&round_id)
     }
 
@@ -850,7 +883,7 @@ where
     C: Context,
 {
     timestamp: Timestamp,
-    block: C::ConsensusValue,
+    maybe_block: Option<C::ConsensusValue>,
     maybe_parent_round_id: Option<RoundId>,
 }
 
@@ -886,7 +919,7 @@ impl<C: Context> Content<C> {
 pub(crate) struct Message<C: Context> {
     // A dependency request. u64 is a random UUID identifying the request.
     // RequestDependency(u64),
-    // SyncState { round_id: RoundId },
+    // TODO: SyncState { round_id: RoundId },
     round_id: RoundId,
     instance_id: C::InstanceId,
     content: Content<C>,
@@ -1003,6 +1036,12 @@ where
                 if validator_idx != self.leader(round_id) {
                     return err_msg("wrong leader");
                 }
+                if proposal
+                    .maybe_parent_round_id
+                    .map_or(false, |parent_round_id| parent_round_id >= round_id)
+                {
+                    return err_msg("invalid proposal: parent is not from an earlier round");
+                }
 
                 let mut outcomes = vec![];
 
@@ -1088,10 +1127,21 @@ where
                                 self.ancestor_values(parent_round_id)
                                     .expect("missing ancestor value")
                             });
+                        let timestamp = maybe_parent_round_id
+                            .and_then(|parent_round_id| {
+                                self.rounds[&parent_round_id].accepted_proposal.as_ref()
+                            })
+                            .map_or(now, |(_, proposal)| proposal.timestamp.max(now));
                         let block_context = BlockContext::new(now, ancestor_values);
                         // TODO: If after switch block, use empty blocks!
                         // TODO: Stop once switch block is finalized!
-                        outcomes.push(ProtocolOutcome::CreateNewBlock(block_context));
+                        if maybe_parent_round_id.map_or(false, |parent_round_id| {
+                            self.accepted_switch_block(parent_round_id)
+                                || self.accepted_dummy_proposal(parent_round_id)
+                        }) {
+                        } else {
+                            outcomes.push(ProtocolOutcome::CreateNewBlock(block_context));
+                        }
                     }
                 }
                 outcomes
@@ -1167,7 +1217,7 @@ where
             {
                 let content = Content::Proposal(Proposal {
                     timestamp: block_context.timestamp(),
-                    block,
+                    maybe_block: Some(block),
                     maybe_parent_round_id,
                 });
                 self.create_message(proposal_round_id, content)
@@ -1185,7 +1235,7 @@ where
         &mut self,
         proposed_block: ProposedBlock<C>,
         valid: bool,
-        now: Timestamp,
+        _now: Timestamp,
     ) -> ProtocolOutcomes<C> {
         let rounds_and_node_ids = self
             .proposals_waiting_for_validation
@@ -1197,7 +1247,7 @@ where
             let mut outcomes = vec![];
             for (round_id, maybe_parent_round_id, _sender, signature) in rounds_and_node_ids {
                 let proposal = Proposal {
-                    block: block.clone(),
+                    maybe_block: Some(block.clone()),
                     timestamp: block_context.timestamp(),
                     maybe_parent_round_id,
                 };
