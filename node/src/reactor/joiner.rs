@@ -693,6 +693,11 @@ impl reactor::Reactor for Reactor {
             JoinerEvent::DeployAcceptorAnnouncement(
                 DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
             ) => {
+                if let Err(error) = deploy.deploy_info() {
+                    error!(%error, "invalid deploy");
+                    return Effects::new();
+                };
+
                 let event = event_stream_server::Event::DeployAccepted(*deploy.id());
                 let mut effects =
                     self.dispatch_event(effect_builder, rng, JoinerEvent::EventStreamServer(event));
