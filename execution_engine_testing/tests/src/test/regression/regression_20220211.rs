@@ -8,7 +8,15 @@ use casper_types::{runtime_args, AccessRights, RuntimeArgs, URef};
 const REGRESSION_20220211_CONTRACT: &str = "regression_20220211.wasm";
 const REGRESSION_20220211_CALL_CONTRACT: &str = "regression_20220211_call.wasm";
 const RET_AS_CONTRACT: &str = "ret_as_contract";
-const RET_AS_SESSION: &str = "ret_as_session";
+const RET_AS_SESSION: &str = "ret_as_contract";
+const PUT_KEY_AS_SESSION: &str = "put_key_as_session";
+const PUT_KEY_AS_CONTRACT: &str = "put_key_as_contract";
+const READ_AS_SESSION: &str = "read_as_session";
+const READ_AS_CONTRACT: &str = "read_as_contract";
+const WRITE_AS_SESSION: &str = "write_as_session";
+const WRITE_AS_CONTRACT: &str = "write_as_contract";
+const ADD_AS_SESSION: &str = "add_as_session";
+const ADD_AS_CONTRACT: &str = "add_as_contract";
 const ARG_ENTRYPOINT: &str = "entrypoint";
 
 #[ignore]
@@ -62,4 +70,52 @@ fn test(entrypoint: &str) {
         "Expected revert but received {:?}",
         error
     );
+}
+
+#[ignore]
+#[test]
+fn regression_20220211_put_key_as_session() {
+    test(PUT_KEY_AS_SESSION);
+}
+
+#[ignore]
+#[test]
+fn regression_20220211_put_key_as_contract() {
+    test(PUT_KEY_AS_CONTRACT);
+}
+
+#[ignore]
+#[test]
+fn regression_20220211_read_as_session() {
+    test(READ_AS_SESSION);
+}
+
+#[ignore]
+#[test]
+fn regression_20220211_read_as_contract() {
+    test(READ_AS_CONTRACT);
+}
+
+#[ignore]
+#[test]
+fn regression_20220211_write_as_session() {
+    test(WRITE_AS_SESSION);
+}
+
+#[ignore]
+#[test]
+fn regression_20220211_write_as_contract() {
+    test(WRITE_AS_CONTRACT);
+}
+
+#[ignore]
+#[test]
+fn regression_20220211_add_as_session() {
+    test(ADD_AS_SESSION);
+}
+
+#[ignore]
+#[test]
+fn regression_20220211_add_as_contract() {
+    test(ADD_AS_CONTRACT);
 }
