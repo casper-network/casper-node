@@ -89,7 +89,6 @@ impl<C: Context> Round<C> {
             .insert(hash, (proposal, signature))
             .is_none()
             .then(|| hash)
-        // TODO: Detect double-signing!
     }
 
     /// Inserts an `Echo`; returns `false` if we already had it.
@@ -104,7 +103,6 @@ impl<C: Context> Round<C> {
             .or_insert_with(BTreeMap::new)
             .insert(validator_idx, signature)
             .is_none()
-        // TODO: Detect double-signing!
     }
 
     /// Inserts a `Vote`; returns `false` if we already had it.
@@ -122,7 +120,6 @@ impl<C: Context> Round<C> {
         } else {
             false
         }
-        // TODO: Detect double-signing!
     }
 
     /// Returns whether the validator has already sent an `Echo` in this round.
@@ -420,6 +417,57 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         outcomes
     }
 
+    fn handle_fault(
+        &mut self,
+        round_id: RoundId,
+        validator_idx: ValidatorIndex,
+        content0: Content<C>,
+        signature0: C::Signature,
+        content1: Content<C>,
+        signature1: C::Signature,
+    ) -> ProtocolOutcomes<C> {
+        let validator_id = if let Some(validator_id) = self.validators.id(validator_idx) {
+            validator_id.clone()
+        } else {
+            error!("invalid validator index");
+            return vec![];
+        };
+        let msg0 = Message {
+            round_id,
+            instance_id: self.instance_id,
+            content: content0,
+            validator_idx,
+            signature: signature0,
+        };
+        let msg1 = Message {
+            round_id,
+            instance_id: self.instance_id,
+            content: content1,
+            validator_idx,
+            signature: signature1,
+        };
+        let mut outcomes = vec![
+            ProtocolOutcome::CreatedGossipMessage(msg0.serialize()),
+            ProtocolOutcome::CreatedGossipMessage(msg1.serialize()),
+            ProtocolOutcome::NewEvidence(validator_id),
+        ];
+        self.faults.insert(validator_idx, Fault::Direct(msg0, msg1));
+        if self.faulty_weight() > self.ftt {
+            outcomes.push(ProtocolOutcome::FttExceeded);
+        }
+        // Remove all Votes and Echos from the faulty validator: They count towards every quorum now
+        // so nobody has to store their messages.
+        for round in self.rounds.values_mut() {
+            round.votes.get_mut(&false).unwrap()[validator_idx] = None;
+            round.votes.get_mut(&true).unwrap()[validator_idx] = None;
+            round.echos.retain(|_, echo_map| {
+                echo_map.remove(&validator_idx);
+                !echo_map.is_empty()
+            });
+        }
+        outcomes
+    }
+
     fn handle_content(
         &mut self,
         round_id: RoundId,
@@ -428,7 +476,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         signature: C::Signature,
     ) -> ProtocolOutcomes<C> {
         let mut outcomes = vec![];
-        // TODO: Detect if ftt is exceeded or there are conflicting quorums.
         match content {
             Content::Proposal(proposal) => {
                 if let Some(hash) = self
@@ -445,6 +492,27 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 }
             }
             Content::Echo(hash) => {
+                if let Some((other_hash, other_signature)) =
+                    self.round(round_id).and_then(|round| {
+                        round
+                            .echos
+                            .iter()
+                            .filter_map(|(other_hash, echo_map)| {
+                                echo_map.get(&validator_idx).map(|sig| (*other_hash, *sig))
+                            })
+                            .find(|(other_hash, _)| *other_hash != hash)
+                    })
+                {
+                    // The validator double-signed. Store and broadcast evidence.
+                    return self.handle_fault(
+                        round_id,
+                        validator_idx,
+                        Content::Echo(hash),
+                        signature,
+                        Content::Echo(other_hash),
+                        other_signature,
+                    );
+                }
                 if self
                     .round_mut(round_id)
                     .insert_echo(hash, validator_idx, signature)
@@ -457,6 +525,20 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 }
             }
             Content::Vote(vote) => {
+                if let Some(other_signature) = self
+                    .round(round_id)
+                    .and_then(|round| round.votes[&!vote][validator_idx])
+                {
+                    // The validator double-signed. Store and broadcast evidence.
+                    return self.handle_fault(
+                        round_id,
+                        validator_idx,
+                        Content::Vote(vote),
+                        signature,
+                        Content::Vote(!vote),
+                        other_signature,
+                    );
+                }
                 if self
                     .round_mut(round_id)
                     .insert_vote(vote, validator_idx, signature)
@@ -712,6 +794,11 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         Weight(total_weight / 2 + ftt / 2 + (total_weight & ftt & 1))
     }
 
+    /// Returns the total weight of validators known to be faulty.
+    fn faulty_weight(&self) -> Weight {
+        self.faults.keys().map(|vidx| self.weights[*vidx]).sum()
+    }
+
     fn round(&mut self, round_id: RoundId) -> Option<&Round<C>> {
         self.rounds.get(&round_id)
     }
@@ -754,6 +841,12 @@ enum Content<C: Context> {
     Proposal(Proposal<C>),
     Echo(C::Hash),
     Vote(bool),
+}
+
+impl<C: Context> Content<C> {
+    fn is_proposal(&self) -> bool {
+        matches!(self, Content::Proposal(_))
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
@@ -815,11 +908,18 @@ where
             Ok(message) => message,
         };
 
-        let validator_id = if let Some(validator) = self.validators.id(validator_idx) {
-            validator
+        let validator_id = if let Some(validator_id) = self.validators.id(validator_idx) {
+            validator_id.clone()
         } else {
             return err_msg("invalid validator index");
         };
+
+        if let Some(fault) = self.faults.get(&validator_idx) {
+            if fault.is_banned() || !content.is_proposal() {
+                debug!(?validator_id, "ignoring message from faulty validator");
+                return vec![];
+            }
+        }
 
         if round_id > self.current_round().saturating_add(MAX_FUTURE_ROUNDS) {
             debug!(%round_id, "dropping message from future round");
@@ -832,8 +932,7 @@ where
         }
 
         if self
-            .rounds
-            .get(&round_id)
+            .round(round_id)
             .map_or(false, |round| round.contains(&content, validator_idx))
         {
             debug!(
@@ -849,17 +948,8 @@ where
             bincode::serialize(&(round_id, &self.instance_id, &content, validator_idx))
                 .expect("failed to serialize fields");
         let hash = <C as Context>::hash(&serialized_fields);
-        if !C::verify_signature(&hash, validator_id, &signature) {
+        if !C::verify_signature(&hash, &validator_id, &signature) {
             return err_msg("invalid signature");
-        }
-
-        if self
-            .faults
-            .get(&validator_idx)
-            .map_or(false, Fault::is_banned)
-        {
-            debug!("message from banned validator");
-            // TODO: Also drop messages from other faulty validators?
         }
 
         match content {
@@ -885,6 +975,33 @@ where
                     return err_msg("wrong leader");
                 }
 
+                let mut outcomes = vec![];
+
+                let hash = proposal.hash(); // TODO: Avoid redundant hashing!
+                if let Some((other_proposal, other_signature)) = self
+                    .round(round_id)
+                    .and_then(|round| {
+                        round
+                            .proposals
+                            .iter()
+                            .find(|(other_hash, _)| **other_hash != hash)
+                            .map(|(_, entry)| entry)
+                    })
+                    .cloned()
+                {
+                    // The validator double-signed. Store and broadcast evidence.
+                    // Unfortunately we still have to process the proposal in case it became
+                    // accepted before the other validators saw the fault.
+                    outcomes.extend(self.handle_fault(
+                        round_id,
+                        validator_idx,
+                        Content::Proposal(proposal.clone()),
+                        signature,
+                        Content::Proposal(other_proposal),
+                        other_signature,
+                    ));
+                }
+
                 let ancestor_values = if let Some(parent_round_id) = proposal.maybe_parent_round_id
                 {
                     if let Some(ancestor_values) = self.ancestor_values(parent_round_id) {
@@ -896,13 +1013,20 @@ where
                             .entry(proposal)
                             .or_insert_with(HashSet::new)
                             .insert((round_id, sender, signature));
-                        return vec![];
+                        return outcomes;
                     }
                 } else {
                     vec![]
                 };
 
-                self.validate_proposal(round_id, proposal, ancestor_values, sender, signature)
+                outcomes.extend(self.validate_proposal(
+                    round_id,
+                    proposal,
+                    ancestor_values,
+                    sender,
+                    signature,
+                ));
+                outcomes
             }
             content @ Content::Echo(_) | content @ Content::Vote(_) => {
                 self.handle_content(round_id, content, validator_idx, signature)
@@ -1091,8 +1215,10 @@ where
     }
 
     fn set_evidence_only(&mut self) {
-        // TODO: Drop protocol state.
         self.evidence_only = true;
+        self.rounds.clear();
+        self.proposals_waiting_for_parent.clear();
+        self.proposals_waiting_for_validation.clear();
     }
 
     fn has_evidence(&self, vid: &C::ValidatorId) -> bool {
@@ -1166,6 +1292,8 @@ where
     /// considered invalid in this Highway instance.
     Banned,
     /// We have direct evidence of the validator's fault.
+    // TODO: Store only the necessary information, e.g. not the full signed proposal, and only one
+    // round ID, instance ID and validator index.
     Direct(Message<C>, Message<C>),
     /// The validator is known to be faulty, but the evidence is not in this era.
     Indirect,
