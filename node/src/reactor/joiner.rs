@@ -17,7 +17,7 @@ use memory_metrics::MemoryMetrics;
 use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::Serialize;
-use tracing::{debug, warn};
+use tracing::{debug, error, warn};
 
 use casper_execution_engine::storage::trie::TrieOrChunk;
 
@@ -152,6 +152,10 @@ pub(crate) enum JoinerEvent {
     #[from]
     AddressGossiper(gossiper::Event<GossipedAddress>),
 
+    /// Deploy gossiper event.
+    #[from]
+    DeployGossiper(#[serde(skip_serializing)] gossiper::Event<Deploy>),
+
     // Requests.
     /// Storage request.
     #[from]
@@ -226,6 +230,9 @@ pub(crate) enum JoinerEvent {
     /// DeployAcceptor announcement.
     #[from]
     DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement<NodeId>),
+
+    #[from]
+    DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
 
     /// Linear chain announcement.
     #[from]
@@ -334,6 +341,8 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::TrieResponseIncoming(_) => "TrieResponseIncoming",
             JoinerEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
             JoinerEvent::ContractRuntimeRequest(_) => "ContractRuntimeRequest",
+            JoinerEvent::DeployGossiper(_) => "DeployGossiper",
+            JoinerEvent::DeployGossiperAnnouncement(_) => "DeployGossiperAnnouncement",
         }
     }
 }
@@ -346,6 +355,14 @@ impl From<NetworkRequest<NodeId, Message>> for JoinerEvent {
 
 impl From<NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>> for JoinerEvent {
     fn from(request: NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>) -> Self {
+        JoinerEvent::SmallNetwork(small_network::Event::from(
+            request.map_payload(Message::from),
+        ))
+    }
+}
+
+impl From<NetworkRequest<NodeId, gossiper::Message<Deploy>>> for JoinerEvent {
+    fn from(request: NetworkRequest<NodeId, gossiper::Message<Deploy>>) -> Self {
         JoinerEvent::SmallNetwork(small_network::Event::from(
             request.map_payload(Message::from),
         ))
@@ -456,6 +473,10 @@ impl Display for JoinerEvent {
             JoinerEvent::DumpConsensusStateRequest(req) => {
                 write!(f, "consensus dump request: {}", req)
             }
+            JoinerEvent::DeployGossiper(event) => write!(f, "deploy gossiper: {}", event),
+            JoinerEvent::DeployGossiperAnnouncement(ann) => {
+                write!(f, "deploy gossiper announcement: {}", ann)
+            }
         }
     }
 }
@@ -493,6 +514,7 @@ pub(crate) struct Reactor {
     #[data_size(skip)] // Never allocates data on the heap.
     memory_metrics: MemoryMetrics,
     node_startup_instant: Instant,
+    deploy_gossiper: Gossiper<Deploy, JoinerEvent>,
 }
 
 impl reactor::Reactor for Reactor {
@@ -603,6 +625,13 @@ impl reactor::Reactor for Reactor {
             registry,
         )?;
 
+        let deploy_gossiper = Gossiper::new_for_partial_items(
+            "deploy_gossiper",
+            config.gossip,
+            gossiper::get_deploy_from_storage::<Deploy, JoinerEvent>,
+            registry,
+        )?;
+
         effects.extend(reactor::wrap_effects(
             JoinerEvent::ChainspecLoader,
             chainspec_loader.start_checking_for_upgrades(effect_builder),
@@ -633,6 +662,7 @@ impl reactor::Reactor for Reactor {
                 memory_metrics,
                 node_startup_instant,
                 console,
+                deploy_gossiper,
             },
             effects,
         ))
@@ -929,6 +959,20 @@ impl reactor::Reactor for Reactor {
                 req.answer(Err(Cow::Borrowed("node is joining, no running consensus")))
                     .ignore()
             }
+            JoinerEvent::DeployGossiper(event) => reactor::wrap_effects(
+                JoinerEvent::DeployGossiper,
+                self.deploy_gossiper
+                    .handle_event(effect_builder, rng, event),
+            ),
+            JoinerEvent::DeployGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
+                gossiped_deploy_id,
+            )) => {
+                error!(%gossiped_deploy_id, "gossiper should not announce new deploy");
+                Effects::new()
+            }
+            JoinerEvent::DeployGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
+                _gossiped_deploy_id,
+            )) => Effects::new(),
         }
     }
 
