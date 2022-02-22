@@ -104,6 +104,7 @@ function _setup_asset_chainspec()
     local ACTIVATION_POINT=${2}
     local PATH_TO_CHAINSPEC_TEMPLATE=${3}
     local IS_GENESIS=${4}
+    local CHUNKED_HASH_ACTIVATION=${5}
     local PATH_TO_CHAINSPEC
     local SCRIPT
     local COUNT_NODES
@@ -136,6 +137,7 @@ function _setup_asset_chainspec()
             "cfg=toml.load('$PATH_TO_CHAINSPEC');"
             "cfg['protocol']['activation_point']=$ACTIVATION_POINT;"
             "cfg['protocol']['version']='$PROTOCOL_VERSION';"
+            "cfg['protocol']['verifiable_chunked_hash_activation']=$CHUNKED_HASH_ACTIVATION;"
             "cfg['network']['name']='$(get_chain_name)';"
             "cfg['core']['validator_slots']=$COUNT_NODES;"
             "toml.dump(cfg, open('$PATH_TO_CHAINSPEC', 'w'));"
@@ -320,8 +322,12 @@ function _main()
     local ACTIVATION_POINT=${2}
     local VERBOSE=${3}
     local NODE_ID=${4}
+    local CHUNKED_HASH_ACTIVATION
     local PATH_TO_STAGE
     local PROTOCOL_VERSION
+
+    #Set `verifiable_chunked_hash_activation` equal to upgrade activation point
+    CHUNKED_HASH_ACTIVATION="$ACTIVATION_POINT"
 
     PATH_TO_STAGE="$NCTL/stages/stage-$STAGE_ID"
     PROTOCOL_VERSION=$(_get_protocol_version_of_next_upgrade "$PATH_TO_STAGE" "$NODE_ID")
@@ -341,7 +347,8 @@ function _main()
         _setup_asset_chainspec "$(get_protocol_version_for_chainspec "$PROTOCOL_VERSION")" \
                               "$ACTIVATION_POINT" \
                               "$PATH_TO_STAGE/$PROTOCOL_VERSION/chainspec.toml" \
-                              false
+                              false \
+                              "$CHUNKED_HASH_ACTIVATION"
         _setup_asset_node_configs "$NODE_ID" \
                                  "$PROTOCOL_VERSION" \
                                  "$PATH_TO_STAGE/$PROTOCOL_VERSION/config.toml" \
