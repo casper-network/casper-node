@@ -177,14 +177,7 @@ where
             tracking_copy,
         );
 
-        // Create mint and all genesis accounts and the auction.
-        genesis_installer.create_mint_and_accounts()?;
-
-        // Create handle payment
-        genesis_installer.create_handle_payment()?;
-
-        // Create standard payment
-        genesis_installer.create_standard_payment()?;
+        genesis_installer.install_system()?;
 
         // Commit the transforms.
         let execution_effect = genesis_installer.finalize();

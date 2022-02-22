@@ -786,7 +786,7 @@ where
         self.tracking_copy.borrow().effect()
     }
 
-    pub(crate) fn create_mint_and_accounts(&mut self) -> Result<ContractHash, GenesisError> {
+    fn create_mint(&mut self) -> Result<Key, GenesisError> {
         let round_seigniorage_rate_uref = {
             let round_seigniorage_rate_uref = self
                 .address_generator
@@ -863,13 +863,10 @@ where
             );
         }
 
-        self.create_accounts(total_supply_uref.into())?;
-        self.create_auction(total_supply_uref.into())?;
-
-        Ok(mint_hash)
+        Ok(total_supply_uref.into())
     }
 
-    pub(crate) fn create_handle_payment(&self) -> Result<ContractHash, GenesisError> {
+    fn create_handle_payment(&self) -> Result<ContractHash, GenesisError> {
         let handle_payment_payment_purse = self.create_purse(U512::zero())?;
 
         let named_keys = {
@@ -1153,7 +1150,7 @@ where
         Ok(auction_hash)
     }
 
-    pub(crate) fn create_standard_payment(&self) -> Result<ContractHash, GenesisError> {
+    fn create_standard_payment(&self) -> Result<ContractHash, GenesisError> {
         let named_keys = NamedKeys::new();
 
         let entry_points = standard_payment::standard_payment_entry_points();
@@ -1338,6 +1335,26 @@ where
             StoredValue::CLValue(cl_registry),
             self.engine_config.max_stored_value_size(),
         );
+        Ok(())
+    }
+
+    /// Performs a complete system installation.
+    pub(crate) fn install_system(&mut self) -> Result<(), GenesisError> {
+        // Create mint
+        let total_supply_key = self.create_mint()?;
+
+        // Create all genesis accounts
+        self.create_accounts(total_supply_key)?;
+
+        // Create the auction and setup the stake of all genesis validators.
+        self.create_auction(total_supply_key)?;
+
+        // Create handle payment
+        self.create_handle_payment()?;
+
+        // Create standard payment
+        self.create_standard_payment()?;
+
         Ok(())
     }
 }
