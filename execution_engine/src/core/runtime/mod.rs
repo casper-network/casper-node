@@ -57,6 +57,8 @@ use crate::{
 };
 pub use stack::{RuntimeStack, RuntimeStackFrame, RuntimeStackOverflow};
 
+use super::runtime_context::GrantedAccess;
+
 /// Represents the runtime properties of a WASM execution.
 pub struct Runtime<'a, R> {
     config: EngineConfig,
@@ -2184,12 +2186,13 @@ where
         let mint_contract_key = self.get_mint_contract()?;
 
         // This appears to be a load-bearing use of `RuntimeContext::insert_uref`.
-        self.context.insert_uref(target);
 
         match self.mint_transfer(mint_contract_key, to, source, target, amount, id)? {
             Ok(()) => Ok(Ok(TransferredTo::ExistingAccount)),
             Err(error) => Ok(Err(error.into())),
         }
+
+        // self.context.remove?
     }
 
     /// Transfers `amount` of motes from default purse of the account to
@@ -2224,12 +2227,27 @@ where
                 self.transfer_to_new_account(source, target, amount, id)
             }
             Some(StoredValue::Account(account)) => {
+                // Attenuate the target main purse
                 let target_uref = account.main_purse_add_only();
+
                 if source.with_access_rights(AccessRights::ADD) == target_uref {
                     return Ok(Ok(TransferredTo::ExistingAccount));
                 }
+
+                // Grant ADD access on target to caller
+                let granted_access = self.context.grant_access(target_uref);
+
                 // If an account exists, transfer the amount to its purse
-                self.transfer_to_existing_account(Some(target), source, target_uref, amount, id)
+                let transfer_result = self.transfer_to_existing_account(Some(target), source, target_uref, amount, id);
+
+                match granted_access {
+                    GrantedAccess::PreExisting(_) => todo!(),
+                    GrantedAccess::Granted => todo!(),
+                }
+
+
+
+
             }
             Some(_) => {
                 // If some other value exists, return an error
