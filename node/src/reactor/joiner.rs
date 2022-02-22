@@ -912,10 +912,11 @@ impl reactor::Reactor for Reactor {
                 debug!(%incoming, "ignoring incoming consensus message");
                 Effects::new()
             }
-            JoinerEvent::DeployGossiperIncoming(incoming) => {
-                debug!(%incoming, "ignoring incoming deploy gossiper message");
-                Effects::new()
-            }
+            JoinerEvent::DeployGossiperIncoming(incoming) => reactor::wrap_effects(
+                JoinerEvent::DeployGossiper,
+                self.deploy_gossiper
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
             JoinerEvent::AddressGossiperIncoming(incoming) => reactor::wrap_effects(
                 JoinerEvent::AddressGossiper,
                 self.address_gossiper
@@ -972,7 +973,10 @@ impl reactor::Reactor for Reactor {
             }
             JoinerEvent::DeployGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
                 _gossiped_deploy_id,
-            )) => Effects::new(),
+            )) => {
+                // We never process any deploys onwards, so we can ignore successful gossip outcome
+                Effects::new()
+            }
         }
     }
 
