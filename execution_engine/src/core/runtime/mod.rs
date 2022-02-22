@@ -38,8 +38,8 @@ use casper_types::{
     },
     AccessRights, ApiError, CLTyped, CLValue, ContextAccessRights, ContractHash,
     ContractPackageHash, ContractVersionKey, ContractWasm, DeployHash, EntryPointType, EraId, Gas,
-    Key, Phase, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferResult, TransferredTo, URef,
-    DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
+    GrantedAccess, Key, Phase, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferResult,
+    TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
 };
 
 use crate::{
@@ -56,8 +56,6 @@ use crate::{
     storage::global_state::StateReader,
 };
 pub use stack::{RuntimeStack, RuntimeStackFrame, RuntimeStackOverflow};
-
-use super::runtime_context::GrantedAccess;
 
 /// Represents the runtime properties of a WASM execution.
 pub struct Runtime<'a, R> {
@@ -2151,18 +2149,24 @@ where
 
         let target_purse = self.mint_create(mint_contract_hash)?;
 
+        // TODO: Remove ?
         if source == target_purse {
             return Ok(Err(mint::Error::EqualSourceAndTarget.into()));
         }
 
-        match self.mint_transfer(
+        let result = self.mint_transfer(
             mint_contract_hash,
             Some(target),
             source,
             target_purse.with_access_rights(AccessRights::ADD),
             amount,
             id,
-        )? {
+        );
+
+        self.context
+            .remove_access(target_purse.addr(), target_purse.access_rights());
+
+        match result? {
             Ok(()) => {
                 let account = Account::create(target, Default::default(), target_purse);
                 self.context.write_account(target_key, account)?;
@@ -2185,14 +2189,10 @@ where
     ) -> Result<TransferResult, Error> {
         let mint_contract_key = self.get_mint_contract()?;
 
-        // This appears to be a load-bearing use of `RuntimeContext::insert_uref`.
-
         match self.mint_transfer(mint_contract_key, to, source, target, amount, id)? {
             Ok(()) => Ok(Ok(TransferredTo::ExistingAccount)),
             Err(error) => Ok(Err(error.into())),
         }
-
-        // self.context.remove?
     }
 
     /// Transfers `amount` of motes from default purse of the account to
@@ -2238,16 +2238,24 @@ where
                 let granted_access = self.context.grant_access(target_uref);
 
                 // If an account exists, transfer the amount to its purse
-                let transfer_result = self.transfer_to_existing_account(Some(target), source, target_uref, amount, id);
+                let transfer_result = self.transfer_to_existing_account(
+                    Some(target),
+                    source,
+                    target_uref,
+                    amount,
+                    id,
+                );
 
-                match granted_access {
-                    GrantedAccess::PreExisting(_) => todo!(),
-                    GrantedAccess::Granted => todo!(),
+                // Remove the temporarily granted access for the given URef address.
+                if let GrantedAccess::Granted {
+                    uref_addr,
+                    newly_granted_access_rights,
+                } = granted_access
+                {
+                    self.context
+                        .remove_access(uref_addr, newly_granted_access_rights)
                 }
-
-
-
-
+                transfer_result
             }
             Some(_) => {
                 // If some other value exists, return an error

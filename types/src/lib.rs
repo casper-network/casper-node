@@ -48,7 +48,9 @@ mod transfer_result;
 mod uint;
 mod uref;
 
-pub use access_rights::{AccessRights, ContextAccessRights, ACCESS_RIGHTS_SERIALIZED_LENGTH};
+pub use access_rights::{
+    AccessRights, ContextAccessRights, GrantedAccess, ACCESS_RIGHTS_SERIALIZED_LENGTH,
+};
 #[doc(inline)]
 pub use api_error::ApiError;
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};

@@ -19,8 +19,8 @@ use casper_types::{
     system::auction::{EraInfo, SeigniorageRecipientsSnapshot},
     AccessRights, BlockTime, CLType, CLValue, ContextAccessRights, Contract, ContractHash,
     ContractPackage, ContractPackageHash, DeployHash, DeployInfo, EntryPointAccess, EntryPointType,
-    Gas, Key, KeyTag, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer,
-    TransferAddr, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512, URefAddr,
+    Gas, GrantedAccess, Key, KeyTag, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue,
+    Transfer, TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
 
 use crate::{
@@ -37,17 +37,6 @@ use crate::{
 pub(crate) mod dictionary;
 #[cfg(test)]
 mod tests;
-
-/// Used to indicate if a granted [`URef`] was already held by the context.
-pub enum GrantedAccess {
-    /// Pre-existing URef.
-    PreExisting,
-    /// Access to URef was granted.
-    Granted {
-        uref_addr: URefAddr,
-        newly_granted_access_rights: AccessRights,
-    },
-}
 
 /// Validates an entry point access with a special validator callback.
 ///
@@ -454,7 +443,7 @@ where
         let named_key_value = StoredValue::CLValue(CLValue::from_t((name.clone(), key))?);
         self.validate_value(&named_key_value)?;
         self.metered_add_gs_unsafe(self.base_key(), named_key_value)?;
-        self.insert_key(name, key);
+        self.insert_named_key(name, key);
         Ok(())
     }
 
@@ -592,8 +581,9 @@ where
 
     /// Adds a named key.
     ///
-    /// If given `Key` refers to an [`URef`] then
-    pub fn insert_key(&mut self, name: String, key: Key) {
+    /// If given `Key` refers to an [`URef`] then it extends the runtime context's access rights
+    /// with the URef's access rights.
+    fn insert_named_key(&mut self, name: String, key: Key) {
         if let Key::URef(uref) = key {
             self.insert_uref(uref);
         }
@@ -603,33 +593,18 @@ where
     /// Adds a new [`URef`] into the context.
     ///
     /// Once an [`URef`] is inserted, it's considered a valid [`URef`] in this runtime context.
-    pub fn insert_uref(&mut self, uref: URef) {
+    fn insert_uref(&mut self, uref: URef) {
         self.access_rights.extend(&[uref])
     }
 
     /// Grants access to a [`URef`]; unless access was pre-existing.
     pub fn grant_access(&mut self, uref: URef) -> GrantedAccess {
-        let pre_existing = self.access_rights.get(uref);
+        self.access_rights.grant_access(uref)
+    }
 
-        let access_rights = match pre_existing {
-            Some(pre_existing_access_rights) => {
-                // if pre_existing.contains(uref.access_rights()) {
-                //     return GrantedAccess::PreExisting;
-                // }
-                // else {
-                uref.access_rights().difference(pre_existing_access_rights)
-                // }
-            },
-            None => {
-                uref.access_rights()
-            }
-        };
-
-        self.insert_uref(uref);
-        GrantedAccess::Granted {
-            uref_addr: uref.addr(),
-            newly_granted_access_rights: access_rights,
-        }
+    /// Removes an access right from the current runtime context.
+    pub fn remove_access(&mut self, uref_addr: URefAddr, access_rights: AccessRights) {
+        self.access_rights.remove_access(uref_addr, access_rights)
     }
 
     /// Returns current effects of a tracking copy.
@@ -1193,7 +1168,6 @@ where
         }
 
         let main_purse = self.account().main_purse();
-        self.insert_uref(main_purse);
         Ok(main_purse)
     }
 

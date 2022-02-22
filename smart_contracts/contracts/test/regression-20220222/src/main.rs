@@ -7,14 +7,14 @@ use casper_contract::{
     contract_api::{account, runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::{account::AccountHash, ApiError, URef, U512, URefAddr, AccessRights};
+use casper_types::{account::AccountHash, AccessRights, ApiError, URef, URefAddr, U512};
 
 const ALICE_ADDR: AccountHash = AccountHash::new([42; 32]);
 
 #[repr(u16)]
 enum Error {
-    Revert1 = 0,
-    Revert2 = 1,
+    PurseDoesNotGrantImplicitAddAccess = 0,
+    TemporaryAddAccessPersists = 1,
 }
 
 impl From<Error> for ApiError {
@@ -31,7 +31,7 @@ pub extern "C" fn call() {
 
     if runtime::is_valid_uref(alice_purse) {
         // Shouldn't be valid uref
-        runtime::revert(Error::Revert1);
+        runtime::revert(Error::PurseDoesNotGrantImplicitAddAccess);
     }
 
     let source = account::get_main_purse();
@@ -39,16 +39,11 @@ pub extern "C" fn call() {
     let _failsafe = system::transfer_from_purse_to_account(source, ALICE_ADDR, U512::one(), None)
         .unwrap_or_revert();
 
-    // if runtime::is_valid_uref(alice_purse) {
-    //     // Shouldn't be escalated
-    //     runtime::revert(Error::Revert2);
-    // }
-
-    // Should work
-    runtime::put_key("put_key_with_add_should_work", alice_purse.into());
-
-    let _key = runtime::get_key("put_key_with_add_should_work").unwrap_or_revert();
+    if runtime::is_valid_uref(alice_purse) {
+        // Should not be escalated since add access was granted temporarily for transfer.
+        runtime::revert(Error::TemporaryAddAccessPersists);
+    }
 
     // Should fail
-    runtime::put_key("put_key_with_write_should_fail", alice_purse.into_write().into());
+    runtime::put_key("put_key_with_add_should_fail", alice_purse.into());
 }

@@ -136,16 +136,26 @@ impl Distribution<AccessRights> for Standard {
     }
 }
 
+/// Used to indicate if a granted [`URef`] was already held by the context.
+#[derive(Debug, PartialEq)]
+pub enum GrantedAccess {
+    /// No new set of access rights were granted.
+    PreExisting,
+    /// A new set of access rights were granted.
+    Granted {
+        /// The address of the URef.
+        uref_addr: URefAddr,
+        /// The set of the newly granted access rights.
+        newly_granted_access_rights: AccessRights,
+    },
+}
+
 /// Access rights for a given runtime context.
 #[derive(Debug, PartialEq)]
 pub struct ContextAccessRights {
     context_key: Key,
     access_rights: BTreeMap<URefAddr, AccessRights>,
 }
-
-// A 0b001
-// B 0b010
-// C 0b100
 
 impl ContextAccessRights {
     /// Creates a new instance of access rights from an iterator of URefs merging any duplicates,
@@ -194,21 +204,36 @@ impl ContextAccessRights {
         }
     }
 
-    /// Checks whether given uref has enough access rights and returns it.
-    pub fn get(&self, uref: URef) -> Option<URef> {
-        match self.access_rights.get(&uref.addr()) {
-            Some(known_rights) => {
-                let rights_to_check = uref.access_rights();
-                if known_rights.contains(rights_to_check) {
-                    return Some(uref)
+    /// Grants access to a [`URef`]; unless access was pre-existing.
+    pub fn grant_access(&mut self, uref: URef) -> GrantedAccess {
+        match self.access_rights.entry(uref.addr()) {
+            Entry::Occupied(existing_rights) => {
+                let newly_granted_access_rights =
+                    uref.access_rights().difference(*existing_rights.get());
+                *existing_rights.into_mut() = existing_rights.get().union(uref.access_rights());
+                if newly_granted_access_rights.is_none() {
+                    GrantedAccess::PreExisting
+                } else {
+                    GrantedAccess::Granted {
+                        uref_addr: uref.addr(),
+                        newly_granted_access_rights,
+                    }
                 }
-                else {
-                    None
-                }
-            },
-            None => {
-                None
             }
+            Entry::Vacant(rights) => {
+                rights.insert(uref.access_rights());
+                GrantedAccess::Granted {
+                    uref_addr: uref.addr(),
+                    newly_granted_access_rights: uref.access_rights(),
+                }
+            }
+        }
+    }
+
+    /// Remove access for a given `URef`.
+    pub fn remove_access(&mut self, uref_addr: URefAddr, access_rights: AccessRights) {
+        if let Some(current_access_rights) = self.access_rights.get_mut(&uref_addr) {
+            current_access_rights.remove(access_rights)
         }
     }
 }
@@ -321,5 +346,66 @@ mod tests {
         let mut expected_rights = BTreeMap::new();
         expected_rights.insert(UREF_ADDRESS, AccessRights::READ_ADD);
         assert_eq!(context_rights.access_rights, expected_rights);
+    }
+
+    #[test]
+    fn should_grant_access_rights() {
+        let mut context_rights = ContextAccessRights::new(KEY, vec![UREF_READ_ADD]);
+        let granted_access = context_rights.grant_access(UREF_READ);
+        assert_eq!(granted_access, GrantedAccess::PreExisting);
+        let granted_access = context_rights.grant_access(UREF_READ_ADD_WRITE);
+        assert_eq!(
+            granted_access,
+            GrantedAccess::Granted {
+                uref_addr: UREF_ADDRESS,
+                newly_granted_access_rights: AccessRights::WRITE
+            }
+        );
+        assert!(context_rights.has_access_rights_to_uref(&UREF_READ_ADD_WRITE));
+        let new_uref = URef::new([3; 32], AccessRights::all());
+        let granted_access = context_rights.grant_access(new_uref);
+        assert_eq!(
+            granted_access,
+            GrantedAccess::Granted {
+                uref_addr: new_uref.addr(),
+                newly_granted_access_rights: AccessRights::all()
+            }
+        );
+        assert!(context_rights.has_access_rights_to_uref(&new_uref));
+    }
+
+    #[test]
+    fn should_remove_access_rights() {
+        let mut context_rights = ContextAccessRights::new(KEY, vec![UREF_READ_ADD_WRITE]);
+        assert!(context_rights.has_access_rights_to_uref(&UREF_READ_ADD_WRITE));
+
+        // Strip write access from the context rights.
+        context_rights.remove_access(UREF_ADDRESS, AccessRights::WRITE);
+        assert!(
+            !context_rights.has_access_rights_to_uref(&UREF_READ_ADD_WRITE),
+            "Write access should have been removed"
+        );
+
+        // Strip the access again to ensure that the bit is not flipped back.
+        context_rights.remove_access(UREF_ADDRESS, AccessRights::WRITE);
+        assert!(
+            !context_rights.has_access_rights_to_uref(&UREF_READ_ADD_WRITE),
+            "Write access should not have been granted back"
+        );
+        assert!(
+            context_rights.has_access_rights_to_uref(&UREF_READ_ADD),
+            "Read and add access should be preserved."
+        );
+
+        // Strip both read and add access from the context rights.
+        context_rights.remove_access(UREF_ADDRESS, AccessRights::READ_ADD);
+        assert!(
+            !context_rights.has_access_rights_to_uref(&UREF_READ_ADD),
+            "Read and add access should have been removed"
+        );
+        assert!(
+            context_rights.has_access_rights_to_uref(&UREF_NO_PERMISSIONS),
+            "The access rights should be empty"
+        );
     }
 }

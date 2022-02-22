@@ -55,12 +55,9 @@ fn regression_20220222_escalate() {
         matches!(
             error,
             engine_state::Error::Exec(execution::Error::ForgedReference(forged_uref))
-            if forged_uref == alice_main_purse.into_write()
+            if forged_uref == alice_main_purse.into_add()
         ),
         "Expected revert but received {:?}",
         error
     );
-
-    // let alice_balance = builder.get_purse_balance(alice_main_purse);
-    // assert_eq!(alice_balance, U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE + 1));
 }
