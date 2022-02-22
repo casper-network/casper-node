@@ -32,7 +32,9 @@ use crate::{
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server,
         event_stream_server::{DeployGetter, EventStreamServer},
-        fetcher::{self, Fetcher, FetcherBuilder, TrieFetcher, TrieFetcherEvent},
+        fetcher::{
+            self, FetchedOrNotFound, Fetcher, FetcherBuilder, TrieFetcher, TrieFetcherEvent,
+        },
         gossiper::{self, Gossiper},
         metrics::Metrics,
         rest_server::{self, RestServer},
@@ -69,9 +71,10 @@ use crate::{
         EventQueueHandle, Finalize, ReactorExit,
     },
     types::{
-        Block, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy, ExitCode, NodeId,
+        Block, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy, DeployHash,
+        ExitCode, NodeId,
     },
-    utils::WithDir,
+    utils::{Source, WithDir},
     NodeRng,
 };
 
@@ -1030,14 +1033,30 @@ impl Reactor {
             .verifiable_chunked_hash_activation;
         match message {
             NetResponse::Deploy(ref serialized_item) => {
-                reactor::handle_fetch_response::<Self, Deploy>(
-                    self,
-                    effect_builder,
-                    rng,
-                    sender,
-                    serialized_item,
-                    verifiable_chunked_hash_activation,
-                )
+                let deploy: Box<Deploy> = match bincode::deserialize::<
+                    FetchedOrNotFound<Deploy, DeployHash>,
+                >(serialized_item)
+                {
+                    Ok(FetchedOrNotFound::Fetched(deploy)) => Box::new(deploy),
+                    Ok(FetchedOrNotFound::NotFound(deploy_hash)) => {
+                        error!(
+                            "peer did not have deploy with hash {}: {}",
+                            sender, deploy_hash
+                        );
+                        return Effects::new();
+                    }
+                    Err(error) => {
+                        error!("failed to decode deploy from {}: {}", sender, error);
+                        return Effects::new();
+                    }
+                };
+
+                let event = JoinerEvent::DeployAcceptor(deploy_acceptor::Event::Accept {
+                    deploy,
+                    source: Source::Peer(sender),
+                    maybe_responder: None,
+                });
+                <Reactor as reactor::Reactor>::dispatch_event(self, effect_builder, rng, event)
             }
             NetResponse::Block(ref serialized_item) => {
                 reactor::handle_fetch_response::<Self, Block>(
