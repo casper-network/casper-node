@@ -1132,7 +1132,7 @@ where
                                 self.rounds[&parent_round_id].accepted_proposal.as_ref()
                             })
                             .map_or(now, |(_, proposal)| proposal.timestamp.max(now));
-                        let block_context = BlockContext::new(now, ancestor_values);
+                        let block_context = BlockContext::new(timestamp, ancestor_values);
                         // TODO: If after switch block, use empty blocks!
                         // TODO: Stop once switch block is finalized!
                         if maybe_parent_round_id.map_or(false, |parent_round_id| {
