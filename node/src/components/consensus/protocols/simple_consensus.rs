@@ -45,10 +45,10 @@ const TIMER_ID_LOG_PARTICIPATION: TimerId = TimerId(3);
 /// haven't started yet.
 const MAX_FUTURE_ROUNDS: u32 = 10;
 
-type RoundId = u32;
+pub(crate) type RoundId = u32;
 
 #[derive(Debug, DataSize)]
-struct Round<C>
+pub(crate) struct Round<C>
 where
     C: Context,
 {
@@ -1108,7 +1108,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-struct Proposal<C>
+pub(crate) struct Proposal<C>
 where
     C: Context,
 {
@@ -1129,7 +1129,7 @@ impl<C: Context> Proposal<C> {
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-enum Content<C: Context> {
+pub(crate) enum Content<C: Context> {
     Proposal(Proposal<C>),
     Echo(C::Hash),
     Vote(bool),
@@ -1146,7 +1146,7 @@ impl<C: Context> Content<C> {
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-struct RoundOutcome<C>
+pub(crate) struct RoundOutcome<C>
 where
     C: Context,
 {
@@ -1172,7 +1172,7 @@ impl<C: Context> Default for RoundOutcome<C> {
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-enum Message<C: Context> {
+pub(crate) enum Message<C: Context> {
     // A dependency request. u64 is a random UUID identifying the request.
     // RequestDependency(u64),
     SyncState {
@@ -1211,7 +1211,7 @@ where
 {
     fn handle_message(
         &mut self,
-        rng: &mut NodeRng,
+        _rng: &mut NodeRng,
         sender: NodeId,
         msg: Vec<u8>,
         now: Timestamp,
@@ -1273,31 +1273,27 @@ where
                         && self.pending_proposal_round_ids.is_none()
                         && self.round_mut(current_round).proposals.is_empty()
                     {
-                        let (maybe_parent_round_id, timestamp, ancestor_values) = match (0
-                            ..current_round)
-                            .rev()
-                            .filter_map(|round_id| {
+                        let (maybe_parent_round_id, timestamp, ancestor_values) =
+                            match (0..current_round).rev().find_map(|round_id| {
                                 self.round(round_id)?
                                     .accepted_proposal()
                                     .map(|(_, parent)| (round_id, parent))
-                            })
-                            .next()
-                        {
-                            Some((parent_round_id, parent)) => {
-                                if self.accepted_switch_block(parent_round_id)
-                                    || self.accepted_dummy_proposal(parent_round_id)
-                                {
-                                    return outcomes;
+                            }) {
+                                Some((parent_round_id, parent)) => {
+                                    if self.accepted_switch_block(parent_round_id)
+                                        || self.accepted_dummy_proposal(parent_round_id)
+                                    {
+                                        return outcomes;
+                                    }
+                                    (
+                                        Some(parent_round_id),
+                                        parent.timestamp.max(now),
+                                        self.ancestor_values(parent_round_id)
+                                            .expect("missing ancestor value"),
+                                    )
                                 }
-                                (
-                                    Some(parent_round_id),
-                                    parent.timestamp.max(now),
-                                    self.ancestor_values(parent_round_id)
-                                        .expect("missing ancestor value"),
-                                )
-                            }
-                            None => (None, now, vec![]),
-                        };
+                                None => (None, now, vec![]),
+                            };
                         self.pending_proposal_round_ids =
                             Some((current_round, maybe_parent_round_id));
                         let block_context = BlockContext::new(timestamp, ancestor_values);
@@ -1351,7 +1347,11 @@ where
         vec![]
     }
 
-    fn propose(&mut self, proposed_block: ProposedBlock<C>, now: Timestamp) -> ProtocolOutcomes<C> {
+    fn propose(
+        &mut self,
+        proposed_block: ProposedBlock<C>,
+        _now: Timestamp,
+    ) -> ProtocolOutcomes<C> {
         let (block, block_context) = proposed_block.destructure();
         if let Some((proposal_round_id, maybe_parent_round_id)) =
             self.pending_proposal_round_ids.take()
@@ -1520,7 +1520,7 @@ where
 /// be replaced with `Direct` evidence, which has the same effect but doesn't rely on information
 /// from other consensus protocol instances.
 #[derive(DataSize, Debug)]
-enum Fault<C>
+pub(crate) enum Fault<C>
 where
     C: Context,
 {
