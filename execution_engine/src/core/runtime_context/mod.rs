@@ -161,13 +161,13 @@ where
     pub fn new_from_self(
         &self,
         base_key: Key,
-        tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         entry_point_type: EntryPointType,
         named_keys: &'a mut NamedKeys,
         access_rights: ContextAccessRights,
         runtime_args: RuntimeArgs,
     ) -> Self {
         // debug_assert!(base_key != self.base_key);
+        let tracking_copy = self.state();
         let authorization_keys = self.authorization_keys.clone();
         let account = self.account;
         let blocktime = self.blocktime;

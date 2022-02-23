@@ -602,7 +602,6 @@ where
         let base_key = self.context.get_system_contract(MINT)?.into();
         let runtime_context = self.context.new_from_self(
             base_key,
-            self.context.state(),
             EntryPointType::Contract,
             named_keys,
             access_rights,
@@ -725,7 +724,6 @@ where
         let base_key = self.context.get_system_contract(HANDLE_PAYMENT)?.into();
         let runtime_context = self.context.new_from_self(
             base_key,
-            self.context.state(),
             EntryPointType::Contract,
             named_keys,
             access_rights,
@@ -818,7 +816,6 @@ where
         let base_key = self.context.get_system_contract(AUCTION)?.into();
         let runtime_context = self.context.new_from_self(
             base_key,
-            self.context.state(),
             EntryPointType::Contract,
             named_keys,
             access_rights,
@@ -1334,7 +1331,6 @@ where
 
         let context = self.context.new_from_self(
             context_key,
-            self.context.state(),
             entry_point.entry_point_type(),
             &mut named_keys,
             access_rights,
