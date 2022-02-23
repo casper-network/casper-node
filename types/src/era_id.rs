@@ -59,6 +59,7 @@ impl EraId {
     ///
     /// For `u64::MAX`, this returns `u64::MAX` again: We want to make sure this doesn't panic, and
     /// that era number will never be reached in practice.
+    #[must_use]
     pub fn successor(self) -> EraId {
         EraId::from(self.0.saturating_add(1))
     }
@@ -74,16 +75,19 @@ impl EraId {
     }
 
     /// Returns the current era minus `x`, or `0` if that would be less than `0`.
+    #[must_use]
     pub fn saturating_sub(&self, x: u64) -> EraId {
         EraId::from(self.0.saturating_sub(x))
     }
 
     /// Returns the current era plus `x`, or [`EraId::MAX`] if overflow would occur.
+    #[must_use]
     pub fn saturating_add(self, rhs: u64) -> EraId {
         EraId(self.0.saturating_add(rhs))
     }
 
     /// Returns the current era times `x`, or [`EraId::MAX`] if overflow would occur.
+    #[must_use]
     pub fn saturating_mul(&self, x: u64) -> EraId {
         EraId::from(self.0.saturating_mul(x))
     }

@@ -135,6 +135,7 @@ steps:
 - name: build-client-contracts
   image: casperlabs/node-build-u1804
   commands:
+    - make setup
     - make build-client-contracts
   when:
     branch:
@@ -573,7 +574,7 @@ type: docker
 name: nightly-tests-cron
 
 steps:
-- name: nctl-nighly-script
+- name: nctl-nightly-script
   image: casperlabs/node-build-u1804
   environment:
     AWS_ACCESS_KEY_ID:
@@ -601,7 +602,7 @@ steps:
     - failure
     - success
   depends_on:
-  - nctl-nighly-script
+  - nctl-nightly-script
 
 trigger:
-  cron: [ nightly-tests-cron ]
+  cron: [ nightly-tests-cron, feat-fast-sync ]

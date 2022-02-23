@@ -330,7 +330,7 @@ impl reactor::Reactor for Reactor {
     }
 
     fn maybe_exit(&self) -> Option<ReactorExit> {
-        Some(self.chainspec_loader.reactor_exit())
+        self.chainspec_loader.reactor_exit()
     }
 }
 

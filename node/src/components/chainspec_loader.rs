@@ -34,12 +34,13 @@ use crate::{
     components::Component,
     effect::{
         announcements::ChainspecLoaderAnnouncement, requests::ChainspecLoaderRequest,
-        EffectBuilder, EffectExt, EffectOptionExt, Effects,
+        EffectBuilder, EffectExt, Effects,
     },
     reactor::ReactorExit,
+    storage::StorageRequest,
     types::{
         chainspec::{Error, ProtocolConfig, CHAINSPEC_NAME},
-        ActivationPoint, Chainspec, ChainspecInfo, ExitCode,
+        ActivationPoint, BlockHeader, Chainspec, ChainspecInfo, ExitCode,
     },
     utils::{self, Loadable},
     NodeRng,
@@ -51,7 +52,9 @@ const UPGRADE_CHECK_INTERVAL: Duration = Duration::from_secs(60);
 #[derive(Debug, From, Serialize)]
 pub(crate) enum Event {
     /// The result of getting the highest block from storage.
-    Initialize,
+    Initialize {
+        maybe_highest_block: Option<Box<BlockHeader>>,
+    },
     #[from]
     Request(ChainspecLoaderRequest),
     /// Check config dir to see if an upgrade activation point is available, and if so announce it.
@@ -63,8 +66,16 @@ pub(crate) enum Event {
 impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::Initialize => {
-                write!(formatter, "initialize")
+            Event::Initialize {
+                maybe_highest_block,
+            } => {
+                write!(
+                    formatter,
+                    "initialize(maybe_highest_block: {})",
+                    maybe_highest_block
+                        .as_ref()
+                        .map_or_else(|| "None".to_string(), |block| block.to_string())
+                )
             }
             Event::Request(req) => write!(formatter, "chainspec_loader request: {}", req),
             Event::CheckForNextUpgrade => {
@@ -134,7 +145,7 @@ pub(crate) struct ChainspecLoader {
     /// The path to the folder where all chainspec and upgrade_point files will be stored in
     /// subdirs corresponding to their versions.
     root_dir: PathBuf,
-    reactor_exit: ReactorExit,
+    reactor_exit: Option<ReactorExit>,
     next_upgrade: Option<NextUpgrade>,
 }
 
@@ -145,7 +156,7 @@ impl ChainspecLoader {
     ) -> Result<(Self, Effects<Event>), Error>
     where
         P: AsRef<Path>,
-        REv: From<Event> + Send,
+        REv: From<Event> + From<StorageRequest> + Send,
     {
         Ok(Self::new_with_chainspec_and_path(
             Arc::new(Chainspec::from_path(&chainspec_dir.as_ref())?),
@@ -160,7 +171,7 @@ impl ChainspecLoader {
         effect_builder: EffectBuilder<REv>,
     ) -> (Self, Effects<Event>)
     where
-        REv: From<Event> + Send,
+        REv: From<Event> + From<StorageRequest> + Send,
     {
         Self::new_with_chainspec_and_path(chainspec, &RESOURCES_PATH.join("local"), effect_builder)
     }
@@ -172,7 +183,7 @@ impl ChainspecLoader {
     ) -> (Self, Effects<Event>)
     where
         P: AsRef<Path>,
-        REv: From<Event> + Send,
+        REv: From<Event> + From<StorageRequest> + Send,
     {
         let root_dir = chainspec_dir
             .as_ref()
@@ -187,7 +198,7 @@ impl ChainspecLoader {
             let chainspec_loader = ChainspecLoader {
                 chainspec,
                 root_dir,
-                reactor_exit: ReactorExit::ProcessShouldExit(ExitCode::Abort),
+                reactor_exit: Some(ReactorExit::ProcessShouldExit(ExitCode::Abort)),
                 next_upgrade: None,
             };
             return (chainspec_loader, Effects::new());
@@ -210,7 +221,11 @@ impl ChainspecLoader {
         let mut effects = if should_stop {
             Effects::new()
         } else {
-            async { Some(Event::Initialize) }.map_some(std::convert::identity)
+            effect_builder
+                .get_highest_block_header_from_storage()
+                .event(|highest_block| Event::Initialize {
+                    maybe_highest_block: highest_block.map(Box::new),
+                })
         };
 
         // Start regularly checking for the next upgrade.
@@ -220,11 +235,7 @@ impl ChainspecLoader {
                 .event(|_| Event::CheckForNextUpgrade),
         );
 
-        let reactor_exit = if should_stop {
-            ReactorExit::ProcessShouldExit(ExitCode::Success)
-        } else {
-            ReactorExit::ProcessShouldContinue
-        };
+        let reactor_exit = should_stop.then(|| ReactorExit::ProcessShouldExit(ExitCode::Success));
 
         let chainspec_loader = ChainspecLoader {
             chainspec,
@@ -234,6 +245,50 @@ impl ChainspecLoader {
         };
 
         (chainspec_loader, effects)
+    }
+
+    fn handle_initialize<REv>(
+        &mut self,
+        _effect_builder: EffectBuilder<REv>,
+        maybe_highest_block: Option<Box<BlockHeader>>,
+    ) -> Effects<Event>
+    where
+        REv: Send,
+    {
+        self.reactor_exit = Some(
+            Self::should_exit_for_upgrade(
+                maybe_highest_block,
+                self.next_upgrade_activation_point(),
+            )
+            .then(|| ReactorExit::ProcessShouldExit(ExitCode::Success))
+            .unwrap_or(ReactorExit::ProcessShouldContinue),
+        );
+        Effects::new()
+    }
+
+    fn should_exit_for_upgrade(
+        maybe_highest_block_header: Option<Box<BlockHeader>>,
+        maybe_next_upgrade_activation_point: Option<ActivationPoint>,
+    ) -> bool {
+        maybe_highest_block_header.map_or(false, |highest_block_header| {
+            maybe_next_upgrade_activation_point.map_or(false, |next_upgrade_activation_point| {
+                if highest_block_header.next_block_era_id()
+                    >= next_upgrade_activation_point.era_id()
+                {
+                    // This is an invalid run as the highest block era ID >= next activation
+                    // point, so we're running an outdated version.  Exit with success to
+                    // indicate we should upgrade.
+                    warn!(
+                        %next_upgrade_activation_point,
+                        %highest_block_header,
+                        "running outdated version: exit to upgrade"
+                    );
+                    true
+                } else {
+                    false
+                }
+            })
+        })
     }
 
     /// This is a workaround while we have multiple reactors.  It should be used in the joiner and
@@ -250,7 +305,7 @@ impl ChainspecLoader {
         self.check_for_next_upgrade(effect_builder)
     }
 
-    pub(crate) fn reactor_exit(&self) -> ReactorExit {
+    pub(crate) fn reactor_exit(&self) -> Option<ReactorExit> {
         self.reactor_exit
     }
 
@@ -258,8 +313,10 @@ impl ChainspecLoader {
         &self.chainspec
     }
 
-    pub(crate) fn next_upgrade(&self) -> Option<NextUpgrade> {
-        self.next_upgrade.clone()
+    pub(crate) fn next_upgrade_activation_point(&self) -> Option<ActivationPoint> {
+        self.next_upgrade
+            .as_ref()
+            .map(|next_upgrade| next_upgrade.activation_point())
     }
 
     /// Returns the era ID of where we should reset back to.  This means stored blocks in that and
@@ -346,7 +403,9 @@ where
     ) -> Effects<Self::Event> {
         trace!("{}", event);
         match event {
-            Event::Initialize => Effects::new(),
+            Event::Initialize {
+                maybe_highest_block,
+            } => self.handle_initialize(effect_builder, maybe_highest_block),
             Event::Request(ChainspecLoaderRequest::GetChainspecInfo(responder)) => {
                 responder.respond(self.new_chainspec_info()).ignore()
             }
@@ -480,7 +539,106 @@ fn next_upgrade(dir: PathBuf, current_version: ProtocolVersion) -> Option<NextUp
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{testing::TestRng, types::chainspec::CHAINSPEC_NAME};
+    use crate::{
+        testing::TestRng,
+        types::{chainspec::CHAINSPEC_NAME, Block},
+    };
+
+    #[test]
+    fn correctly_detects_when_to_exit_for_upgrade() {
+        let mut rng = crate::new_rng();
+        const HEIGHT: u64 = 10;
+        const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
+        const IS_NOT_SWITCH: bool = false;
+        const IS_SWITCH: bool = true;
+        const VERIFIABLE_CHUNKED_HASH_ACTIVATION: u64 = 10;
+
+        let highest_block_header = None;
+        let next_upgrade_activation_point = None;
+        assert!(!ChainspecLoader::should_exit_for_upgrade(
+            highest_block_header,
+            next_upgrade_activation_point
+        ));
+
+        let highest_block_header = Some(Box::new(
+            Block::random_with_specifics(
+                &mut rng,
+                EraId::from(2),
+                HEIGHT,
+                PROTOCOL_VERSION,
+                IS_NOT_SWITCH,
+                VERIFIABLE_CHUNKED_HASH_ACTIVATION.into(),
+            )
+            .header()
+            .clone(),
+        ));
+        let next_upgrade_activation_point = None;
+        assert!(!ChainspecLoader::should_exit_for_upgrade(
+            highest_block_header,
+            next_upgrade_activation_point
+        ));
+
+        let highest_block_header = None;
+        let next_upgrade_activation_point = Some(ActivationPoint::EraId(10.into()));
+        assert!(!ChainspecLoader::should_exit_for_upgrade(
+            highest_block_header,
+            next_upgrade_activation_point
+        ));
+
+        let highest_block_header = Some(Box::new(
+            Block::random_with_specifics(
+                &mut rng,
+                EraId::from(2),
+                HEIGHT,
+                PROTOCOL_VERSION,
+                IS_NOT_SWITCH,
+                VERIFIABLE_CHUNKED_HASH_ACTIVATION.into(),
+            )
+            .header()
+            .clone(),
+        ));
+        let next_upgrade_activation_point = Some(ActivationPoint::EraId(3.into()));
+        assert!(!ChainspecLoader::should_exit_for_upgrade(
+            highest_block_header,
+            next_upgrade_activation_point
+        ));
+
+        let highest_block_header = Some(Box::new(
+            Block::random_with_specifics(
+                &mut rng,
+                EraId::from(2),
+                HEIGHT,
+                PROTOCOL_VERSION,
+                IS_NOT_SWITCH,
+                VERIFIABLE_CHUNKED_HASH_ACTIVATION.into(),
+            )
+            .header()
+            .clone(),
+        ));
+        let next_upgrade_activation_point = Some(ActivationPoint::EraId(2.into()));
+        assert!(ChainspecLoader::should_exit_for_upgrade(
+            highest_block_header,
+            next_upgrade_activation_point
+        ));
+
+        let highest_block_header = Some(Box::new(
+            Block::random_with_specifics(
+                &mut rng,
+                EraId::from(2),
+                HEIGHT,
+                PROTOCOL_VERSION,
+                IS_SWITCH,
+                VERIFIABLE_CHUNKED_HASH_ACTIVATION.into(),
+            )
+            .header()
+            .clone(),
+        ));
+        let next_upgrade_activation_point = Some(ActivationPoint::EraId(3.into()));
+        assert!(ChainspecLoader::should_exit_for_upgrade(
+            highest_block_header,
+            next_upgrade_activation_point
+        ));
+    }
 
     #[test]
     fn should_get_next_installed_version() {

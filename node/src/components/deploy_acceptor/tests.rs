@@ -22,7 +22,7 @@ use casper_execution_engine::{
 };
 use casper_types::{
     account::{Account, ActionThresholds, AssociatedKeys, Weight},
-    CLValue, ProtocolVersion, StoredValue, URef, U512,
+    CLValue, StoredValue, URef, U512,
 };
 
 use super::*;

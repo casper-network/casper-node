@@ -33,8 +33,8 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     types::{
-        chainspec::DeployConfig, Block, Chainspec, Deploy, DeployConfigurationFailure, NodeId,
-        Timestamp,
+        chainspec::DeployConfig, BlockHeader, Chainspec, Deploy, DeployConfigurationFailure,
+        NodeId, Timestamp,
     },
     utils::Source,
     NodeRng,
@@ -221,10 +221,10 @@ impl DeployAcceptor {
 
         if self.verify_accounts {
             effect_builder
-                .get_highest_block_from_storage()
-                .event(move |maybe_block| Event::GetBlockResult {
+                .get_highest_block_header_from_storage()
+                .event(move |maybe_block_header| Event::GetBlockHeaderResult {
                     event_metadata: EventMetadata::new(deploy, source, maybe_responder),
-                    maybe_block: Box::new(maybe_block),
+                    maybe_block_header: Box::new(maybe_block_header),
                     verification_start_timestamp,
                 })
         } else {
@@ -241,7 +241,7 @@ impl DeployAcceptor {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         event_metadata: EventMetadata,
-        maybe_block: Option<Block>,
+        maybe_block: Option<BlockHeader>,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
         let mut effects = Effects::new();
@@ -492,18 +492,12 @@ impl DeployAcceptor {
                         verification_start_timestamp,
                     })
             }
-            ExecutableDeployItemIdentifier::Package(
-                ref
-                contract_package_identifier
-                @
-                ContractPackageIdentifier::Hash {
-                    contract_package_hash,
-                    ..
-                },
-            ) => {
+            ExecutableDeployItemIdentifier::Package(ContractPackageIdentifier::Hash {
+                contract_package_hash,
+                version: maybe_package_version,
+            }) => {
                 let query_key = Key::from(contract_package_hash);
                 let path = vec![];
-                let maybe_package_version = contract_package_identifier.version();
                 effect_builder
                     .get_contract_package_for_validation(prestate_hash, query_key, path)
                     .event(
@@ -596,18 +590,12 @@ impl DeployAcceptor {
                         verification_start_timestamp,
                     })
             }
-            ExecutableDeployItemIdentifier::Package(
-                ref
-                contract_package_identifier
-                @
-                ContractPackageIdentifier::Hash {
-                    contract_package_hash,
-                    ..
-                },
-            ) => {
+            ExecutableDeployItemIdentifier::Package(ContractPackageIdentifier::Hash {
+                contract_package_hash,
+                version: maybe_package_version,
+            }) => {
                 let query_key = Key::from(contract_package_hash);
                 let path = vec![];
-                let maybe_package_version = contract_package_identifier.version();
                 effect_builder
                     .get_contract_package_for_validation(prestate_hash, query_key, path)
                     .event(
@@ -880,14 +868,14 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
                 source,
                 maybe_responder: responder,
             } => self.accept(effect_builder, deploy, source, responder),
-            Event::GetBlockResult {
+            Event::GetBlockHeaderResult {
                 event_metadata,
-                maybe_block,
+                maybe_block_header,
                 verification_start_timestamp,
             } => self.handle_get_block_result(
                 effect_builder,
                 event_metadata,
-                *maybe_block,
+                *maybe_block_header,
                 verification_start_timestamp,
             ),
             Event::GetAccountResult {

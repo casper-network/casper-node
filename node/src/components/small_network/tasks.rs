@@ -41,7 +41,7 @@ use super::{
     event::{IncomingConnection, OutgoingConnection},
     framed,
     limiter::LimiterHandle,
-    message::{ConsensusKeyPair, PayloadWeights},
+    message::{ConsensusKeyPair, EstimatorWeights},
     Event, FramedTransport, Message, Metrics, Payload, Transport,
 };
 use crate::{
@@ -180,7 +180,7 @@ where
     /// Timeout for handshake completion.
     pub(super) handshake_timeout: TimeDiff,
     /// Weights to estimate payloads with.
-    pub(super) payload_weights: PayloadWeights,
+    pub(super) payload_weights: EstimatorWeights,
     /// Whether or not to reject incompatible versions during handshake.
     pub(super) reject_incompatible_versions: bool,
     /// The protocol version at which (or under) tarpitting is enabled.
@@ -503,6 +503,13 @@ where
                             msg.payload_incoming_resource_estimate(&context.payload_weights),
                         )
                         .await;
+
+                    let queue_kind = if msg.is_low_priority() {
+                        QueueKind::NetworkLowPriority
+                    } else {
+                        QueueKind::NetworkIncoming
+                    };
+
                     context
                         .event_queue
                         .schedule(
@@ -511,7 +518,7 @@ where
                                 msg: Box::new(msg),
                                 span: span.clone(),
                             },
-                            QueueKind::NetworkIncoming,
+                            queue_kind,
                         )
                         .await;
                 }
