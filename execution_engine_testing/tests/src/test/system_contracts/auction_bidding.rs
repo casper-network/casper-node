@@ -1,4 +1,3 @@
-use assert_matches::assert_matches;
 use num_traits::Zero;
 
 use casper_engine_test_support::{
@@ -235,7 +234,7 @@ fn should_fail_bonding_with_insufficient_funds_directly() {
         auction::METHOD_ADD_BID,
         runtime_args! {
             auction::ARG_PUBLIC_KEY => new_validator_pk,
-            auction::ARG_AMOUNT => new_validator_balance + 1,
+            auction::ARG_AMOUNT => new_validator_balance + U512::one(),
             auction::ARG_DELEGATION_RATE => delegation_rate,
         },
     )
@@ -243,9 +242,12 @@ fn should_fail_bonding_with_insufficient_funds_directly() {
     builder.exec(add_bid_request);
 
     let error = builder.get_error().expect("should be error");
-
     assert!(
-        matches!(error, EngineError::Exec(Error::Revert(e)) if e == ApiError::from(auction::Error::TransferToBidPurse)),
+        matches!(
+            error,
+            EngineError::Exec(Error::Revert(ApiError::Mint(mint_error))
+        )
+        if mint_error == mint::Error::InsufficientFunds as u8),
         "{:?}",
         error
     );
@@ -296,8 +298,15 @@ fn should_fail_bonding_with_insufficient_funds() {
 
     assert_eq!(response.len(), 1);
     let exec_result = response[0].as_error().expect("should have error");
-    let error = assert_matches!(exec_result, EngineError::Exec(Error::Revert(e)) => *e, "{:?}", exec_result);
-    assert_eq!(error, ApiError::from(auction::Error::TransferToBidPurse));
+    assert!(
+        matches!(
+            exec_result,
+            EngineError::Exec(Error::Revert(ApiError::Mint(mint_error))
+        )
+        if *mint_error == mint::Error::InsufficientFunds as u8),
+        "{:?}",
+        exec_result
+    );
 }
 
 #[ignore]

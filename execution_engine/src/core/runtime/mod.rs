@@ -607,7 +607,6 @@ where
             named_keys,
             access_rights,
             runtime_args.to_owned(),
-            self.context.remaining_spending_limit(),
         );
 
         let mut mint_runtime = self.new_system_runtime(runtime_context, stack);
@@ -731,7 +730,6 @@ where
             named_keys,
             access_rights,
             runtime_args.to_owned(),
-            self.context.remaining_spending_limit(),
         );
 
         let mut runtime = self.new_system_runtime(runtime_context, stack);
@@ -825,8 +823,6 @@ where
             named_keys,
             access_rights,
             runtime_args.to_owned(),
-            // We should not spend any tokens when executing auction contract.
-            U512::zero(),
         );
 
         let mut runtime = self.new_system_runtime(runtime_context, stack);
@@ -1343,7 +1339,6 @@ where
             &mut named_keys,
             access_rights,
             context_args,
-            self.context().remaining_spending_limit(),
         );
         let protocol_version = self.context.protocol_version();
         let (instance, memory) = utils::instance_and_memory(

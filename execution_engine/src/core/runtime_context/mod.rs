@@ -166,7 +166,6 @@ where
         named_keys: &'a mut NamedKeys,
         access_rights: ContextAccessRights,
         runtime_args: RuntimeArgs,
-        remaining_spending_limit: U512,
     ) -> Self {
         // debug_assert!(base_key != self.base_key);
         let authorization_keys = self.authorization_keys.clone();
@@ -181,6 +180,7 @@ where
         let phase = self.phase;
         let engine_config = self.engine_config;
         let transfers = self.transfers.clone();
+        let remaining_spending_limit = self.remaining_spending_limit();
 
         RuntimeContext {
             tracking_copy,
