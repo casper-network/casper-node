@@ -26,13 +26,13 @@ const CONTRACT_VERSION: &str = "contract_version";
 
 #[repr(u16)]
 enum Error {
-    Assert1,
-    Assert2,
-    Assert3,
-    Assert4,
-    Assert5,
-    Assert6,
-    Assert7,
+    HasWrongNamedKeys,
+    FoundNamedKey1,
+    FoundNamedKey2,
+    FoundNamedKey3,
+    FoundNamedKey4,
+    UnexpectedContractValidURef,
+    UnexpectedAccountValidURef,
 }
 
 impl From<Error> for ApiError {
@@ -48,22 +48,22 @@ pub extern "C" fn named_keys_contract() {
         || runtime::get_key("account_named_key_3").is_some()
         || runtime::get_key("account_named_key_4").is_some()
     {
-        runtime::revert(Error::Assert1);
+        runtime::revert(Error::HasWrongNamedKeys);
     }
 
     if runtime::get_key("named_key_1").is_none() {
-        runtime::revert(Error::Assert2);
+        runtime::revert(Error::FoundNamedKey1);
     }
     if runtime::get_key("named_key_2").is_none() {
-        runtime::revert(Error::Assert3);
+        runtime::revert(Error::FoundNamedKey2);
     }
     if runtime::get_key("named_key_3").is_none() {
-        runtime::revert(Error::Assert4);
+        runtime::revert(Error::FoundNamedKey3);
     }
-    let uref_key = runtime::get_key("named_key_4").unwrap_or_revert_with(Error::Assert5);
+    let uref_key = runtime::get_key("named_key_4").unwrap_or_revert_with(Error::FoundNamedKey4);
     let uref = uref_key.into_uref().unwrap();
     if !runtime::is_valid_uref(uref) {
-        runtime::revert(Error::Assert6);
+        runtime::revert(Error::UnexpectedContractValidURef);
     }
 }
 
@@ -74,25 +74,26 @@ pub extern "C" fn named_keys_session() {
         || runtime::get_key("named_key_3").is_some()
         || runtime::get_key("named_key_4").is_some()
     {
-        runtime::revert(Error::Assert1);
+        runtime::revert(Error::HasWrongNamedKeys);
     }
 
     if runtime::get_key("account_named_key_1").is_none() {
-        runtime::revert(Error::Assert2);
+        runtime::revert(Error::FoundNamedKey1);
     }
     if runtime::get_key("account_named_key_2").is_none() {
-        runtime::revert(Error::Assert3);
+        runtime::revert(Error::FoundNamedKey2);
     }
     if runtime::get_key("account_named_key_3").is_none() {
-        runtime::revert(Error::Assert4);
+        runtime::revert(Error::FoundNamedKey3);
     }
     if runtime::get_key("account_named_key_4").is_none() {
-        runtime::revert(Error::Assert5);
+        runtime::revert(Error::FoundNamedKey4);
     }
-    let uref_key = runtime::get_key("account_named_key_4").unwrap_or_revert_with(Error::Assert6);
+    let uref_key = runtime::get_key("account_named_key_4")
+        .unwrap_or_revert_with(Error::UnexpectedContractValidURef);
     let uref = uref_key.into_uref().unwrap();
     if !runtime::is_valid_uref(uref) {
-        runtime::revert(Error::Assert7);
+        runtime::revert(Error::UnexpectedAccountValidURef);
     }
 }
 

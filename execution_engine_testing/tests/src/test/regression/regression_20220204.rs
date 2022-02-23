@@ -277,35 +277,6 @@ fn regression_20220204_as_session() {
 #[ignore]
 #[test]
 fn regression_20220204_as_session_attenuated() {
-    // let contract = REGRESSION_20220204_CALL_CONTRACT;
-    // let entrypoint = TRANSFER_AS_SESSION;
-    // let new_access_rights = AccessRights::READ;
-    // let expected = AccessRights::READ_ADD_WRITE;
-    // let mut builder = setup();
-    // let exec_request_2 = ExecuteRequestBuilder::standard(
-    //     *DEFAULT_ACCOUNT_ADDR,
-    //     contract,
-    //     runtime_args! {
-    //         ARG_NEW_ACCESS_RIGHTS => new_access_rights.bits(),
-    //         ARG_ENTRYPOINT => entrypoint,
-    //     },
-    // )
-    // .build();
-    // builder.exec(exec_request_2).commit();
-    // let account = builder
-    //     .get_account(*DEFAULT_ACCOUNT_ADDR)
-    //     .expect("should have account");
-    // let main_purse = account.main_purse().with_access_rights(expected);
-    // let error = builder.get_error().expect("should have returned an error");
-    // assert!(
-    //     matches!(
-    //         error,
-    //         engine_state::Error::Exec(execution::Error::Revert(ApiError::Mint(mint_error)))
-    //         if mint_error == mint::Error::InvalidContext as u8
-    //     ),
-    //     "Expected revert but received {:?}",
-    //     error
-    // );
     let contract = REGRESSION_20220204_CALL_CONTRACT;
     let entrypoint = TRANSFER_AS_SESSION;
     let new_access_rights = AccessRights::ADD;

@@ -1125,8 +1125,6 @@ where
         // Create session code `A` from provided session bytes
         // validation_spec_1: valid wasm bytes
         // we do this upfront as there is no reason to continue if session logic is invalid
-        // let system_contract_registry =
-        //     self.get_system_contract_registry(correlation_id, prestate_hash)?;
         let session_execution_kind = match ExecutionKind::new(
             Rc::clone(&tracking_copy),
             account.named_keys(),
