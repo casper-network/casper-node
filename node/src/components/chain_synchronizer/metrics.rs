@@ -5,6 +5,7 @@ use crate::unregister_metric;
 
 /// Metrics for the block proposer.
 #[derive(DataSize, Debug, Clone)]
+#[allow(dead_code)]
 pub(super) struct Metrics {
     /// Total time of syncing the chain in seconds.
     #[data_size(skip)]

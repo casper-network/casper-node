@@ -108,8 +108,13 @@ impl ChainSynchronizer {
         trusted_hash: BlockHash,
     ) -> Effects<Event> {
         info!(%trusted_hash, "synchronizing linear chain");
-        operations::run_chain_sync_task(effect_builder, self.config.clone(), trusted_hash, self.metrics.clone())
-            .event(Event::SyncResult)
+        operations::run_chain_sync_task(
+            effect_builder,
+            self.config.clone(),
+            self.metrics.clone(),
+            trusted_hash,
+        )
+        .event(Event::SyncResult)
     }
 
     fn handle_sync_result(

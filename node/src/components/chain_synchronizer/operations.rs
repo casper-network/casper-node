@@ -5,7 +5,6 @@ use std::{
         atomic::{self, AtomicBool},
         Arc,
     },
-    time::{Duration, Instant},
 };
 
 use async_trait::async_trait;
@@ -17,7 +16,7 @@ use casper_execution_engine::storage::trie::Trie;
 use casper_hashing::Digest;
 use casper_types::{EraId, Key, ProtocolVersion, PublicKey, StoredValue, U512};
 
-use super::{Config,metrics::Metrics};
+use super::{metrics::Metrics, Config};
 use crate::{
     components::{
         chain_synchronizer::error::Error,
@@ -38,6 +37,7 @@ struct ChainSyncContext<'a> {
     effect_builder: &'a EffectBuilder<JoinerEvent>,
     config: &'a Config,
     trusted_block_header: &'a BlockHeader,
+    _metrics: &'a Metrics,
 }
 
 impl<'a> ChainSyncContext<'a> {
@@ -45,17 +45,23 @@ impl<'a> ChainSyncContext<'a> {
         effect_builder: &'a EffectBuilder<JoinerEvent>,
         config: &'a Config,
         trusted_block_header: &'a BlockHeader,
+        metrics: &'a Metrics,
     ) -> Self {
         Self {
             effect_builder,
             config,
             trusted_block_header,
+            _metrics: metrics,
         }
     }
 
     fn trusted_hash(&self) -> BlockHash {
         self.trusted_block_header
             .hash(self.config.verifiable_chunked_hash_activation())
+    }
+
+    fn _metric_x() {
+        todo!()
     }
 }
 
@@ -508,7 +514,6 @@ async fn sync_trie_store(state_root_hash: Digest, ctx: &ChainSyncContext<'_>) ->
 /// validation.
 async fn fast_sync_to_most_recent(
     ctx: &ChainSyncContext<'_>,
-    metrics: &Metrics,
 ) -> Result<(KeyBlockInfo, BlockHeader), Error> {
     info!("start - fast_sync_to_most_recent - total");
     let trusted_key_block_info = get_trusted_key_block_info(ctx).await?;
@@ -784,6 +789,7 @@ async fn archival_sync(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, Bloc
 pub(super) async fn run_chain_sync_task(
     effect_builder: EffectBuilder<JoinerEvent>,
     config: Config,
+    metrics: Metrics,
     trusted_hash: BlockHash,
 ) -> Result<BlockHeader, Error> {
     // Fetch the trusted header
@@ -792,7 +798,8 @@ pub(super) async fn run_chain_sync_task(
         fetch_and_store_block_header(effect_builder, &config, trusted_hash).await?;
     debug!("finish - fetch trusted header");
 
-    let chain_sync_context = ChainSyncContext::new(&effect_builder, &config, &trusted_block_header);
+    let chain_sync_context =
+        ChainSyncContext::new(&effect_builder, &config, &trusted_block_header, &metrics);
 
     verify_trusted_block_header(&chain_sync_context)?;
 
@@ -862,8 +869,6 @@ fn verify_trusted_block_header(ctx: &ChainSyncContext<'_>) -> Result<(), Error> 
 async fn handle_emergency_restart(ctx: &ChainSyncContext<'_>) -> Result<bool, Error> {
     let maybe_last_emergency_restart_era_id = ctx.config.last_emergency_restart();
     if let Some(last_emergency_restart_era) = maybe_last_emergency_restart_era_id {
-        let metric = Instant::now();
-
         // After an emergency restart, the old validators cannot be trusted anymore. So the last
         // block before the restart or a later block must be given by the trusted hash. That way we
         // never have to use the untrusted validators' finality signatures.
@@ -885,9 +890,6 @@ async fn handle_emergency_restart(ctx: &ChainSyncContext<'_>) -> Result<bool, Er
             debug!("finish - fetch the global state from before the last emergency restart - emergency restart");
             return Ok(true);
         }
-        metrics
-            .chain_sync_emergency_restart_time_seconds
-            .set(metric.elapsed().as_secs() as i64);
     }
 
     Ok(false)
@@ -921,10 +923,6 @@ async fn handle_upgrade(ctx: &ChainSyncContext<'_>) -> Result<bool, Error> {
             debug!("finish - fetch the global state from before the upgrade - upgrade");
             return Ok(true);
         }
-
-        metrics
-            .chain_sync_upgrade_time_seconds
-            .set(metric.elapsed().as_secs() as i64);
     }
 
     Ok(false)
@@ -1007,32 +1005,14 @@ async fn execute_blocks(
                 transfers,
             )
             .await?;
+        debug!("finish - executing finalized block - {}", block.hash());
 
-            info!(
-                era_id = ?block.header().era_id(),
-                height = block.height(),
-                now = %Timestamp::now(),
-                block_timestamp = %block.timestamp(),
-                "executing block",
-            );
-            info!("start - executing finalized block - {}", block.hash());
-            let block_and_execution_effects = effect_builder
-                .execute_finalized_block(
-                    block.protocol_version(),
-                    execution_pre_state.clone(),
-                    FinalizedBlock::from(block.clone()),
-                    deploys,
-                    transfers,
-                )
-                .await?;
-            debug!("finish - executing finalized block - {}", block.hash());
-
-            if block != *block_and_execution_effects.block() {
-                return Err(Error::ExecutedBlockIsNotTheSameAsDownloadedBlock {
-                    executed_block: Box::new(Block::from(block_and_execution_effects)),
-                    downloaded_block: Box::new(block.clone()),
-                });
-            }
+        if block != *block_and_execution_effects.block() {
+            return Err(Error::ExecutedBlockIsNotTheSameAsDownloadedBlock {
+                executed_block: Box::new(Block::from(block_and_execution_effects)),
+                downloaded_block: Box::new(block.clone()),
+            });
+        }
 
         most_recent_block_header = block.take_header();
         execution_pre_state = ExecutionPreState::from_block_header(
@@ -1062,10 +1042,6 @@ async fn execute_blocks(
             );
             break;
         }
-        metrics
-            .chain_sync_fetch_and_execute_blocks_time_seconds
-            .set(metric.elapsed().as_secs() as i64);
-        debug!("finish - fetching and executing blocks - loop total");
     }
     debug!("finish - fetching and executing blocks - loop total");
     Ok(most_recent_block_header)
