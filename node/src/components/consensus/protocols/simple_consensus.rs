@@ -129,7 +129,7 @@ impl<C: Context> Round<C> {
 
     /// Returns whether the validator has already cast a `true` or `false` vote.
     fn has_voted(&self, validator_idx: ValidatorIndex) -> bool {
-        self.votes[&true][validator_idx].is_some() && self.votes[&false][validator_idx].is_some()
+        self.votes[&true][validator_idx].is_some() || self.votes[&false][validator_idx].is_some()
     }
 
     /// Returns whether a proposal was accepted in this round.
@@ -568,7 +568,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 let mut contents = vec![];
                 if let (None, Some(hash)) = (round_outcome.quorum_echos, our_outcome.quorum_echos) {
                     let to_echo = |(vidx, signature): (&ValidatorIndex, &C::Signature)| {
-                        (Content::Echo(hash), *vidx, signature.clone())
+                        (Content::Echo(hash), *vidx, *signature)
                     };
                     contents.extend(our_round.echos.get(&hash)?.iter().map(to_echo));
                 }
@@ -1291,11 +1291,14 @@ where
             TIMER_ID_ROUND => {
                 // TODO: Increase timeout; reset when rounds get committed.
                 // TODO: Wait for minimum block time.
-                self.current_timeout = now + self.proposal_timeout;
-                let mut outcomes = vec![ProtocolOutcome::ScheduleTimer(
-                    self.current_timeout,
-                    TIMER_ID_PROPOSAL_TIMEOUT,
-                )];
+                let mut outcomes = vec![];
+                if !self.finalized_switch_block() {
+                    self.current_timeout = now + self.proposal_timeout;
+                    outcomes.push(ProtocolOutcome::ScheduleTimer(
+                        self.current_timeout,
+                        TIMER_ID_PROPOSAL_TIMEOUT,
+                    ));
+                }
                 let current_round = self.current_round();
                 if let Some((our_idx, _)) = self.active_validator {
                     if our_idx == self.leader(current_round)
@@ -1326,7 +1329,6 @@ where
                         self.pending_proposal_round_ids =
                             Some((current_round, maybe_parent_round_id));
                         let block_context = BlockContext::new(timestamp, ancestor_values);
-                        // TODO: Stop once switch block is finalized!
                         outcomes.push(ProtocolOutcome::CreateNewBlock(block_context));
                     }
                 }
@@ -1393,8 +1395,7 @@ where
             self.pending_proposal_round_ids.take()
         {
             if self
-                .rounds
-                .get(&proposal_round_id)
+                .round(proposal_round_id)
                 .expect("missing current round")
                 .proposals
                 .is_empty()
