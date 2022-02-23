@@ -139,6 +139,7 @@ cmake-build-debug/
 
 # vscode
 .vscode/
+.dccache
 
 # NCTL transient assets
 /utils/nctl/assets
