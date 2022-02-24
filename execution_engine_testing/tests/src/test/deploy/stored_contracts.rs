@@ -4,13 +4,18 @@ use casper_engine_test_support::{
     DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
-    core::{engine_state::Error, execution},
+    core::{
+        engine_state::{self, Error},
+        execution,
+    },
     storage::global_state::in_memory::InMemoryGlobalState,
 };
 use casper_types::{
     account::{Account, AccountHash},
     contracts::{ContractVersion, CONTRACT_INITIAL_VERSION},
-    runtime_args, ContractHash, EraId, Key, ProtocolVersion, RuntimeArgs, U512,
+    runtime_args,
+    system::mint,
+    ApiError, ContractHash, EraId, Key, ProtocolVersion, RuntimeArgs, U512,
 };
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);
@@ -273,6 +278,154 @@ fn should_exec_stored_code_by_hash() {
     );
 
     let tally = motes_alpha + motes_bravo + U512::from(transferred_amount) + modified_balance_bravo;
+
+    assert_eq!(
+        initial_balance, tally,
+        "no net resources should be gained or lost post-distribution"
+    );
+}
+
+#[ignore]
+#[test]
+fn should_not_transfer_above_balance_using_stored_payment_code_by_hash() {
+    let payment_purse_amount = *DEFAULT_PAYMENT;
+
+    // genesis
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    // store payment
+    let (default_account, hash) = store_payment_to_account_context(&mut builder);
+    let starting_balance = builder.get_purse_balance(default_account.main_purse());
+
+    let transferred_amount = starting_balance - *DEFAULT_PAYMENT + U512::one();
+
+    let exec_request_stored_payment = {
+        let account_1_account_hash = ACCOUNT_1_ADDR;
+        let deploy = DeployItemBuilder::new()
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
+            .with_session_code(
+                &format!("{}.wasm", TRANSFER_PURSE_TO_ACCOUNT_CONTRACT_NAME),
+                runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => transferred_amount },
+            )
+            .with_stored_versioned_payment_contract_by_hash(
+                hash.value(),
+                Some(CONTRACT_INITIAL_VERSION),
+                PAY,
+                runtime_args! {
+                    ARG_AMOUNT => payment_purse_amount,
+                },
+            )
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
+            .with_deploy_hash([2; 32])
+            .build();
+
+        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    };
+
+    builder
+        .exec(exec_request_stored_payment)
+        .expect_failure()
+        .commit();
+
+    let error = builder.get_error().expect("should have error");
+
+    assert!(
+        matches!(
+            error,
+            engine_state::Error::Exec(execution::Error::Revert(ApiError::Mint(mint_error)))
+            if mint_error == mint::Error::InsufficientFunds as u8,
+        ),
+        "Error received {:?}",
+        error,
+    );
+}
+
+#[ignore]
+#[test]
+fn should_empty_account_using_stored_payment_code_by_hash() {
+    let payment_purse_amount = *DEFAULT_PAYMENT;
+
+    // genesis
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    // store payment
+    let proposer_reward_starting_balance_alpha = builder.get_proposer_purse_balance();
+
+    let (default_account, hash) = store_payment_to_account_context(&mut builder);
+    let starting_balance = builder.get_purse_balance(default_account.main_purse());
+
+    // verify stored contract functions as expected by checking all the maths
+
+    let (motes_alpha, modified_balance_alpha) = {
+        // get modified balance
+        let modified_balance_alpha: U512 = builder.get_purse_balance(default_account.main_purse());
+
+        let transaction_fee_alpha =
+            builder.get_proposer_purse_balance() - proposer_reward_starting_balance_alpha;
+        (transaction_fee_alpha, modified_balance_alpha)
+    };
+
+    let transferred_amount = starting_balance - *DEFAULT_PAYMENT;
+
+    // next make another deploy that USES stored payment logic
+    let proposer_reward_starting_balance_bravo = builder.get_proposer_purse_balance();
+
+    {
+        let exec_request_stored_payment = {
+            let account_1_account_hash = ACCOUNT_1_ADDR;
+            let deploy = DeployItemBuilder::new()
+                .with_address(*DEFAULT_ACCOUNT_ADDR)
+                .with_session_code(
+                    &format!("{}.wasm", TRANSFER_PURSE_TO_ACCOUNT_CONTRACT_NAME),
+                    runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => transferred_amount },
+                )
+                .with_stored_versioned_payment_contract_by_hash(
+                    hash.value(),
+                    Some(CONTRACT_INITIAL_VERSION),
+                    PAY,
+                    runtime_args! {
+                        ARG_AMOUNT => payment_purse_amount,
+                    },
+                )
+                .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
+                .with_deploy_hash([2; 32])
+                .build();
+
+            ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        };
+
+        builder
+            .exec(exec_request_stored_payment)
+            .expect_success()
+            .commit();
+    }
+
+    let (motes_bravo, modified_balance_bravo) = {
+        let modified_balance_bravo: U512 = builder.get_purse_balance(default_account.main_purse());
+
+        let transaction_fee_bravo =
+            builder.get_proposer_purse_balance() - proposer_reward_starting_balance_bravo;
+
+        (transaction_fee_bravo, modified_balance_bravo)
+    };
+
+    let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
+
+    assert_eq!(modified_balance_bravo, U512::zero());
+
+    assert!(
+        modified_balance_alpha < initial_balance,
+        "balance should be less than initial balance"
+    );
+
+    assert!(
+        modified_balance_bravo < modified_balance_alpha,
+        "second modified balance should be less than first modified balance"
+    );
+
+    let tally = motes_alpha + motes_bravo + transferred_amount + modified_balance_bravo;
 
     assert_eq!(
         initial_balance, tally,

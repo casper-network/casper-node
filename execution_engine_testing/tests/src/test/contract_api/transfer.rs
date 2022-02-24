@@ -25,7 +25,8 @@ static TRANSFER_1_AMOUNT: Lazy<U512> =
 static TRANSFER_2_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(750));
 static TRANSFER_2_AMOUNT_WITH_ADV: Lazy<U512> = Lazy::new(|| *DEFAULT_PAYMENT + *TRANSFER_2_AMOUNT);
 static TRANSFER_TOO_MUCH: Lazy<U512> = Lazy::new(|| U512::from(u64::max_value()));
-static ACCOUNT_1_INITIAL_BALANCE: Lazy<U512> = Lazy::new(|| *DEFAULT_PAYMENT);
+static ACCOUNT_1_INITIAL_BALANCE: Lazy<U512> =
+    Lazy::new(|| U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE));
 
 static ACCOUNT_1_SECRET_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::secp256k1_from_bytes(&[234u8; 32]).unwrap());
@@ -477,18 +478,26 @@ fn should_transfer_total_amount() {
     )
     .build();
 
+    let transfer_amount_1 = *ACCOUNT_1_INITIAL_BALANCE - *DEFAULT_PAYMENT;
+
     let exec_request_2 = ExecuteRequestBuilder::standard(
         *ACCOUNT_1_ADDR,
         CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
-        runtime_args! { "target" => *ACCOUNT_2_ADDR, "amount" => *ACCOUNT_1_INITIAL_BALANCE },
+        runtime_args! { "target" => *ACCOUNT_2_ADDR, "amount" => transfer_amount_1 },
     )
     .build();
-    builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
-        .exec(exec_request_1)
-        .expect_success()
-        .commit()
-        .exec(exec_request_2)
-        .commit()
-        .expect_success();
+
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    builder.exec(exec_request_1).expect_success().commit();
+
+    builder.exec(exec_request_2).commit().expect_success();
+
+    let account_1 = builder
+        .get_account(*ACCOUNT_1_ADDR)
+        .expect("should have account");
+    let account_1_main_purse = account_1.main_purse();
+    let account_1_balance = builder.get_purse_balance(account_1_main_purse);
+
+    assert_eq!(account_1_balance, U512::zero());
 }

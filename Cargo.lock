@@ -2807,6 +2807,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "new-named-uref"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+]
+
+[[package]]
 name = "ntapi"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3770,6 +3777,14 @@ dependencies = [
 
 [[package]]
 name = "regression-delegate"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "regression-payment"
 version = "0.1.0"
 dependencies = [
  "casper-contract",
