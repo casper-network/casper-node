@@ -278,8 +278,9 @@ impl ContractRuntime {
                     let chainspec_file_hash = Digest::hash(chainspec_file);
                     let genesis_accounts_file_hash = Digest::hash(genesis_accounts_file);
 
-                    chainspec_registry.insert(CHAINSPEC_RAW, chainspec_file_hash);
-                    chainspec_registry.insert(GENESIS_ACCOUNTS_RAW, genesis_accounts_file_hash);
+                    chainspec_registry.insert(CHAINSPEC_RAW.into(), chainspec_file_hash);
+                    chainspec_registry
+                        .insert(GENESIS_ACCOUNTS_RAW.into(), genesis_accounts_file_hash);
 
                     let result =
                         Self::commit_genesis(&engine_state, &chainspec, chainspec_registry);
@@ -297,8 +298,8 @@ impl ContractRuntime {
                 let chainspec_file_hash = Digest::hash(chainspec_file);
                 let genesis_accounts_file_hash = Digest::hash(genesis_accounts_file);
 
-                chainspec_registry.insert(CHAINSPEC_RAW, chainspec_file_hash);
-                chainspec_registry.insert(GENESIS_ACCOUNTS_RAW, genesis_accounts_file_hash);
+                chainspec_registry.insert(CHAINSPEC_RAW.into(), chainspec_file_hash);
+                chainspec_registry.insert(GENESIS_ACCOUNTS_RAW.into(), genesis_accounts_file_hash);
 
                 responder
                     .respond(self.commit_upgrade(*upgrade_config, &chainspec_registry))
