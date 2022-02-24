@@ -143,8 +143,7 @@ pub fn extract_access_rights_from_keys<I: IntoIterator<Item = Key>>(
 ) -> HashMap<Address, HashSet<AccessRights>> {
     input
         .into_iter()
-        .map(key_to_tuple)
-        .flatten()
+        .flat_map(key_to_tuple)
         .group_by(|(key, _)| *key)
         .into_iter()
         .map(|(key, group)| {

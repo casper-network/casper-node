@@ -13,7 +13,7 @@ use crate::{
 const PACKAGE_NAME: &str = "contract";
 
 static CONTRACT_PACKAGE_ROOT: Lazy<PathBuf> =
-    Lazy::new(|| ARGS.root_path().join(PACKAGE_NAME.replace("-", "_")));
+    Lazy::new(|| ARGS.root_path().join(PACKAGE_NAME.replace('-', "_")));
 static CARGO_TOML: Lazy<PathBuf> = Lazy::new(|| CONTRACT_PACKAGE_ROOT.join("Cargo.toml"));
 static MAIN_RS: Lazy<PathBuf> = Lazy::new(|| CONTRACT_PACKAGE_ROOT.join("src/main.rs"));
 static CONFIG_TOML: Lazy<PathBuf> = Lazy::new(|| CONTRACT_PACKAGE_ROOT.join(".cargo/config.toml"));
@@ -53,7 +53,7 @@ lto = true
 {}"#,
         PACKAGE_NAME,
         &*CONTRACT_DEPENDENCIES,
-        PACKAGE_NAME.replace("-", "_"),
+        PACKAGE_NAME.replace('-', "_"),
         &*PATCH_SECTION
     )
 });
