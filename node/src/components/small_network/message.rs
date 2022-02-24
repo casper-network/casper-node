@@ -11,11 +11,11 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
-use crate::crypto;
 #[cfg(test)]
 use crate::crypto::AsymmetricKeyExt;
 #[cfg(test)]
 use crate::testing::TestRng;
+use crate::{crypto, types::NodeId};
 
 use super::counting_format::ConnectionId;
 
@@ -301,9 +301,9 @@ pub(crate) trait Payload:
 }
 
 /// Network message conversion support.
-pub(crate) trait FromIncoming<I, P> {
+pub(crate) trait FromIncoming<P> {
     /// Creates a new value from a received payload.
-    fn from_incoming(sender: I, payload: P) -> Self;
+    fn from_incoming(sender: NodeId, payload: P) -> Self;
 }
 /// A generic configuration for payload weights.
 ///

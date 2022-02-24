@@ -1,7 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::{self, Debug},
-    hash::Hash,
 };
 
 use datasize::DataSize;
@@ -27,46 +26,36 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     fatal,
-    types::Item,
+    types::{Item, NodeId},
     NodeRng,
 };
 
 #[derive(Debug, From, Error, Clone)]
-pub(crate) enum TrieFetcherError<I>
-where
-    I: Debug + Eq + Clone,
-{
+pub(crate) enum TrieFetcherError {
     #[error("Fetcher error: {0}")]
-    Fetcher(FetcherError<TrieOrChunk, I>),
+    Fetcher(FetcherError<TrieOrChunk>),
     #[error("Serialization error: {0}")]
     Bytesrepr(bytesrepr::Error),
     #[error("Couldn't fetch trie chunk ({0}, {1})")]
     Absent(Digest, u64),
 }
 
-pub(crate) type TrieFetcherResult<I> =
-    Result<FetchedData<Trie<Key, StoredValue>, I>, TrieFetcherError<I>>;
+pub(crate) type TrieFetcherResult = Result<FetchedData<Trie<Key, StoredValue>>, TrieFetcherError>;
 
 #[derive(DataSize, Debug)]
-pub(crate) struct PartialChunks<I>
-where
-    I: Debug + Eq + Clone,
-{
-    peers: Vec<I>,
-    responders: Vec<Responder<TrieFetcherResult<I>>>,
+pub(crate) struct PartialChunks {
+    peers: Vec<NodeId>,
+    responders: Vec<Responder<TrieFetcherResult>>,
     chunks: HashMap<u64, ChunkWithProof>,
-    sender: Option<I>,
+    sender: Option<NodeId>,
 }
 
-impl<I> PartialChunks<I>
-where
-    I: Debug + Eq + Clone + Hash + Send + 'static,
-{
+impl PartialChunks {
     fn missing_chunk(&self, count: u64) -> Option<u64> {
         (0..count).find(|idx| !self.chunks.contains_key(idx))
     }
 
-    fn mutate_sender(&mut self, sender: Option<I>) {
+    fn mutate_sender(&mut self, sender: Option<NodeId>) {
         let old_sender = self.sender.take();
         self.sender = old_sender.or(sender);
     }
@@ -80,26 +69,26 @@ where
         bytesrepr::deserialize(data)
     }
 
-    fn next_peer(&mut self) -> Option<&I> {
+    fn next_peer(&mut self) -> Option<&NodeId> {
         // remove the last used peer from the queue
         self.peers.pop();
         self.peers.last()
     }
 
-    fn merge(&mut self, other: PartialChunks<I>) {
+    fn merge(&mut self, other: PartialChunks) {
         self.chunks.extend(other.chunks);
         self.responders.extend(other.responders);
         // set used for filtering out duplicates
-        let mut filter_peers: HashSet<I> = self.peers.iter().cloned().collect();
+        let mut filter_peers: HashSet<NodeId> = self.peers.iter().cloned().collect();
         for peer in other.peers {
-            if filter_peers.insert(peer.clone()) {
+            if filter_peers.insert(peer) {
                 self.peers.push(peer);
             }
         }
         self.sender = self.sender.take().or(other.sender);
     }
 
-    fn respond(self, value: TrieFetcherResult<I>) -> Effects<Event<I>> {
+    fn respond(self, value: TrieFetcherResult) -> Effects<Event> {
         self.responders
             .into_iter()
             .flat_map(|responder| responder.respond(value.clone()).ignore())
@@ -108,31 +97,22 @@ where
 }
 
 #[derive(DataSize, Debug)]
-pub(crate) struct TrieFetcher<I>
-where
-    I: Debug + Eq + Clone,
-{
-    partial_chunks: HashMap<Digest, PartialChunks<I>>,
+pub(crate) struct TrieFetcher {
+    partial_chunks: HashMap<Digest, PartialChunks>,
     verifiable_chunked_hash_activation: EraId,
 }
 
-#[derive(DataSize, Debug, From)]
-pub(crate) enum Event<I>
-where
-    I: Debug + Eq + Clone,
-{
+#[derive(Debug, From)]
+pub(crate) enum Event {
     #[from]
-    Request(TrieFetcherRequest<I>),
+    Request(TrieFetcherRequest),
     TrieOrChunkFetched {
         id: TrieOrChunkId,
-        fetch_result: FetchResult<TrieOrChunk, I>,
+        fetch_result: FetchResult<TrieOrChunk>,
     },
 }
 
-impl<I> fmt::Display for Event<I>
-where
-    I: Debug + Eq + Clone,
-{
+impl fmt::Display for Event {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Event::Request(_) => write!(f, "trie fetcher request"),
@@ -143,20 +123,14 @@ where
     }
 }
 
-fn into_response<I>(trie: Box<Trie<Key, StoredValue>>, sender: Option<I>) -> TrieFetcherResult<I>
-where
-    I: Debug + Eq + Clone,
-{
+fn into_response(trie: Box<Trie<Key, StoredValue>>, sender: Option<NodeId>) -> TrieFetcherResult {
     match sender {
         Some(peer) => Ok(FetchedData::FromPeer { item: trie, peer }),
         None => Ok(FetchedData::FromStorage { item: trie }),
     }
 }
 
-impl<I> TrieFetcher<I>
-where
-    I: Debug + Clone + Hash + Send + Eq + 'static,
-{
+impl TrieFetcher {
     pub(crate) fn new(verifiable_chunked_hash_activation: EraId) -> Self {
         TrieFetcher {
             partial_chunks: Default::default(),
@@ -167,14 +141,14 @@ where
     fn consume_trie_or_chunk<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        sender: Option<I>,
+        sender: Option<NodeId>,
         trie_or_chunk: TrieOrChunk,
-    ) -> Effects<Event<I>>
+    ) -> Effects<Event>
     where
         REv: ReactorEventT<TrieOrChunk>
-            + From<FetcherRequest<I, TrieOrChunk>>
+            + From<FetcherRequest<TrieOrChunk>>
             + From<ControlAnnouncement>
-            + From<BlocklistAnnouncement<I>>,
+            + From<BlocklistAnnouncement>,
     {
         let TrieOrChunkId(_index, hash) = trie_or_chunk.id(self.verifiable_chunked_hash_activation);
         match trie_or_chunk {
@@ -195,14 +169,14 @@ where
     fn consume_chunk<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        sender: Option<I>,
+        sender: Option<NodeId>,
         chunk: ChunkWithProof,
-    ) -> Effects<Event<I>>
+    ) -> Effects<Event>
     where
         REv: ReactorEventT<TrieOrChunk>
-            + From<FetcherRequest<I, TrieOrChunk>>
+            + From<FetcherRequest<TrieOrChunk>>
             + From<ControlAnnouncement>
-            + From<BlocklistAnnouncement<I>>,
+            + From<BlocklistAnnouncement>,
     {
         let digest = chunk.proof().root_hash();
         let index = chunk.proof().index();
@@ -224,7 +198,7 @@ where
         match partial_chunks.missing_chunk(count) {
             Some(missing_index) => {
                 let peer = match partial_chunks.peers.last() {
-                    Some(peer) => peer.clone(),
+                    Some(peer) => peer,
                     None => {
                         debug!(
                             %digest, %missing_index,
@@ -235,11 +209,11 @@ where
                     }
                 };
                 let next_id = TrieOrChunkId(missing_index, digest);
-                self.try_download_chunk(effect_builder, next_id, peer, partial_chunks)
+                self.try_download_chunk(effect_builder, next_id, *peer, partial_chunks)
             }
             None => match partial_chunks.assemble_chunks(count) {
                 Ok(trie) => {
-                    let sender = partial_chunks.sender.clone();
+                    let sender = partial_chunks.sender;
                     partial_chunks.respond(into_response(Box::new(trie), sender))
                 }
                 Err(error) => {
@@ -264,11 +238,11 @@ where
         &mut self,
         effect_builder: EffectBuilder<REv>,
         id: TrieOrChunkId,
-        peer: I,
-        partial_chunks: PartialChunks<I>,
-    ) -> Effects<Event<I>>
+        peer: NodeId,
+        partial_chunks: PartialChunks,
+    ) -> Effects<Event>
     where
-        REv: ReactorEventT<TrieOrChunk> + From<FetcherRequest<I, TrieOrChunk>>,
+        REv: ReactorEventT<TrieOrChunk> + From<FetcherRequest<TrieOrChunk>>,
     {
         let hash = id.digest();
         let maybe_old_partial_chunks = self.partial_chunks.insert(*hash, partial_chunks);
@@ -285,15 +259,14 @@ where
     }
 }
 
-impl<I, REv> Component<REv> for TrieFetcher<I>
+impl<REv> Component<REv> for TrieFetcher
 where
     REv: ReactorEventT<TrieOrChunk>
-        + From<FetcherRequest<I, TrieOrChunk>>
+        + From<FetcherRequest<TrieOrChunk>>
         + From<ControlAnnouncement>
-        + From<BlocklistAnnouncement<I>>,
-    I: Debug + Clone + Hash + Send + Eq + 'static,
+        + From<BlocklistAnnouncement>,
 {
-    type Event = Event<I>;
+    type Event = Event;
     type ConstructionError = prometheus::Error;
 
     fn handle_event(
@@ -311,7 +284,7 @@ where
             }) => {
                 let trie_id = TrieOrChunkId(0, hash);
                 let peer = match peers.last() {
-                    Some(peer) => peer.clone(),
+                    Some(peer) => peer,
                     None => {
                         error!(%hash, "tried to fetch trie with no peers available");
                         return Effects::new();
@@ -319,11 +292,11 @@ where
                 };
                 let partial_chunks = PartialChunks {
                     responders: vec![responder],
-                    peers,
+                    peers: peers.clone(),
                     chunks: Default::default(),
                     sender: None,
                 };
-                self.try_download_chunk(effect_builder, trie_id, peer, partial_chunks)
+                self.try_download_chunk(effect_builder, trie_id, *peer, partial_chunks)
             }
             Event::TrieOrChunkFetched { id, fetch_result } => {
                 let hash = id.digest();
@@ -339,7 +312,7 @@ where
                         Some(mut partial_chunks) => {
                             warn!(%error, %id, "error fetching trie chunk");
                             // try with the next peer, if possible
-                            match partial_chunks.next_peer().cloned() {
+                            match partial_chunks.next_peer().copied() {
                                 Some(next_peer) => self.try_download_chunk(
                                     effect_builder,
                                     id,

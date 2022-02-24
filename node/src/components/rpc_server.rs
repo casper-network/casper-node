@@ -43,7 +43,7 @@ use crate::{
         },
         EffectBuilder, EffectExt, Effects, Responder,
     },
-    types::{NodeId, StatusFeed},
+    types::StatusFeed,
     utils::{self, ListeningError},
     NodeRng,
 };
@@ -53,13 +53,13 @@ pub(crate) use event::Event;
 /// A helper trait capturing all of this components Request type dependencies.
 pub(crate) trait ReactorEventT:
     From<Event>
-    + From<RpcRequest<NodeId>>
+    + From<RpcRequest>
     + From<RpcServerAnnouncement>
     + From<ChainspecLoaderRequest>
     + From<ContractRuntimeRequest>
     + From<ConsensusRequest>
     + From<MetricsRequest>
-    + From<NetworkInfoRequest<NodeId>>
+    + From<NetworkInfoRequest>
     + From<StorageRequest>
     + Send
 {
@@ -67,13 +67,13 @@ pub(crate) trait ReactorEventT:
 
 impl<REv> ReactorEventT for REv where
     REv: From<Event>
-        + From<RpcRequest<NodeId>>
+        + From<RpcRequest>
         + From<RpcServerAnnouncement>
         + From<ChainspecLoaderRequest>
         + From<ContractRuntimeRequest>
         + From<ConsensusRequest>
         + From<MetricsRequest>
-        + From<NetworkInfoRequest<NodeId>>
+        + From<NetworkInfoRequest>
         + From<StorageRequest>
         + Send
         + 'static

@@ -545,9 +545,9 @@ impl<REv> EffectBuilder<REv> {
     ///
     /// The message is queued in "fire-and-forget" fashion, there is no guarantee that the peer
     /// will receive it.
-    pub(crate) async fn send_message<I, P>(self, dest: I, payload: P)
+    pub(crate) async fn send_message<P>(self, dest: NodeId, payload: P)
     where
-        REv: From<NetworkRequest<I, P>>,
+        REv: From<NetworkRequest<P>>,
     {
         self.make_request(
             |responder| NetworkRequest::SendMessage {
@@ -563,9 +563,9 @@ impl<REv> EffectBuilder<REv> {
     /// Broadcasts a network message.
     ///
     /// Broadcasts a network message to all peers connected at the time the message is sent.
-    pub(crate) async fn broadcast_message<I, P>(self, payload: P)
+    pub(crate) async fn broadcast_message<P>(self, payload: P)
     where
-        REv: From<NetworkRequest<I, P>>,
+        REv: From<NetworkRequest<P>>,
     {
         self.make_request(
             |responder| NetworkRequest::Broadcast {
@@ -583,15 +583,14 @@ impl<REv> EffectBuilder<REv> {
     /// excluding the indicated ones, and sends each a copy of the message.
     ///
     /// Returns the IDs of the chosen nodes.
-    pub(crate) async fn gossip_message<I, P>(
+    pub(crate) async fn gossip_message<P>(
         self,
         payload: P,
         count: usize,
-        exclude: HashSet<I>,
-    ) -> HashSet<I>
+        exclude: HashSet<NodeId>,
+    ) -> HashSet<NodeId>
     where
-        REv: From<NetworkRequest<I, P>>,
-        I: Send + 'static,
+        REv: From<NetworkRequest<P>>,
         P: Send,
     {
         self.make_request(
@@ -607,10 +606,9 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets a map of the current network peers to their socket addresses.
-    pub(crate) async fn network_peers<I>(self) -> BTreeMap<I, String>
+    pub(crate) async fn network_peers(self) -> BTreeMap<NodeId, String>
     where
-        REv: From<NetworkInfoRequest<I>>,
-        I: Send + 'static,
+        REv: From<NetworkInfoRequest>,
     {
         self.make_request(
             |responder| NetworkInfoRequest::GetPeers { responder },
@@ -620,10 +618,9 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the current network peers in random order.
-    pub async fn get_fully_connected_peers<I>(self) -> Vec<I>
+    pub async fn get_fully_connected_peers(self) -> Vec<NodeId>
     where
-        REv: From<NetworkInfoRequest<I>>,
-        I: Send + 'static,
+        REv: From<NetworkInfoRequest>,
     {
         self.make_request(
             |responder| NetworkInfoRequest::GetFullyConnectedPeers { responder },
@@ -646,13 +643,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces an incoming network message.
-    pub(crate) async fn announce_incoming<I, P>(self, sender: I, payload: P)
+    pub(crate) async fn announce_incoming<P>(self, sender: NodeId, payload: P)
     where
-        REv: FromIncoming<I, P>,
+        REv: FromIncoming<P>,
     {
         self.event_queue
             .schedule(
-                <REv as FromIncoming<I, P>>::from_incoming(sender, payload),
+                <REv as FromIncoming<P>>::from_incoming(sender, payload),
                 QueueKind::NetworkIncoming,
             )
             .await
@@ -693,13 +690,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces that a deploy not previously stored has now been accepted and stored.
-    pub(crate) fn announce_new_deploy_accepted<I>(
+    pub(crate) fn announce_new_deploy_accepted(
         self,
         deploy: Box<Deploy>,
-        source: Source<I>,
+        source: Source,
     ) -> impl Future<Output = ()>
     where
-        REv: From<DeployAcceptorAnnouncement<I>>,
+        REv: From<DeployAcceptorAnnouncement>,
     {
         self.event_queue.schedule(
             DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
@@ -722,13 +719,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces that an invalid deploy has been received.
-    pub(crate) fn announce_invalid_deploy<I>(
+    pub(crate) fn announce_invalid_deploy(
         self,
         deploy: Box<Deploy>,
-        source: Source<I>,
+        source: Source,
     ) -> impl Future<Output = ()>
     where
-        REv: From<DeployAcceptorAnnouncement<I>>,
+        REv: From<DeployAcceptorAnnouncement>,
     {
         self.event_queue.schedule(
             DeployAcceptorAnnouncement::InvalidDeploy { deploy, source },
@@ -807,7 +804,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Begins gossiping an item.
-    pub(crate) async fn begin_gossip<T>(self, item_id: T::Id, source: Source<NodeId>)
+    pub(crate) async fn begin_gossip<T>(self, item_id: T::Id, source: Source)
     where
         T: Item,
         REv: From<BeginGossipRequest<T>>,
@@ -1244,11 +1241,10 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Fetches an item from a fetcher.
-    pub(crate) async fn fetch<T, I>(self, id: T::Id, peer: I) -> FetchResult<T, I>
+    pub(crate) async fn fetch<T>(self, id: T::Id, peer: NodeId) -> FetchResult<T>
     where
-        REv: From<FetcherRequest<I, T>>,
+        REv: From<FetcherRequest<T>>,
         T: Item + 'static,
-        I: Debug + Eq + Send + 'static,
     {
         self.make_request(
             |responder| FetcherRequest {
@@ -1262,10 +1258,9 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Requests a trie node from a peer.
-    pub(crate) async fn fetch_trie<I>(self, hash: Digest, peers: Vec<I>) -> TrieFetcherResult<I>
+    pub(crate) async fn fetch_trie(self, hash: Digest, peers: Vec<NodeId>) -> TrieFetcherResult
     where
-        REv: From<TrieFetcherRequest<I>>,
-        I: Debug + Eq + Send + Clone + 'static,
+        REv: From<TrieFetcherRequest>,
     {
         self.make_request(
             |responder| TrieFetcherRequest {
@@ -1359,9 +1354,9 @@ impl<REv> EffectBuilder<REv> {
 
     /// Checks whether the deploys included in the block exist on the network and the block is
     /// valid.
-    pub(crate) async fn validate_block<I, T>(self, sender: I, block: T) -> bool
+    pub(crate) async fn validate_block<T>(self, sender: NodeId, block: T) -> bool
     where
-        REv: From<BlockValidationRequest<I>>,
+        REv: From<BlockValidationRequest>,
         T: Into<ValidatingBlock>,
     {
         self.make_request(
@@ -1425,9 +1420,9 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announce the intent to disconnect from a specific peer, which consensus thinks is faulty.
-    pub(crate) async fn announce_disconnect_from_peer<I>(self, peer: I)
+    pub(crate) async fn announce_disconnect_from_peer(self, peer: NodeId)
     where
-        REv: From<BlocklistAnnouncement<I>>,
+        REv: From<BlocklistAnnouncement>,
     {
         self.event_queue
             .schedule(

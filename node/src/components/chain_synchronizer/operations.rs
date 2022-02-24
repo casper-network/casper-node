@@ -28,7 +28,7 @@ use crate::{
     reactor::joiner::JoinerEvent,
     types::{
         Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata,
-        Deploy, DeployHash, FinalizedBlock, Item, NodeId, TimeDiff, Timestamp,
+        Deploy, DeployHash, FinalizedBlock, Item, TimeDiff, Timestamp,
     },
     utils::work_queue::WorkQueue,
 };
@@ -65,10 +65,10 @@ async fn fetch_retry_forever<T>(
     effect_builder: EffectBuilder<JoinerEvent>,
     config: &Config,
     id: T::Id,
-) -> FetchResult<T, NodeId>
+) -> FetchResult<T>
 where
     T: Item + 'static,
-    JoinerEvent: From<FetcherRequest<NodeId, T>>,
+    JoinerEvent: From<FetcherRequest<T>>,
 {
     loop {
         for peer in effect_builder.get_fully_connected_peers().await {
@@ -78,7 +78,7 @@ where
                 id,
                 peer
             );
-            match effect_builder.fetch::<T, NodeId>(id, peer).await {
+            match effect_builder.fetch::<T>(id, peer).await {
                 Ok(fetched_data @ FetchedData::FromStorage { .. }) => {
                     trace!(
                         "did not get {:?} with id {:?} from {:?}, got from storage instead",
@@ -118,12 +118,9 @@ where
 async fn fetch_trie_retry_forever(
     id: Digest,
     ctx: &ChainSyncContext<'_>,
-) -> FetchedData<Trie<Key, StoredValue>, NodeId> {
+) -> FetchedData<Trie<Key, StoredValue>> {
     loop {
-        let peers = ctx
-            .effect_builder
-            .get_fully_connected_peers::<NodeId>()
-            .await;
+        let peers = ctx.effect_builder.get_fully_connected_peers().await;
         trace!(?id, "attempting to fetch a trie",);
         match ctx.effect_builder.fetch_trie(id, peers).await {
             Ok(fetched_data) => {
@@ -169,7 +166,7 @@ async fn fetch_and_store_block_header(
 async fn fetch_and_store_deploy(
     deploy_or_transfer_hash: DeployHash,
     ctx: &ChainSyncContext<'_>,
-) -> Result<Box<Deploy>, FetcherError<Deploy, NodeId>> {
+) -> Result<Box<Deploy>, FetcherError<Deploy>> {
     let fetched_deploy =
         fetch_retry_forever::<Deploy>(*ctx.effect_builder, ctx.config, deploy_or_transfer_hash)
             .await?;
@@ -289,8 +286,8 @@ async fn fetch_and_store_next<I>(
 ) -> Result<Option<Box<I>>, Error>
 where
     I: BlockOrHeaderWithMetadata,
-    JoinerEvent: From<FetcherRequest<NodeId, I>>,
-    Error: From<FetcherError<I, NodeId>>,
+    JoinerEvent: From<FetcherRequest<I>>,
+    Error: From<FetcherError<I>>,
 {
     let height = parent_header
         .height()
@@ -315,7 +312,7 @@ where
             Some(peer) => peer,
             None => return Ok(None),
         };
-        match ctx.effect_builder.fetch::<I, NodeId>(height, peer).await {
+        match ctx.effect_builder.fetch::<I>(height, peer).await {
             Ok(FetchedData::FromStorage { item }) => {
                 if *item.header().parent_hash()
                     != parent_header.hash(ctx.config.verifiable_chunked_hash_activation())
@@ -433,7 +430,7 @@ async fn fetch_and_store_trie(
 async fn fetch_and_store_block_by_hash(
     block_hash: BlockHash,
     ctx: &ChainSyncContext<'_>,
-) -> Result<Box<Block>, FetcherError<Block, NodeId>> {
+) -> Result<Box<Block>, FetcherError<Block>> {
     let fetched_block =
         fetch_retry_forever::<Block>(*ctx.effect_builder, ctx.config, block_hash).await?;
     match fetched_block {
