@@ -11,20 +11,19 @@ use crate::{
         EffectBuilder, EffectOptionExt, Effects,
     },
     fatal,
-    types::{Block, BlockByHeight, BlockHash, Deploy, FinalizedBlock},
+    types::{Block, BlockByHeight, BlockHash, Deploy, FinalizedBlock, NodeId},
 };
 
 use super::{event::BlockByHashResult, Event, ReactorEventT};
 
-pub(super) fn fetch_block_by_hash<I: Clone + Send + 'static, REv>(
+pub(super) fn fetch_block_by_hash<REv>(
     effect_builder: EffectBuilder<REv>,
-    peer: I,
+    peer: NodeId,
     block_hash: BlockHash,
-) -> Effects<Event<I>>
+) -> Effects<Event>
 where
-    REv: ReactorEventT<I>,
+    REv: ReactorEventT,
 {
-    let cloned = peer.clone();
     effect_builder.fetch_block(block_hash, peer).map_or_else(
         move |fetch_result| match fetch_result {
             FetchResult::FromStorage(block) => {
@@ -34,21 +33,20 @@ where
                 Event::GetBlockHashResult(block_hash, BlockByHashResult::FromPeer(block, peer))
             }
         },
-        move || Event::GetBlockHashResult(block_hash, BlockByHashResult::Absent(cloned)),
+        move || Event::GetBlockHashResult(block_hash, BlockByHashResult::Absent(peer)),
     )
 }
 
-pub(super) fn fetch_block_at_height<I: Send + Clone + 'static, REv>(
+pub(super) fn fetch_block_at_height<REv>(
     effect_builder: EffectBuilder<REv>,
-    peer: I,
+    peer: NodeId,
     block_height: u64,
-) -> Effects<Event<I>>
+) -> Effects<Event>
 where
-    REv: ReactorEventT<I>,
+    REv: ReactorEventT,
 {
-    let cloned = peer.clone();
     effect_builder
-        .fetch_block_by_height(block_height, peer.clone())
+        .fetch_block_by_height(block_height, peer)
         .map_or_else(
             move |fetch_result| match fetch_result {
                 FetchResult::FromPeer(result, _) => match *result {
@@ -76,7 +74,7 @@ where
                     ),
                 },
             },
-            move || Event::GetBlockHeightResult(block_height, BlockByHeightResult::Absent(cloned)),
+            move || Event::GetBlockHeightResult(block_height, BlockByHeightResult::Absent(peer)),
         )
 }
 

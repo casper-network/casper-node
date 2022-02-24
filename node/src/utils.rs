@@ -42,6 +42,8 @@ pub(crate) use external::RESOURCES_PATH;
 pub(crate) use external::{External, LoadError, Loadable};
 pub(crate) use round_robin::WeightedRoundRobin;
 
+use crate::types::NodeId;
+
 /// DNS resolution error.
 #[derive(Debug, Error)]
 #[error("could not resolve `{address}`: {kind}")]
@@ -320,33 +322,31 @@ impl<T> WithDir<T> {
 
 /// The source of a piece of data.
 #[derive(Clone, Debug, Serialize)]
-pub(crate) enum Source<I> {
+pub(crate) enum Source {
     /// A peer with the wrapped ID.
-    Peer(I),
+    Peer(NodeId),
     /// A client.
     Client,
     /// This node.
     Ourself,
 }
 
-impl<I> Source<I> {
+impl Source {
     #[allow(clippy::wrong_self_convention)]
     pub(crate) fn is_client(&self) -> bool {
         matches!(self, Source::Client)
     }
-}
 
-impl<I: Clone> Source<I> {
     /// If `self` represents a peer, returns its ID, otherwise returns `None`.
-    pub(crate) fn node_id(&self) -> Option<I> {
+    pub(crate) fn node_id(&self) -> Option<NodeId> {
         match self {
-            Source::Peer(node_id) => Some(node_id.clone()),
+            Source::Peer(node_id) => Some(*node_id),
             Source::Client | Source::Ourself => None,
         }
     }
 }
 
-impl<I: Display> Display for Source<I> {
+impl Display for Source {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Source::Peer(node_id) => Display::fmt(node_id, formatter),

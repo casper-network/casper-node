@@ -120,7 +120,7 @@ pub(crate) enum MultiStageTestReactor {
 }
 
 impl MultiStageTestReactor {
-    pub(crate) fn consensus(&self) -> Option<&EraSupervisor<NodeId>> {
+    pub(crate) fn consensus(&self) -> Option<&EraSupervisor> {
         match self {
             MultiStageTestReactor::Deactivated => unreachable!(),
             MultiStageTestReactor::Initializer { .. }
@@ -512,8 +512,7 @@ impl Reactor for MultiStageTestReactor {
 }
 
 impl NetworkedReactor for MultiStageTestReactor {
-    type NodeId = NodeId;
-    fn node_id(&self) -> Self::NodeId {
+    fn node_id(&self) -> NodeId {
         match self {
             MultiStageTestReactor::Deactivated => unreachable!(),
             MultiStageTestReactor::Initializer {

@@ -14,7 +14,7 @@ fn roundtrip<'a, K, V, X, S>(
     items: &BTreeMap<K, V>,
 ) -> Result<Vec<Option<V>>, S::Error>
 where
-    K: ToBytes,
+    K: AsRef<[u8]>,
     V: ToBytes + FromBytes,
     X: TransactionSource<'a, Handle = S::Handle>,
     S: Store<K, V>,
@@ -34,7 +34,7 @@ pub fn roundtrip_succeeds<'a, K, V, X, S>(
     items: BTreeMap<K, V>,
 ) -> Result<bool, S::Error>
 where
-    K: ToBytes,
+    K: AsRef<[u8]>,
     V: ToBytes + FromBytes + Clone + PartialEq,
     X: TransactionSource<'a, Handle = S::Handle>,
     S: Store<K, V>,
