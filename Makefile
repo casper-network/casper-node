@@ -179,15 +179,15 @@ setup-audit:
 
 .PHONY: setup-rs
 setup-rs: smart_contracts/rust-toolchain
-	$(RUSTUP) update --no-self-update
-	$(RUSTUP) toolchain install --no-self-update stable $(PINNED_NIGHTLY)
+	$(RUSTUP) update
+	$(RUSTUP) toolchain install stable $(PINNED_NIGHTLY)
 	$(RUSTUP) target add --toolchain stable wasm32-unknown-unknown
 	$(RUSTUP) target add --toolchain $(PINNED_NIGHTLY) wasm32-unknown-unknown
 
 .PHONY: setup-nightly-rs
 setup-nightly-rs:
-	$(RUSTUP) update --no-self-update
-	$(RUSTUP) toolchain install --no-self-update nightly
+	$(RUSTUP) update
+	$(RUSTUP) toolchain install nightly
 	$(RUSTUP) target add --toolchain nightly wasm32-unknown-unknown
 
 .PHONY: setup-as
