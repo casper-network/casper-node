@@ -17,7 +17,7 @@ pub trait StoreExt<K, V>: Store<K, V> {
     ) -> Result<Vec<Option<V>>, Self::Error>
     where
         T: Readable<Handle = Self::Handle>,
-        K: ToBytes + 'a,
+        K: AsRef<[u8]> + 'a,
         V: FromBytes,
         Self::Error: From<T::Error>,
     {
@@ -38,7 +38,7 @@ pub trait StoreExt<K, V>: Store<K, V> {
     ) -> Result<(), Self::Error>
     where
         T: Writable<Handle = Self::Handle>,
-        K: ToBytes + 'a,
+        K: AsRef<[u8]> + 'a,
         V: ToBytes + 'a,
         Self::Error: From<T::Error>,
     {
