@@ -1290,13 +1290,12 @@ mod tests {
                 let urefs: Vec<URef> = x
                     .clone()
                     .into_iter()
-                    .map(|(k, v)| {
+                    .flat_map(|(k, v)| {
                         vec![Some(k), v.into_uref()]
                             .into_iter()
                             .flatten()
                             .collect::<Vec<URef>>()
                     })
-                    .flatten()
                     .collect();
                 (CLValue::from_t(x).expect("should create CLValue"), urefs)
             }),
@@ -1304,13 +1303,12 @@ mod tests {
                 let urefs: Vec<URef> = x
                     .clone()
                     .into_iter()
-                    .map(|(k, v)| {
+                    .flat_map(|(k, v)| {
                         vec![k.into_uref(), Some(v)]
                             .into_iter()
                             .flatten()
                             .collect::<Vec<URef>>()
                     })
-                    .flatten()
                     .collect();
                 (CLValue::from_t(x).expect("should create CLValue"), urefs)
             }),
@@ -1318,13 +1316,12 @@ mod tests {
                 let urefs: Vec<URef> = x
                     .clone()
                     .into_iter()
-                    .map(|(k, v)| {
+                    .flat_map(|(k, v)| {
                         vec![k.into_uref(), v.into_uref()]
                             .into_iter()
                             .flatten()
                             .collect::<Vec<URef>>()
                     })
-                    .flatten()
                     .collect();
                 (CLValue::from_t(x).expect("should create CLValue"), urefs)
             }),

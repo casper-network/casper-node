@@ -1169,8 +1169,7 @@ where
 
     fn create_accounts(&self, total_supply_key: Key) -> Result<(), GenesisError> {
         let accounts = {
-            let mut ret: Vec<GenesisAccount> =
-                self.exec_config.accounts().to_vec().into_iter().collect();
+            let mut ret: Vec<GenesisAccount> = self.exec_config.accounts().to_vec();
             let system_account = GenesisAccount::system();
             ret.push(system_account); // todo load bearing remove or not? probably dont need anymore
             ret

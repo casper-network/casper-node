@@ -221,8 +221,7 @@ impl Parse for ReactorDefinition {
         // Ensure that requests are not routed to non-existing events.
         let announce_target_keys: IndexSet<_> = announcements
             .iter()
-            .map(|ann| ann.targets.iter())
-            .flatten()
+            .flat_map(|ann| ann.targets.iter())
             .filter_map(Target::as_dest)
             .collect();
 

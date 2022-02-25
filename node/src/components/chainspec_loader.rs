@@ -722,7 +722,7 @@ impl UpgradePoint {
 }
 
 fn dir_name_from_version(version: &ProtocolVersion) -> PathBuf {
-    PathBuf::from(version.to_string().replace(".", "_"))
+    PathBuf::from(version.to_string().replace('.', "_"))
 }
 
 /// Iterates the given path, returning the subdir representing the immediate next SemVer version
@@ -751,7 +751,7 @@ fn next_installed_version(
         };
 
         let subdir_name = match path.file_name() {
-            Some(name) => name.to_string_lossy().replace("_", "."),
+            Some(name) => name.to_string_lossy().replace('_', "."),
             None => continue,
         };
 
