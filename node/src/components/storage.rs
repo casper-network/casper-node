@@ -1435,10 +1435,9 @@ impl Storage {
         finalized_approvals: &FinalizedApprovals,
     ) -> Result<(), Error> {
         let maybe_original_deploy = self.read_deploy_by_hash(*deploy_hash)?;
-        let original_deploy =
-            maybe_original_deploy.ok_or_else(|| Error::UnexpectedFinalizedApprovals {
-                deploy_hash: *deploy_hash,
-            })?;
+        let original_deploy = maybe_original_deploy.ok_or(Error::UnexpectedFinalizedApprovals {
+            deploy_hash: *deploy_hash,
+        })?;
         // Only store the finalized approvals if they are different from the original ones.
         if original_deploy.approvals() != finalized_approvals.as_ref() {
             let mut txn = self.env.begin_rw_txn()?;

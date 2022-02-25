@@ -580,7 +580,7 @@ impl LmdbTestContext {
     {
         let _temp_dir = tempdir()?;
         let environment = LmdbEnvironment::new(
-            &_temp_dir.path().to_path_buf(),
+            &_temp_dir.path(),
             DEFAULT_TEST_MAX_DB_SIZE,
             DEFAULT_TEST_MAX_READERS,
             true,
