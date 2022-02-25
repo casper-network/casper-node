@@ -730,6 +730,10 @@ impl FromBytes for Key {
                 let (_, rem): ([u8; 32], &[u8]) = FromBytes::from_bytes(remainder)?;
                 Ok((Key::SystemContractRegistry, rem))
             }
+            tag if tag == KeyTag::ChainspecRegistry as u8 => {
+                let (_, rem): ([u8; 32], &[u8]) = FromBytes::from_bytes(remainder)?;
+                Ok((Key::ChainspecRegistry, rem))
+            }
             _ => Err(Error::Formatting),
         }
     }
@@ -939,8 +943,9 @@ mod tests {
     const BID_KEY: Key = Key::Bid(AccountHash::new([42; 32]));
     const WITHDRAW_KEY: Key = Key::Withdraw(AccountHash::new([42; 32]));
     const DICTIONARY_KEY: Key = Key::Dictionary([42; 32]);
-    const REGISTRY_KEY: Key = Key::SystemContractRegistry;
-    const KEYS: [Key; 11] = [
+    const SYSTEM_CONTRACT_REGISTRY_KEY: Key = Key::SystemContractRegistry;
+    const CHAINSPEC_REGISTRY_KEY: Key = Key::ChainspecRegistry;
+    const KEYS: [Key; 12] = [
         ACCOUNT_KEY,
         HASH_KEY,
         UREF_KEY,
@@ -951,7 +956,8 @@ mod tests {
         BID_KEY,
         WITHDRAW_KEY,
         DICTIONARY_KEY,
-        REGISTRY_KEY,
+        SYSTEM_CONTRACT_REGISTRY_KEY,
+        CHAINSPEC_REGISTRY_KEY,
     ];
     const HEX_STRING: &str = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
 
@@ -1040,10 +1046,17 @@ mod tests {
             format!("Key::Dictionary({})", HEX_STRING)
         );
         assert_eq!(
-            format!("{}", REGISTRY_KEY),
+            format!("{}", SYSTEM_CONTRACT_REGISTRY_KEY),
             format!(
                 "Key::SystemContractRegistry({})",
                 base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_KEY)
+            )
+        );
+        assert_eq!(
+            format!("{}", CHAINSPEC_REGISTRY_KEY),
+            format!(
+                "Key::ChainspecRegistry({})",
+                base16::encode_lower(&CHAINSPEC_REGISTRY_KEY)
             )
         )
     }

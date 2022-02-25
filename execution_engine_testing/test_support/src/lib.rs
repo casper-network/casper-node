@@ -29,7 +29,7 @@ use casper_hashing::Digest;
 use casper_types::{account::AccountHash, Motes, ProtocolVersion, PublicKey, SecretKey, U512};
 
 pub use additive_map_diff::AdditiveMapDiff;
-use casper_execution_engine::core::engine_state::genesis::CHAINSPEC_RAW;
+use casper_execution_engine::core::engine_state::genesis::{CHAINSPEC_RAW, GENESIS_ACCOUNTS_RAW};
 pub use deploy_item_builder::DeployItemBuilder;
 pub use execute_request_builder::ExecuteRequestBuilder;
 pub use step_request_builder::StepRequestBuilder;
@@ -147,6 +147,10 @@ pub static DEFAULT_GENESIS_CONFIG: Lazy<GenesisConfig> = Lazy::new(|| {
 pub static DEFAULT_CHAINSPEC_REGISTRY: Lazy<ChainspecRegistry> = Lazy::new(|| {
     let mut chainspec_registry = ChainspecRegistry::new();
     chainspec_registry.insert(CHAINSPEC_RAW.to_string(), *DEFAULT_GENESIS_CONFIG_HASH);
+    chainspec_registry.insert(
+        GENESIS_ACCOUNTS_RAW.to_string(),
+        *DEFAULT_GENESIS_CONFIG_HASH,
+    );
     chainspec_registry
 });
 /// Default [`RunGenesisRequest`].

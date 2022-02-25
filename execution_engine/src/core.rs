@@ -13,3 +13,5 @@ pub const ADDRESS_LENGTH: usize = 32;
 
 /// Alias for an array of bytes that represents an address.
 pub type Address = [u8; ADDRESS_LENGTH];
+
+//TODO: Move both registries here.
