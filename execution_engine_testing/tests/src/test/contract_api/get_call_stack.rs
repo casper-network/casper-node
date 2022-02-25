@@ -2580,8 +2580,9 @@ mod payment {
     use casper_engine_test_support::{
         DeployItemBuilder, ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR,
     };
-    use casper_execution_engine::shared::wasm;
     use casper_types::{runtime_args, system::mint, RuntimeArgs};
+
+    use crate::wasm_utils;
 
     use super::{
         approved_amount, AccountExt, ARG_CALLS, ARG_CURRENT_DEPTH, CONTRACT_CALL_RECURSIVE_SUBCALL,
@@ -2625,7 +2626,7 @@ mod payment {
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
                     .with_payment_code(CONTRACT_CALL_RECURSIVE_SUBCALL, args)
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -2672,7 +2673,7 @@ mod payment {
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
                     .with_payment_code(CONTRACT_CALL_RECURSIVE_SUBCALL, args)
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -2718,7 +2719,7 @@ mod payment {
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
                     .with_payment_code(CONTRACT_CALL_RECURSIVE_SUBCALL, args)
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -2762,7 +2763,7 @@ mod payment {
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
                     .with_payment_code(CONTRACT_CALL_RECURSIVE_SUBCALL, args)
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -2812,7 +2813,7 @@ mod payment {
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
                     .with_payment_code(CONTRACT_CALL_RECURSIVE_SUBCALL, args)
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -2855,7 +2856,7 @@ mod payment {
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
                     .with_payment_code(CONTRACT_CALL_RECURSIVE_SUBCALL, args)
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -2897,7 +2898,7 @@ mod payment {
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
                     .with_payment_code(CONTRACT_CALL_RECURSIVE_SUBCALL, args)
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -2936,7 +2937,7 @@ mod payment {
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
                     .with_payment_code(CONTRACT_CALL_RECURSIVE_SUBCALL, args)
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -2982,7 +2983,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3028,7 +3029,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3076,7 +3077,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3122,7 +3123,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3170,7 +3171,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3216,7 +3217,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3260,7 +3261,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3304,7 +3305,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3348,7 +3349,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3392,7 +3393,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3436,7 +3437,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3480,7 +3481,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3525,7 +3526,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3570,7 +3571,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3614,7 +3615,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3658,7 +3659,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3713,7 +3714,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3761,7 +3762,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3808,7 +3809,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3852,7 +3853,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3901,7 +3902,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3948,7 +3949,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3994,7 +3995,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -4037,7 +4038,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();

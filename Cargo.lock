@@ -694,7 +694,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base16",
- "casper-execution-engine",
  "casper-types",
  "clap 3.0.0-beta.5",
  "derive_more",

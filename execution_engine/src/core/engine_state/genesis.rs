@@ -1232,25 +1232,25 @@ where
     }
 
     fn create_purse(&self, amount: U512) -> Result<URef, GenesisError> {
-        let main_purse_addr = self.address_generator.borrow_mut().create_address();
+        let purse_addr = self.address_generator.borrow_mut().create_address();
 
         let balance_cl_value =
             CLValue::from_t(amount).map_err(|error| GenesisError::CLValue(error.to_string()))?;
         let _ = self.tracking_copy.borrow_mut().write(
-            Key::Balance(main_purse_addr),
+            Key::Balance(purse_addr),
             StoredValue::CLValue(balance_cl_value),
             self.engine_config.max_stored_value_size(),
         );
 
-        let main_purse_cl_value = CLValue::unit();
-        let main_purse_uref = URef::new(main_purse_addr, AccessRights::READ_ADD_WRITE);
+        let purse_cl_value = CLValue::unit();
+        let purse_uref = URef::new(purse_addr, AccessRights::READ_ADD_WRITE);
         let _ = self.tracking_copy.borrow_mut().write(
-            Key::URef(main_purse_uref),
-            StoredValue::CLValue(main_purse_cl_value),
+            Key::URef(purse_uref),
+            StoredValue::CLValue(purse_cl_value),
             self.engine_config.max_stored_value_size(),
         );
 
-        Ok(main_purse_uref)
+        Ok(purse_uref)
     }
 
     fn store_contract(
@@ -1338,7 +1338,7 @@ where
     }
 
     /// Performs a complete system installation.
-    pub(crate) fn install_system(&mut self) -> Result<(), GenesisError> {
+    pub(crate) fn install(&mut self) -> Result<(), GenesisError> {
         // Create mint
         let total_supply_key = self.create_mint()?;
 

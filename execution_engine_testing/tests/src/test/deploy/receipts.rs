@@ -25,6 +25,7 @@ const CONTRACT_TRANSFER_PURSE_TO_ACCOUNTS_STORED: &str = "transfer_purse_to_acco
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNTS_SUBCALL: &str = "transfer_purse_to_accounts_subcall.wasm";
 
 const HASH_KEY_NAME: &str = "transfer_purse_to_accounts_hash";
+const PURSE_NAME: &str = "purse";
 
 static ALICE_KEY: Lazy<PublicKey> = Lazy::new(|| {
     let secret_key = SecretKey::ed25519_from_bytes([3; 32]).unwrap();
@@ -444,7 +445,7 @@ fn should_record_wasm_transfers_with_subcall() {
         .get_contract(contract_hash)
         .expect("should have stored contract");
 
-    let contract_purse = contract.named_keys()["purse"]
+    let contract_purse = contract.named_keys()[PURSE_NAME]
         .into_uref()
         .expect("should have purse");
 

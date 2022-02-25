@@ -5,13 +5,12 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::{
-    core::{engine_state::Error, execution},
-    shared::wasm,
-};
+use casper_execution_engine::core::{engine_state::Error, execution};
 use casper_types::{
     account::AccountHash, contracts::CONTRACT_INITIAL_VERSION, runtime_args, Key, RuntimeArgs, U512,
 };
+
+use crate::wasm_utils;
 
 const CONTRACT_GROUPS: &str = "groups.wasm";
 const PACKAGE_HASH_KEY: &str = "package_hash_key";
@@ -965,7 +964,7 @@ fn should_not_call_restricted_payment_from_wrong_account() {
         };
         let deploy = DeployItemBuilder::new()
             .with_address(ACCOUNT_1_ADDR)
-            .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+            .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
             .with_stored_versioned_payment_contract_by_hash(
                 package_hash
                     .into_hash()
@@ -1049,7 +1048,7 @@ fn should_call_restricted_payment_from_permitted_account() {
         };
         let deploy = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+            .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
             // .with_stored_versioned_contract_by_name(name, version, entry_point, args)
             .with_stored_versioned_payment_contract_by_hash(
                 package_hash

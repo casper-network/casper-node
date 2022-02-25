@@ -2,12 +2,9 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::{
-    core::{
-        engine_state::{Error as CoreError, ExecuteRequest},
-        execution::Error as ExecError,
-    },
-    shared::wasm,
+use casper_execution_engine::core::{
+    engine_state::{Error as CoreError, ExecuteRequest},
+    execution::Error as ExecError,
 };
 use casper_types::{
     account::{Account, AccountHash},
@@ -16,6 +13,8 @@ use casper_types::{
     AccessRights, ContractHash, PublicKey, RuntimeArgs, SecretKey, URef, U512,
 };
 use once_cell::sync::Lazy;
+
+use crate::wasm_utils;
 
 const HARDCODED_UREF: URef = URef::new([42; 32], AccessRights::READ_ADD_WRITE);
 const CONTRACT_HASH_NAME: &str = "contract_hash";
@@ -381,7 +380,7 @@ fn should_not_refund_to_bob_and_charge_alice() {
         let deploy = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             // Just do nothing if ever we'd get into session execution
-            .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+            .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
             .with_stored_payment_hash(contract_hash, METHOD_STORED_PAYMENT, args)
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([77; 32])
@@ -437,7 +436,7 @@ fn should_not_charge_alice_for_execution() {
         let deploy = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             // Just do nothing if ever we'd get into session execution
-            .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+            .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
             .with_stored_payment_hash(contract_hash, METHOD_STORED_PAYMENT, args)
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([77; 32])
@@ -489,7 +488,7 @@ fn should_not_charge_for_execution_from_hardcoded_purse() {
         let deploy = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             // Just do nothing if ever we'd get into session execution
-            .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+            .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
             .with_stored_payment_hash(contract_hash, METHOD_HARDCODED_PAYMENT, args)
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([77; 32])

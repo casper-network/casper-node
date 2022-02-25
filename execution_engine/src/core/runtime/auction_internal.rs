@@ -206,12 +206,12 @@ where
         self.context
             .access_rights_extend(&[source, target.into_add()]);
 
+        let mint_contract_hash = self.get_mint_contract().map_err(|exec_error| {
+            <Option<Error>>::from(exec_error).unwrap_or(Error::MissingValue)
+        })?;
+
         let cl_value = self
-            .call_contract(
-                self.get_mint_contract().unwrap(),
-                mint::METHOD_TRANSFER,
-                args_values,
-            )
+            .call_contract(mint_contract_hash, mint::METHOD_TRANSFER, args_values)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Transfer))?;
 
         self.set_gas_counter(gas_counter);

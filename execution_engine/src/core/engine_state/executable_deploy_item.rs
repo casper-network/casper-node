@@ -321,6 +321,7 @@ impl ExecutableDeployItem {
 
         false
     }
+
     /// Checks if the deploy item is a contract identified by its name.
     pub fn is_by_name(&self) -> bool {
         matches!(

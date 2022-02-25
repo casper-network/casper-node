@@ -34,7 +34,6 @@ use casper_execution_engine::{
             standard_payment_costs::StandardPaymentCosts,
             SystemConfig, DEFAULT_WASMLESS_TRANSFER_COST,
         },
-        wasm,
         wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
     },
 };
@@ -46,6 +45,8 @@ use casper_types::{
     },
     EraId, Gas, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
+
+use crate::wasm_utils;
 
 const SYSTEM_CONTRACT_HASHES_NAME: &str = "system_contract_hashes.wasm";
 const CONTRACT_ADD_BID: &str = "add_bid.wasm";
@@ -677,7 +678,7 @@ fn should_verify_do_nothing_charges_only_for_standard_payment() {
     let do_nothing_request = {
         let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+            .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
             .with_empty_payment_bytes(runtime_args! {
                 ARG_AMOUNT => *DEFAULT_PAYMENT
             })

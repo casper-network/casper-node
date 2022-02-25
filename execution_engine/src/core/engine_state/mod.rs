@@ -43,7 +43,7 @@ use casper_types::{
         },
         handle_payment,
         mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
-        CallStackElement, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
+        AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, ApiError, BlockTime, CLValue, ContractHash, DeployHash, DeployInfo, Gas, Key,
     KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
@@ -177,7 +177,7 @@ where
             tracking_copy,
         );
 
-        genesis_installer.install_system()?;
+        genesis_installer.install()?;
 
         // Commit the transforms.
         let execution_effect = genesis_installer.finalize();
@@ -2045,9 +2045,7 @@ where
     }
 
     fn get_new_system_call_stack(&self) -> RuntimeStack {
-        RuntimeStack::new_with_frame(
-            self.config.max_runtime_call_stack_height() as usize,
-            CallStackElement::session(PublicKey::System.to_account_hash()),
-        )
+        let max_height = self.config.max_runtime_call_stack_height() as usize;
+        RuntimeStack::new_system_call_stack(max_height)
     }
 }
