@@ -39,10 +39,11 @@ pub(crate) use trie_fetcher::{Event as TrieFetcherEvent, TrieFetcher, TrieFetche
 /// A helper trait constraining `Fetcher` compatible reactor events.
 pub(crate) trait ReactorEventT<T>:
     From<Event<T>>
-    + From<NetworkRequest<NodeId, Message>>
+    + From<NetworkRequest<Message>>
     + From<StorageRequest>
     + From<ContractRuntimeRequest>
-    + From<BlocklistAnnouncement<NodeId>>
+    + From<BlocklistAnnouncement>
+    // Won't be needed when we implement "get block by height" feature in storage.
     + Send
     + 'static
 where
@@ -56,10 +57,10 @@ where
     T: Item + 'static,
     <T as Item>::Id: 'static,
     REv: From<Event<T>>
-        + From<NetworkRequest<NodeId, Message>>
+        + From<NetworkRequest<Message>>
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
-        + From<BlocklistAnnouncement<NodeId>>
+        + From<BlocklistAnnouncement>
         + Send
         + 'static,
 {
@@ -178,11 +179,7 @@ pub(crate) trait ItemFetcher<T: Item + 'static> {
     }
 
     /// Sends fetched data to all responders
-    fn respond_to_all(
-        &mut self,
-        id: T::Id,
-        fetched_data: FetchedData<T, NodeId>,
-    ) -> Effects<Event<T>> {
+    fn respond_to_all(&mut self, id: T::Id, fetched_data: FetchedData<T>) -> Effects<Event<T>> {
         let mut effects = Effects::new();
         let all_responders = self.responders().remove(&id).unwrap_or_default();
         for (_peer, responders) in all_responders {
@@ -198,7 +195,7 @@ pub(crate) trait ItemFetcher<T: Item + 'static> {
     fn send_response_from_peer(
         &mut self,
         id: T::Id,
-        result: FetchResult<T, NodeId>,
+        result: FetchResult<T>,
         peer: NodeId,
     ) -> Effects<Event<T>> {
         let mut effects = Effects::new();
@@ -222,12 +219,7 @@ pub(crate) trait ItemFetcher<T: Item + 'static> {
     }
 
     /// Handles signalling responders with the item or an error.
-    fn signal(
-        &mut self,
-        id: T::Id,
-        result: FetchResult<T, NodeId>,
-        peer: NodeId,
-    ) -> Effects<Event<T>> {
+    fn signal(&mut self, id: T::Id, result: FetchResult<T>, peer: NodeId) -> Effects<Event<T>> {
         match result {
             Ok(fetched_data_from_storage @ FetchedData::FromStorage { .. }) => {
                 debug!(

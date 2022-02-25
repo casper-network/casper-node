@@ -14,14 +14,13 @@ use crate::{
 
 /// An envelope for an incoming message, attaching a sender address.
 #[derive(DataSize, Debug, Serialize)]
-pub struct MessageIncoming<I, M> {
-    pub(crate) sender: I,
+pub struct MessageIncoming<M> {
+    pub(crate) sender: NodeId,
     pub(crate) message: M,
 }
 
-impl<I, M> Display for MessageIncoming<I, M>
+impl<M> Display for MessageIncoming<M>
 where
-    I: Display,
     M: Display,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -30,25 +29,25 @@ where
 }
 
 /// A new consensus message arrived.
-pub(crate) type ConsensusMessageIncoming<I> = MessageIncoming<I, consensus::ConsensusMessage>;
+pub(crate) type ConsensusMessageIncoming = MessageIncoming<consensus::ConsensusMessage>;
 
 /// A new message from a gossiper arrived.
-pub(crate) type GossiperIncoming<T> = MessageIncoming<NodeId, gossiper::Message<T>>;
+pub(crate) type GossiperIncoming<T> = MessageIncoming<gossiper::Message<T>>;
 
 /// A new message requesting various objects arrived.
-pub(crate) type NetRequestIncoming = MessageIncoming<NodeId, NetRequest>;
+pub(crate) type NetRequestIncoming = MessageIncoming<NetRequest>;
 
 /// A new message requesting a trie arrived.
-pub(crate) type TrieRequestIncoming = MessageIncoming<NodeId, TrieRequest>;
+pub(crate) type TrieRequestIncoming = MessageIncoming<TrieRequest>;
 
 /// A new message responding to a request arrived.
-pub(crate) type NetResponseIncoming = MessageIncoming<NodeId, NetResponse>;
+pub(crate) type NetResponseIncoming = MessageIncoming<NetResponse>;
 
 /// A new message responding to a trie request arrived.
-pub(crate) type TrieResponseIncoming = MessageIncoming<NodeId, TrieResponse>;
+pub(crate) type TrieResponseIncoming = MessageIncoming<TrieResponse>;
 
 /// A new finality signature arrived over the network.
-pub(crate) type FinalitySignatureIncoming = MessageIncoming<NodeId, Box<FinalitySignature>>;
+pub(crate) type FinalitySignatureIncoming = MessageIncoming<Box<FinalitySignature>>;
 
 /// A request for an object out of storage arrived.
 ///

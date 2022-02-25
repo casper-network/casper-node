@@ -117,7 +117,7 @@ pub(crate) enum JoinerEvent {
 
     /// Network info request.
     #[from]
-    NetworkInfoRequest(#[serde(skip_serializing)] NetworkInfoRequest<NodeId>),
+    NetworkInfoRequest(#[serde(skip_serializing)] NetworkInfoRequest),
 
     /// Block fetcher event.
     #[from]
@@ -145,7 +145,7 @@ pub(crate) enum JoinerEvent {
 
     /// Trie fetcher event.
     #[from]
-    TrieFetcher(#[serde(skip_serializing)] TrieFetcherEvent<NodeId>),
+    TrieFetcher(#[serde(skip_serializing)] TrieFetcherEvent),
 
     /// Deploy acceptor event.
     #[from]
@@ -175,35 +175,33 @@ pub(crate) enum JoinerEvent {
     /// Requests.
     /// Linear chain block by hash fetcher request.
     #[from]
-    BlockFetcherRequest(#[serde(skip_serializing)] FetcherRequest<NodeId, Block>),
+    BlockFetcherRequest(#[serde(skip_serializing)] FetcherRequest<Block>),
 
     /// Blocker header (with no metadata) fetcher request.
     #[from]
-    BlockHeaderFetcherRequest(#[serde(skip_serializing)] FetcherRequest<NodeId, BlockHeader>),
+    BlockHeaderFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockHeader>),
 
     /// Trie or chunk fetcher request.
     #[from]
-    TrieOrChunkFetcherRequest(#[serde(skip_serializing)] FetcherRequest<NodeId, TrieOrChunk>),
+    TrieOrChunkFetcherRequest(#[serde(skip_serializing)] FetcherRequest<TrieOrChunk>),
 
     /// Trie or chunk fetcher request.
     #[from]
-    TrieFetcherRequest(#[serde(skip_serializing)] TrieFetcherRequest<NodeId>),
+    TrieFetcherRequest(#[serde(skip_serializing)] TrieFetcherRequest),
 
     /// Block header with metadata by height fetcher request.
     #[from]
     BlockHeaderByHeightFetcherRequest(
-        #[serde(skip_serializing)] FetcherRequest<NodeId, BlockHeaderWithMetadata>,
+        #[serde(skip_serializing)] FetcherRequest<BlockHeaderWithMetadata>,
     ),
 
     /// Linear chain block by height fetcher request.
     #[from]
-    BlockByHeightFetcherRequest(
-        #[serde(skip_serializing)] FetcherRequest<NodeId, BlockWithMetadata>,
-    ),
+    BlockByHeightFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockWithMetadata>),
 
     /// Deploy fetcher request.
     #[from]
-    DeployFetcherRequest(#[serde(skip_serializing)] FetcherRequest<NodeId, Deploy>),
+    DeployFetcherRequest(#[serde(skip_serializing)] FetcherRequest<Deploy>),
 
     /// Address gossip request.
     #[from]
@@ -220,7 +218,7 @@ pub(crate) enum JoinerEvent {
 
     /// Blocklist announcement.
     #[from]
-    BlocklistAnnouncement(#[serde(skip_serializing)] BlocklistAnnouncement<NodeId>),
+    BlocklistAnnouncement(#[serde(skip_serializing)] BlocklistAnnouncement),
 
     /// Block executor announcement.
     #[from]
@@ -232,7 +230,7 @@ pub(crate) enum JoinerEvent {
 
     /// DeployAcceptor announcement.
     #[from]
-    DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement<NodeId>),
+    DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement),
 
     #[from]
     DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
@@ -251,7 +249,7 @@ pub(crate) enum JoinerEvent {
 
     /// Incoming consensus network message.
     #[from]
-    ConsensusMessageIncoming(ConsensusMessageIncoming<NodeId>),
+    ConsensusMessageIncoming(ConsensusMessageIncoming),
 
     /// Incoming deploy gossiper network message.
     #[from]
@@ -350,30 +348,30 @@ impl ReactorEvent for JoinerEvent {
     }
 }
 
-impl From<NetworkRequest<NodeId, Message>> for JoinerEvent {
-    fn from(request: NetworkRequest<NodeId, Message>) -> Self {
+impl From<NetworkRequest<Message>> for JoinerEvent {
+    fn from(request: NetworkRequest<Message>) -> Self {
         JoinerEvent::SmallNetwork(small_network::Event::from(request))
     }
 }
 
-impl From<NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>> for JoinerEvent {
-    fn from(request: NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>) -> Self {
+impl From<NetworkRequest<gossiper::Message<GossipedAddress>>> for JoinerEvent {
+    fn from(request: NetworkRequest<gossiper::Message<GossipedAddress>>) -> Self {
         JoinerEvent::SmallNetwork(small_network::Event::from(
             request.map_payload(Message::from),
         ))
     }
 }
 
-impl From<NetworkRequest<NodeId, gossiper::Message<Deploy>>> for JoinerEvent {
-    fn from(request: NetworkRequest<NodeId, gossiper::Message<Deploy>>) -> Self {
+impl From<NetworkRequest<gossiper::Message<Deploy>>> for JoinerEvent {
+    fn from(request: NetworkRequest<gossiper::Message<Deploy>>) -> Self {
         JoinerEvent::SmallNetwork(small_network::Event::from(
             request.map_payload(Message::from),
         ))
     }
 }
 
-impl From<RestRequest<NodeId>> for JoinerEvent {
-    fn from(request: RestRequest<NodeId>) -> Self {
+impl From<RestRequest> for JoinerEvent {
+    fn from(request: RestRequest) -> Self {
         JoinerEvent::RestServer(rest_server::Event::RestRequest(request))
     }
 }
@@ -502,7 +500,7 @@ pub(crate) struct Reactor {
     block_header_and_finality_signatures_by_height_fetcher: Fetcher<BlockHeaderWithMetadata>,
     trie_or_chunk_fetcher: Fetcher<TrieOrChunk>,
     // Handles requests for fetching tries from the network.
-    trie_fetcher: TrieFetcher<NodeId>,
+    trie_fetcher: TrieFetcher,
     console: Console,
     block_header_by_hash_fetcher: Fetcher<BlockHeader>,
     #[data_size(skip)]
@@ -1140,8 +1138,7 @@ impl Reactor {
 
 #[cfg(test)]
 impl NetworkedReactor for Reactor {
-    type NodeId = NodeId;
-    fn node_id(&self) -> Self::NodeId {
+    fn node_id(&self) -> NodeId {
         self.small_network.node_id()
     }
 }

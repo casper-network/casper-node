@@ -41,7 +41,7 @@ use crate::{
     logging,
     protocol::Message,
     reactor::{EventQueueHandle, QueueKind, ReactorEvent, Scheduler},
-    types::{Deploy, NodeId, TimeDiff, Timestamp},
+    types::{Deploy, TimeDiff, Timestamp},
 };
 pub(crate) use condition_check_reactor::ConditionCheckReactor;
 pub(crate) use multi_stage_test_reactor::MultiStageTestReactor;
@@ -321,7 +321,7 @@ pub(crate) enum UnitTestEvent {
     ControlAnnouncement(ControlAnnouncement),
     /// A network request made by the component under test.
     #[from]
-    NetworkRequest(NetworkRequest<NodeId, Message>),
+    NetworkRequest(NetworkRequest<Message>),
 }
 
 impl ReactorEvent for UnitTestEvent {
