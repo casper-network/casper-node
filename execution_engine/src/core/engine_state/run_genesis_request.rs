@@ -6,6 +6,7 @@ use rand::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::core::engine_state::genesis::{ChainspecRegistry, CHAINSPEC_RAW};
 use casper_hashing::Digest;
 use casper_types::ProtocolVersion;
 
@@ -17,6 +18,7 @@ pub struct RunGenesisRequest {
     genesis_config_hash: Digest,
     protocol_version: ProtocolVersion,
     ee_config: ExecConfig,
+    chainspec_registry: ChainspecRegistry,
 }
 
 impl RunGenesisRequest {
@@ -25,11 +27,13 @@ impl RunGenesisRequest {
         genesis_config_hash: Digest,
         protocol_version: ProtocolVersion,
         ee_config: ExecConfig,
+        chainspec_registry: ChainspecRegistry,
     ) -> RunGenesisRequest {
         RunGenesisRequest {
             genesis_config_hash,
             protocol_version,
             ee_config,
+            chainspec_registry,
         }
     }
 
@@ -48,6 +52,10 @@ impl RunGenesisRequest {
         &self.ee_config
     }
 
+    pub fn chainspec_registry(&self) -> &ChainspecRegistry {
+        &self.chainspec_registry
+    }
+
     /// Returns a EE config and consumes the object.
     pub fn take_ee_config(self) -> ExecConfig {
         self.ee_config
@@ -60,6 +68,19 @@ impl Distribution<RunGenesisRequest> for Standard {
         let genesis_config_hash = Digest::hash(&input);
         let protocol_version = ProtocolVersion::from_parts(rng.gen(), rng.gen(), rng.gen());
         let ee_config = rng.gen();
-        RunGenesisRequest::new(genesis_config_hash, protocol_version, ee_config)
+        let chainspec_registry = {
+            let mut chainspec_registry = ChainspecRegistry::new();
+            chainspec_registry.insert(
+                CHAINSPEC_RAW.to_string(),
+                Digest::hash(rng.gen::<[u8; 32]>()),
+            );
+            chainspec_registry
+        };
+        RunGenesisRequest::new(
+            genesis_config_hash,
+            protocol_version,
+            ee_config,
+            chainspec_registry,
+        )
     }
 }

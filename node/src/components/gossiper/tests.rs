@@ -25,6 +25,7 @@ use casper_execution_engine::{
 use casper_types::ProtocolVersion;
 
 use super::*;
+use crate::effect::requests::ChainspecLoaderRequest;
 use crate::{
     components::{
         contract_runtime::{self, ContractRuntime},
@@ -76,6 +77,8 @@ enum Event {
     NetworkRequest(NetworkRequest<NodeId, NodeMessage>),
     #[from]
     StorageRequest(StorageRequest),
+    #[from]
+    ChainspecLoaderRequest(ChainspecLoaderRequest),
     #[from]
     ControlAnnouncement(ControlAnnouncement),
     #[from]
@@ -144,6 +147,9 @@ impl Display for Event {
             Event::StorageRequest(req) => write!(formatter, "storage request: {}", req),
             Event::NetworkRequest(req) => write!(formatter, "network request: {}", req),
             Event::ContractRuntimeRequest(req) => write!(formatter, "incoming: {}", req),
+            Event::ChainspecLoaderRequest(req) => {
+                write!(formatter, "chainspec_loader request: {}", req)
+            }
             Event::ControlAnnouncement(ctrl_ann) => write!(formatter, "control: {}", ctrl_ann),
             Event::RpcServerAnnouncement(ann) => {
                 write!(formatter, "api server announcement: {}", ann)
@@ -293,6 +299,12 @@ impl reactor::Reactor for Reactor {
                 self.storage
                     .handle_event(effect_builder, rng, request.into()),
             ),
+            Event::ChainspecLoaderRequest(request) => {
+                unreachable!(
+                    "gossiper tests should not require the chainspec loader requests: {}",
+                    request
+                )
+            }
             Event::ControlAnnouncement(ctrl_ann) => {
                 unreachable!("unhandled control announcement: {}", ctrl_ann)
             }

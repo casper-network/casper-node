@@ -60,6 +60,7 @@ pub type ChainspecRegistry = BTreeMap<String, Digest>;
 
 pub const CHAINSPEC_RAW: &str = "chainspec_raw";
 pub const GENESIS_ACCOUNTS_RAW: &str = "genesis_accounts_raw";
+pub const GLOBAL_STATE_RAW: &str = "global_state_raw";
 
 /// Represents an outcome of a successful genesis run.
 #[derive(Debug)]
@@ -734,6 +735,8 @@ pub enum GenesisError {
         /// Number of validator slots specified.
         validator_slots: u32,
     },
+    /// The chainspec registry did not contain the genesis accounts hash during genesis.
+    MissingGenesisAccountsHash,
 }
 
 pub(crate) struct GenesisInstaller<S>
@@ -1369,6 +1372,23 @@ where
         self.tracking_copy.borrow_mut().write(
             Key::SystemContractRegistry,
             StoredValue::CLValue(cl_registry),
+        );
+        Ok(())
+    }
+
+    pub(crate) fn store_chainspec_registry(
+        &self,
+        chainspec_registry: ChainspecRegistry,
+    ) -> Result<(), GenesisError> {
+        if chainspec_registry.get(GENESIS_ACCOUNTS_RAW).is_none() {
+            return Err(GenesisError::MissingGenesisAccountsHash);
+        }
+        let cl_value_registry = CLValue::from_t(chainspec_registry)
+            .map_err(|error| GenesisError::CLValue(error.to_string()))?;
+
+        self.tracking_copy.borrow_mut().write(
+            Key::ChainspecRegistry,
+            StoredValue::CLValue(cl_value_registry),
         );
         Ok(())
     }

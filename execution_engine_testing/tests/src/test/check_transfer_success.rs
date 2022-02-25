@@ -3,8 +3,8 @@ use std::path::PathBuf;
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_GENESIS_CONFIG,
-    DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_PAYMENT,
+    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_CHAINSPEC_REGISTRY,
+    DEFAULT_GENESIS_CONFIG, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_PAYMENT,
 };
 use casper_execution_engine::core::engine_state::{
     run_genesis_request::RunGenesisRequest, GenesisAccount,
@@ -36,6 +36,7 @@ fn test_check_transfer_success_with_source_only() {
         *DEFAULT_GENESIS_CONFIG_HASH,
         genesis_config.protocol_version(),
         genesis_config.take_ee_config(),
+        DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
 
     // Doing a transfer from main purse to create new purse and store URef under NEW_PURSE_NAME.
@@ -95,6 +96,7 @@ fn test_check_transfer_success_with_source_only_errors() {
         *DEFAULT_GENESIS_CONFIG_HASH,
         genesis_config.protocol_version(),
         genesis_config.take_ee_config(),
+        DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
 
     // Doing a transfer from main purse to create new purse and store Uref under NEW_PURSE_NAME.
@@ -154,6 +156,7 @@ fn test_check_transfer_success_with_source_and_target() {
         *DEFAULT_GENESIS_CONFIG_HASH,
         genesis_config.protocol_version(),
         genesis_config.take_ee_config(),
+        DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
 
     let transfer_amount = U512::try_from(SECOND_TRANSFER_AMOUNT).expect("U512 from u64");

@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use casper_execution_engine::core::engine_state::genesis::ChainspecRegistry;
 use num_rational::Ratio;
 
 use casper_execution_engine::core::engine_state::UpgradeConfig;
@@ -19,6 +20,7 @@ pub struct UpgradeRequestBuilder {
     new_round_seigniorage_rate: Option<Ratio<u64>>,
     new_unbonding_delay: Option<u64>,
     global_state_update: BTreeMap<Key, StoredValue>,
+    chainspec_registry: ChainspecRegistry,
 }
 
 impl UpgradeRequestBuilder {
@@ -93,6 +95,12 @@ impl UpgradeRequestBuilder {
         self
     }
 
+    /// Sets the Chainspec registry.
+    pub fn with_chainspec_registry(mut self, chainspec_registry: ChainspecRegistry) -> Self {
+        self.chainspec_registry = chainspec_registry;
+        self
+    }
+
     /// Consumes the `UpgradeRequestBuilder` and returns an [`UpgradeConfig`].
     pub fn build(self) -> UpgradeConfig {
         UpgradeConfig::new(
@@ -106,6 +114,7 @@ impl UpgradeRequestBuilder {
             self.new_round_seigniorage_rate,
             self.new_unbonding_delay,
             self.global_state_update,
+            self.chainspec_registry,
         )
     }
 }

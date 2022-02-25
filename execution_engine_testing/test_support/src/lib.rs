@@ -20,7 +20,7 @@ use once_cell::sync::Lazy;
 
 use casper_execution_engine::{
     core::engine_state::{
-        genesis::{ExecConfig, GenesisAccount, GenesisConfig},
+        genesis::{ChainspecRegistry, ExecConfig, GenesisAccount, GenesisConfig},
         run_genesis_request::RunGenesisRequest,
     },
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
@@ -29,6 +29,7 @@ use casper_hashing::Digest;
 use casper_types::{account::AccountHash, Motes, ProtocolVersion, PublicKey, SecretKey, U512};
 
 pub use additive_map_diff::AdditiveMapDiff;
+use casper_execution_engine::core::engine_state::genesis::CHAINSPEC_RAW;
 pub use deploy_item_builder::DeployItemBuilder;
 pub use execute_request_builder::ExecuteRequestBuilder;
 pub use step_request_builder::StepRequestBuilder;
@@ -142,12 +143,19 @@ pub static DEFAULT_GENESIS_CONFIG: Lazy<GenesisConfig> = Lazy::new(|| {
         DEFAULT_EXEC_CONFIG.clone(),
     )
 });
+/// Default [`ChainspecRegistry`].
+pub static DEFAULT_CHAINSPEC_REGISTRY: Lazy<ChainspecRegistry> = Lazy::new(|| {
+    let mut chainspec_registry = ChainspecRegistry::new();
+    chainspec_registry.insert(CHAINSPEC_RAW.to_string(), *DEFAULT_GENESIS_CONFIG_HASH);
+    chainspec_registry
+});
 /// Default [`RunGenesisRequest`].
 pub static DEFAULT_RUN_GENESIS_REQUEST: Lazy<RunGenesisRequest> = Lazy::new(|| {
     RunGenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
         *DEFAULT_PROTOCOL_VERSION,
         DEFAULT_EXEC_CONFIG.clone(),
+        DEFAULT_CHAINSPEC_REGISTRY.clone(),
     )
 });
 /// System address.

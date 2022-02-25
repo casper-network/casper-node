@@ -82,6 +82,9 @@ pub enum Error {
     /// An attempt to push to the runtime stack while already at the maximum height.
     #[error("Runtime stack overflow")]
     RuntimeStackOverflow,
+    #[error("Missing global_state.toml hash")]
+    /// The chainspec registry did not contain the global_state.toml hash during an upgrade.
+    MissingGlobalStateHash,
 }
 
 impl Error {

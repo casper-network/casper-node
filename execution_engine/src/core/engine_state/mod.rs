@@ -190,7 +190,7 @@ where
         genesis_config_hash: Digest,
         protocol_version: ProtocolVersion,
         ee_config: &ExecConfig,
-        chainspec_registry: &ChainspecRegistry,
+        chainspec_registry: ChainspecRegistry,
     ) -> Result<GenesisSuccess, Error> {
         // Preliminaries
         let initial_root_hash = self.state.empty_root();
@@ -233,6 +233,8 @@ where
 
         // Create standard payment
         genesis_installer.create_standard_payment()?;
+
+        genesis_installer.store_chainspec_registry(chainspec_registry)?;
 
         // Commit the transforms.
         let execution_effect = genesis_installer.finalize();
@@ -333,6 +335,16 @@ where
             error!("Missing system handle payment contract hash");
             Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
         })?;
+
+        // Write the chainspec registry to global state
+        let cl_value_chainspec_registry =
+            CLValue::from_t(upgrade_config.chainspec_registry().clone())
+                .map_err(|error| Error::Bytesrepr(error.to_string()))?;
+
+        tracking_copy.borrow_mut().write(
+            Key::ChainspecRegistry,
+            StoredValue::CLValue(cl_value_chainspec_registry),
+        );
 
         // 3.1.1.1.1.5 bump system contract major versions
         if upgrade_check_result.is_major_version() {

@@ -29,6 +29,8 @@ use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{EraId, ProtocolVersion};
 
+use crate::contract_runtime::ContractRuntime;
+use crate::types::chainspec::GLOBAL_STATE_UPDATE;
 #[cfg(test)]
 use crate::utils::RESOURCES_PATH;
 use crate::{
@@ -138,6 +140,39 @@ impl Display for NextUpgrade {
 #[derive(Clone, Debug)]
 pub(crate) struct CurrentRunInfo {
     pub(crate) last_emergency_restart: Option<EraId>,
+}
+
+#[derive(Debug)]
+pub(crate) struct ChainspecRawBytes {
+    chainspec_bytes: Vec<u8>,
+    maybe_genesis_accounts_bytes: Option<Vec<u8>>,
+    maybe_global_state_bytes: Option<Vec<u8>>,
+}
+
+impl ChainspecRawBytes {
+    pub(crate) fn new(
+        chainspec_bytes: Vec<u8>,
+        maybe_genesis_accounts_bytes: Option<Vec<u8>>,
+        maybe_global_state_bytes: Option<Vec<u8>>,
+    ) -> Self {
+        ChainspecRawBytes {
+            chainspec_bytes,
+            maybe_genesis_accounts_bytes,
+            maybe_global_state_bytes,
+        }
+    }
+
+    pub(crate) fn chainspec_bytes(&self) -> &Vec<u8> {
+        &self.chainspec_bytes
+    }
+
+    pub(crate) fn maybe_genesis_accounts_bytes(&self) -> &Option<Vec<u8>> {
+        &self.maybe_genesis_accounts_bytes
+    }
+
+    pub(crate) fn maybe_global_state_bytes(&self) -> &Option<Vec<u8>> {
+        &self.maybe_global_state_bytes
+    }
 }
 
 #[derive(Clone, DataSize, Debug)]
@@ -429,25 +464,61 @@ where
 
                 responder.respond(data).ignore()
             }
-            Event::Request(ChainspecLoaderRequest::GetGenesisAccountsFile(responder)) => {
-                let file_path = self
+            Event::Request(ChainspecLoaderRequest::GetChainspecRawBytes(responder)) => {
+                let chainspec_file_path = self
                     .root_dir
                     .join(dir_name_from_version(&self.chainspec.protocol_version()))
-                    .join(GENESIS_ACCOUNTS_NAME);
+                    .join(CHAINSPEC_NAME);
 
-                let data = match fs::read(file_path) {
-                    Ok(file_bytes) => file_bytes,
-                    Err(e) => {
-                        error!("failed to read file: {}", e);
+                let chainspec_bytes = match fs::read(chainspec_file_path) {
+                    Ok(chainspec_bytes) => chainspec_bytes,
+                    Err(error) => {
+                        error!("Could not read chainspec: {}", error);
                         vec![]
                     }
                 };
 
-                responder.respond(data).ignore()
+                let genesis_accounts_file_path = self
+                    .root_dir
+                    .join(dir_name_from_version(&self.chainspec.protocol_version()))
+                    .join(GENESIS_ACCOUNTS_NAME);
+
+                let maybe_genesis_accounts_bytes = fs::read(genesis_accounts_file_path).ok();
+
+                let upgrade_toml_file_path = self
+                    .root_dir
+                    .join(dir_name_from_version(&self.chainspec.protocol_version()))
+                    .join(GLOBAL_STATE_UPDATE);
+
+                let maybe_global_state_bytes = fs::read(upgrade_toml_file_path).ok();
+
+                let raw_chainspec_bytes = ChainspecRawBytes::new(
+                    chainspec_bytes,
+                    maybe_genesis_accounts_bytes,
+                    maybe_global_state_bytes,
+                );
+
+                responder.respond(raw_chainspec_bytes).ignore()
             }
-            Event::Request(ChainspecLoaderRequest::CreateChainspecRegistry(responder)) => {
-                responder.respond(ChainspecRegistry::new()).ignore()
-            }
+            // Event::Request(ChainspecLoaderRequest::GetGenesisAccountsFile(responder)) => {
+            //     let file_path = self
+            //         .root_dir
+            //         .join(dir_name_from_version(&self.chainspec.protocol_version()))
+            //         .join(GENESIS_ACCOUNTS_NAME);
+            //
+            //     let data = match fs::read(file_path) {
+            //         Ok(file_bytes) => file_bytes,
+            //         Err(e) => {
+            //             error!("failed to read file: {}", e);
+            //             vec![]
+            //         }
+            //     };
+            //
+            //     responder.respond(data).ignore()
+            // }
+            // Event::Request(ChainspecLoaderRequest::CreateChainspecRegistry(responder)) => {
+            //     responder.respond(ChainspecRegistry::new()).ignore()
+            // }
             Event::CheckForNextUpgrade => self.check_for_next_upgrade(effect_builder),
             Event::GotNextUpgrade(next_upgrade) => self.handle_got_next_upgrade(next_upgrade),
         }

@@ -99,6 +99,7 @@ use casper_types::{
     U512,
 };
 
+use crate::components::chainspec_loader::ChainspecRawBytes;
 use crate::{
     components::{
         block_validator::ValidatingBlock,
@@ -1855,29 +1856,40 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Gets the genesis accounts file.
-    pub(crate) async fn get_genesis_accounts_file(self) -> Vec<u8>
+    pub(crate) async fn get_chainspec_raw_bytes(self) -> ChainspecRawBytes
     where
         REv: From<ChainspecLoaderRequest> + Send,
     {
         self.make_request(
-            ChainspecLoaderRequest::GetGenesisAccountsFile,
+            ChainspecLoaderRequest::GetChainspecRawBytes,
             QueueKind::Regular,
         )
         .await
     }
 
-    /// Create a `ChainspecRegistry`.
-    pub(crate) async fn create_chainspec_registry(self) -> ChainspecRegistry
-    where
-        REv: From<ChainspecLoaderRequest> + From<ContractRuntimeRequest> + Send,
-    {
-        self.make_request(
-            ChainspecLoaderRequest::CreateChainspecRegistry,
-            QueueKind::Regular,
-        )
-        .await
-    }
+    // /// Gets the genesis accounts file.
+    // pub(crate) async fn get_genesis_accounts_file(self) -> Vec<u8>
+    // where
+    //     REv: From<ChainspecLoaderRequest> + Send,
+    // {
+    //     self.make_request(
+    //         ChainspecLoaderRequest::GetGenesisAccountsFile,
+    //         QueueKind::Regular,
+    //     )
+    //     .await
+    // }
+    //
+    // /// Create a `ChainspecRegistry`.
+    // pub(crate) async fn create_chainspec_registry(self) -> ChainspecRegistry
+    // where
+    //     REv: From<ChainspecLoaderRequest> + From<ContractRuntimeRequest> + Send,
+    // {
+    //     self.make_request(
+    //         ChainspecLoaderRequest::CreateChainspecRegistry,
+    //         QueueKind::Regular,
+    //     )
+    //     .await
+    // }
 }
 
 /// Construct a fatal error effect.

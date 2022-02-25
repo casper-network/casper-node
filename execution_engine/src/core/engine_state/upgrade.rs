@@ -14,6 +14,7 @@ use casper_types::{
     Contract, ContractHash, EntryPoints, EraId, Key, ProtocolVersion, StoredValue,
 };
 
+use crate::core::engine_state::genesis::ChainspecRegistry;
 use crate::{
     core::{engine_state::execution_effect::ExecutionEffect, tracking_copy::TrackingCopy},
     shared::newtypes::CorrelationId,
@@ -52,6 +53,7 @@ pub struct UpgradeConfig {
     new_round_seigniorage_rate: Option<Ratio<u64>>,
     new_unbonding_delay: Option<u64>,
     global_state_update: BTreeMap<Key, StoredValue>,
+    chainspec_registry: ChainspecRegistry,
 }
 
 impl UpgradeConfig {
@@ -68,6 +70,7 @@ impl UpgradeConfig {
         new_round_seigniorage_rate: Option<Ratio<u64>>,
         new_unbonding_delay: Option<u64>,
         global_state_update: BTreeMap<Key, StoredValue>,
+        chainspec_registry: ChainspecRegistry,
     ) -> Self {
         UpgradeConfig {
             pre_state_hash,
@@ -80,6 +83,7 @@ impl UpgradeConfig {
             new_round_seigniorage_rate,
             new_unbonding_delay,
             global_state_update,
+            chainspec_registry,
         }
     }
 
@@ -133,9 +137,17 @@ impl UpgradeConfig {
         &self.global_state_update
     }
 
+    pub fn chainspec_registry(&self) -> &ChainspecRegistry {
+        &self.chainspec_registry
+    }
+
     /// Sets new pre state hash.
     pub fn with_pre_state_hash(&mut self, pre_state_hash: Digest) {
         self.pre_state_hash = pre_state_hash;
+    }
+
+    pub fn with_chainspec_registry(&mut self, chainspec_registry: ChainspecRegistry) {
+        self.chainspec_registry = chainspec_registry
     }
 }
 

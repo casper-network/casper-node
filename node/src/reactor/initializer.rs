@@ -12,6 +12,8 @@ use tracing::info;
 
 use casper_execution_engine::core::engine_state;
 
+use crate::effect::requests::ChainspecLoaderRequest;
+use crate::types::Chainspec;
 use crate::{
     components::{
         chainspec_loader::{self, ChainspecLoader},
@@ -57,6 +59,10 @@ pub(crate) enum Event {
     #[from]
     ControlAnnouncement(ControlAnnouncement),
 
+    /// ChainspecLoader request.
+    #[from]
+    ChainspecLoaderRequest(ChainspecLoaderRequest),
+
     /// Storage request.
     #[from]
     StorageRequest(StorageRequest),
@@ -83,6 +89,7 @@ impl ReactorEvent for Event {
             Event::ControlAnnouncement(_) => "ControlAnnouncement",
             Event::StorageRequest(_) => "StorageRequest",
             Event::ContractRuntime(_) => "ContractRuntime",
+            Event::ChainspecLoaderRequest(_) => "ChainspecLoaderRequest",
         }
     }
 }
@@ -134,6 +141,9 @@ impl Display for Event {
             Event::ControlAnnouncement(ctrl_ann) => write!(formatter, "control: {}", ctrl_ann),
             Event::StorageRequest(req) => write!(formatter, "storage request: {}", req),
             Event::ContractRuntime(event) => write!(formatter, "contract runtime event: {}", event),
+            Event::ChainspecLoaderRequest(req) => {
+                write!(formatter, "chainspec_loader request: {}", req)
+            }
         }
     }
 }
@@ -306,6 +316,14 @@ impl reactor::Reactor for Reactor {
                 Event::Chainspec,
                 self.chainspec_loader
                     .handle_event(effect_builder, rng, event),
+            ),
+            Event::ChainspecLoaderRequest(event) => reactor::wrap_effects(
+                Event::Chainspec,
+                self.chainspec_loader.handle_event(
+                    effect_builder,
+                    rng,
+                    chainspec_loader::Event::Request(event),
+                ),
             ),
             Event::Storage(event) => reactor::wrap_effects(
                 Event::Storage,

@@ -48,6 +48,9 @@ pub const CHAINSPEC_NAME: &str = "chainspec.toml";
 // The name of the genesis accounts file on disk.
 pub const GENESIS_ACCOUNTS_NAME: &str = "accounts.toml";
 
+// The name of the global state toml file on disk.
+pub const GLOBAL_STATE_UPDATE: &str = "global_state.toml";
+
 /// A collection of configuration settings describing the state of the system at genesis and after
 /// upgrades to basic system functionality occurring after genesis.
 #[derive(DataSize, PartialEq, Eq, Serialize, Debug)]

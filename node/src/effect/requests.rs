@@ -33,6 +33,7 @@ use casper_types::{
     StoredValue, Transfer, URef,
 };
 
+use crate::components::chainspec_loader::ChainspecRawBytes;
 use crate::{
     components::{
         block_validator::ValidatingBlock,
@@ -1035,8 +1036,7 @@ pub(crate) enum ChainspecLoaderRequest {
     GetCurrentRunInfo(Responder<CurrentRunInfo>),
     /// Request for the chainspec file.
     GetChainspecFile(Responder<Vec<u8>>),
-    GetGenesisAccountsFile(Responder<Vec<u8>>),
-    CreateChainspecRegistry(Responder<ChainspecRegistry>),
+    GetChainspecRawBytes(Responder<ChainspecRawBytes>),
 }
 
 impl Display for ChainspecLoaderRequest {
@@ -1045,12 +1045,7 @@ impl Display for ChainspecLoaderRequest {
             ChainspecLoaderRequest::GetChainspecInfo(_) => write!(f, "get chainspec info"),
             ChainspecLoaderRequest::GetCurrentRunInfo(_) => write!(f, "get current run info"),
             ChainspecLoaderRequest::GetChainspecFile(_) => write!(f, "get chainspec file"),
-            ChainspecLoaderRequest::GetGenesisAccountsFile(_) => {
-                write!(f, "get genesis accounts file")
-            }
-            ChainspecLoaderRequest::CreateChainspecRegistry(_) => {
-                write!(f, "create chainspec registry")
-            }
+            ChainspecLoaderRequest::GetChainspecRawBytes(_) => write!(f, "get chainspec raw bytes"),
         }
     }
 }

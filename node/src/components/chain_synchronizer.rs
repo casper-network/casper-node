@@ -7,6 +7,7 @@ use std::{convert::Infallible, fmt::Debug, sync::Arc};
 use datasize::DataSize;
 use tracing::{debug, error, info};
 
+use casper_execution_engine::core::engine_state::genesis::ChainspecRegistry;
 use casper_execution_engine::core::engine_state::{
     self, genesis::GenesisSuccess, UpgradeConfig, UpgradeSuccess,
 };
@@ -230,6 +231,7 @@ impl ChainSynchronizer {
             Some(self.chainspec.core_config.round_seigniorage_rate),
             Some(self.chainspec.core_config.unbonding_delay),
             global_state_update,
+            ChainspecRegistry::new(),
         );
         effect_builder
             .upgrade_contract_runtime(Box::new(upgrade_config))

@@ -384,6 +384,7 @@ where
                 run_genesis_request.genesis_config_hash(),
                 run_genesis_request.protocol_version(),
                 run_genesis_request.ee_config(),
+                run_genesis_request.chainspec_registry().clone(),
             )
             .expect("Unable to get genesis response");
 
