@@ -5,7 +5,6 @@ use std::{
     array::TryFromSliceError,
     cmp,
     collections::{BTreeSet, HashMap},
-    convert::Infallible,
     error::Error as StdError,
     fmt::{self, Debug, Display, Formatter},
     hash,
@@ -661,9 +660,17 @@ impl FinalizedApprovalsWithId {
     }
 }
 
+/// Error type containing the error message passed from crypto::verify
+#[derive(Debug, Error)]
+#[error("invalid approval from {signer}: {error}")]
+pub struct FinalizedApprovalsVerificationError {
+    signer: PublicKey,
+    error: String,
+}
+
 impl Item for FinalizedApprovalsWithId {
     type Id = DeployHash;
-    type ValidationError = Infallible;
+    type ValidationError = FinalizedApprovalsVerificationError;
 
     const TAG: Tag = Tag::FinalizedApprovals;
     const ID_IS_COMPLETE_ITEM: bool = false;
@@ -672,6 +679,14 @@ impl Item for FinalizedApprovalsWithId {
         &self,
         _verifiable_chunked_hash_activation: EraId,
     ) -> Result<(), Self::ValidationError> {
+        for approval in &self.approvals.0 {
+            crypto::verify(&self.id, approval.signature(), approval.signer()).map_err(|err| {
+                FinalizedApprovalsVerificationError {
+                    signer: approval.signer().clone(),
+                    error: format!("{}", err),
+                }
+            })?;
+        }
         Ok(())
     }
 

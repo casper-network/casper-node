@@ -149,7 +149,7 @@ impl Display for TrieRequest {
 pub(crate) enum NetResponse {
     /// Response of a deploy.
     Deploy(Arc<[u8]>),
-    /// Response of finalize_approvals.
+    /// Response of finalized approvals.
     FinalizedApprovals(Arc<[u8]>),
     /// Response of a block.
     Block(Arc<[u8]>),

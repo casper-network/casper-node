@@ -169,22 +169,19 @@ async fn fetch_and_store_deploy(
 ) -> Result<DeployWithSender, FetcherError<Deploy, NodeId>> {
     let fetched_deploy =
         fetch_retry_forever::<Deploy>(effect_builder, deploy_or_transfer_hash).await?;
-    let result = match fetched_deploy {
+    Ok(match fetched_deploy {
         FetchedData::FromStorage { item: deploy } => DeployWithSender {
             deploy,
             sender: None,
         },
-        FetchedData::FromPeer { item: deploy, peer } => DeployWithSender {
-            deploy,
-            sender: Some(peer),
-        },
-    };
-    if result.sender.is_some() {
-        effect_builder
-            .put_deploy_to_storage(result.deploy.clone())
-            .await;
-    }
-    Ok(result)
+        FetchedData::FromPeer { item: deploy, peer } => {
+            effect_builder.put_deploy_to_storage(deploy.clone()).await;
+            DeployWithSender {
+                deploy,
+                sender: Some(peer),
+            }
+        }
+    })
 }
 
 async fn fetch_finalized_approvals(
@@ -1016,24 +1013,15 @@ pub(super) async fn run_chain_sync_task(
 
         if block != *block_and_execution_effects.block() {
             // could be wrong approvals - fetch a new set of approvals from another peer
-            for dws in &mut deploys {
+            for dws in deploys.iter_mut().chain(transfers.iter_mut()) {
                 // make sure we don't download from the same sender again
-                let mut exclude = HashSet::new();
+                let mut exclude_peers = HashSet::new();
                 if let Some(sender) = dws.sender {
-                    exclude.insert(sender);
+                    exclude_peers.insert(sender);
                 }
                 let new_approvals =
-                    fetch_finalized_approvals(effect_builder, *dws.deploy.id(), exclude).await?;
-                dws.deploy.replace_approvals(new_approvals.into_inner());
-            }
-            for dws in &mut transfers {
-                // make sure we don't download from the same sender again
-                let mut exclude = HashSet::new();
-                if let Some(sender) = dws.sender {
-                    exclude.insert(sender);
-                }
-                let new_approvals =
-                    fetch_finalized_approvals(effect_builder, *dws.deploy.id(), exclude).await?;
+                    fetch_finalized_approvals(effect_builder, *dws.deploy.id(), exclude_peers)
+                        .await?;
                 dws.deploy.replace_approvals(new_approvals.into_inner());
             }
             info!("start - re-executing finalized block - {}", block.hash());
@@ -1055,15 +1043,7 @@ pub(super) async fn run_chain_sync_task(
                 });
             } else {
                 // matching now! store new approval sets for the deploys
-                for dws in deploys {
-                    effect_builder
-                        .store_finalized_approvals(
-                            *dws.deploy.id(),
-                            FinalizedApprovals::new(dws.deploy.approvals().clone()),
-                        )
-                        .await;
-                }
-                for dws in transfers {
+                for dws in deploys.into_iter().chain(transfers.into_iter()) {
                     effect_builder
                         .store_finalized_approvals(
                             *dws.deploy.id(),

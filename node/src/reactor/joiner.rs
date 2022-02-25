@@ -133,7 +133,7 @@ pub(crate) enum JoinerEvent {
     #[from]
     BlockByHeightFetcher(#[serde(skip_serializing)] fetcher::Event<BlockWithMetadata>),
 
-    /// Finalized approvals fetcher event.
+    /// Deploy fetcher event.
     #[from]
     DeployFetcher(#[serde(skip_serializing)] fetcher::Event<Deploy>),
 

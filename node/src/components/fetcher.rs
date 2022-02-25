@@ -344,7 +344,7 @@ impl ItemFetcher<FinalizedApprovalsWithId> for Fetcher<FinalizedApprovalsWithId>
         self.get_from_peer_timeout
     }
 
-    /// Gets a `Deploy` from the storage component.
+    /// Gets the finalized approvals for a deploy from the storage component.
     fn get_from_storage<REv: ReactorEventT<FinalizedApprovalsWithId>>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
