@@ -68,6 +68,7 @@ pub use self::{
     transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
     upgrade::{UpgradeConfig, UpgradeSuccess},
 };
+use crate::core::engine_state::genesis::CHAINSPEC_RAW;
 use crate::{
     core::{
         engine_state::{
@@ -335,6 +336,17 @@ where
             error!("Missing system handle payment contract hash");
             Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
         })?;
+
+        println!("{:?}", upgrade_config.chainspec_registry());
+
+        if upgrade_config
+            .chainspec_registry()
+            .get(CHAINSPEC_RAW)
+            .is_none()
+        {
+            println!("In error raising");
+            return Err(Error::MissingChainspecHash);
+        }
 
         // Write the chainspec registry to global state
         let cl_value_chainspec_registry =

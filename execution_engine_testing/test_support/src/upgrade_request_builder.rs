@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use casper_execution_engine::core::engine_state::genesis::ChainspecRegistry;
+use casper_execution_engine::core::engine_state::genesis::{ChainspecRegistry, CHAINSPEC_RAW};
 use num_rational::Ratio;
 
 use casper_execution_engine::core::engine_state::UpgradeConfig;
@@ -8,7 +8,6 @@ use casper_hashing::Digest;
 use casper_types::{EraId, Key, ProtocolVersion, StoredValue};
 
 /// Builds an `UpgradeConfig`.
-#[derive(Default)]
 pub struct UpgradeRequestBuilder {
     pre_state_hash: Digest,
     current_protocol_version: ProtocolVersion,
@@ -116,5 +115,28 @@ impl UpgradeRequestBuilder {
             self.global_state_update,
             self.chainspec_registry,
         )
+    }
+}
+
+impl Default for UpgradeRequestBuilder {
+    fn default() -> Self {
+        let chainspec_registry = {
+            let mut registry = ChainspecRegistry::new();
+            registry.insert(CHAINSPEC_RAW.to_string(), Digest::default());
+            registry
+        };
+        UpgradeRequestBuilder {
+            pre_state_hash: Default::default(),
+            current_protocol_version: Default::default(),
+            new_protocol_version: Default::default(),
+            activation_point: None,
+            new_validator_slots: None,
+            new_auction_delay: None,
+            new_locked_funds_period_millis: None,
+            new_round_seigniorage_rate: None,
+            new_unbonding_delay: None,
+            global_state_update: Default::default(),
+            chainspec_registry,
+        }
     }
 }

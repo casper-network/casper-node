@@ -735,8 +735,8 @@ pub enum GenesisError {
         /// Number of validator slots specified.
         validator_slots: u32,
     },
-    /// The chainspec registry did not contain the genesis accounts hash during genesis.
-    MissingGenesisAccountsHash,
+    /// The chainspec registry is missing a required entry.
+    MissingChainspecRegistryEntry(String),
 }
 
 pub(crate) struct GenesisInstaller<S>
@@ -1380,8 +1380,16 @@ where
         &self,
         chainspec_registry: ChainspecRegistry,
     ) -> Result<(), GenesisError> {
+        if chainspec_registry.get(CHAINSPEC_RAW).is_none() {
+            return Err(GenesisError::MissingChainspecRegistryEntry(
+                CHAINSPEC_RAW.to_string(),
+            ));
+        }
+
         if chainspec_registry.get(GENESIS_ACCOUNTS_RAW).is_none() {
-            return Err(GenesisError::MissingGenesisAccountsHash);
+            return Err(GenesisError::MissingChainspecRegistryEntry(
+                GENESIS_ACCOUNTS_RAW.to_string(),
+            ));
         }
         let cl_value_registry = CLValue::from_t(chainspec_registry)
             .map_err(|error| GenesisError::CLValue(error.to_string()))?;

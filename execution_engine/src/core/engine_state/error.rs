@@ -83,8 +83,8 @@ pub enum Error {
     #[error("Runtime stack overflow")]
     RuntimeStackOverflow,
     #[error("Missing global_state.toml hash")]
-    /// The chainspec registry did not contain the global_state.toml hash during an upgrade.
-    MissingGlobalStateHash,
+    /// The chainspec registry did not contain the hash for the chainspec.
+    MissingChainspecHash,
 }
 
 impl Error {

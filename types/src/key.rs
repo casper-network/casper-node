@@ -58,8 +58,8 @@ pub const KEY_DICTIONARY_LENGTH: usize = 32;
 /// The maximum length for a `dictionary_item_key`.
 pub const DICTIONARY_ITEM_KEY_MAX_LENGTH: usize = 128;
 
-const SYSTEM_CONTRACT_REGISTRY_KEY: [u8; 32] = [0u8; 32];
-const CHAINSPEC_REGISTRY_KEY: [u8; 32] = [1u8; 32];
+const SYSTEM_CONTRACT_REGISTRY_KEY_BYTES: [u8; 32] = [0u8; 32];
+const CHAINSPEC_REGISTRY_KEY_BYTES: [u8; 32] = [1u8; 32];
 const KEY_ID_SERIALIZED_LENGTH: usize = 1;
 // u8 used to determine the ID
 const KEY_HASH_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
@@ -72,9 +72,9 @@ const KEY_BID_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LEN
 const KEY_WITHDRAW_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 const KEY_DICTIONARY_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_DICTIONARY_LENGTH;
 const KEY_SYSTEM_CONTRACT_REGISTRY_SERIALIZED_LENGTH: usize =
-    KEY_ID_SERIALIZED_LENGTH + SYSTEM_CONTRACT_REGISTRY_KEY.len();
+    KEY_ID_SERIALIZED_LENGTH + SYSTEM_CONTRACT_REGISTRY_KEY_BYTES.len();
 const KEY_CHAINSPEC_REGISTRY_SERIALIZED_LENGTH: usize =
-    KEY_ID_SERIALIZED_LENGTH + CHAINSPEC_REGISTRY_KEY.len();
+    KEY_ID_SERIALIZED_LENGTH + CHAINSPEC_REGISTRY_KEY_BYTES.len();
 
 /// An alias for [`Key`]s hash variant.
 pub type HashAddr = [u8; KEY_HASH_LENGTH];
@@ -287,14 +287,14 @@ impl Key {
                 format!(
                     "{}{}",
                     SYSTEM_CONTRACT_REGISTRY_PREFIX,
-                    base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_KEY)
+                    base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_KEY_BYTES)
                 )
             }
             Key::ChainspecRegistry => {
                 format!(
                     "{}{}",
                     CHAINSPEC_REGISTRY_PREFIX,
-                    base16::encode_lower(&CHAINSPEC_REGISTRY_PREFIX)
+                    base16::encode_lower(&CHAINSPEC_REGISTRY_KEY_BYTES)
                 )
             }
         }
@@ -498,12 +498,12 @@ impl Display for Key {
             Key::SystemContractRegistry => write!(
                 f,
                 "Key::SystemContractRegistry({})",
-                base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_KEY)
+                base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_KEY_BYTES)
             ),
             Key::ChainspecRegistry => write!(
                 f,
                 "Key::ChainspecRegistry({})",
-                base16::encode_lower(&CHAINSPEC_REGISTRY_KEY)
+                base16::encode_lower(&CHAINSPEC_REGISTRY_KEY_BYTES)
             ),
         }
     }
@@ -613,9 +613,9 @@ impl ToBytes for Key {
                 result.append(&mut addr.to_bytes()?);
             }
             Key::SystemContractRegistry => {
-                result.append(&mut SYSTEM_CONTRACT_REGISTRY_KEY.to_bytes()?)
+                result.append(&mut SYSTEM_CONTRACT_REGISTRY_KEY_BYTES.to_bytes()?)
             }
-            Key::ChainspecRegistry => result.append(&mut CHAINSPEC_REGISTRY_KEY.to_bytes()?),
+            Key::ChainspecRegistry => result.append(&mut CHAINSPEC_REGISTRY_KEY_BYTES.to_bytes()?),
         }
         Ok(result)
     }
@@ -674,9 +674,9 @@ impl ToBytes for Key {
                 writer.extend_from_slice(addr);
             }
             Key::SystemContractRegistry => {
-                writer.extend_from_slice(&SYSTEM_CONTRACT_REGISTRY_KEY);
+                writer.extend_from_slice(&SYSTEM_CONTRACT_REGISTRY_KEY_BYTES);
             }
-            Key::ChainspecRegistry => writer.extend_from_slice(&CHAINSPEC_REGISTRY_KEY),
+            Key::ChainspecRegistry => writer.extend_from_slice(&CHAINSPEC_REGISTRY_KEY_BYTES),
         };
         Ok(())
     }
@@ -1049,14 +1049,14 @@ mod tests {
             format!("{}", SYSTEM_CONTRACT_REGISTRY_KEY),
             format!(
                 "Key::SystemContractRegistry({})",
-                base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_KEY)
+                base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_KEY_BYTES)
             )
         );
         assert_eq!(
             format!("{}", CHAINSPEC_REGISTRY_KEY),
             format!(
                 "Key::ChainspecRegistry({})",
-                base16::encode_lower(&CHAINSPEC_REGISTRY_KEY)
+                base16::encode_lower(&CHAINSPEC_REGISTRY_KEY_BYTES)
             )
         )
     }
@@ -1215,7 +1215,7 @@ mod tests {
             format!(r#"{{"Dictionary":"dictionary-{}"}}"#, HEX_STRING),
             format!(
                 r#"{{"SystemContractRegistry":"system-contract-registry-{}"}}"#,
-                base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_KEY)
+                base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_KEY_BYTES)
             ),
         ];
 
