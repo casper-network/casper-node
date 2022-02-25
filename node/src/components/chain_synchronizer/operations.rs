@@ -121,16 +121,22 @@ async fn fetch_trie_retry_forever(
 ) -> FetchedData<Trie<Key, StoredValue>> {
     loop {
         let peers = ctx.effect_builder.get_fully_connected_peers().await;
-        trace!(?id, "attempting to fetch a trie",);
-        match ctx.effect_builder.fetch_trie(id, peers).await {
-            Ok(fetched_data) => {
-                trace!(?id, "got trie successfully",);
-                return fetched_data;
-            }
-            Err(error) => {
-                warn!(?id, %error, "fast sync could not fetch a trie; trying again")
+
+        if !peers.is_empty() {
+            trace!(?id, "attempting to fetch a trie",);
+            match ctx.effect_builder.fetch_trie(id, peers).await {
+                Ok(fetched_data) => {
+                    trace!(?id, "got trie successfully",);
+                    return fetched_data;
+                }
+                Err(error) => {
+                    warn!(?id, %error, "fast sync could not fetch a trie; trying again")
+                }
             }
         }
+        // Note: We would love to log if we have to retry, but the retry_interval is so short that
+        // it would likely spam the logs.
+
         tokio::time::sleep(ctx.config.retry_interval()).await
     }
 }
