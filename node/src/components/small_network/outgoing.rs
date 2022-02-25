@@ -103,6 +103,7 @@ use std::{
 
 use datasize::DataSize;
 
+use prometheus::IntGauge;
 use tracing::{debug, error_span, field::Empty, info, trace, warn, Span};
 
 use super::{display_error, NodeId};
@@ -297,6 +298,48 @@ where
     /// Contains a mapping from node IDs to connected socket addresses. A missing entry means that
     /// the destination is not connected.
     routes: HashMap<NodeId, SocketAddr>,
+    /// A set of outgoing metrics.
+    #[data_size(skip)]
+    metrics: OutgoingMetrics,
+}
+
+/// A set of metrics used by the outgoing component.
+#[derive(Clone, Debug)]
+pub(super) struct OutgoingMetrics {
+    /// Number of outgoing connections in connecting state.
+    pub(super) out_state_connecting: IntGauge,
+    /// Number of outgoing connections in waiting state.
+    pub(super) out_state_waiting: IntGauge,
+    /// Number of outgoing connections in connected state.
+    pub(super) out_state_connected: IntGauge,
+    /// Number of outgoing connections in blocked state.
+    pub(super) out_state_blocked: IntGauge,
+    /// Number of outgoing connections in loopback state.
+    pub(super) out_state_loopback: IntGauge,
+}
+
+// Note: We only implement `Default` here for use in testing with `OutgoingManager::new`.
+#[cfg(test)]
+impl Default for OutgoingMetrics {
+    fn default() -> Self {
+        Self {
+            out_state_connecting: IntGauge::new(
+                "out_state_connecting",
+                "internal out_state_connecting",
+            )
+            .unwrap(),
+            out_state_waiting: IntGauge::new("out_state_waiting", "internal out_state_waiting")
+                .unwrap(),
+            out_state_connected: IntGauge::new(
+                "out_state_connected",
+                "internal out_state_connected",
+            )
+            .unwrap(),
+            out_state_blocked: IntGauge::new("out_state_blocked", "internal out_state_blocked")
+                .unwrap(),
+            out_state_loopback: IntGauge::new("out_state_loopback", "internal loopback").unwrap(),
+        }
+    }
 }
 
 impl<H, E> OutgoingManager<H, E>
@@ -304,13 +347,27 @@ where
     H: DataSize,
     E: DataSize,
 {
-    /// Creates a new outgoing manager.
-    pub(crate) fn new(config: OutgoingConfig) -> Self {
+    /// Creates a new outgoing manager with a set of metrics that is not connected to any registry.
+    #[cfg(test)]
+    #[inline]
+    pub(super) fn new(config: OutgoingConfig) -> Self {
+        Self::with_metrics(config, Default::default())
+    }
+
+    /// Creates a new outgoing manager with an already existing set of metrics.
+    pub(super) fn with_metrics(config: OutgoingConfig, metrics: OutgoingMetrics) -> Self {
         Self {
             config,
             outgoing: Default::default(),
             routes: Default::default(),
+            metrics,
         }
+    }
+
+    /// Returns a reference to the internal metrics.
+    #[cfg(test)]
+    fn metrics(&self) -> &OutgoingMetrics {
+        &self.metrics
     }
 }
 
@@ -398,6 +455,28 @@ where
             }
         }
 
+        // Update the metrics, decreasing the count of the state that was left, while increasing
+        // the new state. Note that this will lead to a non-atomic dec/inc if the previous state
+        // was the same as before.
+        match prev_state {
+            Some(OutgoingState::Blocked { .. }) => self.metrics.out_state_blocked.dec(),
+            Some(OutgoingState::Connected { .. }) => self.metrics.out_state_connected.dec(),
+            Some(OutgoingState::Connecting { .. }) => self.metrics.out_state_connecting.dec(),
+            Some(OutgoingState::Loopback) => self.metrics.out_state_loopback.dec(),
+            Some(OutgoingState::Waiting { .. }) => self.metrics.out_state_waiting.dec(),
+            None => {
+                // Nothing to do, there was no previous state.
+            }
+        }
+
+        match new_outgoing.state {
+            OutgoingState::Blocked { .. } => self.metrics.out_state_blocked.inc(),
+            OutgoingState::Connected { .. } => self.metrics.out_state_connected.inc(),
+            OutgoingState::Connecting { .. } => self.metrics.out_state_connecting.inc(),
+            OutgoingState::Loopback => self.metrics.out_state_loopback.inc(),
+            OutgoingState::Waiting { .. } => self.metrics.out_state_waiting.inc(),
+        }
+
         new_outgoing
     }
 
@@ -421,8 +500,7 @@ where
     }
 
     /// Iterates over all connected peer IDs.
-    #[allow(clippy::needless_lifetimes)]
-    pub(crate) fn connected_peers<'a>(&'a self) -> impl Iterator<Item = NodeId> + 'a {
+    pub(crate) fn connected_peers(&'_ self) -> impl Iterator<Item = NodeId> + '_ {
         self.routes.keys().cloned()
     }
 
@@ -873,6 +951,7 @@ mod tests {
             addr_a,
             &manager.learn_addr(addr_a, false, clock.now())
         ));
+        assert_eq!(manager.metrics().out_state_connecting.get(), 1);
 
         // Our first connection attempt fails. The connection should now be in waiting state, but
         // not reconnect, since the minimum delay is 2 seconds (2*base_timeout).
@@ -883,6 +962,8 @@ mod tests {
                 when: clock.now(),
             },)
             .is_none());
+        assert_eq!(manager.metrics().out_state_connecting.get(), 0);
+        assert_eq!(manager.metrics().out_state_waiting.get(), 1);
 
         // Performing housekeeping multiple times should not make a difference.
         assert!(manager.perform_housekeeping(clock.now()).is_empty());
@@ -893,6 +974,8 @@ mod tests {
         // Advancing the clock will trigger a reconnection on the next housekeeping.
         clock.advance_time(2_000);
         assert!(dials(addr_a, &manager.perform_housekeeping(clock.now())));
+        assert_eq!(manager.metrics().out_state_connecting.get(), 1);
+        assert_eq!(manager.metrics().out_state_waiting.get(), 0);
 
         // This time the connection succeeds.
         assert!(manager
@@ -902,6 +985,8 @@ mod tests {
                 node_id: id_a,
             },)
             .is_none());
+        assert_eq!(manager.metrics().out_state_connecting.get(), 0);
+        assert_eq!(manager.metrics().out_state_connected.get(), 1);
 
         // The routing table should have been updated and should return the handle.
         assert_eq!(manager.get_route(id_a), Some(&99));
@@ -914,6 +999,8 @@ mod tests {
             addr_a,
             &manager.handle_connection_drop(addr_a, clock.now())
         ));
+        assert_eq!(manager.metrics().out_state_connecting.get(), 1);
+        assert_eq!(manager.metrics().out_state_waiting.get(), 0);
 
         // The route should have been cleared.
         assert!(manager.get_route(id_a).is_none());

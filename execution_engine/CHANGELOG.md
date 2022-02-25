@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.  The format
 ### Changed
 
 * (Perf) Changed contract runtime to allow caching GlobalState changes during execution of a single block.
+* Fixed some integer casts.
 
 
 

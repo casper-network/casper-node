@@ -232,20 +232,22 @@ impl StateProvider for LmdbGlobalState {
             &txn,
             &trie_key,
         )?;
-        txn.commit()?;
 
-        bytes.map_or_else(
+        let maybe_trie_or_chunk = bytes.map_or_else(
             || Ok(None),
             |bytes| {
                 if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
                     let deserialized_trie = bytesrepr::deserialize(bytes.into())?;
                     Ok(Some(TrieOrChunk::Trie(Box::new(deserialized_trie))))
                 } else {
-                    let chunk_with_proof = ChunkWithProof::new(bytes.as_slice(), trie_index)?;
+                    let chunk_with_proof = ChunkWithProof::new(bytes, trie_index)?;
                     Ok(Some(TrieOrChunk::ChunkWithProof(chunk_with_proof)))
                 }
             },
-        )
+        );
+
+        txn.commit()?;
+        maybe_trie_or_chunk
     }
 
     fn get_trie_full(
