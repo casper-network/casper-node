@@ -3182,7 +3182,6 @@ fn should_delegate_and_redelegate() {
             .with_parent_state_hash(builder.get_post_state_hash())
             .with_protocol_version(ProtocolVersion::V1_0_0)
             .with_next_era_id(builder.get_era().successor())
-            .with_run_auction(true)
             .build();
 
         builder
@@ -3236,7 +3235,6 @@ fn should_delegate_and_redelegate() {
             .with_next_era_id(builder.get_era().successor())
             .with_reward_item(RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1))
             .with_reward_item(RewardItem::new(NON_FOUNDER_VALIDATOR_2_PK.clone(), 1))
-            .with_run_auction(true)
             .build();
 
         builder
@@ -3421,7 +3419,6 @@ fn should_handle_redelegation_to_inactive_validator() {
             .with_parent_state_hash(builder.get_post_state_hash())
             .with_protocol_version(ProtocolVersion::V1_0_0)
             .with_next_era_id(builder.get_era().successor())
-            .with_run_auction(true)
             .build();
 
         builder
@@ -3462,7 +3459,6 @@ fn should_handle_redelegation_to_inactive_validator() {
         .with_next_era_id(builder.get_era().successor())
         .with_reward_item(RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1))
         .with_reward_item(RewardItem::new(NON_FOUNDER_VALIDATOR_2_PK.clone(), 1))
-        .with_run_auction(true)
         .build();
 
     builder
@@ -3499,7 +3495,6 @@ fn should_handle_redelegation_to_inactive_validator() {
             .with_next_era_id(builder.get_era().successor())
             .with_reward_item(RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1))
             .with_reward_item(RewardItem::new(NON_FOUNDER_VALIDATOR_2_PK.clone(), 1))
-            .with_run_auction(true)
             .build();
 
         builder
@@ -3592,7 +3587,6 @@ fn should_continue_auction_state_from_release_1_4_x() {
             GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(),
             0,
         ))
-        .with_run_auction(true)
         .build();
 
     builder
@@ -3628,7 +3622,6 @@ fn should_continue_auction_state_from_release_1_4_x() {
             GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(),
             0,
         ))
-        .with_run_auction(true)
         .build();
 
     builder
@@ -3664,7 +3657,6 @@ fn should_continue_auction_state_from_release_1_4_x() {
             GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(),
             0,
         ))
-        .with_run_auction(true)
         .build();
 
     builder
@@ -3754,7 +3746,6 @@ fn should_continue_auction_state_from_release_1_4_x() {
                 GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(),
                 0,
             ))
-            .with_run_auction(true)
             .build();
 
         builder
@@ -3854,7 +3845,6 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
             GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(),
             0,
         ))
-        .with_run_auction(true)
         .build();
 
     builder
@@ -3890,7 +3880,6 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
             GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(),
             0,
         ))
-        .with_run_auction(true)
         .build();
 
     builder
@@ -3926,7 +3915,6 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
             GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(),
             0,
         ))
-        .with_run_auction(true)
         .build();
 
     builder
@@ -4015,7 +4003,6 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
                 GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(),
                 0,
             ))
-            .with_run_auction(true)
             .build();
 
         builder
@@ -4049,7 +4036,6 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
                 GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(),
                 0,
             ))
-            .with_run_auction(true)
             .build();
 
         builder
