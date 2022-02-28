@@ -7,16 +7,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)"
 pushd "$ROOT_DIR"
 source $(pwd)/utils/nctl/activate
 
-# Clone the client and launcher repos if required.
-if [ ! -d "$NCTL_CASPER_CLIENT_HOME" ]; then
-    git clone https://github.com/casper-ecosystem/casper-client-rs "$NCTL_CASPER_CLIENT_HOME"
-fi
-if [ ! -d "$NCTL_CASPER_NODE_LAUNCHER_HOME" ]; then
-    git clone https://github.com/casper-network/casper-node-launcher "$NCTL_CASPER_NODE_LAUNCHER_HOME"
-fi
-
-# NCTL Build
-nctl-compile
+# Call compile wrapper for client, launcher, and nctl-compile
+bash -i "$ROOT_DIR/ci/nctl_compile.sh"
 
 function main() {
     local TEST_ID=${1}

@@ -1,0 +1,70 @@
+---
+name: lints
+permissions:
+  contents: read
+
+on:
+  push:
+    branches:
+      - dev
+      - trying
+      - staging
+      - 'release-**'
+      - 'feat-**'
+    paths-ignore:
+      - '**.md'
+
+  pull_request:
+    branches:
+      - dev
+      - 'release-**'
+      - 'feat-**'
+    paths-ignore:
+      - '**.md'
+
+jobs:
+  lints:
+    name: lints
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@ec3a7ce113134d7a93b817d10a8272cb61118579 #tag v2.4.0
+        with:
+          persist-credentials: false
+
+      - name: Get nightly toolchain from smart_contracts dir
+        id: nightly-toolchain
+        run: echo "::set-output name=version::$(cat smart_contracts/rust-toolchain)"
+
+      - name: Install Toolchain - Stable
+        uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af #tag v1.0.7
+        with:
+          profile: minimal
+          toolchain: stable
+          components: rustfmt, clippy
+          target: wasm32-unknown-unknown
+
+      - name: Install Toolchain - Nightly
+        uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af #tag v1.0.7
+        with:
+          profile: minimal
+          toolchain: ${{ steps.nightly-toolchain.outputs.version }}
+          components: rustfmt, clippy
+          target: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v1
+
+      - name: fmt
+        run: make check-format
+
+      - name: clippy
+        run: make lint
+
+      - name: doc
+        run: make doc
+
+      - name: lockfile
+        run: cargo generate-lockfile
+
+      - name: audit
+        run: make audit
