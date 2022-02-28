@@ -955,7 +955,7 @@ where
     }
 
     /// Call a contract by pushing a stack element onto the frame.
-    pub fn call_contract_with_stack(
+    pub(crate) fn call_contract_with_stack(
         &mut self,
         contract_hash: ContractHash,
         entry_point_name: &str,
