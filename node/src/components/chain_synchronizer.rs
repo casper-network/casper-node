@@ -54,7 +54,7 @@ pub(crate) struct ChainSynchronizer {
     /// reactor can stop running.  It is passed to the participating reactor's constructor via its
     /// config.
     joining_outcome: Option<JoiningOutcome>,
-    /// TODO[RC]: Docs.
+    /// Metrics for the chain synchronization process.
     metrics: Metrics,
     /// The next upgrade activation point, used to determine what action to take after completing
     /// chain synchronization.
