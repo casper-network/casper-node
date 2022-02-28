@@ -187,12 +187,12 @@ impl TryFrom<StoredValue> for CLValue {
     type Error = TypeMismatch;
 
     fn try_from(stored_value: StoredValue) -> Result<Self, Self::Error> {
+        let type_name = stored_value.type_name();
         match stored_value {
             StoredValue::CLValue(cl_value) => Ok(cl_value),
-            _ => Err(TypeMismatch::new(
-                "CLValue".to_string(),
-                stored_value.type_name(),
-            )),
+            StoredValue::ContractPackage(contract_package) => Ok(CLValue::from_t(contract_package)
+                .map_err(|_error| TypeMismatch::new("ContractPackage".to_string(), type_name))?),
+            _ => Err(TypeMismatch::new("CLValue".to_string(), type_name)),
         }
     }
 }

@@ -51,7 +51,7 @@ where
     }
 
     fn get_approved_spending_limit(&self) -> U512 {
-        *self.context.main_purse_spending_limit()
+        self.context.remaining_spending_limit()
     }
 
     fn sub_approved_spending_limit(&mut self, transferred: U512) {

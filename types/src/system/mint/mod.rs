@@ -98,29 +98,11 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         amount: U512,
         id: Option<u64>,
     ) -> Result<(), Error> {
-        // Indicates if main purse is used for token transfer.
-        let mut is_main_purse = false;
-        match (self.get_phase(), self.get_immediate_caller()) {
-            (Phase::Session, Some(&CallStackElement::StoredSession { .. })) => {
-                // stored session code is not allowed to call this method in the session phase
-                return Err(Error::InvalidContext);
-            }
-            (Phase::Session | Phase::Payment, Some(&CallStackElement::Session { .. })) => {
-                if self.get_main_purse().addr() == source.addr() {
-                    is_main_purse = true;
-                    if amount > self.get_approved_spending_limit() {
-                        // transferring more than user approved for is invalid.
-                        return Err(Error::UnapprovedSpendingAmount);
-                    }
-                }
-            }
-            (
-                Phase::System | Phase::Payment | Phase::Session | Phase::FinalizePayment,
-                Some(&CallStackElement::Session { .. })
-                | Some(&CallStackElement::StoredSession { .. })
-                | Some(&CallStackElement::StoredContract { .. })
-                | None,
-            ) => {}
+        if let (Phase::Session, Some(&CallStackElement::StoredSession { .. })) =
+            (self.get_phase(), self.get_immediate_caller())
+        {
+            // stored session code is not allowed to call this method in the session phase
+            return Err(Error::InvalidContext);
         }
 
         if !source.is_readable() {
@@ -136,14 +118,21 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         if amount > source_balance {
             return Err(Error::InsufficientFunds);
         }
+
         if self.read_balance(target)?.is_none() {
             return Err(Error::DestNotFound);
         }
-        self.write_balance(source, source_balance - amount)?;
-        self.add_balance(target, amount)?;
-        if is_main_purse {
+
+        if self.get_main_purse().addr() == source.addr() {
+            if amount > self.get_approved_spending_limit() {
+                return Err(Error::UnapprovedSpendingAmount);
+            }
             self.sub_approved_spending_limit(amount);
         }
+
+        self.write_balance(source, source_balance - amount)?;
+        self.add_balance(target, amount)?;
+
         self.record_transfer(maybe_to, source, target, amount, id)?;
         Ok(())
     }

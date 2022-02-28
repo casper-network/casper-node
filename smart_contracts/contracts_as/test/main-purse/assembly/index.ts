@@ -2,7 +2,7 @@
 import {getMainPurse} from "../../../../contract_as/assembly/account";
 import * as CL from "../../../../contract_as/assembly";
 import {Error} from "../../../../contract_as/assembly/error";
-import {URef} from "../../../../contract_as/assembly/uref";
+import {URef, AccessRights} from "../../../../contract_as/assembly/uref";
 
 const ARG_PURSE = "purse";
 
@@ -20,7 +20,7 @@ export function call(): void {
     return;
   }
   const expectedMainPurse = purseResult.value;
-  const actualMainPurse = getMainPurse();
+  const actualMainPurse = getMainPurse().withAccessRights(AccessRights.READ_ADD);
 
   if (<URef>expectedMainPurse != <URef>actualMainPurse)
     Error.fromUserError(<u16>CustomError.EqualityAssertionFailed).revert();

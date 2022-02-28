@@ -32,10 +32,12 @@ use casper_types::{
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
+const CONTRACT_NEW_NAMED_UREF: &str = "new_named_uref.wasm";
 const CONTRACT_CREATE_PURSE_01: &str = "create_purse_01.wasm";
-const TRANSFER_RESULT_NAMED_KEY: &str = "transfer_result";
+const NON_UREF_NAMED_KEY: &str = "transfer_result";
 const TEST_PURSE_NAME: &str = "test_purse";
 const ARG_PURSE_NAME: &str = "purse_name";
+const ARG_UREF_NAME: &str = "uref_name";
 
 static ACCOUNT_1_SK: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::secp256k1_from_bytes(&[234u8; 32]).unwrap());
@@ -430,8 +432,7 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
             )
         }
         InvalidWasmlessTransfer::SourceURefNotPurse => {
-            let not_purse_uref =
-                get_default_account_named_uref(&mut builder, TRANSFER_RESULT_NAMED_KEY);
+            let not_purse_uref = get_default_account_named_uref(&mut builder, NON_UREF_NAMED_KEY);
             // passes an invalid uref as source (an existing uref that is not a purse uref)
             (
                 *DEFAULT_ACCOUNT_ADDR,
@@ -445,8 +446,7 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
             )
         }
         InvalidWasmlessTransfer::TargetURefNotPurse => {
-            let not_purse_uref =
-                get_default_account_named_uref(&mut builder, TRANSFER_RESULT_NAMED_KEY);
+            let not_purse_uref = get_default_account_named_uref(&mut builder, NON_UREF_NAMED_KEY);
             // passes an invalid uref as target (an existing uref that is not a purse uref)
             (
                 *DEFAULT_ACCOUNT_ADDR,
@@ -689,8 +689,23 @@ fn init_wasmless_transform_builder(create_account_2: bool) -> InMemoryWasmTestBu
     builder
         .exec(create_account_2_request)
         .commit()
-        .expect_success()
-        .to_owned()
+        .expect_success();
+
+    let new_named_uref_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_NEW_NAMED_UREF,
+        runtime_args! {
+            ARG_UREF_NAME => NON_UREF_NAMED_KEY,
+        },
+    )
+    .build();
+
+    builder
+        .exec(new_named_uref_request)
+        .commit()
+        .expect_success();
+
+    builder
 }
 
 #[ignore]

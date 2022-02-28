@@ -1,4 +1,7 @@
-use alloc::vec::Vec;
+use alloc::{
+    collections::{btree_map::Entry, BTreeMap},
+    vec::Vec,
+};
 use core::fmt::{self, Display, Formatter};
 
 use bitflags::bitflags;
@@ -10,7 +13,7 @@ use rand::{
 };
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::bytesrepr;
+use crate::{bytesrepr, Key, URef, URefAddr};
 
 /// The number of bytes in a serialized [`AccessRights`].
 pub const ACCESS_RIGHTS_SERIALIZED_LENGTH: usize = 1;
@@ -133,9 +136,121 @@ impl Distribution<AccessRights> for Standard {
     }
 }
 
+/// Used to indicate if a granted [`URef`] was already held by the context.
+#[derive(Debug, PartialEq)]
+pub enum GrantedAccess {
+    /// No new set of access rights were granted.
+    PreExisting,
+    /// A new set of access rights were granted.
+    Granted {
+        /// The address of the URef.
+        uref_addr: URefAddr,
+        /// The set of the newly granted access rights.
+        newly_granted_access_rights: AccessRights,
+    },
+}
+
+/// Access rights for a given runtime context.
+#[derive(Debug, PartialEq)]
+pub struct ContextAccessRights {
+    context_key: Key,
+    access_rights: BTreeMap<URefAddr, AccessRights>,
+}
+
+impl ContextAccessRights {
+    /// Creates a new instance of access rights from an iterator of URefs merging any duplicates,
+    /// taking the union of their rights.
+    pub fn new<T: IntoIterator<Item = URef>>(context_key: Key, uref_iter: T) -> Self {
+        let mut context_access_rights = ContextAccessRights {
+            context_key,
+            access_rights: BTreeMap::new(),
+        };
+        context_access_rights.do_extend(uref_iter);
+        context_access_rights
+    }
+
+    /// Returns the current context key.
+    pub fn context_key(&self) -> Key {
+        self.context_key
+    }
+
+    /// Extends the current access rights from a given set of URefs.
+    pub fn extend(&mut self, urefs: &[URef]) {
+        self.do_extend(urefs.iter().copied())
+    }
+
+    /// Extends the current access rights from a given set of URefs.
+    fn do_extend<T: IntoIterator<Item = URef>>(&mut self, uref_iter: T) {
+        for uref in uref_iter {
+            match self.access_rights.entry(uref.addr()) {
+                Entry::Occupied(rights) => {
+                    *rights.into_mut() = rights.get().union(uref.access_rights());
+                }
+                Entry::Vacant(rights) => {
+                    rights.insert(uref.access_rights());
+                }
+            }
+        }
+    }
+
+    /// Checks whether given uref has enough access rights.
+    pub fn has_access_rights_to_uref(&self, uref: &URef) -> bool {
+        if let Some(known_rights) = self.access_rights.get(&uref.addr()) {
+            let rights_to_check = uref.access_rights();
+            known_rights.contains(rights_to_check)
+        } else {
+            // URef is not known
+            false
+        }
+    }
+
+    /// Grants access to a [`URef`]; unless access was pre-existing.
+    pub fn grant_access(&mut self, uref: URef) -> GrantedAccess {
+        match self.access_rights.entry(uref.addr()) {
+            Entry::Occupied(existing_rights) => {
+                let newly_granted_access_rights =
+                    uref.access_rights().difference(*existing_rights.get());
+                *existing_rights.into_mut() = existing_rights.get().union(uref.access_rights());
+                if newly_granted_access_rights.is_none() {
+                    GrantedAccess::PreExisting
+                } else {
+                    GrantedAccess::Granted {
+                        uref_addr: uref.addr(),
+                        newly_granted_access_rights,
+                    }
+                }
+            }
+            Entry::Vacant(rights) => {
+                rights.insert(uref.access_rights());
+                GrantedAccess::Granted {
+                    uref_addr: uref.addr(),
+                    newly_granted_access_rights: uref.access_rights(),
+                }
+            }
+        }
+    }
+
+    /// Remove access for a given `URef`.
+    pub fn remove_access(&mut self, uref_addr: URefAddr, access_rights: AccessRights) {
+        if let Some(current_access_rights) = self.access_rights.get_mut(&uref_addr) {
+            current_access_rights.remove(access_rights)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::UREF_ADDR_LENGTH;
+
+    const UREF_ADDRESS: [u8; UREF_ADDR_LENGTH] = [1; UREF_ADDR_LENGTH];
+    const KEY: Key = Key::URef(URef::new(UREF_ADDRESS, AccessRights::empty()));
+    const UREF_NO_PERMISSIONS: URef = URef::new(UREF_ADDRESS, AccessRights::empty());
+    const UREF_READ: URef = URef::new(UREF_ADDRESS, AccessRights::READ);
+    const UREF_ADD: URef = URef::new(UREF_ADDRESS, AccessRights::ADD);
+    const UREF_WRITE: URef = URef::new(UREF_ADDRESS, AccessRights::WRITE);
+    const UREF_READ_ADD: URef = URef::new(UREF_ADDRESS, AccessRights::READ_ADD);
+    const UREF_READ_ADD_WRITE: URef = URef::new(UREF_ADDRESS, AccessRights::READ_ADD_WRITE);
 
     fn test_readable(right: AccessRights, is_true: bool) {
         assert_eq!(right.is_readable(), is_true)
@@ -180,5 +295,117 @@ mod tests {
         test_addable(AccessRights::READ, false);
         test_addable(AccessRights::WRITE, false);
         test_addable(AccessRights::READ_ADD_WRITE, true);
+    }
+
+    #[test]
+    fn should_check_has_access_rights_to_uref() {
+        let context_rights = ContextAccessRights::new(KEY, vec![UREF_READ_ADD]);
+        assert!(context_rights.has_access_rights_to_uref(&UREF_READ_ADD));
+        assert!(context_rights.has_access_rights_to_uref(&UREF_READ));
+        assert!(context_rights.has_access_rights_to_uref(&UREF_ADD));
+        assert!(context_rights.has_access_rights_to_uref(&UREF_NO_PERMISSIONS));
+    }
+
+    #[test]
+    fn should_check_does_not_have_access_rights_to_uref() {
+        let context_rights = ContextAccessRights::new(KEY, vec![UREF_READ_ADD]);
+        assert!(!context_rights.has_access_rights_to_uref(&UREF_READ_ADD_WRITE));
+        assert!(!context_rights
+            .has_access_rights_to_uref(&URef::new([2; UREF_ADDR_LENGTH], AccessRights::empty())));
+    }
+
+    #[test]
+    fn should_extend_access_rights() {
+        // Start with uref with no permissions.
+        let mut context_rights = ContextAccessRights::new(KEY, vec![UREF_NO_PERMISSIONS]);
+        let mut expected_rights = BTreeMap::new();
+        expected_rights.insert(UREF_ADDRESS, AccessRights::empty());
+        assert_eq!(context_rights.access_rights, expected_rights);
+
+        // Extend with a READ_ADD: should merge to single READ_ADD.
+        context_rights.extend(&[UREF_READ_ADD]);
+        *expected_rights.get_mut(&UREF_ADDRESS).unwrap() = AccessRights::READ_ADD;
+        assert_eq!(context_rights.access_rights, expected_rights);
+
+        // Extend with a READ: should have no observable effect.
+        context_rights.extend(&[UREF_READ]);
+        assert_eq!(context_rights.access_rights, expected_rights);
+
+        // Extend with a WRITE: should merge to single READ_ADD_WRITE.
+        context_rights.extend(&[UREF_WRITE]);
+        *expected_rights.get_mut(&UREF_ADDRESS).unwrap() = AccessRights::READ_ADD_WRITE;
+        assert_eq!(context_rights.access_rights, expected_rights);
+    }
+
+    #[test]
+    fn should_perform_union_of_access_rights_in_new() {
+        let context_rights =
+            ContextAccessRights::new(KEY, vec![UREF_NO_PERMISSIONS, UREF_READ, UREF_ADD]);
+
+        // Expect the three discrete URefs' rights to be unioned into READ_ADD.
+        let mut expected_rights = BTreeMap::new();
+        expected_rights.insert(UREF_ADDRESS, AccessRights::READ_ADD);
+        assert_eq!(context_rights.access_rights, expected_rights);
+    }
+
+    #[test]
+    fn should_grant_access_rights() {
+        let mut context_rights = ContextAccessRights::new(KEY, vec![UREF_READ_ADD]);
+        let granted_access = context_rights.grant_access(UREF_READ);
+        assert_eq!(granted_access, GrantedAccess::PreExisting);
+        let granted_access = context_rights.grant_access(UREF_READ_ADD_WRITE);
+        assert_eq!(
+            granted_access,
+            GrantedAccess::Granted {
+                uref_addr: UREF_ADDRESS,
+                newly_granted_access_rights: AccessRights::WRITE
+            }
+        );
+        assert!(context_rights.has_access_rights_to_uref(&UREF_READ_ADD_WRITE));
+        let new_uref = URef::new([3; 32], AccessRights::all());
+        let granted_access = context_rights.grant_access(new_uref);
+        assert_eq!(
+            granted_access,
+            GrantedAccess::Granted {
+                uref_addr: new_uref.addr(),
+                newly_granted_access_rights: AccessRights::all()
+            }
+        );
+        assert!(context_rights.has_access_rights_to_uref(&new_uref));
+    }
+
+    #[test]
+    fn should_remove_access_rights() {
+        let mut context_rights = ContextAccessRights::new(KEY, vec![UREF_READ_ADD_WRITE]);
+        assert!(context_rights.has_access_rights_to_uref(&UREF_READ_ADD_WRITE));
+
+        // Strip write access from the context rights.
+        context_rights.remove_access(UREF_ADDRESS, AccessRights::WRITE);
+        assert!(
+            !context_rights.has_access_rights_to_uref(&UREF_READ_ADD_WRITE),
+            "Write access should have been removed"
+        );
+
+        // Strip the access again to ensure that the bit is not flipped back.
+        context_rights.remove_access(UREF_ADDRESS, AccessRights::WRITE);
+        assert!(
+            !context_rights.has_access_rights_to_uref(&UREF_READ_ADD_WRITE),
+            "Write access should not have been granted back"
+        );
+        assert!(
+            context_rights.has_access_rights_to_uref(&UREF_READ_ADD),
+            "Read and add access should be preserved."
+        );
+
+        // Strip both read and add access from the context rights.
+        context_rights.remove_access(UREF_ADDRESS, AccessRights::READ_ADD);
+        assert!(
+            !context_rights.has_access_rights_to_uref(&UREF_READ_ADD),
+            "Read and add access should have been removed"
+        );
+        assert!(
+            context_rights.has_access_rights_to_uref(&UREF_NO_PERMISSIONS),
+            "The access rights should be empty"
+        );
     }
 }

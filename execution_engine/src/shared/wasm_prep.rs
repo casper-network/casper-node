@@ -20,6 +20,8 @@ pub enum PreprocessingError {
     StackLimiter,
     /// Wasm bytes is missing memory section.
     MissingMemorySection,
+    /// The module is missing.
+    MissingModule,
 }
 
 impl From<elements::Error> for PreprocessingError {
@@ -35,6 +37,7 @@ impl Display for PreprocessingError {
             PreprocessingError::OperationForbiddenByGasRules => write!(f, "Encountered operation forbidden by gas rules. Consult instruction -> metering config map"),
             PreprocessingError::StackLimiter => write!(f, "Stack limiter error"),
             PreprocessingError::MissingMemorySection => write!(f, "Memory section should exist"),
+            PreprocessingError::MissingModule => write!(f, "Missing module")
         }
     }
 }
@@ -49,48 +52,39 @@ fn memory_section(module: &Module) -> Option<&MemorySection> {
     None
 }
 
-/// Wasm preprocessor.
-pub struct Preprocessor {
+/// Preprocesses Wasm bytes and returns a module.
+///
+/// This process consists of a few steps:
+/// - Validate that the given bytes contain a memory section, and check the memory page limit.
+/// - Inject gas counters into the code, which makes it possible for the executed Wasm to be charged
+///   for opcodes; this also validates opcodes and ensures that there are no forbidden opcodes in
+///   use, such as floating point opcodes.
+/// - Ensure that the code has a maximum stack height.
+///
+/// In case the preprocessing rules can't be applied, an error is returned.
+/// Otherwise, this method returns a valid module ready to be executed safely on the host.
+pub fn preprocess(
     wasm_config: WasmConfig,
-}
+    module_bytes: &[u8],
+) -> Result<Module, PreprocessingError> {
+    let module = deserialize(module_bytes)?;
 
-impl Preprocessor {
-    /// Creates a new instance of the preprocessor.
-    pub fn new(wasm_config: WasmConfig) -> Self {
-        Self { wasm_config }
+    if memory_section(&module).is_none() {
+        // `pwasm_utils::externalize_mem` expects a memory section to exist in the module, and
+        // panics otherwise.
+        return Err(PreprocessingError::MissingMemorySection);
     }
 
-    /// Preprocesses Wasm bytes and returns a module.
-    ///
-    /// This process consists of a few steps:
-    /// - Validate that the given bytes contain a memory section, and check the memory page limit.
-    /// - Inject gas counters into the code, which makes it possible for the executed Wasm to be
-    ///   charged for opcodes; this also validates opcodes and ensures that there are no forbidden
-    ///   opcodes in use, such as floating point opcodes.
-    /// - Ensure that the code has a maximum stack height.
-    ///
-    /// In case the preprocessing rules can't be applied, an error is returned.
-    /// Otherwise, this method returns a valid module ready to be executed safely on the host.
-    pub fn preprocess(&self, module_bytes: &[u8]) -> Result<Module, PreprocessingError> {
-        let module = deserialize(module_bytes)?;
-
-        if memory_section(&module).is_none() {
-            // `pwasm_utils::externalize_mem` expects a memory section to exist in the module, and
-            // panics otherwise.
-            return Err(PreprocessingError::MissingMemorySection);
-        }
-
-        let module = pwasm_utils::externalize_mem(module, None, self.wasm_config.max_memory);
-        let module = pwasm_utils::inject_gas_counter(
-            module,
-            &self.wasm_config.opcode_costs().to_set(),
-            DEFAULT_GAS_MODULE_NAME,
-        )
-        .map_err(|_| PreprocessingError::OperationForbiddenByGasRules)?;
-        let module = stack_height::inject_limiter(module, self.wasm_config.max_stack_height)
-            .map_err(|_| PreprocessingError::StackLimiter)?;
-        Ok(module)
-    }
+    let module = pwasm_utils::externalize_mem(module, None, wasm_config.max_memory);
+    let module = pwasm_utils::inject_gas_counter(
+        module,
+        &wasm_config.opcode_costs().to_set(),
+        DEFAULT_GAS_MODULE_NAME,
+    )
+    .map_err(|_| PreprocessingError::OperationForbiddenByGasRules)?;
+    let module = stack_height::inject_limiter(module, wasm_config.max_stack_height)
+        .map_err(|_| PreprocessingError::StackLimiter)?;
+    Ok(module)
 }
 
 /// Returns a parity Module from the given bytes without making modifications or checking limits.

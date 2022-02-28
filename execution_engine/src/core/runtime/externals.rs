@@ -300,7 +300,7 @@ where
                 } else {
                     let purse = self.create_purse()?;
                     let purse_bytes = purse.into_bytes().map_err(Error::BytesRepr)?;
-                    self.memory
+                    self.try_get_memory()?
                         .set(dest_ptr, &purse_bytes)
                         .map_err(|e| Error::Interpreter(e.into()))?;
                     Ok(())
@@ -348,7 +348,7 @@ where
                     Ok(transferred_to) => {
                         let result_value: u32 = transferred_to as u32;
                         let result_value_bytes = result_value.to_le_bytes();
-                        self.memory
+                        self.try_get_memory()?
                             .set(result_ptr, &result_value_bytes)
                             .map_err(|error| Error::Interpreter(error.into()))?;
                         Ok(())
@@ -418,7 +418,7 @@ where
                     Ok(transferred_to) => {
                         let result_value: u32 = transferred_to as u32;
                         let result_value_bytes = result_value.to_le_bytes();
-                        self.memory
+                        self.try_get_memory()?
                             .set(result_ptr, &result_value_bytes)
                             .map_err(|error| Error::Interpreter(error.into()))?;
                         Ok(())
@@ -926,7 +926,7 @@ where
                     let err_value = u32::from(api_error::ApiError::BufferTooSmall) as i32;
                     return Ok(Some(RuntimeValue::I32(err_value)));
                 }
-                self.memory
+                self.try_get_memory()?
                     .set(out_ptr, &digest)
                     .map_err(|error| Error::Interpreter(error.into()))?;
                 Ok(Some(RuntimeValue::I32(0)))

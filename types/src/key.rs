@@ -394,6 +394,15 @@ impl Key {
         }
     }
 
+    /// Returns a reference to the inner [`URef`] if `self` is of type [`Key::URef`], otherwise
+    /// returns `None`.
+    pub fn as_uref_mut(&mut self) -> Option<&mut URef> {
+        match self {
+            Key::URef(uref) => Some(uref),
+            _ => None,
+        }
+    }
+
     /// Returns a reference to the inner `URefAddr` if `self` is of type [`Key::Balance`],
     /// otherwise returns `None`.
     pub fn as_balance(&self) -> Option<&URefAddr> {

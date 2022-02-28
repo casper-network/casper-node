@@ -15,7 +15,7 @@ use alloc::{collections::BTreeMap, vec::Vec};
 use num_rational::Ratio;
 use num_traits::{CheckedMul, CheckedSub};
 
-use crate::{account::AccountHash, EraId, PublicKey, U512};
+use crate::{account::AccountHash, ApiError, EraId, PublicKey, U512};
 
 pub use bid::{Bid, VESTING_SCHEDULE_LENGTH_MILLIS};
 pub use constants::*;
@@ -105,19 +105,19 @@ pub trait Auction:
         public_key: PublicKey,
         delegation_rate: DelegationRate,
         amount: U512,
-    ) -> Result<U512, Error> {
+    ) -> Result<U512, ApiError> {
         let provided_account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
 
         if amount.is_zero() {
-            return Err(Error::BondTooSmall);
+            return Err(Error::BondTooSmall.into());
         }
 
         if delegation_rate > DELEGATION_RATE_DENOMINATOR {
-            return Err(Error::DelegationRateTooLarge);
+            return Err(Error::DelegationRateTooLarge.into());
         }
 
         if !self.is_allowed_session_caller(&provided_account_hash) {
-            return Err(Error::InvalidContext);
+            return Err(Error::InvalidContext.into());
         }
 
         let source = self.get_main_purse()?;
@@ -137,8 +137,13 @@ pub trait Auction:
                     amount,
                     None,
                 )
-                .map_err(|_| Error::TransferToBidPurse)?
-                .map_err(|_| Error::TransferToBidPurse)?;
+                .map_err(|_| ApiError::from(Error::TransferToBidPurse))?
+                .map_err(|mint_error| {
+                    // Propagate mint contract's error that occured during execution of transfer
+                    // entrypoint. This will improve UX in case of (for example)
+                    // unapproved spending limit error.
+                    ApiError::from(mint_error)
+                })?;
                 let updated_amount = bid
                     .with_delegation_rate(delegation_rate)
                     .increase_stake(amount)?;
@@ -155,7 +160,12 @@ pub trait Auction:
                     None,
                 )
                 .map_err(|_| Error::TransferToBidPurse)?
-                .map_err(|_| Error::TransferToBidPurse)?;
+                .map_err(|mint_error| {
+                    // Propagate mint contract's error that occured during execution of transfer
+                    // entrypoint. This will improve UX in case of (for example)
+                    // unapproved spending limit error.
+                    ApiError::from(mint_error)
+                })?;
                 let bid = Bid::unlocked(public_key, bonding_purse, amount, delegation_rate);
                 self.write_bid(account_hash, bid)?;
                 amount
@@ -239,16 +249,16 @@ pub trait Auction:
         amount: U512,
         max_delegator_size_limit: usize,
         minimum_delegation_amount: u64,
-    ) -> Result<U512, Error> {
+    ) -> Result<U512, ApiError> {
         let provided_account_hash =
             AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
 
         if amount.is_zero() {
-            return Err(Error::BondTooSmall);
+            return Err(Error::BondTooSmall.into());
         }
 
         if !self.is_allowed_session_caller(&provided_account_hash) {
-            return Err(Error::InvalidContext);
+            return Err(Error::InvalidContext.into());
         }
 
         let source = self.get_main_purse()?;
@@ -259,7 +269,7 @@ pub trait Auction:
             Some(bid) => bid,
             None => {
                 // Return early if target validator is not in `bids`
-                return Err(Error::ValidatorNotFound);
+                return Err(Error::ValidatorNotFound.into());
             }
         };
 
@@ -275,17 +285,22 @@ pub trait Auction:
                     None,
                 )
                 .map_err(|_| Error::TransferToDelegatorPurse)?
-                .map_err(|_| Error::TransferToDelegatorPurse)?;
+                .map_err(|mint_error| {
+                    // Propagate mint contract's error that occured during execution of transfer
+                    // entrypoint. This will improve UX in case of (for example)
+                    // unapproved spending limit error.
+                    ApiError::from(mint_error)
+                })?;
                 delegator.increase_stake(amount)?;
                 *delegator.staked_amount()
             }
             None => {
                 if delegators.len() >= max_delegator_size_limit {
-                    return Err(Error::ExceededDelegatorSizeLimit);
+                    return Err(Error::ExceededDelegatorSizeLimit.into());
                 }
 
                 if amount < U512::from(minimum_delegation_amount) {
-                    return Err(Error::DelegationAmountTooSmall);
+                    return Err(Error::DelegationAmountTooSmall.into());
                 }
 
                 let current_total_no_of_delegators = detail::get_total_number_of_delegators(self)?;
@@ -294,7 +309,7 @@ pub trait Auction:
                     detail::get_validator_slots(self)? * max_delegator_size_limit;
 
                 if (current_total_no_of_delegators + 1) >= max_global_delegator_capacity {
-                    return Err(Error::GlobalDelegatorCapacityReached);
+                    return Err(Error::GlobalDelegatorCapacityReached.into());
                 }
 
                 let bonding_purse = self.create_purse()?;
@@ -306,7 +321,12 @@ pub trait Auction:
                     None,
                 )
                 .map_err(|_| Error::TransferToDelegatorPurse)?
-                .map_err(|_| Error::TransferToDelegatorPurse)?;
+                .map_err(|mint_error| {
+                    // Propagate mint contract's error that occured during execution of transfer
+                    // entrypoint. This will improve UX in case of (for example)
+                    // unapproved spending limit error.
+                    ApiError::from(mint_error)
+                })?;
                 let delegator = Delegator::unlocked(
                     delegator_public_key.clone(),
                     amount,

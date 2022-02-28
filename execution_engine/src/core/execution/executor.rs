@@ -1,72 +1,35 @@
 use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
 
-use parity_wasm::elements::Module;
-use tracing::warn;
-use wasmi::ModuleRef;
-
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::FromBytes,
     contracts::NamedKeys,
     system::{auction, handle_payment, mint, AUCTION, HANDLE_PAYMENT, MINT},
-    BlockTime, CLTyped, ContractPackage, DeployHash, EntryPoint, EntryPointType, Gas, Key, Phase,
+    BlockTime, CLTyped, ContextAccessRights, DeployHash, EntryPointType, Gas, Key, Phase,
     ProtocolVersion, RuntimeArgs, StoredValue, U512,
 };
 
 use crate::{
     core::{
-        engine_state::{execution_result::ExecutionResult, EngineConfig},
+        engine_state::{
+            executable_deploy_item::ExecutionKind, execution_result::ExecutionResult, EngineConfig,
+            ExecError,
+        },
         execution::{address_generator::AddressGenerator, Error},
-        get_approved_amount,
-        runtime::{self, instance_and_memory, Runtime, RuntimeStack},
-        runtime_context::{self, RuntimeContext},
+        runtime::{Runtime, RuntimeStack},
+        runtime_context::RuntimeContext,
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
-    shared::{execution_journal::ExecutionJournal, newtypes::CorrelationId},
+    shared::newtypes::CorrelationId,
     storage::global_state::StateReader,
 };
 
-macro_rules! on_fail_charge {
-    ($fn:expr) => {
-        match $fn {
-            Ok(res) => res,
-            Err(e) => {
-                let exec_err: Error = e.into();
-                warn!("Execution failed: {:?}", exec_err);
-                return ExecutionResult::precondition_failure(exec_err.into());
-            }
-        }
-    };
-    ($fn:expr, $cost:expr, $transfers:expr) => {
-        match $fn {
-            Ok(res) => res,
-            Err(e) => {
-                let exec_err: Error = e.into();
-                warn!("Execution failed: {:?}", exec_err);
-                return ExecutionResult::Failure {
-                    error: exec_err.into(),
-                    execution_journal: Default::default(),
-                    transfers: $transfers,
-                    cost: $cost,
-                };
-            }
-        }
-    };
-    ($fn:expr, $cost:expr, $execution_journal:expr, $transfers:expr) => {
-        match $fn {
-            Ok(res) => res,
-            Err(e) => {
-                let exec_err: Error = e.into();
-                warn!("Execution failed: {:?}", exec_err);
-                return ExecutionResult::Failure {
-                    error: exec_err.into(),
-                    execution_journal: $execution_journal,
-                    transfers: $transfers,
-                    cost: $cost,
-                };
-            }
-        }
-    };
+const ARG_AMOUNT: &str = "amount";
+
+fn try_get_amount(runtime_args: &RuntimeArgs) -> Result<U512, ExecError> {
+    runtime_args
+        .try_get_number(ARG_AMOUNT)
+        .map_err(ExecError::from)
 }
 
 /// Executor object deals with execution of WASM modules.
@@ -74,16 +37,10 @@ pub struct Executor {
     config: EngineConfig,
 }
 
-#[allow(clippy::too_many_arguments)]
 impl Executor {
     /// Creates new executor object.
     pub fn new(config: EngineConfig) -> Self {
         Executor { config }
-    }
-
-    /// Returns config.
-    pub fn config(&self) -> EngineConfig {
-        self.config
     }
 
     /// Executes a WASM module.
@@ -91,14 +48,13 @@ impl Executor {
     /// This method checks if a given contract hash is a system contract, and then short circuits to
     /// a specific native implementation of it. Otherwise, a supplied WASM module is executed.
     #[allow(clippy::too_many_arguments)]
-    pub fn exec<R>(
+    pub(crate) fn exec<R>(
         &self,
-        module: Module,
-        entry_point: EntryPoint,
+        execution_kind: ExecutionKind,
         args: RuntimeArgs,
-        base_key: Key,
         account: &Account,
         named_keys: &mut NamedKeys,
+        access_rights: ContextAccessRights,
         authorization_keys: BTreeSet<AccountHash>,
         blocktime: BlockTime,
         deploy_hash: DeployHash,
@@ -107,200 +63,84 @@ impl Executor {
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
-        contract_package: &ContractPackage,
         stack: RuntimeStack,
     ) -> ExecutionResult
     where
         R: StateReader<Key, StoredValue>,
         R::Error: Into<Error>,
     {
-        let entry_point_name = entry_point.name();
-        let entry_point_type = entry_point.entry_point_type();
-        let entry_point_access = entry_point.access();
-
-        let (instance, memory) = on_fail_charge!(instance_and_memory(
-            module.clone(),
-            protocol_version,
-            self.config.wasm_config()
-        ));
-
-        let access_rights = {
-            let mut extra_keys: Vec<Key> = named_keys.values().cloned().collect();
-
-            // Extract all urefs from args and check if user passed his main purse. We only consider
-            // main purse, as there's no other way to parse extra urefs i.e. all other urefs that
-            // are not main purse, or named keys, are considered forged.
-            if let Ok(extracted_keys) = runtime::extract_keys_from_args(&args) {
-                // If any of the keys passed in args is a uref and the addr matches account's main
-                // purse
-                if let Some(shared_main_purse_uref) = extracted_keys
-                    .into_iter()
-                    .filter_map(|extra_key| extra_key.into_uref())
-                    .find(|extra_uref| extra_uref.addr() == account.main_purse().addr())
-                {
-                    // We can extend extra keys with user's main purse because we know it's in the
-                    // args
-                    extra_keys.push(Key::from(shared_main_purse_uref));
-                }
+        let spending_limit: U512 = match try_get_amount(&args) {
+            Ok(spending_limit) => spending_limit,
+            Err(error) => {
+                return ExecutionResult::precondition_failure(error.into());
             }
-
-            runtime::extract_access_rights_from_keys(extra_keys)
         };
 
         let address_generator = {
             let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
             Rc::new(RefCell::new(generator))
         };
-        let gas_counter: Gas = Gas::default();
-        let transfers = Vec::default();
 
-        // Snapshot of the journal before execution, so in case of an error
-        // we don't apply the execution changes but keep the payment code effects.
-        let execution_journal = tracking_copy.borrow().execution_journal();
-
-        let main_purse_spending_limit: U512 = match get_approved_amount(&args) {
-            Ok(spending_limit) => spending_limit,
-            Err(error) => {
-                let exec_error = Error::from(error);
-                return ExecutionResult::precondition_failure(exec_error.into());
-            }
-        };
-
-        let context = RuntimeContext::new(
-            tracking_copy,
-            entry_point_type,
+        let context = self.create_runtime_context(
+            EntryPointType::Session,
+            args.clone(),
             named_keys,
             access_rights,
-            args.clone(),
-            authorization_keys,
+            Key::from(account.account_hash()),
             account,
-            base_key,
+            authorization_keys,
             blocktime,
             deploy_hash,
             gas_limit,
-            gas_counter,
             address_generator,
             protocol_version,
             correlation_id,
+            tracking_copy,
             phase,
-            self.config,
-            transfers,
-            main_purse_spending_limit,
+            spending_limit,
         );
 
-        let mut runtime = Runtime::new(self.config, memory, module, context, stack);
+        let mut runtime = Runtime::new(self.config, context);
 
-        let accounts_access_rights = {
-            let keys: Vec<Key> = account.named_keys().values().cloned().collect();
-            runtime::extract_access_rights_from_keys(keys)
+        let result = match execution_kind {
+            ExecutionKind::Module(module_bytes) => {
+                runtime.execute_module_bytes(&module_bytes, stack)
+            }
+            ExecutionKind::Contract {
+                contract_hash,
+                entry_point_name,
+            } => {
+                // These args are passed through here as they are required to construct the new
+                // `Runtime` during the contract's execution (i.e. inside
+                // `Runtime::execute_contract`).
+                runtime.call_contract_with_stack(contract_hash, &entry_point_name, args, stack)
+            }
         };
 
-        on_fail_charge!(runtime_context::validate_entry_point_access_with(
-            contract_package,
-            entry_point_access,
-            |uref| runtime_context::uref_has_access_rights(uref, &accounts_access_rights)
-        ));
-
-        let stack = runtime.stack().clone();
-
-        if runtime.is_mint(base_key) {
-            match runtime.call_host_mint(
-                protocol_version,
-                entry_point.name(),
-                &mut runtime.context().named_keys().to_owned(),
-                &args,
-                Default::default(),
-                stack,
-            ) {
-                Ok(_value) => {
-                    return ExecutionResult::Success {
-                        execution_journal: runtime.context().execution_journal(),
-                        transfers: runtime.context().transfers().to_owned(),
-                        cost: runtime.context().gas_counter(),
-                    };
-                }
-                Err(error) => {
-                    return ExecutionResult::Failure {
-                        error: error.into(),
-                        execution_journal,
-                        transfers: runtime.context().transfers().to_owned(),
-                        cost: runtime.context().gas_counter(),
-                    };
-                }
-            }
-        } else if runtime.is_handle_payment(base_key) {
-            match runtime.call_host_handle_payment(
-                protocol_version,
-                entry_point.name(),
-                &mut runtime.context().named_keys().to_owned(),
-                &args,
-                Default::default(),
-                stack,
-            ) {
-                Ok(_value) => {
-                    return ExecutionResult::Success {
-                        execution_journal: runtime.context().execution_journal(),
-                        transfers: runtime.context().transfers().to_owned(),
-                        cost: runtime.context().gas_counter(),
-                    };
-                }
-                Err(error) => {
-                    return ExecutionResult::Failure {
-                        error: error.into(),
-                        transfers: runtime.context().transfers().to_owned(),
-                        execution_journal,
-                        cost: runtime.context().gas_counter(),
-                    };
-                }
-            }
-        } else if runtime.is_auction(base_key) {
-            match runtime.call_host_auction(
-                protocol_version,
-                entry_point.name(),
-                &mut runtime.context().named_keys().to_owned(),
-                &args,
-                Default::default(),
-                stack,
-            ) {
-                Ok(_value) => {
-                    return ExecutionResult::Success {
-                        execution_journal: runtime.context().execution_journal(),
-                        transfers: runtime.context().transfers().to_owned(),
-                        cost: runtime.context().gas_counter(),
-                    }
-                }
-                Err(error) => {
-                    return ExecutionResult::Failure {
-                        execution_journal,
-                        error: error.into(),
-                        transfers: runtime.context().transfers().to_owned(),
-                        cost: runtime.context().gas_counter(),
-                    }
-                }
-            }
-        }
-        on_fail_charge!(
-            instance.invoke_export(entry_point_name, &[], &mut runtime),
-            runtime.context().gas_counter(),
-            execution_journal,
-            runtime.context().transfers().to_owned()
-        );
-
-        ExecutionResult::Success {
-            execution_journal: runtime.context().execution_journal(),
-            transfers: runtime.context().transfers().to_owned(),
-            cost: runtime.context().gas_counter(),
+        match result {
+            Ok(_) => ExecutionResult::Success {
+                execution_journal: runtime.context().execution_journal(),
+                transfers: runtime.context().transfers().to_owned(),
+                cost: runtime.context().gas_counter(),
+            },
+            Err(error) => ExecutionResult::Failure {
+                error: error.into(),
+                execution_journal: runtime.context().execution_journal(),
+                transfers: runtime.context().transfers().to_owned(),
+                cost: runtime.context().gas_counter(),
+            },
         }
     }
 
-    /// Executes a standard payment code natively.
-    pub fn exec_standard_payment<R>(
+    /// Executes standard payment code natively.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn exec_standard_payment<R>(
         &self,
-        system_module: Module,
         payment_args: RuntimeArgs,
         payment_base_key: Key,
         account: &Account,
         payment_named_keys: &mut NamedKeys,
+        access_rights: ContextAccessRights,
         authorization_keys: BTreeSet<AccountHash>,
         blocktime: BlockTime,
         deploy_hash: DeployHash,
@@ -315,28 +155,23 @@ impl Executor {
         R: StateReader<Key, StoredValue>,
         R::Error: Into<Error>,
     {
-        // use host side standard payment
+        let spending_limit: U512 = match try_get_amount(&payment_args) {
+            Ok(spending_limit) => spending_limit,
+            Err(error) => {
+                return ExecutionResult::precondition_failure(error.into());
+            }
+        };
+
         let address_generator = {
             let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
             Rc::new(RefCell::new(generator))
         };
 
-        let main_purse_spending_limit: U512 = match get_approved_amount(&payment_args) {
-            Ok(spending_limit) => spending_limit,
-            Err(error) => {
-                let exec_error = Error::from(error);
-                return ExecutionResult::precondition_failure(exec_error.into());
-            }
-        };
-
-        let extra_keys = vec![Key::from(account.main_purse())];
-
-        let mut runtime = match self.create_runtime(
-            system_module,
+        let runtime_context = self.create_runtime_context(
             EntryPointType::Session,
             payment_args,
             payment_named_keys,
-            &extra_keys,
+            access_rights,
             payment_base_key,
             account,
             authorization_keys,
@@ -348,23 +183,16 @@ impl Executor {
             correlation_id,
             Rc::clone(&tracking_copy),
             phase,
-            stack,
-            main_purse_spending_limit,
-        ) {
-            Ok((_instance, runtime)) => runtime,
-            Err(error) => {
-                return ExecutionResult::Failure {
-                    error: error.into(),
-                    execution_journal: Default::default(),
-                    transfers: Vec::default(),
-                    cost: Gas::default(),
-                };
-            }
-        };
+            spending_limit,
+        );
 
         let execution_journal = tracking_copy.borrow().execution_journal();
 
-        match runtime.call_host_standard_payment() {
+        // Standard payment is executed in the calling account's context; the stack already
+        // captures that.
+        let mut runtime = Runtime::new(self.config, runtime_context);
+
+        match runtime.call_host_standard_payment(stack) {
             Ok(()) => ExecutionResult::Success {
                 execution_journal: runtime.context().execution_journal(),
                 transfers: runtime.context().transfers().to_owned(),
@@ -379,20 +207,13 @@ impl Executor {
         }
     }
 
-    /// Executes a system contract.
-    ///
-    /// System contracts are implemented as a native code, and no WASM execution is involved at all.
-    /// This approach has a benefit of speed as compared to executing WASM modules.
-    ///
-    /// Returns an optional return value from the system contract call, and an [`ExecutionResult`].
-    pub fn exec_system_contract<R, T>(
+    /// Handles necessary address resolution and orchestration to securely call a system contract
+    /// using the runtime.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn call_system_contract<R, T>(
         &self,
         direct_system_contract_call: DirectSystemContractCall,
-        module: Module,
         runtime_args: RuntimeArgs,
-        named_keys: &mut NamedKeys,
-        extra_keys: &[Key],
-        base_key: Key,
         account: &Account,
         authorization_keys: BTreeSet<AccountHash>,
         blocktime: BlockTime,
@@ -403,94 +224,74 @@ impl Executor {
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
         stack: RuntimeStack,
-        main_purse_spending_limit: U512,
+        remaining_spending_limit: U512,
     ) -> (Option<T>, ExecutionResult)
     where
         R: StateReader<Key, StoredValue>,
         R::Error: Into<Error>,
         T: FromBytes + CLTyped,
     {
-        // TODO See if these panics can be removed.
+        let address_generator = {
+            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
+            Rc::new(RefCell::new(generator))
+        };
+
+        // Today lack of existence of the system contract registry and lack of entry
+        // for the minimum defined system contracts (mint, auction, handle_payment)
+        // should cause the EE to panic. Do not remove the panics.
         let system_contract_registry = tracking_copy
             .borrow_mut()
             .get_system_contracts(correlation_id)
             .unwrap_or_else(|error| panic!("Could not retrieve system contracts: {:?}", error));
 
-        match direct_system_contract_call {
-            DirectSystemContractCall::Slash
-            | DirectSystemContractCall::RunAuction
-            | DirectSystemContractCall::DistributeRewards => {
-                // TODO See if these panics can be removed.
-                let auction_hash = system_contract_registry
-                    .get(AUCTION)
-                    .expect("should have auction hash")
-                    .to_owned();
-
-                if Some(auction_hash.value()) != base_key.into_hash() {
-                    panic!(
-                        "{} should only be called with the auction contract",
-                        direct_system_contract_call.entry_point_name()
-                    );
-                }
-            }
-            DirectSystemContractCall::FinalizePayment
-            | DirectSystemContractCall::GetPaymentPurse => {
-                // TODO See if these panics can be removed.
-                let handle_payment = system_contract_registry
-                    .get(HANDLE_PAYMENT)
-                    .expect("should have handle payment");
-                if Some(handle_payment.value()) != base_key.into_hash() {
-                    panic!(
-                        "{} should only be called with the handle payment contract",
-                        direct_system_contract_call.entry_point_name()
-                    );
-                }
-            }
-            DirectSystemContractCall::CreatePurse | DirectSystemContractCall::Transfer => {
-                // TODO See if these panics can be removed.
-                let mint_hash = system_contract_registry
-                    .get(MINT)
-                    .expect("should have mint hash");
-                if Some(mint_hash.value()) != base_key.into_hash() {
-                    panic!(
-                        "{} should only be called with the mint contract",
-                        direct_system_contract_call.entry_point_name()
-                    );
-                }
-            }
-            DirectSystemContractCall::GetEraValidators => {
-                // TODO See if these panics can be removed.
-                let auction_hash = system_contract_registry
-                    .get(AUCTION)
-                    .expect("should have auction hash")
-                    .to_owned();
-                if Some(auction_hash.value()) != base_key.into_hash() {
-                    panic!(
-                        "{} should only be called with the auction contract",
-                        direct_system_contract_call.entry_point_name()
-                    );
-                }
-            }
-        }
-
-        let address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
-            Rc::new(RefCell::new(generator))
-        };
-        let gas_counter = Gas::default(); // maybe const?
-
         // Snapshot of effects before execution, so in case of error only nonce update
         // can be returned.
         let execution_journal = tracking_copy.borrow().execution_journal();
 
-        let transfers = Vec::default();
+        let entry_point_name = direct_system_contract_call.entry_point_name();
 
-        let (_, runtime) = match self.create_runtime(
-            module,
+        let contract_hash = match direct_system_contract_call {
+            DirectSystemContractCall::Slash
+            | DirectSystemContractCall::RunAuction
+            | DirectSystemContractCall::DistributeRewards
+            | DirectSystemContractCall::GetEraValidators => {
+                let auction_hash = system_contract_registry
+                    .get(AUCTION)
+                    .expect("should have auction hash");
+                *auction_hash
+            }
+            DirectSystemContractCall::CreatePurse | DirectSystemContractCall::Transfer => {
+                let mint_hash = system_contract_registry
+                    .get(MINT)
+                    .expect("should have mint hash");
+                *mint_hash
+            }
+            DirectSystemContractCall::FinalizePayment
+            | DirectSystemContractCall::GetPaymentPurse => {
+                let handle_payment_hash = system_contract_registry
+                    .get(HANDLE_PAYMENT)
+                    .expect("should have handle payment");
+                *handle_payment_hash
+            }
+        };
+
+        let contract = match tracking_copy
+            .borrow_mut()
+            .get_contract(CorrelationId::default(), contract_hash)
+        {
+            Ok(contract) => contract,
+            Err(error) => return (None, ExecutionResult::precondition_failure(error.into())),
+        };
+
+        let mut named_keys = contract.named_keys().clone();
+        let access_rights = contract.extract_access_rights(contract_hash);
+        let base_key = Key::from(contract_hash);
+
+        let runtime_context = self.create_runtime_context(
             EntryPointType::Contract,
             runtime_args.clone(),
-            named_keys,
-            extra_keys,
+            &mut named_keys,
+            access_rights,
             base_key,
             account,
             authorization_keys,
@@ -502,47 +303,53 @@ impl Executor {
             correlation_id,
             tracking_copy,
             phase,
-            stack,
-            main_purse_spending_limit,
-        ) {
-            Ok((instance, runtime)) => (instance, runtime),
-            Err(error) => {
-                return ExecutionResult::Failure {
-                    execution_journal,
-                    transfers,
-                    cost: gas_counter,
-                    error: error.into(),
-                }
-                .take_without_ret()
-            }
-        };
-
-        let mut inner_named_keys = runtime.context().named_keys().clone();
-        let ret = direct_system_contract_call.host_exec(
-            runtime,
-            protocol_version,
-            &mut inner_named_keys,
-            &runtime_args,
-            extra_keys,
-            execution_journal,
+            remaining_spending_limit,
         );
-        *named_keys = inner_named_keys;
-        ret
+
+        let mut runtime = Runtime::new(self.config, runtime_context);
+
+        // DO NOT alter this logic to call a system contract directly (such as via mint_internal,
+        // etc). Doing so would bypass necessary context based security checks in some use cases. It
+        // is intentional to use the runtime machinery for this interaction with the system
+        // contracts, to force all such security checks for usage via the executor into a single
+        // execution path.
+        let result =
+            runtime.call_contract_with_stack(contract_hash, entry_point_name, runtime_args, stack);
+
+        match result {
+            Ok(value) => match value.into_t() {
+                Ok(ret) => ExecutionResult::Success {
+                    execution_journal: runtime.context().execution_journal(),
+                    transfers: runtime.context().transfers().to_owned(),
+                    cost: runtime.context().gas_counter(),
+                }
+                .take_with_ret(ret),
+                Err(error) => ExecutionResult::Failure {
+                    execution_journal,
+                    error: Error::CLValue(error).into(),
+                    transfers: runtime.context().transfers().to_owned(),
+                    cost: runtime.context().gas_counter(),
+                }
+                .take_without_ret(),
+            },
+            Err(error) => ExecutionResult::Failure {
+                execution_journal,
+                error: error.into(),
+                transfers: runtime.context().transfers().to_owned(),
+                cost: runtime.context().gas_counter(),
+            }
+            .take_without_ret(),
+        }
     }
 
-    /// Creates new runtime object.
-    ///
-    /// This method also deals with proper initialization of a WASM module by pre-allocating a
-    /// memory instance, and attaching a host function resolver.
-    ///
-    /// Returns a module and an instance of [`Runtime`] which is ready to execute the WASM modules.
-    pub(crate) fn create_runtime<'a, R>(
+    /// Creates new runtime context.
+    #[allow(clippy::too_many_arguments)]
+    fn create_runtime_context<'a, R>(
         &self,
-        module: Module,
         entry_point_type: EntryPointType,
         runtime_args: RuntimeArgs,
         named_keys: &'a mut NamedKeys,
-        extra_keys: &[Key],
+        access_rights: ContextAccessRights,
         base_key: Key,
         account: &'a Account,
         authorization_keys: BTreeSet<AccountHash>,
@@ -554,23 +361,16 @@ impl Executor {
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
-        stack: RuntimeStack,
-        main_purse_spending_limit: U512,
-    ) -> Result<(ModuleRef, Runtime<'a, R>), Error>
+        remaining_spending_limit: U512,
+    ) -> RuntimeContext<'a, R>
     where
         R: StateReader<Key, StoredValue>,
         R::Error: Into<Error>,
     {
-        let access_rights = {
-            let mut keys: Vec<Key> = named_keys.values().cloned().collect();
-            keys.extend(extra_keys);
-            runtime::extract_access_rights_from_keys(keys)
-        };
-
         let gas_counter = Gas::default();
         let transfers = Vec::default();
 
-        let runtime_context = RuntimeContext::new(
+        RuntimeContext::new(
             tracking_copy,
             entry_point_type,
             named_keys,
@@ -589,20 +389,13 @@ impl Executor {
             phase,
             self.config,
             transfers,
-            main_purse_spending_limit,
-        );
-
-        let (instance, memory) =
-            instance_and_memory(module.clone(), protocol_version, self.config.wasm_config())?;
-
-        let runtime = Runtime::new(self.config, memory, module, runtime_context, stack);
-
-        Ok((instance, runtime))
+            remaining_spending_limit,
+        )
     }
 }
 
 /// Represents a variant of a system contract call.
-pub enum DirectSystemContractCall {
+pub(crate) enum DirectSystemContractCall {
     /// Calls auction's `slash` entry point.
     Slash,
     /// Calls auction's `run_auction` entry point.
@@ -632,97 +425,6 @@ impl DirectSystemContractCall {
             DirectSystemContractCall::Transfer => mint::METHOD_TRANSFER,
             DirectSystemContractCall::GetEraValidators => auction::METHOD_GET_ERA_VALIDATORS,
             DirectSystemContractCall::GetPaymentPurse => handle_payment::METHOD_GET_PAYMENT_PURSE,
-        }
-    }
-
-    fn host_exec<R, T>(
-        &self,
-        mut runtime: Runtime<R>,
-        protocol_version: ProtocolVersion,
-        named_keys: &mut NamedKeys,
-        runtime_args: &RuntimeArgs,
-        extra_keys: &[Key],
-        execution_journal: ExecutionJournal,
-    ) -> (Option<T>, ExecutionResult)
-    where
-        R: StateReader<Key, StoredValue>,
-        R::Error: Into<Error>,
-        T: FromBytes + CLTyped,
-    {
-        let entry_point_name = self.entry_point_name();
-
-        let stack = runtime.stack().clone();
-
-        let result = match self {
-            DirectSystemContractCall::Slash
-            | DirectSystemContractCall::RunAuction
-            | DirectSystemContractCall::DistributeRewards => runtime.call_host_auction(
-                protocol_version,
-                entry_point_name,
-                named_keys,
-                runtime_args,
-                extra_keys,
-                stack,
-            ),
-            DirectSystemContractCall::FinalizePayment => runtime.call_host_handle_payment(
-                protocol_version,
-                entry_point_name,
-                named_keys,
-                runtime_args,
-                extra_keys,
-                stack,
-            ),
-            DirectSystemContractCall::CreatePurse | DirectSystemContractCall::Transfer => runtime
-                .call_host_mint(
-                    protocol_version,
-                    entry_point_name,
-                    named_keys,
-                    runtime_args,
-                    extra_keys,
-                    stack,
-                ),
-            DirectSystemContractCall::GetEraValidators => runtime.call_host_auction(
-                protocol_version,
-                entry_point_name,
-                named_keys,
-                runtime_args,
-                extra_keys,
-                stack,
-            ),
-
-            DirectSystemContractCall::GetPaymentPurse => runtime.call_host_handle_payment(
-                protocol_version,
-                entry_point_name,
-                named_keys,
-                runtime_args,
-                extra_keys,
-                stack,
-            ),
-        };
-
-        match result {
-            Ok(value) => match value.into_t() {
-                Ok(ret) => ExecutionResult::Success {
-                    execution_journal: runtime.context().execution_journal(),
-                    transfers: runtime.context().transfers().to_owned(),
-                    cost: runtime.context().gas_counter(),
-                }
-                .take_with_ret(ret),
-                Err(error) => ExecutionResult::Failure {
-                    execution_journal,
-                    error: Error::CLValue(error).into(),
-                    transfers: runtime.context().transfers().to_owned(),
-                    cost: runtime.context().gas_counter(),
-                }
-                .take_without_ret(),
-            },
-            Err(error) => ExecutionResult::Failure {
-                execution_journal,
-                error: error.into(),
-                transfers: runtime.context().transfers().to_owned(),
-                cost: runtime.context().gas_counter(),
-            }
-            .take_without_ret(),
         }
     }
 }

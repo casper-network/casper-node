@@ -294,6 +294,12 @@ pub enum Error {
     /// assert_eq!(45, Error::DelegationAmountTooSmall as u8);
     /// ```
     DelegationAmountTooSmall = 45,
+    /// Runtime stack error.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(46, Error::RuntimeStack as u8);
+    /// ```
+    RuntimeStack = 46,
 }
 
 impl Display for Error {
@@ -345,6 +351,7 @@ impl Display for Error {
             Error::GlobalDelegatorCapacityReached => formatter.write_str("The global delegator capacity has been reached"),
             Error::DelegationAmountTooSmall => formatter.write_str("The delegated amount is below the minimum allowed"),
             Error::GasLimit => formatter.write_str("GasLimit"),
+            Error::RuntimeStack => formatter.write_str("Runtime stack error"),
         }
     }
 }
@@ -423,6 +430,7 @@ impl TryFrom<u8> for Error {
                 Ok(Error::GlobalDelegatorCapacityReached)
             }
             d if d == Error::DelegationAmountTooSmall as u8 => Ok(Error::DelegationAmountTooSmall),
+            d if d == Error::RuntimeStack as u8 => Ok(Error::RuntimeStack),
             _ => Err(TryFromU8ForError(())),
         }
     }

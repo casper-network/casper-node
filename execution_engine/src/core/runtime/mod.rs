@@ -8,25 +8,25 @@ mod mint_internal;
 mod scoped_instrumenter;
 pub mod stack;
 mod standard_payment_internal;
+mod utils;
 
 use std::{
     cmp,
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet},
     convert::TryFrom,
-    iter::IntoIterator,
 };
 
-use itertools::Itertools;
 use parity_wasm::elements::Module;
 use tracing::error;
-use wasmi::{ImportsBuilder, MemoryRef, ModuleInstance, ModuleRef, Trap, TrapKind};
+use wasmi::{MemoryRef, Trap, TrapKind};
 
 use casper_types::{
     account::{Account, AccountHash, ActionType, Weight},
-    bytesrepr::{self, FromBytes, ToBytes},
+    bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contracts::{
         self, Contract, ContractPackage, ContractPackageStatus, ContractVersion, ContractVersions,
         DisabledVersions, EntryPoint, EntryPointAccess, EntryPoints, Group, Groups, NamedKeys,
+        DEFAULT_ENTRY_POINT_NAME,
     },
     system::{
         self,
@@ -36,24 +36,22 @@ use casper_types::{
         standard_payment::{self, StandardPayment},
         CallStackElement, SystemContractType, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, ApiError, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash,
-    ContractVersionKey, ContractWasm, DeployHash, EntryPointType, EraId, Gas, Key, NamedArg,
-    Parameter, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer,
-    TransferResult, TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U128, U256, U512,
+    AccessRights, ApiError, CLTyped, CLValue, ContextAccessRights, ContractHash,
+    ContractPackageHash, ContractVersionKey, ContractWasm, DeployHash, EntryPointType, EraId, Gas,
+    GrantedAccess, Key, Phase, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferResult,
+    TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
 };
 
 use crate::{
     core::{
         engine_state::EngineConfig,
         execution::{self, Error},
-        resolvers::{create_module_resolver, memory_resolver::MemoryResolver},
         runtime::{host_function_flag::HostFunctionFlag, scoped_instrumenter::ScopedInstrumenter},
         runtime_context::{self, RuntimeContext},
-        Address,
     },
     shared::{
         host_function_costs::{Cost, HostFunction},
-        wasm_config::WasmConfig,
+        wasm_prep::{self, PreprocessingError},
     },
     storage::global_state::StateReader,
 };
@@ -62,917 +60,12 @@ pub use stack::{RuntimeStack, RuntimeStackFrame, RuntimeStackOverflow};
 /// Represents the runtime properties of a WASM execution.
 pub struct Runtime<'a, R> {
     config: EngineConfig,
-    memory: MemoryRef,
-    module: Module,
+    memory: Option<MemoryRef>,
+    module: Option<Module>,
     host_buffer: Option<CLValue>,
     context: RuntimeContext<'a, R>,
-    stack: RuntimeStack,
+    stack: Option<RuntimeStack>,
     host_function_flag: HostFunctionFlag,
-}
-
-/// Creates an WASM module instance and a memory instance.
-///
-/// This ensures that a memory instance is properly resolved into a pre-allocated memory area, and a
-/// host function resolver is attached to the module.
-///
-/// The WASM module is also validated to not have a "start" section as we currently don't support
-/// running it.
-///
-/// Both [`ModuleRef`] and a [`MemoryRef`] are ready to be executed.
-pub fn instance_and_memory(
-    parity_module: Module,
-    protocol_version: ProtocolVersion,
-    wasm_config: &WasmConfig,
-) -> Result<(ModuleRef, MemoryRef), Error> {
-    let module = wasmi::Module::from_parity_wasm_module(parity_module)?;
-    let resolver = create_module_resolver(protocol_version, wasm_config)?;
-    let mut imports = ImportsBuilder::new();
-    imports.push_resolver("env", &resolver);
-    let not_started_module = ModuleInstance::new(&module, &imports)?;
-    if not_started_module.has_start() {
-        return Err(Error::UnsupportedWasmStart);
-    }
-    let instance = not_started_module.not_started_instance().clone();
-    let memory = resolver.memory_ref()?;
-    Ok((instance, memory))
-}
-
-/// Turns `key` into a `([u8; 32], AccessRights)` tuple.
-/// Returns None if `key` is not `Key::URef` as it wouldn't have `AccessRights`
-/// associated with it. Helper function for creating `named_keys` associating
-/// addresses and corresponding `AccessRights`.
-pub fn key_to_tuple(key: Key) -> Option<([u8; 32], AccessRights)> {
-    match key {
-        Key::URef(uref) => Some((uref.addr(), uref.access_rights())),
-        Key::Account(_) => None,
-        Key::Hash(_) => None,
-        Key::Transfer(_) => None,
-        Key::DeployInfo(_) => None,
-        Key::EraInfo(_) => None,
-        Key::Balance(_) => None,
-        Key::Bid(_) => None,
-        Key::Withdraw(_) => None,
-        Key::Dictionary(_) => None,
-        Key::SystemContractRegistry => None,
-    }
-}
-
-/// Groups a collection of urefs by their addresses and accumulates access
-/// rights per key
-pub fn extract_access_rights_from_urefs<I: IntoIterator<Item = URef>>(
-    input: I,
-) -> HashMap<Address, HashSet<AccessRights>> {
-    input
-        .into_iter()
-        .map(|uref: URef| (uref.addr(), uref.access_rights()))
-        .group_by(|(key, _)| *key)
-        .into_iter()
-        .map(|(key, group)| {
-            (
-                key,
-                group.map(|(_, x)| x).collect::<HashSet<AccessRights>>(),
-            )
-        })
-        .collect()
-}
-
-/// Groups a collection of keys by their address and accumulates access rights
-/// per key.
-pub fn extract_access_rights_from_keys<I: IntoIterator<Item = Key>>(
-    input: I,
-) -> HashMap<Address, HashSet<AccessRights>> {
-    input
-        .into_iter()
-        .flat_map(key_to_tuple)
-        .group_by(|(key, _)| *key)
-        .into_iter()
-        .map(|(key, group)| {
-            (
-                key,
-                group.map(|(_, x)| x).collect::<HashSet<AccessRights>>(),
-            )
-        })
-        .collect()
-}
-
-#[allow(clippy::cognitive_complexity)]
-fn extract_urefs(cl_value: &CLValue) -> Result<Vec<URef>, Error> {
-    match cl_value.cl_type() {
-        CLType::Bool
-        | CLType::I32
-        | CLType::I64
-        | CLType::U8
-        | CLType::U32
-        | CLType::U64
-        | CLType::U128
-        | CLType::U256
-        | CLType::U512
-        | CLType::Unit
-        | CLType::String
-        | CLType::PublicKey
-        | CLType::Any => Ok(vec![]),
-        CLType::Option(ty) => match **ty {
-            CLType::URef => {
-                let opt: Option<URef> = cl_value.to_owned().into_t()?;
-                Ok(opt.into_iter().collect())
-            }
-            CLType::Key => {
-                let opt: Option<Key> = cl_value.to_owned().into_t()?;
-                Ok(opt.into_iter().flat_map(Key::into_uref).collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::List(ty) => match **ty {
-            CLType::URef => Ok(cl_value.to_owned().into_t()?),
-            CLType::Key => {
-                let keys: Vec<Key> = cl_value.to_owned().into_t()?;
-                Ok(keys.into_iter().filter_map(Key::into_uref).collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::ByteArray(_) => Ok(vec![]),
-        CLType::Result { ok, err } => match (&**ok, &**err) {
-            (CLType::URef, CLType::Bool) => {
-                let res: Result<URef, bool> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(uref) => Ok(vec![uref]),
-                    Err(_) => Ok(vec![]),
-                }
-            }
-            (CLType::URef, CLType::I32) => {
-                let res: Result<URef, i32> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(uref) => Ok(vec![uref]),
-                    Err(_) => Ok(vec![]),
-                }
-            }
-            (CLType::URef, CLType::I64) => {
-                let res: Result<URef, i64> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(uref) => Ok(vec![uref]),
-                    Err(_) => Ok(vec![]),
-                }
-            }
-            (CLType::URef, CLType::U8) => {
-                let res: Result<URef, u8> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(uref) => Ok(vec![uref]),
-                    Err(_) => Ok(vec![]),
-                }
-            }
-            (CLType::URef, CLType::U32) => {
-                let res: Result<URef, u32> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(uref) => Ok(vec![uref]),
-                    Err(_) => Ok(vec![]),
-                }
-            }
-            (CLType::URef, CLType::U64) => {
-                let res: Result<URef, u64> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(uref) => Ok(vec![uref]),
-                    Err(_) => Ok(vec![]),
-                }
-            }
-            (CLType::URef, CLType::U128) => {
-                let res: Result<URef, U128> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(uref) => Ok(vec![uref]),
-                    Err(_) => Ok(vec![]),
-                }
-            }
-            (CLType::URef, CLType::U256) => {
-                let res: Result<URef, U256> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(uref) => Ok(vec![uref]),
-                    Err(_) => Ok(vec![]),
-                }
-            }
-            (CLType::URef, CLType::U512) => {
-                let res: Result<URef, U512> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(uref) => Ok(vec![uref]),
-                    Err(_) => Ok(vec![]),
-                }
-            }
-            (CLType::URef, CLType::Unit) => {
-                let res: Result<URef, ()> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(uref) => Ok(vec![uref]),
-                    Err(_) => Ok(vec![]),
-                }
-            }
-            (CLType::URef, CLType::String) => {
-                let res: Result<URef, String> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(uref) => Ok(vec![uref]),
-                    Err(_) => Ok(vec![]),
-                }
-            }
-            (CLType::URef, CLType::Key) => {
-                let res: Result<URef, Key> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(uref) => Ok(vec![uref]),
-                    Err(key) => Ok(key.into_uref().into_iter().collect()),
-                }
-            }
-            (CLType::URef, CLType::URef) => {
-                let res: Result<URef, URef> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(uref) => Ok(vec![uref]),
-                    Err(uref) => Ok(vec![uref]),
-                }
-            }
-            (CLType::Key, CLType::Bool) => {
-                let res: Result<Key, bool> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(key) => Ok(key.into_uref().into_iter().collect()),
-                    Err(_) => Ok(vec![]),
-                }
-            }
-            (CLType::Key, CLType::I32) => {
-                let res: Result<Key, i32> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(key) => Ok(key.into_uref().into_iter().collect()),
-                    Err(_) => Ok(vec![]),
-                }
-            }
-            (CLType::Key, CLType::I64) => {
-                let res: Result<Key, i64> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(key) => Ok(key.into_uref().into_iter().collect()),
-                    Err(_) => Ok(vec![]),
-                }
-            }
-            (CLType::Key, CLType::U8) => {
-                let res: Result<Key, u8> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(key) => Ok(key.into_uref().into_iter().collect()),
-                    Err(_) => Ok(vec![]),
-                }
-            }
-            (CLType::Key, CLType::U32) => {
-                let res: Result<Key, u32> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(key) => Ok(key.into_uref().into_iter().collect()),
-                    Err(_) => Ok(vec![]),
-                }
-            }
-            (CLType::Key, CLType::U64) => {
-                let res: Result<Key, u64> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(key) => Ok(key.into_uref().into_iter().collect()),
-                    Err(_) => Ok(vec![]),
-                }
-            }
-            (CLType::Key, CLType::U128) => {
-                let res: Result<Key, U128> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(key) => Ok(key.into_uref().into_iter().collect()),
-                    Err(_) => Ok(vec![]),
-                }
-            }
-            (CLType::Key, CLType::U256) => {
-                let res: Result<Key, U256> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(key) => Ok(key.into_uref().into_iter().collect()),
-                    Err(_) => Ok(vec![]),
-                }
-            }
-            (CLType::Key, CLType::U512) => {
-                let res: Result<Key, U512> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(key) => Ok(key.into_uref().into_iter().collect()),
-                    Err(_) => Ok(vec![]),
-                }
-            }
-            (CLType::Key, CLType::Unit) => {
-                let res: Result<Key, ()> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(key) => Ok(key.into_uref().into_iter().collect()),
-                    Err(_) => Ok(vec![]),
-                }
-            }
-            (CLType::Key, CLType::String) => {
-                let res: Result<Key, String> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(key) => Ok(key.into_uref().into_iter().collect()),
-                    Err(_) => Ok(vec![]),
-                }
-            }
-            (CLType::Key, CLType::URef) => {
-                let res: Result<Key, URef> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(key) => Ok(key.into_uref().into_iter().collect()),
-                    Err(uref) => Ok(vec![uref]),
-                }
-            }
-            (CLType::Key, CLType::Key) => {
-                let res: Result<Key, Key> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(key) => Ok(key.into_uref().into_iter().collect()),
-                    Err(key) => Ok(key.into_uref().into_iter().collect()),
-                }
-            }
-            (CLType::Bool, CLType::URef) => {
-                let res: Result<bool, URef> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(_) => Ok(vec![]),
-                    Err(uref) => Ok(vec![uref]),
-                }
-            }
-            (CLType::I32, CLType::URef) => {
-                let res: Result<i32, URef> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(_) => Ok(vec![]),
-                    Err(uref) => Ok(vec![uref]),
-                }
-            }
-            (CLType::I64, CLType::URef) => {
-                let res: Result<i64, URef> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(_) => Ok(vec![]),
-                    Err(uref) => Ok(vec![uref]),
-                }
-            }
-            (CLType::U8, CLType::URef) => {
-                let res: Result<u8, URef> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(_) => Ok(vec![]),
-                    Err(uref) => Ok(vec![uref]),
-                }
-            }
-            (CLType::U32, CLType::URef) => {
-                let res: Result<u32, URef> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(_) => Ok(vec![]),
-                    Err(uref) => Ok(vec![uref]),
-                }
-            }
-            (CLType::U64, CLType::URef) => {
-                let res: Result<u64, URef> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(_) => Ok(vec![]),
-                    Err(uref) => Ok(vec![uref]),
-                }
-            }
-            (CLType::U128, CLType::URef) => {
-                let res: Result<U128, URef> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(_) => Ok(vec![]),
-                    Err(uref) => Ok(vec![uref]),
-                }
-            }
-            (CLType::U256, CLType::URef) => {
-                let res: Result<U256, URef> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(_) => Ok(vec![]),
-                    Err(uref) => Ok(vec![uref]),
-                }
-            }
-            (CLType::U512, CLType::URef) => {
-                let res: Result<U512, URef> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(_) => Ok(vec![]),
-                    Err(uref) => Ok(vec![uref]),
-                }
-            }
-            (CLType::Unit, CLType::URef) => {
-                let res: Result<(), URef> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(_) => Ok(vec![]),
-                    Err(uref) => Ok(vec![uref]),
-                }
-            }
-            (CLType::String, CLType::URef) => {
-                let res: Result<String, URef> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(_) => Ok(vec![]),
-                    Err(uref) => Ok(vec![uref]),
-                }
-            }
-            (CLType::Bool, CLType::Key) => {
-                let res: Result<bool, Key> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(_) => Ok(vec![]),
-                    Err(key) => Ok(key.into_uref().into_iter().collect()),
-                }
-            }
-            (CLType::I32, CLType::Key) => {
-                let res: Result<i32, Key> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(_) => Ok(vec![]),
-                    Err(key) => Ok(key.into_uref().into_iter().collect()),
-                }
-            }
-            (CLType::I64, CLType::Key) => {
-                let res: Result<i64, Key> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(_) => Ok(vec![]),
-                    Err(key) => Ok(key.into_uref().into_iter().collect()),
-                }
-            }
-            (CLType::U8, CLType::Key) => {
-                let res: Result<u8, Key> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(_) => Ok(vec![]),
-                    Err(key) => Ok(key.into_uref().into_iter().collect()),
-                }
-            }
-            (CLType::U32, CLType::Key) => {
-                let res: Result<u32, Key> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(_) => Ok(vec![]),
-                    Err(key) => Ok(key.into_uref().into_iter().collect()),
-                }
-            }
-            (CLType::U64, CLType::Key) => {
-                let res: Result<u64, Key> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(_) => Ok(vec![]),
-                    Err(key) => Ok(key.into_uref().into_iter().collect()),
-                }
-            }
-            (CLType::U128, CLType::Key) => {
-                let res: Result<U128, Key> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(_) => Ok(vec![]),
-                    Err(key) => Ok(key.into_uref().into_iter().collect()),
-                }
-            }
-            (CLType::U256, CLType::Key) => {
-                let res: Result<U256, Key> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(_) => Ok(vec![]),
-                    Err(key) => Ok(key.into_uref().into_iter().collect()),
-                }
-            }
-            (CLType::U512, CLType::Key) => {
-                let res: Result<U512, Key> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(_) => Ok(vec![]),
-                    Err(key) => Ok(key.into_uref().into_iter().collect()),
-                }
-            }
-            (CLType::Unit, CLType::Key) => {
-                let res: Result<(), Key> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(_) => Ok(vec![]),
-                    Err(key) => Ok(key.into_uref().into_iter().collect()),
-                }
-            }
-            (CLType::String, CLType::Key) => {
-                let res: Result<String, Key> = cl_value.to_owned().into_t()?;
-                match res {
-                    Ok(_) => Ok(vec![]),
-                    Err(key) => Ok(key.into_uref().into_iter().collect()),
-                }
-            }
-            (_, _) => Ok(vec![]),
-        },
-        CLType::Map { key, value } => match (&**key, &**value) {
-            (CLType::URef, CLType::Bool) => {
-                let map: BTreeMap<URef, bool> = cl_value.to_owned().into_t()?;
-                Ok(map.keys().cloned().collect())
-            }
-            (CLType::URef, CLType::I32) => {
-                let map: BTreeMap<URef, i32> = cl_value.to_owned().into_t()?;
-                Ok(map.keys().cloned().collect())
-            }
-            (CLType::URef, CLType::I64) => {
-                let map: BTreeMap<URef, i64> = cl_value.to_owned().into_t()?;
-                Ok(map.keys().cloned().collect())
-            }
-            (CLType::URef, CLType::U8) => {
-                let map: BTreeMap<URef, u8> = cl_value.to_owned().into_t()?;
-                Ok(map.keys().cloned().collect())
-            }
-            (CLType::URef, CLType::U32) => {
-                let map: BTreeMap<URef, u32> = cl_value.to_owned().into_t()?;
-                Ok(map.keys().cloned().collect())
-            }
-            (CLType::URef, CLType::U64) => {
-                let map: BTreeMap<URef, u64> = cl_value.to_owned().into_t()?;
-                Ok(map.keys().cloned().collect())
-            }
-            (CLType::URef, CLType::U128) => {
-                let map: BTreeMap<URef, U128> = cl_value.to_owned().into_t()?;
-                Ok(map.keys().cloned().collect())
-            }
-            (CLType::URef, CLType::U256) => {
-                let map: BTreeMap<URef, U256> = cl_value.to_owned().into_t()?;
-                Ok(map.keys().cloned().collect())
-            }
-            (CLType::URef, CLType::U512) => {
-                let map: BTreeMap<URef, U512> = cl_value.to_owned().into_t()?;
-                Ok(map.keys().cloned().collect())
-            }
-            (CLType::URef, CLType::Unit) => {
-                let map: BTreeMap<URef, ()> = cl_value.to_owned().into_t()?;
-                Ok(map.keys().cloned().collect())
-            }
-            (CLType::URef, CLType::String) => {
-                let map: BTreeMap<URef, String> = cl_value.to_owned().into_t()?;
-                Ok(map.keys().cloned().collect())
-            }
-            (CLType::URef, CLType::Key) => {
-                let map: BTreeMap<URef, Key> = cl_value.to_owned().into_t()?;
-                Ok(map
-                    .keys()
-                    .cloned()
-                    .chain(map.values().cloned().filter_map(Key::into_uref))
-                    .collect())
-            }
-            (CLType::URef, CLType::URef) => {
-                let map: BTreeMap<URef, URef> = cl_value.to_owned().into_t()?;
-                Ok(map.keys().cloned().chain(map.values().cloned()).collect())
-            }
-            (CLType::Key, CLType::Bool) => {
-                let map: BTreeMap<Key, bool> = cl_value.to_owned().into_t()?;
-                Ok(map.keys().cloned().filter_map(Key::into_uref).collect())
-            }
-            (CLType::Key, CLType::I32) => {
-                let map: BTreeMap<Key, i32> = cl_value.to_owned().into_t()?;
-                Ok(map.keys().cloned().filter_map(Key::into_uref).collect())
-            }
-            (CLType::Key, CLType::I64) => {
-                let map: BTreeMap<Key, i64> = cl_value.to_owned().into_t()?;
-                Ok(map.keys().cloned().filter_map(Key::into_uref).collect())
-            }
-            (CLType::Key, CLType::U8) => {
-                let map: BTreeMap<Key, u8> = cl_value.to_owned().into_t()?;
-                Ok(map.keys().cloned().filter_map(Key::into_uref).collect())
-            }
-            (CLType::Key, CLType::U32) => {
-                let map: BTreeMap<Key, u32> = cl_value.to_owned().into_t()?;
-                Ok(map.keys().cloned().filter_map(Key::into_uref).collect())
-            }
-            (CLType::Key, CLType::U64) => {
-                let map: BTreeMap<Key, u64> = cl_value.to_owned().into_t()?;
-                Ok(map.keys().cloned().filter_map(Key::into_uref).collect())
-            }
-            (CLType::Key, CLType::U128) => {
-                let map: BTreeMap<Key, U128> = cl_value.to_owned().into_t()?;
-                Ok(map.keys().cloned().filter_map(Key::into_uref).collect())
-            }
-            (CLType::Key, CLType::U256) => {
-                let map: BTreeMap<Key, U256> = cl_value.to_owned().into_t()?;
-                Ok(map.keys().cloned().filter_map(Key::into_uref).collect())
-            }
-            (CLType::Key, CLType::U512) => {
-                let map: BTreeMap<Key, U512> = cl_value.to_owned().into_t()?;
-                Ok(map.keys().cloned().filter_map(Key::into_uref).collect())
-            }
-            (CLType::Key, CLType::Unit) => {
-                let map: BTreeMap<Key, ()> = cl_value.to_owned().into_t()?;
-                Ok(map.keys().cloned().filter_map(Key::into_uref).collect())
-            }
-            (CLType::Key, CLType::String) => {
-                let map: BTreeMap<Key, String> = cl_value.to_owned().into_t()?;
-                Ok(map.keys().cloned().filter_map(Key::into_uref).collect())
-            }
-            (CLType::Key, CLType::URef) => {
-                let map: BTreeMap<Key, URef> = cl_value.to_owned().into_t()?;
-                Ok(map
-                    .keys()
-                    .cloned()
-                    .filter_map(Key::into_uref)
-                    .chain(map.values().cloned())
-                    .collect())
-            }
-            (CLType::Key, CLType::Key) => {
-                let map: BTreeMap<Key, Key> = cl_value.to_owned().into_t()?;
-                Ok(map
-                    .keys()
-                    .cloned()
-                    .filter_map(Key::into_uref)
-                    .chain(map.values().cloned().filter_map(Key::into_uref))
-                    .collect())
-            }
-            (CLType::Bool, CLType::URef) => {
-                let map: BTreeMap<bool, URef> = cl_value.to_owned().into_t()?;
-                Ok(map.values().cloned().collect())
-            }
-            (CLType::I32, CLType::URef) => {
-                let map: BTreeMap<i32, URef> = cl_value.to_owned().into_t()?;
-                Ok(map.values().cloned().collect())
-            }
-            (CLType::I64, CLType::URef) => {
-                let map: BTreeMap<i64, URef> = cl_value.to_owned().into_t()?;
-                Ok(map.values().cloned().collect())
-            }
-            (CLType::U8, CLType::URef) => {
-                let map: BTreeMap<u8, URef> = cl_value.to_owned().into_t()?;
-                Ok(map.values().cloned().collect())
-            }
-            (CLType::U32, CLType::URef) => {
-                let map: BTreeMap<u32, URef> = cl_value.to_owned().into_t()?;
-                Ok(map.values().cloned().collect())
-            }
-            (CLType::U64, CLType::URef) => {
-                let map: BTreeMap<u64, URef> = cl_value.to_owned().into_t()?;
-                Ok(map.values().cloned().collect())
-            }
-            (CLType::U128, CLType::URef) => {
-                let map: BTreeMap<U128, URef> = cl_value.to_owned().into_t()?;
-                Ok(map.values().cloned().collect())
-            }
-            (CLType::U256, CLType::URef) => {
-                let map: BTreeMap<U256, URef> = cl_value.to_owned().into_t()?;
-                Ok(map.values().cloned().collect())
-            }
-            (CLType::U512, CLType::URef) => {
-                let map: BTreeMap<U512, URef> = cl_value.to_owned().into_t()?;
-                Ok(map.values().cloned().collect())
-            }
-            (CLType::Unit, CLType::URef) => {
-                let map: BTreeMap<(), URef> = cl_value.to_owned().into_t()?;
-                Ok(map.values().cloned().collect())
-            }
-            (CLType::String, CLType::URef) => {
-                let map: BTreeMap<String, URef> = cl_value.to_owned().into_t()?;
-                Ok(map.values().cloned().collect())
-            }
-            (CLType::PublicKey, CLType::URef) => {
-                let map: BTreeMap<PublicKey, URef> = cl_value.to_owned().into_t()?;
-                Ok(map.values().cloned().collect())
-            }
-            (CLType::Bool, CLType::Key) => {
-                let map: BTreeMap<bool, Key> = cl_value.to_owned().into_t()?;
-                Ok(map.values().cloned().filter_map(Key::into_uref).collect())
-            }
-            (CLType::I32, CLType::Key) => {
-                let map: BTreeMap<i32, Key> = cl_value.to_owned().into_t()?;
-                Ok(map.values().cloned().filter_map(Key::into_uref).collect())
-            }
-            (CLType::I64, CLType::Key) => {
-                let map: BTreeMap<i64, Key> = cl_value.to_owned().into_t()?;
-                Ok(map.values().cloned().filter_map(Key::into_uref).collect())
-            }
-            (CLType::U8, CLType::Key) => {
-                let map: BTreeMap<u8, Key> = cl_value.to_owned().into_t()?;
-                Ok(map.values().cloned().filter_map(Key::into_uref).collect())
-            }
-            (CLType::U32, CLType::Key) => {
-                let map: BTreeMap<u32, Key> = cl_value.to_owned().into_t()?;
-                Ok(map.values().cloned().filter_map(Key::into_uref).collect())
-            }
-            (CLType::U64, CLType::Key) => {
-                let map: BTreeMap<u64, Key> = cl_value.to_owned().into_t()?;
-                Ok(map.values().cloned().filter_map(Key::into_uref).collect())
-            }
-            (CLType::U128, CLType::Key) => {
-                let map: BTreeMap<U128, Key> = cl_value.to_owned().into_t()?;
-                Ok(map.values().cloned().filter_map(Key::into_uref).collect())
-            }
-            (CLType::U256, CLType::Key) => {
-                let map: BTreeMap<U256, Key> = cl_value.to_owned().into_t()?;
-                Ok(map.values().cloned().filter_map(Key::into_uref).collect())
-            }
-            (CLType::U512, CLType::Key) => {
-                let map: BTreeMap<U512, Key> = cl_value.to_owned().into_t()?;
-                Ok(map.values().cloned().filter_map(Key::into_uref).collect())
-            }
-            (CLType::Unit, CLType::Key) => {
-                let map: BTreeMap<(), Key> = cl_value.to_owned().into_t()?;
-                Ok(map.values().cloned().filter_map(Key::into_uref).collect())
-            }
-            (CLType::String, CLType::Key) => {
-                let map: NamedKeys = cl_value.to_owned().into_t()?;
-                Ok(map.values().cloned().filter_map(Key::into_uref).collect())
-            }
-            (CLType::PublicKey, CLType::Key) => {
-                let map: BTreeMap<PublicKey, Key> = cl_value.to_owned().into_t()?;
-                Ok(map.values().cloned().filter_map(Key::into_uref).collect())
-            }
-            (_, _) => Ok(vec![]),
-        },
-        CLType::Tuple1([ty]) => match **ty {
-            CLType::URef => {
-                let val: (URef,) = cl_value.to_owned().into_t()?;
-                Ok(vec![val.0])
-            }
-            CLType::Key => {
-                let val: (Key,) = cl_value.to_owned().into_t()?;
-                Ok(val.0.into_uref().into_iter().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::Tuple2([ty1, ty2]) => match (&**ty1, &**ty2) {
-            (CLType::URef, CLType::Bool) => {
-                let val: (URef, bool) = cl_value.to_owned().into_t()?;
-                Ok(vec![val.0])
-            }
-            (CLType::URef, CLType::I32) => {
-                let val: (URef, i32) = cl_value.to_owned().into_t()?;
-                Ok(vec![val.0])
-            }
-            (CLType::URef, CLType::I64) => {
-                let val: (URef, i64) = cl_value.to_owned().into_t()?;
-                Ok(vec![val.0])
-            }
-            (CLType::URef, CLType::U8) => {
-                let val: (URef, u8) = cl_value.to_owned().into_t()?;
-                Ok(vec![val.0])
-            }
-            (CLType::URef, CLType::U32) => {
-                let val: (URef, u32) = cl_value.to_owned().into_t()?;
-                Ok(vec![val.0])
-            }
-            (CLType::URef, CLType::U64) => {
-                let val: (URef, u64) = cl_value.to_owned().into_t()?;
-                Ok(vec![val.0])
-            }
-            (CLType::URef, CLType::U128) => {
-                let val: (URef, U128) = cl_value.to_owned().into_t()?;
-                Ok(vec![val.0])
-            }
-            (CLType::URef, CLType::U256) => {
-                let val: (URef, U256) = cl_value.to_owned().into_t()?;
-                Ok(vec![val.0])
-            }
-            (CLType::URef, CLType::U512) => {
-                let val: (URef, U512) = cl_value.to_owned().into_t()?;
-                Ok(vec![val.0])
-            }
-            (CLType::URef, CLType::Unit) => {
-                let val: (URef, ()) = cl_value.to_owned().into_t()?;
-                Ok(vec![val.0])
-            }
-            (CLType::URef, CLType::String) => {
-                let val: (URef, String) = cl_value.to_owned().into_t()?;
-                Ok(vec![val.0])
-            }
-            (CLType::URef, CLType::Key) => {
-                let val: (URef, Key) = cl_value.to_owned().into_t()?;
-                let mut res = vec![val.0];
-                res.extend(val.1.into_uref().into_iter());
-                Ok(res)
-            }
-            (CLType::URef, CLType::URef) => {
-                let val: (URef, URef) = cl_value.to_owned().into_t()?;
-                Ok(vec![val.0, val.1])
-            }
-            (CLType::Key, CLType::Bool) => {
-                let val: (Key, bool) = cl_value.to_owned().into_t()?;
-                Ok(val.0.into_uref().into_iter().collect())
-            }
-            (CLType::Key, CLType::I32) => {
-                let val: (Key, i32) = cl_value.to_owned().into_t()?;
-                Ok(val.0.into_uref().into_iter().collect())
-            }
-            (CLType::Key, CLType::I64) => {
-                let val: (Key, i64) = cl_value.to_owned().into_t()?;
-                Ok(val.0.into_uref().into_iter().collect())
-            }
-            (CLType::Key, CLType::U8) => {
-                let val: (Key, u8) = cl_value.to_owned().into_t()?;
-                Ok(val.0.into_uref().into_iter().collect())
-            }
-            (CLType::Key, CLType::U32) => {
-                let val: (Key, u32) = cl_value.to_owned().into_t()?;
-                Ok(val.0.into_uref().into_iter().collect())
-            }
-            (CLType::Key, CLType::U64) => {
-                let val: (Key, u64) = cl_value.to_owned().into_t()?;
-                Ok(val.0.into_uref().into_iter().collect())
-            }
-            (CLType::Key, CLType::U128) => {
-                let val: (Key, U128) = cl_value.to_owned().into_t()?;
-                Ok(val.0.into_uref().into_iter().collect())
-            }
-            (CLType::Key, CLType::U256) => {
-                let val: (Key, U256) = cl_value.to_owned().into_t()?;
-                Ok(val.0.into_uref().into_iter().collect())
-            }
-            (CLType::Key, CLType::U512) => {
-                let val: (Key, U512) = cl_value.to_owned().into_t()?;
-                Ok(val.0.into_uref().into_iter().collect())
-            }
-            (CLType::Key, CLType::Unit) => {
-                let val: (Key, ()) = cl_value.to_owned().into_t()?;
-                Ok(val.0.into_uref().into_iter().collect())
-            }
-            (CLType::Key, CLType::String) => {
-                let val: (Key, String) = cl_value.to_owned().into_t()?;
-                Ok(val.0.into_uref().into_iter().collect())
-            }
-            (CLType::Key, CLType::URef) => {
-                let val: (Key, URef) = cl_value.to_owned().into_t()?;
-                let mut res: Vec<URef> = val.0.into_uref().into_iter().collect();
-                res.push(val.1);
-                Ok(res)
-            }
-            (CLType::Key, CLType::Key) => {
-                let val: (Key, Key) = cl_value.to_owned().into_t()?;
-                Ok(val
-                    .0
-                    .into_uref()
-                    .into_iter()
-                    .chain(val.1.into_uref().into_iter())
-                    .collect())
-            }
-            (CLType::Bool, CLType::URef) => {
-                let val: (bool, URef) = cl_value.to_owned().into_t()?;
-                Ok(vec![val.1])
-            }
-            (CLType::I32, CLType::URef) => {
-                let val: (i32, URef) = cl_value.to_owned().into_t()?;
-                Ok(vec![val.1])
-            }
-            (CLType::I64, CLType::URef) => {
-                let val: (i64, URef) = cl_value.to_owned().into_t()?;
-                Ok(vec![val.1])
-            }
-            (CLType::U8, CLType::URef) => {
-                let val: (u8, URef) = cl_value.to_owned().into_t()?;
-                Ok(vec![val.1])
-            }
-            (CLType::U32, CLType::URef) => {
-                let val: (u32, URef) = cl_value.to_owned().into_t()?;
-                Ok(vec![val.1])
-            }
-            (CLType::U64, CLType::URef) => {
-                let val: (u64, URef) = cl_value.to_owned().into_t()?;
-                Ok(vec![val.1])
-            }
-            (CLType::U128, CLType::URef) => {
-                let val: (U128, URef) = cl_value.to_owned().into_t()?;
-                Ok(vec![val.1])
-            }
-            (CLType::U256, CLType::URef) => {
-                let val: (U256, URef) = cl_value.to_owned().into_t()?;
-                Ok(vec![val.1])
-            }
-            (CLType::U512, CLType::URef) => {
-                let val: (U512, URef) = cl_value.to_owned().into_t()?;
-                Ok(vec![val.1])
-            }
-            (CLType::Unit, CLType::URef) => {
-                let val: ((), URef) = cl_value.to_owned().into_t()?;
-                Ok(vec![val.1])
-            }
-            (CLType::String, CLType::URef) => {
-                let val: (String, URef) = cl_value.to_owned().into_t()?;
-                Ok(vec![val.1])
-            }
-            (CLType::Bool, CLType::Key) => {
-                let val: (bool, Key) = cl_value.to_owned().into_t()?;
-                Ok(val.1.into_uref().into_iter().collect())
-            }
-            (CLType::I32, CLType::Key) => {
-                let val: (i32, Key) = cl_value.to_owned().into_t()?;
-                Ok(val.1.into_uref().into_iter().collect())
-            }
-            (CLType::I64, CLType::Key) => {
-                let val: (i64, Key) = cl_value.to_owned().into_t()?;
-                Ok(val.1.into_uref().into_iter().collect())
-            }
-            (CLType::U8, CLType::Key) => {
-                let val: (u8, Key) = cl_value.to_owned().into_t()?;
-                Ok(val.1.into_uref().into_iter().collect())
-            }
-            (CLType::U32, CLType::Key) => {
-                let val: (u32, Key) = cl_value.to_owned().into_t()?;
-                Ok(val.1.into_uref().into_iter().collect())
-            }
-            (CLType::U64, CLType::Key) => {
-                let val: (u64, Key) = cl_value.to_owned().into_t()?;
-                Ok(val.1.into_uref().into_iter().collect())
-            }
-            (CLType::U128, CLType::Key) => {
-                let val: (U128, Key) = cl_value.to_owned().into_t()?;
-                Ok(val.1.into_uref().into_iter().collect())
-            }
-            (CLType::U256, CLType::Key) => {
-                let val: (U256, Key) = cl_value.to_owned().into_t()?;
-                Ok(val.1.into_uref().into_iter().collect())
-            }
-            (CLType::U512, CLType::Key) => {
-                let val: (U512, Key) = cl_value.to_owned().into_t()?;
-                Ok(val.1.into_uref().into_iter().collect())
-            }
-            (CLType::Unit, CLType::Key) => {
-                let val: ((), Key) = cl_value.to_owned().into_t()?;
-                Ok(val.1.into_uref().into_iter().collect())
-            }
-            (CLType::String, CLType::Key) => {
-                let val: (String, Key) = cl_value.to_owned().into_t()?;
-                Ok(val.1.into_uref().into_iter().collect())
-            }
-            (_, _) => Ok(vec![]),
-        },
-        // TODO: nested matches for Tuple3?
-        CLType::Tuple3(_) => Ok(vec![]),
-        CLType::Key => {
-            let key: Key = cl_value.to_owned().into_t()?; // TODO: optimize?
-            Ok(key.into_uref().into_iter().collect())
-        }
-        CLType::URef => {
-            let uref: URef = cl_value.to_owned().into_t()?; // TODO: optimize?
-            Ok(vec![uref])
-        }
-    }
 }
 
 impl<'a, R> Runtime<'a, R>
@@ -981,36 +74,52 @@ where
     R::Error: Into<Error>,
 {
     /// Creates a new runtime instance.
-    pub(crate) fn new(
-        config: EngineConfig,
-        memory: MemoryRef,
+    pub(crate) fn new(config: EngineConfig, context: RuntimeContext<'a, R>) -> Self {
+        Runtime {
+            config,
+            memory: None,
+            module: None,
+            host_buffer: None,
+            context,
+            stack: None,
+            host_function_flag: HostFunctionFlag::default(),
+        }
+    }
+
+    /// Creates a new runtime instance by cloning the config, and host function flag from `self`.
+    fn new_invocation_runtime(
+        &self,
+        context: RuntimeContext<'a, R>,
         module: Module,
+        memory: MemoryRef,
+        stack: RuntimeStack,
+    ) -> Self {
+        Self::check_preconditions(&stack);
+        Runtime {
+            config: self.config,
+            memory: Some(memory),
+            module: Some(module),
+            host_buffer: None,
+            context,
+            stack: Some(stack),
+            host_function_flag: self.host_function_flag.clone(),
+        }
+    }
+
+    /// Creates a new runtime instance with a stack from `self`.
+    pub(crate) fn new_with_stack(
+        &self,
         context: RuntimeContext<'a, R>,
         stack: RuntimeStack,
     ) -> Self {
         Self::check_preconditions(&stack);
         Runtime {
-            config,
-            memory,
-            module,
-            host_buffer: None,
-            context,
-            stack,
-            host_function_flag: HostFunctionFlag::default(),
-        }
-    }
-
-    /// Creates a new runtime instance by cloning the config, memory, module and host function flag
-    /// from `self`.
-    fn new_from_self(&self, context: RuntimeContext<'a, R>, stack: RuntimeStack) -> Self {
-        Self::check_preconditions(&stack);
-        Runtime {
             config: self.config,
-            memory: self.memory.clone(),
-            module: self.module.clone(),
+            memory: None,
+            module: None,
             host_buffer: None,
             context,
-            stack,
+            stack: Some(stack),
             host_function_flag: self.host_function_flag.clone(),
         }
     }
@@ -1029,18 +138,8 @@ where
         }
     }
 
-    /// Returns a memory instance.
-    pub fn memory(&self) -> &MemoryRef {
-        &self.memory
-    }
-
-    /// Returns a WASM module instance.
-    pub fn module(&self) -> &Module {
-        &self.module
-    }
-
     /// Returns the context.
-    pub fn context(&self) -> &RuntimeContext<'a, R> {
+    pub(crate) fn context(&self) -> &RuntimeContext<'a, R> {
         &self.context
     }
 
@@ -1078,14 +177,9 @@ where
         self.context.charge_system_contract_call(amount)
     }
 
-    /// Runtime stack.
-    pub(crate) fn stack(&self) -> &RuntimeStack {
-        &self.stack
-    }
-
     /// Returns bytes from the WASM memory instance.
     fn bytes_from_mem(&self, ptr: u32, size: usize) -> Result<Vec<u8>, Error> {
-        self.memory.get(ptr, size).map_err(Into::into)
+        self.try_get_memory()?.get(ptr, size).map_err(Into::into)
     }
 
     /// Returns a deserialized type from the WASM memory instance.
@@ -1121,7 +215,7 @@ where
         entry_points: &EntryPoints,
     ) -> Result<Vec<u8>, Error> {
         let export_section = self
-            .module
+            .try_get_module()?
             .export_section()
             .ok_or_else(|| Error::FunctionNotFound(String::from("Missing Export Section")))?;
 
@@ -1140,7 +234,7 @@ where
         if let Some(missing_name) = maybe_missing_name {
             Err(Error::FunctionNotFound(missing_name))
         } else {
-            let mut module = self.module.clone();
+            let mut module = self.try_get_module()?.clone();
             pwasm_utils::optimize(&mut module, entry_point_names)?;
             parity_wasm::serialize(module).map_err(Error::ParityWasm)
         }
@@ -1180,14 +274,14 @@ where
         }
 
         // Set serialized Key bytes into the output buffer
-        if let Err(error) = self.memory.set(output_ptr, &key_bytes) {
+        if let Err(error) = self.try_get_memory()?.set(output_ptr, &key_bytes) {
             return Err(Error::Interpreter(error.into()).into());
         }
 
         // For all practical purposes following cast is assumed to be safe
         let bytes_size = key_bytes.len() as u32;
         let size_bytes = bytes_size.to_le_bytes(); // Wasm is little-endian
-        if let Err(error) = self.memory.set(bytes_written_ptr, &size_bytes) {
+        if let Err(error) = self.try_get_memory()?.set(bytes_written_ptr, &size_bytes) {
             return Err(Error::Interpreter(error.into()).into());
         }
 
@@ -1225,7 +319,7 @@ where
     fn get_main_purse(&mut self, dest_ptr: u32) -> Result<(), Trap> {
         let purse = self.context.get_main_purse()?;
         let purse_bytes = purse.into_bytes().map_err(Error::BytesRepr)?;
-        self.memory
+        self.try_get_memory()?
             .set(dest_ptr, &purse_bytes)
             .map_err(|e| Error::Interpreter(e.into()).into())
     }
@@ -1247,7 +341,7 @@ where
 
         // Write output
         let output_size_bytes = value_size.to_le_bytes(); // Wasm is little-endian
-        if let Err(error) = self.memory.set(output_size, &output_size_bytes) {
+        if let Err(error) = self.try_get_memory()?.set(output_size, &output_size_bytes) {
             return Err(Error::Interpreter(error.into()).into());
         }
         Ok(Ok(()))
@@ -1255,7 +349,7 @@ where
 
     /// Gets the immediate caller of the current execution
     fn get_immediate_caller(&self) -> Option<&CallStackElement> {
-        self.stack.previous_frame()
+        self.stack.as_ref().and_then(|stack| stack.previous_frame())
     }
 
     /// Checks if immediate caller is of session type of the same account as the provided account
@@ -1271,7 +365,7 @@ where
     fn get_phase(&mut self, dest_ptr: u32) -> Result<(), Trap> {
         let phase = self.context.phase();
         let bytes = phase.into_bytes().map_err(Error::BytesRepr)?;
-        self.memory
+        self.try_get_memory()?
             .set(dest_ptr, &bytes)
             .map_err(|e| Error::Interpreter(e.into()).into())
     }
@@ -1283,7 +377,7 @@ where
             .get_blocktime()
             .into_bytes()
             .map_err(Error::BytesRepr)?;
-        self.memory
+        self.try_get_memory()?
             .set(dest_ptr, &blocktime)
             .map_err(|e| Error::Interpreter(e.into()).into())
     }
@@ -1300,11 +394,17 @@ where
             // Exit early if the host buffer is already occupied
             return Ok(Err(ApiError::HostBufferFull));
         }
-        let call_stack = self.stack.call_stack_elements();
+        let call_stack = match self.try_get_stack() {
+            Ok(stack) => stack.call_stack_elements(),
+            Err(_error) => return Ok(Err(ApiError::Unhandled)),
+        };
         let call_stack_len = call_stack.len() as u32;
         let call_stack_len_bytes = call_stack_len.to_le_bytes();
 
-        if let Err(error) = self.memory.set(call_stack_len_ptr, &call_stack_len_bytes) {
+        if let Err(error) = self
+            .try_get_memory()?
+            .set(call_stack_len_ptr, &call_stack_len_bytes)
+        {
             return Err(Error::Interpreter(error.into()).into());
         }
 
@@ -1322,7 +422,7 @@ where
         let call_stack_cl_value_bytes_len_bytes = call_stack_cl_value_bytes_len.to_le_bytes();
 
         if let Err(error) = self
-            .memory
+            .try_get_memory()?
             .set(result_size_ptr, &call_stack_cl_value_bytes_len_bytes)
         {
             return Err(Error::Interpreter(error.into()).into());
@@ -1341,8 +441,11 @@ where
     ) -> Trap {
         const UREF_COUNT: &str = "uref_count";
         self.host_buffer = None;
-        let mem_get = self
-            .memory
+        let memory = match self.try_get_memory() {
+            Ok(memory) => memory,
+            Err(error) => return Trap::from(error),
+        };
+        let mem_get = memory
             .get(value_ptr, value_size)
             .map_err(|e| Error::Interpreter(e.into()));
         match mem_get {
@@ -1352,12 +455,17 @@ where
                 self.host_buffer = bytesrepr::deserialize(buf).ok();
 
                 let urefs = match &self.host_buffer {
-                    Some(buf) => extract_urefs(buf),
+                    Some(buf) => utils::extract_urefs(buf),
                     None => Ok(vec![]),
                 };
                 match urefs {
                     Ok(urefs) => {
                         scoped_instrumenter.add_property(UREF_COUNT, urefs.len());
+                        for uref in &urefs {
+                            if let Err(error) = self.context.validate_uref(uref) {
+                                return Trap::from(error);
+                            }
+                        }
                         Error::Ret(urefs).into()
                     }
                     Err(e) => {
@@ -1371,6 +479,16 @@ where
                 e.into()
             }
         }
+    }
+
+    /// Checks if a [`Key`] is a system contract.
+    fn is_system_contract(&self, key: Key) -> Result<bool, Error> {
+        let contract_hash = match key.into_hash() {
+            Some(contract_hash_bytes) => ContractHash::new(contract_hash_bytes),
+            None => return Ok(false),
+        };
+
+        self.context.is_system_contract(&contract_hash)
     }
 
     /// Checks if current context is the mint system contract.
@@ -1445,58 +563,26 @@ where
     }
 
     /// Calls host mint contract.
-    pub fn call_host_mint(
+    fn call_host_mint(
         &mut self,
-        protocol_version: ProtocolVersion,
         entry_point_name: &str,
         named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
-        extra_keys: &[Key],
+        access_rights: ContextAccessRights,
         stack: RuntimeStack,
     ) -> Result<CLValue, Error> {
-        let access_rights = {
-            let mut keys: Vec<Key> = named_keys.values().cloned().collect();
-            keys.extend(extra_keys);
-            keys.push(self.get_mint_contract()?.into());
-            keys.push(self.get_handle_payment_contract()?.into());
-            extract_access_rights_from_keys(keys)
-        };
-        let authorization_keys = self.context.authorization_keys().to_owned();
-        let account = self.context.account();
-        let base_key = self.context.get_system_contract(MINT)?.into();
-        let blocktime = self.context.get_blocktime();
-        let deploy_hash = self.context.get_deploy_hash();
-        let gas_limit = self.context.gas_limit();
-        let gas_counter = self.context.gas_counter();
-        let address_generator = self.context.address_generator();
-        let correlation_id = self.context.correlation_id();
-        let phase = self.context.phase();
-        let transfers = self.context.transfers().to_owned();
+        let gas_counter = self.gas_counter();
 
-        let mint_context = RuntimeContext::new(
-            self.context.state(),
+        let base_key = self.context.get_system_contract(MINT)?.into();
+        let runtime_context = self.context.new_from_self(
+            base_key,
             EntryPointType::Contract,
             named_keys,
             access_rights,
             runtime_args.to_owned(),
-            authorization_keys,
-            account,
-            base_key,
-            blocktime,
-            deploy_hash,
-            gas_limit,
-            gas_counter,
-            address_generator,
-            protocol_version,
-            correlation_id,
-            phase,
-            self.config,
-            transfers,
-            // Pass on this deploy's spending limit to the inner context.
-            *self.context().main_purse_spending_limit(),
         );
 
-        let mut mint_runtime = self.new_from_self(mint_context, stack);
+        let mut mint_runtime = self.new_with_stack(runtime_context, stack);
 
         let system_config = self.config.system_config();
         let mint_costs = system_config.mint_costs();
@@ -1577,18 +663,20 @@ where
         // Charge just for the amount that particular entry point cost - using gas cost from the
         // isolated runtime might have a recursive costs whenever system contract calls other system
         // contract.
-        self.gas(mint_runtime.gas_counter() - gas_counter)?;
+        self.gas(match mint_runtime.gas_counter().checked_sub(gas_counter) {
+            None => gas_counter,
+            Some(new_gas) => new_gas,
+        })?;
 
         // Result still contains a result, but the entrypoints logic does not exit early on errors.
         let ret = result?;
 
         // Update outer spending approved limit.
         self.context
-            .set_spending_limit(*mint_runtime.context.main_purse_spending_limit());
+            .set_remaining_spending_limit(mint_runtime.context.remaining_spending_limit());
 
-        let urefs = extract_urefs(&ret)?;
-        let access_rights = extract_access_rights_from_urefs(urefs);
-        self.context.access_rights_extend(access_rights);
+        let urefs = utils::extract_urefs(&ret)?;
+        self.context.access_rights_extend(&urefs);
         {
             let transfers = self.context.transfers_mut();
             *transfers = mint_runtime.context.transfers().to_owned();
@@ -1597,57 +685,26 @@ where
     }
 
     /// Calls host `handle_payment` contract.
-    pub fn call_host_handle_payment(
+    fn call_host_handle_payment(
         &mut self,
-        protocol_version: ProtocolVersion,
         entry_point_name: &str,
         named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
-        extra_keys: &[Key],
+        access_rights: ContextAccessRights,
         stack: RuntimeStack,
     ) -> Result<CLValue, Error> {
-        let access_rights = {
-            let mut keys: Vec<Key> = named_keys.values().cloned().collect();
-            keys.extend(extra_keys);
-            keys.push(self.get_mint_contract()?.into());
-            keys.push(self.get_handle_payment_contract()?.into());
-            extract_access_rights_from_keys(keys)
-        };
-        let authorization_keys = self.context.authorization_keys().to_owned();
-        let account = self.context.account();
-        let base_key = self.context.get_system_contract(HANDLE_PAYMENT)?.into();
-        let blocktime = self.context.get_blocktime();
-        let deploy_hash = self.context.get_deploy_hash();
-        let gas_limit = self.context.gas_limit();
-        let gas_counter = self.context.gas_counter();
-        let address_generator = self.context.address_generator();
-        let correlation_id = self.context.correlation_id();
-        let phase = self.context.phase();
-        let transfers = self.context.transfers().to_owned();
+        let gas_counter = self.gas_counter();
 
-        let runtime_context = RuntimeContext::new(
-            self.context.state(),
+        let base_key = self.context.get_system_contract(HANDLE_PAYMENT)?.into();
+        let runtime_context = self.context.new_from_self(
+            base_key,
             EntryPointType::Contract,
             named_keys,
             access_rights,
             runtime_args.to_owned(),
-            authorization_keys,
-            account,
-            base_key,
-            blocktime,
-            deploy_hash,
-            gas_limit,
-            gas_counter,
-            address_generator,
-            protocol_version,
-            correlation_id,
-            phase,
-            self.config,
-            transfers,
-            *self.context.main_purse_spending_limit(),
         );
 
-        let mut runtime = self.new_from_self(runtime_context, stack);
+        let mut runtime = self.new_with_stack(runtime_context, stack);
 
         let system_config = self.config.system_config();
         let handle_payment_costs = system_config.handle_payment_costs();
@@ -1691,12 +748,14 @@ where
             _ => CLValue::from_t(()).map_err(Self::reverter),
         };
 
-        self.gas(runtime.gas_counter() - gas_counter)?;
+        self.gas(match runtime.gas_counter().checked_sub(gas_counter) {
+            None => gas_counter,
+            Some(new_gas) => new_gas,
+        })?;
 
         let ret = result?;
-        let urefs = extract_urefs(&ret)?;
-        let access_rights = extract_access_rights_from_urefs(urefs);
-        self.context.access_rights_extend(access_rights);
+        let urefs = utils::extract_urefs(&ret)?;
+        self.context.access_rights_extend(&urefs);
         {
             let transfers = self.context.transfers_mut();
             *transfers = runtime.context.transfers().to_owned();
@@ -1705,9 +764,10 @@ where
     }
 
     /// Calls host standard payment contract.
-    pub fn call_host_standard_payment(&mut self) -> Result<(), Error> {
+    pub(crate) fn call_host_standard_payment(&mut self, stack: RuntimeStack) -> Result<(), Error> {
         // NOTE: This method (unlike other call_host_* methods) already runs on its own runtime
         // context.
+        self.stack = Some(stack);
         let gas_counter = self.gas_counter();
         let amount: U512 =
             Self::get_named_argument(self.context.args(), standard_payment::ARG_AMOUNT)?;
@@ -1717,59 +777,26 @@ where
     }
 
     /// Calls host auction contract.
-    pub fn call_host_auction(
+    fn call_host_auction(
         &mut self,
-        protocol_version: ProtocolVersion,
         entry_point_name: &str,
         named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
-        extra_keys: &[Key],
+        access_rights: ContextAccessRights,
         stack: RuntimeStack,
     ) -> Result<CLValue, Error> {
-        let access_rights = {
-            let mut keys: Vec<Key> = named_keys.values().cloned().collect();
-            keys.extend(extra_keys);
-            keys.push(self.get_mint_contract()?.into());
-            keys.push(self.get_handle_payment_contract()?.into());
-            extract_access_rights_from_keys(keys)
-        };
-        let authorization_keys = self.context.authorization_keys().to_owned();
-        let account = self.context.account();
+        let gas_counter = self.gas_counter();
+
         let base_key = self.context.get_system_contract(AUCTION)?.into();
-        let blocktime = self.context.get_blocktime();
-        let deploy_hash = self.context.get_deploy_hash();
-        let gas_limit = self.context.gas_limit();
-        let gas_counter = self.context.gas_counter();
-        let address_generator = self.context.address_generator();
-        let correlation_id = self.context.correlation_id();
-        let phase = self.context.phase();
-
-        let transfers = self.context.transfers().to_owned();
-
-        let runtime_context = RuntimeContext::new(
-            self.context.state(),
+        let runtime_context = self.context.new_from_self(
+            base_key,
             EntryPointType::Contract,
             named_keys,
             access_rights,
             runtime_args.to_owned(),
-            authorization_keys,
-            account,
-            base_key,
-            blocktime,
-            deploy_hash,
-            gas_limit,
-            gas_counter,
-            address_generator,
-            protocol_version,
-            correlation_id,
-            phase,
-            self.config,
-            transfers,
-            // We should not spend any tokens when executing auction contract.
-            U512::zero(),
         );
 
-        let mut runtime = self.new_from_self(runtime_context, stack);
+        let mut runtime = self.new_with_stack(runtime_context, stack);
 
         let system_config = self.config.system_config();
         let auction_costs = system_config.auction_costs();
@@ -1909,20 +936,82 @@ where
         };
 
         // Charge for the gas spent during execution in an isolated runtime.
-        self.gas(runtime.gas_counter() - gas_counter)?;
+        self.gas(match runtime.gas_counter().checked_sub(gas_counter) {
+            None => gas_counter,
+            Some(new_gas) => new_gas,
+        })?;
 
         // Result still contains a result, but the entrypoints logic does not exit early on errors.
         let ret = result?;
 
-        let urefs = extract_urefs(&ret)?;
-        let access_rights = extract_access_rights_from_urefs(urefs);
-        self.context.access_rights_extend(access_rights);
+        let urefs = utils::extract_urefs(&ret)?;
+        self.context.access_rights_extend(&urefs);
         {
             let transfers = self.context.transfers_mut();
             *transfers = runtime.context.transfers().to_owned();
         }
 
         Ok(ret)
+    }
+
+    /// Call a contract by pushing a stack element onto the frame.
+    pub(crate) fn call_contract_with_stack(
+        &mut self,
+        contract_hash: ContractHash,
+        entry_point_name: &str,
+        args: RuntimeArgs,
+        stack: RuntimeStack,
+    ) -> Result<CLValue, Error> {
+        self.stack = Some(stack);
+        self.call_contract(contract_hash, entry_point_name, args)
+    }
+
+    pub(crate) fn execute_module_bytes(
+        &mut self,
+        module_bytes: &Bytes,
+        stack: RuntimeStack,
+    ) -> Result<CLValue, Error> {
+        let protocol_version = self.context.protocol_version();
+        let wasm_config = self.config.wasm_config();
+        let module = wasm_prep::preprocess(*wasm_config, module_bytes)?;
+        let (instance, memory) =
+            utils::instance_and_memory(module.clone(), protocol_version, wasm_config)?;
+        self.memory = Some(memory);
+        self.module = Some(module);
+        self.stack = Some(stack);
+        self.context.set_args(utils::attenuate_uref_in_args(
+            self.context.args().clone(),
+            self.context.account().main_purse().addr(),
+            AccessRights::WRITE,
+        )?);
+
+        let result = instance.invoke_export(DEFAULT_ENTRY_POINT_NAME, &[], self);
+
+        let error = match result {
+            Err(error) => error,
+            // If `Ok` and the `host_buffer` is `None`, the contract's execution succeeded but did
+            // not explicitly call `runtime::ret()`.  Treat as though the execution
+            // returned the unit type `()` as per Rust functions which don't specify a
+            // return value.
+            Ok(_) => {
+                return Ok(self.take_host_buffer().unwrap_or(CLValue::from_t(())?));
+            }
+        };
+
+        if let Some(host_error) = error.as_host_error() {
+            // If the "error" was in fact a trap caused by calling `ret` then
+            // this is normal operation and we should return the value captured
+            // in the Runtime result field.
+            let downcasted_error = host_error.downcast_ref::<Error>();
+            match downcasted_error {
+                Some(Error::Ret(ref _ret_urefs)) => {
+                    return self.take_host_buffer().ok_or(Error::ExpectedReturnValue);
+                }
+                Some(error) => return Err(error.clone()),
+                None => return Err(Error::Interpreter(host_error.to_string())),
+            }
+        }
+        Err(Error::Interpreter(error.into()))
     }
 
     /// Calls contract living under a `key`, with supplied `args`.
@@ -1956,7 +1045,7 @@ where
             None => return Err(Error::KeyNotFound(key)),
         };
 
-        self.call_contract_checked(
+        self.execute_contract(
             contract_package,
             contract_hash,
             contract,
@@ -2015,81 +1104,12 @@ where
             .cloned()
             .ok_or_else(|| Error::NoSuchMethod(entry_point_name.to_owned()))?;
 
-        self.call_contract_checked(
+        self.execute_contract(
             contract_package,
             contract_hash,
             contract,
             contract_entry_point,
             args,
-        )
-    }
-
-    /// Calls contract if caller has access, and args match entry point definition
-    fn call_contract_checked(
-        &mut self,
-        contract_package: ContractPackage,
-        contract_hash: ContractHash,
-        contract: Contract,
-        entry_point: EntryPoint,
-        args: RuntimeArgs,
-    ) -> Result<CLValue, Error> {
-        // if public, allowed
-        // if not public, restricted to user group access
-        self.validate_entry_point_access(&contract_package, entry_point.access())?;
-
-        // This will skip arguments check for system contracts only. This code should be removed on
-        // next major version bump. Argument checks for system contract is still done during
-        // execution of a system contract.
-        if !self
-            .context
-            .system_contract_registry()?
-            .values()
-            .any(|&system_hash| system_hash == contract_hash)
-        {
-            let entry_point_args_lookup: BTreeMap<&str, &Parameter> = entry_point
-                .args()
-                .iter()
-                .map(|param| {
-                    // Skips all optional parameters
-                    (param.name(), param)
-                })
-                .collect();
-
-            let args_lookup: BTreeMap<&str, &NamedArg> = args
-                .named_args()
-                .map(|named_arg| (named_arg.name(), named_arg))
-                .collect();
-
-            // ensure args type(s) match defined args of entry point
-
-            for (param_name, param) in entry_point_args_lookup {
-                if let Some(named_arg) = args_lookup.get(param_name) {
-                    if param.cl_type() != named_arg.cl_value().cl_type() {
-                        return Err(Error::type_mismatch(
-                            param.cl_type().clone(),
-                            named_arg.cl_value().cl_type().clone(),
-                        ));
-                    }
-                } else if !param.cl_type().is_option() {
-                    return Err(Error::MissingArgument {
-                        name: param.name().to_string(),
-                    });
-                }
-            }
-        }
-
-        // if session the caller's context
-        // else the called contract's context
-        let context_key = self.get_context_key_for_contract_call(contract_hash, &entry_point)?;
-
-        self.execute_contract(
-            context_key,
-            context_key,
-            contract_hash,
-            contract,
-            args,
-            entry_point,
-            self.context.protocol_version(),
         )
     }
 
@@ -2114,17 +1134,59 @@ where
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
+    fn try_get_memory(&self) -> Result<&MemoryRef, Error> {
+        self.memory.as_ref().ok_or(Error::WasmPreprocessing(
+            PreprocessingError::MissingMemorySection,
+        ))
+    }
+
+    fn try_get_module(&self) -> Result<&Module, Error> {
+        self.module
+            .as_ref()
+            .ok_or(Error::WasmPreprocessing(PreprocessingError::MissingModule))
+    }
+
+    fn try_get_stack(&self) -> Result<&RuntimeStack, Error> {
+        self.stack.as_ref().ok_or(Error::MissingRuntimeStack)
+    }
+
     fn execute_contract(
         &mut self,
-        key: Key,
-        base_key: Key,
+        contract_package: ContractPackage,
         contract_hash: ContractHash,
         contract: Contract,
-        args: RuntimeArgs,
         entry_point: EntryPoint,
-        protocol_version: ProtocolVersion,
+        args: RuntimeArgs,
     ) -> Result<CLValue, Error> {
+        // if public, allowed
+        // if not public, restricted to user group access
+        self.validate_group_membership(&contract_package, entry_point.access())?;
+
+        // TODO: plan for 2.0 extra information stating required argument and add chainspec
+        // variable ensure args type(s) match defined args of entry point
+        // for (param_name, param) in entry_point_args_lookup {
+        //     if let Some(named_arg) = args_lookup.get(param_name) {
+        //         if param.cl_type() != named_arg.cl_value().cl_type() {
+        //             return Err(Error::type_mismatch(
+        //                 param.cl_type().clone(),
+        //                 named_arg.cl_value().cl_type().clone(),
+        //             ));
+        //         }
+        //     }
+        //     // TODO we may add required field in 2.0 and enforce this
+        //     // else if !param.cl_type().is_option() {
+        //     //     return Err(Error::MissingArgument {
+        //     //         name: param.name().to_string(),
+        //     //     });
+        //     // }
+        // }
+        //}
+
+        // if session the caller's context
+        // else the called contract's context
+        let context_key = self.get_context_key_for_contract_call(contract_hash, &entry_point)?;
+        let protocol_version = self.context.protocol_version();
+
         // Check for major version compatibility before calling
         if !contract.is_compatible_protocol_version(protocol_version) {
             return Err(Error::IncompatibleProtocolMajorVersion {
@@ -2133,78 +1195,123 @@ where
             });
         }
 
-        // TODO: should we be using named_keys_mut() instead?
-        let mut named_keys = match entry_point.entry_point_type() {
-            EntryPointType::Session => self.context.account().named_keys().clone(),
-            EntryPointType::Contract => contract.named_keys().clone(),
+        let (mut named_keys, mut access_rights) = match entry_point.entry_point_type() {
+            EntryPointType::Session => (
+                self.context.account().named_keys().clone(),
+                self.context.account().extract_access_rights(),
+            ),
+            EntryPointType::Contract => (
+                contract.named_keys().clone(),
+                contract.extract_access_rights(contract_hash),
+            ),
         };
 
-        let extra_keys = {
-            let mut extra_keys = vec![];
-            // A loop is needed to be able to use the '?' operator
-            for arg in args.to_values() {
-                extra_keys.extend(
-                    extract_urefs(arg)?
-                        .into_iter()
-                        .map(<Key as From<URef>>::from),
-                );
-            }
-            for key in &extra_keys {
-                self.context.validate_key(key)?;
-            }
+        // Checks if the contract we're about to call is a system one.
+        let is_calling_system = self.is_system_contract(context_key)?;
+        // Does current runtime context's access rights belongs to a system account?
+        let is_system_contract =
+            self.is_system_contract(self.context.access_rights().context_key())?;
+        // If current context is a system contract, and we're calling system contract then we're
+        // under a system call mode.
+        let is_system_call = is_system_contract && is_calling_system;
 
-            if self.is_mint(key) {
-                let mut stack = self.stack.clone();
-                let call_stack_element = CallStackElement::stored_contract(
-                    contract.contract_package_hash(),
-                    contract_hash,
-                );
-                stack.push(call_stack_element)?;
+        let (stack, is_system_account) = {
+            let mut stack = self.try_get_stack()?.clone();
+            let (call_stack_element, is_system_account) = match entry_point.entry_point_type() {
+                EntryPointType::Session => {
+                    let stored_session = CallStackElement::stored_session(
+                        self.context.account().account_hash(),
+                        contract.contract_package_hash(),
+                        contract_hash,
+                    );
+                    // We don't have system contracts with entry points of a Session type.
+                    let is_system_account = false;
 
-                return self.call_host_mint(
-                    self.context.protocol_version(),
-                    entry_point.name(),
-                    &mut named_keys,
-                    &args,
-                    &extra_keys,
-                    stack,
-                );
-            } else if self.is_handle_payment(key) {
-                let mut stack = self.stack.clone();
-                let call_stack_element = CallStackElement::stored_contract(
-                    contract.contract_package_hash(),
-                    contract_hash,
-                );
-                stack.push(call_stack_element)?;
+                    (stored_session, is_system_account)
+                }
+                EntryPointType::Contract => {
+                    // SAFETY: Runtime stack always has at least 1 element and it is a session
+                    // object.
+                    let session_call_stack_element = stack
+                        .first_frame()
+                        .expect("should have first element in the stack");
 
-                return self.call_host_handle_payment(
-                    self.context.protocol_version(),
-                    entry_point.name(),
-                    &mut named_keys,
-                    &args,
-                    &extra_keys,
-                    stack,
-                );
-            } else if self.is_auction(key) {
-                let mut stack = self.stack.clone();
-                let call_stack_element = CallStackElement::stored_contract(
-                    contract.contract_package_hash(),
-                    contract_hash,
-                );
-                stack.push(call_stack_element)?;
+                    // Determines if this call originated from a system account based on a first
+                    // element of the call stack.
+                    let is_system_account = if let CallStackElement::Session { account_hash } =
+                        session_call_stack_element
+                    {
+                        *account_hash == PublicKey::System.to_account_hash()
+                    } else {
+                        false
+                    };
 
-                return self.call_host_auction(
-                    self.context.protocol_version(),
-                    entry_point.name(),
-                    &mut named_keys,
-                    &args,
-                    &extra_keys,
-                    stack,
-                );
-            }
+                    let stored_contract_frame = CallStackElement::stored_contract(
+                        contract.contract_package_hash(),
+                        contract_hash,
+                    );
+                    (stored_contract_frame, is_system_account)
+                }
+            };
+            stack.push(call_stack_element)?;
 
-            extra_keys
+            (stack, is_system_account)
         };
+
+        // Main purse URefs should be attenuated only when a non-system contract is executed by a
+        // non-system account to avoid possible phishing attack scenarios.
+        let should_attenuate_urefs = !is_calling_system && !is_system_call && !is_system_account;
+        let context_args = if should_attenuate_urefs {
+            utils::attenuate_uref_in_args(
+                args,
+                self.context.account().main_purse().addr(),
+                AccessRights::WRITE,
+            )?
+        } else {
+            args
+        };
+
+        let extended_access_rights = {
+            let mut all_urefs = vec![];
+            for arg in context_args.to_values() {
+                let urefs = utils::extract_urefs(arg)?;
+                if !is_system_call {
+                    for uref in &urefs {
+                        self.context.validate_uref(uref)?;
+                    }
+                }
+                all_urefs.extend(urefs);
+            }
+            all_urefs
+        };
+
+        access_rights.extend(&extended_access_rights);
+
+        if self.is_mint(context_key) {
+            return self.call_host_mint(
+                entry_point.name(),
+                &mut named_keys,
+                &context_args,
+                access_rights,
+                stack,
+            );
+        } else if self.is_handle_payment(context_key) {
+            return self.call_host_handle_payment(
+                entry_point.name(),
+                &mut named_keys,
+                &context_args,
+                access_rights,
+                stack,
+            );
+        } else if self.is_auction(context_key) {
+            return self.call_host_auction(
+                entry_point.name(),
+                &mut named_keys,
+                &context_args,
+                access_rights,
+                stack,
+            );
+        }
 
         let module: Module = {
             let wasm_key = contract.contract_wasm_key();
@@ -2212,71 +1319,32 @@ where
             let contract_wasm: ContractWasm = match self.context.read_gs(&wasm_key)? {
                 Some(StoredValue::ContractWasm(contract_wasm)) => contract_wasm,
                 Some(_) => return Err(Error::InvalidContractWasm(contract.contract_wasm_hash())),
-                None => return Err(Error::KeyNotFound(key)),
+                None => return Err(Error::KeyNotFound(context_key)),
             };
 
             parity_wasm::deserialize_buffer(contract_wasm.bytes())?
         };
 
-        let entry_point_name = entry_point.name();
-
-        let (instance, memory) =
-            instance_and_memory(module.clone(), protocol_version, self.config.wasm_config())?;
-
-        let access_rights = {
-            let mut keys: Vec<Key> = named_keys.values().cloned().collect();
-            keys.extend(extra_keys);
-            keys.push(self.get_mint_contract()?.into());
-            keys.push(self.get_handle_payment_contract()?.into());
-            extract_access_rights_from_keys(keys)
-        };
-
-        let config = self.config;
-
-        let context = RuntimeContext::new(
-            self.context.state(),
+        let context = self.context.new_from_self(
+            context_key,
             entry_point.entry_point_type(),
             &mut named_keys,
             access_rights,
-            args,
-            self.context.authorization_keys().clone(),
-            self.context.account(),
-            base_key,
-            self.context.get_blocktime(),
-            self.context.get_deploy_hash(),
-            self.context.gas_limit(),
-            self.context.gas_counter(),
-            self.context.address_generator(),
-            protocol_version,
-            self.context.correlation_id(),
-            self.context.phase(),
-            self.config,
-            self.context.transfers().to_owned(),
-            *self.context().main_purse_spending_limit(),
+            context_args,
         );
+        let protocol_version = self.context.protocol_version();
+        let (instance, memory) = utils::instance_and_memory(
+            module.clone(),
+            protocol_version,
+            self.config.wasm_config(),
+        )?;
+        let runtime = &mut Runtime::new_invocation_runtime(self, context, module, memory, stack);
 
-        let mut stack = self.stack.clone();
-
-        let call_stack_element = match entry_point.entry_point_type() {
-            EntryPointType::Session => CallStackElement::stored_session(
-                self.context.account().account_hash(),
-                contract.contract_package_hash(),
-                contract_hash,
-            ),
-            EntryPointType::Contract => {
-                CallStackElement::stored_contract(contract.contract_package_hash(), contract_hash)
-            }
-        };
-
-        stack.push(call_stack_element)?;
-
-        let mut runtime = Runtime::new(config, memory, module, context, stack);
-
-        let result = instance.invoke_export(entry_point_name, &[], &mut runtime);
+        let result = instance.invoke_export(entry_point.name(), &[], runtime);
 
         // The `runtime`'s context was initialized with our counter from before the call and any gas
         // charged by the sub-call was added to its counter - so let's copy the correct value of the
-        // counter from there to our counter
+        // counter from there to our counter.
         self.context.set_gas_counter(runtime.context.gas_counter());
 
         {
@@ -2287,42 +1355,43 @@ where
         let error = match result {
             Err(error) => error,
             // If `Ok` and the `host_buffer` is `None`, the contract's execution succeeded but did
-            // not explicitly call `runtime::ret()`.  Treat as though the execution
-            // returned the unit type `()` as per Rust functions which don't specify a
-            // return value.
+            // not explicitly call `runtime::ret()`.  Treat as though the execution returned the
+            // unit type `()` as per Rust functions which don't specify a return value.
             Ok(_) => {
                 if self.context.entry_point_type() == EntryPointType::Session
                     && runtime.context.entry_point_type() == EntryPointType::Session
                 {
                     // Overwrites parent's named keys with child's new named key but only when
-                    // running session code
+                    // running session code.
                     *self.context.named_keys_mut() = runtime.context.named_keys().clone();
                 }
                 self.context
-                    .set_spending_limit(*runtime.context.main_purse_spending_limit());
+                    .set_remaining_spending_limit(runtime.context.remaining_spending_limit());
                 return Ok(runtime.take_host_buffer().unwrap_or(CLValue::from_t(())?));
             }
         };
 
         if let Some(host_error) = error.as_host_error() {
-            // If the "error" was in fact a trap caused by calling `ret` then
-            // this is normal operation and we should return the value captured
-            // in the Runtime result field.
+            // If the "error" was in fact a trap caused by calling `ret` then this is normal
+            // operation and we should return the value captured in the Runtime result field.
             let downcasted_error = host_error.downcast_ref::<Error>();
             match downcasted_error {
                 Some(Error::Ret(ref ret_urefs)) => {
-                    // insert extra urefs returned from call
-                    let ret_urefs_map: HashMap<Address, HashSet<AccessRights>> =
-                        extract_access_rights_from_urefs(ret_urefs.clone());
-                    self.context.access_rights_extend(ret_urefs_map);
-                    // if ret has not set host_buffer consider it programmer error
+                    // Insert extra urefs returned from call.
+                    // Those returned URef's are guaranteed to be valid as they were already
+                    // validated in the `ret` call inside context we ret from.
+                    self.context.access_rights_extend(ret_urefs);
+
                     if self.context.entry_point_type() == EntryPointType::Session
                         && runtime.context.entry_point_type() == EntryPointType::Session
                     {
-                        // Overwrites parent's named keys with child's new named key but only when
-                        // running session code
+                        // Overwrites parent's named keys with child's new named keys but only when
+                        // running session code.
                         *self.context.named_keys_mut() = runtime.context.named_keys().clone();
                     }
+
+                    // Stored contracts are expected to always call a `ret` function, otherwise it's
+                    // an error.
                     return runtime.take_host_buffer().ok_or(Error::ExpectedReturnValue);
                 }
                 Some(error) => return Err(error.clone()),
@@ -2400,7 +1469,10 @@ where
         }
 
         let result_size_bytes = result_size.to_le_bytes(); // Wasm is little-endian
-        if let Err(error) = self.memory.set(result_size_ptr, &result_size_bytes) {
+        if let Err(error) = self
+            .try_get_memory()?
+            .set(result_size_ptr, &result_size_bytes)
+        {
             return Err(Error::Interpreter(error.into()));
         }
 
@@ -2429,7 +1501,10 @@ where
 
         let total_keys = self.context.named_keys().len() as u32;
         let total_keys_bytes = total_keys.to_le_bytes();
-        if let Err(error) = self.memory.set(total_keys_ptr, &total_keys_bytes) {
+        if let Err(error) = self
+            .try_get_memory()?
+            .set(total_keys_ptr, &total_keys_bytes)
+        {
             return Err(Error::Interpreter(error.into()).into());
         }
 
@@ -2447,7 +1522,7 @@ where
         }
 
         let length_bytes = length.to_le_bytes();
-        if let Err(error) = self.memory.set(result_size_ptr, &length_bytes) {
+        if let Err(error) = self.try_get_memory()?.set(result_size_ptr, &length_bytes) {
             return Err(Error::Interpreter(error.into()).into());
         }
 
@@ -2540,7 +1615,10 @@ where
         }
         // Write return value size to output location
         let output_size_bytes = value_size.to_le_bytes(); // Wasm is little-endian
-        if let Err(error) = self.memory.set(output_size_ptr, &output_size_bytes) {
+        if let Err(error) = self
+            .try_get_memory()?
+            .set(output_size_ptr, &output_size_bytes)
+        {
             return Err(Error::Interpreter(error.into()));
         }
 
@@ -2627,20 +1705,20 @@ where
             }
 
             // Set serialized Key bytes into the output buffer
-            if let Err(error) = self.memory.set(output_ptr, &key_bytes) {
+            if let Err(error) = self.try_get_memory()?.set(output_ptr, &key_bytes) {
                 return Err(Error::Interpreter(error.into()));
             }
 
             // Following cast is assumed to be safe
             let bytes_size = key_bytes.len() as u32;
             let size_bytes = bytes_size.to_le_bytes(); // Wasm is little-endian
-            if let Err(error) = self.memory.set(bytes_written_ptr, &size_bytes) {
+            if let Err(error) = self.try_get_memory()?.set(bytes_written_ptr, &size_bytes) {
                 return Err(Error::Interpreter(error.into()));
             }
 
             let version_value: u32 = insert_contract_result.contract_version();
             let version_bytes = version_value.to_le_bytes();
-            if let Err(error) = self.memory.set(version_ptr, &version_bytes) {
+            if let Err(error) = self.try_get_memory()?.set(version_ptr, &version_bytes) {
                 return Err(Error::Interpreter(error.into()));
             }
         }
@@ -2678,7 +1756,7 @@ where
     /// Writes function address (`hash_bytes`) into the Wasm memory (at
     /// `dest_ptr` pointer).
     fn function_address(&mut self, hash_bytes: [u8; 32], dest_ptr: u32) -> Result<(), Trap> {
-        self.memory
+        self.try_get_memory()?
             .set(dest_ptr, &hash_bytes)
             .map_err(|e| Error::Interpreter(e.into()).into())
     }
@@ -2688,7 +1766,7 @@ where
     fn new_uref(&mut self, uref_ptr: u32, value_ptr: u32, value_size: u32) -> Result<(), Trap> {
         let cl_value = self.cl_value_from_mem(value_ptr, value_size)?; // read initial value from memory
         let uref = self.context.new_uref(StoredValue::CLValue(cl_value))?;
-        self.memory
+        self.try_get_memory()?
             .set(uref_ptr, &uref.into_bytes().map_err(Error::BytesRepr)?)
             .map_err(|e| Error::Interpreter(e.into()).into())
     }
@@ -2799,7 +1877,7 @@ where
         }
 
         let value_bytes = value_size.to_le_bytes(); // Wasm is little-endian
-        if let Err(error) = self.memory.set(output_size_ptr, &value_bytes) {
+        if let Err(error) = self.try_get_memory()?.set(output_size_ptr, &value_bytes) {
             return Err(Error::Interpreter(error.into()).into());
         }
 
@@ -2912,22 +1990,6 @@ where
         self.context.get_system_contract(MINT)
     }
 
-    fn get_system_contract_stack_frame(&mut self, name: &str) -> Result<CallStackElement, Error> {
-        let contract_hash = self.context.get_system_contract(name)?;
-        let key = Key::from(contract_hash);
-        let contract = match self.context.read_gs(&key)? {
-            Some(StoredValue::Contract(contract)) => contract,
-            Some(_) => {
-                return Err(Error::InvalidContract(contract_hash));
-            }
-            None => return Err(Error::KeyNotFound(key)),
-        };
-        Ok(CallStackElement::StoredContract {
-            contract_package_hash: contract.contract_package_hash(),
-            contract_hash,
-        })
-    }
-
     /// Looks up the public handle payment contract key in the context's protocol data.
     ///
     /// Returned URef is already attenuated depending on the calling account.
@@ -3032,6 +2094,8 @@ where
         amount: U512,
         id: Option<u64>,
     ) -> Result<Result<(), mint::Error>, Error> {
+        self.context.validate_uref(&source)?;
+
         let args_values = {
             let mut runtime_args = RuntimeArgs::new();
             runtime_args.insert(mint::ARG_TO, to)?;
@@ -3075,14 +2139,22 @@ where
             return Ok(Err(mint::Error::EqualSourceAndTarget.into()));
         }
 
-        match self.mint_transfer(
+        let result = self.mint_transfer(
             mint_contract_hash,
             Some(target),
             source,
             target_purse.with_access_rights(AccessRights::ADD),
             amount,
             id,
-        )? {
+        );
+
+        // We granted a temporary access rights bit to newly created main purse as part of
+        // `mint_create` call, and we need to remove it to avoid leakage of access rights.
+
+        self.context
+            .remove_access(target_purse.addr(), target_purse.access_rights());
+
+        match result? {
             Ok(()) => {
                 let account = Account::create(target, Default::default(), target_purse);
                 self.context.write_account(target_key, account)?;
@@ -3104,9 +2176,6 @@ where
         id: Option<u64>,
     ) -> Result<TransferResult, Error> {
         let mint_contract_key = self.get_mint_contract()?;
-
-        // This appears to be a load-bearing use of `RuntimeContext::insert_uref`.
-        self.context.insert_uref(target);
 
         match self.mint_transfer(mint_contract_key, to, source, target, amount, id)? {
             Ok(()) => Ok(Ok(TransferredTo::ExistingAccount)),
@@ -3146,12 +2215,36 @@ where
                 self.transfer_to_new_account(source, target, amount, id)
             }
             Some(StoredValue::Account(account)) => {
+                // Attenuate the target main purse
                 let target_uref = account.main_purse_add_only();
+
                 if source.with_access_rights(AccessRights::ADD) == target_uref {
                     return Ok(Ok(TransferredTo::ExistingAccount));
                 }
+
+                // Upsert ADD access to caller on target allowing deposit of motes; this will be
+                // revoked after the transfer is completed if caller did not already have ADD access
+                let granted_access = self.context.grant_access(target_uref);
+
                 // If an account exists, transfer the amount to its purse
-                self.transfer_to_existing_account(Some(target), source, target_uref, amount, id)
+                let transfer_result = self.transfer_to_existing_account(
+                    Some(target),
+                    source,
+                    target_uref,
+                    amount,
+                    id,
+                );
+
+                // Remove from caller temporarily granted ADD access on target.
+                if let GrantedAccess::Granted {
+                    uref_addr,
+                    newly_granted_access_rights,
+                } = granted_access
+                {
+                    self.context
+                        .remove_access(uref_addr, newly_granted_access_rights)
+                }
+                transfer_result
             }
             Some(_) => {
                 // If some other value exists, return an error
@@ -3192,6 +2285,8 @@ where
             let bytes = self.bytes_from_mem(id_ptr, id_size as usize)?;
             bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
         };
+
+        self.context.validate_uref(&source)?;
 
         let mint_contract_key = self.get_mint_contract()?;
 
@@ -3248,7 +2343,10 @@ where
         }
 
         let balance_size_bytes = balance_size.to_le_bytes(); // Wasm is little-endian
-        if let Err(error) = self.memory.set(output_size_ptr, &balance_size_bytes) {
+        if let Err(error) = self
+            .try_get_memory()?
+            .set(output_size_ptr, &balance_size_bytes)
+        {
             return Err(Error::Interpreter(error.into()));
         }
 
@@ -3270,7 +2368,7 @@ where
             Err(error) => return Ok(Err(error)),
         };
 
-        match self.memory.set(dest_ptr, contract_hash.as_ref()) {
+        match self.try_get_memory()?.set(dest_ptr, contract_hash.as_ref()) {
             Ok(_) => Ok(Ok(())),
             Err(error) => Err(Error::Interpreter(error.into()).into()),
         }
@@ -3318,14 +2416,17 @@ where
         // Slice data, so if `dest_size` is larger than host_buffer size, it will take host_buffer
         // as whole.
         let sliced_buf = &serialized_value[..cmp::min(dest_size, serialized_value.len())];
-        if let Err(error) = self.memory.set(dest_ptr, sliced_buf) {
+        if let Err(error) = self.try_get_memory()?.set(dest_ptr, sliced_buf) {
             return Err(Error::Interpreter(error.into()));
         }
 
         let bytes_written = sliced_buf.len() as u32;
         let bytes_written_data = bytes_written.to_le_bytes();
 
-        if let Err(error) = self.memory.set(bytes_written_ptr, &bytes_written_data) {
+        if let Err(error) = self
+            .try_get_memory()?
+            .set(bytes_written_ptr, &bytes_written_data)
+        {
             return Err(Error::Interpreter(error.into()));
         }
 
@@ -3358,7 +2459,7 @@ where
 
         let arg_size_bytes = arg_size.to_le_bytes(); // Wasm is little-endian
 
-        if let Err(e) = self.memory.set(size_ptr, &arg_size_bytes) {
+        if let Err(e) = self.try_get_memory()?.set(size_ptr, &arg_size_bytes) {
             return Err(Error::Interpreter(e.into()).into());
         }
 
@@ -3384,22 +2485,23 @@ where
             return Ok(Err(ApiError::OutOfMemory));
         }
 
-        if let Err(e) = self
-            .memory
+        if let Err(error) = self
+            .try_get_memory()?
             .set(output_ptr, &arg.inner_bytes()[..output_size])
         {
-            return Err(Error::Interpreter(e.into()).into());
+            return Err(Error::Interpreter(error.into()).into());
         }
 
         Ok(Ok(()))
     }
 
-    fn validate_entry_point_access(
+    /// Enforce group access restrictions (if any) on attempts to call an `EntryPoint`.
+    fn validate_group_membership(
         &self,
         package: &ContractPackage,
         access: &EntryPointAccess,
     ) -> Result<(), Error> {
-        runtime_context::validate_entry_point_access_with(package, access, |uref| {
+        runtime_context::validate_group_membership(package, access, |uref| {
             self.context.validate_uref(uref).is_ok()
         })
     }
@@ -3505,7 +2607,10 @@ where
         }
         // Write return value size to output location
         let output_size_bytes = value_size.to_le_bytes(); // Wasm is little-endian
-        if let Err(error) = self.memory.set(output_size_ptr, &output_size_bytes) {
+        if let Err(error) = self
+            .try_get_memory()?
+            .set(output_size_ptr, &output_size_bytes)
+        {
             return Err(Error::Interpreter(error.into()));
         }
 
@@ -3592,7 +2697,10 @@ where
         }
         // Write return value size to output location
         let output_size_bytes = value_size.to_le_bytes(); // Wasm is little-endian
-        if let Err(error) = self.memory.set(output_size_ptr, &output_size_bytes) {
+        if let Err(error) = self
+            .try_get_memory()?
+            .set(output_size_ptr, &output_size_bytes)
+        {
             return Err(Error::Interpreter(error.into()));
         }
 
@@ -3637,7 +2745,7 @@ where
         }
 
         let value_bytes = value_size.to_le_bytes(); // Wasm is little-endian
-        if let Err(error) = self.memory.set(output_size_ptr, &value_bytes) {
+        if let Err(error) = self.try_get_memory()?.set(output_size_ptr, &value_bytes) {
             return Err(Error::Interpreter(error.into()).into());
         }
 
@@ -3698,197 +2806,5 @@ where
                 Ok(self.context.is_system_contract(contract_hash)?)
             }
         }
-    }
-}
-
-pub(crate) fn extract_keys_from_args(args: &RuntimeArgs) -> Result<Vec<Key>, Error> {
-    let mut extra_keys = Vec::new();
-    for arg in args.to_values() {
-        extra_keys.extend(
-            extract_urefs(arg)?
-                .into_iter()
-                .map(<Key as From<URef>>::from),
-        );
-    }
-    Ok(extra_keys)
-}
-
-#[cfg(test)]
-mod tests {
-    use std::collections::BTreeMap;
-
-    use proptest::{
-        array::uniform32,
-        collection::{btree_map, vec},
-        option,
-        prelude::*,
-        result,
-    };
-
-    use casper_types::{gens::*, AccessRights, CLType, CLValue, Key, PublicKey, SecretKey, URef};
-
-    use super::extract_urefs;
-
-    fn cl_value_with_urefs_arb() -> impl Strategy<Value = (CLValue, Vec<URef>)> {
-        // If compiler brings you here it most probably means you've added a variant to `CLType`
-        // enum but forgot to add generator for it.
-        let stub: Option<CLType> = None;
-        if let Some(cl_type) = stub {
-            match cl_type {
-                CLType::Bool
-                | CLType::I32
-                | CLType::I64
-                | CLType::U8
-                | CLType::U32
-                | CLType::U64
-                | CLType::U128
-                | CLType::U256
-                | CLType::U512
-                | CLType::Unit
-                | CLType::String
-                | CLType::Key
-                | CLType::URef
-                | CLType::Option(_)
-                | CLType::List(_)
-                | CLType::ByteArray(..)
-                | CLType::Result { .. }
-                | CLType::Map { .. }
-                | CLType::Tuple1(_)
-                | CLType::Tuple2(_)
-                | CLType::Tuple3(_)
-                | CLType::PublicKey
-                | CLType::Any => (),
-            }
-        };
-
-        prop_oneof![
-            Just((CLValue::from_t(()).expect("should create CLValue"), vec![])),
-            any::<bool>()
-                .prop_map(|x| (CLValue::from_t(x).expect("should create CLValue"), vec![])),
-            any::<i32>().prop_map(|x| (CLValue::from_t(x).expect("should create CLValue"), vec![])),
-            any::<i64>().prop_map(|x| (CLValue::from_t(x).expect("should create CLValue"), vec![])),
-            any::<u8>().prop_map(|x| (CLValue::from_t(x).expect("should create CLValue"), vec![])),
-            any::<u32>().prop_map(|x| (CLValue::from_t(x).expect("should create CLValue"), vec![])),
-            any::<u64>().prop_map(|x| (CLValue::from_t(x).expect("should create CLValue"), vec![])),
-            u128_arb().prop_map(|x| (CLValue::from_t(x).expect("should create CLValue"), vec![])),
-            u256_arb().prop_map(|x| (CLValue::from_t(x).expect("should create CLValue"), vec![])),
-            u512_arb().prop_map(|x| (CLValue::from_t(x).expect("should create CLValue"), vec![])),
-            key_arb().prop_map(|x| {
-                let urefs = x.as_uref().into_iter().cloned().collect();
-                (CLValue::from_t(x).expect("should create CLValue"), urefs)
-            }),
-            uref_arb().prop_map(|x| (CLValue::from_t(x).expect("should create CLValue"), vec![x])),
-            ".*".prop_map(|x: String| (CLValue::from_t(x).expect("should create CLValue"), vec![])),
-            option::of(any::<u64>())
-                .prop_map(|x| (CLValue::from_t(x).expect("should create CLValue"), vec![])),
-            option::of(uref_arb()).prop_map(|x| {
-                let urefs = x.iter().cloned().collect();
-                (CLValue::from_t(x).expect("should create CLValue"), urefs)
-            }),
-            option::of(key_arb()).prop_map(|x| {
-                let urefs = x.iter().filter_map(Key::as_uref).cloned().collect();
-                (CLValue::from_t(x).expect("should create CLValue"), urefs)
-            }),
-            vec(any::<i32>(), 0..100)
-                .prop_map(|x| (CLValue::from_t(x).expect("should create CLValue"), vec![])),
-            vec(uref_arb(), 0..100).prop_map(|x| (
-                CLValue::from_t(x.clone()).expect("should create CLValue"),
-                x
-            )),
-            vec(key_arb(), 0..100).prop_map(|x| (
-                CLValue::from_t(x.clone()).expect("should create CLValue"),
-                x.into_iter().filter_map(Key::into_uref).collect()
-            )),
-            uniform32(any::<u8>())
-                .prop_map(|x| (CLValue::from_t(x).expect("should create CLValue"), vec![])),
-            result::maybe_err(key_arb(), ".*").prop_map(|x| {
-                let urefs = match &x {
-                    Ok(key) => key.as_uref().into_iter().cloned().collect(),
-                    Err(_) => vec![],
-                };
-                (CLValue::from_t(x).expect("should create CLValue"), urefs)
-            }),
-            result::maybe_ok(".*", uref_arb()).prop_map(|x| {
-                let urefs = match &x {
-                    Ok(_) => vec![],
-                    Err(uref) => vec![*uref],
-                };
-                (CLValue::from_t(x).expect("should create CLValue"), urefs)
-            }),
-            btree_map(".*", u512_arb(), 0..100)
-                .prop_map(|x| (CLValue::from_t(x).expect("should create CLValue"), vec![])),
-            btree_map(uref_arb(), u512_arb(), 0..100).prop_map(|x| {
-                let urefs = x.keys().cloned().collect();
-                (CLValue::from_t(x).expect("should create CLValue"), urefs)
-            }),
-            btree_map(".*", uref_arb(), 0..100).prop_map(|x| {
-                let urefs = x.values().cloned().collect();
-                (CLValue::from_t(x).expect("should create CLValue"), urefs)
-            }),
-            btree_map(uref_arb(), key_arb(), 0..100).prop_map(|x| {
-                let mut urefs: Vec<URef> = x.keys().cloned().collect();
-                urefs.extend(x.values().filter_map(Key::as_uref).cloned());
-                (CLValue::from_t(x).expect("should create CLValue"), urefs)
-            }),
-            (any::<bool>())
-                .prop_map(|x| (CLValue::from_t(x).expect("should create CLValue"), vec![])),
-            (uref_arb())
-                .prop_map(|x| (CLValue::from_t(x).expect("should create CLValue"), vec![x])),
-            (any::<bool>(), any::<i32>())
-                .prop_map(|x| (CLValue::from_t(x).expect("should create CLValue"), vec![])),
-            (uref_arb(), any::<i32>()).prop_map(|x| {
-                let uref = x.0;
-                (
-                    CLValue::from_t(x).expect("should create CLValue"),
-                    vec![uref],
-                )
-            }),
-            (any::<i32>(), key_arb()).prop_map(|x| {
-                let urefs = x.1.as_uref().into_iter().cloned().collect();
-                (CLValue::from_t(x).expect("should create CLValue"), urefs)
-            }),
-            (uref_arb(), key_arb()).prop_map(|x| {
-                let mut urefs = vec![x.0];
-                urefs.extend(x.1.as_uref().into_iter().cloned());
-                (CLValue::from_t(x).expect("should create CLValue"), urefs)
-            }),
-        ]
-    }
-
-    proptest! {
-        #[test]
-        fn should_extract_urefs((cl_value, urefs) in cl_value_with_urefs_arb()) {
-            let extracted_urefs = extract_urefs(&cl_value).unwrap();
-            assert_eq!(extracted_urefs, urefs);
-        }
-    }
-
-    #[test]
-    fn extract_from_public_keys_to_urefs_map() {
-        let uref = URef::new([43; 32], AccessRights::READ_ADD_WRITE);
-        let mut map = BTreeMap::new();
-        map.insert(
-            PublicKey::from(
-                &SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap(),
-            ),
-            uref,
-        );
-        let cl_value = CLValue::from_t(map).unwrap();
-        assert_eq!(extract_urefs(&cl_value).unwrap(), vec![uref]);
-    }
-
-    #[test]
-    fn extract_from_public_keys_to_uref_keys_map() {
-        let uref = URef::new([43; 32], AccessRights::READ_ADD_WRITE);
-        let key = Key::from(uref);
-        let mut map = BTreeMap::new();
-        map.insert(
-            PublicKey::from(
-                &SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap(),
-            ),
-            key,
-        );
-        let cl_value = CLValue::from_t(map).unwrap();
-        assert_eq!(extract_urefs(&cl_value).unwrap(), vec![uref]);
     }
 }

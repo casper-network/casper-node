@@ -48,7 +48,9 @@ mod transfer_result;
 mod uint;
 mod uref;
 
-pub use access_rights::{AccessRights, ACCESS_RIGHTS_SERIALIZED_LENGTH};
+pub use access_rights::{
+    AccessRights, ContextAccessRights, GrantedAccess, ACCESS_RIGHTS_SERIALIZED_LENGTH,
+};
 #[doc(inline)]
 pub use api_error::ApiError;
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
@@ -87,7 +89,9 @@ pub use transfer::{
     TRANSFER_ADDR_LENGTH,
 };
 pub use transfer_result::{TransferResult, TransferredTo};
-pub use uref::{FromStrError as URefFromStrError, URef, UREF_ADDR_LENGTH, UREF_SERIALIZED_LENGTH};
+pub use uref::{
+    FromStrError as URefFromStrError, URef, URefAddr, UREF_ADDR_LENGTH, UREF_SERIALIZED_LENGTH,
+};
 
 pub use crate::{
     era_id::EraId,

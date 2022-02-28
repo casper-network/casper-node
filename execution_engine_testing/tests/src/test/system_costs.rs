@@ -6,6 +6,7 @@ use casper_engine_test_support::{
     UpgradeRequestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
     DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_STORED_VALUE_SIZE,
     DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
+    MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{
     core::engine_state::{
@@ -34,12 +35,10 @@ use casper_execution_engine::{
             standard_payment_costs::StandardPaymentCosts,
             SystemConfig, DEFAULT_WASMLESS_TRANSFER_COST,
         },
-        wasm,
         wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
     },
 };
 use casper_types::{
-    account::AccountHash,
     runtime_args,
     system::{
         auction::{self, DelegationRate},
@@ -48,13 +47,15 @@ use casper_types::{
     EraId, Gas, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
+use crate::wasm_utils;
+
 const SYSTEM_CONTRACT_HASHES_NAME: &str = "system_contract_hashes.wasm";
 const CONTRACT_ADD_BID: &str = "add_bid.wasm";
+const CONTRACT_TRANSFER_TO_NAMED_PURSE: &str = "transfer_to_named_purse.wasm";
 
 static VALIDATOR_1_SECRET_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::ed25519_from_bytes([123; SecretKey::ED25519_LENGTH]).unwrap());
 static VALIDATOR_1: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*VALIDATOR_1_SECRET_KEY));
-static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
 const VALIDATOR_1_STAKE: u64 = 250_000;
 const BOND_AMOUNT: u64 = 42;
 const BID_AMOUNT: u64 = 99 + DEFAULT_MINIMUM_DELEGATION_AMOUNT;
@@ -76,6 +77,8 @@ static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
     )
 });
 
+const ARG_PURSE_NAME: &str = "purse_name";
+const NAMED_PURSE_NAME: &str = "purse_1";
 const ARG_AMOUNT: &str = "amount";
 
 #[ignore]
@@ -566,37 +569,32 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
 fn mint_transfer_has_expected_costs() {
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    let accounts = {
-        let validator_1 = GenesisAccount::account(
-            VALIDATOR_1.clone(),
-            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
-            Some(GenesisValidator::new(
-                Motes::new(VALIDATOR_1_STAKE.into()),
-                DelegationRate::zero(),
-            )),
-        );
+    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
-        let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
-        tmp.push(validator_1);
-        tmp
-    };
+    let transfer_request_1 = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_NAMED_PURSE,
+        runtime_args! {
+            ARG_PURSE_NAME => NAMED_PURSE_NAME,
+            ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
+        },
+    )
+    .build();
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
-
-    builder.run_genesis(&run_genesis_request);
+    builder.exec(transfer_request_1).expect_success().commit();
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
-    let validator_1_account = builder
-        .get_account(*VALIDATOR_1_ADDR)
-        .expect("should have account");
+    let purse_1 = default_account.named_keys()[NAMED_PURSE_NAME]
+        .into_uref()
+        .expect("should have purse");
 
     let mint_hash = builder.get_mint_contract_hash();
 
     let source = default_account.main_purse();
-    let target = validator_1_account.main_purse();
+    let target = purse_1;
 
     let id = Some(0u64);
 
@@ -607,7 +605,7 @@ fn mint_transfer_has_expected_costs() {
         mint_hash,
         mint::METHOD_TRANSFER,
         runtime_args! {
-            mint::ARG_TO => Some(*VALIDATOR_1_ADDR),
+            mint::ARG_TO => Some(*DEFAULT_ACCOUNT_ADDR),
             mint::ARG_SOURCE => source,
             mint::ARG_TARGET => target,
             mint::ARG_AMOUNT => U512::from(TRANSFER_AMOUNT),
@@ -752,7 +750,7 @@ fn should_verify_do_nothing_charges_only_for_standard_payment() {
     let do_nothing_request = {
         let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+            .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
             .with_empty_payment_bytes(runtime_args! {
                 ARG_AMOUNT => *DEFAULT_PAYMENT
             })

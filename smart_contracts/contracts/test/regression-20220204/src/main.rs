@@ -4,6 +4,7 @@
 #[macro_use]
 extern crate alloc;
 
+use alloc::{collections::BTreeMap, string::String};
 use casper_contract::{
     contract_api::{account, runtime, storage, system},
     unwrap_or_revert::UnwrapOrRevert,
@@ -11,17 +12,19 @@ use casper_contract::{
 use casper_types::{
     account::AccountHash,
     contracts::{NamedKeys, Parameters},
-    CLType, CLTyped, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Parameter, URef,
-    U512,
+    CLType, CLTyped, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key, Parameter,
+    URef, U512,
 };
 
 const TRANSFER_AS_CONTRACT: &str = "transfer_as_contract";
 const TRANSFER_AS_SESSION: &str = "transfer_as_session";
 const TRANSFER_MAIN_PURSE_AS_SESSION: &str = "transfer_main_purse_as_session";
+const NONTRIVIAL_ARG_AS_CONTRACT: &str = "nontrivial_arg_as_contract";
 const ARG_PURSE: &str = "purse";
 const PURSE_KEY: &str = "purse";
 const CONTRACT_HASH_NAME: &str = "regression-contract-hash";
 const PACKAGE_HASH_NAME: &str = "package-contract-hash";
+type NonTrivialArg = BTreeMap<String, Key>;
 
 #[no_mangle]
 pub extern "C" fn call() {
@@ -44,6 +47,16 @@ pub extern "C" fn call() {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Session,
+    ));
+
+    type NonTrivialArg = BTreeMap<String, Key>;
+
+    entry_points.add_entry_point(EntryPoint::new(
+        NONTRIVIAL_ARG_AS_CONTRACT,
+        vec![Parameter::new(ARG_PURSE, NonTrivialArg::cl_type())],
+        CLType::Unit,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
     ));
 
     entry_points.add_entry_point(EntryPoint::new(
@@ -83,9 +96,12 @@ pub extern "C" fn transfer_as_contract() {
         .into_uref()
         .unwrap_or_revert();
 
-    assert!(!source_purse.is_writeable());
-
+    assert!(
+        !source_purse.is_writeable(),
+        "Host should modify write bits in passed main purse"
+    );
     assert!(runtime::is_valid_uref(source_purse));
+
     let extended = source_purse.into_read_add_write();
     assert!(!runtime::is_valid_uref(extended));
 
@@ -101,7 +117,7 @@ pub extern "C" fn transfer_as_session() {
 
     assert!(runtime::is_valid_uref(source_purse));
     let extended = source_purse.into_read_add_write();
-    assert!(!runtime::is_valid_uref(extended));
+    assert!(runtime::is_valid_uref(extended));
 
     system::transfer_from_purse_to_account(
         extended,
@@ -127,4 +143,29 @@ pub extern "C" fn transfer_main_purse_as_session() {
         Some(42),
     )
     .unwrap_or_revert();
+}
+
+#[no_mangle]
+pub extern "C" fn nontrivial_arg_as_contract() {
+    let non_trivial_arg: NonTrivialArg = runtime::get_named_arg(ARG_PURSE);
+    let source_purse: URef = non_trivial_arg
+        .into_values()
+        .map(Key::into_uref)
+        .flatten()
+        .next()
+        .unwrap();
+
+    let target_purse = runtime::get_key(PURSE_KEY)
+        .unwrap_or_revert()
+        .into_uref()
+        .unwrap_or_revert();
+
+    assert!(!source_purse.is_writeable());
+    assert!(runtime::is_valid_uref(source_purse));
+
+    let extended = source_purse.into_read_add_write();
+    assert!(!runtime::is_valid_uref(extended));
+
+    system::transfer_from_purse_to_purse(extended, target_purse, U512::one(), Some(42))
+        .unwrap_or_revert();
 }

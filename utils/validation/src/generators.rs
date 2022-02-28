@@ -3,7 +3,6 @@ use std::{
     iter::FromIterator,
 };
 
-use casper_execution_engine::shared::wasm;
 use casper_types::{
     account::{Account, AccountHash, ActionThresholds, AssociatedKeys, Weight},
     contracts::{ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys},
@@ -19,6 +18,8 @@ use casper_validation::{
     error::Error,
     Fixture, TestFixtures,
 };
+
+const DO_NOTHING_BYTES: &[u8] = b"\x00asm\x01\x00\x00\x00\x01\x04\x01`\x00\x00\x03\x02\x01\x00\x05\x03\x01\x00\x01\x07\x08\x01\x04call\x00\x00\n\x04\x01\x02\x00\x0b";
 
 pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
     let basic = {
@@ -275,7 +276,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             ABITestCase::from_inputs(vec![StoredValue::Account(account).into()])?,
         );
 
-        let contract_wasm = ContractWasm::new(wasm::do_nothing_bytes());
+        let contract_wasm = ContractWasm::new(DO_NOTHING_BYTES.to_vec());
 
         stored_value.insert(
             "ContractWasm".to_string(),

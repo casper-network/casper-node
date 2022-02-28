@@ -166,6 +166,9 @@ pub enum Error {
     /// An attempt to write a value to global state where its serialized size is too large.
     #[error("Value too large")]
     ValueTooLarge,
+    /// The runtime stack is `None`.
+    #[error("Runtime stack missing")]
+    MissingRuntimeStack,
 }
 
 impl From<wasm_prep::PreprocessingError> for Error {

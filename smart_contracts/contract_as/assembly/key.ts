@@ -49,7 +49,7 @@ export class AccountHash {
         let algorithmNameBytes = encodeUTF8(algorithmName);
         let publicKeyBytes = publicKey.getRawBytes();
         let dataLength = algorithmNameBytes.length + publicKeyBytes.length + 1;
-        
+
         let data = new Array<u8>(dataLength);
         for (let i=0; i < algorithmNameBytes.length; i++){
             data[i]=algorithmNameBytes[i];
@@ -60,7 +60,7 @@ export class AccountHash {
         for (let i=0; i < publicKeyBytes.length; i++) {
             data[algorithmNameBytes.length + 1 + i] = publicKeyBytes[i];
         }
-        
+
         const accountHashBytes = runtime.blake2b(data);
         return new AccountHash(accountHashBytes);
     }
