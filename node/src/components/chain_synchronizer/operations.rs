@@ -5,11 +5,13 @@ use std::{
         atomic::{self, AtomicBool},
         Arc,
     },
+    time::Duration,
 };
 
 use async_trait::async_trait;
 use datasize::DataSize;
 use futures::stream::{futures_unordered::FuturesUnordered, StreamExt};
+use quanta::Instant;
 use tracing::{debug, info, trace, warn};
 
 use casper_execution_engine::storage::trie::Trie;
@@ -32,6 +34,9 @@ use crate::{
     },
     utils::work_queue::WorkQueue,
 };
+
+/// The duration after which a warning for long-running tasks will be emitted.
+const FOREVER_WARN_TIMEOUT: Duration = Duration::from_secs(60);
 
 struct ChainSyncContext<'a> {
     effect_builder: &'a EffectBuilder<JoinerEvent>,
@@ -119,18 +124,38 @@ async fn fetch_trie_retry_forever(
     id: Digest,
     ctx: &ChainSyncContext<'_>,
 ) -> FetchedData<Trie<Key, StoredValue>> {
+    let started = Instant::now();
+    let mut last_warning = started;
+
     loop {
         let peers = ctx.effect_builder.get_fully_connected_peers().await;
-        trace!(?id, "attempting to fetch a trie",);
-        match ctx.effect_builder.fetch_trie(id, peers).await {
-            Ok(fetched_data) => {
-                trace!(?id, "got trie successfully",);
-                return fetched_data;
-            }
-            Err(error) => {
-                warn!(?id, %error, "fast sync could not fetch a trie; trying again")
+        let peer_count = peers.len();
+        if !peers.is_empty() {
+            trace!(?id, "attempting to fetch a trie",);
+            match ctx.effect_builder.fetch_trie(id, peers).await {
+                Ok(fetched_data) => {
+                    trace!(?id, "got trie successfully",);
+                    return fetched_data;
+                }
+                Err(error) => {
+                    warn!(?id, %error, "fast sync could not fetch a trie; trying again")
+                }
             }
         }
+
+        // Emit a warning in the logs only occasionally, avoiding spam when when poorly connected.
+        let now = Instant::now();
+        if now.duration_since(last_warning) > FOREVER_WARN_TIMEOUT {
+            last_warning = now;
+            let since = now.duration_since(started);
+            warn!(
+                ?id,
+                ?since,
+                %peer_count,
+                "still trying to fetch trie, either failed or no suitable peers"
+            );
+        }
+
         tokio::time::sleep(ctx.config.retry_interval()).await
     }
 }
