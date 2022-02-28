@@ -6,6 +6,7 @@ use casper_engine_test_support::{
     UpgradeRequestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
     DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_STORED_VALUE_SIZE,
     DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
+    MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{
     core::engine_state::{
@@ -50,6 +51,7 @@ use crate::wasm_utils;
 
 const SYSTEM_CONTRACT_HASHES_NAME: &str = "system_contract_hashes.wasm";
 const CONTRACT_ADD_BID: &str = "add_bid.wasm";
+const CONTRACT_TRANSFER_TO_NAMED_PURSE: &str = "transfer_to_named_purse.wasm";
 
 static VALIDATOR_1_SECRET_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::ed25519_from_bytes([123; SecretKey::ED25519_LENGTH]).unwrap());
@@ -57,6 +59,7 @@ static VALIDATOR_1: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*VALIDATOR_1
 const VALIDATOR_1_STAKE: u64 = 250_000;
 const BOND_AMOUNT: u64 = 42;
 const BID_AMOUNT: u64 = 99 + DEFAULT_MINIMUM_DELEGATION_AMOUNT;
+const TRANSFER_AMOUNT: u64 = 123;
 const BID_DELEGATION_RATE: DelegationRate = auction::DELEGATION_RATE_DENOMINATOR;
 const UPDATED_CALL_CONTRACT_COST: Cost = 12_345;
 const NEW_ADD_BID_COST: u32 = DEFAULT_ADD_BID_COST * 2;
@@ -74,6 +77,8 @@ static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
     )
 });
 
+const ARG_PURSE_NAME: &str = "purse_name";
+const NAMED_PURSE_NAME: &str = "purse_1";
 const ARG_AMOUNT: &str = "amount";
 
 #[ignore]
@@ -557,6 +562,73 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
     let call_cost = U512::from(NEW_UNDELEGATE_COST);
     assert_eq!(balance_after, balance_before - transaction_fee_2);
     assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
+}
+
+#[ignore]
+#[test]
+fn mint_transfer_has_expected_costs() {
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+
+    let transfer_request_1 = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_NAMED_PURSE,
+        runtime_args! {
+            ARG_PURSE_NAME => NAMED_PURSE_NAME,
+            ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
+        },
+    )
+    .build();
+
+    builder.exec(transfer_request_1).expect_success().commit();
+
+    let default_account = builder
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .expect("should have account");
+
+    let purse_1 = default_account.named_keys()[NAMED_PURSE_NAME]
+        .into_uref()
+        .expect("should have purse");
+
+    let mint_hash = builder.get_mint_contract_hash();
+
+    let source = default_account.main_purse();
+    let target = purse_1;
+
+    let id = Some(0u64);
+
+    let transfer_amount = U512::from(TRANSFER_AMOUNT);
+
+    let transfer_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        mint_hash,
+        mint::METHOD_TRANSFER,
+        runtime_args! {
+            mint::ARG_TO => Some(*DEFAULT_ACCOUNT_ADDR),
+            mint::ARG_SOURCE => source,
+            mint::ARG_TARGET => target,
+            mint::ARG_AMOUNT => U512::from(TRANSFER_AMOUNT),
+            mint::ARG_ID => id,
+        },
+    )
+    .build();
+
+    let balance_before = builder.get_purse_balance(source);
+
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+
+    builder.exec(transfer_request).expect_success().commit();
+    let balance_after = builder.get_purse_balance(source);
+
+    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
+
+    let expected_call_cost = U512::from(DEFAULT_TRANSFER_COST);
+    assert_eq!(
+        balance_after,
+        balance_before - transfer_amount - transaction_fee,
+    );
+    assert_eq!(builder.last_exec_gas_cost().value(), expected_call_cost);
 }
 
 #[ignore]

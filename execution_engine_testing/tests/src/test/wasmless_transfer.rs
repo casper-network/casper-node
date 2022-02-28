@@ -686,6 +686,11 @@ fn init_wasmless_transform_builder(create_account_2: bool) -> InMemoryWasmTestBu
     )
     .build();
 
+    builder
+        .exec(create_account_2_request)
+        .commit()
+        .expect_success();
+
     let new_named_uref_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_NEW_NAMED_UREF,
@@ -694,11 +699,6 @@ fn init_wasmless_transform_builder(create_account_2: bool) -> InMemoryWasmTestBu
         },
     )
     .build();
-
-    builder
-        .exec(create_account_2_request)
-        .commit()
-        .expect_success();
 
     builder
         .exec(new_named_uref_request)

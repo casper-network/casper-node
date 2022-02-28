@@ -29,7 +29,7 @@ const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
 const STORED_PAYMENT_CONTRACT_NAME: &str = "test_payment_stored.wasm";
 const STORED_PAYMENT_CONTRACT_HASH_NAME: &str = "test_payment_hash";
 const STORED_PAYMENT_CONTRACT_PACKAGE_HASH_NAME: &str = "test_payment_package_hash";
-const PAY: &str = "pay";
+const PAY_ENTRYPOINT: &str = "pay";
 const TRANSFER_PURSE_TO_ACCOUNT_CONTRACT_NAME: &str = "transfer_purse_to_account";
 // Currently Error enum that holds this variant is private and can't be used otherwise to compare
 // message
@@ -241,7 +241,7 @@ fn should_exec_stored_code_by_hash() {
                 .with_stored_versioned_payment_contract_by_hash(
                     hash.value(),
                     Some(CONTRACT_INITIAL_VERSION),
-                    PAY,
+                    PAY_ENTRYPOINT,
                     runtime_args! {
                         ARG_AMOUNT => payment_purse_amount,
                     },
@@ -311,7 +311,7 @@ fn should_not_transfer_above_balance_using_stored_payment_code_by_hash() {
             .with_stored_versioned_payment_contract_by_hash(
                 hash.value(),
                 Some(CONTRACT_INITIAL_VERSION),
-                PAY,
+                PAY_ENTRYPOINT,
                 runtime_args! {
                     ARG_AMOUNT => payment_purse_amount,
                 },
@@ -384,7 +384,7 @@ fn should_empty_account_using_stored_payment_code_by_hash() {
                 .with_stored_versioned_payment_contract_by_hash(
                     hash.value(),
                     Some(CONTRACT_INITIAL_VERSION),
-                    PAY,
+                    PAY_ENTRYPOINT,
                     runtime_args! {
                         ARG_AMOUNT => payment_purse_amount,
                     },
@@ -477,7 +477,7 @@ fn should_exec_stored_code_by_named_hash() {
                 .with_stored_versioned_payment_contract_by_name(
                     STORED_PAYMENT_CONTRACT_PACKAGE_HASH_NAME,
                     Some(CONTRACT_INITIAL_VERSION),
-                    PAY,
+                    PAY_ENTRYPOINT,
                     runtime_args! {
                         ARG_AMOUNT => payment_purse_amount,
                     },
@@ -574,7 +574,7 @@ fn should_fail_payment_stored_at_named_key_with_incompatible_major_version() {
             .with_session_code(&format!("{}.wasm", DO_NOTHING_NAME), RuntimeArgs::default())
             .with_stored_payment_named_key(
                 STORED_PAYMENT_CONTRACT_HASH_NAME,
-                PAY,
+                PAY_ENTRYPOINT,
                 runtime_args! {
                     ARG_AMOUNT => payment_purse_amount,
                 },
@@ -657,7 +657,7 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
             .with_session_code(&format!("{}.wasm", DO_NOTHING_NAME), RuntimeArgs::default())
             .with_stored_payment_hash(
                 stored_payment_contract_hash.into(),
-                "pay",
+                PAY_ENTRYPOINT,
                 runtime_args! { ARG_AMOUNT => payment_purse_amount },
             )
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
@@ -754,7 +754,7 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
             )
             .with_stored_payment_hash(
                 stored_payment_contract_hash.into(),
-                "pay",
+                PAY_ENTRYPOINT,
                 runtime_args! { ARG_AMOUNT => payment_purse_amount },
             )
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
@@ -936,7 +936,7 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
             )
             .with_stored_payment_hash(
                 test_payment_stored_hash.into(),
-                "pay",
+                PAY_ENTRYPOINT,
                 runtime_args! { ARG_AMOUNT => payment_purse_amount },
             )
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
@@ -1038,7 +1038,7 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
             )
             .with_stored_payment_hash(
                 test_payment_stored_hash.into(),
-                "pay",
+                PAY_ENTRYPOINT,
                 runtime_args! { ARG_AMOUNT => payment_purse_amount },
             )
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])

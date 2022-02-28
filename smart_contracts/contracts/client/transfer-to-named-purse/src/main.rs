@@ -21,7 +21,7 @@ pub extern "C" fn call() {
         Some(Key::URef(uref)) => uref,
         Some(_) => {
             // Found a key but it is not a purse
-            runtime::revert(ApiError::GetKey);
+            runtime::revert(ApiError::UnexpectedKeyVariant);
         }
         None => {
             // Creates new named purse

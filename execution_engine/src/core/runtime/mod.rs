@@ -106,9 +106,8 @@ where
         }
     }
 
-    /// Creates a new runtime instance by cloning the config, memory, module and host function flag
-    /// from `self`.
-    pub(crate) fn new_system_runtime(
+    /// Creates a new runtime instance with a stack from `self`.
+    pub(crate) fn new_with_stack(
         &self,
         context: RuntimeContext<'a, R>,
         stack: RuntimeStack,
@@ -444,7 +443,7 @@ where
         self.host_buffer = None;
         let memory = match self.try_get_memory() {
             Ok(memory) => memory,
-            Err(_) => return Trap::new(TrapKind::ElemUninitialized),
+            Err(error) => return Trap::from(error),
         };
         let mem_get = memory
             .get(value_ptr, value_size)
@@ -482,39 +481,14 @@ where
         }
     }
 
-    fn is_system_contract(&self, key: Key) -> bool {
-        let search_hash = key.into_hash();
-        if search_hash.is_none() {
-            return false;
-        }
-
-        let system_contract_registry = match self.context.system_contract_registry() {
-            Ok(registry) => registry,
-            Err(_) => return false,
+    /// Checks if a [`Key`] is a system contract.
+    fn is_system_contract(&self, key: Key) -> Result<bool, Error> {
+        let contract_hash = match key.into_hash() {
+            Some(contract_hash_bytes) => ContractHash::new(contract_hash_bytes),
+            None => return Ok(false),
         };
 
-        let maybe_handle_payment_hash = system_contract_registry
-            .get(HANDLE_PAYMENT)
-            .map(|contract_hash| contract_hash.value());
-        if maybe_handle_payment_hash == search_hash {
-            return true;
-        }
-
-        let maybe_mint_hash = system_contract_registry
-            .get(MINT)
-            .map(|contract_hash| contract_hash.value());
-        if maybe_mint_hash == search_hash {
-            return true;
-        }
-
-        let maybe_auction_hash = system_contract_registry
-            .get(AUCTION)
-            .map(|contract_hash| contract_hash.value());
-        if maybe_auction_hash == search_hash {
-            return true;
-        }
-
-        false
+        self.context.is_system_contract(&contract_hash)
     }
 
     /// Checks if current context is the mint system contract.
@@ -589,7 +563,7 @@ where
     }
 
     /// Calls host mint contract.
-    pub(crate) fn call_host_mint(
+    fn call_host_mint(
         &mut self,
         entry_point_name: &str,
         named_keys: &mut NamedKeys,
@@ -608,7 +582,7 @@ where
             runtime_args.to_owned(),
         );
 
-        let mut mint_runtime = self.new_system_runtime(runtime_context, stack);
+        let mut mint_runtime = self.new_with_stack(runtime_context, stack);
 
         let system_config = self.config.system_config();
         let mint_costs = system_config.mint_costs();
@@ -730,7 +704,7 @@ where
             runtime_args.to_owned(),
         );
 
-        let mut runtime = self.new_system_runtime(runtime_context, stack);
+        let mut runtime = self.new_with_stack(runtime_context, stack);
 
         let system_config = self.config.system_config();
         let handle_payment_costs = system_config.handle_payment_costs();
@@ -822,7 +796,7 @@ where
             runtime_args.to_owned(),
         );
 
-        let mut runtime = self.new_system_runtime(runtime_context, stack);
+        let mut runtime = self.new_with_stack(runtime_context, stack);
 
         let system_config = self.config.system_config();
         let auction_costs = system_config.auction_costs();
@@ -1160,8 +1134,8 @@ where
         }
     }
 
-    fn try_get_memory(&self) -> Result<MemoryRef, Error> {
-        self.memory.clone().ok_or(Error::WasmPreprocessing(
+    fn try_get_memory(&self) -> Result<&MemoryRef, Error> {
+        self.memory.as_ref().ok_or(Error::WasmPreprocessing(
             PreprocessingError::MissingMemorySection,
         ))
     }
@@ -1232,38 +1206,60 @@ where
             ),
         };
 
-        let mut is_system_account = false;
-        let is_calling_system = self.is_system_contract(context_key);
-        let is_system_call = self.is_system_contract(self.context.access_rights().context_key())
-            && is_calling_system;
+        // Checks if the contract we're about to call is a system one.
+        let is_calling_system = self.is_system_contract(context_key)?;
+        // Does current runtime context's access rights belongs to a system account?
+        let is_system_contract =
+            self.is_system_contract(self.context.access_rights().context_key())?;
+        // If current context is a system contract, and we're calling system contract then we're
+        // under a system call mode.
+        let is_system_call = is_system_contract && is_calling_system;
 
-        let stack = {
+        let (stack, is_system_account) = {
             let mut stack = self.try_get_stack()?.clone();
-            let call_stack_element = match entry_point.entry_point_type() {
-                EntryPointType::Session => CallStackElement::stored_session(
-                    self.context.account().account_hash(),
-                    contract.contract_package_hash(),
-                    contract_hash,
-                ),
+            let (call_stack_element, is_system_account) = match entry_point.entry_point_type() {
+                EntryPointType::Session => {
+                    let stored_session = CallStackElement::stored_session(
+                        self.context.account().account_hash(),
+                        contract.contract_package_hash(),
+                        contract_hash,
+                    );
+                    // We don't have system contracts with entry points of a Session type.
+                    let is_system_account = false;
+
+                    (stored_session, is_system_account)
+                }
                 EntryPointType::Contract => {
-                    let session_call_stack_element = stack.first_frame().unwrap();
-                    is_system_account = if let CallStackElement::Session { account_hash } =
+                    // SAFETY: Runtime stack always has at least 1 element and it is a session
+                    // object.
+                    let session_call_stack_element = stack
+                        .first_frame()
+                        .expect("should have first element in the stack");
+
+                    // Determines if this call originated from a system account based on a first
+                    // element of the call stack.
+                    let is_system_account = if let CallStackElement::Session { account_hash } =
                         session_call_stack_element
                     {
                         *account_hash == PublicKey::System.to_account_hash()
                     } else {
                         false
                     };
-                    CallStackElement::stored_contract(
+
+                    let stored_contract_frame = CallStackElement::stored_contract(
                         contract.contract_package_hash(),
                         contract_hash,
-                    )
+                    );
+                    (stored_contract_frame, is_system_account)
                 }
             };
             stack.push(call_stack_element)?;
-            stack
+
+            (stack, is_system_account)
         };
 
+        // Main purse URefs should be attenuated only when a contract is executed by a non-system
+        // account to avoid possible phishing attack scenarios.
         let should_attenuate_urefs = !is_calling_system && !is_system_call && !is_system_account;
         let context_args = if should_attenuate_urefs {
             utils::attenuate_uref_in_args(
@@ -1382,8 +1378,10 @@ where
             match downcasted_error {
                 Some(Error::Ret(ref ret_urefs)) => {
                     // Insert extra urefs returned from call.
+                    // Those returned URef's are guaranteed to be valid as they were already
+                    // validated in the `ret` call inside context we ret from.
                     self.context.access_rights_extend(ret_urefs);
-                    // If ret has not set host_buffer consider it programmer error.
+
                     if self.context.entry_point_type() == EntryPointType::Session
                         && runtime.context.entry_point_type() == EntryPointType::Session
                     {
@@ -1391,6 +1389,9 @@ where
                         // running session code.
                         *self.context.named_keys_mut() = runtime.context.named_keys().clone();
                     }
+
+                    // Stored contracts are expected to always call a `ret` function, otherwise it's
+                    // an error.
                     return runtime.take_host_buffer().ok_or(Error::ExpectedReturnValue);
                 }
                 Some(error) => return Err(error.clone()),
@@ -1755,10 +1756,7 @@ where
     /// Writes function address (`hash_bytes`) into the Wasm memory (at
     /// `dest_ptr` pointer).
     fn function_address(&mut self, hash_bytes: [u8; 32], dest_ptr: u32) -> Result<(), Trap> {
-        let memory = self
-            .try_get_memory()
-            .map_err(|_| Trap::new(TrapKind::ElemUninitialized))?;
-        memory
+        self.try_get_memory()?
             .set(dest_ptr, &hash_bytes)
             .map_err(|e| Error::Interpreter(e.into()).into())
     }
@@ -1768,10 +1766,7 @@ where
     fn new_uref(&mut self, uref_ptr: u32, value_ptr: u32, value_size: u32) -> Result<(), Trap> {
         let cl_value = self.cl_value_from_mem(value_ptr, value_size)?; // read initial value from memory
         let uref = self.context.new_uref(StoredValue::CLValue(cl_value))?;
-        let memory = self
-            .try_get_memory()
-            .map_err(|_| Trap::new(TrapKind::ElemUninitialized))?;
-        memory
+        self.try_get_memory()?
             .set(uref_ptr, &uref.into_bytes().map_err(Error::BytesRepr)?)
             .map_err(|e| Error::Interpreter(e.into()).into())
     }
@@ -2140,7 +2135,6 @@ where
 
         let target_purse = self.mint_create(mint_contract_hash)?;
 
-        // TODO: Remove ?
         if source == target_purse {
             return Ok(Err(mint::Error::EqualSourceAndTarget.into()));
         }
@@ -2153,6 +2147,9 @@ where
             amount,
             id,
         );
+
+        // We granted a temporary access rights bit to newly created main purse as part of
+        // `mint_create` call, and we need to remove it to avoid leakage of access rights.
 
         self.context
             .remove_access(target_purse.addr(), target_purse.access_rights());
@@ -2225,7 +2222,8 @@ where
                     return Ok(Ok(TransferredTo::ExistingAccount));
                 }
 
-                // Grant ADD access on target to caller
+                // Upsert ADD access to caller on target allowing deposit of motes; this will be
+                // revoked after the transfer is completed if caller did not already have ADD access
                 let granted_access = self.context.grant_access(target_uref);
 
                 // If an account exists, transfer the amount to its purse
@@ -2237,7 +2235,7 @@ where
                     id,
                 );
 
-                // Remove the temporarily granted access for the given URef address.
+                // Remove from caller temporarily granted ADD access on target.
                 if let GrantedAccess::Granted {
                     uref_addr,
                     newly_granted_access_rights,
@@ -2487,16 +2485,17 @@ where
             return Ok(Err(ApiError::OutOfMemory));
         }
 
-        let memory = self
-            .try_get_memory()
-            .map_err(|_| Trap::new(TrapKind::ElemUninitialized))?;
-        if let Err(e) = memory.set(output_ptr, &arg.inner_bytes()[..output_size]) {
-            return Err(Error::Interpreter(e.into()).into());
+        if let Err(error) = self
+            .try_get_memory()?
+            .set(output_ptr, &arg.inner_bytes()[..output_size])
+        {
+            return Err(Error::Interpreter(error.into()).into());
         }
 
         Ok(Ok(()))
     }
 
+    /// Enforce group access restrictions (if any) on attempts to call an `EntryPoint`.
     fn validate_group_membership(
         &self,
         package: &ContractPackage,

@@ -328,6 +328,8 @@ fn should_create_and_remove_urefs_from_group() {
         // code.
         let args = runtime_args! {
             GROUP_NAME_ARG => GROUP_1_NAME,
+            // We're passing indices of urefs inside a group rather than URef values as group urefs aren't part of the access rights.
+            // This test will read a ContractPackage instance, get the group by its name, and remove URefs by their indices.
             ARG_UREF_INDICES => vec![0u64, 1u64],
         };
         let deploy = DeployItemBuilder::new()

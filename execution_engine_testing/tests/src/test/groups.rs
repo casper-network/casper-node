@@ -917,9 +917,10 @@ fn should_not_call_uncallable_session_from_deploy() {
 
 #[test]
 #[ignore]
-fn should_not_call_restricted_payment_from_wrong_account() {
-    // This test runs a contract that's after every call extends the same key with
-    // more data
+fn should_not_call_group_restricted_stored_payment_code_from_invalid_account() {
+    // This test calls a stored payment code that is restricted with a group access using an account
+    // that does not have any of the group urefs in context.
+
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_GROUPS,
@@ -1001,9 +1002,9 @@ fn should_not_call_restricted_payment_from_wrong_account() {
 
 #[test]
 #[ignore]
-fn should_call_restricted_payment_from_permitted_account() {
-    // This test runs a contract that's after every call extends the same key with
-    // more data
+fn should_call_group_restricted_stored_payment_code() {
+    // This test calls a stored payment code that is restricted with a group access using an account
+    // that contains urefs from the group.
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_GROUPS,
