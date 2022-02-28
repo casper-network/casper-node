@@ -30,9 +30,8 @@ use crate::{
     utils::umask,
     WithDir,
 };
-use util::ShowUnixAddr;
-
 pub use tasks::TempFileSerializer;
+use util::ShowUnixAddr;
 
 /// Unix console component.
 #[derive(Debug, DataSize)]
