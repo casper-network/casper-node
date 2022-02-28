@@ -8,9 +8,6 @@ pub(super) struct Metrics {
     /// Total time in seconds of syncing the chain.
     #[data_size(skip)]
     pub(super) chain_sync_total_duration_seconds: IntGauge,
-    /// Time in seconds of fetching and storing the block header.
-    #[data_size(skip)]
-    pub(super) chain_sync_fetch_and_store_block_header_duration_seconds: IntGauge,
     /// Time in seconds of handling the emergency restart.
     #[data_size(skip)]
     pub(super) chain_sync_emergency_restart_duration_seconds: IntGauge,
@@ -45,6 +42,12 @@ pub(super) struct Metrics {
     /// Time in seconds of executing blocks during chain sync.
     #[data_size(skip)]
     pub(super) chain_sync_execute_blocks_duration_seconds: IntGauge,
+    /// Time in seconds of fetching the initial trusted block header during chain sync.
+    #[data_size(skip)]
+    pub(super) chain_sync_fetch_and_store_initial_trusted_block_header_duration_seconds: IntGauge,
+    /// Time in seconds of syncing trie store (global state download) during chain sync.
+    #[data_size(skip)]
+    pub(super) chain_sync_sync_trie_store_duration_seconds: IntGauge,
     /// Registry stored to allow deregistration later.
     #[data_size(skip)]
     registry: Registry,
@@ -56,10 +59,6 @@ impl Metrics {
         let chain_sync_total_duration_seconds = IntGauge::new(
             "chain_sync_total_duration_seconds",
             "total time in seconds of syncing the chain",
-        )?;
-        let chain_sync_fetch_and_store_block_header_duration_seconds = IntGauge::new(
-            "chain_sync_fetch_and_store_block_header_duration_seconds",
-            "time in seconds of fetching and storing the block header",
         )?;
         let chain_sync_emergency_restart_duration_seconds = IntGauge::new(
             "chain_sync_emergency_restart_duration_seconds",
@@ -105,11 +104,17 @@ impl Metrics {
             "chain_sync_execute_blocks_duration_seconds",
             "time in seconds of executing blocks during chain sync",
         )?;
+        let chain_sync_fetch_and_store_initial_trusted_block_header_duration_seconds =
+            IntGauge::new(
+                "chain_sync_fetch_and_store_initial_trusted_block_header_duration_seconds",
+                "time in seconds of fetching the initial trusted block header during chain sync",
+            )?;
+        let chain_sync_sync_trie_store_duration_seconds = IntGauge::new(
+            "chain_sync_sync_trie_store_duration_seconds",
+            "time in seconds of syncing trie store (global state download) during chain sync",
+        )?;
 
         registry.register(Box::new(chain_sync_total_duration_seconds.clone()))?;
-        registry.register(Box::new(
-            chain_sync_fetch_and_store_block_header_duration_seconds.clone(),
-        ))?;
         registry.register(Box::new(
             chain_sync_emergency_restart_duration_seconds.clone(),
         ))?;
@@ -137,10 +142,12 @@ impl Metrics {
             chain_sync_era_supervisor_init_duration_seconds.clone(),
         ))?;
         registry.register(Box::new(chain_sync_execute_blocks_duration_seconds.clone()))?;
+        registry.register(Box::new(
+            chain_sync_sync_trie_store_duration_seconds.clone(),
+        ))?;
 
         Ok(Metrics {
             chain_sync_total_duration_seconds,
-            chain_sync_fetch_and_store_block_header_duration_seconds,
             chain_sync_emergency_restart_duration_seconds,
             chain_sync_upgrade_duration_seconds,
             chain_sync_archival_sync_total_duration_seconds,
@@ -152,6 +159,8 @@ impl Metrics {
             chain_sync_replay_protection_duration_seconds,
             chain_sync_era_supervisor_init_duration_seconds,
             chain_sync_execute_blocks_duration_seconds,
+            chain_sync_fetch_and_store_initial_trusted_block_header_duration_seconds,
+            chain_sync_sync_trie_store_duration_seconds,
             registry: registry.clone(),
         })
     }
@@ -159,30 +168,17 @@ impl Metrics {
 
 impl Drop for Metrics {
     fn drop(&mut self) {
-        //        unregister_metric!(self.registry, self.chain_sync_total_duration_seconds);
-        //        unregister_metric!(self.registry,
-        // self.chain_sync_fetch_and_store_block_header_duration_seconds);
-        //        unregister_metric!(self.registry,
-        // self.chain_sync_emergency_restart_duration_seconds);
-        //        unregister_metric!(self.registry,
-        // self.chain_sync_upgrade_duration_seconds);
-        //        unregister_metric!(self.registry,
-        // self.chain_sync_archival_sync_total_duration_seconds);
-        //        unregister_metric!(self.registry,
-        // self.chain_sync_get_trusted_key_block_info_duration_seconds);
-        //        unregister_metric!(self.registry,
-        // self.chain_sync_sync_to_genesis_duration_seconds);
-        //        unregister_metric!(self.registry,
-        // self.chain_sync_sync_forward_duration_seconds);
-        //        unregister_metric!(self.registry,
-        // self.chain_sync_fast_sync_total_duration_seconds);
-        //        unregister_metric!(self.registry,
-        // self.chain_sync_fetch_block_headers_duration_seconds);
-        //        unregister_metric!(self.registry,
-        // self.chain_sync_replay_protection_duration_seconds);
-        //        unregister_metric!(self.registry,
-        // self.chain_sync_era_supervisor_init_duration_seconds);
-        //        unregister_metric!(self.registry,
-        // self.chain_sync_execute_blocks_duration_seconds);
+        // All metrics should be unregistered here.
+        // They are, however, attached to the `joiner` reactor which means they are going to be lost
+        // as soon as the node transforms to `participating`.
+
+        // As a workaround we keep these metrics registered, until all reactors are unified.
+
+        // unregister_metric!(self.registry, self.chain_sync_total_duration_seconds);
+        // unregister_metric!(
+        //     self.registry,
+        //     self.chain_sync_fetch_and_store_block_header_duration_seconds
+        // );
+        // unregister_metric!(...
     }
 }

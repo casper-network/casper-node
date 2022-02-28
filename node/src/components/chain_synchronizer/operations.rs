@@ -498,6 +498,7 @@ async fn sync_trie_store_worker(
 /// Synchronizes the trie store under a given state root hash.
 async fn sync_trie_store(state_root_hash: Digest, ctx: &ChainSyncContext<'_>) -> Result<(), Error> {
     info!(?state_root_hash, "syncing trie store",);
+    let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_sync_trie_store_duration_seconds);
 
     // Flag set by a worker when it encounters an error.
     let abort = Arc::new(AtomicBool::new(false));
@@ -810,8 +811,13 @@ pub(super) async fn run_chain_sync_task(
     let _metric = ScopeTimer::new(&metrics.chain_sync_total_duration_seconds);
 
     // Fetch the trusted header
-    let trusted_block_header =
-        fetch_and_store_block_header(effect_builder, &config, trusted_hash).await?;
+    let trusted_block_header = fetch_and_store_initial_trusted_block_header(
+        effect_builder,
+        &config,
+        &metrics,
+        trusted_hash,
+    )
+    .await?;
 
     let chain_sync_context =
         ChainSyncContext::new(&effect_builder, &config, &trusted_block_header, &metrics);
@@ -848,6 +854,20 @@ pub(super) async fn run_chain_sync_task(
     );
 
     Ok(most_recent_block_header)
+}
+
+async fn fetch_and_store_initial_trusted_block_header(
+    effect_builder: EffectBuilder<JoinerEvent>,
+    config: &Config,
+    metrics: &Metrics,
+    trusted_hash: BlockHash,
+) -> Result<Box<BlockHeader>, Error> {
+    let _metric = ScopeTimer::new(
+        &metrics.chain_sync_fetch_and_store_initial_trusted_block_header_duration_seconds,
+    );
+    let trusted_block_header =
+        fetch_and_store_block_header(effect_builder, config, trusted_hash).await?;
+    Ok(trusted_block_header)
 }
 
 fn verify_trusted_block_header(ctx: &ChainSyncContext<'_>) -> Result<(), Error> {
