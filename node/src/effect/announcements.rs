@@ -5,7 +5,7 @@
 
 use std::{
     cell::RefCell,
-    fmt::{self, Display, Formatter},
+    fmt::{self, Debug, Display, Formatter},
 };
 
 use itertools::Itertools;
@@ -55,7 +55,7 @@ pub(crate) enum ControlAnnouncement {
     },
 }
 
-impl std::fmt::Debug for ControlAnnouncement {
+impl Debug for ControlAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::FatalError { file, line, msg } => f
