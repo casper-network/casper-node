@@ -34,7 +34,7 @@ steps:
       - make setup-rs
       - make doc
 
-  - name: cargo-audit
+  - name: audit
     image: casperlabs/node-build-u1804
     commands:
       - make setup-audit

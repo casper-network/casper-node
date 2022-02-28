@@ -118,9 +118,17 @@ lint: lint-contracts-rs
 	$(CARGO) clippy --all-targets --all-features -- -D warnings -A renamed_and_removed_lints
 	cd smart_contracts/contract && $(CARGO) clippy --all-targets -- -D warnings -A renamed_and_removed_lints
 
-.PHONY: audit
-audit:
+.PHONY: audit-rs
+audit-rs:
 	$(CARGO) audit --ignore RUSTSEC-2020-0071 --ignore RUSTSEC-2020-0159
+
+.PHONY: audit-as
+audit-as:
+	@# Runs a vulnerability scan that fails if there are prod vulnerabilities with a moderate level or above.
+	cd smart_contracts/contract_as && $(NPM) audit --production --audit-level=moderate
+
+.PHONY: audit
+audit: audit-rs audit-as
 
 .PHONY: doc
 doc:
@@ -179,15 +187,15 @@ setup-audit:
 
 .PHONY: setup-rs
 setup-rs: smart_contracts/rust-toolchain
-	$(RUSTUP) update --no-self-update
-	$(RUSTUP) toolchain install --no-self-update stable $(PINNED_NIGHTLY)
+	$(RUSTUP) update
+	$(RUSTUP) toolchain install stable $(PINNED_NIGHTLY)
 	$(RUSTUP) target add --toolchain stable wasm32-unknown-unknown
 	$(RUSTUP) target add --toolchain $(PINNED_NIGHTLY) wasm32-unknown-unknown
 
 .PHONY: setup-nightly-rs
 setup-nightly-rs:
-	$(RUSTUP) update --no-self-update
-	$(RUSTUP) toolchain install --no-self-update nightly
+	$(RUSTUP) update
+	$(RUSTUP) toolchain install nightly
 	$(RUSTUP) target add --toolchain nightly wasm32-unknown-unknown
 
 .PHONY: setup-as

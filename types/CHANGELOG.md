@@ -13,9 +13,13 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+### Added
+* Added new `bytesrepr::Error::NotRepresentable` error variant that represents values that are not representable by the serialization format.
+
 ### Changed
 * Disable checksummed-hex encoding, but leave checksummed-hex decoding in place.
 * Increase `DICTIONARY_ITEM_KEY_MAX_LENGTH` to 128.
+* Fixed some integer casts.
 
 
 
