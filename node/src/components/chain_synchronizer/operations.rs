@@ -1,6 +1,6 @@
 use std::{
     cmp,
-    collections::{BTreeMap, HashSet},
+    collections::BTreeMap,
     sync::{
         atomic::{self, AtomicBool},
         Arc,
@@ -21,7 +21,7 @@ use crate::{
     components::{
         chain_synchronizer::error::Error,
         consensus::{self},
-        contract_runtime::ExecutionPreState,
+        contract_runtime::{BlockAndExecutionEffects, ExecutionPreState},
         fetcher::{FetchResult, FetchedData, FetcherError},
     },
     effect::{requests::FetcherRequest, EffectBuilder},
@@ -71,28 +71,8 @@ where
     T: Item + 'static,
     JoinerEvent: From<FetcherRequest<T>>,
 {
-    fetch_retry_forever_with_exceptions(effect_builder, config, id, HashSet::new()).await
-}
-
-/// Fetches an item. Keeps retrying to fetch until it is successful. Assumes no integrity check is
-/// necessary for the item. Not suited to fetching a block header or block by height, which require
-/// verification with finality signatures.
-/// Doesn't attempt to fetch from peers in the `peers_to_avoid` set.
-async fn fetch_retry_forever_with_exceptions<T>(
-    effect_builder: EffectBuilder<JoinerEvent>,
-    config: &Config,
-    id: T::Id,
-    peers_to_avoid: HashSet<NodeId>,
-) -> FetchResult<T>
-where
-    T: Item + 'static,
-    JoinerEvent: From<FetcherRequest<T>>,
-{
     loop {
         for peer in effect_builder.get_fully_connected_peers().await {
-            if peers_to_avoid.contains(&peer) {
-                continue;
-            }
             trace!(
                 "attempting to fetch {:?} with id {:?} from {:?}",
                 T::TAG,
@@ -183,48 +163,34 @@ async fn fetch_and_store_block_header(
     }
 }
 
-struct DeployWithSender {
-    deploy: Box<Deploy>,
-    sender: Option<NodeId>,
-}
-
 /// Fetches and stores a deploy.
 async fn fetch_and_store_deploy(
     deploy_or_transfer_hash: DeployHash,
     ctx: &ChainSyncContext<'_>,
-) -> Result<DeployWithSender, FetcherError<Deploy>> {
+) -> Result<Box<Deploy>, FetcherError<Deploy>> {
     let fetched_deploy =
         fetch_retry_forever::<Deploy>(*ctx.effect_builder, ctx.config, deploy_or_transfer_hash)
             .await?;
     Ok(match fetched_deploy {
-        FetchedData::FromStorage { item: deploy } => DeployWithSender {
-            deploy,
-            sender: None,
-        },
-        FetchedData::FromPeer { item: deploy, peer } => {
+        FetchedData::FromStorage { item: deploy } => deploy,
+        FetchedData::FromPeer { item: deploy, .. } => {
             ctx.effect_builder
                 .put_deploy_to_storage(deploy.clone())
                 .await;
-            DeployWithSender {
-                deploy,
-                sender: Some(peer),
-            }
+            deploy
         }
     })
 }
 
 async fn fetch_finalized_approvals(
     deploy_hash: DeployHash,
-    peers_to_avoid: HashSet<NodeId>,
+    peer: NodeId,
     ctx: &ChainSyncContext<'_>,
 ) -> Result<FinalizedApprovalsWithId, FetcherError<FinalizedApprovalsWithId>> {
-    let fetched_approvals = fetch_retry_forever_with_exceptions::<FinalizedApprovalsWithId>(
-        *ctx.effect_builder,
-        ctx.config,
-        deploy_hash,
-        peers_to_avoid,
-    )
-    .await?;
+    let fetched_approvals = ctx
+        .effect_builder
+        .fetch::<FinalizedApprovalsWithId>(deploy_hash, peer)
+        .await?;
     match fetched_approvals {
         FetchedData::FromStorage { item: approvals } => Ok(*approvals),
         FetchedData::FromPeer {
@@ -968,6 +934,30 @@ async fn handle_upgrade(ctx: &ChainSyncContext<'_>) -> Result<bool, Error> {
     Ok(false)
 }
 
+async fn retry_execution_with_approvals_from_peer(
+    deploys: &mut Vec<Deploy>,
+    transfers: &mut Vec<Deploy>,
+    peer: NodeId,
+    block: &Block,
+    execution_pre_state: &ExecutionPreState,
+    ctx: &ChainSyncContext<'_>,
+) -> Result<BlockAndExecutionEffects, Error> {
+    for deploy in deploys.iter_mut().chain(transfers.iter_mut()) {
+        let new_approvals = fetch_finalized_approvals(*deploy.id(), peer, ctx).await?;
+        deploy.replace_approvals(new_approvals.into_inner());
+    }
+    Ok(ctx
+        .effect_builder
+        .execute_finalized_block(
+            block.protocol_version(),
+            execution_pre_state.clone(),
+            FinalizedBlock::from(block.clone()),
+            deploys.clone(),
+            transfers.clone(),
+        )
+        .await?)
+}
+
 async fn execute_blocks(
     most_recent_block_header: &BlockHeader,
     trusted_key_block_info: &KeyBlockInfo,
@@ -1041,52 +1031,55 @@ async fn execute_blocks(
                 block.protocol_version(),
                 execution_pre_state.clone(),
                 FinalizedBlock::from(block.clone()),
-                deploys.iter().map(|dws| (*dws.deploy).clone()).collect(),
-                transfers.iter().map(|dws| (*dws.deploy).clone()).collect(),
+                deploys.clone(),
+                transfers.clone(),
             )
             .await?;
         debug!("finish - executing finalized block - {}", block.hash());
 
         if block != *block_and_execution_effects.block() {
-            // could be wrong approvals - fetch a new set of approvals from another peer
-            for dws in deploys.iter_mut().chain(transfers.iter_mut()) {
-                // make sure we don't download from the same sender again
-                let mut exclude_peers = HashSet::new();
-                if let Some(sender) = dws.sender {
-                    exclude_peers.insert(sender);
-                }
-                let new_approvals =
-                    fetch_finalized_approvals(*dws.deploy.id(), exclude_peers, ctx).await?;
-                dws.deploy.replace_approvals(new_approvals.into_inner());
-            }
-            info!("start - re-executing finalized block - {}", block.hash());
-            let block_and_execution_effects = ctx
+            // Could be wrong approvals - fetch new sets of approvals from a single peer and retry.
+            // Retry up to two times.
+            let mut success = false;
+            for peer in ctx
                 .effect_builder
-                .execute_finalized_block(
-                    block.protocol_version(),
-                    execution_pre_state.clone(),
-                    FinalizedBlock::from(block.clone()),
-                    deploys.iter().map(|dws| (*dws.deploy).clone()).collect(),
-                    transfers.iter().map(|dws| (*dws.deploy).clone()).collect(),
+                .get_fully_connected_peers()
+                .await
+                .into_iter()
+                .take(2)
+            {
+                info!("start - re-executing finalized block - {}", block.hash());
+                let block_and_execution_effects = retry_execution_with_approvals_from_peer(
+                    &mut deploys,
+                    &mut transfers,
+                    peer,
+                    &block,
+                    &execution_pre_state,
+                    ctx,
                 )
                 .await?;
-            debug!("finish - re-executing finalized block - {}", block.hash());
-            if block != *block_and_execution_effects.block() {
+                debug!("finish - re-executing finalized block - {}", block.hash());
+                if block == *block_and_execution_effects.block() {
+                    success = true;
+                    break;
+                }
+            }
+            if success {
+                // matching now! store new approval sets for the deploys
+                for deploy in deploys.into_iter().chain(transfers.into_iter()) {
+                    ctx.effect_builder
+                        .store_finalized_approvals(
+                            *deploy.id(),
+                            FinalizedApprovals::new(deploy.approvals().clone()),
+                        )
+                        .await;
+                }
+            } else {
                 // didn't work again - give up
                 return Err(Error::ExecutedBlockIsNotTheSameAsDownloadedBlock {
                     executed_block: Box::new(Block::from(block_and_execution_effects)),
                     downloaded_block: Box::new(block.clone()),
                 });
-            } else {
-                // matching now! store new approval sets for the deploys
-                for dws in deploys.into_iter().chain(transfers.into_iter()) {
-                    ctx.effect_builder
-                        .store_finalized_approvals(
-                            *dws.deploy.id(),
-                            FinalizedApprovals::new(dws.deploy.approvals().clone()),
-                        )
-                        .await;
-                }
             }
         }
 
@@ -1126,9 +1119,9 @@ async fn execute_blocks(
 async fn fetch_and_store_deploys(
     hashes: impl Iterator<Item = &DeployHash>,
     ctx: &ChainSyncContext<'_>,
-) -> Result<Vec<DeployWithSender>, Error> {
+) -> Result<Vec<Deploy>, Error> {
     let hashes: Vec<_> = hashes.cloned().collect();
-    let mut deploys: Vec<DeployWithSender> = Vec::with_capacity(hashes.len());
+    let mut deploys: Vec<Deploy> = Vec::with_capacity(hashes.len());
     let mut stream = futures::stream::iter(hashes)
         .map(|hash| {
             debug!("start - fetch_and_store_deploy -  {}", hash);
@@ -1136,13 +1129,10 @@ async fn fetch_and_store_deploys(
         })
         .buffer_unordered(ctx.config.max_parallel_deploy_fetches());
     while let Some(result) = stream.next().await {
-        let deploy_with_sender = result?;
-        debug!(
-            "finish - fetch_and_store_deploy  - {}",
-            deploy_with_sender.deploy.id()
-        );
-        trace!("fetched {:?}", deploy_with_sender.deploy);
-        deploys.push(deploy_with_sender);
+        let deploy = result?;
+        debug!("finish - fetch_and_store_deploy  - {}", deploy.id());
+        trace!("fetched {:?}", deploy);
+        deploys.push(*deploy);
     }
 
     Ok(deploys)
