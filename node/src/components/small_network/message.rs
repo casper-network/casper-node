@@ -11,11 +11,11 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
-use crate::crypto;
 #[cfg(test)]
 use crate::crypto::AsymmetricKeyExt;
 #[cfg(test)]
 use crate::testing::TestRng;
+use crate::{crypto, types::NodeId};
 
 use super::counting_format::ConnectionId;
 
@@ -50,6 +50,15 @@ impl<P: Payload> Message<P> {
         match self {
             Message::Handshake { .. } => MessageKind::Protocol,
             Message::Payload(payload) => payload.classify(),
+        }
+    }
+
+    /// Determines whether or not a message is low priority.
+    #[inline]
+    pub(super) fn is_low_priority(&self) -> bool {
+        match self {
+            Message::Handshake { .. } => false,
+            Message::Payload(payload) => payload.is_low_priority(),
         }
     }
 
@@ -287,12 +296,17 @@ pub(crate) trait Payload:
 
     /// The penalty for resource usage of a message to be applied when processed as incoming.
     fn incoming_resource_estimate(&self, _weights: &EstimatorWeights) -> u32;
+
+    /// Determines if the payload should be considered low priority.
+    fn is_low_priority(&self) -> bool {
+        false
+    }
 }
 
 /// Network message conversion support.
-pub(crate) trait FromIncoming<I, P> {
+pub(crate) trait FromIncoming<P> {
     /// Creates a new value from a received payload.
-    fn from_incoming(sender: I, payload: P) -> Self;
+    fn from_incoming(sender: NodeId, payload: P) -> Self;
 }
 /// A generic configuration for payload weights.
 ///

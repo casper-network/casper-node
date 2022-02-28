@@ -424,7 +424,7 @@ impl From<NetRequestIncoming> for Event {
 
 impl<REv> Component<REv> for Storage
 where
-    REv: ReactorEvent + From<NetworkRequest<NodeId, Message>>,
+    REv: ReactorEvent + From<NetworkRequest<Message>>,
 {
     type Event = Event;
     type ConstructionError = FatalStorageError;
@@ -739,7 +739,7 @@ impl Storage {
     ) -> Result<Effects<Event>, GetRequestError>
     where
         Self: Component<REv>,
-        REv: From<NetworkRequest<NodeId, Message>> + Send,
+        REv: From<NetworkRequest<Message>> + Send,
     {
         if self.enable_mem_deduplication {
             let unique_id = incoming.message.unique_id();
@@ -1867,7 +1867,7 @@ impl Storage {
         opt_item: Option<T>,
     ) -> Result<Effects<Event>, FatalStorageError>
     where
-        REv: From<NetworkRequest<NodeId, Message>> + Send,
+        REv: From<NetworkRequest<Message>> + Send,
         T: Item,
     {
         let fetched_or_not_found = FetchedOrNotFound::from_opt(id, opt_item);

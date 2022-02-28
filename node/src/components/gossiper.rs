@@ -40,8 +40,8 @@ use metrics::Metrics;
 /// work with.
 pub(crate) trait ReactorEventT<T>:
     From<Event<T>>
-    + From<NetworkRequest<NodeId, Message<T>>>
-    + From<NetworkRequest<NodeId, NodeMessage>>
+    + From<NetworkRequest<Message<T>>>
+    + From<NetworkRequest<NodeMessage>>
     + From<StorageRequest>
     + From<GossiperAnnouncement<T>>
     + Send
@@ -57,8 +57,8 @@ where
     T: Item + 'static,
     <T as Item>::Id: 'static,
     REv: From<Event<T>>
-        + From<NetworkRequest<NodeId, Message<T>>>
-        + From<NetworkRequest<NodeId, NodeMessage>>
+        + From<NetworkRequest<Message<T>>>
+        + From<NetworkRequest<NodeMessage>>
         + From<StorageRequest>
         + From<GossiperAnnouncement<T>>
         + Send
@@ -177,7 +177,7 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         item_id: T::Id,
-        source: Source<NodeId>,
+        source: Source,
     ) -> Effects<Event<T>> {
         debug!(item=%item_id, %source, "received new gossip item");
         match self.table.new_complete_data(&item_id, source.node_id()) {

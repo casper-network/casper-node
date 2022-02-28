@@ -12,6 +12,9 @@ max_parallel_deploy_fetches = 20
 # Maximum number of trie nodes to fetch in parallel.
 max_parallel_trie_fetches = 20
 
+# The duration for which to pause between retry attempts while synchronising during joining.
+retry_interval = '100ms'
+
 # Whether to synchronize all data back to genesis when joining.
 archival_sync = true
 

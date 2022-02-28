@@ -11,7 +11,7 @@ use crate::{
     components::{contract_runtime::BlockExecutionError, fetcher::FetcherError},
     types::{
         Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy,
-        FinalizedApprovalsWithId, NodeId,
+        FinalizedApprovalsWithId,
     },
 };
 
@@ -53,25 +53,25 @@ pub(crate) enum Error {
     },
 
     #[error(transparent)]
-    BlockFetcher(#[from] FetcherError<Block, NodeId>),
+    BlockFetcher(#[from] FetcherError<Block>),
 
     #[error("no such block hash: {bogus_block_hash}")]
     NoSuchBlockHash { bogus_block_hash: BlockHash },
 
     #[error(transparent)]
-    BlockHeaderFetcher(#[from] FetcherError<BlockHeader, NodeId>),
+    BlockHeaderFetcher(#[from] FetcherError<BlockHeader>),
 
     #[error(transparent)]
-    BlockHeaderWithMetadataFetcher(#[from] FetcherError<BlockHeaderWithMetadata, NodeId>),
+    BlockHeaderWithMetadataFetcher(#[from] FetcherError<BlockHeaderWithMetadata>),
 
     #[error(transparent)]
-    BlockWithMetadataFetcher(#[from] FetcherError<BlockWithMetadata, NodeId>),
+    BlockWithMetadataFetcher(#[from] FetcherError<BlockWithMetadata>),
 
     #[error(transparent)]
-    DeployWithMetadataFetcher(#[from] FetcherError<Deploy, NodeId>),
+    DeployWithMetadataFetcher(#[from] FetcherError<Deploy>),
 
     #[error(transparent)]
-    FinalizedApprovalsFetcher(#[from] FetcherError<FinalizedApprovalsWithId, NodeId>),
+    FinalizedApprovalsFetcher(#[from] FetcherError<FinalizedApprovalsWithId>),
 
     #[error(
         "executed block is not the same as downloaded block. \
