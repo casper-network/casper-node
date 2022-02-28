@@ -6,7 +6,7 @@ use super::Source;
 use crate::{
     components::deploy_acceptor::Error,
     effect::{announcements::RpcServerAnnouncement, Responder},
-    types::{Block, Deploy, NodeId, Timestamp},
+    types::{Block, Deploy, Timestamp},
 };
 
 use casper_hashing::Digest;
@@ -19,14 +19,14 @@ use casper_types::{
 #[derive(Debug, Serialize)]
 pub(crate) struct EventMetadata {
     pub(super) deploy: Box<Deploy>,
-    pub(super) source: Source<NodeId>,
+    pub(super) source: Source,
     pub(super) maybe_responder: Option<Responder<Result<(), Error>>>,
 }
 
 impl EventMetadata {
     pub(super) fn new(
         deploy: Box<Deploy>,
-        source: Source<NodeId>,
+        source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     ) -> Self {
         EventMetadata {
@@ -43,7 +43,7 @@ pub(crate) enum Event {
     /// The initiating event to accept a new `Deploy`.
     Accept {
         deploy: Box<Deploy>,
-        source: Source<NodeId>,
+        source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     },
     /// The result of the `DeployAcceptor` putting a `Deploy` to the storage component.
@@ -104,7 +104,7 @@ impl From<RpcServerAnnouncement> for Event {
         match announcement {
             RpcServerAnnouncement::DeployReceived { deploy, responder } => Event::Accept {
                 deploy,
-                source: Source::<NodeId>::Client,
+                source: Source::Client,
                 maybe_responder: responder,
             },
         }

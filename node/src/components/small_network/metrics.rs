@@ -3,7 +3,7 @@ use std::sync::Weak;
 use prometheus::{IntCounter, IntGauge, Registry};
 use tracing::debug;
 
-use super::MessageKind;
+use super::{outgoing::OutgoingMetrics, MessageKind};
 use crate::unregister_metric;
 
 /// Network-type agnostic networking metrics.
@@ -49,6 +49,17 @@ pub(super) struct Metrics {
     pub(super) out_bytes_block_transfer: IntCounter,
     /// Volume in bytes of outgoing messages with other payload.
     pub(super) out_bytes_other: IntCounter,
+
+    /// Number of outgoing connections in connecting state.
+    pub(super) out_state_connecting: IntGauge,
+    /// Number of outgoing connections in waiting state.
+    pub(super) out_state_waiting: IntGauge,
+    /// Number of outgoing connections in connected state.
+    pub(super) out_state_connected: IntGauge,
+    /// Number of outgoing connections in blocked state.
+    pub(super) out_state_blocked: IntGauge,
+    /// Number of outgoing connections in loopback state.
+    pub(super) out_state_loopback: IntGauge,
 
     /// Registry instance.
     registry: Registry,
@@ -129,6 +140,27 @@ impl Metrics {
             "volume in bytes of outgoing messages with other payload",
         )?;
 
+        let out_state_connecting = IntGauge::new(
+            "out_state_connecting",
+            "number of connections in the connecting state",
+        )?;
+        let out_state_waiting = IntGauge::new(
+            "out_state_waiting",
+            "number of connections in the waiting state",
+        )?;
+        let out_state_connected = IntGauge::new(
+            "out_state_connected",
+            "number of connections in the connected state",
+        )?;
+        let out_state_blocked = IntGauge::new(
+            "out_state_blocked",
+            "number of connections in the blocked state",
+        )?;
+        let out_state_loopback = IntGauge::new(
+            "out_state_loopback",
+            "number of connections in the loopback state",
+        )?;
+
         registry.register(Box::new(broadcast_requests.clone()))?;
         registry.register(Box::new(direct_message_requests.clone()))?;
         registry.register(Box::new(open_connections.clone()))?;
@@ -151,6 +183,12 @@ impl Metrics {
         registry.register(Box::new(out_bytes_block_transfer.clone()))?;
         registry.register(Box::new(out_bytes_other.clone()))?;
 
+        registry.register(Box::new(out_state_connecting.clone()))?;
+        registry.register(Box::new(out_state_waiting.clone()))?;
+        registry.register(Box::new(out_state_connected.clone()))?;
+        registry.register(Box::new(out_state_blocked.clone()))?;
+        registry.register(Box::new(out_state_loopback.clone()))?;
+
         Ok(Metrics {
             broadcast_requests,
             direct_message_requests,
@@ -171,6 +209,11 @@ impl Metrics {
             out_bytes_deploy_transfer,
             out_bytes_block_transfer,
             out_bytes_other,
+            out_state_connecting,
+            out_state_waiting,
+            out_state_connected,
+            out_state_blocked,
+            out_state_loopback,
             registry: registry.clone(),
         })
     }
@@ -212,6 +255,17 @@ impl Metrics {
             debug!("not recording metrics, component already shut down");
         }
     }
+
+    /// Creates a set of outgoing metrics that is connected to this set of metrics.
+    pub(super) fn create_outgoing_metrics(&self) -> OutgoingMetrics {
+        OutgoingMetrics {
+            out_state_connecting: self.out_state_connecting.clone(),
+            out_state_waiting: self.out_state_waiting.clone(),
+            out_state_connected: self.out_state_connected.clone(),
+            out_state_blocked: self.out_state_blocked.clone(),
+            out_state_loopback: self.out_state_loopback.clone(),
+        }
+    }
 }
 
 impl Drop for Metrics {
@@ -237,5 +291,10 @@ impl Drop for Metrics {
         unregister_metric!(self.registry, self.out_bytes_deploy_transfer);
         unregister_metric!(self.registry, self.out_bytes_block_transfer);
         unregister_metric!(self.registry, self.out_bytes_other);
+        unregister_metric!(self.registry, self.out_state_connecting);
+        unregister_metric!(self.registry, self.out_state_waiting);
+        unregister_metric!(self.registry, self.out_state_connected);
+        unregister_metric!(self.registry, self.out_state_blocked);
+        unregister_metric!(self.registry, self.out_state_loopback);
     }
 }

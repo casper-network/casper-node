@@ -314,7 +314,7 @@ fn serialize_cl_value<T: CLTyped + ToBytes>(raw_value: T) -> Vec<u8> {
 fn benchmark_deserialization<T: CLTyped + ToBytes + FromBytes>(b: &mut Bencher, raw_value: T) {
     let serialized_value = serialize_cl_value(raw_value);
     b.iter(|| {
-        let cl_value: CLValue = bytesrepr::deserialize(serialized_value.clone()).unwrap();
+        let cl_value: CLValue = bytesrepr::deserialize_from_slice(&serialized_value).unwrap();
         let _raw_value: T = cl_value.into_t().unwrap();
     });
 }
