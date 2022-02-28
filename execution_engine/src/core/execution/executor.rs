@@ -69,7 +69,7 @@ impl Executor {
         R: StateReader<Key, StoredValue>,
         R::Error: Into<Error>,
     {
-        let main_purse_spending_limit: U512 = match try_get_amount(&args) {
+        let spending_limit: U512 = match try_get_amount(&args) {
             Ok(spending_limit) => spending_limit,
             Err(error) => {
                 return ExecutionResult::precondition_failure(error.into());
@@ -81,10 +81,6 @@ impl Executor {
             Rc::new(RefCell::new(generator))
         };
 
-        // For `execute_module_bytes`, the args are already inside in runtime,
-        // object but for `ExecutionKind::Contract` we need to pass args forward
-        // as call_contract_with_stack will eventually create separate Runtime
-        // object for smart contract invocation.
         let context = self.create_runtime_context(
             EntryPointType::Session,
             args.clone(),
@@ -101,7 +97,7 @@ impl Executor {
             correlation_id,
             tracking_copy,
             phase,
-            main_purse_spending_limit,
+            spending_limit,
         );
 
         let mut runtime = Runtime::new(self.config, context);
@@ -113,7 +109,12 @@ impl Executor {
             ExecutionKind::Contract {
                 contract_hash,
                 entry_point_name,
-            } => runtime.call_contract_with_stack(contract_hash, &entry_point_name, args, stack),
+            } => {
+                // These args are passed through here as they are required to construct the new
+                // `Runtime` during the contract's execution (i.e. inside
+                // `Runtime::execute_contract`).
+                runtime.call_contract_with_stack(contract_hash, &entry_point_name, args, stack)
+            }
         };
 
         match result {
@@ -154,7 +155,7 @@ impl Executor {
         R: StateReader<Key, StoredValue>,
         R::Error: Into<Error>,
     {
-        let main_purse_spending_limit: U512 = match try_get_amount(&payment_args) {
+        let spending_limit: U512 = match try_get_amount(&payment_args) {
             Ok(spending_limit) => spending_limit,
             Err(error) => {
                 return ExecutionResult::precondition_failure(error.into());
@@ -182,7 +183,7 @@ impl Executor {
             correlation_id,
             Rc::clone(&tracking_copy),
             phase,
-            main_purse_spending_limit,
+            spending_limit,
         );
 
         let execution_journal = tracking_copy.borrow().execution_journal();
@@ -206,12 +207,8 @@ impl Executor {
         }
     }
 
-    /// Executes a system contract.
-    ///
-    /// System contracts are implemented as a native code, and no WASM execution is involved at all.
-    /// This approach has a benefit of speed as compared to executing WASM modules.
-    ///
-    /// Returns an optional return value from the system contract call, and an [`ExecutionResult`].
+    /// Handles necessary address resolution and orchestration to securely call a system contract
+    /// using the runtime.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn call_system_contract<R, T>(
         &self,
@@ -227,7 +224,7 @@ impl Executor {
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
         stack: RuntimeStack,
-        main_purse_spending_limit: U512,
+        remaining_spending_limit: U512,
     ) -> (Option<T>, ExecutionResult)
     where
         R: StateReader<Key, StoredValue>,
@@ -306,11 +303,16 @@ impl Executor {
             correlation_id,
             tracking_copy,
             phase,
-            main_purse_spending_limit,
+            remaining_spending_limit,
         );
 
         let mut runtime = Runtime::new(self.config, runtime_context);
 
+        // DO NOT alter this logic to call a system contract directly (such as via mint_internal,
+        // etc). Doing so would bypass necessary context based security checks in some use cases. It
+        // is intentional to use the runtime machinery for this interaction with the system
+        // contracts, to force all such security checks for usage via the executor into a single
+        // execution path.
         let result =
             runtime.call_contract_with_stack(contract_hash, entry_point_name, runtime_args, stack);
 
@@ -359,7 +361,7 @@ impl Executor {
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
-        main_purse_spending_limit: U512,
+        remaining_spending_limit: U512,
     ) -> RuntimeContext<'a, R>
     where
         R: StateReader<Key, StoredValue>,
@@ -387,7 +389,7 @@ impl Executor {
             phase,
             self.config,
             transfers,
-            main_purse_spending_limit,
+            remaining_spending_limit,
         )
     }
 }
