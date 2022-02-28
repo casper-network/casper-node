@@ -1,11 +1,12 @@
-use std::time::Duration;
+use std::{convert::TryInto, time::Duration};
+
+use itertools::Itertools;
 
 use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
 use casper_types::{
     bytesrepr::Bytes, runtime_args, system::standard_payment::ARG_AMOUNT, EraId, Gas, PublicKey,
     RuntimeArgs, SecretKey,
 };
-use itertools::Itertools;
 
 use super::*;
 use crate::{
@@ -590,7 +591,7 @@ fn test_proposer_with(
     config.block_max_transfer_count = max_transfer_count;
     config.block_gas_limit = block_gas_limit;
     if let Some(max_block_size) = max_block_size {
-        config.max_block_size = max_block_size as u32;
+        config.max_block_size = max_block_size.try_into().unwrap();
     }
 
     for _ in 0..deploy_count {

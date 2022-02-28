@@ -2,7 +2,7 @@ mod store_ext;
 #[cfg(test)]
 pub(crate) mod tests;
 
-use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes};
+use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 pub use self::store_ext::StoreExt;
 use crate::storage::transaction_source::{Readable, Writable};
@@ -24,14 +24,14 @@ pub trait Store<K, V> {
     fn get<T>(&self, txn: &T, key: &K) -> Result<Option<V>, Self::Error>
     where
         T: Readable<Handle = Self::Handle>,
-        K: ToBytes,
+        K: AsRef<[u8]>,
         V: FromBytes,
         Self::Error: From<T::Error>,
     {
         let raw = self.get_raw(txn, key)?;
         match raw {
             Some(bytes) => {
-                let value = bytesrepr::deserialize(bytes.into())?;
+                let value = bytesrepr::deserialize_from_slice(bytes)?;
                 Ok(Some(value))
             }
             None => Ok(None),
@@ -40,14 +40,14 @@ pub trait Store<K, V> {
 
     /// Returns an optional value (may exist or not) as read through a transaction, or an error
     /// of the associated `Self::Error` variety.
-    fn get_raw<T>(&self, txn: &T, key: &K) -> Result<Option<Bytes>, Self::Error>
+    fn get_raw<'a, T>(&self, txn: &'a T, key: &K) -> Result<Option<&'a [u8]>, Self::Error>
     where
         T: Readable<Handle = Self::Handle>,
-        K: ToBytes,
+        K: AsRef<[u8]>,
         Self::Error: From<T::Error>,
     {
         let handle = self.handle();
-        Ok(txn.read(handle, &key.to_bytes()?)?)
+        Ok(txn.read(handle, key.as_ref())?)
     }
 
     /// Puts a `value` into the store at `key` within a transaction, potentially returning an
@@ -55,12 +55,12 @@ pub trait Store<K, V> {
     fn put<T>(&self, txn: &mut T, key: &K, value: &V) -> Result<(), Self::Error>
     where
         T: Writable<Handle = Self::Handle>,
-        K: ToBytes,
+        K: AsRef<[u8]>,
         V: ToBytes,
         Self::Error: From<T::Error>,
     {
         let handle = self.handle();
-        txn.write(handle, &key.to_bytes()?, &value.to_bytes()?)
+        txn.write(handle, key.as_ref(), &value.to_bytes()?)
             .map_err(Into::into)
     }
 }

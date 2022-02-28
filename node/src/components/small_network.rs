@@ -235,17 +235,20 @@ where
                 ))
             };
 
-        let outgoing_manager = OutgoingManager::new(OutgoingConfig {
-            retry_attempts: RECONNECTION_ATTEMPTS,
-            base_timeout: BASE_RECONNECTION_TIMEOUT,
-            unblock_after: BLOCKLIST_RETAIN_DURATION,
-            sweep_timeout: cfg.max_addr_pending_time.into(),
-        });
+        let net_metrics = Arc::new(Metrics::new(registry)?);
+
+        let outgoing_manager = OutgoingManager::with_metrics(
+            OutgoingConfig {
+                retry_attempts: RECONNECTION_ATTEMPTS,
+                base_timeout: BASE_RECONNECTION_TIMEOUT,
+                unblock_after: BLOCKLIST_RETAIN_DURATION,
+                sweep_timeout: cfg.max_addr_pending_time.into(),
+            },
+            net_metrics.create_outgoing_metrics(),
+        );
 
         let mut public_addr =
             utils::resolve_address(&cfg.public_address).map_err(Error::ResolveAddr)?;
-
-        let net_metrics = Arc::new(Metrics::new(registry)?);
 
         // We can now create a listener.
         let bind_address = utils::resolve_address(&cfg.bind_address).map_err(Error::ResolveAddr)?;
@@ -973,6 +976,7 @@ where
             Event::SweepOutgoing => {
                 let now = Instant::now();
                 let requests = self.outgoing_manager.perform_housekeeping(now);
+
                 let mut effects = self.process_dial_requests(requests);
 
                 effects.extend(
