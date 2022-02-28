@@ -38,7 +38,8 @@ pub(super) struct Metrics {
     /// Time in seconds of fetching block headers for replay protection during fast sync.
     #[data_size(skip)]
     pub(super) chain_sync_replay_protection_duration_seconds: IntGauge,
-    /// Time in seconds of fetching block headers for era supervisor initialization during fast sync.
+    /// Time in seconds of fetching block headers for era supervisor initialization during fast
+    /// sync.
     #[data_size(skip)]
     pub(super) chain_sync_era_supervisor_init_duration_seconds: IntGauge,
     /// Time in seconds of executing blocks during chain sync.
