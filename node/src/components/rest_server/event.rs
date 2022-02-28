@@ -6,10 +6,7 @@ use std::{
 use derive_more::From;
 use static_assertions::const_assert;
 
-use crate::{
-    effect::{requests::RestRequest, Responder},
-    types::NodeId,
-};
+use crate::effect::{requests::RestRequest, Responder};
 
 const _REST_EVENT_SIZE: usize = mem::size_of::<Event>();
 const_assert!(_REST_EVENT_SIZE < 89);
@@ -17,7 +14,7 @@ const_assert!(_REST_EVENT_SIZE < 89);
 #[derive(Debug, From)]
 pub(crate) enum Event {
     #[from]
-    RestRequest(RestRequest<NodeId>),
+    RestRequest(RestRequest),
     GetMetricsResult {
         text: Option<String>,
         main_responder: Responder<Option<String>>,

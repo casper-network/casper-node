@@ -17,7 +17,7 @@ use memory_metrics::MemoryMetrics;
 use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::Serialize;
-use tracing::{debug, warn};
+use tracing::{debug, error, warn};
 
 use casper_execution_engine::storage::trie::TrieOrChunk;
 
@@ -32,7 +32,9 @@ use crate::{
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server,
         event_stream_server::{DeployGetter, EventStreamServer},
-        fetcher::{self, Fetcher, FetcherBuilder, TrieFetcher, TrieFetcherEvent},
+        fetcher::{
+            self, FetchedOrNotFound, Fetcher, FetcherBuilder, TrieFetcher, TrieFetcherEvent,
+        },
         gossiper::{self, Gossiper},
         metrics::Metrics,
         rest_server::{self, RestServer},
@@ -69,9 +71,10 @@ use crate::{
         EventQueueHandle, Finalize, ReactorExit,
     },
     types::{
-        Block, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy, ExitCode, NodeId,
+        Block, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy, DeployHash,
+        ExitCode, NodeId,
     },
-    utils::WithDir,
+    utils::{Source, WithDir},
     NodeRng,
 };
 
@@ -114,7 +117,7 @@ pub(crate) enum JoinerEvent {
 
     /// Network info request.
     #[from]
-    NetworkInfoRequest(#[serde(skip_serializing)] NetworkInfoRequest<NodeId>),
+    NetworkInfoRequest(#[serde(skip_serializing)] NetworkInfoRequest),
 
     /// Block fetcher event.
     #[from]
@@ -142,7 +145,7 @@ pub(crate) enum JoinerEvent {
 
     /// Trie fetcher event.
     #[from]
-    TrieFetcher(#[serde(skip_serializing)] TrieFetcherEvent<NodeId>),
+    TrieFetcher(#[serde(skip_serializing)] TrieFetcherEvent),
 
     /// Deploy acceptor event.
     #[from]
@@ -151,6 +154,10 @@ pub(crate) enum JoinerEvent {
     /// Address gossiper event.
     #[from]
     AddressGossiper(gossiper::Event<GossipedAddress>),
+
+    /// Deploy gossiper event.
+    #[from]
+    DeployGossiper(#[serde(skip_serializing)] gossiper::Event<Deploy>),
 
     // Requests.
     /// Storage request.
@@ -168,35 +175,33 @@ pub(crate) enum JoinerEvent {
     /// Requests.
     /// Linear chain block by hash fetcher request.
     #[from]
-    BlockFetcherRequest(#[serde(skip_serializing)] FetcherRequest<NodeId, Block>),
+    BlockFetcherRequest(#[serde(skip_serializing)] FetcherRequest<Block>),
 
     /// Blocker header (with no metadata) fetcher request.
     #[from]
-    BlockHeaderFetcherRequest(#[serde(skip_serializing)] FetcherRequest<NodeId, BlockHeader>),
+    BlockHeaderFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockHeader>),
 
     /// Trie or chunk fetcher request.
     #[from]
-    TrieOrChunkFetcherRequest(#[serde(skip_serializing)] FetcherRequest<NodeId, TrieOrChunk>),
+    TrieOrChunkFetcherRequest(#[serde(skip_serializing)] FetcherRequest<TrieOrChunk>),
 
     /// Trie or chunk fetcher request.
     #[from]
-    TrieFetcherRequest(#[serde(skip_serializing)] TrieFetcherRequest<NodeId>),
+    TrieFetcherRequest(#[serde(skip_serializing)] TrieFetcherRequest),
 
     /// Block header with metadata by height fetcher request.
     #[from]
     BlockHeaderByHeightFetcherRequest(
-        #[serde(skip_serializing)] FetcherRequest<NodeId, BlockHeaderWithMetadata>,
+        #[serde(skip_serializing)] FetcherRequest<BlockHeaderWithMetadata>,
     ),
 
     /// Linear chain block by height fetcher request.
     #[from]
-    BlockByHeightFetcherRequest(
-        #[serde(skip_serializing)] FetcherRequest<NodeId, BlockWithMetadata>,
-    ),
+    BlockByHeightFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockWithMetadata>),
 
     /// Deploy fetcher request.
     #[from]
-    DeployFetcherRequest(#[serde(skip_serializing)] FetcherRequest<NodeId, Deploy>),
+    DeployFetcherRequest(#[serde(skip_serializing)] FetcherRequest<Deploy>),
 
     /// Address gossip request.
     #[from]
@@ -213,7 +218,7 @@ pub(crate) enum JoinerEvent {
 
     /// Blocklist announcement.
     #[from]
-    BlocklistAnnouncement(#[serde(skip_serializing)] BlocklistAnnouncement<NodeId>),
+    BlocklistAnnouncement(#[serde(skip_serializing)] BlocklistAnnouncement),
 
     /// Block executor announcement.
     #[from]
@@ -225,7 +230,10 @@ pub(crate) enum JoinerEvent {
 
     /// DeployAcceptor announcement.
     #[from]
-    DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement<NodeId>),
+    DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement),
+
+    #[from]
+    DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
 
     /// Linear chain announcement.
     #[from]
@@ -241,7 +249,7 @@ pub(crate) enum JoinerEvent {
 
     /// Incoming consensus network message.
     #[from]
-    ConsensusMessageIncoming(ConsensusMessageIncoming<NodeId>),
+    ConsensusMessageIncoming(ConsensusMessageIncoming),
 
     /// Incoming deploy gossiper network message.
     #[from]
@@ -334,26 +342,36 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::TrieResponseIncoming(_) => "TrieResponseIncoming",
             JoinerEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
             JoinerEvent::ContractRuntimeRequest(_) => "ContractRuntimeRequest",
+            JoinerEvent::DeployGossiper(_) => "DeployGossiper",
+            JoinerEvent::DeployGossiperAnnouncement(_) => "DeployGossiperAnnouncement",
         }
     }
 }
 
-impl From<NetworkRequest<NodeId, Message>> for JoinerEvent {
-    fn from(request: NetworkRequest<NodeId, Message>) -> Self {
+impl From<NetworkRequest<Message>> for JoinerEvent {
+    fn from(request: NetworkRequest<Message>) -> Self {
         JoinerEvent::SmallNetwork(small_network::Event::from(request))
     }
 }
 
-impl From<NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>> for JoinerEvent {
-    fn from(request: NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>) -> Self {
+impl From<NetworkRequest<gossiper::Message<GossipedAddress>>> for JoinerEvent {
+    fn from(request: NetworkRequest<gossiper::Message<GossipedAddress>>) -> Self {
         JoinerEvent::SmallNetwork(small_network::Event::from(
             request.map_payload(Message::from),
         ))
     }
 }
 
-impl From<RestRequest<NodeId>> for JoinerEvent {
-    fn from(request: RestRequest<NodeId>) -> Self {
+impl From<NetworkRequest<gossiper::Message<Deploy>>> for JoinerEvent {
+    fn from(request: NetworkRequest<gossiper::Message<Deploy>>) -> Self {
+        JoinerEvent::SmallNetwork(small_network::Event::from(
+            request.map_payload(Message::from),
+        ))
+    }
+}
+
+impl From<RestRequest> for JoinerEvent {
+    fn from(request: RestRequest) -> Self {
         JoinerEvent::RestServer(rest_server::Event::RestRequest(request))
     }
 }
@@ -456,6 +474,10 @@ impl Display for JoinerEvent {
             JoinerEvent::DumpConsensusStateRequest(req) => {
                 write!(f, "consensus dump request: {}", req)
             }
+            JoinerEvent::DeployGossiper(event) => write!(f, "deploy gossiper: {}", event),
+            JoinerEvent::DeployGossiperAnnouncement(ann) => {
+                write!(f, "deploy gossiper announcement: {}", ann)
+            }
         }
     }
 }
@@ -478,7 +500,7 @@ pub(crate) struct Reactor {
     block_header_and_finality_signatures_by_height_fetcher: Fetcher<BlockHeaderWithMetadata>,
     trie_or_chunk_fetcher: Fetcher<TrieOrChunk>,
     // Handles requests for fetching tries from the network.
-    trie_fetcher: TrieFetcher<NodeId>,
+    trie_fetcher: TrieFetcher,
     console: Console,
     block_header_by_hash_fetcher: Fetcher<BlockHeader>,
     #[data_size(skip)]
@@ -493,6 +515,7 @@ pub(crate) struct Reactor {
     #[data_size(skip)] // Never allocates data on the heap.
     memory_metrics: MemoryMetrics,
     node_startup_instant: Instant,
+    deploy_gossiper: Gossiper<Deploy, JoinerEvent>,
 }
 
 impl reactor::Reactor for Reactor {
@@ -555,6 +578,7 @@ impl reactor::Reactor for Reactor {
         let (chain_synchronizer, sync_effects) = ChainSynchronizer::new(
             Arc::clone(chainspec_loader.chainspec()),
             config.node.clone(),
+            config.network.clone(),
             next_upgrade_activation_point,
             chainspec.protocol_config.verifiable_chunked_hash_activation,
             effect_builder,
@@ -602,6 +626,13 @@ impl reactor::Reactor for Reactor {
             registry,
         )?;
 
+        let deploy_gossiper = Gossiper::new_for_partial_items(
+            "deploy_gossiper",
+            config.gossip,
+            gossiper::get_deploy_from_storage::<Deploy, JoinerEvent>,
+            registry,
+        )?;
+
         effects.extend(reactor::wrap_effects(
             JoinerEvent::ChainspecLoader,
             chainspec_loader.start_checking_for_upgrades(effect_builder),
@@ -632,6 +663,7 @@ impl reactor::Reactor for Reactor {
                 memory_metrics,
                 node_startup_instant,
                 console,
+                deploy_gossiper,
             },
             effects,
         ))
@@ -662,9 +694,24 @@ impl reactor::Reactor for Reactor {
             JoinerEvent::DeployAcceptorAnnouncement(
                 DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
             ) => {
+                if let Err(error) = deploy.deploy_info() {
+                    error!(%error, "invalid deploy");
+                    return Effects::new();
+                };
+
                 let event = event_stream_server::Event::DeployAccepted(*deploy.id());
                 let mut effects =
                     self.dispatch_event(effect_builder, rng, JoinerEvent::EventStreamServer(event));
+
+                let event = gossiper::Event::ItemReceived {
+                    item_id: *deploy.id(),
+                    source: source.clone(),
+                };
+                effects.extend(self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    JoinerEvent::DeployGossiper(event),
+                ));
 
                 let event = fetcher::Event::GotRemotely {
                     verifiable_chunked_hash_activation: None,
@@ -881,10 +928,11 @@ impl reactor::Reactor for Reactor {
                 debug!(%incoming, "ignoring incoming consensus message");
                 Effects::new()
             }
-            JoinerEvent::DeployGossiperIncoming(incoming) => {
-                debug!(%incoming, "ignoring incoming deploy gossiper message");
-                Effects::new()
-            }
+            JoinerEvent::DeployGossiperIncoming(incoming) => reactor::wrap_effects(
+                JoinerEvent::DeployGossiper,
+                self.deploy_gossiper
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
             JoinerEvent::AddressGossiperIncoming(incoming) => reactor::wrap_effects(
                 JoinerEvent::AddressGossiper,
                 self.address_gossiper
@@ -928,6 +976,23 @@ impl reactor::Reactor for Reactor {
                 req.answer(Err(Cow::Borrowed("node is joining, no running consensus")))
                     .ignore()
             }
+            JoinerEvent::DeployGossiper(event) => reactor::wrap_effects(
+                JoinerEvent::DeployGossiper,
+                self.deploy_gossiper
+                    .handle_event(effect_builder, rng, event),
+            ),
+            JoinerEvent::DeployGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
+                gossiped_deploy_id,
+            )) => {
+                error!(%gossiped_deploy_id, "gossiper should not announce new deploy");
+                Effects::new()
+            }
+            JoinerEvent::DeployGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
+                _gossiped_deploy_id,
+            )) => {
+                // We never process any deploys onwards, so we can ignore successful gossip outcome
+                Effects::new()
+            }
         }
     }
 
@@ -966,14 +1031,30 @@ impl Reactor {
             .verifiable_chunked_hash_activation;
         match message {
             NetResponse::Deploy(ref serialized_item) => {
-                reactor::handle_fetch_response::<Self, Deploy>(
-                    self,
-                    effect_builder,
-                    rng,
-                    sender,
-                    serialized_item,
-                    verifiable_chunked_hash_activation,
-                )
+                let deploy: Box<Deploy> = match bincode::deserialize::<
+                    FetchedOrNotFound<Deploy, DeployHash>,
+                >(serialized_item)
+                {
+                    Ok(FetchedOrNotFound::Fetched(deploy)) => Box::new(deploy),
+                    Ok(FetchedOrNotFound::NotFound(deploy_hash)) => {
+                        error!(
+                            "peer did not have deploy with hash {}: {}",
+                            sender, deploy_hash
+                        );
+                        return Effects::new();
+                    }
+                    Err(error) => {
+                        error!("failed to decode deploy from {}: {}", sender, error);
+                        return Effects::new();
+                    }
+                };
+
+                let event = JoinerEvent::DeployAcceptor(deploy_acceptor::Event::Accept {
+                    deploy,
+                    source: Source::Peer(sender),
+                    maybe_responder: None,
+                });
+                <Reactor as reactor::Reactor>::dispatch_event(self, effect_builder, rng, event)
             }
             NetResponse::Block(ref serialized_item) => {
                 reactor::handle_fetch_response::<Self, Block>(
@@ -1056,8 +1137,7 @@ impl Reactor {
 
 #[cfg(test)]
 impl NetworkedReactor for Reactor {
-    type NodeId = NodeId;
-    fn node_id(&self) -> Self::NodeId {
+    fn node_id(&self) -> NodeId {
         self.small_network.node_id()
     }
 }

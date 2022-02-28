@@ -1,6 +1,5 @@
 use std::path::Path;
 
-use casper_types::bytesrepr::Bytes;
 use lmdb::{
     self, Database, Environment, EnvironmentFlags, RoTransaction, RwTransaction, WriteFlags,
 };
@@ -25,9 +24,9 @@ impl<'a> Transaction for RoTransaction<'a> {
 }
 
 impl<'a> Readable for RoTransaction<'a> {
-    fn read(&self, handle: Self::Handle, key: &[u8]) -> Result<Option<Bytes>, Self::Error> {
+    fn read(&self, handle: Self::Handle, key: &[u8]) -> Result<Option<&[u8]>, Self::Error> {
         match lmdb::Transaction::get(self, handle, &key) {
-            Ok(bytes) => Ok(Some(Bytes::from(bytes))),
+            Ok(bytes) => Ok(Some(bytes)),
             Err(lmdb::Error::NotFound) => Ok(None),
             Err(e) => Err(e),
         }
@@ -45,9 +44,9 @@ impl<'a> Transaction for RwTransaction<'a> {
 }
 
 impl<'a> Readable for RwTransaction<'a> {
-    fn read(&self, handle: Self::Handle, key: &[u8]) -> Result<Option<Bytes>, Self::Error> {
+    fn read(&self, handle: Self::Handle, key: &[u8]) -> Result<Option<&[u8]>, Self::Error> {
         match lmdb::Transaction::get(self, handle, &key) {
-            Ok(bytes) => Ok(Some(Bytes::from(bytes))),
+            Ok(bytes) => Ok(Some(bytes)),
             Err(lmdb::Error::NotFound) => Ok(None),
             Err(e) => Err(e),
         }

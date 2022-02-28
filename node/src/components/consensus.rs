@@ -47,7 +47,7 @@ use crate::{
     },
     protocol::Message,
     reactor::ReactorEvent,
-    types::{ActivationPoint, BlockHash, BlockHeader, BlockPayload, Timestamp},
+    types::{ActivationPoint, BlockHash, BlockHeader, BlockPayload, NodeId, Timestamp},
     NodeRng,
 };
 
@@ -56,7 +56,6 @@ pub(crate) use config::{ChainspecConsensusExt, Config};
 pub(crate) use consensus_protocol::{BlockContext, EraReport, ProposedBlock};
 pub(crate) use era_supervisor::{debug::EraDump, EraSupervisor};
 pub(crate) use protocols::highway::HighwayProtocol;
-use traits::NodeIdT;
 
 pub(crate) use utils::check_sufficient_finality_signatures;
 pub(crate) use validator_change::ValidatorChange;
@@ -88,19 +87,19 @@ pub struct NewBlockPayload {
 }
 
 #[derive(DataSize, Debug, From)]
-pub struct ResolveValidity<I> {
+pub struct ResolveValidity {
     era_id: EraId,
-    sender: I,
+    sender: NodeId,
     proposed_block: ProposedBlock<ClContext>,
     valid: bool,
 }
 
 /// Consensus component event.
 #[derive(DataSize, Debug, From)]
-pub(crate) enum Event<I> {
+pub(crate) enum Event {
     #[from]
     /// An incoming network message.
-    Incoming(ConsensusMessageIncoming<I>),
+    Incoming(ConsensusMessageIncoming),
     /// A scheduled event to be handled by a specified era.
     Timer {
         era_id: EraId,
@@ -119,7 +118,7 @@ pub(crate) enum Event<I> {
         header_hash: BlockHash,
     },
     /// The proto-block has been validated.
-    ResolveValidity(ResolveValidity<I>),
+    ResolveValidity(ResolveValidity),
     /// Deactivate the era with the given ID, unless the number of faulty validators increases.
     DeactivateEra {
         era_id: EraId,
@@ -168,7 +167,7 @@ impl Display for ConsensusMessage {
     }
 }
 
-impl<I: Debug> Display for Event<I> {
+impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::Incoming(ConsensusMessageIncoming { sender, message }) => {
@@ -243,44 +242,44 @@ impl<I: Debug> Display for Event<I> {
 
 /// A helper trait whose bounds represent the requirements for a reactor event that `EraSupervisor`
 /// can work with.
-pub(crate) trait ReactorEventT<I>:
+pub(crate) trait ReactorEventT:
     ReactorEvent
-    + From<Event<I>>
+    + From<Event>
     + Send
-    + From<NetworkRequest<I, Message>>
-    + From<NetworkInfoRequest<I>>
+    + From<NetworkRequest<Message>>
+    + From<NetworkInfoRequest>
     + From<BlockProposerRequest>
     + From<ConsensusAnnouncement>
-    + From<BlockValidationRequest<I>>
+    + From<BlockValidationRequest>
     + From<StorageRequest>
     + From<ContractRuntimeRequest>
     + From<ChainspecLoaderRequest>
-    + From<BlocklistAnnouncement<I>>
+    + From<BlocklistAnnouncement>
+    + From<BlocklistAnnouncement>
 {
 }
 
-impl<REv, I> ReactorEventT<I> for REv where
+impl<REv> ReactorEventT for REv where
     REv: ReactorEvent
-        + From<Event<I>>
+        + From<Event>
         + Send
-        + From<NetworkRequest<I, Message>>
-        + From<NetworkInfoRequest<I>>
+        + From<NetworkRequest<Message>>
+        + From<NetworkInfoRequest>
         + From<BlockProposerRequest>
         + From<ConsensusAnnouncement>
-        + From<BlockValidationRequest<I>>
+        + From<BlockValidationRequest>
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
         + From<ChainspecLoaderRequest>
-        + From<BlocklistAnnouncement<I>>
+        + From<BlocklistAnnouncement>
 {
 }
 
-impl<I, REv> Component<REv> for EraSupervisor<I>
+impl<REv> Component<REv> for EraSupervisor
 where
-    I: NodeIdT,
-    REv: ReactorEventT<I>,
+    REv: ReactorEventT,
 {
-    type Event = Event<I>;
+    type Event = Event;
     type ConstructionError = Infallible;
 
     fn handle_event(

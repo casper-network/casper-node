@@ -359,7 +359,7 @@ mod tests {
 
     use proptest_attr_macro::proptest;
 
-    use casper_types::bytesrepr;
+    use casper_types::bytesrepr::{self, ToBytes};
 
     use crate::{ChunkWithProof, Digest};
 
@@ -604,6 +604,16 @@ mod tests {
         ];
 
         assert_eq!(expected, serialized);
+    }
+
+    #[test]
+    fn should_assert_simple_digest_serialization_format() {
+        let digest_bytes = [0; 32];
+
+        assert_eq!(
+            Digest(digest_bytes).to_bytes().unwrap(),
+            digest_bytes.to_vec()
+        );
     }
 
     #[test]

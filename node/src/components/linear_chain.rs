@@ -6,7 +6,7 @@ mod signature_cache;
 mod state;
 
 use datasize::DataSize;
-use std::{convert::Infallible, fmt::Display, marker::PhantomData};
+use std::convert::Infallible;
 
 use itertools::Itertools;
 use num::rational::Ratio;
@@ -35,17 +35,16 @@ pub(crate) use event::Event;
 use state::LinearChain;
 
 #[derive(DataSize, Debug)]
-pub(crate) struct LinearChainComponent<I> {
+pub(crate) struct LinearChainComponent {
     linear_chain_state: LinearChain,
     #[data_size(skip)]
     metrics: Metrics,
     /// If true, the process should stop execution to allow an upgrade to proceed.
     stop_for_upgrade: bool,
     verifiable_chunked_hash_activation: EraId,
-    _marker: PhantomData<I>,
 }
 
-impl<I> LinearChainComponent<I> {
+impl LinearChainComponent {
     pub(crate) fn new(
         registry: &Registry,
         protocol_version: ProtocolVersion,
@@ -68,7 +67,6 @@ impl<I> LinearChainComponent<I> {
             metrics,
             stop_for_upgrade: false,
             verifiable_chunked_hash_activation,
-            _marker: PhantomData,
         })
     }
 
@@ -81,18 +79,17 @@ impl<I> LinearChainComponent<I> {
     }
 }
 
-fn outcomes_to_effects<REv, I>(
+fn outcomes_to_effects<REv>(
     effect_builder: EffectBuilder<REv>,
     outcomes: Outcomes,
 ) -> Effects<Event>
 where
     REv: From<StorageRequest>
-        + From<NetworkRequest<I, Message>>
+        + From<NetworkRequest<Message>>
         + From<LinearChainAnnouncement>
         + From<ContractRuntimeRequest>
         + From<ChainspecLoaderRequest>
         + Send,
-    I: Display + Send + 'static,
 {
     outcomes
         .into_iter()
@@ -145,15 +142,14 @@ where
         .concat()
 }
 
-impl<I, REv> Component<REv> for LinearChainComponent<I>
+impl<REv> Component<REv> for LinearChainComponent
 where
     REv: From<StorageRequest>
-        + From<NetworkRequest<I, Message>>
+        + From<NetworkRequest<Message>>
         + From<LinearChainAnnouncement>
         + From<ContractRuntimeRequest>
         + From<ChainspecLoaderRequest>
         + Send,
-    I: Display + Send + 'static,
 {
     type Event = Event;
     type ConstructionError = Infallible;

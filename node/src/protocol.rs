@@ -79,6 +79,20 @@ impl Payload for Message {
         }
     }
 
+    fn is_low_priority(&self) -> bool {
+        // We only deprioritize requested trie nodes, as they are the most commonly requested item
+        // during fast sync.
+        match self {
+            Message::Consensus(_) => false,
+            Message::DeployGossiper(_) => false,
+            Message::AddressGossiper(_) => false,
+            Message::GetRequest { tag, .. } if *tag == Tag::Trie => true,
+            Message::GetRequest { .. } => false,
+            Message::GetResponse { .. } => false,
+            Message::FinalitySignature(_) => false,
+        }
+    }
+
     #[inline]
     fn incoming_resource_estimate(&self, weights: &EstimatorWeights) -> u32 {
         match self {
@@ -185,9 +199,9 @@ impl Display for Message {
     }
 }
 
-impl<REv> FromIncoming<NodeId, Message> for REv
+impl<REv> FromIncoming<Message> for REv
 where
-    REv: From<ConsensusMessageIncoming<NodeId>>
+    REv: From<ConsensusMessageIncoming>
         + From<GossiperIncoming<Deploy>>
         + From<GossiperIncoming<GossipedAddress>>
         + From<NetRequestIncoming>

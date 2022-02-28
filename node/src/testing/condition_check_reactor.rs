@@ -7,6 +7,7 @@ use super::network::NetworkedReactor;
 use crate::{
     effect::{EffectBuilder, Effects},
     reactor::{EventQueueHandle, Finalize, Reactor, ReactorExit},
+    types::NodeId,
     NodeRng,
 };
 
@@ -100,9 +101,7 @@ impl<R: Reactor + Finalize> Finalize for ConditionCheckReactor<R> {
 }
 
 impl<R: Reactor + NetworkedReactor> NetworkedReactor for ConditionCheckReactor<R> {
-    type NodeId = R::NodeId;
-
-    fn node_id(&self) -> Self::NodeId {
+    fn node_id(&self) -> NodeId {
         self.reactor.node_id()
     }
 }
