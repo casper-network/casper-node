@@ -583,7 +583,7 @@ impl reactor::Reactor for Reactor {
             chainspec.protocol_config.verifiable_chunked_hash_activation,
             effect_builder,
             registry,
-        );
+        )?;
         effects.extend(reactor::wrap_effects(
             JoinerEvent::ChainSynchronizer,
             sync_effects,

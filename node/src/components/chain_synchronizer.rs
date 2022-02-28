@@ -30,7 +30,7 @@ use crate::{
     NodeRng, SmallNetworkConfig,
 };
 use config::Config;
-use error::Error;
+pub(crate) use error::Error;
 pub(crate) use event::Event;
 pub(crate) use operations::KeyBlockInfo;
 
@@ -70,11 +70,11 @@ impl ChainSynchronizer {
         verifiable_chunked_hash_activation: EraId,
         effect_builder: EffectBuilder<JoinerEvent>,
         registry: &Registry,
-    ) -> (Self, Effects<Event>) {
+    ) -> Result<(Self, Effects<Event>), Error> {
         let synchronizer = ChainSynchronizer {
             config: Config::new(chainspec, node_config, small_network_config),
             joining_outcome: None,
-            metrics: Metrics::new(registry).expect("TODO[RC]: Unable to create metrics"),
+            metrics: Metrics::new(registry)?,
             maybe_next_upgrade,
         };
         let effects = match synchronizer.config.trusted_hash() {
@@ -91,7 +91,7 @@ impl ChainSynchronizer {
             }
             Some(trusted_hash) => synchronizer.start_syncing(effect_builder, trusted_hash),
         };
-        (synchronizer, effects)
+        Ok((synchronizer, effects))
     }
 
     pub(crate) fn joining_outcome(&self) -> Option<&JoiningOutcome> {
