@@ -1226,7 +1226,7 @@
           },
           "ExecutionEffect": {
             "additionalProperties": false,
-            "description": "The effect of executing a single deploy.",
+            "description": "The journal of execution transforms from a single deploy.",
             "properties": {
               "operations": {
                 "description": "The resulting operations.",
@@ -1236,7 +1236,7 @@
                 "type": "array"
               },
               "transforms": {
-                "description": "The resulting transformations.",
+                "description": "The journal of execution transforms.",
                 "items": {
                   "$ref": "#/components/schemas/TransformEntry"
                 },
@@ -1655,33 +1655,6 @@
             ],
             "type": "object"
           },
-          "JsonValidatorStatusChange": {
-            "additionalProperties": false,
-            "description": "A single change to a validator's status in the given era.",
-            "properties": {
-              "era_id": {
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/EraId"
-                  }
-                ],
-                "description": "The era in which the change occurred."
-              },
-              "validator_change": {
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/ValidatorChange"
-                  }
-                ],
-                "description": "The change in validator status."
-              }
-            },
-            "required": [
-              "era_id",
-              "validator_change"
-            ],
-            "type": "object"
-          },
           "JsonEraEnd": {
             "additionalProperties": false,
             "properties": {
@@ -1818,6 +1791,33 @@
             "required": [
               "public_key",
               "status_changes"
+            ],
+            "type": "object"
+          },
+          "JsonValidatorStatusChange": {
+            "additionalProperties": false,
+            "description": "A single change to a validator's status in the given era.",
+            "properties": {
+              "era_id": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/EraId"
+                  }
+                ],
+                "description": "The era in which the change occurred."
+              },
+              "validator_change": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/ValidatorChange"
+                  }
+                ],
+                "description": "The change in validator status."
+              }
+            },
+            "required": [
+              "era_id",
+              "validator_change"
             ],
             "type": "object"
           },
@@ -2245,13 +2245,29 @@
                 "properties": {
                   "Withdraw": {
                     "items": {
-                      "$ref": "#/components/schemas/UnbondingPurse"
+                      "$ref": "#/components/schemas/WithdrawPurse"
                     },
                     "type": "array"
                   }
                 },
                 "required": [
                   "Withdraw"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "A collection of unbonding purses",
+                "properties": {
+                  "Unbonding": {
+                    "items": {
+                      "$ref": "#/components/schemas/UnbondingPurse"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "Unbonding"
                 ],
                 "type": "object"
               }
@@ -2629,6 +2645,17 @@
                 ],
                 "description": "Era in which this unbonding request was created."
               },
+              "new_validator": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The validator public key to re-delegate to."
+              },
               "unbonder_public_key": {
                 "allOf": [
                   {
@@ -2704,6 +2731,60 @@
             },
             "required": [
               "initial_release_timestamp_millis"
+            ],
+            "type": "object"
+          },
+          "WithdrawPurse": {
+            "additionalProperties": false,
+            "description": "A withdraw purse, a legacy structure.",
+            "properties": {
+              "amount": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/U512"
+                  }
+                ],
+                "description": "Unbonding Amount."
+              },
+              "bonding_purse": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/URef"
+                  }
+                ],
+                "description": "Bonding Purse"
+              },
+              "era_of_creation": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/EraId"
+                  }
+                ],
+                "description": "Era in which this unbonding request was created."
+              },
+              "unbonder_public_key": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  }
+                ],
+                "description": "Unbonders public key."
+              },
+              "validator_public_key": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  }
+                ],
+                "description": "Validators public key."
+              }
+            },
+            "required": [
+              "amount",
+              "bonding_purse",
+              "era_of_creation",
+              "unbonder_public_key",
+              "validator_public_key"
             ],
             "type": "object"
           }
@@ -2892,7 +2973,7 @@
                   },
                   "execution_results": [
                     {
-                      "block_hash": "6b5db3585233ed0076910d3a81fa7d23fc4325f35e06d31f293043aef3f4c98d",
+                      "block_hash": "13c2d7a68ecdd4b74bf4393c88915c836c863fc4bf11d7f2bd930a1bbccacdcb",
                       "result": {
                         "Success": {
                           "cost": "123456",
@@ -2983,7 +3064,7 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "6b5db3585233ed0076910d3a81fa7d23fc4325f35e06d31f293043aef3f4c98d"
+                    "Hash": "13c2d7a68ecdd4b74bf4393c88915c836c863fc4bf11d7f2bd930a1bbccacdcb"
                   }
                 },
                 {
@@ -3175,7 +3256,7 @@
                 {
                   "name": "state_identifier",
                   "value": {
-                    "BlockHash": "6b5db3585233ed0076910d3a81fa7d23fc4325f35e06d31f293043aef3f4c98d"
+                    "BlockHash": "13c2d7a68ecdd4b74bf4393c88915c836c863fc4bf11d7f2bd930a1bbccacdcb"
                   }
                 }
               ],
@@ -3185,7 +3266,7 @@
                   "api_version": "1.4.3",
                   "block_header": {
                     "accumulated_seed": "ac979f51525cfd979b14aa7dc0737c5154eabe0db9280eceaa8dc8d2905b20d5",
-                    "body_hash": "8472b18539dc204cf7cb0520bb5c3a91c1551a5c258189a61a15d3a2a35f1763",
+                    "body_hash": "cd502c5393a3c8b66d6979ad7857507c9baf5a8ba16ba99c28378d3a970fff42",
                     "era_end": {
                       "era_report": {
                         "equivocators": [
@@ -3376,7 +3457,7 @@
                   "last_added_block_info": {
                     "creator": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
                     "era_id": 1,
-                    "hash": "6b5db3585233ed0076910d3a81fa7d23fc4325f35e06d31f293043aef3f4c98d",
+                    "hash": "13c2d7a68ecdd4b74bf4393c88915c836c863fc4bf11d7f2bd930a1bbccacdcb",
                     "height": 10,
                     "state_root_hash": "0808080808080808080808080808080808080808080808080808080808080808",
                     "timestamp": "2020-11-17T00:39:24.072Z"
@@ -3550,7 +3631,7 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "6b5db3585233ed0076910d3a81fa7d23fc4325f35e06d31f293043aef3f4c98d"
+                    "Hash": "13c2d7a68ecdd4b74bf4393c88915c836c863fc4bf11d7f2bd930a1bbccacdcb"
                   }
                 }
               ],
@@ -3560,16 +3641,16 @@
                   "api_version": "1.4.3",
                   "block": {
                     "body": {
-                      "deploy_hashes": [
-                        "5c9b3b099c1378aa8e4a5f07f59ff1fcdc69a83179427c7e67ae0377d94d93fa"
-                      ],
+                      "deploy_hashes": [],
                       "proposer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                      "transfer_hashes": []
+                      "transfer_hashes": [
+                        "5c9b3b099c1378aa8e4a5f07f59ff1fcdc69a83179427c7e67ae0377d94d93fa"
+                      ]
                     },
-                    "hash": "6b5db3585233ed0076910d3a81fa7d23fc4325f35e06d31f293043aef3f4c98d",
+                    "hash": "13c2d7a68ecdd4b74bf4393c88915c836c863fc4bf11d7f2bd930a1bbccacdcb",
                     "header": {
                       "accumulated_seed": "ac979f51525cfd979b14aa7dc0737c5154eabe0db9280eceaa8dc8d2905b20d5",
-                      "body_hash": "8472b18539dc204cf7cb0520bb5c3a91c1551a5c258189a61a15d3a2a35f1763",
+                      "body_hash": "cd502c5393a3c8b66d6979ad7857507c9baf5a8ba16ba99c28378d3a970fff42",
                       "era_end": {
                         "era_report": {
                           "equivocators": [
@@ -3611,7 +3692,7 @@
                     "proofs": [
                       {
                         "public_key": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                        "signature": "016674d7b8c8534c72cab425590593595883c4ebb88397a6fc035768abfd8b8864cbdbf1310d66c5d0f65a70054a81a5cad1366a6511856e1e7036814dbd34a309"
+                        "signature": "016291a7b2689e2edcc6e79030be50edd02f9bd7d809921ae2654012f808c7b9a0f125bc32d6aa610cbd012395a9832ccfaa9262023339f1db71ca073a13bb9707"
                       }
                     ]
                   }
@@ -3668,7 +3749,7 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "6b5db3585233ed0076910d3a81fa7d23fc4325f35e06d31f293043aef3f4c98d"
+                    "Hash": "13c2d7a68ecdd4b74bf4393c88915c836c863fc4bf11d7f2bd930a1bbccacdcb"
                   }
                 }
               ],
@@ -3676,7 +3757,7 @@
                 "name": "chain_get_block_transfers_example_result",
                 "value": {
                   "api_version": "1.4.3",
-                  "block_hash": "6b5db3585233ed0076910d3a81fa7d23fc4325f35e06d31f293043aef3f4c98d",
+                  "block_hash": "13c2d7a68ecdd4b74bf4393c88915c836c863fc4bf11d7f2bd930a1bbccacdcb",
                   "transfers": [
                     {
                       "amount": "0",
@@ -3982,7 +4063,7 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "6b5db3585233ed0076910d3a81fa7d23fc4325f35e06d31f293043aef3f4c98d"
+                    "Hash": "13c2d7a68ecdd4b74bf4393c88915c836c863fc4bf11d7f2bd930a1bbccacdcb"
                   }
                 }
               ],
@@ -3991,7 +4072,7 @@
                 "value": {
                   "api_version": "1.4.3",
                   "era_summary": {
-                    "block_hash": "6b5db3585233ed0076910d3a81fa7d23fc4325f35e06d31f293043aef3f4c98d",
+                    "block_hash": "13c2d7a68ecdd4b74bf4393c88915c836c863fc4bf11d7f2bd930a1bbccacdcb",
                     "era_id": 42,
                     "merkle_proof": "01000000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625016ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625000000003529cde5c621f857f75f3810611eb4af3f998caaa9d4a3413cf799f99c67db0307010000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a7253614761462501010102000000006e06000000000074769d28aac597a36a03a932d4b43e4f10bf0403ee5c41dd035102553f5773631200b9e173e8f05361b681513c14e25e3138639eb03232581db7557c9e8dbbc83ce94500226a9a7fe4f2b7b88d5103a4fc7400f02bf89c860c9ccdd56951a2afe9be0e0267006d820fb5676eb2960e15722f7725f3f8f41030078f8b2e44bf0dc03f71b176d6e800dc5ae9805068c5be6da1a90b2528ee85db0609cc0fb4bd60bbd559f497a98b67f500e1e3e846592f4918234647fca39830b7e1e6ad6f5b7a99b39af823d82ba1873d000003000000010186ff500f287e9b53f823ae1582b1fa429dfede28015125fd233a31ca04d5012002015cc42669a55467a1fdf49750772bfc1aed59b9b085558eb81510e9b015a7c83b0301e3cf4a34b1db6bfa58808b686cb8fe21ebe0c1bcbcee522649d2b135fe510fe3",
                     "state_root_hash": "0808080808080808080808080808080808080808080808080808080808080808",
@@ -4068,7 +4149,7 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "6b5db3585233ed0076910d3a81fa7d23fc4325f35e06d31f293043aef3f4c98d"
+                    "Hash": "13c2d7a68ecdd4b74bf4393c88915c836c863fc4bf11d7f2bd930a1bbccacdcb"
                   }
                 }
               ],

@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 
 source "$NCTL"/sh/utils/main.sh
-
 #######################################
 # Submits an auction delegate withdrawal.
 # Arguments:

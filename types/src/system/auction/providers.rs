@@ -43,10 +43,10 @@ pub trait StorageProvider {
     fn write_bid(&mut self, account_hash: AccountHash, bid: Bid) -> Result<(), Error>;
 
     /// Reads collection of [`UnbondingPurse`]s at account hash derived from given public key
-    fn read_withdraw(&mut self, account_hash: &AccountHash) -> Result<Vec<UnbondingPurse>, Error>;
+    fn read_unbond(&mut self, account_hash: &AccountHash) -> Result<Vec<UnbondingPurse>, Error>;
 
     /// Writes given [`UnbondingPurse`]s at account hash derived from given public key
-    fn write_withdraw(
+    fn write_unbond(
         &mut self,
         account_hash: AccountHash,
         unbonding_purses: Vec<UnbondingPurse>,
