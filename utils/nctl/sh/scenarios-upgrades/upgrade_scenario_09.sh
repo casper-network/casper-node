@@ -185,15 +185,18 @@ function _step_08()
 {
     local NODE_ID=${1}
     local NODE_PATH
+    local LOG_MSG
+
+    LOG_MSG='the trusted block has an older version'
 
     log_step_upgrades 8 "Checking for failed node-$NODE_ID..."
 
     NODE_PATH="$(get_path_to_node $NODE_ID)"
 
-    if ( cat "$NODE_PATH"/logs/stdout.log | grep -q 'the trusted block has an older version' ); then
-        log '...Message Found - "the trusted block has an older version" [expected]'
+    if ( cat "$NODE_PATH"/logs/stdout.log | grep -q "$LOG_MSG" ); then
+        log "...Message Found - '$LOG_MSG' [expected]"
     else
-        log 'ERROR: Message Not Found - "the trusted block has an older version"'
+        log "ERROR: Message Not Found - '$LOG_MSG'"
         exit 1
     fi
 
