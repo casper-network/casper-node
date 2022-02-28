@@ -24,7 +24,8 @@ use tracing::{debug, info, info_span, warn, Instrument};
 use crate::{
     components::consensus::EraDump,
     effect::{
-        announcements::ControlAnnouncement, console::DumpConsensusStateRequest, EffectBuilder,
+        announcements::ControlAnnouncement, diagnostics_port::DumpConsensusStateRequest,
+        EffectBuilder,
     },
 };
 
@@ -80,7 +81,7 @@ impl Display for Outcome {
     }
 }
 
-/// Configuration for a connection console session.
+/// Configuration for a connection diagnostics port session.
 #[derive(Copy, Clone, Debug, Default, Serialize)]
 struct Session {
     /// Whether or not to suppress the operation outcome.
@@ -206,7 +207,7 @@ impl Session {
                     }
                     Action::DumpConsensus { era } => {
                         let output = effect_builder
-                            .console_dump_consensus_state(
+                            .diagnostics_port_dump_consensus_state(
                                 era.map(EraId::new),
                                 self.create_era_dump_serializer(),
                             )
@@ -243,7 +244,9 @@ impl Session {
 
                                 match serializer {
                                     Some(serializer) => {
-                                        effect_builder.console_dump_queue(serializer).await;
+                                        effect_builder
+                                            .diagnostics_port_dump_queue(serializer)
+                                            .await;
                                         if let Err(err) = tmp.seek(SeekFrom::Start(0)) {
                                             self.send_outcome(
                                                 writer,
@@ -362,7 +365,7 @@ impl Session {
 
 /// Handler for client connection.
 ///
-/// The core loop for the console; reads commands via unix socket and processes them accordingly.
+/// The core loop for the diagnostics port; reads commands via unix socket and processes them.
 ///
 /// # Security
 ///
@@ -377,7 +380,7 @@ async fn handler<REv>(
 where
     REv: From<DumpConsensusStateRequest> + From<ControlAnnouncement> + Send,
 {
-    debug!("accepted new connection on console socket");
+    debug!("accepted new connection on diagnostics port");
 
     let (reader, mut writer) = stream.into_split();
     let mut lines = BufReader::new(reader).lines();
@@ -388,7 +391,7 @@ where
 
         match future::select(Box::pin(shutdown_messages), Box::pin(lines.next_line())).await {
             Either::Left(_) => {
-                info!("shutting down console connection to client");
+                info!("shutting down diagnostics port connection to client");
                 break Ok(());
             }
             Either::Right((line_result, _)) => {
@@ -397,7 +400,7 @@ where
                         .process_line(effect_builder, &mut writer, line.as_str())
                         .await?;
                 } else {
-                    info!("client closed console connection");
+                    info!("client closed diagnostics port connection");
                     break Ok(());
                 }
             }
@@ -405,7 +408,7 @@ where
     }
 }
 
-/// Server task for console.
+/// Server task for diagnostics port.
 pub(super) async fn server<REv>(
     effect_builder: EffectBuilder<REv>,
     socket_path: PathBuf,
@@ -422,7 +425,7 @@ pub(super) async fn server<REv>(
                 Ok((stream, client_addr)) => {
                     let client_id = next_client_id;
 
-                    let span = info_span!("console", client_id,);
+                    let span = info_span!("diagnostics_port", client_id,);
 
                     span.in_scope(|| {
                         info!(client_addr = %ShowUnixAddr(&client_addr), "accepted connection");
@@ -436,7 +439,7 @@ pub(super) async fn server<REv>(
                     );
                 }
                 Err(err) => {
-                    info!(%err, "failed to accept incoming connection on console socket");
+                    info!(%err, "failed to accept incoming connection on diagnostics port");
                 }
             }
         }
@@ -447,7 +450,7 @@ pub(super) async fn server<REv>(
     // Now we can wait for either the `shutdown` channel's remote end to do be dropped or the
     // infinite loop to terminate, which never happens.
     match future::select(Box::pin(shutdown_messages), Box::pin(accept_connections)).await {
-        Either::Left(_) => info!("shutting down console socket"),
+        Either::Left(_) => info!("shutting down diagnostics port"),
         Either::Right(_) => unreachable!("server accept returns `!`"),
     }
 

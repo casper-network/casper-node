@@ -59,7 +59,7 @@
 //! some point. Failing to do so will result in a resource leak.
 
 pub(crate) mod announcements;
-pub(crate) mod console;
+pub(crate) mod diagnostics_port;
 pub(crate) mod requests;
 
 use std::{
@@ -104,9 +104,9 @@ use crate::{
         block_validator::ValidatingBlock,
         chainspec_loader::{CurrentRunInfo, NextUpgrade},
         consensus::{BlockContext, ClContext, EraDump, ValidatorChange},
-        console::TempFileSerializer,
         contract_runtime::EraValidatorsRequest,
         deploy_acceptor,
+        diagnostics_port::TempFileSerializer,
         fetcher::FetchResult,
         small_network::GossipedAddress,
     },
@@ -131,7 +131,7 @@ use requests::{
 
 use self::{
     announcements::{BlockProposerAnnouncement, BlocklistAnnouncement},
-    console::DumpConsensusStateRequest,
+    diagnostics_port::DumpConsensusStateRequest,
 };
 use crate::components::contract_runtime::{
     BlockAndExecutionEffects, BlockExecutionError, ExecutionPreState,
@@ -1811,7 +1811,7 @@ impl<REv> EffectBuilder<REv> {
 
     /// Dump consensus state for a specific era, using the supplied function to serialize the
     /// output.
-    pub(crate) async fn console_dump_consensus_state(
+    pub(crate) async fn diagnostics_port_dump_consensus_state(
         self,
         era_id: Option<EraId>,
         serialize: fn(&EraDump<'_>) -> Result<Vec<u8>, Cow<'static, str>>,
@@ -1830,8 +1830,8 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Dump the event queue contents to the console, using the given serializer.
-    pub(crate) async fn console_dump_queue(self, serializer: TempFileSerializer)
+    /// Dump the event queue contents to the diagnostics port, using the given serializer.
+    pub(crate) async fn diagnostics_port_dump_queue(self, serializer: TempFileSerializer)
     where
         REv: From<ControlAnnouncement>,
     {

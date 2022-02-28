@@ -63,9 +63,9 @@ impl FromStr for OutputFormat {
 /// Action to perform.
 #[derive(Debug, StructOpt)]
 pub(super) enum Action {
-    /// Retrieve the active console session information.
+    /// Retrieve the active diagnostics port session information.
     Session,
-    /// Set options on active console session.
+    /// Set options on active diagnostics port session.
     Set {
         /// Whether or not to omit command confirmation after every command sent. Defaults to off,
         /// meaning commands WILL send confirmations.
@@ -88,7 +88,7 @@ pub(super) enum Action {
     DumpQueues,
 }
 
-/// A command to be performed on the node's console.
+/// A command to be performed on the node's diagnostic port.
 #[derive(Debug, StructOpt)]
 pub(super) struct Command {
     #[structopt(subcommand)]
@@ -98,7 +98,7 @@ pub(super) struct Command {
 impl Command {
     /// Parses a line of input into a `Command`.
     pub(super) fn from_line(line: &str) -> Result<Self, Error> {
-        let mut parts = vec!["casper-console".to_owned()];
+        let mut parts = vec!["casper-diagnostics-port".to_owned()];
         parts.extend(shlex::split(line).ok_or(Error::ShlexFailure)?);
         Ok(Self::from_iter_safe(parts.into_iter())?)
     }

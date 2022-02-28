@@ -15,8 +15,8 @@ use casper_types::{EraId, ExecutionResult, PublicKey};
 
 use crate::{
     components::{
-        chainspec_loader::NextUpgrade, console::TempFileSerializer, deploy_acceptor::Error,
-        small_network::GossipedAddress,
+        chainspec_loader::NextUpgrade, deploy_acceptor::Error,
+        diagnostics_port::TempFileSerializer, small_network::GossipedAddress,
     },
     effect::Responder,
     types::{

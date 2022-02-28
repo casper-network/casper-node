@@ -1,7 +1,7 @@
-//! Unix console component.
+//! Diagnostics port component.
 //!
-//! The console listens on a configurable unix socket for incoming connections and allows deep debug
-//! access to a running node via special commands.
+//! The diagnostics port listens on a configurable unix socket for incoming connections and allows
+//! deep debug access to a running node via special commands.
 
 mod command;
 mod tasks;
@@ -22,8 +22,8 @@ use tracing::debug;
 use super::Component;
 use crate::{
     effect::{
-        announcements::ControlAnnouncement, console::DumpConsensusStateRequest, EffectBuilder,
-        EffectExt, Effects,
+        announcements::ControlAnnouncement, diagnostics_port::DumpConsensusStateRequest,
+        EffectBuilder, EffectExt, Effects,
     },
     reactor::EventQueueHandle,
     types::NodeRng,
@@ -33,19 +33,19 @@ use crate::{
 pub use tasks::TempFileSerializer;
 use util::ShowUnixAddr;
 
-/// Unix console component.
+/// Diagnostics port component.
 #[derive(Debug, DataSize)]
-pub(crate) struct Console {
+pub(crate) struct DiagnosticsPort {
     /// Sender, when dropped, will cause server and client connections to exit.
     #[data_size(skip)]
     #[allow(dead_code)] // only used for its `Drop` impl.
     shutdown_sender: watch::Sender<()>,
 }
 
-/// Unix console configuration.
+/// Diagnostics port configuration.
 #[derive(Clone, DataSize, Debug, Deserialize)]
 pub(crate) struct Config {
-    /// Whether or not the console is enabled.
+    /// Whether or not the diagnostics port is enabled.
     enabled: bool,
     /// Path to listen on.
     socket_path: PathBuf,
@@ -63,8 +63,8 @@ impl Default for Config {
     }
 }
 
-impl Console {
-    /// Creates a new Unix console component.
+impl DiagnosticsPort {
+    /// Creates a new diagnostics port component.
     pub(crate) fn new<REv>(
         cfg: &WithDir<Config>,
         event_queue: EventQueueHandle<REv>,
@@ -79,8 +79,8 @@ impl Console {
             // If not enabled, do not launch a background task, simply exit immediately.
             //
             // Having a shutdown sender around still is harmless.
-            debug!("console disabled");
-            return Ok((Console { shutdown_sender }, Effects::new()));
+            debug!("diagnostics port disabled");
+            return Ok((DiagnosticsPort { shutdown_sender }, Effects::new()));
         }
 
         let socket_path = cfg.with_dir(config.socket_path.clone());
@@ -92,7 +92,7 @@ impl Console {
             shutdown_receiver,
         );
 
-        Ok((Console { shutdown_sender }, server.ignore()))
+        Ok((DiagnosticsPort { shutdown_sender }, server.ignore()))
     }
 }
 
@@ -126,30 +126,30 @@ fn setup_listener<P: AsRef<Path>>(path: P, socket_umask: umask::Mode) -> io::Res
     let listener = UnixListener::bind(socket_path)?;
     drop(umask_guard);
 
-    debug!(local_addr=%ShowUnixAddr(&listener.local_addr()?), "console socket listening");
+    debug!(local_addr=%ShowUnixAddr(&listener.local_addr()?), "diagnostics port listening");
 
     Ok(listener)
 }
 
-/// Unix console event.
+/// Diagnostics port event.
 #[derive(Debug, Serialize)]
 pub(crate) struct Event;
 
-/// A console initialization error.
+/// A diagnostics port initialization error.
 #[derive(Debug, Error)]
 pub(crate) enum Error {
-    /// Error setting up the console's unix socket listener.
-    #[error("could not setup console listener")]
+    /// Error setting up the diagnostics port's unix socket listener.
+    #[error("could not setup diagnostics port listener")]
     SetupListener(#[from] io::Error),
 }
 
 impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str("console event")
+        f.write_str("diagnostics port event")
     }
 }
 
-impl<REv> Component<REv> for Console {
+impl<REv> Component<REv> for DiagnosticsPort {
     type Event = Event;
 
     type ConstructionError = Error;
