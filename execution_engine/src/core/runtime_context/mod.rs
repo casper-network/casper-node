@@ -25,11 +25,11 @@ use casper_types::{
 
 use crate::{
     core::{
-        engine_state::{execution_effect::ExecutionEffect, EngineConfig, SystemContractRegistry},
+        engine_state::{execution_effect::ExecutionEffect, EngineConfig},
         execution::{AddressGenerator, Error},
         runtime_context::dictionary::DictionaryValue,
         tracking_copy::{AddResult, TrackingCopy, TrackingCopyExt},
-        Address,
+        Address, SystemContractRegistry,
     },
     shared::{execution_journal::ExecutionJournal, newtypes::CorrelationId},
     storage::global_state::StateReader,

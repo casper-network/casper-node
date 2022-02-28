@@ -50,7 +50,6 @@ use casper_types::{
     U512,
 };
 
-use self::genesis::ChainspecRegistry;
 pub use self::{
     balance::{BalanceRequest, BalanceResult},
     deploy_item::DeployItem,
@@ -61,14 +60,13 @@ pub use self::{
     execute_request::ExecuteRequest,
     execution::Error as ExecError,
     execution_result::{ExecutionResult, ForcedTransferResult},
-    genesis::{ExecConfig, GenesisAccount, GenesisSuccess, SystemContractRegistry},
+    genesis::{ExecConfig, GenesisAccount, GenesisSuccess},
     get_bids::{GetBidsRequest, GetBidsResult},
     query::{QueryRequest, QueryResult},
     step::{RewardItem, SlashItem, StepError, StepRequest, StepSuccess},
     transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
     upgrade::{UpgradeConfig, UpgradeSuccess},
 };
-use crate::core::engine_state::genesis::CHAINSPEC_RAW;
 use crate::{
     core::{
         engine_state::{
@@ -80,6 +78,7 @@ use crate::{
         execution::{self, DirectSystemContractCall, Executor},
         runtime::RuntimeStack,
         tracking_copy::{TrackingCopy, TrackingCopyExt},
+        ChainspecRegistry, SystemContractRegistry, CHAINSPEC_RAW,
     },
     shared::{
         additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform,
@@ -337,14 +336,11 @@ where
             Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
         })?;
 
-        println!("{:?}", upgrade_config.chainspec_registry());
-
         if upgrade_config
             .chainspec_registry()
             .get(CHAINSPEC_RAW)
             .is_none()
         {
-            println!("In error raising");
             return Err(Error::MissingChainspecHash);
         }
 

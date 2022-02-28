@@ -28,7 +28,7 @@ pub(super) async fn run<REv: ReactorEventT>(
     let rest_open_rpc = filters::create_rpc_schema_filter(effect_builder);
     let rest_validator_changes =
         filters::create_validator_changes_filter(effect_builder, api_version);
-    let rest_chainspec_filter = filters::create_chainspec_filter(effect_builder);
+    let rest_chainspec_filter = filters::create_chainspec_filter(effect_builder, api_version);
 
     let service = warp::service(
         rest_status

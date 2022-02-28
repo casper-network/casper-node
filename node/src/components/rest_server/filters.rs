@@ -16,7 +16,7 @@ use super::ReactorEventT;
 use crate::{
     effect::{requests::RestRequest, EffectBuilder},
     reactor::QueueKind,
-    rpcs::info::GetValidatorChangesResult,
+    rpcs::info::{GetChainspecResult, GetValidatorChangesResult},
     types::GetStatusResult,
 };
 
@@ -120,13 +120,17 @@ pub(super) fn create_validator_changes_filter<REv: ReactorEventT>(
 
 pub(super) fn create_chainspec_filter<REv: ReactorEventT>(
     effect_builder: EffectBuilder<REv>,
+    api_version: ProtocolVersion,
 ) -> BoxedFilter<(Response<Body>,)> {
     warp::get()
         .and(warp::path(CHAINSPEC_PATH))
         .and_then(move || {
             effect_builder
-                .get_chainspec_file()
-                .map(move |bytes| Ok::<_, Rejection>(bytes.into_response()))
+                .get_chainspec_raw_bytes()
+                .map(move |chainspec_bytes| {
+                    let result = GetChainspecResult::new(api_version, chainspec_bytes);
+                    Ok::<_, Rejection>(reply::json(&result).into_response())
+                })
         })
         .boxed()
 }

@@ -32,9 +32,10 @@ use casper_types::{
 use super::error;
 use crate::{
     core::{
-        engine_state::{genesis::SystemContractRegistry, Error, ExecError, MAX_PAYMENT_AMOUNT},
+        engine_state::{Error, ExecError, MAX_PAYMENT_AMOUNT},
         execution,
         tracking_copy::{TrackingCopy, TrackingCopyExt},
+        SystemContractRegistry,
     },
     shared::{newtypes::CorrelationId, wasm, wasm_prep, wasm_prep::Preprocessor},
     storage::global_state::StateReader,

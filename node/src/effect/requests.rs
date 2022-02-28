@@ -20,7 +20,7 @@ use casper_execution_engine::{
         self,
         balance::{BalanceRequest, BalanceResult},
         era_validators::GetEraValidatorsError,
-        genesis::{ChainspecRegistry, GenesisSuccess},
+        genesis::GenesisSuccess,
         get_bids::{GetBidsRequest, GetBidsResult},
         query::{QueryRequest, QueryResult},
         UpgradeConfig, UpgradeSuccess,
@@ -33,11 +33,10 @@ use casper_types::{
     StoredValue, Transfer, URef,
 };
 
-use crate::components::chainspec_loader::ChainspecRawBytes;
 use crate::{
     components::{
         block_validator::ValidatingBlock,
-        chainspec_loader::CurrentRunInfo,
+        chainspec_loader::{ChainspecRawBytes, CurrentRunInfo},
         consensus::{BlockContext, ClContext, ValidatorChange},
         contract_runtime::{
             BlockAndExecutionEffects, BlockExecutionError, EraValidatorsRequest, ExecutionPreState,
@@ -1029,13 +1028,15 @@ pub(crate) enum ConsensusRequest {
 
 /// ChainspecLoader component requests.
 #[derive(Debug, Serialize)]
+#[allow(clippy::enum_variant_names)]
 pub(crate) enum ChainspecLoaderRequest {
     /// Chainspec info request.
     GetChainspecInfo(Responder<ChainspecInfo>),
     /// Request for information about the current run.
     GetCurrentRunInfo(Responder<CurrentRunInfo>),
-    /// Request for the chainspec file.
-    GetChainspecFile(Responder<Vec<u8>>),
+    /// Request for the chainspec file bytes
+    /// with the genesis_accounts and global_state bytes,
+    /// if they are present.
     GetChainspecRawBytes(Responder<ChainspecRawBytes>),
 }
 
@@ -1044,7 +1045,6 @@ impl Display for ChainspecLoaderRequest {
         match self {
             ChainspecLoaderRequest::GetChainspecInfo(_) => write!(f, "get chainspec info"),
             ChainspecLoaderRequest::GetCurrentRunInfo(_) => write!(f, "get current run info"),
-            ChainspecLoaderRequest::GetChainspecFile(_) => write!(f, "get chainspec file"),
             ChainspecLoaderRequest::GetChainspecRawBytes(_) => write!(f, "get chainspec raw bytes"),
         }
     }

@@ -83,11 +83,9 @@ use tracing::{debug, error, warn};
 
 use casper_execution_engine::{
     core::engine_state::{
-        self,
-        era_validators::GetEraValidatorsError,
-        genesis::{ChainspecRegistry, GenesisSuccess},
-        BalanceRequest, BalanceResult, GetBidsRequest, GetBidsResult, QueryRequest, QueryResult,
-        UpgradeConfig, UpgradeSuccess,
+        self, era_validators::GetEraValidatorsError, genesis::GenesisSuccess, BalanceRequest,
+        BalanceResult, GetBidsRequest, GetBidsResult, QueryRequest, QueryResult, UpgradeConfig,
+        UpgradeSuccess,
     },
     shared::execution_journal::ExecutionJournal,
     storage::trie::{Trie, TrieOrChunk, TrieOrChunkId},
@@ -99,11 +97,10 @@ use casper_types::{
     U512,
 };
 
-use crate::components::chainspec_loader::ChainspecRawBytes;
 use crate::{
     components::{
         block_validator::ValidatingBlock,
-        chainspec_loader::{CurrentRunInfo, NextUpgrade},
+        chainspec_loader::{ChainspecRawBytes, CurrentRunInfo, NextUpgrade},
         consensus::{BlockContext, ClContext, EraDump, ValidatorChange},
         contract_runtime::{
             BlockAndExecutionEffects, BlockExecutionError, EraValidatorsRequest, ExecutionPreState,
@@ -1847,15 +1844,9 @@ impl<REv> EffectBuilder<REv> {
         )
         .await
     }
-    /// Gets the chainspec file.
-    pub(crate) async fn get_chainspec_file(self) -> Vec<u8>
-    where
-        REv: From<ChainspecLoaderRequest> + Send,
-    {
-        self.make_request(ChainspecLoaderRequest::GetChainspecFile, QueueKind::Regular)
-            .await
-    }
 
+    /// Get the bytes for the chainspec file and genesis_accounts
+    /// and global_state bytes if the files are present.
     pub(crate) async fn get_chainspec_raw_bytes(self) -> ChainspecRawBytes
     where
         REv: From<ChainspecLoaderRequest> + Send,
@@ -1866,30 +1857,6 @@ impl<REv> EffectBuilder<REv> {
         )
         .await
     }
-
-    // /// Gets the genesis accounts file.
-    // pub(crate) async fn get_genesis_accounts_file(self) -> Vec<u8>
-    // where
-    //     REv: From<ChainspecLoaderRequest> + Send,
-    // {
-    //     self.make_request(
-    //         ChainspecLoaderRequest::GetGenesisAccountsFile,
-    //         QueueKind::Regular,
-    //     )
-    //     .await
-    // }
-    //
-    // /// Create a `ChainspecRegistry`.
-    // pub(crate) async fn create_chainspec_registry(self) -> ChainspecRegistry
-    // where
-    //     REv: From<ChainspecLoaderRequest> + From<ContractRuntimeRequest> + Send,
-    // {
-    //     self.make_request(
-    //         ChainspecLoaderRequest::CreateChainspecRegistry,
-    //         QueueKind::Regular,
-    //     )
-    //     .await
-    // }
 }
 
 /// Construct a fatal error effect.

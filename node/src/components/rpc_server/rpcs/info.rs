@@ -22,7 +22,7 @@ use super::{
     RpcWithoutParamsExt,
 };
 use crate::{
-    components::consensus::ValidatorChange,
+    components::{chainspec_loader::ChainspecRawBytes, consensus::ValidatorChange},
     crypto::AsymmetricKeyExt,
     effect::EffectBuilder,
     reactor::QueueKind,
@@ -55,7 +55,7 @@ static GET_VALIDATOR_CHANGES_RESULT: Lazy<GetValidatorChangesResult> = Lazy::new
 });
 static GET_CHAINSPEC_RESULT: Lazy<GetChainspecResult> = Lazy::new(|| GetChainspecResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
-    chainspec: vec![42, 42, 42],
+    chainspec_bytes: ChainspecRawBytes::new(vec![42, 42], None, None),
 });
 
 /// Params for "info_get_deploy" RPC request.
@@ -354,14 +354,14 @@ pub struct GetChainspecResult {
     #[schemars(with = "String")]
     pub api_version: ProtocolVersion,
     /// The chainspec file bytes.
-    pub chainspec: Vec<u8>,
+    pub chainspec_bytes: ChainspecRawBytes,
 }
 
 impl GetChainspecResult {
-    pub(crate) fn new(api_version: ProtocolVersion, chainspec: Vec<u8>) -> Self {
+    pub(crate) fn new(api_version: ProtocolVersion, chainspec_bytes: ChainspecRawBytes) -> Self {
         Self {
             api_version,
-            chainspec,
+            chainspec_bytes,
         }
     }
 }
@@ -387,8 +387,8 @@ impl RpcWithoutParamsExt for GetChainspec {
         api_version: ProtocolVersion,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
-            let chainspec = effect_builder.get_chainspec_file().await;
-            let result = Self::ResponseResult::new(api_version, chainspec);
+            let chainspec_bytes = effect_builder.get_chainspec_raw_bytes().await;
+            let result = Self::ResponseResult::new(api_version, chainspec_bytes);
             Ok(response_builder.success(result)?)
         }
         .boxed()

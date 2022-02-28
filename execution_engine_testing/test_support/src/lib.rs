@@ -20,7 +20,7 @@ use once_cell::sync::Lazy;
 
 use casper_execution_engine::{
     core::engine_state::{
-        genesis::{ChainspecRegistry, ExecConfig, GenesisAccount, GenesisConfig},
+        genesis::{ExecConfig, GenesisAccount, GenesisConfig},
         run_genesis_request::RunGenesisRequest,
     },
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
@@ -29,7 +29,7 @@ use casper_hashing::Digest;
 use casper_types::{account::AccountHash, Motes, ProtocolVersion, PublicKey, SecretKey, U512};
 
 pub use additive_map_diff::AdditiveMapDiff;
-use casper_execution_engine::core::engine_state::genesis::{CHAINSPEC_RAW, GENESIS_ACCOUNTS_RAW};
+use casper_execution_engine::core::{ChainspecRegistry, CHAINSPEC_RAW, GENESIS_ACCOUNTS_RAW};
 pub use deploy_item_builder::DeployItemBuilder;
 pub use execute_request_builder::ExecuteRequestBuilder;
 pub use step_request_builder::StepRequestBuilder;

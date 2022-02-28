@@ -25,7 +25,6 @@ use casper_execution_engine::{
 use casper_types::ProtocolVersion;
 
 use super::*;
-use crate::effect::requests::ChainspecLoaderRequest;
 use crate::{
     components::{
         contract_runtime::{self, ContractRuntime},
@@ -43,7 +42,7 @@ use crate::{
             ConsensusMessageIncoming, FinalitySignatureIncoming, NetRequestIncoming, NetResponse,
             NetResponseIncoming, TrieRequestIncoming, TrieResponseIncoming,
         },
-        requests::{ConsensusRequest, ContractRuntimeRequest},
+        requests::{ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest},
         Responder,
     },
     fatal,

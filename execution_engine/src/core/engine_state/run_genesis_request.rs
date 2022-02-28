@@ -6,7 +6,7 @@ use rand::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::core::engine_state::genesis::{ChainspecRegistry, CHAINSPEC_RAW};
+use crate::core::{ChainspecRegistry, CHAINSPEC_RAW};
 use casper_hashing::Digest;
 use casper_types::ProtocolVersion;
 
@@ -52,6 +52,7 @@ impl RunGenesisRequest {
         &self.ee_config
     }
 
+    /// Returns a reference to the chainspec registry.
     pub fn chainspec_registry(&self) -> &ChainspecRegistry {
         &self.chainspec_registry
     }

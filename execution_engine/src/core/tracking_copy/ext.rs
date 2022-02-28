@@ -9,7 +9,7 @@ use casper_types::{
 };
 
 use crate::{
-    core::{engine_state::SystemContractRegistry, execution, tracking_copy::TrackingCopy},
+    core::{execution, tracking_copy::TrackingCopy, SystemContractRegistry},
     shared::{newtypes::CorrelationId, wasm, wasm_prep::Preprocessor},
     storage::{global_state::StateReader, trie::merkle_proof::TrieMerkleProof},
 };

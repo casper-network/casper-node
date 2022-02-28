@@ -19,7 +19,6 @@ use std::{
     time::Duration,
 };
 
-use casper_execution_engine::core::engine_state::genesis::ChainspecRegistry;
 use datasize::DataSize;
 use derive_more::From;
 use schemars::JsonSchema;
@@ -29,8 +28,6 @@ use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{EraId, ProtocolVersion};
 
-use crate::contract_runtime::ContractRuntime;
-use crate::types::chainspec::GLOBAL_STATE_UPDATE;
 #[cfg(test)]
 use crate::utils::RESOURCES_PATH;
 use crate::{
@@ -42,7 +39,9 @@ use crate::{
     reactor::ReactorExit,
     storage::StorageRequest,
     types::{
-        chainspec::{Error, ProtocolConfig, CHAINSPEC_NAME, GENESIS_ACCOUNTS_NAME},
+        chainspec::{
+            Error, ProtocolConfig, CHAINSPEC_NAME, GENESIS_ACCOUNTS_NAME, GLOBAL_STATE_UPDATE,
+        },
         ActivationPoint, BlockHeader, Chainspec, ChainspecInfo, ExitCode,
     },
     utils::{self, Loadable},
@@ -142,8 +141,8 @@ pub(crate) struct CurrentRunInfo {
     pub(crate) last_emergency_restart: Option<EraId>,
 }
 
-#[derive(Debug)]
-pub(crate) struct ChainspecRawBytes {
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ChainspecRawBytes {
     chainspec_bytes: Vec<u8>,
     maybe_genesis_accounts_bytes: Option<Vec<u8>>,
     maybe_global_state_bytes: Option<Vec<u8>>,
@@ -448,22 +447,6 @@ where
             Event::Request(ChainspecLoaderRequest::GetCurrentRunInfo(responder)) => {
                 responder.respond(self.get_current_run_info()).ignore()
             }
-            Event::Request(ChainspecLoaderRequest::GetChainspecFile(responder)) => {
-                let file_path = self
-                    .root_dir
-                    .join(dir_name_from_version(&self.chainspec.protocol_version()))
-                    .join(CHAINSPEC_NAME);
-
-                let data = match fs::read(file_path) {
-                    Ok(file_bytes) => file_bytes,
-                    Err(e) => {
-                        error!("failed to read file: {}", e);
-                        vec![]
-                    }
-                };
-
-                responder.respond(data).ignore()
-            }
             Event::Request(ChainspecLoaderRequest::GetChainspecRawBytes(responder)) => {
                 let chainspec_file_path = self
                     .root_dir
@@ -500,25 +483,6 @@ where
 
                 responder.respond(raw_chainspec_bytes).ignore()
             }
-            // Event::Request(ChainspecLoaderRequest::GetGenesisAccountsFile(responder)) => {
-            //     let file_path = self
-            //         .root_dir
-            //         .join(dir_name_from_version(&self.chainspec.protocol_version()))
-            //         .join(GENESIS_ACCOUNTS_NAME);
-            //
-            //     let data = match fs::read(file_path) {
-            //         Ok(file_bytes) => file_bytes,
-            //         Err(e) => {
-            //             error!("failed to read file: {}", e);
-            //             vec![]
-            //         }
-            //     };
-            //
-            //     responder.respond(data).ignore()
-            // }
-            // Event::Request(ChainspecLoaderRequest::CreateChainspecRegistry(responder)) => {
-            //     responder.respond(ChainspecRegistry::new()).ignore()
-            // }
             Event::CheckForNextUpgrade => self.check_for_next_upgrade(effect_builder),
             Event::GotNextUpgrade(next_upgrade) => self.handle_got_next_upgrade(next_upgrade),
         }

@@ -24,10 +24,9 @@ use casper_types::{
 use super::{Address, Error, RuntimeContext};
 use crate::{
     core::{
-        engine_state::{EngineConfig, SystemContractRegistry},
-        execution::AddressGenerator,
-        runtime::extract_access_rights_from_keys,
-        tracking_copy::TrackingCopy,
+        engine_state::EngineConfig, execution::AddressGenerator,
+        runtime::extract_access_rights_from_keys, tracking_copy::TrackingCopy,
+        SystemContractRegistry,
     },
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
     storage::global_state::{

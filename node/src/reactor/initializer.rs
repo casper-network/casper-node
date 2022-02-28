@@ -13,7 +13,7 @@ use tracing::info;
 use casper_execution_engine::core::engine_state;
 
 use crate::effect::requests::ChainspecLoaderRequest;
-use crate::types::Chainspec;
+
 use crate::{
     components::{
         chainspec_loader::{self, ChainspecLoader},

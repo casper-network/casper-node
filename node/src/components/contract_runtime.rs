@@ -6,7 +6,6 @@ mod metrics;
 mod operations;
 mod types;
 
-use std::borrow::BorrowMut;
 use std::{
     collections::BTreeMap,
     fmt::{self, Debug, Display, Formatter},
@@ -24,13 +23,13 @@ use serde::Serialize;
 use thiserror::Error;
 use tracing::{debug, error, info, trace};
 
-use casper_execution_engine::core::engine_state::genesis::GLOBAL_STATE_RAW;
 use casper_execution_engine::{
-    core::engine_state::{
-        self,
-        genesis::{ChainspecRegistry, GenesisSuccess, CHAINSPEC_RAW, GENESIS_ACCOUNTS_RAW},
-        EngineConfig, EngineState, GetEraValidatorsError, GetEraValidatorsRequest, UpgradeConfig,
-        UpgradeSuccess,
+    core::{
+        engine_state::{
+            self, genesis::GenesisSuccess, EngineConfig, EngineState, GetEraValidatorsError,
+            GetEraValidatorsRequest, UpgradeConfig, UpgradeSuccess,
+        },
+        ChainspecRegistry, CHAINSPEC_RAW, GENESIS_ACCOUNTS_RAW, GLOBAL_STATE_RAW,
     },
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::{
@@ -43,7 +42,6 @@ use casper_execution_engine::{
 use casper_hashing::Digest;
 use casper_types::{EraId, Key, ProtocolVersion, StoredValue};
 
-use crate::types::chainspec::GLOBAL_STATE_UPDATE;
 use crate::{
     components::{contract_runtime::types::StepEffectAndUpcomingEraValidators, Component},
     effect::{
@@ -275,9 +273,6 @@ impl ContractRuntime {
             } => {
                 let engine_state = Arc::clone(&self.engine_state);
                 async move {
-                    // let mut chainspec_registry = effect_builder.create_chainspec_registry().await;
-                    // let chainspec_file = effect_builder.get_chainspec_file().await;
-                    // let genesis_accounts_file = effect_builder.get_genesis_accounts_file().await;
                     let raw_chainspec_bytes = effect_builder.get_chainspec_raw_bytes().await;
                     let chainspec_registry = {
                         let mut chainspec_registry = ChainspecRegistry::new();

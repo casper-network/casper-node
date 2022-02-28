@@ -45,6 +45,7 @@ use crate::{
         execution::{AddressGenerator, Executor},
         runtime::RuntimeStack,
         tracking_copy::{TrackingCopy, TrackingCopyExt},
+        ChainspecRegistry, SystemContractRegistry, CHAINSPEC_RAW, GENESIS_ACCOUNTS_RAW,
     },
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::global_state::StateProvider,
@@ -52,15 +53,6 @@ use crate::{
 
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
 const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
-/// Type alias for the system contract registry.
-pub type SystemContractRegistry = BTreeMap<String, ContractHash>;
-
-/// Type alias for the chainspec registry.
-pub type ChainspecRegistry = BTreeMap<String, Digest>;
-
-pub const CHAINSPEC_RAW: &str = "chainspec_raw";
-pub const GENESIS_ACCOUNTS_RAW: &str = "genesis_accounts_raw";
-pub const GLOBAL_STATE_RAW: &str = "global_state_raw";
 
 /// Represents an outcome of a successful genesis run.
 #[derive(Debug)]

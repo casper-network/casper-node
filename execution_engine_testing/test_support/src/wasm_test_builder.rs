@@ -23,9 +23,9 @@ use casper_execution_engine::{
             run_genesis_request::RunGenesisRequest,
             step::{StepRequest, StepSuccess},
             BalanceResult, EngineConfig, EngineState, GenesisSuccess, GetBidsRequest, QueryRequest,
-            QueryResult, StepError, SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
+            QueryResult, StepError, UpgradeConfig, UpgradeSuccess,
         },
-        execution,
+        execution, SystemContractRegistry,
     },
     shared::{
         additive_map::AdditiveMap,

@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "GetChainspecResult",
+  "description": "Result for the \"info_get_chainspec\" RPC.",
+  "type": "object",
+  "required": [
+    "api_version",
+    "chainspec_bytes"
+  ],
+  "properties": {
+    "api_version": {
+      "description": "The RPC API version.",
+      "type": "string"
+    },
+    "chainspec_bytes": {
+      "description": "The chainspec file bytes.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/ChainspecRawBytes"
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "ChainspecRawBytes": {
+      "type": "object",
+      "required": [
+        "chainspec_bytes"
+      ],
+      "properties": {
+        "chainspec_bytes": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0.0
+          }
+        },
+        "maybe_genesis_accounts_bytes": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0.0
+          }
+        },
+        "maybe_global_state_bytes": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0.0
+          }
+        }
+      }
+    }
+  }
+}

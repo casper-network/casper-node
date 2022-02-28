@@ -450,6 +450,44 @@
             ],
             "type": "object"
           },
+          "ChainspecRawBytes": {
+            "properties": {
+              "chainspec_bytes": {
+                "items": {
+                  "format": "uint8",
+                  "minimum": 0.0,
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              "maybe_genesis_accounts_bytes": {
+                "items": {
+                  "format": "uint8",
+                  "minimum": 0.0,
+                  "type": "integer"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "maybe_global_state_bytes": {
+                "items": {
+                  "format": "uint8",
+                  "minimum": 0.0,
+                  "type": "integer"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "chainspec_bytes"
+            ],
+            "type": "object"
+          },
           "Contract": {
             "additionalProperties": false,
             "description": "A contract struct that can be serialized as  JSON object.",
@@ -3542,6 +3580,52 @@
             }
           },
           "summary": "returns status changes of active validators"
+        },
+        {
+          "examples": [
+            {
+              "name": "info_get_chainspec_example",
+              "params": [],
+              "result": {
+                "name": "info_get_chainspec_example_result",
+                "value": {
+                  "api_version": "1.4.3",
+                  "chainspec_bytes": {
+                    "chainspec_bytes": [
+                      42,
+                      42
+                    ],
+                    "maybe_genesis_accounts_bytes": null,
+                    "maybe_global_state_bytes": null
+                  }
+                }
+              }
+            }
+          ],
+          "name": "info_get_chainspec",
+          "params": [],
+          "result": {
+            "name": "info_get_chainspec_result",
+            "schema": {
+              "description": "Result for the \"info_get_chainspec\" RPC.",
+              "properties": {
+                "api_version": {
+                  "description": "The RPC API version.",
+                  "type": "string"
+                },
+                "chainspec_bytes": {
+                  "$ref": "#/components/schemas/ChainspecRawBytes",
+                  "description": "The chainspec file bytes."
+                }
+              },
+              "required": [
+                "api_version",
+                "chainspec_bytes"
+              ],
+              "type": "object"
+            }
+          },
+          "summary": "returns the raw bytes of the chainspec file"
         },
         {
           "examples": [

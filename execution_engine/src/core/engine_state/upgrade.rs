@@ -14,9 +14,11 @@ use casper_types::{
     Contract, ContractHash, EntryPoints, EraId, Key, ProtocolVersion, StoredValue,
 };
 
-use crate::core::engine_state::genesis::ChainspecRegistry;
 use crate::{
-    core::{engine_state::execution_effect::ExecutionEffect, tracking_copy::TrackingCopy},
+    core::{
+        engine_state::execution_effect::ExecutionEffect, tracking_copy::TrackingCopy,
+        ChainspecRegistry,
+    },
     shared::newtypes::CorrelationId,
     storage::global_state::StateProvider,
 };
@@ -137,6 +139,7 @@ impl UpgradeConfig {
         &self.global_state_update
     }
 
+    /// Returns a reference to the chainspec registry.
     pub fn chainspec_registry(&self) -> &ChainspecRegistry {
         &self.chainspec_registry
     }
@@ -146,6 +149,7 @@ impl UpgradeConfig {
         self.pre_state_hash = pre_state_hash;
     }
 
+    /// Sets the chainspec registry to the upgrade config.
     pub fn with_chainspec_registry(&mut self, chainspec_registry: ChainspecRegistry) {
         self.chainspec_registry = chainspec_registry
     }

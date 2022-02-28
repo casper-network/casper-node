@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use casper_execution_engine::core::engine_state::genesis::{ChainspecRegistry, CHAINSPEC_RAW};
+use casper_execution_engine::core::{ChainspecRegistry, CHAINSPEC_RAW};
 use num_rational::Ratio;
 
 use casper_execution_engine::core::engine_state::UpgradeConfig;

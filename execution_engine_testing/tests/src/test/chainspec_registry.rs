@@ -1,20 +1,15 @@
 use crate::lmdb_fixture;
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
-    DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_EXEC_CONFIG, DEFAULT_GENESIS_CONFIG,
-    DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_RUN_GENESIS_REQUEST,
+    InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_EXEC_CONFIG,
+    DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::core::engine_state::genesis::{
+use casper_execution_engine::core::{
+    engine_state::{run_genesis_request::RunGenesisRequest, EngineConfig, Error},
     ChainspecRegistry, CHAINSPEC_RAW, GENESIS_ACCOUNTS_RAW, GLOBAL_STATE_RAW,
 };
-use casper_execution_engine::core::engine_state::{
-    run_genesis_request::RunGenesisRequest, EngineConfig, GenesisAccount,
-};
 use casper_hashing::Digest;
-use casper_types::bytesrepr::ToBytes;
-use casper_types::{CLType, CLValue, EraId, Key, ProtocolVersion};
+
+use casper_types::{EraId, Key, ProtocolVersion};
 use once_cell::sync::Lazy;
 use rand::Rng;
 
@@ -51,7 +46,7 @@ fn should_commit_chainspec_registry_during_genesis() {
     builder.run_genesis(&run_genesis_request);
 
     let queried_registry = builder
-        .query(None, Key::ChainspecRegistry, &vec![])
+        .query(None, Key::ChainspecRegistry, &[])
         .expect("must have entry under Key::ChainspecRegistry")
         .as_cl_value()
         .expect("must have underlying cl_value")
@@ -76,13 +71,13 @@ fn should_commit_chainspec_registry_during_genesis() {
 #[test]
 #[should_panic]
 fn should_fail_to_commit_genesis_when_missing_chainspec_hash() {
-    let mut incomplete_chainspec_registry = ChainspecRegistry::new();
+    let incomplete_chainspec_registry = ChainspecRegistry::new();
 
     let run_genesis_request = RunGenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
         *DEFAULT_PROTOCOL_VERSION,
         DEFAULT_EXEC_CONFIG.clone(),
-        incomplete_chainspec_registry.clone(),
+        incomplete_chainspec_registry,
     );
 
     let mut builder = InMemoryWasmTestBuilder::default();
@@ -135,10 +130,12 @@ fn should_write_chainspec_registry_during_an_upgrade() {
 
     let engine_config = EngineConfig::default();
 
-    builder.upgrade_with_upgrade_request(engine_config, &mut upgrade_request);
+    builder
+        .upgrade_with_upgrade_request(engine_config, &mut upgrade_request)
+        .expect_upgrade_success();
 
     let queried_registry = builder
-        .query(None, Key::ChainspecRegistry, &vec![])
+        .query(None, Key::ChainspecRegistry, &[])
         .expect("must have entry under Key::ChainspecRegistry")
         .as_cl_value()
         .expect("must have underlying cl_value")
@@ -187,10 +184,12 @@ fn should_upgrade_and_write_registry_from_release_1_4_4() {
 
     let engine_config = EngineConfig::default();
 
-    builder.upgrade_with_upgrade_request(engine_config, &mut upgrade_request);
+    builder
+        .upgrade_with_upgrade_request(engine_config, &mut upgrade_request)
+        .expect_upgrade_success();
 
     let queried_registry = builder
-        .query(None, Key::ChainspecRegistry, &vec![])
+        .query(None, Key::ChainspecRegistry, &[])
         .expect("must have entry under Key::ChainspecRegistry")
         .as_cl_value()
         .expect("must have underlying cl_value")
@@ -216,7 +215,6 @@ fn should_upgrade_and_write_registry_from_release_1_4_4() {
 
 #[ignore]
 #[test]
-#[should_panic]
 fn should_fail_upgrade_when_registry_is_missing_chainspec_hash() {
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
@@ -234,7 +232,12 @@ fn should_fail_upgrade_when_registry_is_missing_chainspec_hash() {
 
     let engine_config = EngineConfig::default();
 
-    builder
-        .upgrade_with_upgrade_request(engine_config, &mut upgrade_request)
-        .expect_upgrade_success();
+    builder.upgrade_with_upgrade_request(engine_config, &mut upgrade_request);
+
+    let upgrade_result = builder
+        .get_upgrade_result(0)
+        .expect("must have upgrade result")
+        .clone();
+
+    assert!(matches!(upgrade_result, Err(Error::MissingChainspecHash)))
 }
