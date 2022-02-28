@@ -166,10 +166,6 @@ async fn fetch_and_store_block_header(
     config: &Config,
     block_hash: BlockHash,
 ) -> Result<Box<BlockHeader>, Error> {
-    // TODO[RC]: Measure this?
-    // let _chain_sync_fetch_and_store_block_header_duration_seconds =
-    //     ScopeTimer::new(&metrics.chain_sync_fetch_and_store_block_header_duration_seconds);
-
     // Only genesis should have this as previous hash, so no block should ever have it...
     if block_hash == BlockHash::default() {
         return Err(Error::NoSuchBlockHash {
@@ -848,7 +844,6 @@ pub(super) async fn run_chain_sync_task(
 
     // Fetch the trusted header
     debug!("start - fetch trusted header");
-    // TODO[RC]: Measure this
     let trusted_block_header =
         fetch_and_store_block_header(effect_builder, &config, trusted_hash).await?;
     debug!("finish - fetch trusted header");
