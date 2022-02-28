@@ -1258,8 +1258,8 @@ where
             (stack, is_system_account)
         };
 
-        // Main purse URefs should be attenuated only when a contract is executed by a non-system
-        // account to avoid possible phishing attack scenarios.
+        // Main purse URefs should be attenuated only when a non-system contract is executed by a
+        // non-system account to avoid possible phishing attack scenarios.
         let should_attenuate_urefs = !is_calling_system && !is_system_call && !is_system_account;
         let context_args = if should_attenuate_urefs {
             utils::attenuate_uref_in_args(

@@ -4,7 +4,7 @@
 extern crate alloc;
 
 use casper_contract::{
-    contract_api::{runtime, system},
+    contract_api::{account, runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{account::AccountHash, runtime_args, system::mint, RuntimeArgs, URef, U512};
@@ -29,7 +29,7 @@ fn call_mint_transfer(
 #[no_mangle]
 pub extern "C" fn call() {
     let to: Option<AccountHash> = runtime::get_named_arg(mint::ARG_TO);
-    let source: URef = runtime::get_named_arg(mint::ARG_SOURCE);
+    let source: URef = account::get_main_purse();
     let target: URef = runtime::get_named_arg(mint::ARG_TARGET);
     let amount: U512 = runtime::get_named_arg(mint::ARG_AMOUNT);
     let id: Option<u64> = runtime::get_named_arg(mint::ARG_ID);

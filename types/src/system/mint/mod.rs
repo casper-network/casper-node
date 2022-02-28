@@ -105,22 +105,6 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             return Err(Error::InvalidContext);
         }
 
-        // Conditions for verifying if we should verify approved amount
-        let is_session_or_payment =
-            self.get_phase() == Phase::Session || self.get_phase() == Phase::Payment;
-        let is_main_purse = self.get_main_purse().addr() == source.addr();
-
-        // Check if main purse is used for token transfer.
-        let is_amount_approved = if is_session_or_payment && is_main_purse {
-            if amount > self.get_approved_spending_limit() {
-                // transferring more than user approved for is invalid.
-                return Err(Error::UnapprovedSpendingAmount);
-            }
-            true
-        } else {
-            false
-        };
-
         if !source.is_readable() {
             return Err(Error::InvalidAccessRights);
         }
@@ -134,14 +118,21 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         if amount > source_balance {
             return Err(Error::InsufficientFunds);
         }
+
         if self.read_balance(target)?.is_none() {
             return Err(Error::DestNotFound);
         }
-        self.write_balance(source, source_balance - amount)?;
-        self.add_balance(target, amount)?;
-        if is_amount_approved {
+
+        if self.get_main_purse().addr() == source.addr() {
+            if amount > self.get_approved_spending_limit() {
+                return Err(Error::UnapprovedSpendingAmount);
+            }
             self.sub_approved_spending_limit(amount);
         }
+
+        self.write_balance(source, source_balance - amount)?;
+        self.add_balance(target, amount)?;
+
         self.record_transfer(maybe_to, source, target, amount, id)?;
         Ok(())
     }

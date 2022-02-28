@@ -250,7 +250,6 @@ fn should_fail_to_mint_transfer_over_the_limit() {
 
     let args = runtime_args! {
         mint::ARG_TO => Option::<AccountHash>::None,
-        mint::ARG_SOURCE => default_account.main_purse(),
         mint::ARG_TARGET => test_purse_2,
         mint::ARG_AMOUNT => U512::one(),
         mint::ARG_ID => Some(1u64),
