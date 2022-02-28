@@ -6,17 +6,6 @@ use std::{
     path::PathBuf,
 };
 
-use crate::{
-    components::consensus::EraDump,
-    effect::{
-        announcements::ControlAnnouncement, console::DumpConsensusStateRequest, EffectBuilder,
-    },
-};
-
-use super::{
-    command::{Action, Command, OutputFormat},
-    util::ShowUnixAddr,
-};
 use bincode::{
     config::{AllowTrailing, FixintEncoding, WithOtherIntEncoding, WithOtherTrailing},
     DefaultOptions, Options,
@@ -31,6 +20,18 @@ use tokio::{
     sync::watch,
 };
 use tracing::{debug, info, info_span, warn, Instrument};
+
+use crate::{
+    components::consensus::EraDump,
+    effect::{
+        announcements::ControlAnnouncement, console::DumpConsensusStateRequest, EffectBuilder,
+    },
+};
+
+use super::{
+    command::{Action, Command, OutputFormat},
+    util::ShowUnixAddr,
+};
 
 /// Success or failure response.
 ///
