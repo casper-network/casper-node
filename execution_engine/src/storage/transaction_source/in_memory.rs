@@ -48,12 +48,12 @@ impl Transaction for InMemoryReadTransaction {
 }
 
 impl Readable for InMemoryReadTransaction {
-    fn read(&self, handle: Self::Handle, key: &[u8]) -> Result<Option<Bytes>, Self::Error> {
+    fn read(&self, handle: Self::Handle, key: &[u8]) -> Result<Option<&[u8]>, Self::Error> {
         let sub_view = match self.view.get(&handle) {
             Some(view) => view,
             None => return Ok(None),
         };
-        Ok(sub_view.get(&Bytes::from(key)).cloned())
+        Ok(sub_view.get(&Bytes::from(key)).map(Bytes::as_slice))
     }
 }
 
@@ -95,12 +95,12 @@ impl<'a> Transaction for InMemoryReadWriteTransaction<'a> {
 }
 
 impl<'a> Readable for InMemoryReadWriteTransaction<'a> {
-    fn read(&self, handle: Self::Handle, key: &[u8]) -> Result<Option<Bytes>, Self::Error> {
+    fn read(&self, handle: Self::Handle, key: &[u8]) -> Result<Option<&[u8]>, Self::Error> {
         let sub_view = match self.view.get(&handle) {
             Some(view) => view,
             None => return Ok(None),
         };
-        Ok(sub_view.get(&Bytes::from(key)).cloned())
+        Ok(sub_view.get(&Bytes::from(key)).map(Bytes::as_slice))
     }
 }
 
