@@ -1259,7 +1259,7 @@ impl<REv> EffectBuilder<REv> {
 
     /// Requests a trie node from a peer.
     ///
-    /// `peers` must be a **non-empty** set of peers to fetch from.
+    /// `peers` should be a **non-empty** set of peers to fetch from.
     pub(crate) async fn fetch_trie(self, hash: Digest, peers: Vec<NodeId>) -> TrieFetcherResult
     where
         REv: From<TrieFetcherRequest>,
