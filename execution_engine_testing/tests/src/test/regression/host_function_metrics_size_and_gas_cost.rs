@@ -25,7 +25,7 @@ const HOST_FUNCTION_METRICS_STANDARD_SIZE: usize = 157_055;
 const HOST_FUNCTION_METRICS_STANDARD_GAS_COST: u64 = 151_323_460_380;
 
 /// Acceptable size regression/improvement in percentage.
-const SIZE_MARGIN: usize = 5;
+const SIZE_MARGIN: usize = 25;
 /// Acceptable gas cost regression/improvement in percentage.
 const GAS_COST_MARGIN: u64 = 5;
 
