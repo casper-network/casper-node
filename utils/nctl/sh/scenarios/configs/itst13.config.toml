@@ -352,15 +352,15 @@ sync_timeout = '1hr'
 #deploy_delay = '1min'
 
 
-# ===========================================
-# Configuration options for the debug console
-# ===========================================
-[console]
+# ==============================================
+# Configuration options for the diagnostics port
+# ==============================================
+[diagnostics_port]
 
-# If set, the debug console will be available on a UNIX socket.
+# If set, the diagnostics port will be available on a UNIX socket.
 enabled = true
 
-# Filename for the UNIX domain socket the console listens on.
+# Filename for the UNIX domain socket the diagnostics port listens on.
 socket_path = "debug.socket"
 
 # The umask to set before creating the socket. A restrictive mask like `0o077` will cause the
