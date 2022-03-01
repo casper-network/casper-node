@@ -8,7 +8,7 @@ use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::Serialize;
 use thiserror::Error;
-use tracing::info;
+use tracing::{error, info};
 
 use casper_execution_engine::core::engine_state;
 
@@ -16,20 +16,15 @@ use crate::{
     components::{
         chainspec_loader::{self, ChainspecLoader},
         contract_runtime::{self, ContractRuntime, ContractRuntimeAnnouncement},
-        gossiper,
-        small_network::{GossipedAddress, SmallNetworkIdentity, SmallNetworkIdentityError},
+        small_network::{SmallNetworkIdentity, SmallNetworkIdentityError},
         storage::{self, Storage},
         Component,
     },
     effect::{
         announcements::{ChainspecLoaderAnnouncement, ControlAnnouncement},
-        requests::{
-            ConsensusRequest, ContractRuntimeRequest, LinearChainRequest, NetworkRequest,
-            RestRequest, StateStoreRequest, StorageRequest,
-        },
+        requests::{ContractRuntimeRequest, StateStoreRequest, StorageRequest},
         EffectBuilder, Effects,
     },
-    protocol::Message,
     reactor::{self, participating, EventQueueHandle, ReactorExit},
     types::chainspec,
     utils::WithDir,
@@ -56,9 +51,15 @@ pub(crate) enum Event {
     #[from]
     StateStoreRequest(StateStoreRequest),
 
-    /// Control announcement
+    /// Control announcement.
     #[from]
     ControlAnnouncement(ControlAnnouncement),
+
+    /// Chainspec loader announcement.
+    ChainspecLoaderAnnouncement,
+
+    /// Contract runtime announcement.
+    ContractRuntimeAnnouncement,
 }
 
 impl From<ContractRuntimeRequest> for Event {
@@ -83,6 +84,8 @@ impl ReactorEvent for Event {
             Event::ContractRuntime(_) => "ContractRuntime",
             Event::StateStoreRequest(_) => "StateStoreRequest",
             Event::ControlAnnouncement(_) => "ControlAnnouncement",
+            Event::ChainspecLoaderAnnouncement => "ChainspecLoaderAnnouncement",
+            Event::ContractRuntimeAnnouncement => "ContractRuntimeAnnouncement",
         }
     }
 }
@@ -93,45 +96,17 @@ impl From<StorageRequest> for Event {
     }
 }
 
-impl From<NetworkRequest<Message>> for Event {
-    fn from(_request: NetworkRequest<Message>) -> Self {
-        unreachable!("no network traffic happens during initialization")
-    }
-}
-
 impl From<ChainspecLoaderAnnouncement> for Event {
-    fn from(_announcement: ChainspecLoaderAnnouncement) -> Self {
-        unreachable!("no chainspec announcements happen during initialization")
-    }
-}
-
-impl From<LinearChainRequest> for Event {
-    fn from(_req: LinearChainRequest) -> Self {
-        unreachable!("no linear chain events happen during initialization")
-    }
-}
-
-impl From<NetworkRequest<gossiper::Message<GossipedAddress>>> for Event {
-    fn from(_request: NetworkRequest<gossiper::Message<GossipedAddress>>) -> Self {
-        unreachable!("no gossiper events happen during initialization")
-    }
-}
-
-impl From<ConsensusRequest> for Event {
-    fn from(_request: ConsensusRequest) -> Self {
-        unreachable!("no chainspec announcements happen during initialization")
-    }
-}
-
-impl From<RestRequest> for Event {
-    fn from(_request: RestRequest) -> Self {
-        unreachable!("no rest requests happen during initialization")
+    fn from(announcement: ChainspecLoaderAnnouncement) -> Self {
+        info!(%announcement, "chainspec announcements received by initializer, ignoring");
+        Event::ChainspecLoaderAnnouncement
     }
 }
 
 impl From<ContractRuntimeAnnouncement> for Event {
-    fn from(_request: ContractRuntimeAnnouncement) -> Self {
-        unreachable!("no block executor requests happen during initialization")
+    fn from(announcement: ContractRuntimeAnnouncement) -> Self {
+        error!(%announcement, "contract runtime announcement received by initializer, possibly a bug");
+        Event::ContractRuntimeAnnouncement
     }
 }
 
@@ -145,6 +120,12 @@ impl Display for Event {
                 write!(formatter, "state store request: {}", request)
             }
             Event::ControlAnnouncement(ctrl_ann) => write!(formatter, "control: {}", ctrl_ann),
+            Event::ChainspecLoaderAnnouncement => {
+                write!(formatter, "chainspec announcement")
+            }
+            Event::ContractRuntimeAnnouncement => {
+                write!(formatter, "contract runtime announcement")
+            }
         }
     }
 }
@@ -316,7 +297,18 @@ impl reactor::Reactor for Reactor {
             Event::StateStoreRequest(request) => {
                 self.dispatch_event(effect_builder, rng, Event::Storage(request.into()))
             }
-            Event::ControlAnnouncement(_) => unreachable!("unhandled control announcement"),
+            Event::ControlAnnouncement(ann) => {
+                error!(%ann, "control announcement dispatched in initializer");
+                Effects::new()
+            }
+            Event::ChainspecLoaderAnnouncement => {
+                // We don't dispatch ChainspecLoaderAnnouncement as it is ignored in the initializer
+                Effects::new()
+            }
+            Event::ContractRuntimeAnnouncement => {
+                // We don't dispatch ContractRuntimeAnnouncement as it shouldn't actually arrive to the initializer
+                Effects::new()
+            }
         }
     }
 
