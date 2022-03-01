@@ -395,7 +395,7 @@ fn should_withdraw_bids_after_distribute() {
 
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 
-    let participant_portion = Ratio::new(U512::one(), U512::from(3));
+    let participant_portion = Ratio::new(U512::one(), U512::from(3u64));
     let remainders = Ratio::from(U512::zero());
 
     let system_fund_request = ExecuteRequestBuilder::standard(
@@ -669,7 +669,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
 
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 
-    let participant_portion = Ratio::new(U512::one(), U512::from(3));
+    let participant_portion = Ratio::new(U512::one(), U512::from(3u64));
     let remainders = Ratio::from(U512::zero());
 
     let system_fund_request = ExecuteRequestBuilder::standard(
@@ -4156,7 +4156,7 @@ fn should_not_restake_after_full_unbond() {
     let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
     assert!(delegator.is_none());
 
-    let withdraws = builder.get_withdraws();
+    let withdraws = builder.get_unbonds();
     let unbonding_purses = withdraws
         .get(&VALIDATOR_1_ADDR)
         .expect("should have validator entry");
@@ -4343,7 +4343,7 @@ fn delegator_full_unbond_during_first_reward_era() {
     let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
     assert!(delegator.is_none());
 
-    let withdraws = builder.get_withdraws();
+    let withdraws = builder.get_unbonds();
     let unbonding_purses = withdraws
         .get(&VALIDATOR_1_ADDR)
         .expect("should have validator entry");

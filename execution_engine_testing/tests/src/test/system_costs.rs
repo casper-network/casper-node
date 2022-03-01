@@ -53,6 +53,9 @@ static VALIDATOR_1_SECRET_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::ed25519_from_bytes([123; SecretKey::ED25519_LENGTH]).unwrap());
 static VALIDATOR_1: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*VALIDATOR_1_SECRET_KEY));
 static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
+static VALIDATOR_2_SECRET_KEY: Lazy<SecretKey> =
+    Lazy::new(|| SecretKey::ed25519_from_bytes([124; SecretKey::ED25519_LENGTH]).unwrap());
+static VALIDATOR_2: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*VALIDATOR_2_SECRET_KEY));
 const VALIDATOR_1_STAKE: u64 = 250_000;
 const BOND_AMOUNT: u64 = 42;
 const BID_AMOUNT: u64 = 99;
@@ -311,9 +314,18 @@ fn delegate_and_undelegate_have_expected_costs() {
                 DelegationRate::zero(),
             )),
         );
+        let validator_2 = GenesisAccount::account(
+            VALIDATOR_2.clone(),
+            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
+            Some(GenesisValidator::new(
+                Motes::new(VALIDATOR_1_STAKE.into()),
+                DelegationRate::zero(),
+            )),
+        );
 
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         tmp.push(validator_1);
+        tmp.push(validator_2);
         tmp
     };
 
@@ -372,6 +384,30 @@ fn delegate_and_undelegate_have_expected_costs() {
     );
     assert_eq!(builder.last_exec_gas_cost().value(), expected_call_cost);
 
+    let redelegate_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        account
+            .named_keys()
+            .get(AUCTION)
+            .unwrap()
+            .into_hash()
+            .unwrap()
+            .into(),
+        auction::METHOD_REDELEGATE,
+        runtime_args! {
+            auction::ARG_DELEGATOR => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
+            auction::ARG_VALIDATOR => VALIDATOR_1.clone(),
+            auction::ARG_AMOUNT => U512::from(10u64),
+            auction::ARG_NEW_VALIDATOR => VALIDATOR_2.clone()
+        },
+    )
+    .build();
+
+    builder.exec(redelegate_request).expect_success().commit();
+
+    let expected_call_cost = U512::from(DEFAULT_UNDELEGATE_COST);
+    assert_eq!(builder.last_exec_gas_cost().value(), expected_call_cost);
+
     // Withdraw bid
     let undelegate_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
@@ -386,7 +422,7 @@ fn delegate_and_undelegate_have_expected_costs() {
         runtime_args! {
             auction::ARG_DELEGATOR => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
             auction::ARG_VALIDATOR => VALIDATOR_1.clone(),
-            auction::ARG_AMOUNT => U512::from(BID_AMOUNT),
+            auction::ARG_AMOUNT => U512::from(BID_AMOUNT - 10u64),
         },
     )
     .build();
@@ -447,9 +483,18 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
                 DelegationRate::zero(),
             )),
         );
+        let validator_2 = GenesisAccount::account(
+            VALIDATOR_2.clone(),
+            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
+            Some(GenesisValidator::new(
+                Motes::new(VALIDATOR_1_STAKE.into()),
+                DelegationRate::zero(),
+            )),
+        );
 
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         tmp.push(validator_1);
+        tmp.push(validator_2);
         tmp
     };
 
@@ -518,6 +563,31 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
     );
     assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
 
+    let redelegate_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        account
+            .named_keys()
+            .get(AUCTION)
+            .unwrap()
+            .into_hash()
+            .unwrap()
+            .into(),
+        auction::METHOD_REDELEGATE,
+        runtime_args! {
+            auction::ARG_DELEGATOR => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
+            auction::ARG_VALIDATOR => VALIDATOR_1.clone(),
+            auction::ARG_AMOUNT => U512::from(10u64),
+            auction::ARG_NEW_VALIDATOR => VALIDATOR_2.clone()
+        },
+    )
+    .with_protocol_version(*NEW_PROTOCOL_VERSION)
+    .build();
+
+    builder.exec(redelegate_request).expect_success().commit();
+
+    let expected_call_cost = U512::from(NEW_UNDELEGATE_COST);
+    assert_eq!(builder.last_exec_gas_cost().value(), expected_call_cost);
+
     // Withdraw bid
     let undelegate_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
@@ -532,7 +602,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
         runtime_args! {
             auction::ARG_DELEGATOR => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
             auction::ARG_VALIDATOR => VALIDATOR_1.clone(),
-            auction::ARG_AMOUNT => U512::from(BID_AMOUNT),
+            auction::ARG_AMOUNT => U512::from(BID_AMOUNT - 10u64),
         },
     )
     .with_protocol_version(*NEW_PROTOCOL_VERSION)

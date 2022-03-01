@@ -69,12 +69,19 @@ mod error {
 mod system_contract_type {
     //! Home of system contract type enum.
 
+    use alloc::string::{String, ToString};
     use core::{
         convert::TryFrom,
         fmt::{self, Display, Formatter},
     };
 
-    use crate::ApiError;
+    use crate::{
+        system::{
+            auction::auction_entry_points, handle_payment::handle_payment_entry_points,
+            mint::mint_entry_points, standard_payment::standard_payment_entry_points,
+        },
+        ApiError, EntryPoints,
+    };
 
     /// System contract types.
     ///
@@ -100,6 +107,28 @@ mod system_contract_type {
     pub const STANDARD_PAYMENT: &str = "standard payment";
     /// Name of auction system contract
     pub const AUCTION: &str = "auction";
+
+    impl SystemContractType {
+        /// Returns the name of the system contract.
+        pub fn contract_name(&self) -> String {
+            match self {
+                SystemContractType::Mint => MINT.to_string(),
+                SystemContractType::HandlePayment => HANDLE_PAYMENT.to_string(),
+                SystemContractType::StandardPayment => STANDARD_PAYMENT.to_string(),
+                SystemContractType::Auction => AUCTION.to_string(),
+            }
+        }
+
+        /// Returns the entrypoint of the system contract.
+        pub fn contract_entry_points(&self) -> EntryPoints {
+            match self {
+                SystemContractType::Mint => mint_entry_points(),
+                SystemContractType::HandlePayment => handle_payment_entry_points(),
+                SystemContractType::StandardPayment => standard_payment_entry_points(),
+                SystemContractType::Auction => auction_entry_points(),
+            }
+        }
+    }
 
     impl From<SystemContractType> for u32 {
         fn from(system_contract_type: SystemContractType) -> u32 {
