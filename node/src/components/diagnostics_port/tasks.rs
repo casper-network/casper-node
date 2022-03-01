@@ -24,7 +24,8 @@ use tracing::{debug, info, info_span, warn, Instrument};
 use crate::{
     components::consensus::EraDump,
     effect::{
-        announcements::ControlAnnouncement, diagnostics_port::DumpConsensusStateRequest,
+        announcements::{ControlAnnouncement, QueueDumpFormat},
+        diagnostics_port::DumpConsensusStateRequest,
         EffectBuilder,
     },
 };
@@ -245,7 +246,9 @@ impl Session {
                                 match serializer {
                                     Some(serializer) => {
                                         effect_builder
-                                            .diagnostics_port_dump_queue(serializer)
+                                            .diagnostics_port_dump_queue(QueueDumpFormat::serde(
+                                                serializer,
+                                            ))
                                             .await;
                                         if let Err(err) = tmp.seek(SeekFrom::Start(0)) {
                                             self.send_outcome(

@@ -50,10 +50,24 @@ pub(crate) enum ControlAnnouncement {
     },
     // An external event queue dump has been requested.
     QueueDump {
-        /// One-shot serializer for queue dumps.
+        /// The format to dump the queue in.
         #[serde(skip)]
-        serializer: RefCell<Option<TempFileSerializer>>,
+        dump_format: QueueDumpFormat,
     },
+}
+
+/// Queue dump format with handler.
+#[derive(Serialize)]
+pub(crate) enum QueueDumpFormat {
+    /// Dump using given serde serializer.
+    Serde(#[serde(skip)] RefCell<Option<TempFileSerializer>>),
+}
+
+impl QueueDumpFormat {
+    /// Creates a new queue dump format set to serde.
+    pub(crate) fn serde(serializer: TempFileSerializer) -> Self {
+        QueueDumpFormat::Serde(RefCell::new(Some(serializer)))
+    }
 }
 
 impl Debug for ControlAnnouncement {

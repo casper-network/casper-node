@@ -65,7 +65,6 @@ pub(crate) mod requests;
 use std::{
     any::type_name,
     borrow::Cow,
-    cell::RefCell,
     collections::{BTreeMap, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     future::Future,
@@ -106,7 +105,6 @@ use crate::{
         consensus::{BlockContext, ClContext, EraDump, ValidatorChange},
         contract_runtime::EraValidatorsRequest,
         deploy_acceptor,
-        diagnostics_port::TempFileSerializer,
         fetcher::FetchResult,
         small_network::GossipedAddress,
     },
@@ -130,7 +128,7 @@ use requests::{
 };
 
 use self::{
-    announcements::{BlockProposerAnnouncement, BlocklistAnnouncement},
+    announcements::{BlockProposerAnnouncement, BlocklistAnnouncement, QueueDumpFormat},
     diagnostics_port::DumpConsensusStateRequest,
 };
 use crate::components::contract_runtime::{
@@ -1831,15 +1829,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Dump the event queue contents to the diagnostics port, using the given serializer.
-    pub(crate) async fn diagnostics_port_dump_queue(self, serializer: TempFileSerializer)
+    pub(crate) async fn diagnostics_port_dump_queue(self, dump_format: QueueDumpFormat)
     where
         REv: From<ControlAnnouncement>,
     {
         self.event_queue
             .schedule(
-                ControlAnnouncement::QueueDump {
-                    serializer: RefCell::new(Some(serializer)),
-                },
+                ControlAnnouncement::QueueDump { dump_format },
                 QueueKind::Control,
             )
             .await
