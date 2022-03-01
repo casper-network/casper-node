@@ -410,7 +410,7 @@ dependencies = [
 
 [[package]]
 name = "casper-contract"
-version = "1.4.3"
+version = "1.4.4"
 dependencies = [
  "casper-types",
  "hex_fmt",
@@ -420,7 +420,7 @@ dependencies = [
 
 [[package]]
 name = "casper-engine-test-support"
-version = "2.0.3"
+version = "2.1.0"
 dependencies = [
  "casper-execution-engine",
  "casper-hashing",
@@ -471,7 +471,7 @@ dependencies = [
 
 [[package]]
 name = "casper-execution-engine"
-version = "1.4.4"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -536,7 +536,7 @@ dependencies = [
 
 [[package]]
 name = "casper-node"
-version = "1.4.4"
+version = "1.4.5"
 dependencies = [
  "ansi_term",
  "anyhow",
@@ -634,7 +634,7 @@ dependencies = [
 
 [[package]]
 name = "casper-node-macros"
-version = "1.4.2"
+version = "1.4.3"
 dependencies = [
  "Inflector",
  "indexmap",
@@ -645,7 +645,7 @@ dependencies = [
 
 [[package]]
 name = "casper-types"
-version = "1.4.6"
+version = "1.5.0"
 dependencies = [
  "base16",
  "base64",
