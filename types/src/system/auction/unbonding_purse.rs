@@ -157,6 +157,7 @@ impl CLTyped for UnbondingPurse {
 
 /// A withdraw purse, a legacy structure.
 #[derive(PartialEq, Eq, Debug, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct WithdrawPurse {
