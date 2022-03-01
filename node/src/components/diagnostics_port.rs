@@ -84,7 +84,12 @@ impl DiagnosticsPort {
         }
 
         let socket_path = cfg.with_dir(config.socket_path.clone());
-        let listener = setup_listener(&socket_path, config.socket_umask.into())?;
+        let listener = setup_listener(
+            &socket_path,
+            // Mac OS X / Linux use different types for the mask, so we need to call .into() here.
+            #[allow(clippy::useless_conversion)]
+            config.socket_umask.into(),
+        )?;
         let server = tasks::server(
             EffectBuilder::new(event_queue),
             socket_path,
