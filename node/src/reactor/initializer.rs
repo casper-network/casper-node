@@ -306,7 +306,8 @@ impl reactor::Reactor for Reactor {
                 Effects::new()
             }
             Event::ContractRuntimeAnnouncement => {
-                // We don't dispatch ContractRuntimeAnnouncement as it shouldn't actually arrive to the initializer
+                // We don't dispatch ContractRuntimeAnnouncement as it shouldn't actually arrive to
+                // the initializer
                 Effects::new()
             }
         }
