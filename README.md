@@ -225,19 +225,82 @@ jq 'map_values(map(keys[0]))' queue_dump.json
 
 ### Diagnostics port
 
-If the configuration option `console.enabled` is set to `true`, a unix socket named `debug.socket` by default can be found next to the configuration while the node is running. It can be connected to by tools like `socat`:
+If the configuration option `diagnostics_port.enabled` is set to `true`, a unix socket named `debug.socket` by default can be found next to the configuration while the node is running.
+
+#### Interactive use
+
+The `debug.socket` can be connected to by tools like `socat` for interactive use:
 
 ```sh
-$ socat - unix:/path/to/debug.socket
+socat - unix:/path/to/debug.socket
 ```
 
-Entering `help` will show available commands. The interface can also be scripted, it may be helpful to change some of the per-connection settings in this case:
+Entering `help` will show available commands. The `set` command allows configuring the current connection, see `set --help`.
+
+#### Example: Collecting a consensus dump
+
+After connecting using `socat` (see above), we set the output format to JSON:
+
+```
+set --output=json
+```
+
+A confirmation will acknowledge the settings change (unless `--quiet=true` is set):
+
+```
+{
+  "Success": {
+    "msg": "session unchanged"
+  }
+}
+```
+
+We can now call `dump-consensus` to get the _latest_ era serialized in JSON format:
+
+```
+dump-consensus
+{
+  "Success": {
+    "msg": "dumping consensus state"
+  }
+}
+{"id":8,"start_time":"2022-03-01T14:54:42.176Z","start_height":88,"new_faulty" ...
+```
+
+An era other than the latest can be dumped by specifying as a parameter, _e.g._ `dump-consensus 3` will dump the third era. See `dump-consensus --help` for details.
+
+#### Example: Dumping the event queue
+
+With the connection set to JSON output (see previous example), we can also dump the event queues:
+
+```
+dump-queues
+{
+  "Success": {
+    "msg": "dumping queues"
+  }
+}
+```
+
+No output will be produced on a node that is working without external pressure, as the queues will be empty most of the time.
+
+
+#### Non-interactive use
+
+The diagnostics port can also be scripted by sending a newline-terminated list of commands through `socat`. For example, the following sequence of commands will collect a consensus dump without the success-indicating header:
+
+```
+set -o json -q true
+dump-consensus
+```
+
+For ad-hoc dumps, this can be shortened and piped into `socat`:
 
 ```sh
-echo -e 'set -q true -o bincode\nexample-command' | socat - unix-client:/path/to/debug.socket > output.dump
+echo -e 'set -o json -q true\ndump-consensus' | socat - unix-client:debug.socket > consensus-dump.json
 ```
 
-This calls `example-command` on the console, but disables the command confirmation (`-q true`) and changes the output format to bincode (`-o bincode`) before doing so.
+This results in the latest era being dumped into `consensus-dump.json`.
 
 
 ## Running a client
