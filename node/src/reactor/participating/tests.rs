@@ -1,4 +1,9 @@
-use std::{collections::BTreeMap, iter, sync::Arc, time::Duration};
+use std::{
+    collections::BTreeMap,
+    iter,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 use anyhow::bail;
 use either::Either;
@@ -678,34 +683,46 @@ async fn empty_block_validation_regression() {
         .map(|secret_key| (PublicKey::from(&*secret_key.clone()), U512::from(100u64)))
         .collect();
 
-    // We configure the era to take five rounds, and make the first validator always accuse
-    // everyone. The probability that they never get to propose a block is ~3.5%.
+    // We make the first validator always accuse everyone.
     let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
-    chain.chainspec_mut().core_config.minimum_era_height = 5;
-
+    chain.chainspec_mut().highway_config.minimum_round_exponent = 10; // 1 second
+    chain.chainspec_mut().highway_config.maximum_round_exponent = 10; // 1 second
     let mut net = chain
         .create_initialized_network(&mut rng)
         .await
         .expect("network initialization failed");
-    net.reactors_mut()
-        .next()
-        .unwrap()
-        .set_filter(move |event| match event {
+    let faulty_pk = Arc::new(Mutex::new(None));
+    for reactor in net.reactors_mut() {
+        let pk = reactor.inner().consensus().public_key().clone();
+        let everyone_else: Vec<_> = stakes
+            .keys()
+            .filter(|other_pk| **other_pk != pk)
+            .cloned()
+            .collect();
+        let fpk_clone = faulty_pk.clone();
+        reactor.set_filter(move |event| match event {
             ParticipatingEvent::BlockProposerRequest(
                 BlockProposerRequest::RequestBlockPayload(BlockPayloadRequest {
                     context,
                     next_finalized,
-                    accusations: _,
+                    mut accusations,
                     random_bit,
                     responder,
                 }),
             ) => {
-                info!("Baselessly accusing everyone!");
+                let mut fpk_lock = fpk_clone.lock().unwrap();
+                if *fpk_lock == None {
+                    *fpk_lock = Some(pk.clone());
+                }
+                if fpk_lock.as_ref() == Some(&pk) {
+                    info!("Baselessly accusing everyone except {:?}!", pk);
+                    accusations = everyone_else.clone();
+                }
                 Either::Right(ParticipatingEvent::BlockProposerRequest(
                     BlockProposerRequest::RequestBlockPayload(BlockPayloadRequest {
                         context,
                         next_finalized,
-                        accusations: stakes.keys().cloned().collect(),
+                        accusations,
                         random_bit,
                         responder,
                     }),
@@ -713,18 +730,15 @@ async fn empty_block_validation_regression() {
             }
             event => Either::Right(event),
         });
+    }
 
-    let era_count = 3;
-
-    let timeout = Duration::from_secs(300 * era_count);
-    info!("Waiting for {} eras to end.", era_count);
-    net.settle_on(&mut rng, is_in_era(EraId::new(era_count)), timeout)
+    let timeout = Duration::from_secs(300);
+    info!("Waiting for the first era to end.");
+    net.settle_on(&mut rng, is_in_era(EraId::new(1)), timeout)
         .await;
-    let switch_blocks = SwitchBlocks::collect(net.nodes(), era_count);
+    let switch_blocks = SwitchBlocks::collect(net.nodes(), 1);
 
     // Nobody actually double-signed. The accusations should have had no effect.
-    for era_num in 0..era_count {
-        assert_eq!(switch_blocks.equivocators(era_num), []);
-        assert!(switch_blocks.inactive_validators(era_num).len() <= 1);
-    }
+    assert_eq!(switch_blocks.equivocators(0), []);
+    assert!(switch_blocks.inactive_validators(0).len() <= 1);
 }
