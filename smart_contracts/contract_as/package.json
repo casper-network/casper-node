@@ -23,7 +23,8 @@
     "ts-node": "^8.5.4",
     "typedoc": "^0.22.12",
     "typedoc-plugin-markdown": "^2.2.17",
-    "typescript": "^3.8.3"
+    "typescript": "^3.8.3",
+    "underscore": "^1.12.1"
   },
   "scripts": {
     "test": "npm run asbuild:test && npx ava -v --serial",
@@ -56,6 +57,7 @@
     ]
   },
   "resolutions": {
-    "trim": "0.0.3"
+    "trim": "0.0.3",
+    "underscore": "1.12.1"
   }
 }
