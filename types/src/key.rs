@@ -877,6 +877,7 @@ mod serde_helpers {
         Withdraw(AccountHash),
         Dictionary(DictionaryAddr),
         SystemContractRegistry,
+        ChainspecRegistry,
     }
 
     impl From<BinaryDeserHelper> for Key {
@@ -893,6 +894,7 @@ mod serde_helpers {
                 BinaryDeserHelper::Withdraw(account_hash) => Key::Withdraw(account_hash),
                 BinaryDeserHelper::Dictionary(addr) => Key::Dictionary(addr),
                 BinaryDeserHelper::SystemContractRegistry => Key::SystemContractRegistry,
+                BinaryDeserHelper::ChainspecRegistry => Key::ChainspecRegistry,
             }
         }
     }
@@ -1175,6 +1177,10 @@ mod tests {
             .unwrap_err()
             .to_string()
             .starts_with("system-contract-registry-key from string error: "));
+        assert!(Key::from_formatted_str(CHAINSPEC_REGISTRY_PREFIX)
+            .unwrap_err()
+            .to_string()
+            .starts_with("chainspec-registry-key from string error: "));
 
         let invalid_prefix = "a-0000000000000000000000000000000000000000000000000000000000000000";
         assert_eq!(
@@ -1216,6 +1222,10 @@ mod tests {
             format!(
                 r#"{{"SystemContractRegistry":"system-contract-registry-{}"}}"#,
                 base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_KEY_BYTES)
+            ),
+            format!(
+                r#"{{"ChainspecRegistry":"chainspec-registry-{}"}}"#,
+                base16::encode_lower(&CHAINSPEC_REGISTRY_KEY_BYTES)
             ),
         ];
 
@@ -1264,5 +1274,6 @@ mod tests {
         round_trip(&Key::Withdraw(AccountHash::new(zeros)));
         round_trip(&Key::Dictionary(zeros));
         round_trip(&Key::SystemContractRegistry);
+        round_trip(&Key::ChainspecRegistry);
     }
 }

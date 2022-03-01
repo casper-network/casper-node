@@ -49,6 +49,8 @@ use crate::{
 };
 
 const UPGRADE_CHECK_INTERVAL: Duration = Duration::from_secs(60);
+#[cfg(test)]
+const TEST_DIRECTORY: &str = "test/valid/1_0_0";
 
 /// `ChainspecHandler` events.
 #[derive(Debug, From, Serialize)]
@@ -208,7 +210,11 @@ impl ChainspecLoader {
     where
         REv: From<Event> + From<StorageRequest> + Send,
     {
-        Self::new_with_chainspec_and_path(chainspec, &RESOURCES_PATH.join("local"), effect_builder)
+        Self::new_with_chainspec_and_path(
+            chainspec,
+            &RESOURCES_PATH.join(TEST_DIRECTORY),
+            effect_builder,
+        )
     }
 
     fn new_with_chainspec_and_path<P, REv>(
