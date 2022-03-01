@@ -1,10 +1,10 @@
 [![LOGO](https://raw.githubusercontent.com/casper-network/casper-node/master/images/casper-association-logo-primary.svg)](https://casper.network/)
 
-Casper is the blockchain platform purpose-built to scale opportunity for everyone. Building toward blockchain’s next frontier, 
-Casper is designed for real-world applications without sacrificing usability, cost, decentralization, or security. It removes 
-the barriers that prevent mainstream blockchain adoption by making blockchain friendly to use, open to the world, and 
-future-proof to support innovations today and tomorrow. Guided by open-source principles and built from the ground up to 
-empower individuals, the team seeks to provide an equitable foundation made for long-lasting impact. Read more about our 
+Casper is the blockchain platform purpose-built to scale opportunity for everyone. Building toward blockchain’s next frontier,
+Casper is designed for real-world applications without sacrificing usability, cost, decentralization, or security. It removes
+the barriers that prevent mainstream blockchain adoption by making blockchain friendly to use, open to the world, and
+future-proof to support innovations today and tomorrow. Guided by open-source principles and built from the ground up to
+empower individuals, the team seeks to provide an equitable foundation made for long-lasting impact. Read more about our
 mission at: https://casper.network/network/casper-association
 
 ## Current Development Status
@@ -31,7 +31,7 @@ The Casper MainNet is live.
 
 # casper-node
 
-This is the core application for the Casper blockchain. 
+This is the core application for the Casper blockchain.
 
 ## Running a validator node from Source
 
@@ -313,5 +313,5 @@ See [the nctl utility README](utils/nctl/README.md).
 
 ## Running on an existing network
 
-To support upgrades with a network, the casper-node is installed using scripts distributed with the 
+To support upgrades with a network, the casper-node is installed using scripts distributed with the
 [casper-node-launcher](https://github.com/casper-network/casper-node-launcher).
