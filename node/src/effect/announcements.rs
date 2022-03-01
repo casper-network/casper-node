@@ -6,6 +6,7 @@
 use std::{
     cell::RefCell,
     fmt::{self, Debug, Display, Formatter},
+    fs::File,
 };
 
 use itertools::Itertools;
@@ -61,12 +62,19 @@ pub(crate) enum ControlAnnouncement {
 pub(crate) enum QueueDumpFormat {
     /// Dump using given serde serializer.
     Serde(#[serde(skip)] RefCell<Option<TempFileSerializer>>),
+    /// Dump writing debug output to file.
+    Debug(#[serde(skip)] File),
 }
 
 impl QueueDumpFormat {
-    /// Creates a new queue dump format set to serde.
+    /// Creates a new queue dump serde format.
     pub(crate) fn serde(serializer: TempFileSerializer) -> Self {
         QueueDumpFormat::Serde(RefCell::new(Some(serializer)))
+    }
+
+    /// Creates a new queue dump debug format.
+    pub(crate) fn debug(file: File) -> Self {
+        QueueDumpFormat::Debug(file)
     }
 }
 

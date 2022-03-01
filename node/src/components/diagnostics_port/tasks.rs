@@ -150,18 +150,22 @@ impl Session {
     /// Creates a generic serializer that is writing to a temporary file.
     ///
     /// The resulting serializer will write to the given file.
-    fn create_temp_file_serializer(&self, file: fs::File) -> Option<TempFileSerializer> {
+    fn create_queue_dump_format(&self, file: fs::File) -> QueueDumpFormat {
         match self.output {
-            OutputFormat::Interactive => None,
-            OutputFormat::Json => Some(TempFileSerializer::Json(serde_json::Serializer::new(file))),
-            OutputFormat::Bincode => Some(TempFileSerializer::Bincode(bincode::Serializer::new(
-                file,
-                // TODO: Do not use `bincode::serialize` above, but rather always instantiate
-                // options across the file to ensure it is always the same.
-                DefaultOptions::new()
-                    .with_fixint_encoding()
-                    .allow_trailing_bytes(),
-            ))),
+            OutputFormat::Interactive => QueueDumpFormat::debug(file),
+            OutputFormat::Json => {
+                QueueDumpFormat::serde(TempFileSerializer::Json(serde_json::Serializer::new(file)))
+            }
+            OutputFormat::Bincode => {
+                QueueDumpFormat::serde(TempFileSerializer::Bincode(bincode::Serializer::new(
+                    file,
+                    // TODO: Do not use `bincode::serialize` above, but rather always instantiate
+                    // options across the file to ensure it is always the same.
+                    DefaultOptions::new()
+                        .with_fixint_encoding()
+                        .allow_trailing_bytes(),
+                )))
+            }
         }
     }
 
@@ -232,24 +236,17 @@ impl Session {
                         match tempfile::tempfile() {
                             Ok(mut tmp) => {
                                 // We create a second handle to the serializer temporary file. It
-                                // will be discard once serialization is finished.
-                                let serializer = tmp
-                                    .try_clone()
-                                    .map_err(|err| {
-                                        warn!(%err, "could not clone temporary file handle");
-                                    })
-                                    .ok()
-                                    .and_then(|tmp_copy| {
-                                        self.create_temp_file_serializer(tmp_copy)
-                                    });
-
-                                match serializer {
-                                    Some(serializer) => {
+                                // will be discarded once serialization is finished.
+                                match tmp.try_clone() {
+                                    Ok(tmp2) => {
+                                        // Perform the actual dump.
                                         effect_builder
-                                            .diagnostics_port_dump_queue(QueueDumpFormat::serde(
-                                                serializer,
-                                            ))
+                                            .diagnostics_port_dump_queue(
+                                                self.create_queue_dump_format(tmp2),
+                                            )
                                             .await;
+
+                                        // We can now rewind the file and send it.
                                         if let Err(err) = tmp.seek(SeekFrom::Start(0)) {
                                             self.send_outcome(
                                                 writer,
@@ -276,16 +273,18 @@ impl Session {
                                             .await?;
                                         }
                                     }
-                                    None => {
+                                    Err(err) => {
+                                        warn!(%err, "could not clone temporary file handle");
                                         self.send_outcome(
                                             writer,
-                                            &Outcome::failed(
-                                                "cannot dump queues in requested format",
-                                            ),
+                                            &Outcome::failed(format!(
+                                                "could not seek spooled temporary file: {}",
+                                                err
+                                            )),
                                         )
                                         .await?;
                                     }
-                                }
+                                };
                             }
                             Err(err) => {
                                 self.send_outcome(

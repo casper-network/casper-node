@@ -37,6 +37,7 @@ use std::{
     collections::HashMap,
     env,
     fmt::{Debug, Display},
+    io::Write,
     mem,
     num::NonZeroU64,
     str::FromStr,
@@ -587,7 +588,30 @@ where
                                     warn!("queue dump serializer not available, ref cell is borrowed?");
                                 }
                             }
-                        } // Note: We do not support display dumps at the moment, only serde.
+                        }
+                        QueueDumpFormat::Debug(ref file) => {
+                            match file.try_clone() {
+                                Ok(mut local_file) => {
+                                    self.scheduler
+                                        .dump(move |queue_dump| {
+                                            write!(&mut local_file, "{:?}", queue_dump)
+                                                .and_then(|_| local_file.flush())
+                                                .map_err(|err| {
+                                                    warn!(
+                                                        ?err,
+                                                        "failed to write/flush queue dump using debug format"
+                                                    )
+                                                })
+                                                .ok();
+                                        })
+                                        .await;
+                                }
+                                Err(err) => warn!(
+                                    %err,
+                                    "could not create clone of temporary file for queue debug dump"
+                                ),
+                            };
+                        }
                     }
 
                     // Do nothing on queue dump otherwise.
