@@ -40,7 +40,6 @@ pub(crate) enum Event {
     Chainspec(chainspec_loader::Event),
 
     /// Storage event.
-
     #[from]
     Storage(#[serde(skip_serializing)] storage::Event),
 
