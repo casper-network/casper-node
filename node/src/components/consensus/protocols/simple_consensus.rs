@@ -8,7 +8,6 @@ use std::{
 
 use datasize::DataSize;
 use itertools::Itertools;
-use num_traits::AsPrimitive;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
@@ -25,6 +24,7 @@ use crate::{
             state::{weight::Weight, Params},
             validators::{ValidatorIndex, ValidatorMap, Validators},
         },
+        protocols,
         traits::{ConsensusValueT, Context, ValidatorSecret},
         ActionId, LeaderSequence, TimerId,
     },
@@ -209,32 +209,12 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         seed: u64,
         now: Timestamp,
     ) -> (Box<dyn ConsensusProtocol<C>>, ProtocolOutcomes<C>) {
-        // TODO: Duplicated in HighwayProtocol.
-        let sum_stakes: U512 = validator_stakes.iter().map(|(_, stake)| *stake).sum();
-        assert!(
-            !sum_stakes.is_zero(),
-            "cannot start era with total weight 0"
+        let validators = protocols::common::validators::<C>(faulty, inactive, validator_stakes);
+        let weights = protocols::common::validator_weights::<C>(&validators);
+        let ftt = protocols::common::ftt::<C>(
+            chainspec.highway_config.finality_threshold_fraction,
+            &validators,
         );
-        // We use u64 weights. Scale down by  sum / u64::MAX,  rounded up.
-        // If we round up the divisor, the resulting sum is guaranteed to be  <= u64::MAX.
-        let scaling_factor = (sum_stakes + U512::from(u64::MAX) - 1) / U512::from(u64::MAX);
-        let scale_stake = |(key, stake): (C::ValidatorId, U512)| {
-            (key, AsPrimitive::<u64>::as_(stake / scaling_factor))
-        };
-        // TODO: Sort validators by descending weight.
-        let mut validators: Validators<C::ValidatorId> =
-            validator_stakes.into_iter().map(scale_stake).collect();
-        let weights = ValidatorMap::from(validators.iter().map(|v| v.weight()).collect_vec());
-
-        let total_weight = u128::from(validators.total_weight());
-        let ftt_fraction = chainspec.highway_config.finality_threshold_fraction;
-        assert!(
-            ftt_fraction < 1.into(),
-            "finality threshold must be less than 100%"
-        );
-        #[allow(clippy::integer_arithmetic)] // FTT is less than 1, so this can't overflow.
-        let ftt = total_weight * *ftt_fraction.numer() as u128 / *ftt_fraction.denom() as u128;
-        let ftt: Weight = (ftt as u64).into();
 
         // Use the estimate from the previous era as the proposal timeout. Start with one minimum
         // round length.
@@ -243,14 +223,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             .map(|sc| sc.proposal_timeout)
             .unwrap_or_else(|| chainspec.highway_config.min_round_length());
 
-        // Validators already known as faulty can be ignored. Validators that were faulty or
-        // inactive in the previous era are excluded from being proposer.
-        for vid in inactive {
-            validators.set_cannot_propose(vid);
-        }
-        for vid in faulty {
-            validators.ban(vid); // This automatically exludes them from proposing, too.
-        }
         let mut can_propose: ValidatorMap<bool> = weights.iter().map(|_| true).collect();
         for vidx in validators.iter_cannot_propose_idx() {
             can_propose[vidx] = false;
