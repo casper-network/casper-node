@@ -1,5 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
+use casper_execution_engine::core::ChainspecRegistry;
 use datasize::DataSize;
 use num::rational::Ratio;
 
@@ -165,6 +166,7 @@ impl Config {
             Some(self.chainspec.core_config.round_seigniorage_rate),
             Some(self.chainspec.core_config.unbonding_delay),
             global_state_update,
+            ChainspecRegistry::new(),
         );
         Ok(Box::new(upgrade_config))
     }

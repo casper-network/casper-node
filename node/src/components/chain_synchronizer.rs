@@ -8,10 +8,7 @@ use std::{convert::Infallible, fmt::Debug, sync::Arc};
 use datasize::DataSize;
 use tracing::{debug, error, info};
 
-use casper_execution_engine::core::{
-    engine_state::{self, genesis::GenesisSuccess, UpgradeConfig, UpgradeSuccess},
-    ChainspecRegistry,
-};
+use casper_execution_engine::core::engine_state::{self, genesis::GenesisSuccess, UpgradeSuccess};
 use casper_types::{EraId, PublicKey};
 
 use crate::{

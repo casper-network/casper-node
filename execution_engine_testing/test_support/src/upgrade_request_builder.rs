@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 
 use num_rational::Ratio;
 
-use crate::DEFAULT_CHAINSPEC_REGISTRY;
 use casper_execution_engine::core::{
     engine_state::UpgradeConfig, ChainspecRegistry, CHAINSPEC_RAW,
 };
