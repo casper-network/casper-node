@@ -76,10 +76,10 @@
 //! }
 //!
 //! #[derive(Debug, From)]
-//! enum ShouterEvent<NodeId, Message> {
+//! enum ShouterEvent<Message> {
 //!     #[from]
 //!     // We received a new message via the network.
-//!     Net(NetworkAnnouncement<NodeId, Message>),
+//!     Net(NetworkAnnouncement<Message>),
 //!     // Ready to send another message.
 //!     #[from]
 //!     ReadyToSend,
@@ -87,8 +87,8 @@
 //!
 //! impl Shouter {
 //!     /// Creates a new shouter.
-//!     fn new<REv: Send, I: 'static, P: 'static>(effect_builder: EffectBuilder<REv>)
-//!             -> (Self, Effects<ShouterEvent<I, P>>) {
+//!     fn new<REv: Send, P: 'static>(effect_builder: EffectBuilder<REv>)
+//!             -> (Self, Effects<ShouterEvent<P>>) {
 //!         (Shouter {
 //!             whispers: Vec::new(),
 //!             shouts: Vec::new(),
@@ -100,9 +100,9 @@
 //! // Besides its own events, the shouter is capable of receiving network messages.
 //! impl<REv, R> Component<REv, R> for Shouter
 //! where
-//!     REv: From<NetworkRequest<NodeId, Message>> + Send,
+//!     REv: From<NetworkRequest<Message>> + Send,
 //! {
-//!     type Event = ShouterEvent<NodeId, Message>;
+//!     type Event = ShouterEvent<Message>;
 //!
 //!     fn handle_event(&mut self,
 //!         effect_builder: EffectBuilder<REv>,
@@ -148,13 +148,13 @@
 //! enum Event {
 //!    /// Asked to perform a network action.
 //!    #[from]
-//!    Request(NetworkRequest<NodeId, Message>),
+//!    Request(NetworkRequest<Message>),
 //!    /// Event for the shouter.
 //!    #[from]
-//!    Shouter(ShouterEvent<NodeId, Message>),
+//!    Shouter(ShouterEvent<Message>),
 //!    /// Notified of some network event.
 //!    #[from]
-//!    Announcement(NetworkAnnouncement<NodeId, Message>)
+//!    Announcement(NetworkAnnouncement<Message>)
 //! };
 //! #
 //! # impl Display for Event {
@@ -163,9 +163,8 @@
 //! #   }
 //! # }
 //! #
-//! # impl<I, P> Display for ShouterEvent<I, P>
-//! #     where I: Debug,
-//! #           P: Debug
+//! # impl<P> Display for ShouterEvent<P>
+//! #     where P: Debug,
 //! # {
 //! #   fn fmt(&self, fmt: &mut Formatter<'_>) -> fmt::Result {
 //! #       Debug::fmt(self, fmt)
@@ -212,8 +211,6 @@
 //! }
 //!
 //! impl NetworkedReactor for Reactor {
-//!     type NodeId = NodeId;
-//!
 //!     fn node_id(&self) -> NodeId {
 //!         self.net.node_id()
 //!     }
@@ -310,10 +307,10 @@ type Network<P> = Arc<RwLock<HashMap<NodeId, mpsc::UnboundedSender<(NodeId, P)>>
 
 /// An in-memory network events.
 #[derive(Debug, Serialize)]
-pub(crate) struct Event<P>(NetworkRequest<NodeId, P>);
+pub(crate) struct Event<P>(NetworkRequest<P>);
 
-impl<P> From<NetworkRequest<NodeId, P>> for Event<P> {
-    fn from(req: NetworkRequest<NodeId, P>) -> Self {
+impl<P> From<NetworkRequest<P>> for Event<P> {
+    fn from(req: NetworkRequest<P>) -> Self {
         Event(req)
     }
 }
@@ -392,7 +389,7 @@ where
         rng: &mut TestRng,
     ) -> InMemoryNetwork<P>
     where
-        REv: Send + FromIncoming<NodeId, P>,
+        REv: Send + FromIncoming<P>,
     {
         ACTIVE_NETWORK.with(|active_network| {
             active_network
@@ -435,7 +432,7 @@ where
         rng: &mut TestRng,
     ) -> InMemoryNetwork<P>
     where
-        REv: Send + FromIncoming<NodeId, P>,
+        REv: Send + FromIncoming<P>,
     {
         InMemoryNetwork::new_with_data(event_queue, NodeId::random(rng), self.nodes.clone())
     }
@@ -460,7 +457,7 @@ where
     /// This function is an alias of `NetworkController::create_node_local`.
     pub(crate) fn new<REv>(event_queue: EventQueueHandle<REv>, rng: &mut NodeRng) -> Self
     where
-        REv: Send + FromIncoming<NodeId, P>,
+        REv: Send + FromIncoming<P>,
     {
         NetworkController::create_node(event_queue, rng)
     }
@@ -472,7 +469,7 @@ where
         nodes: Network<P>,
     ) -> Self
     where
-        REv: Send + FromIncoming<NodeId, P>,
+        REv: Send + FromIncoming<P>,
     {
         let (sender, receiver) = mpsc::unbounded_channel();
 
@@ -597,7 +594,7 @@ async fn receiver_task<REv, P>(
     event_queue: EventQueueHandle<REv>,
     mut receiver: mpsc::UnboundedReceiver<(NodeId, P)>,
 ) where
-    REv: FromIncoming<NodeId, P>,
+    REv: FromIncoming<P>,
     P: 'static + Send,
 {
     while let Some((sender, payload)) = receiver.recv().await {

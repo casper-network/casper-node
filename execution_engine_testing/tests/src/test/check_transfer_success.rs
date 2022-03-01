@@ -53,6 +53,7 @@ fn test_check_transfer_success_with_source_only() {
         .with_session_code(path, session_args)
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .with_deploy_hash([42; 32])
         .build();
 
     // build a request to execute the deploy.
@@ -115,6 +116,7 @@ fn test_check_transfer_success_with_source_only_errors() {
         .with_session_code(path, session_args)
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .with_deploy_hash([42; 32])
         .build();
 
     let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
@@ -171,6 +173,7 @@ fn test_check_transfer_success_with_source_and_target() {
         .with_session_code(path, session_args)
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .with_deploy_hash([42; 32])
         .build();
 
     let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();

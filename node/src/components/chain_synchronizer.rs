@@ -1,3 +1,4 @@
+mod config;
 mod error;
 mod event;
 mod operations;
@@ -26,8 +27,9 @@ use crate::{
         ActivationPoint, BlockHash, BlockHeader, BlockPayload, Chainspec, FinalizedBlock,
         NodeConfig, Timestamp,
     },
-    NodeRng,
+    NodeRng, SmallNetworkConfig,
 };
+use config::Config;
 use error::Error;
 pub(crate) use event::Event;
 pub(crate) use operations::KeyBlockInfo;
@@ -47,8 +49,7 @@ pub(crate) enum JoiningOutcome {
 
 #[derive(DataSize, Debug)]
 pub(crate) struct ChainSynchronizer {
-    chainspec: Arc<Chainspec>,
-    config: NodeConfig,
+    config: Config,
     /// This will be populated once the synchronizer has completed all work, indicating the joiner
     /// reactor can stop running.  It is passed to the participating reactor's constructor via its
     /// config.
@@ -61,18 +62,18 @@ pub(crate) struct ChainSynchronizer {
 impl ChainSynchronizer {
     pub(crate) fn new(
         chainspec: Arc<Chainspec>,
-        config: NodeConfig,
+        node_config: NodeConfig,
+        small_network_config: SmallNetworkConfig,
         maybe_next_upgrade: Option<ActivationPoint>,
         verifiable_chunked_hash_activation: EraId,
         effect_builder: EffectBuilder<JoinerEvent>,
     ) -> (Self, Effects<Event>) {
         let synchronizer = ChainSynchronizer {
-            chainspec,
-            config,
+            config: Config::new(chainspec, node_config, small_network_config),
             joining_outcome: None,
             maybe_next_upgrade,
         };
-        let effects = match synchronizer.config.trusted_hash.as_ref() {
+        let effects = match synchronizer.config.trusted_hash() {
             None => {
                 // If no trusted hash was provided in the config, get the highest block from storage
                 // in order to use its hash, or in the case of no blocks, to commit genesis.
@@ -84,7 +85,7 @@ impl ChainSynchronizer {
                         }))
                     })
             }
-            Some(trusted_hash) => synchronizer.start_syncing(effect_builder, *trusted_hash),
+            Some(trusted_hash) => synchronizer.start_syncing(effect_builder, trusted_hash),
         };
         (synchronizer, effects)
     }
@@ -103,13 +104,8 @@ impl ChainSynchronizer {
         trusted_hash: BlockHash,
     ) -> Effects<Event> {
         info!(%trusted_hash, "synchronizing linear chain");
-        operations::run_chain_sync_task(
-            effect_builder,
-            trusted_hash,
-            Arc::clone(&self.chainspec),
-            self.config.clone(),
-        )
-        .event(Event::SyncResult)
+        operations::run_chain_sync_task(effect_builder, self.config.clone(), trusted_hash)
+            .event(Event::SyncResult)
     }
 
     fn handle_sync_result(
@@ -119,14 +115,13 @@ impl ChainSynchronizer {
     ) -> Effects<Event> {
         match result {
             Ok(latest_block_header) => {
-                if latest_block_header.protocol_version() == self.chainspec.protocol_version() {
+                if latest_block_header.protocol_version() == self.config.protocol_version() {
                     self.joining_outcome = Some(JoiningOutcome::Synced {
                         latest_block_header,
                     });
                     Effects::new()
                 } else if self
-                    .chainspec
-                    .protocol_config
+                    .config
                     .is_last_block_before_activation(&latest_block_header)
                 {
                     self.commit_upgrade(effect_builder, latest_block_header)
@@ -174,7 +169,7 @@ impl ChainSynchronizer {
     }
 
     fn commit_genesis(&self, effect_builder: EffectBuilder<JoinerEvent>) -> Effects<Event> {
-        let genesis_timestamp = match self.genesis_timestamp() {
+        let genesis_timestamp = match self.config.genesis_timestamp() {
             None => {
                 return fatal!(
                     effect_builder,
@@ -187,7 +182,7 @@ impl ChainSynchronizer {
         };
 
         let now = Timestamp::now();
-        let era_duration = self.chainspec.core_config.era_duration;
+        let era_duration = self.config.era_duration();
         if now > genesis_timestamp + era_duration {
             error!(
                 ?now,
@@ -199,7 +194,7 @@ impl ChainSynchronizer {
 
         info!("initial run at genesis");
         effect_builder
-            .commit_genesis(Arc::clone(&self.chainspec))
+            .commit_genesis(self.config.chainspec())
             .event(Event::CommitGenesisResult)
     }
 
@@ -209,7 +204,7 @@ impl ChainSynchronizer {
         upgrade_block_header: BlockHeader,
     ) -> Effects<Event> {
         info!("committing upgrade");
-        let global_state_update = match self.chainspec.protocol_config.get_update_mapping() {
+        let upgrade_config = match self.config.new_upgrade_config(&upgrade_block_header) {
             Ok(state_update) => state_update,
             Err(error) => {
                 return fatal!(
@@ -220,21 +215,8 @@ impl ChainSynchronizer {
                 .ignore();
             }
         };
-        let upgrade_config = UpgradeConfig::new(
-            *upgrade_block_header.state_root_hash(),
-            upgrade_block_header.protocol_version(),
-            self.chainspec.protocol_version(),
-            Some(self.chainspec.protocol_config.activation_point.era_id()),
-            Some(self.chainspec.core_config.validator_slots),
-            Some(self.chainspec.core_config.auction_delay),
-            Some(self.chainspec.core_config.locked_funds_period.millis()),
-            Some(self.chainspec.core_config.round_seigniorage_rate),
-            Some(self.chainspec.core_config.unbonding_delay),
-            global_state_update,
-            ChainspecRegistry::new(),
-        );
         effect_builder
-            .upgrade_contract_runtime(Box::new(upgrade_config))
+            .upgrade_contract_runtime(upgrade_config)
             .event(|result| Event::UpgradeResult {
                 upgrade_block_header,
                 result,
@@ -250,13 +232,10 @@ impl ChainSynchronizer {
             Ok(GenesisSuccess {
                 post_state_hash, ..
             }) => {
-                info!(
-                    "genesis chainspec name {}",
-                    self.chainspec.network_config.name
-                );
+                info!("genesis chainspec name {}", self.config.network_name());
                 info!("genesis state root hash {}", post_state_hash);
 
-                let genesis_timestamp = match self.genesis_timestamp() {
+                let genesis_timestamp = match self.config.genesis_timestamp() {
                     None => {
                         return fatal!(effect_builder, "must have genesis timestamp").ignore();
                     }
@@ -299,7 +278,7 @@ impl ChainSynchronizer {
                 post_state_hash, ..
             }) => {
                 info!(
-                    network_name = %self.chainspec.network_config.name,
+                    network_name = %self.config.network_name(),
                     %post_state_hash,
                     "upgrade committed"
                 );
@@ -307,11 +286,7 @@ impl ChainSynchronizer {
                 let initial_pre_state = ExecutionPreState::new(
                     upgrade_block_header.height() + 1,
                     post_state_hash,
-                    upgrade_block_header.hash(
-                        self.chainspec
-                            .protocol_config
-                            .verifiable_chunked_hash_activation,
-                    ),
+                    upgrade_block_header.hash(self.config.verifiable_chunked_hash_activation()),
                     upgrade_block_header.accumulated_seed(),
                 );
                 let finalized_block = FinalizedBlock::new(
@@ -340,7 +315,7 @@ impl ChainSynchronizer {
         initial_pre_state: ExecutionPreState,
         finalized_block: FinalizedBlock,
     ) -> Effects<Event> {
-        let protocol_version = self.chainspec.protocol_version();
+        let protocol_version = self.config.protocol_version();
         async move {
             let block_and_execution_effects = effect_builder
                 .execute_finalized_block(
@@ -383,13 +358,6 @@ impl ChainSynchronizer {
     fn handle_got_next_upgrade(&mut self, next_upgrade: ActivationPoint) -> Effects<Event> {
         self.maybe_next_upgrade = Some(next_upgrade);
         Effects::new()
-    }
-
-    fn genesis_timestamp(&self) -> Option<Timestamp> {
-        self.chainspec
-            .protocol_config
-            .activation_point
-            .genesis_timestamp()
     }
 }
 

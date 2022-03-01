@@ -553,6 +553,7 @@ fn should_query_dictionary_items_with_test_builder() {
         .with_session_code(dictionary_code, RuntimeArgs::new())
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .with_deploy_hash([42; 32])
         .build();
 
     let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();

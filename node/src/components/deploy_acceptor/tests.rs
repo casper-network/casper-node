@@ -58,13 +58,13 @@ enum Event {
     #[from]
     ControlAnnouncement(ControlAnnouncement),
     #[from]
-    DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement<NodeId>),
+    DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement),
     #[from]
     ContractRuntime(#[serde(skip_serializing)] ContractRuntimeRequest),
     #[from]
     StorageRequest(StorageRequest),
     #[from]
-    NetworkRequest(NetworkRequest<NodeId, Message>),
+    NetworkRequest(NetworkRequest<Message>),
 }
 
 impl ReactorEvent for Event {
@@ -156,7 +156,7 @@ enum TestScenario {
 }
 
 impl TestScenario {
-    fn source(&self, rng: &mut NodeRng) -> Source<NodeId> {
+    fn source(&self, rng: &mut NodeRng) -> Source {
         match self {
             TestScenario::FromPeerInvalidDeploy
             | TestScenario::FromPeerValidDeploy
@@ -637,7 +637,7 @@ fn put_deploy_to_storage(
 
 fn schedule_accept_deploy(
     deploy: Box<Deploy>,
-    source: Source<NodeId>,
+    source: Source,
     responder: Responder<Result<(), super::Error>>,
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
     |effect_builder: EffectBuilder<Event>| {
@@ -657,7 +657,7 @@ fn schedule_accept_deploy(
 
 fn inject_balance_check_for_peer(
     deploy: Box<Deploy>,
-    source: Source<NodeId>,
+    source: Source,
     responder: Responder<Result<(), super::Error>>,
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
     |effect_builder: EffectBuilder<Event>| {

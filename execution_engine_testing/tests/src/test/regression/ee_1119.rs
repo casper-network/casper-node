@@ -109,7 +109,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
         U512::from(VALIDATOR_1_STAKE),
     );
 
-    let unbond_purses: UnbondingPurses = builder.get_withdraws();
+    let unbond_purses: UnbondingPurses = builder.get_unbonds();
     assert_eq!(unbond_purses.len(), 0);
 
     //
@@ -157,7 +157,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
 
     builder.exec(withdraw_bid_request).expect_success().commit();
 
-    let unbond_purses: UnbondingPurses = builder.get_withdraws();
+    let unbond_purses: UnbondingPurses = builder.get_unbonds();
     assert_eq!(unbond_purses.len(), 1);
 
     let unbond_list = unbond_purses
@@ -201,7 +201,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
 
     builder.exec(slash_request_1).expect_success().commit();
 
-    let unbond_purses_noop: UnbondingPurses = builder.get_withdraws();
+    let unbond_purses_noop: UnbondingPurses = builder.get_unbonds();
     assert_eq!(
         unbond_purses, unbond_purses_noop,
         "slashing default validator should be noop because no unbonding was done"
@@ -229,7 +229,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
 
     builder.exec(slash_request_2).expect_success().commit();
 
-    let unbond_purses: UnbondingPurses = builder.get_withdraws();
+    let unbond_purses: UnbondingPurses = builder.get_unbonds();
     assert_eq!(unbond_purses.len(), 1);
 
     assert!(!unbond_purses.contains_key(&*DEFAULT_ACCOUNT_ADDR));

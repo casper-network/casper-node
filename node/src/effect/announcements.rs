@@ -17,7 +17,8 @@ use crate::{
     components::{chainspec_loader::NextUpgrade, deploy_acceptor::Error},
     effect::Responder,
     types::{
-        Block, Deploy, DeployHash, DeployHeader, FinalitySignature, FinalizedBlock, Item, Timestamp,
+        Block, Deploy, DeployHash, DeployHeader, FinalitySignature, FinalizedBlock, Item, NodeId,
+        Timestamp,
     },
     utils::Source,
 };
@@ -81,13 +82,13 @@ impl Display for RpcServerAnnouncement {
 
 /// A `DeployAcceptor` announcement.
 #[derive(Debug, Serialize)]
-pub(crate) enum DeployAcceptorAnnouncement<I> {
+pub(crate) enum DeployAcceptorAnnouncement {
     /// A deploy which wasn't previously stored on this node has been accepted and stored.
     AcceptedNewDeploy {
         /// The new deploy.
         deploy: Box<Deploy>,
         /// The source (peer or client) of the deploy.
-        source: Source<I>,
+        source: Source,
     },
 
     /// An invalid deploy was received.
@@ -95,11 +96,11 @@ pub(crate) enum DeployAcceptorAnnouncement<I> {
         /// The invalid deploy.
         deploy: Box<Deploy>,
         /// The source (peer or client) of the deploy.
-        source: Source<I>,
+        source: Source,
     },
 }
 
-impl<I: Display> Display for DeployAcceptorAnnouncement<I> {
+impl Display for DeployAcceptorAnnouncement {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source } => write!(
@@ -174,15 +175,12 @@ impl Display for ConsensusAnnouncement {
 
 /// A block-list related announcement.
 #[derive(Debug, Serialize)]
-pub(crate) enum BlocklistAnnouncement<I> {
+pub(crate) enum BlocklistAnnouncement {
     /// A given peer committed a blockable offense.
-    OffenseCommitted(Box<I>),
+    OffenseCommitted(Box<NodeId>),
 }
 
-impl<I> Display for BlocklistAnnouncement<I>
-where
-    I: Display,
-{
+impl Display for BlocklistAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             BlocklistAnnouncement::OffenseCommitted(peer) => {

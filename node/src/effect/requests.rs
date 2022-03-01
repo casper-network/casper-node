@@ -75,17 +75,17 @@ impl Display for MetricsRequest {
     }
 }
 
-const _NETWORK_EVENT_SIZE: usize = mem::size_of::<NetworkRequest<NodeId, String>>();
+const _NETWORK_EVENT_SIZE: usize = mem::size_of::<NetworkRequest<String>>();
 const_assert!(_NETWORK_EVENT_SIZE < 89);
 
 /// A networking request.
 #[derive(Debug, Serialize)]
 #[must_use]
-pub(crate) enum NetworkRequest<I, P> {
+pub(crate) enum NetworkRequest<P> {
     /// Send a message on the network to a specific peer.
     SendMessage {
         /// Message destination.
-        dest: Box<I>,
+        dest: Box<NodeId>,
         /// Message payload.
         payload: Box<P>,
         /// Responder to be called when the message is queued.
@@ -110,18 +110,18 @@ pub(crate) enum NetworkRequest<I, P> {
         count: usize,
         /// Node IDs of nodes to exclude from gossiping to.
         #[serde(skip_serializing)]
-        exclude: HashSet<I>,
+        exclude: HashSet<NodeId>,
         /// Responder to be called when all messages are queued.
         #[serde(skip_serializing)]
-        responder: Responder<HashSet<I>>,
+        responder: Responder<HashSet<NodeId>>,
     },
 }
 
-impl<I, P> NetworkRequest<I, P> {
+impl<P> NetworkRequest<P> {
     /// Transform a network request by mapping the contained payload.
     ///
     /// This is a replacement for a `From` conversion that is not possible without specialization.
-    pub(crate) fn map_payload<F, P2>(self, wrap_payload: F) -> NetworkRequest<I, P2>
+    pub(crate) fn map_payload<F, P2>(self, wrap_payload: F) -> NetworkRequest<P2>
     where
         F: FnOnce(P) -> P2,
     {
@@ -154,9 +154,8 @@ impl<I, P> NetworkRequest<I, P> {
     }
 }
 
-impl<I, P> Display for NetworkRequest<I, P>
+impl<P> Display for NetworkRequest<P>
 where
-    I: Display,
     P: Display,
 {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
@@ -174,25 +173,21 @@ where
 
 /// A networking info request.
 #[derive(Debug)]
-#[must_use]
-pub(crate) enum NetworkInfoRequest<I> {
+pub(crate) enum NetworkInfoRequest {
     /// Get incoming and outgoing peers.
     GetPeers {
         /// Responder to be called with all connected peers.
         /// Responds with a map from [NodeId]s to a socket address, represented as a string.
-        responder: Responder<BTreeMap<I, String>>,
+        responder: Responder<BTreeMap<NodeId, String>>,
     },
     /// Get the peers in random order.
     GetFullyConnectedPeers {
         /// Responder to be called with all connected in random order peers.
-        responder: Responder<Vec<I>>,
+        responder: Responder<Vec<NodeId>>,
     },
 }
 
-impl<I> Display for NetworkInfoRequest<I>
-where
-    I: Display,
-{
+impl Display for NetworkInfoRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             NetworkInfoRequest::GetPeers { responder: _ } => {
@@ -221,7 +216,7 @@ where
     /// The ID of the item received.
     pub(crate) item_id: T::Id,
     /// The origin of this request.
-    pub(crate) source: Source<NodeId>,
+    pub(crate) source: Source,
     /// Responder to notify that gossiping is complete.
     pub(crate) responder: Responder<()>,
 }
@@ -237,8 +232,6 @@ where
 
 #[derive(Debug, Serialize)]
 /// A storage request.
-#[must_use]
-#[repr(u8)]
 pub(crate) enum StorageRequest {
     /// Store given block.
     PutBlock {
@@ -592,7 +585,7 @@ impl Display for BlockProposerRequest {
 /// transport.
 #[derive(Debug)]
 #[must_use]
-pub(crate) enum RpcRequest<I> {
+pub(crate) enum RpcRequest {
     /// Submit a deploy to be announced.
     SubmitDeploy {
         /// The deploy to be announced.
@@ -662,16 +655,16 @@ pub(crate) enum RpcRequest<I> {
     /// Return the connected peers.
     GetPeers {
         /// Responder to call with the result.
-        responder: Responder<BTreeMap<I, String>>,
+        responder: Responder<BTreeMap<NodeId, String>>,
     },
     /// Return string formatted status or `None` if an error occurred.
     GetStatus {
         /// Responder to call with the result.
-        responder: Responder<StatusFeed<I>>,
+        responder: Responder<StatusFeed>,
     },
 }
 
-impl<I> Display for RpcRequest<I> {
+impl Display for RpcRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             RpcRequest::SubmitDeploy { deploy, .. } => write!(formatter, "submit {}", *deploy),
@@ -728,11 +721,11 @@ impl<I> Display for RpcRequest<I> {
 /// transport.
 #[derive(Debug)]
 #[must_use]
-pub(crate) enum RestRequest<I> {
+pub(crate) enum RestRequest {
     /// Return string formatted status or `None` if an error occurred.
     Status {
         /// Responder to call with the result.
-        responder: Responder<StatusFeed<I>>,
+        responder: Responder<StatusFeed>,
     },
     /// Return string formatted, prometheus compatible metrics or `None` if an error occurred.
     Metrics {
@@ -746,7 +739,7 @@ pub(crate) enum RestRequest<I> {
     },
 }
 
-impl<I> Display for RestRequest<I> {
+impl Display for RestRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             RestRequest::Status { .. } => write!(formatter, "get status"),
@@ -950,44 +943,37 @@ impl Display for ContractRuntimeRequest {
 /// Fetcher related requests.
 #[derive(Debug, Serialize)]
 #[must_use]
-pub(crate) struct FetcherRequest<I, T>
+pub(crate) struct FetcherRequest<T>
 where
     T: Item,
-    I: Debug + Eq,
 {
     /// The ID of the item to be retrieved.
     pub(crate) id: T::Id,
     /// The peer id of the peer to be asked if the item is not held locally
-    pub(crate) peer: I,
+    pub(crate) peer: NodeId,
     /// Responder to call with the result.
-    pub(crate) responder: Responder<FetchResult<T, I>>,
+    pub(crate) responder: Responder<FetchResult<T>>,
 }
 
-impl<I: Display + Debug + Eq, T: Item> Display for FetcherRequest<I, T> {
+impl<T: Item> Display for FetcherRequest<T> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(formatter, "request item by id {}", self.id)
     }
 }
 
 /// TrieFetcher related requests.
-#[derive(Debug, Serialize)]
+#[derive(DataSize, Debug, Serialize)]
 #[must_use]
-pub(crate) struct TrieFetcherRequest<I>
-where
-    I: Debug + Eq + Clone,
-{
+pub(crate) struct TrieFetcherRequest {
     /// The peers to try to fetch from.
-    pub(crate) peers: Vec<I>,
+    pub(crate) peers: Vec<NodeId>,
     /// The hash of the trie node.
     pub(crate) hash: Digest,
     /// Responder to call with the result.
-    pub(crate) responder: Responder<TrieFetcherResult<I>>,
+    pub(crate) responder: Responder<TrieFetcherResult>,
 }
 
-impl<I> Display for TrieFetcherRequest<I>
-where
-    I: Debug + Eq + Clone,
-{
+impl Display for TrieFetcherRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(formatter, "request trie by hash {}", self.hash)
     }
@@ -996,18 +982,18 @@ where
 /// A block validator request.
 #[derive(Debug)]
 #[must_use]
-pub(crate) struct BlockValidationRequest<I> {
+pub(crate) struct BlockValidationRequest {
     /// The block to be validated.
     pub(crate) block: ValidatingBlock,
     /// The sender of the block, which will be asked to provide all missing deploys.
-    pub(crate) sender: I,
+    pub(crate) sender: NodeId,
     /// Responder to call with the result.
     ///
     /// Indicates whether or not validation was successful.
     pub(crate) responder: Responder<bool>,
 }
 
-impl<I: Display> Display for BlockValidationRequest<I> {
+impl Display for BlockValidationRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let BlockValidationRequest { block, sender, .. } = self;
         write!(f, "validate block {} from {}", block, sender)
