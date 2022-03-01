@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, iter, sync::Arc, time::Duration};
 
 use anyhow::bail;
 use either::Either;
-use log::info;
+use log::{error, info};
 use num::Zero;
 use num_rational::Ratio;
 use rand::Rng;
