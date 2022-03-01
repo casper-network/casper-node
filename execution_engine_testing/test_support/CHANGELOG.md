@@ -15,6 +15,13 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## 2.1.0
+
+### Added
+* Add further helper methods to `WasmTestBuilder`.
+
+
+
 ## 2.0.3 - 2021-12-06
 
 ### Added

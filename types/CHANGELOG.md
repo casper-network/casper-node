@@ -15,6 +15,14 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## 1.5.0
+
+### Added
+* Provide types and functionality to support improved access control inside execution engine.
+* Provide `CLTyped` impl for `ContractPackage` to allow it to be passed into contracts.
+
+
+
 ## 1.4.6 - 2021-12-29
 
 ### Changed

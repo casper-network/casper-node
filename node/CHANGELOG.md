@@ -12,9 +12,19 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+
+
+## 1.4.5
+
 ### Added
-* Introduce a temporary chainspec setting `max_stored_value_size` to limit the size of individual values stored in global state.
-* Introduce a temporary chainspec setting `minimum_delegation_amount` to limit the minimal amount of motes that can be delegated by a first time delegator.
+* Add a temporary chainspec setting `max_stored_value_size` to limit the size of individual values stored in global state.
+* Add a chainspec setting `minimum_delegation_amount` to limit the minimal amount of motes that can be delegated by a first time delegator.
+* Add a chainspec setting `block_max_approval_count` to limit the maximum number of approvals across all deploys in a single block.
+* Add a `finalized_approvals` field to the GetDeploy RPC, which if `true` causes the response to include finalized approvals substituted for the originally-received ones.
+
+### Fixed
+* Include deploy approvals in block payloads upon which consensus operates.
+
 
 
 ## 1.4.4 - 2021-12-29

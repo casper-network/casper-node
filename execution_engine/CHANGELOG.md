@@ -13,9 +13,16 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+
+
+## 1.5.0
+
 ### Changed
 * Temporarily limit the size of individual values stored in global state.
 * `amount` argument is now required for transactions wanting to send tokens using account's main purse. It is now an upper limit on all tokens being transferred within the transaction.
+* Significant rework around the responsibilities of the executor, runtime and runtime context objects, with a focus on removing alternate execution paths where unintended escalation of privilege was possible.
+* Attenuate the main purse URef to remove WRITE permissions by default when returned via `ret` or passed as a runtime argument.
+
 
 
 ## 1.4.4 - 2021-12-29

@@ -1,6 +1,6 @@
 [package]
 name = "casper-types"
-version = "1.4.6" # when updating, also update 'html_root_url' in lib.rs
+version = "1.5.0" # when updating, also update 'html_root_url' in lib.rs
 authors = ["Fraser Hutchison <fraser@casperlabs.io>"]
 edition = "2018"
 description = "Types shared by many casper crates for use on the Casper network."
