@@ -33,7 +33,7 @@ pub const JSON_RPC_SCHEMA_API_PATH: &str = "rpc-schema";
 pub const VALIDATOR_CHANGES_API_PATH: &str = "validator-changes";
 
 /// The chainspec file URL path.
-pub const CHAINSPEC_PATH: &str = "chainspec";
+pub const CHAINSPEC_API_PATH: &str = "chainspec";
 
 pub(super) fn create_status_filter<REv: ReactorEventT>(
     effect_builder: EffectBuilder<REv>,
@@ -123,7 +123,7 @@ pub(super) fn create_chainspec_filter<REv: ReactorEventT>(
     api_version: ProtocolVersion,
 ) -> BoxedFilter<(Response<Body>,)> {
     warp::get()
-        .and(warp::path(CHAINSPEC_PATH))
+        .and(warp::path(CHAINSPEC_API_PATH))
         .and_then(move || {
             effect_builder
                 .get_chainspec_raw_bytes()
