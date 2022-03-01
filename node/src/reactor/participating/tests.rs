@@ -20,7 +20,9 @@ use crate::{
     crypto::AsymmetricKeyExt,
     effect::{
         announcements::NetworkAnnouncement,
-        requests::{ContractRuntimeRequest, NetworkRequest},
+        requests::{
+            BlockPayloadRequest, BlockProposerRequest, ContractRuntimeRequest, NetworkRequest,
+        },
         EffectExt,
     },
     protocol::Message,
@@ -294,11 +296,19 @@ async fn run_participating_network() {
         .expect("network initialization failed");
 
     // Wait for all nodes to agree on one era.
-    net.settle_on(&mut rng, is_in_era(EraId::from(1)), Duration::from_secs(90))
-        .await;
+    net.settle_on(
+        &mut rng,
+        is_in_era(EraId::from(1)),
+        Duration::from_secs(300),
+    )
+    .await;
 
-    net.settle_on(&mut rng, is_in_era(EraId::from(2)), Duration::from_secs(60))
-        .await;
+    net.settle_on(
+        &mut rng,
+        is_in_era(EraId::from(2)),
+        Duration::from_secs(300),
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -321,7 +331,7 @@ async fn run_equivocator_network() {
     keys.push(alice_sk.clone());
     keys.push(alice_sk);
 
-    // We configure the era to take five rounds, and delay all messages to and from one of Alice's
+    // We configure the era to take ten rounds, and delay all messages to and from one of Alice's
     // nodes until three rounds after the first message. That should guarantee that the two nodes
     // equivocate.
     let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
@@ -650,5 +660,71 @@ async fn should_store_finalized_approvals() {
             assert_eq!(maybe_finalized_approvals.as_ref(), None);
             assert_eq!(maybe_original_approvals.as_ref(), Some(&expected_approvals));
         }
+    }
+}
+
+#[tokio::test]
+async fn empty_block_validation_regression() {
+    testing::init_logging();
+
+    let mut rng = crate::new_rng();
+
+    let size: usize = 4;
+    let keys: Vec<Arc<SecretKey>> = (0..size)
+        .map(|_| Arc::new(SecretKey::random(&mut rng)))
+        .collect();
+    let stakes: BTreeMap<PublicKey, U512> = keys
+        .iter()
+        .map(|secret_key| (PublicKey::from(&*secret_key.clone()), U512::from(100u64)))
+        .collect();
+
+    // We configure the era to take five rounds, and make the first validator always accuse
+    // everyone. The probability that they never get to propose a block is ~3.5%.
+    let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
+    chain.chainspec_mut().core_config.minimum_era_height = 5;
+
+    let mut net = chain
+        .create_initialized_network(&mut rng)
+        .await
+        .expect("network initialization failed");
+    net.reactors_mut()
+        .next()
+        .unwrap()
+        .set_filter(move |event| match event {
+            ParticipatingEvent::BlockProposerRequest(
+                BlockProposerRequest::RequestBlockPayload(BlockPayloadRequest {
+                    context,
+                    next_finalized,
+                    accusations: _,
+                    random_bit,
+                    responder,
+                }),
+            ) => {
+                info!("Baselessly accusing everyone!");
+                Either::Right(ParticipatingEvent::BlockProposerRequest(
+                    BlockProposerRequest::RequestBlockPayload(BlockPayloadRequest {
+                        context,
+                        next_finalized,
+                        accusations: stakes.keys().cloned().collect(),
+                        random_bit,
+                        responder,
+                    }),
+                ))
+            }
+            event => Either::Right(event),
+        });
+
+    let era_count = 3;
+
+    let timeout = Duration::from_secs(300 * era_count);
+    info!("Waiting for {} eras to end.", era_count);
+    net.settle_on(&mut rng, is_in_era(EraId::new(era_count)), timeout)
+        .await;
+    let switch_blocks = SwitchBlocks::collect(net.nodes(), era_count);
+
+    // Nobody actually double-signed. The accusations should have had no effect.
+    for era_num in 0..era_count {
+        assert_eq!(switch_blocks.equivocators(era_num), []);
+        assert!(switch_blocks.inactive_validators(era_num).len() <= 1);
     }
 }
