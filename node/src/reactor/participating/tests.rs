@@ -1,9 +1,4 @@
-use std::{
-    collections::BTreeMap,
-    iter,
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::{collections::BTreeMap, iter, sync::Arc, time::Duration};
 
 use anyhow::bail;
 use either::Either;
@@ -683,24 +678,29 @@ async fn empty_block_validation_regression() {
         .map(|secret_key| (PublicKey::from(&*secret_key.clone()), U512::from(100u64)))
         .collect();
 
-    // We make the first validator always accuse everyone.
+    // We make the first validator always accuse everyone else.
     let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
     chain.chainspec_mut().highway_config.minimum_round_exponent = 10; // 1 second
     chain.chainspec_mut().highway_config.maximum_round_exponent = 10; // 1 second
+    chain.chainspec_mut().core_config.minimum_era_height = 15;
     let mut net = chain
         .create_initialized_network(&mut rng)
         .await
         .expect("network initialization failed");
-    let faulty_pk = Arc::new(Mutex::new(None));
-    for reactor in net.reactors_mut() {
-        let pk = reactor.inner().consensus().public_key().clone();
-        let everyone_else: Vec<_> = stakes
-            .keys()
-            .filter(|other_pk| **other_pk != pk)
-            .cloned()
-            .collect();
-        let fpk_clone = faulty_pk.clone();
-        reactor.set_filter(move |event| match event {
+    let malicious_validator = stakes.keys().next().unwrap().clone();
+    let everyone_else: Vec<_> = stakes
+        .keys()
+        .filter(|pub_key| **pub_key != malicious_validator)
+        .cloned()
+        .collect();
+    let malicious_runner = net
+        .runners_mut()
+        .find(|runner| runner.participating().consensus().public_key() == &malicious_validator)
+        .unwrap();
+    malicious_runner
+        .reactor_mut()
+        .inner_mut()
+        .set_filter(move |event| match event {
             ParticipatingEvent::BlockProposerRequest(
                 BlockProposerRequest::RequestBlockPayload(BlockPayloadRequest {
                     context,
@@ -710,14 +710,11 @@ async fn empty_block_validation_regression() {
                     responder,
                 }),
             ) => {
-                let mut fpk_lock = fpk_clone.lock().unwrap();
-                if *fpk_lock == None {
-                    *fpk_lock = Some(pk.clone());
-                }
-                if fpk_lock.as_ref() == Some(&pk) {
-                    info!("Baselessly accusing everyone except {:?}!", pk);
-                    accusations = everyone_else.clone();
-                }
+                info!(
+                    "Baselessly accusing everyone except {:?}!",
+                    malicious_validator
+                );
+                accusations = everyone_else.clone();
                 Either::Right(ParticipatingEvent::BlockProposerRequest(
                     BlockProposerRequest::RequestBlockPayload(BlockPayloadRequest {
                         context,
@@ -730,7 +727,6 @@ async fn empty_block_validation_regression() {
             }
             event => Either::Right(event),
         });
-    }
 
     let timeout = Duration::from_secs(300);
     info!("Waiting for the first era to end.");
