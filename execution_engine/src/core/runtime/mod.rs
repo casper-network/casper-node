@@ -113,6 +113,7 @@ pub fn key_to_tuple(key: Key) -> Option<([u8; 32], AccessRights)> {
         Key::Balance(_) => None,
         Key::Bid(_) => None,
         Key::Withdraw(_) => None,
+        Key::Unbond(_) => None,
         Key::Dictionary(_) => None,
         Key::SystemContractRegistry => None,
     }
@@ -1147,6 +1148,7 @@ where
         }
     }
 
+    #[allow(clippy::wrong_self_convention)]
     fn is_valid_uref(&self, uref_ptr: u32, uref_size: u32) -> Result<bool, Trap> {
         let bytes = self.bytes_from_mem(uref_ptr, uref_size as usize)?;
         let uref: URef = bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?;
@@ -1265,6 +1267,10 @@ where
     /// Checks if immediate caller is of session type of the same account as the provided account
     /// hash.
     fn is_allowed_session_caller(&self, provided_account_hash: &AccountHash) -> bool {
+        if self.context.get_caller() == PublicKey::System.to_account_hash() {
+            return true;
+        }
+
         if let Some(CallStackElement::Session { account_hash }) = self.get_immediate_caller() {
             return account_hash == provided_account_hash;
         }
@@ -1851,6 +1857,22 @@ where
 
                 let result = runtime
                     .undelegate(delegator, validator, amount)
+                    .map_err(Self::reverter)?;
+
+                CLValue::from_t(result).map_err(Self::reverter)
+            })(),
+
+            auction::METHOD_REDELEGATE => (|| {
+                runtime.charge_system_contract_call(auction_costs.undelegate)?;
+
+                let delegator = Self::get_named_argument(runtime_args, auction::ARG_DELEGATOR)?;
+                let validator = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
+                let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
+                let new_validator =
+                    Self::get_named_argument(runtime_args, auction::ARG_NEW_VALIDATOR)?;
+
+                let result = runtime
+                    .redelegate(delegator, validator, amount, new_validator)
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)

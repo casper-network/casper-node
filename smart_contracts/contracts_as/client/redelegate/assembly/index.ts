@@ -9,7 +9,8 @@ import {PublicKey} from "../../../../contract_as/assembly/public_key";
 const ARG_AMOUNT = "amount";
 const ARG_DELEGATOR = "delegator";
 const ARG_VALIDATOR = "validator";
-const METHOD_UNDELEGATE = "undelegate";
+const ARG_NEW_VALIDATOR = "new_validator";
+const METHOD_REDELEGATE = "redelegate";
 
 export function call(): void {
     let auction = CL.getSystemContract(CL.SystemContract.Auction);
@@ -54,10 +55,24 @@ export function call(): void {
     let amount = amountResult.value;
 
 
+    let newValidatorBytes = CL.getNamedArg(ARG_NEW_VALIDATOR);
+    if (newValidatorBytes === null) {
+        Error.fromErrorCode(ErrorCode.MissingArgument).revert();
+        return;
+    }
+
+    let newValidatorResult = PublicKey.fromBytes(newValidatorBytes);
+    if (newValidatorResult.hasError()) {
+        Error.fromErrorCode(ErrorCode.InvalidArgument).revert();
+        return;
+    }
+    let newValidator = newValidatorResult.value;
+
     let runtimeArgs = RuntimeArgs.fromArray([
         new Pair(ARG_AMOUNT, CLValue.fromU512(amount)),
         new Pair(ARG_DELEGATOR, CLValue.fromPublicKey(delegator)),
         new Pair(ARG_VALIDATOR, CLValue.fromPublicKey(validator)),
+        new Pair(ARG_NEW_VALIDATOR, CLValue.fromPublicKey(newValidator)),
     ]);
-    CL.callContract(auction, METHOD_UNDELEGATE, runtimeArgs);
+    CL.callContract(auction, METHOD_REDELEGATE, runtimeArgs);
 }

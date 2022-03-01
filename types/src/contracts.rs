@@ -995,6 +995,16 @@ impl EntryPoints {
     pub fn take_entry_points(self) -> Vec<EntryPoint> {
         self.0.into_iter().map(|(_name, value)| value).collect()
     }
+
+    /// Returns the length of the entry points
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Checks if the `EntryPoints` is empty.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
 }
 
 impl From<Vec<EntryPoint>> for EntryPoints {
