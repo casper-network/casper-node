@@ -14,7 +14,6 @@ use std::{
 
 use datasize::DataSize;
 use itertools::Itertools;
-use num_traits::AsPrimitive;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
@@ -36,8 +35,9 @@ use crate::{
             },
             state::{self, IndexObservation, IndexPanorama, Observation, Panorama},
             synchronizer::Synchronizer,
-            validators::{ValidatorIndex, Validators},
+            validators::ValidatorIndex,
         },
+        protocols,
         traits::{ConsensusValueT, Context},
         ActionId, TimerId,
     },
@@ -105,41 +105,11 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         now: Timestamp,
     ) -> (Box<dyn ConsensusProtocol<C>>, ProtocolOutcomes<C>) {
         let validators_count = validator_stakes.len();
-        let sum_stakes: U512 = validator_stakes.iter().map(|(_, stake)| *stake).sum();
-        assert!(
-            !sum_stakes.is_zero(),
-            "cannot start era with total weight 0"
+        let validators = protocols::common::validators::<C>(faulty, inactive, validator_stakes);
+        let ftt = protocols::common::ftt::<C>(
+            protocol_config.highway.finality_threshold_fraction,
+            &validators,
         );
-        // For Highway, we need u64 weights. Scale down by  sum / u64::MAX,  rounded up.
-        // If we round up the divisor, the resulting sum is guaranteed to be  <= u64::MAX.
-        let scaling_factor = (sum_stakes + U512::from(u64::MAX) - 1) / U512::from(u64::MAX);
-        let scale_stake = |(key, stake): (C::ValidatorId, U512)| {
-            (key, AsPrimitive::<u64>::as_(stake / scaling_factor))
-        };
-        let mut validators: Validators<C::ValidatorId> =
-            validator_stakes.into_iter().map(scale_stake).collect();
-
-        for vid in faulty {
-            validators.ban(vid);
-        }
-        for vid in inactive {
-            validators.set_cannot_propose(vid);
-        }
-
-        assert!(
-            validators.ensure_nonzero_proposing_stake(),
-            "cannot start era with total weight 0"
-        );
-
-        let total_weight = u128::from(validators.total_weight());
-        let ftt_fraction = protocol_config.highway.finality_threshold_fraction;
-        assert!(
-            ftt_fraction < 1.into(),
-            "finality threshold must be less than 100%"
-        );
-        #[allow(clippy::integer_arithmetic)] // FTT is less than 1, so this can't overflow.
-        let ftt = total_weight * *ftt_fraction.numer() as u128 / *ftt_fraction.denom() as u128;
-        let ftt = (ftt as u64).into();
 
         let round_success_meter = prev_cp
             .and_then(|cp| cp.as_any().downcast_ref::<HighwayProtocol<C>>())
