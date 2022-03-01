@@ -688,6 +688,7 @@ async fn empty_block_validation_regression() {
         .await
         .expect("network initialization failed");
     let malicious_validator = stakes.keys().next().unwrap().clone();
+    info!("Malicious validator: {:?}", malicious_validator);
     let everyone_else: Vec<_> = stakes
         .keys()
         .filter(|pub_key| **pub_key != malicious_validator)
@@ -710,10 +711,7 @@ async fn empty_block_validation_regression() {
                     responder,
                 }),
             ) => {
-                info!(
-                    "Baselessly accusing everyone except {:?}!",
-                    malicious_validator
-                );
+                info!("Accusing everyone else!");
                 accusations = everyone_else.clone();
                 Either::Right(ParticipatingEvent::BlockProposerRequest(
                     BlockProposerRequest::RequestBlockPayload(BlockPayloadRequest {
@@ -736,5 +734,12 @@ async fn empty_block_validation_regression() {
 
     // Nobody actually double-signed. The accusations should have had no effect.
     assert_eq!(switch_blocks.equivocators(0), []);
-    assert!(switch_blocks.inactive_validators(0).len() <= 1);
+    // If the malicious validator was the first proposer, all their Highway units might be invalid,
+    // because they all refer to the invalid proposal, so they might get flagged as inactive. No
+    // other validators should be considered inactive.
+    match switch_blocks.inactive_validators(0) {
+        [] => {}
+        [inactive_validator] if malicious_validator == *inactive_validator => {}
+        inactive => panic!("unexpected inactive validators: {:?}", inactive),
+    }
 }
