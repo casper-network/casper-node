@@ -1,9 +1,11 @@
 use std::collections::BTreeMap;
 
-use casper_execution_engine::core::{ChainspecRegistry, CHAINSPEC_RAW};
 use num_rational::Ratio;
 
-use casper_execution_engine::core::engine_state::UpgradeConfig;
+use crate::DEFAULT_CHAINSPEC_REGISTRY;
+use casper_execution_engine::core::{
+    engine_state::UpgradeConfig, ChainspecRegistry, CHAINSPEC_RAW,
+};
 use casper_hashing::Digest;
 use casper_types::{EraId, Key, ProtocolVersion, StoredValue};
 

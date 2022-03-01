@@ -12,8 +12,6 @@ use tracing::info;
 
 use casper_execution_engine::core::engine_state;
 
-use crate::effect::requests::ChainspecLoaderRequest;
-
 use crate::{
     components::{
         chainspec_loader::{self, ChainspecLoader},
@@ -28,7 +26,8 @@ use crate::{
             ChainspecLoaderAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
         },
         requests::{
-            ConsensusRequest, ContractRuntimeRequest, NetworkRequest, RestRequest, StorageRequest,
+            ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, NetworkRequest,
+            RestRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
