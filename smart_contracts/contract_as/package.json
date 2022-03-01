@@ -10,7 +10,9 @@
   },
   "main": "index.js",
   "ascMain": "assembly/index.ts",
-  "dependencies": {},
+  "dependencies": {
+    "@types/node": "^17.0.21"
+  },
   "devDependencies": {
     "@assemblyscript/loader": "^0.9.4",
     "assemblyscript": "^0.10.0",
