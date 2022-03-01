@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, iter, sync::Arc, time::Duration};
 
 use anyhow::bail;
 use either::Either;
-use log::info;
+use log::{error, info};
 use num::Zero;
 use num_rational::Ratio;
 use rand::Rng;
@@ -20,7 +20,9 @@ use crate::{
     crypto::AsymmetricKeyExt,
     effect::{
         announcements::NetworkAnnouncement,
-        requests::{ContractRuntimeRequest, NetworkRequest},
+        requests::{
+            BlockPayloadRequest, BlockProposerRequest, ContractRuntimeRequest, NetworkRequest,
+        },
         EffectExt,
     },
     protocol::Message,
@@ -294,11 +296,19 @@ async fn run_participating_network() {
         .expect("network initialization failed");
 
     // Wait for all nodes to agree on one era.
-    net.settle_on(&mut rng, is_in_era(EraId::from(1)), Duration::from_secs(90))
-        .await;
+    net.settle_on(
+        &mut rng,
+        is_in_era(EraId::from(1)),
+        Duration::from_secs(300),
+    )
+    .await;
 
-    net.settle_on(&mut rng, is_in_era(EraId::from(2)), Duration::from_secs(60))
-        .await;
+    net.settle_on(
+        &mut rng,
+        is_in_era(EraId::from(2)),
+        Duration::from_secs(300),
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -315,13 +325,13 @@ async fn run_equivocator_network() {
         .collect();
     let mut stakes: BTreeMap<PublicKey, U512> = keys
         .iter()
-        .map(|secret_key| (PublicKey::from(&*secret_key.clone()), U512::from(100)))
+        .map(|secret_key| (PublicKey::from(&*secret_key.clone()), U512::from(100u64)))
         .collect();
-    stakes.insert(PublicKey::from(&*alice_sk), U512::from(1));
+    stakes.insert(PublicKey::from(&*alice_sk), U512::from(1u64));
     keys.push(alice_sk.clone());
     keys.push(alice_sk);
 
-    // We configure the era to take five rounds, and delay all messages to and from one of Alice's
+    // We configure the era to take ten rounds, and delay all messages to and from one of Alice's
     // nodes until three rounds after the first message. That should guarantee that the two nodes
     // equivocate.
     let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
@@ -367,6 +377,13 @@ async fn run_equivocator_network() {
     let bids: Vec<Bids> = (0..era_count)
         .map(|era_number| switch_blocks.bids(net.nodes(), era_number))
         .collect();
+
+    // Since this setup sometimes fails to produce an equivocation we return early here.
+    // TODO: Remove this once https://github.com/casper-network/casper-node/issues/1859 is fixed.
+    if switch_blocks.equivocators(0).is_empty() {
+        error!("Failed to equivocate in the first era.");
+        return;
+    }
 
     // In the genesis era, Alice equivocates. Since eviction takes place with a delay of one
     // (`auction_delay`) era, she is still included in the next era's validator set.
@@ -650,5 +667,86 @@ async fn should_store_finalized_approvals() {
             assert_eq!(maybe_finalized_approvals.as_ref(), None);
             assert_eq!(maybe_original_approvals.as_ref(), Some(&expected_approvals));
         }
+    }
+}
+
+#[tokio::test]
+async fn empty_block_validation_regression() {
+    testing::init_logging();
+
+    let mut rng = crate::new_rng();
+
+    let size: usize = 4;
+    let keys: Vec<Arc<SecretKey>> = (0..size)
+        .map(|_| Arc::new(SecretKey::random(&mut rng)))
+        .collect();
+    let stakes: BTreeMap<PublicKey, U512> = keys
+        .iter()
+        .map(|secret_key| (PublicKey::from(&*secret_key.clone()), U512::from(100u64)))
+        .collect();
+
+    // We make the first validator always accuse everyone else.
+    let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
+    chain.chainspec_mut().highway_config.minimum_round_exponent = 10; // 1 second
+    chain.chainspec_mut().highway_config.maximum_round_exponent = 10; // 1 second
+    chain.chainspec_mut().core_config.minimum_era_height = 15;
+    let mut net = chain
+        .create_initialized_network(&mut rng)
+        .await
+        .expect("network initialization failed");
+    let malicious_validator = stakes.keys().next().unwrap().clone();
+    info!("Malicious validator: {:?}", malicious_validator);
+    let everyone_else: Vec<_> = stakes
+        .keys()
+        .filter(|pub_key| **pub_key != malicious_validator)
+        .cloned()
+        .collect();
+    let malicious_runner = net
+        .runners_mut()
+        .find(|runner| runner.participating().consensus().public_key() == &malicious_validator)
+        .unwrap();
+    malicious_runner
+        .reactor_mut()
+        .inner_mut()
+        .set_filter(move |event| match event {
+            ParticipatingEvent::BlockProposerRequest(
+                BlockProposerRequest::RequestBlockPayload(BlockPayloadRequest {
+                    context,
+                    next_finalized,
+                    mut accusations,
+                    random_bit,
+                    responder,
+                }),
+            ) => {
+                info!("Accusing everyone else!");
+                accusations = everyone_else.clone();
+                Either::Right(ParticipatingEvent::BlockProposerRequest(
+                    BlockProposerRequest::RequestBlockPayload(BlockPayloadRequest {
+                        context,
+                        next_finalized,
+                        accusations,
+                        random_bit,
+                        responder,
+                    }),
+                ))
+            }
+            event => Either::Right(event),
+        });
+
+    let timeout = Duration::from_secs(300);
+    info!("Waiting for the first era to end.");
+    net.settle_on(&mut rng, is_in_era(EraId::new(1)), timeout)
+        .await;
+    let switch_blocks = SwitchBlocks::collect(net.nodes(), 1);
+
+    // Nobody actually double-signed. The accusations should have had no effect.
+    assert_eq!(switch_blocks.equivocators(0), []);
+    // If the malicious validator was the first proposer, all their Highway units might be invalid,
+    // because they all refer to the invalid proposal, so they might get flagged as inactive. No
+    // other validators should be considered inactive.
+    match switch_blocks.inactive_validators(0) {
+        [] => {}
+        [inactive_validator] if malicious_validator == *inactive_validator => {}
+        inactive => panic!("unexpected inactive validators: {:?}", inactive),
     }
 }
