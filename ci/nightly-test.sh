@@ -79,6 +79,8 @@ function run_nightly_upgrade_test() {
     bash -i ./ci/nctl_upgrade.sh test_id=5 skip_setup=true
     bash -i ./ci/nctl_upgrade.sh test_id=6 skip_setup=true
     bash -i ./ci/nctl_upgrade.sh test_id=7 skip_setup=true
+    bash -i ./ci/nctl_upgrade.sh test_id=8 skip_setup=true
+    bash -i ./ci/nctl_upgrade.sh test_id=9 skip_setup=true
 }
 
 start_run_teardown "itst01.sh"
