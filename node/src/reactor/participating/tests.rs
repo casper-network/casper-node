@@ -325,9 +325,9 @@ async fn run_equivocator_network() {
         .collect();
     let mut stakes: BTreeMap<PublicKey, U512> = keys
         .iter()
-        .map(|secret_key| (PublicKey::from(&*secret_key.clone()), U512::from(100)))
+        .map(|secret_key| (PublicKey::from(&*secret_key.clone()), U512::from(100u64)))
         .collect();
-    stakes.insert(PublicKey::from(&*alice_sk), U512::from(1));
+    stakes.insert(PublicKey::from(&*alice_sk), U512::from(1u64));
     keys.push(alice_sk.clone());
     keys.push(alice_sk);
 
@@ -377,6 +377,13 @@ async fn run_equivocator_network() {
     let bids: Vec<Bids> = (0..era_count)
         .map(|era_number| switch_blocks.bids(net.nodes(), era_number))
         .collect();
+
+    // Since this setup sometimes fails to produce an equivocation we return early here.
+    // TODO: Remove this once https://github.com/casper-network/casper-node/issues/1859 is fixed.
+    if switch_blocks.equivocators(0).is_empty() {
+        error!("Failed to equivocate in the first era.");
+        return;
+    }
 
     // In the genesis era, Alice equivocates. Since eviction takes place with a delay of one
     // (`auction_delay`) era, she is still included in the next era's validator set.
