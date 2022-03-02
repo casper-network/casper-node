@@ -62,13 +62,16 @@ pub(crate) fn validators<C: Context>(
     validators
 }
 
-// TODO replace highway's thing with this -- something something Item: Borrow<C::ValidatorId>?
+/// Compute the validator weight map from the set of validators.
+/// TODO Use in highway, or change to be used in highway. Something like
+/// K: Borrow<C::ValidatorId>, I: Iterator<Item = K> with an I as the argument.
 pub(crate) fn validator_weights<C: Context>(
     validators: &Validators<C::ValidatorId>,
 ) -> ValidatorMap<Weight> {
     ValidatorMap::from(validators.iter().map(|v| v.weight()).collect_vec())
 }
 
+/// Computes the fault tolerance threshold for the protocol instance
 pub(crate) fn ftt<C: Context>(
     finality_threshold_fraction: Ratio<u64>,
     validators: &Validators<C::ValidatorId>,
