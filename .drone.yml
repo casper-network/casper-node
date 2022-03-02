@@ -70,6 +70,10 @@ steps:
     - push
     status:
     - failure
+    branch:
+    - dev
+    - "release-*"
+    - "feat-*"
 
 volumes:
 - name: rustup
