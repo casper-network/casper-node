@@ -20,6 +20,8 @@ pub enum QueueKind {
     ///
     /// Their load may vary and grouping them together in one queue aides DoS protection.
     NetworkIncoming,
+    /// Network events that are low priority.
+    NetworkLowPriority,
     /// Network events that were initiated by the local node, such as outgoing messages.
     Network,
     /// Events of unspecified priority.
@@ -38,6 +40,7 @@ impl Display for QueueKind {
         let str_value = match self {
             QueueKind::Control => "Control",
             QueueKind::NetworkIncoming => "NetworkIncoming",
+            QueueKind::NetworkLowPriority => "NetworkLowPriority",
             QueueKind::Network => "Network",
             QueueKind::Regular => "Regular",
             QueueKind::Api => "Api",
@@ -62,6 +65,7 @@ impl QueueKind {
             // Note: Control events should be very rare, but we do want to process them right away.
             QueueKind::Control => 32,
             QueueKind::NetworkIncoming => 4,
+            QueueKind::NetworkLowPriority => 1,
             QueueKind::Network => 4,
             QueueKind::Regular => 8,
             QueueKind::Api => 16,
@@ -80,6 +84,7 @@ impl QueueKind {
         match self {
             QueueKind::Control => "control",
             QueueKind::NetworkIncoming => "network_incoming",
+            QueueKind::NetworkLowPriority => "network_low_priority",
             QueueKind::Network => "network",
             QueueKind::Regular => "regular",
             QueueKind::Api => "api",

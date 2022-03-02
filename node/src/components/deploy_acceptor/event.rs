@@ -6,7 +6,7 @@ use super::Source;
 use crate::{
     components::deploy_acceptor::Error,
     effect::{announcements::RpcServerAnnouncement, Responder},
-    types::{Block, Deploy, NodeId, Timestamp},
+    types::{BlockHeader, Deploy, Timestamp},
 };
 
 use casper_hashing::Digest;
@@ -19,14 +19,14 @@ use casper_types::{
 #[derive(Debug, Serialize)]
 pub(crate) struct EventMetadata {
     pub(super) deploy: Box<Deploy>,
-    pub(super) source: Source<NodeId>,
+    pub(super) source: Source,
     pub(super) maybe_responder: Option<Responder<Result<(), Error>>>,
 }
 
 impl EventMetadata {
     pub(super) fn new(
         deploy: Box<Deploy>,
-        source: Source<NodeId>,
+        source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     ) -> Self {
         EventMetadata {
@@ -43,7 +43,7 @@ pub(crate) enum Event {
     /// The initiating event to accept a new `Deploy`.
     Accept {
         deploy: Box<Deploy>,
-        source: Source<NodeId>,
+        source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     },
     /// The result of the `DeployAcceptor` putting a `Deploy` to the storage component.
@@ -52,10 +52,10 @@ pub(crate) enum Event {
         is_new: bool,
         verification_start_timestamp: Timestamp,
     },
-    /// The result of querying the highest available `Block` from the storage component.
-    GetBlockResult {
+    /// The result of querying the highest available `BlockHeader` from the storage component.
+    GetBlockHeaderResult {
         event_metadata: EventMetadata,
-        maybe_block: Box<Option<Block>>,
+        maybe_block_header: Box<Option<BlockHeader>>,
         verification_start_timestamp: Timestamp,
     },
     /// The result of querying global state for the `Account` associated with the `Deploy`.
@@ -104,7 +104,7 @@ impl From<RpcServerAnnouncement> for Event {
         match announcement {
             RpcServerAnnouncement::DeployReceived { deploy, responder } => Event::Accept {
                 deploy,
-                source: Source::<NodeId>::Client,
+                source: Source::Client,
                 maybe_responder: responder,
             },
         }
@@ -136,7 +136,7 @@ impl Display for Event {
                     )
                 }
             }
-            Event::GetBlockResult { event_metadata, .. } => {
+            Event::GetBlockHeaderResult { event_metadata, .. } => {
                 write!(
                     formatter,
                     "received highest block from storage to validate deploy with hash: {}.",

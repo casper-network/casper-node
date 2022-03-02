@@ -110,6 +110,8 @@ function check_network_sync() {
         WAIT_TIME_SEC=$((WAIT_TIME_SEC + 1))
         if [ "$WAIT_TIME_SEC" = "$SYNC_TIMEOUT_SEC" ]; then
             log "ERROR: Failed to confirm network sync"
+            nctl-status
+            nctl-view-chain-height
             exit 1
         fi
         sleep 1

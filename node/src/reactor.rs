@@ -912,7 +912,7 @@ pub(crate) fn handle_fetch_response<R, T>(
 where
     T: Item,
     R: Reactor,
-    <R as Reactor>::Event: From<fetcher::Event<T>> + From<BlocklistAnnouncement<NodeId>>,
+    <R as Reactor>::Event: From<fetcher::Event<T>> + From<BlocklistAnnouncement>,
 {
     match fetcher::Event::<T>::from_get_response_serialized_item(
         sender,

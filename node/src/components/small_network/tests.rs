@@ -53,7 +53,7 @@ enum Event {
     #[from]
     AddressGossiper(#[serde(skip_serializing)] gossiper::Event<GossipedAddress>),
     #[from]
-    NetworkRequest(#[serde(skip_serializing)] NetworkRequest<NodeId, Message>),
+    NetworkRequest(#[serde(skip_serializing)] NetworkRequest<Message>),
     #[from]
     ControlAnnouncement(ControlAnnouncement),
     #[from]
@@ -74,22 +74,22 @@ impl ReactorEvent for Event {
     }
 }
 
-impl From<NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>> for Event {
-    fn from(request: NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>) -> Self {
+impl From<NetworkRequest<gossiper::Message<GossipedAddress>>> for Event {
+    fn from(request: NetworkRequest<gossiper::Message<GossipedAddress>>) -> Self {
         Event::NetworkRequest(request.map_payload(Message::from))
     }
 }
 
-impl From<NetworkRequest<NodeId, Message>> for SmallNetworkEvent<Message> {
-    fn from(request: NetworkRequest<NodeId, Message>) -> SmallNetworkEvent<Message> {
+impl From<NetworkRequest<Message>> for SmallNetworkEvent<Message> {
+    fn from(request: NetworkRequest<Message>) -> SmallNetworkEvent<Message> {
         SmallNetworkEvent::NetworkRequest {
             req: Box::new(request),
         }
     }
 }
 
-impl From<NetworkRequest<NodeId, protocol::Message>> for Event {
-    fn from(_request: NetworkRequest<NodeId, protocol::Message>) -> Self {
+impl From<NetworkRequest<protocol::Message>> for Event {
+    fn from(_request: NetworkRequest<protocol::Message>) -> Self {
         unreachable!()
     }
 }
@@ -112,7 +112,7 @@ impl From<ContractRuntimeRequest> for Event {
     }
 }
 
-impl FromIncoming<NodeId, Message> for Event {
+impl FromIncoming<Message> for Event {
     fn from_incoming(sender: NodeId, payload: Message) -> Self {
         match payload {
             Message::AddressGossiper(message) => {
@@ -146,6 +146,10 @@ impl Payload for Message {
         match self {
             Message::AddressGossiper(_) => MessageKind::AddressGossip,
         }
+    }
+
+    fn incoming_resource_estimate(&self, _weights: &super::EstimatorWeights) -> u32 {
+        0
     }
 }
 
@@ -248,8 +252,6 @@ impl Reactor for TestReactor {
 }
 
 impl NetworkedReactor for TestReactor {
-    type NodeId = NodeId;
-
     fn node_id(&self) -> NodeId {
         self.net.node_id()
     }

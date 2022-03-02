@@ -49,7 +49,7 @@ use crate::{
     },
     fatal,
     protocol::Message,
-    types::{BlockHash, BlockHeader, Chainspec, Deploy, FinalizedBlock, NodeId},
+    types::{BlockHash, BlockHeader, Chainspec, Deploy, FinalizedBlock},
     NodeRng,
 };
 pub(crate) use config::Config;
@@ -195,7 +195,7 @@ where
     REv: From<ContractRuntimeRequest>
         + From<ContractRuntimeAnnouncement>
         + From<ControlAnnouncement>
-        + From<NetworkRequest<NodeId, Message>>
+        + From<NetworkRequest<Message>>
         + Send,
 {
     type Event = Event;
@@ -229,7 +229,7 @@ impl ContractRuntime {
         }: TrieRequestIncoming,
     ) -> Effects<Event>
     where
-        REv: From<NetworkRequest<NodeId, Message>> + Send,
+        REv: From<NetworkRequest<Message>> + Send,
     {
         let fetched_or_not_found = match self.get_trie(serialized_id) {
             Ok(fetched_or_not_found) => fetched_or_not_found,

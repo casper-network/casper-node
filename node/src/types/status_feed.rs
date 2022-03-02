@@ -3,7 +3,6 @@
 
 use std::{
     collections::BTreeMap,
-    hash::Hash,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     time::Duration,
 };
@@ -41,7 +40,7 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
     let socket_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 54321);
     let mut peers = BTreeMap::new();
     peers.insert(*node_id, socket_addr.to_string());
-    let status_feed = StatusFeed::<NodeId> {
+    let status_feed = StatusFeed {
         last_added_block: Some(Block::doc_example().clone()),
         peers,
         chainspec_info: ChainspecInfo::doc_example().clone(),
@@ -90,12 +89,11 @@ pub enum NodeState {
 
 /// Data feed for client "info_get_status" endpoint.
 #[derive(Debug, Serialize)]
-#[serde(bound = "I: Eq + Hash + Ord + Serialize")]
-pub struct StatusFeed<I> {
+pub struct StatusFeed {
     /// The last block added to the chain.
     pub last_added_block: Option<Block>,
     /// The peer nodes which are connected to this node.
-    pub peers: BTreeMap<I, String>,
+    pub peers: BTreeMap<NodeId, String>,
     /// The chainspec info for this node.
     pub chainspec_info: ChainspecInfo,
     /// Our public signing key.
@@ -110,10 +108,10 @@ pub struct StatusFeed<I> {
     pub node_state: NodeState,
 }
 
-impl<I> StatusFeed<I> {
+impl StatusFeed {
     pub(crate) fn new(
         last_added_block: Option<Block>,
-        peers: BTreeMap<I, String>,
+        peers: BTreeMap<NodeId, String>,
         chainspec_info: ChainspecInfo,
         consensus_status: Option<(PublicKey, Option<TimeDiff>)>,
         node_uptime: Duration,
@@ -193,7 +191,7 @@ pub struct GetStatusResult {
 
 impl GetStatusResult {
     #[allow(deprecated)]
-    pub(crate) fn new(status_feed: StatusFeed<NodeId>, api_version: ProtocolVersion) -> Self {
+    pub(crate) fn new(status_feed: StatusFeed, api_version: ProtocolVersion) -> Self {
         GetStatusResult {
             api_version,
             chainspec_name: status_feed.chainspec_info.name,

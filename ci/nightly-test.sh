@@ -7,13 +7,16 @@ SCENARIOS_CHAINSPEC_DIR="$SCENARIOS_DIR/chainspecs"
 SCENARIOS_ACCOUNTS_DIR="$SCENARIOS_DIR/accounts_toml"
 SCENARIOS_CONFIGS_DIR="$SCENARIOS_DIR/configs"
 
+NCTL_CLIENT_BRANCH="${DRONE_BRANCH:='dev'}"
+
 # Activate Environment
 pushd "$DRONE_ROOT_DIR"
 source "$(pwd)"/utils/nctl/activate
 
 # Clone the client and launcher repos if required.
 if [ ! -d "$NCTL_CASPER_CLIENT_HOME" ]; then
-    git clone https://github.com/casper-ecosystem/casper-client-rs "$NCTL_CASPER_CLIENT_HOME"
+    echo "Checking out $NCTL_CLIENT_BRANCH of casper-client-rs..."
+    git clone -b "$NCTL_CLIENT_BRANCH" https://github.com/casper-ecosystem/casper-client-rs "$NCTL_CASPER_CLIENT_HOME"
 fi
 if [ ! -d "$NCTL_CASPER_NODE_LAUNCHER_HOME" ]; then
     git clone https://github.com/casper-network/casper-node-launcher "$NCTL_CASPER_NODE_LAUNCHER_HOME"
@@ -70,6 +73,16 @@ function start_run_teardown() {
     sleep 1
 }
 
+function run_nightly_upgrade_test() {
+    # setup only needed the first time
+    bash -i ./ci/nctl_upgrade.sh test_id=4
+    bash -i ./ci/nctl_upgrade.sh test_id=5 skip_setup=true
+    bash -i ./ci/nctl_upgrade.sh test_id=6 skip_setup=true
+    bash -i ./ci/nctl_upgrade.sh test_id=7 skip_setup=true
+    bash -i ./ci/nctl_upgrade.sh test_id=8 skip_setup=true
+    bash -i ./ci/nctl_upgrade.sh test_id=9 skip_setup=true
+}
+
 start_run_teardown "itst01.sh"
 start_run_teardown "itst02.sh"
 start_run_teardown "itst06.sh"
@@ -84,3 +97,6 @@ start_run_teardown "sync_test.sh timeout=500"
 start_run_teardown "gov96.sh"
 # Keep this test last
 start_run_teardown "sync_upgrade_test.sh node=6 era=5 timeout=500"
+
+# Run nightly upgrade tests
+run_nightly_upgrade_test

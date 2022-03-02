@@ -15,7 +15,7 @@ use crate::{
         consensus,
         fetcher::FetchedOrNotFound,
         gossiper,
-        small_network::{FromIncoming, GossipedAddress, MessageKind, Payload},
+        small_network::{EstimatorWeights, FromIncoming, GossipedAddress, MessageKind, Payload},
     },
     effect::incoming::{
         ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming, NetRequest,
@@ -76,6 +76,48 @@ impl Payload for Message {
                 }
             }
             Message::FinalitySignature(_) => MessageKind::Consensus,
+        }
+    }
+
+    fn is_low_priority(&self) -> bool {
+        // We only deprioritize requested trie nodes, as they are the most commonly requested item
+        // during fast sync.
+        match self {
+            Message::Consensus(_) => false,
+            Message::DeployGossiper(_) => false,
+            Message::AddressGossiper(_) => false,
+            Message::GetRequest { tag, .. } if *tag == Tag::Trie => true,
+            Message::GetRequest { .. } => false,
+            Message::GetResponse { .. } => false,
+            Message::FinalitySignature(_) => false,
+        }
+    }
+
+    #[inline]
+    fn incoming_resource_estimate(&self, weights: &EstimatorWeights) -> u32 {
+        match self {
+            Message::Consensus(_) => weights.consensus,
+            Message::DeployGossiper(_) => weights.gossip,
+            Message::AddressGossiper(_) => weights.gossip,
+            Message::GetRequest { tag, .. } => match tag {
+                Tag::Deploy => weights.deploy_requests,
+                Tag::Block => weights.block_requests,
+                Tag::GossipedAddress => weights.gossip,
+                Tag::BlockAndMetadataByHeight => weights.block_requests,
+                Tag::BlockHeaderByHash => weights.block_requests,
+                Tag::BlockHeaderAndFinalitySignaturesByHeight => weights.block_requests,
+                Tag::Trie => weights.trie_requests,
+            },
+            Message::GetResponse { tag, .. } => match tag {
+                Tag::Deploy => weights.deploy_responses,
+                Tag::Block => weights.block_responses,
+                Tag::GossipedAddress => weights.gossip,
+                Tag::BlockAndMetadataByHeight => weights.block_responses,
+                Tag::BlockHeaderByHash => weights.block_responses,
+                Tag::BlockHeaderAndFinalitySignaturesByHeight => weights.block_responses,
+                Tag::Trie => weights.trie_responses,
+            },
+            Message::FinalitySignature(_) => weights.finality_signatures,
         }
     }
 }
@@ -157,9 +199,9 @@ impl Display for Message {
     }
 }
 
-impl<REv> FromIncoming<NodeId, Message> for REv
+impl<REv> FromIncoming<Message> for REv
 where
-    REv: From<ConsensusMessageIncoming<NodeId>>
+    REv: From<ConsensusMessageIncoming>
         + From<GossiperIncoming<Deploy>>
         + From<GossiperIncoming<GossipedAddress>>
         + From<NetRequestIncoming>

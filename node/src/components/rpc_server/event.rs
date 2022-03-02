@@ -19,7 +19,7 @@ use crate::{
 #[derive(Debug, From)]
 pub(crate) enum Event {
     #[from]
-    RpcRequest(RpcRequest<NodeId>),
+    RpcRequest(RpcRequest),
     GetBlockResult {
         maybe_id: Option<BlockIdentifier>,
         result: Box<Option<BlockWithMetadata>>,

@@ -178,6 +178,7 @@ fn transfer_wasmless(wasmless_transfer: WasmlessTransfer) {
             .with_empty_payment_bytes(runtime_args! {})
             .with_transfer_args(runtime_args)
             .with_authorization_keys(&[*ACCOUNT_1_ADDR])
+            .with_deploy_hash([42; 32])
             .build();
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
@@ -516,6 +517,7 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
             .with_empty_payment_bytes(runtime_args! {})
             .with_transfer_args(runtime_args)
             .with_authorization_keys(&[addr])
+            .with_deploy_hash([42; 32])
             .build();
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
@@ -609,6 +611,7 @@ fn transfer_wasmless_should_create_target_if_it_doesnt_exist() {
             .with_empty_payment_bytes(runtime_args! {})
             .with_transfer_args(runtime_args)
             .with_authorization_keys(&[*ACCOUNT_1_ADDR])
+            .with_deploy_hash([42; 32])
             .build();
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
@@ -733,6 +736,7 @@ fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
             .with_empty_payment_bytes(runtime_args! {})
             .with_transfer_args(runtime_args)
             .with_authorization_keys(&[*ACCOUNT_1_ADDR])
+            .with_deploy_hash([42; 32])
             .build();
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
@@ -772,6 +776,7 @@ fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
             .with_empty_payment_bytes(runtime_args! {})
             .with_transfer_args(runtime_args)
             .with_authorization_keys(&[*ACCOUNT_2_ADDR])
+            .with_deploy_hash([43; 32])
             .build();
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
@@ -831,6 +836,7 @@ fn transfer_wasmless_should_transfer_funds_after_paying_for_transfer() {
             .with_empty_payment_bytes(runtime_args! {})
             .with_transfer_args(runtime_args)
             .with_authorization_keys(&[*ACCOUNT_1_ADDR])
+            .with_deploy_hash([42; 32])
             .build();
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
@@ -870,6 +876,7 @@ fn transfer_wasmless_should_transfer_funds_after_paying_for_transfer() {
             .with_empty_payment_bytes(runtime_args! {})
             .with_transfer_args(runtime_args)
             .with_authorization_keys(&[*ACCOUNT_2_ADDR])
+            .with_deploy_hash([43; 32])
             .build();
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
@@ -924,6 +931,7 @@ fn transfer_wasmless_should_fail_with_secondary_purse_insufficient_funds() {
             .with_empty_payment_bytes(runtime_args! {})
             .with_transfer_args(runtime_args)
             .with_authorization_keys(&[*ACCOUNT_1_ADDR])
+            .with_deploy_hash([42; 32])
             .build();
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
@@ -1015,6 +1023,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
             .with_empty_payment_bytes(runtime_args! {})
             .with_transfer_args(wasmless_transfer_args)
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+            .with_deploy_hash([42; 32])
             .build();
         ExecuteRequestBuilder::from_deploy_item(deploy_item)
             .with_protocol_version(new_protocol_version)
