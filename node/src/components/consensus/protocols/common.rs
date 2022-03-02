@@ -1,0 +1,88 @@
+use itertools::Itertools;
+use num_rational::Ratio;
+use std::collections::BTreeMap;
+use std::collections::HashSet;
+
+use num_traits::AsPrimitive;
+
+use crate::components::consensus::{
+    highway_core::{
+        state::Weight,
+        validators::{ValidatorMap, Validators},
+    },
+    traits::Context,
+};
+use casper_types::U512;
+
+fn sum_stakes<C: Context>(validator_stakes: &BTreeMap<C::ValidatorId, U512>) -> U512 {
+    let sum_stakes: U512 = validator_stakes.iter().map(|(_, stake)| *stake).sum();
+    // TODO this error message is repeated, should probably have a different error message for each
+    // or remove one.
+    assert!(
+        !sum_stakes.is_zero(),
+        "cannot start era with total weight 0"
+    );
+    sum_stakes
+}
+
+/// Computes the validator set given the stakes and the faulty and inactive
+/// reports from the previous eras.
+pub(crate) fn validators<C: Context>(
+    faulty: &HashSet<C::ValidatorId>,
+    inactive: &HashSet<C::ValidatorId>,
+    validator_stakes: BTreeMap<C::ValidatorId, U512>,
+) -> Validators<C::ValidatorId> {
+    let sum_stakes = sum_stakes::<C>(&validator_stakes);
+    // We use u64 weights. Scale down by sum / u64::MAX, rounded up.
+    // If we round up the divisor, the resulting sum is guaranteed to be less than
+    // u64::MAX.
+    let scaling_factor: U512 = (sum_stakes + U512::from(u64::MAX) - 1) / U512::from(u64::MAX);
+
+    // TODO sort validators by descending weight
+    let mut validators: Validators<C::ValidatorId> = validator_stakes
+        .into_iter()
+        .map(|(key, stake)| (key, AsPrimitive::<u64>::as_(stake / scaling_factor)))
+        .collect();
+
+    for vid in faulty {
+        validators.ban(vid);
+    }
+
+    for vid in inactive {
+        validators.set_cannot_propose(vid);
+    }
+
+    // TODO this error message is repeated, should probably have a different error message for each
+    // or remove one.
+    assert!(
+        validators.ensure_nonzero_proposing_stake(),
+        "cannot start era with total weight 0"
+    );
+
+    validators
+}
+
+/// Compute the validator weight map from the set of validators.
+/// TODO Use in highway, or change to be used in highway. Something like
+/// K: Borrow<C::ValidatorId>, I: Iterator<Item = K> with an I as the argument.
+pub(crate) fn validator_weights<C: Context>(
+    validators: &Validators<C::ValidatorId>,
+) -> ValidatorMap<Weight> {
+    ValidatorMap::from(validators.iter().map(|v| v.weight()).collect_vec())
+}
+
+/// Computes the fault tolerance threshold for the protocol instance
+pub(crate) fn ftt<C: Context>(
+    finality_threshold_fraction: Ratio<u64>,
+    validators: &Validators<C::ValidatorId>,
+) -> Weight {
+    let total_weight = u128::from(validators.total_weight());
+    assert!(
+        finality_threshold_fraction < 1.into(),
+        "finality threshold must be less than 100%"
+    );
+    #[allow(clippy::integer_arithmetic)] // FTT is less than 1, so this can't overflow
+    let ftt = total_weight * *finality_threshold_fraction.numer() as u128
+        / *finality_threshold_fraction.denom() as u128;
+    (ftt as u64).into()
+}
