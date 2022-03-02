@@ -2,7 +2,6 @@
 set -e
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)"
-NCTL_CLIENT_BRANCH="${DRONE_BRANCH:='dev'}"
 
 # Activate Environment
 pushd "$ROOT_DIR"
