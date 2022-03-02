@@ -243,7 +243,7 @@ impl reactor::Reactor for Reactor {
         .unwrap();
 
         let deploy_acceptor = DeployAcceptor::new(
-            deploy_acceptor::Config::new(false),
+            false,
             &<(Chainspec, ChainspecRawBytes)>::from_resources("local").0,
             registry,
         )

@@ -76,6 +76,8 @@ use crate::{
     NodeRng,
 };
 
+const VERIFY_ACCOUNTS: bool = true;
+
 /// Top-level event for the reactor.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, From, Serialize)]
@@ -622,11 +624,8 @@ impl reactor::Reactor for Reactor {
 
         let trie_or_chunk_fetcher = fetcher_builder.build("trie_or_chunk")?;
 
-        let deploy_acceptor = DeployAcceptor::new(
-            config.deploy_acceptor,
-            &*chainspec_loader.chainspec(),
-            registry,
-        )?;
+        let deploy_acceptor =
+            DeployAcceptor::new(VERIFY_ACCOUNTS, &*chainspec_loader.chainspec(), registry)?;
 
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",

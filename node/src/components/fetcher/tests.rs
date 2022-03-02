@@ -50,7 +50,6 @@ impl Drop for Reactor {
 pub struct FetcherTestConfig {
     fetcher_config: Config,
     storage_config: storage::Config,
-    deploy_acceptor_config: deploy_acceptor::Config,
     temp_dir: TempDir,
 }
 
@@ -60,7 +59,6 @@ impl Default for FetcherTestConfig {
         FetcherTestConfig {
             fetcher_config: Default::default(),
             storage_config,
-            deploy_acceptor_config: deploy_acceptor::Config::new(false),
             temp_dir,
         }
     }
@@ -93,7 +91,7 @@ reactor!(Reactor {
                 .protocol_config
                 .verifiable_chunked_hash_activation,
         );
-        deploy_acceptor = DeployAcceptor(cfg.deploy_acceptor_config, &*chainspec_loader.chainspec(), registry);
+        deploy_acceptor = DeployAcceptor(false, &*chainspec_loader.chainspec(), registry);
         deploy_fetcher = Fetcher::<Deploy>(
             "deploy",
             cfg.fetcher_config,

@@ -413,8 +413,7 @@ impl reactor::Reactor for Reactor {
 
         let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
 
-        let deploy_acceptor =
-            DeployAcceptor::new(super::Config::new(VERIFY_ACCOUNTS), &chainspec, registry).unwrap();
+        let deploy_acceptor = DeployAcceptor::new(VERIFY_ACCOUNTS, &chainspec, registry).unwrap();
 
         let storage = Storage::new(
             &storage_withdir,

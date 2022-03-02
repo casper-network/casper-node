@@ -92,11 +92,6 @@ pub(crate) enum Event {
         maybe_contract_package: Option<ContractPackage>,
         verification_start_timestamp: Timestamp,
     },
-    /// The event to initiate the verification of the `Deploy`'s cryptographic validity.
-    VerifyDeployCryptographicValidity {
-        event_metadata: EventMetadata,
-        verification_start_timestamp: Timestamp,
-    },
 }
 
 impl From<RpcServerAnnouncement> for Event {
@@ -179,13 +174,6 @@ impl Display for Event {
                     "verifying contract package to validate deploy with hash {} with state hash: {}.",
                     event_metadata.deploy.id(),
                     prestate_hash
-                )
-            }
-            Event::VerifyDeployCryptographicValidity { event_metadata, .. } => {
-                write!(
-                    formatter,
-                    "verifying deploy cryptographic validity for deploy with hash {}.",
-                    event_metadata.deploy.id(),
                 )
             }
         }
