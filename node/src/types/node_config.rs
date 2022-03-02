@@ -26,7 +26,7 @@ pub struct NodeConfig {
     /// The duration for which to pause between retry attempts while synchronising during joining.
     pub retry_interval: TimeDiff,
 
-    /// Whether to run in sync_to_genesis mode which captures all data (blocks, deploys
+    /// Whether to run in sync-to-genesis mode which captures all data (blocks, deploys
     /// and global state) back to genesis.
     pub sync_to_genesis: bool,
 }
