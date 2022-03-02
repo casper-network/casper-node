@@ -46,23 +46,32 @@ const TIMER_ID_LOG_PARTICIPATION: TimerId = TimerId(3);
 /// haven't started yet.
 const MAX_FUTURE_ROUNDS: u32 = 10;
 
+/// Identifies a single [`Round`] in the protocol.
 pub(crate) type RoundId = u32;
 
+/// The protocol proceeds in rounds, for each of which we must
+/// keep track of proposals, echos, votes, and the current outcome
+/// of the round.
 #[derive(Debug, DataSize)]
 pub(crate) struct Round<C>
 where
     C: Context,
 {
+    /// All of the proposals sent to us this round from the leader
     #[data_size(with = ds::hashmap_sample)]
     proposals: HashMap<C::Hash, (Proposal<C>, C::Signature)>,
+    /// The echos we've received for each proposal so far.
     #[data_size(with = ds::hashmap_sample)]
     echos: HashMap<C::Hash, BTreeMap<ValidatorIndex, C::Signature>>,
+    /// The votes we've received for this round so far.
     votes: BTreeMap<bool, ValidatorMap<Option<C::Signature>>>,
     /// The memoized results in this round.
     outcome: RoundOutcome<C>,
 }
 
 impl<C: Context> Round<C> {
+    /// Creates a new [`Round`] with no proposals, echos, votes, and empty
+    /// round outcome.
     fn new(validator_count: usize) -> Round<C> {
         let mut votes = BTreeMap::new();
         votes.insert(false, vec![None; validator_count].into());
@@ -146,6 +155,11 @@ impl<C: Context> Round<C> {
 }
 
 impl<C: Context> Round<C> {
+    /// Check if the round contains this message already. In the case of a proposal, we
+    /// check if we've received it before. In the case of an echo, we check if the echo
+    /// map for this proposal contains the index of the `validator_idx` passed as an argument.
+    /// In the case of a vote, we check if this validator has voted in that way for this
+    /// proposal before.
     fn contains(&self, content: &Content<C>, validator_idx: ValidatorIndex) -> bool {
         match content {
             Content::Proposal(proposal) => self.proposals.contains_key(&proposal.hash()),
@@ -158,31 +172,46 @@ impl<C: Context> Round<C> {
     }
 }
 
+/// Contains the state required for the protocol.
 #[derive(DataSize, Debug)]
 #[allow(clippy::type_complexity)] // TODO
 pub(crate) struct SimpleConsensus<C>
 where
     C: Context,
 {
+    /// Contains numerical parameters for the protocol
+    /// TODO currently using Highway params
     params: Params,
+    /// Identifies this instance of the protocol uniquely
     instance_id: C::InstanceId,
+    /// The timeout for the current round's proposal
     proposal_timeout: TimeDiff,
+    /// The validators in this instantiation of the protocol
     validators: Validators<C::ValidatorId>,
+    /// If we are a validator ourselves, we must know which index we
+    /// are in the [`Validators`] and have a private key for consensus.
     active_validator: Option<(ValidatorIndex, C::ValidatorSecret)>,
+    /// When an era has already completed, sometimes we still need to keep
+    /// it around to provide evidence for equivocation in previous eras.
     evidence_only: bool,
+    /// Proposals which have not yet had their parent accepted yet.
     proposals_waiting_for_parent:
         HashMap<RoundId, HashMap<Proposal<C>, HashSet<(RoundId, NodeId, C::Signature)>>>,
+    /// Incoming blocks we can't add yet because we are waiting for validation.
     proposals_waiting_for_validation:
         HashMap<ProposedBlock<C>, HashSet<(RoundId, Option<RoundId>, NodeId, C::Signature)>>,
     /// If we requested a new block from the block proposer component this contains the proposal's
     /// round ID and the parent's round ID, if there is a parent.
     pending_proposal_round_ids: Option<(RoundId, Option<RoundId>)>,
     leader_sequence: LeaderSequence,
-    /// Incoming blocks we can't add yet because we are waiting for validation.
+    /// The [`Round`]s of this protocol which we've instantiated.
     rounds: BTreeMap<RoundId, Round<C>>,
     /// List of faulty validators and their type of fault.
     faults: HashMap<ValidatorIndex, Fault<C>>,
+    /// The threshold weight at which we are not fault tolerant any longer.
     ftt: Weight,
+    /// The configuration for the protocol
+    /// TODO currently using Highway config
     config: super::highway::config::Config,
     /// The validator's voting weights.
     weights: ValidatorMap<Weight>,
@@ -195,7 +224,7 @@ where
 }
 
 impl<C: Context + 'static> SimpleConsensus<C> {
-    /// Creates a new boxed `SimpleConsensus` instance.
+    /// Creates a new boxed [`SimpleConsensus`] instance.
     #[allow(clippy::too_many_arguments, clippy::type_complexity)]
     pub(crate) fn new_boxed(
         instance_id: C::InstanceId,
@@ -436,7 +465,9 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             .unwrap_or(RoundId::MAX)
     }
 
-    fn create_message(&mut self, round_id: RoundId, content: Content<C>) -> ProtocolOutcomes<C> {
+    /// If we are an active validator, we gossip a message to the network, otherwise we log an
+    /// error and do nothing.
+    fn gossip_message(&mut self, round_id: RoundId, content: Content<C>) -> ProtocolOutcomes<C> {
         let (validator_idx, secret_key) =
             if let Some((validator_idx, secret_key)) = &self.active_validator {
                 (*validator_idx, secret_key)
@@ -462,6 +493,9 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         outcomes
     }
 
+    /// When we receive evidence for a fault, we must notify the rest of the network of this
+    /// evidence. Beyond that, we can remove all of the faulty validator's previous information
+    /// from the protocol state.
     fn handle_fault(
         &mut self,
         round_id: RoundId,
@@ -494,6 +528,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             validator_idx,
             signature: signature1,
         };
+        // TODO should we send this as one message?
         let mut outcomes = vec![
             ProtocolOutcome::CreatedGossipMessage(msg0.serialize()),
             ProtocolOutcome::CreatedGossipMessage(msg1.serialize()),
@@ -506,6 +541,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         }
         // Remove all Votes and Echos from the faulty validator: They count towards every quorum now
         // so nobody has to store their messages.
+        // TODO(no-merge) where do we count them towards everything?
         for round in self.rounds.values_mut() {
             round.votes.get_mut(&false).unwrap()[validator_idx] = None;
             round.votes.get_mut(&true).unwrap()[validator_idx] = None;
@@ -517,6 +553,9 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         outcomes
     }
 
+    /// When we receive a request to synchronize, we must take a careful diff of our state and the
+    /// state in the sync state to ensure we send them exactly what they need to get back up to
+    /// speed in the network.
     fn handle_sync_state(
         &self,
         first_non_finalized_round_id: RoundId,
@@ -597,6 +636,9 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             .collect()
     }
 
+    /// The main entry point for non-synchronization messages. This function mostly authenticates
+    /// and authorizes the message, passing it to [`handle_content`] if it passes snuff for the
+    /// main protocol logic.
     #[allow(clippy::too_many_arguments)]
     fn handle_signed_message(
         &mut self,
@@ -749,6 +791,8 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         }
     }
 
+    /// The entrypoint for handling the authenticated insides of a message, performing the
+    /// main logic of the protocol.
     fn handle_content(
         &mut self,
         round_id: RoundId,
@@ -768,7 +812,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                     outcomes.extend(self.check_proposal(round_id));
                     if let Some((our_idx, _)) = &self.active_validator {
                         if !self.rounds[&round_id].has_echoed(*our_idx) {
-                            outcomes.extend(self.create_message(round_id, Content::Echo(hash)));
+                            outcomes.extend(self.gossip_message(round_id, Content::Echo(hash)));
                         }
                     }
                 }
@@ -925,7 +969,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         // If we haven't already voted, we vote to commit and finalize the accepted proposal.
         if let Some((our_idx, _)) = &self.active_validator {
             if !self.rounds[&round_id].has_voted(*our_idx) {
-                outcomes.extend(self.create_message(round_id, Content::Vote(true)));
+                outcomes.extend(self.gossip_message(round_id, Content::Vote(true)));
             }
         }
 
@@ -1005,6 +1049,8 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         }
     }
 
+    /// Finalizes the round, notifying the rest of the node of the finalized block
+    /// if it contained one.
     fn finalize_round(&mut self, round_id: RoundId) -> ProtocolOutcomes<C> {
         let mut outcomes = vec![];
         if round_id < self.first_non_finalized_round_id {
@@ -1059,6 +1105,9 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         outcomes
     }
 
+    /// We can skip a round if we haven't created it yet, or if there is a quorum for
+    /// false.
+    /// TODO(no-merge) if we haven't created it yet?
     fn is_skippable_round(&self, round_id: RoundId) -> bool {
         self.rounds.get(&round_id).map_or(false, |skipped_round| {
             skipped_round.outcome.quorum_votes == Some(false)
@@ -1083,8 +1132,8 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         false
     }
 
-    // Returns the accepted value from the given round and all its ancestors, or `None` if there is
-    // no accepted value in that round yet.
+    /// Returns the accepted value from the given round and all its ancestors, or `None` if there is
+    /// no accepted value in that round yet.
     fn ancestor_values(&self, mut round_id: RoundId) -> Option<Vec<C::ConsensusValue>> {
         let mut ancestor_values = vec![];
         loop {
@@ -1113,10 +1162,12 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         self.faults.keys().map(|vidx| self.weights[*vidx]).sum()
     }
 
+    /// Retrieves a shared reference to the round.
     fn round(&self, round_id: RoundId) -> Option<&Round<C>> {
         self.rounds.get(&round_id)
     }
 
+    /// Retrieves a mutable reference to the round.
     fn round_mut(&mut self, round_id: RoundId) -> &mut Round<C> {
         match self.rounds.entry(round_id) {
             btree_map::Entry::Occupied(entry) => entry.into_mut(),
@@ -1125,6 +1176,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     }
 }
 
+/// A proposal in the consensus protocol.
 #[derive(Clone, Hash, Serialize, Deserialize, Debug, PartialEq, Eq, DataSize)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
@@ -1146,6 +1198,9 @@ impl<C: Context> Proposal<C> {
     }
 }
 
+/// The content of a message in the main protocol, as opposed to the
+/// sync messages, which are somewhat decoupled from the rest of the
+/// protocol.
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
@@ -1163,6 +1218,7 @@ impl<C: Context> Content<C> {
     }
 }
 
+/// Indicates the outcome of a given round.
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
@@ -1189,6 +1245,7 @@ impl<C: Context> Default for RoundOutcome<C> {
     }
 }
 
+/// All messages of the protocol.
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
@@ -1279,6 +1336,7 @@ where
         }
     }
 
+    /// Handles the firing of various timers in the protocol.
     fn handle_timer(&mut self, now: Timestamp, timer_id: TimerId) -> ProtocolOutcomes<C> {
         match timer_id {
             TIMER_ID_ROUND => {
@@ -1333,7 +1391,7 @@ where
                 self.round_mut(round_id);
                 if let Some((our_idx, _)) = &self.active_validator {
                     if now >= self.current_timeout && !self.rounds[&round_id].has_voted(*our_idx) {
-                        return self.create_message(round_id, Content::Vote(false));
+                        return self.gossip_message(round_id, Content::Vote(false));
                     }
                 }
                 vec![]
@@ -1397,7 +1455,7 @@ where
                     maybe_block: Some(block),
                     maybe_parent_round_id,
                 });
-                self.create_message(proposal_round_id, content)
+                self.gossip_message(proposal_round_id, content)
             } else {
                 error!("proposal already exists");
                 vec![]
