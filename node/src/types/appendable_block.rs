@@ -169,8 +169,10 @@ impl AppendableBlock {
         self.deploys.len() == self.deploy_config.block_max_deploy_count as usize
     }
 
-    /// Returns `true` if the number of approvals including the additional ones would exceed the
-    /// maximum allowed count, i.e. this many approvals cannot be added to this block.
+    /// Returns `true` if adding the deploy with 'additional_approvals` approvals would exceed the
+    /// approval limits.
+    /// Note that we also disallow adding deploys with a number of approvals that would make it
+    /// impossible to fill the rest of the block with deploys that have one approval each.
     fn would_exceed_approval_limits(&self, additional_approvals: usize) -> bool {
         let remaining_approval_slots =
             self.deploy_config.block_max_approval_count as usize - self.total_approvals;
@@ -178,6 +180,6 @@ impl AppendableBlock {
             - self.transfers.len()
             + self.deploy_config.block_max_deploy_count as usize
             - self.deploys.len();
-        additional_approvals > remaining_approval_slots - remaining_deploy_slots
+        additional_approvals > remaining_approval_slots - remaining_deploy_slots + 1
     }
 }
