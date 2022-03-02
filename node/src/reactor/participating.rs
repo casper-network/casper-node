@@ -74,6 +74,8 @@ pub(crate) use error::Error;
 use linear_chain::LinearChainComponent;
 use memory_metrics::MemoryMetrics;
 
+const VERIFY_ACCOUNTS: bool = true;
+
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
 #[must_use]
@@ -632,11 +634,8 @@ impl reactor::Reactor for Reactor {
             node_startup_instant,
         )?;
 
-        let deploy_acceptor = DeployAcceptor::new(
-            config.deploy_acceptor,
-            &*chainspec_loader.chainspec(),
-            registry,
-        )?;
+        let deploy_acceptor =
+            DeployAcceptor::new(VERIFY_ACCOUNTS, &*chainspec_loader.chainspec(), registry)?;
 
         let deploy_fetcher = Fetcher::new("deploy", config.fetcher, registry)?;
         let deploy_gossiper = Gossiper::new_for_partial_items(

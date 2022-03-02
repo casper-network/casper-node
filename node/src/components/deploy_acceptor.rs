@@ -1,4 +1,4 @@
-mod config;
+//mod config;
 mod event;
 mod metrics;
 mod tests;
@@ -39,7 +39,6 @@ use crate::{
     NodeRng,
 };
 
-pub(crate) use config::Config;
 pub(crate) use event::Event;
 use event::EventMetadata;
 
@@ -157,7 +156,7 @@ pub struct DeployAcceptor {
 
 impl DeployAcceptor {
     pub(crate) fn new(
-        config: Config,
+        verify_accounts: bool,
         chainspec: &Chainspec,
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
@@ -166,7 +165,7 @@ impl DeployAcceptor {
             protocol_version: chainspec.protocol_version(),
             deploy_config: chainspec.deploy_config,
             max_associated_keys: chainspec.core_config.max_associated_keys,
-            verify_accounts: config.verify_accounts(),
+            verify_accounts,
             metrics: metrics::Metrics::new(registry)?,
         })
     }
@@ -227,12 +226,12 @@ impl DeployAcceptor {
                     verification_start_timestamp,
                 })
         } else {
-            effect_builder
-                .immediately()
-                .event(move |_| Event::VerifyDeployCryptographicValidity {
-                    event_metadata: EventMetadata::new(deploy, source, maybe_responder),
-                    verification_start_timestamp,
-                })
+            let event_metadata = EventMetadata::new(deploy, source, maybe_responder);
+            self.validate_deploy_cryptography(
+                effect_builder,
+                event_metadata,
+                verification_start_timestamp,
+            )
         }
     }
 
@@ -950,14 +949,6 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
                 contract_package_hash,
                 maybe_package_version,
                 maybe_contract_package,
-                verification_start_timestamp,
-            ),
-            Event::VerifyDeployCryptographicValidity {
-                event_metadata,
-                verification_start_timestamp,
-            } => self.validate_deploy_cryptography(
-                effect_builder,
-                event_metadata,
                 verification_start_timestamp,
             ),
             Event::PutToStorageResult {

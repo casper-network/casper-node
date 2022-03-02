@@ -69,6 +69,8 @@ use crate::{
     NodeRng,
 };
 
+const VERIFY_ACCOUNTS: bool = true;
+
 /// Top-level event for the reactor.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, From, Serialize)]
@@ -503,11 +505,8 @@ impl reactor::Reactor for Reactor {
         let block_header_by_hash_fetcher: Fetcher<BlockHeader> =
             Fetcher::new("block_header_by_hash", config.fetcher, registry)?;
 
-        let deploy_acceptor = DeployAcceptor::new(
-            config.deploy_acceptor,
-            &*chainspec_loader.chainspec(),
-            registry,
-        )?;
+        let deploy_acceptor =
+            DeployAcceptor::new(VERIFY_ACCOUNTS, &*chainspec_loader.chainspec(), registry)?;
 
         contract_runtime.set_initial_state(chainspec_loader.initial_execution_pre_state());
         let linear_chain = linear_chain::LinearChainComponent::new(

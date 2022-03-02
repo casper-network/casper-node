@@ -410,7 +410,7 @@ impl reactor::Reactor for Reactor {
         .unwrap();
 
         let deploy_acceptor = DeployAcceptor::new(
-            super::Config::new(VERIFY_ACCOUNTS),
+            VERIFY_ACCOUNTS,
             &Chainspec::from_resources("local"),
             registry,
         )
