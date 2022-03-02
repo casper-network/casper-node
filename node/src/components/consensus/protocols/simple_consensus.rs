@@ -1,5 +1,6 @@
 use std::{
     any::Any,
+    cmp::Reverse,
     collections::{btree_map, BTreeMap, BTreeSet, HashMap, HashSet},
     fmt::Debug,
     path::PathBuf,
@@ -28,7 +29,7 @@ use crate::{
         ActionId, LeaderSequence, TimerId,
     },
     types::{Chainspec, NodeId},
-    utils::ds,
+    utils::{div_round, ds},
     NodeRng,
 };
 
@@ -158,6 +159,7 @@ impl<C: Context> Round<C> {
 }
 
 #[derive(DataSize, Debug)]
+#[allow(clippy::type_complexity)] // TODO
 pub(crate) struct SimpleConsensus<C>
 where
     C: Context,
@@ -311,8 +313,38 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     }
 
     /// Prints a log statement listing the inactive and faulty validators.
+    #[allow(clippy::integer_arithmetic)] // We use u128 to prevent overflows in weight
     fn log_participation(&self) {
-        info!("validator participation log not implemented yet"); // TODO
+        let mut inactive_w = 0;
+        let mut faulty_w = 0;
+        let total_w = u128::from(self.validators.total_weight().0);
+        let mut inactive_validators = Vec::new();
+        let mut faulty_validators = Vec::new();
+        for (idx, v_id) in self.validators.enumerate_ids() {
+            if let Some(status) = ParticipationStatus::for_index(idx, self) {
+                match status {
+                    ParticipationStatus::Equivocated
+                    | ParticipationStatus::EquivocatedInOtherEra => {
+                        faulty_w += u128::from(self.weights[idx].0);
+                        faulty_validators.push((idx, v_id.clone(), status));
+                    }
+                    ParticipationStatus::Inactive | ParticipationStatus::LastSeenInRound(_) => {
+                        inactive_w += u128::from(self.weights[idx].0);
+                        inactive_validators.push((idx, v_id.clone(), status));
+                    }
+                }
+            }
+        }
+        inactive_validators.sort_by_key(|(idx, _, status)| (Reverse(*status), *idx));
+        faulty_validators.sort_by_key(|(idx, _, status)| (Reverse(*status), *idx));
+        let participation = Participation::<C> {
+            instance_id: self.instance_id,
+            inactive_stake_percent: div_round(inactive_w * 100, total_w) as u8,
+            faulty_stake_percent: div_round(faulty_w * 100, total_w) as u8,
+            inactive_validators,
+            faulty_validators,
+        };
+        info!(?participation, "validator participation");
     }
 
     /// Returns whether the switch block has already been finalized.
@@ -586,6 +618,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             .collect()
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn handle_signed_message(
         &mut self,
         msg: Vec<u8>,
@@ -1048,7 +1081,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
 
     /// Returns `true` if the given validators, together will all faulty validators, form a quorum.
     fn is_quorum(&self, vidxs: impl Iterator<Item = ValidatorIndex>) -> bool {
-        let mut sum: Weight = self.faults.keys().map(|vidx| self.weights[*vidx]).sum();
+        let mut sum = self.faulty_weight();
         let quorum_threshold = self.quorum_threshold();
         if sum >= quorum_threshold {
             return true;
@@ -1479,7 +1512,7 @@ where
     }
 
     fn request_evidence(&self, peer: NodeId, vid: &C::ValidatorId) -> ProtocolOutcomes<C> {
-        if let Some(idx) = self.validators.get_index(vid) {
+        if self.validators.get_index(vid).is_some() {
             // Send the peer a sync message, so they will send us evidence we are missing.
             let payload = self.create_sync_state_message().serialize();
             vec![ProtocolOutcome::CreatedTargetedMessage(payload, peer)]
@@ -1489,9 +1522,8 @@ where
         }
     }
 
-    /// Does nothing: This protocol doesn't create more protocol state if no quorum is online, so no
-    /// special pause mode is needed.
-    fn set_paused(&mut self, paused: bool) {}
+    // TODO: Pause mode is also activated if execution lags too far behind consensus.
+    fn set_paused(&mut self, _paused: bool) {}
 
     fn validators_with_evidence(&self) -> Vec<&C::ValidatorId> {
         self.faults
@@ -1546,5 +1578,58 @@ impl<C: Context> Fault<C> {
 
     fn is_banned(&self) -> bool {
         matches!(self, Fault::Banned)
+    }
+}
+
+/// A validator's participation status: whether they are faulty or inactive.
+#[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
+enum ParticipationStatus {
+    LastSeenInRound(RoundId),
+    Inactive,
+    EquivocatedInOtherEra,
+    Equivocated,
+}
+
+/// A map of status (faulty, inactive) by validator ID.
+#[derive(Debug)]
+// False positive, as the fields of this struct are all used in logging validator participation.
+#[allow(dead_code)]
+pub(crate) struct Participation<C>
+where
+    C: Context,
+{
+    instance_id: C::InstanceId,
+    faulty_stake_percent: u8,
+    inactive_stake_percent: u8,
+    inactive_validators: Vec<(ValidatorIndex, C::ValidatorId, ParticipationStatus)>,
+    faulty_validators: Vec<(ValidatorIndex, C::ValidatorId, ParticipationStatus)>,
+}
+
+impl ParticipationStatus {
+    /// Returns a `Status` for a validator unless they are honest and online.
+    fn for_index<C: Context + 'static>(
+        idx: ValidatorIndex,
+        sc: &SimpleConsensus<C>,
+    ) -> Option<ParticipationStatus> {
+        if let Some(fault) = sc.faults.get(&idx) {
+            return Some(match fault {
+                Fault::Banned | Fault::Indirect => ParticipationStatus::EquivocatedInOtherEra,
+                Fault::Direct(_, _) => ParticipationStatus::Equivocated,
+            });
+        }
+        // TODO: Avoid iterating over all old rounds every time we log this.
+        for (r_id, round) in sc.rounds.iter().rev() {
+            if round.has_echoed(idx)
+                || round.has_voted(idx)
+                || (round.has_accepted_proposal() && sc.leader(*r_id) == idx)
+            {
+                if r_id.saturating_add(2) < sc.current_round() {
+                    return Some(ParticipationStatus::LastSeenInRound(*r_id));
+                } else {
+                    return None; // Seen recently; considered currently active.
+                }
+            }
+        }
+        Some(ParticipationStatus::Inactive)
     }
 }

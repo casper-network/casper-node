@@ -476,6 +476,7 @@ impl<C: Context + 'static> Synchronizer<C> {
         self.vertices_awaiting_deps.entry(dep).or_default().push(pv)
     }
 
+    #[cfg(test)]
     /// Returns `true` if no vertices are in the queues.
     pub(crate) fn is_empty(&self) -> bool {
         self.vertices_awaiting_deps.is_empty()
