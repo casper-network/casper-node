@@ -63,9 +63,8 @@ impl<'a> ChainSyncContext<'a> {
     }
 }
 
-/// Fetches an item. Keeps retrying to fetch until it is successful. Assumes no integrity check is
-/// necessary for the item. Not suited to fetching a block header or block by height, which require
-/// verification with finality signatures.
+/// Fetches an item. Keeps retrying to fetch until it is successful. Not suited to fetching a block
+/// header or block by height, which require verification with finality signatures.
 async fn fetch_retry_forever<T>(
     effect_builder: EffectBuilder<JoinerEvent>,
     config: &Config,

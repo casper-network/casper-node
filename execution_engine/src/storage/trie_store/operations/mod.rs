@@ -8,8 +8,6 @@ use std::{
     mem,
 };
 
-use tracing::warn;
-
 use casper_hashing::Digest;
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
@@ -230,17 +228,14 @@ where
     }
 }
 
-/// Given a root hash, find any try keys that are descendant from it that are:
-/// 1. referenced but not present in the database
-/// 2. (Optionally, when `check_integrity` is `true`) referenced and present but whose values'
-/// hashes do not equal their keys (ie, corrupted)
+/// Given a root hash, find any trie keys that are descendant from it that are referenced but not
+/// present in the database.
 // TODO: We only need to check one trie key at a time
 pub fn missing_trie_keys<K, V, T, S, E>(
     _correlation_id: CorrelationId,
     txn: &T,
     store: &S,
     mut trie_keys_to_visit: Vec<Digest>,
-    check_integrity: bool,
 ) -> Result<Vec<Digest>, E>
 where
     K: ToBytes + FromBytes + Eq + std::fmt::Debug,
@@ -257,21 +252,6 @@ where
             continue;
         }
         let maybe_retrieved_trie: Option<Trie<K, V>> = store.get(txn, &trie_key)?;
-        // Perform an optional integrity check on the retrieved node.
-        if check_integrity {
-            if let Some(trie_value) = &maybe_retrieved_trie {
-                let hash_of_trie_value = trie_value.trie_hash()?;
-                if trie_key != hash_of_trie_value {
-                    warn!(
-                        "Trie key {:?} has corrupted value {:?} (hash of value is {:?}); \
-                     adding to list of missing nodes",
-                        trie_key, trie_value, hash_of_trie_value
-                    );
-                    missing_descendants.push(trie_key);
-                    continue;
-                }
-            }
-        }
         match maybe_retrieved_trie {
             // If we can't find the trie_key; it is missing and we'll return it
             None => {
@@ -297,86 +277,6 @@ where
         }
     }
     Ok(missing_descendants)
-}
-
-#[cfg(test)]
-pub fn check_integrity<K, V, T, S, E>(
-    _correlation_id: CorrelationId,
-    txn: &T,
-    store: &S,
-    trie_keys_to_visit: Vec<Digest>,
-) -> Result<(), E>
-where
-    K: ToBytes + FromBytes + Eq + std::fmt::Debug,
-    V: ToBytes + FromBytes + std::fmt::Debug,
-    T: Readable<Handle = S::Handle>,
-    S: TrieStore<K, V>,
-    S::Error: From<T::Error>,
-    E: From<S::Error> + From<bytesrepr::Error>,
-{
-    for state_root in &trie_keys_to_visit {
-        match store.get(txn, state_root)? {
-            Some(Trie::Node { .. }) => {}
-            _ => panic!("Should have a pointer block node as state root"),
-        }
-    }
-    let mut trie_keys_to_visit: Vec<(Vec<u8>, Digest)> = trie_keys_to_visit
-        .into_iter()
-        .map(|blake2b_hash| (Vec::new(), blake2b_hash))
-        .collect();
-    let mut visited = HashSet::new();
-    while let Some((mut path, trie_key)) = trie_keys_to_visit.pop() {
-        if !visited.insert(trie_key) {
-            continue;
-        }
-        let maybe_retrieved_trie: Option<Trie<K, V>> = store.get(txn, &trie_key)?;
-        if let Some(trie_value) = &maybe_retrieved_trie {
-            let hash_of_trie_value = trie_value.trie_hash()?;
-            if trie_key != hash_of_trie_value {
-                panic!(
-                    "Trie key {:?} has corrupted value {:?} (hash of value is {:?})",
-                    trie_key, trie_value, hash_of_trie_value
-                );
-            }
-        }
-        match maybe_retrieved_trie {
-            // If we can't find the trie_key; it is missing and we'll return it
-            None => {
-                panic!("Missing trie key: {:?}", trie_key)
-            }
-            // If we could retrieve the node and it is a leaf, the search can move on
-            Some(Trie::Leaf { key, .. }) => {
-                let key_bytes = key.to_bytes()?;
-                if !key_bytes.starts_with(&path) {
-                    panic!(
-                        "Trie key {:?} belongs to a leaf with a corrupted affix. Key bytes: {:?}, Path: {:?}.",
-                        trie_key, key_bytes, path
-                    );
-                }
-            }
-            // If we hit a pointer block, queue up all of the nodes it points to
-            Some(Trie::Node { pointer_block }) => {
-                for (byte, pointer) in pointer_block.as_indexed_pointers() {
-                    let mut new_path = path.clone();
-                    new_path.push(byte);
-                    match pointer {
-                        Pointer::LeafPointer(descendant_leaf_trie_key) => {
-                            trie_keys_to_visit.push((new_path, descendant_leaf_trie_key))
-                        }
-                        Pointer::NodePointer(descendant_node_trie_key) => {
-                            trie_keys_to_visit.push((new_path, descendant_node_trie_key))
-                        }
-                    }
-                }
-            }
-            // If we hit an extension block, add its pointer to the queue
-            Some(Trie::Extension { pointer, affix }) => {
-                path.extend_from_slice(affix.as_slice());
-                trie_keys_to_visit.push((path, pointer.into_hash()))
-            }
-        }
-    }
-    Ok(())
 }
 
 struct TrieScan<K, V> {

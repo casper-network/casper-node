@@ -515,8 +515,7 @@ impl ContractRuntime {
                 async move {
                     let correlation_id = CorrelationId::new();
                     let start = Instant::now();
-                    let result =
-                        engine_state.missing_trie_keys(correlation_id, vec![trie_key], false);
+                    let result = engine_state.missing_trie_keys(correlation_id, vec![trie_key]);
                     metrics
                         .missing_trie_keys
                         .observe(start.elapsed().as_secs_f64());
@@ -624,8 +623,9 @@ impl ContractRuntime {
         result
     }
 
-    /// Retrieve trie keys for the integrity check.
-    pub(crate) fn trie_store_check(
+    /// Retrieve trie keys
+    #[cfg(test)]
+    pub(crate) fn retrieve_trie_keys(
         &self,
         trie_keys: Vec<Digest>,
     ) -> Result<Vec<Digest>, engine_state::Error> {
@@ -633,7 +633,7 @@ impl ContractRuntime {
         let start = Instant::now();
         let result = self
             .engine_state
-            .missing_trie_keys(correlation_id, trie_keys, true);
+            .missing_trie_keys(correlation_id, trie_keys);
         self.metrics
             .missing_trie_keys
             .observe(start.elapsed().as_secs_f64());

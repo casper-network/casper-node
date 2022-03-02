@@ -16,12 +16,7 @@ where
     S::Error: From<T::Error>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
-    let delete_result =
-        operations::delete::<K, V, T, S, E>(correlation_id, txn, store, root, key_to_delete)?;
-    if let DeleteResult::Deleted(new_root) = delete_result {
-        operations::check_integrity::<K, V, T, S, E>(correlation_id, txn, store, vec![new_root])?;
-    }
-    Ok(delete_result)
+    operations::delete::<K, V, T, S, E>(correlation_id, txn, store, root, key_to_delete)
 }
 
 mod partial_tries {

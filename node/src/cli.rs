@@ -30,8 +30,6 @@ use crate::{
     },
 };
 
-const RUN_INTEGRITY_CHECKS: &str = "CL_RUN_INTEGRITY_CHECKS";
-
 // We override the standard allocator to gather metrics and tune the allocator via th MALLOC_CONF
 // env var.
 #[global_allocator]
@@ -170,37 +168,24 @@ impl Cli {
                 // Note: Do not change `_pid_file` to `_`, or it will be dropped prematurely.
                 // Instantiating `pid_file` guarantees that it will be dropped _after_ any reactor,
                 // which is what we want.
-                let (_pid_file, pid_outcome_check_integrity) = match pid_file_outcome {
+                let _pid_file = match pid_file_outcome {
                     PidFileOutcome::AnotherNodeRunning(_) => {
                         anyhow::bail!("another node instance is running (pid_file is locked)");
                     }
                     PidFileOutcome::Crashed(pid_file) => {
-                        warn!("previous node instance seems to have crashed, consider running integrity checks");
-                        (pid_file, false)
+                        warn!("previous node instance seems to have crashed");
+                        pid_file
                     }
                     PidFileOutcome::ForceIntegrityChecks(pid_file) => {
-                        warn!("pid_file has non-numeric contents, running integrity checks");
-                        (pid_file, true)
+                        warn!("pid_file has non-numeric contents");
+                        pid_file
                     }
                     PidFileOutcome::Clean(pid_file) => {
                         info!("no previous crash detected");
-                        (pid_file, false)
+                        pid_file
                     }
                     PidFileOutcome::PidFileError(err) => {
                         return Err(anyhow::anyhow!(err));
-                    }
-                };
-
-                let should_check_integrity = pid_outcome_check_integrity || {
-                    match env::var(RUN_INTEGRITY_CHECKS) {
-                        Ok(_) => {
-                            warn!(
-                                "env var '{}' set, running integrity checks",
-                                RUN_INTEGRITY_CHECKS
-                            );
-                            true
-                        }
-                        Err(_) => false,
                     }
                 };
 
@@ -214,7 +199,7 @@ impl Cli {
                 let registry = Registry::new();
 
                 let mut initializer_runner = Runner::<initializer::Reactor>::with_metrics(
-                    (should_check_integrity, validator_config),
+                    validator_config,
                     &mut rng,
                     &registry,
                 )
