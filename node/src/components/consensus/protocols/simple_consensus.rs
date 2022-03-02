@@ -186,7 +186,7 @@ where
     params: Params,
     /// Identifies this instance of the protocol uniquely
     instance_id: C::InstanceId,
-    /// The timeout for a proposal
+    /// The timeout for the current round's proposal
     proposal_timeout: TimeDiff,
     /// The validators in this instantiation of the protocol
     validators: Validators<C::ValidatorId>,
