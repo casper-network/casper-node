@@ -1029,7 +1029,10 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             value,
             timestamp: proposal.timestamp,
             relative_height,
-            equivocators: vec![], // TODO
+            // Faulty validators are already reported to the era supervisor via
+            // validators_with_evidence.
+            // TODO: Is this field entirely obsoleted by accusations?
+            equivocators: vec![],
             terminal_block_data,
             proposer,
         };
