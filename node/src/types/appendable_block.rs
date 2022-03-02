@@ -89,7 +89,7 @@ impl AppendableBlock {
         if self.has_max_transfer_count() {
             return Err(AddError::TransferCount);
         }
-        if self.would_exceed_max_approvals(transfer.approvals().len()) {
+        if self.would_exceed_approval_limits(transfer.approvals().len()) {
             return Err(AddError::ApprovalCount);
         }
         self.deploy_and_transfer_set.insert(*transfer.deploy_hash());
@@ -120,7 +120,7 @@ impl AppendableBlock {
         if self.has_max_deploy_count() {
             return Err(AddError::DeployCount);
         }
-        if self.would_exceed_max_approvals(deploy.approvals().len()) {
+        if self.would_exceed_approval_limits(deploy.approvals().len()) {
             return Err(AddError::ApprovalCount);
         }
         // Only deploys count towards the size and gas limits.
@@ -171,8 +171,13 @@ impl AppendableBlock {
 
     /// Returns `true` if the number of approvals including the additional ones would exceed the
     /// maximum allowed count, i.e. this many approvals cannot be added to this block.
-    fn would_exceed_max_approvals(&self, additional_approvals: usize) -> bool {
-        self.total_approvals + additional_approvals
-            > self.deploy_config.block_max_approval_count as usize
+    fn would_exceed_approval_limits(&self, additional_approvals: usize) -> bool {
+        let remaining_approval_slots =
+            self.deploy_config.block_max_approval_count as usize - self.total_approvals;
+        let remaining_deploy_slots = self.deploy_config.block_max_transfer_count as usize
+            - self.transfers.len()
+            + self.deploy_config.block_max_deploy_count as usize
+            - self.deploys.len();
+        additional_approvals > remaining_approval_slots - remaining_deploy_slots
     }
 }
