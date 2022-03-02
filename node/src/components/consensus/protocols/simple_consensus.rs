@@ -190,6 +190,8 @@ where
     first_non_finalized_round_id: RoundId,
     /// The timeout for the current round.
     current_timeout: Timestamp,
+    /// Whether anything was recently added to the protocol state.
+    progress_detected: bool,
 }
 
 impl<C: Context + 'static> SimpleConsensus<C> {
@@ -296,6 +298,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             active_validator: None,
             weights,
             pending_proposal_round_ids: None,
+            progress_detected: false,
         });
 
         let mut outcomes = vec![];
@@ -502,6 +505,9 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             error!("invalid validator index");
             return vec![];
         };
+        if let Some(Fault::Direct(_, _)) = self.faults.get(&validator_idx) {
+            return vec![]; // Validator is already known to be faulty.
+        }
         let msg0 = Message::Signed {
             round_id,
             instance_id: self.instance_id,
@@ -522,6 +528,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             ProtocolOutcome::NewEvidence(validator_id),
         ];
         self.faults.insert(validator_idx, Fault::Direct(msg0, msg1));
+        self.progress_detected = true;
         if self.faulty_weight() > self.ftt {
             outcomes.push(ProtocolOutcome::FttExceeded);
         }
@@ -784,6 +791,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                     .round_mut(round_id)
                     .insert_proposal(proposal, signature)
                 {
+                    self.progress_detected = true;
                     // The proposal is new; send an Echo and check if it's already accepted.
                     outcomes.extend(self.check_proposal(round_id));
                     if let Some((our_idx, _)) = &self.active_validator {
@@ -818,12 +826,15 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 if self
                     .round_mut(round_id)
                     .insert_echo(hash, validator_idx, signature)
-                    && self.rounds[&round_id].outcome.quorum_echos.is_none()
-                    && self.is_quorum(self.rounds[&round_id].echos[&hash].keys().copied())
                 {
-                    // The new Echo made us cross the quorum threshold.
-                    self.round_mut(round_id).outcome.quorum_echos = Some(hash);
-                    outcomes.extend(self.check_proposal(round_id));
+                    self.progress_detected = true;
+                    if self.rounds[&round_id].outcome.quorum_echos.is_none()
+                        && self.is_quorum(self.rounds[&round_id].echos[&hash].keys().copied())
+                    {
+                        // The new Echo made us cross the quorum threshold.
+                        self.round_mut(round_id).outcome.quorum_echos = Some(hash);
+                        outcomes.extend(self.check_proposal(round_id));
+                    }
                 }
             }
             Content::Vote(vote) => {
@@ -844,31 +855,34 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 if self
                     .round_mut(round_id)
                     .insert_vote(vote, validator_idx, signature)
-                    && self.rounds[&round_id].outcome.quorum_votes.is_none()
-                    && self.is_quorum(self.rounds[&round_id].votes[&vote].keys_some())
                 {
-                    // The new Vote made us cross the quorum threshold.
-                    self.round_mut(round_id).outcome.quorum_votes = Some(vote);
-                    if vote {
-                        // This round is committed now. If there is already an accepted proposal,
-                        // it is finalized.
-                        if self.rounds[&round_id].has_accepted_proposal() {
-                            outcomes.extend(self.finalize_round(round_id));
-                        }
-                    } else {
-                        // This round is skippable now. If there wasn't already an accepted
-                        // proposal, this starts the next round.
-                        if !self.rounds[&round_id].has_accepted_proposal()
-                            && self.current_round() > round_id
-                        {
-                            let now = Timestamp::now();
-                            outcomes.push(ProtocolOutcome::ScheduleTimer(now, TIMER_ID_ROUND));
-                        }
-                        // Check whether proposal in a later round is now accepted.
-                        for future_round_id in
-                            round_id.saturating_add(1)..=*self.rounds.keys().last().unwrap_or(&0)
-                        {
-                            outcomes.extend(self.check_proposal(future_round_id));
+                    self.progress_detected = true;
+                    if self.rounds[&round_id].outcome.quorum_votes.is_none()
+                        && self.is_quorum(self.rounds[&round_id].votes[&vote].keys_some())
+                    {
+                        // The new Vote made us cross the quorum threshold.
+                        self.round_mut(round_id).outcome.quorum_votes = Some(vote);
+                        if vote {
+                            // This round is committed now. If there is already an accepted
+                            // proposal, it is finalized.
+                            if self.rounds[&round_id].has_accepted_proposal() {
+                                outcomes.extend(self.finalize_round(round_id));
+                            }
+                        } else {
+                            // This round is skippable now. If there wasn't already an accepted
+                            // proposal, this starts the next round.
+                            if !self.rounds[&round_id].has_accepted_proposal()
+                                && self.current_round() > round_id
+                            {
+                                let now = Timestamp::now();
+                                outcomes.push(ProtocolOutcome::ScheduleTimer(now, TIMER_ID_ROUND));
+                            }
+                            // Check whether proposal in a later round is now accepted.
+                            for future_round_id in round_id.saturating_add(1)
+                                ..=*self.rounds.keys().last().unwrap_or(&0)
+                            {
+                                outcomes.extend(self.check_proposal(future_round_id));
+                            }
                         }
                     }
                 }
