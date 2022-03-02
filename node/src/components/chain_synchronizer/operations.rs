@@ -527,9 +527,7 @@ async fn sync_trie_store(state_root_hash: Digest, ctx: &ChainSyncContext<'_>) ->
 ///
 /// Returns the most recent block header along with the last trusted key block information for
 /// validation.
-async fn fast_sync_to_most_recent(
-    ctx: &ChainSyncContext<'_>,
-) -> Result<(KeyBlockInfo, BlockHeader), Error> {
+async fn fast_sync(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, BlockHeader), Error> {
     info!("start - fast_sync_to_most_recent - total");
     let trusted_key_block_info = get_trusted_key_block_info(ctx).await?;
 
@@ -721,18 +719,18 @@ async fn sync_deploys_and_transfers_and_state(
     )
     .await?;
     debug!(
-        "start - sync_deploys_and_transfers_and_state - sync_trie_store - archival sync - {}",
+        "start - sync_deploys_and_transfers_and_state - sync_trie_store - sync_to_genesis - {}",
         block.hash()
     );
     let result = sync_trie_store(*block.header().state_root_hash(), ctx).await;
     debug!(
-        "finish - sync_deploys_and_transfers_and_state - sync_trie_store - archival sync - {}",
+        "finish - sync_deploys_and_transfers_and_state - sync_trie_store - sync_to_genesis - {}",
         block.hash()
     );
     result
 }
 
-/// Archival sync all the way up to the current version.
+/// Sync to genesis.
 ///
 /// Performs the following:
 ///
@@ -743,21 +741,21 @@ async fn sync_deploys_and_transfers_and_state(
 ///
 /// Returns the block header with our current version and the last trusted key block information for
 /// validation.
-async fn archival_sync(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, BlockHeader), Error> {
+async fn sync_to_genesis(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, BlockHeader), Error> {
     // Get the trusted block info. This will fail if we are trying to join with a trusted hash in
     // era 0.
-    info!("start - archival_sync - total");
-    info!("start - fetch the latest key block before the trusted block - archival sync");
+    info!("start - sync_to_genesis - total");
+    info!("start - fetch the latest key block before the trusted block - sync_to_genesis");
     let mut trusted_key_block_info = get_trusted_key_block_info(ctx).await?;
-    debug!("finish - fetch the latest key block before the trusted block - archival sync");
+    debug!("finish - fetch the latest key block before the trusted block - sync_to_genesis");
 
-    info!("start - fetch the trusted block - archival sync");
+    info!("start - fetch the trusted block - sync_to_genesis");
     let trusted_block = *fetch_and_store_block_by_hash(ctx.trusted_hash(), ctx).await?;
-    debug!("finish - fetch the trusted block - archival sync");
+    debug!("finish - fetch the trusted block - sync_to_genesis");
 
     // Sync to genesis
     let mut walkback_block = trusted_block.clone();
-    info!("start - sync to genesis - archival sync");
+    info!("start - sync to genesis - sync_to_genesis");
     loop {
         sync_deploys_and_transfers_and_state(&walkback_block, ctx).await?;
         if walkback_block.height() == 0 {
@@ -767,10 +765,10 @@ async fn archival_sync(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, Bloc
                 *fetch_and_store_block_by_hash(*walkback_block.header().parent_hash(), ctx).await?;
         }
     }
-    debug!("finish - sync to genesis - archival sync");
+    debug!("finish - sync to genesis - sync_to_genesis");
 
     // Sync forward until we are at the current version.
-    info!("start - sync forward - archival sync");
+    info!("start - sync forward - sync_to_genesis");
     let mut most_recent_block = trusted_block;
     while most_recent_block.header().protocol_version() < ctx.config.protocol_version() {
         let maybe_fetched_block_with_metadata = fetch_and_store_next::<BlockWithMetadata>(
@@ -794,8 +792,8 @@ async fn archival_sync(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, Bloc
             trusted_key_block_info = key_block_info;
         }
     }
-    debug!("finish - sync forward - archival sync");
-    debug!("finish - archival_sync - total");
+    debug!("finish - sync forward - sync_to_genesis");
+    debug!("finish - sync_to_genesis - total");
 
     Ok((trusted_key_block_info, most_recent_block.take_header()))
 }
@@ -824,10 +822,10 @@ pub(super) async fn run_chain_sync_task(
         return Ok(*trusted_block_header);
     }
 
-    let (trusted_key_block_info, most_recent_block_header) = if config.archival_sync() {
-        archival_sync(&chain_sync_context).await?
+    let (trusted_key_block_info, most_recent_block_header) = if config.sync_to_genesis() {
+        sync_to_genesis(&chain_sync_context).await?
     } else {
-        fast_sync_to_most_recent(&chain_sync_context).await?
+        fast_sync(&chain_sync_context).await?
     };
 
     let most_recent_block_header = execute_blocks(
