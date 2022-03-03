@@ -264,6 +264,8 @@ where
 
         let entry_points_unchanged = *contract.entry_points() == entry_points;
         if entry_points_unchanged && !is_major_bump {
+            // We don't need to do anything if entry points are unchanged, or there's no major
+            // version bump.
             return Ok(());
         }
 
