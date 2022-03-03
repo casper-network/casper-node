@@ -196,7 +196,7 @@ where
     /// When an era has already completed, sometimes we still need to keep
     /// it around to provide evidence for equivocation in previous eras.
     evidence_only: bool,
-    /// Proposals which have not yet had their parent finalized yet.
+    /// Proposals which have not yet had their parent accepted yet.
     proposals_waiting_for_parent:
         HashMap<RoundId, HashMap<Proposal<C>, HashSet<(RoundId, NodeId, C::Signature)>>>,
     /// Incoming blocks we can't add yet because we are waiting for validation.
