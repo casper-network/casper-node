@@ -837,7 +837,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                     outcomes.extend(self.check_proposal(round_id));
                     if let Some((our_idx, _)) = &self.active_validator {
                         if !self.rounds[&round_id].has_echoed(*our_idx) {
-                            outcomes.extend(self.gossip_message(round_id, Content::Echo(hash)));
+                            outcomes.extend(self.create_message(round_id, Content::Echo(hash)));
                         }
                     }
                 }
@@ -994,7 +994,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         // If we haven't already voted, we vote to commit and finalize the accepted proposal.
         if let Some((our_idx, _)) = &self.active_validator {
             if !self.rounds[&round_id].has_voted(*our_idx) {
-                outcomes.extend(self.gossip_message(round_id, Content::Vote(true)));
+                outcomes.extend(self.create_message(round_id, Content::Vote(true)));
             }
         }
 
@@ -1416,7 +1416,7 @@ where
                 self.round_mut(round_id);
                 if let Some((our_idx, _)) = &self.active_validator {
                     if now >= self.current_timeout && !self.rounds[&round_id].has_voted(*our_idx) {
-                        return self.gossip_message(round_id, Content::Vote(false));
+                        return self.create_message(round_id, Content::Vote(false));
                     }
                 }
                 vec![]
@@ -1487,7 +1487,7 @@ where
                     maybe_block: Some(block),
                     maybe_parent_round_id,
                 });
-                self.gossip_message(proposal_round_id, content)
+                self.create_message(proposal_round_id, content)
             } else {
                 error!("proposal already exists");
                 vec![]
