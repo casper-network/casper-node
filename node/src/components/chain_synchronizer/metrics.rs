@@ -14,18 +14,18 @@ pub(super) struct Metrics {
     /// Time in seconds of handling the upgrade.
     #[data_size(skip)]
     pub(super) chain_sync_upgrade_duration_seconds: IntGauge,
-    /// Total time in seconds of performing the archival sync.
+    /// Total time in seconds of performing the sync to genesis..
     #[data_size(skip)]
-    pub(super) chain_sync_archival_sync_total_duration_seconds: IntGauge,
+    pub(super) chain_sync_to_genesis_total_duration_seconds: IntGauge,
     /// Time in seconds to get the trusted key block.
     #[data_size(skip)]
     pub(super) chain_sync_get_trusted_key_block_info_duration_seconds: IntGauge,
-    /// Time in seconds to sync to genesis during archival sync.
+    /// Time in seconds to fetch to genesis during sync to genesis.
     #[data_size(skip)]
-    pub(super) chain_sync_sync_to_genesis_duration_seconds: IntGauge,
-    /// Time in seconds to sync forward during archival sync.
+    pub(super) chain_sync_fetch_to_genesis_duration_seconds: IntGauge,
+    /// Time in seconds to fetch forward during sync to genesis.
     #[data_size(skip)]
-    pub(super) chain_sync_sync_forward_duration_seconds: IntGauge,
+    pub(super) chain_sync_fetch_forward_duration_seconds: IntGauge,
     /// Total time in seconds of performing the fast sync.
     #[data_size(skip)]
     pub(super) chain_sync_fast_sync_total_duration_seconds: IntGauge,
@@ -68,21 +68,21 @@ impl Metrics {
             "chain_sync_upgrade_duration_seconds",
             "time in seconds of handling the upgrade",
         )?;
-        let chain_sync_archival_sync_total_duration_seconds = IntGauge::new(
-            "chain_sync_archival_sync_total_duration_seconds",
-            "total time in seconds of performing the archival sync",
+        let chain_sync_to_genesis_total_duration_seconds = IntGauge::new(
+            "chain_sync_to_genesis_total_duration_seconds",
+            "total time in seconds of performing the sync to genesis",
         )?;
         let chain_sync_get_trusted_key_block_info_duration_seconds = IntGauge::new(
             "chain_sync_get_trusted_key_block_info_duration_seconds",
             "time in seconds to get the trusted key block",
         )?;
-        let chain_sync_sync_to_genesis_duration_seconds = IntGauge::new(
-            "chain_sync_sync_to_genesis_duration_seconds",
-            "time in seconds to sync to genesis during archival sync",
+        let chain_sync_fetch_to_genesis_duration_seconds = IntGauge::new(
+            "chain_sync_fetch_to_genesis_duration_seconds",
+            "time in seconds to fetch to genesis during sync to genesis",
         )?;
-        let chain_sync_sync_forward_duration_seconds = IntGauge::new(
-            "chain_sync_sync_forward_duration_seconds",
-            "time in seconds to sync forward during archival sync",
+        let chain_sync_fetch_forward_duration_seconds = IntGauge::new(
+            "chain_sync_fetch_forward_duration_seconds",
+            "time in seconds to fetch forward during sync to genesis",
         )?;
         let chain_sync_fast_sync_total_duration_seconds = IntGauge::new(
             "chain_sync_fast_sync_total_duration_seconds",
@@ -120,15 +120,15 @@ impl Metrics {
         ))?;
         registry.register(Box::new(chain_sync_upgrade_duration_seconds.clone()))?;
         registry.register(Box::new(
-            chain_sync_archival_sync_total_duration_seconds.clone(),
+            chain_sync_to_genesis_total_duration_seconds.clone(),
         ))?;
         registry.register(Box::new(
             chain_sync_get_trusted_key_block_info_duration_seconds.clone(),
         ))?;
         registry.register(Box::new(
-            chain_sync_sync_to_genesis_duration_seconds.clone(),
+            chain_sync_fetch_to_genesis_duration_seconds.clone(),
         ))?;
-        registry.register(Box::new(chain_sync_sync_forward_duration_seconds.clone()))?;
+        registry.register(Box::new(chain_sync_fetch_forward_duration_seconds.clone()))?;
         registry.register(Box::new(
             chain_sync_fast_sync_total_duration_seconds.clone(),
         ))?;
@@ -150,10 +150,10 @@ impl Metrics {
             chain_sync_total_duration_seconds,
             chain_sync_emergency_restart_duration_seconds,
             chain_sync_upgrade_duration_seconds,
-            chain_sync_archival_sync_total_duration_seconds,
+            chain_sync_to_genesis_total_duration_seconds,
             chain_sync_get_trusted_key_block_info_duration_seconds,
-            chain_sync_sync_to_genesis_duration_seconds,
-            chain_sync_sync_forward_duration_seconds,
+            chain_sync_fetch_to_genesis_duration_seconds,
+            chain_sync_fetch_forward_duration_seconds,
             chain_sync_fast_sync_total_duration_seconds,
             chain_sync_fetch_block_headers_duration_seconds,
             chain_sync_replay_protection_duration_seconds,
