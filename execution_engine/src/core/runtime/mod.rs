@@ -1206,62 +1206,41 @@ where
             ),
         };
 
-        // Checks if the contract we're about to call is a system one.
-        let is_calling_system = self.is_system_contract(context_key)?;
-        // Does current runtime context's access rights belongs to a system account?
-        let is_system_contract =
-            self.is_system_contract(self.context.access_rights().context_key())?;
-        // If current context is a system contract, and we're calling system contract then we're
-        // under a system call mode.
-        let is_system_call = is_system_contract && is_calling_system;
-
-        let (stack, is_system_account) = {
+        let stack = {
             let mut stack = self.try_get_stack()?.clone();
-            let (call_stack_element, is_system_account) = match entry_point.entry_point_type() {
-                EntryPointType::Session => {
-                    let stored_session = CallStackElement::stored_session(
-                        self.context.account().account_hash(),
-                        contract.contract_package_hash(),
-                        contract_hash,
-                    );
-                    // We don't have system contracts with entry points of a Session type.
-                    let is_system_account = false;
 
-                    (stored_session, is_system_account)
-                }
-                EntryPointType::Contract => {
-                    // SAFETY: Runtime stack always has at least 1 element and it is a session
-                    // object.
-                    let session_call_stack_element = stack
-                        .first_frame()
-                        .expect("should have first element in the stack");
-
-                    // Determines if this call originated from a system account based on a first
-                    // element of the call stack.
-                    let is_system_account = if let CallStackElement::Session { account_hash } =
-                        session_call_stack_element
-                    {
-                        *account_hash == PublicKey::System.to_account_hash()
-                    } else {
-                        false
-                    };
-
-                    let stored_contract_frame = CallStackElement::stored_contract(
-                        contract.contract_package_hash(),
-                        contract_hash,
-                    );
-                    (stored_contract_frame, is_system_account)
-                }
+            let call_stack_element = match entry_point.entry_point_type() {
+                EntryPointType::Session => CallStackElement::stored_session(
+                    self.context.account().account_hash(),
+                    contract.contract_package_hash(),
+                    contract_hash,
+                ),
+                EntryPointType::Contract => CallStackElement::stored_contract(
+                    contract.contract_package_hash(),
+                    contract_hash,
+                ),
             };
             stack.push(call_stack_element)?;
 
-            (stack, is_system_account)
+            stack
         };
 
-        // Main purse URefs should be attenuated only when a non-system contract is executed by a
-        // non-system account to avoid possible phishing attack scenarios.
-        let should_attenuate_urefs = !is_calling_system && !is_system_call && !is_system_account;
+        // Determines if this call originated from a system account based on a first
+        // element of the call stack.
+        let is_system_account = self.context.get_caller() == PublicKey::System.to_account_hash();
+        // Does current runtime context's access rights belongs to a system account?
+        let is_caller_system_contract =
+            self.is_system_contract(self.context.access_rights().context_key())?;
+        // Checks if the contract we're about to call is a system one.
+        let is_calling_system_contract = self.is_system_contract(context_key)?;
+        // If current context is a system contract, and we're calling system contract then we're
+        // under a system call mode.
+        let should_attenuate_urefs =
+            !is_system_account && !is_caller_system_contract && !is_calling_system_contract;
+
         let context_args = if should_attenuate_urefs {
+            // Main purse URefs should be attenuated only when a non-system contract is executed by
+            // a non-system account to avoid possible phishing attack scenarios.
             utils::attenuate_uref_in_args(
                 args,
                 self.context.account().main_purse().addr(),
@@ -1275,7 +1254,7 @@ where
             let mut all_urefs = vec![];
             for arg in context_args.to_values() {
                 let urefs = utils::extract_urefs(arg)?;
-                if !is_system_call {
+                if !is_caller_system_contract || !is_calling_system_contract {
                     for uref in &urefs {
                         self.context.validate_uref(uref)?;
                     }
