@@ -244,11 +244,11 @@ impl Cli {
                 let joiner_reactor = joiner_runner.drain_into_inner().await;
                 let config = joiner_reactor.into_participating_config().await?;
 
-                let mut validator_runner =
+                let mut participating_runner =
                     Runner::<participating::Reactor>::with_metrics(config, &mut rng, &registry)
                         .await?;
 
-                match validator_runner.run(&mut rng).await {
+                match participating_runner.run(&mut rng).await {
                     ReactorExit::ProcessShouldExit(exit_code) => Ok(exit_code as i32),
                     reactor_exit => {
                         error!("validator should not exit with {:?}", reactor_exit);
