@@ -72,7 +72,7 @@ where
 }
 
 impl<C: Context> Round<C> {
-    /// Create a new [`Round`] with no proposals, echos, votes, and empty
+    /// Creates a new [`Round`] with no proposals, echos, votes, and empty
     /// round outcome.
     fn new(validator_count: usize) -> Round<C> {
         let mut votes = BTreeMap::new();
