@@ -3,17 +3,14 @@ use std::{cell::RefCell, collections::BTreeMap, fmt, rc::Rc};
 
 use num_rational::Ratio;
 use thiserror::Error;
-use tracing::warn;
 
 use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{self, ToBytes, U8_SERIALIZED_LENGTH},
-    system::{
-        auction, handle_payment, mint, standard_payment, AUCTION, HANDLE_PAYMENT, MINT,
-        STANDARD_PAYMENT,
-    },
-    Contract, ContractHash, EntryPoints, EraId, Key, ProtocolVersion, StoredValue,
+    system::SystemContractType,
+    Contract, ContractHash, EraId, Key, ProtocolVersion, StoredValue,
 };
+use tracing::warn;
 
 use crate::{
     core::{engine_state::execution_effect::ExecutionEffect, tracking_copy::TrackingCopy},
@@ -21,7 +18,7 @@ use crate::{
     storage::global_state::StateProvider,
 };
 
-/// Represents a successfuly executed upgrade.
+/// Represents a successfully executed upgrade.
 #[derive(Debug, Clone)]
 pub struct UpgradeSuccess {
     /// New state root hash generated after effects were applied.
@@ -175,6 +172,7 @@ where
     S: StateProvider,
 {
     new_protocol_version: ProtocolVersion,
+    old_protocol_version: ProtocolVersion,
     tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     max_stored_value_size: u32,
 }
@@ -186,18 +184,20 @@ where
     /// Creates new system upgrader instance.
     pub(crate) fn new(
         new_protocol_version: ProtocolVersion,
+        old_protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
         max_stored_value_size: u32,
     ) -> Self {
         SystemUpgrader {
             new_protocol_version,
+            old_protocol_version,
             tracking_copy,
             max_stored_value_size,
         }
     }
 
-    /// Bump major version for system contracts.
-    pub(crate) fn upgrade_system_contracts_major_version(
+    /// Bump major version and/or update the entry points for system contracts.
+    pub(crate) fn refresh_system_contracts(
         &self,
         correlation_id: CorrelationId,
         mint_hash: &ContractHash,
@@ -205,43 +205,45 @@ where
         handle_payment_hash: &ContractHash,
         standard_payment_hash: &ContractHash,
     ) -> Result<(), ProtocolUpgradeError> {
-        self.store_contract(correlation_id, *mint_hash, MINT, mint::mint_entry_points())?;
-        self.store_contract(
+        self.refresh_system_contract_entry_points(
+            correlation_id,
+            *mint_hash,
+            SystemContractType::Mint,
+        )?;
+        self.refresh_system_contract_entry_points(
             correlation_id,
             *auction_hash,
-            AUCTION,
-            auction::auction_entry_points(),
+            SystemContractType::Auction,
         )?;
-        self.store_contract(
+        self.refresh_system_contract_entry_points(
             correlation_id,
             *handle_payment_hash,
-            HANDLE_PAYMENT,
-            handle_payment::handle_payment_entry_points(),
+            SystemContractType::HandlePayment,
         )?;
-        self.store_contract(
+        self.refresh_system_contract_entry_points(
             correlation_id,
             *standard_payment_hash,
-            STANDARD_PAYMENT,
-            standard_payment::standard_payment_entry_points(),
+            SystemContractType::StandardPayment,
         )?;
 
         Ok(())
     }
 
-    /// Store new system contract.
-    fn store_contract(
+    /// Refresh the system contracts with an updated set of entry points,
+    /// and bump the contract version at a major version upgrade.
+    fn refresh_system_contract_entry_points(
         &self,
         correlation_id: CorrelationId,
         contract_hash: ContractHash,
-        contract_name: &str,
-        entry_points: EntryPoints,
+        system_contract_type: SystemContractType,
     ) -> Result<(), ProtocolUpgradeError> {
-        let contract_key = Key::Hash(contract_hash.value());
+        let contract_name = system_contract_type.contract_name();
+        let entry_points = system_contract_type.contract_entry_points();
 
         let mut contract = if let StoredValue::Contract(contract) = self
             .tracking_copy
             .borrow_mut()
-            .read(correlation_id, &contract_key)
+            .read(correlation_id, &Key::Hash(contract_hash.value()))
             .map_err(|_| {
                 ProtocolUpgradeError::UnableToRetrieveSystemContract(contract_name.to_string())
             })?
@@ -251,9 +253,19 @@ where
             contract
         } else {
             return Err(ProtocolUpgradeError::UnableToRetrieveSystemContract(
-                contract_name.to_string(),
+                contract_name,
             ));
         };
+
+        let is_major_bump = self
+            .old_protocol_version
+            .check_next_version(&self.new_protocol_version)
+            .is_major_version();
+
+        let entry_points_unchanged = *contract.entry_points() == entry_points;
+        if entry_points_unchanged && !is_major_bump {
+            return Ok(());
+        }
 
         let contract_package_key = Key::Hash(contract.contract_package_hash().value());
 
@@ -274,7 +286,7 @@ where
             contract_package
         } else {
             return Err(ProtocolUpgradeError::UnableToRetrieveSystemContractPackage(
-                contract_name.to_string(),
+                contract_name,
             ));
         };
 
@@ -302,9 +314,12 @@ where
         if computed_trie_leaf_size > self.max_stored_value_size as usize {
             warn!(%contract_name, serialized_length=%stored_value.serialized_length(), "wrote a system contract which is too large");
         }
-        self.tracking_copy
-            .borrow_mut()
-            .force_write(contract_hash_key, stored_value);
+
+        let _ = self.tracking_copy.borrow_mut().write(
+            contract_hash.into(),
+            stored_value,
+            self.max_stored_value_size,
+        );
 
         contract_package
             .insert_contract_version(self.new_protocol_version.value().major, contract_hash);
