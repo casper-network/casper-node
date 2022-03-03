@@ -345,16 +345,23 @@ pub struct Storage {
     /// The state storage database.
     #[data_size(skip)]
     state_store_db: Database,
-    /// A map of block height to block ID.
-    block_height_index: Arc<RwLock<BTreeMap<u64, BlockHash>>>,
-    /// A map of era ID to switch block ID.
-    switch_block_era_id_index: Arc<RwLock<BTreeMap<EraId, BlockHash>>>,
-    /// A map of deploy hashes to hashes of blocks containing them.
-    deploy_hash_index: Arc<RwLock<BTreeMap<DeployHash, BlockHash>>>,
+    /// Various indices used by the component.
+    indices: Arc<RwLock<Indices>>,
     /// Whether or not memory deduplication is enabled.
     enable_mem_deduplication: bool,
     /// Pool of loaded items.
     deploy_cache: Arc<RwLock<BlobCache<<Deploy as Item>::Id>>>,
+}
+
+/// Database indices used by the storage component.
+#[derive(Clone, DataSize, Debug, Default)]
+struct Indices {
+    /// A map of block height to block ID.
+    block_height_index: BTreeMap<u64, BlockHash>,
+    /// A map of era ID to switch block ID.
+    switch_block_era_id_index: BTreeMap<EraId, BlockHash>,
+    /// A map of deploy hashes to hashes of blocks containing them.
+    deploy_hash_index: BTreeMap<DeployHash, BlockHash>,
 }
 
 impl<REv> Component<REv> for Storage
@@ -462,9 +469,7 @@ impl Storage {
 
         // We now need to restore the block-height index. Log messages allow timing here.
         info!("reindexing block store");
-        let block_height_index = Arc::new(RwLock::new(BTreeMap::new()));
-        let switch_block_era_id_index = Arc::new(RwLock::new(BTreeMap::new()));
-        let deploy_hash_index = Arc::new(RwLock::new(BTreeMap::new()));
+        let mut indices = Indices::default();
         let mut block_txn = env.begin_rw_txn()?;
         let mut cursor = block_txn.open_rw_cursor(block_header_db)?;
 
@@ -502,8 +507,8 @@ impl Storage {
             }
 
             insert_to_block_header_indices(
-                &block_height_index,
-                &switch_block_era_id_index,
+                &mut indices.block_height_index,
+                &mut indices.switch_block_era_id_index,
                 &block_header,
             )?;
 
@@ -533,7 +538,11 @@ impl Storage {
                 Block::new_from_header_and_body(block_header.clone(), block_body.clone())?;
             }
 
-            insert_to_deploy_index(&deploy_hash_index, block_header.hash(), &block_body)?;
+            insert_to_deploy_index(
+                &mut indices.deploy_hash_index,
+                block_header.hash(),
+                &block_body,
+            )?;
         }
         info!("block store reindexing complete");
         drop(cursor);
@@ -582,9 +591,7 @@ impl Storage {
             deploy_metadata_db,
             transfer_db,
             state_store_db,
-            block_height_index,
-            switch_block_era_id_index,
-            deploy_hash_index,
+            indices: Arc::new(RwLock::new(indices)),
             enable_mem_deduplication: config.enable_mem_deduplication,
             deploy_cache: Arc::new(RwLock::new(BlobCache::new(config.mem_pool_prune_interval))),
         })
@@ -675,25 +682,43 @@ impl Storage {
             StorageRequest::GetBlockHeaderAtHeight { height, responder } => {
                 let block_header = {
                     let mut txn = self.env.begin_ro_txn()?;
-                    self.get_block_header_by_height(&mut txn, height)?
+                    let indices = self
+                        .indices
+                        .read()
+                        .expect("could not lock indices, lock poisoned");
+                    self.get_block_header_by_height(&mut txn, &indices, height)?
                 };
                 responder.respond(block_header).await
             }
             StorageRequest::GetBlockAtHeight { height, responder } => {
-                let block_by_height =
-                    { self.get_block_by_height(&mut self.env.begin_ro_txn()?, height)? };
+                let block_by_height = {
+                    let indices = self
+                        .indices
+                        .read()
+                        .expect("could not lock indices, lock poisoned");
+                    self.get_block_by_height(&mut self.env.begin_ro_txn()?, &indices, height)?
+                };
                 responder.respond(block_by_height).await
             }
             StorageRequest::GetHighestBlock { responder } => {
                 let highest_block = {
                     let mut txn = self.env.begin_ro_txn()?;
-                    self.get_highest_block(&mut txn)?
+                    let indices = self
+                        .indices
+                        .read()
+                        .expect("could not lock indices, lock poisoned");
+                    self.get_highest_block(&mut txn, &indices)?
                 };
                 responder.respond(highest_block).await
             }
             StorageRequest::GetSwitchBlockHeaderAtEraId { era_id, responder } => {
                 let switch_block_header_at_era_id = {
-                    self.get_switch_block_header_by_era_id(&mut self.env.begin_ro_txn()?, era_id)?
+                    let txn = &mut self.env.begin_ro_txn()?;
+                    let indices = self
+                        .indices
+                        .read()
+                        .expect("could not lock indices, lock poisoned");
+                    self.get_switch_block_header_by_era_id(txn, &indices, era_id)?
                 };
                 responder.respond(switch_block_header_at_era_id).await
             }
@@ -702,10 +727,13 @@ impl Storage {
                 responder,
             } => {
                 let block_header_for_deploy = {
-                    self.get_block_header_by_deploy_hash(
-                        &mut self.env.begin_ro_txn()?,
-                        deploy_hash,
-                    )?
+                    let mut txn = self.env.begin_ro_txn()?;
+                    let indices = self
+                        .indices
+                        .read()
+                        .expect("could not lock indices, lock poisoned");
+
+                    self.get_block_header_by_deploy_hash(&mut txn, &indices, deploy_hash)?
                 };
                 responder.respond(block_header_for_deploy).await
             }
@@ -823,12 +851,19 @@ impl Storage {
         &self,
     ) -> Result<Option<(Block, BlockSignatures)>, Error> {
         let mut txn = self.env.begin_ro_txn()?;
+        let indices = self
+            .indices
+            .read()
+            .expect("could not lock indices, lock poisoned");
         let maybe_highest_known_height: Option<u64> = {
-            let block_height_index = self.block_height_index.read().unwrap();
-            block_height_index.keys().last().cloned()
+            let indices = self.indices.read().expect("indices lock poisoned");
+            indices.block_height_index.keys().last().cloned()
         };
         let highest_block: Block = if let Some(block) = maybe_highest_known_height
-            .and_then(|height| self.get_block_by_height(&mut txn, height).transpose())
+            .and_then(|height| {
+                self.get_block_by_height(&mut txn, &indices, height)
+                    .transpose()
+            })
             .transpose()?
         {
             block
@@ -904,11 +939,16 @@ impl Storage {
         block_height: u64,
     ) -> Result<Option<(Block, BlockSignatures)>, Error> {
         let mut txn = self.env.begin_ro_txn()?;
-        let block: Block = if let Some(block) = self.get_block_by_height(&mut txn, block_height)? {
-            block
-        } else {
-            return Ok(None);
-        };
+        let indices = self
+            .indices
+            .read()
+            .expect("could not lock indices, lock poisoned");
+        let block: Block =
+            if let Some(block) = self.get_block_by_height(&mut txn, &indices, block_height)? {
+                block
+            } else {
+                return Ok(None);
+            };
         let hash = block.hash();
         let signatures = match self.get_finality_signatures(&mut txn, hash)? {
             Some(signatures) => signatures,
@@ -967,12 +1007,14 @@ impl Storage {
     fn get_block_header_and_metadata_by_height<Tx: Transaction>(
         &self,
         tx: &mut Tx,
+        indices: &Indices,
         height: u64,
     ) -> Result<Option<BlockHeaderWithMetadata>, Error> {
-        let block_height_index = self.block_height_index.read().unwrap();
-        let block_hash = match block_height_index.get(&height) {
-            None => return Ok(None),
-            Some(block_hash) => block_hash,
+        let block_hash = {
+            match indices.block_height_index.get(&height) {
+                None => return Ok(None),
+                Some(block_hash) => block_hash,
+            }
         };
         let block_header = match self.get_single_block_header(tx, block_hash)? {
             None => return Ok(None),
@@ -1030,13 +1072,24 @@ impl Storage {
             txn.abort();
             return Ok(false);
         }
-        insert_to_block_header_indices(
-            &self.block_height_index,
-            &self.switch_block_era_id_index,
-            block.header(),
-        )?;
-        insert_to_deploy_index(&self.deploy_hash_index, block.header().hash(), block.body())?;
-        txn.commit()?;
+
+        {
+            let mut indices = self.indices.write().expect("storage index lock poisoned");
+
+            // Deref mut, avoiding a borrow checker error further down due to partial borrows.
+            let ind: &mut Indices = &mut *indices;
+            insert_to_block_header_indices(
+                &mut ind.block_height_index,
+                &mut ind.switch_block_era_id_index,
+                block.header(),
+            )?;
+            insert_to_deploy_index(
+                &mut indices.deploy_hash_index,
+                block.header().hash(),
+                block.body(),
+            )?;
+            txn.commit()?;
+        }
         Ok(true)
     }
 
@@ -1046,8 +1099,12 @@ impl Storage {
         height: u64,
     ) -> Result<Option<BlockHeaderWithMetadata>, Error> {
         let mut txn = self.env.begin_ro_txn()?;
+        let indices = self
+            .indices
+            .read()
+            .expect("could not lock indices, lock poisoned");
         let maybe_block_header_and_finality_signatures =
-            self.get_block_header_and_metadata_by_height(&mut txn, height)?;
+            self.get_block_header_and_metadata_by_height(&mut txn, &indices, height)?;
         drop(txn);
         Ok(maybe_block_header_and_finality_signatures)
     }
@@ -1056,11 +1113,11 @@ impl Storage {
     fn get_block_header_by_height<Tx: Transaction>(
         &self,
         tx: &mut Tx,
+        indices: &Indices,
         height: u64,
     ) -> Result<Option<BlockHeader>, Error> {
-        self.block_height_index
-            .read()
-            .unwrap()
+        indices
+            .block_height_index
             .get(&height)
             .and_then(|block_hash| self.get_single_block_header(tx, block_hash).transpose())
             .transpose()
@@ -1068,23 +1125,37 @@ impl Storage {
 
     /// Retrieves single block by height by looking it up in the index and returning it.
     pub fn read_block_by_height(&self, height: u64) -> Result<Option<Block>, Error> {
-        self.get_block_by_height(&mut self.env.begin_ro_txn()?, height)
+        let indices = self
+            .indices
+            .read()
+            .expect("could not lock indices, lock poisoned");
+        self.get_block_by_height(&mut self.env.begin_ro_txn()?, &indices, height)
     }
 
     /// Gets the highest block.
     pub fn read_highest_block(&self) -> Result<Option<Block>, Error> {
-        self.get_highest_block(&mut self.env.begin_ro_txn()?)
+        let indices = self
+            .indices
+            .read()
+            .expect("could not lock indices, lock poisoned");
+        self.get_highest_block(&mut self.env.begin_ro_txn()?, &indices)
     }
 
     /// Gets the header of the highest block.
     pub fn read_highest_block_header(&self) -> Result<Option<BlockHeader>, Error> {
         let txn = &mut self.env.begin_ro_txn()?;
-        self.block_height_index
+        let indices = self
+            .indices
             .read()
-            .unwrap()
+            .expect("could not lock indices, lock poisoned");
+        indices
+            .block_height_index
             .keys()
             .last()
-            .and_then(|&height| self.get_block_header_by_height(txn, height).transpose())
+            .and_then(|&height| {
+                self.get_block_header_by_height(txn, &indices, height)
+                    .transpose()
+            })
             .transpose()
     }
 
@@ -1092,11 +1163,11 @@ impl Storage {
     fn get_block_by_height<Tx: Transaction>(
         &self,
         tx: &mut Tx,
+        indices: &Indices,
         height: u64,
     ) -> Result<Option<Block>, Error> {
-        self.block_height_index
-            .read()
-            .unwrap()
+        indices
+            .block_height_index
             .get(&height)
             .and_then(|block_hash| self.get_single_block(tx, block_hash).transpose())
             .transpose()
@@ -1107,12 +1178,12 @@ impl Storage {
     fn get_switch_block_header_by_era_id<Tx: Transaction>(
         &self,
         tx: &mut Tx,
+        indices: &Indices,
         era_id: EraId,
     ) -> Result<Option<BlockHeader>, Error> {
-        debug!(switch_block_era_id_index = ?self.switch_block_era_id_index);
-        self.switch_block_era_id_index
-            .read()
-            .unwrap()
+        debug!(switch_block_era_id_index = ?indices.switch_block_era_id_index);
+        indices
+            .switch_block_era_id_index
             .get(&era_id)
             .and_then(|block_hash| self.get_single_block_header(tx, block_hash).transpose())
             .transpose()
@@ -1123,11 +1194,11 @@ impl Storage {
     fn get_block_header_by_deploy_hash<Tx: Transaction>(
         &self,
         tx: &mut Tx,
+        indices: &Indices,
         deploy_hash: DeployHash,
     ) -> Result<Option<BlockHeader>, Error> {
-        self.deploy_hash_index
-            .read()
-            .unwrap()
+        indices
+            .deploy_hash_index
             .get(&deploy_hash)
             .and_then(|block_hash| self.get_single_block_header(tx, block_hash).transpose())
             .transpose()
@@ -1135,13 +1206,16 @@ impl Storage {
 
     /// Retrieves the highest block from the storage, if one exists.
     /// May return an LMDB error.
-    fn get_highest_block<Tx: Transaction>(&self, txn: &mut Tx) -> Result<Option<Block>, Error> {
-        self.block_height_index
-            .read()
-            .unwrap()
+    fn get_highest_block<Tx: Transaction>(
+        &self,
+        txn: &mut Tx,
+        indices: &Indices,
+    ) -> Result<Option<Block>, Error> {
+        indices
+            .block_height_index
             .keys()
             .last()
-            .and_then(|&height| self.get_block_by_height(txn, height).transpose())
+            .and_then(|&height| self.get_block_by_height(txn, indices, height).transpose())
             .transpose()
     }
 
@@ -1150,12 +1224,13 @@ impl Storage {
     fn get_blocks_while<F, Tx: Transaction>(
         &self,
         txn: &mut Tx,
+        indices: &Indices,
         predicate: F,
     ) -> Result<Vec<Block>, Error>
     where
         F: Fn(&Block) -> bool,
     {
-        let mut next_block = self.get_highest_block(txn)?;
+        let mut next_block = self.get_highest_block(txn, indices)?;
         let mut blocks = Vec::new();
         loop {
             match next_block {
@@ -1179,10 +1254,14 @@ impl Storage {
         ttl: TimeDiff,
     ) -> Result<Vec<(DeployHash, DeployHeader)>, Error> {
         let mut txn = self.env.begin_ro_txn()?;
+        let indices = self
+            .indices
+            .read()
+            .expect("could not lock indices, lock poisoned");
         // We're interested in deploys whose TTL hasn't expired yet.
         let ttl_expired = |block: &Block| block.timestamp().elapsed() < ttl;
         let mut deploys = Vec::new();
-        for block in self.get_blocks_while(&mut txn, ttl_expired)? {
+        for block in self.get_blocks_while(&mut txn, &indices, ttl_expired)? {
             for deploy_hash in block
                 .body()
                 .deploy_hashes()
@@ -1450,11 +1529,11 @@ impl Storage {
     fn get_switch_block_by_era_id<Tx: Transaction>(
         &self,
         tx: &mut Tx,
+        indices: &Indices,
         era_id: EraId,
     ) -> Result<Option<Block>, Error> {
-        self.switch_block_era_id_index
-            .read()
-            .unwrap()
+        indices
+            .switch_block_era_id_index
             .get(&era_id)
             .and_then(|block_hash| self.get_single_block(tx, block_hash).transpose())
             .transpose()
@@ -1465,16 +1544,12 @@ impl Storage {
 ///
 /// If a duplicate entry is encountered, neither index is updated and an error is returned.
 fn insert_to_block_header_indices(
-    block_height_index: &Arc<RwLock<BTreeMap<u64, BlockHash>>>,
-    switch_block_era_id_index: &Arc<RwLock<BTreeMap<EraId, BlockHash>>>,
+    block_height_index: &mut BTreeMap<u64, BlockHash>,
+    switch_block_era_id_index: &mut BTreeMap<EraId, BlockHash>,
     block_header: &BlockHeader,
 ) -> Result<(), Error> {
     let block_hash = block_header.hash();
-    if let Some(first) = block_height_index
-        .read()
-        .unwrap()
-        .get(&block_header.height())
-    {
+    if let Some(first) = block_height_index.get(&block_header.height()) {
         if *first != block_hash {
             return Err(Error::DuplicateBlockIndex {
                 height: block_header.height(),
@@ -1485,11 +1560,7 @@ fn insert_to_block_header_indices(
     }
 
     if block_header.is_switch_block() {
-        match switch_block_era_id_index
-            .write()
-            .unwrap()
-            .entry(block_header.era_id())
-        {
+        match switch_block_era_id_index.entry(block_header.era_id()) {
             Entry::Vacant(entry) => {
                 let _ = entry.insert(block_hash);
             }
@@ -1505,10 +1576,7 @@ fn insert_to_block_header_indices(
         }
     }
 
-    let _ = block_height_index
-        .write()
-        .unwrap()
-        .insert(block_header.height(), block_hash);
+    let _ = block_height_index.insert(block_header.height(), block_hash);
     Ok(())
 }
 
@@ -1516,7 +1584,7 @@ fn insert_to_block_header_indices(
 ///
 /// If a duplicate entry is encountered, index is not updated and an error is returned.
 fn insert_to_deploy_index(
-    deploy_hash_index: &Arc<RwLock<BTreeMap<DeployHash, BlockHash>>>,
+    deploy_hash_index: &mut BTreeMap<DeployHash, BlockHash>,
     block_hash: BlockHash,
     block_body: &BlockBody,
 ) -> Result<(), Error> {
@@ -1526,15 +1594,13 @@ fn insert_to_deploy_index(
         .chain(block_body.transfer_hashes().iter())
         .find(|hash| {
             deploy_hash_index
-                .read()
-                .unwrap()
                 .get(hash)
                 .map_or(false, |old_block_hash| *old_block_hash != block_hash)
         })
     {
         return Err(Error::DuplicateDeployIndex {
             deploy_hash: *hash,
-            first: deploy_hash_index.read().unwrap()[hash],
+            first: deploy_hash_index[hash],
             second: block_hash,
         });
     }
@@ -1544,7 +1610,7 @@ fn insert_to_deploy_index(
         .iter()
         .chain(block_body.transfer_hashes().iter())
     {
-        deploy_hash_index.write().unwrap().insert(*hash, block_hash);
+        deploy_hash_index.insert(*hash, block_hash);
     }
 
     Ok(())
@@ -1752,9 +1818,14 @@ impl Storage {
             .env
             .begin_ro_txn()
             .expect("Could not start read only transaction for lmdb");
+        let indices = self
+            .indices
+            .read()
+            .expect("could not lock indices, lock poisoned");
         let switch_block = self
             .get_switch_block_by_era_id(
                 &mut read_only_lmdb_transaction,
+                &indices,
                 EraId::from(switch_block_era_num),
             )
             .expect("LMDB panicked trying to get switch block");
