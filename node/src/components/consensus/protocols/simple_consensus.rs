@@ -489,9 +489,10 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             .unwrap_or(RoundId::MAX)
     }
 
-    /// If we are an active validator, we gossip a message to the network, otherwise we log an
-    /// error and do nothing.
-    fn gossip_message(&mut self, round_id: RoundId, content: Content<C>) -> ProtocolOutcomes<C> {
+    /// If we are an active validator, we create and process a consensus message
+    /// and gossip it to the network. This function should never be called on a
+    /// non-active validator, as it logs at error level if you do so.
+    fn create_message(&mut self, round_id: RoundId, content: Content<C>) -> ProtocolOutcomes<C> {
         let (validator_idx, secret_key) =
             if let Some((validator_idx, secret_key)) = &self.active_validator {
                 (*validator_idx, secret_key)
@@ -565,7 +566,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         }
         // Remove all Votes and Echos from the faulty validator: They count towards every quorum now
         // so nobody has to store their messages.
-        // TODO(no-merge) where do we count them towards everything?
+        // TODO make sure we recompute all quorums, explicitly or implicitly
         for round in self.rounds.values_mut() {
             round.votes.get_mut(&false).unwrap()[validator_idx] = None;
             round.votes.get_mut(&true).unwrap()[validator_idx] = None;
@@ -1224,7 +1225,8 @@ impl<C: Context> Proposal<C> {
 
 /// The content of a message in the main protocol, as opposed to the
 /// sync messages, which are somewhat decoupled from the rest of the
-/// protocol.
+/// protocol. This message, along with the instance and round ID,
+/// are what are signed by the active validators.
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
