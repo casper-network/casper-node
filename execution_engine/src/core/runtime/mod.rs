@@ -1225,16 +1225,18 @@ where
             stack
         };
 
-        // Determines if this call originated from a system account based on a first
+        // Determines if this call originated from the system account based on a first
         // element of the call stack.
         let is_system_account = self.context.get_caller() == PublicKey::System.to_account_hash();
-        // Does current runtime context's access rights belongs to a system account?
+        // Is the immediate caller a system contract, such as when the auction calls the mint.
         let is_caller_system_contract =
             self.is_system_contract(self.context.access_rights().context_key())?;
-        // Checks if the contract we're about to call is a system one.
+        // Checks if the contract we're about to call is a system contract.
         let is_calling_system_contract = self.is_system_contract(context_key)?;
-        // If current context is a system contract, and we're calling system contract then we're
-        // under a system call mode.
+        // uref attenuation is necessary in the following circumstances:
+        //   the originating account (aka the caller) is not the system account and
+        //   the immediate caller is either a normal account or a normal contract and
+        //   the target contract about to be called is a normal contract
         let should_attenuate_urefs =
             !is_system_account && !is_caller_system_contract && !is_calling_system_contract;
 
