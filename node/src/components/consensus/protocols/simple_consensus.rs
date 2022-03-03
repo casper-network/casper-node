@@ -1134,9 +1134,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         outcomes
     }
 
-    /// We can skip a round if we haven't created it yet, or if there is a quorum for
-    /// false.
-    /// TODO(no-merge) if we haven't created it yet?
+    /// We can skip a round if there is a quorum for false.
     fn is_skippable_round(&self, round_id: RoundId) -> bool {
         self.rounds.get(&round_id).map_or(false, |skipped_round| {
             skipped_round.outcome.quorum_votes == Some(false)
