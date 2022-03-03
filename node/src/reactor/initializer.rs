@@ -8,7 +8,7 @@ use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::Serialize;
 use thiserror::Error;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use casper_execution_engine::core::engine_state;
 
@@ -55,10 +55,12 @@ pub(crate) enum Event {
     ControlAnnouncement(ControlAnnouncement),
 
     /// Chainspec loader announcement.
-    ChainspecLoaderAnnouncement,
+    #[from]
+    ChainspecLoaderAnnouncement(#[serde(skip_serializing)] ChainspecLoaderAnnouncement),
 
     /// Contract runtime announcement.
-    ContractRuntimeAnnouncement,
+    #[from]
+    ContractRuntimeAnnouncement(#[serde(skip_serializing)] ContractRuntimeAnnouncement),
 }
 
 impl From<ContractRuntimeRequest> for Event {
@@ -83,8 +85,8 @@ impl ReactorEvent for Event {
             Event::ContractRuntime(_) => "ContractRuntime",
             Event::StateStoreRequest(_) => "StateStoreRequest",
             Event::ControlAnnouncement(_) => "ControlAnnouncement",
-            Event::ChainspecLoaderAnnouncement => "ChainspecLoaderAnnouncement",
-            Event::ContractRuntimeAnnouncement => "ContractRuntimeAnnouncement",
+            Event::ChainspecLoaderAnnouncement(_) => "ChainspecLoaderAnnouncement",
+            Event::ContractRuntimeAnnouncement(_) => "ContractRuntimeAnnouncement",
         }
     }
 }
@@ -92,20 +94,6 @@ impl ReactorEvent for Event {
 impl From<StorageRequest> for Event {
     fn from(request: StorageRequest) -> Self {
         Event::Storage(storage::Event::StorageRequest(request))
-    }
-}
-
-impl From<ChainspecLoaderAnnouncement> for Event {
-    fn from(announcement: ChainspecLoaderAnnouncement) -> Self {
-        info!(%announcement, "chainspec announcements received by initializer, ignoring");
-        Event::ChainspecLoaderAnnouncement
-    }
-}
-
-impl From<ContractRuntimeAnnouncement> for Event {
-    fn from(announcement: ContractRuntimeAnnouncement) -> Self {
-        error!(%announcement, "contract runtime announcement received by initializer, possibly a bug");
-        Event::ContractRuntimeAnnouncement
     }
 }
 
@@ -119,11 +107,11 @@ impl Display for Event {
                 write!(formatter, "state store request: {}", request)
             }
             Event::ControlAnnouncement(ctrl_ann) => write!(formatter, "control: {}", ctrl_ann),
-            Event::ChainspecLoaderAnnouncement => {
-                write!(formatter, "chainspec announcement")
+            Event::ChainspecLoaderAnnouncement(ann) => {
+                write!(formatter, "chainspec loader announcement: {}", ann)
             }
-            Event::ContractRuntimeAnnouncement => {
-                write!(formatter, "contract runtime announcement")
+            Event::ContractRuntimeAnnouncement(ann) => {
+                write!(formatter, "contract runtime announcement: {}", ann)
             }
         }
     }
@@ -300,13 +288,17 @@ impl reactor::Reactor for Reactor {
                 error!(%ann, "control announcement dispatched in initializer");
                 Effects::new()
             }
-            Event::ChainspecLoaderAnnouncement => {
-                // We don't dispatch ChainspecLoaderAnnouncement as it is ignored in the initializer
+            Event::ChainspecLoaderAnnouncement(ann) => {
+                // We don't dispatch ChainspecLoaderAnnouncement as it is ignored in the
+                // initializer. This indicates a situation that is not harmful but
+                // theoretically shouldn't happen, hence the warning.
+                warn!(%ann, "chainspec loader announcement received by initializer, ignoring");
                 Effects::new()
             }
-            Event::ContractRuntimeAnnouncement => {
-                // We don't dispatch ContractRuntimeAnnouncement as it shouldn't actually arrive to
-                // the initializer
+            Event::ContractRuntimeAnnouncement(ann) => {
+                // We don't dispatch ContractRuntimeAnnouncement as it shouldn't actually arrive at
+                // the initializer. This indicates a possible bug.
+                error!(%ann, "contract runtime announcement received by initializer, possibly a bug");
                 Effects::new()
             }
         }
