@@ -1,25 +1,16 @@
-use std::{collections::BTreeMap, convert::TryInto};
+use std::collections::BTreeMap;
 
 use casper_engine_test_support::{LmdbWasmTestBuilder, UpgradeRequestBuilder};
 use casper_execution_engine::core::engine_state::SystemContractRegistry;
 use casper_hashing::Digest;
 use casper_types::{
-    system::mint, AccessRights, CLValue, ContractHash, EraId, Key, ProtocolVersion, StoredValue,
-    URef,
+    system::{self, mint},
+    AccessRights, CLValue, EraId, Key, ProtocolVersion, StoredValue, URef,
 };
-use once_cell::sync::Lazy;
 
 use crate::lmdb_fixture;
 
 const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
-
-static MINT_CONTRACT_HASH: Lazy<ContractHash> = Lazy::new(|| {
-    // Taken out of the lmdb RELEASE_1_3_1 fixture
-    let bytes =
-        base16::decode("ecfb68b4b6a9fc33aad5ba41961bb8b5078dc0bc97d6135104da5b1e1b212350").unwrap();
-    let hash_bytes: [u8; 32] = bytes.as_slice().try_into().expect("should convert");
-    ContractHash::new(hash_bytes)
-});
 
 #[ignore]
 #[test]
@@ -27,10 +18,27 @@ fn should_update_contract_metadata_at_upgrade_with_minor_bump() {
     let (mut builder, lmdb_fixture_state, _temp_dir) =
         lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_3_1);
 
+    let mint_contract_hash = {
+        let key = URef::new([0u8; 32], AccessRights::all());
+        let stored_value: StoredValue = builder
+            .query(None, key.into(), &[])
+            .expect("should query system contract registry");
+        let cl_value = stored_value
+            .as_cl_value()
+            .cloned()
+            .expect("should have cl value");
+        let registry: SystemContractRegistry =
+            cl_value.into_t().expect("should have system registry");
+        registry
+            .get(system::MINT)
+            .cloned()
+            .expect("should contract hash")
+    };
+
     let old_protocol_version = lmdb_fixture_state.genesis_protocol_version();
 
     let old_contract = builder
-        .get_contract(*MINT_CONTRACT_HASH)
+        .get_contract(mint_contract_hash)
         .expect("should have mint contract");
     assert_eq!(old_contract.protocol_version(), old_protocol_version);
 
@@ -57,7 +65,7 @@ fn should_update_contract_metadata_at_upgrade_with_minor_bump() {
         .expect_upgrade_success();
 
     let new_contract = builder
-        .get_contract(*MINT_CONTRACT_HASH)
+        .get_contract(mint_contract_hash)
         .expect("should have mint contract");
 
     assert_eq!(
@@ -83,10 +91,27 @@ fn should_update_contract_metadata_at_upgrade_with_patch_bump() {
     let (mut builder, lmdb_fixture_state, _temp_dir) =
         lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_3_1);
 
+    let mint_contract_hash = {
+        let key = URef::new([0u8; 32], AccessRights::all());
+        let stored_value: StoredValue = builder
+            .query(None, key.into(), &[])
+            .expect("should query system contract registry");
+        let cl_value = stored_value
+            .as_cl_value()
+            .cloned()
+            .expect("should have cl value");
+        let registry: SystemContractRegistry =
+            cl_value.into_t().expect("should have system registry");
+        registry
+            .get(system::MINT)
+            .cloned()
+            .expect("should contract hash")
+    };
+
     let old_protocol_version = lmdb_fixture_state.genesis_protocol_version();
 
     let old_contract = builder
-        .get_contract(*MINT_CONTRACT_HASH)
+        .get_contract(mint_contract_hash)
         .expect("should have mint contract");
     assert_eq!(old_contract.protocol_version(), old_protocol_version);
 
@@ -113,7 +138,7 @@ fn should_update_contract_metadata_at_upgrade_with_patch_bump() {
         .expect_upgrade_success();
 
     let new_contract = builder
-        .get_contract(*MINT_CONTRACT_HASH)
+        .get_contract(mint_contract_hash)
         .expect("should have mint contract");
 
     assert_eq!(
