@@ -126,4 +126,12 @@ pub(crate) enum Error {
         #[serde(skip_serializing)]
         JoinError,
     ),
+
+    /// Metrics-related error
+    #[error("prometheus (metrics) error: {0}")]
+    Metrics(
+        #[from]
+        #[serde(skip_serializing)]
+        prometheus::Error,
+    ),
 }
