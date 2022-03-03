@@ -1191,6 +1191,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     }
 
     /// Retrieves a mutable reference to the round.
+    /// If the round doesn't exist yet, it creates an empty one.
     fn round_mut(&mut self, round_id: RoundId) -> &mut Round<C> {
         match self.rounds.entry(round_id) {
             btree_map::Entry::Occupied(entry) => entry.into_mut(),
