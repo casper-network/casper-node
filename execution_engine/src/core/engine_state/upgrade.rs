@@ -3,6 +3,7 @@ use std::{cell::RefCell, collections::BTreeMap, fmt, rc::Rc};
 
 use num_rational::Ratio;
 use thiserror::Error;
+use tracing::warn;
 
 use casper_hashing::Digest;
 use casper_types::{
@@ -10,7 +11,6 @@ use casper_types::{
     system::SystemContractType,
     Contract, ContractHash, EraId, Key, ProtocolVersion, StoredValue,
 };
-use tracing::warn;
 
 use crate::{
     core::{engine_state::execution_effect::ExecutionEffect, tracking_copy::TrackingCopy},
