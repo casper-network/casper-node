@@ -157,11 +157,7 @@ impl<C: Context> Round<C> {
 }
 
 impl<C: Context> Round<C> {
-    /// Check if the round contains this message already. In the case of a proposal, we
-    /// check if we've received it before. In the case of an echo, we check if the echo
-    /// map for this proposal contains the index of the `validator_idx` passed as an argument.
-    /// In the case of a vote, we check if this validator has voted in that way for this
-    /// proposal before.
+    /// Check if the round has already received this message.
     fn contains(&self, content: &Content<C>, validator_idx: ValidatorIndex) -> bool {
         match content {
             Content::Proposal(proposal) => self.proposals.contains_key(&proposal.hash()),
@@ -269,7 +265,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             "initializing SimpleConsensus instance",
         );
 
-        // TODO: SimpleConsensus Params
         let params = Params::new(
             seed,
             BLOCK_REWARD,
