@@ -48,6 +48,7 @@ fn main() -> anyhow::Result<()> {
             .worker_threads(num_cpus)
             .max_blocking_threads(MAX_THREAD_COUNT - num_cpus)
             .build()
+            //? Safe ??
             .unwrap();
 
         panic::set_hook(Box::new(panic_hook));

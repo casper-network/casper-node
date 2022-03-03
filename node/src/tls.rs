@@ -54,6 +54,7 @@ use rand::{
 };
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use thiserror::Error;
+use tracing::error;
 
 use crate::utils::read_file;
 
@@ -506,7 +507,12 @@ pub(crate) fn validate_cert(cert: X509) -> Result<TlsCert, ValidationError> {
     }
 
     // We now have a valid certificate and can extract the fingerprint.
-    assert_eq!(Sha512::NID, SIGNATURE_DIGEST);
+    //? Leave as is?
+    assert_eq!(
+        Sha512::NID,
+        SIGNATURE_DIGEST,
+        "Sha512 NID should be same as SIGNATURE_DIGEST" //? Added error msg?
+    );
     let digest = &cert
         .digest(Sha512::create_message_digest())
         .map_err(ValidationError::InvalidFingerprint)?;
@@ -665,16 +671,23 @@ fn generate_cert(private_key: &PKey<Private>, cn: &str) -> SslResult<X509> {
 
     // Set the public key and sign.
     builder.set_pubkey(private_key.as_ref())?;
-    assert_eq!(Sha512::NID, SIGNATURE_DIGEST);
+    //? Leave as is?
+    assert_eq!(
+        Sha512::NID,
+        SIGNATURE_DIGEST,
+        "Sha512 NID must be same as SIGNATURE_DIGEST" //? Better error msg?
+    );
     builder.sign(private_key.as_ref(), Sha512::create_message_digest())?;
 
     let cert = builder.build();
 
     // Cheap sanity check.
-    assert!(
+    //? assert!-->debug_assert!+error!
+    debug_assert!(
         validate_cert(cert.clone()).is_ok(),
         "newly generated cert does not pass our own validity check"
     );
+    error!("newly generated cert does not pass our own validity check");
 
     Ok(cert)
 }

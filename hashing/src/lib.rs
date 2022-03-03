@@ -90,6 +90,7 @@ impl Digest {
     /// Hashes a pair of byte slices.
     pub fn hash_pair<T: AsRef<[u8]>, U: AsRef<[u8]>>(data1: T, data2: U) -> Digest {
         let mut result = [0; Digest::LENGTH];
+        // NOTE: Safe to unwrap here because our digest length is constant and valid
         let mut hasher = VarBlake2b::new(Digest::LENGTH).unwrap();
         hasher.update(data1);
         hasher.update(data2);
@@ -118,6 +119,7 @@ impl Digest {
         let mut result = [0; Digest::LENGTH];
         let mut hasher = PAIR_PREFIX_HASHER
             .get_or_init(|| {
+                // NOTE: Safe to unwrap here because our digest length is constant and valid
                 let mut hasher = VarBlake2b::new(Digest::LENGTH).unwrap();
                 hasher.update(&[0u8; ChunkWithProof::CHUNK_SIZE_BYTES]);
                 hasher

@@ -88,7 +88,7 @@ fn generate_system_contract_registry_using_protocol_data(data_dir: &Path) {
             error, serialized_protocol_data
         )
     });
-    assert!(remainder.is_empty());
+    assert!(remainder.is_empty(), "remainder should be empty"); //? Added error msg
 
     let mut registry = SystemContractRegistry::new();
     registry.insert(MINT.to_string(), mint_hash);

@@ -24,5 +24,6 @@ impl Default for Config {
 }
 
 fn default_deploy_delay() -> TimeDiff {
+    // Safe to unwrap
     "1min".parse().unwrap()
 }

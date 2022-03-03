@@ -341,7 +341,9 @@ impl<C: Context + 'static> Synchronizer<C> {
             .into_iter()
             .flat_map(|dep| {
                 self.requests_sent.remove(&dep);
-                self.vertices_awaiting_deps.remove(&dep).unwrap()
+                self.vertices_awaiting_deps
+                    .remove(&dep)
+                    .expect("vertices_awaiting_deps should not be empty") //?
             })
             .collect_vec();
         self.schedule_add_vertices(pvs)

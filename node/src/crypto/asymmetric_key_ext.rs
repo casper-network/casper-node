@@ -30,11 +30,13 @@ const EC_PUBLIC_KEY_OBJECT_IDENTIFIER: [u8; 7] = [42, 134, 72, 206, 61, 2, 1];
 
 static ED25519_SECRET_KEY: Lazy<SecretKey> = Lazy::new(|| {
     let bytes = [15u8; SecretKey::ED25519_LENGTH];
+    //? Safe to unwrap as ED25519_LENGTH is correct length
     SecretKey::ed25519_from_bytes(bytes).unwrap()
 });
 
 static ED25519_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
     let bytes = [15u8; SecretKey::ED25519_LENGTH];
+    //? Safe to unwrap as ED25519_LENGTH is correct length
     let secret_key = SecretKey::ed25519_from_bytes(bytes).unwrap();
     PublicKey::from(&secret_key)
 });

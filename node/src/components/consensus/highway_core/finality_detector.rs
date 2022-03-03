@@ -4,7 +4,7 @@ mod rewards;
 use std::iter;
 
 use datasize::DataSize;
-use tracing::{trace, warn};
+use tracing::{error, trace, warn};
 
 use crate::{
     components::consensus::{
@@ -41,7 +41,10 @@ where
 
 impl<C: Context> FinalityDetector<C> {
     pub(crate) fn new(ftt: Weight) -> Self {
-        assert!(ftt > Weight(0), "finality threshold must not be zero");
+        //? assert!-->debug_assert!+error!
+        debug_assert!(ftt > Weight(0), "finality threshold must not be zero");
+        error!("finality threshold must not be zero");
+
         FinalityDetector {
             last_finalized: None,
             ftt,

@@ -1,5 +1,6 @@
 use datasize::DataSize;
 use serde::Serialize;
+use tracing::error;
 
 use super::{round_len, TimeDiff, Timestamp};
 
@@ -50,10 +51,13 @@ impl Params {
         end_timestamp: Timestamp,
         endorsement_evidence_limit: u64,
     ) -> Params {
-        assert!(
+        //? assert!-->debug_assert!+error!
+        debug_assert!(
             reduced_block_reward <= block_reward,
             "reduced block reward must not be greater than the reward for a finalized block"
         );
+        error!("reduced block reward must not be greater than the reward for a finalized block");
+
         Params {
             seed,
             block_reward,

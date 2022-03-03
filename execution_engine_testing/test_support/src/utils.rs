@@ -31,6 +31,7 @@ static RUST_WORKSPACE_PATH: Lazy<PathBuf> = Lazy::new(|| {
         .parent()
         .and_then(Path::parent)
         .expect("CARGO_MANIFEST_DIR should have parent");
+    //? Keeping assert here as it's in test_support
     assert!(
         path.exists(),
         "Workspace path {} does not exists",
@@ -45,6 +46,7 @@ static RUST_WORKSPACE_WASM_PATH: Lazy<PathBuf> = Lazy::new(|| {
         .join("target")
         .join("wasm32-unknown-unknown")
         .join("release");
+    //? Keeping assert here as it's in test_support
     assert!(
         path.exists() || RUST_TOOL_WASM_PATH.exists(),
         "Rust Wasm path {} does not exists",
@@ -75,7 +77,7 @@ static MAYBE_CARGO_TARGET_DIR_WASM_PATH: Lazy<Option<PathBuf>> = Lazy::new(|| {
 #[cfg(feature = "use-as-wasm")]
 static ASSEMBLY_SCRIPT_WORKSPACE_WASM_PATH: Lazy<PathBuf> = Lazy::new(|| {
     let path = RUST_WORKSPACE_PATH.join("target_as");
-
+    //? Keeping assert here as it's in test_support
     assert!(
         path.exists(),
         "AssemblyScript WASM path {} does not exist.",
@@ -198,6 +200,7 @@ pub fn get_success_result(response: &[Rc<ExecutionResult>]) -> &ExecutionResult 
 /// Panics if result.as_error() is `None`.
 pub fn get_precondition_failure(response: &[Rc<ExecutionResult>]) -> &Error {
     let result = response.get(0).expect("should have a result");
+    //? Keeping assert here as it's in test_support
     assert!(
         result.has_precondition_failure(),
         "should be a precondition failure"

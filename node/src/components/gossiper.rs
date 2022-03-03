@@ -79,6 +79,7 @@ pub(crate) fn get_deploy_from_storage<T: Item + 'static, REv: ReactorEventT<T>>(
             let result = if results.len() == 1 {
                 results
                     .pop()
+                    // Safe to unwrap as results have length 1
                     .unwrap()
                     .ok_or_else(|| String::from("failed to get deploy from storage"))
             } else {

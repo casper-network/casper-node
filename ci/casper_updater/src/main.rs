@@ -215,7 +215,7 @@ fn get_args() -> Args {
         .value_of(ACTIVATION_POINT_ARG_NAME)
         .map(|value| {
             // Safe to unwrap, as the arg is validated as being able to be parsed as a `u64`.
-            value.parse().unwrap()
+            value.parse().unwrap() //? The check is done just above on line 175
         });
 
     let dry_run = arg_matches.is_present(DRY_RUN_ARG_NAME);
@@ -279,6 +279,7 @@ fn main() {
             .current_dir(root_dir())
             .status()
             .expect("Failed to execute 'cargo generate-lockfile'");
+        //?Make into debug_assert! ?
         assert!(status.success(), "Failed to update Cargo.lock");
     }
 }

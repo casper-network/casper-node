@@ -259,7 +259,7 @@ impl EraSupervisor {
 
     fn era_seed(booking_block_hash: BlockHash, key_block_seed: Digest) -> u64 {
         let result = Digest::hash_pair(booking_block_hash, key_block_seed).value();
-        u64::from_le_bytes(result[0..std::mem::size_of::<u64>()].try_into().unwrap())
+        u64::from_le_bytes(result[0..std::mem::size_of::<u64>()].try_into().unwrap()) //? why try_into() here???
     }
 
     /// Returns an iterator over era IDs of `num_eras` past eras, plus the provided one.

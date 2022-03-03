@@ -107,7 +107,7 @@ impl InMemoryGlobalState {
                         current_root = root_hash;
                     }
                     WriteResult::AlreadyExists => (),
-                    WriteResult::RootNotFound => panic!("InMemoryGlobalState has invalid root"),
+                    WriteResult::RootNotFound => panic!("InMemoryGlobalState has invalid root"), //? Keep as is?
                 }
             }
             txn.commit()?;
@@ -145,7 +145,7 @@ impl StateReader<Key, StoredValue> for InMemoryGlobalStateView {
         )? {
             ReadResult::Found(value) => Some(value),
             ReadResult::NotFound => None,
-            ReadResult::RootNotFound => panic!("InMemoryGlobalState has invalid root"),
+            ReadResult::RootNotFound => panic!("InMemoryGlobalState has invalid root"),//? Keep as is?
         };
         txn.commit()?;
         Ok(ret)
@@ -172,7 +172,7 @@ impl StateReader<Key, StoredValue> for InMemoryGlobalStateView {
         )? {
             ReadResult::Found(value) => Some(value),
             ReadResult::NotFound => None,
-            ReadResult::RootNotFound => panic!("InMemoryGlobalState has invalid root"),
+            ReadResult::RootNotFound => panic!("InMemoryGlobalState has invalid root"),//? Keep as is?
         };
         txn.commit()?;
         Ok(ret)

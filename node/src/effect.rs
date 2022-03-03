@@ -660,8 +660,13 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<GossiperAnnouncement<T>>,
     {
-        assert!(
+        //? assert!-->debug_assert+error!
+        debug_assert!(
             T::ID_IS_COMPLETE_ITEM,
+            "{} must be an item where the ID _is_ the complete item",
+            item
+        );
+        error!(
             "{} must be an item where the ID _is_ the complete item",
             item
         );

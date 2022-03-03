@@ -13,6 +13,7 @@ use crate::{
     types::{json_compatibility::StoredValue, Block, BlockHash},
 };
 
+// All unwraps are safe as input is hardcoded correct
 pub(super) static ERA_SUMMARY: Lazy<EraSummary> = Lazy::new(|| {
     let delegator_amount = U512::from(1000);
     let validator_amount = U512::from(2000);

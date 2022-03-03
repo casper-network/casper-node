@@ -7,6 +7,7 @@ use rand::Rng;
 use tempfile::TempDir;
 
 use casper_types::{system::auction::DelegationRate, EraId, Motes, PublicKey, SecretKey, U512};
+use tracing::error;
 
 use crate::{
     components::{gossiper, small_network, storage, storage::Storage},
@@ -58,11 +59,14 @@ impl TestChain {
         verifiable_chunked_hash_activation: EraId,
         rng: &mut NodeRng,
     ) -> Self {
-        assert!(
+        //? assert!-->debug_assert!+error!
+        debug_assert!(
             size >= 1,
             "Network size must have at least one node (size: {})",
             size
         );
+        error!("Network size must have at least one node (size: {})", size);
+
         let first_node_secret_key_with_stake = SecretKeyWithStake {
             secret_key: Arc::new(SecretKey::random(rng)),
             stake: rng.gen_range(100..999),

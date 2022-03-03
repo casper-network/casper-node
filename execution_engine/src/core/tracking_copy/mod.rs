@@ -78,8 +78,12 @@ impl Query {
 
     /// Panics if `unvisited_names` is empty.
     fn next_name(&mut self) -> &String {
-        let next_name = self.unvisited_names.pop_front().unwrap();
+        let next_name = self
+            .unvisited_names
+            .pop_front()
+            .expect("this should already been checked to be non-empty"); //?Changed to expect
         self.visited_names.push(next_name);
+        //? safe to unwrap as we have added element just above
         self.visited_names.last().unwrap()
     }
 

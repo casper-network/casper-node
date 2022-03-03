@@ -45,7 +45,9 @@ pub fn gen_snapshot(
     let mut new_snapshot = BTreeMap::new();
     let mut era_validators = BTreeMap::new();
     for (pub_key_str, bonded_amount_str) in &validators {
+        //? Safe to unwrap???
         let validator_pub_key = PublicKey::from_hex(pub_key_str.as_bytes()).unwrap();
+        //? Safe to unwrap???
         let bonded_amount = U512::from_dec_str(bonded_amount_str).unwrap();
         let seigniorage_recipient =
             SeigniorageRecipient::new(bonded_amount, Default::default(), Default::default());

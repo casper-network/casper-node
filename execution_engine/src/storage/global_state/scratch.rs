@@ -95,7 +95,13 @@ impl ScratchGlobalState {
 
     /// Consume self and return inner cache.
     pub fn into_inner(self) -> HashMap<Key, StoredValue> {
-        let cache = mem::replace(&mut *self.cache.write().unwrap(), Cache::new());
+        let cache = mem::replace(
+            &mut *self
+                .cache
+                .write()
+                .expect("Cache lock should not be poisoned"),
+            Cache::new(),
+        );
         cache.into_inner()
     }
 }
@@ -108,7 +114,12 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
         correlation_id: CorrelationId,
         key: &Key,
     ) -> Result<Option<StoredValue>, Self::Error> {
-        if let Some(value) = self.cache.read().unwrap().get(key) {
+        if let Some(value) = self
+            .cache
+            .read()
+            .expect("Cache lock should not be poisoned")
+            .get(key)
+        {
             return Ok(Some(value.clone()));
         }
         let txn = self.environment.create_read_txn()?;
@@ -120,11 +131,14 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
             key,
         )? {
             ReadResult::Found(value) => {
-                self.cache.write().unwrap().insert(*key, value.clone());
+                self.cache
+                    .write()
+                    .expect("Cache lock should not be poisoned")
+                    .insert(*key, value.clone());
                 Some(value)
             }
             ReadResult::NotFound => None,
-            ReadResult::RootNotFound => panic!("ScratchGlobalState has invalid root"),
+            ReadResult::RootNotFound => panic!("ScratchGlobalState has invalid root"), //? Keep as is?
         };
         txn.commit()?;
         Ok(ret)
@@ -151,7 +165,7 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
         )? {
             ReadResult::Found(value) => Some(value),
             ReadResult::NotFound => None,
-            ReadResult::RootNotFound => panic!("LmdbWithCacheGlobalState has invalid root"),
+            ReadResult::RootNotFound => panic!("LmdbWithCacheGlobalState has invalid root"),//? Keep as is?
         };
         txn.commit()?;
         Ok(ret)
@@ -192,7 +206,12 @@ impl CommitProvider for ScratchGlobalState {
         effects: AdditiveMap<Key, Transform>,
     ) -> Result<Digest, Self::Error> {
         for (key, transform) in effects.into_iter() {
-            let cached_value = self.cache.read().unwrap().get(&key).cloned();
+            let cached_value = self
+                .cache
+                .read()
+                .expect("Cache lock should not be poisoned")
+                .get(&key)
+                .cloned();
             let value = match (cached_value, transform) {
                 (None, Transform::Write(new_value)) => new_value,
                 (None, transform) => {
@@ -246,7 +265,10 @@ impl CommitProvider for ScratchGlobalState {
                 },
             };
 
-            self.cache.write().unwrap().insert(key, value);
+            self.cache
+                .write()
+                .expect("Cache lock should not be poisoned")
+                .insert(key, value);
         }
         Ok(state_hash)
     }

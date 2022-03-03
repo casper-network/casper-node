@@ -18,6 +18,7 @@ use casper_types::{
     Key, StoredValue,
 };
 use datasize::DataSize;
+use tracing::error;
 
 #[cfg(test)]
 pub mod gens;
@@ -340,7 +341,9 @@ impl core::ops::Index<core::ops::RangeFull> for PointerBlock {
 impl ::std::fmt::Debug for PointerBlock {
     #[allow(clippy::assertions_on_constants)]
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        assert!(RADIX > 1, "RADIX must be > 1");
+        //? assert --> debug_assert+error!
+        debug_assert!(RADIX > 1, "RADIX must be > 1");
+        error!("RADIX must be > 1");
         write!(f, "{}([", stringify!(PointerBlock))?;
         write!(f, "{:?}", self.0[0])?;
         for item in self.0[1..].iter() {

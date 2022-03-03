@@ -154,7 +154,7 @@ fn setup_bench_run_auction(
             .get_public_key_balance_result(delegator_public_key.clone())
             .motes()
             .cloned()
-            .unwrap();
+            .expect("should have motes");
 
         assert_eq!(U512::from(DELEGATOR_INITIAL_BALANCE), balance);
 

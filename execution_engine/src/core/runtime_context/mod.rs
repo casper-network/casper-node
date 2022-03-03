@@ -499,6 +499,7 @@ where
                 .read(self.correlation_id, key)
                 .map_err(Into::into)
         } else {
+            //? Keep as is?
             panic!("Do not use this function for reading from non-account keys")
         }
     }
@@ -511,6 +512,7 @@ where
             self.metered_write_gs_unsafe(key, account_value)?;
             Ok(())
         } else {
+            //? Keep as is?
             panic!("Do not use this function for writing non-account keys")
         }
     }
@@ -522,6 +524,7 @@ where
                 .borrow_mut()
                 .write(key, StoredValue::Transfer(value));
         } else {
+            //? Keep as is?
             panic!("Do not use this function for writing non-transfer keys")
         }
     }
@@ -533,6 +536,7 @@ where
                 .borrow_mut()
                 .write(key, StoredValue::EraInfo(value));
         } else {
+            //? Keep as is?
             panic!("Do not use this function for writing non-era-info keys")
         }
     }

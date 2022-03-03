@@ -15,7 +15,10 @@ use crate::{
 };
 
 pub static ALICE_SECRET_KEY: Lazy<Arc<SecretKey>> =
-    Lazy::new(|| Arc::new(SecretKey::ed25519_from_bytes([0; SecretKey::ED25519_LENGTH]).unwrap()));
+    // unwrap safe as it comes from valid ED25519_LENGTH
+    Lazy::new(|| {
+        Arc::new(SecretKey::ed25519_from_bytes([0; SecretKey::ED25519_LENGTH]).unwrap())
+    });
 pub static ALICE_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&**ALICE_SECRET_KEY));
 pub static ALICE_NODE_ID: Lazy<NodeId> = Lazy::new(|| {
     NodeId::from(KeyFingerprint::from(Sha512::new(match *ALICE_PUBLIC_KEY {
@@ -25,6 +28,7 @@ pub static ALICE_NODE_ID: Lazy<NodeId> = Lazy::new(|| {
 });
 
 pub static BOB_PRIVATE_KEY: Lazy<SecretKey> =
+    // unwrap safe as it comes from valid ED25519_LENGTH
     Lazy::new(|| SecretKey::ed25519_from_bytes([1; SecretKey::ED25519_LENGTH]).unwrap());
 pub static BOB_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*BOB_PRIVATE_KEY));
 

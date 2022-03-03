@@ -350,7 +350,8 @@ async fn filter_map_server_sent_event(
                     warn!(%error, "failed to jsonify sse event");
                     WarpServerSentEvent::default()
                 })
-                .id(event.id.unwrap().to_string())))
+                // Safe??
+                .id(event.id.expect("event should have id").to_string()))) //?
         }
     }
 }
@@ -540,7 +541,9 @@ fn stream_to_client(
                 match result {
                     Ok(BroadcastChannelMessage::ServerSentEvent(event)) => {
                         if let Some(id) = event.id {
-                            if cloned_initial_ids.read().unwrap().contains(&id) {
+                            // Safe?
+                            if cloned_initial_ids.read().expect("cloned_initial_ids lock should not be poisoned") //?
+                                .contains(&id) {
                                 debug!(event_id=%id, "skipped duplicate event");
                                 return None;
                             }
@@ -565,7 +568,11 @@ fn stream_to_client(
     UnboundedReceiverStream::new(initial_events)
         .map(move |event| {
             if let Some(id) = event.id {
-                let _ = initial_stream_ids.write().unwrap().insert(id);
+                let _ = initial_stream_ids
+                    .write()
+                    // Safe?
+                    .expect("initial_stream_ids lock should not be poisoned") //?
+                    .insert(id);
             }
             Ok(event)
         })

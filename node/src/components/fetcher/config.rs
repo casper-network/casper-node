@@ -22,6 +22,7 @@ impl Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
+            // Unwrap is safe since string is valid
             get_from_peer_timeout: TimeDiff::from_str(DEFAULT_GET_FROM_PEER_TIMEOUT).unwrap(),
         }
     }

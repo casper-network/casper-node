@@ -62,7 +62,8 @@ impl<'a, C: Context> Tally<'a, C> {
     /// This preserves the total weight, and the set of validators who contribute to that weight.
     fn parents(&self, state: &'a State<C>) -> Self {
         let to_parent = |(h, w): (&&'a C::Hash, &Weight)| (state.block(*h).parent().unwrap(), *w);
-        Self::try_from_iter(self.votes.iter().map(to_parent)).unwrap() // Tally is never empty.
+        // safe as Tally is never empty.
+        Self::try_from_iter(self.votes.iter().map(to_parent)).unwrap()
     }
 
     /// Adds a vote for a block to the tally, possibly updating the current maximum.
