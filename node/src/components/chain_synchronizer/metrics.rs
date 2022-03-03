@@ -20,10 +20,10 @@ pub(super) struct Metrics {
     /// Time in seconds to get the trusted key block.
     #[data_size(skip)]
     pub(super) chain_sync_get_trusted_key_block_info_duration_seconds: IntGauge,
-    /// Time in seconds to fetch to genesis during archival sync.
+    /// Time in seconds to fetch to genesis during sync to genesis.
     #[data_size(skip)]
     pub(super) chain_sync_fetch_to_genesis_duration_seconds: IntGauge,
-    /// Time in seconds to fetch forward during archival sync.
+    /// Time in seconds to fetch forward during sync to genesis.
     #[data_size(skip)]
     pub(super) chain_sync_fetch_forward_duration_seconds: IntGauge,
     /// Total time in seconds of performing the fast sync.
