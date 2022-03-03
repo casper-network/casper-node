@@ -36,6 +36,11 @@ use crate::{
     utils::work_queue::WorkQueue,
 };
 
+/// Helper struct that is used to measure a time spent in the scope.
+/// At the construction time, a reference to the gauge is provided. When the binding to `ScopeTimer`
+/// is dropped, the specified gauge is updated with the duration since the scope was entered.
+// In the future, this could be replaced with a mechanism that uses `tracing::instrument` attribute
+// macro.
 struct ScopeTimer<'a> {
     start: Instant,
     gauge: &'a IntGauge,
