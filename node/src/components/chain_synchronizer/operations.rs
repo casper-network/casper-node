@@ -764,7 +764,7 @@ async fn sync_deploys_and_transfers_and_state(
 /// Returns the block header with our current version and the last trusted key block information for
 /// validation.
 async fn sync_to_genesis(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, BlockHeader), Error> {
-    let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_archival_sync_total_duration_seconds);
+    let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_to_genesis_total_duration_seconds);
 
     // Get the trusted block info. This will fail if we are trying to join with a trusted hash in
     // era 0.
@@ -785,7 +785,7 @@ async fn fetch_forward(
     trusted_key_block_info: &mut KeyBlockInfo,
     ctx: &ChainSyncContext<'_>,
 ) -> Result<Block, Error> {
-    let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_sync_forward_duration_seconds);
+    let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fetch_forward_duration_seconds);
 
     let mut most_recent_block = trusted_block;
     while most_recent_block.header().protocol_version() < ctx.config.protocol_version() {
@@ -814,7 +814,7 @@ async fn fetch_forward(
 }
 
 async fn fetch_to_genesis(trusted_block: &Block, ctx: &ChainSyncContext<'_>) -> Result<(), Error> {
-    let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_sync_to_genesis_duration_seconds);
+    let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fetch_to_genesis_duration_seconds);
 
     let mut walkback_block = trusted_block.clone();
     loop {
