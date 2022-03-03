@@ -460,9 +460,10 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             .unwrap_or(RoundId::MAX)
     }
 
-    /// If we are an active validator, we gossip a message to the network, otherwise we log an
-    /// error and do nothing.
-    fn gossip_message(&mut self, round_id: RoundId, content: Content<C>) -> ProtocolOutcomes<C> {
+    /// If we are an active validator, we create and process a consensus message
+    /// and gossip it to the network. This function should never be called on a
+    /// non-active validator, as it logs at error level if you do so.
+    fn create_message(&mut self, round_id: RoundId, content: Content<C>) -> ProtocolOutcomes<C> {
         let (validator_idx, secret_key) =
             if let Some((validator_idx, secret_key)) = &self.active_validator {
                 (*validator_idx, secret_key)
@@ -536,7 +537,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         }
         // Remove all Votes and Echos from the faulty validator: They count towards every quorum now
         // so nobody has to store their messages.
-        // TODO(no-merge) where do we count them towards everything?
+        // TODO make sure we recompute all quorums, explicitly or implicitly
         for round in self.rounds.values_mut() {
             round.votes.get_mut(&false).unwrap()[validator_idx] = None;
             round.votes.get_mut(&true).unwrap()[validator_idx] = None;
@@ -807,7 +808,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                     outcomes.extend(self.check_proposal(round_id));
                     if let Some((our_idx, _)) = &self.active_validator {
                         if !self.rounds[&round_id].has_echoed(*our_idx) {
-                            outcomes.extend(self.gossip_message(round_id, Content::Echo(hash)));
+                            outcomes.extend(self.create_message(round_id, Content::Echo(hash)));
                         }
                     }
                 }
@@ -964,7 +965,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         // If we haven't already voted, we vote to commit and finalize the accepted proposal.
         if let Some((our_idx, _)) = &self.active_validator {
             if !self.rounds[&round_id].has_voted(*our_idx) {
-                outcomes.extend(self.gossip_message(round_id, Content::Vote(true)));
+                outcomes.extend(self.create_message(round_id, Content::Vote(true)));
             }
         }
 
@@ -1100,9 +1101,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         outcomes
     }
 
-    /// We can skip a round if we haven't created it yet, or if there is a quorum for
-    /// false.
-    /// TODO(no-merge) if we haven't created it yet?
+    /// We can skip a round if there is a quorum for false.
     fn is_skippable_round(&self, round_id: RoundId) -> bool {
         self.rounds.get(&round_id).map_or(false, |skipped_round| {
             skipped_round.outcome.quorum_votes == Some(false)
@@ -1163,6 +1162,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     }
 
     /// Retrieves a mutable reference to the round.
+    /// If the round doesn't exist yet, it creates an empty one.
     fn round_mut(&mut self, round_id: RoundId) -> &mut Round<C> {
         match self.rounds.entry(round_id) {
             btree_map::Entry::Occupied(entry) => entry.into_mut(),
@@ -1195,7 +1195,8 @@ impl<C: Context> Proposal<C> {
 
 /// The content of a message in the main protocol, as opposed to the
 /// sync messages, which are somewhat decoupled from the rest of the
-/// protocol.
+/// protocol. This message, along with the instance and round ID,
+/// are what are signed by the active validators.
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
@@ -1386,7 +1387,7 @@ where
                 self.round_mut(round_id);
                 if let Some((our_idx, _)) = &self.active_validator {
                     if now >= self.current_timeout && !self.rounds[&round_id].has_voted(*our_idx) {
-                        return self.gossip_message(round_id, Content::Vote(false));
+                        return self.create_message(round_id, Content::Vote(false));
                     }
                 }
                 vec![]
@@ -1450,7 +1451,7 @@ where
                     maybe_block: Some(block),
                     maybe_parent_round_id,
                 });
-                self.gossip_message(proposal_round_id, content)
+                self.create_message(proposal_round_id, content)
             } else {
                 error!("proposal already exists");
                 vec![]
