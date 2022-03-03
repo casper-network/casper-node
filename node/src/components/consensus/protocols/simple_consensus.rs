@@ -206,7 +206,7 @@ where
     rounds: BTreeMap<RoundId, Round<C>>,
     /// List of faulty validators and their type of fault.
     faults: HashMap<ValidatorIndex, Fault<C>>,
-    /// The threshold weight at which we are not fault tolerant any longer.
+    /// The threshold weight above which we are not fault tolerant any longer.
     ftt: Weight,
     /// The configuration for the protocol
     /// TODO currently using Highway config
