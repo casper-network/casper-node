@@ -25,8 +25,7 @@ use crate::{
             ChainspecLoaderAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
         },
         requests::{
-            ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, NetworkRequest,
-            RestRequest, StorageRequest,
+            ChainspecLoaderRequest, ContractRuntimeRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
