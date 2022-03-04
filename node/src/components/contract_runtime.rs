@@ -43,7 +43,10 @@ use casper_hashing::Digest;
 use casper_types::{EraId, Key, ProtocolVersion, StoredValue};
 
 use crate::{
-    components::{contract_runtime::types::StepEffectAndUpcomingEraValidators, Component},
+    components::{
+        chainspec_loader::ChainspecRawBytes,
+        contract_runtime::types::StepEffectAndUpcomingEraValidators, Component,
+    },
     effect::{
         announcements::{ContractRuntimeAnnouncement, ControlAnnouncement},
         incoming::{TrieRequest, TrieRequestIncoming},
@@ -273,21 +276,8 @@ impl ContractRuntime {
             } => {
                 let engine_state = Arc::clone(&self.engine_state);
                 async move {
-                    let raw_chainspec_bytes = effect_builder.get_chainspec_raw_bytes().await;
-                    let chainspec_registry = {
-                        let mut chainspec_registry = ChainspecRegistry::new();
-                        let chainspec_file_hash =
-                            Digest::hash(raw_chainspec_bytes.chainspec_bytes());
-                        chainspec_registry.insert(CHAINSPEC_RAW.into(), chainspec_file_hash);
-                        if let Some(accounts_bytes) =
-                            raw_chainspec_bytes.maybe_genesis_accounts_bytes()
-                        {
-                            let genesis_accounts_file_hash = Digest::hash(accounts_bytes);
-                            chainspec_registry
-                                .insert(GENESIS_ACCOUNTS_RAW.into(), genesis_accounts_file_hash);
-                        }
-                        chainspec_registry
-                    };
+                    let chainspec_raw_bytes = effect_builder.get_chainspec_raw_bytes().await;
+                    let chainspec_registry = Self::create_chainspec_registry(chainspec_raw_bytes);
                     let result =
                         Self::commit_genesis(&engine_state, &chainspec, chainspec_registry);
                     responder.respond(result).await
@@ -301,21 +291,8 @@ impl ContractRuntime {
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
                 async move {
-                    let chainspec_registry = {
-                        let mut chainspec_registry = ChainspecRegistry::new();
-                        let chainspec_raw_bytes = effect_builder.get_chainspec_raw_bytes().await;
-                        let chainspec_file_hash =
-                            Digest::hash(chainspec_raw_bytes.chainspec_bytes());
-                        chainspec_registry.insert(CHAINSPEC_RAW.into(), chainspec_file_hash);
-                        if let Some(global_state_bytes) =
-                            chainspec_raw_bytes.maybe_global_state_bytes()
-                        {
-                            let global_state_toml_hash = Digest::hash(global_state_bytes);
-                            chainspec_registry
-                                .insert(GLOBAL_STATE_RAW.into(), global_state_toml_hash);
-                        }
-                        chainspec_registry
-                    };
+                    let chainspec_raw_bytes = effect_builder.get_chainspec_raw_bytes().await;
+                    let chainspec_registry = Self::create_chainspec_registry(chainspec_raw_bytes);
 
                     upgrade_config.with_chainspec_registry(chainspec_registry);
 
@@ -816,6 +793,21 @@ impl ContractRuntime {
         let result = engine_state.get_trie_full(correlation_id, trie_key);
         metrics.get_trie.observe(start.elapsed().as_secs_f64());
         result
+    }
+
+    fn create_chainspec_registry(chainspec_bytes: ChainspecRawBytes) -> ChainspecRegistry {
+        let mut chainspec_registry = ChainspecRegistry::new();
+        let chainspec_file_hash = Digest::hash(chainspec_bytes.chainspec_bytes());
+        chainspec_registry.insert(CHAINSPEC_RAW.into(), chainspec_file_hash);
+        if let Some(genesis_accounts_bytes) = chainspec_bytes.maybe_genesis_accounts_bytes() {
+            let genesis_accounts_hash = Digest::hash(genesis_accounts_bytes);
+            chainspec_registry.insert(GENESIS_ACCOUNTS_RAW.to_string(), genesis_accounts_hash);
+        }
+        if let Some(global_state_toml_bytes) = chainspec_bytes.maybe_global_state_bytes() {
+            let global_state_toml_hash = Digest::hash(global_state_toml_bytes);
+            chainspec_registry.insert(GLOBAL_STATE_RAW.to_string(), global_state_toml_hash);
+        }
+        chainspec_registry
     }
 
     /// Returns the engine state, for testing only.

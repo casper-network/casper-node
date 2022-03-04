@@ -1,17 +1,22 @@
-use crate::lmdb_fixture;
-use casper_engine_test_support::{
-    InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_EXEC_CONFIG,
-    DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
-};
-use casper_execution_engine::core::{
-    engine_state::{run_genesis_request::RunGenesisRequest, EngineConfig, Error},
-    ChainspecRegistry, CHAINSPEC_RAW, GENESIS_ACCOUNTS_RAW, GLOBAL_STATE_RAW,
-};
-use casper_hashing::Digest;
-
-use casper_types::{EraId, Key, ProtocolVersion};
 use once_cell::sync::Lazy;
 use rand::Rng;
+
+use casper_engine_test_support::{
+    InMemoryWasmTestBuilder, UpgradeRequestBuilder, WasmTestBuilder, DEFAULT_EXEC_CONFIG,
+    DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
+};
+use casper_execution_engine::{
+    core::{
+        engine_state,
+        engine_state::{run_genesis_request::RunGenesisRequest, EngineConfig, Error},
+        execution, ChainspecRegistry, CHAINSPEC_RAW, GENESIS_ACCOUNTS_RAW, GLOBAL_STATE_RAW,
+    },
+    storage::global_state::{CommitProvider, StateProvider},
+};
+use casper_hashing::Digest;
+use casper_types::{EraId, Key, ProtocolVersion};
+
+use crate::lmdb_fixture;
 
 static OLD_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| *DEFAULT_PROTOCOL_VERSION);
 static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
@@ -105,19 +110,25 @@ fn should_fail_to_commit_genesis_when_missing_genesis_accounts_hash() {
     builder.run_genesis(&run_genesis_request);
 }
 
-#[ignore]
-#[test]
-fn should_write_chainspec_registry_during_an_upgrade() {
+fn write_registry_for_upgrade<S>(
+    builder: &mut WasmTestBuilder<S>,
+    should_insert_global_state_hash: bool,
+) where
+    S: StateProvider + CommitProvider,
+    engine_state::Error: From<S::Error>,
+    S::Error: Into<execution::Error>,
+{
     let mut rng = rand::thread_rng();
-
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
-
     let mut upgraded_chainspec_registry = ChainspecRegistry::new();
-    let chainspec_bytes_hash = Digest::hash(rng.gen::<[u8; 32]>());
-    upgraded_chainspec_registry.insert(CHAINSPEC_RAW.to_string(), chainspec_bytes_hash);
-    let global_state_toml_hash = Digest::hash(rng.gen::<[u8; 32]>());
-    upgraded_chainspec_registry.insert(GLOBAL_STATE_RAW.to_string(), global_state_toml_hash);
+    let upgraded_chainspec_bytes_hash = Digest::hash(rng.gen::<[u8; 32]>());
+    upgraded_chainspec_registry.insert(CHAINSPEC_RAW.to_string(), upgraded_chainspec_bytes_hash);
+    let upgraded_global_state_toml_hash = Digest::hash(rng.gen::<[u8; 32]>());
+    if should_insert_global_state_hash {
+        upgraded_chainspec_registry.insert(
+            GLOBAL_STATE_RAW.to_string(),
+            upgraded_global_state_toml_hash,
+        );
+    }
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
@@ -150,67 +161,36 @@ fn should_write_chainspec_registry_during_an_upgrade() {
         .get(CHAINSPEC_RAW)
         .expect("must have entry for chainspec_hash");
 
-    assert_eq!(*queried_chainspec_hash, chainspec_bytes_hash);
+    assert_eq!(*queried_chainspec_hash, upgraded_chainspec_bytes_hash);
 
-    let queried_global_state_toml_hash = queried_registry
-        .get(GLOBAL_STATE_RAW)
-        .expect("must have entry for genesis accounts");
+    if should_insert_global_state_hash {
+        let queried_global_state_toml_hash = queried_registry
+            .get(GLOBAL_STATE_RAW)
+            .expect("must have entry for global_state_hash");
 
-    assert_eq!(*queried_global_state_toml_hash, global_state_toml_hash);
+        assert_eq!(
+            *queried_global_state_toml_hash,
+            upgraded_global_state_toml_hash
+        );
+    }
+}
+
+#[ignore]
+#[test]
+fn should_write_chainspec_registry_during_an_upgrade() {
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    write_registry_for_upgrade(&mut builder, true)
 }
 
 #[ignore]
 #[test]
 fn should_upgrade_and_write_registry_from_release_1_4_4() {
-    let mut rng = rand::thread_rng();
-
     let (mut builder, _lmdb_fixture_state, _temp_dir) =
         lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_4_4);
 
-    let mut upgraded_chainspec_registry = ChainspecRegistry::new();
-    let chainspec_bytes_hash = Digest::hash(rng.gen::<[u8; 32]>());
-    upgraded_chainspec_registry.insert(CHAINSPEC_RAW.to_string(), chainspec_bytes_hash);
-    let global_state_toml_hash = Digest::hash(rng.gen::<[u8; 32]>());
-    upgraded_chainspec_registry.insert(GLOBAL_STATE_RAW.to_string(), global_state_toml_hash);
-
-    let mut upgrade_request = {
-        UpgradeRequestBuilder::new()
-            .with_current_protocol_version(*OLD_PROTOCOL_VERSION)
-            .with_new_protocol_version(*NEW_PROTOCOL_VERSION)
-            .with_activation_point(DEFAULT_ACTIVATION_POINT)
-            .with_chainspec_registry(upgraded_chainspec_registry)
-            .build()
-    };
-
-    let engine_config = EngineConfig::default();
-
-    builder
-        .upgrade_with_upgrade_request(engine_config, &mut upgrade_request)
-        .expect_upgrade_success();
-
-    let queried_registry = builder
-        .query(None, Key::ChainspecRegistry, &[])
-        .expect("must have entry under Key::ChainspecRegistry")
-        .as_cl_value()
-        .expect("must have underlying cl_value")
-        .to_owned()
-        .into_t::<ChainspecRegistry>()
-        .expect("must convert to chainspec registry");
-
-    // There should be no entry for the genesis accounts once the upgrade has completed.
-    assert!(queried_registry.get(GENESIS_ACCOUNTS_RAW).is_none());
-
-    let queried_chainspec_hash = queried_registry
-        .get(CHAINSPEC_RAW)
-        .expect("must have entry for chainspec_hash");
-
-    assert_eq!(*queried_chainspec_hash, chainspec_bytes_hash);
-
-    let queried_global_state_toml_hash = queried_registry
-        .get(GLOBAL_STATE_RAW)
-        .expect("must have entry for genesis accounts");
-
-    assert_eq!(*queried_global_state_toml_hash, global_state_toml_hash);
+    write_registry_for_upgrade(&mut builder, true)
 }
 
 #[ignore]
