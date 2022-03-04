@@ -8,12 +8,15 @@ use num_rational::Ratio;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 
+use casper_execution_engine::core::engine_state::run_genesis_request::RunGenesisRequest;
+use casper_execution_engine::core::engine_state::GenesisAccount;
 use casper_execution_engine::{
     core::engine_state::ExecConfig,
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
+use casper_types::ProtocolVersion;
 
-use crate::{DEFAULT_ACCOUNTS, DEFAULT_GENESIS_TIMESTAMP_MILLIS};
+use crate::{DEFAULT_ACCOUNTS, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS};
 
 /// The name of the chainspec file on disk.
 pub const CHAINSPEC_NAME: &str = "chainspec.toml";
@@ -36,6 +39,7 @@ pub enum Error {
     FailedToParseChainspec(toml::de::Error),
     CouldNotCreateExecConfig,
     CouldNotParseLockedFundsPeriod,
+    CouldNotCreateGenesisRequest,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -92,6 +96,51 @@ impl ChainspecConfig {
                 .map_err(|_| Error::CouldNotParseLockedFundsPeriod)?
                 .as_millis() as u64;
         Ok(locked_funds_period_millis)
+    }
+
+    pub(crate) fn create_genesis_request_from_chainspec<P: AsRef<Path>>(
+        filename: P,
+        genesis_accounts: Vec<GenesisAccount>,
+        protocol_version: ProtocolVersion,
+    ) -> Result<RunGenesisRequest, Error> {
+        let path = filename.as_ref();
+        let bytes = fs::read(path).map_err(|error| Error::FailedToLoadChainspec {
+            path: path.into(),
+            error,
+        })?;
+        let chainspec_config: ChainspecConfig =
+            toml::from_slice(&bytes).map_err(Error::FailedToParseChainspec)?;
+        let locked_funds_period_millis =
+            humantime::parse_duration(&*chainspec_config.core_config.locked_funds_period)
+                .map_err(|_| Error::CouldNotCreateGenesisRequest)?
+                .as_millis() as u64;
+        let exec_config = ExecConfig::new(
+            genesis_accounts,
+            chainspec_config.wasm_config,
+            chainspec_config.system_costs_config,
+            chainspec_config.core_config.validator_slots,
+            chainspec_config.core_config.auction_delay,
+            locked_funds_period_millis,
+            chainspec_config.core_config.round_seigniorage_rate,
+            chainspec_config.core_config.unbonding_delay,
+            DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+        );
+        Ok(RunGenesisRequest::new(
+            *DEFAULT_GENESIS_CONFIG_HASH,
+            protocol_version,
+            exec_config,
+        ))
+    }
+
+    pub fn create_genesis_request_from_production_chainspec(
+        genesis_accounts: Vec<GenesisAccount>,
+        protocol_version: ProtocolVersion,
+    ) -> Result<RunGenesisRequest, Error> {
+        Self::create_genesis_request_from_chainspec(
+            &*PRODUCTION_PATH,
+            genesis_accounts,
+            protocol_version,
+        )
     }
 }
 

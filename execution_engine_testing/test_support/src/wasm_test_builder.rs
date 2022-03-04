@@ -11,6 +11,8 @@ use std::{
 
 use lmdb::DatabaseFlags;
 use log::LevelFilter;
+use num_rational::Ratio;
+use num_traits::CheckedMul;
 
 use bytesrepr::FromBytes;
 use casper_execution_engine::core::engine_state::{ExecConfig, DEFAULT_MAX_QUERY_DEPTH};
@@ -48,6 +50,8 @@ use casper_execution_engine::{
     },
 };
 use casper_hashing::Digest;
+use casper_types::system::auction::UNBONDING_DELAY_KEY;
+use casper_types::system::mint::ROUND_SEIGNIORAGE_RATE_KEY;
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr, runtime_args,
@@ -284,6 +288,10 @@ impl LmdbWasmTestBuilder {
         Self::new_with_config(data_dir, engine_config)
     }
 
+    pub fn new_with_production_chainspec<T: AsRef<OsStr> + ?Sized>(data_dir: &T) -> Self {
+        Self::new_with_chainspec(data_dir, &*PRODUCTION_PATH)
+    }
+
     /// Flushes the LMDB environment to disk.
     pub fn flush_environment(&self) {
         let engine_state = &*self.engine_state;
@@ -429,66 +437,6 @@ where
     pub fn run_genesis(&mut self, run_genesis_request: &RunGenesisRequest) -> &mut Self {
         let system_account = Key::Account(PublicKey::System.to_account_hash());
 
-        let production_config = ChainspecConfig::from_chainspec_path(&*PRODUCTION_PATH)
-            .expect("must build chainspec configuration");
-
-        let exec_config = ExecConfig::try_from(production_config).expect("must get exec config");
-
-        let GenesisSuccess {
-            post_state_hash,
-            execution_effect,
-        } = self
-            .engine_state
-            .commit_genesis(
-                CorrelationId::new(),
-                run_genesis_request.genesis_config_hash(),
-                run_genesis_request.protocol_version(),
-                &exec_config,
-            )
-            .expect("Unable to get genesis response");
-
-        let transforms = execution_effect.transforms;
-        let empty_path: Vec<String> = vec![];
-
-        let genesis_account =
-            utils::get_account(&transforms, &system_account).expect("Unable to get system account");
-
-        let registry = match self.query(
-            Some(post_state_hash),
-            Key::SystemContractRegistry,
-            &empty_path,
-        ) {
-            Ok(StoredValue::CLValue(cl_registry)) => {
-                CLValue::into_t::<SystemContractRegistry>(cl_registry).unwrap()
-            }
-            Ok(_) => panic!("Failed to get system registry"),
-            Err(err) => panic!("{}", err),
-        };
-
-        self.genesis_hash = Some(post_state_hash);
-        self.post_state_hash = Some(post_state_hash);
-        self.mint_contract_hash = Some(*registry.get(MINT).expect("should have mint hash"));
-        self.handle_payment_contract_hash = Some(
-            *registry
-                .get(HANDLE_PAYMENT)
-                .expect("should have handle payment hash"),
-        );
-        self.standard_payment_hash = Some(
-            *registry
-                .get(STANDARD_PAYMENT)
-                .expect("should have standard payment hash"),
-        );
-        self.auction_contract_hash =
-            Some(*registry.get(AUCTION).expect("should have auction hash"));
-        self.genesis_account = Some(genesis_account);
-        self.genesis_transforms = Some(transforms);
-        self
-    }
-
-    /// Takes a [`RunGenesisRequest`], executes the request and returns Self.
-    pub fn run_default_genesis(&mut self, run_genesis_request: &RunGenesisRequest) -> &mut Self {
-        let system_account = Key::Account(PublicKey::System.to_account_hash());
-
         let GenesisSuccess {
             post_state_hash,
             execution_effect,
@@ -623,6 +571,54 @@ where
         };
 
         total_supply
+    }
+
+    /// Queries for the base round reward.
+    /// # Panics
+    /// Panics if the total supply or seigniorage rate can't be found.
+    pub fn base_round_reward(&mut self, maybe_post_state: Option<Digest>) -> U512 {
+        let mint_key: Key = self.get_mint_contract_hash().into();
+
+        let mint_contract = self
+            .query(maybe_post_state, mint_key, &[])
+            .expect("must get mint stored value")
+            .as_contract()
+            .expect("must convert to mint contract")
+            .clone();
+
+        let mint_named_keys = mint_contract.named_keys().clone();
+
+        let total_supply_uref = *mint_named_keys
+            .get(TOTAL_SUPPLY_KEY)
+            .expect("must track total supply")
+            .as_uref()
+            .expect("must get uref");
+
+        let round_seigniorage_rate_uref = *mint_named_keys
+            .get(ROUND_SEIGNIORAGE_RATE_KEY)
+            .expect("must track round seigniorage rate");
+
+        let total_supply = self
+            .query(maybe_post_state, Key::URef(total_supply_uref), &[])
+            .expect("must read value under total supply URef")
+            .as_cl_value()
+            .expect("must convert into CL value")
+            .clone()
+            .into_t::<U512>()
+            .expect("must convert into U512");
+
+        let rate = self
+            .query(maybe_post_state, round_seigniorage_rate_uref, &[])
+            .expect("must read value")
+            .as_cl_value()
+            .expect("must conver to cl value")
+            .clone()
+            .into_t::<Ratio<U512>>()
+            .expect("must conver to ratio");
+
+        rate.checked_mul(&Ratio::from(total_supply))
+            .map(|ratio| ratio.to_integer())
+            .expect("must get base round reward")
     }
 
     /// Runs an [`ExecuteRequest`].
@@ -1238,6 +1234,12 @@ where
     pub fn get_auction_delay(&mut self) -> u64 {
         let auction_contract = self.get_auction_contract_hash();
         self.get_value(auction_contract, AUCTION_DELAY_KEY)
+    }
+
+    /// Gets the unbonding delay
+    pub fn get_unbonding_delay(&mut self) -> u64 {
+        let auction_contract = self.get_auction_contract_hash();
+        self.get_value(auction_contract, UNBONDING_DELAY_KEY)
     }
 
     /// Gets the [`ContractHash`] of the system auction contract, panics if it can't be found.

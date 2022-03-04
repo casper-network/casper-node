@@ -29,7 +29,9 @@ use casper_execution_engine::{
 use casper_hashing::Digest;
 use casper_types::{account::AccountHash, Motes, ProtocolVersion, PublicKey, SecretKey, U512};
 
+use crate::chainspec_config::PRODUCTION_PATH;
 pub use additive_map_diff::AdditiveMapDiff;
+pub use chainspec_config::ChainspecConfig;
 pub use deploy_item_builder::DeployItemBuilder;
 pub use execute_request_builder::ExecuteRequestBuilder;
 pub use step_request_builder::StepRequestBuilder;
@@ -150,6 +152,20 @@ pub static DEFAULT_RUN_GENESIS_REQUEST: Lazy<RunGenesisRequest> = Lazy::new(|| {
         *DEFAULT_PROTOCOL_VERSION,
         DEFAULT_EXEC_CONFIG.clone(),
     )
+});
+/// [`RunGenesisRequest`] instantiated using chainspec values.
+pub static PRODUCTION_RUN_GENESIS_REQUEST: Lazy<RunGenesisRequest> = Lazy::new(|| {
+    let genesis_request = ChainspecConfig::create_genesis_request_from_production_chainspec(
+        DEFAULT_ACCOUNTS.clone(),
+        *DEFAULT_PROTOCOL_VERSION,
+    )
+    .expect("must create the request");
+    genesis_request
+});
+pub static PRODUCTION_ROUND_SEIGNIORAGE_RATE: Lazy<Ratio<u64>> = Lazy::new(|| {
+    let chainspec = ChainspecConfig::from_chainspec_path(&*PRODUCTION_PATH)
+        .expect("must create chainspec_config");
+    chainspec.core_config.round_seigniorage_rate
 });
 /// System address.
 pub static SYSTEM_ADDR: Lazy<AccountHash> = Lazy::new(|| PublicKey::System.to_account_hash());

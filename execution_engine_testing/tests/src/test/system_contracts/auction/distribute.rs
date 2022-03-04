@@ -1,13 +1,15 @@
 use std::collections::BTreeMap;
 
 use num_rational::Ratio;
+use num_traits::{CheckedMul, CheckedSub};
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder, UpgradeRequestBuilder,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-    DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_RUN_GENESIS_REQUEST,
-    MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
+    DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    PRODUCTION_ROUND_SEIGNIORAGE_RATE, PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR,
+    TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::core::engine_state::step::RewardItem;
 use casper_types::{
@@ -65,8 +67,8 @@ static DELEGATOR_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*DE
 static DELEGATOR_3_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*DELEGATOR_3));
 static GENESIS_ROUND_SEIGNIORAGE_RATE: Lazy<Ratio<U512>> = Lazy::new(|| {
     Ratio::new(
-        U512::from(*DEFAULT_ROUND_SEIGNIORAGE_RATE.numer()),
-        U512::from(*DEFAULT_ROUND_SEIGNIORAGE_RATE.denom()),
+        U512::from(*PRODUCTION_ROUND_SEIGNIORAGE_RATE.numer()),
+        U512::from(*PRODUCTION_ROUND_SEIGNIORAGE_RATE.denom()),
     )
 });
 
@@ -248,7 +250,7 @@ fn should_distribute_delegation_rate_zero() {
 
     let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
@@ -486,7 +488,7 @@ fn should_withdraw_bids_after_distribute() {
 
     let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
@@ -760,7 +762,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
 
     let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
@@ -1138,7 +1140,7 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
 
     let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
@@ -1430,6 +1432,8 @@ fn should_distribute_delegation_rate_half() {
     const VALIDATOR_1_STAKE: u64 = 1_000_000;
     const DELEGATOR_1_STAKE: u64 = 1_000_000;
     const DELEGATOR_2_STAKE: u64 = 1_000_000;
+    const TOTAL_DELEGATOR_STAKE: u64 = DELEGATOR_1_STAKE + DELEGATOR_2_STAKE;
+    const TOTAL_STAKE: u64 = VALIDATOR_1_STAKE + TOTAL_DELEGATOR_STAKE;
 
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = DELEGATION_RATE_DENOMINATOR / 2;
 
@@ -1529,75 +1533,116 @@ fn should_distribute_delegation_rate_half() {
 
     let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
+    let total_payout = builder.base_round_reward(None);
     let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
+    assert_eq!(total_payout, expected_total_reward_integer);
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
     }
 
-    for _ in 0..5 {
-        builder.run_auction(timestamp_millis, Vec::new());
-        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
+    for _ in 0..=builder.get_auction_delay() {
+        let step_request = StepRequestBuilder::new()
+            .with_parent_state_hash(builder.get_post_state_hash())
+            .with_protocol_version(ProtocolVersion::V1_0_0)
+            .with_next_era_id(builder.get_era().successor())
+            .with_run_auction(true)
+            .build();
+
+        builder
+            .step(step_request)
+            .expect("must execute step successfully");
     }
 
-    let reward_factors: BTreeMap<PublicKey, u64> = {
-        let mut tmp = BTreeMap::new();
-        tmp.insert(VALIDATOR_1.clone(), BLOCK_REWARD);
-        tmp
+    let step_request = StepRequestBuilder::new()
+        .with_parent_state_hash(builder.get_post_state_hash())
+        .with_protocol_version(ProtocolVersion::V1_0_0)
+        .with_reward_item(RewardItem::new(VALIDATOR_1.clone(), BLOCK_REWARD))
+        .with_next_era_id(builder.get_era())
+        .with_run_auction(true)
+        .build();
+
+    builder
+        .step(step_request)
+        .expect("must execute step successfully");
+
+    let delegators_share = {
+        let commission_rate = Ratio::new(
+            U512::from(VALIDATOR_1_DELEGATION_RATE),
+            U512::from(DELEGATION_RATE_DENOMINATOR),
+        );
+        let reward_multiplier =
+            Ratio::new(U512::from(TOTAL_DELEGATOR_STAKE), U512::from(TOTAL_STAKE));
+        let delegator_reward = expected_total_reward
+            .checked_mul(&reward_multiplier)
+            .expect("must get delegator reward");
+        let commission = delegator_reward
+            .checked_mul(&commission_rate)
+            .expect("must get commission");
+        delegator_reward.checked_sub(&commission).unwrap()
     };
 
-    let distribute_request = ExecuteRequestBuilder::standard(
-        *SYSTEM_ADDR,
-        CONTRACT_AUCTION_BIDS,
-        runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_REWARD_FACTORS => reward_factors
-        },
-    )
-    .build();
+    let delegator_1_expected_payout = {
+        let reward_multiplier = Ratio::new(
+            U512::from(DELEGATOR_1_STAKE),
+            U512::from(TOTAL_DELEGATOR_STAKE),
+        );
+        delegators_share
+            .checked_mul(&reward_multiplier)
+            .map(|ratio| ratio.to_integer())
+            .unwrap()
+    };
 
-    builder.exec(distribute_request).commit().expect_success();
+    let delegator_2_expected_payout = {
+        let reward_multiplier = Ratio::new(
+            U512::from(DELEGATOR_2_STAKE),
+            U512::from(TOTAL_DELEGATOR_STAKE),
+        );
+        delegators_share
+            .checked_mul(&reward_multiplier)
+            .map(|ratio| ratio.to_integer())
+            .unwrap()
+    };
 
-    let validator_1_balance = {
+    let validator_1_expected_payout = {
+        let total_delegator_payout = delegator_1_expected_payout + delegator_2_expected_payout;
+        let validators_part = expected_total_reward - Ratio::from(total_delegator_payout);
+        validators_part.to_integer()
+    };
+
+    let validator_1_actual_payout = {
         let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
         let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
     };
-    let expected_validator_1_balance =
-        (expected_total_reward * validator_share + remainders - rounded_amount).to_integer();
 
-    assert_eq!(validator_1_balance, expected_validator_1_balance);
+    assert_eq!(validator_1_actual_payout, validator_1_expected_payout);
 
-    let delegator_1_balance = {
+    let delegator_1_actual_payout = {
         let delegator_stake_before = U512::from(DELEGATOR_1_STAKE);
         let delegator_stake_after =
             get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
         delegator_stake_after - delegator_stake_before
     };
-    let expected_delegator_1_balance = (expected_total_reward * delegator_shares).to_integer();
-    assert_eq!(delegator_1_balance, expected_delegator_1_balance);
+    assert_eq!(delegator_1_actual_payout, delegator_1_expected_payout);
 
-    let delegator_2_balance = {
+    let delegator_2_actual_payout = {
         let delegator_stake_before = U512::from(DELEGATOR_2_STAKE);
         let delegator_stake_after =
             get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone());
         delegator_stake_after - delegator_stake_before
     };
-    let expected_delegator_2_balance = (expected_total_reward * delegator_shares).to_integer();
-    assert_eq!(delegator_2_balance, expected_delegator_2_balance);
-
-    let total_payout = validator_1_balance + delegator_1_balance + delegator_2_balance;
-    assert_eq!(total_payout, expected_total_reward_integer);
+    assert_eq!(delegator_2_actual_payout, delegator_2_expected_payout);
 
     let era_info = {
-        let era = builder.get_era();
+        let era = builder.get_era() - 1;
 
         let era_info_value = builder
             .query(None, Key::EraInfo(era), &[])
@@ -1612,19 +1657,19 @@ fn should_distribute_delegation_rate_half() {
     assert!(matches!(
         era_info.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_1 && *amount == expected_validator_1_balance
+        if *validator_public_key == *VALIDATOR_1 && *amount == validator_1_expected_payout
     ));
 
     assert!(matches!(
         era_info.select(DELEGATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
-        if *delegator_public_key == *DELEGATOR_1 && *amount == expected_delegator_1_balance
+        if *delegator_public_key == *DELEGATOR_1 && *amount == delegator_1_expected_payout
     ));
 
     assert!(matches!(
         era_info.select(DELEGATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
-        if *delegator_public_key == *DELEGATOR_2 && *amount == expected_delegator_1_balance
+        if *delegator_public_key == *DELEGATOR_2 && *amount == delegator_2_expected_payout
     ));
 }
 
@@ -1725,7 +1770,7 @@ fn should_distribute_delegation_rate_full() {
 
     let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
@@ -1926,7 +1971,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
 
     let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
@@ -2128,7 +2173,7 @@ fn should_distribute_by_factor() {
 
     let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
@@ -2139,73 +2184,91 @@ fn should_distribute_by_factor() {
         builder.exec(request).commit().expect_success();
     }
 
-    for _ in 0..5 {
-        builder.run_auction(timestamp_millis, Vec::new());
-        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
+    for _ in 0..=builder.get_auction_delay() {
+        let step_request = StepRequestBuilder::new()
+            .with_parent_state_hash(builder.get_post_state_hash())
+            .with_protocol_version(ProtocolVersion::V1_0_0)
+            .with_next_era_id(builder.get_era().successor())
+            .with_run_auction(true)
+            .build();
+        builder
+            .step(step_request)
+            .expect("must execute step request");
     }
 
-    let reward_factors: BTreeMap<PublicKey, u64> = {
-        let mut tmp = BTreeMap::new();
-        tmp.insert(VALIDATOR_1.clone(), VALIDATOR_1_REWARD_FACTOR);
-        tmp.insert(VALIDATOR_2.clone(), VALIDATOR_2_REWARD_FACTOR);
-        tmp.insert(VALIDATOR_3.clone(), VALIDATOR_3_REWARD_FACTOR);
-        tmp
-    };
+    let step_request = StepRequestBuilder::new()
+        .with_parent_state_hash(builder.get_post_state_hash())
+        .with_protocol_version(ProtocolVersion::V1_0_0)
+        .with_reward_item(RewardItem::new(
+            VALIDATOR_1.clone(),
+            VALIDATOR_1_REWARD_FACTOR,
+        ))
+        .with_reward_item(RewardItem::new(
+            VALIDATOR_2.clone(),
+            VALIDATOR_2_REWARD_FACTOR,
+        ))
+        .with_reward_item(RewardItem::new(
+            VALIDATOR_3.clone(),
+            VALIDATOR_3_REWARD_FACTOR,
+        ))
+        .with_run_auction(true)
+        .with_next_era_id(builder.get_era().successor())
+        .build();
 
-    let distribute_request = ExecuteRequestBuilder::standard(
-        *SYSTEM_ADDR,
-        CONTRACT_AUCTION_BIDS,
-        runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_REWARD_FACTORS => reward_factors
-        },
-    )
-    .build();
+    builder
+        .step(step_request)
+        .expect("must execute step successfully");
 
-    builder.exec(distribute_request).commit().expect_success();
-
-    let validator_1_updated_stake = {
+    let validator_1_actual_payout = {
         let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
         let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
     };
-    let expected_validator_1_payout = (expected_total_reward * one_third).to_integer();
-    assert_eq!(validator_1_updated_stake, expected_validator_1_payout);
+    let validator_1_expected_payout = expected_total_reward
+        .checked_mul(&Ratio::new(
+            U512::from(VALIDATOR_1_REWARD_FACTOR),
+            U512::from(BLOCK_REWARD),
+        ))
+        .map(|ratio| ratio.to_integer())
+        .unwrap();
+    assert_eq!(validator_1_actual_payout, validator_1_expected_payout);
 
-    let rounded_amount = U512::one();
-
-    let validator_2_updated_stake = {
+    let validator_2_actual_payout = {
         let validator_stake_before = U512::from(VALIDATOR_2_STAKE);
         let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_2.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
     };
-    let expected_validator_2_payout =
-        (expected_total_reward * one_third - rounded_amount).to_integer();
-    assert_eq!(validator_2_updated_stake, expected_validator_2_payout);
+    let validator_2_expected_payout = expected_total_reward
+        .checked_mul(&Ratio::new(
+            U512::from(VALIDATOR_2_REWARD_FACTOR),
+            U512::from(BLOCK_REWARD),
+        ))
+        .map(|ratio| ratio.to_integer())
+        .unwrap();
+    assert_eq!(validator_2_actual_payout, validator_2_expected_payout);
 
-    let validator_3_updated_stake = {
+    let validator_3_actual_payout = {
         let validator_stake_before = U512::from(VALIDATOR_3_STAKE);
         let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_3.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
     };
-
-    let expected_validator_3_payout =
-        (expected_total_reward * one_third - rounded_amount).to_integer();
-    assert_eq!(validator_3_updated_stake, expected_validator_3_payout);
-
-    let total_payout =
-        validator_1_updated_stake + validator_2_updated_stake + validator_3_updated_stake;
-    let rounded_amount = U512::from(2);
-    assert_eq!(total_payout, expected_total_reward_integer - rounded_amount);
+    let validator_3_expected_payout = expected_total_reward
+        .checked_mul(&Ratio::new(
+            U512::from(VALIDATOR_3_REWARD_FACTOR),
+            U512::from(BLOCK_REWARD),
+        ))
+        .map(|ratio| ratio.to_integer())
+        .unwrap();
+    assert_eq!(validator_3_actual_payout, validator_3_expected_payout);
 
     let era_info = {
-        let era = builder.get_era();
+        let era = builder.get_era() - 1;
 
         let era_info_value = builder
             .query(None, Key::EraInfo(era), &[])
@@ -2220,20 +2283,116 @@ fn should_distribute_by_factor() {
     assert!(matches!(
         era_info.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_1 && *amount == expected_validator_1_payout
+        if *validator_public_key == *VALIDATOR_1 && *amount == validator_1_expected_payout
     ));
 
     assert!(matches!(
         era_info.select(VALIDATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_2 && *amount == expected_validator_2_payout
+        if *validator_public_key == *VALIDATOR_2 && *amount == validator_2_expected_payout
     ));
 
     assert!(matches!(
         era_info.select(VALIDATOR_3.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_3 && *amount == expected_validator_3_payout
+        if *validator_public_key == *VALIDATOR_3 && *amount == validator_3_expected_payout
     ));
+
+    // for _ in 0..5 {
+    //     builder.run_auction(timestamp_millis, Vec::new());
+    //     timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
+    // }
+    //
+    // let reward_factors: BTreeMap<PublicKey, u64> = {
+    //     let mut tmp = BTreeMap::new();
+    //     tmp.insert(VALIDATOR_1.clone(), VALIDATOR_1_REWARD_FACTOR);
+    //     tmp.insert(VALIDATOR_2.clone(), VALIDATOR_2_REWARD_FACTOR);
+    //     tmp.insert(VALIDATOR_3.clone(), VALIDATOR_3_REWARD_FACTOR);
+    //     tmp
+    // };
+    //
+    // let distribute_request = ExecuteRequestBuilder::standard(
+    //     *SYSTEM_ADDR,
+    //     CONTRACT_AUCTION_BIDS,
+    //     runtime_args! {
+    //         ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
+    //         ARG_REWARD_FACTORS => reward_factors
+    //     },
+    // )
+    // .build();
+    //
+    // builder.exec(distribute_request).commit().expect_success();
+    //
+    // let validator_1_updated_stake = {
+    //     let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
+    //     let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
+    //         .expect("should have validator bid")
+    //         .staked_amount();
+    //     validator_stake_after - validator_stake_before
+    // };
+    // let expected_validator_1_payout = (expected_total_reward * one_third).to_integer();
+    // assert_eq!(validator_1_updated_stake, expected_validator_1_payout);
+    //
+    // let rounded_amount = U512::one();
+    //
+    // let validator_2_updated_stake = {
+    //     let validator_stake_before = U512::from(VALIDATOR_2_STAKE);
+    //     let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_2.clone())
+    //         .expect("should have validator bid")
+    //         .staked_amount();
+    //     validator_stake_after - validator_stake_before
+    // };
+    // let expected_validator_2_payout =
+    //     (expected_total_reward * one_third - rounded_amount).to_integer();
+    // assert_eq!(validator_2_updated_stake, expected_validator_2_payout);
+    //
+    // let validator_3_updated_stake = {
+    //     let validator_stake_before = U512::from(VALIDATOR_3_STAKE);
+    //     let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_3.clone())
+    //         .expect("should have validator bid")
+    //         .staked_amount();
+    //     validator_stake_after - validator_stake_before
+    // };
+    //
+    // let expected_validator_3_payout =
+    //     (expected_total_reward * one_third - rounded_amount).to_integer();
+    // assert_eq!(validator_3_updated_stake, expected_validator_3_payout);
+    //
+    // let total_payout =
+    //     validator_1_updated_stake + validator_2_updated_stake + validator_3_updated_stake;
+    // let rounded_amount = U512::from(2);
+    // assert_eq!(total_payout, expected_total_reward_integer - rounded_amount);
+    //
+    // let era_info = {
+    //     let era = builder.get_era();
+    //
+    //     let era_info_value = builder
+    //         .query(None, Key::EraInfo(era), &[])
+    //         .expect("should have value");
+    //
+    //     era_info_value
+    //         .as_era_info()
+    //         .cloned()
+    //         .expect("should be era info")
+    // };
+    //
+    // assert!(matches!(
+    //     era_info.select(VALIDATOR_1.clone()).next(),
+    //     Some(SeigniorageAllocation::Validator { validator_public_key, amount })
+    //     if *validator_public_key == *VALIDATOR_1 && *amount == expected_validator_1_payout
+    // ));
+    //
+    // assert!(matches!(
+    //     era_info.select(VALIDATOR_2.clone()).next(),
+    //     Some(SeigniorageAllocation::Validator { validator_public_key, amount })
+    //     if *validator_public_key == *VALIDATOR_2 && *amount == expected_validator_2_payout
+    // ));
+    //
+    // assert!(matches!(
+    //     era_info.select(VALIDATOR_3.clone()).next(),
+    //     Some(SeigniorageAllocation::Validator { validator_public_key, amount })
+    //     if *validator_public_key == *VALIDATOR_3 && *amount == expected_validator_3_payout
+    // ));
 }
 
 #[ignore]
@@ -2339,83 +2498,105 @@ fn should_distribute_by_factor_regardless_of_stake() {
 
     let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
+    let total_payout = builder.base_round_reward(None);
     let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
+    assert_eq!(total_payout, expected_total_reward_integer);
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
     }
 
-    for _ in 0..5 {
-        builder.run_auction(timestamp_millis, Vec::new());
-        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
+    for _ in 0..=builder.get_auction_delay() {
+        let step_request = StepRequestBuilder::new()
+            .with_parent_state_hash(builder.get_post_state_hash())
+            .with_protocol_version(ProtocolVersion::V1_0_0)
+            .with_next_era_id(builder.get_era().successor())
+            .with_run_auction(true)
+            .build();
+
+        builder
+            .step(step_request)
+            .expect("must execute step successfully");
     }
 
-    let reward_factors: BTreeMap<PublicKey, u64> = {
-        let mut tmp = BTreeMap::new();
-        tmp.insert(VALIDATOR_1.clone(), VALIDATOR_1_REWARD_FACTOR);
-        tmp.insert(VALIDATOR_2.clone(), VALIDATOR_2_REWARD_FACTOR);
-        tmp.insert(VALIDATOR_3.clone(), VALIDATOR_3_REWARD_FACTOR);
-        tmp
-    };
+    let step_request = StepRequestBuilder::new()
+        .with_parent_state_hash(builder.get_post_state_hash())
+        .with_protocol_version(ProtocolVersion::V1_0_0)
+        .with_reward_item(RewardItem::new(
+            VALIDATOR_1.clone(),
+            VALIDATOR_1_REWARD_FACTOR,
+        ))
+        .with_reward_item(RewardItem::new(
+            VALIDATOR_2.clone(),
+            VALIDATOR_2_REWARD_FACTOR,
+        ))
+        .with_reward_item(RewardItem::new(
+            VALIDATOR_3.clone(),
+            VALIDATOR_3_REWARD_FACTOR,
+        ))
+        .with_run_auction(true)
+        .with_next_era_id(builder.get_era().successor())
+        .build();
 
-    let distribute_request = ExecuteRequestBuilder::standard(
-        *SYSTEM_ADDR,
-        CONTRACT_AUCTION_BIDS,
-        runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_REWARD_FACTORS => reward_factors
-        },
-    )
-    .build();
+    builder
+        .step(step_request)
+        .expect("must execute step successfully");
 
-    builder.exec(distribute_request).commit().expect_success();
-
-    let validator_1_updated_stake = {
+    let validator_1_actual_payout = {
         let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
         let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
     };
-    let expected_validator_1_payout = (expected_total_reward * one_third).to_integer();
-    assert_eq!(validator_1_updated_stake, expected_validator_1_payout);
+    let validator_1_expected_payout = expected_total_reward
+        .checked_mul(&Ratio::new(
+            U512::from(VALIDATOR_1_REWARD_FACTOR),
+            U512::from(BLOCK_REWARD),
+        ))
+        .map(|ratio| ratio.to_integer())
+        .unwrap();
+    assert_eq!(validator_1_actual_payout, validator_1_expected_payout);
 
-    let rounded_amount = U512::one();
-
-    let validator_2_updated_stake = {
+    let validator_2_actual_payout = {
         let validator_stake_before = U512::from(VALIDATOR_2_STAKE);
         let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_2.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
     };
-    let expected_validator_2_payout =
-        (expected_total_reward * one_third - rounded_amount).to_integer();
-    assert_eq!(validator_2_updated_stake, expected_validator_2_payout);
+    let validator_2_expected_payout = expected_total_reward
+        .checked_mul(&Ratio::new(
+            U512::from(VALIDATOR_2_REWARD_FACTOR),
+            U512::from(BLOCK_REWARD),
+        ))
+        .map(|ratio| ratio.to_integer())
+        .unwrap();
+    assert_eq!(validator_2_actual_payout, validator_2_expected_payout);
 
-    let validator_3_updated_stake = {
+    let validator_3_actual_payout = {
         let validator_stake_before = U512::from(VALIDATOR_3_STAKE);
         let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_3.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
     };
-    let expected_validator_3_payout =
-        (expected_total_reward * one_third - rounded_amount).to_integer();
-    assert_eq!(validator_3_updated_stake, expected_validator_3_payout);
-
-    let total_payout =
-        validator_1_updated_stake + validator_2_updated_stake + expected_validator_3_payout;
-    let rounded_amount = U512::from(2);
-    assert_eq!(total_payout, expected_total_reward_integer - rounded_amount);
+    let validator_3_expected_payout = expected_total_reward
+        .checked_mul(&Ratio::new(
+            U512::from(VALIDATOR_3_REWARD_FACTOR),
+            U512::from(BLOCK_REWARD),
+        ))
+        .map(|ratio| ratio.to_integer())
+        .unwrap();
+    assert_eq!(validator_3_actual_payout, validator_3_expected_payout);
 
     let era_info = {
-        let era = builder.get_era();
+        let era = builder.get_era() - 1;
 
         let era_info_value = builder
             .query(None, Key::EraInfo(era), &[])
@@ -2430,19 +2611,19 @@ fn should_distribute_by_factor_regardless_of_stake() {
     assert!(matches!(
         era_info.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_1 && *amount == expected_validator_1_payout
+        if *validator_public_key == *VALIDATOR_1 && *amount == validator_1_expected_payout
     ));
 
     assert!(matches!(
         era_info.select(VALIDATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_2 && *amount == expected_validator_2_payout
+        if *validator_public_key == *VALIDATOR_2 && *amount == validator_2_expected_payout
     ));
 
     assert!(matches!(
         era_info.select(VALIDATOR_3.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_3 && *amount == expected_validator_3_payout
+        if *validator_public_key == *VALIDATOR_3 && *amount == validator_3_expected_payout
     ));
 }
 
@@ -2458,10 +2639,6 @@ fn should_distribute_by_factor_uneven() {
     const VALIDATOR_1_REWARD_FACTOR: u64 = 500000000000;
     const VALIDATOR_2_REWARD_FACTOR: u64 = 300000000000;
     const VALIDATOR_3_REWARD_FACTOR: u64 = 200000000000;
-
-    let one_half = Ratio::new(U512::one(), U512::from(2));
-    let three_tenths = Ratio::new(U512::from(3), U512::from(10));
-    let one_fifth = Ratio::new(U512::from(1), U512::from(5));
 
     let system_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -2551,79 +2728,105 @@ fn should_distribute_by_factor_uneven() {
 
     let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
+    let total_payout = builder.base_round_reward(None);
     let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
+    assert_eq!(total_payout, expected_total_reward_integer);
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
     }
 
-    for _ in 0..5 {
-        builder.run_auction(timestamp_millis, Vec::new());
-        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
+    for _ in 0..=builder.get_auction_delay() {
+        let step_request = StepRequestBuilder::new()
+            .with_parent_state_hash(builder.get_post_state_hash())
+            .with_protocol_version(ProtocolVersion::V1_0_0)
+            .with_next_era_id(builder.get_era().successor())
+            .with_run_auction(true)
+            .build();
+
+        builder
+            .step(step_request)
+            .expect("must execute step successfully");
     }
 
-    let reward_factors: BTreeMap<PublicKey, u64> = {
-        let mut tmp = BTreeMap::new();
-        tmp.insert(VALIDATOR_1.clone(), VALIDATOR_1_REWARD_FACTOR);
-        tmp.insert(VALIDATOR_2.clone(), VALIDATOR_2_REWARD_FACTOR);
-        tmp.insert(VALIDATOR_3.clone(), VALIDATOR_3_REWARD_FACTOR);
-        tmp
-    };
+    let step_request = StepRequestBuilder::new()
+        .with_parent_state_hash(builder.get_post_state_hash())
+        .with_protocol_version(ProtocolVersion::V1_0_0)
+        .with_reward_item(RewardItem::new(
+            VALIDATOR_1.clone(),
+            VALIDATOR_1_REWARD_FACTOR,
+        ))
+        .with_reward_item(RewardItem::new(
+            VALIDATOR_2.clone(),
+            VALIDATOR_2_REWARD_FACTOR,
+        ))
+        .with_reward_item(RewardItem::new(
+            VALIDATOR_3.clone(),
+            VALIDATOR_3_REWARD_FACTOR,
+        ))
+        .with_run_auction(true)
+        .with_next_era_id(builder.get_era().successor())
+        .build();
 
-    let distribute_request = ExecuteRequestBuilder::standard(
-        *SYSTEM_ADDR,
-        CONTRACT_AUCTION_BIDS,
-        runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_REWARD_FACTORS => reward_factors
-        },
-    )
-    .build();
+    builder
+        .step(step_request)
+        .expect("must execute step successfully");
 
-    builder.exec(distribute_request).commit().expect_success();
-
-    let validator_1_updated_stake = {
+    let validator_1_actual_payout = {
         let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
         let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
     };
-    let expected_validator_1_payout = (expected_total_reward * one_half).to_integer();
-    assert_eq!(validator_1_updated_stake, expected_validator_1_payout);
+    let validator_1_expected_payout = expected_total_reward
+        .checked_mul(&Ratio::new(
+            U512::from(VALIDATOR_1_REWARD_FACTOR),
+            U512::from(BLOCK_REWARD),
+        ))
+        .map(|ratio| ratio.to_integer())
+        .unwrap();
+    assert_eq!(validator_1_actual_payout, validator_1_expected_payout);
 
-    let validator_2_updated_stake = {
+    let validator_2_actual_payout = {
         let validator_stake_before = U512::from(VALIDATOR_2_STAKE);
         let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_2.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
     };
-    let expected_validator_2_balance = (expected_total_reward * three_tenths).to_integer();
-    assert_eq!(validator_2_updated_stake, expected_validator_2_balance);
+    let validator_2_expected_payout = expected_total_reward
+        .checked_mul(&Ratio::new(
+            U512::from(VALIDATOR_2_REWARD_FACTOR),
+            U512::from(BLOCK_REWARD),
+        ))
+        .map(|ratio| ratio.to_integer())
+        .unwrap();
+    assert_eq!(validator_2_actual_payout, validator_2_expected_payout);
 
-    let validator_3_updated_stake = {
+    let validator_3_actual_payout = {
         let validator_stake_before = U512::from(VALIDATOR_3_STAKE);
         let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_3.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
     };
-    let expected_validator_3_payout = (expected_total_reward * one_fifth).to_integer();
-    assert_eq!(validator_3_updated_stake, expected_validator_3_payout);
-
-    let total_payout =
-        validator_1_updated_stake + validator_2_updated_stake + validator_3_updated_stake;
-    let rounded_amount = U512::one();
-    assert_eq!(total_payout, expected_total_reward_integer - rounded_amount);
+    let validator_3_expected_payout = expected_total_reward
+        .checked_mul(&Ratio::new(
+            U512::from(VALIDATOR_3_REWARD_FACTOR),
+            U512::from(BLOCK_REWARD),
+        ))
+        .map(|ratio| ratio.to_integer())
+        .unwrap();
+    assert_eq!(validator_3_actual_payout, validator_3_expected_payout);
 
     let era_info = {
-        let era = builder.get_era();
+        let era = builder.get_era() - 1;
 
         let era_info_value = builder
             .query(None, Key::EraInfo(era), &[])
@@ -2638,19 +2841,19 @@ fn should_distribute_by_factor_uneven() {
     assert!(matches!(
         era_info.select(VALIDATOR_1.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_1 && *amount == expected_validator_1_payout
+        if *validator_public_key == *VALIDATOR_1 && *amount == validator_1_expected_payout
     ));
 
     assert!(matches!(
         era_info.select(VALIDATOR_2.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_2 && *amount == expected_validator_2_balance
+        if *validator_public_key == *VALIDATOR_2 && *amount == validator_2_expected_payout
     ));
 
     assert!(matches!(
         era_info.select(VALIDATOR_3.clone()).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_3 && *amount == expected_validator_3_payout
+        if *validator_public_key == *VALIDATOR_3 && *amount == validator_3_expected_payout
     ));
 }
 
@@ -2832,7 +3035,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
 
     let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
@@ -3158,7 +3361,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
 
     let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
@@ -3516,7 +3719,7 @@ fn should_increase_total_supply_after_distribute() {
 
     let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
@@ -3695,7 +3898,7 @@ fn should_not_create_purses_during_distribute() {
 
     let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
@@ -3856,7 +4059,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
 
     let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
@@ -4040,7 +4243,7 @@ fn should_not_restake_after_full_unbond() {
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 
     let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // advance past the initial auction delay due to special condition of post-genesis behavior.
     for _ in 0..4 {
@@ -4210,10 +4413,11 @@ fn delegator_full_unbond_during_first_reward_era() {
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 
     let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // advance past the initial auction delay due to special condition of post-genesis behavior.
-    for _ in 0..4 {
+    let auction_delay = builder.get_auction_delay();
+    for _ in 0..auction_delay {
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
             .with_protocol_version(ProtocolVersion::V1_0_0)
@@ -4303,8 +4507,8 @@ fn delegator_full_unbond_during_first_reward_era() {
     );
 
     // step until validator receives rewards.
-    for _ in 0..3 {
-        // auction delay is 3.
+    let auction_delay = builder.get_auction_delay();
+    for _ in 0..auction_delay {
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
             .with_protocol_version(ProtocolVersion::V1_0_0)
