@@ -1162,6 +1162,9 @@ impl EraSupervisor {
                     Effects::new()
                 }
             }
+            ProtocolOutcome::ValidatorStatusChanged(new_status) => effect_builder
+                .announce_validator_status_changed(new_status)
+                .ignore(),
         }
     }
 

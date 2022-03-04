@@ -50,7 +50,7 @@ use crate::{
             BlockProposerAnnouncement, BlocklistAnnouncement, ChainspecLoaderAnnouncement,
             ConsensusAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
             GossiperAnnouncement, LinearChainAnnouncement, LinearChainBlock, NetworkAnnouncement,
-            RpcServerAnnouncement,
+            RpcServerAnnouncement, ValidatorStatusChangedAnnouncement,
         },
         console::DumpConsensusStateRequest,
         requests::{
@@ -197,6 +197,9 @@ pub(crate) enum ParticipatingEvent {
     /// Block proposer announcement.
     #[from]
     BlockProposerAnnouncement(#[serde(skip_serializing)] BlockProposerAnnouncement),
+    /// Validator status change announcement.
+    #[from]
+    ValidatorStatusChangedAnnouncement(ValidatorStatusChangedAnnouncement),
 }
 
 impl ReactorEvent for ParticipatingEvent {
@@ -249,6 +252,9 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::ChainspecLoaderAnnouncement(_) => "ChainspecLoaderAnnouncement",
             ParticipatingEvent::BlocklistAnnouncement(_) => "BlocklistAnnouncement",
             ParticipatingEvent::BlockProposerAnnouncement(_) => "BlockProposerAnnouncement",
+            ParticipatingEvent::ValidatorStatusChangedAnnouncement(_) => {
+                "ValidatorStatusChangedAnnouncement"
+            }
         }
     }
 }
@@ -379,6 +385,9 @@ impl Display for ParticipatingEvent {
             }
             ParticipatingEvent::BlocklistAnnouncement(ann) => {
                 write!(f, "blocklist announcement: {}", ann)
+            }
+            ParticipatingEvent::ValidatorStatusChangedAnnouncement(ann) => {
+                write!(f, "validator status cahnged: {}", ann)
             }
         }
     }
@@ -1229,6 +1238,10 @@ impl reactor::Reactor for Reactor {
                 rng,
                 ParticipatingEvent::SmallNetwork(ann.into()),
             ),
+            ParticipatingEvent::ValidatorStatusChangedAnnouncement(_) => {
+                debug!("TODO: swalloed a validator status changed announcement");
+                Effects::new()
+            }
         }
     }
 

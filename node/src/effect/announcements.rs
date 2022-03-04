@@ -295,3 +295,16 @@ impl Display for ChainspecLoaderAnnouncement {
         }
     }
 }
+
+/// An announcement indicating that the validator/non-validator status of the node changed.
+#[derive(Debug, Serialize)]
+pub(crate) struct ValidatorStatusChangedAnnouncement {
+    /// Whether or not we are a validator now.
+    pub(crate) new_status: bool,
+}
+
+impl Display for ValidatorStatusChangedAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "validator status changed to {}", self.new_status)
+    }
+}

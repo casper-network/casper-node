@@ -10,6 +10,7 @@ use std::{
 };
 
 use datasize::DataSize;
+use derive_more::From;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::{net::UnixListener, sync::watch};
@@ -17,7 +18,10 @@ use tracing::debug;
 
 use super::Component;
 use crate::{
-    effect::{console::DumpConsensusStateRequest, EffectBuilder, EffectExt, Effects},
+    effect::{
+        announcements::ValidatorStatusChangedAnnouncement, console::DumpConsensusStateRequest,
+        EffectBuilder, EffectExt, Effects,
+    },
     reactor::EventQueueHandle,
     types::NodeRng,
     utils::umask,
@@ -128,8 +132,12 @@ fn setup_listener<P: AsRef<Path>>(path: P, socket_umask: umask::Mode) -> io::Res
 }
 
 /// Unix console event.
-#[derive(Debug, Serialize)]
-pub(crate) struct Event;
+#[derive(Debug, From, Serialize)]
+pub(crate) enum Event {
+    /// Received a validator status changed announcement.
+    #[from]
+    ValidatorStatusChangedAnnouncement(ValidatorStatusChangedAnnouncement),
+}
 
 /// A console initialization error.
 #[derive(Debug, Error)]
@@ -154,10 +162,16 @@ impl<REv> Component<REv> for Console {
         &mut self,
         _effect_builder: EffectBuilder<REv>,
         _rng: &mut NodeRng,
-        _event: Event,
+        event: Event,
     ) -> Effects<Event> {
-        // No events are processed in the component, as all requests are handled per-client in
-        // tasks.
-        Effects::new()
+        match event {
+            Event::ValidatorStatusChangedAnnouncement(ValidatorStatusChangedAnnouncement {
+                new_status,
+            }) => {
+                debug!(%new_status, "notify connected clients about new validator status");
+                // not shown: actual sending of the message to connected clients
+                Effects::new()
+            }
+        }
     }
 }

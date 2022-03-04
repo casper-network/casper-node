@@ -35,7 +35,9 @@ use casper_types::{EraId, PublicKey, U512};
 use crate::{
     components::Component,
     effect::{
-        announcements::{BlocklistAnnouncement, ConsensusAnnouncement},
+        announcements::{
+            BlocklistAnnouncement, ConsensusAnnouncement, ValidatorStatusChangedAnnouncement,
+        },
         console::DumpConsensusStateRequest,
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
@@ -263,6 +265,7 @@ pub(crate) trait ReactorEventT:
     + From<ChainspecLoaderRequest>
     + From<LinearChainRequest>
     + From<BlocklistAnnouncement>
+    + From<ValidatorStatusChangedAnnouncement>
 {
 }
 
@@ -280,6 +283,7 @@ impl<REv> ReactorEventT for REv where
         + From<ChainspecLoaderRequest>
         + From<LinearChainRequest>
         + From<BlocklistAnnouncement>
+        + From<ValidatorStatusChangedAnnouncement>
 {
 }
 

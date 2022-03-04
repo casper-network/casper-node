@@ -128,7 +128,9 @@ use requests::{
 };
 
 use self::{
-    announcements::{BlockProposerAnnouncement, BlocklistAnnouncement},
+    announcements::{
+        BlockProposerAnnouncement, BlocklistAnnouncement, ValidatorStatusChangedAnnouncement,
+    },
     console::DumpConsensusStateRequest,
 };
 use crate::components::contract_runtime::{
@@ -737,6 +739,19 @@ impl<REv> EffectBuilder<REv> {
             DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
             QueueKind::Regular,
         )
+    }
+
+    /// Announce that the validator status has been changed.
+    pub(crate) async fn announce_validator_status_changed(self, new_status: bool)
+    where
+        REv: From<ValidatorStatusChangedAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                ValidatorStatusChangedAnnouncement { new_status },
+                QueueKind::Regular,
+            )
+            .await
     }
 
     /// Announces that we have finished gossiping the indicated item.
