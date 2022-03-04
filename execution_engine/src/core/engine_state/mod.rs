@@ -1906,6 +1906,7 @@ where
     pub fn get_era_validators(
         &self,
         correlation_id: CorrelationId,
+        system_contract_registry: &SystemContractRegistry,
         get_era_validators_request: GetEraValidatorsRequest,
     ) -> Result<EraValidators, GetEraValidatorsError> {
         let protocol_version = get_era_validators_request.protocol_version();
@@ -1919,11 +1920,6 @@ where
         let wasm_config = engine_config.wasm_config();
 
         let preprocessor = Preprocessor::new(*wasm_config);
-
-        let system_contract_registry = tracking_copy
-            .borrow_mut()
-            .get_system_contracts(correlation_id)
-            .map_err(Error::from)?;
 
         let auction_contract_hash = system_contract_registry.get(AUCTION).ok_or_else(|| {
             error!("Missing system auction contract hash");
@@ -2321,7 +2317,8 @@ where
         Ok(BalanceResult::Success { motes, proof })
     }
 
-    fn get_system_contract_registry(
+    /// Obtains an instance of a system contract registry for a given state root hash.
+    pub fn get_system_contract_registry(
         &self,
         correlation_id: CorrelationId,
         state_root_hash: Digest,
@@ -2333,8 +2330,8 @@ where
         let result = tracking_copy
             .borrow_mut()
             .get_system_contracts(correlation_id)
-            .map_err(|_| {
-                error!("Failed to retrieve system contract registry");
+            .map_err(|error| {
+                error!(%error, "Failed to retrieve system contract registry");
                 Error::MissingSystemContractRegistry
             });
         result

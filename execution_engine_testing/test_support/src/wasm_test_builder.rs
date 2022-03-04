@@ -953,8 +953,12 @@ where
         let correlation_id = CorrelationId::new();
         let state_hash = self.get_post_state_hash();
         let request = GetEraValidatorsRequest::new(state_hash, *DEFAULT_PROTOCOL_VERSION);
+        let system_contract_registry = self
+            .system_contract_registry
+            .clone()
+            .expect("System contract registry not found. Please run genesis first.");
         self.engine_state
-            .get_era_validators(correlation_id, request)
+            .get_era_validators(correlation_id, &system_contract_registry, request)
             .expect("get era validators should not error")
     }
 

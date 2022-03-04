@@ -7,7 +7,7 @@ use casper_execution_engine::{
     core::engine_state::{
         self, step::EvictItem, DeployItem, EngineState, ExecuteRequest,
         ExecutionResult as EngineExecutionResult, GetEraValidatorsRequest, RewardItem, StepError,
-        StepRequest, StepSuccess,
+        StepRequest, StepSuccess, SystemContractRegistry,
     },
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
     storage::global_state::lmdb::LmdbGlobalState,
@@ -31,8 +31,10 @@ use casper_execution_engine::{
 };
 
 /// Executes a finalized block.
+#[allow(clippy::too_many_arguments)]
 pub fn execute_finalized_block(
     engine_state: &EngineState<LmdbGlobalState>,
+    system_contract_registry: &SystemContractRegistry,
     metrics: Option<Arc<Metrics>>,
     protocol_version: ProtocolVersion,
     execution_pre_state: ExecutionPreState,
@@ -116,6 +118,7 @@ pub fn execute_finalized_block(
             state_root_hash = post_state_hash;
             let upcoming_era_validators = engine_state.get_era_validators(
                 CorrelationId::new(),
+                system_contract_registry,
                 GetEraValidatorsRequest::new(state_root_hash, protocol_version),
             )?;
             Some(StepEffectAndUpcomingEraValidators {
