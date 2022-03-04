@@ -16,7 +16,7 @@ const ARG_AMOUNT: &str = "amount";
 #[test]
 fn should_put_system_contract_hashes_to_account_context() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     let request = {
         let deploy = DeployItemBuilder::new()

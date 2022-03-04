@@ -27,7 +27,7 @@ fn should_run_ee_601_pay_session_new_uref_collision() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)

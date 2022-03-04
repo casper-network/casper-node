@@ -13,7 +13,7 @@ const ARG_AMOUNT: &str = "amount";
 #[ignore]
 #[test]
 fn should_run_main_purse_contract_default_account() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     let builder = builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -38,7 +38,7 @@ fn should_run_main_purse_contract_default_account() {
 #[ignore]
 #[test]
 fn should_run_main_purse_contract_account_1() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,

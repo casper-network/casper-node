@@ -22,7 +22,7 @@ const DICTIONARY_ITEM_KEY_CHECK: &str = "dictionary-item-key-check.wasm";
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 
 fn setup() -> (InMemoryWasmTestBuilder, ContractHash) {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -446,7 +446,7 @@ fn should_fail_get_with_invalid_dictionary_item_key() {
 #[ignore]
 #[test]
 fn dictionary_put_should_fail_with_large_item_key() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -489,7 +489,7 @@ fn dictionary_put_should_fail_with_large_item_key() {
 #[ignore]
 #[test]
 fn dictionary_get_should_fail_with_large_item_key() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -557,7 +557,7 @@ fn should_query_dictionary_items_with_test_builder() {
 
     let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
     builder.run_genesis(&run_genesis_request).commit();
 
     builder.exec(exec_request).commit().expect_success();

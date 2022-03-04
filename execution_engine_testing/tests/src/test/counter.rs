@@ -16,7 +16,7 @@ const METHOD_INC: &str = "inc";
 #[ignore]
 #[test]
 fn should_run_counter_example_contract() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -99,7 +99,7 @@ fn should_run_counter_example_contract() {
 #[ignore]
 #[test]
 fn should_default_contract_hash_arg() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     // This test runs a contract that's after every call extends the same key with
     // more data
@@ -158,7 +158,7 @@ fn should_default_contract_hash_arg() {
 #[ignore]
 #[test]
 fn should_call_counter_contract_directly() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,

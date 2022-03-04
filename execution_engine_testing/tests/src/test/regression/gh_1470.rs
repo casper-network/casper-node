@@ -34,7 +34,7 @@ const ARG_AMOUNT: &str = "amount";
 const ARG_TARGET: &str = "target";
 
 fn setup() -> InMemoryWasmTestBuilder {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
     let transfer = ExecuteRequestBuilder::transfer(

@@ -10,7 +10,7 @@ const CONTRACT_PACKAGE_NAMED_KEY: &str = "do_nothing_package_hash";
 #[ignore]
 #[test]
 fn should_query_contract_package() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST).commit();
 
     let install_request =

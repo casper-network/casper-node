@@ -12,7 +12,7 @@ const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 #[ignore]
 #[test]
 fn should_run_get_caller_contract() {
-    InMemoryWasmTestBuilder::default()
+    InMemoryWasmTestBuilder::new_with_production_chainspec()
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(
             ExecuteRequestBuilder::standard(
@@ -29,7 +29,7 @@ fn should_run_get_caller_contract() {
 #[ignore]
 #[test]
 fn should_run_get_caller_contract_other_account() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -62,7 +62,7 @@ fn should_run_get_caller_contract_other_account() {
 #[test]
 fn should_run_get_caller_subcall_contract() {
     {
-        let mut builder = InMemoryWasmTestBuilder::default();
+        let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
         builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
         builder
@@ -78,7 +78,7 @@ fn should_run_get_caller_subcall_contract() {
             .commit();
     }
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
     builder
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(

@@ -20,7 +20,7 @@ fn should_run_ee_539_serialize_action_thresholds_regression() {
     )
         .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
     builder
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request)

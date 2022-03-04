@@ -62,7 +62,7 @@ fn should_charge_minimum_for_do_nothing_session() {
     }
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -118,7 +118,7 @@ fn should_execute_do_minimum_session() {
     }
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -173,7 +173,7 @@ fn should_charge_minimum_for_do_nothing_payment() {
     }
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 

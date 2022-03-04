@@ -35,7 +35,7 @@ static FAUCET_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*FAUCET)
 static ALICE_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ALICE));
 
 fn get_builder() -> InMemoryWasmTestBuilder {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
     {
         // first, store contract
         let store_request = ExecuteRequestBuilder::standard(
@@ -114,7 +114,7 @@ fn should_fail_to_create_account() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
     builder.run_genesis(&run_genesis_request);
 
     let store_faucet_request = ExecuteRequestBuilder::standard(
@@ -182,7 +182,7 @@ fn should_fail_transfer_to_existing_account() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
     builder.run_genesis(&run_genesis_request);
 
     let store_faucet_request = ExecuteRequestBuilder::standard(

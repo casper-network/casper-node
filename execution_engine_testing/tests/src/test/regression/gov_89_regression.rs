@@ -39,7 +39,7 @@ const ACCOUNT_2_BALANCE: u64 = 200_000_000;
 const ACCOUNT_2_BOND: u64 = 200_000_000;
 
 fn initialize_builder() -> InMemoryWasmTestBuilder {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();

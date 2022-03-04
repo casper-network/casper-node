@@ -13,7 +13,7 @@ const DO_NOTHING_CONTRACT: &str = "do_nothing.wasm";
 #[ignore]
 #[test]
 fn should_run_ee_1225_verify_finalize_payment_invariants() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
     let exec_request = {

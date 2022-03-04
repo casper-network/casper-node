@@ -148,7 +148,7 @@ impl BuilderExt for WasmTestBuilder<InMemoryGlobalState> {
 }
 
 fn setup() -> WasmTestBuilder<InMemoryGlobalState> {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
     store_contract(&mut builder, CONTRACT_RECURSIVE_SUBCALL);
     builder

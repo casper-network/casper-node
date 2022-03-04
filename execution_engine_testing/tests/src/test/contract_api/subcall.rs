@@ -39,7 +39,7 @@ fn should_charge_gas_for_subcall() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -128,7 +128,7 @@ fn should_add_all_gas_for_subcall() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -187,7 +187,7 @@ fn expensive_subcall_should_cost_more() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     // store the contracts first
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);

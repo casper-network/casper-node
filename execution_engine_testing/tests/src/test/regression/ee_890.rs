@@ -50,7 +50,7 @@ fn should_run_ee_890_gracefully_reject_start_node_in_session() {
 
     let exec_request_1 = ExecuteRequestBuilder::new().push_deploy(deploy_1).build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
     builder
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
@@ -78,7 +78,7 @@ fn should_run_ee_890_gracefully_reject_start_node_in_payment() {
 
     let exec_request_1 = ExecuteRequestBuilder::new().push_deploy(deploy_1).build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
     builder
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)

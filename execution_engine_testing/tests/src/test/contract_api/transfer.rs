@@ -48,7 +48,7 @@ fn should_transfer_to_account() {
     let transfer_amount: U512 = *TRANSFER_1_AMOUNT;
 
     // Run genesis
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -101,7 +101,7 @@ fn should_transfer_to_public_key() {
     let transfer_amount: U512 = *TRANSFER_1_AMOUNT;
 
     // Run genesis
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -154,7 +154,7 @@ fn should_transfer_from_purse_to_public_key() {
     let transfer_amount: U512 = *TRANSFER_1_AMOUNT;
 
     // Run genesis
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -213,7 +213,7 @@ fn should_transfer_from_account_to_account() {
     let transfer_2_amount: U512 = *TRANSFER_2_AMOUNT;
 
     // Run genesis
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     let builder = builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -303,7 +303,7 @@ fn should_transfer_to_existing_account() {
     let transfer_2_amount: U512 = *TRANSFER_2_AMOUNT;
 
     // Run genesis
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     let builder = builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -420,7 +420,7 @@ fn should_fail_when_insufficient_funds() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
     builder
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         // Exec transfer contract
@@ -447,7 +447,7 @@ fn should_fail_when_insufficient_funds() {
 #[ignore]
 #[test]
 fn should_transfer_total_amount() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,

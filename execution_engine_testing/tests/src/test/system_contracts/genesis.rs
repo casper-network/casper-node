@@ -87,7 +87,7 @@ fn should_run_genesis() {
     let run_genesis_request =
         RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, exec_config);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -157,7 +157,7 @@ fn should_track_total_token_supply_in_mint() {
     let run_genesis_request =
         RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, ee_config);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&run_genesis_request);
 

@@ -19,7 +19,7 @@ fn should_run_get_blocktime_contract() {
     )
     .with_block_time(block_time)
     .build();
-    InMemoryWasmTestBuilder::default()
+    InMemoryWasmTestBuilder::new_with_production_chainspec()
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request)
         .commit()

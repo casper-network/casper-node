@@ -15,7 +15,7 @@ fn should_not_fail_deserializing() {
         RuntimeArgs::new(),
     )
     .build();
-    let is_error = InMemoryWasmTestBuilder::default()
+    let is_error = InMemoryWasmTestBuilder::new_with_production_chainspec()
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request)
         .commit()

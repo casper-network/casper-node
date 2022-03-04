@@ -16,7 +16,7 @@ const CONTRACT_PACKAGE_KEY: &str = "contract_package";
 const CONTRACT_HASH_KEY: &str = "contract_hash";
 
 fn setup() -> (InMemoryWasmTestBuilder, ContractPackageHash, ContractHash) {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
     let install_contract_request_1 = ExecuteRequestBuilder::standard(

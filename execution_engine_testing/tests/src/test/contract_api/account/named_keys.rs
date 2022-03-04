@@ -42,7 +42,7 @@ fn read_value<T: CLTyped + FromBytes>(builder: &mut InMemoryWasmTestBuilder, key
 #[ignore]
 #[test]
 fn should_run_named_keys_contract() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 

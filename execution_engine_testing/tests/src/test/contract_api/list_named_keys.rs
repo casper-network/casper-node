@@ -13,7 +13,7 @@ const ARG_NEW_NAMED_KEYS: &str = "new_named_keys";
 #[ignore]
 #[test]
 fn should_list_named_keys() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     let initial_named_keys: NamedKeys = NamedKeys::new();

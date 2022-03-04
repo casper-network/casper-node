@@ -57,7 +57,7 @@ fn make_n_arg_call_bytes(arity: usize, arg_type: &str) -> Vec<u8> {
 }
 
 fn initialize_builder() -> InMemoryWasmTestBuilder {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
     builder
 }

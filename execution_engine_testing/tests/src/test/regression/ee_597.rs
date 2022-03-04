@@ -41,7 +41,7 @@ fn should_fail_when_bonding_amount_is_zero_ee_597_regression() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
     builder
         .run_genesis(&run_genesis_request)
         .exec(exec_request)

@@ -110,7 +110,7 @@ fn should_run_ee_1045_squash_validators() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&run_genesis_request);
 

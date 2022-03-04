@@ -21,7 +21,7 @@ fn should_run_mint_purse_contract() {
         ExecuteRequestBuilder::standard(*SYSTEM_ADDR, CONTRACT_MINT_PURSE, RuntimeArgs::default())
             .build();
 
-    let mut builder = WasmTestBuilder::default();
+    let mut builder = WasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -39,7 +39,7 @@ fn should_not_allow_non_system_accounts_to_mint() {
     )
     .build();
 
-    assert!(WasmTestBuilder::default()
+    assert!(WasmTestBuilder::new_with_production_chainspec()
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request)
         .commit()

@@ -13,6 +13,8 @@ use lmdb::DatabaseFlags;
 use log::LevelFilter;
 
 use bytesrepr::FromBytes;
+use casper_execution_engine::core::engine_state::{ExecConfig, DEFAULT_MAX_QUERY_DEPTH};
+
 use casper_execution_engine::{
     core::{
         engine_state,
@@ -63,6 +65,7 @@ use casper_types::{
     TransferAddr, URef, U512,
 };
 
+use crate::chainspec_config::{ChainspecConfig, PRODUCTION_PATH};
 use crate::{
     utils, ExecuteRequestBuilder, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
 };
@@ -120,31 +123,31 @@ impl<S> WasmTestBuilder<S> {
     }
 }
 
-impl Default for InMemoryWasmTestBuilder {
-    fn default() -> Self {
-        Self::initialize_logging();
-        let engine_config = EngineConfig::default();
-
-        let global_state = InMemoryGlobalState::empty().expect("should create global state");
-        let engine_state = EngineState::new(global_state, engine_config);
-
-        WasmTestBuilder {
-            engine_state: Rc::new(engine_state),
-            exec_results: Vec::new(),
-            upgrade_results: Vec::new(),
-            genesis_hash: None,
-            post_state_hash: None,
-            transforms: Vec::new(),
-            genesis_account: None,
-            genesis_transforms: None,
-            mint_contract_hash: None,
-            handle_payment_contract_hash: None,
-            standard_payment_hash: None,
-            auction_contract_hash: None,
-            scratch_engine_state: None,
-        }
-    }
-}
+// impl Default for InMemoryWasmTestBuilder {
+//     fn default() -> Self {
+//         Self::initialize_logging();
+//         let engine_config = EngineConfig::default();
+//
+//         let global_state = InMemoryGlobalState::empty().expect("should create global state");
+//         let engine_state = EngineState::new(global_state, engine_config);
+//
+//         WasmTestBuilder {
+//             engine_state: Rc::new(engine_state),
+//             exec_results: Vec::new(),
+//             upgrade_results: Vec::new(),
+//             genesis_hash: None,
+//             post_state_hash: None,
+//             transforms: Vec::new(),
+//             genesis_account: None,
+//             genesis_transforms: None,
+//             mint_contract_hash: None,
+//             handle_payment_contract_hash: None,
+//             standard_payment_hash: None,
+//             auction_contract_hash: None,
+//             scratch_engine_state: None,
+//         }
+//     }
+// }
 
 // TODO: Deriving `Clone` for `WasmTestBuilder<S>` doesn't work correctly (unsure why), so
 // implemented by hand here.  Try to derive in the future with a different compiler version.
@@ -173,16 +176,49 @@ impl InMemoryWasmTestBuilder {
     pub fn new(
         global_state: InMemoryGlobalState,
         engine_config: EngineConfig,
-        post_state_hash: Digest,
+        post_state_hash: Option<Digest>,
     ) -> Self {
         Self::initialize_logging();
         let engine_state = EngineState::new(global_state, engine_config);
         WasmTestBuilder {
             engine_state: Rc::new(engine_state),
-            genesis_hash: Some(post_state_hash),
-            post_state_hash: Some(post_state_hash),
-            ..Default::default()
+            exec_results: vec![],
+            upgrade_results: vec![],
+            genesis_hash: post_state_hash,
+            post_state_hash,
+            transforms: Vec::new(),
+            genesis_account: None,
+            genesis_transforms: None,
+            mint_contract_hash: None,
+            handle_payment_contract_hash: None,
+            standard_payment_hash: None,
+            auction_contract_hash: None,
+            scratch_engine_state: None,
         }
+    }
+
+    pub fn new_with_chainspec<P: AsRef<Path>>(
+        chainspec_path: P,
+        post_state_hash: Option<Digest>,
+    ) -> Self {
+        let chainspec_config = ChainspecConfig::from_chainspec_path(chainspec_path)
+            .expect("must build chainspec configuration");
+
+        let engine_config = EngineConfig::new(
+            DEFAULT_MAX_QUERY_DEPTH,
+            chainspec_config.core_config.max_associated_keys,
+            chainspec_config.core_config.max_runtime_call_stack_height,
+            chainspec_config.wasm_config,
+            chainspec_config.system_costs_config,
+        );
+
+        let global_state = InMemoryGlobalState::empty().expect("should create global state");
+
+        Self::new(global_state, engine_config, post_state_hash)
+    }
+
+    pub fn new_with_production_chainspec() -> Self {
+        Self::new_with_chainspec(&*PRODUCTION_PATH, None)
     }
 }
 
@@ -228,6 +264,24 @@ impl LmdbWasmTestBuilder {
             auction_contract_hash: None,
             scratch_engine_state: None,
         }
+    }
+
+    pub fn new_with_chainspec<T: AsRef<OsStr> + ?Sized, P: AsRef<Path>>(
+        data_dir: &T,
+        chainspec_path: P,
+    ) -> Self {
+        let chainspec_config = ChainspecConfig::from_chainspec_path(chainspec_path)
+            .expect("must build chainspec configuration");
+
+        let engine_config = EngineConfig::new(
+            DEFAULT_MAX_QUERY_DEPTH,
+            chainspec_config.core_config.max_associated_keys,
+            chainspec_config.core_config.max_runtime_call_stack_height,
+            chainspec_config.wasm_config,
+            chainspec_config.system_costs_config,
+        );
+
+        Self::new_with_config(data_dir, engine_config)
     }
 
     /// Flushes the LMDB environment to disk.
@@ -373,6 +427,66 @@ where
 {
     /// Takes a [`RunGenesisRequest`], executes the request and returns Self.
     pub fn run_genesis(&mut self, run_genesis_request: &RunGenesisRequest) -> &mut Self {
+        let system_account = Key::Account(PublicKey::System.to_account_hash());
+
+        let production_config = ChainspecConfig::from_chainspec_path(&*PRODUCTION_PATH)
+            .expect("must build chainspec configuration");
+
+        let exec_config = ExecConfig::try_from(production_config).expect("must get exec config");
+
+        let GenesisSuccess {
+            post_state_hash,
+            execution_effect,
+        } = self
+            .engine_state
+            .commit_genesis(
+                CorrelationId::new(),
+                run_genesis_request.genesis_config_hash(),
+                run_genesis_request.protocol_version(),
+                &exec_config,
+            )
+            .expect("Unable to get genesis response");
+
+        let transforms = execution_effect.transforms;
+        let empty_path: Vec<String> = vec![];
+
+        let genesis_account =
+            utils::get_account(&transforms, &system_account).expect("Unable to get system account");
+
+        let registry = match self.query(
+            Some(post_state_hash),
+            Key::SystemContractRegistry,
+            &empty_path,
+        ) {
+            Ok(StoredValue::CLValue(cl_registry)) => {
+                CLValue::into_t::<SystemContractRegistry>(cl_registry).unwrap()
+            }
+            Ok(_) => panic!("Failed to get system registry"),
+            Err(err) => panic!("{}", err),
+        };
+
+        self.genesis_hash = Some(post_state_hash);
+        self.post_state_hash = Some(post_state_hash);
+        self.mint_contract_hash = Some(*registry.get(MINT).expect("should have mint hash"));
+        self.handle_payment_contract_hash = Some(
+            *registry
+                .get(HANDLE_PAYMENT)
+                .expect("should have handle payment hash"),
+        );
+        self.standard_payment_hash = Some(
+            *registry
+                .get(STANDARD_PAYMENT)
+                .expect("should have standard payment hash"),
+        );
+        self.auction_contract_hash =
+            Some(*registry.get(AUCTION).expect("should have auction hash"));
+        self.genesis_account = Some(genesis_account);
+        self.genesis_transforms = Some(transforms);
+        self
+    }
+
+    /// Takes a [`RunGenesisRequest`], executes the request and returns Self.
+    pub fn run_default_genesis(&mut self, run_genesis_request: &RunGenesisRequest) -> &mut Self {
         let system_account = Key::Account(PublicKey::System.to_account_hash());
 
         let GenesisSuccess {

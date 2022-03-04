@@ -32,7 +32,7 @@ fn do_pass(pass: &str) -> (URef, URef) {
         ExecuteRequestBuilder::from_deploy_item(deploy).build()
     };
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
     builder
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request)

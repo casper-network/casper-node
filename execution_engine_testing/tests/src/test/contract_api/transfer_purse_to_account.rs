@@ -24,7 +24,7 @@ static ACCOUNT_1_INITIAL_FUND: Lazy<U512> = Lazy::new(|| *DEFAULT_PAYMENT + 42);
 #[ignore]
 #[test]
 fn should_run_purse_to_account_transfer() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     let account_1_account_hash = ACCOUNT_1_ADDR;
@@ -66,7 +66,7 @@ fn should_fail_when_sending_too_much_from_purse_to_account() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)

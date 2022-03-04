@@ -19,7 +19,7 @@ fn named_dictionaries_should_work_as_expected() {
         .map(|_| (rng.gen_range(0..9), rng.gen_range(0..20), rng.gen()))
         .collect();
 
-    let builder = &mut InMemoryWasmTestBuilder::default();
+    let builder = &mut InMemoryWasmTestBuilder::new_with_production_chainspec();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
     builder
         .exec(

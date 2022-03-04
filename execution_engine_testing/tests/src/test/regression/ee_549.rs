@@ -16,7 +16,7 @@ fn should_run_ee_549_set_refund_regression() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)

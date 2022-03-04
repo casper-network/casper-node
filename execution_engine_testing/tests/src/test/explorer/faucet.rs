@@ -21,7 +21,7 @@ fn should_get_funds_from_faucet() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
     builder
         .run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request)
@@ -57,7 +57,7 @@ fn should_fail_if_already_funded() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder
         .run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST)

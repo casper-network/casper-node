@@ -78,7 +78,7 @@ fn should_run_ee_1152_regression_test() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&run_genesis_request);
 

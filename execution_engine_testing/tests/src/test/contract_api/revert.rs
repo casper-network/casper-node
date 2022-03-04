@@ -12,7 +12,7 @@ fn should_revert() {
     let exec_request =
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, REVERT_WASM, RuntimeArgs::default())
             .build();
-    InMemoryWasmTestBuilder::default()
+    InMemoryWasmTestBuilder::new_with_production_chainspec()
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request)
         .commit()

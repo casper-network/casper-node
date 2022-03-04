@@ -20,7 +20,7 @@ const LARGE_DELEGATION_RATE: DelegationRate = 101;
 fn should_run_ee_1174_delegation_rate_too_high() {
     let bid_amount = U512::one();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
     let auction = builder.get_auction_contract_hash();

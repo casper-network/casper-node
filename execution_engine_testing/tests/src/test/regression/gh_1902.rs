@@ -32,7 +32,7 @@ static ACCOUNT_1_PUBLIC_KEY: Lazy<PublicKey> =
 static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCOUNT_1_PUBLIC_KEY));
 
 fn setup() -> InMemoryWasmTestBuilder {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
     let id: Option<u64> = None;
     let transfer_args_1 = runtime_args! {
@@ -90,7 +90,13 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
 
     let bond_amount = U512::from(BOND_AMOUNT);
     // This amount should be enough to make first time add_bid call.
-    let add_bid_payment_amount = U512::from(DEFAULT_ADD_BID_COST);
+    let add_bid_cost = builder
+        .get_engine_state()
+        .config()
+        .system_config()
+        .auction_costs()
+        .add_bid;
+    let add_bid_payment_amount = U512::from(add_bid_cost);
 
     let add_bid_request = {
         let sender = *DEFAULT_ACCOUNT_ADDR;
@@ -121,10 +127,16 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
         default_account.clone(),
         bond_amount,
         add_bid_payment_amount,
-        Gas::from(DEFAULT_ADD_BID_COST),
+        Gas::from(add_bid_cost),
     );
 
-    let delegate_payment_amount = U512::from(DEFAULT_DELEGATE_COST);
+    let delegate_cost = builder
+        .get_engine_state()
+        .config()
+        .system_config()
+        .auction_costs()
+        .delegate;
+    let delegate_payment_amount = U512::from(delegate_cost);
     let delegate_amount = U512::from(DELEGATE_AMOUNT);
 
     let delegate_request = {
@@ -158,10 +170,16 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
         account_1.clone(),
         delegate_amount,
         delegate_payment_amount,
-        Gas::from(DEFAULT_DELEGATE_COST),
+        Gas::from(delegate_cost),
     );
 
-    let undelegate_payment_amount = U512::from(DEFAULT_UNDELEGATE_COST);
+    let undelegate_cost = builder
+        .get_engine_state()
+        .config()
+        .system_config()
+        .auction_costs()
+        .undelegate;
+    let undelegate_payment_amount = U512::from(undelegate_cost);
     let undelegate_amount = delegate_amount;
 
     let undelegate_request = {
@@ -195,12 +213,18 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
         account_1,
         U512::zero(), // we paid nothing in the deploy as we're unbonding
         undelegate_payment_amount,
-        Gas::from(DEFAULT_UNDELEGATE_COST),
+        Gas::from(undelegate_cost),
     );
 
     let unbond_amount = bond_amount;
     // This amount should be enough to make first time add_bid call.
-    let withdraw_bid_payment_amount = U512::from(DEFAULT_WITHDRAW_BID_COST);
+    let withdraw_bid_cost = builder
+        .get_engine_state()
+        .config()
+        .system_config()
+        .auction_costs()
+        .withdraw_bid;
+    let withdraw_bid_payment_amount = U512::from(withdraw_bid_cost);
 
     let withdraw_bid_request = {
         let sender = *DEFAULT_ACCOUNT_ADDR;
@@ -230,6 +254,6 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
         default_account,
         U512::zero(),
         withdraw_bid_payment_amount,
-        Gas::from(DEFAULT_WITHDRAW_BID_COST),
+        Gas::from(withdraw_bid_cost),
     );
 }

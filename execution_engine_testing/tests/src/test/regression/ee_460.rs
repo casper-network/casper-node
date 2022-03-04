@@ -18,7 +18,7 @@ fn should_run_ee_460_no_side_effects_on_error_regression() {
         runtime_args! { ARG_AMOUNT => U512::max_value() },
     )
     .build();
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
     builder
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)

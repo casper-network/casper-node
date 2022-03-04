@@ -18,7 +18,7 @@ fn contract_transforms_should_be_ordered_in_the_journal() {
     // This many operations will be scattered among these URefs.
     const N_OPS: usize = 1000;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     let mut rng = StdRng::seed_from_u64(0);

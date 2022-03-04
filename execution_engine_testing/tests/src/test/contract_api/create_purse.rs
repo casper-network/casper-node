@@ -31,7 +31,7 @@ fn should_insert_account_into_named_keys() {
     )
     .build();
 
-    let mut builder = WasmTestBuilder::default();
+    let mut builder = WasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -65,7 +65,7 @@ fn should_create_usable_purse() {
         runtime_args! { ARG_PURSE_NAME => TEST_PURSE_NAME },
     )
     .build();
-    let mut builder = WasmTestBuilder::default();
+    let mut builder = WasmTestBuilder::new_with_production_chainspec();
     builder
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)

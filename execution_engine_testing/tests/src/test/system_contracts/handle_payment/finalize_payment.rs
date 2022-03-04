@@ -27,7 +27,7 @@ pub const ARG_ACCOUNT_KEY: &str = "account";
 pub const ARG_TARGET: &str = "target";
 
 fn initialize() -> InMemoryWasmTestBuilder {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -86,7 +86,7 @@ fn finalize_payment_should_not_be_run_by_non_system_accounts() {
 #[ignore]
 #[test]
 fn finalize_payment_should_refund_to_specified_purse() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
     let payment_amount = *DEFAULT_PAYMENT;
     let refund_purse_flag: u8 = 1;
     // Don't need to run finalize_payment manually, it happens during

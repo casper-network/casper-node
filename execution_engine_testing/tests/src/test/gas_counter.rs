@@ -72,7 +72,7 @@ fn make_session_code_with(instructions: Vec<Instruction>) -> Vec<u8> {
 #[ignore]
 #[test]
 fn should_fail_to_overflow_gas_counter() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     let session_bytes = make_gas_counter_overflow();
 
@@ -180,7 +180,7 @@ fn should_correctly_measure_gas_for_opcodes() {
 
     let session_bytes = make_session_code_with(instructions);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 

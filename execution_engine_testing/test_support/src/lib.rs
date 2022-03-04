@@ -8,6 +8,7 @@
 )]
 #![warn(missing_docs)]
 mod additive_map_diff;
+mod chainspec_config;
 mod deploy_item_builder;
 mod execute_request_builder;
 mod step_request_builder;

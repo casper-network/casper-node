@@ -177,7 +177,7 @@ fn test_multisig_auth(
 }
 
 fn setup() -> InMemoryWasmTestBuilder {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     for account in ROLE_A_KEYS.iter().chain(&ROLE_B_KEYS) {

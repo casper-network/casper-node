@@ -177,7 +177,7 @@ fn should_add_new_bid() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -221,7 +221,7 @@ fn should_increase_existing_bid() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -280,7 +280,7 @@ fn should_decrease_existing_bid() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -348,7 +348,7 @@ fn should_run_delegate_and_undelegate() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -528,7 +528,7 @@ fn should_calculate_era_validators() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -685,7 +685,7 @@ fn should_get_first_seigniorage_recipients() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -835,7 +835,7 @@ fn should_release_founder_stake() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -965,7 +965,7 @@ fn should_fail_to_get_era_validators() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -996,7 +996,7 @@ fn should_use_era_validators_endpoint_for_first_era() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -1054,7 +1054,7 @@ fn should_calculate_era_validators_multiple_new_bids() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -1223,7 +1223,7 @@ fn undelegated_funds_should_be_released() {
     let mut timestamp_millis =
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -1347,7 +1347,7 @@ fn fully_undelegated_funds_should_be_released() {
     let mut timestamp_millis =
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -1506,7 +1506,7 @@ fn should_undelegate_delegators_when_validator_unbonds() {
     let mut timestamp_millis =
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -1743,7 +1743,7 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
     let mut timestamp_millis =
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -1928,7 +1928,7 @@ fn should_handle_evictions() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -2071,7 +2071,7 @@ fn should_validate_orphaned_genesis_delegators() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&run_genesis_request);
 }
@@ -2126,7 +2126,7 @@ fn should_validate_duplicated_genesis_delegators() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&run_genesis_request);
 }
@@ -2151,7 +2151,7 @@ fn should_validate_delegation_rate_of_genesis_validator() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&run_genesis_request);
 }
@@ -2173,7 +2173,7 @@ fn should_validate_bond_amount_of_genesis_validator() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&run_genesis_request);
 }
@@ -2210,7 +2210,7 @@ fn should_setup_genesis_delegators() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -2275,7 +2275,7 @@ fn should_not_partially_undelegate_uninitialized_vesting_schedule() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -2349,7 +2349,7 @@ fn should_not_fully_undelegate_uninitialized_vesting_schedule() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -2423,7 +2423,7 @@ fn should_not_undelegate_vfta_holder_stake() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -2607,7 +2607,7 @@ fn should_release_vfta_holder_stake() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -2878,7 +2878,7 @@ fn should_reset_delegators_stake_after_slashing() {
         delegator_2_validator_2_delegate_request,
     ];
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -3031,7 +3031,7 @@ fn should_validate_genesis_delegators_bond_amount() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&run_genesis_request);
 }
@@ -3065,7 +3065,7 @@ fn check_validator_slots_for_accounts(accounts: usize) {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&run_genesis_request);
 }
@@ -3169,7 +3169,7 @@ fn should_delegate_and_redelegate() {
         delegator_1_validator_1_delegate_request,
     ];
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -3406,7 +3406,7 @@ fn should_handle_redelegation_to_inactive_validator() {
         delegator_2_validator_1_delegate_request,
     ];
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 

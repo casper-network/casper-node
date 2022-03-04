@@ -132,7 +132,7 @@ fn test_match(
 }
 
 fn setup() -> InMemoryWasmTestBuilder {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     for account in [*ACCOUNT_1_ADDR, *ACCOUNT_2_ADDR] {

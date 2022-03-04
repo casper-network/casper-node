@@ -81,9 +81,11 @@ fn get_upgraded_wasm_config() -> WasmConfig {
 #[ignore]
 #[test]
 fn should_upgrade_only_protocol_version() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    let old_wasm_config = *builder.get_engine_state().config().wasm_config();
 
     let sem_ver = PROTOCOL_VERSION.value();
     let new_protocol_version =
@@ -104,7 +106,7 @@ fn should_upgrade_only_protocol_version() {
     let upgraded_engine_config = builder.get_engine_state().config();
 
     assert_eq!(
-        *DEFAULT_WASM_CONFIG,
+        old_wasm_config,
         *upgraded_engine_config.wasm_config(),
         "upgraded costs should equal original costs"
     );
@@ -113,7 +115,7 @@ fn should_upgrade_only_protocol_version() {
 #[ignore]
 #[test]
 fn should_allow_only_wasm_costs_patch_version() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -155,7 +157,7 @@ fn should_allow_only_wasm_costs_patch_version() {
 #[ignore]
 #[test]
 fn should_allow_only_wasm_costs_minor_version() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -197,9 +199,11 @@ fn should_allow_only_wasm_costs_minor_version() {
 #[ignore]
 #[test]
 fn should_not_downgrade() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    let old_wasm_config = *builder.get_engine_state().config().wasm_config();
 
     let new_protocol_version = ProtocolVersion::from_parts(2, 0, 0);
 
@@ -218,7 +222,7 @@ fn should_not_downgrade() {
     let upgraded_engine_config = builder.get_engine_state().config();
 
     assert_eq!(
-        *DEFAULT_WASM_CONFIG,
+        old_wasm_config,
         *upgraded_engine_config.wasm_config(),
         "upgraded costs should equal original costs"
     );
@@ -246,7 +250,7 @@ fn should_not_downgrade() {
 #[ignore]
 #[test]
 fn should_not_skip_major_versions() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -274,7 +278,7 @@ fn should_not_skip_major_versions() {
 #[ignore]
 #[test]
 fn should_allow_skip_minor_versions() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -303,7 +307,7 @@ fn should_allow_skip_minor_versions() {
 #[ignore]
 #[test]
 fn should_upgrade_only_validator_slots() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -358,7 +362,7 @@ fn should_upgrade_only_validator_slots() {
 #[ignore]
 #[test]
 fn should_upgrade_only_auction_delay() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -413,7 +417,7 @@ fn should_upgrade_only_auction_delay() {
 #[ignore]
 #[test]
 fn should_upgrade_only_locked_funds_period() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -468,7 +472,7 @@ fn should_upgrade_only_locked_funds_period() {
 #[ignore]
 #[test]
 fn should_upgrade_only_round_seigniorage_rate() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -530,7 +534,7 @@ fn should_upgrade_only_round_seigniorage_rate() {
 #[ignore]
 #[test]
 fn should_upgrade_only_unbonding_delay() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -587,7 +591,7 @@ fn should_upgrade_only_unbonding_delay() {
 #[ignore]
 #[test]
 fn should_apply_global_state_upgrade() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -651,7 +655,7 @@ fn should_apply_global_state_upgrade() {
 #[ignore]
 #[test]
 fn should_increase_max_associated_keys_after_upgrade() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 

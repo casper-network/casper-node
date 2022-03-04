@@ -24,7 +24,7 @@ fn should_execute_contracts_which_provide_extra_urefs() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     builder.exec(exec_request_1).expect_success().commit();
