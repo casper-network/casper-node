@@ -567,7 +567,7 @@ impl reactor::Reactor for Reactor {
             }
             _ => chainspec_loader.initial_execution_pre_state(),
         };
-        contract_runtime.set_initial_state(execution_pre_state);
+        contract_runtime.set_initial_state(execution_pre_state)?;
 
         let block_validator = BlockValidator::new(Arc::clone(chainspec_loader.chainspec()));
         let linear_chain = linear_chain::LinearChainComponent::new(

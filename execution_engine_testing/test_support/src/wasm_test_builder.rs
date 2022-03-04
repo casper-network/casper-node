@@ -426,6 +426,7 @@ where
             exec_request.parent_state_hash = hash;
             exec_request
         };
+
         let maybe_exec_results = self
             .engine_state
             .run_execute(CorrelationId::new(), exec_request);
@@ -484,17 +485,6 @@ where
         let engine_state = Rc::get_mut(&mut self.engine_state).unwrap();
         engine_state.update_config(engine_config);
 
-        let empty_path: Vec<String> = vec![];
-
-        if let Ok(StoredValue::CLValue(cl_registry)) = self.query(
-            self.post_state_hash,
-            Key::SystemContractRegistry,
-            &empty_path,
-        ) {
-            let registry = CLValue::into_t::<SystemContractRegistry>(cl_registry).unwrap();
-            self.system_contract_registry = Some(registry);
-        }
-
         let result = self
             .engine_state
             .commit_upgrade(CorrelationId::new(), upgrade_config.clone());
@@ -505,6 +495,13 @@ where
         }) = result
         {
             self.post_state_hash = Some(post_state_hash);
+
+            if let Ok(StoredValue::CLValue(cl_registry)) =
+                self.query(self.post_state_hash, Key::SystemContractRegistry, &[])
+            {
+                let registry = CLValue::into_t::<SystemContractRegistry>(cl_registry).unwrap();
+                self.system_contract_registry = Some(registry);
+            }
         }
 
         self.upgrade_results.push(result);
@@ -900,8 +897,12 @@ where
         let correlation_id = CorrelationId::new();
         let state_hash = self.get_post_state_hash();
         let request = GetEraValidatorsRequest::new(state_hash, *DEFAULT_PROTOCOL_VERSION);
+        let system_contract_registry = self
+            .system_contract_registry
+            .clone()
+            .expect("System contract registry not found. Please run genesis first.");
         self.engine_state
-            .get_era_validators(correlation_id, request)
+            .get_era_validators(correlation_id, Some(system_contract_registry), request)
             .expect("get era validators should not error")
     }
 

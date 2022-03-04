@@ -20,6 +20,7 @@ use crate::{account::AccountHash, ApiError, EraId, PublicKey, U512};
 pub use bid::{Bid, VESTING_SCHEDULE_LENGTH_MILLIS};
 pub use constants::*;
 pub use delegator::Delegator;
+pub use detail::era_validators_from_snapshot;
 pub use entry_points::auction_entry_points;
 pub use era_info::*;
 pub use error::Error;
@@ -56,18 +57,7 @@ pub trait Auction:
     /// configured auction_delay.
     fn get_era_validators(&mut self) -> Result<EraValidators, Error> {
         let snapshot = detail::get_seigniorage_recipients_snapshot(self)?;
-        let era_validators = snapshot
-            .into_iter()
-            .map(|(era_id, recipients)| {
-                let validator_weights = recipients
-                    .into_iter()
-                    .filter_map(|(public_key, bid)| {
-                        bid.total_stake().map(|stake| (public_key, stake))
-                    })
-                    .collect::<ValidatorWeights>();
-                (era_id, validator_weights)
-            })
-            .collect::<BTreeMap<EraId, ValidatorWeights>>();
+        let era_validators = detail::era_validators_from_snapshot(snapshot);
         Ok(era_validators)
     }
 

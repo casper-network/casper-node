@@ -21,7 +21,6 @@ use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet},
     convert::TryFrom,
-    iter::FromIterator,
     rc::Rc,
 };
 
@@ -37,9 +36,10 @@ use casper_types::{
     contracts::NamedKeys,
     system::{
         auction::{
-            EraValidators, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS,
+            self, EraValidators, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS,
             ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY,
-            LOCKED_FUNDS_PERIOD_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+            LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY,
+            VALIDATOR_SLOTS_KEY,
         },
         handle_payment,
         mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
@@ -1664,66 +1664,72 @@ where
     }
 
     /// Obtains validator weights for given era.
+    ///
+    /// This skips execution of auction's `get_era_validator` entry point logic to avoid creating an
+    /// executor instance, and going through the execution flow. It follows the same process but
+    /// uses queries rather than execution to get the snapshot.
     pub fn get_era_validators(
         &self,
         correlation_id: CorrelationId,
+        system_contract_registry: Option<SystemContractRegistry>,
         get_era_validators_request: GetEraValidatorsRequest,
     ) -> Result<EraValidators, GetEraValidatorsError> {
-        let protocol_version = get_era_validators_request.protocol_version();
+        let state_root_hash = get_era_validators_request.state_hash();
 
-        let tracking_copy = match self.tracking_copy(get_era_validators_request.state_hash())? {
-            Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
-            None => return Err(GetEraValidatorsError::RootNotFound),
+        let system_contract_registry = match system_contract_registry {
+            Some(system_contract_registry) => system_contract_registry,
+            None => match self.get_system_contract_registry(correlation_id, state_root_hash) {
+                Ok(system_contract_registry) => system_contract_registry,
+                Err(error) => {
+                    error!(%state_root_hash, %error, "unable to get era validators");
+                    return Err(error.into());
+                }
+            },
         };
 
-        let executor = Executor::new(*self.config());
+        let auction_hash = system_contract_registry
+            .get(AUCTION)
+            .copied()
+            .ok_or_else(|| Error::MissingSystemContractHash(AUCTION.to_string()))?;
 
-        let gas_limit = Gas::new(U512::from(std::u64::MAX));
-        let virtual_system_account = {
-            let named_keys = NamedKeys::new();
-            let purse = URef::new(Default::default(), AccessRights::READ_ADD_WRITE);
-            Account::create(PublicKey::System.to_account_hash(), named_keys, purse)
+        let query_request = QueryRequest::new(
+            state_root_hash,
+            auction_hash.into(),
+            vec![SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_string()],
+        );
+
+        let snapshot = match self.run_query(correlation_id, query_request)? {
+            QueryResult::RootNotFound => return Err(GetEraValidatorsError::RootNotFound),
+            QueryResult::ValueNotFound(error) => {
+                error!(%error, "unexpected query failure; value not found");
+                return Err(GetEraValidatorsError::EraValidatorsMissing);
+            }
+            QueryResult::CircularReference(error) => {
+                error!(%error, "unexpected query failure; circular reference");
+                return Err(GetEraValidatorsError::UnexpectedQueryFailure);
+            }
+            QueryResult::DepthLimit { depth } => {
+                error!(%depth, "unexpected query failure; depth limit exceeded");
+                return Err(GetEraValidatorsError::UnexpectedQueryFailure);
+            }
+            QueryResult::Success { value, proofs: _ } => {
+                let cl_value = match value.as_cl_value() {
+                    Some(snapshot_cl_value) => snapshot_cl_value.clone(),
+                    None => {
+                        error!("unexpected query failure; seigniorage recipients snapshot is not a CLValue");
+                        return Err(GetEraValidatorsError::UnexpectedQueryFailure);
+                    }
+                };
+
+                cl_value.into_t().map_err(|cl_value_error| {
+                    error!(%cl_value_error, "unexpected query failure; unable to parse seigniorage recipients");
+                    GetEraValidatorsError::CLValue
+                })?
+            }
         };
-        let authorization_keys = BTreeSet::from_iter(vec![PublicKey::System.to_account_hash()]);
-        let blocktime = BlockTime::default();
-        let deploy_hash = {
-            // seeds address generator w/ protocol version
-            let bytes: Vec<u8> = get_era_validators_request
-                .protocol_version()
-                .value()
-                .into_bytes()
-                .map_err(Error::from)?
-                .to_vec();
-            DeployHash::new(Digest::hash(&bytes).value())
-        };
 
-        let get_era_validators_stack = self.get_new_system_call_stack();
-        let (era_validators, execution_result): (Option<EraValidators>, ExecutionResult) = executor
-            .call_system_contract(
-                DirectSystemContractCall::GetEraValidators,
-                RuntimeArgs::new(),
-                &virtual_system_account,
-                authorization_keys,
-                blocktime,
-                deploy_hash,
-                gas_limit,
-                protocol_version,
-                correlation_id,
-                Rc::clone(&tracking_copy),
-                Phase::Session,
-                get_era_validators_stack,
-                // No need to transfer tokens when query state.
-                U512::zero(),
-            );
-
-        if let Some(error) = execution_result.take_error() {
-            return Err(error.into());
-        }
-
-        match era_validators {
-            None => Err(GetEraValidatorsError::EraValidatorsMissing),
-            Some(era_validators) => Ok(era_validators),
-        }
+        let era_validators_result = auction::era_validators_from_snapshot(snapshot);
+        Ok(era_validators_result)
     }
 
     /// Gets current bids from the auction system.
@@ -1969,7 +1975,8 @@ where
         Ok(BalanceResult::Success { motes, proof })
     }
 
-    fn get_system_contract_registry(
+    /// Obtains an instance of a system contract registry for a given state root hash.
+    pub fn get_system_contract_registry(
         &self,
         correlation_id: CorrelationId,
         state_root_hash: Digest,
@@ -1981,8 +1988,8 @@ where
         let result = tracking_copy
             .borrow_mut()
             .get_system_contracts(correlation_id)
-            .map_err(|_| {
-                error!("Failed to retrieve system contract registry");
+            .map_err(|error| {
+                error!(%error, "Failed to retrieve system contract registry");
                 Error::MissingSystemContractRegistry
             });
         result

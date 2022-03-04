@@ -253,8 +253,7 @@ impl Executor {
         let contract_hash = match direct_system_contract_call {
             DirectSystemContractCall::Slash
             | DirectSystemContractCall::RunAuction
-            | DirectSystemContractCall::DistributeRewards
-            | DirectSystemContractCall::GetEraValidators => {
+            | DirectSystemContractCall::DistributeRewards => {
                 let auction_hash = system_contract_registry
                     .get(AUCTION)
                     .expect("should have auction hash");
@@ -408,8 +407,6 @@ pub(crate) enum DirectSystemContractCall {
     CreatePurse,
     /// Calls mint's `transfer` entry point.
     Transfer,
-    /// Calls auction's `get_era_validators` entry point.
-    GetEraValidators,
     /// Calls handle payment's `
     GetPaymentPurse,
 }
@@ -423,7 +420,6 @@ impl DirectSystemContractCall {
             DirectSystemContractCall::FinalizePayment => handle_payment::METHOD_FINALIZE_PAYMENT,
             DirectSystemContractCall::CreatePurse => mint::METHOD_CREATE,
             DirectSystemContractCall::Transfer => mint::METHOD_TRANSFER,
-            DirectSystemContractCall::GetEraValidators => auction::METHOD_GET_ERA_VALIDATORS,
             DirectSystemContractCall::GetPaymentPurse => handle_payment::METHOD_GET_PAYMENT_PURSE,
         }
     }

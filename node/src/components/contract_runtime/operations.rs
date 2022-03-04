@@ -31,6 +31,7 @@ use crate::{
 };
 
 /// Executes a finalized block.
+#[allow(clippy::too_many_arguments)]
 pub fn execute_finalized_block(
     engine_state: &EngineState<LmdbGlobalState>,
     metrics: Option<Arc<Metrics>>,
@@ -113,8 +114,14 @@ pub fn execute_finalized_block(
                 finalized_block.era_id().successor(),
             )?;
             state_root_hash = post_state_hash;
+
+            // In this flow we executed a contract with a recent state root hash where system
+            // contract registry is guaranteed to exist.
+            let system_contract_registry = None;
+
             let upcoming_era_validators = engine_state.get_era_validators(
                 CorrelationId::new(),
+                system_contract_registry,
                 GetEraValidatorsRequest::new(state_root_hash, protocol_version),
             )?;
             Some(StepEffectAndUpcomingEraValidators {
@@ -237,6 +244,7 @@ fn execute(
     result
 }
 
+#[allow(clippy::too_many_arguments)]
 fn commit_step(
     engine_state: &EngineState<LmdbGlobalState>,
     maybe_metrics: Option<Arc<Metrics>>,
