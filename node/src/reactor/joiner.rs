@@ -594,7 +594,7 @@ impl reactor::Reactor for Reactor {
             .protocol_config
             .verifiable_chunked_hash_activation;
         let protocol_version = &chainspec_loader.chainspec().protocol_config.version;
-        let node_state = if config.node.archival_sync {
+        let node_state = if config.node.sync_to_genesis {
             NodeState::SyncingToGenesis
         } else {
             NodeState::FastSyncing
