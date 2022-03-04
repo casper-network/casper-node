@@ -1926,7 +1926,7 @@
             "description": "The various possible states of operation for the node.",
             "enum": [
               "FastSyncing",
-              "ArchivalSyncing",
+              "SyncingToGenesis",
               "Participating"
             ],
             "type": "string"

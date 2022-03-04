@@ -34,22 +34,18 @@ use casper_types::ProtocolVersion;
 
 use super::Component;
 use crate::{
+    components::rpc_server::rpcs::docs::OPEN_RPC_SCHEMA,
     effect::{
         requests::{
             ChainspecLoaderRequest, ConsensusRequest, MetricsRequest, NetworkInfoRequest,
-            StorageRequest,
+            RestRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
     reactor::Finalize,
-    types::StatusFeed,
+    types::{NodeState, StatusFeed},
     utils::{self, ListeningError},
     NodeRng,
-};
-
-use crate::{
-    components::rpc_server::rpcs::docs::OPEN_RPC_SCHEMA, effect::requests::RestRequest,
-    types::NodeState,
 };
 pub use config::Config;
 pub(crate) use event::Event;
@@ -90,7 +86,7 @@ pub(crate) struct RestServer {
     server_join_handle: Option<JoinHandle<()>>,
     /// The instant at which the node has started.
     node_startup_instant: Instant,
-    /// The current state of operation
+    /// The current state of operation.
     node_state: NodeState,
 }
 

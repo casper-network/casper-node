@@ -81,8 +81,8 @@ impl ChainspecInfo {
 pub enum NodeState {
     /// The node is currently in the fast syncing state.
     FastSyncing,
-    /// The node is currently in the archival syncing state.
-    ArchivalSyncing,
+    /// The node is currently in syncing to genesis.
+    SyncingToGenesis,
     /// The node is currently in the participating state.
     Participating,
 }

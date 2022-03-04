@@ -232,7 +232,7 @@
       "type": "string",
       "enum": [
         "FastSyncing",
-        "ArchivalSyncing",
+        "SyncingToGenesis",
         "Participating"
       ]
     }
