@@ -76,6 +76,10 @@ async fn main() -> Result<(), anyhow::Error> {
     )?;
 
     let mut execution_pre_state = ExecutionPreState::from(&previous_block_header);
+    let system_contract_registry = engine_state
+        .get_system_contract_registry(Default::default(), *previous_block_header.state_root_hash())
+        .expect("should have system contract registry");
+
     let mut execute_count = 0;
 
     let highest_height_in_chain = storage.read_highest_block()?;
@@ -127,6 +131,7 @@ async fn main() -> Result<(), anyhow::Error> {
         let start = Instant::now();
         let block_and_execution_effects = execute_finalized_block(
             &engine_state,
+            &system_contract_registry,
             None,
             protocol_version,
             execution_pre_state,
