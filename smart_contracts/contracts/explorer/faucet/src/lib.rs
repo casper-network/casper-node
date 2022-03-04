@@ -180,26 +180,25 @@ pub fn delegate() {
 
     if blocktime > BlockTime::new(last_distribution_time + time_interval) {
         reset_remaining_amount();
+        set_last_distribution_time(blocktime);
     }
 
     if caller == installer {
         let target: AccountHash = runtime::get_named_arg(ARG_TARGET);
+        let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
+        // get amount named arg
 
         if target == installer {
             runtime::revert(FaucetError::InstallerDoesNotFundItself);
         }
 
-        let amount = get_distribution_amount();
-
         transfer(target, amount, id);
     } else {
-        let amount = get_distribution_amount_debounced();
+        let amount = get_distribution_amount_rate_limited();
 
         transfer(caller, amount, id);
         decrease_remaining_amount(amount);
     }
-
-    set_last_distribution_time(blocktime);
 }
 
 fn transfer(target: AccountHash, amount: U512, id: Option<u64>) {
@@ -213,7 +212,7 @@ fn transfer(target: AccountHash, amount: U512, id: Option<u64>) {
         .unwrap_or_revert_with(FaucetError::FailedToTransfer);
 }
 
-fn get_distribution_amount_debounced() -> U512 {
+fn get_distribution_amount_rate_limited() -> U512 {
     let distributions_per_interval_uref = get_uref_with_user_errors(
         DISTRIBUTIONS_PER_INTERVAL,
         FaucetError::MissingDistributionsPerInterval,
@@ -242,6 +241,10 @@ fn get_distribution_amount_debounced() -> U512 {
         FaucetError::InvalidAvailableAmount,
     );
 
+    if available_amount.is_zero() {
+        return available_amount;
+    }
+
     let remaining_amount_uref = get_uref_with_user_errors(
         REMAINING_AMOUNT,
         FaucetError::MissingRemainingAmount,
@@ -254,8 +257,15 @@ fn get_distribution_amount_debounced() -> U512 {
         FaucetError::InvalidRemainingAmount,
     );
 
+    if remaining_amount.is_zero() {
+        return remaining_amount;
+    }
+
     let distribution_amount = available_amount / U512::from(distributions_per_interval);
 
+    // could use a struct that represents a number of slots, when the interval is reached they an
+    // all be reset to be available, use bool.
+    //
     if remaining_amount >= distribution_amount {
         distribution_amount
     } else {
