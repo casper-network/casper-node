@@ -36,7 +36,7 @@ use casper_types::{
 use crate::{
     components::{
         block_validator::ValidatingBlock,
-        chainspec_loader::{ChainspecRawBytes, CurrentRunInfo},
+        chainspec_loader::CurrentRunInfo,
         consensus::{BlockContext, ClContext, ValidatorChange},
         contract_runtime::{
             BlockAndExecutionEffects, BlockExecutionError, EraValidatorsRequest, ExecutionPreState,
@@ -48,8 +48,8 @@ use crate::{
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
         Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload, BlockSignatures,
-        BlockWithMetadata, Chainspec, ChainspecInfo, Deploy, DeployHash, DeployMetadata,
-        FinalizedBlock, Item, NodeId, StatusFeed, TimeDiff,
+        BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy, DeployHash,
+        DeployMetadata, FinalizedBlock, Item, NodeId, StatusFeed, TimeDiff,
     },
     utils::{DisplayIter, Source},
 };
@@ -766,6 +766,8 @@ pub(crate) enum ContractRuntimeRequest {
     CommitGenesis {
         /// The chainspec.
         chainspec: Arc<Chainspec>,
+        /// The chainspec files' raw bytes.
+        chainspec_raw_bytes: Arc<ChainspecRawBytes>,
         /// Responder to call with the result.
         responder: Responder<Result<GenesisSuccess, engine_state::Error>>,
     },
@@ -1020,10 +1022,9 @@ pub(crate) enum ChainspecLoaderRequest {
     GetChainspecInfo(Responder<ChainspecInfo>),
     /// Request for information about the current run.
     GetCurrentRunInfo(Responder<CurrentRunInfo>),
-    /// Request for the chainspec file bytes
-    /// with the genesis_accounts and global_state bytes,
-    /// if they are present.
-    GetChainspecRawBytes(Responder<ChainspecRawBytes>),
+    /// Request for the chainspec file bytes with the genesis_accounts and global_state bytes, if
+    /// they are present.
+    GetChainspecRawBytes(Responder<Arc<ChainspecRawBytes>>),
 }
 
 impl Display for ChainspecLoaderRequest {

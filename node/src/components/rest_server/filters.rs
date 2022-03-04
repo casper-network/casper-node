@@ -128,7 +128,7 @@ pub(super) fn create_chainspec_filter<REv: ReactorEventT>(
             effect_builder
                 .get_chainspec_raw_bytes()
                 .map(move |chainspec_bytes| {
-                    let result = GetChainspecResult::new(api_version, chainspec_bytes);
+                    let result = GetChainspecResult::new(api_version, (*chainspec_bytes).clone());
                     Ok::<_, Rejection>(reply::json(&result).into_response())
                 })
         })

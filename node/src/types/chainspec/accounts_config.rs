@@ -10,11 +10,11 @@ use datasize::DataSize;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use casper_execution_engine::core::engine_state::GenesisAccount;
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 
 #[cfg(test)]
 use crate::testing::TestRng;
-use crate::utils::{self, Loadable};
+use crate::utils;
 
 use super::error::ChainspecAccountsLoadError;
 pub use account_config::AccountConfig;
@@ -55,6 +55,23 @@ impl AccountsConfig {
 
     pub fn delegators(&self) -> &[DelegatorConfig] {
         &self.delegators
+    }
+
+    /// Returns `Self` and the raw bytes of the file.
+    ///
+    /// If the file doesn't exist, returns `Ok` with an empty `AccountsConfig` and `None` bytes.
+    pub(super) fn from_dir<P: AsRef<Path>>(
+        dir_path: P,
+    ) -> Result<(Self, Option<Bytes>), ChainspecAccountsLoadError> {
+        let accounts_path = dir_path.as_ref().join(CHAINSPEC_ACCOUNTS_FILENAME);
+        if !accounts_path.is_file() {
+            let config = AccountsConfig::new(vec![], vec![]);
+            let maybe_bytes = None;
+            return Ok((config, maybe_bytes));
+        }
+        let bytes = utils::read_file(accounts_path)?;
+        let config: AccountsConfig = toml::from_slice(&bytes)?;
+        Ok((config, Some(Bytes::from(bytes))))
     }
 
     #[cfg(test)]
@@ -99,20 +116,6 @@ impl FromBytes for AccountsConfig {
         let (delegators, remainder) = FromBytes::from_bytes(remainder)?;
         let accounts_config = AccountsConfig::new(accounts, delegators);
         Ok((accounts_config, remainder))
-    }
-}
-
-impl Loadable for AccountsConfig {
-    type Error = ChainspecAccountsLoadError;
-
-    fn from_path<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error> {
-        let accounts_path = path.as_ref().join(CHAINSPEC_ACCOUNTS_FILENAME);
-        if !accounts_path.is_file() {
-            return Ok(AccountsConfig::new(vec![], vec![]));
-        }
-        let bytes = utils::read_file(accounts_path)?;
-        let toml_chainspec: AccountsConfig = toml::from_slice(&bytes)?;
-        Ok(toml_chainspec)
     }
 }
 

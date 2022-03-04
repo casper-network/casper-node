@@ -362,7 +362,7 @@ pub(crate) mod tests {
     use super::*;
     use crate::{
         testing::network::NetworkedReactor,
-        types::{Chainspec, NodeId},
+        types::{Chainspec, ChainspecRawBytes, NodeId},
     };
     use std::sync::Arc;
 
@@ -372,10 +372,11 @@ pub(crate) mod tests {
             registry: &Registry,
             event_queue: EventQueueHandle<Event>,
             chainspec: Arc<Chainspec>,
+            chainspec_raw_bytes: Arc<ChainspecRawBytes>,
         ) -> Result<(Self, Effects<Event>), Error> {
             let effect_builder = EffectBuilder::new(event_queue);
             let (chainspec_loader, chainspec_effects) =
-                ChainspecLoader::new_with_chainspec(chainspec, effect_builder);
+                ChainspecLoader::new_with_chainspec(chainspec, chainspec_raw_bytes, effect_builder);
             Self::new_with_chainspec_loader(config, registry, chainspec_loader, chainspec_effects)
         }
     }

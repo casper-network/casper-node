@@ -20,7 +20,7 @@ use crate::{
     },
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
-        ActivationPoint, BlockHash, BlockHeader, Chainspec, NodeId, Timestamp,
+        ActivationPoint, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, NodeId, Timestamp,
     },
     utils::{External, Loadable, WithDir},
     NodeRng,
@@ -45,6 +45,7 @@ struct TestChain {
     // Keys that validator instances will use, can include duplicates
     storages: Vec<TempDir>,
     chainspec: Arc<Chainspec>,
+    chainspec_raw_bytes: Arc<ChainspecRawBytes>,
     first_node_port: u16,
     network: Network<MultiStageTestReactor>,
 }
@@ -98,7 +99,8 @@ impl TestChain {
         rng: &mut NodeRng,
     ) -> Self {
         // Load the `local` chainspec.
-        let mut chainspec: Chainspec = Chainspec::from_resources("local");
+        let (mut chainspec, chainspec_raw_bytes) =
+            <(Chainspec, ChainspecRawBytes)>::from_resources("local");
 
         // Override accounts with those generated from the keys.
         let genesis_accounts = std::iter::once(&first_node_secret_key_with_stake)
@@ -140,8 +142,9 @@ impl TestChain {
         let network: Network<MultiStageTestReactor> = Network::new();
 
         let mut test_chain = TestChain {
-            chainspec: Arc::new(chainspec),
             storages: Vec::new(),
+            chainspec: Arc::new(chainspec),
+            chainspec_raw_bytes: Arc::new(chainspec_raw_bytes),
             first_node_port,
             network,
         };
@@ -210,6 +213,7 @@ impl TestChain {
         let config = InitializerReactorConfigWithChainspec {
             config: (false, WithDir::new(&*CONFIG_DIR, participating_config)),
             chainspec: Arc::clone(&self.chainspec),
+            chainspec_raw_bytes: Arc::clone(&self.chainspec_raw_bytes),
         };
 
         // Add the node (a multi-stage reactor) with the specified config to the network

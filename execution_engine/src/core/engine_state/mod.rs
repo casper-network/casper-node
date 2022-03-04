@@ -1,5 +1,6 @@
 //!  This module contains all the execution related code.
 pub mod balance;
+pub mod chainspec_registry;
 pub mod deploy_item;
 pub mod engine_config;
 pub mod era_validators;
@@ -14,6 +15,7 @@ pub mod op;
 pub mod query;
 pub mod run_genesis_request;
 pub mod step;
+pub mod system_contract_registry;
 mod transfer;
 pub mod upgrade;
 
@@ -52,6 +54,7 @@ use casper_types::{
 
 pub use self::{
     balance::{BalanceRequest, BalanceResult},
+    chainspec_registry::ChainspecRegistry,
     deploy_item::DeployItem,
     engine_config::{EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT},
     era_validators::{GetEraValidatorsError, GetEraValidatorsRequest},
@@ -60,10 +63,12 @@ pub use self::{
     execute_request::ExecuteRequest,
     execution::Error as ExecError,
     execution_result::{ExecutionResult, ForcedTransferResult},
-    genesis::{ExecConfig, GenesisAccount, GenesisSuccess},
+    genesis::{ExecConfig, GenesisAccount, GenesisConfig, GenesisSuccess},
     get_bids::{GetBidsRequest, GetBidsResult},
     query::{QueryRequest, QueryResult},
+    run_genesis_request::RunGenesisRequest,
     step::{RewardItem, SlashItem, StepError, StepRequest, StepSuccess},
+    system_contract_registry::SystemContractRegistry,
     transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
     upgrade::{UpgradeConfig, UpgradeSuccess},
 };
@@ -78,7 +83,6 @@ use crate::{
         execution::{self, DirectSystemContractCall, Executor},
         runtime::RuntimeStack,
         tracking_copy::{TrackingCopy, TrackingCopyExt},
-        ChainspecRegistry, SystemContractRegistry, CHAINSPEC_RAW,
     },
     shared::{
         additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform,
@@ -335,14 +339,6 @@ where
             error!("Missing system handle payment contract hash");
             Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
         })?;
-
-        if upgrade_config
-            .chainspec_registry()
-            .get(CHAINSPEC_RAW)
-            .is_none()
-        {
-            return Err(Error::MissingChainspecHash);
-        }
 
         // Write the chainspec registry to global state
         let cl_value_chainspec_registry =

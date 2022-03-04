@@ -25,7 +25,7 @@ use crate::{
         wrap_effects, EventQueueHandle, QueueKind, Reactor, ReactorEvent, ReactorExit, Scheduler,
     },
     testing::network::NetworkedReactor,
-    types::{Chainspec, NodeId},
+    types::{Chainspec, ChainspecRawBytes, NodeId},
     utils::{self, WithDir, RESOURCES_PATH},
     NodeRng,
 };
@@ -197,6 +197,7 @@ where
 pub(crate) struct InitializerReactorConfigWithChainspec {
     config: <InitializerReactor as Reactor>::Config,
     chainspec: Arc<Chainspec>,
+    chainspec_raw_bytes: Arc<ChainspecRawBytes>,
 }
 
 impl Reactor for MultiStageTestReactor {
@@ -224,6 +225,7 @@ impl Reactor for MultiStageTestReactor {
             registry,
             initializer_event_queue_handle,
             initializer_reactor_config_with_chainspec.chainspec,
+            initializer_reactor_config_with_chainspec.chainspec_raw_bytes,
         )
         .map_err(MultiStageTestReactorError::CouldNotMakeInitializerReactor)?;
 

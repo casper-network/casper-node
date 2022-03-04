@@ -11,7 +11,7 @@ use casper_types::{ProtocolVersion, PublicKey, SecretKey, Signature};
 use crate::{
     crypto,
     reactor::participating::Config,
-    types::{chainspec, Chainspec},
+    types::{chainspec, Chainspec, ChainspecRawBytes},
     utils::{LoadError, Loadable, WithDir},
 };
 
@@ -200,8 +200,9 @@ pub(crate) fn migrate_data(
     new_config: WithDir<Config>,
 ) -> Result<(), Error> {
     let (new_root, new_config) = new_config.into_parts();
-    let new_protocol_version = Chainspec::from_path(&new_root)
+    let new_protocol_version = <(Chainspec, ChainspecRawBytes)>::from_path(&new_root)
         .map_err(Error::LoadChainspec)?
+        .0
         .protocol_config
         .version;
     let secret_key: Arc<SecretKey> = new_config

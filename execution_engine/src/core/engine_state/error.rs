@@ -97,9 +97,6 @@ pub enum Error {
     /// Failed to retrieve the current EraId from the auction state.
     #[error("Failed to retrieve the era_id from the auction state")]
     FailedToRetrieveEraId,
-    /// The chainspec registry did not contain the hash for the chainspec.
-    #[error("Missing chainspec.toml hash")]
-    MissingChainspecHash,
 }
 
 impl Error {

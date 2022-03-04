@@ -110,9 +110,9 @@ pub(super) async fn run<REv: ReactorEventT>(
         .or(rpc_get_rpcs)
         .or(rpc_get_dictionary_item)
         .or(rpc_get_trie)
+        .or(rpc_get_chainspec)
         .or(rpc_query_global_state)
         .or(unknown_method)
-        .or(rpc_get_chainspec)
         .or(parse_failure);
 
     // Supports content negotiation for gzip responses. This is an interim fix until

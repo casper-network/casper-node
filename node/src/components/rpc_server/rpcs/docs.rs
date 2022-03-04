@@ -20,20 +20,15 @@ use casper_types::ProtocolVersion;
 
 use super::{
     account::PutDeploy,
-    chain::{GetBlock, GetBlockTransfers, GetStateRootHash},
-    info::{GetDeploy, GetPeers, GetStatus},
-    state::{GetAuctionInfo, GetBalance, GetItem},
+    chain::{GetBlock, GetBlockTransfers, GetEraInfoBySwitchBlock, GetStateRootHash},
+    info::{GetChainspec, GetDeploy, GetPeers, GetStatus, GetValidatorChanges},
+    state::{
+        GetAccountInfo, GetAuctionInfo, GetBalance, GetDictionaryItem, GetItem, QueryGlobalState,
+    },
     Error, ReactorEventT, RpcWithOptionalParams, RpcWithParams, RpcWithoutParams,
     RpcWithoutParamsExt,
 };
-use crate::{
-    effect::EffectBuilder,
-    rpcs::{
-        chain::GetEraInfoBySwitchBlock,
-        info::{GetChainspec, GetValidatorChanges},
-        state::{GetAccountInfo, GetDictionaryItem, QueryGlobalState},
-    },
-};
+use crate::effect::EffectBuilder;
 
 pub(crate) const DOCS_EXAMPLE_PROTOCOL_VERSION: ProtocolVersion =
     ProtocolVersion::from_parts(1, 4, 3);
@@ -85,7 +80,10 @@ pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
     schema.push_without_params::<GetStatus>("returns the current status of the node");
     schema
         .push_without_params::<GetValidatorChanges>("returns status changes of active validators");
-    schema.push_without_params::<GetChainspec>("returns the raw bytes of the chainspec file");
+    schema.push_without_params::<GetChainspec>(
+        "returns the raw bytes of the chainspec.toml, genesis accounts.toml, and \
+        global_state.toml files",
+    );
     schema.push_with_optional_params::<GetBlock>("returns a Block from the network");
     schema.push_with_optional_params::<GetBlockTransfers>(
         "returns all transfers for a Block from the network",
@@ -93,13 +91,17 @@ pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
     schema.push_with_optional_params::<GetStateRootHash>(
         "returns a state root hash at a given Block",
     );
-    schema.push_with_params::<GetItem>("returns a stored value from the network. This RPC is deprecated, use `query_global_state` instead.");
+    schema.push_with_params::<GetItem>(
+        "returns a stored value from the network. This RPC is deprecated, use \
+        `query_global_state` instead.",
+    );
     schema.push_with_params::<GetBalance>("returns a purse's balance from the network");
     schema.push_with_optional_params::<GetEraInfoBySwitchBlock>(
         "returns an EraInfo from the network",
     );
     schema.push_with_optional_params::<GetAuctionInfo>(
-        "returns the bids and validators as of either a specific block (by height or hash), or the most recently added block",
+        "returns the bids and validators as of either a specific block (by height or hash), or \
+        the most recently added block",
     );
 
     schema
@@ -453,13 +455,16 @@ impl RpcWithoutParamsExt for ListRpcs {
 }
 #[cfg(test)]
 mod tests {
-    use crate::{types::Chainspec, utils::Loadable};
+    use crate::{
+        types::{Chainspec, ChainspecRawBytes},
+        utils::Loadable,
+    };
 
     use super::*;
 
     #[test]
     fn check_docs_example_version() {
-        let chainspec = Chainspec::from_resources("production");
+        let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("production");
         assert_eq!(
             DOCS_EXAMPLE_PROTOCOL_VERSION, chainspec.protocol_config.version,
             "DOCS_EXAMPLE_VERSION needs to be updated to match the [protocol.version] in \

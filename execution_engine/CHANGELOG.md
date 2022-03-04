@@ -14,13 +14,14 @@ All notable changes to this project will be documented in this file.  The format
 ## [Unreleased]
 
 ### Added
-* Added a new entry point `redelegate` to the Auction system contract which allows users to redelegate to another validator without having to unbond. The function signature for the entrypoint is: `redelegate(delegator: PublicKey, validator: PublicKey, amount: U512, new_validator: PublicKey)`
-* Added a new type `ChainspecRegistry` which contains the hashes of the `chainspec.toml` and will optionally contain the hashes for `accounts.toml` and `global_state.toml`.
+* Add a new entry point `redelegate` to the Auction system contract which allows users to redelegate to another validator without having to unbond. The function signature for the entrypoint is: `redelegate(delegator: PublicKey, validator: PublicKey, amount: U512, new_validator: PublicKey)`
+* Add a new type `ChainspecRegistry` which contains the hashes of the `chainspec.toml` and will optionally contain the hashes for `accounts.toml` and `global_state.toml`.
 
 ### Changed
-* (Perf) Changed contract runtime to allow caching GlobalState changes during execution of a single block.
-* Fixed some integer casts.
-* Changed both genesis and upgrade functions to write `ChainspecRegistry` under the fixed `Key::ChainspecRegistry`.
+* Change contract runtime to allow caching GlobalState changes during execution of a single block.
+* Fix some integer casts.
+* Change both genesis and upgrade functions to write `ChainspecRegistry` under the fixed `Key::ChainspecRegistry`.
+
 
 
 ## 1.4.3 - 2021-12-06

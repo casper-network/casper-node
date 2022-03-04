@@ -12,8 +12,8 @@ use casper_types::{
 
 use crate::{
     core::{
-        engine_state::execution_effect::ExecutionEffect, tracking_copy::TrackingCopy,
-        ChainspecRegistry,
+        engine_state::{execution_effect::ExecutionEffect, ChainspecRegistry},
+        tracking_copy::TrackingCopy,
     },
     shared::newtypes::CorrelationId,
     storage::global_state::StateProvider,
@@ -143,11 +143,6 @@ impl UpgradeConfig {
     /// Sets new pre state hash.
     pub fn with_pre_state_hash(&mut self, pre_state_hash: Digest) {
         self.pre_state_hash = pre_state_hash;
-    }
-
-    /// Sets the chainspec registry to the upgrade config.
-    pub fn with_chainspec_registry(&mut self, chainspec_registry: ChainspecRegistry) {
-        self.chainspec_registry = chainspec_registry
     }
 }
 

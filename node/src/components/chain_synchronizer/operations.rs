@@ -1165,7 +1165,7 @@ mod tests {
         components::consensus::EraReport,
         crypto::AsymmetricKeyExt,
         testing::TestRng,
-        types::{Block, BlockPayload, Chainspec, FinalizedBlock, NodeConfig},
+        types::{Block, BlockPayload, Chainspec, ChainspecRawBytes, FinalizedBlock, NodeConfig},
         utils::Loadable,
         SmallNetworkConfig,
     };
@@ -1223,7 +1223,7 @@ mod tests {
     #[test]
     fn test_is_current_era() {
         let mut rng = TestRng::new();
-        let mut chainspec = Chainspec::from_resources("local");
+        let (mut chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
 
         let genesis_time = chainspec
             .protocol_config

@@ -70,7 +70,10 @@ use crate::{
     NodeRng, DEBUG_DUMP_REQUESTED, JSON_DUMP_REQUESTED, TERMINATION_REQUESTED,
 };
 #[cfg(test)]
-use crate::{reactor::initializer::Reactor as InitializerReactor, types::Chainspec};
+use crate::{
+    reactor::initializer::Reactor as InitializerReactor,
+    types::{Chainspec, ChainspecRawBytes},
+};
 pub(crate) use queue_kind::QueueKind;
 use stats_alloc::{Stats, INSTRUMENTED_SYSTEM};
 
@@ -813,14 +816,20 @@ impl Runner<InitializerReactor> {
     pub(crate) async fn new_with_chainspec(
         cfg: <InitializerReactor as Reactor>::Config,
         chainspec: Arc<Chainspec>,
+        chainspec_raw_bytes: Arc<ChainspecRawBytes>,
     ) -> Result<Self, <InitializerReactor as Reactor>::Error> {
         let registry = Registry::new();
         let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
 
         let is_shutting_down = SharedFlag::new();
         let event_queue = EventQueueHandle::new(scheduler, is_shutting_down);
-        let (reactor, initial_effects) =
-            InitializerReactor::new_with_chainspec(cfg, &registry, event_queue, chainspec)?;
+        let (reactor, initial_effects) = InitializerReactor::new_with_chainspec(
+            cfg,
+            &registry,
+            event_queue,
+            chainspec,
+            chainspec_raw_bytes,
+        )?;
 
         // Run all effects from component instantiation.
         let span = debug_span!("process initial effects");

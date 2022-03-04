@@ -6,11 +6,10 @@ use rand::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::core::{ChainspecRegistry, CHAINSPEC_RAW};
 use casper_hashing::Digest;
 use casper_types::ProtocolVersion;
 
-use super::genesis::ExecConfig;
+use super::{genesis::ExecConfig, ChainspecRegistry};
 
 /// Represents a genesis request.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -69,14 +68,11 @@ impl Distribution<RunGenesisRequest> for Standard {
         let genesis_config_hash = Digest::hash(&input);
         let protocol_version = ProtocolVersion::from_parts(rng.gen(), rng.gen(), rng.gen());
         let ee_config = rng.gen();
-        let chainspec_registry = {
-            let mut chainspec_registry = ChainspecRegistry::new();
-            chainspec_registry.insert(
-                CHAINSPEC_RAW.to_string(),
-                Digest::hash(rng.gen::<[u8; 32]>()),
-            );
-            chainspec_registry
-        };
+
+        let chainspec_file_bytes: [u8; 10] = rng.gen();
+        let genesis_account_file_bytes: [u8; 15] = rng.gen();
+        let chainspec_registry =
+            ChainspecRegistry::new_with_genesis(&chainspec_file_bytes, &genesis_account_file_bytes);
         RunGenesisRequest::new(
             genesis_config_hash,
             protocol_version,
