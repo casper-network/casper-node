@@ -1,16 +1,19 @@
 mod config;
 mod error;
 mod event;
+mod metrics;
 mod operations;
 
 use std::{convert::Infallible, fmt::Debug, sync::Arc};
 
 use datasize::DataSize;
+use prometheus::Registry;
 use tracing::{debug, error, info};
 
 use casper_execution_engine::core::engine_state::{self, genesis::GenesisSuccess, UpgradeSuccess};
 use casper_types::{EraId, PublicKey};
 
+use self::metrics::Metrics;
 use crate::{
     components::{
         consensus::EraReport,
@@ -27,7 +30,7 @@ use crate::{
     NodeRng, SmallNetworkConfig,
 };
 use config::Config;
-use error::Error;
+pub(crate) use error::Error;
 pub(crate) use event::Event;
 pub(crate) use operations::KeyBlockInfo;
 
@@ -51,6 +54,8 @@ pub(crate) struct ChainSynchronizer {
     /// reactor can stop running.  It is passed to the participating reactor's constructor via its
     /// config.
     joining_outcome: Option<JoiningOutcome>,
+    /// Metrics for the chain synchronization process.
+    metrics: Metrics,
     /// The next upgrade activation point, used to determine what action to take after completing
     /// chain synchronization.
     maybe_next_upgrade: Option<ActivationPoint>,
@@ -64,10 +69,12 @@ impl ChainSynchronizer {
         maybe_next_upgrade: Option<ActivationPoint>,
         verifiable_chunked_hash_activation: EraId,
         effect_builder: EffectBuilder<JoinerEvent>,
-    ) -> (Self, Effects<Event>) {
+        registry: &Registry,
+    ) -> Result<(Self, Effects<Event>), Error> {
         let synchronizer = ChainSynchronizer {
             config: Config::new(chainspec, node_config, small_network_config),
             joining_outcome: None,
+            metrics: Metrics::new(registry)?,
             maybe_next_upgrade,
         };
         let effects = match synchronizer.config.trusted_hash() {
@@ -84,7 +91,7 @@ impl ChainSynchronizer {
             }
             Some(trusted_hash) => synchronizer.start_syncing(effect_builder, trusted_hash),
         };
-        (synchronizer, effects)
+        Ok((synchronizer, effects))
     }
 
     pub(crate) fn joining_outcome(&self) -> Option<&JoiningOutcome> {
@@ -101,8 +108,13 @@ impl ChainSynchronizer {
         trusted_hash: BlockHash,
     ) -> Effects<Event> {
         info!(%trusted_hash, "synchronizing linear chain");
-        operations::run_chain_sync_task(effect_builder, self.config.clone(), trusted_hash)
-            .event(Event::SyncResult)
+        operations::run_chain_sync_task(
+            effect_builder,
+            self.config.clone(),
+            self.metrics.clone(),
+            trusted_hash,
+        )
+        .event(Event::SyncResult)
     }
 
     fn handle_sync_result(

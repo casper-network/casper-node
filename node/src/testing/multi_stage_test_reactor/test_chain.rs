@@ -172,7 +172,7 @@ impl TestChain {
         first_node: bool,
         secret_key: Arc<SecretKey>,
         trusted_hash: Option<BlockHash>,
-        archival_sync: bool,
+        sync_to_genesis: bool,
         rng: &mut NodeRng,
     ) -> NodeId {
         // Set the network configuration.
@@ -188,7 +188,7 @@ impl TestChain {
             ..Default::default()
         };
 
-        participating_config.node.archival_sync = archival_sync;
+        participating_config.node.sync_to_genesis = sync_to_genesis;
 
         // Additionally set up storage in a temporary directory.
         let (storage_config, temp_dir) = storage::Config::default_for_tests();
@@ -458,7 +458,7 @@ async fn test_joiner_at_genesis() {
 
 /// Test a node joining to a single node network
 #[tokio::test]
-async fn test_archival_sync() {
+async fn test_sync_to_genesis() {
     testing::init_logging();
 
     const INITIAL_NETWORK_SIZE: usize = 1;

@@ -7,6 +7,7 @@ use std::{
     time::Duration,
 };
 
+use datasize::DataSize;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -47,6 +48,7 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
         round_length: Some(TimeDiff::from(1 << 16)),
         version: crate::VERSION_STRING.as_str(),
         node_uptime: Duration::from_secs(13),
+        node_state: NodeState::Participating,
     };
     GetStatusResult::new(status_feed, DOCS_EXAMPLE_PROTOCOL_VERSION)
 });
@@ -74,6 +76,17 @@ impl ChainspecInfo {
     }
 }
 
+/// The various possible states of operation for the node.
+#[derive(Clone, Copy, DataSize, Debug, Deserialize, Serialize, JsonSchema)]
+pub enum NodeState {
+    /// The node is currently in the fast syncing state.
+    FastSyncing,
+    /// The node is currently in syncing to genesis state.
+    SyncingToGenesis,
+    /// The node is currently in the participating state.
+    Participating,
+}
+
 /// Data feed for client "info_get_status" endpoint.
 #[derive(Debug, Serialize)]
 pub struct StatusFeed {
@@ -91,6 +104,8 @@ pub struct StatusFeed {
     pub version: &'static str,
     /// Time that passed since the node has started.
     pub node_uptime: Duration,
+    /// The current state of node.
+    pub node_state: NodeState,
 }
 
 impl StatusFeed {
@@ -100,6 +115,7 @@ impl StatusFeed {
         chainspec_info: ChainspecInfo,
         consensus_status: Option<(PublicKey, Option<TimeDiff>)>,
         node_uptime: Duration,
+        node_state: NodeState,
     ) -> Self {
         let (our_public_signing_key, round_length) = match consensus_status {
             Some((public_key, round_length)) => (Some(public_key), round_length),
@@ -113,6 +129,7 @@ impl StatusFeed {
             round_length,
             version: crate::VERSION_STRING.as_str(),
             node_uptime,
+            node_state,
         }
     }
 }
@@ -168,6 +185,8 @@ pub struct GetStatusResult {
     pub build_version: String,
     /// Time that passed since the node has started.
     pub uptime: TimeDiff,
+    /// The current state of node.
+    pub node_state: NodeState,
 }
 
 impl GetStatusResult {
@@ -183,6 +202,7 @@ impl GetStatusResult {
             round_length: status_feed.round_length,
             next_upgrade: status_feed.chainspec_info.next_upgrade,
             uptime: status_feed.node_uptime.into(),
+            node_state: status_feed.node_state,
             #[cfg(not(test))]
             build_version: crate::VERSION_STRING.clone(),
 

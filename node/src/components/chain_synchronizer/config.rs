@@ -24,9 +24,9 @@ pub(super) struct Config {
     max_parallel_trie_fetches: u32,
     /// The duration for which to pause between retry attempts while synchronising.
     retry_interval: Duration,
-    /// Whether to run in archival-sync mode. Archival-sync mode captures all data (blocks, deploys
+    /// Whether to run in sync-to-genesis mode which captures all data (blocks, deploys
     /// and global state) back to genesis.
-    archival_sync: bool,
+    sync_to_genesis: bool,
     /// The maximum number of consecutive times we'll allow the network component to return an
     /// empty set of fully-connected peers before we give up.
     max_retries_while_not_connected: u64,
@@ -47,7 +47,7 @@ impl Config {
             max_parallel_deploy_fetches: node_config.max_parallel_deploy_fetches,
             max_parallel_trie_fetches: node_config.max_parallel_trie_fetches,
             retry_interval: Duration::from_millis(node_config.retry_interval.millis()),
-            archival_sync: node_config.archival_sync,
+            sync_to_genesis: node_config.sync_to_genesis,
             max_retries_while_not_connected,
         }
     }
@@ -125,8 +125,8 @@ impl Config {
         self.retry_interval
     }
 
-    pub(super) fn archival_sync(&self) -> bool {
-        self.archival_sync
+    pub(super) fn sync_to_genesis(&self) -> bool {
+        self.sync_to_genesis
     }
 
     pub(super) fn max_retries_while_not_connected(&self) -> u64 {

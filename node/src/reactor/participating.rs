@@ -69,7 +69,7 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
-    types::{Deploy, DeployHash, ExitCode},
+    types::{Deploy, DeployHash, ExitCode, NodeState},
     utils::{Source, WithDir},
     NodeRng,
 };
@@ -601,12 +601,14 @@ impl reactor::Reactor for Reactor {
             effect_builder,
             protocol_version,
             node_startup_instant,
+            NodeState::Participating,
         )?;
         let rest_server = RestServer::new(
             config.rest_server.clone(),
             effect_builder,
             protocol_version,
             node_startup_instant,
+            NodeState::Participating,
         )?;
 
         let deploy_acceptor = DeployAcceptor::new(config.deploy_acceptor, &*chainspec, registry)?;

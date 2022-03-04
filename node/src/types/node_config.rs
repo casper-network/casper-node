@@ -26,9 +26,9 @@ pub struct NodeConfig {
     /// The duration for which to pause between retry attempts while synchronising during joining.
     pub retry_interval: TimeDiff,
 
-    /// Whether to run in archival-sync mode. Archival-sync mode captures all data (blocks, deploys
+    /// Whether to run in sync-to-genesis mode which captures all data (blocks, deploys
     /// and global state) back to genesis.
-    pub archival_sync: bool,
+    pub sync_to_genesis: bool,
 }
 
 impl Default for NodeConfig {
@@ -38,7 +38,7 @@ impl Default for NodeConfig {
             max_parallel_deploy_fetches: DEFAULT_MAX_PARALLEL_DEPLOY_FETCHES,
             max_parallel_trie_fetches: DEFAULT_MAX_PARALLEL_TRIE_FETCHES,
             retry_interval: DEFAULT_RETRY_INTERVAL.parse().unwrap(),
-            archival_sync: false,
+            sync_to_genesis: false,
         }
     }
 }
