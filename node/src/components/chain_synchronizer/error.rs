@@ -147,10 +147,16 @@ pub(crate) enum FetchTrieError {
     FetcherError(#[from] FetcherError<TrieOrChunk>),
 
     /// Trie was being fetched from peers by chunks but was somehow fetch from storage.
-    #[error("Trie was being fetched from peers by chunks but was somehow fetched from storage. Perhaps there are parallel downloads going on?")]
+    #[error(
+        "Trie was being fetched from peers by chunks but was somehow fetched from storage. \
+         Perhaps there are parallel downloads going on?"
+    )]
     TrieBeingFetchByChunksSomehowFetchedFromStorage,
 
     /// Trie was being fetched from peers by chunks but it was retrieved whole by a peer somehow.
-    #[error("Trie was being fetched from peers by chunks but it was retrieved whole by a peer somehow. Trie digest: {digest:?}")]
+    #[error(
+        "Trie was being fetched from peers by chunks but it was retrieved whole \
+         by a peer somehow. Trie digest: {digest:?}"
+    )]
     TrieBeingFetchedByChunksSomehowFetchWholeFromPeer { digest: Digest },
 }
