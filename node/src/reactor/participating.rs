@@ -208,6 +208,14 @@ impl ReactorEvent for ParticipatingEvent {
         }
     }
 
+    fn try_into_control(self) -> Option<ControlAnnouncement> {
+        if let Self::ControlAnnouncement(ctrl_ann) = self {
+            Some(ctrl_ann)
+        } else {
+            None
+        }
+    }
+
     #[inline]
     fn description(&self) -> &'static str {
         match self {

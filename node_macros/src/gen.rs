@@ -146,6 +146,14 @@ pub(crate) fn generate_reactor_types(def: &ReactorDefinition) -> TokenStream {
                     None
                 }
             }
+
+            fn try_into_control(self) -> Option<crate::effect::announcements::ControlAnnouncement> {
+                if let #event_ident::ControlAnnouncement(ctrl_ann) = self {
+                    Some(ctrl_ann)
+                } else {
+                    None
+                }
+            }
         }
 
         #[doc = #error_docs]

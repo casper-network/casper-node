@@ -323,6 +323,12 @@ impl ReactorEvent for UnitTestEvent {
             UnitTestEvent::ControlAnnouncement(ctrl_ann) => Some(ctrl_ann),
         }
     }
+
+    fn try_into_control(self) -> Option<ControlAnnouncement> {
+        match self {
+            UnitTestEvent::ControlAnnouncement(ctrl_ann) => Some(ctrl_ann),
+        }
+    }
 }
 
 /// Helper function to simulate the passage of time.

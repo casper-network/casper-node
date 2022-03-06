@@ -292,6 +292,9 @@ pub(crate) trait ReactorEvent: Send + Debug + From<ControlAnnouncement> + 'stati
     /// is indeed a control announcement variant.
     fn as_control(&self) -> Option<&ControlAnnouncement>;
 
+    /// Converts the event into a control announcement without copying.
+    fn try_into_control(self) -> Option<ControlAnnouncement>;
+
     /// Returns a cheap but human-readable description of the event.
     fn description(&self) -> &'static str {
         "anonymous event"
