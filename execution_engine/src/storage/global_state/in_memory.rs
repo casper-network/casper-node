@@ -273,9 +273,10 @@ impl StateProvider for InMemoryGlobalState {
         trie_key: &Digest,
     ) -> Result<Option<Bytes>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
-        let ret: Option<Bytes> =
-            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?
-                .map(|slice| slice.to_owned().into());
+        let ret: Option<Bytes> = self
+            .trie_store
+            .get_raw(&txn, trie_key)?
+            .map(|slice| slice.to_owned().into());
         txn.commit()?;
         Ok(ret)
     }
