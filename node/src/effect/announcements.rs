@@ -4,7 +4,6 @@
 //! module documentation for details.
 
 use std::{
-    cell::RefCell,
     fmt::{self, Debug, Display, Formatter},
     fs::File,
 };
@@ -61,7 +60,7 @@ pub(crate) enum ControlAnnouncement {
 #[derive(Serialize)]
 pub(crate) enum QueueDumpFormat {
     /// Dump using given serde serializer.
-    Serde(#[serde(skip)] RefCell<Option<TempFileSerializer>>),
+    Serde(#[serde(skip)] TempFileSerializer),
     /// Dump writing debug output to file.
     Debug(#[serde(skip)] File),
 }
@@ -69,7 +68,7 @@ pub(crate) enum QueueDumpFormat {
 impl QueueDumpFormat {
     /// Creates a new queue dump serde format.
     pub(crate) fn serde(serializer: TempFileSerializer) -> Self {
-        QueueDumpFormat::Serde(RefCell::new(Some(serializer)))
+        QueueDumpFormat::Serde(serializer)
     }
 
     /// Creates a new queue dump debug format.

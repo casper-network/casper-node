@@ -293,6 +293,8 @@ pub(crate) trait ReactorEvent: Send + Debug + From<ControlAnnouncement> + 'stati
     fn as_control(&self) -> Option<&ControlAnnouncement>;
 
     /// Converts the event into a control announcement without copying.
+    ///
+    /// Note that this function must return `Some` if and only `as_control` returns `Some`.
     fn try_into_control(self) -> Option<ControlAnnouncement>;
 
     /// Returns a cheap but human-readable description of the event.
@@ -551,46 +553,35 @@ where
         // Dispatch the event, then execute the resulting effect.
         let start = self.clock.start();
 
-        let (effects, keep_going) = if let Some(ctrl_ann) = event.as_control() {
+        let (effects, keep_going) = if event.as_control().is_some() {
             // We've received a control event, which will _not_ be handled by the reactor.
-            match ctrl_ann {
-                ControlAnnouncement::FatalError { file, line, msg } => {
+            match event.try_into_control() {
+                None => {
+                    // If `as_control().is_some()` is true, but `try_into_control` fails, the trait
+                    // is implemented incorrectly.
+                    error!(
+                        "event::as_control succeeded, but try_into_control failed. this is a bug"
+                    );
+
+                    // We ignore the event.
+                    (Default::default(), true)
+                }
+                Some(ControlAnnouncement::FatalError { file, line, msg }) => {
                     error!(%file, %line, %msg, "fatal error via control announcement");
                     (Default::default(), false)
                 }
-                ControlAnnouncement::QueueDump { dump_format } => {
+                Some(ControlAnnouncement::QueueDump { dump_format }) => {
                     match dump_format {
-                        QueueDumpFormat::Serde(serializer_cell) => {
-                            // Note: We could call `take` here, since this is the only place where
-                            // the refcell is manipulated. To avoid
-                            // accidental introduction of a hidden panic in
-                            // the future, we opt for the safe route instead.
-                            match serializer_cell.try_borrow_mut().ok() {
-                                Some(mut ref_mut) => {
-                                    // We got access to the cell, so now see if someone else took it
-                                    // already.
-                                    if let Some(mut ser) = ref_mut.take() {
-                                        self.scheduler
-                                            .dump(move |queue_dump| {
-                                                if let Err(err) = queue_dump
-                                                    .erased_serialize(&mut ser.as_serializer())
-                                                {
-                                                    warn!(%err, "queue dump failed to serialize");
-                                                }
-                                            })
-                                            .await;
-                                    } else {
-                                        // This should never happen, but instead of panicking, we
-                                        // just warn.
-                                        warn!("queue dump serializer already consumed");
+                        QueueDumpFormat::Serde(mut ser) => {
+                            self.scheduler
+                                .dump(move |queue_dump| {
+                                    if let Err(err) =
+                                        queue_dump.erased_serialize(&mut ser.as_serializer())
+                                    {
+                                        warn!(%err, "queue dump failed to serialize");
                                     }
-                                }
-                                None => {
-                                    // This should never happen, but instead of panicking, we just
-                                    // warn.
-                                    warn!("queue dump serializer not available, ref cell is borrowed?");
-                                }
-                            }
+                                })
+                                .await;
                         }
                         QueueDumpFormat::Debug(ref file) => {
                             match file.try_clone() {
