@@ -61,6 +61,20 @@ function get_cl_arg_opt_uref()
 }
 
 #######################################
+# Returns a formatted session argument (cl type=optional public_key).
+# Arguments:
+#   Argument name.
+#   Argument value.
+#######################################
+function get_cl_arg_opt_public_key()
+{
+    local ARG_NAME=${1}
+    local ARG_VALUE=${2}
+
+    get_cl_arg "$ARG_NAME" "$ARG_VALUE" "opt_public_key"
+}
+
+#######################################
 # Returns a formatted session argument (cl type=string).
 # Arguments:
 #   Argument name.

@@ -1922,6 +1922,15 @@
             ],
             "type": "object"
           },
+          "NodeState": {
+            "description": "The various possible states of operation for the node.",
+            "enum": [
+              "FastSyncing",
+              "SyncingToGenesis",
+              "Participating"
+            ],
+            "type": "string"
+          },
           "OpKind": {
             "description": "The type of operation performed while executing a deploy.",
             "enum": [
@@ -2245,13 +2254,29 @@
                 "properties": {
                   "Withdraw": {
                     "items": {
-                      "$ref": "#/components/schemas/UnbondingPurse"
+                      "$ref": "#/components/schemas/WithdrawPurse"
                     },
                     "type": "array"
                   }
                 },
                 "required": [
                   "Withdraw"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "A collection of unbonding purses",
+                "properties": {
+                  "Unbonding": {
+                    "items": {
+                      "$ref": "#/components/schemas/UnbondingPurse"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "Unbonding"
                 ],
                 "type": "object"
               }
@@ -2629,6 +2654,17 @@
                 ],
                 "description": "Era in which this unbonding request was created."
               },
+              "new_validator": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The validator public key to re-delegate to."
+              },
               "unbonder_public_key": {
                 "allOf": [
                   {
@@ -2704,6 +2740,60 @@
             },
             "required": [
               "initial_release_timestamp_millis"
+            ],
+            "type": "object"
+          },
+          "WithdrawPurse": {
+            "additionalProperties": false,
+            "description": "A withdraw purse, a legacy structure.",
+            "properties": {
+              "amount": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/U512"
+                  }
+                ],
+                "description": "Unbonding Amount."
+              },
+              "bonding_purse": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/URef"
+                  }
+                ],
+                "description": "Bonding Purse"
+              },
+              "era_of_creation": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/EraId"
+                  }
+                ],
+                "description": "Era in which this unbonding request was created."
+              },
+              "unbonder_public_key": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  }
+                ],
+                "description": "Unbonders public key."
+              },
+              "validator_public_key": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  }
+                ],
+                "description": "Validators public key."
+              }
+            },
+            "required": [
+              "amount",
+              "bonding_purse",
+              "era_of_creation",
+              "unbonder_public_key",
+              "validator_public_key"
             ],
             "type": "object"
           }
@@ -3385,6 +3475,7 @@
                     "activation_point": 42,
                     "protocol_version": "2.0.1"
                   },
+                  "node_state": "Participating",
                   "our_public_signing_key": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
                   "peers": [
                     {
@@ -3441,6 +3532,10 @@
                   ],
                   "description": "Information about the next scheduled upgrade."
                 },
+                "node_state": {
+                  "$ref": "#/components/schemas/NodeState",
+                  "description": "The current state of node."
+                },
                 "our_public_signing_key": {
                   "anyOf": [
                     {
@@ -3481,6 +3576,7 @@
                 "api_version",
                 "build_version",
                 "chainspec_name",
+                "node_state",
                 "peers",
                 "starting_state_root_hash",
                 "uptime"

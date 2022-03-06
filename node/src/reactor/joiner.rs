@@ -70,7 +70,7 @@ use crate::{
     },
     types::{
         Block, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy, DeployHash,
-        ExitCode, NodeId,
+        ExitCode, NodeId, NodeState,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -564,7 +564,8 @@ impl reactor::Reactor for Reactor {
             next_upgrade_activation_point,
             chainspec.protocol_config.verifiable_chunked_hash_activation,
             effect_builder,
-        );
+            registry,
+        )?;
         effects.extend(reactor::wrap_effects(
             JoinerEvent::ChainSynchronizer,
             sync_effects,
@@ -575,11 +576,17 @@ impl reactor::Reactor for Reactor {
             .protocol_config
             .verifiable_chunked_hash_activation;
         let protocol_version = &chainspec_loader.chainspec().protocol_config.version;
+        let node_state = if config.node.sync_to_genesis {
+            NodeState::SyncingToGenesis
+        } else {
+            NodeState::FastSyncing
+        };
         let rest_server = RestServer::new(
             config.rest_server.clone(),
             effect_builder,
             *protocol_version,
             node_startup_instant,
+            node_state,
         )?;
 
         let event_stream_server = EventStreamServer::new(
