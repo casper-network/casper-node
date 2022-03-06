@@ -14,7 +14,7 @@ use std::{collections::HashMap, hash::BuildHasher};
 use tracing::error;
 
 use casper_hashing::Digest;
-use casper_types::{bytesrepr, Key, StoredValue};
+use casper_types::{bytesrepr, bytesrepr::Bytes, Key, StoredValue};
 
 use crate::{
     shared::{
@@ -113,14 +113,10 @@ pub trait StateProvider {
         &self,
         correlation_id: CorrelationId,
         trie_key: &Digest,
-    ) -> Result<Option<Trie<Key, StoredValue>>, Self::Error>;
+    ) -> Result<Option<Bytes>, Self::Error>;
 
     /// Insert a trie node into the trie
-    fn put_trie(
-        &self,
-        correlation_id: CorrelationId,
-        trie: &Trie<Key, StoredValue>,
-    ) -> Result<Digest, Self::Error>;
+    fn put_trie(&self, correlation_id: CorrelationId, trie: &[u8]) -> Result<Digest, Self::Error>;
 
     /// Finds all of the missing or corrupt keys of which are descendants of `trie_key` and
     /// optionally performs an integrity check on each node

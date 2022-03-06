@@ -1065,37 +1065,25 @@ impl RpcWithParamsExt for GetTrie {
         async move {
             let trie_key = params.trie_key;
 
-            let ee_trie = match effect_builder.get_trie_full(trie_key).await {
-                Ok(Some(trie)) => trie,
-                Ok(None) => {
-                    return Ok(response_builder.success(Self::ResponseResult {
+            let response = match effect_builder.get_trie_full(trie_key).await {
+                Ok(maybe_trie_bytes) => {
+                    let result = Self::ResponseResult {
                         api_version,
-                        maybe_trie_bytes: None,
-                    })?)
+                        maybe_trie_bytes,
+                    };
+
+                    response_builder.success(result)?
                 }
                 Err(error) => {
                     error!(?error, "failed to get trie");
-                    return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                    response_builder.error(warp_json_rpc::Error::custom(
                         ErrorCode::FailedToGetTrie as i64,
                         format!("failed to get trie: {:?}", error),
-                    ))?);
+                    ))?
                 }
             };
 
-            let trie_bytes = match ee_trie.to_bytes() {
-                Ok(bytes) => bytes,
-                Err(error) => {
-                    error!(?error, "failed to serialize trie");
-                    return Ok(response_builder.error(warp_json_rpc::Error::INTERNAL_ERROR)?);
-                }
-            };
-
-            let result = Self::ResponseResult {
-                api_version,
-                maybe_trie_bytes: Some(trie_bytes.into()),
-            };
-
-            Ok(response_builder.success(result)?)
+            Ok(response)
         }
         .boxed()
     }

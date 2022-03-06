@@ -59,8 +59,19 @@ pub trait Store<K, V> {
         V: ToBytes,
         Self::Error: From<T::Error>,
     {
+        self.put_raw(txn, key, &value.to_bytes()?)
+    }
+
+    /// Puts a raw `value` into the store at `key` within a transaction, potentially returning an
+    /// error of type `Self::Error` if that fails.
+    fn put_raw<T>(&self, txn: &mut T, key: &K, trie_bytes: &[u8]) -> Result<(), Self::Error>
+    where
+        T: Writable<Handle = Self::Handle>,
+        K: AsRef<[u8]>,
+        Self::Error: From<T::Error>,
+    {
         let handle = self.handle();
-        txn.write(handle, key.as_ref(), &value.to_bytes()?)
+        txn.write(handle, key.as_ref(), trie_bytes)
             .map_err(Into::into)
     }
 }

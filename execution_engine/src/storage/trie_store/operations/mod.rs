@@ -18,6 +18,7 @@ use crate::{
     storage::{
         transaction_source::{Readable, Writable},
         trie::{
+            hash_bytes_into_chunks_if_necessary,
             merkle_proof::{TrieMerkleProof, TrieMerkleProofStep},
             Parents, Pointer, PointerBlock, Trie, RADIX, USIZE_EXCEEDS_U8,
         },
@@ -234,7 +235,6 @@ where
 /// 1. referenced but not present in the database
 /// 2. (Optionally, when `check_integrity` is `true`) referenced and present but whose values'
 /// hashes do not equal their keys (ie, corrupted)
-// TODO: We only need to check one trie key at a time
 pub fn missing_trie_keys<K, V, T, S, E>(
     _correlation_id: CorrelationId,
     txn: &T,
@@ -1022,11 +1022,12 @@ where
     }
 }
 
+/// Puts a trie pointer block, extension node or leaf into the trie.
 pub fn put_trie<K, V, T, S, E>(
     _correlation_id: CorrelationId,
     txn: &mut T,
     store: &S,
-    trie: &Trie<K, V>,
+    trie_bytes: &[u8],
 ) -> Result<Digest, E>
 where
     K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
@@ -1036,8 +1037,8 @@ where
     S::Error: From<T::Error>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
-    let trie_hash = trie.trie_hash()?;
-    store.put(txn, &trie_hash, trie)?;
+    let trie_hash = hash_bytes_into_chunks_if_necessary(trie_bytes);
+    store.put_raw(txn, &trie_hash, trie_bytes)?;
     Ok(trie_hash)
 }
 
