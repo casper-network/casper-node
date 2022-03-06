@@ -38,7 +38,7 @@ pub enum ChunkWithProofVerificationError {
     #[error(transparent)]
     MerkleVerificationError(#[from] MerkleVerificationError),
 
-    /// Empty merkle proof for trie with chunk.
+    /// Empty Merkle proof for trie with chunk.
     #[error("Chunk with proof has empty merkle proof: {chunk_with_proof:?}")]
     ChunkWithProofHasEmptyMerkleProof {
         /// Chunk with empty Merkle proof.
