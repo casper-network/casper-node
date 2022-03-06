@@ -46,7 +46,11 @@ pub enum ChunkWithProofVerificationError {
     },
 
     /// First digest in indexed Merkle proof did not match hash of chunk.
-    #[error("First digest in Merkle proof did not match hash of chunk. First digest in indexed Merkle proof: {first_digest_in_indexed_merkle_proof:?}. Hash of chunk: {hash_of_chunk:?}.")]
+    #[error(
+        "First digest in Merkle proof did not match hash of chunk. \
+         First digest in indexed Merkle proof: {first_digest_in_indexed_merkle_proof:?}. \
+         Hash of chunk: {hash_of_chunk:?}."
+    )]
     FirstDigestInMerkleProofDidNotMatchHashOfChunk {
         /// First digest in indexed Merkle proof.
         first_digest_in_indexed_merkle_proof: Digest,
