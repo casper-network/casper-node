@@ -161,9 +161,6 @@ fn should_distribute_delegation_rate_zero() {
 
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 
-    let participant_portion = Ratio::new(U512::one(), U512::from(3));
-    let remainders = Ratio::from(U512::zero());
-
     let system_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
@@ -246,9 +243,6 @@ fn should_distribute_delegation_rate_zero() {
         delegator_1_delegate_request,
         delegator_2_delegate_request,
     ];
-
-    let mut timestamp_millis =
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
     let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
@@ -440,9 +434,6 @@ fn should_withdraw_bids_after_distribute() {
 
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 
-    let participant_portion = Ratio::new(U512::one(), U512::from(3u64));
-    let remainders = Ratio::from(U512::zero());
-
     let system_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
@@ -525,9 +516,6 @@ fn should_withdraw_bids_after_distribute() {
         delegator_1_delegate_request,
         delegator_2_delegate_request,
     ];
-
-    let mut timestamp_millis =
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
     let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
@@ -756,9 +744,6 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
 
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 
-    let participant_portion = Ratio::new(U512::one(), U512::from(3u64));
-    let remainders = Ratio::from(U512::zero());
-
     let system_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
@@ -841,9 +826,6 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
         delegator_1_delegate_request,
         delegator_2_delegate_request,
     ];
-
-    let mut timestamp_millis =
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
     let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
@@ -1197,8 +1179,6 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
     const VALIDATOR_2_REWARD_FACTOR_2: u64 = 333333333333;
     const VALIDATOR_3_REWARD_FACTOR_2: u64 = 333333333334;
 
-    let one_third = Ratio::new(U512::one(), U512::from(3));
-
     let system_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
@@ -1281,9 +1261,6 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
         validator_2_add_bid_request,
         validator_3_add_bid_request,
     ];
-
-    let mut timestamp_millis =
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
     let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
@@ -1613,14 +1590,6 @@ fn should_distribute_delegation_rate_half() {
 
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = DELEGATION_RATE_DENOMINATOR / 2;
 
-    // Validator share
-    let validator_share = Ratio::new(U512::from(2), U512::from(3));
-    let remainders = Ratio::from(U512::from(2));
-    let rounded_amount = U512::from(2);
-
-    // Delegator shares
-    let delegator_shares = Ratio::new(U512::one(), U512::from(6));
-
     let system_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
@@ -1703,9 +1672,6 @@ fn should_distribute_delegation_rate_half() {
         delegator_1_delegate_request,
         delegator_2_delegate_request,
     ];
-
-    let mut timestamp_millis =
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
     let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
@@ -2055,12 +2021,6 @@ fn should_distribute_uneven_delegation_rate_zero() {
 
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 
-    let validator_1_portion = Ratio::new(U512::one(), U512::from(8));
-    let delegator_1_portion = Ratio::new(U512::from(3), U512::from(8));
-    let delegator_2_portion = Ratio::new(U512::from(4), U512::from(8));
-
-    let remainder = Ratio::from(U512::from(1));
-
     let system_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
@@ -2143,9 +2103,6 @@ fn should_distribute_uneven_delegation_rate_zero() {
         delegator_1_delegate_request,
         delegator_2_delegate_request,
     ];
-
-    let mut timestamp_millis =
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
     let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
@@ -2301,8 +2258,6 @@ fn should_distribute_by_factor() {
     const VALIDATOR_2_REWARD_FACTOR: u64 = 333333333333;
     const VALIDATOR_3_REWARD_FACTOR: u64 = 333333333333;
 
-    let one_third = Ratio::new(U512::one(), U512::from(3));
-
     let system_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
@@ -2386,17 +2341,16 @@ fn should_distribute_by_factor() {
         validator_3_add_bid_request,
     ];
 
-    let mut timestamp_millis =
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
-
     let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
+    let total_payout = builder.base_round_reward(None);
     let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
+    assert_eq!(expected_total_reward_integer, total_payout);
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
@@ -2626,8 +2580,6 @@ fn should_distribute_by_factor_regardless_of_stake() {
     const VALIDATOR_2_REWARD_FACTOR: u64 = 333333333333;
     const VALIDATOR_3_REWARD_FACTOR: u64 = 333333333333;
 
-    let one_third = Ratio::new(U512::one(), U512::from(3));
-
     let system_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
@@ -2710,9 +2662,6 @@ fn should_distribute_by_factor_regardless_of_stake() {
         validator_2_add_bid_request,
         validator_3_add_bid_request,
     ];
-
-    let mut timestamp_millis =
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
     let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
@@ -2941,9 +2890,6 @@ fn should_distribute_by_factor_uneven() {
         validator_3_add_bid_request,
     ];
 
-    let mut timestamp_millis =
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
-
     let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
@@ -3093,8 +3039,6 @@ fn should_distribute_with_multiple_validators_and_delegators() {
     const DELEGATOR_1_STAKE: u64 = 3_000_000;
     const DELEGATOR_2_STAKE: u64 = 4_000_000;
     const DELEGATOR_3_STAKE: u64 = 1_000_000;
-
-    let remainder = U512::one();
 
     let system_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -3247,9 +3191,6 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         delegator_2_delegate_request,
         delegator_3_delegate_request,
     ];
-
-    let mut timestamp_millis =
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
     let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
@@ -3412,15 +3353,6 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
 
     const DELEGATOR_1_STAKE: u64 = 1_000_000;
 
-    let validator_1_portion = Ratio::new(U512::from(1), U512::from(4));
-    let validator_2_portion = Ratio::new(U512::from(1), U512::from(4));
-    let validator_3_portion = Ratio::new(U512::from(1), U512::from(4));
-    let delegator_1_validator_1_portion = Ratio::new(U512::from(1), U512::from(12));
-    let delegator_1_validator_2_portion = Ratio::new(U512::from(1), U512::from(12));
-    let delegator_1_validator_3_portion = Ratio::new(U512::from(1), U512::from(12));
-
-    let remainder = U512::from(2);
-
     let system_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
@@ -3572,9 +3504,6 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
         delegator_1_validator_2_delegate_request,
         delegator_1_validator_3_delegate_request,
     ];
-
-    let mut timestamp_millis =
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
     let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 

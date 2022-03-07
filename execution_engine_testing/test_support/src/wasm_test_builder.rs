@@ -14,9 +14,6 @@ use log::LevelFilter;
 use num_rational::Ratio;
 use num_traits::CheckedMul;
 
-use bytesrepr::FromBytes;
-use casper_execution_engine::core::engine_state::{ExecConfig, DEFAULT_MAX_QUERY_DEPTH};
-
 use casper_execution_engine::{
     core::{
         engine_state,
@@ -28,6 +25,7 @@ use casper_execution_engine::{
             step::{StepRequest, StepSuccess},
             BalanceResult, EngineConfig, EngineState, GenesisSuccess, GetBidsRequest, QueryRequest,
             QueryResult, StepError, SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
+            DEFAULT_MAX_QUERY_DEPTH,
         },
         execution,
     },
@@ -54,7 +52,8 @@ use casper_types::system::auction::UNBONDING_DELAY_KEY;
 use casper_types::system::mint::ROUND_SEIGNIORAGE_RATE_KEY;
 use casper_types::{
     account::{Account, AccountHash},
-    bytesrepr, runtime_args,
+    bytesrepr::FromBytes,
+    runtime_args,
     system::{
         auction::{
             Bids, EraValidators, UnbondingPurses, ValidatorWeights, WithdrawPurses,
@@ -201,6 +200,7 @@ impl InMemoryWasmTestBuilder {
         }
     }
 
+    /// Returns an [`InMemoryWasmTestBuilder`] instantiated using values from a given chainspec.
     pub fn new_with_chainspec<P: AsRef<Path>>(
         chainspec_path: P,
         post_state_hash: Option<Digest>,
@@ -221,6 +221,8 @@ impl InMemoryWasmTestBuilder {
         Self::new(global_state, engine_config, post_state_hash)
     }
 
+    /// Returns an [`InMemoryWasmTestBuilder`] instantiated
+    /// using values from the production chainspec.
     pub fn new_with_production_chainspec() -> Self {
         Self::new_with_chainspec(&*PRODUCTION_PATH, None)
     }
@@ -270,6 +272,8 @@ impl LmdbWasmTestBuilder {
         }
     }
 
+    /// Returns an [`LmdbWasmTestBuilder`] with configuration and values from
+    /// a given chainspec.
     pub fn new_with_chainspec<T: AsRef<OsStr> + ?Sized, P: AsRef<Path>>(
         data_dir: &T,
         chainspec_path: P,
@@ -288,6 +292,8 @@ impl LmdbWasmTestBuilder {
         Self::new_with_config(data_dir, engine_config)
     }
 
+    /// Returns an [`LmdbWasmTestBuilder`] with configuration and values from
+    /// the production chainspec.
     pub fn new_with_production_chainspec<T: AsRef<OsStr> + ?Sized>(data_dir: &T) -> Self {
         Self::new_with_chainspec(data_dir, &*PRODUCTION_PATH)
     }

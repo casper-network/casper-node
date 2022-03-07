@@ -90,14 +90,6 @@ impl ChainspecConfig {
         Ok(chainspec_config)
     }
 
-    pub(crate) fn locked_funds_period(&self) -> Result<u64, Error> {
-        let locked_funds_period_millis =
-            humantime::parse_duration(&self.core_config.locked_funds_period)
-                .map_err(|_| Error::CouldNotParseLockedFundsPeriod)?
-                .as_millis() as u64;
-        Ok(locked_funds_period_millis)
-    }
-
     pub(crate) fn create_genesis_request_from_chainspec<P: AsRef<Path>>(
         filename: P,
         genesis_accounts: Vec<GenesisAccount>,
@@ -132,6 +124,7 @@ impl ChainspecConfig {
         ))
     }
 
+    /// Create a `RunGenesisRequest` using values from the production `chainspec.toml`.
     pub fn create_genesis_request_from_production_chainspec(
         genesis_accounts: Vec<GenesisAccount>,
         protocol_version: ProtocolVersion,

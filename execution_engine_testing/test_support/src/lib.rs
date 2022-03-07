@@ -155,13 +155,13 @@ pub static DEFAULT_RUN_GENESIS_REQUEST: Lazy<RunGenesisRequest> = Lazy::new(|| {
 });
 /// [`RunGenesisRequest`] instantiated using chainspec values.
 pub static PRODUCTION_RUN_GENESIS_REQUEST: Lazy<RunGenesisRequest> = Lazy::new(|| {
-    let genesis_request = ChainspecConfig::create_genesis_request_from_production_chainspec(
+    ChainspecConfig::create_genesis_request_from_production_chainspec(
         DEFAULT_ACCOUNTS.clone(),
         *DEFAULT_PROTOCOL_VERSION,
     )
-    .expect("must create the request");
-    genesis_request
+    .expect("must create the request")
 });
+/// Round seigniorage rate from the production chainspec.
 pub static PRODUCTION_ROUND_SEIGNIORAGE_RATE: Lazy<Ratio<u64>> = Lazy::new(|| {
     let chainspec = ChainspecConfig::from_chainspec_path(&*PRODUCTION_PATH)
         .expect("must create chainspec_config");
