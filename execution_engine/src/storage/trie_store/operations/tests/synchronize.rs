@@ -54,15 +54,10 @@ where
         // Copy source to destination
         let mut queue = vec![root.to_owned()];
         while let Some(trie_key) = queue.pop() {
-            let trie_to_insert = source_store
-                .get(&source_txn, &trie_key)?
+            let trie_bytes_to_insert = source_store
+                .get_raw(&source_txn, &trie_key)?
                 .expect("should have trie");
-            operations::put_trie::<_, _, _, _, E>(
-                correlation_id,
-                &mut target_txn,
-                target_store,
-                &trie_to_insert,
-            )?;
+            target_store.put_raw(&mut target_txn, &trie_key, trie_bytes_to_insert.as_ref())?;
 
             // Now that we've added in `trie_to_insert`, queue up its children
             let new_keys = operations::missing_trie_keys::<_, _, _, _, E>(

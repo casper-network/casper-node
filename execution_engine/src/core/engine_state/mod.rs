@@ -33,7 +33,7 @@ use tracing::{debug, error};
 use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
-    bytesrepr::ToBytes,
+    bytesrepr::{Bytes, ToBytes},
     contracts::NamedKeys,
     system::{
         auction::{
@@ -87,7 +87,7 @@ use crate::{
         global_state::{
             lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
         },
-        trie::{Trie, TrieOrChunk, TrieOrChunkId},
+        trie::{TrieOrChunk, TrieOrChunkId},
     },
 };
 
@@ -1873,7 +1873,7 @@ where
         &self,
         correlation_id: CorrelationId,
         trie_key: Digest,
-    ) -> Result<Option<Trie<Key, StoredValue>>, Error>
+    ) -> Result<Option<Bytes>, Error>
     where
         Error: From<S::Error>,
     {
@@ -1884,7 +1884,7 @@ where
     pub fn put_trie_and_find_missing_descendant_trie_keys(
         &self,
         correlation_id: CorrelationId,
-        trie: &Trie<Key, StoredValue>,
+        trie_bytes: &[u8],
     ) -> Result<Vec<Digest>, Error>
     where
         Error: From<S::Error>,

@@ -16,7 +16,7 @@ All notable changes to this project will be documented in this file.  The format
 * Introduce fast-syncing to join the network, avoiding the need to execute every block to catch up.
 * Add `max_parallel_deploy_fetches` and `max_parallel_trie_fetches` config options to the `[node]` section to control how many requests are made in parallel while syncing.
 * Add `retry_interval` to `[node]` config section to control the delay between retry attempts while syncing.
-* Add `archival_sync` to `[node]` config section, along with archival syncing capabilities.
+* Add `sync_to_genesis` to `[node]` config section, along with syncing to genesis capabilities.
 * Add new event to the main SSE server stream across all endpoints `<IP:PORT>/events/*` which emits a shutdown event when the node shuts down.
 * Add `SIGUSR2` signal handling to dump the queue in JSON format (see "Changed" section for `SIGUSR1`).
 * A diagnostic console can now be enabled via the `[console]` section in the configuration file. See the `README.md` for details.
@@ -24,6 +24,7 @@ All notable changes to this project will be documented in this file.  The format
 * Add `verifiable_chunked_hash_activation` to the chainspec to specify the first era in which the new Merkle tree-based hashing scheme is used.
 * In addition to `consensus` and `deploy_requests`, the following values can now be controlled via the `[network.estimator_weights]` section in config: `gossip`, `finality_signatures`, `deploy_responses`, `block_requests`, `block_responses`, `trie_requests` and `trie_responses`.
 * Nodes will now also gossip deploys onwards while joining.
+  Added run-mode field to the `/status` endpoint and the `info_get_status` JSON-RPC.
 
 ### Changed
 * Detection of a crash no longer triggers DB integrity checks to run on node start; the checks can be triggered manually instead.

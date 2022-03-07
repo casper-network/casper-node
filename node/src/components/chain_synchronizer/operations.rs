@@ -5,23 +5,26 @@ use std::{
         atomic::{self, AtomicBool},
         Arc,
     },
-    time::Duration,
 };
 
 use async_trait::async_trait;
 use datasize::DataSize;
-use futures::stream::{futures_unordered::FuturesUnordered, StreamExt};
+use futures::{
+    stream::{futures_unordered::FuturesUnordered, StreamExt},
+    TryStreamExt,
+};
+use prometheus::IntGauge;
 use quanta::Instant;
-use tracing::{debug, info, trace, warn};
+use tracing::{info, trace, warn};
 
-use casper_execution_engine::storage::trie::Trie;
+use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
 use casper_hashing::Digest;
-use casper_types::{EraId, Key, ProtocolVersion, PublicKey, StoredValue, U512};
+use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion, PublicKey, U512};
 
-use super::Config;
+use super::{metrics::Metrics, Config};
 use crate::{
     components::{
-        chain_synchronizer::error::Error,
+        chain_synchronizer::error::{Error, FetchTrieError},
         consensus::{self},
         contract_runtime::ExecutionPreState,
         fetcher::{FetchResult, FetchedData, FetcherError},
@@ -35,13 +38,37 @@ use crate::{
     utils::work_queue::WorkQueue,
 };
 
-/// The duration after which a warning for long-running tasks will be emitted.
-const FOREVER_WARN_TIMEOUT: Duration = Duration::from_secs(60);
+/// Helper struct that is used to measure a time spent in the scope.
+/// At the construction time, a reference to the gauge is provided. When the binding to `ScopeTimer`
+/// is dropped, the specified gauge is updated with the duration since the scope was entered.
+// In the future, this could be replaced with a mechanism that uses `tracing::instrument` attribute
+// macro.
+struct ScopeTimer<'a> {
+    start: Instant,
+    gauge: &'a IntGauge,
+}
+
+impl<'a> ScopeTimer<'a> {
+    fn new(gauge: &'a IntGauge) -> Self {
+        Self {
+            start: Instant::now(),
+            gauge,
+        }
+    }
+}
+
+impl<'a> Drop for ScopeTimer<'a> {
+    fn drop(&mut self) {
+        self.gauge
+            .set(Instant::now().duration_since(self.start).as_secs() as i64);
+    }
+}
 
 struct ChainSyncContext<'a> {
     effect_builder: &'a EffectBuilder<JoinerEvent>,
     config: &'a Config,
     trusted_block_header: &'a BlockHeader,
+    metrics: &'a Metrics,
 }
 
 impl<'a> ChainSyncContext<'a> {
@@ -49,11 +76,13 @@ impl<'a> ChainSyncContext<'a> {
         effect_builder: &'a EffectBuilder<JoinerEvent>,
         config: &'a Config,
         trusted_block_header: &'a BlockHeader,
+        metrics: &'a Metrics,
     ) -> Self {
         Self {
             effect_builder,
             config,
             trusted_block_header,
+            metrics,
         }
     }
 
@@ -62,6 +91,9 @@ impl<'a> ChainSyncContext<'a> {
             .hash(self.config.verifiable_chunked_hash_activation())
     }
 }
+
+/// Restrict the fan-out for a trie being retrieved by chunks to query at most 10 peers at a time.
+const TRIE_CHUNK_FETCH_FAN_OUT: usize = 10;
 
 /// Fetches an item. Keeps retrying to fetch until it is successful. Not suited to fetching a block
 /// header or block by height, which require verification with finality signatures.
@@ -119,44 +151,95 @@ where
     }
 }
 
+enum TrieAlreadyPresentOrDownloaded {
+    AlreadyPresent,
+    Downloaded(Bytes),
+}
+
 async fn fetch_trie_retry_forever(
     id: Digest,
     ctx: &ChainSyncContext<'_>,
-) -> FetchedData<Trie<Key, StoredValue>> {
-    let started = Instant::now();
-    let mut last_warning = started;
+) -> Result<TrieAlreadyPresentOrDownloaded, FetchTrieError> {
+    let trie_or_chunk = match fetch_retry_forever::<TrieOrChunk>(
+        *ctx.effect_builder,
+        ctx.config,
+        TrieOrChunkId(0, id),
+    )
+    .await?
+    {
+        FetchedData::FromStorage { .. } => {
+            return Ok(TrieAlreadyPresentOrDownloaded::AlreadyPresent)
+        }
+        FetchedData::FromPeer {
+            item: trie_or_chunk,
+            ..
+        } => *trie_or_chunk,
+    };
+    let chunk_with_proof = match trie_or_chunk {
+        TrieOrChunk::Trie(trie) => return Ok(TrieAlreadyPresentOrDownloaded::Downloaded(trie)),
+        TrieOrChunk::ChunkWithProof(chunk_with_proof) => chunk_with_proof,
+    };
 
-    loop {
-        let peers = ctx.effect_builder.get_fully_connected_peers().await;
-        let peer_count = peers.len();
-        if !peers.is_empty() {
-            trace!(?id, "attempting to fetch a trie",);
-            match ctx.effect_builder.fetch_trie(id, peers).await {
-                Ok(fetched_data) => {
-                    trace!(?id, "got trie successfully",);
-                    return fetched_data;
+    debug_assert!(
+        chunk_with_proof.proof().index() == 0,
+        "Proof index was not 0.  Proof index: {}",
+        chunk_with_proof.proof().index()
+    );
+    let count = chunk_with_proof.proof().count();
+    let first_chunk = chunk_with_proof.into_chunk();
+    // Start stream iter to get each chunk.
+    // Start from 1 because proof.index() == 0.
+    // Build a map of the chunks.
+    let chunk_map_result = futures::stream::iter(1..count)
+        .map(|index| async move {
+            match fetch_retry_forever::<TrieOrChunk>(
+                *ctx.effect_builder,
+                ctx.config,
+                TrieOrChunkId(index, id),
+            )
+            .await?
+            {
+                FetchedData::FromStorage { .. } => {
+                    Err(FetchTrieError::TrieBeingFetchByChunksSomehowFetchedFromStorage)
                 }
-                Err(error) => {
-                    warn!(?id, %error, "fast sync could not fetch a trie; trying again")
-                }
+                FetchedData::FromPeer { item, .. } => match *item {
+                    TrieOrChunk::Trie(_) => Err(
+                        FetchTrieError::TrieBeingFetchedByChunksSomehowFetchWholeFromPeer {
+                            digest: id,
+                        },
+                    ),
+                    TrieOrChunk::ChunkWithProof(chunk_with_proof) => {
+                        let index = chunk_with_proof.proof().index();
+                        let chunk = chunk_with_proof.into_chunk();
+                        Ok((index, chunk))
+                    }
+                },
             }
-        }
+        })
+        // Do not try to fetch all of the trie chunks at once; only fetch at most
+        // TRIE_CHUNK_FETCH_FAN_OUT at a time.
+        // Doing `buffer_unordered` followed by `try_collect` here means if one of the
+        // fetches fails, then the outstanding futures are canceled.
+        .buffer_unordered(TRIE_CHUNK_FETCH_FAN_OUT)
+        .try_collect::<BTreeMap<u64, Bytes>>()
+        .await;
 
-        // Emit a warning in the logs only occasionally, avoiding spam when when poorly connected.
-        let now = Instant::now();
-        if now.duration_since(last_warning) > FOREVER_WARN_TIMEOUT {
-            last_warning = now;
-            let since = now.duration_since(started);
-            warn!(
-                ?id,
-                ?since,
-                %peer_count,
-                "still trying to fetch trie, either failed or no suitable peers"
-            );
+    // Handle if a parallel process downloaded all the trie chunks before us.
+    let mut chunk_map = match chunk_map_result {
+        Ok(chunk_map) => chunk_map,
+        Err(FetchTrieError::TrieBeingFetchByChunksSomehowFetchedFromStorage) => {
+            // trie must have been downloaded by a parallel process...
+            return Ok(TrieAlreadyPresentOrDownloaded::AlreadyPresent);
         }
+        Err(error) => {
+            return Err(error);
+        }
+    };
+    chunk_map.insert(0, first_chunk);
 
-        tokio::time::sleep(ctx.config.retry_interval()).await
-    }
+    // Concatenate all of the chunks into a trie
+    let trie_bytes = chunk_map.into_values().flat_map(Vec::<u8>::from).collect();
+    Ok(TrieAlreadyPresentOrDownloaded::Downloaded(trie_bytes))
 }
 
 /// Fetches and stores a block header from the network.
@@ -437,15 +520,15 @@ async fn fetch_and_store_trie(
     trie_key: Digest,
     ctx: &ChainSyncContext<'_>,
 ) -> Result<Vec<Digest>, Error> {
-    let fetched_trie = fetch_trie_retry_forever(trie_key, ctx).await;
+    let fetched_trie = fetch_trie_retry_forever(trie_key, ctx).await?;
     match fetched_trie {
-        FetchedData::FromStorage { .. } => Ok(ctx
+        TrieAlreadyPresentOrDownloaded::AlreadyPresent => Ok(ctx
             .effect_builder
             .find_missing_descendant_trie_keys(trie_key)
             .await?),
-        FetchedData::FromPeer { item: trie, .. } => Ok(ctx
+        TrieAlreadyPresentOrDownloaded::Downloaded(trie_bytes) => Ok(ctx
             .effect_builder
-            .put_trie_and_find_missing_descendant_trie_keys(trie)
+            .put_trie_and_find_missing_descendant_trie_keys(trie_bytes)
             .await?),
     }
 }
@@ -497,7 +580,7 @@ async fn sync_trie_store_worker(
 /// Synchronizes the trie store under a given state root hash.
 async fn sync_trie_store(state_root_hash: Digest, ctx: &ChainSyncContext<'_>) -> Result<(), Error> {
     info!(?state_root_hash, "syncing trie store",);
-    info!("start - fetch the latest block's global state - fast sync");
+    let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_sync_trie_store_duration_seconds);
 
     // Flag set by a worker when it encounters an error.
     let abort = Arc::new(AtomicBool::new(false));
@@ -510,7 +593,6 @@ async fn sync_trie_store(state_root_hash: Digest, ctx: &ChainSyncContext<'_>) ->
     while let Some(result) = workers.next().await {
         result?; // Return the error if a download failed.
     }
-    debug!("finish - fetch the latest block's global state - fast sync");
 
     Ok(())
 }
@@ -526,10 +608,9 @@ async fn sync_trie_store(state_root_hash: Digest, ctx: &ChainSyncContext<'_>) ->
 ///
 /// Returns the most recent block header along with the last trusted key block information for
 /// validation.
-async fn fast_sync_to_most_recent(
-    ctx: &ChainSyncContext<'_>,
-) -> Result<(KeyBlockInfo, BlockHeader), Error> {
-    info!("start - fast_sync_to_most_recent - total");
+async fn fast_sync(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, BlockHeader), Error> {
+    let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fast_sync_total_duration_seconds);
+
     let trusted_key_block_info = get_trusted_key_block_info(ctx).await?;
 
     let (most_recent_block_header, most_recent_key_block_info) =
@@ -548,13 +629,16 @@ async fn fast_sync_to_most_recent(
     // Synchronize the trie store for the most recent block header.
     sync_trie_store(*most_recent_block_header.state_root_hash(), ctx).await?;
 
-    debug!("finish - fast_sync_to_most_recent - total");
     Ok((trusted_key_block_info, most_recent_block_header))
 }
 
 /// Gets the trusted key block info for a trusted block header.
 async fn get_trusted_key_block_info(ctx: &ChainSyncContext<'_>) -> Result<KeyBlockInfo, Error> {
-    info!("start - fetch the last switch block before the trusted block - fast sync");
+    let _metric = ScopeTimer::new(
+        &ctx.metrics
+            .chain_sync_get_trusted_key_block_info_duration_seconds,
+    );
+
     // If the trusted block's version is newer than ours we return an error
     if ctx.trusted_block_header.protocol_version() > ctx.config.protocol_version() {
         return Err(Error::RetrievedBlockHeaderFromFutureVersion {
@@ -576,7 +660,7 @@ async fn get_trusted_key_block_info(ctx: &ChainSyncContext<'_>) -> Result<KeyBlo
     // Fetch each parent hash one by one until we have the switch block info
     // This will crash if we try to get the parent hash of genesis, which is the default [0u8; 32]
     let mut current_header_to_walk_back_from = ctx.trusted_block_header.clone();
-    let result = loop {
+    loop {
         // Check that we are not restarting right after an emergency restart, which is too early
         match ctx.config.last_emergency_restart() {
             Some(last_emergency_restart)
@@ -610,9 +694,7 @@ async fn get_trusted_key_block_info(ctx: &ChainSyncContext<'_>) -> Result<KeyBlo
             *current_header_to_walk_back_from.parent_hash(),
         )
         .await?;
-    };
-    debug!("finish - fetch the last switch block before the trusted block - fast sync");
-    result
+    }
 }
 
 /// Get the most recent header which has the same version as ours
@@ -622,9 +704,10 @@ async fn fetch_block_headers_up_to_the_most_recent_one(
     trusted_key_block_info: &KeyBlockInfo,
     ctx: &ChainSyncContext<'_>,
 ) -> Result<(BlockHeader, KeyBlockInfo), Error> {
+    let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fetch_block_headers_duration_seconds);
+
     let mut most_recent_block_header = ctx.trusted_block_header.clone();
     let mut most_recent_key_block_info = trusted_key_block_info.clone();
-    info!("start - fetch block headers up to the most recent one - fast sync");
     loop {
         let maybe_fetched_block = fetch_and_store_next::<BlockHeaderWithMetadata>(
             &most_recent_block_header,
@@ -657,7 +740,6 @@ async fn fetch_block_headers_up_to_the_most_recent_one(
             break;
         }
     }
-    debug!("finish - fetch block headers up to the most recent one - fast sync");
     Ok((most_recent_block_header, most_recent_key_block_info))
 }
 
@@ -668,7 +750,8 @@ async fn fetch_blocks_for_deploy_replay_protection(
     most_recent_key_block_info: &KeyBlockInfo,
     ctx: &ChainSyncContext<'_>,
 ) -> Result<(), Error> {
-    info!("start - fetch blocks for deploy replay protection - fast sync");
+    let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_replay_protection_duration_seconds);
+
     let mut current_header = most_recent_block_header.clone();
     while most_recent_key_block_info
         .era_start
@@ -680,7 +763,6 @@ async fn fetch_blocks_for_deploy_replay_protection(
             .await?
             .take_header();
     }
-    debug!("finish - fetch blocks for deploy replay protection - fast sync");
     Ok(())
 }
 
@@ -690,7 +772,8 @@ async fn fetch_block_headers_needed_for_era_supervisor_initialization(
     most_recent_block_header: &BlockHeader,
     ctx: &ChainSyncContext<'_>,
 ) -> Result<(), Error> {
-    info!("start - fetch block headers needed for era supervisor initialization - fast sync");
+    let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_era_supervisor_init_duration_seconds);
+
     let earliest_open_era = ctx
         .config
         .earliest_open_era(most_recent_block_header.era_id());
@@ -705,7 +788,6 @@ async fn fetch_block_headers_needed_for_era_supervisor_initialization(
         )
         .await?;
     }
-    debug!("finish - fetch block headers needed for era supervisor initialization - fast sync");
     Ok(())
 }
 
@@ -719,19 +801,10 @@ async fn sync_deploys_and_transfers_and_state(
         ctx,
     )
     .await?;
-    debug!(
-        "start - sync_deploys_and_transfers_and_state - sync_trie_store - archival sync - {}",
-        block.hash()
-    );
-    let result = sync_trie_store(*block.header().state_root_hash(), ctx).await;
-    debug!(
-        "finish - sync_deploys_and_transfers_and_state - sync_trie_store - archival sync - {}",
-        block.hash()
-    );
-    result
+    sync_trie_store(*block.header().state_root_hash(), ctx).await
 }
 
-/// Archival sync all the way up to the current version.
+/// Sync to genesis.
 ///
 /// Performs the following:
 ///
@@ -742,39 +815,35 @@ async fn sync_deploys_and_transfers_and_state(
 ///
 /// Returns the block header with our current version and the last trusted key block information for
 /// validation.
-async fn archival_sync(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, BlockHeader), Error> {
+async fn sync_to_genesis(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, BlockHeader), Error> {
+    let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_to_genesis_total_duration_seconds);
+
     // Get the trusted block info. This will fail if we are trying to join with a trusted hash in
     // era 0.
-    info!("start - archival_sync - total");
-    info!("start - fetch the latest key block before the trusted block - archival sync");
     let mut trusted_key_block_info = get_trusted_key_block_info(ctx).await?;
-    debug!("finish - fetch the latest key block before the trusted block - archival sync");
 
-    info!("start - fetch the trusted block - archival sync");
     let trusted_block = *fetch_and_store_block_by_hash(ctx.trusted_hash(), ctx).await?;
-    debug!("finish - fetch the trusted block - archival sync");
 
-    // Sync to genesis
-    let mut walkback_block = trusted_block.clone();
-    info!("start - sync to genesis - archival sync");
-    loop {
-        sync_deploys_and_transfers_and_state(&walkback_block, ctx).await?;
-        if walkback_block.height() == 0 {
-            break;
-        } else {
-            walkback_block =
-                *fetch_and_store_block_by_hash(*walkback_block.header().parent_hash(), ctx).await?;
-        }
-    }
-    debug!("finish - sync to genesis - archival sync");
+    fetch_to_genesis(&trusted_block, ctx).await?;
 
     // Sync forward until we are at the current version.
-    info!("start - sync forward - archival sync");
+    let most_recent_block = fetch_forward(trusted_block, &mut trusted_key_block_info, ctx).await?;
+
+    Ok((trusted_key_block_info, most_recent_block.take_header()))
+}
+
+async fn fetch_forward(
+    trusted_block: Block,
+    trusted_key_block_info: &mut KeyBlockInfo,
+    ctx: &ChainSyncContext<'_>,
+) -> Result<Block, Error> {
+    let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fetch_forward_duration_seconds);
+
     let mut most_recent_block = trusted_block;
     while most_recent_block.header().protocol_version() < ctx.config.protocol_version() {
         let maybe_fetched_block_with_metadata = fetch_and_store_next::<BlockWithMetadata>(
             most_recent_block.header(),
-            &trusted_key_block_info,
+            &*trusted_key_block_info,
             ctx,
         )
         .await?;
@@ -790,28 +859,48 @@ async fn archival_sync(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, Bloc
             most_recent_block.header(),
             ctx.config.verifiable_chunked_hash_activation(),
         ) {
-            trusted_key_block_info = key_block_info;
+            *trusted_key_block_info = key_block_info;
         }
     }
-    debug!("finish - sync forward - archival sync");
-    debug!("finish - archival_sync - total");
+    Ok(most_recent_block)
+}
 
-    Ok((trusted_key_block_info, most_recent_block.take_header()))
+async fn fetch_to_genesis(trusted_block: &Block, ctx: &ChainSyncContext<'_>) -> Result<(), Error> {
+    let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fetch_to_genesis_duration_seconds);
+
+    let mut walkback_block = trusted_block.clone();
+    loop {
+        sync_deploys_and_transfers_and_state(&walkback_block, ctx).await?;
+        if walkback_block.height() == 0 {
+            break;
+        } else {
+            walkback_block =
+                *fetch_and_store_block_by_hash(*walkback_block.header().parent_hash(), ctx).await?;
+        }
+    }
+    Ok(())
 }
 
 /// Runs the chain synchronization task.
 pub(super) async fn run_chain_sync_task(
     effect_builder: EffectBuilder<JoinerEvent>,
     config: Config,
+    metrics: Metrics,
     trusted_hash: BlockHash,
 ) -> Result<BlockHeader, Error> {
-    // Fetch the trusted header
-    debug!("start - fetch trusted header");
-    let trusted_block_header =
-        fetch_and_store_block_header(effect_builder, &config, trusted_hash).await?;
-    debug!("finish - fetch trusted header");
+    let _metric = ScopeTimer::new(&metrics.chain_sync_total_duration_seconds);
 
-    let chain_sync_context = ChainSyncContext::new(&effect_builder, &config, &trusted_block_header);
+    // Fetch the trusted header
+    let trusted_block_header = fetch_and_store_initial_trusted_block_header(
+        effect_builder,
+        &config,
+        &metrics,
+        trusted_hash,
+    )
+    .await?;
+
+    let chain_sync_context =
+        ChainSyncContext::new(&effect_builder, &config, &trusted_block_header, &metrics);
 
     verify_trusted_block_header(&chain_sync_context)?;
 
@@ -823,10 +912,10 @@ pub(super) async fn run_chain_sync_task(
         return Ok(*trusted_block_header);
     }
 
-    let (trusted_key_block_info, most_recent_block_header) = if config.archival_sync() {
-        archival_sync(&chain_sync_context).await?
+    let (trusted_key_block_info, most_recent_block_header) = if config.sync_to_genesis() {
+        sync_to_genesis(&chain_sync_context).await?
     } else {
-        fast_sync_to_most_recent(&chain_sync_context).await?
+        fast_sync(&chain_sync_context).await?
     };
 
     let most_recent_block_header = execute_blocks(
@@ -845,6 +934,20 @@ pub(super) async fn run_chain_sync_task(
     );
 
     Ok(most_recent_block_header)
+}
+
+async fn fetch_and_store_initial_trusted_block_header(
+    effect_builder: EffectBuilder<JoinerEvent>,
+    config: &Config,
+    metrics: &Metrics,
+    trusted_hash: BlockHash,
+) -> Result<Box<BlockHeader>, Error> {
+    let _metric = ScopeTimer::new(
+        &metrics.chain_sync_fetch_and_store_initial_trusted_block_header_duration_seconds,
+    );
+    let trusted_block_header =
+        fetch_and_store_block_header(effect_builder, config, trusted_hash).await?;
+    Ok(trusted_block_header)
 }
 
 fn verify_trusted_block_header(ctx: &ChainSyncContext<'_>) -> Result<(), Error> {
@@ -879,6 +982,8 @@ fn verify_trusted_block_header(ctx: &ChainSyncContext<'_>) -> Result<(), Error> 
 }
 
 async fn handle_emergency_restart(ctx: &ChainSyncContext<'_>) -> Result<bool, Error> {
+    let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_emergency_restart_duration_seconds);
+
     let maybe_last_emergency_restart_era_id = ctx.config.last_emergency_restart();
     if let Some(last_emergency_restart_era) = maybe_last_emergency_restart_era_id {
         // After an emergency restart, the old validators cannot be trusted anymore. So the last
@@ -897,9 +1002,7 @@ async fn handle_emergency_restart(ctx: &ChainSyncContext<'_>) -> Result<bool, Er
         if ctx.trusted_block_header.is_switch_block()
             && ctx.trusted_block_header.next_block_era_id() == last_emergency_restart_era
         {
-            info!("start - fetch the global state from before the last emergency restart - emergency restart");
             sync_trie_store(*ctx.trusted_block_header.state_root_hash(), ctx).await?;
-            debug!("finish - fetch the global state from before the last emergency restart - emergency restart");
             return Ok(true);
         }
     }
@@ -908,6 +1011,8 @@ async fn handle_emergency_restart(ctx: &ChainSyncContext<'_>) -> Result<bool, Er
 }
 
 async fn handle_upgrade(ctx: &ChainSyncContext<'_>) -> Result<bool, Error> {
+    let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_upgrade_duration_seconds);
+
     // If we are at an upgrade:
     // 1. Sync the trie store
     // 2. Get the trusted era validators from the last switch block
@@ -916,23 +1021,17 @@ async fn handle_upgrade(ctx: &ChainSyncContext<'_>) -> Result<bool, Error> {
     if ctx.trusted_block_header.is_switch_block()
         && ctx.trusted_block_header.next_block_era_id() == ctx.config.activation_point()
     {
-        info!("start - fetch the last switch block before the trusted block - upgrade");
         let trusted_key_block_info = get_trusted_key_block_info(ctx).await?;
-        debug!("finish - fetch the last switch block before the trusted block - upgrade");
 
-        info!("start - try fetching the first block after the upgrade - upgrade");
         let fetch_and_store_next_result = fetch_and_store_next::<BlockHeaderWithMetadata>(
             ctx.trusted_block_header,
             &trusted_key_block_info,
             ctx,
         )
         .await?;
-        debug!("finish - try fetching the first block after the upgrade - upgrade");
 
         if fetch_and_store_next_result.is_none() {
-            info!("start - fetch the global state from before the upgrade - upgrade");
             sync_trie_store(*ctx.trusted_block_header.state_root_hash(), ctx).await?;
-            debug!("finish - fetch the global state from before the upgrade - upgrade");
             return Ok(true);
         }
     }
@@ -945,6 +1044,8 @@ async fn execute_blocks(
     trusted_key_block_info: &KeyBlockInfo,
     ctx: &ChainSyncContext<'_>,
 ) -> Result<BlockHeader, Error> {
+    let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_execute_blocks_duration_seconds);
+
     // Execute blocks to get to current.
     let mut execution_pre_state = ExecutionPreState::from_block_header(
         most_recent_block_header,
@@ -958,24 +1059,15 @@ async fn execute_blocks(
         "fetching and executing blocks to synchronize to current",
     );
 
-    info!("start - fetching and executing blocks - loop total");
     let mut most_recent_block_header = most_recent_block_header.clone();
     let mut trusted_key_block_info = trusted_key_block_info.clone();
     loop {
-        info!(
-            "start - fetching block - {}",
-            trusted_key_block_info.key_block_hash
-        );
         let result = fetch_and_store_next::<BlockWithMetadata>(
             &most_recent_block_header,
             &trusted_key_block_info,
             ctx,
         )
         .await?;
-        info!(
-            "finish - fetching block - {}",
-            trusted_key_block_info.key_block_hash
-        );
         let block = match result {
             None => {
                 let in_current_era = is_current_era(
@@ -1006,7 +1098,6 @@ async fn execute_blocks(
             block_timestamp = %block.timestamp(),
             "executing block",
         );
-        info!("start - executing finalized block - {}", block.hash());
         let block_and_execution_effects = ctx
             .effect_builder
             .execute_finalized_block(
@@ -1017,7 +1108,6 @@ async fn execute_blocks(
                 transfers,
             )
             .await?;
-        debug!("finish - executing finalized block - {}", block.hash());
 
         if block != *block_and_execution_effects.block() {
             return Err(Error::ExecutedBlockIsNotTheSameAsDownloadedBlock {
@@ -1055,7 +1145,6 @@ async fn execute_blocks(
             break;
         }
     }
-    debug!("finish - fetching and executing blocks - loop total");
     Ok(most_recent_block_header)
 }
 
@@ -1066,14 +1155,10 @@ async fn fetch_and_store_deploys(
     let hashes: Vec<_> = hashes.cloned().collect();
     let mut deploys: Vec<Deploy> = Vec::with_capacity(hashes.len());
     let mut stream = futures::stream::iter(hashes)
-        .map(|hash| {
-            debug!("start - fetch_and_store_deploy -  {}", hash);
-            fetch_and_store_deploy(hash, ctx)
-        })
+        .map(|hash| fetch_and_store_deploy(hash, ctx))
         .buffer_unordered(ctx.config.max_parallel_deploy_fetches());
     while let Some(result) = stream.next().await {
         let deploy = result?;
-        debug!("finish - fetch_and_store_deploy  - {}", deploy.id());
         trace!("fetched {:?}", deploy);
         deploys.push(*deploy);
     }

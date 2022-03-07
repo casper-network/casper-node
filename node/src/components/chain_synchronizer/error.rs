@@ -4,7 +4,11 @@ use serde::Serialize;
 use thiserror::Error;
 use tokio::task::JoinError;
 
-use casper_execution_engine::core::{engine_state, engine_state::GetEraValidatorsError};
+use casper_execution_engine::{
+    core::{engine_state, engine_state::GetEraValidatorsError},
+    storage::trie::TrieOrChunk,
+};
+use casper_hashing::Digest;
 use casper_types::{EraId, ProtocolVersion};
 
 use crate::{
@@ -126,4 +130,41 @@ pub(crate) enum Error {
         #[serde(skip_serializing)]
         JoinError,
     ),
+
+    /// Metrics-related error
+    #[error("prometheus (metrics) error: {0}")]
+    Metrics(
+        #[from]
+        #[serde(skip_serializing)]
+        prometheus::Error,
+    ),
+
+    /// Error fetching a trie.
+    #[error(transparent)]
+    FetchTrie(
+        #[from]
+        #[serde(skip_serializing)]
+        FetchTrieError,
+    ),
+}
+
+#[derive(Error, Debug)]
+pub(crate) enum FetchTrieError {
+    /// Fetcher error.
+    #[error(transparent)]
+    FetcherError(#[from] FetcherError<TrieOrChunk>),
+
+    /// Trie was being fetched from peers by chunks but was somehow fetch from storage.
+    #[error(
+        "Trie was being fetched from peers by chunks but was somehow fetched from storage. \
+         Perhaps there are parallel downloads going on?"
+    )]
+    TrieBeingFetchByChunksSomehowFetchedFromStorage,
+
+    /// Trie was being fetched from peers by chunks but it was retrieved whole by a peer somehow.
+    #[error(
+        "Trie was being fetched from peers by chunks but it was retrieved whole \
+         by a peer somehow. Trie digest: {digest:?}"
+    )]
+    TrieBeingFetchedByChunksSomehowFetchWholeFromPeer { digest: Digest },
 }

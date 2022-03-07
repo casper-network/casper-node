@@ -72,6 +72,9 @@ resources/local/chainspec.toml: generate-chainspec.sh resources/local/chainspec.
 .PHONY: test-rs
 test-rs: resources/local/chainspec.toml
 	$(LEGACY) $(DISABLE_LOGGING) $(CARGO) test --all-features $(CARGO_FLAGS)
+
+.PHONY: resources/local/chainspec.toml
+test-rs-no-default-features:
 	cd smart_contracts/contract && $(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --no-default-features --features=version-sync
 
 .PHONY: test-as
@@ -79,7 +82,7 @@ test-as: setup-as
 	cd smart_contracts/contract_as && npm run asbuild && npm run test
 
 .PHONY: test
-test: test-rs test-as
+test: test-rs-no-default-features test-rs test-as
 
 .PHONY: test-contracts-rs
 test-contracts-rs: build-contracts-rs
@@ -112,9 +115,18 @@ lint-contracts-rs:
 	cd smart_contracts/contracts && $(CARGO) clippy $(patsubst %, -p %, $(ALL_CONTRACTS)) -- -D warnings -A renamed_and_removed_lints
 
 .PHONY: lint
-lint: lint-contracts-rs
+lint: lint-contracts-rs lint-default-features lint-all-features lint-smart-contracts
+
+.PHONY: lint-default-features
+lint-default-features:
 	$(CARGO) clippy --all-targets -- -D warnings -A renamed_and_removed_lints
+
+.PHONY: lint-all-features
+lint-all-features:
 	$(CARGO) clippy --all-targets --all-features -- -D warnings -A renamed_and_removed_lints
+
+.PHONY: lint-smart-contracts
+lint-smart-contracts:
 	cd smart_contracts/contract && $(CARGO) clippy --all-targets -- -D warnings -A renamed_and_removed_lints
 
 .PHONY: audit-rs
@@ -142,6 +154,7 @@ check-rs: \
 	audit \
 	check-std-features \
 	test-rs \
+	test-rs-no-default-features \
 	test-contracts-rs
 
 .PHONY: check

@@ -13,10 +13,7 @@ use serde::{
 };
 
 use casper_hashing::{ChunkWithProof, Digest};
-use casper_types::{
-    bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Key, StoredValue,
-};
+use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 use datasize::DataSize;
 
 #[cfg(test)]
@@ -356,7 +353,7 @@ impl ::std::fmt::Debug for PointerBlock {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum TrieOrChunk {
     /// Represents a Merkle Trie.
-    Trie(Box<Trie<Key, StoredValue>>),
+    Trie(Bytes),
     /// Represents a chunk of data with attached proof.
     ChunkWithProof(ChunkWithProof),
 }
@@ -419,8 +416,8 @@ impl FromBytes for TrieOrChunk {
         let (tag, rem) = u8::from_bytes(bytes)?;
         match tag {
             0 => {
-                let (trie, rem) = Trie::<Key, StoredValue>::from_bytes(rem)?;
-                Ok((TrieOrChunk::Trie(Box::new(trie)), rem))
+                let (trie_bytes, rem) = Bytes::from_bytes(rem)?;
+                Ok((TrieOrChunk::Trie(trie_bytes), rem))
             }
             1 => {
                 let (chunk, rem) = ChunkWithProof::from_bytes(rem)?;
@@ -527,16 +524,21 @@ impl<K, V> Trie<K, V> {
     where
         Self: ToBytes,
     {
-        let bytes = self.to_bytes()?;
-        if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
-            Ok(Digest::hash(&bytes))
-        } else {
-            Ok(Digest::hash_merkle_tree(
-                bytes
-                    .chunks(ChunkWithProof::CHUNK_SIZE_BYTES)
-                    .map(Digest::hash),
-            ))
-        }
+        self.to_bytes()
+            .map(|bytes| hash_bytes_into_chunks_if_necessary(&bytes))
+    }
+}
+
+/// Hash bytes into chunks if necessary.
+pub(crate) fn hash_bytes_into_chunks_if_necessary(bytes: &[u8]) -> Digest {
+    if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
+        Digest::hash(bytes)
+    } else {
+        Digest::hash_merkle_tree(
+            bytes
+                .chunks(ChunkWithProof::CHUNK_SIZE_BYTES)
+                .map(Digest::hash),
+        )
     }
 }
 

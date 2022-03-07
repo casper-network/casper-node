@@ -1,7 +1,7 @@
 use std::{collections::HashMap, ops::Deref, sync::Arc};
 
 use casper_hashing::{ChunkWithProof, Digest};
-use casper_types::{bytesrepr, Key, StoredValue};
+use casper_types::{bytesrepr::Bytes, Key, StoredValue};
 
 use crate::{
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
@@ -237,8 +237,7 @@ impl StateProvider for LmdbGlobalState {
             || Ok(None),
             |bytes| {
                 if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
-                    let deserialized_trie = bytesrepr::deserialize(bytes.into())?;
-                    Ok(Some(TrieOrChunk::Trie(Box::new(deserialized_trie))))
+                    Ok(Some(TrieOrChunk::Trie(bytes.to_owned().into())))
                 } else {
                     let chunk_with_proof = ChunkWithProof::new(bytes, trie_index)?;
                     Ok(Some(TrieOrChunk::ChunkWithProof(chunk_with_proof)))
@@ -254,18 +253,16 @@ impl StateProvider for LmdbGlobalState {
         &self,
         _correlation_id: CorrelationId,
         trie_key: &Digest,
-    ) -> Result<Option<Trie<Key, StoredValue>>, Self::Error> {
+    ) -> Result<Option<Bytes>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
-        let ret: Option<Trie<Key, StoredValue>> = self.trie_store.get(&txn, trie_key)?;
+        let ret: Option<Bytes> =
+            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?
+                .map(|slice| slice.to_owned().into());
         txn.commit()?;
         Ok(ret)
     }
 
-    fn put_trie(
-        &self,
-        correlation_id: CorrelationId,
-        trie: &Trie<Key, StoredValue>,
-    ) -> Result<Digest, Self::Error> {
+    fn put_trie(&self, correlation_id: CorrelationId, trie: &[u8]) -> Result<Digest, Self::Error> {
         let mut txn = self.environment.create_read_write_txn()?;
         let trie_hash = put_trie::<
             Key,
@@ -303,7 +300,7 @@ mod tests {
     use tempfile::tempdir;
 
     use casper_hashing::Digest;
-    use casper_types::{account::AccountHash, CLValue};
+    use casper_types::{account::AccountHash, bytesrepr, CLValue};
 
     use super::*;
     use crate::storage::{
@@ -553,12 +550,11 @@ mod tests {
         ));
 
         // all chunks should be valid
-        assert!(chunks.iter().all(|chunk| chunk.verify()));
+        assert!(chunks.iter().all(|chunk| chunk.verify().is_ok()));
 
         let data: Vec<u8> = chunks
-            .iter()
-            .flat_map(|chunk| chunk.chunk())
-            .copied()
+            .into_iter()
+            .flat_map(|chunk| chunk.into_chunk())
             .collect();
 
         let trie: Trie<Key, StoredValue> =
@@ -568,9 +564,12 @@ mod tests {
         assert!(matches!(trie, Trie::Leaf { .. }));
     }
 
-    fn extract_next_hash_from_trie(trie: TrieOrChunk) -> Digest {
-        let next_hash = if let TrieOrChunk::Trie(trie) = trie {
-            if let Trie::Node { pointer_block } = *trie {
+    fn extract_next_hash_from_trie(trie_or_chunk: TrieOrChunk) -> Digest {
+        let next_hash = if let TrieOrChunk::Trie(trie_bytes) = trie_or_chunk {
+            if let Trie::Node { pointer_block } =
+                bytesrepr::deserialize::<Trie<Key, StoredValue>>(Vec::<u8>::from(trie_bytes))
+                    .expect("Could not parse trie bytes")
+            {
                 if pointer_block.child_count() == 0 {
                     panic!("expected children");
                 }
