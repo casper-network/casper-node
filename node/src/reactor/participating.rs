@@ -1238,10 +1238,10 @@ impl reactor::Reactor for Reactor {
                 rng,
                 ParticipatingEvent::SmallNetwork(ann.into()),
             ),
-            ParticipatingEvent::ValidatorStatusChangedAnnouncement(_) => {
-                debug!("TODO: swalloed a validator status changed announcement");
-                Effects::new()
-            }
+            ParticipatingEvent::ValidatorStatusChangedAnnouncement(ann) => reactor::wrap_effects(
+                ParticipatingEvent::Console,
+                self.console.handle_event(effect_builder, rng, ann.into()),
+            ),
         }
     }
 
