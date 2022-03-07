@@ -86,6 +86,8 @@ pub(super) enum Action {
     },
     /// Dump the event queues.
     DumpQueues,
+    /// Close connection server-side.
+    Quit,
 }
 
 /// A command to be performed on the node's diagnostic port.

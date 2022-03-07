@@ -174,7 +174,7 @@ impl Session {
         effect_builder: EffectBuilder<REv>,
         writer: &mut OwnedWriteHalf,
         line: &str,
-    ) -> io::Result<()>
+    ) -> io::Result<bool>
     where
         REv: From<DumpConsensusStateRequest> + From<ControlAnnouncement> + Send,
     {
@@ -297,6 +297,7 @@ impl Session {
                             }
                         };
                     }
+                    Action::Quit => return Ok(false),
                 };
             }
             Err(err) => {
@@ -305,7 +306,7 @@ impl Session {
             }
         }
 
-        Ok(())
+        Ok(true)
     }
 
     /// Sends an operation outcome.
@@ -387,26 +388,29 @@ where
     let mut lines = BufReader::new(reader).lines();
     let mut session = Session::default();
 
-    loop {
+    let mut keep_going = true;
+    while keep_going {
         let shutdown_messages = async { while shutdown_receiver.changed().await.is_ok() {} };
 
         match future::select(Box::pin(shutdown_messages), Box::pin(lines.next_line())).await {
             Either::Left(_) => {
                 info!("shutting down diagnostics port connection to client");
-                break Ok(());
+                return Ok(());
             }
             Either::Right((line_result, _)) => {
                 if let Some(line) = line_result? {
-                    session
+                    keep_going = session
                         .process_line(effect_builder, &mut writer, line.as_str())
                         .await?;
                 } else {
                     info!("client closed diagnostics port connection");
-                    break Ok(());
+                    return Ok(());
                 }
             }
         }
     }
+
+    Ok(())
 }
 
 /// Server task for diagnostics port.
