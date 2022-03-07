@@ -539,7 +539,7 @@ mod tests {
         while 0 != network.crank_all(&mut rng).await {}
 
         // Start a background task that connects to the unix socket and sends a few requests down.
-        let join_handle = tokio::spawn(async move {
+        let _join_handle = tokio::spawn(async move {
             eprintln!("connecting");
             let mut stream = UnixStream::connect(socket_path)
                 .await
