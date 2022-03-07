@@ -17,17 +17,14 @@ use regex::Regex;
 use stats_alloc::{StatsAlloc, INSTRUMENTED_SYSTEM};
 use structopt::StructOpt;
 use toml::{value::Table, Value};
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 use crate::{
     logging,
     reactor::{initializer, joiner, participating, ReactorExit, Runner},
     setup_signal_hooks,
     types::ExitCode,
-    utils::{
-        pid_file::{PidFile, PidFileOutcome},
-        WithDir,
-    },
+    utils::WithDir,
 };
 
 // We override the standard allocator to gather metrics and tune the allocator via th MALLOC_CONF
@@ -150,44 +147,6 @@ impl Cli {
 
                 let validator_config = Self::init(&config, config_ext)?;
                 info!(version = %crate::VERSION_STRING.as_str(), "node starting up");
-
-                let pid_file_outcome = {
-                    // Determine storage directory to store PidFile in.
-                    let storage_config = validator_config.map_ref(|cfg| cfg.storage.clone());
-                    let root = storage_config.with_dir(storage_config.value().path.clone());
-
-                    // Create directory if it does not exist, similar to how the storage component
-                    // would do it.
-                    if !root.exists() {
-                        fs::create_dir_all(&root).context("create storage directory")?;
-                    }
-
-                    PidFile::acquire(root.join("initializer.pid"))
-                };
-
-                // Note: Do not change `_pid_file` to `_`, or it will be dropped prematurely.
-                // Instantiating `pid_file` guarantees that it will be dropped _after_ any reactor,
-                // which is what we want.
-                let _pid_file = match pid_file_outcome {
-                    PidFileOutcome::AnotherNodeRunning(_) => {
-                        anyhow::bail!("another node instance is running (pid_file is locked)");
-                    }
-                    PidFileOutcome::Crashed(pid_file) => {
-                        warn!("previous node instance seems to have crashed");
-                        pid_file
-                    }
-                    PidFileOutcome::ForceIntegrityChecks(pid_file) => {
-                        warn!("pid_file has non-numeric contents");
-                        pid_file
-                    }
-                    PidFileOutcome::Clean(pid_file) => {
-                        info!("no previous crash detected");
-                        pid_file
-                    }
-                    PidFileOutcome::PidFileError(err) => {
-                        return Err(anyhow::anyhow!(err));
-                    }
-                };
 
                 // We use a `ChaCha20Rng` for the production node. For one, we want to completely
                 // eliminate any chance of runtime failures, regardless of how small (these
