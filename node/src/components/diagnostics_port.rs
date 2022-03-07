@@ -170,3 +170,78 @@ impl<REv> Component<REv> for DiagnosticsPort {
         Effects::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        fs,
+        os::unix::prelude::{FileTypeExt, PermissionsExt},
+    };
+
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::UnixStream,
+    };
+
+    use super::setup_listener;
+
+    #[tokio::test]
+    async fn setup_listener_creates_listener() {
+        let tmpdir = tempfile::tempdir().expect("could not create tempdir");
+        let socket_path = tmpdir.path().join("test.socket");
+
+        // We give it a strict umask to check.
+        let listener = setup_listener(&socket_path, 0o077).expect("could not setup listener");
+
+        let meta = fs::metadata(&socket_path).expect("could not get meatadata");
+        // With the given umask, world and group permissions should be 0.
+        assert_eq!(meta.permissions().mode() & 0o077, 0);
+
+        // Attempt to connect.
+        tokio::spawn(async move {
+            let mut stream = UnixStream::connect(socket_path)
+                .await
+                .expect("could not connect to listener");
+            stream
+                .write_all(b"hello")
+                .await
+                .expect("could not write to listener");
+        });
+
+        let (mut stream, _socket_addr) = listener
+            .accept()
+            .await
+            .expect("could not accept connection");
+
+        let mut buffer = Vec::new();
+        stream
+            .read_to_end(&mut buffer)
+            .await
+            .expect("failed to read to end");
+        assert_eq!(b"hello", buffer.as_slice());
+    }
+
+    #[tokio::test]
+    async fn setup_listener_removes_previous_listener() {
+        let tmpdir = tempfile::tempdir().expect("could not create tempdir");
+        let socket_path = tmpdir.path().join("overwrite-me.socket");
+
+        fs::write(&socket_path, b"this-file-should-be-deleted-soon")
+            .expect("could not write to socket-blocking temporary file");
+
+        let meta = fs::metadata(&socket_path).expect("could not get meatadata");
+        assert!(
+            !meta.file_type().is_socket(),
+            "temporary file created should not be a socket"
+        );
+
+        // Creating the listener should remove the underlying file.
+        let _listener = setup_listener(&socket_path, 0o022).expect("could not setup listener");
+
+        let meta = fs::metadata(&socket_path).expect("could not get meatadata");
+        assert!(
+            meta.file_type().is_socket(),
+            "did not overwrite previous file"
+        );
+    }
+}
