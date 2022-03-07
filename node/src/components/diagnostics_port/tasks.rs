@@ -105,7 +105,6 @@ pub enum TempFileSerializer {
             WithOtherTrailing<WithOtherIntEncoding<DefaultOptions, FixintEncoding>, AllowTrailing>,
         >,
     ),
-    // TODO: Can use Debug here.
 }
 
 impl TempFileSerializer {
