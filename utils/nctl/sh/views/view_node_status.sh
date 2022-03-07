@@ -17,13 +17,13 @@ function main()
             if [ "$(get_node_is_up "$NODE_ID")" = true ]; then
                 echo "------------------------------------------------------------------------------------------------------------------------------------"
                 do_render "$NODE_ID"
-            fi        
+            fi
         done
         echo "------------------------------------------------------------------------------------------------------------------------------------"
     else
         if [ "$(get_node_is_up "$NODE_ID")" = true ]; then
             do_render "$NODE_ID"
-        fi        
+        fi
     fi
 }
 
@@ -38,10 +38,11 @@ function do_render()
     local NODE_ID=${1}
     local NODE_ADDRESS_CURL
     local NODE_API_RESPONSE
-    
+
     NODE_ADDRESS_CURL=$(get_node_address_rpc_for_curl "$NODE_ID")
     NODE_API_RESPONSE=$(
-        curl -s --header 'Content-Type: application/json' \
+        curl -s --header 'Accept-Encoding: gzip' \
+            --header 'Content-Type: application/json' \
             --request POST "$NODE_ADDRESS_CURL" \
             --data-raw '{
                 "id": 1,
