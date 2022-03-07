@@ -1,4 +1,3 @@
-//mod config;
 mod event;
 mod metrics;
 mod tests;
