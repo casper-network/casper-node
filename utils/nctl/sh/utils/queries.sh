@@ -133,7 +133,8 @@ function get_node_status()
 
     NODE_ADDRESS_CURL=$(get_node_address_rpc_for_curl "$NODE_ID")
     NODE_API_RESPONSE=$(
-        curl -s --header 'Content-Type: application/json' \
+        curl -s --header 'Accept-Encoding: gzip' \
+            --header 'Content-Type: application/json' \
             --request POST "$NODE_ADDRESS_CURL" \
             --data-raw '{
                 "id": 1,
