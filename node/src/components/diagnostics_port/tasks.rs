@@ -465,3 +465,96 @@ pub(super) async fn server<REv>(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::{Path, PathBuf};
+
+    use crate::{
+        components::diagnostics_port::Config as DiagnosticsPortConfig,
+        testing::{
+            network::{Network, NetworkedReactor},
+            TestRng,
+        },
+        WithDir,
+    };
+    use casper_node_macros::reactor;
+    use tokio::{io::AsyncWriteExt, net::UnixStream};
+
+    pub struct TestReactorConfig {
+        base_dir: PathBuf,
+        diagnostics_port: DiagnosticsPortConfig,
+    }
+
+    impl TestReactorConfig {
+        /// Creates a new test reactor configuration with a given base dir and index.
+        fn new<P: AsRef<Path>>(base_dir: P, idx: usize) -> Self {
+            TestReactorConfig {
+                base_dir: base_dir.as_ref().to_owned(),
+                diagnostics_port: DiagnosticsPortConfig {
+                    enabled: true,
+                    socket_path: format!("node_{}.socket", idx).into(),
+                    socket_umask: 0o022,
+                },
+            }
+        }
+
+        fn socket_path(&self) -> PathBuf {
+            self.base_dir.join(&self.diagnostics_port.socket_path)
+        }
+    }
+
+    // For testing we use a tiny reactor that runs nothing but the diagnostics console:
+    reactor!(Reactor {
+        type Config = TestReactorConfig;
+
+        components: {
+            diagnostics_console = has_effects DiagnosticsPort(&WithDir::new(cfg.base_dir.clone(), cfg.diagnostics_port), event_queue);
+        }
+
+        events: {}
+
+        requests: {
+            DumpConsensusStateRequest -> !;
+        }
+
+        announcements: {}
+    });
+
+    impl NetworkedReactor for Reactor {}
+
+    #[tokio::test]
+    async fn ensure_diagnostics_port_can_dump_events() {
+        let mut network = Network::<Reactor>::new();
+        let mut rng = TestRng::new();
+
+        let base_dir = tempfile::tempdir().expect("could not create tempdir");
+
+        // We just add a single node to the network.
+        let cfg = TestReactorConfig::new(base_dir.path(), 0);
+        let socket_path = cfg.socket_path();
+        let (_node_id, _runner) = network.add_node_with_config(cfg, &mut rng).await.unwrap();
+
+        // Now crank, so that the listening socket is initialized.
+        while 0 != network.crank_all(&mut rng).await {}
+
+        // Start a background task that connects to the unix socket and sends a few requests down.
+        let join_handle = tokio::spawn(async move {
+            eprintln!("connecting");
+            let mut stream = UnixStream::connect(socket_path)
+                .await
+                .expect("could not connect to socket path of node");
+
+            eprintln!("connected");
+            // We put some dump-queues events on the stream, to have some events to dump when the
+            // first one is processed.
+            stream
+                .write_all(b"set -o json -q true\ndump-queues\ndump-queues\ndump-queues")
+                .await
+                .expect("could not write to listener");
+        });
+
+        // Now crank, so that the listening socket is initialized.
+        while 0 != network.crank_all(&mut rng).await {}
+    }
+}
