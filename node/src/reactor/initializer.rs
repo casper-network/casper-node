@@ -8,9 +8,9 @@ use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::Serialize;
 use thiserror::Error;
-use tracing::{error, info, warn};
 
 use casper_execution_engine::core::engine_state;
+use tracing::{error, warn};
 
 use crate::{
     components::{
@@ -147,18 +147,6 @@ pub(crate) enum Error {
     /// An execution engine state error.
     #[error(transparent)]
     EngineState(#[from] engine_state::Error),
-
-    /// Trie key store is corrupted (missing trie keys).
-    #[error(
-        "Missing trie keys. Number of state roots: {state_root_count}, \
-         Number of missing trie keys: {missing_trie_key_count}"
-    )]
-    MissingTrieKeys {
-        /// The number of state roots in all of the block headers.
-        state_root_count: usize,
-        /// The number of trie keys we could not find.
-        missing_trie_key_count: usize,
-    },
 }
 
 /// Initializer node reactor.
@@ -173,7 +161,7 @@ pub(crate) struct Reactor {
 
 impl Reactor {
     fn new_with_chainspec_loader(
-        (should_check_integrity, config): <Self as reactor::Reactor>::Config,
+        config: <Self as reactor::Reactor>::Config,
         registry: &Registry,
         chainspec_loader: ChainspecLoader,
         chainspec_effects: Effects<chainspec_loader::Event>,
@@ -185,7 +173,6 @@ impl Reactor {
             &storage_config,
             hard_reset_to_start_of_era,
             chainspec_loader.chainspec().protocol_config.version,
-            should_check_integrity,
             &chainspec_loader.chainspec().network_config.name,
             chainspec_loader
                 .chainspec()
@@ -219,18 +206,6 @@ impl Reactor {
                 .verifiable_chunked_hash_activation,
         )?;
 
-        if should_check_integrity {
-            info!("running trie-store integrity check, this may take a while");
-            let state_roots = storage.read_state_root_hashes_for_trie_check()?;
-            let missing_trie_keys = contract_runtime.trie_store_check(state_roots.clone())?;
-            if !missing_trie_keys.is_empty() {
-                return Err(Error::MissingTrieKeys {
-                    state_root_count: state_roots.len(),
-                    missing_trie_key_count: missing_trie_keys.len(),
-                });
-            }
-        }
-
         let effects = reactor::wrap_effects(Event::Chainspec, chainspec_effects);
 
         let small_network_identity = SmallNetworkIdentity::new()?;
@@ -261,7 +236,7 @@ impl Reactor {
 
 impl reactor::Reactor for Reactor {
     type Event = Event;
-    type Config = (bool, WithDir<participating::Config>);
+    type Config = WithDir<participating::Config>;
     type Error = Error;
 
     fn new(
@@ -274,7 +249,7 @@ impl reactor::Reactor for Reactor {
 
         // Construct the `ChainspecLoader` first so we fail fast if the chainspec is invalid.
         let (chainspec_loader, chainspec_effects) =
-            ChainspecLoader::new(config.1.dir(), effect_builder)?;
+            ChainspecLoader::new(config.dir(), effect_builder)?;
         Self::new_with_chainspec_loader(config, registry, chainspec_loader, chainspec_effects)
     }
 

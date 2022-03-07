@@ -455,16 +455,11 @@ where
 
 impl Storage {
     /// Creates a new storage component.
-    ///
-    /// If `should_check_integrity` is true, time-consuming integrity checks will be performed
-    /// during this call to `new()`, potentially blocking for several minutes.  This should normally
-    /// only be required if the node is detected to have restarted after a crash.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         cfg: &WithDir<Config>,
         hard_reset_to_start_of_era: Option<EraId>,
         protocol_version: ProtocolVersion,
-        should_check_integrity: bool,
         network_name: &str,
         finality_threshold_fraction: Ratio<u64>,
         last_emergency_restart: Option<EraId>,
@@ -534,7 +529,7 @@ impl Storage {
         let mut deleted_block_body_hashes_v1 = HashSet::new();
         // Note: `iter_start` has an undocumented panic if called on an empty database. We rely on
         //       the iterator being at the start when created.
-        for (raw_key, raw_val) in cursor.iter() {
+        for (_, raw_val) in cursor.iter() {
             let block_header: BlockHeader = lmdb_ext::deserialize(raw_val)?;
             if let Some(invalid_era) = hard_reset_to_start_of_era {
                 // Remove blocks that are in to-be-upgraded eras, but have obsolete protocol
@@ -552,17 +547,6 @@ impl Storage {
                         .insert(block_header.hash(verifiable_chunked_hash_activation));
                     cursor.del(WriteFlags::empty())?;
                     continue;
-                }
-            }
-
-            if should_check_integrity {
-                let found_block_header_hash = block_header.hash(verifiable_chunked_hash_activation);
-                if raw_key != found_block_header_hash.as_ref() {
-                    return Err(FatalStorageError::BlockHeaderNotStoredUnderItsHash {
-                        queried_block_hash_bytes: raw_key.to_vec(),
-                        found_block_header_hash,
-                        block_header: Box::new(block_header),
-                    });
                 }
             }
 
@@ -590,14 +574,6 @@ impl Storage {
                 };
 
             if let Some(block_body) = maybe_block_body {
-                if should_check_integrity {
-                    Block::new_from_header_and_body(
-                        block_header.clone(),
-                        block_body.clone(),
-                        verifiable_chunked_hash_activation,
-                    )?;
-                }
-
                 insert_to_deploy_index(
                     &mut deploy_hash_index,
                     block_header.hash(verifiable_chunked_hash_activation),
@@ -619,25 +595,8 @@ impl Storage {
                 .iter()
                 .map(Digest::as_ref)
                 .collect(),
-            should_check_integrity,
-            verifiable_chunked_hash_activation,
         )?;
-        initialize_block_body_v2_db(
-            &env,
-            &block_header_db,
-            &block_body_v2_db,
-            &deploy_hashes_db,
-            &transfer_hashes_db,
-            &proposer_db,
-            should_check_integrity,
-            verifiable_chunked_hash_activation,
-        )?;
-        initialize_block_metadata_db(
-            &env,
-            &block_metadata_db,
-            &deleted_block_hashes_raw,
-            should_check_integrity,
-        )?;
+        initialize_block_metadata_db(&env, &block_metadata_db, &deleted_block_hashes_raw)?;
         initialize_deploy_metadata_db(&env, &deploy_metadata_db, &deleted_block_hashes)?;
 
         Ok(Self {
@@ -1386,25 +1345,6 @@ impl Storage {
         self.get_blocks_while(&mut txn, ttl_not_expired)
     }
 
-    /// Retrieves the state root hashes from storage to check the integrity of the trie store.
-    pub(crate) fn read_state_root_hashes_for_trie_check(
-        &self,
-    ) -> Result<Vec<Digest>, FatalStorageError> {
-        let mut hashes: Vec<Digest> = Vec::new();
-        let txn = self.env.begin_ro_txn()?;
-        let mut cursor = txn.open_ro_cursor(self.block_header_db)?;
-        for (_, raw_val) in cursor.iter() {
-            let header: BlockHeader = lmdb_ext::deserialize(raw_val)?;
-            let hash = *header.state_root_hash();
-            hashes.push(hash);
-        }
-
-        hashes.sort();
-        hashes.dedup();
-
-        Ok(hashes)
-    }
-
     /// Retrieves a single block header in a separate transaction from storage.
     fn get_single_block_header<Tx: Transaction>(
         &self,
@@ -2085,15 +2025,12 @@ fn construct_block_body_to_block_header_reverse_lookup(
     Ok(block_body_hash_to_header_map)
 }
 
-/// Purges stale entries from the block body database, and checks the integrity of the remainder if
-/// `should_check_integrity` is true.
+/// Purges stale entries from the block body database.
 fn initialize_block_body_v1_db(
     env: &Environment,
     block_header_db: &Database,
     block_body_v1_db: &Database,
     deleted_block_body_hashes_raw: &HashSet<&[u8]>,
-    should_check_integrity: bool,
-    verifiable_chunked_hash_activation: EraId,
 ) -> Result<(), FatalStorageError> {
     info!("initializing v1 block body database");
     let mut txn = env.begin_rw_txn()?;
@@ -2118,39 +2055,6 @@ fn initialize_block_body_v1_db(
     }
 
     drop(cursor);
-
-    if should_check_integrity {
-        let expected_hashing_algorithm_version = HashingAlgorithmVersion::V1;
-        for (raw_key, raw_val) in txn.open_ro_cursor(*block_body_v1_db)?.iter() {
-            let block_body_hash = Digest::try_from(raw_key)
-                .map_err(|err| LmdbExtError::DataCorrupted(Box::new(err)))?;
-            let block_body = lmdb_ext::deserialize(raw_val)?;
-            if let Some(block_header) = block_body_hash_to_header_map.get(&block_body_hash) {
-                let actual_hashing_algorithm_version =
-                    block_header.hashing_algorithm_version(verifiable_chunked_hash_activation);
-                if expected_hashing_algorithm_version != actual_hashing_algorithm_version {
-                    return Err(FatalStorageError::UnexpectedHashingAlgorithmVersion {
-                        expected_hashing_algorithm_version,
-                        actual_hashing_algorithm_version,
-                    });
-                }
-                // Use smart constructor for block and propagate validation error accordingly
-                Block::new_from_header_and_body(
-                    block_header.to_owned(),
-                    block_body,
-                    verifiable_chunked_hash_activation,
-                )?;
-            } else {
-                // Should be unreachable because we just deleted all block bodies that aren't
-                // referenced by any header
-                return Err(FatalStorageError::NoBlockHeaderForBlockBody {
-                    block_body_hash,
-                    hashing_algorithm_version: expected_hashing_algorithm_version,
-                    block_body: Box::new(block_body),
-                });
-            }
-        }
-    }
 
     txn.commit()?;
     info!("v1 block body database initialized");
@@ -2309,115 +2213,20 @@ fn garbage_collect_block_body_v2_db(
     Ok(())
 }
 
-/// Purges stale entries from the (Merklized) block body database, and checks the integrity of the
-/// remainder if `should_check_integrity` is true.
-#[allow(clippy::too_many_arguments)]
-fn initialize_block_body_v2_db(
-    env: &Environment,
-    block_header_db: &Database,
-    block_body_v2_db: &Database,
-    deploy_hashes_db: &Database,
-    transfer_hashes_db: &Database,
-    proposer_db: &Database,
-    should_check_integrity: bool,
-    verifiable_chunked_hash_activation: EraId,
-) -> Result<(), FatalStorageError> {
-    info!("initializing v2 block body database");
-
-    if should_check_integrity {
-        let txn = env.begin_rw_txn()?;
-
-        let block_body_hash_to_header_map =
-            construct_block_body_to_block_header_reverse_lookup(&txn, block_header_db)?;
-
-        let expected_hashing_algorithm_version = HashingAlgorithmVersion::V2;
-        for (raw_key, _raw_val) in txn.open_ro_cursor(*block_body_v2_db)?.iter() {
-            let block_body_hash = Digest::try_from(raw_key)
-                .map_err(|err| LmdbExtError::DataCorrupted(Box::new(err)))?;
-            let block_header = match block_body_hash_to_header_map.get(&block_body_hash) {
-                Some(block_header) => block_header,
-                None => {
-                    // This probably means that the key is not the hash of the whole block body, but
-                    // a Merkle proof of a part of it - so we ignore this case.
-                    continue;
-                }
-            };
-            let actual_hashing_algorithm_version =
-                block_header.hashing_algorithm_version(verifiable_chunked_hash_activation);
-            if expected_hashing_algorithm_version != actual_hashing_algorithm_version {
-                return Err(FatalStorageError::UnexpectedHashingAlgorithmVersion {
-                    expected_hashing_algorithm_version,
-                    actual_hashing_algorithm_version,
-                });
-            }
-            // txn is unusable because it's used in the cursor - construct a temporary RO
-            // transaction for reading the body
-            let mut txn2 = env.begin_ro_txn()?;
-            match get_single_block_body_v2(
-                &mut txn2,
-                *block_body_v2_db,
-                *deploy_hashes_db,
-                *transfer_hashes_db,
-                *proposer_db,
-                &block_body_hash,
-            )? {
-                Some(block_body) => {
-                    // Use smart constructor for block and propagate validation error accordingly
-                    Block::new_from_header_and_body(
-                        block_header.to_owned(),
-                        block_body,
-                        verifiable_chunked_hash_activation,
-                    )?;
-                }
-                None => {
-                    // get_single_block_body_v2 returning an Ok(None) means we have an
-                    // incomplete block body - this doesn't have to indicate an error, it may
-                    // be caused by chain sync not downloading the whole body, but only a part
-                    // of it - log it and skip the check
-                    info!(?block_body_hash, "incomplete block body found");
-                }
-            };
-            txn2.commit()?;
-        }
-        txn.commit()?;
-    }
-
-    info!("v2 block body database initialized");
-    Ok(())
-}
-
-/// Purges stale entries from the block metadata database, and checks the integrity of the remainder
-/// if `should_check_integrity` is true.
+/// Purges stale entries from the block metadata database.
 fn initialize_block_metadata_db(
     env: &Environment,
     block_metadata_db: &Database,
     deleted_block_hashes: &HashSet<&[u8]>,
-    should_check_integrity: bool,
 ) -> Result<(), FatalStorageError> {
     info!("initializing block metadata database");
     let mut txn = env.begin_rw_txn()?;
     let mut cursor = txn.open_rw_cursor(*block_metadata_db)?;
 
-    for (raw_key, raw_val) in cursor.iter() {
+    for (raw_key, _) in cursor.iter() {
         if deleted_block_hashes.contains(raw_key) {
             cursor.del(WriteFlags::empty())?;
             continue;
-        }
-
-        if should_check_integrity {
-            let signatures: BlockSignatures = lmdb_ext::deserialize(raw_val)?;
-
-            // Signature verification could be very slow process
-            // It iterates over every signature and verifies them.
-            signatures
-                .verify()
-                .map_err(FatalStorageError::SignatureVerification)?;
-            if raw_key != signatures.block_hash.as_ref() {
-                return Err(FatalStorageError::CorruptedBlockSignatureIndex {
-                    raw_key: raw_key.to_vec(),
-                    block_hash_bytes: signatures.block_hash.as_ref().to_vec(),
-                });
-            };
         }
     }
 
