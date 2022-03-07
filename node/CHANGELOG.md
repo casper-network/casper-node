@@ -47,6 +47,8 @@ All notable changes to this project will be documented in this file.  The format
 * Integrity check has been removed.
 
 
+### Removed
+* Removed the `verify_accounts` configuration setting from `config.toml`
 
 ## 1.4.3 - 2021-12-06
 
