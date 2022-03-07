@@ -566,7 +566,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         }
         // Remove all Votes and Echos from the faulty validator: They count towards every quorum now
         // so nobody has to store their messages.
-        // TODO make sure we recompute all quorums, explicitly or implicitly
         for round in self.rounds.values_mut() {
             round.votes.get_mut(&false).unwrap()[validator_idx] = None;
             round.votes.get_mut(&true).unwrap()[validator_idx] = None;
@@ -574,6 +573,45 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 echo_map.remove(&validator_idx);
                 !echo_map.is_empty()
             });
+        }
+        for round_id in self.first_non_finalized_round_id..=*self.rounds.keys().last().unwrap_or(&0)
+        {
+            if self.rounds[&round_id].outcome.quorum_echos.is_none() {
+                if let Some(hash) = self.rounds[&round_id]
+                    .echos
+                    .iter()
+                    .find(|(_, echo_map)| self.is_quorum(echo_map.keys().copied()))
+                    .map(|(hash, _)| *hash)
+                {
+                    // The double-signing made us cross the quorum threshold.
+                    self.round_mut(round_id).outcome.quorum_echos = Some(hash);
+                }
+            }
+            if self.rounds[&round_id].outcome.quorum_votes.is_none()
+                && self.is_quorum(self.rounds[&round_id].votes[&true].keys_some())
+            {
+                // The new Vote made us cross the quorum threshold for committing the round.
+                self.round_mut(round_id).outcome.quorum_votes = Some(true);
+                // If there is already an accepted proposal, it is finalized.
+                if self.rounds[&round_id].has_accepted_proposal() {
+                    outcomes.extend(self.finalize_round(round_id));
+                }
+            }
+            if self.rounds[&round_id].outcome.quorum_votes.is_none()
+                && self.is_quorum(self.rounds[&round_id].votes[&false].keys_some())
+            {
+                // The new Vote made us cross the quorum threshold for making the round skippable.
+                self.round_mut(round_id).outcome.quorum_votes = Some(false);
+                // If there wasn't already an accepted proposal, this starts the next round.
+                if !self.rounds[&round_id].has_accepted_proposal()
+                    && self.current_round() > round_id
+                {
+                    let now = Timestamp::now();
+                    outcomes.push(ProtocolOutcome::ScheduleTimer(now, TIMER_ID_ROUND));
+                }
+            }
+            // Check whether proposal in this round is now accepted.
+            outcomes.extend(self.check_proposal(round_id));
         }
         outcomes
     }
