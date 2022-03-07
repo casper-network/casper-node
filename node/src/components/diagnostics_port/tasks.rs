@@ -10,7 +10,6 @@ use bincode::{
     config::{AllowTrailing, FixintEncoding, WithOtherIntEncoding, WithOtherTrailing},
     DefaultOptions, Options,
 };
-use casper_types::EraId;
 use erased_serde::Serializer as ErasedSerializer;
 use futures::future::{self, Either};
 use serde::Serialize;
@@ -21,6 +20,12 @@ use tokio::{
 };
 use tracing::{debug, info, info_span, warn, Instrument};
 
+use casper_types::EraId;
+
+use super::{
+    command::{Action, Command, OutputFormat},
+    util::ShowUnixAddr,
+};
 use crate::{
     components::consensus::EraDump,
     effect::{
@@ -28,11 +33,6 @@ use crate::{
         diagnostics_port::DumpConsensusStateRequest,
         EffectBuilder,
     },
-};
-
-use super::{
-    command::{Action, Command, OutputFormat},
-    util::ShowUnixAddr,
 };
 
 /// Success or failure response.
