@@ -103,3 +103,17 @@ impl Command {
         Ok(Self::from_iter_safe(parts.into_iter())?)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::components::diagnostics_port::command::{Action, Command};
+
+    #[test]
+    fn can_parse_simple_commands() {
+        let cmd = Command::from_line("dump-consensus 123").expect("command parsing failed");
+        assert!(matches!(cmd.action, Action::DumpConsensus { era } if era == Some(123)));
+
+        let cmd = Command::from_line("dump-queues").expect("command parsing failed");
+        assert!(matches!(cmd.action, Action::DumpQueues));
+    }
+}
