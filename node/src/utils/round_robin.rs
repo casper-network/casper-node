@@ -133,7 +133,7 @@ where
         let mut queues = HashMap::new();
         for (kind, guard) in &locks {
             let queue = &**guard;
-            queues.insert(kind.clone(), queue);
+            queues.insert(*kind, queue);
         }
 
         let queue_dump = QueueDump { queues };
