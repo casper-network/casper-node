@@ -365,6 +365,7 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
     }
 
     quote!(
+        #[allow(unreachable_code)]
         impl crate::reactor::Reactor for #reactor_ident {
             type Event = #event_ident;
             type Error = #error_ident;
