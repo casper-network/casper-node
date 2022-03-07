@@ -1,6 +1,6 @@
 # This supports environments where $HOME/.cargo/env has not been sourced (CI, CLion Makefile runner)
 
-RUSTFLAGS_SSE42AVX = RUSTFLAGS="-C target-feature=+sse4.2,+avx"
+RUSTFLAGS_SSE42AVX = RUSTFLAGS="--cfg feature="casper-mainnet" -C target-feature=+sse4.2,+avx"
 
 CARGO  = $(or $(shell which cargo),  $(HOME)/.cargo/bin/cargo)
 RUSTUP = $(or $(shell which rustup), $(HOME)/.cargo/bin/rustup)
@@ -13,7 +13,7 @@ CARGO_PINNED_NIGHTLY := $(CARGO) +$(PINNED_NIGHTLY) $(CARGO_OPTS)
 CARGO := $(CARGO) $(CARGO_OPTS)
 
 DISABLE_LOGGING = RUST_LOG=MatchesNothing
-LEGACY = RUSTFLAGS='--cfg feature="casper-mainnet" -C target-feature=+sse4.2,+avx'
+LEGACY = RUSTFLAGS='--cfg feature="casper-mainnet"'
 
 # Rust Contracts
 ALL_CONTRACTS    = $(shell find ./smart_contracts/contracts/[!.]*  -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
@@ -165,7 +165,7 @@ clean:
 
 .PHONY: build-for-packaging
 build-for-packaging: build-client-contracts
-	$(LEGACY) $(CARGO) build --release
+	$(RUSTFLAGS_SSE42AVX) $(CARGO) build --release
 
 .PHONY: package
 package:
@@ -177,7 +177,7 @@ publish:
 
 .PHONY: bench
 bench: build-contracts-rs
-	$(RUSTFLAGS_SSE42AVX) $(CARGO) bench
+	$(CARGO) bench
 
 .PHONY: setup-cargo-packagers
 setup-cargo-packagers:
