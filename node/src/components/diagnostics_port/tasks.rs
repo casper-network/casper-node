@@ -472,18 +472,26 @@ pub(super) async fn server<REv>(
 
 #[cfg(test)]
 mod tests {
-    use std::path::{Path, PathBuf};
+    use std::{
+        path::{Path, PathBuf},
+        sync::Arc,
+    };
 
     use crate::{
         components::diagnostics_port::Config as DiagnosticsPortConfig,
         testing::{
+            self,
             network::{Network, NetworkedReactor},
             TestRng,
         },
         WithDir,
     };
     use casper_node_macros::reactor;
-    use tokio::{io::AsyncWriteExt, net::UnixStream};
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::UnixStream,
+        sync::Notify,
+    };
 
     pub struct TestReactorConfig {
         base_dir: PathBuf,
@@ -529,6 +537,8 @@ mod tests {
 
     #[tokio::test]
     async fn ensure_diagnostics_port_can_dump_events() {
+        testing::init_logging();
+
         let mut network = Network::<Reactor>::new();
         let mut rng = TestRng::new();
 
@@ -542,23 +552,46 @@ mod tests {
         // Now crank, so that the listening socket is initialized.
         while 0 != network.crank_all(&mut rng).await {}
 
+        let ready = Arc::new(Notify::new());
+
         // Start a background task that connects to the unix socket and sends a few requests down.
-        let _join_handle = tokio::spawn(async move {
-            eprintln!("connecting");
+        let client_ready = ready.clone();
+        let join_handle = tokio::spawn(async move {
             let mut stream = UnixStream::connect(socket_path)
                 .await
                 .expect("could not connect to socket path of node");
 
-            eprintln!("connected");
             // We put some dump-queues events on the stream, to have some events to dump when the
             // first one is processed.
             stream
-                .write_all(b"set -o json -q true\ndump-queues\ndump-queues\ndump-queues")
+                .write_all(b"set -o json -q false\ndump-queues\ndump-queues\ndump-queues\nquit\n")
                 .await
                 .expect("could not write to listener");
+            stream.flush().await.expect("flushing failed");
+
+            client_ready.notify_one();
+
+            let mut buffer = Vec::new();
+            stream
+                .read_to_end(&mut buffer)
+                .await
+                .expect("could not read console output to end");
+
+            String::from_utf8(buffer).expect("could not parse output as UTF8")
         });
 
+        // Wait for all the commands to be buffered.
+        ready.notified().await;
+
         // Now crank, so that the listening socket is initialized.
-        while 0 != network.crank_all(&mut rng).await {}
+        while 0 != network.crank_all(&mut rng).await {
+            eprintln!("crank");
+        }
+
+        eprintln!("finished cranking");
+
+        let output = join_handle.await.expect("error joining client task");
+
+        dbg!(output);
     }
 }
