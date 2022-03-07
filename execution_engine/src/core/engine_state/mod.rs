@@ -1889,7 +1889,7 @@ where
     where
         Error: From<S::Error>,
     {
-        let inserted_trie_key = self.state.put_trie(correlation_id, trie)?;
+        let inserted_trie_key = self.state.put_trie(correlation_id, trie_bytes)?;
         let missing_descendant_trie_keys = self
             .state
             .missing_trie_keys(correlation_id, vec![inserted_trie_key])?;

@@ -10,6 +10,7 @@ use serde::Serialize;
 use thiserror::Error;
 
 use casper_execution_engine::core::engine_state;
+use tracing::{error, warn};
 
 use crate::{
     components::{
