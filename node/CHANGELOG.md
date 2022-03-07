@@ -26,6 +26,8 @@ All notable changes to this project will be documented in this file.  The format
 * Connection handshake timeouts can now be configured via the `handshake_timeout` variable (they were hardcoded at 20 seconds before).
 * `Key::SystemContractRegistry` is now readable and can be queried via the RPC.
 
+### Removed
+* Removed the `verify_accounts` configuration setting from `config.toml`
 
 ## 1.4.3 - 2021-12-06
 
