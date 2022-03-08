@@ -229,7 +229,7 @@ where
 
         let file = if !self.abbreviate_modules {
             meta.file()
-                .or(field_visitor.file.as_deref())
+                .or(field_visitor.module.as_deref())
                 .unwrap_or_default()
                 .rsplit_once('/')
                 .map(|parts| parts.1)
