@@ -512,12 +512,15 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     #[allow(clippy::integer_arithmetic)] // TODO
     fn validator_bit_field(
         &self,
-        first_idx: ValidatorIndex,
+        ValidatorIndex(first_idx): ValidatorIndex,
         index_iter: impl Iterator<Item = ValidatorIndex>,
     ) -> u128 {
         let mut bit_field = 0;
-        for v_idx in index_iter {
-            let i = first_idx.0.wrapping_add(v_idx.0) % self.weights.len() as u32;
+        let validator_count = self.weights.len() as u32;
+        for ValidatorIndex(v_idx) in index_iter {
+            let i = v_idx
+                .checked_sub(first_idx)
+                .unwrap_or(v_idx + validator_count - first_idx);
             if i < 128 {
                 bit_field |= 1 << i;
             }
@@ -538,10 +541,9 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 return None;
             }
             let zeros = bit_field.trailing_zeros();
-            idx = idx
-                .checked_sub(zeros)
-                .unwrap_or_else(|| idx.saturating_add(validator_count.saturating_sub(zeros)));
-            bit_field >>= zeros + 1;
+            idx = (idx + zeros) % validator_count;
+            bit_field >>= zeros;
+            bit_field &= !1;
             Some(ValidatorIndex(idx))
         })
     }
@@ -723,6 +725,14 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             Some(round) => round,
             None => return vec![],
         };
+        if first_validator_idx.0 >= self.weights.len() as u32 {
+            info!(
+                first_validator_idx = first_validator_idx.0,
+                ?sender,
+                "invalid SyncState message"
+            );
+            return vec![];
+        }
         let mut contents = vec![];
         if let Some(hash) = proposal_hash {
             if let Some(echo_map) = round.echos.get(&hash) {
