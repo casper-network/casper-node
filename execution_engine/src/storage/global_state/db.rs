@@ -48,16 +48,16 @@ pub struct DbGlobalState {
     /// Empty root hash used for a new trie.
     pub(crate) empty_root_hash: Digest,
     /// Handle to rocksdb.
-    pub rocksdb_store: RocksDbStore,
+    pub(crate) rocksdb_store: RocksDbStore,
 }
 
 /// Represents a "view" of global state at a particular root hash.
 #[derive(Clone)]
 pub struct DbGlobalStateView {
     /// Root hash of this "view".
-    pub(crate) root_hash: Digest,
+    root_hash: Digest,
     /// Handle to rocksdb.
-    pub rocksdb_store: RocksDbStore,
+    rocksdb_store: RocksDbStore,
 }
 
 impl DbGlobalState {
@@ -66,7 +66,7 @@ impl DbGlobalState {
     /// tokio::task::spawn_blocking.
     ///
     /// TODO(dwerner): optionally add multithreading here. Measure time of this method first.
-    pub fn migrate_state_root_to_rocksdb(
+    pub(crate) fn migrate_state_root_to_rocksdb(
         &self,
         state_root: Digest,
         limit_rate: bool,
@@ -225,7 +225,7 @@ fn find_missing_descendants(
     missing_trie_keys: &mut Vec<Digest>,
     time_in_missing_trie_keys: &mut Duration,
 ) -> Result<(), error::Error> {
-    if value_bytes[0] == 0u8 {
+    if let Some(0u8) = value_bytes.get(0) {
         return Ok(());
     }
     let start_trie_keys = Instant::now();

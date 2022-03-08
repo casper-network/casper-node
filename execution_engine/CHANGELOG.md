@@ -17,6 +17,7 @@ All notable changes to this project will be documented in this file.  The format
 * Added a new entry point `redelegate` to the Auction system contract which allows users to redelegate to another validator without having to unbond. The function signature for the entrypoint is: `redelegate(delegator: PublicKey, validator: PublicKey, amount: U512, new_validator: PublicKey)`
 
 ### Changed
+* Changed backend datastore to use RocksDb, along with migrations for existing data from LMDB to RocksDb.
 * (Perf) Changed contract runtime to allow caching GlobalState changes during execution of a single block.
 * Fixed some integer casts.
 

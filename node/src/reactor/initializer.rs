@@ -207,7 +207,6 @@ impl Reactor {
         )?;
 
         {
-            // TODO(dwerner): profiling this on mainnet- how long are we blocking the initializer.
             let engine_state = Arc::clone(contract_runtime.engine_state());
             // We need to be synchronous here, ensures migration (of just the highest block) is
             // complete before proceeding.

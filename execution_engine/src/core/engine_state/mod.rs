@@ -22,11 +22,10 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     convert::TryFrom,
     iter::FromIterator,
+    path::PathBuf,
     rc::Rc,
-    sync::Arc,
 };
 
-use lmdb::Database;
 use num::Zero;
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
@@ -90,7 +89,6 @@ use crate::{
         global_state::{
             db::DbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
         },
-        transaction_source::db::LmdbEnvironment,
         trie::Trie,
     },
 };
@@ -156,9 +154,9 @@ impl EngineState<DbGlobalState> {
         Ok(())
     }
 
-    /// Gets size of rocksdb on disk.
-    pub fn rocksdb_on_disk_size(&self) -> usize {
-        self.state.rocksdb_store.disk_size_in_bytes()
+    /// Gets path to rocksdb data files.
+    pub fn data_path(&self) -> PathBuf {
+        self.state.rocksdb_store.path()
     }
 
     /// Provide a local cached-only version of engine-state.
@@ -179,16 +177,6 @@ impl EngineState<DbGlobalState> {
         self.state
             .put_stored_values(CorrelationId::new(), state_root_hash, stored_values)
             .map_err(Into::into)
-    }
-
-    /// Return a handle to the underlying LMDB environment.
-    pub fn lmdb_environment(&self) -> Arc<LmdbEnvironment> {
-        Arc::clone(&self.state.lmdb_environment)
-    }
-
-    /// Return a handle to the underlying LMDB database.
-    pub fn lmdb_handle(&self) -> Database {
-        self.state.lmdb_trie_store.db
     }
 }
 

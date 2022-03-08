@@ -87,14 +87,14 @@ pub fn multiple_native_transfers(
         let exec_time = start.elapsed();
         results.push((
             builder.lmdb_on_disk_size().unwrap() as usize,
-            builder.rocksdb_on_disk_size(),
+            builder.rocksdb_on_disk_size().unwrap(),
             total_transfers,
             exec_time.as_millis() as usize,
         ));
         println!(
             "{}, {}, {}, transfer, {}",
             builder.lmdb_on_disk_size().unwrap(),
-            builder.rocksdb_on_disk_size(),
+            builder.rocksdb_on_disk_size().unwrap(),
             total_transfers,
             exec_time.as_millis(),
         );
@@ -109,7 +109,7 @@ pub fn multiple_native_transfers(
         println!(
             "{}, {}, {}, ran_auction, {}",
             builder.lmdb_on_disk_size().unwrap(),
-            builder.rocksdb_on_disk_size(),
+            builder.rocksdb_on_disk_size().unwrap(),
             total_transfers,
             start.elapsed().as_millis(),
         );

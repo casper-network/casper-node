@@ -1,5 +1,6 @@
 # This supports environments where $HOME/.cargo/env has not been sourced (CI, CLion Makefile runner)
 
+# Enable sse4.2 and avx for FastCRC support in RocksDb.
 RUSTFLAGS_SSE42AVX = RUSTFLAGS="--cfg feature="casper-mainnet" -C target-feature=+sse4.2,+avx"
 
 CARGO  = $(or $(shell which cargo),  $(HOME)/.cargo/bin/cargo)

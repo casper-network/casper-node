@@ -3,19 +3,17 @@ use std::{
     sync::Arc,
 };
 
-use filesize::PathExt;
 use lmdb::{
     self, Database, Environment, EnvironmentFlags, RoTransaction, RwTransaction, WriteFlags,
 };
-use rocksdb::{BoundColumnFamily, DBWithThreadMode, MultiThreaded};
+use rocksdb::{BoundColumnFamily, DBWithThreadMode, MultiThreaded, Options};
 
-use crate::{
-    storage::{
-        error,
-        transaction_source::{Readable, Transaction, TransactionSource, Writable},
-        MAX_DBS,
+use crate::storage::{
+    error,
+    transaction_source::{
+        Readable, Transaction, TransactionSource, Writable, ROCKS_DB_TRIE_V1_COLUMN_FAMILY,
     },
-    ROCKS_DB_TRIE_V1_COLUMN_FAMILY,
+    MAX_DBS,
 };
 use casper_types::bytesrepr::Bytes;
 
@@ -24,12 +22,12 @@ const EE_LMDB_FILENAME: &str = "data.lmdb";
 /// newtype over alt db.
 #[derive(Clone)]
 pub struct RocksDb {
-    pub(crate) db: Arc<DBWithThreadMode<MultiThreaded>>,
+    db: Arc<DBWithThreadMode<MultiThreaded>>,
 }
 
 impl RocksDb {
     /// Check if a state root has been marked as migrated from lmdb to rocksdb.
-    pub fn is_state_root_migrated(&self, state_root: &[u8]) -> Result<bool, error::Error> {
+    pub(crate) fn is_state_root_migrated(&self, state_root: &[u8]) -> Result<bool, error::Error> {
         let cf = self.trie_column_family()?;
         Ok(self.db.get_cf(&cf, state_root)?.is_some())
     }
@@ -88,9 +86,9 @@ impl RocksDbStore {
     /// Create a new environment for alternative db.
     pub fn new(
         path: impl AsRef<Path>,
-        rocksdb_opts: rocksdb::Options,
+        rocksdb_opts: Options,
     ) -> Result<RocksDbStore, rocksdb::Error> {
-        let db = Arc::new(rocksdb::DBWithThreadMode::<MultiThreaded>::open_cf(
+        let db = Arc::new(DBWithThreadMode::<MultiThreaded>::open_cf(
             &rocksdb_opts,
             path.as_ref(),
             vec![ROCKS_DB_TRIE_V1_COLUMN_FAMILY],
@@ -104,18 +102,9 @@ impl RocksDbStore {
         })
     }
 
-    /// Returns the file size on disk of rocksdb.
-    pub fn disk_size_in_bytes(&self) -> usize {
-        let mut total = 0;
-        for entry in walkdir::WalkDir::new(&self.path)
-            .into_iter()
-            .filter_map(|e| e.ok())
-        {
-            if entry.metadata().unwrap().is_file() {
-                total += entry.path().size_on_disk().unwrap() as usize;
-            }
-        }
-        total
+    /// Return the path to the backing rocksdb files.
+    pub fn path(&self) -> PathBuf {
+        self.path.clone()
     }
 }
 

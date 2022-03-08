@@ -2,7 +2,7 @@ use std::{
     collections::BTreeMap,
     convert::{TryFrom, TryInto},
     ffi::OsStr,
-    fs,
+    fs, io,
     ops::Deref,
     path::{Path, PathBuf},
     rc::Rc,
@@ -10,7 +10,7 @@ use std::{
 };
 
 use filesize::PathExt;
-use lmdb::{Database, DatabaseFlags};
+use lmdb::DatabaseFlags;
 use log::LevelFilter;
 
 use bytesrepr::FromBytes;
@@ -63,6 +63,7 @@ use casper_types::{
     DeployHash, DeployInfo, EraId, Gas, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue, Transfer,
     TransferAddr, URef, U512,
 };
+use walkdir::WalkDir;
 
 use crate::{
     utils, ExecuteRequestBuilder, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
@@ -248,10 +249,19 @@ impl DbWasmTestBuilder {
         engine_state.flush_environment().unwrap();
     }
 
-    /// Get the size of rocksdb's data files on disk in bytes.
-    pub fn rocksdb_on_disk_size(&self) -> usize {
+    /// Returns the file size on disk of rocksdb.
+    pub fn rocksdb_on_disk_size(&self) -> Result<usize, io::Error> {
+        let mut total = 0;
         let engine_state = &*self.engine_state;
-        engine_state.rocksdb_on_disk_size()
+        for entry in WalkDir::new(engine_state.data_path())
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            if entry.metadata()?.is_file() {
+                total += entry.path().size_on_disk()? as usize;
+            }
+        }
+        Ok(total)
     }
 
     /// Returns a new [`DbWasmTestBuilder`].
@@ -403,16 +413,6 @@ impl DbWasmTestBuilder {
             );
         }
         self
-    }
-
-    /// Returns a handle to the underlying LMDB environment.
-    pub fn lmdb_environment(&self) -> Arc<LmdbEnvironment> {
-        self.engine_state.lmdb_environment()
-    }
-
-    /// Returns a handle to the underlying LMDB database.
-    pub fn lmdb_handle(&self) -> Database {
-        self.engine_state.lmdb_handle()
     }
 }
 

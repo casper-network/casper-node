@@ -1308,7 +1308,7 @@ pub fn migrate_lmdb_data_to_rocksdb(
                     block_height = %block_header.height(),
                     state_root_hash = %block_header.state_root_hash(),
                     time_migration_took_millis = %start.elapsed().as_millis(),
-                    "successfully state root migrated from lmdb to rocksdb",
+                    "successfully migrated state root from lmdb to rocksdb",
                 );
                 total_state_roots_migrated += 1;
             }

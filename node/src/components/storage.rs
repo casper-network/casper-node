@@ -98,7 +98,7 @@ const STORAGE_DB_FILENAME: &str = "storage.lmdb";
 
 const MAX_TRANSACTIONS: u32 = 1024;
 
-/// One Gigabyte.
+/// One Gibibyte.
 const GIB: usize = 1024 * 1024 * 1024;
 
 /// Default max block store size.
