@@ -10,17 +10,21 @@
   },
   "main": "index.js",
   "ascMain": "assembly/index.ts",
-  "dependencies": {},
+  "dependencies": {
+    "@types/node": "^17.0.21"
+  },
   "devDependencies": {
     "@assemblyscript/loader": "^0.9.4",
     "assemblyscript": "^0.10.0",
     "ava": "^3.12.1",
     "concat-md": "^0.3.5",
+    "trim": "^0.0.3",
     "ts-loader": "^6.2.1",
     "ts-node": "^8.5.4",
-    "typedoc": "^0.19.1",
+    "typedoc": "^0.22.12",
     "typedoc-plugin-markdown": "^2.2.17",
-    "typescript": "^3.8.3"
+    "typescript": "^3.8.3",
+    "underscore": "^1.12.1"
   },
   "scripts": {
     "test": "npm run asbuild:test && npx ava -v --serial",
@@ -35,7 +39,8 @@
     "asbuild": "npm run asbuild:untouched && npm run asbuild:optimized",
     "prepublish-docs": "rm -rf apidoc && mkdir apidoc && node_modules/.bin/typedoc assembly/*.ts assembly/collections/*.ts --theme markdown --readme none --ignoreCompilerErrors --hideBreadcrumbs --skipSidebar --excludePrivate --excludeNotExported --out temp-apidoc/ && concat-md --decrease-title-levels --dir-name-as-title temp-apidoc >> README.md",
     "prepublishOnly": "cp README.md ._README.md && npm run prepublish-docs",
-    "postpublish": "rm -rf temp-apidoc && mv ._README.md README.md"
+    "postpublish": "rm -rf temp-apidoc && mv ._README.md README.md",
+    "preinstall": "npx npm-force-resolutions"
   },
   "author": "Michał Papierski <michal@papierski.net>",
   "license": "Apache-2.0",
@@ -50,5 +55,9 @@
     "files": [
       "tests/**/*.spec.ts"
     ]
+  },
+  "resolutions": {
+    "trim": "0.0.3",
+    "underscore": "1.12.1"
   }
 }
