@@ -17,6 +17,8 @@ use casper_types::{
     ApiError, BlockTime, CLTyped, Key, URef, U512,
 };
 
+use num_rational::Ratio;
+
 pub const ARG_AMOUNT: &str = "amount";
 pub const ARG_TARGET: &str = "target";
 pub const ARG_ID: &str = "id";
@@ -185,9 +187,11 @@ pub fn delegate() {
 
     if caller == installer {
         let target: AccountHash = runtime::get_named_arg(ARG_TARGET);
+        // the authorized caller or the installer may pass an explicit amount.
+        // if they do not, the faucet can calculate an amount for them.
         let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
-        // get amount named arg
 
+        // TODO: add another check for the authorized caller.
         if target == installer {
             runtime::revert(FaucetError::InstallerDoesNotFundItself);
         }
@@ -261,16 +265,11 @@ fn get_distribution_amount_rate_limited() -> U512 {
         return remaining_amount;
     }
 
-    let distribution_amount = available_amount / U512::from(distributions_per_interval);
-
     // could use a struct that represents a number of slots, when the interval is reached they an
     // all be reset to be available, use bool.
     //
-    if remaining_amount >= distribution_amount {
-        distribution_amount
-    } else {
-        remaining_amount
-    }
+    // let distribution_amount = available_amount / U512::from(distributions_per_interval);
+    Ratio::new(available_amount, U512::from(distributions_per_interval)).to_integer()
 }
 
 fn get_distribution_amount() -> U512 {
@@ -302,7 +301,7 @@ fn get_distribution_amount() -> U512 {
         FaucetError::InvalidAvailableAmount,
     );
 
-    available_amount / U512::from(distributions_per_interval)
+    Ratio::new(available_amount, U512::from(distributions_per_interval)).to_integer()
 }
 
 fn reset_remaining_amount() {
