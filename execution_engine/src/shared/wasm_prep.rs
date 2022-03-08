@@ -42,11 +42,15 @@ impl Display for PreprocessingError {
     }
 }
 
-/// Checks if given wasm module contains a memory section.
+/// Checks if given wasm module contains a non-empty memory section.
 fn memory_section(module: &Module) -> Option<&MemorySection> {
     for section in module.sections() {
         if let Section::Memory(section) = section {
-            return Some(section);
+            return if section.entries().is_empty() {
+                None
+            } else {
+                Some(section)
+            };
         }
     }
     None
@@ -70,8 +74,8 @@ pub fn preprocess(
     let module = deserialize(module_bytes)?;
 
     if memory_section(&module).is_none() {
-        // `pwasm_utils::externalize_mem` expects a memory section to exist in the module, and
-        // panics otherwise.
+        // `pwasm_utils::externalize_mem` expects a non-empty memory section to exist in the module,
+        // and panics otherwise.
         return Err(PreprocessingError::MissingMemorySection);
     }
 
@@ -90,4 +94,27 @@ pub fn preprocess(
 /// Returns a parity Module from the given bytes without making modifications or checking limits.
 pub fn deserialize(module_bytes: &[u8]) -> Result<Module, PreprocessingError> {
     parity_wasm::deserialize_buffer::<Module>(module_bytes).map_err(Into::into)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_not_panic_on_empty_memory() {
+        // These bytes were generated during fuzz testing and are compiled from Wasm which
+        // deserializes to a `Module` with a memory section containing no entries.
+        const MODULE_BYTES_WITH_EMPTY_MEMORY: [u8; 61] = [
+            0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x09, 0x02, 0x60, 0x01, 0x7f,
+            0x01, 0x7f, 0x60, 0x00, 0x00, 0x03, 0x03, 0x02, 0x00, 0x01, 0x05, 0x01, 0x00, 0x08,
+            0x01, 0x01, 0x0a, 0x1d, 0x02, 0x18, 0x00, 0x20, 0x00, 0x41, 0x80, 0x80, 0x82, 0x80,
+            0x78, 0x70, 0x41, 0x80, 0x82, 0x80, 0x80, 0x7e, 0x4f, 0x22, 0x00, 0x1a, 0x20, 0x00,
+            0x0f, 0x0b, 0x02, 0x00, 0x0b,
+        ];
+
+        match preprocess(WasmConfig::default(), &MODULE_BYTES_WITH_EMPTY_MEMORY).unwrap_err() {
+            PreprocessingError::MissingMemorySection => (),
+            error => panic!("expected MissingMemorySection, got {:?}", error),
+        }
+    }
 }
