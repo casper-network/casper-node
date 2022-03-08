@@ -72,7 +72,7 @@ pub const TIMESTAMP_MILLIS_INCREMENT: u64 = 30_000; // 30 seconds
 pub static DEFAULT_GENESIS_CONFIG_HASH: Lazy<Digest> = Lazy::new(|| [42; 32].into());
 /// Default account public key.
 pub static DEFAULT_ACCOUNT_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
-    //? Safe to unwrap as ED25519_LENGTH is correct length
+    // NOTE: Safe to unwrap as ED25519_LENGTH is correct length
     let secret_key = SecretKey::ed25519_from_bytes([199; SecretKey::ED25519_LENGTH]).unwrap();
     PublicKey::from(&secret_key)
 });
@@ -89,7 +89,7 @@ pub const DEFAULT_ACCOUNT_INITIAL_BALANCE: u64 = 100_000_000_000_000_000u64;
 pub const MINIMUM_ACCOUNT_CREATION_BALANCE: u64 = 7_500_000_000_000_000u64;
 /// Default proposer public key.
 pub static DEFAULT_PROPOSER_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
-    //? Safe to unwrap as ED25519_LENGTH is correct length
+    // NOTE: Safe to unwrap as ED25519_LENGTH is correct length
     let secret_key = SecretKey::ed25519_from_bytes([198; SecretKey::ED25519_LENGTH]).unwrap();
     PublicKey::from(&secret_key)
 });

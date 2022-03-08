@@ -469,7 +469,7 @@ pub async fn download_trie_channels(
                                 CorrelationId::new(),
                                 &trie,
                             )
-                            .unwrap() //? Safe?
+                            .unwrap() //? Safe to unwrap?
                     });
 
                     // count of all tries we know about

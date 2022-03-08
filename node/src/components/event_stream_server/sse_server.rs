@@ -541,7 +541,7 @@ fn stream_to_client(
                 match result {
                     Ok(BroadcastChannelMessage::ServerSentEvent(event)) => {
                         if let Some(id) = event.id {
-                            if cloned_initial_ids.read().expect("cloned_initial_ids lock should not be poisoned") //?
+                            if cloned_initial_ids.read().expect("cloned_initial_ids lock should not be poisoned") 
                                 .contains(&id) {
                                 debug!(event_id=%id, "skipped duplicate event");
                                 return None;
