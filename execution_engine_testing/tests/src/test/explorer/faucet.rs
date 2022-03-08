@@ -358,15 +358,8 @@ fn should_allow_installer_to_set_variables() {
 #[ignore]
 #[test]
 fn should_fund_new_account() {
-    let installer_secret_key =
-        SecretKey::ed25519_from_bytes([1; 32]).expect("failed to create secret key");
-    let installer_public_key = PublicKey::from(&installer_secret_key);
-    let installer_account = AccountHash::from_public_key(&installer_public_key, crypto::blake2b);
-
-    let user_secret_key =
-        SecretKey::ed25519_from_bytes([2; 32]).expect("failed to create secret key");
-    let user_public_key = PublicKey::from(&user_secret_key);
-    let user_account = AccountHash::from_public_key(&user_public_key, crypto::blake2b);
+    let installer_account = AccountHash::new([1u8; 32]);
+    let user_account = AccountHash::new([2u8; 32]);
 
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST).commit();
@@ -442,26 +435,17 @@ fn should_fund_new_account() {
 
     let assigned_time_interval = 10_000u64;
     let assigned_distributions_per_interval = 2u64;
-    let half_of_faucet_fund_amount = faucet_fund_amount / 2;
-    let installer_set_variable_request = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(installer_account)
-            .with_authorization_keys(&[installer_account])
-            .with_stored_session_named_key(
-                FAUCET_CONTRACT_NAMED_KEY,
-                ENTRY_POINT_SET_VARIABLES,
-                runtime_args! {
-                    ARG_AVAILABLE_AMOUNT => Some(faucet_fund_amount),
-                    ARG_TIME_INTERVAL => Some(assigned_time_interval),
-                    ARG_DISTRIBUTIONS_PER_INTERVAL => Some(assigned_distributions_per_interval)
-                },
-            )
-            .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
-            .with_deploy_hash([3; 32])
-            .build();
-
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let installer_set_variable_request = ExecuteRequestBuilder::contract_call_by_hash(
+        installer_account,
+        faucet_contract_hash,
+        ENTRY_POINT_SET_VARIABLES,
+        runtime_args! {
+            ARG_AVAILABLE_AMOUNT => Some(faucet_fund_amount),
+            ARG_TIME_INTERVAL => Some(assigned_time_interval),
+            ARG_DISTRIBUTIONS_PER_INTERVAL => Some(assigned_distributions_per_interval)
+        },
+    )
+    .build();
 
     builder
         .exec(installer_set_variable_request)
@@ -498,6 +482,7 @@ fn should_fund_new_account() {
 
     assert_eq!(remaining_amount, faucet_fund_amount);
 
+    let user_fund_amount = U512::from(100_000);
     let faucet_call_by_installer = {
         let deploy_item = DeployItemBuilder::new()
             .with_address(installer_account)
@@ -505,7 +490,7 @@ fn should_fund_new_account() {
             .with_stored_session_named_key(
                 FAUCET_CONTRACT_NAMED_KEY,
                 ENTRY_POINT_FAUCET,
-                runtime_args! {ARG_TARGET => user_account, ARG_ID => <Option<u64>>::None},
+                runtime_args! {ARG_TARGET => user_account, ARG_AMOUNT => user_fund_amount, ARG_ID => <Option<u64>>::None},
             )
             .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
             .with_deploy_hash([4; 32])
@@ -531,26 +516,19 @@ fn should_fund_new_account() {
         .expect("failed to find faucet purse");
 
     let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
-    assert_eq!(faucet_purse_balance, half_of_faucet_fund_amount);
+    assert_eq!(faucet_purse_balance, faucet_fund_amount - user_fund_amount);
 
     // check the balance of the user's main purse
     let user_main_purse_balance_after =
         builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
-    assert_eq!(user_main_purse_balance_after, half_of_faucet_fund_amount);
+    assert_eq!(user_main_purse_balance_after, user_fund_amount);
 }
 
 #[ignore]
 #[test]
 fn should_fund_existing_account() {
-    let installer_secret_key =
-        SecretKey::ed25519_from_bytes([1; 32]).expect("failed to create secret key");
-    let installer_public_key = PublicKey::from(&installer_secret_key);
-    let installer_account = AccountHash::from_public_key(&installer_public_key, crypto::blake2b);
-
-    let user_secret_key =
-        SecretKey::ed25519_from_bytes([2; 32]).expect("failed to create secret key");
-    let user_public_key = PublicKey::from(&user_secret_key);
-    let user_account = AccountHash::from_public_key(&user_public_key, crypto::blake2b);
+    let installer_account = AccountHash::new([1u8; 32]);
+    let user_account = AccountHash::new([2u8; 32]);
 
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST).commit();
@@ -626,28 +604,20 @@ fn should_fund_existing_account() {
 
     let assigned_time_interval = 10_000u64;
     let assigned_distributions_per_interval = 2u64;
-    let installer_set_variable_request = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(installer_account)
-            .with_authorization_keys(&[installer_account])
-            .with_stored_session_named_key(
-                FAUCET_CONTRACT_NAMED_KEY,
-                ENTRY_POINT_SET_VARIABLES,
-                runtime_args! {
-                    ARG_AVAILABLE_AMOUNT => Some(faucet_fund_amount),
-                    ARG_TIME_INTERVAL => Some(assigned_time_interval),
-                    ARG_DISTRIBUTIONS_PER_INTERVAL => Some(assigned_distributions_per_interval)
-                },
-            )
-            .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
-            .with_deploy_hash([3; 32])
-            .build();
-
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let installer_set_variables_request = ExecuteRequestBuilder::contract_call_by_name(
+        installer_account,
+        FAUCET_CONTRACT_NAMED_KEY,
+        ENTRY_POINT_SET_VARIABLES,
+        runtime_args! {
+            ARG_AVAILABLE_AMOUNT => Some(faucet_fund_amount),
+            ARG_TIME_INTERVAL => Some(assigned_time_interval),
+            ARG_DISTRIBUTIONS_PER_INTERVAL => Some(assigned_distributions_per_interval)
+        },
+    )
+    .build();
 
     builder
-        .exec(installer_set_variable_request)
+        .exec(installer_set_variables_request)
         .expect_success()
         .commit();
 
@@ -664,7 +634,10 @@ fn should_fund_existing_account() {
         .into_t::<U512>()
         .expect("failed to convert into U512");
 
-    assert_eq!(available_amount, faucet_fund_amount);
+    assert_eq!(
+        available_amount, faucet_fund_amount,
+        "available amount must match faucet fund amount"
+    );
 
     let remaining_amount = builder
         .query(
@@ -679,23 +652,23 @@ fn should_fund_existing_account() {
         .into_t::<U512>()
         .expect("failed to convert into U512");
 
-    assert_eq!(remaining_amount, faucet_fund_amount);
+    assert_eq!(
+        remaining_amount, faucet_fund_amount,
+        "remaining amount must match faucet fund amount"
+    );
 
-    let faucet_call_by_installer = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(installer_account)
-            .with_authorization_keys(&[installer_account])
-            .with_stored_session_named_key(
-                FAUCET_CONTRACT_NAMED_KEY,
-                ENTRY_POINT_FAUCET,
-                runtime_args! {ARG_TARGET => user_account, ARG_ID => <Option<u64>>::None},
-            )
-            .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
-            .with_deploy_hash([4; 32])
-            .build();
-
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let user_fund_amount = U512::from(3_000_000_000u64);
+    let faucet_call_by_installer = ExecuteRequestBuilder::contract_call_by_name(
+        installer_account,
+        FAUCET_CONTRACT_NAMED_KEY,
+        ENTRY_POINT_FAUCET,
+        runtime_args! {
+            ARG_TARGET => user_account,
+            ARG_AMOUNT => user_fund_amount,
+            ARG_ID => <Option<u64>>::None,
+        },
+    )
+    .build();
 
     builder
         .exec(faucet_call_by_installer)
@@ -715,12 +688,19 @@ fn should_fund_existing_account() {
 
     let half_of_faucet_fund_amount = faucet_fund_amount / 2;
     let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
-    assert_eq!(faucet_purse_balance, half_of_faucet_fund_amount);
+    assert_eq!(
+        faucet_purse_balance,
+        faucet_fund_amount - user_fund_amount,
+        "faucet purse balance must match expected amount"
+    );
 
     // check the balance of the user's main purse
     let user_main_purse_balance_after =
         builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
-    assert_eq!(user_main_purse_balance_after, half_of_faucet_fund_amount);
+    assert_eq!(
+        user_main_purse_balance_after, user_fund_amount,
+        "users main purse balance must match expected amount after faucet call"
+    );
 
     let faucet_call_by_user = {
         let deploy_item = DeployItemBuilder::new()
@@ -731,7 +711,7 @@ fn should_fund_existing_account() {
                 ENTRY_POINT_FAUCET,
                 runtime_args! {ARG_TARGET => user_account, ARG_ID => <Option<u64>>::None},
             )
-            .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
+            .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => user_fund_amount})
             .with_deploy_hash([4; 32])
             .build();
 
@@ -753,31 +733,31 @@ fn should_fund_existing_account() {
         .into_t::<U512>()
         .expect("failed to convert into U512");
 
-    assert_eq!(remaining_amount, half_of_faucet_fund_amount);
+    assert_eq!(
+        remaining_amount, half_of_faucet_fund_amount,
+        "remaining amount must match expected amount after user faucet call"
+    );
     let user_main_purse_balance_after =
         builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
 
     assert_eq!(
-        user_main_purse_balance_after,
-        faucet_fund_amount - *DEFAULT_PAYMENT
+        user_main_purse_balance_after, half_of_faucet_fund_amount,
+        "user purse balance must match expected amount after user faucet call"
     );
 
     let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
-    assert!(faucet_purse_balance.is_zero());
+    assert_eq!(
+        faucet_purse_balance,
+        faucet_fund_amount - half_of_faucet_fund_amount - user_fund_amount,
+        "faucet purse balance must match expected amount after installer and user calls"
+    );
 }
 
 #[ignore]
 #[test]
 fn should_not_fund_once_exhausted() {
-    let installer_secret_key =
-        SecretKey::ed25519_from_bytes([1; 32]).expect("failed to create secret key");
-    let installer_public_key = PublicKey::from(&installer_secret_key);
-    let installer_account = AccountHash::from_public_key(&installer_public_key, crypto::blake2b);
-
-    let user_secret_key =
-        SecretKey::ed25519_from_bytes([2; 32]).expect("failed to create secret key");
-    let user_public_key = PublicKey::from(&user_secret_key);
-    let user_account = AccountHash::from_public_key(&user_public_key, crypto::blake2b);
+    let installer_account = AccountHash::new([1u8; 32]);
+    let user_account = AccountHash::new([2u8; 32]);
 
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST).commit();
@@ -911,6 +891,8 @@ fn should_not_fund_once_exhausted() {
 
     assert_eq!(remaining_amount, one_distribution * 4);
 
+    let user_fund_amount = U512::from(3_000_000_000u64);
+    let num_funds = 4;
     let faucet_call_by_installer = {
         let deploy_item = DeployItemBuilder::new()
             .with_address(installer_account)
@@ -918,7 +900,11 @@ fn should_not_fund_once_exhausted() {
             .with_stored_session_named_key(
                 FAUCET_CONTRACT_NAMED_KEY,
                 ENTRY_POINT_FAUCET,
-                runtime_args! {ARG_TARGET => user_account, ARG_ID => <Option<u64>>::None},
+                runtime_args! {
+                    ARG_TARGET => user_account,
+                    ARG_AMOUNT => user_fund_amount * num_funds,
+                    ARG_ID => <Option<u64>>::None
+                },
             )
             .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
             .with_deploy_hash([130; 32])
@@ -934,7 +920,7 @@ fn should_not_fund_once_exhausted() {
         .expect_success()
         .commit();
 
-    for i in 0..4 {
+    for i in 0..num_funds {
         let faucet_call_by_user = {
             let deploy_item = DeployItemBuilder::new()
                 .with_address(user_account)
@@ -944,7 +930,7 @@ fn should_not_fund_once_exhausted() {
                     ENTRY_POINT_FAUCET,
                     runtime_args! {ARG_TARGET => user_account, ARG_ID => <Option<u64>>::None},
                 )
-                .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
+                .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => user_fund_amount})
                 .with_deploy_hash([i + 10; 32])
                 .build();
 
@@ -976,7 +962,8 @@ fn should_not_fund_once_exhausted() {
         builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
     assert_eq!(
         user_main_purse_balance_after,
-        one_distribution * 5 - *DEFAULT_PAYMENT * 4
+        one_distribution * num_funds,
+        "users main purse balance must match expected amount after user faucet calls"
     );
 
     // // call faucet again once it's exhausted.
@@ -989,7 +976,7 @@ fn should_not_fund_once_exhausted() {
                 ENTRY_POINT_FAUCET,
                 runtime_args! {ARG_TARGET => user_account, ARG_ID => <Option<u64>>::None},
             )
-            .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
+            .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => user_fund_amount})
             .with_deploy_hash([20; 32])
             .build();
 
@@ -1004,7 +991,8 @@ fn should_not_fund_once_exhausted() {
         builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
     assert_eq!(
         user_main_purse_balance_after,
-        one_distribution * 5 - *DEFAULT_PAYMENT * 5
+        one_distribution * num_funds - user_fund_amount,
+        "users main purse balance must match expected amount after all user faucet calls"
     );
 
     // // faucet may resume distributions once block time is > last_distribution_time
@@ -1022,7 +1010,8 @@ fn should_not_fund_once_exhausted() {
         .into_t::<u64>()
         .expect("failed to convert into U512");
 
-    assert_eq!(last_distribution_time, 1010u64);
+    // we only update this named key after we've passed the threshold.
+    assert_eq!(last_distribution_time, 0);
 
     let faucet_call_by_user = {
         let deploy_item = DeployItemBuilder::new()
@@ -1033,7 +1022,7 @@ fn should_not_fund_once_exhausted() {
                 ENTRY_POINT_FAUCET,
                 runtime_args! {ARG_TARGET => user_account, ARG_ID => <Option<u64>>::None},
             )
-            .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
+            .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => user_fund_amount})
             .with_deploy_hash([21; 32])
             .build();
 
@@ -1043,6 +1032,22 @@ fn should_not_fund_once_exhausted() {
     };
 
     builder.exec(faucet_call_by_user).expect_success().commit();
+
+    let last_distribution_time = builder
+        .query(
+            None,
+            faucet_contract_hash.into(),
+            &[LAST_DISTRIBUTION_TIME_NAMED_KEY.to_string()],
+        )
+        .expect("failed to find available amount named key")
+        .as_cl_value()
+        .cloned()
+        .expect("failed to convert to cl value")
+        .into_t::<u64>()
+        .expect("failed to convert into U512");
+
+    // we only update this named key after we've passed the threshold.
+    assert_eq!(last_distribution_time, 11_011u64);
 
     let remaining_amount = builder
         .query(
@@ -1067,22 +1072,15 @@ fn should_not_fund_once_exhausted() {
 
     assert_eq!(
         user_main_purse_balance_after,
-        one_distribution * 6 - *DEFAULT_PAYMENT * 6
+        one_distribution * (num_funds + 1) - user_fund_amount * 2
     );
 }
 
 #[ignore]
 #[test]
 fn should_allow_installer_to_fund_freely() {
-    let installer_secret_key =
-        SecretKey::ed25519_from_bytes([1; 32]).expect("failed to create secret key");
-    let installer_public_key = PublicKey::from(&installer_secret_key);
-    let installer_account = AccountHash::from_public_key(&installer_public_key, crypto::blake2b);
-
-    let user_secret_key =
-        SecretKey::ed25519_from_bytes([2; 32]).expect("failed to create secret key");
-    let user_public_key = PublicKey::from(&user_secret_key);
-    let user_account = AccountHash::from_public_key(&user_public_key, crypto::blake2b);
+    let installer_account = AccountHash::new([1u8; 32]);
+    let user_account = AccountHash::new([2u8; 32]);
 
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST).commit();
@@ -1159,7 +1157,6 @@ fn should_allow_installer_to_fund_freely() {
     let assigned_time_interval = 10_000u64;
     let assigned_distributions_per_interval = 2u64;
     let assigned_available_amount = faucet_fund_amount / 2;
-    let one_distribution = assigned_available_amount / assigned_distributions_per_interval;
     let installer_set_variable_request = {
         let deploy_item = DeployItemBuilder::new()
             .with_address(installer_account)
@@ -1200,9 +1197,11 @@ fn should_allow_installer_to_fund_freely() {
 
     assert_eq!(available_amount, assigned_available_amount);
 
+    let user_fund_amount = U512::from(3_000_000_000u64);
     // This would only allow other callers to fund twice in this interval,
     // but the installer can fund as many times as they want.
-    for num in 0..3 {
+    let num_funds = 3;
+    for num in 0..num_funds {
         let faucet_call_by_installer = {
             let deploy_item = DeployItemBuilder::new()
                 .with_address(installer_account)
@@ -1210,7 +1209,7 @@ fn should_allow_installer_to_fund_freely() {
                 .with_stored_session_named_key(
                     FAUCET_CONTRACT_NAMED_KEY,
                     ENTRY_POINT_FAUCET,
-                    runtime_args! {ARG_TARGET => user_account, ARG_ID => <Option<u64>>::None},
+                    runtime_args! {ARG_TARGET => user_account, ARG_AMOUNT => user_fund_amount, ARG_ID => <Option<u64>>::None},
                 )
                 .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
                 .with_deploy_hash([num + 4; 32])
@@ -1239,28 +1238,23 @@ fn should_allow_installer_to_fund_freely() {
     let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
     assert_eq!(
         faucet_purse_balance,
-        faucet_fund_amount - one_distribution * 3
+        faucet_fund_amount - user_fund_amount * num_funds,
+        "faucet purse balance must match expected amount after {} faucet calls",
+        num_funds
     );
 
     // check the balance of the user's main purse
     let user_main_purse_balance_after =
         builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
 
-    assert_eq!(user_main_purse_balance_after, one_distribution * 3);
+    assert_eq!(user_main_purse_balance_after, user_fund_amount * num_funds);
 }
 
 #[ignore]
 #[test]
 fn should_not_fund_if_zero_distributions_per_interval() {
-    let installer_secret_key =
-        SecretKey::ed25519_from_bytes([1; 32]).expect("failed to create secret key");
-    let installer_public_key = PublicKey::from(&installer_secret_key);
-    let installer_account = AccountHash::from_public_key(&installer_public_key, crypto::blake2b);
-
-    let user_secret_key =
-        SecretKey::ed25519_from_bytes([2; 32]).expect("failed to create secret key");
-    let user_public_key = PublicKey::from(&user_secret_key);
-    let user_account = AccountHash::from_public_key(&user_public_key, crypto::blake2b);
+    let installer_account = AccountHash::new([1u8; 32]);
+    let user_account = AccountHash::new([2u8; 32]);
 
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST).commit();
@@ -1310,15 +1304,8 @@ fn should_not_fund_if_zero_distributions_per_interval() {
 #[ignore]
 #[test]
 fn faucet_costs() {
-    let installer_secret_key =
-        SecretKey::ed25519_from_bytes([1; 32]).expect("failed to create secret key");
-    let installer_public_key = PublicKey::from(&installer_secret_key);
-    let installer_account = AccountHash::from_public_key(&installer_public_key, crypto::blake2b);
-
-    let user_secret_key =
-        SecretKey::ed25519_from_bytes([2; 32]).expect("failed to create secret key");
-    let user_public_key = PublicKey::from(&user_secret_key);
-    let user_account = AccountHash::from_public_key(&user_public_key, crypto::blake2b);
+    let installer_account = AccountHash::new([1u8; 32]);
+    let user_account = AccountHash::new([2u8; 32]);
 
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST).commit();
@@ -1384,6 +1371,7 @@ fn faucet_costs() {
     let _faucet_set_variables_cost = builder.last_exec_gas_cost();
     // println!("faucet set variables cost: {}", _faucet_set_variables_cost);
 
+    let user_fund_amount = U512::from(3_000_000_000u64);
     let faucet_call_by_installer = {
         let deploy_item = DeployItemBuilder::new()
             .with_address(installer_account)
@@ -1391,9 +1379,9 @@ fn faucet_costs() {
             .with_stored_session_named_key(
                 FAUCET_CONTRACT_NAMED_KEY,
                 ENTRY_POINT_FAUCET,
-                runtime_args! {ARG_TARGET => user_account, ARG_ID => <Option<u64>>::None},
+                runtime_args! {ARG_TARGET => user_account, ARG_AMOUNT => user_fund_amount, ARG_ID => <Option<u64>>::None},
             )
-            .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
+            .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => user_fund_amount})
             .with_deploy_hash([4; 32])
             .build();
 
@@ -1420,13 +1408,21 @@ fn faucet_costs() {
         .map(ContractHash::new)
         .expect("failed to find faucet contract");
 
-    let faucet_call_by_user_request = ExecuteRequestBuilder::contract_call_by_hash(
-        user_account,
-        faucet_contract_hash,
-        ENTRY_POINT_FAUCET,
-        runtime_args! {ARG_TARGET => user_account, ARG_ID => <Option<u64>>::None},
-    )
-    .build();
+    let faucet_call_by_user_request = {
+        let deploy_item = DeployItemBuilder::new()
+            .with_address(user_account)
+            .with_authorization_keys(&[user_account])
+            .with_stored_session_hash(
+                faucet_contract_hash,
+                ENTRY_POINT_FAUCET,
+                runtime_args! {ARG_TARGET => user_account, ARG_ID => <Option<u64>>::None},
+            )
+            .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => user_fund_amount})
+            .with_deploy_hash([4; 32])
+            .build();
+
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    };
 
     builder
         .exec(faucet_call_by_user_request)
