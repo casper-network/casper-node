@@ -37,6 +37,7 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
+        // NOTE: All unwraps safe as string literal is correct.
         Config {
             pending_vertex_timeout: "10sec".parse().unwrap(),
             standstill_timeout: None,

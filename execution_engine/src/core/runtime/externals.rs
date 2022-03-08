@@ -283,13 +283,12 @@ where
                 )?;
                 let purse = self.create_purse()?;
                 let purse_bytes = purse.into_bytes().map_err(Error::BytesRepr)?;
-                //? assert_eq!-->debug_assert_eq!+error!
-                debug_assert_eq!(
+                //? Change assert --> debug_assert+error! ?
+                assert_eq!(
                     dest_size,
                     purse_bytes.len() as u32,
-                    "purse_bytes length must be equal to dest_size" //? Added error msg?
+                    "purse_bytes length must be equal to dest_size"
                 );
-                error!("purse_bytes length must be equal to dest_size");
 
                 self.memory
                     .set(dest_ptr, &purse_bytes)

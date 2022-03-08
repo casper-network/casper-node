@@ -48,7 +48,7 @@ use crate::types::error::{
     BlockHeaderWithMetadataValidationError, BlockWithMetadataValidationError,
 };
 
-// Unwraps are safe as all [u8] have correct length
+// NOTE: Unwraps are safe as all [u8] have correct length
 static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
     let secret_key_1 = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
     let public_key_1 = PublicKey::from(&secret_key_1);
@@ -70,7 +70,7 @@ static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
     }
 });
 
-// Unwraps are safe as all [u8] have correct length
+// NOTE: Unwraps are safe as all [u8] have correct length
 static ERA_END: Lazy<EraEnd> = Lazy::new(|| {
     let secret_key_1 = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
     let public_key_1 = PublicKey::from(&secret_key_1);
@@ -125,7 +125,7 @@ static BLOCK: Lazy<Block> = Lazy::new(|| {
     let secret_key = SecretKey::doc_example();
     let public_key = PublicKey::from(secret_key);
 
-    // Unwraps are safe as all [u8] have correct length
+    //? Both unwraps are safe as all [u8] have correct length
     let next_era_validator_weights = {
         let mut next_era_validator_weights: BTreeMap<PublicKey, U512> = BTreeMap::new();
         next_era_validator_weights.insert(public_key, U512::from(123));

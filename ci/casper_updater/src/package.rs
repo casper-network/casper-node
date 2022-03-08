@@ -92,7 +92,6 @@ impl Package {
             .iter()
             .find(|&file| file.path() == manifest_path)
             .unwrap_or_else(|| {
-                //? Keep as is?
                 panic!(
                     "{} should be a dependent file of {}",
                     manifest_path.display(),
@@ -104,7 +103,6 @@ impl Package {
             regex
                 .captures(manifest.contents())
                 .unwrap_or_else(|| {
-                    //? Keep as is?
                     panic!(
                         "should find package name and version in {}",
                         manifest_path.display()
@@ -112,7 +110,6 @@ impl Package {
                 })
                 .get(CAPTURE_INDEX)
                 .unwrap_or_else(|| {
-                    //? Keep as is?
                     panic!(
                         "package name and version should be regex capture at index {} in {}",
                         CAPTURE_INDEX,

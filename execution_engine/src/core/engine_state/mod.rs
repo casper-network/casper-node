@@ -197,7 +197,7 @@ where
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
             // NOTE: As genesis is run once per instance condition below is considered programming
             // error
-            Ok(None) => panic!("state has not been initialized properly"), //? Keep as is?
+            Ok(None) => panic!("state has not been initialized properly"),
             Err(error) => return Err(error),
         };
 

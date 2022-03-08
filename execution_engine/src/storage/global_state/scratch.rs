@@ -138,7 +138,7 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
                 Some(value)
             }
             ReadResult::NotFound => None,
-            ReadResult::RootNotFound => panic!("ScratchGlobalState has invalid root"), //? Keep as is?
+            ReadResult::RootNotFound => panic!("ScratchGlobalState has invalid root"),
         };
         txn.commit()?;
         Ok(ret)
@@ -165,7 +165,7 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
         )? {
             ReadResult::Found(value) => Some(value),
             ReadResult::NotFound => None,
-            ReadResult::RootNotFound => panic!("LmdbWithCacheGlobalState has invalid root"),//? Keep as is?
+            ReadResult::RootNotFound => panic!("LmdbWithCacheGlobalState has invalid root"),
         };
         txn.commit()?;
         Ok(ret)

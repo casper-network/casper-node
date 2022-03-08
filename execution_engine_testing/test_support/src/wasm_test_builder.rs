@@ -235,7 +235,7 @@ impl LmdbWasmTestBuilder {
         let engine_state = &*self.engine_state;
         engine_state
             .flush_environment()
-            .expect("should flush environment"); //?
+            .expect("should flush environment");
     }
 
     /// Returns a new [`LmdbWasmTestBuilder`].
@@ -336,7 +336,6 @@ impl LmdbWasmTestBuilder {
         let maybe_exec_results = cached_state.run_execute(CorrelationId::new(), exec_request);
         for execution_result in
             maybe_exec_results.expect("run_execute should return an exec_results")
-        //?
         {
             let journal = execution_result.execution_journal().clone();
             let transforms: AdditiveMap<Key, Transform> = journal.clone().into();
@@ -363,7 +362,7 @@ impl LmdbWasmTestBuilder {
             self.post_state_hash = Some(
                 self.engine_state
                     .write_scratch_to_lmdb(prestate_hash, scratch.into_inner())
-                    .expect("should be able to write to lmdb"), //?
+                    .expect("should be able to write to lmdb"),
             );
         }
         self
@@ -406,7 +405,7 @@ where
         ) {
             Ok(StoredValue::CLValue(cl_registry)) => {
                 CLValue::into_t::<SystemContractRegistry>(cl_registry)
-                    .expect("should be able to convert from CLValue") //?
+                    .expect("should be able to convert from CLValue")
             }
             Ok(_) => panic!("Failed to get system registry"),
             Err(err) => panic!("{}", err),
@@ -528,14 +527,15 @@ where
         let maybe_exec_results = self
             .engine_state
             .run_execute(CorrelationId::new(), exec_request);
-        //? Keeping assert here as it's in test_support
-        assert!(maybe_exec_results.is_ok(), "exec_results should succeed"); //? Added error message
+
+        //? Change assert --> debug_assert+error! ?
+        assert!(maybe_exec_results.is_ok(), "exec_results should succeed");
 
         // Parse deploy results
         let execution_results = maybe_exec_results
             .as_ref()
-            .expect("should have exec_results"); //?
-                                                 // Cache transformations
+            .expect("should have exec_results");
+        // Cache transformations
         self.transforms.extend(
             execution_results
                 .iter()
@@ -543,7 +543,7 @@ where
         );
         self.exec_results.push(
             maybe_exec_results
-                .expect("should have exec_results") //?
+                .expect("should have exec_results")
                 .into_iter()
                 .map(Rc::new)
                 .collect(),
@@ -584,7 +584,7 @@ where
         let pre_state_hash = self.post_state_hash.expect("should have state hash");
         upgrade_config.with_pre_state_hash(pre_state_hash);
 
-        let engine_state = Rc::get_mut(&mut self.engine_state).expect("should be safe to mutate"); //? Make this safer with RefCell?
+        let engine_state = Rc::get_mut(&mut self.engine_state).expect("should be safe to mutate");
         engine_state.update_config(engine_config);
 
         let empty_path: Vec<String> = vec![];
@@ -595,7 +595,7 @@ where
             &empty_path,
         ) {
             let registry = CLValue::into_t::<SystemContractRegistry>(cl_registry)
-                .expect("should be able to convert from CLValue"); //?
+                .expect("should be able to convert from CLValue");
             if self.mint_contract_hash.is_none() {
                 self.mint_contract_hash = Some(*registry.get(MINT).expect("should have mint hash"))
             };
@@ -1019,11 +1019,11 @@ where
         let get_bids_result = self
             .engine_state
             .get_bids(CorrelationId::new(), get_bids_request)
-            .expect("should have bids"); //?
+            .expect("should have bids");
 
         get_bids_result
             .into_success()
-            .expect("get_bids_result should succeed") //?
+            .expect("get_bids_result should succeed")
     }
 
     /// Gets [`UnbondingPurses`].
@@ -1034,8 +1034,8 @@ where
         let tracking_copy = self
             .engine_state
             .tracking_copy(state_root_hash)
-            .expect("failed to create new tracking copy for get_unbounds") //?
-            .expect("did not receive tracking copy for get_unbounds"); //?
+            .expect("failed to create new tracking copy for get_unbounds")
+            .expect("did not receive tracking copy for get_unbounds");
 
         let reader = tracking_copy.reader();
 
@@ -1065,8 +1065,8 @@ where
         let tracking_copy = self
             .engine_state
             .tracking_copy(state_root_hash)
-            .expect("failed to create new tracking copy for get_withdraws") //?
-            .expect("did not receive tracking copy for get_withdraws"); //?
+            .expect("failed to create new tracking copy for get_withdraws")
+            .expect("did not receive tracking copy for get_withdraws");
 
         let reader = tracking_copy.reader();
 
@@ -1096,8 +1096,8 @@ where
         let tracking_copy = self
             .engine_state
             .tracking_copy(state_root_hash)
-            .expect("failed to create new tracking copy for get_balance_keys") //?
-            .expect("did not receive tracking copy for get_balance_keys"); //?
+            .expect("failed to create new tracking copy for get_balance_keys")
+            .expect("did not receive tracking copy for get_balance_keys");
 
         let reader = tracking_copy.reader();
 

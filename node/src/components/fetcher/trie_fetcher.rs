@@ -247,7 +247,7 @@ impl TrieFetcher {
         let hash = id.digest();
         let maybe_old_partial_chunks = self.partial_chunks.insert(*hash, partial_chunks);
         if let Some(old_partial_chunks) = maybe_old_partial_chunks {
-            // unwrap is safe as we just inserted a value at this key
+            // NOTE: Safe to unwrap since we just inserted a value at this key
             self.partial_chunks
                 .get_mut(hash)
                 .unwrap()

@@ -59,7 +59,6 @@ where
     pub(super) fn dec(&mut self, key: &K) -> usize {
         match self.0.get_mut(key) {
             Some(value) => {
-                //? Keep as is?
                 assert_ne!(*value, 0, "counter should never be zero in tracker");
 
                 value.sub_assign(1);
@@ -71,13 +70,8 @@ where
             None => panic!("tried to decrease in-flight to negative value"),
         };
 
-        //? Leave as is?
-        assert_eq!(
-            self.0.remove(key),
-            Some(0),
-            "" //? Remove inside an assert?? This looks odd!
-        );
-
+        //? .remove(key) inside an assert?? Looks a bit odd...
+        assert_eq!(self.0.remove(key), Some(0));
         0
     }
 }

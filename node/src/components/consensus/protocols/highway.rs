@@ -106,12 +106,11 @@ impl<C: Context + 'static> HighwayProtocol<C> {
     ) -> (Box<dyn ConsensusProtocol<C>>, ProtocolOutcomes<C>) {
         let validators_count = validator_stakes.len();
         let sum_stakes: U512 = validator_stakes.iter().map(|(_, stake)| *stake).sum();
-        //? assert!-->debug_assert!+error!
-        debug_assert!(
+        // NOTE: A total weight = 0 will prevent anything from being finalized.
+        assert!(
             !sum_stakes.is_zero(),
             "cannot start era with total weight 0"
         );
-        error!("cannot start era with total weight 0");
 
         // For Highway, we need u64 weights. Scale down by  sum / u64::MAX,  rounded up.
         // If we round up the divisor, the resulting sum is guaranteed to be  <= u64::MAX.
@@ -129,23 +128,21 @@ impl<C: Context + 'static> HighwayProtocol<C> {
             validators.set_cannot_propose(vid);
         }
 
-        //? assert!-->debug_assert!+error!
-        debug_assert!(
+        //? Change assert-->debug_assert+error! ?
+        assert!(
             validators.ensure_nonzero_proposing_stake(),
             "cannot start era with total weight 0"
         );
-        error!("cannot start era with total weight 0");
 
         let highway_config = &chainspec.highway_config;
 
         let total_weight = u128::from(validators.total_weight());
         let ftt_fraction = highway_config.finality_threshold_fraction;
-        //? assert!-->debug_assert!+error!
-        debug_assert!(
+
+        assert!(
             ftt_fraction < 1.into(),
-            "finality threshold must be less than 100%"
+            "fault tolerance threshold must be less than 100%"
         );
-        error!("finality threshold must be less than 100%");
 
         #[allow(clippy::integer_arithmetic)] // FTT is less than 1, so this can't overflow.
         let ftt = total_weight * *ftt_fraction.numer() as u128 / *ftt_fraction.denom() as u128;
@@ -691,7 +688,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
                         .filter_map(|seq_num| {
                             let unit = state
                                 .find_in_swimlane(hash, seq_num)
-                                .expect("find_in_swimlane should find hash"); //?
+                                .expect("find_in_swimlane should find hash");
                             state
                                 .wire_unit(unit, *self.highway.instance_id())
                                 .map(|swu| HighwayMessage::NewVertex(Vertex::Unit(swu)))

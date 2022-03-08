@@ -814,7 +814,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
     }
 
     pub(crate) fn consensus_values_count(mut self, count: u8) -> Self {
-        assert!(count > 0, "count should be greater than 0"); //? Added error msg
+        assert!(count > 0, "count should be greater than 0");
         self.consensus_values_count = count;
         self
     }
@@ -1090,7 +1090,7 @@ mod test_harness {
                 .expect("Construction was successful");
 
         highway_test_harness.mutable_handle().clear_message_queue();
-        //? Leave as is since this is a test_harness?
+        //? Change assert --> debug_assert+error! ?
         assert_eq!(
             highway_test_harness.crank(&mut rng),
             Err(TestRunError::NoMessages),
@@ -1103,7 +1103,7 @@ mod test_harness {
         let mut iter = coll.into_iter();
         let reference = iter.next().expect("coll should not be empty");
 
-        //? Leave as is since this is a test_harness?
+        //? Change assert --> debug_assert+error! ?
         iter.for_each(|v| assert_eq!(v, reference, "{}", error_msg));
     }
 
@@ -1129,7 +1129,7 @@ mod test_harness {
                 .validators()
                 .all(|v| v.finalized_count() == cv_count as usize)
         })
-        .expect("crank_until resulted in TestRunError"); //?
+        .expect("crank_until resulted in TestRunError");
 
         let handle = highway_test_harness.mutable_handle();
         let validators = handle.validators();
@@ -1156,7 +1156,7 @@ mod test_harness {
                 // one round (one consensus value) – 1 message. 1/2=0 but 3/2=1 b/c of the rounding.
                 let rounds_participated_in = (units_count as u8 + 1) / 2;
 
-                //? Leave as is since this is a test_harness?
+                //? Change assert-->debug_assert+error! ?
                 assert_eq!(
                     rounds_participated_in, cv_count,
                     "Expected that validator={} participated in {} rounds.",
@@ -1195,7 +1195,7 @@ mod test_harness {
                 .validators()
                 .all(|v| v.finalized_count() == cv_count as usize)
         })
-        .expect("crank_until resulted in TestRunError"); //?
+        .expect("crank_until resulted in TestRunError");
 
         let handle = highway_test_harness.mutable_handle();
         let validators = handle.validators();
@@ -1235,7 +1235,7 @@ mod test_harness {
                 .validators()
                 .all(|v| v.finalized_count() == cv_count as usize)
         })
-        .expect("crank_until resulted in TestRunError"); //?
+        .expect("crank_until resulted in TestRunError");
 
         let handle = highway_test_harness.mutable_handle();
         let validators = handle.validators();
@@ -1297,57 +1297,52 @@ mod test_harness {
 
         // Three max-length rounds after 40% went silent, the honest validators should stop voting.
         crank_until_time(&mut test_harness, &mut rng, should_start_pause)
-            .expect("crank_until_time resulted in TestRunError"); //?
+            .expect("crank_until_time resulted in TestRunError");
 
         // They should all see the same number of finalized blocks.
         let handle = test_harness.mutable_handle();
         let first_validator = handle
             .correct_validators()
             .next()
-            .expect("should have at least one correct validator"); //?
+            .expect("should have at least one correct validator");
         let finalized_before_pause = first_validator.finalized_count();
         let unit_count_before_pause = first_validator.unit_count();
-        //? Keep as is since this is in test_harness
         assert_ne!(
             finalized_before_pause, 0,
-            "finalized_before_pause should not be zero" /* //? Added error msg */
+            "finalized_before_pause should not be zero"
         );
         assert!(
             finalized_before_pause < cv_count as usize,
             "finalized_before_pause should be less than cv_count"
-        ); //? added error msg
+        );
         for v in handle.correct_validators() {
-            //? Leave as is since this is a test_harness?
             assert_eq!(
                 finalized_before_pause,
                 v.finalized_count(),
-                "finalized_before_pause should equal validator finalized_count" //? Added error msg
+                "finalized_before_pause should equal validator finalized_count"
             );
-            //? Leave as is since this is a test_harness?
             assert_eq!(
                 unit_count_before_pause,
                 v.unit_count(),
-                "unit_count_before_pause must equal valdidator unit_count" //? Added error msg
+                "unit_count_before_pause must equal valdidator unit_count"
             );
         }
 
         // Much later, just before the missing 40% come back online...
         crank_until_time(&mut test_harness, &mut rng, stop_mute)
-            .expect("crank_until_time resulted in TestRunError"); //?
+            .expect("crank_until_time resulted in TestRunError");
 
         // ...there should still be no new unit yet.
         for v in test_harness.mutable_handle().correct_validators() {
-            //? Leave as is since this is a test_harness?
             assert_eq!(
                 finalized_before_pause,
                 v.finalized_count(),
-                "finalized_before_pause should equal validator finalized_count" //? Added error msg
+                "finalized_before_pause should equal validator finalized_count"
             );
-            //? Leave as is since this is a test_harness?
             assert_eq!(
                 unit_count_before_pause,
                 v.unit_count(),
-                "unit_count_before_pause should equal validator unit_count" //? Added error msg
+                "unit_count_before_pause should equal validator unit_count"
             );
         }
 

@@ -69,11 +69,11 @@ pub fn find_large_bids(
     let min_bid = new_snapshot
         .values()
         .next()
-        .unwrap()
+        .unwrap() //? Safe to unwrap?
         .values()
         .map(SeigniorageRecipient::stake)
         .min()
-        .unwrap();
+        .unwrap(); //? Safe to unwrap?
     builder
         .get_bids()
         .into_iter()
@@ -102,12 +102,12 @@ pub fn generate_entries_removing_bids(
             let amount = *new_snapshot
                 .values()
                 .next()
-                .unwrap()
+                .unwrap() //? Safe to unwrap?
                 .get(pkey)
-                .unwrap()
+                .unwrap() //? Safe to unwrap?
                 .stake();
             let account_hash = pkey.to_account_hash();
-            let account = builder.get_account(account_hash).unwrap();
+            let account = builder.get_account(account_hash).unwrap(); //? Safe to unwrap?
             (
                 Key::Bid(account_hash),
                 Bid::unlocked(
@@ -121,7 +121,7 @@ pub fn generate_entries_removing_bids(
         })
         .chain(to_unbid.into_iter().map(|pkey| {
             let account_hash = pkey.to_account_hash();
-            let account = builder.get_account(account_hash).unwrap();
+            let account = builder.get_account(account_hash).unwrap(); //? Safe to unwrap?
             (
                 Key::Bid(account_hash),
                 Bid::empty(pkey.clone(), account.main_purse()).into(),

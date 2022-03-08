@@ -319,7 +319,6 @@ pub(super) struct OutgoingMetrics {
 }
 
 // Note: We only implement `Default` here for use in testing with `OutgoingManager::new`.
-//? unwraps are safe as new arguments are hardcoded
 #[cfg(test)]
 impl Default for OutgoingMetrics {
     fn default() -> Self {

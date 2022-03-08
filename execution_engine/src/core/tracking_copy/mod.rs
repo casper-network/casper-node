@@ -81,9 +81,9 @@ impl Query {
         let next_name = self
             .unvisited_names
             .pop_front()
-            .expect("this should already been checked to be non-empty"); //?Changed to expect
+            .expect("this should already been checked to be non-empty");
         self.visited_names.push(next_name);
-        //? safe to unwrap as we have added element just above
+        // NOTE: safe to unwrap as we have added element just above
         self.visited_names.last().unwrap()
     }
 
@@ -647,7 +647,7 @@ pub fn validate_query_proof(
 
     let mut proofs_iter = proofs.iter();
 
-    // length check above means we are safe to unwrap here
+    // NOTE: Safe to unwrap since we've done a length check just above
     let first_proof = proofs_iter.next().unwrap();
 
     if first_proof.key() != &expected_first_key.normalize() {

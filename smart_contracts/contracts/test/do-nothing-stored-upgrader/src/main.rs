@@ -50,7 +50,7 @@ pub extern "C" fn call() {
         runtime::get_key(DO_NOTHING_PACKAGE_HASH_KEY_NAME)
             .unwrap_or_revert()
             .into_hash()
-            .expect("should be Key::Hash") //?
+            .expect("should be Key::Hash")
             .into();
 
     let _do_nothing_uref: URef = runtime::get_key(DO_NOTHING_ACCESS_KEY_NAME)

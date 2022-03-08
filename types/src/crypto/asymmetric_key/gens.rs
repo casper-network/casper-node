@@ -12,7 +12,7 @@ use crate::{crypto::SecretKey, PublicKey};
 
 /// Creates an arbitrary [`PublicKey`]
 pub fn public_key_arb() -> impl Strategy<Value = PublicKey> {
-    //? All unwraps safe as all data is generated internally yo this function
+    // NOTE: All unwraps safe as all data is generated internally to this function
     prop_oneof![
         Just(PublicKey::System),
         collection::vec(<u8>::arbitrary(), SecretKey::ED25519_LENGTH).prop_map(|bytes| {
@@ -30,7 +30,7 @@ pub fn public_key_arb() -> impl Strategy<Value = PublicKey> {
 
 /// Returns a strategy for creating random [`PublicKey`] instances but NOT system variant.
 pub fn public_key_arb_no_system() -> impl Strategy<Value = PublicKey> {
-    //? All unwraps safe as all data is generated internally yo this function
+    // NOTE: All unwraps safe as all data is generated internally to this function
     prop_oneof![
         collection::vec(<u8>::arbitrary(), SecretKey::ED25519_LENGTH).prop_map(|bytes| {
             let byte_array: [u8; SecretKey::ED25519_LENGTH] = bytes.try_into().unwrap();

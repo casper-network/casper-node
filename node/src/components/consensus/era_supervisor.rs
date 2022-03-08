@@ -259,7 +259,13 @@ impl EraSupervisor {
 
     fn era_seed(booking_block_hash: BlockHash, key_block_seed: Digest) -> u64 {
         let result = Digest::hash_pair(booking_block_hash, key_block_seed).value();
-        u64::from_le_bytes(result[0..std::mem::size_of::<u64>()].try_into().unwrap()) //? why try_into() here???
+
+        // NOTE: expect will fail when we cannot convert a [u8] slice to [u8;8].
+        u64::from_le_bytes(
+            result[0..std::mem::size_of::<u64>()]
+                .try_into()
+                .expect("could not convert [u8] slice to [u8;8]"),
+        )
     }
 
     /// Returns an iterator over era IDs of `num_eras` past eras, plus the provided one.
@@ -817,7 +823,9 @@ impl EraSupervisor {
 
     /// Returns the era with the specified ID mutably. Panics if it does not exist.
     fn era_mut(&mut self, era_id: EraId) -> &mut Era {
-        self.open_eras.get_mut(&era_id).unwrap()
+        self.open_eras
+            .get_mut(&era_id)
+            .expect("open_eras should gave era_id")
     }
 
     #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
@@ -912,7 +920,10 @@ impl EraSupervisor {
                     debug!(era = era_id.value(), "finalized block in old era");
                     return Effects::new();
                 }
-                let era = self.open_eras.get_mut(&era_id).unwrap();
+                let era = self
+                    .open_eras
+                    .get_mut(&era_id)
+                    .expect("open_eras did not contain era_id key");
                 era.add_accusations(&equivocators);
                 era.add_accusations(value.accusations());
                 // If this is the era's last block, it contains rewards. Everyone who is accused in

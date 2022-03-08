@@ -437,13 +437,13 @@ pub(crate) fn bid_arb(delegations_len: impl Into<SizeRange>) -> impl Strategy<Va
                 };
                 let delegators = bid.delegators_mut();
                 new_delegators.into_iter().for_each(|delegator| {
-                    //? Leave as is?
+                    //? Change assert-->debug_assert+error! ?
                     assert!(
                         delegators
                             .insert(delegator.delegator_public_key().clone(), delegator)
                             .is_none(),
                         "delegators should not already contain delegator_public_key"
-                    ); //? added error msg
+                    );
                 });
                 bid
             },

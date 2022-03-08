@@ -63,7 +63,7 @@ impl From<FunctionIndex> for usize {
     fn from(index: FunctionIndex) -> usize {
         // NOTE: This can't fail as `FunctionIndex` is represented by usize,
         // so this serves mostly as a syntax sugar.
-        index.to_usize().unwrap() //?? Can't find implementation of to_usize()
+        index.to_usize().unwrap()
     }
 }
 

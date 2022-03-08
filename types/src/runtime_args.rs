@@ -201,7 +201,6 @@ macro_rules! runtime_args {
     ( $($key:expr => $value:expr,)+ ) => (runtime_args!($($key => $value),+));
     ( $($key:expr => $value:expr),* ) => {
         {
-            //? Expect safe??
             let mut named_args = RuntimeArgs::new();
             $(
                 named_args.insert($key, $value).expect("failed to convert value to CLValue");

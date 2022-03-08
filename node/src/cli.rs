@@ -118,6 +118,7 @@ impl FromStr for ConfigExt {
 
     /// Attempts to create a ConfigExt from a str patterned as `section.key=value`
     fn from_str(input: &str) -> Result<Self, Self::Err> {
+        //? Hardcoded safe
         let re = Regex::new(r"^([^.]+)\.([^=]+)=(.+)$").unwrap();
         let captures = re
             .captures(input)

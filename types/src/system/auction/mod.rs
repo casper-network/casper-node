@@ -523,7 +523,7 @@ pub trait Auction:
             assert!(
                 previous_recipients.is_none(),
                 "previous_recipients should be None"
-            ); //? Added error msg
+            );
 
             let snapshot = snapshot.into_iter().rev().take(snapshot_size).collect();
             detail::set_seigniorage_recipients_snapshot(self, snapshot)?;

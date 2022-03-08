@@ -1296,7 +1296,6 @@ where
     T: alloc::fmt::Debug + ToBytes + FromBytes + PartialEq,
 {
     let serialized = ToBytes::to_bytes(t).expect("Unable to serialize data");
-    //? Leave as is since this is a test_serialization_roundtrip?
     assert_eq!(
         serialized.len(),
         t.serialized_length(),
@@ -1309,25 +1308,22 @@ where
     let mut written_bytes = vec![];
     t.write_bytes(&mut written_bytes)
         .expect("Unable to serialize data via write_bytes");
-    //? Leave as is since this is a test_serialization_roundtrip?
-    assert_eq!(
-        serialized, written_bytes,
-        "serialized bytes should equal written_bytes" /* //?? Added error msg.. */
+    assert!(
+        serialized == written_bytes,
+        "serialized bytes should equal written_bytes"
     );
 
     let deserialized_from_slice =
         deserialize_from_slice(&serialized).expect("Unable to deserialize data");
-    // assert!(*t == deserialized);
-    //? Leave as is since this is a test_serialization_roundtrip?
-    assert_eq!(
-        *t, deserialized_from_slice,
-        "value t should equal deserialized_from_slice value" /* //? Added erro msg */
+    assert!(
+        *t == deserialized_from_slice,
+        "value t should equal deserialized_from_slice value"
     );
 
     let deserialized = deserialize::<T>(serialized).expect("Unable to deserialize data");
-    //? Leave as is since this is a test_serialization_roundtrip?
-    assert_eq!(*t, deserialized, "object t should equal deserialized"); //? Added error msg
+    assert!(*t == deserialized, "object t should equal deserialized");
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;

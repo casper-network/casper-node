@@ -30,7 +30,6 @@ impl Chainspec {
             regex
                 .captures(chainspec.contents())
                 .unwrap_or_else(|| {
-                    //? Keep as is?
                     panic!(
                         "should find protocol version and activation point in {}",
                         chainspec_path.display()
@@ -38,7 +37,6 @@ impl Chainspec {
                 })
                 .get(CAPTURE_INDEX)
                 .unwrap_or_else(|| {
-                    //? Keep as is?
                     panic!(
                         "protocol version and activation point should be regex capture at index {} in {}",
                         CAPTURE_INDEX,

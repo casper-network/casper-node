@@ -123,7 +123,7 @@ impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
         )? {
             ReadResult::Found(value) => Some(value),
             ReadResult::NotFound => None,
-            ReadResult::RootNotFound => panic!("LmdbGlobalState has invalid root"), //? Keep as is?
+            ReadResult::RootNotFound => panic!("LmdbGlobalState has invalid root"),
         };
         txn.commit()?;
         Ok(ret)
@@ -150,7 +150,7 @@ impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
         )? {
             ReadResult::Found(value) => Some(value),
             ReadResult::NotFound => None,
-            ReadResult::RootNotFound => panic!("LmdbGlobalState has invalid root"), //? Keep as is?
+            ReadResult::RootNotFound => panic!("LmdbGlobalState has invalid root"),
         };
         txn.commit()?;
         Ok(ret)

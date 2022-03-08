@@ -88,7 +88,7 @@ fn generate_system_contract_registry_using_protocol_data(data_dir: &Path) {
             error, serialized_protocol_data
         )
     });
-    assert!(remainder.is_empty(), "remainder should be empty"); //? Added error msg
+    assert!(remainder.is_empty(), "remainder should be empty");
 
     let mut registry = SystemContractRegistry::new();
     registry.insert(MINT.to_string(), mint_hash);
@@ -98,7 +98,7 @@ fn generate_system_contract_registry_using_protocol_data(data_dir: &Path) {
 
     print_entry(
         &Key::SystemContractRegistry,
-        &StoredValue::from(CLValue::from_t(registry).unwrap()),
+        &StoredValue::from(CLValue::from_t(registry).unwrap()), //? Safe to unwrap?
     );
 }
 
@@ -119,6 +119,6 @@ fn generate_system_contract_registry_using_global_state(data_dir: &Path, state_h
 
     print_entry(
         &Key::SystemContractRegistry,
-        &StoredValue::from(CLValue::from_t(registry).unwrap()),
+        &StoredValue::from(CLValue::from_t(registry).unwrap()), //? Safe to unwrap?
     );
 }

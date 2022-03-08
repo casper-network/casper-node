@@ -931,7 +931,7 @@ impl Storage {
                         txn.put_value(self.deploy_metadata_db, &deploy_hash, &metadata, true)?;
                     if !was_written {
                         error!(?block_hash, ?deploy_hash, "failed to write deploy metadata");
-                        debug_assert!(was_written); //? Leave as is
+                        debug_assert!(was_written);
                     }
                 }
 
@@ -939,7 +939,7 @@ impl Storage {
                     txn.put_value(self.transfer_db, &*block_hash, &transfers, true)?;
                 if !was_written {
                     error!(?block_hash, "failed to write transfers");
-                    debug_assert!(was_written); //? Leave as is
+                    debug_assert!(was_written);
                 }
 
                 txn.commit()?;

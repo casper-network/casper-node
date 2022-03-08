@@ -339,6 +339,7 @@ impl Distribution<GenesisAccount> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisAccount {
         let mut bytes = [0u8; 32];
         rng.fill_bytes(&mut bytes[..]);
+        // NOTE: Safe to unwrap as butes hass correct length
         let secret_key = SecretKey::ed25519_from_bytes(bytes).unwrap();
         let public_key = PublicKey::from(&secret_key);
         let balance = Motes::new(rng.gen());
@@ -731,7 +732,7 @@ pub enum GenesisError {
     /// Failed to push first item on runtime stack.
     ///
     /// This likely happened due to a misconfigured stack height.
-    StackTooSmall(RuntimeStackOverflow), //?? Had to derive Clone for RuntimeStackOverflow
+    StackTooSmall(RuntimeStackOverflow),
 }
 
 pub(crate) struct GenesisInstaller<S>
@@ -1258,7 +1259,7 @@ where
             .push(CallStackElement::session(
                 PublicKey::System.to_account_hash(),
             ))
-            .map_err(GenesisError::StackTooSmall)?; //? unwrap->map_err
+            .map_err(GenesisError::StackTooSmall)?;
 
         let (_instance, mut runtime) = self
             .executor

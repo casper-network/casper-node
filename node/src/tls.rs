@@ -507,11 +507,11 @@ pub(crate) fn validate_cert(cert: X509) -> Result<TlsCert, ValidationError> {
     }
 
     // We now have a valid certificate and can extract the fingerprint.
-    //? Leave as is?
+    //? Change assert --> debug_assert+error! ?
     assert_eq!(
         Sha512::NID,
         SIGNATURE_DIGEST,
-        "Sha512 NID should be same as SIGNATURE_DIGEST" //? Added error msg?
+        "Sha512 NID should be same as SIGNATURE_DIGEST"
     );
     let digest = &cert
         .digest(Sha512::create_message_digest())
@@ -671,23 +671,22 @@ fn generate_cert(private_key: &PKey<Private>, cn: &str) -> SslResult<X509> {
 
     // Set the public key and sign.
     builder.set_pubkey(private_key.as_ref())?;
-    //? Leave as is?
+    //? Change assert --> debug_assert+error! ?
     assert_eq!(
         Sha512::NID,
         SIGNATURE_DIGEST,
-        "Sha512 NID must be same as SIGNATURE_DIGEST" //? Better error msg?
+        "Sha512 NID should be same as SIGNATURE_DIGEST"
     );
     builder.sign(private_key.as_ref(), Sha512::create_message_digest())?;
 
     let cert = builder.build();
 
     // Cheap sanity check.
-    //? assert!-->debug_assert!+error!
-    debug_assert!(
+    //? Change assert --> debug_assert+error! ?
+    assert!(
         validate_cert(cert.clone()).is_ok(),
         "newly generated cert does not pass our own validity check"
     );
-    error!("newly generated cert does not pass our own validity check");
 
     Ok(cert)
 }

@@ -59,13 +59,12 @@ impl TestChain {
         verifiable_chunked_hash_activation: EraId,
         rng: &mut NodeRng,
     ) -> Self {
-        //? assert!-->debug_assert!+error!
-        debug_assert!(
+        //? Change assert-->debug_assert+error! ?
+        assert!(
             size >= 1,
             "Network size must have at least one node (size: {})",
             size
         );
-        error!("Network size must have at least one node (size: {})", size);
 
         let first_node_secret_key_with_stake = SecretKeyWithStake {
             secret_key: Arc::new(SecretKey::random(rng)),

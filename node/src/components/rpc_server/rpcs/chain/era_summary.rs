@@ -13,13 +13,14 @@ use crate::{
     types::{json_compatibility::StoredValue, Block, BlockHash},
 };
 
-// All unwraps are safe as input is hardcoded correct
 pub(super) static ERA_SUMMARY: Lazy<EraSummary> = Lazy::new(|| {
     let delegator_amount = U512::from(1000);
     let validator_amount = U512::from(2000);
+    // NOTE: Safe to unwrap since input is correct
     let delegator_public_key =
         PublicKey::from_hex("01e1b46a25baa8a5c28beb3c9cfb79b572effa04076f00befa57eb70b016153f18")
             .unwrap();
+    // NOTE: Safe to unwrap since input is correct
     let validator_public_key =
         PublicKey::from_hex("012a1732addc639ea43a89e25d3ad912e40232156dcaa4b9edfc709f43d2fb0876")
             .unwrap();
@@ -28,6 +29,7 @@ pub(super) static ERA_SUMMARY: Lazy<EraSummary> = Lazy::new(|| {
         validator_public_key,
         delegator_amount,
     );
+    // NOTE: Safe to unwrap since input is correct
     let validator = SeigniorageAllocation::validator(
         PublicKey::from_hex("012a1732addc639ea43a89e25d3ad912e40232156dcaa4b9edfc709f43d2fb0876")
             .unwrap(),

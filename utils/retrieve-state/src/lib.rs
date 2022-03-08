@@ -177,7 +177,7 @@ pub async fn download_block_with_deploys(
     let block = get_block(client, url, Some(GetBlockParams { block_identifier }))
         .await?
         .block
-        .unwrap();
+        .unwrap(); //? Safe to unwrap?
 
     let mut transfers = Vec::new();
     for transfer_hash in block.transfer_hashes() {
@@ -442,11 +442,11 @@ pub async fn download_trie_channels(
     loop {
         // Distribute work
         for (address, peer) in peer_map.iter() {
-            let counter = in_flight_counters.get_mut(&address).unwrap();
+            let counter = in_flight_counters.get_mut(&address).unwrap(); //? Safe to unwrap?
             if *counter < peer_mailbox_size {
                 if let Some(next_trie_key) = outstanding_trie_keys.pop() {
                     let mut sender = peer.sender.clone();
-                    sender.send(PeerMsg::GetTrie(next_trie_key)).await.unwrap();
+                    sender.send(PeerMsg::GetTrie(next_trie_key)).await.unwrap(); //? Safe to unwrap?
                     *counter += 1;
                 } else {
                     break;
@@ -469,7 +469,7 @@ pub async fn download_trie_channels(
                                 CorrelationId::new(),
                                 &trie,
                             )
-                            .unwrap()
+                            .unwrap() //? Safe?
                     });
 
                     // count of all tries we know about
@@ -538,7 +538,7 @@ pub async fn download_trie_channels(
             let kbytes_per_sec = bytes_per_sec / 1024;
             let timestamp = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .unwrap()
+                .unwrap() //? Safe to unwrap?
                 .as_millis();
             info!(
                 "({timestamp}) tries: {downloaded}/{total} - {kbytes_per_sec} kilobytes per second",
@@ -580,8 +580,8 @@ pub async fn download_trie_channels(
     }
 
     for (_address, peer) in peer_map.drain() {
-        peer.shutdown.send(()).unwrap();
-        peer.join_handle.await.unwrap();
+        peer.shutdown.send(()).unwrap(); //? Safe to unwrap?
+        peer.join_handle.await.unwrap(); //? Safe to unwrap?
     }
 
     Ok(())

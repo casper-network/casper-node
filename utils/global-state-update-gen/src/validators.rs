@@ -13,14 +13,14 @@ use crate::{
 
 pub(crate) fn generate_validators_update(matches: &ArgMatches<'_>) {
     let data_dir = matches.value_of("data_dir").unwrap_or(".");
-    let state_hash = matches.value_of("hash").unwrap();
+    let state_hash = matches.value_of("hash").unwrap(); //? Safe to unwrap?
     let validators = match matches.values_of("validator") {
         None => vec![],
         Some(values) => values
             .map(|validator_def| {
                 let mut fields = validator_def.split(',').map(str::to_owned);
-                let field1 = fields.next().unwrap();
-                let field2 = fields.next().unwrap();
+                let field1 = fields.next().unwrap(); //? Safe to unwrap?
+                let field2 = fields.next().unwrap(); //? Safe to unwrap?
                 (field1, field2)
             })
             .collect(),
@@ -36,14 +36,14 @@ pub(crate) fn generate_validators_update(matches: &ArgMatches<'_>) {
     // Create a new snapshot based on the old one and the supplied validators.
     let new_snapshot = gen_snapshot(
         validators,
-        *old_snapshot.keys().next().unwrap(),
+        *old_snapshot.keys().next().unwrap(), //? Safe to unwrap?
         old_snapshot.len() as u64,
     );
 
     // Print the write to the snapshot key.
     print_entry(
         &validators_key,
-        &StoredValue::from(CLValue::from_t(new_snapshot.clone()).unwrap()),
+        &StoredValue::from(CLValue::from_t(new_snapshot.clone()).unwrap()), //? Safe to unwrap?
     );
 
     let validators_diff = validators_diff(&old_snapshot, &new_snapshot);

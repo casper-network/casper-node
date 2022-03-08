@@ -56,8 +56,8 @@ mod partial_tries {
             key_to_delete,
         )? {
             DeleteResult::Deleted(root_after_delete) => root_after_delete,
-            DeleteResult::DoesNotExist => panic!("key did not exist"), //? Keep as is?
-            DeleteResult::RootNotFound => panic!("root should be found"), //? Keep as is?
+            DeleteResult::DoesNotExist => panic!("key did not exist"),
+            DeleteResult::RootNotFound => panic!("root should be found"),
         };
         assert_eq!(root_after_delete, *expected_root_after_delete);
         for HashedTrie { hash, trie } in expected_tries_after_delete {
@@ -128,9 +128,9 @@ mod partial_tries {
         let mut txn = environment.create_read_write_txn()?;
         match checked_delete::<K, V, _, _, E>(correlation_id, &mut txn, store, root, key_to_delete)?
         {
-            DeleteResult::Deleted(_) => panic!("should not delete"), //? Keep as is?
+            DeleteResult::Deleted(_) => panic!("should not delete"),
             DeleteResult::DoesNotExist => Ok(()),
-            DeleteResult::RootNotFound => panic!("root should be found"), //? Keep as is?
+            DeleteResult::RootNotFound => panic!("root should be found"),
         }
     }
 

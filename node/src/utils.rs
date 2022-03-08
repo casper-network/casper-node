@@ -403,8 +403,8 @@ macro_rules! unregister_metric {
 #[inline]
 pub(crate) fn xor(lhs: &mut [u8], rhs: &[u8]) {
     // Implementing SIMD support is left as an exercise for the reader.
-    //? Leave as is?
-    assert_eq!(lhs.len(), rhs.len(), "xor inputs should have equal length"); //?
+    //? Change assert --> debug_assert+error! ?
+    assert_eq!(lhs.len(), rhs.len(), "xor inputs should have equal length");
     lhs.iter_mut()
         .zip(rhs.iter())
         .for_each(|(sb, &cb)| sb.bitxor_assign(cb));

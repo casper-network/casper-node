@@ -371,9 +371,7 @@ impl Executor {
         let system_contract_registry = tracking_copy
             .borrow_mut()
             .get_system_contracts(correlation_id)
-            .unwrap_or_else(
-                |error| panic!("Could not retrieve system contracts: {:?}", error), //? Keep as is?
-            );
+            .unwrap_or_else(|error| panic!("Could not retrieve system contracts: {:?}", error));
 
         match direct_system_contract_call {
             DirectSystemContractCall::Slash
@@ -386,7 +384,6 @@ impl Executor {
                     .to_owned();
 
                 if Some(auction_hash.value()) != base_key.into_hash() {
-                    //? Keep as is?
                     panic!(
                         "{} should only be called with the auction contract",
                         direct_system_contract_call.entry_point_name()
@@ -400,7 +397,6 @@ impl Executor {
                     .get(HANDLE_PAYMENT)
                     .expect("should have handle payment");
                 if Some(handle_payment.value()) != base_key.into_hash() {
-                    //? Keep as is?
                     panic!(
                         "{} should only be called with the handle payment contract",
                         direct_system_contract_call.entry_point_name()
@@ -413,7 +409,6 @@ impl Executor {
                     .get(MINT)
                     .expect("should have mint hash");
                 if Some(mint_hash.value()) != base_key.into_hash() {
-                    //? Keep as is?
                     panic!(
                         "{} should only be called with the mint contract",
                         direct_system_contract_call.entry_point_name()
@@ -427,7 +422,6 @@ impl Executor {
                     .expect("should have auction hash")
                     .to_owned();
                 if Some(auction_hash.value()) != base_key.into_hash() {
-                    //? Keep as is?
                     panic!(
                         "{} should only be called with the auction contract",
                         direct_system_contract_call.entry_point_name()

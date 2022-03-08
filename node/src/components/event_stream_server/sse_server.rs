@@ -351,7 +351,7 @@ async fn filter_map_server_sent_event(
                     WarpServerSentEvent::default()
                 })
                 // Safe??
-                .id(event.id.expect("event should have id").to_string()))) //?
+                .id(event.id.expect("event should have id").to_string())))
         }
     }
 }
@@ -541,7 +541,6 @@ fn stream_to_client(
                 match result {
                     Ok(BroadcastChannelMessage::ServerSentEvent(event)) => {
                         if let Some(id) = event.id {
-                            // Safe?
                             if cloned_initial_ids.read().expect("cloned_initial_ids lock should not be poisoned") //?
                                 .contains(&id) {
                                 debug!(event_id=%id, "skipped duplicate event");
@@ -571,7 +570,7 @@ fn stream_to_client(
                 let _ = initial_stream_ids
                     .write()
                     // Safe?
-                    .expect("initial_stream_ids lock should not be poisoned") //?
+                    .expect("initial_stream_ids lock should not be poisoned")
                     .insert(id);
             }
             Ok(event)

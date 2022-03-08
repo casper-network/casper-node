@@ -11,6 +11,6 @@ fn main() {
     // Make the build profile available to rustc at compile time.
     println!(
         "cargo:rustc-env=NODE_BUILD_PROFILE={}",
-        env::var("PROFILE").expect("should have PROFILE env variable") //?
+        env::var("PROFILE").expect("should have PROFILE env variable")
     );
 }

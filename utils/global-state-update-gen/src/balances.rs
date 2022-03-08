@@ -11,12 +11,12 @@ use crate::utils::{hash_from_str, print_entry};
 
 pub(crate) fn generate_balances_update(matches: &ArgMatches<'_>) {
     let data_dir = matches.value_of("data_dir").unwrap_or(".");
-    let state_hash = matches.value_of("hash").unwrap();
+    let state_hash = matches.value_of("hash").unwrap(); //? Safe to unwrap?
 
-    let from_account = AccountHash::from_formatted_str(matches.value_of("from").unwrap()).unwrap();
-    let to_account = AccountHash::from_formatted_str(matches.value_of("to").unwrap()).unwrap();
-    let amount = U512::from_str_radix(matches.value_of("amount").unwrap(), 10).unwrap();
-    let proposer = PublicKey::from_hex(matches.value_of("proposer").unwrap().as_bytes()).unwrap();
+    let from_account = AccountHash::from_formatted_str(matches.value_of("from").unwrap()).unwrap(); //? Safe to unwrap?
+    let to_account = AccountHash::from_formatted_str(matches.value_of("to").unwrap()).unwrap(); //? Safe to unwrap?
+    let amount = U512::from_str_radix(matches.value_of("amount").unwrap(), 10).unwrap(); //? Safe to unwrap?
+    let proposer = PublicKey::from_hex(matches.value_of("proposer").unwrap().as_bytes()).unwrap(); //? Safe to unwrap?
 
     // Open the global state that should be in the supplied directory.
     let mut builder =
@@ -46,7 +46,7 @@ pub(crate) fn generate_balances_update(matches: &ArgMatches<'_>) {
         .into_iter()
         .map(AdditiveMap::from)
         .next()
-        .unwrap();
+        .unwrap(); //? Safe to unwrap?
 
     for (key, value) in transforms {
         if let Transform::Write(val) = value {

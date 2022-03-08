@@ -51,12 +51,11 @@ impl Params {
         end_timestamp: Timestamp,
         endorsement_evidence_limit: u64,
     ) -> Params {
-        //? assert!-->debug_assert!+error!
-        debug_assert!(
+        //? Hard panic? Ask Andreas...
+        assert!(
             reduced_block_reward <= block_reward,
             "reduced block reward must not be greater than the reward for a finalized block"
         );
-        error!("reduced block reward must not be greater than the reward for a finalized block");
 
         Params {
             seed,

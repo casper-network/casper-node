@@ -24,11 +24,10 @@ impl DependentFile {
         replacement: fn(&str) -> String,
     ) -> Self {
         let path = crate::root_dir().join(relative_path);
-        let contents = fs::read_to_string(&path).unwrap_or_else(
-            |error| panic!("should read {}: {:?}", path.display(), error), //? Keep as is?
-        );
+        let contents = fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("should read {}: {:?}", path.display(), error));
 
-        //? Make into debug_assert! ?
+        //? Change assert-->debug_assert+error! ?
         assert!(
             regex.find(&contents).is_some(),
             "regex '{}' failed to get a match in {}",
@@ -48,9 +47,8 @@ impl DependentFile {
         let updated_contents = self
             .regex
             .replace(&self.contents, (self.replacement)(updated_version).as_str());
-        fs::write(&self.path, updated_contents.as_ref()).unwrap_or_else(
-            |error| panic!("should write {}: {:?}", self.path.display(), error), //? Keep as is?
-        );
+        fs::write(&self.path, updated_contents.as_ref())
+            .unwrap_or_else(|error| panic!("should write {}: {:?}", self.path.display(), error));
     }
 
     pub fn path(&self) -> &Path {

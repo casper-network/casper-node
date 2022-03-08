@@ -53,7 +53,8 @@ impl ExecuteRequest {
 impl Default for ExecuteRequest {
     fn default() -> Self {
         let proposer_secret_key =
-            SecretKey::ed25519_from_bytes([0; SecretKey::ED25519_LENGTH]).unwrap();
+         // NOTE: Safe to unwrap as ED25519_LENGTH is correct length
+        SecretKey::ed25519_from_bytes([0; SecretKey::ED25519_LENGTH]).unwrap();
         let proposer = PublicKey::from(&proposer_secret_key);
         Self {
             parent_state_hash: Digest::hash(&[]),

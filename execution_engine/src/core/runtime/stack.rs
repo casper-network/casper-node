@@ -23,7 +23,7 @@ pub struct RuntimeStack {
 struct RuntimeStackUnderflow;
 
 /// Error returned on an attempt to push to a stack already at the maximum height.
-#[derive(Debug, Clone)] //? Added Clone
+#[derive(Debug, Clone)]
 pub struct RuntimeStackOverflow;
 
 impl RuntimeStack {

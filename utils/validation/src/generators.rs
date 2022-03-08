@@ -277,7 +277,6 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         };
 
         let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
-
         let account = Account::new(
             account_hash,
             account_named_keys,

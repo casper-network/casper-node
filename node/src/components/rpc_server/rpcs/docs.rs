@@ -269,11 +269,11 @@ impl OpenRpcSchema {
         for (key, value) in root_schema.definitions.drain(..) {
             match self.components.schemas.entry(key) {
                 MapEntry::Occupied(current_value) => {
-                    //? Leave as is since this is in docs.rs?
+                    //? Change assert --> debug_assert+error! ?
                     assert_eq!(
                         current_value.get().clone().into_object().metadata,
                         value.into_object().metadata,
-                        "value metadata should equal current_value metadata" //? Added error msg
+                        "value metadata should equal current_value metadata"
                     )
                 }
                 MapEntry::Vacant(vacant) => {
@@ -354,7 +354,7 @@ impl Example {
         let params = match maybe_params_obj {
             Some(params_obj) => params_obj
                 .as_object()
-                .expect("params_obj should be Object") //?
+                .expect("params_obj should be Object")
                 .iter()
                 .map(|(name, value)| ExampleParam {
                     name: name.clone(),
