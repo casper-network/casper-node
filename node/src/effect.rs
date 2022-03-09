@@ -1833,12 +1833,14 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<ControlAnnouncement>,
     {
-        self.event_queue
-            .schedule(
-                ControlAnnouncement::QueueDump { dump_format },
-                QueueKind::Control,
-            )
-            .await
+        self.make_request(
+            |responder| ControlAnnouncement::QueueDumpRequest {
+                dump_format,
+                finished: responder,
+            },
+            QueueKind::Control,
+        )
+        .await
     }
 }
 

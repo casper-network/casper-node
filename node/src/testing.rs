@@ -275,7 +275,7 @@ impl<REv: 'static> ComponentHarness<REv> {
                                 fatal
                             )
                         }
-                        ControlAnnouncement::QueueDump { .. } => {
+                        ControlAnnouncement::QueueDumpRequest { .. } => {
                             panic!("queue dumps are not supported in the test harness")
                         }
                     }

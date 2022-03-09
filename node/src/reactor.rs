@@ -570,7 +570,10 @@ where
                     error!(%file, %line, %msg, "fatal error via control announcement");
                     (Default::default(), false)
                 }
-                Some(ControlAnnouncement::QueueDump { dump_format }) => {
+                Some(ControlAnnouncement::QueueDumpRequest {
+                    dump_format,
+                    finished,
+                }) => {
                     match dump_format {
                         QueueDumpFormat::Serde(mut ser) => {
                             self.scheduler
@@ -607,6 +610,9 @@ where
                             };
                         }
                     }
+
+                    // Notify requestor that we finished writing the queue dump.
+                    finished.respond(()).await;
 
                     // Do nothing on queue dump otherwise.
                     (Default::default(), true)
@@ -702,7 +708,7 @@ where
                                         warn!(%file, line=*line, %msg, "exiting due to fatal error scheduled before reactor completion");
                                         return ReactorExit::ProcessShouldExit(ExitCode::Abort);
                                     }
-                                    ControlAnnouncement::QueueDump { .. } => {
+                                    ControlAnnouncement::QueueDumpRequest { .. } => {
                                         // Queue dumps are not handled when shutting down. TODO:
                                         // Maybe return an error instead, something like "reactor is
                                         // shutting down"?

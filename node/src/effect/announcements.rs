@@ -49,10 +49,12 @@ pub(crate) enum ControlAnnouncement {
         msg: String,
     },
     // An external event queue dump has been requested.
-    QueueDump {
+    QueueDumpRequest {
         /// The format to dump the queue in.
         #[serde(skip)]
         dump_format: QueueDumpFormat,
+        /// Responder called when the dump has been finished.
+        finished: Responder<()>,
     },
 }
 
@@ -86,7 +88,7 @@ impl Debug for ControlAnnouncement {
                 .field("line", line)
                 .field("msg", msg)
                 .finish(),
-            Self::QueueDump { .. } => f.debug_struct("QueueDump").finish_non_exhaustive(),
+            Self::QueueDumpRequest { .. } => f.debug_struct("QueueDump").finish_non_exhaustive(),
         }
     }
 }
@@ -97,7 +99,7 @@ impl Display for ControlAnnouncement {
             ControlAnnouncement::FatalError { file, line, msg } => {
                 write!(f, "fatal error [{}:{}]: {}", file, line, msg)
             }
-            ControlAnnouncement::QueueDump { .. } => {
+            ControlAnnouncement::QueueDumpRequest { .. } => {
                 write!(f, "dump event queue")
             }
         }
