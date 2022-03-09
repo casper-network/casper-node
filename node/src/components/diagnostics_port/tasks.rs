@@ -1,8 +1,7 @@
 use std::{
     borrow::Cow,
     fmt::{self, Debug, Display, Formatter},
-    fs,
-    io::{self, Seek, SeekFrom},
+    fs, io,
     path::PathBuf,
 };
 
@@ -232,58 +231,42 @@ impl Session {
                         }
                     }
                     Action::DumpQueues => {
-                        match tempfile::tempfile() {
-                            Ok(mut tmp) => {
-                                // We create a second handle to the serializer temporary file. It
-                                // will be discarded once serialization is finished.
-                                match tmp.try_clone() {
-                                    Ok(tmp2) => {
-                                        // Perform the actual dump.
-                                        effect_builder
-                                            .diagnostics_port_dump_queue(
-                                                self.create_queue_dump_format(tmp2),
-                                            )
-                                            .await;
+                        let tempdir = tempfile::tempdir().expect("FIXME");
+                        let tempfile_path = tempdir.path().join("queue-dump");
 
-                                        // We can now rewind the file and send it.
-                                        if let Err(err) = tmp.seek(SeekFrom::Start(0)) {
-                                            self.send_outcome(
-                                                writer,
-                                                &Outcome::failed(format!(
-                                                    "could not seek spooled temporary file: {}",
-                                                    err
-                                                )),
-                                            )
-                                            .await?;
-                                        } else {
-                                            self.send_outcome(
-                                                writer,
-                                                &Outcome::success("dumping queues"),
-                                            )
-                                            .await?;
+                        match fs::File::create(&tempfile_path) {
+                            Ok(tmp) => {
+                                effect_builder
+                                    .diagnostics_port_dump_queue(self.create_queue_dump_format(tmp))
+                                    .await;
 
-                                            // At this point, we have a complete queue dump in the
-                                            // requested format stored inside the temporary file.
+                                // We can now reopen the file and send it.
+                                match fs::File::open(tempfile_path) {
+                                    Ok(reopened_tempfile) => {
+                                        self.send_outcome(
+                                            writer,
+                                            &Outcome::success("dumping queues"),
+                                        )
+                                        .await?;
 
-                                            self.stream_to_client(
-                                                writer,
-                                                &mut tokio::fs::File::from_std(tmp),
-                                            )
-                                            .await?;
-                                        }
+                                        // At this point, we have a complete queue dump in the
+                                        // requested format stored inside the temporary file.
+                                        let mut tokio_file =
+                                            tokio::fs::File::from_std(reopened_tempfile);
+
+                                        self.stream_to_client(writer, &mut tokio_file).await?;
                                     }
                                     Err(err) => {
-                                        warn!(%err, "could not clone temporary file handle");
                                         self.send_outcome(
                                             writer,
                                             &Outcome::failed(format!(
-                                                "could not seek spooled temporary file: {}",
+                                                "could not reopen temporary file: {}",
                                                 err
                                             )),
                                         )
                                         .await?;
                                     }
-                                };
+                                }
                             }
                             Err(err) => {
                                 self.send_outcome(
