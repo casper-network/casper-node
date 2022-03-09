@@ -238,54 +238,71 @@ impl Session {
                         //       named one in a temporary directory, and return it through the
                         //       responder. This is currently hamstrung since `bincode` does not
                         //       allow retrieving the inner writer from its serializer.
-                        let tempdir = tempfile::tempdir().expect("FIXME");
-                        let tempfile_path = tempdir.path().join("queue-dump");
+                        match tempfile::tempdir() {
+                            Ok(tempdir) => {
+                                let tempfile_path = tempdir.path().join("queue-dump");
 
-                        match fs::File::create(&tempfile_path) {
-                            Ok(tmp) => {
-                                effect_builder
-                                    .diagnostics_port_dump_queue(self.create_queue_dump_format(tmp))
-                                    .await;
+                                match fs::File::create(&tempfile_path) {
+                                    Ok(tmp) => {
+                                        effect_builder
+                                            .diagnostics_port_dump_queue(
+                                                self.create_queue_dump_format(tmp),
+                                            )
+                                            .await;
 
-                                // We can now reopen the file and send it.
-                                match fs::File::open(tempfile_path) {
-                                    Ok(reopened_tempfile) => {
-                                        self.send_outcome(
-                                            writer,
-                                            &Outcome::success("dumping queues"),
-                                        )
-                                        .await?;
+                                        // We can now reopen the file and send it.
+                                        match fs::File::open(tempfile_path) {
+                                            Ok(reopened_tempfile) => {
+                                                self.send_outcome(
+                                                    writer,
+                                                    &Outcome::success("dumping queues"),
+                                                )
+                                                .await?;
 
-                                        // At this point, we have a complete queue dump in the
-                                        // requested format stored inside the temporary file.
-                                        let mut tokio_file =
-                                            tokio::fs::File::from_std(reopened_tempfile);
+                                                // At this point, we have a complete queue dump in
+                                                // the requested format stored inside the temporary
+                                                // file.
+                                                let mut tokio_file =
+                                                    tokio::fs::File::from_std(reopened_tempfile);
 
-                                        self.stream_to_client(writer, &mut tokio_file).await?;
+                                                self.stream_to_client(writer, &mut tokio_file)
+                                                    .await?;
+                                            }
+                                            Err(err) => {
+                                                self.send_outcome(
+                                                    writer,
+                                                    &Outcome::failed(format!(
+                                                        "could not reopen temporary file: {}",
+                                                        err
+                                                    )),
+                                                )
+                                                .await?;
+                                            }
+                                        }
                                     }
                                     Err(err) => {
                                         self.send_outcome(
                                             writer,
                                             &Outcome::failed(format!(
-                                                "could not reopen temporary file: {}",
-                                                err
-                                            )),
+                                        "could not create a temporary file for queue dump: {}",
+                                        err
+                                    )),
                                         )
                                         .await?;
                                     }
-                                }
+                                };
                             }
                             Err(err) => {
                                 self.send_outcome(
                                     writer,
                                     &Outcome::failed(format!(
-                                        "could not create a temporary file for queue dump: {}",
+                                        "could not create a temporary directory for queue dump: {}",
                                         err
                                     )),
                                 )
                                 .await?;
                             }
-                        };
+                        }
                     }
                     Action::Quit => {
                         self.send_outcome(writer, &Outcome::success("goodbye!"))
