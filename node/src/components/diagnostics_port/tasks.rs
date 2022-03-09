@@ -234,6 +234,10 @@ impl Session {
                         }
                     }
                     Action::DumpQueues => {
+                        // Note: The preferable approach would be to use a tempfile instead of a
+                        //       named one in a temporary directory, and return it through the
+                        //       responder. This is currently hamstrung since `bincode` does not
+                        //       allow retrieving the inner writer from its serializer.
                         let tempdir = tempfile::tempdir().expect("FIXME");
                         let tempfile_path = tempdir.path().join("queue-dump");
 
