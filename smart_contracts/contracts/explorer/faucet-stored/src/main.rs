@@ -11,7 +11,7 @@ use casper_contract::{
 };
 use casper_types::{
     contracts::NamedKeys, ApiError, CLType, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Parameter, URef, U512,
+    EntryPoints, Parameter, PublicKey, URef, U512,
 };
 
 #[repr(u16)]
@@ -49,6 +49,10 @@ fn build_named_keys_and_purse() -> (NamedKeys, URef) {
     named_keys.insert(
         faucet::DISTRIBUTIONS_PER_INTERVAL.to_string(),
         storage::new_uref(0u64).into(),
+    );
+    named_keys.insert(
+        faucet::AUTHORIZED_ACCOUNT.to_string(),
+        storage::new_uref(None::<PublicKey>).into(),
     );
 
     (named_keys, purse)
@@ -94,8 +98,20 @@ pub extern "C" fn call() {
             EntryPointType::Contract,
         );
 
+        let authorize_to = EntryPoint::new(
+            faucet::ENTRY_POINT_AUTHORIZE_TO,
+            vec![Parameter::new(
+                faucet::ARG_TARGET,
+                CLType::Option(Box::new(CLType::PublicKey)),
+            )],
+            CLType::Unit,
+            EntryPointAccess::Public,
+            EntryPointType::Contract,
+        );
+
         entry_points.add_entry_point(faucet);
         entry_points.add_entry_point(set_variables);
+        entry_points.add_entry_point(authorize_to);
 
         entry_points
     };
