@@ -554,7 +554,7 @@ mod tests {
             // We put some dump-queues events on the stream, to have some events to dump when the
             // first one is processed.
             stream
-                .write_all(b"set -o json -q false\ndump-queues\ndump-queues\ndump-queues\nquit\n")
+                .write_all(b"set -o json -q true\ndump-queues\ndump-queues\ndump-queues\nquit\n")
                 .await
                 .expect("could not write to listener");
             stream.flush().await.expect("flushing failed");
@@ -580,6 +580,9 @@ mod tests {
 
         let output = join_handle.await.expect("error joining client task");
 
-        dbg!(output);
+        // The output will be empty queues, albeit formatted as JSON. Just check if there is a
+        // proper JSON header present.
+        assert!(output.len() > 10);
+        assert!(output.starts_with("{\"queues\":{"));
     }
 }

@@ -280,9 +280,13 @@ dump-queues
     "msg": "dumping queues"
   }
 }
+{"queues":{"Regular":[],"Api":[],"Network":[],"Control":[],"NetworkIncoming":[]
+}}{"queues":{"Api":[],"Regular":[],"Control":[],"NetworkIncoming":[],"Network":
+[]}}{"queues":{"Network":[],"Control":[],"Api":[],"NetworkIncoming":[],"Regular
+":[]}}
 ```
 
-No output will be produced on a node that is working without external pressure, as the queues will be empty most of the time.
+Empty output will be produced on a node that is working without external pressure, as the queues will be empty most of the time.
 
 
 #### Non-interactive use
