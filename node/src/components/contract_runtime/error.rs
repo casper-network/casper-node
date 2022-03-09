@@ -1,7 +1,7 @@
 //! Errors that the contract runtime component may raise.
 
 use casper_execution_engine::{
-    core::engine_state::{self, Error as EngineStateError, StepError},
+    core::engine_state::{Error as EngineStateError, StepError},
     storage::error::lmdb::Error as StorageLmdbError,
 };
 
@@ -22,7 +22,7 @@ pub(crate) enum ConfigError {
     Prometheus(#[from] prometheus::Error),
     /// Error initializing execution engine.
     #[error("failed to initialize execution engine: {0}")]
-    EngineState(#[from] engine_state::Error),
+    EngineState(#[from] EngineStateError),
 }
 
 /// An error raised by a contract runtime variant.

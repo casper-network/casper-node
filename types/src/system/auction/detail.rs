@@ -352,8 +352,8 @@ where
 
 /// Returns the era validators from a snapshot.
 ///
-/// This is currently load-bearing as this logic is used in the relevant auction entry point as well
-/// as used in the node.
+/// This is `pub` as it is used not just in the relevant auction entry point, but also by the
+/// engine state while directly querying for the era validators.
 pub fn era_validators_from_snapshot(snapshot: SeigniorageRecipientsSnapshot) -> EraValidators {
     snapshot
         .into_iter()

@@ -472,7 +472,7 @@ impl ContractRuntime {
 
     /// Commits a genesis using a chainspec
     pub(crate) fn commit_genesis(
-        &mut self,
+        &self,
         chainspec: &Chainspec,
     ) -> Result<GenesisSuccess, engine_state::Error> {
         let correlation_id = CorrelationId::new();

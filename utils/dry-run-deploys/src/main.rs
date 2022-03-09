@@ -65,7 +65,6 @@ async fn main() -> Result<(), anyhow::Error> {
     )?;
 
     let mut execution_pre_state = ExecutionPreState::from(&previous_block_header);
-
     let mut execute_count = 0;
 
     let highest_height_in_chain = storage.read_highest_block()?;
