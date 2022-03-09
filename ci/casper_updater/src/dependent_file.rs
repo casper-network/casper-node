@@ -26,8 +26,6 @@ impl DependentFile {
         let path = crate::root_dir().join(relative_path);
         let contents = fs::read_to_string(&path)
             .unwrap_or_else(|error| panic!("should read {}: {:?}", path.display(), error));
-
-        //? Change assert-->debug_assert+error! ?
         assert!(
             regex.find(&contents).is_some(),
             "regex '{}' failed to get a match in {}",

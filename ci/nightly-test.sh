@@ -13,17 +13,8 @@ NCTL_CLIENT_BRANCH="${DRONE_BRANCH:='dev'}"
 pushd "$DRONE_ROOT_DIR"
 source "$(pwd)"/utils/nctl/activate
 
-# Clone the client and launcher repos if required.
-if [ ! -d "$NCTL_CASPER_CLIENT_HOME" ]; then
-    echo "Checking out $NCTL_CLIENT_BRANCH of casper-client-rs..."
-    git clone -b "$NCTL_CLIENT_BRANCH" https://github.com/casper-ecosystem/casper-client-rs "$NCTL_CASPER_CLIENT_HOME"
-fi
-if [ ! -d "$NCTL_CASPER_NODE_LAUNCHER_HOME" ]; then
-    git clone https://github.com/casper-network/casper-node-launcher "$NCTL_CASPER_NODE_LAUNCHER_HOME"
-fi
-
-# Build, Setup, and Start NCTL
-nctl-compile
+# Call compile wrapper for client, launcher, and nctl-compile
+bash -i "$DRONE_ROOT_DIR/ci/nctl_compile.sh"
 
 function start_run_teardown() {
     local RUN_CMD=$1

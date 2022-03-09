@@ -16,7 +16,7 @@ max_parallel_trie_fetches = 20
 retry_interval = '100ms'
 
 # Whether to synchronize all data back to genesis when joining.
-archival_sync = true
+sync_to_genesis = true
 
 
 # =================================

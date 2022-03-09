@@ -45,10 +45,8 @@ pub fn gen_snapshot(
     let mut new_snapshot = BTreeMap::new();
     let mut era_validators = BTreeMap::new();
     for (pub_key_str, bonded_amount_str) in &validators {
-        //? Safe to unwrap???
         let validator_pub_key = PublicKey::from_hex(pub_key_str.as_bytes()).unwrap();
-        let bonded_amount = U512::from_dec_str(bonded_amount_str)
-            .expect("bonded_amount_str should be a decimal string");
+        let bonded_amount = U512::from_dec_str(bonded_amount_str).unwrap();
         let seigniorage_recipient =
             SeigniorageRecipient::new(bonded_amount, Default::default(), Default::default());
         let _ = era_validators.insert(validator_pub_key, seigniorage_recipient);
@@ -69,11 +67,11 @@ pub fn find_large_bids(
     let min_bid = new_snapshot
         .values()
         .next()
-        .expect("new_snapshot should have values")
+        .unwrap()
         .values()
         .map(SeigniorageRecipient::stake)
         .min()
-        .unwrap(); //? Safe to unwrap?
+        .unwrap();
     builder
         .get_bids()
         .into_iter()
@@ -102,14 +100,12 @@ pub fn generate_entries_removing_bids(
             let amount = *new_snapshot
                 .values()
                 .next()
-                .expect("new_snapshot should gave values")
+                .unwrap()
                 .get(pkey)
-                .expect("Should have seigniorage recipient")
+                .unwrap()
                 .stake();
             let account_hash = pkey.to_account_hash();
-            let account = builder
-                .get_account(account_hash)
-                .expect("builder should have account");
+            let account = builder.get_account(account_hash).unwrap();
             (
                 Key::Bid(account_hash),
                 Bid::unlocked(
@@ -123,9 +119,7 @@ pub fn generate_entries_removing_bids(
         })
         .chain(to_unbid.into_iter().map(|pkey| {
             let account_hash = pkey.to_account_hash();
-            let account = builder
-                .get_account(account_hash)
-                .expect("builder should have account");
+            let account = builder.get_account(account_hash).unwrap();
             (
                 Key::Bid(account_hash),
                 Bid::empty(pkey.clone(), account.main_purse()).into(),

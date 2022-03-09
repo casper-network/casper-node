@@ -12,9 +12,8 @@ pub use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::{
-    core::engine_state::EngineState,
-    shared::newtypes::CorrelationId,
-    storage::{global_state::lmdb::LmdbGlobalState, trie::Trie},
+    core::engine_state::EngineState, shared::newtypes::CorrelationId,
+    storage::global_state::lmdb::LmdbGlobalState,
 };
 use casper_hashing::Digest;
 use casper_node::{
@@ -32,10 +31,7 @@ use casper_node::{
     types::{Block, BlockHash, Deploy, DeployOrTransferHash, JsonBlock},
     utils::work_queue::WorkQueue,
 };
-use casper_types::{
-    bytesrepr::{self, FromBytes},
-    Key, StoredValue,
-};
+use casper_types::{bytesrepr, bytesrepr::Bytes};
 use futures_channel::{mpsc::UnboundedSender, oneshot};
 use futures_util::SinkExt;
 use tokio::{
@@ -177,7 +173,7 @@ pub async fn download_block_with_deploys(
     let block = get_block(client, url, Some(GetBlockParams { block_identifier }))
         .await?
         .block
-        .unwrap(); //? Safe to unwrap?
+        .unwrap();
 
     let mut transfers = Vec::new();
     for transfer_hash in block.transfer_hashes() {
@@ -377,7 +373,7 @@ pub enum PeerMsg {
     /// Download and save the trie under this
     GetTrie(Digest),
     TrieDownloaded {
-        trie: Box<Trie<Key, StoredValue>>,
+        trie_bytes: Bytes,
         peer: SocketAddr,
         elapsed: Duration,
         len_in_bytes: usize,
@@ -442,13 +438,11 @@ pub async fn download_trie_channels(
     loop {
         // Distribute work
         for (address, peer) in peer_map.iter() {
-            let counter = in_flight_counters
-                .get_mut(&address)
-                .expect("in_flight_counters should contain address");
+            let counter = in_flight_counters.get_mut(&address).unwrap();
             if *counter < peer_mailbox_size {
                 if let Some(next_trie_key) = outstanding_trie_keys.pop() {
                     let mut sender = peer.sender.clone();
-                    sender.send(PeerMsg::GetTrie(next_trie_key)).await.unwrap(); //? Safe to unwrap?
+                    sender.send(PeerMsg::GetTrie(next_trie_key)).await.unwrap();
                     *counter += 1;
                 } else {
                     break;
@@ -460,7 +454,7 @@ pub async fn download_trie_channels(
         if let Some(msg) = base_recv.next().await {
             match msg {
                 Ok(PeerMsg::TrieDownloaded {
-                    trie,
+                    trie_bytes,
                     peer,
                     elapsed: _,
                     len_in_bytes,
@@ -469,9 +463,9 @@ pub async fn download_trie_channels(
                         engine_state
                             .put_trie_and_find_missing_descendant_trie_keys(
                                 CorrelationId::new(),
-                                &trie,
+                                &trie_bytes,
                             )
-                            .unwrap() //? Safe to unwrap?
+                            .unwrap()
                     });
 
                     // count of all tries we know about
@@ -540,7 +534,7 @@ pub async fn download_trie_channels(
             let kbytes_per_sec = bytes_per_sec / 1024;
             let timestamp = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .unwrap() //? Safe to unwrap?
+                .unwrap()
                 .as_millis();
             info!(
                 "({timestamp}) tries: {downloaded}/{total} - {kbytes_per_sec} kilobytes per second",
@@ -556,11 +550,8 @@ pub async fn download_trie_channels(
         // Finishing state, we downloaded all the intermediate tries we found, as well as the state
         // root we started with.
         if tries_downloaded == total_tries_count + 1 {
-            let missing = engine_state.missing_trie_keys(
-                CorrelationId::new(),
-                vec![state_root_hash],
-                false,
-            )?;
+            let missing =
+                engine_state.missing_trie_keys(CorrelationId::new(), vec![state_root_hash])?;
 
             if missing.is_empty() {
                 info!("state root has no missing descendants.");
@@ -582,8 +573,8 @@ pub async fn download_trie_channels(
     }
 
     for (_address, peer) in peer_map.drain() {
-        peer.shutdown.send(()).unwrap(); //? Safe to unwrap?
-        peer.join_handle.await.unwrap(); //? Safe to unwrap?
+        peer.shutdown.send(()).unwrap();
+        peer.join_handle.await.unwrap();
     }
 
     Ok(())
@@ -661,28 +652,13 @@ fn spawn_peer(
             .await
             {
                 Ok(GetTrieResult {
-                    maybe_trie_bytes: Some(blob),
+                    maybe_trie_bytes: Some(trie_bytes),
                     ..
                 }) => {
-                    let bytes: Vec<u8> = blob.into();
-                    let len_in_bytes = bytes.len();
-                    let trie: Trie<Key, StoredValue> = match FromBytes::from_bytes(&bytes) {
-                        Ok((trie, _)) => trie,
-                        Err(error) => {
-                            base_send
-                                .send(Err(PeerError::BadData {
-                                    peer_address: address,
-                                    trie_key: next_trie_key,
-                                    error,
-                                }))
-                                .await
-                                .expect("should send");
-                            return;
-                        }
-                    };
+                    let len_in_bytes = trie_bytes.as_ref().len();
                     base_send
                         .send(Ok(PeerMsg::TrieDownloaded {
-                            trie: Box::new(trie),
+                            trie_bytes,
                             peer: address,
                             elapsed: start.elapsed(),
                             len_in_bytes,
@@ -922,9 +898,8 @@ async fn fetch_and_store_trie(
 
             // similar to how the contract-runtime does related operations, spawn in a blocking task
             tokio::task::spawn_blocking(move || {
-                let (trie, _rest) = FromBytes::from_bytes(&bytes)?;
                 engine_state
-                    .put_trie_and_find_missing_descendant_trie_keys(CorrelationId::new(), &trie)
+                    .put_trie_and_find_missing_descendant_trie_keys(CorrelationId::new(), &bytes)
             })
             .await??
         }

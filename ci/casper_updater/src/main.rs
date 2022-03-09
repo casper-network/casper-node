@@ -279,8 +279,6 @@ fn main() {
             .current_dir(root_dir())
             .status()
             .expect("Failed to execute 'cargo generate-lockfile'");
-
-        //? Change assert-->debug_assert+error! ?
         assert!(status.success(), "Failed to update Cargo.lock");
     }
 }

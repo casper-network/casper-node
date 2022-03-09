@@ -88,7 +88,7 @@ fn generate_system_contract_registry_using_protocol_data(data_dir: &Path) {
             error, serialized_protocol_data
         )
     });
-    assert!(remainder.is_empty(), "remainder should be empty");
+    assert!(remainder.is_empty());
 
     let mut registry = SystemContractRegistry::new();
     registry.insert(MINT.to_string(), mint_hash);
@@ -96,7 +96,6 @@ fn generate_system_contract_registry_using_protocol_data(data_dir: &Path) {
     registry.insert(STANDARD_PAYMENT.to_string(), standard_payment_hash);
     registry.insert(AUCTION.to_string(), auction_hash);
 
-    // NOTE: Safe to unwrap as registry is built just above
     print_entry(
         &Key::SystemContractRegistry,
         &StoredValue::from(CLValue::from_t(registry).unwrap()),
@@ -120,6 +119,6 @@ fn generate_system_contract_registry_using_global_state(data_dir: &Path, state_h
 
     print_entry(
         &Key::SystemContractRegistry,
-        &StoredValue::from(CLValue::from_t(registry).unwrap()), //? Safe to unwrap?
+        &StoredValue::from(CLValue::from_t(registry).unwrap()),
     );
 }

@@ -90,8 +90,6 @@ async fn main() -> Result<(), anyhow::Error> {
     let highest_height_in_chain = storage.read_highest_block()?;
     let ending_block_height = opts
         .ending_block_height
-        // NOTE: Safe to unwrap highest_height_in_chain because above we have already a previous
-        // block.
         .unwrap_or_else(|| highest_height_in_chain.unwrap().take_header().height());
 
     println!(
@@ -153,7 +151,6 @@ async fn main() -> Result<(), anyhow::Error> {
 
         let header = block_and_execution_effects.block.take_header();
         let expected = block.take_header();
-        //? Change assert-->debug_assert+error! ?
         assert_eq!(
             header.state_root_hash(),
             expected.state_root_hash(),

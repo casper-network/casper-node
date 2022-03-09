@@ -139,7 +139,6 @@ pub fn create_storage(
         &WithDir::new(chain_download_path, storage_config),
         None,
         ProtocolVersion::from_parts(0, 0, 0),
-        false,
         "test",
         Ratio::new(1, 3),
         None,

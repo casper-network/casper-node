@@ -177,7 +177,7 @@ async fn main() -> Result<(), anyhow::Error> {
             let client = ClientBuilder::new()
                 .gzip(!opts.disable_gzip)
                 .build()
-                .expect("ClientBuilder should succeed");
+                .unwrap();
             if !chain_download_path.exists() {
                 info!(
                     "creating new chain download data dir {}",
@@ -206,7 +206,7 @@ async fn main() -> Result<(), anyhow::Error> {
             let client = ClientBuilder::new()
                 .gzip(!opts.disable_gzip)
                 .build()
-                .unwrap(); //? Safe to unwrap?
+                .unwrap();
 
             let mut peers_list = retrieve_state::get_peers_list(&client, &url)
                 .await?
