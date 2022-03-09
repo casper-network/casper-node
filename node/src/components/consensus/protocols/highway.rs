@@ -128,7 +128,6 @@ impl<C: Context + 'static> HighwayProtocol<C> {
             validators.set_cannot_propose(vid);
         }
 
-        //? Change assert-->debug_assert+error! ?
         assert!(
             validators.ensure_nonzero_proposing_stake(),
             "cannot start era with total weight 0"

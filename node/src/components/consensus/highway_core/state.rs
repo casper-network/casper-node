@@ -207,7 +207,6 @@ impl<C: Context> State<C> {
         IB2: IntoIterator<Item = ValidatorIndex>,
     {
         let weights = ValidatorMap::from(weights.into_iter().map(|w| *w.borrow()).collect_vec());
-        //? Change assert-->debug_assert+error! ?
         assert!(
             weights.len() > 0,
             "cannot initialize Highway with no validators"
@@ -219,7 +218,6 @@ impl<C: Context> State<C> {
             sums
         };
         let cumulative_w = ValidatorMap::from(weights.iter().copied().fold(vec![], sums));
-        //? Change assert-->debug_assert+error! ?
         assert!(
             // NOTE: Unwrap safe as we have tested above that weights have length > 0
             *cumulative_w.as_ref().last().unwrap() > Weight(0),
@@ -229,7 +227,6 @@ impl<C: Context> State<C> {
         let mut panorama = Panorama::new(weights.len());
         let mut can_propose: ValidatorMap<bool> = weights.iter().map(|_| true).collect();
         for idx in cannot_propose {
-            //? Change assert-->debug_assert+error! ?
             assert!(
                 idx.0 < weights.len() as u32,
                 "invalid validator index for exclusion from leader sequence"
@@ -238,7 +235,6 @@ impl<C: Context> State<C> {
         }
         let faults: HashMap<_, _> = banned.into_iter().map(|idx| (idx, Fault::Banned)).collect();
         for idx in faults.keys() {
-            //? Change assert-->debug_assert+error! ?
             assert!(
                 idx.0 < weights.len() as u32,
                 "invalid banned validator index"

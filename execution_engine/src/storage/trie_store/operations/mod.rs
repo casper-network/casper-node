@@ -81,12 +81,10 @@ where
             }
             Trie::Node { pointer_block } => {
                 let index: usize = {
-                    //? Change assert-->debug_assert+error! ?
                     assert!(depth < path.len(), "depth must be < {}", path.len());
                     path[depth].into()
                 };
                 let maybe_pointer: Option<Pointer> = {
-                    //? Change assert-->debug_assert+error! ?
                     assert!(index < RADIX, "key length must be < {}", RADIX);
                     pointer_block[index]
                 };
@@ -176,12 +174,10 @@ where
             }
             Trie::Node { pointer_block } => {
                 let hole_index: usize = {
-                    //? Change assert-->debug_assert+error! ?
                     assert!(depth < path.len(), "depth must be < {}", path.len());
                     path[depth].into()
                 };
                 let pointer: Pointer = {
-                    //? Change assert-->debug_assert+error! ?
                     assert!(hole_index < RADIX, "key length must be < {}", RADIX);
                     match pointer_block[hole_index] {
                         Some(pointer) => pointer,
@@ -426,13 +422,11 @@ where
             }
             Trie::Node { pointer_block } => {
                 let index = {
-                    //? Change assert-->debug_assert+error! ?
                     assert!(depth < path.len(), "depth must be < {}", path.len());
                     path[depth]
                 };
                 let maybe_pointer: Option<Pointer> = {
                     let index: usize = index.into();
-                    //? Change assert-->debug_assert+error! ?
                     assert!(index < RADIX, "index must be < {}", RADIX);
                     pointer_block[index]
                 };
@@ -465,7 +459,6 @@ where
                 match store.get(txn, pointer.hash())? {
                     Some(next) => {
                         let index = {
-                            //? Change assert-->debug_assert+error! ?
                             assert!(depth < path.len(), "depth must be < {}", path.len());
                             path[depth]
                         };
@@ -793,7 +786,6 @@ where
         let path_to_node: Vec<u8> = get_parents_path(&parents);
         // Check that the path to the node is a prefix of the current path
         let current_path = common_prefix(path_to_leaf, &path_to_node);
-        //? Change assert-->debug_assert+error!
         assert_eq!(
             current_path, path_to_node,
             "current_path must be the same as path_to_node"
@@ -805,7 +797,6 @@ where
     };
     // Index path by current depth;
     let index = {
-        //? Change assert-->debug_assert+error! ?
         assert!(
             depth < path_to_leaf.len(),
             "depth must be < {}",
@@ -1117,7 +1108,6 @@ where
                             return Some(Err(e.into()));
                         }
                     };
-                    //? Add error! ?
                     debug_assert!(key_bytes.starts_with(&path));
                     // only return the leaf if it matches the initial descend path
                     path.extend(&self.initial_descend);
@@ -1144,7 +1134,6 @@ where
                                     return Some(Err(e));
                                 }
                             };
-                            //? Add error! ?
                             debug_assert!(maybe_next_trie.is_some());
                             if self.initial_descend.pop_front().is_none() {
                                 self.visited.push(VisitedTrieNode {
@@ -1183,7 +1172,6 @@ where
                                 return Some(Err(e));
                             }
                         };
-                        //? Add error! ?
                         debug_assert!({ matches!(&maybe_next_trie, Some(Trie::Node { .. })) });
                         path.extend(affix);
                     }

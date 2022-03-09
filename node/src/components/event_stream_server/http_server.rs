@@ -69,7 +69,6 @@ pub(super) async fn run(
                                 .iter()
                                 .next()
                                 .map(|event| {
-                                    //? Safe?  Above ServerSentEvent::initial_event creates an event with id=None. Where is it being set to Some(id)??;
                                     let id = event.id.expect("even should have id");
                                     id > Id::MAX - buffer_size || id < buffer_size
                                 })
@@ -79,7 +78,6 @@ pub(super) async fn run(
                                     event.id.expect("should have id").wrapping_add(buffer_size)
                                         < start_index.wrapping_add(buffer_size)
                                 } else {
-                                    //? Safe?  Above ServerSentEvent::initial_event creates an event with id=None. Where is it being set to Some(id)??;
                                     event.id.expect("should have id") < start_index
                                 }
                             }) {

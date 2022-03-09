@@ -178,7 +178,6 @@ where
                     indexed_pointers_with_hole,
                 } => {
                     let hole_index = *hole_index;
-                    //? Change assert-->debug_assert+error! ?
                     assert!(hole_index as usize <= RADIX, "hole_index exceeded RADIX");
 
                     let mut indexed_pointers = indexed_pointers_with_hole.to_owned();

@@ -209,7 +209,6 @@ where
     /// Creates a queue for each pair given in `weights`. The second component of each `weight` is
     /// the number of times to return items from one queue before moving on to the next one.
     pub(crate) fn new(weights: Vec<(K, NonZeroUsize)>) -> Self {
-        //? Change assert-->debug_assert+error! ?
         assert!(!weights.is_empty(), "must provide at least one slot");
 
         let queues = weights

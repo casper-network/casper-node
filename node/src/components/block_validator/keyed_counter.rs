@@ -69,8 +69,6 @@ where
             }
             None => panic!("tried to decrease in-flight to negative value"),
         };
-
-        //? .remove(key) inside an assert?? Looks a bit odd...
         assert_eq!(self.0.remove(key), Some(0));
         0
     }

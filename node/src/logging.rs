@@ -217,7 +217,6 @@ where
                 // Abbreviate all but last segment.
                 if count > 1 {
                     for part in parts.iter_mut().take(count - 1) {
-                        //? Change assert-->debug_assert+error! ?
                         assert!(part.is_ascii(), "part should be ascii");
                         *part = &part[0..1];
                     }

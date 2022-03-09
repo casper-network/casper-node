@@ -366,7 +366,6 @@ where
     /// Panics if the internal lock has been poisoned, a network with the wrong type of message was
     /// removed or if there was no network at at all.
     pub(crate) fn remove_active() {
-        //? Change assert-->debug_assert+error! ?
         assert!(
             ACTIVE_NETWORK.with(|active_network| {
                 active_network
@@ -477,7 +476,6 @@ where
         // Sanity check, ensure that we do not create duplicate nodes.
         {
             let mut nodes_write = nodes.write().expect("network lock poisoned");
-            //? Change assert-->debug_assert+error! ?
             assert!(
                 !nodes_write.contains_key(&node_id),
                 "nodes_write should not contain key"
