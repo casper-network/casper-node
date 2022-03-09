@@ -297,7 +297,11 @@ impl Session {
                             }
                         };
                     }
-                    Action::Quit => return Ok(false),
+                    Action::Quit => {
+                        self.send_outcome(writer, &Outcome::success("goodbye!"))
+                            .await?;
+                        return Ok(false);
+                    }
                 };
             }
             Err(err) => {
