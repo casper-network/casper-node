@@ -23,6 +23,7 @@ const ARG_TIME_INTERVAL: &str = "time_interval";
 const ARG_DISTRIBUTIONS_PER_INTERVAL: &str = "distributions_per_interval";
 const ENTRY_POINT_FAUCET: &str = "call_faucet";
 const ENTRY_POINT_SET_VARIABLES: &str = "set_variables";
+const ENTRY_POINT_AUTHORIZE_TO: &str = "authorize_to";
 
 // stored contract named keys.
 const AVAILABLE_AMOUNT_NAMED_KEY: &str = "available_amount";
@@ -32,6 +33,7 @@ const FAUCET_PURSE_NAMED_KEY: &str = "faucet_purse";
 const INSTALLER_NAMED_KEY: &str = "installer";
 const DISTRIBUTIONS_PER_INTERVAL_NAMED_KEY: &str = "distributions_per_interval";
 const REMAINING_AMOUNT_NAMED_KEY: &str = "remaining_amount";
+const AUTHORIZED_ACCOUNT_NAMED_KEY: &str = "authorized_account";
 
 #[ignore]
 #[test]
@@ -165,6 +167,18 @@ fn should_install_faucet_contract() {
             &[REMAINING_AMOUNT_NAMED_KEY.to_string()],
         )
         .expect("failed to find remaining amount named key");
+
+    builder
+        .query(
+            None,
+            Key::Hash(
+                faucet_named_key
+                    .into_hash()
+                    .expect("failed to convert key into hash"),
+            ),
+            &[AUTHORIZED_ACCOUNT_NAMED_KEY.to_string()],
+        )
+        .expect("failed to find authorized account named key");
 }
 
 #[ignore]
@@ -1299,6 +1313,230 @@ fn should_not_fund_if_zero_distributions_per_interval() {
         .exec(installer_call_faucet_request)
         .expect_failure()
         .commit();
+}
+
+#[ignore]
+#[test]
+fn should_allow_funding_by_an_authorized_account() {
+    let installer_account = AccountHash::new([1u8; 32]);
+    let authorized_account_public_key = {
+        let secret_key =
+            SecretKey::ed25519_from_bytes([2u8; 32]).expect("failed to construct secret key");
+        PublicKey::from(&secret_key)
+    };
+    let authorized_account = authorized_account_public_key.to_account_hash();
+    let user_account = AccountHash::new([3u8; 32]);
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST).commit();
+
+    let fund_installer_account_request = ExecuteRequestBuilder::transfer(
+        *DEFAULT_ACCOUNT_ADDR,
+        runtime_args! {
+            mint::ARG_TARGET => installer_account,
+            mint::ARG_AMOUNT => INSTALLER_FUND_AMOUNT,
+            mint::ARG_ID => None::<u64>
+        },
+    )
+    .build();
+
+    builder
+        .exec(fund_installer_account_request)
+        .expect_success()
+        .commit();
+
+    let faucet_fund_amount = U512::from(400_000_000_000_000u64);
+    let installer_session_request = ExecuteRequestBuilder::standard(
+        installer_account,
+        FAUCET_INSTALLER_SESSION,
+        runtime_args! {ARG_ID => FAUCET_ID, ARG_AMOUNT => faucet_fund_amount },
+    )
+    .build();
+
+    builder
+        .exec(installer_session_request)
+        .expect_success()
+        .commit();
+
+    let assigned_time_interval = 10_000u64;
+    let assigned_distributions_per_interval = 2u64;
+    let installer_set_variables_request = ExecuteRequestBuilder::contract_call_by_name(
+        installer_account,
+        FAUCET_CONTRACT_NAMED_KEY,
+        ENTRY_POINT_SET_VARIABLES,
+        runtime_args! {
+            ARG_AVAILABLE_AMOUNT => Some(faucet_fund_amount),
+            ARG_TIME_INTERVAL => Some(assigned_time_interval),
+            ARG_DISTRIBUTIONS_PER_INTERVAL => Some(assigned_distributions_per_interval)
+        },
+    )
+    .build();
+
+    builder
+        .exec(installer_set_variables_request)
+        .expect_success()
+        .commit();
+
+    let installer_named_keys = builder
+        .get_expected_account(installer_account)
+        .named_keys()
+        .clone();
+
+    let faucet_named_key = installer_named_keys
+        .get(FAUCET_CONTRACT_NAMED_KEY)
+        .expect("failed to find faucet named key");
+
+    let maybe_authorized_account_public_key = builder
+        .query(
+            None,
+            Key::Hash(
+                faucet_named_key
+                    .into_hash()
+                    .expect("failed to convert key into hash"),
+            ),
+            &[AUTHORIZED_ACCOUNT_NAMED_KEY.to_string()],
+        )
+        .expect("failed to find authorized account named key")
+        .as_cl_value()
+        .expect("failed to convert into cl value")
+        .clone()
+        .into_t::<Option<PublicKey>>()
+        .expect("failed to convert into optional public key");
+
+    assert_eq!(maybe_authorized_account_public_key, None::<PublicKey>);
+
+    let installer_authorize_caller_request = ExecuteRequestBuilder::contract_call_by_name(
+        installer_account,
+        FAUCET_CONTRACT_NAMED_KEY,
+        ENTRY_POINT_AUTHORIZE_TO,
+        runtime_args! {ARG_TARGET => Some(authorized_account_public_key.clone())},
+    )
+    .build();
+
+    builder
+        .exec(installer_authorize_caller_request)
+        .expect_success()
+        .commit();
+
+    let maybe_authorized_account_public_key = builder
+        .query(
+            None,
+            Key::Hash(
+                faucet_named_key
+                    .into_hash()
+                    .expect("failed to convert key into hash"),
+            ),
+            &[AUTHORIZED_ACCOUNT_NAMED_KEY.to_string()],
+        )
+        .expect("failed to find authorized account named key")
+        .as_cl_value()
+        .expect("failed to convert into cl value")
+        .clone()
+        .into_t::<Option<PublicKey>>()
+        .expect("failed to convert into optional public key");
+
+    assert_eq!(
+        maybe_authorized_account_public_key,
+        Some(authorized_account_public_key)
+    );
+
+    let authorized_account_fund_amount = U512::from(3_000_000_000u64);
+    let faucet_contract_hash = builder
+        .get_expected_account(installer_account)
+        .named_keys()
+        .get(FAUCET_CONTRACT_NAMED_KEY)
+        .cloned()
+        .and_then(Key::into_hash)
+        .map(ContractHash::new)
+        .expect("failed to find faucet contract");
+
+    // the authorized caller needs to have some token in their account to pay for the faucet call.
+    let faucet_fund_authorized_account_by_installer_request =
+        ExecuteRequestBuilder::contract_call_by_name(
+            installer_account,
+            FAUCET_CONTRACT_NAMED_KEY,
+            ENTRY_POINT_FAUCET,
+            runtime_args! {
+                ARG_TARGET => authorized_account,
+                ARG_AMOUNT => authorized_account_fund_amount,
+                ARG_ID => None::<u64>
+            },
+        )
+        .build();
+
+    builder
+        .exec(faucet_fund_authorized_account_by_installer_request)
+        .expect_success()
+        .commit();
+
+    let user_fund_amount = U512::from(3_000_000_000u64);
+    let faucet_fund_user_by_authorized_account_request = {
+        let deploy_item = DeployItemBuilder::new()
+            .with_address(authorized_account)
+            .with_empty_payment_bytes(
+                runtime_args! {mint::ARG_AMOUNT => authorized_account_fund_amount},
+            )
+            .with_stored_session_hash(
+                faucet_contract_hash,
+                ENTRY_POINT_FAUCET,
+                runtime_args! {
+                    ARG_TARGET => user_account,
+                    ARG_AMOUNT => user_fund_amount,
+                    ARG_ID => None::<u64>
+                },
+            )
+            .with_authorization_keys(&[authorized_account])
+            .with_deploy_hash([1u8; 32])
+            .build();
+
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    };
+
+    builder
+        .exec(faucet_fund_user_by_authorized_account_request)
+        .expect_success()
+        .commit();
+
+    let user_main_purse_balance_after =
+        builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
+    assert_eq!(user_main_purse_balance_after, user_fund_amount);
+
+    // A user cannot fund themselves if there is an authorized account.
+
+    let faucet_fund_by_user_request = {
+        let deploy_item = DeployItemBuilder::new()
+            .with_stored_session_hash(
+                faucet_contract_hash,
+                ENTRY_POINT_FAUCET,
+                runtime_args! {
+                    ARG_ID => None::<u64>
+                },
+            )
+            .with_address(user_account)
+            .with_authorization_keys(&[user_account])
+            .with_empty_payment_bytes(runtime_args! {mint::ARG_AMOUNT => user_fund_amount})
+            .with_deploy_hash([2u8; 32])
+            .build();
+
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    };
+
+    builder
+        .exec(faucet_fund_by_user_request)
+        .expect_failure()
+        .commit();
+
+    // TODO: edit wasm test builder to add an easier way to get
+    // a handle on errors for making better assertions in tests.
+
+    // let exec_results = builder
+    //     .get_last_exec_results()
+    //     .expect("failed to get exec results");
+
+    // let exec_result = exec_results
+    //     .first()
+    //     .expect("an exec result must exist")
+    //     .clone();
 }
 
 #[ignore]

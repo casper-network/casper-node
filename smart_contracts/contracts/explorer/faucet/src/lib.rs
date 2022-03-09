@@ -14,7 +14,7 @@ use casper_types::{
     account::AccountHash,
     api_error,
     bytesrepr::{self, FromBytes, ToBytes},
-    ApiError, BlockTime, CLTyped, Key, URef, U512,
+    ApiError, BlockTime, CLTyped, Key, PublicKey, URef, U512,
 };
 
 use num_rational::Ratio;
@@ -33,13 +33,16 @@ pub const LAST_DISTRIBUTION_TIME: &str = "last_distribution_time";
 pub const FAUCET_PURSE: &str = "faucet_purse";
 pub const INSTALLER: &str = "installer";
 pub const TWO_HOURS_AS_MILLIS: u64 = 7_200_000;
-pub const ENTRY_POINT_FAUCET: &str = "call_faucet";
-pub const ENTRY_POINT_INIT: &str = "init";
-pub const ENTRY_POINT_SET_VARIABLES: &str = "set_variables";
 pub const CONTRACT_NAME: &str = "faucet";
 pub const HASH_KEY_NAME: &str = "faucet_package";
 pub const ACCESS_KEY_NAME: &str = "faucet_package_access";
 pub const CONTRACT_VERSION: &str = "contract_version";
+pub const AUTHORIZED_ACCOUNT: &str = "authorized_account";
+
+pub const ENTRY_POINT_FAUCET: &str = "call_faucet";
+pub const ENTRY_POINT_INIT: &str = "init";
+pub const ENTRY_POINT_SET_VARIABLES: &str = "set_variables";
+pub const ENTRY_POINT_AUTHORIZE_TO: &str = "authorize_to";
 
 #[repr(u16)]
 enum FaucetError {
@@ -65,6 +68,10 @@ enum FaucetError {
     InvalidDistributionsPerInterval = 20,
     ZeroDistributionsPerInterval = 21,
     UnexpectedKeyVariant = 22,
+    MissingAuthorizedAccount = 23,
+    InvalidAuthorizedAccount = 24,
+    AuthorizedAccountDoesNotFundInstaller = 25,
+    FaucetCallByUserWithAuthorizedAccountSet = 26,
 }
 
 impl From<FaucetError> for ApiError {
@@ -136,9 +143,33 @@ pub fn set_variables() {
     }
 }
 
-/// Executes token transfer to supplied account hash.
-/// Revert status codes:
-/// 1 - requested transfer to already funded account hash.
+#[no_mangle]
+pub fn authorize_to() {
+    let installer = get_account_hash_with_user_errors(
+        INSTALLER,
+        FaucetError::MissingInstaller,
+        FaucetError::InvalidInstaller,
+    );
+
+    if runtime::get_caller() != installer {
+        runtime::revert(FaucetError::InvalidAccount);
+    }
+
+    let authorized_account_public_key = get_optional_named_arg_with_user_errors::<PublicKey>(
+        ARG_TARGET,
+        FaucetError::MissingAuthorizedAccount,
+        FaucetError::InvalidAuthorizedAccount,
+    );
+
+    let authorized_account_uref = get_uref_with_user_errors(
+        AUTHORIZED_ACCOUNT,
+        FaucetError::MissingAuthorizedAccount,
+        FaucetError::InvalidAuthorizedAccount,
+    );
+
+    storage::write(authorized_account_uref, authorized_account_public_key);
+}
+
 #[no_mangle]
 pub fn delegate() {
     let id = get_optional_named_arg_with_user_errors(
@@ -153,6 +184,21 @@ pub fn delegate() {
         FaucetError::MissingInstaller,
         FaucetError::InvalidInstaller,
     );
+
+    let authorized_account_uref = get_uref_with_user_errors(
+        AUTHORIZED_ACCOUNT,
+        FaucetError::MissingAuthorizedAccount,
+        FaucetError::InvalidAuthorizedAccount,
+    );
+
+    let maybe_authorized_account_public_key: Option<PublicKey> = read_with_user_errors(
+        authorized_account_uref,
+        FaucetError::MissingAuthorizedAccount,
+        FaucetError::InvalidAuthorizedAccount,
+    );
+
+    let maybe_authorized_account =
+        maybe_authorized_account_public_key.map(|pk| pk.to_account_hash());
 
     let last_distribution_time_uref = get_uref_with_user_errors(
         LAST_DISTRIBUTION_TIME,
@@ -191,12 +237,24 @@ pub fn delegate() {
         // if they do not, the faucet can calculate an amount for them.
         let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
 
-        // TODO: add another check for the authorized caller.
         if target == installer {
             runtime::revert(FaucetError::InstallerDoesNotFundItself);
         }
 
         transfer(target, amount, id);
+    } else if let Some(authorized_account) = maybe_authorized_account {
+        if caller == authorized_account {
+            let target: AccountHash = runtime::get_named_arg(ARG_TARGET);
+            let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
+
+            if target == installer {
+                runtime::revert(FaucetError::AuthorizedAccountDoesNotFundInstaller);
+            }
+
+            transfer(target, amount, id);
+        } else {
+            runtime::revert(FaucetError::FaucetCallByUserWithAuthorizedAccountSet);
+        }
     } else {
         let amount = get_distribution_amount_rate_limited();
 
