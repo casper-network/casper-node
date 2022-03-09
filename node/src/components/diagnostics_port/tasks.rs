@@ -462,6 +462,7 @@ mod tests {
     use std::{
         path::{Path, PathBuf},
         sync::Arc,
+        time::Duration,
     };
 
     use crate::{
@@ -536,8 +537,10 @@ mod tests {
         let socket_path = cfg.socket_path();
         let (_node_id, _runner) = network.add_node_with_config(cfg, &mut rng).await.unwrap();
 
-        // Now crank, so that the listening socket is initialized.
-        while 0 != network.crank_all(&mut rng).await {}
+        // Wait for the listening socket to initialize.
+        network
+            .settle(&mut rng, Duration::from_millis(500), Duration::from_secs(5))
+            .await;
 
         let ready = Arc::new(Notify::new());
 
@@ -570,12 +573,10 @@ mod tests {
         // Wait for all the commands to be buffered.
         ready.notified().await;
 
-        // Now crank, so that the listening socket is initialized.
-        while 0 != network.crank_all(&mut rng).await {
-            eprintln!("crank");
-        }
-
-        eprintln!("finished cranking");
+        // Give the node a chance to satisfy the dump.
+        network
+            .settle(&mut rng, Duration::from_secs(1), Duration::from_secs(10))
+            .await;
 
         let output = join_handle.await.expect("error joining client task");
 
