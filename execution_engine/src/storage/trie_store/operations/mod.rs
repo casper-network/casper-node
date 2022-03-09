@@ -81,12 +81,12 @@ where
             }
             Trie::Node { pointer_block } => {
                 let index: usize = {
-                    //? Change assert --> debug_assert+error! ?
+                    //? Change assert-->debug_assert+error! ?
                     assert!(depth < path.len(), "depth must be < {}", path.len());
                     path[depth].into()
                 };
                 let maybe_pointer: Option<Pointer> = {
-                    //? Change assert --> debug_assert+error! ?
+                    //? Change assert-->debug_assert+error! ?
                     assert!(index < RADIX, "key length must be < {}", RADIX);
                     pointer_block[index]
                 };
@@ -176,12 +176,12 @@ where
             }
             Trie::Node { pointer_block } => {
                 let hole_index: usize = {
-                    //? Change assert --> debug_assert+error! ?
+                    //? Change assert-->debug_assert+error! ?
                     assert!(depth < path.len(), "depth must be < {}", path.len());
                     path[depth].into()
                 };
                 let pointer: Pointer = {
-                    //? Change assert --> debug_assert+error! ?
+                    //? Change assert-->debug_assert+error! ?
                     assert!(hole_index < RADIX, "key length must be < {}", RADIX);
                     match pointer_block[hole_index] {
                         Some(pointer) => pointer,
@@ -426,13 +426,13 @@ where
             }
             Trie::Node { pointer_block } => {
                 let index = {
-                    //? Change assert --> debug_assert+error! ?
+                    //? Change assert-->debug_assert+error! ?
                     assert!(depth < path.len(), "depth must be < {}", path.len());
                     path[depth]
                 };
                 let maybe_pointer: Option<Pointer> = {
                     let index: usize = index.into();
-                    //? Change assert --> debug_assert+error! ?
+                    //? Change assert-->debug_assert+error! ?
                     assert!(index < RADIX, "index must be < {}", RADIX);
                     pointer_block[index]
                 };
@@ -465,7 +465,7 @@ where
                 match store.get(txn, pointer.hash())? {
                     Some(next) => {
                         let index = {
-                            //? Change assert --> debug_assert+error! ?
+                            //? Change assert-->debug_assert+error! ?
                             assert!(depth < path.len(), "depth must be < {}", path.len());
                             path[depth]
                         };
@@ -793,7 +793,7 @@ where
         let path_to_node: Vec<u8> = get_parents_path(&parents);
         // Check that the path to the node is a prefix of the current path
         let current_path = common_prefix(path_to_leaf, &path_to_node);
-        //? assert_eq!-->debug_assert_eq!+error!
+        //? Change assert-->debug_assert+error!
         assert_eq!(
             current_path, path_to_node,
             "current_path must be the same as path_to_node"
@@ -805,7 +805,7 @@ where
     };
     // Index path by current depth;
     let index = {
-        //? Change assert --> debug_assert+error! ?
+        //? Change assert-->debug_assert+error! ?
         assert!(
             depth < path_to_leaf.len(),
             "depth must be < {}",

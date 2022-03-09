@@ -96,9 +96,10 @@ fn generate_system_contract_registry_using_protocol_data(data_dir: &Path) {
     registry.insert(STANDARD_PAYMENT.to_string(), standard_payment_hash);
     registry.insert(AUCTION.to_string(), auction_hash);
 
+    // NOTE: Safe to unwrap as registry is built just above
     print_entry(
         &Key::SystemContractRegistry,
-        &StoredValue::from(CLValue::from_t(registry).unwrap()), //? Safe to unwrap?
+        &StoredValue::from(CLValue::from_t(registry).unwrap()),
     );
 }
 

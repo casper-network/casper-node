@@ -54,7 +54,7 @@ where
         println!("res {:?}", rpc_res);
         return Err(error.clone().into());
     }
-    let value = rpc_res.get_result().unwrap(); //? Safe to unwrap?
+    let value = rpc_res.get_result().expect("rpc_res should have result");
     let deserialized = serde_json::from_value(value.clone())?;
     Ok(deserialized)
 }

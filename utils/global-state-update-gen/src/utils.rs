@@ -20,7 +20,10 @@ pub fn hash_from_str(hex_str: &str) -> Digest {
 pub(crate) fn print_entry(key: &Key, value: &StoredValue) {
     println!("[[entries]]");
     println!("key = \"{}\"", key.to_formatted_string());
-    println!("value = \"{}\"", base64::encode(value.to_bytes().unwrap())); //? Safe to unwrap?
+    println!(
+        "value = \"{}\"",
+        base64::encode(value.to_bytes().expect("should convert to bytes"))
+    );
     println!();
 }
 

@@ -269,7 +269,7 @@ impl OpenRpcSchema {
         for (key, value) in root_schema.definitions.drain(..) {
             match self.components.schemas.entry(key) {
                 MapEntry::Occupied(current_value) => {
-                    //? Change assert --> debug_assert+error! ?
+                    //? Change assert-->debug_assert+error! ?
                     assert_eq!(
                         current_value.get().clone().into_object().metadata,
                         value.into_object().metadata,

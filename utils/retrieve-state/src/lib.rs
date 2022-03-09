@@ -442,7 +442,9 @@ pub async fn download_trie_channels(
     loop {
         // Distribute work
         for (address, peer) in peer_map.iter() {
-            let counter = in_flight_counters.get_mut(&address).unwrap(); //? Safe to unwrap?
+            let counter = in_flight_counters
+                .get_mut(&address)
+                .expect("in_flight_counters should contain address");
             if *counter < peer_mailbox_size {
                 if let Some(next_trie_key) = outstanding_trie_keys.pop() {
                     let mut sender = peer.sender.clone();

@@ -350,7 +350,6 @@ async fn filter_map_server_sent_event(
                     warn!(%error, "failed to jsonify sse event");
                     WarpServerSentEvent::default()
                 })
-                // Safe??
                 .id(event.id.expect("event should have id").to_string())))
         }
     }
@@ -569,7 +568,6 @@ fn stream_to_client(
             if let Some(id) = event.id {
                 let _ = initial_stream_ids
                     .write()
-                    // Safe?
                     .expect("initial_stream_ids lock should not be poisoned")
                     .insert(id);
             }

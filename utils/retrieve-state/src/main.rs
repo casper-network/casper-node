@@ -177,7 +177,7 @@ async fn main() -> Result<(), anyhow::Error> {
             let client = ClientBuilder::new()
                 .gzip(!opts.disable_gzip)
                 .build()
-                .unwrap(); //? Safe to unwrap?
+                .expect("ClientBuilder should succeed");
             if !chain_download_path.exists() {
                 info!(
                     "creating new chain download data dir {}",

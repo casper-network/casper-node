@@ -283,7 +283,7 @@ where
                 )?;
                 let purse = self.create_purse()?;
                 let purse_bytes = purse.into_bytes().map_err(Error::BytesRepr)?;
-                //? Change assert --> debug_assert+error! ?
+                //? Change assert-->debug_assert+error! ?
                 assert_eq!(
                     dest_size,
                     purse_bytes.len() as u32,

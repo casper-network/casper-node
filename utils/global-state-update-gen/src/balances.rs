@@ -46,7 +46,7 @@ pub(crate) fn generate_balances_update(matches: &ArgMatches<'_>) {
         .into_iter()
         .map(AdditiveMap::from)
         .next()
-        .unwrap(); //? Safe to unwrap?
+        .expect("builder should have execution journal");
 
     for (key, value) in transforms {
         if let Transform::Write(val) = value {

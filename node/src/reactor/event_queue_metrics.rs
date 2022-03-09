@@ -38,7 +38,7 @@ impl EventQueueMetrics {
             )?;
             registry.register(Box::new(queue_event_counter.clone()))?;
             let result = event_queue_gauges.insert(*queue_kind, queue_event_counter);
-            //? Change assert-->debug_asswer+error! ?
+            //? Change assert-->debug_assert+error! ?
             assert!(result.is_none(), "Map keys should not be overwritten.");
         }
 

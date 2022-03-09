@@ -341,7 +341,7 @@ impl core::ops::Index<core::ops::RangeFull> for PointerBlock {
 impl ::std::fmt::Debug for PointerBlock {
     #[allow(clippy::assertions_on_constants)]
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        //? Change assert --> debug_assert+error! ?
+        //? Change assert-->debug_assert+error! ?
         assert!(RADIX > 1, "RADIX must be > 1");
         write!(f, "{}([", stringify!(PointerBlock))?;
         write!(f, "{:?}", self.0[0])?;
