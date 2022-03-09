@@ -523,10 +523,9 @@ mod tests {
 
     impl NetworkedReactor for Reactor {}
 
-    #[tokio::test]
-    async fn ensure_diagnostics_port_can_dump_events() {
-        testing::init_logging();
-
+    /// Runs a single mini-node with a diagnostics console and requests a dump of the (empty)
+    /// event queue, then returns it.
+    async fn run_single_node_console_and_dump_events(dump_format: &'static str) -> String {
         let mut network = Network::<Reactor>::new();
         let mut rng = TestRng::new();
 
@@ -551,10 +550,9 @@ mod tests {
                 .await
                 .expect("could not connect to socket path of node");
 
-            // We put some dump-queues events on the stream, to have some events to dump when the
-            // first one is processed.
+            let commands = format!("set -o {} -q true\ndump-queues\nquit\n", dump_format);
             stream
-                .write_all(b"set -o json -q true\ndump-queues\ndump-queues\ndump-queues\nquit\n")
+                .write_all(commands.as_bytes())
                 .await
                 .expect("could not write to listener");
             stream.flush().await.expect("flushing failed");
@@ -578,11 +576,29 @@ mod tests {
             .settle(&mut rng, Duration::from_secs(1), Duration::from_secs(10))
             .await;
 
-        let output = join_handle.await.expect("error joining client task");
+        join_handle.await.expect("error joining client task")
+    }
+
+    #[tokio::test]
+    async fn ensure_diagnostics_port_can_dump_events_in_json_format() {
+        testing::init_logging();
+
+        let output = run_single_node_console_and_dump_events("json").await;
 
         // The output will be empty queues, albeit formatted as JSON. Just check if there is a
         // proper JSON header present.
         assert!(output.len() > 10);
         assert!(output.starts_with("{\"queues\":{"));
+    }
+
+    #[tokio::test]
+    async fn ensure_diagnostics_port_can_dump_events_in_interactive_format() {
+        testing::init_logging();
+
+        let output = run_single_node_console_and_dump_events("interactive").await;
+
+        // The output will be empty queues in debug format.
+        assert!(output.len() > 10);
+        assert!(output.starts_with("QueueDump { queues: {"));
     }
 }
