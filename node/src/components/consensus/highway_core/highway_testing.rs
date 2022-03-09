@@ -1090,7 +1090,7 @@ mod test_harness {
                 .expect("Construction was successful");
 
         highway_test_harness.mutable_handle().clear_message_queue();
-        //? Change assert-->debug_assert+error! ?
+        //? Remove Change assert-->debug_assert+error! ?
         assert_eq!(
             highway_test_harness.crank(&mut rng),
             Err(TestRunError::NoMessages),
@@ -1103,7 +1103,7 @@ mod test_harness {
         let mut iter = coll.into_iter();
         let reference = iter.next().expect("coll should not be empty");
 
-        //? Change assert-->debug_assert+error! ?
+        //? Remove Change assert-->debug_assert+error! ?
         iter.for_each(|v| assert_eq!(v, reference, "{}", error_msg));
     }
 
@@ -1156,7 +1156,7 @@ mod test_harness {
                 // one round (one consensus value) – 1 message. 1/2=0 but 3/2=1 b/c of the rounding.
                 let rounds_participated_in = (units_count as u8 + 1) / 2;
 
-                //? Change assert-->debug_assert+error! ?
+                //? Remove Change assert-->debug_assert+error! ?
                 assert_eq!(
                     rounds_participated_in, cv_count,
                     "Expected that validator={} participated in {} rounds.",

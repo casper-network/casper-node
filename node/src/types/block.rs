@@ -125,7 +125,7 @@ static BLOCK: Lazy<Block> = Lazy::new(|| {
     let secret_key = SecretKey::doc_example();
     let public_key = PublicKey::from(secret_key);
 
-    //? Both unwraps are safe as all [u8] have correct length
+    //? Remove Both unwraps are safe as all [u8] have correct length
     let next_era_validator_weights = {
         let mut next_era_validator_weights: BTreeMap<PublicKey, U512> = BTreeMap::new();
         next_era_validator_weights.insert(public_key, U512::from(123));
