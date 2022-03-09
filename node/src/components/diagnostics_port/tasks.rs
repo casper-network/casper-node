@@ -96,8 +96,11 @@ impl Display for Session {
     }
 }
 
-pub enum TempFileSerializer {
+/// A serializer supporting multiple format variants that writes into a file.
+pub enum FileSerializer {
+    /// JSON-format serializer.
     Json(serde_json::Serializer<fs::File>),
+    /// Bincode-format serializer.
     Bincode(
         bincode::Serializer<
             fs::File,
@@ -106,12 +109,12 @@ pub enum TempFileSerializer {
     ),
 }
 
-impl TempFileSerializer {
+impl FileSerializer {
     /// Converts the temp file serializer into an actual erased serializer.
     pub fn as_serializer<'a>(&'a mut self) -> Box<dyn ErasedSerializer + 'a> {
         match self {
-            TempFileSerializer::Json(json) => Box::new(<dyn erased_serde::Serializer>::erase(json)),
-            TempFileSerializer::Bincode(bincode) => {
+            FileSerializer::Json(json) => Box::new(<dyn erased_serde::Serializer>::erase(json)),
+            FileSerializer::Bincode(bincode) => {
                 Box::new(<dyn erased_serde::Serializer>::erase(bincode))
             }
         }
@@ -152,10 +155,10 @@ impl Session {
         match self.output {
             OutputFormat::Interactive => QueueDumpFormat::debug(file),
             OutputFormat::Json => {
-                QueueDumpFormat::serde(TempFileSerializer::Json(serde_json::Serializer::new(file)))
+                QueueDumpFormat::serde(FileSerializer::Json(serde_json::Serializer::new(file)))
             }
             OutputFormat::Bincode => {
-                QueueDumpFormat::serde(TempFileSerializer::Bincode(bincode::Serializer::new(
+                QueueDumpFormat::serde(FileSerializer::Bincode(bincode::Serializer::new(
                     file,
                     // TODO: Do not use `bincode::serialize` above, but rather always instantiate
                     // options across the file to ensure it is always the same.

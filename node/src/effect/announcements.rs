@@ -15,8 +15,8 @@ use casper_types::{EraId, ExecutionResult, PublicKey};
 
 use crate::{
     components::{
-        chainspec_loader::NextUpgrade, deploy_acceptor::Error,
-        diagnostics_port::TempFileSerializer, small_network::GossipedAddress,
+        chainspec_loader::NextUpgrade, deploy_acceptor::Error, diagnostics_port::FileSerializer,
+        small_network::GossipedAddress,
     },
     effect::Responder,
     types::{
@@ -62,14 +62,14 @@ pub(crate) enum ControlAnnouncement {
 #[derive(Serialize)]
 pub(crate) enum QueueDumpFormat {
     /// Dump using given serde serializer.
-    Serde(#[serde(skip)] TempFileSerializer),
+    Serde(#[serde(skip)] FileSerializer),
     /// Dump writing debug output to file.
     Debug(#[serde(skip)] File),
 }
 
 impl QueueDumpFormat {
     /// Creates a new queue dump serde format.
-    pub(crate) fn serde(serializer: TempFileSerializer) -> Self {
+    pub(crate) fn serde(serializer: FileSerializer) -> Self {
         QueueDumpFormat::Serde(serializer)
     }
 

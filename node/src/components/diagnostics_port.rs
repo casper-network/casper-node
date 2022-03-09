@@ -30,7 +30,7 @@ use crate::{
     utils::umask,
     WithDir,
 };
-pub use tasks::TempFileSerializer;
+pub use tasks::FileSerializer;
 use util::ShowUnixAddr;
 
 /// Diagnostics port component.
