@@ -5,7 +5,7 @@
 //! synchronization primitives under the hood.
 
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{BTreeMap, HashMap, VecDeque},
     fmt::Debug,
     hash::Hash,
     num::NonZeroUsize,
@@ -117,9 +117,13 @@ struct Slot<K> {
 /// A dump of the internal queues.
 pub struct QueueDump<'a, K, I>
 where
-    K: Hash + Eq,
+    K: Ord + Eq,
 {
-    queues: HashMap<K, &'a VecDeque<I>>,
+    /// Queues being dumped.
+    ///
+    /// A `BTreeMap` is used to make the ordering constant, it will be in the natural order defined
+    /// by `Ord` on `K`.
+    queues: BTreeMap<K, &'a VecDeque<I>>,
 }
 
 impl<I, K> WeightedRoundRobin<I, K>
@@ -128,9 +132,12 @@ where
     K: Copy + Clone + Eq + Hash + IntoEnumIterator + Debug,
 {
     /// Dump the queue contents to the given dumper function.
-    pub async fn dump<F: FnOnce(&QueueDump<K, I>)>(&self, dumper: F) {
+    pub async fn dump<F: FnOnce(&QueueDump<K, I>)>(&self, dumper: F)
+    where
+        K: Ord,
+    {
         let locks = self.lock_queues().await;
-        let mut queues = HashMap::new();
+        let mut queues = BTreeMap::new();
         for (kind, guard) in &locks {
             let queue = &**guard;
             queues.insert(*kind, queue);
