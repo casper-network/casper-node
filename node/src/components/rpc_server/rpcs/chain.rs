@@ -114,7 +114,7 @@ pub enum ParseBlockIdentifierError {
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GetBlockParams {
-    /// The block hash.
+    /// The block identifier.
     pub block_identifier: BlockIdentifier,
 }
 
