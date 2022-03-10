@@ -29,6 +29,10 @@ The Casper MainNet is live.
 - [Discord Server](https://discord.gg/mpZ9AYD)
 - [Telegram Channel](https://t.me/casperofficialann)
 
+## Core developers
+
+If you are working on the node itself, you may find the [core dev book](book/src/SUMMARY.md) helpful. You can also build it locally by running `make book`.
+
 # casper-node
 
 This is the core application for the Casper blockchain. 

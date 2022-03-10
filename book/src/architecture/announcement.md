@@ -1,0 +1,1 @@
+# HOWTO: Adding an announcement

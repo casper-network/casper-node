@@ -1,0 +1,6 @@
+[book]
+authors = ["Marc Brinkmann"]
+language = "en"
+multilingual = false
+src = "src"
+title = "casper-node dev book"
