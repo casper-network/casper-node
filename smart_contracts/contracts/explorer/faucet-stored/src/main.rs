@@ -43,7 +43,7 @@ fn build_named_keys_and_purse() -> (NamedKeys, URef) {
         storage::new_uref(U512::zero()).into(),
     );
     named_keys.insert(
-        faucet::REMAINING_AMOUNT.to_string(),
+        faucet::REMAINING_REQUESTS.to_string(),
         storage::new_uref(U512::zero()).into(),
     );
     named_keys.insert(
