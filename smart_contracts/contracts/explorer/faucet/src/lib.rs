@@ -25,7 +25,7 @@ pub const ARG_ID: &str = "id";
 pub const ARG_TIME_INTERVAL: &str = "time_interval";
 pub const ARG_AVAILABLE_AMOUNT: &str = "available_amount";
 pub const ARG_DISTRIBUTIONS_PER_INTERVAL: &str = "distributions_per_interval";
-pub const REMAINING_AMOUNT: &str = "remaining_amount";
+pub const REMAINING_REQUESTS: &str = "remaining_requests";
 pub const AVAILABLE_AMOUNT: &str = "available_amount";
 pub const TIME_INTERVAL: &str = "time_interval";
 pub const DISTRIBUTIONS_PER_INTERVAL: &str = "distributions_per_interval";
@@ -62,8 +62,8 @@ enum FaucetError {
     FailedToGetArgBytes = 14,
     MissingFaucetPurse = 15,
     InvalidFaucetPurse = 16,
-    MissingRemainingAmount = 17,
-    InvalidRemainingAmount = 18,
+    MissingRemainingRequests = 17,
+    InvalidRemainingRequests = 18,
     MissingDistributionsPerInterval = 19,
     InvalidDistributionsPerInterval = 20,
     ZeroDistributionsPerInterval = 21,
@@ -115,15 +115,7 @@ pub fn set_variables() {
             FaucetError::MissingAvailableAmount,
             FaucetError::InvalidAvailableAmount,
         );
-        let remaining_amount_uref = get_uref_with_user_errors(
-            REMAINING_AMOUNT,
-            FaucetError::MissingRemainingAmount,
-            FaucetError::InvalidRemainingAmount,
-        );
-
-        // remaining amount is set to the new available amount.
         storage::write(available_amount_uref, new_available_amount);
-        storage::write(remaining_amount_uref, new_available_amount);
     }
 
     if let Some(new_distributions_per_interval) = get_optional_named_arg_with_user_errors::<u64>(
@@ -136,9 +128,20 @@ pub fn set_variables() {
             FaucetError::MissingDistributionsPerInterval,
             FaucetError::InvalidDistributionsPerInterval,
         );
+        let remaining_requests_uref = get_uref_with_user_errors(
+            REMAINING_REQUESTS,
+            FaucetError::MissingRemainingRequests,
+            FaucetError::InvalidRemainingRequests,
+        );
+
         storage::write(
             distributions_per_interval_uref,
             new_distributions_per_interval,
+        );
+        // remaining requests == distributions per interval.
+        storage::write(
+            remaining_requests_uref,
+            U512::from(new_distributions_per_interval),
         );
     }
 }
@@ -227,7 +230,7 @@ pub fn delegate() {
     let blocktime = runtime::get_blocktime();
 
     if blocktime > BlockTime::new(last_distribution_time + time_interval) {
-        reset_remaining_amount();
+        reset_remaining_requests();
         set_last_distribution_time(blocktime);
     }
 
@@ -259,7 +262,7 @@ pub fn delegate() {
         let amount = get_distribution_amount_rate_limited();
 
         transfer(caller, amount, id);
-        decrease_remaining_amount(amount);
+        decrease_remaining_requests();
     }
 }
 
@@ -307,20 +310,20 @@ fn get_distribution_amount_rate_limited() -> U512 {
         return available_amount;
     }
 
-    let remaining_amount_uref = get_uref_with_user_errors(
-        REMAINING_AMOUNT,
-        FaucetError::MissingRemainingAmount,
-        FaucetError::InvalidRemainingAmount,
+    let remaining_requests_uref = get_uref_with_user_errors(
+        REMAINING_REQUESTS,
+        FaucetError::MissingRemainingRequests,
+        FaucetError::InvalidRemainingRequests,
     );
 
-    let remaining_amount: U512 = read_with_user_errors(
-        remaining_amount_uref,
-        FaucetError::MissingRemainingAmount,
-        FaucetError::InvalidRemainingAmount,
+    let remaining_requests: U512 = read_with_user_errors(
+        remaining_requests_uref,
+        FaucetError::MissingRemainingRequests,
+        FaucetError::InvalidRemainingRequests,
     );
 
-    if remaining_amount.is_zero() {
-        return remaining_amount;
+    if remaining_requests.is_zero() {
+        return remaining_requests;
     }
 
     // could use a struct that represents a number of slots, when the interval is reached they an
@@ -362,45 +365,48 @@ fn get_distribution_amount() -> U512 {
     Ratio::new(available_amount, U512::from(distributions_per_interval)).to_integer()
 }
 
-fn reset_remaining_amount() {
-    let available_amount_uref = get_uref_with_user_errors(
-        AVAILABLE_AMOUNT,
-        FaucetError::MissingAvailableAmount,
-        FaucetError::InvalidAvailableAmount,
+fn reset_remaining_requests() {
+    let distributions_per_interval_uref = get_uref_with_user_errors(
+        DISTRIBUTIONS_PER_INTERVAL,
+        FaucetError::MissingDistributionsPerInterval,
+        FaucetError::InvalidDistributionsPerInterval,
     );
 
-    let available_amount: U512 = read_with_user_errors(
-        available_amount_uref,
-        FaucetError::MissingAvailableAmount,
-        FaucetError::InvalidAvailableAmount,
+    let distributions_per_interval: u64 = read_with_user_errors(
+        distributions_per_interval_uref,
+        FaucetError::MissingDistributionsPerInterval,
+        FaucetError::InvalidDistributionsPerInterval,
     );
 
-    let remaining_amount_uref = get_uref_with_user_errors(
-        REMAINING_AMOUNT,
-        FaucetError::MissingRemainingAmount,
-        FaucetError::InvalidRemainingAmount,
+    let remaining_requests_uref = get_uref_with_user_errors(
+        REMAINING_REQUESTS,
+        FaucetError::MissingRemainingRequests,
+        FaucetError::InvalidRemainingRequests,
     );
 
-    storage::write(remaining_amount_uref, available_amount);
+    storage::write(
+        remaining_requests_uref,
+        U512::from(distributions_per_interval),
+    );
 }
 
-fn decrease_remaining_amount(amount: U512) -> U512 {
-    let remaining_amount_uref = get_uref_with_user_errors(
-        REMAINING_AMOUNT,
-        FaucetError::MissingRemainingAmount,
-        FaucetError::InvalidRemainingAmount,
+fn decrease_remaining_requests() -> U512 {
+    let remaining_requests_uref = get_uref_with_user_errors(
+        REMAINING_REQUESTS,
+        FaucetError::MissingRemainingRequests,
+        FaucetError::InvalidRemainingRequests,
     );
 
-    let remaining_amount: U512 = read_with_user_errors(
-        remaining_amount_uref,
-        FaucetError::MissingRemainingAmount,
-        FaucetError::InvalidRemainingAmount,
+    let remaining_requests: U512 = read_with_user_errors(
+        remaining_requests_uref,
+        FaucetError::MissingRemainingRequests,
+        FaucetError::InvalidRemainingRequests,
     );
 
-    let new_remaining_amount = remaining_amount.saturating_sub(amount);
-    storage::write(remaining_amount_uref, new_remaining_amount);
+    let new_remaining_requests = remaining_requests.saturating_sub(1.into());
+    storage::write(remaining_requests_uref, new_remaining_requests);
 
-    new_remaining_amount
+    new_remaining_requests
 }
 
 fn set_last_distribution_time(t: BlockTime) {

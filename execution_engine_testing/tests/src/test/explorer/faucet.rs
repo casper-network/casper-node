@@ -32,7 +32,7 @@ const LAST_DISTRIBUTION_TIME_NAMED_KEY: &str = "last_distribution_time";
 const FAUCET_PURSE_NAMED_KEY: &str = "faucet_purse";
 const INSTALLER_NAMED_KEY: &str = "installer";
 const DISTRIBUTIONS_PER_INTERVAL_NAMED_KEY: &str = "distributions_per_interval";
-const REMAINING_AMOUNT_NAMED_KEY: &str = "remaining_amount";
+const REMAINING_REQUESTS_NAMED_KEY: &str = "remaining_requests";
 const AUTHORIZED_ACCOUNT_NAMED_KEY: &str = "authorized_account";
 
 #[ignore]
@@ -155,7 +155,7 @@ fn should_install_faucet_contract() {
         )
         .expect("failed to find available amount named key");
 
-    // check remaining amount
+    // check remaining requests
     builder
         .query(
             None,
@@ -164,9 +164,9 @@ fn should_install_faucet_contract() {
                     .into_hash()
                     .expect("failed to convert key into hash"),
             ),
-            &[REMAINING_AMOUNT_NAMED_KEY.to_string()],
+            &[REMAINING_REQUESTS_NAMED_KEY.to_string()],
         )
-        .expect("failed to find remaining amount named key");
+        .expect("failed to find remaining requests named key");
 
     builder
         .query(
@@ -481,11 +481,11 @@ fn should_fund_new_account() {
 
     assert_eq!(available_amount, faucet_fund_amount);
 
-    let remaining_amount = builder
+    let remaining_requests = builder
         .query(
             None,
             faucet_contract_hash.into(),
-            &[REMAINING_AMOUNT_NAMED_KEY.to_string()],
+            &[REMAINING_REQUESTS_NAMED_KEY.to_string()],
         )
         .expect("failed to find available amount named key")
         .as_cl_value()
@@ -494,7 +494,10 @@ fn should_fund_new_account() {
         .into_t::<U512>()
         .expect("failed to convert into U512");
 
-    assert_eq!(remaining_amount, faucet_fund_amount);
+    assert_eq!(
+        remaining_requests,
+        U512::from(assigned_distributions_per_interval)
+    );
 
     let user_fund_amount = U512::from(100_000);
     let faucet_call_by_installer = {
@@ -653,11 +656,11 @@ fn should_fund_existing_account() {
         "available amount must match faucet fund amount"
     );
 
-    let remaining_amount = builder
+    let remaining_requests = builder
         .query(
             None,
             faucet_contract_hash.into(),
-            &[REMAINING_AMOUNT_NAMED_KEY.to_string()],
+            &[REMAINING_REQUESTS_NAMED_KEY.to_string()],
         )
         .expect("failed to find available amount named key")
         .as_cl_value()
@@ -667,8 +670,8 @@ fn should_fund_existing_account() {
         .expect("failed to convert into U512");
 
     assert_eq!(
-        remaining_amount, faucet_fund_amount,
-        "remaining amount must match faucet fund amount"
+        remaining_requests,
+        U512::from(assigned_distributions_per_interval),
     );
 
     let user_fund_amount = U512::from(3_000_000_000u64);
@@ -702,19 +705,12 @@ fn should_fund_existing_account() {
 
     let half_of_faucet_fund_amount = faucet_fund_amount / 2;
     let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
-    assert_eq!(
-        faucet_purse_balance,
-        faucet_fund_amount - user_fund_amount,
-        "faucet purse balance must match expected amount"
-    );
+    assert_eq!(faucet_purse_balance, faucet_fund_amount - user_fund_amount,);
 
     // check the balance of the user's main purse
     let user_main_purse_balance_after =
         builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
-    assert_eq!(
-        user_main_purse_balance_after, user_fund_amount,
-        "users main purse balance must match expected amount after faucet call"
-    );
+    assert_eq!(user_main_purse_balance_after, user_fund_amount,);
 
     let faucet_call_by_user = {
         let deploy_item = DeployItemBuilder::new()
@@ -734,11 +730,11 @@ fn should_fund_existing_account() {
 
     builder.exec(faucet_call_by_user).expect_success().commit();
 
-    let remaining_amount = builder
+    let remaining_requests = builder
         .query(
             None,
             faucet_contract_hash.into(),
-            &[REMAINING_AMOUNT_NAMED_KEY.to_string()],
+            &[REMAINING_REQUESTS_NAMED_KEY.to_string()],
         )
         .expect("failed to find available amount named key")
         .as_cl_value()
@@ -748,22 +744,18 @@ fn should_fund_existing_account() {
         .expect("failed to convert into U512");
 
     assert_eq!(
-        remaining_amount, half_of_faucet_fund_amount,
-        "remaining amount must match expected amount after user faucet call"
+        remaining_requests,
+        U512::from(assigned_distributions_per_interval - 1),
     );
     let user_main_purse_balance_after =
         builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
 
-    assert_eq!(
-        user_main_purse_balance_after, half_of_faucet_fund_amount,
-        "user purse balance must match expected amount after user faucet call"
-    );
+    assert_eq!(user_main_purse_balance_after, half_of_faucet_fund_amount,);
 
     let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
     assert_eq!(
         faucet_purse_balance,
         faucet_fund_amount - half_of_faucet_fund_amount - user_fund_amount,
-        "faucet purse balance must match expected amount after installer and user calls"
     );
 }
 
@@ -890,11 +882,11 @@ fn should_not_fund_once_exhausted() {
 
     assert_eq!(available_amount, half_of_faucet_fund_amount);
 
-    let remaining_amount = builder
+    let remaining_requests = builder
         .query(
             None,
             faucet_contract_hash.into(),
-            &[REMAINING_AMOUNT_NAMED_KEY.to_string()],
+            &[REMAINING_REQUESTS_NAMED_KEY.to_string()],
         )
         .expect("failed to find available amount named key")
         .as_cl_value()
@@ -903,7 +895,10 @@ fn should_not_fund_once_exhausted() {
         .into_t::<U512>()
         .expect("failed to convert into U512");
 
-    assert_eq!(remaining_amount, one_distribution * 4);
+    assert_eq!(
+        remaining_requests,
+        U512::from(assigned_distributions_per_interval)
+    );
 
     let user_fund_amount = U512::from(3_000_000_000u64);
     let num_funds = 4;
@@ -956,11 +951,11 @@ fn should_not_fund_once_exhausted() {
         builder.exec(faucet_call_by_user).expect_success().commit();
     }
 
-    let remaining_amount = builder
+    let remaining_requests = builder
         .query(
             None,
             faucet_contract_hash.into(),
-            &[REMAINING_AMOUNT_NAMED_KEY.to_string()],
+            &[REMAINING_REQUESTS_NAMED_KEY.to_string()],
         )
         .expect("failed to find available amount named key")
         .as_cl_value()
@@ -969,7 +964,7 @@ fn should_not_fund_once_exhausted() {
         .into_t::<U512>()
         .expect("failed to convert into U512");
 
-    assert_eq!(remaining_amount, U512::zero());
+    assert_eq!(remaining_requests, U512::zero());
 
     // check the balance of the user's main purse
     let user_main_purse_balance_after =
@@ -1063,11 +1058,11 @@ fn should_not_fund_once_exhausted() {
     // we only update this named key after we've passed the threshold.
     assert_eq!(last_distribution_time, 11_011u64);
 
-    let remaining_amount = builder
+    let remaining_requests = builder
         .query(
             None,
             faucet_contract_hash.into(),
-            &[REMAINING_AMOUNT_NAMED_KEY.to_string()],
+            &[REMAINING_REQUESTS_NAMED_KEY.to_string()],
         )
         .expect("failed to find available amount named key")
         .as_cl_value()
@@ -1077,8 +1072,8 @@ fn should_not_fund_once_exhausted() {
         .expect("failed to convert into U512");
 
     assert_eq!(
-        remaining_amount,
-        assigned_available_amount - one_distribution
+        remaining_requests,
+        U512::from(assigned_distributions_per_interval - 1)
     );
 
     let user_main_purse_balance_after =
