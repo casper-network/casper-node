@@ -187,6 +187,8 @@ mod tests {
 
     #[tokio::test]
     async fn setup_listener_creates_listener() {
+        const TEST_MESSAGE: &[u8] = b"hello, world!";
+
         let tmpdir = tempfile::tempdir().expect("could not create tempdir");
         let socket_path = tmpdir.path().join("test.socket");
 
@@ -203,7 +205,7 @@ mod tests {
                 .await
                 .expect("could not connect to listener");
             stream
-                .write_all(b"hello")
+                .write_all(TEST_MESSAGE)
                 .await
                 .expect("could not write to listener");
         });
@@ -218,7 +220,7 @@ mod tests {
             .read_to_end(&mut buffer)
             .await
             .expect("failed to read to end");
-        assert_eq!(b"hello", buffer.as_slice());
+        assert_eq!(TEST_MESSAGE, buffer.as_slice());
     }
 
     #[tokio::test]
