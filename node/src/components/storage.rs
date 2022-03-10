@@ -1101,6 +1101,12 @@ impl Storage {
                     &block_header,
                     self.verifiable_chunked_hash_activation,
                 )?;
+
+                if self.has_corresponsing_body(&mut txn, &block_header)? {
+                    self.disjoint_block_height_sequences
+                        .insert(block_header.height());
+                }
+
                 txn.commit()?;
                 responder.respond(true).ignore()
             }
@@ -1111,6 +1117,17 @@ impl Storage {
                 responder.respond(result).ignore()
             }
         })
+    }
+
+    /// Returns `true` if there is a block body for the given block header available in storage.
+    fn has_corresponsing_body(
+        &self,
+        txn: &mut RwTransaction,
+        block_header: &BlockHeader,
+    ) -> Result<bool, FatalStorageError> {
+        // TODO[RC]: Possible optimization: Can we check if a body exists w/o retrieving it?
+        let maybe_block_body = self.get_body_for_block_header(txn, block_header)?;
+        Ok(maybe_block_body.is_some())
     }
 
     /// Put a single deploy into storage.
