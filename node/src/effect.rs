@@ -665,6 +665,7 @@ impl<REv> EffectBuilder<REv> {
             "{} must be an item where the ID _is_ the complete item",
             item
         );
+
         self.event_queue
             .schedule(
                 GossiperAnnouncement::NewCompleteItem(item),

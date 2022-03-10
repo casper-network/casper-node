@@ -17,6 +17,7 @@ use casper_types::{
 use crate::rpcs::docs::DocExample;
 
 static ERA_VALIDATORS: Lazy<EraValidators> = Lazy::new(|| {
+    // NOTE: Safe to unwrap since [u8] has correct length
     let secret_key_1 = SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap();
     let public_key_1 = PublicKey::from(&secret_key_1);
 
@@ -33,9 +34,11 @@ static BIDS: Lazy<Bids> = Lazy::new(|| {
     let staked_amount = U512::from(10);
     let release_era: u64 = 42;
 
+    // NOTE: Safe to unwrap since [u8] has correct length
     let validator_secret_key =
         SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap();
     let validator_public_key = PublicKey::from(&validator_secret_key);
+    // NOTE: Safe to unwrap since [u8] has correct length
     let delegator_secret_key =
         SecretKey::ed25519_from_bytes([43; SecretKey::ED25519_LENGTH]).unwrap();
     let delegator_public_key = PublicKey::from(&delegator_secret_key);

@@ -391,6 +391,7 @@ pub fn assert_schema(schema_path: String, actual_schema: RootSchema) {
         &expected_schema,
         Config::new(CompareMode::Strict),
     );
+
     assert_eq!(
         result,
         Ok(()),

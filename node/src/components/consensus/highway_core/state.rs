@@ -211,6 +211,7 @@ impl<C: Context> State<C> {
             weights.len() > 0,
             "cannot initialize Highway with no validators"
         );
+
         let sums = |mut sums: Vec<Weight>, w: Weight| {
             let sum = sums.last().copied().unwrap_or(Weight(0));
             sums.push(sum.checked_add(w).expect("total weight must be < 2^64"));
@@ -218,9 +219,11 @@ impl<C: Context> State<C> {
         };
         let cumulative_w = ValidatorMap::from(weights.iter().copied().fold(vec![], sums));
         assert!(
+            // NOTE: Unwrap safe as we have tested above that weights have length > 0
             *cumulative_w.as_ref().last().unwrap() > Weight(0),
             "total weight must not be zero"
         );
+
         let mut panorama = Panorama::new(weights.len());
         let mut can_propose: ValidatorMap<bool> = weights.iter().map(|_| true).collect();
         for idx in cannot_propose {
@@ -451,7 +454,11 @@ impl<C: Context> State<C> {
         }
         // If the selected leader is excluded, we reassign the slot to someone else. This time we
         // consider only the non-banned validators.
-        let total_w_leaders = *self.cumulative_w_leaders.as_ref().last().unwrap();
+        let total_w_leaders = *self
+            .cumulative_w_leaders
+            .as_ref()
+            .last()
+            .expect("cumulative_w_leaders should have at least one member");
         let r = Weight(leader_prng(total_w_leaders.0, seed.wrapping_add(1)));
         self.cumulative_w_leaders
             .binary_search(&r)
@@ -491,9 +498,15 @@ impl<C: Context> State<C> {
                 // unit and so its sequence number must be at most the same as hash0. Hence it is
                 // an equivocation, and to prove that, we only need to provide the other unit with
                 // the same sequence number.
-                let prev0 = self.find_in_swimlane(hash0, unit.seq_number).unwrap();
-                let wunit0 = self.wire_unit(prev0, instance_id).unwrap();
-                let wunit1 = self.wire_unit(&hash, instance_id).unwrap();
+                let prev0 = self
+                    .find_in_swimlane(hash0, unit.seq_number)
+                    .expect("find_in_swim_lane should find hash");
+                let wunit0 = self
+                    .wire_unit(prev0, instance_id)
+                    .expect("should have SignedWireUnit");
+                let wunit1 = self
+                    .wire_unit(&hash, instance_id)
+                    .expect("should have SignedWireUnit");
                 self.add_evidence(Evidence::Equivocation(wunit0, wunit1));
                 Observation::Faulty
             }
@@ -545,7 +558,7 @@ impl<C: Context> State<C> {
         let threshold = self.total_weight() / 2;
         if endorsed > threshold {
             info!(%uhash, "Unit endorsed by at least 1/2 of validators.");
-            // Unwrap is safe: We created the map entry above.
+            // NOTE: Unwrap is safe: We created the map entry above.
             let mut fully_endorsed = self.incomplete_endorsements.remove(&uhash).unwrap();
             let endorsed_map = self
                 .weights()
@@ -662,13 +675,20 @@ impl<C: Context> State<C> {
                     .swimlane(uhash2)
                     .skip(1)
                     .take_while(|(_, pred2)| pred2.seq_number >= unit1.seq_number)
-                    .map(|(pred2_hash, _)| self.wire_unit(pred2_hash, *instance_id).unwrap())
+                    .map(|(pred2_hash, _)| {
+                        self.wire_unit(pred2_hash, *instance_id)
+                            .expect("should have SignedWireUnit")
+                    })
                     .collect();
                 Evidence::Endorsements {
                     endorsement1: SignedEndorsement::new(Endorsement::new(*uhash1, vidx), *sig1),
-                    unit1: self.wire_unit(uhash1, *instance_id).unwrap(),
+                    unit1: self
+                        .wire_unit(uhash1, *instance_id)
+                        .expect("should have SignedWireUnit"),
                     endorsement2: SignedEndorsement::new(Endorsement::new(*uhash2, vidx), *sig2),
-                    unit2: self.wire_unit(uhash2, *instance_id).unwrap(),
+                    unit2: self
+                        .wire_unit(uhash2, *instance_id)
+                        .expect("should have SignedWireUnit"),
                     swimlane2,
                 }
             })

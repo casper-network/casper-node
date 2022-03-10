@@ -467,7 +467,11 @@ impl ContractRuntime {
                 let exec_queue = Arc::clone(&self.exec_queue);
                 let execution_pre_state = Arc::clone(&self.execution_pre_state);
                 let protocol_version = self.protocol_version;
-                if self.execution_pre_state.lock().unwrap().next_block_height
+                if self
+                    .execution_pre_state
+                    .lock()
+                    .expect("execution_pre_state lock should not be poisoned")
+                    .next_block_height
                     == finalized_block.height()
                 {
                     effects.extend(
@@ -486,10 +490,13 @@ impl ContractRuntime {
                         .ignore(),
                     )
                 } else {
-                    exec_queue.lock().unwrap().insert(
-                        finalized_block.height(),
-                        (finalized_block, deploys, transfers),
-                    );
+                    exec_queue
+                        .lock()
+                        .expect("execution_queue lock should not be poisoned")
+                        .insert(
+                            finalized_block.height(),
+                            (finalized_block, deploys, transfers),
+                        );
                 }
                 effects
             }
@@ -646,7 +653,10 @@ impl ContractRuntime {
     }
 
     pub(crate) fn set_initial_state(&mut self, sequential_block_state: ExecutionPreState) {
-        *self.execution_pre_state.lock().unwrap() = sequential_block_state;
+        *self
+            .execution_pre_state
+            .lock()
+            .expect("execution_pre_state should not be poisoned") = sequential_block_state;
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -667,7 +677,10 @@ impl ContractRuntime {
             + From<ControlAnnouncement>
             + Send,
     {
-        let current_execution_pre_state = execution_pre_state.lock().unwrap().clone();
+        let current_execution_pre_state = execution_pre_state
+            .lock()
+            .expect("execution_pre_state lock should not be poisoned")
+            .clone();
         let BlockAndExecutionEffects {
             block,
             execution_results,
@@ -694,7 +707,10 @@ impl ContractRuntime {
             block.header(),
             verifiable_chunked_hash_activation,
         );
-        *execution_pre_state.lock().unwrap() = new_execution_pre_state.clone();
+        *execution_pre_state
+            .lock()
+            .expect("execution_pre_state lock should not be poisoned") =
+            new_execution_pre_state.clone();
 
         let current_era_id = block.header().era_id();
 

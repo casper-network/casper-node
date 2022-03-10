@@ -75,7 +75,6 @@ static MAYBE_CARGO_TARGET_DIR_WASM_PATH: Lazy<Option<PathBuf>> = Lazy::new(|| {
 #[cfg(feature = "use-as-wasm")]
 static ASSEMBLY_SCRIPT_WORKSPACE_WASM_PATH: Lazy<PathBuf> = Lazy::new(|| {
     let path = RUST_WORKSPACE_PATH.join("target_as");
-
     assert!(
         path.exists(),
         "AssemblyScript WASM path {} does not exist.",

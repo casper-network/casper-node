@@ -1025,6 +1025,7 @@ where
             debug_assert!(false);
         }
 
+        // NOTE: Safe to unwrap as we have checked if stack is empty just above
         if stack.first_frame().unwrap().contract_hash().is_some() {
             error!("First element of the call stack should always represent a Session call");
             debug_assert!(false);

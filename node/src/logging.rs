@@ -8,6 +8,7 @@ use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use tracing::{
+    error,
     field::{Field, Visit},
     Event, Level, Subscriber,
 };
@@ -216,7 +217,7 @@ where
                 // Abbreviate all but last segment.
                 if count > 1 {
                     for part in parts.iter_mut().take(count - 1) {
-                        assert!(part.is_ascii());
+                        assert!(part.is_ascii(), "part should be ascii");
                         *part = &part[0..1];
                     }
                 }

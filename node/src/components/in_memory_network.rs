@@ -476,7 +476,10 @@ where
         // Sanity check, ensure that we do not create duplicate nodes.
         {
             let mut nodes_write = nodes.write().expect("network lock poisoned");
-            assert!(!nodes_write.contains_key(&node_id));
+            assert!(
+                !nodes_write.contains_key(&node_id),
+                "nodes_write should not contain key"
+            );
             nodes_write.insert(node_id, sender);
         }
 

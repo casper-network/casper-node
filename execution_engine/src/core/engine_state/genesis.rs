@@ -43,7 +43,7 @@ use crate::{
         engine_state::{execution_effect::ExecutionEffect, EngineConfig},
         execution,
         execution::{AddressGenerator, Executor},
-        runtime::RuntimeStack,
+        runtime::{RuntimeStack, RuntimeStackOverflow},
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
@@ -339,6 +339,7 @@ impl Distribution<GenesisAccount> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisAccount {
         let mut bytes = [0u8; 32];
         rng.fill_bytes(&mut bytes[..]);
+        // NOTE: Safe to unwrap as butes hass correct length
         let secret_key = SecretKey::ed25519_from_bytes(bytes).unwrap();
         let public_key = PublicKey::from(&secret_key);
         let balance = Motes::new(rng.gen());
@@ -728,6 +729,10 @@ pub enum GenesisError {
         /// Number of validator slots specified.
         validator_slots: u32,
     },
+    /// Failed to push first item on runtime stack.
+    ///
+    /// This likely happened due to a misconfigured stack height.
+    StackTooSmall(RuntimeStackOverflow),
 }
 
 pub(crate) struct GenesisInstaller<S>
@@ -1254,7 +1259,7 @@ where
             .push(CallStackElement::session(
                 PublicKey::System.to_account_hash(),
             ))
-            .unwrap();
+            .map_err(GenesisError::StackTooSmall)?;
 
         let (_instance, mut runtime) = self
             .executor

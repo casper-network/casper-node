@@ -17,7 +17,8 @@ impl AdditiveMapDiff {
     ) -> Self {
         let mut both = AdditiveMap::new();
         for key in left.keys().copied().collect::<Vec<_>>() {
-            // Safe to unwrap here since we're iterating `left` keys, so `left.remove` must succeed.
+            // NOTE: Safe to unwrap here since we're iterating `left` keys, so `left.remove` must
+            // succeed.
             let left_value = left.remove(&key).unwrap();
             if let Some(right_value) = right.remove(&key) {
                 if left_value == right_value {

@@ -15,6 +15,7 @@ use serde::{
 use casper_hashing::{ChunkWithProof, Digest};
 use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 use datasize::DataSize;
+use tracing::error;
 
 #[cfg(test)]
 pub mod gens;

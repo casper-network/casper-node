@@ -48,6 +48,7 @@ use crate::types::error::{
     BlockHeaderWithMetadataValidationError, BlockWithMetadataValidationError,
 };
 
+// NOTE: Unwraps are safe as all [u8] have correct length
 static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
     let secret_key_1 = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
     let public_key_1 = PublicKey::from(&secret_key_1);
@@ -68,6 +69,8 @@ static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
         inactive_validators,
     }
 });
+
+// NOTE: Unwraps are safe as all [u8] have correct length
 static ERA_END: Lazy<EraEnd> = Lazy::new(|| {
     let secret_key_1 = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
     let public_key_1 = PublicKey::from(&secret_key_1);

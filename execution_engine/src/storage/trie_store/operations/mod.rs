@@ -8,6 +8,8 @@ use std::{
     mem,
 };
 
+use tracing::{error, warn};
+
 use casper_hashing::Digest;
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
@@ -687,7 +689,12 @@ where
         let path_to_node: Vec<u8> = get_parents_path(&parents);
         // Check that the path to the node is a prefix of the current path
         let current_path = common_prefix(path_to_leaf, &path_to_node);
-        assert_eq!(current_path, path_to_node);
+        assert_eq!(
+            current_path, path_to_node,
+            "current_path must be the same as path_to_node"
+        );
+        error!("current_path must be the same as path_to_node");
+
         // Get the length
         path_to_node.len()
     };

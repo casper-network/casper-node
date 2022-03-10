@@ -203,7 +203,7 @@ macro_rules! runtime_args {
         {
             let mut named_args = RuntimeArgs::new();
             $(
-                named_args.insert($key, $value).unwrap();
+                named_args.insert($key, $value).expect("failed to convert value to CLValue");
             )*
             named_args
         }

@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 
 use casper_hashing::Digest;
 use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes};
+use tracing::error;
 
 use crate::storage::trie::{Pointer, Trie, RADIX};
 
@@ -178,6 +179,7 @@ where
                 } => {
                     let hole_index = *hole_index;
                     assert!(hole_index as usize <= RADIX, "hole_index exceeded RADIX");
+
                     let mut indexed_pointers = indexed_pointers_with_hole.to_owned();
                     indexed_pointers.push((hole_index, pointer));
                     Trie::<K, V>::node(&indexed_pointers).to_bytes()?

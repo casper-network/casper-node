@@ -79,6 +79,7 @@ static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
     let serialized_header = serialize_header(&header);
     let hash = DeployHash::new(Digest::hash(&serialized_header));
 
+    // NOTE: Safe to unwrap as input is correct
     let signature = Signature::from_hex(
         "012dbf03817a51794a8e19e0724884075e6d1fbec326b766ecfa6658b41f81290da85e23b24e88b1c8d976\
             1185c961daee1adab0649912a6477bcd2e69bd91bd08"

@@ -1,5 +1,6 @@
 use datasize::DataSize;
 use serde::Serialize;
+use tracing::error;
 
 use super::{round_len, TimeDiff, Timestamp};
 
@@ -54,6 +55,7 @@ impl Params {
             reduced_block_reward <= block_reward,
             "reduced block reward must not be greater than the reward for a finalized block"
         );
+
         Params {
             seed,
             block_reward,

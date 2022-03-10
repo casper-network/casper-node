@@ -497,6 +497,7 @@ async fn get_block_with_metadata<REv: ReactorEventT>(
         .await;
 
     if maybe_result.is_none() && getting_specific_block {
+        // NOTE: Safe to unwrap as we check above that maybe_id.is_some()
         info!("failed to get {:?} from storage", maybe_id.unwrap());
         return Err(warp_json_rpc::Error::custom(
             ErrorCode::NoSuchBlock as i64,

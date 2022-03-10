@@ -69,16 +69,16 @@ pub(super) async fn run(
                                 .iter()
                                 .next()
                                 .map(|event| {
-                                    let id = event.id.unwrap();
+                                    let id = event.id.expect("even should have id");
                                     id > Id::MAX - buffer_size || id < buffer_size
                                 })
                                 .unwrap_or_default();
                             for event in buffer.iter().skip_while(|event| {
                                 if in_wraparound_zone {
-                                    event.id.unwrap().wrapping_add(buffer_size)
+                                    event.id.expect("should have id").wrapping_add(buffer_size)
                                         < start_index.wrapping_add(buffer_size)
                                 } else {
-                                    event.id.unwrap() < start_index
+                                    event.id.expect("should have id") < start_index
                                 }
                             }) {
                                 // As per sending `SSE_INITIAL_EVENT`, we don't care if this errors.

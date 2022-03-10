@@ -520,7 +520,10 @@ pub trait Auction:
             }
 
             let previous_recipients = snapshot.insert(delayed_era, recipients);
-            assert!(previous_recipients.is_none());
+            assert!(
+                previous_recipients.is_none(),
+                "previous_recipients should be None"
+            );
 
             let snapshot = snapshot.into_iter().rev().take(snapshot_size).collect();
             detail::set_seigniorage_recipients_snapshot(self, snapshot)?;

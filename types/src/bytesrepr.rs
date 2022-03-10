@@ -1308,16 +1308,22 @@ where
     let mut written_bytes = vec![];
     t.write_bytes(&mut written_bytes)
         .expect("Unable to serialize data via write_bytes");
-    assert_eq!(serialized, written_bytes);
+    assert!(
+        serialized == written_bytes,
+        "serialized bytes should equal written_bytes"
+    );
 
     let deserialized_from_slice =
         deserialize_from_slice(&serialized).expect("Unable to deserialize data");
-    // assert!(*t == deserialized);
-    assert_eq!(*t, deserialized_from_slice);
+    assert!(
+        *t == deserialized_from_slice,
+        "value t should equal deserialized_from_slice value"
+    );
 
     let deserialized = deserialize::<T>(serialized).expect("Unable to deserialize data");
-    assert_eq!(*t, deserialized);
+    assert!(*t == deserialized, "object t should equal deserialized");
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;

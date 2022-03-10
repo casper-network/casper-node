@@ -101,7 +101,7 @@ mod tests {
                 // We need to use a type annotation here to help the compiler choose
                 // a suitable FromBytes instance
                 let maybe_trie: Option<Trie<Bytes, Bytes>> = store.get(&txn, hash).unwrap();
-                assert!(maybe_trie.is_none());
+                assert!(maybe_trie.is_none(), "maybe_trie should be none");
             }
 
             // Commit the read transaction.  Not strictly necessary, but better to be hygienic.

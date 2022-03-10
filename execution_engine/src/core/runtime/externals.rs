@@ -1,5 +1,6 @@
 use std::{collections::BTreeSet, convert::TryFrom};
 
+use tracing::error;
 use wasmi::{Externals, RuntimeArgs, RuntimeValue, Trap};
 
 use casper_types::{
@@ -282,7 +283,12 @@ where
                 )?;
                 let purse = self.create_purse()?;
                 let purse_bytes = purse.into_bytes().map_err(Error::BytesRepr)?;
-                assert_eq!(dest_size, purse_bytes.len() as u32);
+                assert_eq!(
+                    dest_size,
+                    purse_bytes.len() as u32,
+                    "purse_bytes length must be equal to dest_size"
+                );
+
                 self.memory
                     .set(dest_ptr, &purse_bytes)
                     .map_err(|e| Error::Interpreter(e.into()))?;

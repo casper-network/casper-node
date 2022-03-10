@@ -271,7 +271,8 @@ impl OpenRpcSchema {
                 MapEntry::Occupied(current_value) => {
                     assert_eq!(
                         current_value.get().clone().into_object().metadata,
-                        value.into_object().metadata
+                        value.into_object().metadata,
+                        "value metadata should equal current_value metadata"
                     )
                 }
                 MapEntry::Vacant(vacant) => {
@@ -352,7 +353,7 @@ impl Example {
         let params = match maybe_params_obj {
             Some(params_obj) => params_obj
                 .as_object()
-                .unwrap()
+                .expect("params_obj should be Object")
                 .iter()
                 .map(|(name, value)| ExampleParam {
                     name: name.clone(),

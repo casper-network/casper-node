@@ -13,6 +13,7 @@ use casper_types::{
 const DELEGATION_RATE: DelegationRate = 42;
 
 fn bond(contract_hash: ContractHash, bond_amount: U512) {
+    // NOTE safe to unwrap since ED25519_LENGTH is correct length
     let valid_secret_key = SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap();
     let valid_public_key = PublicKey::from(&valid_secret_key);
 
