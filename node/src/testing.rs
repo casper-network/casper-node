@@ -275,6 +275,9 @@ impl<REv: 'static> ComponentHarness<REv> {
                                 fatal
                             )
                         }
+                        ControlAnnouncement::QueueDumpRequest { .. } => {
+                            panic!("queue dumps are not supported in the test harness")
+                        }
                     }
                 } else {
                     debug!(?ev, "ignoring event while looking for a fatal")
@@ -319,6 +322,12 @@ pub(crate) enum UnitTestEvent {
 
 impl ReactorEvent for UnitTestEvent {
     fn as_control(&self) -> Option<&ControlAnnouncement> {
+        match self {
+            UnitTestEvent::ControlAnnouncement(ctrl_ann) => Some(ctrl_ann),
+        }
+    }
+
+    fn try_into_control(self) -> Option<ControlAnnouncement> {
         match self {
             UnitTestEvent::ControlAnnouncement(ctrl_ann) => Some(ctrl_ann),
         }

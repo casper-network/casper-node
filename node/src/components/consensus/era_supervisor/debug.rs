@@ -1,4 +1,4 @@
-//! Data types used solely for dumping of consensus data via the debug console.
+//! Data types used solely for dumping of consensus data via the diagnostics port.
 
 use std::{
     borrow::Cow,

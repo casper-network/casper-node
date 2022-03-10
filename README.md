@@ -1,10 +1,10 @@
 [![LOGO](https://raw.githubusercontent.com/casper-network/casper-node/master/images/casper-association-logo-primary.svg)](https://casper.network/)
 
-Casper is the blockchain platform purpose-built to scale opportunity for everyone. Building toward blockchain’s next frontier, 
-Casper is designed for real-world applications without sacrificing usability, cost, decentralization, or security. It removes 
-the barriers that prevent mainstream blockchain adoption by making blockchain friendly to use, open to the world, and 
-future-proof to support innovations today and tomorrow. Guided by open-source principles and built from the ground up to 
-empower individuals, the team seeks to provide an equitable foundation made for long-lasting impact. Read more about our 
+Casper is the blockchain platform purpose-built to scale opportunity for everyone. Building toward blockchain’s next frontier,
+Casper is designed for real-world applications without sacrificing usability, cost, decentralization, or security. It removes
+the barriers that prevent mainstream blockchain adoption by making blockchain friendly to use, open to the world, and
+future-proof to support innovations today and tomorrow. Guided by open-source principles and built from the ground up to
+empower individuals, the team seeks to provide an equitable foundation made for long-lasting impact. Read more about our
 mission at: https://casper.network/network/casper-association
 
 ## Current Development Status
@@ -31,7 +31,7 @@ The Casper MainNet is live.
 
 # casper-node
 
-This is the core application for the Casper blockchain. 
+This is the core application for the Casper blockchain.
 
 ## Running a validator node from Source
 
@@ -223,21 +223,88 @@ Count number of events in each queue:
 jq 'map_values(map(keys[0]))' queue_dump.json
 ```
 
-### Diagnostic console
+### Diagnostics port
 
-If the configuration option `console.enabled` is set to `true`, a unix socket named `debug.socket` by default can be found next to the configuration while the node is running. It can be connected to by tools like `socat`:
+If the configuration option `diagnostics_port.enabled` is set to `true`, a unix socket named `debug.socket` by default can be found next to the configuration while the node is running.
 
-```sh
-$ socat - unix:/path/to/debug.socket
-```
+#### Interactive use
 
-Entering `help` will show available commands. The interface can also be scripted, it may be helpful to change some of the per-connection settings in this case:
+The `debug.socket` can be connected to by tools like `socat` for interactive use:
 
 ```sh
-echo -e 'set -q true -o bincode\nexample-command' | socat - unix-client:/path/to/debug.socket > output.dump
+socat - unix:/path/to/debug.socket
 ```
 
-This calls `example-command` on the console, but disables the command confirmation (`-q true`) and changes the output format to bincode (`-o bincode`) before doing so.
+Entering `help` will show available commands. The `set` command allows configuring the current connection, see `set --help`.
+
+#### Example: Collecting a consensus dump
+
+After connecting using `socat` (see above), we set the output format to JSON:
+
+```
+set --output=json
+```
+
+A confirmation will acknowledge the settings change (unless `--quiet=true` is set):
+
+```
+{
+  "Success": {
+    "msg": "session unchanged"
+  }
+}
+```
+
+We can now call `dump-consensus` to get the _latest_ era serialized in JSON format:
+
+```
+dump-consensus
+{
+  "Success": {
+    "msg": "dumping consensus state"
+  }
+}
+{"id":8,"start_time":"2022-03-01T14:54:42.176Z","start_height":88,"new_faulty" ...
+```
+
+An era other than the latest can be dumped by specifying as a parameter, _e.g._ `dump-consensus 3` will dump the third era. See `dump-consensus --help` for details.
+
+#### Example: Dumping the event queue
+
+With the connection set to JSON output (see previous example), we can also dump the event queues:
+
+```
+dump-queues
+{
+  "Success": {
+    "msg": "dumping queues"
+  }
+}
+{"queues":{"Regular":[],"Api":[],"Network":[],"Control":[],"NetworkIncoming":[]
+}}{"queues":{"Api":[],"Regular":[],"Control":[],"NetworkIncoming":[],"Network":
+[]}}{"queues":{"Network":[],"Control":[],"Api":[],"NetworkIncoming":[],"Regular
+":[]}}
+```
+
+Empty output will be produced on a node that is working without external pressure, as the queues will be empty most of the time.
+
+
+#### Non-interactive use
+
+The diagnostics port can also be scripted by sending a newline-terminated list of commands through `socat`. For example, the following sequence of commands will collect a consensus dump without the success-indicating header:
+
+```
+set -o json -q true
+dump-consensus
+```
+
+For ad-hoc dumps, this can be shortened and piped into `socat`:
+
+```sh
+echo -e 'set -o json -q true\ndump-consensus' | socat - unix-client:debug.socket > consensus-dump.json
+```
+
+This results in the latest era being dumped into `consensus-dump.json`.
 
 
 ## Running a client
@@ -250,5 +317,5 @@ See [the nctl utility README](utils/nctl/README.md).
 
 ## Running on an existing network
 
-To support upgrades with a network, the casper-node is installed using scripts distributed with the 
+To support upgrades with a network, the casper-node is installed using scripts distributed with the
 [casper-node-launcher](https://github.com/casper-network/casper-node-launcher).

@@ -31,9 +31,9 @@ use crate::{
         block_validator::{self, BlockValidator},
         chainspec_loader::{self, ChainspecLoader},
         consensus::{self, EraSupervisor, HighwayProtocol},
-        console::{self, Console},
         contract_runtime::{ContractRuntime, ContractRuntimeAnnouncement, ExecutionPreState},
         deploy_acceptor::{self, DeployAcceptor},
+        diagnostics_port::{self, DiagnosticsPort},
         event_stream_server::{self, EventStreamServer},
         fetcher::{self, Fetcher},
         gossiper::{self, Gossiper},
@@ -52,7 +52,7 @@ use crate::{
             GossiperAnnouncement, LinearChainAnnouncement, LinearChainBlock, NetworkAnnouncement,
             RpcServerAnnouncement,
         },
-        console::DumpConsensusStateRequest,
+        diagnostics_port::DumpConsensusStateRequest,
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
             ContractRuntimeRequest, FetcherRequest, LinearChainRequest, MetricsRequest,
@@ -122,9 +122,9 @@ pub(crate) enum ParticipatingEvent {
     /// Linear chain event.
     #[from]
     LinearChain(#[serde(skip_serializing)] linear_chain::Event),
-    /// Console event.
+    /// Diagnostics port event.
     #[from]
-    Console(console::Event),
+    DiagnosticsPort(diagnostics_port::Event),
 
     // Requests
     /// Contract runtime request.
@@ -208,6 +208,14 @@ impl ReactorEvent for ParticipatingEvent {
         }
     }
 
+    fn try_into_control(self) -> Option<ControlAnnouncement> {
+        if let Self::ControlAnnouncement(ctrl_ann) = self {
+            Some(ctrl_ann)
+        } else {
+            None
+        }
+    }
+
     #[inline]
     fn description(&self) -> &'static str {
         match self {
@@ -226,7 +234,7 @@ impl ReactorEvent for ParticipatingEvent {
             ParticipatingEvent::BlockValidator(_) => "BlockValidator",
             ParticipatingEvent::LinearChain(_) => "LinearChain",
             ParticipatingEvent::ContractRuntime(_) => "ContractRuntime",
-            ParticipatingEvent::Console(_) => "Console",
+            ParticipatingEvent::DiagnosticsPort(_) => "DiagnosticsPort",
             ParticipatingEvent::NetworkRequest(_) => "NetworkRequest",
             ParticipatingEvent::NetworkInfoRequest(_) => "NetworkInfoRequest",
             ParticipatingEvent::DeployFetcherRequest(_) => "DeployFetcherRequest",
@@ -323,7 +331,7 @@ impl Display for ParticipatingEvent {
             }
             ParticipatingEvent::LinearChain(event) => write!(f, "linear-chain event {}", event),
             ParticipatingEvent::BlockValidator(event) => write!(f, "block validator: {}", event),
-            ParticipatingEvent::Console(event) => write!(f, "console: {}", event),
+            ParticipatingEvent::DiagnosticsPort(event) => write!(f, "diagnostics port: {}", event),
             ParticipatingEvent::NetworkRequest(req) => write!(f, "network request: {}", req),
             ParticipatingEvent::NetworkInfoRequest(req) => {
                 write!(f, "network info request: {}", req)
@@ -431,7 +439,7 @@ pub(crate) struct Reactor {
     block_proposer: BlockProposer,
     block_validator: BlockValidator,
     linear_chain: LinearChainComponent,
-    console: Console,
+    diagnostics_port: DiagnosticsPort,
 
     // Non-components.
     #[data_size(skip)] // Never allocates heap data.
@@ -610,8 +618,10 @@ impl reactor::Reactor for Reactor {
 
         let metrics = Metrics::new(registry.clone());
 
-        let (console, console_effects) =
-            Console::new(&WithDir::new(&root, config.console.clone()), event_queue)?;
+        let (diagnostics_port, diagnostics_port_effects) = DiagnosticsPort::new(
+            &WithDir::new(&root, config.diagnostics_port.clone()),
+            event_queue,
+        )?;
 
         let effect_builder = EffectBuilder::new(event_queue);
 
@@ -674,8 +684,8 @@ impl reactor::Reactor for Reactor {
             reactor::wrap_effects(ParticipatingEvent::BlockProposer, block_proposer_effects);
 
         effects.extend(reactor::wrap_effects(
-            ParticipatingEvent::Console,
-            console_effects,
+            ParticipatingEvent::DiagnosticsPort,
+            diagnostics_port_effects,
         ));
 
         let maybe_next_activation_point = chainspec_loader
@@ -750,7 +760,7 @@ impl reactor::Reactor for Reactor {
                 block_proposer,
                 block_validator,
                 linear_chain,
-                console,
+                diagnostics_port,
                 memory_metrics,
                 event_queue_metrics,
             },
@@ -832,9 +842,10 @@ impl reactor::Reactor for Reactor {
                 ParticipatingEvent::LinearChain,
                 self.linear_chain.handle_event(effect_builder, rng, event),
             ),
-            ParticipatingEvent::Console(event) => reactor::wrap_effects(
-                ParticipatingEvent::Console,
-                self.console.handle_event(effect_builder, rng, event),
+            ParticipatingEvent::DiagnosticsPort(event) => reactor::wrap_effects(
+                ParticipatingEvent::DiagnosticsPort,
+                self.diagnostics_port
+                    .handle_event(effect_builder, rng, event),
             ),
 
             // Requests:

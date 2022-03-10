@@ -45,27 +45,19 @@ pub use components::{
 };
 pub use utils::WithDir;
 
-use std::sync::{
-    atomic::{AtomicBool, AtomicUsize},
-    Arc,
-};
+use std::sync::{atomic::AtomicUsize, Arc};
 
 use ansi_term::Color::Red;
 use once_cell::sync::Lazy;
 #[cfg(not(test))]
 use rand::SeedableRng;
-use signal_hook::{
-    consts::{
-        signal::{SIGUSR1, SIGUSR2},
-        TERM_SIGNALS,
-    },
-    flag,
-};
+use signal_hook::{consts::TERM_SIGNALS, flag};
 
 pub(crate) use components::{
     block_proposer::Config as BlockProposerConfig, consensus::Config as ConsensusConfig,
-    console::Config as ConsoleConfig, contract_runtime::Config as ContractRuntimeConfig,
+    contract_runtime::Config as ContractRuntimeConfig,
     deploy_acceptor::Config as DeployAcceptorConfig,
+    diagnostics_port::Config as DiagnosticsPortConfig,
     event_stream_server::Config as EventStreamServerConfig, fetcher::Config as FetcherConfig,
     gossiper::Config as GossipConfig, linear_chain_sync::Config as LinearChainSyncConfig,
     rest_server::Config as RestServerConfig, rpc_server::Config as RpcServerConfig,
@@ -114,14 +106,6 @@ pub(crate) static VERSION_STRING: Lazy<String> = Lazy::new(|| version_string(fal
 pub(crate) static TERMINATION_REQUESTED: Lazy<Arc<AtomicUsize>> =
     Lazy::new(|| Arc::new(AtomicUsize::new(0)));
 
-/// Global flag indicating the running reactor should dump its event queue in JSON format.
-pub(crate) static JSON_DUMP_REQUESTED: Lazy<Arc<AtomicBool>> =
-    Lazy::new(|| Arc::new(AtomicBool::new(false)));
-
-/// Global flag indicating the running reactor should dump its event queue in debug text format.
-pub(crate) static DEBUG_DUMP_REQUESTED: Lazy<Arc<AtomicBool>> =
-    Lazy::new(|| Arc::new(AtomicBool::new(false)));
-
 /// Setup UNIX signal hooks for current application.
 pub(crate) fn setup_signal_hooks() {
     for signal in TERM_SIGNALS {
@@ -132,8 +116,6 @@ pub(crate) fn setup_signal_hooks() {
         )
         .unwrap_or_else(|error| panic!("failed to register signal {}: {}", signal, error));
     }
-    let _ = flag::register(SIGUSR1, Arc::clone(&*DEBUG_DUMP_REQUESTED));
-    let _ = flag::register(SIGUSR2, Arc::clone(&*JSON_DUMP_REQUESTED));
 }
 
 /// Constructs a new `NodeRng`.

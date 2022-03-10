@@ -25,9 +25,9 @@ use crate::{
     components::{
         block_validator::{self, BlockValidator},
         chainspec_loader::{self, ChainspecLoader},
-        console::{self, Console},
         contract_runtime::{ContractRuntime, ContractRuntimeAnnouncement},
         deploy_acceptor::{self, DeployAcceptor},
+        diagnostics_port::{self, DiagnosticsPort},
         event_stream_server,
         event_stream_server::{DeployGetter, EventStreamServer},
         fetcher::{self, Fetcher},
@@ -45,7 +45,7 @@ use crate::{
             ChainspecLoaderAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
             GossiperAnnouncement, LinearChainAnnouncement, LinearChainBlock, NetworkAnnouncement,
         },
-        console::DumpConsensusStateRequest,
+        diagnostics_port::DumpConsensusStateRequest,
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
             ContractRuntimeRequest, FetcherRequest, LinearChainRequest, MetricsRequest,
@@ -142,9 +142,9 @@ pub(crate) enum JoinerEvent {
     #[from]
     AddressGossiper(gossiper::Event<GossipedAddress>),
 
-    /// Console event.
+    /// Diagnostics port event.
     #[from]
-    Console(console::Event),
+    DiagnosticsPort(diagnostics_port::Event),
 
     /// Requests.
     /// Linear chain block by hash fetcher request.
@@ -218,6 +218,14 @@ impl ReactorEvent for JoinerEvent {
         }
     }
 
+    fn try_into_control(self) -> Option<ControlAnnouncement> {
+        if let Self::ControlAnnouncement(ctrl_ann) = self {
+            Some(ctrl_ann)
+        } else {
+            None
+        }
+    }
+
     fn description(&self) -> &'static str {
         match self {
             JoinerEvent::SmallNetwork(_) => "SmallNetwork",
@@ -237,7 +245,7 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::ContractRuntime(_) => "ContractRuntime",
             JoinerEvent::LinearChain(_) => "LinearChain",
             JoinerEvent::AddressGossiper(_) => "AddressGossiper",
-            JoinerEvent::Console(_) => "Console",
+            JoinerEvent::DiagnosticsPort(_) => "DiagnosticsPort",
             JoinerEvent::BlockFetcherRequest(_) => "BlockFetcherRequest",
             JoinerEvent::BlockByHeightFetcherRequest(_) => "BlockByHeightFetcherRequest",
             JoinerEvent::DeployFetcherRequest(_) => "DeployFetcherRequest",
@@ -326,7 +334,7 @@ impl Display for JoinerEvent {
                 write!(f, "block executor announcement: {}", announcement)
             }
             JoinerEvent::AddressGossiper(event) => write!(f, "address gossiper: {}", event),
-            JoinerEvent::Console(event) => write!(f, "console: {}", event),
+            JoinerEvent::DiagnosticsPort(event) => write!(f, "diagnostics port: {}", event),
             JoinerEvent::AddressGossiperAnnouncement(ann) => {
                 write!(f, "address gossiper announcement: {}", ann)
             }
@@ -369,7 +377,7 @@ pub(crate) struct Reactor {
     block_validator: BlockValidator,
     deploy_fetcher: Fetcher<Deploy>,
     linear_chain: linear_chain::LinearChainComponent,
-    console: Console,
+    diagnostics_port: DiagnosticsPort,
     // Handles request for linear chain block by height.
     block_by_height_fetcher: Fetcher<BlockByHeight>,
     pub(super) block_header_by_hash_fetcher: Fetcher<BlockHeader>,
@@ -425,8 +433,10 @@ impl reactor::Reactor for Reactor {
 
         let metrics = Metrics::new(registry.clone());
 
-        let (console, console_effects) =
-            Console::new(&WithDir::new(&root, config.console.clone()), event_queue)?;
+        let (diagnostics_port, diagnostics_port_effects) = DiagnosticsPort::new(
+            &WithDir::new(&root, config.diagnostics_port.clone()),
+            event_queue,
+        )?;
 
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
@@ -440,7 +450,10 @@ impl reactor::Reactor for Reactor {
         let linear_chain_fetcher = Fetcher::new("linear_chain", config.fetcher, registry)?;
 
         let mut effects = reactor::wrap_effects(JoinerEvent::SmallNetwork, small_network_effects);
-        effects.extend(reactor::wrap_effects(JoinerEvent::Console, console_effects));
+        effects.extend(reactor::wrap_effects(
+            JoinerEvent::DiagnosticsPort,
+            diagnostics_port_effects,
+        ));
 
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
@@ -557,7 +570,7 @@ impl reactor::Reactor for Reactor {
                 block_validator,
                 deploy_fetcher,
                 linear_chain,
-                console,
+                diagnostics_port,
                 block_by_height_fetcher,
                 block_header_by_hash_fetcher,
                 block_header_with_metadata_fetcher:
@@ -839,9 +852,10 @@ impl reactor::Reactor for Reactor {
                 self.address_gossiper
                     .handle_event(effect_builder, rng, event),
             ),
-            JoinerEvent::Console(event) => reactor::wrap_effects(
-                JoinerEvent::Console,
-                self.console.handle_event(effect_builder, rng, event),
+            JoinerEvent::DiagnosticsPort(event) => reactor::wrap_effects(
+                JoinerEvent::DiagnosticsPort,
+                self.diagnostics_port
+                    .handle_event(effect_builder, rng, event),
             ),
             JoinerEvent::AddressGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
                 gossiped_address,
