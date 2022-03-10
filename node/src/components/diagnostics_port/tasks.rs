@@ -613,8 +613,10 @@ mod tests {
 
         // The output will be empty queues, albeit formatted as JSON. Just check if there is a
         // proper JSON header present.
-        assert!(output.len() > 10);
-        assert!(output.starts_with("{\"queues\":{"));
+        assert_eq!(
+            output,
+            r#"{"queues":{"Control":[],"NetworkIncoming":[],"Network":[],"Regular":[],"Api":[]}}"#
+        );
     }
 
     #[tokio::test]
@@ -624,7 +626,9 @@ mod tests {
         let output = run_single_node_console_and_dump_events("interactive").await;
 
         // The output will be empty queues in debug format.
-        assert!(output.len() > 10);
-        assert!(output.starts_with("QueueDump { queues: {"));
+        assert_eq!(
+            output,
+            r#"QueueDump { queues: {Control: [], NetworkIncoming: [], Network: [], Regular: [], Api: []} }"#
+        );
     }
 }
