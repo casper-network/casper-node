@@ -13,6 +13,8 @@ use crate::{
     CLTyped, Key, KeyTag, PublicKey, URef, U512,
 };
 
+use super::{EraValidators, ValidatorWeights};
+
 fn read_from<P, T>(provider: &mut P, name: &str) -> Result<T, Error>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
@@ -346,4 +348,21 @@ where
         .map(|(_validator_public_key, bid)| bid.delegators().len())
         .sum();
     Ok(total_number_of_delegators)
+}
+
+/// Returns the era validators from a snapshot.
+///
+/// This is `pub` as it is used not just in the relevant auction entry point, but also by the
+/// engine state while directly querying for the era validators.
+pub fn era_validators_from_snapshot(snapshot: SeigniorageRecipientsSnapshot) -> EraValidators {
+    snapshot
+        .into_iter()
+        .map(|(era_id, recipients)| {
+            let validator_weights = recipients
+                .into_iter()
+                .filter_map(|(public_key, bid)| bid.total_stake().map(|stake| (public_key, stake)))
+                .collect::<ValidatorWeights>();
+            (era_id, validator_weights)
+        })
+        .collect()
 }

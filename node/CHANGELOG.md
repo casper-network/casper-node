@@ -24,6 +24,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Fixed
 * Include deploy approvals in block payloads upon which consensus operates.
+* Fixes a bug where historical auction data was unavailable via `get-auction-info` RPC.
 
 
 

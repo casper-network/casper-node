@@ -97,14 +97,8 @@ pub struct WasmTestBuilder<S> {
     genesis_account: Option<Account>,
     /// Genesis transforms
     genesis_transforms: Option<AdditiveMap<Key, Transform>>,
-    /// Mint contract key
-    mint_contract_hash: Option<ContractHash>,
-    /// Handle payment contract key
-    handle_payment_contract_hash: Option<ContractHash>,
-    /// Standard payment contract key
-    standard_payment_hash: Option<ContractHash>,
-    /// Auction contract key
-    auction_contract_hash: Option<ContractHash>,
+    /// System contract registry
+    system_contract_registry: Option<SystemContractRegistry>,
 }
 
 impl<S> WasmTestBuilder<S> {
@@ -131,10 +125,7 @@ impl Default for InMemoryWasmTestBuilder {
             transforms: Vec::new(),
             genesis_account: None,
             genesis_transforms: None,
-            mint_contract_hash: None,
-            handle_payment_contract_hash: None,
-            standard_payment_hash: None,
-            auction_contract_hash: None,
+            system_contract_registry: None,
         }
     }
 }
@@ -152,10 +143,7 @@ impl<S> Clone for WasmTestBuilder<S> {
             transforms: self.transforms.clone(),
             genesis_account: self.genesis_account.clone(),
             genesis_transforms: self.genesis_transforms.clone(),
-            mint_contract_hash: self.mint_contract_hash,
-            handle_payment_contract_hash: self.handle_payment_contract_hash,
-            standard_payment_hash: self.standard_payment_hash,
-            auction_contract_hash: self.auction_contract_hash,
+            system_contract_registry: self.system_contract_registry.clone(),
         }
     }
 }
@@ -214,10 +202,7 @@ impl LmdbWasmTestBuilder {
             transforms: Vec::new(),
             genesis_account: None,
             genesis_transforms: None,
-            mint_contract_hash: None,
-            handle_payment_contract_hash: None,
-            standard_payment_hash: None,
-            auction_contract_hash: None,
+            system_contract_registry: None,
         }
     }
 
@@ -278,10 +263,7 @@ impl LmdbWasmTestBuilder {
             transforms: Vec::new(),
             genesis_account: None,
             genesis_transforms: None,
-            mint_contract_hash: None,
-            handle_payment_contract_hash: None,
-            standard_payment_hash: None,
-            auction_contract_hash: None,
+            system_contract_registry: None,
         }
     }
 
@@ -330,13 +312,15 @@ where
         let genesis_account =
             utils::get_account(&transforms, &system_account).expect("Unable to get system account");
 
-        let registry = match self.query(
+        self.system_contract_registry = match self.query(
             Some(post_state_hash),
             Key::SystemContractRegistry,
             &empty_path,
         ) {
             Ok(StoredValue::CLValue(cl_registry)) => {
-                CLValue::into_t::<SystemContractRegistry>(cl_registry).unwrap()
+                let system_contract_registry =
+                    CLValue::into_t::<SystemContractRegistry>(cl_registry).unwrap();
+                Some(system_contract_registry)
             }
             Ok(_) => panic!("Failed to get system registry"),
             Err(err) => panic!("{}", err),
@@ -344,19 +328,6 @@ where
 
         self.genesis_hash = Some(post_state_hash);
         self.post_state_hash = Some(post_state_hash);
-        self.mint_contract_hash = Some(*registry.get(MINT).expect("should have mint hash"));
-        self.handle_payment_contract_hash = Some(
-            *registry
-                .get(HANDLE_PAYMENT)
-                .expect("should have handle payment hash"),
-        );
-        self.standard_payment_hash = Some(
-            *registry
-                .get(STANDARD_PAYMENT)
-                .expect("should have standard payment hash"),
-        );
-        self.auction_contract_hash =
-            Some(*registry.get(AUCTION).expect("should have auction hash"));
         self.genesis_account = Some(genesis_account);
         self.genesis_transforms = Some(transforms);
         self
@@ -432,7 +403,8 @@ where
     /// Panics if the total supply can't be found.
     pub fn total_supply(&self, maybe_post_state: Option<Digest>) -> U512 {
         let mint_key: Key = self
-            .mint_contract_hash
+            .get_system_contract_hash(MINT)
+            .cloned()
             .expect("should have mint_contract_hash")
             .into();
 
@@ -454,6 +426,7 @@ where
             exec_request.parent_state_hash = hash;
             exec_request
         };
+
         let maybe_exec_results = self
             .engine_state
             .run_execute(CorrelationId::new(), exec_request);
@@ -522,6 +495,13 @@ where
         }) = result
         {
             self.post_state_hash = Some(post_state_hash);
+
+            if let Ok(StoredValue::CLValue(cl_registry)) =
+                self.query(self.post_state_hash, Key::SystemContractRegistry, &[])
+            {
+                let registry = CLValue::into_t::<SystemContractRegistry>(cl_registry).unwrap();
+                self.system_contract_registry = Some(registry);
+            }
         }
 
         self.upgrade_results.push(result);
@@ -644,26 +624,36 @@ where
 
     /// Returns the [`ContractHash`] of the mint, panics if it can't be found.
     pub fn get_mint_contract_hash(&self) -> ContractHash {
-        self.mint_contract_hash
+        self.get_system_contract_hash(MINT)
+            .cloned()
             .expect("Unable to obtain mint contract. Please run genesis first.")
     }
 
     /// Returns the [`ContractHash`] of the "handle payment" contract, panics if it can't be found.
     pub fn get_handle_payment_contract_hash(&self) -> ContractHash {
-        self.handle_payment_contract_hash
+        self.get_system_contract_hash(HANDLE_PAYMENT)
+            .cloned()
             .expect("Unable to obtain handle payment contract. Please run genesis first.")
     }
 
     /// Returns the [`ContractHash`] of the "standard payment" contract, panics if it can't be
     /// found.
     pub fn get_standard_payment_contract_hash(&self) -> ContractHash {
-        self.standard_payment_hash
+        self.get_system_contract_hash(STANDARD_PAYMENT)
+            .cloned()
             .expect("Unable to obtain standard payment contract. Please run genesis first.")
+    }
+
+    fn get_system_contract_hash(&self, contract_name: &str) -> Option<&ContractHash> {
+        self.system_contract_registry
+            .as_ref()
+            .and_then(|registry| registry.get(contract_name))
     }
 
     /// Returns the [`ContractHash`] of the "auction" contract, panics if it can't be found.
     pub fn get_auction_contract_hash(&self) -> ContractHash {
-        self.auction_contract_hash
+        self.get_system_contract_hash(AUCTION)
+            .cloned()
             .expect("Unable to obtain auction contract. Please run genesis first.")
     }
 
@@ -730,7 +720,8 @@ where
     /// Returns the "handle payment" contract, panics if it can't be found.
     pub fn get_handle_payment_contract(&self) -> Contract {
         let handle_payment_contract: Key = self
-            .handle_payment_contract_hash
+            .get_system_contract_hash(HANDLE_PAYMENT)
+            .cloned()
             .expect("should have handle payment contract uref")
             .into();
         self.query(None, handle_payment_contract, &[])
@@ -906,8 +897,12 @@ where
         let correlation_id = CorrelationId::new();
         let state_hash = self.get_post_state_hash();
         let request = GetEraValidatorsRequest::new(state_hash, *DEFAULT_PROTOCOL_VERSION);
+        let system_contract_registry = self
+            .system_contract_registry
+            .clone()
+            .expect("System contract registry not found. Please run genesis first.");
         self.engine_state
-            .get_era_validators(correlation_id, request)
+            .get_era_validators(correlation_id, Some(system_contract_registry), request)
             .expect("get era validators should not error")
     }
 

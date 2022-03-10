@@ -487,7 +487,7 @@ impl reactor::Reactor for Reactor {
             registry,
         )?;
 
-        contract_runtime.set_initial_state(chainspec_loader.initial_execution_pre_state());
+        contract_runtime.set_initial_state(chainspec_loader.initial_execution_pre_state())?;
         let linear_chain = linear_chain::LinearChainComponent::new(
             registry,
             *protocol_version,

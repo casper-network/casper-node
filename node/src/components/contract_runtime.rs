@@ -19,12 +19,12 @@ use datasize::DataSize;
 use lmdb::DatabaseFlags;
 use prometheus::Registry;
 use serde::Serialize;
-use tracing::{debug, info, trace};
+use tracing::{debug, error, info, trace};
 
 use casper_execution_engine::{
     core::engine_state::{
         self, genesis::GenesisSuccess, EngineConfig, EngineState, GetEraValidatorsError,
-        GetEraValidatorsRequest, UpgradeConfig, UpgradeSuccess,
+        GetEraValidatorsRequest, SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
     },
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::{
@@ -139,6 +139,8 @@ pub(crate) struct ContractRuntime {
 
     /// Finalized blocks waiting for their pre-state hash to start executing.
     exec_queue: ExecQueue,
+    /// Cached instance of a [`SystemContractRegistry`].
+    system_contract_registry: Option<SystemContractRegistry>,
 }
 
 impl Debug for ContractRuntime {
@@ -225,11 +227,16 @@ where
                 trace!(era=%era_id, public_key = %validator_key, "is validator bonded request");
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
+                let system_contract_registry = self.system_contract_registry.clone();
                 let request = GetEraValidatorsRequest::new(state_root_hash, protocol_version);
                 async move {
                     let correlation_id = CorrelationId::new();
                     let start = Instant::now();
-                    let era_validators = engine_state.get_era_validators(correlation_id, request);
+                    let era_validators = engine_state.get_era_validators(
+                        correlation_id,
+                        system_contract_registry,
+                        request,
+                    );
                     metrics
                         .get_validator_weights
                         .observe(start.elapsed().as_secs_f64());
@@ -247,13 +254,17 @@ where
                 trace!(?request, "get era validators request");
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
+                let system_contract_registry = self.system_contract_registry.clone();
                 // Increment the counter to track the amount of times GetEraValidators was
                 // requested.
                 async move {
                     let correlation_id = CorrelationId::new();
                     let start = Instant::now();
-                    let era_validators =
-                        engine_state.get_era_validators(correlation_id, request.into());
+                    let era_validators = engine_state.get_era_validators(
+                        correlation_id,
+                        system_contract_registry,
+                        request.into(),
+                    );
                     metrics
                         .get_era_validators
                         .observe(start.elapsed().as_secs_f64());
@@ -451,10 +462,11 @@ impl ContractRuntime {
 
         Ok(ContractRuntime {
             execution_pre_state,
-            protocol_version,
-            exec_queue: Arc::new(Mutex::new(BTreeMap::new())),
             engine_state,
             metrics,
+            protocol_version,
+            exec_queue: Arc::new(Mutex::new(BTreeMap::new())),
+            system_contract_registry: None,
         })
     }
 
@@ -508,8 +520,34 @@ impl ContractRuntime {
         result
     }
 
-    pub(crate) fn set_initial_state(&mut self, sequential_block_state: ExecutionPreState) {
-        *self.execution_pre_state.lock().unwrap() = sequential_block_state;
+    pub(crate) fn set_initial_state(
+        &mut self,
+        sequential_block_state: ExecutionPreState,
+    ) -> Result<(), ConfigError> {
+        let mut execution_pre_state = self.execution_pre_state.lock().unwrap();
+        *execution_pre_state = sequential_block_state;
+
+        // Initialize the system contract registry.
+        //
+        // This is assumed to always work. In case following query fails we assume that the node is
+        // incompatible with the network which could happen if (for example) a node operator skipped
+        // important update and did not migrate old protocol data db into the global state.
+        let state_root_hash = execution_pre_state.pre_state_root_hash;
+
+        match self
+            .engine_state
+            .get_system_contract_registry(CorrelationId::default(), state_root_hash)
+        {
+            Ok(system_contract_registry) => {
+                self.system_contract_registry = Some(system_contract_registry);
+            }
+            Err(error) => {
+                error!(%state_root_hash, %error, "unable to initialize contract runtime with a system contract registry");
+                return Err(error.into());
+            }
+        }
+
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
