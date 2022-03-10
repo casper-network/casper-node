@@ -17,7 +17,7 @@ use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::{net::UnixListener, sync::watch};
-use tracing::debug;
+use tracing::{debug, warn};
 
 use super::Component;
 use crate::{
@@ -117,10 +117,10 @@ fn setup_listener<P: AsRef<Path>>(path: P, socket_umask: umask::Mode) -> io::Res
                 debug!("stale socket file removed");
             }
             Err(err) => {
-                // This happens if a background tasks races us for the removal, as it usually
-                // means the file is already gone. We can ignore this, but make note of it in
-                // the log.
-                debug!(%err, "could not remove stale socket file, assuming race with background task");
+                // This happens if a background program races us for the removal, as it usually
+                // means the file is already gone. We can ignore this, but make note of it in the
+                // log.
+                warn!(%err, "could not remove stale socket file, assuming race with other process");
             }
         }
     }
