@@ -50,6 +50,12 @@ fn build_named_keys_and_purse() -> (NamedKeys, URef) {
         faucet::DISTRIBUTIONS_PER_INTERVAL.to_string(),
         storage::new_uref(0u64).into(),
     );
+
+    // TODO: document this and rename it to be more clear that this is the *only* authorized caller.
+    // explain why it's useful to tell the contract who installed it / who is authorized to call it.
+    // explain how the installer is authorized to change variables.
+    // explain why it's more efficient to just build the named keys in the installer vs lazily
+    // eval'd in the contract.
     named_keys.insert(
         faucet::AUTHORIZED_ACCOUNT.to_string(),
         storage::new_uref(None::<PublicKey>).into(),
@@ -61,7 +67,6 @@ fn build_named_keys_and_purse() -> (NamedKeys, URef) {
 #[no_mangle]
 pub extern "C" fn call() {
     let id: u64 = runtime::get_named_arg(faucet::ARG_ID);
-    let (faucet_named_keys, faucet_purse) = build_named_keys_and_purse();
 
     let entry_points = {
         let mut entry_points = EntryPoints::new();
@@ -116,6 +121,28 @@ pub extern "C" fn call() {
         entry_points
     };
 
+    // The installer will create the faucet purse and give it to the newly installed
+    // contract so that the installing account and the newly installed account will
+    // have a handle on it via the shared purse URef.
+    //
+    // The faucet named keys include the faucet purse, these are the named keys that we pass to the
+    // faucet.
+    let (faucet_named_keys, faucet_purse) = build_named_keys_and_purse();
+
+    // This is where the contract package is created and the first version of the faucet contract is
+    // installed within it. The contract package hash for the created contract package will be
+    // stored in the installing account's named keys under the faucet::PACKAGE_HASH_KEY_NAME, this
+    // allows later usage via the installing account to easily refer to and access the contract
+    // package and thus all versions stored in it.
+    //
+    // The access URef for the contract package will also be stored in the installing account's
+    // named keys under faucet::ACCESS_KEY_NAME; this URef controls administrative access to the
+    // contract package which includes the ability to install new versions of the contract
+    // logic, administer group-based security (if any), and so on.
+    //
+    // The installing account may decide to grant this access uref to another account (not
+    // demonstrated here), which would allow that account equivalent full administrative control
+    // over the contract. This should only be done intentionally because it is not revocable.
     let (contract_hash, contract_version) = storage::new_contract(
         entry_points,
         Some(faucet_named_keys),
@@ -123,15 +150,31 @@ pub extern "C" fn call() {
         Some(faucet::ACCESS_KEY_NAME.to_string()),
     );
 
+    // As a convenience, a specific contract version can be referred to either by its contract hash
+    // or by the combination of the contract package hash and a contract version key. This comes
+    // down to developer preference. The contract package hash is a stable hash, so this may be
+    // preferable if you don't want to worry about contract hashes changing.
+    // TODO: give ed's example of using an embedded contract hash vs a package hash, also using
+    // parameterized package version. explain why this is an important opportunity to store the
+    // urefs if you plan on ever plan on using this again.
+    // TODO: namespace these using the id runtime arg.
+    // TODO: explain why we're name-spacing like this.
     runtime::put_key(
         faucet::CONTRACT_VERSION,
         storage::new_uref(contract_version).into(),
     );
     runtime::put_key(faucet::CONTRACT_NAME, contract_hash.into());
+
+    // This is specifically for this installing account, which would allow one installing account
+    // to potentially have multiple faucet contract packages.
     runtime::put_key(&format!("faucet_{}", id), faucet_purse.into());
 
     let main_purse = account::get_main_purse();
-    let amount = runtime::get_named_arg(faucet::ARG_AMOUNT);
+
+    // Initial funding amount. In other words, when the faucet contract is set up, this is its
+    // starting funds transferred from the installing account's main purse as a one-time
+    // initialization.
+    let amount = runtime::get_named_arg(ARG_AMOUNT);
 
     system::transfer_from_purse_to_purse(main_purse, faucet_purse, amount, Some(id))
         .unwrap_or_revert_with(ApiError::User(
