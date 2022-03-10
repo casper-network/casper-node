@@ -202,6 +202,8 @@ block_requests = 1
 block_responses = 0
 trie_requests = 1
 trie_responses = 0
+finalized_approvals_requests = 1
+finalized_approvals_responses = 0
 
 
 # ==================================================

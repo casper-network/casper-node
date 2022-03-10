@@ -13,6 +13,7 @@ use std::{
 
 use datasize::DataSize;
 use serde::Serialize;
+use smallvec::SmallVec;
 use static_assertions::const_assert;
 
 use casper_execution_engine::{
@@ -49,7 +50,8 @@ use crate::{
     types::{
         Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload, BlockSignatures,
         BlockWithMetadata, Chainspec, ChainspecInfo, Deploy, DeployHash, DeployMetadata,
-        FinalizedBlock, Item, NodeId, StatusFeed, TimeDiff,
+        DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedBlock, Item, NodeId, StatusFeed,
+        TimeDiff,
     },
     utils::{DisplayIter, Source},
 };
@@ -325,7 +327,7 @@ pub(crate) enum StorageRequest {
         /// Hashes of deploys to be retrieved.
         deploy_hashes: Vec<DeployHash>,
         /// Responder to call with the results.
-        responder: Responder<Vec<Option<Deploy>>>,
+        responder: Responder<SmallVec<[Option<DeployWithFinalizedApprovals>; 1]>>,
     },
     /// Retrieve finalized blocks that whose deploy TTL hasn't expired yet.
     GetFinalizedBlocks {
@@ -355,7 +357,7 @@ pub(crate) enum StorageRequest {
         /// Hash of deploy to be retrieved.
         deploy_hash: DeployHash,
         /// Responder to call with the results.
-        responder: Responder<Option<(Deploy, DeployMetadata)>>,
+        responder: Responder<Option<(DeployWithFinalizedApprovals, DeployMetadata)>>,
     },
     /// Retrieve block and its metadata by its hash.
     GetBlockAndMetadataByHash {
@@ -398,6 +400,15 @@ pub(crate) enum StorageRequest {
         /// Responder to call with the result, if true then the block header was successfully
         /// stored.
         responder: Responder<bool>,
+    },
+    /// Store a set of finalized approvals for a specific deploy.
+    StoreFinalizedApprovals {
+        /// The deploy hash to store the finalized approvals for.
+        deploy_hash: DeployHash,
+        /// The set of finalized approvals.
+        finalized_approvals: FinalizedApprovals,
+        /// Responder, responded to once the approvals are written.
+        responder: Responder<()>,
     },
 }
 
@@ -487,6 +498,9 @@ impl Display for StorageRequest {
                     "get block and sufficient finality signatures by height: {}",
                     block_height
                 )
+            }
+            StorageRequest::StoreFinalizedApprovals { deploy_hash, .. } => {
+                write!(formatter, "finalized approvals for deploy {}", deploy_hash)
             }
         }
     }
@@ -649,6 +663,8 @@ pub(crate) enum RpcRequest {
     GetDeploy {
         /// The hash of the deploy to be retrieved.
         hash: DeployHash,
+        /// Whether to return finalized approvals.
+        finalized_approvals: bool,
         /// Responder to call with the result.
         responder: Responder<Option<(Deploy, DeployMetadata)>>,
     },
@@ -708,7 +724,15 @@ impl Display for RpcRequest {
                 "balance {}, purse_uref: {}",
                 state_root_hash, purse_uref
             ),
-            RpcRequest::GetDeploy { hash, .. } => write!(formatter, "get {}", hash),
+            RpcRequest::GetDeploy {
+                hash,
+                finalized_approvals,
+                ..
+            } => write!(
+                formatter,
+                "get {} (finalized approvals: {})",
+                hash, finalized_approvals
+            ),
             RpcRequest::GetPeers { .. } => write!(formatter, "get peers"),
             RpcRequest::GetStatus { .. } => write!(formatter, "get status"),
         }

@@ -20,7 +20,7 @@ use derive_more::From;
 use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::Serialize;
-use tracing::error;
+use tracing::{debug, error};
 
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
@@ -883,6 +883,7 @@ impl reactor::Reactor for Reactor {
 
                 let event = block_proposer::Event::BufferDeploy {
                     hash: deploy.deploy_or_transfer_hash(),
+                    approvals: deploy.approvals().clone(),
                     deploy_info: Box::new(deploy_info),
                 };
                 let mut effects = self.dispatch_event(
@@ -1143,6 +1144,13 @@ impl reactor::Reactor for Reactor {
                             source: Source::Peer(sender),
                             maybe_responder: None,
                         })
+                    }
+                    NetResponse::FinalizedApprovals(_) => {
+                        debug!(
+                            "cannot handle get response for finalized approvals from {}",
+                            sender
+                        );
+                        return Effects::new();
                     }
                     NetResponse::Block(_) => {
                         error!(

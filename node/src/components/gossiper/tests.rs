@@ -387,7 +387,8 @@ impl reactor::Reactor for Reactor {
                         ),
                     )
                 }
-                other @ (NetResponse::Block(_)
+                other @ (NetResponse::FinalizedApprovals(_)
+                | NetResponse::Block(_)
                 | NetResponse::GossipedAddress(_)
                 | NetResponse::BlockAndMetadataByHeight(_)
                 | NetResponse::BlockHeaderByHash(_)

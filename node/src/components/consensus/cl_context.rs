@@ -46,7 +46,7 @@ impl ValidatorSecret for Keypair {
 
 impl ConsensusValueT for Arc<BlockPayload> {
     fn needs_validation(&self) -> bool {
-        !self.transfer_hashes().is_empty() || !self.deploy_hashes().is_empty()
+        !self.transfers().is_empty() || !self.deploys().is_empty()
     }
 }
 

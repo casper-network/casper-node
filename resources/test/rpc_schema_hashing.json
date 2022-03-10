@@ -597,7 +597,8 @@
                 "items": {
                   "$ref": "#/components/schemas/Approval"
                 },
-                "type": "array"
+                "type": "array",
+                "uniqueItems": true
               },
               "hash": {
                 "$ref": "#/components/schemas/DeployHash"
@@ -2733,7 +2734,7 @@
                   "value": {
                     "approvals": [
                       {
-                        "signature": "012dbf03817a51794a8e19e0724884075e6d1fbec326b766ecfa6658b41f81290da85e23b24e88b1c8d9761185c961daee1adab0649912a6477bcd2e69bd91bd08",
+                        "signature": "014c1a89f92e29dd74fc648f741137d9caf4edba97c5f9799ce0c9aa6b0c9b58db368c64098603dbecef645774c05dff057cb1f91f2cf390bbacce78aa6f084007",
                         "signer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c"
                       }
                     ],
@@ -2834,6 +2835,10 @@
                 {
                   "name": "deploy_hash",
                   "value": "5c9b3b099c1378aa8e4a5f07f59ff1fcdc69a83179427c7e67ae0377d94d93fa"
+                },
+                {
+                  "name": "finalized_approvals",
+                  "value": true
                 }
               ],
               "result": {
@@ -2843,7 +2848,7 @@
                   "deploy": {
                     "approvals": [
                       {
-                        "signature": "012dbf03817a51794a8e19e0724884075e6d1fbec326b766ecfa6658b41f81290da85e23b24e88b1c8d9761185c961daee1adab0649912a6477bcd2e69bd91bd08",
+                        "signature": "014c1a89f92e29dd74fc648f741137d9caf4edba97c5f9799ce0c9aa6b0c9b58db368c64098603dbecef645774c05dff057cb1f91f2cf390bbacce78aa6f084007",
                         "signer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c"
                       }
                     ],
@@ -2940,6 +2945,15 @@
               "schema": {
                 "$ref": "#/components/schemas/DeployHash",
                 "description": "The deploy hash."
+              }
+            },
+            {
+              "name": "finalized_approvals",
+              "required": false,
+              "schema": {
+                "description": "Whether to return the deploy with the finalized approvals substituted. If `false` or omitted, returns the deploy with the approvals that were originally received by the node.",
+                "default": false,
+                "type": "boolean"
               }
             }
           ],

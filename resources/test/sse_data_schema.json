@@ -551,7 +551,8 @@
           "type": "array",
           "items": {
             "$ref": "#/definitions/Approval"
-          }
+          },
+          "uniqueItems": true
         }
       },
       "additionalProperties": false
