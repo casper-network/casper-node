@@ -1,6 +1,5 @@
 use std::{collections::BTreeSet, convert::TryFrom};
 
-use tracing::error;
 use wasmi::{Externals, RuntimeArgs, RuntimeValue, Trap};
 
 use casper_types::{

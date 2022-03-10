@@ -8,7 +8,6 @@ use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use tracing::{
-    error,
     field::{Field, Visit},
     Event, Level, Subscriber,
 };
@@ -207,7 +206,7 @@ where
         let module = {
             let full_module_path = meta
                 .module_path()
-                .or(field_visitor.module.as_deref())
+                .or_else(|| field_visitor.module.as_deref())
                 .unwrap_or_default();
             if self.abbreviate_modules {
                 // Use a smallvec for going up to six levels deep.
@@ -230,7 +229,7 @@ where
 
         let file = if !self.abbreviate_modules {
             meta.file()
-                .or(field_visitor.module.as_deref())
+                .or_else(|| field_visitor.module.as_deref())
                 .unwrap_or_default()
                 .rsplit_once('/')
                 .map(|parts| parts.1)

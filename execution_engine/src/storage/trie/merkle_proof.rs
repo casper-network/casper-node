@@ -2,7 +2,6 @@ use std::collections::VecDeque;
 
 use casper_hashing::Digest;
 use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes};
-use tracing::error;
 
 use crate::storage::trie::{Pointer, Trie, RADIX};
 

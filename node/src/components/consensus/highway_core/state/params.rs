@@ -1,6 +1,5 @@
 use datasize::DataSize;
 use serde::Serialize;
-use tracing::error;
 
 use super::{round_len, TimeDiff, Timestamp};
 

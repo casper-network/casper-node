@@ -7,7 +7,6 @@ use rand::Rng;
 use tempfile::TempDir;
 
 use casper_types::{system::auction::DelegationRate, EraId, Motes, PublicKey, SecretKey, U512};
-use tracing::error;
 
 use crate::{
     components::{gossiper, small_network, storage, storage::Storage},

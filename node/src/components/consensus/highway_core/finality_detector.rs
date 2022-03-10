@@ -4,7 +4,7 @@ mod rewards;
 use std::iter;
 
 use datasize::DataSize;
-use tracing::{error, trace, warn};
+use tracing::{trace, warn};
 
 use crate::{
     components::consensus::{
