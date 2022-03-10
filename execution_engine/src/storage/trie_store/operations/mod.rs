@@ -8,7 +8,7 @@ use std::{
     mem,
 };
 
-use tracing::{error, warn};
+use tracing::error;
 
 use casper_hashing::Digest;
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
