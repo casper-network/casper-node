@@ -59,7 +59,6 @@ impl TestChain {
         verifiable_chunked_hash_activation: EraId,
         rng: &mut NodeRng,
     ) -> Self {
-        //? Remove Change assert-->debug_assert+error! ?
         assert!(
             size >= 1,
             "Network size must have at least one node (size: {})",

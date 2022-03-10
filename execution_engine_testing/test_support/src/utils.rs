@@ -197,7 +197,6 @@ pub fn get_success_result(response: &[Rc<ExecutionResult>]) -> &ExecutionResult 
 /// Panics if result.as_error() is `None`.
 pub fn get_precondition_failure(response: &[Rc<ExecutionResult>]) -> &Error {
     let result = response.get(0).expect("should have a result");
-    //? Change assert-->debug_assert+error! ?
     assert!(
         result.has_precondition_failure(),
         "should be a precondition failure"
