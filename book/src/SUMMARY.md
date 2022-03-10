@@ -1,6 +1,7 @@
 # Summary
 
 [README.md](README.md)
+
 [Developer docs](intro.md)
 
 - [Architecture](architecture.md)
