@@ -492,12 +492,14 @@ mod tests {
     };
 
     use crate::{
-        components::diagnostics_port::Config as DiagnosticsPortConfig,
+        components::{diagnostics_port::Config as DiagnosticsPortConfig, small_network},
+        reactor::{participating::ParticipatingEvent, QueueKind},
         testing::{
             self,
             network::{Network, NetworkedReactor},
             TestRng,
         },
+        utils::WeightedRoundRobin,
         WithDir,
     };
     use casper_node_macros::reactor;
@@ -630,5 +632,30 @@ mod tests {
             output,
             r#"QueueDump { queues: {Control: [], NetworkIncoming: [], Network: [], Regular: [], Api: []} }"#
         );
+    }
+
+    #[tokio::test]
+    async fn can_dump_actual_events_from_scheduler() {
+        // Create a scheduler with a few synthetic events.
+        let scheduler = WeightedRoundRobin::new(QueueKind::weights());
+        scheduler
+            .push(
+                ParticipatingEvent::SmallNetwork(small_network::Event::SweepOutgoing),
+                QueueKind::Network,
+            )
+            .await;
+        scheduler
+            .push(
+                ParticipatingEvent::SmallNetwork(small_network::Event::GossipOurAddress),
+                QueueKind::Regular,
+            )
+            .await;
+
+        // Construct the debug representation and compare as strings to avoid issues with missing
+        // `PartialEq` implementations.
+        scheduler.dump(|dump| {
+            let debug_repr = format!("{:?}", dump);
+            assert_eq!(debug_repr, r#"QueueDump { queues: {Control: [], NetworkIncoming: [], Network: [SmallNetwork(SweepOutgoing)], Regular: [SmallNetwork(GossipOurAddress)], Api: []} }"#);
+        }).await;
     }
 }
