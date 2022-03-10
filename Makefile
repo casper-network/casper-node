@@ -130,6 +130,13 @@ audit-as:
 .PHONY: audit
 audit: audit-rs audit-as
 
+.PHONY: docs
+docs: doc book
+
+.PHONY: book
+book:
+	mdbook build book
+
 .PHONY: doc
 doc:
 	RUSTDOCFLAGS="-D warnings" $(CARGO) doc $(CARGO_FLAGS) --no-deps
@@ -158,6 +165,7 @@ check: \
 clean:
 	rm -rf resources/local/chainspec.toml
 	rm -rf $(CONTRACT_TARGET_DIR_AS)
+	rm -rf book/book
 	$(CARGO) clean
 
 .PHONY: build-for-packaging
