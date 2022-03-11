@@ -36,7 +36,7 @@ pub const TWO_HOURS_AS_MILLIS: u64 = 7_200_000;
 pub const CONTRACT_NAME: &str = "faucet";
 pub const HASH_KEY_NAME: &str = "faucet_package";
 pub const ACCESS_KEY_NAME: &str = "faucet_package_access";
-pub const CONTRACT_VERSION: &str = "contract_version";
+pub const CONTRACT_VERSION: &str = "faucet_contract_version";
 pub const AUTHORIZED_ACCOUNT: &str = "authorized_account";
 
 pub const ENTRY_POINT_FAUCET: &str = "call_faucet";
