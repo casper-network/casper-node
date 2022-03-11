@@ -38,9 +38,8 @@ function main() {
     check_wasm_inclusion '1' '1000'
     # 9. Run Health Checks
     # ... restarts=1: due to node being stopped and started
-    # ... errors=ignore: ticket sre issue 79
     source "$NCTL"/sh/scenarios/common/health_checks.sh \
-            errors='ignore' \
+            errors=0 \
             equivocators=0 \
             doppels=0 \
             crashes=0 \

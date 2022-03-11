@@ -48,9 +48,8 @@ function main() {
     # 11. Run Health Checks
     # ... restarts=15: due to node being stopped and started
     # ... crashes=5: expected in an emergency restart scenario?
-    # ... errors=ignore: ticket sre issue 77
     source "$NCTL"/sh/scenarios/common/health_checks.sh \
-            errors='ignore' \
+            errors='0' \
             equivocators=0 \
             doppels=0 \
             crashes=5 \
