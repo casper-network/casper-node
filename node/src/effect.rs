@@ -130,12 +130,9 @@ use requests::{
 };
 
 use self::{
-    announcements::{BlockProposerAnnouncement, BlocklistAnnouncement, QueueDumpFormat},
+    announcements::QueueDumpFormat,
     diagnostics_port::DumpConsensusStateRequest,
     requests::{BeginGossipRequest, StateStoreRequest},
-};
-use crate::components::contract_runtime::{
-    BlockAndExecutionEffects, BlockExecutionError, ExecutionPreState,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.

@@ -65,7 +65,7 @@ use crate::{
         announcements::{BlocklistAnnouncement, ControlAnnouncement, QueueDumpFormat},
         Effect, EffectBuilder, EffectExt, Effects,
     },
-    types::{ExitCode, Item, NodeId, Timestamp},
+    types::{ExitCode, Item, NodeId},
     unregister_metric,
     utils::{self, SharedFlag, WeightedRoundRobin},
     NodeRng, TERMINATION_REQUESTED,

@@ -17,7 +17,6 @@ use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey, U512};
 use crate::{
     components::{
         chainspec_loader::NextUpgrade, deploy_acceptor::Error, diagnostics_port::FileSerializer,
-        small_network::GossipedAddress,
     },
     effect::Responder,
     types::{

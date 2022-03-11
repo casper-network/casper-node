@@ -53,10 +53,6 @@ pub(crate) enum Error {
     #[error("joining outcome invalid or missing after running chain synchronization")]
     InvalidJoiningOutcome,
 
-    /// `Console` component error.
-    #[error("console error: {0}")]
-    Console(#[from] console::Error),
-
     /// `Chain synchronizer` component error.
     #[error("chain synchronizer error: {0}")]
     ChainSynchronizer(#[from] chain_synchronizer::Error),

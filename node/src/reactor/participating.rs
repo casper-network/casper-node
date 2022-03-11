@@ -31,10 +31,7 @@ use crate::{
         chain_synchronizer::JoiningOutcome,
         chainspec_loader::{self, ChainspecLoader},
         consensus::{self, EraSupervisor, HighwayProtocol},
-        contract_runtime::{
-            BlockAndExecutionEffects, ContractRuntime, ContractRuntimeAnnouncement,
-            ExecutionPreState,
-        },
+        contract_runtime::{BlockAndExecutionEffects, ContractRuntime, ExecutionPreState},
         deploy_acceptor::{self, DeployAcceptor},
         diagnostics_port::{self, DiagnosticsPort},
         event_stream_server::{self, EventStreamServer},

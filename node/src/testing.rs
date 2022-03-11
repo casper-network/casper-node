@@ -338,6 +338,7 @@ impl ReactorEvent for UnitTestEvent {
     fn try_into_control(self) -> Option<ControlAnnouncement> {
         match self {
             UnitTestEvent::ControlAnnouncement(ctrl_ann) => Some(ctrl_ann),
+            UnitTestEvent::NetworkRequest(_) => None,
         }
     }
 }

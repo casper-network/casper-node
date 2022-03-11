@@ -27,7 +27,7 @@ use crate::{
     components::{
         chain_synchronizer::{self, ChainSynchronizer, JoiningOutcome},
         chainspec_loader::{self, ChainspecLoader},
-        contract_runtime::{ContractRuntime, ContractRuntimeAnnouncement},
+        contract_runtime::ContractRuntime,
         deploy_acceptor::{self, DeployAcceptor},
         diagnostics_port::{self, DiagnosticsPort},
         event_stream_server,
