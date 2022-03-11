@@ -19,7 +19,7 @@ All notable changes to this project will be documented in this file.  The format
 * Add `sync_to_genesis` to `[node]` config section, along with syncing to genesis capabilities.
 * Add new event to the main SSE server stream across all endpoints `<IP:PORT>/events/*` which emits a shutdown event when the node shuts down.
 * Add `SIGUSR2` signal handling to dump the queue in JSON format (see "Changed" section for `SIGUSR1`).
-* A diagnostic console can now be enabled via the `[console]` section in the configuration file. See the `README.md` for details.
+* A diagnostic port can now be enabled via the `[diagnostics_port]` section in the configuration file. See the `README.md` for details.
 * Add capabilities for known nodes to slow down the reconnection process of outdated legacy nodes still out on the internet.
 * Add `verifiable_chunked_hash_activation` to the chainspec to specify the first era in which the new Merkle tree-based hashing scheme is used.
 * In addition to `consensus` and `deploy_requests`, the following values can now be controlled via the `[network.estimator_weights]` section in config: `gossip`, `finality_signatures`, `deploy_responses`, `block_requests`, `block_responses`, `trie_requests` and `trie_responses`.

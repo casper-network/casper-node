@@ -2,8 +2,8 @@ use thiserror::Error;
 
 use crate::{
     components::{
-        chain_synchronizer, console, contract_runtime, contract_runtime::BlockExecutionError,
-        small_network, storage,
+        chain_synchronizer, contract_runtime, contract_runtime::BlockExecutionError,
+        diagnostics_port, small_network, storage,
     },
     utils::ListeningError,
 };
@@ -60,6 +60,10 @@ pub(crate) enum Error {
     /// `Chain synchronizer` component error.
     #[error("chain synchronizer error: {0}")]
     ChainSynchronizer(#[from] chain_synchronizer::Error),
+
+    /// `DiagnosticsPort` component error.
+    #[error("diagnostics port: {0}")]
+    DiagnosticsPort(#[from] diagnostics_port::Error),
 }
 
 impl From<bytesrepr::Error> for Error {

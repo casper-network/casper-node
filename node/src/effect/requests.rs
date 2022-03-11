@@ -54,6 +54,10 @@ use crate::{
     utils::{DisplayIter, Source},
 };
 
+// Redirection for reactor macro.
+#[allow(unused_imports)]
+pub(crate) use super::diagnostics_port::DumpConsensusStateRequest;
+
 const _STORAGE_REQUEST_SIZE: usize = mem::size_of::<StorageRequest>();
 const_assert!(_STORAGE_REQUEST_SIZE < 89);
 
