@@ -421,6 +421,7 @@ impl ContractRuntime {
         max_stored_value_size: u32,
         max_delegator_size_limit: u32,
         minimum_delegation_amount: u64,
+        strict_argument_checking: bool,
         registry: &Registry,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
@@ -443,8 +444,6 @@ impl ContractRuntime {
             None,
             DatabaseFlags::empty(),
         )?);
-
-        let strict_argument_checking = false;
 
         let global_state = LmdbGlobalState::empty(environment, trie_store)?;
         let engine_config = EngineConfig::new(
