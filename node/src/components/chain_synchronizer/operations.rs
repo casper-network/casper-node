@@ -626,6 +626,8 @@ async fn fast_sync(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, BlockHea
     fetch_block_headers_needed_for_era_supervisor_initialization(&most_recent_block_header, ctx)
         .await?;
 
+    ctx.effect_builder.update_contiguous_block_info().await;
+
     // Synchronize the trie store for the most recent block header.
     sync_trie_store(*most_recent_block_header.state_root_hash(), ctx).await?;
 

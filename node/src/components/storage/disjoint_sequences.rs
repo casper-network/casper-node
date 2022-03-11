@@ -2,6 +2,7 @@ use std::fmt::{self, Display, Formatter};
 
 use datasize::DataSize;
 use itertools::Itertools;
+use tracing::trace;
 
 /// The outcome of an attempt to insert a value into a `Sequence`.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -131,6 +132,16 @@ impl DisjointSequences {
         if let Some(index_to_remove) = maybe_removal_index {
             let _ = self.sequences.remove(index_to_remove);
         }
+
+        trace!(%self, "current state of disjoint sequences");
+    }
+
+    /// Inserts multiple values produced by the given interator.
+    pub(super) fn extend<T>(&mut self, iter: T)
+    where
+        T: IntoIterator<Item = u64>,
+    {
+        iter.into_iter().for_each(|height| self.insert(height))
     }
 
     /// Returns the `low` value from the highest sequence, or `u64::MAX` if there are no sequences.
@@ -213,6 +224,21 @@ mod tests {
             expected.insert(value);
             assert_matches(&disjoint_sequences, &expected);
         }
+    }
+
+    #[test]
+    fn should_extend() {
+        let to_be_inserted = vec![5_u64, 4, 3, 2, 1];
+        let mut expected = BTreeSet::new();
+        expected.extend(to_be_inserted.clone());
+
+        let mut disjoint_sequences = DisjointSequences::default();
+        disjoint_sequences.extend(to_be_inserted);
+        assert_matches(&disjoint_sequences, &expected);
+
+        // Extending with empty set should not modify the sequences.
+        disjoint_sequences.extend(Vec::<u64>::new());
+        assert_matches(&disjoint_sequences, &expected);
     }
 
     #[test]
