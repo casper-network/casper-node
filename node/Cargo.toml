@@ -31,6 +31,7 @@ derp = "0.0.14"
 ed25519-dalek = { version = "1", default-features = false, features = ["rand", "serde", "u64_backend"] }
 either = "1"
 enum-iterator = "0.6.0"
+erased-serde = "0.3.18"
 fs2 = "0.4.3"
 futures = "0.3.5"
 futures-io = "0.3.5"

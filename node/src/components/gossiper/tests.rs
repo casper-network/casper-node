@@ -114,6 +114,14 @@ impl ReactorEvent for Event {
             None
         }
     }
+
+    fn try_into_control(self) -> Option<ControlAnnouncement> {
+        if let Self::ControlAnnouncement(ctrl_ann) = self {
+            Some(ctrl_ann)
+        } else {
+            None
+        }
+    }
 }
 
 impl From<NetworkRequest<Message<Deploy>>> for Event {

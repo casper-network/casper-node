@@ -59,7 +59,7 @@
 //! some point. Failing to do so will result in a resource leak.
 
 pub(crate) mod announcements;
-pub(crate) mod console;
+pub(crate) mod diagnostics_port;
 pub(crate) mod incoming;
 pub(crate) mod requests;
 
@@ -130,7 +130,8 @@ use requests::{
 };
 
 use self::{
-    console::DumpConsensusStateRequest,
+    announcements::QueueDumpFormat,
+    diagnostics_port::DumpConsensusStateRequest,
     requests::{BeginGossipRequest, StateStoreRequest},
 };
 
@@ -1808,7 +1809,7 @@ impl<REv> EffectBuilder<REv> {
 
     /// Dump consensus state for a specific era, using the supplied function to serialize the
     /// output.
-    pub(crate) async fn console_dump_consensus_state(
+    pub(crate) async fn diagnostics_port_dump_consensus_state(
         self,
         era_id: Option<EraId>,
         serialize: fn(&EraDump<'_>) -> Result<Vec<u8>, Cow<'static, str>>,
@@ -1821,6 +1822,21 @@ impl<REv> EffectBuilder<REv> {
                 era_id,
                 serialize,
                 responder,
+            },
+            QueueKind::Control,
+        )
+        .await
+    }
+
+    /// Dump the event queue contents to the diagnostics port, using the given serializer.
+    pub(crate) async fn diagnostics_port_dump_queue(self, dump_format: QueueDumpFormat)
+    where
+        REv: From<ControlAnnouncement>,
+    {
+        self.make_request(
+            |responder| ControlAnnouncement::QueueDumpRequest {
+                dump_format,
+                finished: responder,
             },
             QueueKind::Control,
         )

@@ -37,7 +37,7 @@ use crate::{
     components::Component,
     effect::{
         announcements::{BlocklistAnnouncement, ConsensusAnnouncement},
-        console::DumpConsensusStateRequest,
+        diagnostics_port::DumpConsensusStateRequest,
         incoming::ConsensusMessageIncoming,
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
@@ -331,7 +331,7 @@ where
 
                 // We emit some log message to get some performance information and give the
                 // operator a chance to find out why their node is busy.
-                info!(era_id=%requested_era.value(), was_latest=era_id.is_none(), "dumping era via console");
+                info!(era_id=%requested_era.value(), was_latest=era_id.is_none(), "dumping era via diagnostics port");
 
                 let era_dump_result = self
                     .open_eras()
