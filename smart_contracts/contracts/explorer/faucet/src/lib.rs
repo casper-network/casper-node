@@ -66,12 +66,11 @@ enum FaucetError {
     InvalidRemainingRequests = 18,
     MissingDistributionsPerInterval = 19,
     InvalidDistributionsPerInterval = 20,
-    ZeroDistributionsPerInterval = 21,
-    UnexpectedKeyVariant = 22,
-    MissingAuthorizedAccount = 23,
-    InvalidAuthorizedAccount = 24,
-    AuthorizedAccountDoesNotFundInstaller = 25,
-    FaucetCallByUserWithAuthorizedAccountSet = 26,
+    UnexpectedKeyVariant = 21,
+    MissingAuthorizedAccount = 22,
+    InvalidAuthorizedAccount = 23,
+    AuthorizedAccountDoesNotFundInstaller = 24,
+    FaucetCallByUserWithAuthorizedAccountSet = 25,
 }
 
 impl From<FaucetError> for ApiError {
@@ -330,38 +329,6 @@ fn get_distribution_amount_rate_limited() -> U512 {
     // all be reset to be available, use bool.
     //
     // let distribution_amount = available_amount / U512::from(distributions_per_interval);
-    Ratio::new(available_amount, U512::from(distributions_per_interval)).to_integer()
-}
-
-fn get_distribution_amount() -> U512 {
-    let distributions_per_interval_uref = get_uref_with_user_errors(
-        DISTRIBUTIONS_PER_INTERVAL,
-        FaucetError::MissingDistributionsPerInterval,
-        FaucetError::InvalidDistributionsPerInterval,
-    );
-
-    let distributions_per_interval: u64 = read_with_user_errors(
-        distributions_per_interval_uref,
-        FaucetError::MissingDistributionsPerInterval,
-        FaucetError::InvalidDistributionsPerInterval,
-    );
-
-    if distributions_per_interval == 0 {
-        runtime::revert(FaucetError::ZeroDistributionsPerInterval);
-    }
-
-    let available_amount_uref = get_uref_with_user_errors(
-        AVAILABLE_AMOUNT,
-        FaucetError::MissingAvailableAmount,
-        FaucetError::InvalidAvailableAmount,
-    );
-
-    let available_amount: U512 = read_with_user_errors(
-        available_amount_uref,
-        FaucetError::MissingAvailableAmount,
-        FaucetError::InvalidAvailableAmount,
-    );
-
     Ratio::new(available_amount, U512::from(distributions_per_interval)).to_integer()
 }
 
