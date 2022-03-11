@@ -296,21 +296,21 @@ pub enum Error {
         part_hash: Digest,
     },
     /// A lock on the index has been poisoned, likely due to a crash by a background task.
-    #[error("index lock poisoned")]
-    IndexLockPoisoned,
+    #[error("indices lock poisoned")]
+    IndicesLockPoisoned,
 }
 
 // While we usually avoid blanked `From` impls on errors, the type is specific enough (includes
 // `Indices`) to make an exception to this rule here for both read and write lock poisoning.
 impl<'a> From<PoisonError<RwLockReadGuard<'a, Indices>>> for Error {
     fn from(_: PoisonError<RwLockReadGuard<'a, Indices>>) -> Self {
-        Error::IndexLockPoisoned
+        Error::IndicesLockPoisoned
     }
 }
 
 impl<'a> From<PoisonError<RwLockWriteGuard<'a, Indices>>> for Error {
     fn from(_: PoisonError<RwLockWriteGuard<'a, Indices>>) -> Self {
-        Error::IndexLockPoisoned
+        Error::IndicesLockPoisoned
     }
 }
 
