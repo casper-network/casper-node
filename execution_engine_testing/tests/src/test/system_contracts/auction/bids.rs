@@ -20,6 +20,7 @@ use casper_execution_engine::{
                 DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
                 DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
                 DEFAULT_MAX_STORED_VALUE_SIZE, DEFAULT_MINIMUM_DELEGATION_AMOUNT,
+                DEFAULT_STRICT_ARGUMENT_CHECKING,
             },
             genesis::{GenesisAccount, GenesisValidator},
             EngineConfig, Error, RewardItem,
@@ -2602,6 +2603,7 @@ fn should_release_vfta_holder_stake() {
         DEFAULT_MAX_STORED_VALUE_SIZE,
         DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
         NEW_MINIMUM_DELEGATION_AMOUNT,
+        DEFAULT_STRICT_ARGUMENT_CHECKING,
         WasmConfig::default(),
         SystemConfig::default(),
     );
@@ -3106,6 +3108,7 @@ fn should_not_allow_delegations_past_limit() {
         DEFAULT_MAX_STORED_VALUE_SIZE,
         NEW_MAX_DELEGATOR_SIZE_LIMIT,
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
+        DEFAULT_STRICT_ARGUMENT_CHECKING,
         WasmConfig::default(),
         SystemConfig::default(),
     );
@@ -3371,6 +3374,7 @@ fn should_continue_running_auction_despite_execeeded_delegator_limit() {
         DEFAULT_MAX_STORED_VALUE_SIZE,
         NEW_MAX_DELEGATOR_SIZE_LIMIT,
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
+        DEFAULT_STRICT_ARGUMENT_CHECKING,
         WasmConfig::default(),
         SystemConfig::default(),
     );
@@ -3625,6 +3629,7 @@ fn should_enforce_and_check_global_delegator_capacity() {
         DEFAULT_MAX_STORED_VALUE_SIZE,
         NEW_MAX_DELEGATOR_SIZE_LIMIT,
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
+        DEFAULT_STRICT_ARGUMENT_CHECKING,
         WasmConfig::default(),
         SystemConfig::default(),
     );

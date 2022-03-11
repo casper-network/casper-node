@@ -8,7 +8,10 @@ use casper_engine_test_support::{
 use casper_execution_engine::{
     core::{
         engine_state::{
-            engine_config::{DEFAULT_MAX_DELEGATOR_SIZE_LIMIT, DEFAULT_MINIMUM_DELEGATION_AMOUNT},
+            engine_config::{
+                DEFAULT_MAX_DELEGATOR_SIZE_LIMIT, DEFAULT_MINIMUM_DELEGATION_AMOUNT,
+                DEFAULT_STRICT_ARGUMENT_CHECKING,
+            },
             EngineConfig, Error as CoreError, DEFAULT_MAX_QUERY_DEPTH,
             DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT, WASMLESS_TRANSFER_FIXED_GAS_PRICE,
         },
@@ -992,6 +995,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
         DEFAULT_MAX_STORED_VALUE_SIZE,
         DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
+        DEFAULT_STRICT_ARGUMENT_CHECKING,
         WasmConfig::default(),
         new_system_config,
     );

@@ -38,8 +38,8 @@ use casper_types::{
     },
     AccessRights, ApiError, CLTyped, CLValue, ContextAccessRights, ContractHash,
     ContractPackageHash, ContractVersionKey, ContractWasm, DeployHash, EntryPointType, EraId, Gas,
-    GrantedAccess, Key, Phase, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferResult,
-    TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
+    GrantedAccess, Key, NamedArg, Parameter, Phase, PublicKey, RuntimeArgs, StoredValue, Transfer,
+    TransferResult, TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
 };
 
 use crate::{
@@ -1162,26 +1162,34 @@ where
         // if not public, restricted to user group access
         self.validate_group_membership(&contract_package, entry_point.access())?;
 
-        // TODO: plan for 2.0 extra information stating required argument and add chainspec
-        // variable ensure args type(s) match defined args of entry point
-        // for (param_name, param) in entry_point_args_lookup {
-        //     if let Some(named_arg) = args_lookup.get(param_name) {
-        //         if param.cl_type() != named_arg.cl_value().cl_type() {
-        //             return Err(Error::type_mismatch(
-        //                 param.cl_type().clone(),
-        //                 named_arg.cl_value().cl_type().clone(),
-        //             ));
-        //         }
-        //     }
-        //     // TODO we may add required field in 2.0 and enforce this
-        //     // else if !param.cl_type().is_option() {
-        //     //     return Err(Error::MissingArgument {
-        //     //         name: param.name().to_string(),
-        //     //     });
-        //     // }
-        // }
-        //}
+        if self.config.strict_argument_checking() {
+            let entry_point_args_lookup: BTreeMap<&str, &Parameter> = entry_point
+                .args()
+                .iter()
+                .map(|param| (param.name(), param))
+                .collect();
 
+            let args_lookup: BTreeMap<&str, &NamedArg> = args
+                .named_args()
+                .map(|named_arg| (named_arg.name(), named_arg))
+                .collect();
+
+            // variable ensure args type(s) match defined args of entry point
+            for (param_name, param) in entry_point_args_lookup {
+                if let Some(named_arg) = args_lookup.get(param_name) {
+                    if param.cl_type() != named_arg.cl_value().cl_type() {
+                        return Err(Error::type_mismatch(
+                            param.cl_type().clone(),
+                            named_arg.cl_value().cl_type().clone(),
+                        ));
+                    }
+                } else if !param.cl_type().is_option() {
+                    return Err(Error::MissingArgument {
+                        name: param.name().to_string(),
+                    });
+                }
+            }
+        }
         // if session the caller's context
         // else the called contract's context
         let context_key = self.get_context_key_for_contract_call(contract_hash, &entry_point)?;

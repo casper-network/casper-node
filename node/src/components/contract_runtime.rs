@@ -444,6 +444,8 @@ impl ContractRuntime {
             DatabaseFlags::empty(),
         )?);
 
+        let strict_argument_checking = false;
+
         let global_state = LmdbGlobalState::empty(environment, trie_store)?;
         let engine_config = EngineConfig::new(
             contract_runtime_config.max_query_depth(),
@@ -452,6 +454,7 @@ impl ContractRuntime {
             max_stored_value_size,
             max_delegator_size_limit,
             minimum_delegation_amount,
+            strict_argument_checking,
             wasm_config,
             system_config,
         );
