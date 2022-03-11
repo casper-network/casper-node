@@ -80,14 +80,14 @@ fn should_install_faucet_contract() {
         .clone();
 
     assert!(installer_named_keys
-        .get(FAUCET_CONTRACT_NAMED_KEY)
+        .get(&format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID))
         .is_some());
 
-    let faucet_id = format!("faucet_{}", FAUCET_ID);
-    assert!(installer_named_keys.get(&faucet_id).is_some());
+    let faucet_purse_id = format!("{}_{}", FAUCET_PURSE_NAMED_KEY, FAUCET_ID);
+    assert!(installer_named_keys.get(&faucet_purse_id).is_some());
 
     let faucet_named_key = installer_named_keys
-        .get(FAUCET_CONTRACT_NAMED_KEY)
+        .get(&format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID))
         .expect("failed to find faucet named key");
 
     // check installer is set.
@@ -223,7 +223,7 @@ fn should_allow_installer_to_set_variables() {
     let faucet_contract_hash = builder
         .get_expected_account(installer_account)
         .named_keys()
-        .get(FAUCET_CONTRACT_NAMED_KEY)
+        .get(&format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID))
         .cloned()
         .and_then(Key::into_hash)
         .map(ContractHash::new)
@@ -300,7 +300,7 @@ fn should_allow_installer_to_set_variables() {
             .with_address(installer_account)
             .with_authorization_keys(&[installer_account])
             .with_stored_session_named_key(
-                FAUCET_CONTRACT_NAMED_KEY,
+                &format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID),
                 ENTRY_POINT_SET_VARIABLES,
                 runtime_args! {
                     ARG_AVAILABLE_AMOUNT => Some(faucet_fund_amount),
@@ -409,7 +409,7 @@ fn should_fund_new_account() {
     let faucet_contract_hash = builder
         .get_expected_account(installer_account)
         .named_keys()
-        .get(FAUCET_CONTRACT_NAMED_KEY)
+        .get(&format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID))
         .cloned()
         .and_then(Key::into_hash)
         .map(ContractHash::new)
@@ -505,7 +505,7 @@ fn should_fund_new_account() {
             .with_address(installer_account)
             .with_authorization_keys(&[installer_account])
             .with_stored_session_named_key(
-                FAUCET_CONTRACT_NAMED_KEY,
+                &format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID),
                 ENTRY_POINT_FAUCET,
                 runtime_args! {ARG_TARGET => user_account, ARG_AMOUNT => user_fund_amount, ARG_ID => <Option<u64>>::None},
             )
@@ -581,7 +581,7 @@ fn should_fund_existing_account() {
     let faucet_contract_hash = builder
         .get_expected_account(installer_account)
         .named_keys()
-        .get(FAUCET_CONTRACT_NAMED_KEY)
+        .get(&format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID))
         .cloned()
         .and_then(Key::into_hash)
         .map(ContractHash::new)
@@ -623,7 +623,7 @@ fn should_fund_existing_account() {
     let assigned_distributions_per_interval = 2u64;
     let installer_set_variables_request = ExecuteRequestBuilder::contract_call_by_name(
         installer_account,
-        FAUCET_CONTRACT_NAMED_KEY,
+        &format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID),
         ENTRY_POINT_SET_VARIABLES,
         runtime_args! {
             ARG_AVAILABLE_AMOUNT => Some(faucet_fund_amount),
@@ -677,7 +677,7 @@ fn should_fund_existing_account() {
     let user_fund_amount = U512::from(3_000_000_000u64);
     let faucet_call_by_installer = ExecuteRequestBuilder::contract_call_by_name(
         installer_account,
-        FAUCET_CONTRACT_NAMED_KEY,
+        &format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID),
         ENTRY_POINT_FAUCET,
         runtime_args! {
             ARG_TARGET => user_account,
@@ -800,7 +800,7 @@ fn should_not_fund_once_exhausted() {
     let faucet_contract_hash = builder
         .get_expected_account(installer_account)
         .named_keys()
-        .get(FAUCET_CONTRACT_NAMED_KEY)
+        .get(&format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID))
         .cloned()
         .and_then(Key::into_hash)
         .map(ContractHash::new)
@@ -847,7 +847,7 @@ fn should_not_fund_once_exhausted() {
             .with_address(installer_account)
             .with_authorization_keys(&[installer_account])
             .with_stored_session_named_key(
-                FAUCET_CONTRACT_NAMED_KEY,
+                &format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID),
                 ENTRY_POINT_SET_VARIABLES,
                 runtime_args! {
                     ARG_AVAILABLE_AMOUNT => Some(assigned_available_amount),
@@ -907,7 +907,7 @@ fn should_not_fund_once_exhausted() {
             .with_address(installer_account)
             .with_authorization_keys(&[installer_account])
             .with_stored_session_named_key(
-                FAUCET_CONTRACT_NAMED_KEY,
+                &format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID),
                 ENTRY_POINT_FAUCET,
                 runtime_args! {
                     ARG_TARGET => user_account,
@@ -1125,7 +1125,7 @@ fn should_allow_installer_to_fund_freely() {
     let faucet_contract_hash = builder
         .get_expected_account(installer_account)
         .named_keys()
-        .get(FAUCET_CONTRACT_NAMED_KEY)
+        .get(&format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID))
         .cloned()
         .and_then(Key::into_hash)
         .map(ContractHash::new)
@@ -1171,7 +1171,7 @@ fn should_allow_installer_to_fund_freely() {
             .with_address(installer_account)
             .with_authorization_keys(&[installer_account])
             .with_stored_session_named_key(
-                FAUCET_CONTRACT_NAMED_KEY,
+                &format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID),
                 ENTRY_POINT_SET_VARIABLES,
                 runtime_args! {
                     ARG_AVAILABLE_AMOUNT => Some(assigned_available_amount),
@@ -1216,7 +1216,7 @@ fn should_allow_installer_to_fund_freely() {
                 .with_address(installer_account)
                 .with_authorization_keys(&[installer_account])
                 .with_stored_session_named_key(
-                    FAUCET_CONTRACT_NAMED_KEY,
+                    &format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID),
                     ENTRY_POINT_FAUCET,
                     runtime_args! {ARG_TARGET => user_account, ARG_AMOUNT => user_fund_amount, ARG_ID => <Option<u64>>::None},
                 )
@@ -1298,7 +1298,7 @@ fn should_not_fund_if_zero_distributions_per_interval() {
 
     let installer_call_faucet_request = ExecuteRequestBuilder::contract_call_by_name(
         installer_account,
-        FAUCET_CONTRACT_NAMED_KEY,
+        &format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID),
         ENTRY_POINT_FAUCET,
         runtime_args! {ARG_TARGET => user_account},
     )
@@ -1357,7 +1357,7 @@ fn should_allow_funding_by_an_authorized_account() {
     let assigned_distributions_per_interval = 2u64;
     let installer_set_variables_request = ExecuteRequestBuilder::contract_call_by_name(
         installer_account,
-        FAUCET_CONTRACT_NAMED_KEY,
+        &format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID),
         ENTRY_POINT_SET_VARIABLES,
         runtime_args! {
             ARG_AVAILABLE_AMOUNT => Some(faucet_fund_amount),
@@ -1378,7 +1378,7 @@ fn should_allow_funding_by_an_authorized_account() {
         .clone();
 
     let faucet_named_key = installer_named_keys
-        .get(FAUCET_CONTRACT_NAMED_KEY)
+        .get(&format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID))
         .expect("failed to find faucet named key");
 
     let maybe_authorized_account_public_key = builder
@@ -1402,7 +1402,7 @@ fn should_allow_funding_by_an_authorized_account() {
 
     let installer_authorize_caller_request = ExecuteRequestBuilder::contract_call_by_name(
         installer_account,
-        FAUCET_CONTRACT_NAMED_KEY,
+        &format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID),
         ENTRY_POINT_AUTHORIZE_TO,
         runtime_args! {ARG_TARGET => Some(authorized_account_public_key.clone())},
     )
@@ -1439,7 +1439,7 @@ fn should_allow_funding_by_an_authorized_account() {
     let faucet_contract_hash = builder
         .get_expected_account(installer_account)
         .named_keys()
-        .get(FAUCET_CONTRACT_NAMED_KEY)
+        .get(&format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID))
         .cloned()
         .and_then(Key::into_hash)
         .map(ContractHash::new)
@@ -1449,7 +1449,7 @@ fn should_allow_funding_by_an_authorized_account() {
     let faucet_fund_authorized_account_by_installer_request =
         ExecuteRequestBuilder::contract_call_by_name(
             installer_account,
-            FAUCET_CONTRACT_NAMED_KEY,
+            &format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID),
             ENTRY_POINT_FAUCET,
             runtime_args! {
                 ARG_TARGET => authorized_account,
@@ -1581,7 +1581,7 @@ fn faucet_costs() {
             .with_address(installer_account)
             .with_authorization_keys(&[installer_account])
             .with_stored_session_named_key(
-                FAUCET_CONTRACT_NAMED_KEY,
+                &format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID),
                 ENTRY_POINT_SET_VARIABLES,
                 runtime_args! {
                     ARG_AVAILABLE_AMOUNT => Some(faucet_fund_amount),
@@ -1610,7 +1610,7 @@ fn faucet_costs() {
             .with_address(installer_account)
             .with_authorization_keys(&[installer_account])
             .with_stored_session_named_key(
-                FAUCET_CONTRACT_NAMED_KEY,
+                &format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID),
                 ENTRY_POINT_FAUCET,
                 runtime_args! {ARG_TARGET => user_account, ARG_AMOUNT => user_fund_amount, ARG_ID => <Option<u64>>::None},
             )
@@ -1635,7 +1635,7 @@ fn faucet_costs() {
     let faucet_contract_hash = builder
         .get_expected_account(installer_account)
         .named_keys()
-        .get(FAUCET_CONTRACT_NAMED_KEY)
+        .get(&format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID))
         .cloned()
         .and_then(Key::into_hash)
         .map(ContractHash::new)
