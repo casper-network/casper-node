@@ -38,10 +38,9 @@ function main() {
     # 8. Walkback and verify transfers were included in blocks
     check_transfer_inclusion '1' '1000'
     # 10. Run Health Checks
-    # ... errors=ignore: ticket sre issue 71
     # ... restarts=1: due to node being stopped and started
     source "$NCTL"/sh/scenarios/common/health_checks.sh \
-            errors='ignore' \
+            errors='0' \
             equivocators=0 \
             doppels=0 \
             crashes=0 \
