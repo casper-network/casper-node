@@ -21,8 +21,8 @@ use crate::{
     Key, URef, U128, U256, U512,
 };
 
-// This must be less than 300 in order to avoid a stack overflow when deserializing
-const CL_TYPE_PARSE_RECURSION_DEPTH: u8 = 50;
+// This must be less than 300 in order to avoid a stack overflow when deserializing.
+pub(crate) const CL_TYPE_RECURSION_DEPTH: u8 = 50;
 
 const CL_TYPE_TAG_BOOL: u8 = 0;
 const CL_TYPE_TAG_I32: u8 = 1;
@@ -218,7 +218,7 @@ impl FromBytes for CLType {
 }
 
 fn depth_limited_from_bytes(depth: u8, bytes: &[u8]) -> Result<(CLType, &[u8]), bytesrepr::Error> {
-    if depth >= CL_TYPE_PARSE_RECURSION_DEPTH {
+    if depth >= CL_TYPE_RECURSION_DEPTH {
         return Err(bytesrepr::Error::OutOfMemory);
     }
     let depth = depth + 1;
@@ -508,7 +508,7 @@ impl<T: CLTyped> CLTyped for Ratio<T> {
 
 #[cfg(test)]
 mod tests {
-    use std::{fmt::Debug, string::ToString};
+    use std::{fmt::Debug, iter, string::ToString};
 
     use super::*;
     use crate::{
@@ -707,11 +707,13 @@ mod tests {
     fn parsing_nested_tuple_1_cltype_should_not_stack_overflow() {
         // The bytesrepr representation of the CLType for a
         // nested (((...((),),...),),) looks like:
-        // [18, 18, 18, ..., 9 ]
+        // [18, 18, 18, ..., 9]
 
         for i in 1..1000 {
-            let mut bytes: Vec<u8> = std::iter::repeat(18).take(i).collect();
-            bytes.push(9);
+            let bytes = iter::repeat(CL_TYPE_TAG_TUPLE1)
+                .take(i)
+                .chain(iter::once(CL_TYPE_TAG_UNIT))
+                .collect();
             let parsed_cltype: CLType = match bytesrepr::deserialize(bytes) {
                 Ok(parsed_cltype) => parsed_cltype,
                 Err(_) => continue,
@@ -727,11 +729,11 @@ mod tests {
         // [0, 0, 0, 0, 18, 18, 18, ..., 18, 9]
 
         for i in 1..1000 {
-            let mut bytes: Vec<u8> = std::iter::repeat(0)
+            let bytes = iter::repeat(0)
                 .take(4)
-                .chain(std::iter::repeat(18).take(i))
+                .chain(iter::repeat(CL_TYPE_TAG_TUPLE1).take(i))
+                .chain(iter::once(CL_TYPE_TAG_UNIT))
                 .collect();
-            bytes.push(9);
             let parsed_clvalue: CLValue = match bytesrepr::deserialize(bytes) {
                 Ok(parsed_clvalue) => parsed_clvalue,
                 Err(_) => continue,

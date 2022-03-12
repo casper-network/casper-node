@@ -21,6 +21,9 @@ All notable changes to this project will be documented in this file.  The format
 * Provide types and functionality to support improved access control inside execution engine.
 * Provide `CLTyped` impl for `ContractPackage` to allow it to be passed into contracts.
 
+### Fixed
+* Limit parsing of CLTyped objects to a maximum of 50 types deep.
+
 
 
 ## 1.4.6 - 2021-12-29
