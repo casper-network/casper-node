@@ -219,7 +219,7 @@ impl FromBytes for CLType {
 
 fn depth_limited_from_bytes(depth: u8, bytes: &[u8]) -> Result<(CLType, &[u8]), bytesrepr::Error> {
     if depth >= CL_TYPE_RECURSION_DEPTH {
-        return Err(bytesrepr::Error::OutOfMemory);
+        return Err(bytesrepr::Error::ExceededRecursionDepth);
     }
     let depth = depth + 1;
     let (tag, remainder) = u8::from_bytes(bytes)?;
@@ -714,11 +714,10 @@ mod tests {
                 .take(i)
                 .chain(iter::once(CL_TYPE_TAG_UNIT))
                 .collect();
-            let parsed_cltype: CLType = match bytesrepr::deserialize(bytes) {
-                Ok(parsed_cltype) => parsed_cltype,
-                Err(_) => continue,
-            };
-            assert!(matches!(parsed_cltype, CLType::Tuple1(_)));
+            match bytesrepr::deserialize(bytes) {
+                Ok(parsed_cltype) => assert!(matches!(parsed_cltype, CLType::Tuple1(_))),
+                Err(error) => assert_eq!(error, bytesrepr::Error::ExceededRecursionDepth),
+            }
         }
     }
 
@@ -734,11 +733,12 @@ mod tests {
                 .chain(iter::repeat(CL_TYPE_TAG_TUPLE1).take(i))
                 .chain(iter::once(CL_TYPE_TAG_UNIT))
                 .collect();
-            let parsed_clvalue: CLValue = match bytesrepr::deserialize(bytes) {
-                Ok(parsed_clvalue) => parsed_clvalue,
-                Err(_) => continue,
-            };
-            assert!(matches!(parsed_clvalue.cl_type(), CLType::Tuple1(_)));
+            match bytesrepr::deserialize::<CLValue>(bytes) {
+                Ok(parsed_clvalue) => {
+                    assert!(matches!(parsed_clvalue.cl_type(), CLType::Tuple1(_)))
+                }
+                Err(error) => assert_eq!(error, bytesrepr::Error::ExceededRecursionDepth),
+            }
         }
     }
 

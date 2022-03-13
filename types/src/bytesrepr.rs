@@ -113,6 +113,8 @@ pub enum Error {
     LeftOverBytes,
     /// Out of memory error.
     OutOfMemory,
+    /// Exceeded a recursion depth limit.
+    ExceededRecursionDepth,
 }
 
 impl Display for Error {
@@ -124,6 +126,7 @@ impl Display for Error {
             Error::Formatting => formatter.write_str("Deserialization error: formatting"),
             Error::LeftOverBytes => formatter.write_str("Deserialization error: left-over bytes"),
             Error::OutOfMemory => formatter.write_str("Serialization error: out of memory"),
+            Error::ExceededRecursionDepth => formatter.write_str("exceeded recursion depth"),
         }
     }
 }
