@@ -460,20 +460,14 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         let round = match self.round(round_id) {
             Some(round) => round,
             None => {
-                return Message::SyncState {
+                return Message::new_empty_round_sync_state(
                     round_id,
-                    proposal_hash: None,
-                    proposal: false,
                     first_validator_idx,
-                    echos: 0,
-                    true_votes: 0,
-                    false_votes: 0,
                     faulty,
-                    instance_id: self.instance_id,
-                }
+                    self.instance_id,
+                );
             }
         };
-        let mut echos = 0;
         let true_votes =
             self.validator_bit_field(first_validator_idx, round.votes[&true].keys_some());
         let false_votes =
@@ -482,14 +476,10 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             round
                 .echos
                 .iter()
-                .max_by_key(|(_, echo_map)| {
-                    echo_map
-                        .keys()
-                        .map(|v_idx| self.weights[*v_idx])
-                        .sum::<Weight>()
-                })
+                .max_by_key(|(_, echo_map)| self.sum_weights(echo_map.keys()))
                 .map(|(hash, _)| *hash)
         });
+        let mut echos = 0;
         let mut proposal = false;
         if let Some(hash) = proposal_hash {
             echos =
@@ -1343,7 +1333,12 @@ impl<C: Context + 'static> SimpleConsensus<C> {
 
     /// Returns the total weight of validators known to be faulty.
     fn faulty_weight(&self) -> Weight {
-        self.faults.keys().map(|vidx| self.weights[*vidx]).sum()
+        self.sum_weights(self.faults.keys())
+    }
+
+    /// Returns the sum of the weights of the given validators.
+    fn sum_weights<'a>(&self, vidxs: impl Iterator<Item = &'a ValidatorIndex>) -> Weight {
+        vidxs.map(|vidx| self.weights[*vidx]).sum()
     }
 
     /// Retrieves a shared reference to the round.
@@ -1469,6 +1464,25 @@ pub(crate) enum Message<C: Context> {
 }
 
 impl<C: Context> Message<C> {
+    fn new_empty_round_sync_state(
+        round_id: RoundId,
+        first_validator_idx: ValidatorIndex,
+        faulty: u128,
+        instance_id: C::InstanceId,
+    ) -> Self {
+        Message::SyncState {
+            round_id,
+            proposal_hash: None,
+            proposal: false,
+            first_validator_idx,
+            echos: 0,
+            true_votes: 0,
+            false_votes: 0,
+            faulty,
+            instance_id,
+        }
+    }
+
     fn serialize(&self) -> Vec<u8> {
         bincode::serialize(self).expect("should serialize message")
     }
