@@ -44,7 +44,7 @@ mod tests;
 #[cfg(test)]
 use std::collections::BTreeSet;
 use std::{
-    collections::{btree_map::Entry, hash_map, BTreeMap, HashMap, HashSet},
+    collections::{btree_map, hash_map, BTreeMap, HashMap, HashSet},
     convert::TryFrom,
     fmt::{self, Display, Formatter},
     fs, io, mem,
@@ -1821,10 +1821,10 @@ fn insert_to_block_header_indices(
 
     if block_header.is_switch_block() {
         match switch_block_era_id_index.entry(block_header.era_id()) {
-            Entry::Vacant(entry) => {
+            btree_map::Entry::Vacant(entry) => {
                 let _ = entry.insert(block_hash);
             }
-            Entry::Occupied(entry) => {
+            btree_map::Entry::Occupied(entry) => {
                 if *entry.get() != block_hash {
                     return Err(FatalStorageError::DuplicateEraIdIndex {
                         era_id: block_header.era_id(),
