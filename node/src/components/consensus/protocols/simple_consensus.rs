@@ -431,20 +431,14 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         let round = match self.round(round_id) {
             Some(round) => round,
             None => {
-                return Message::SyncState {
+                return Message::new_empty_round_sync_state(
                     round_id,
-                    proposal_hash: None,
-                    proposal: false,
                     first_validator_idx,
-                    echos: 0,
-                    true_votes: 0,
-                    false_votes: 0,
                     faulty,
-                    instance_id: self.instance_id,
-                }
+                    self.instance_id,
+                );
             }
         };
-        let mut echos = 0;
         let true_votes =
             self.validator_bit_field(first_validator_idx, round.votes[&true].keys_some());
         let false_votes =
@@ -453,14 +447,10 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             round
                 .echos
                 .iter()
-                .max_by_key(|(_, echo_map)| {
-                    echo_map
-                        .keys()
-                        .map(|v_idx| self.weights[*v_idx])
-                        .sum::<Weight>()
-                })
+                .max_by_key(|(_, echo_map)| self.sum_weights(echo_map.keys()))
                 .map(|(hash, _)| *hash)
         });
+        let mut echos = 0;
         let mut proposal = false;
         if let Some(hash) = proposal_hash {
             echos =
@@ -480,6 +470,10 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         }
     }
 
+    /// Returns a bit field where each bit stands for a validator: the least significant one for
+    /// `first_idx` and the most significant one for `fist_idx + 127`, wrapping around at the total
+    /// number of validators. The bits of the validators in `index_iter` that fall into that
+    /// range are set to `1`, the others are `0`.
     #[allow(clippy::integer_arithmetic)] // TODO
     fn validator_bit_field(
         &self,
@@ -489,16 +483,20 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         let mut bit_field = 0;
         let validator_count = self.weights.len() as u32;
         for ValidatorIndex(v_idx) in index_iter {
+            // The validator's bit is v_idx - first_idx, but we wrap around.
             let i = v_idx
                 .checked_sub(first_idx)
                 .unwrap_or(v_idx + validator_count - first_idx);
             if i < 128 {
-                bit_field |= 1 << i;
+                bit_field |= 1 << i; // Set bit number i to 1.
             }
         }
         bit_field
     }
 
+    /// Returns an iterator over all validator indexes whose bits in the `bit_field` are `1`, where
+    /// the least significant one stands for `first_idx` and the most significant one for
+    /// `first_idx + 127`, wrapping around.
     #[allow(clippy::integer_arithmetic)] // TODO
     fn iter_validator_bit_field(
         &self,
@@ -506,12 +504,15 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         mut bit_field: u128,
     ) -> impl Iterator<Item = ValidatorIndex> {
         let validator_count = self.weights.len() as u32;
-        let mut idx = first_idx.0;
+        let mut idx = first_idx.0; // The last bit stands for first_idx.
         iter::from_fn(move || {
             if bit_field == 0 {
-                return None;
+                return None; // No remaining bits with value 1.
             }
             let zeros = bit_field.trailing_zeros();
+            // The index of the validator whose bit is 1. We shift the bits to the right so that the
+            // least significant bit now corresponds to this one, then we output the index and set
+            // the bit to 0.
             idx = (idx + zeros) % validator_count;
             bit_field >>= zeros;
             bit_field &= !1;
@@ -630,7 +631,8 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 !echo_map.is_empty()
             });
         }
-        for round_id in self.first_non_finalized_round_id..=*self.rounds.keys().last().unwrap_or(&0)
+        for round_id in
+            self.first_non_finalized_round_id..=self.rounds.keys().last().copied().unwrap_or(0)
         {
             if self.rounds[&round_id].outcome.quorum_echos.is_none() {
                 if let Some(hash) = self.rounds[&round_id]
@@ -1303,7 +1305,12 @@ impl<C: Context + 'static> SimpleConsensus<C> {
 
     /// Returns the total weight of validators known to be faulty.
     fn faulty_weight(&self) -> Weight {
-        self.faults.keys().map(|vidx| self.weights[*vidx]).sum()
+        self.sum_weights(self.faults.keys())
+    }
+
+    /// Returns the sum of the weights of the given validators.
+    fn sum_weights<'a>(&self, vidxs: impl Iterator<Item = &'a ValidatorIndex>) -> Weight {
+        vidxs.map(|vidx| self.weights[*vidx]).sum()
     }
 
     /// Retrieves a shared reference to the round.
@@ -1429,6 +1436,25 @@ pub(crate) enum Message<C: Context> {
 }
 
 impl<C: Context> Message<C> {
+    fn new_empty_round_sync_state(
+        round_id: RoundId,
+        first_validator_idx: ValidatorIndex,
+        faulty: u128,
+        instance_id: C::InstanceId,
+    ) -> Self {
+        Message::SyncState {
+            round_id,
+            proposal_hash: None,
+            proposal: false,
+            first_validator_idx,
+            echos: 0,
+            true_votes: 0,
+            false_votes: 0,
+            faulty,
+            instance_id,
+        }
+    }
+
     fn serialize(&self) -> Vec<u8> {
         bincode::serialize(self).expect("should serialize message")
     }
