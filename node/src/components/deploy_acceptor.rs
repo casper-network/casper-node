@@ -39,8 +39,7 @@ use crate::{
     NodeRng,
 };
 
-pub(crate) use event::Event;
-use event::EventMetadata;
+pub(crate) use event::{Event, EventMetadata};
 
 const ARG_TARGET: &str = "target";
 
@@ -149,14 +148,12 @@ pub struct DeployAcceptor {
     chain_name: String,
     protocol_version: ProtocolVersion,
     deploy_config: DeployConfig,
-    verify_accounts: bool,
     max_associated_keys: u32,
     metrics: metrics::Metrics,
 }
 
 impl DeployAcceptor {
     pub(crate) fn new(
-        verify_accounts: bool,
         chainspec: &Chainspec,
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
@@ -165,7 +162,6 @@ impl DeployAcceptor {
             protocol_version: chainspec.protocol_version(),
             deploy_config: chainspec.deploy_config,
             max_associated_keys: chainspec.core_config.max_associated_keys,
-            verify_accounts,
             metrics: metrics::Metrics::new(registry)?,
         })
     }
@@ -217,22 +213,13 @@ impl DeployAcceptor {
             }
         }
 
-        if self.verify_accounts {
-            effect_builder
-                .get_highest_block_header_from_storage()
-                .event(move |maybe_block_header| Event::GetBlockHeaderResult {
-                    event_metadata: EventMetadata::new(deploy, source, maybe_responder),
-                    maybe_block_header: Box::new(maybe_block_header),
-                    verification_start_timestamp,
-                })
-        } else {
-            let event_metadata = EventMetadata::new(deploy, source, maybe_responder);
-            self.validate_deploy_cryptography(
-                effect_builder,
-                event_metadata,
+        effect_builder
+            .get_highest_block_header_from_storage()
+            .event(move |maybe_block_header| Event::GetBlockHeaderResult {
+                event_metadata: EventMetadata::new(deploy, source, maybe_responder),
+                maybe_block_header: Box::new(maybe_block_header),
                 verification_start_timestamp,
-            )
-        }
+            })
     }
 
     fn handle_get_block_result<REv: ReactorEventT>(

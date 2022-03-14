@@ -18,13 +18,13 @@ use casper_types::{
 /// A utility struct to hold duplicated information across events.
 #[derive(Debug, Serialize)]
 pub(crate) struct EventMetadata {
-    pub(super) deploy: Box<Deploy>,
-    pub(super) source: Source,
-    pub(super) maybe_responder: Option<Responder<Result<(), Error>>>,
+    pub(crate) deploy: Box<Deploy>,
+    pub(crate) source: Source,
+    pub(crate) maybe_responder: Option<Responder<Result<(), Error>>>,
 }
 
 impl EventMetadata {
-    pub(super) fn new(
+    pub(crate) fn new(
         deploy: Box<Deploy>,
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,

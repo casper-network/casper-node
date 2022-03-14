@@ -28,7 +28,8 @@ use super::*;
 use crate::{
     components::{
         contract_runtime::{self, ContractRuntime},
-        deploy_acceptor::{self, DeployAcceptor},
+        deploy_acceptor,
+        fake_deploy_acceptor::FakeDeployAcceptor,
         in_memory_network::{self, InMemoryNetwork, NetworkController},
         small_network::GossipedAddress,
         storage::{self, Storage},
@@ -48,13 +49,13 @@ use crate::{
     fatal,
     protocol::Message as NodeMessage,
     reactor::{self, EventQueueHandle, Runner},
-    testing,
     testing::{
+        self,
         network::{Network, NetworkedReactor},
         ConditionCheckReactor, TestRng,
     },
-    types::{Chainspec, ChainspecRawBytes, Deploy, NodeId},
-    utils::{Loadable, WithDir},
+    types::{Deploy, NodeId},
+    utils::WithDir,
     NodeRng,
 };
 
@@ -187,7 +188,7 @@ enum Error {
 struct Reactor {
     network: InMemoryNetwork<NodeMessage>,
     storage: Storage,
-    deploy_acceptor: DeployAcceptor,
+    fake_deploy_acceptor: FakeDeployAcceptor,
     deploy_gossiper: Gossiper<Deploy, Event>,
     contract_runtime: ContractRuntime,
     _storage_tempdir: TempDir,
@@ -242,12 +243,7 @@ impl reactor::Reactor for Reactor {
         )
         .unwrap();
 
-        let deploy_acceptor = DeployAcceptor::new(
-            false,
-            &<(Chainspec, ChainspecRawBytes)>::from_resources("local").0,
-            registry,
-        )
-        .unwrap();
+        let fake_deploy_acceptor = FakeDeployAcceptor::new();
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
             config,
@@ -258,7 +254,7 @@ impl reactor::Reactor for Reactor {
         let reactor = Reactor {
             network,
             storage,
-            deploy_acceptor,
+            fake_deploy_acceptor,
             deploy_gossiper,
             contract_runtime,
             _storage_tempdir: storage_tempdir,
@@ -282,7 +278,7 @@ impl reactor::Reactor for Reactor {
             ),
             Event::DeployAcceptor(event) => reactor::wrap_effects(
                 Event::DeployAcceptor,
-                self.deploy_acceptor
+                self.fake_deploy_acceptor
                     .handle_event(effect_builder, rng, event),
             ),
             Event::DeployGossiper(event) => reactor::wrap_effects(
@@ -383,7 +379,7 @@ impl reactor::Reactor for Reactor {
                     };
                     reactor::wrap_effects(
                         Event::DeployAcceptor,
-                        self.deploy_acceptor.handle_event(
+                        self.fake_deploy_acceptor.handle_event(
                             effect_builder,
                             rng,
                             deploy_acceptor::Event::Accept {

@@ -22,6 +22,10 @@ pub mod in_memory_network;
 pub(crate) mod metrics;
 pub(crate) mod small_network;
 pub mod storage;
+// TODO: this import is only required due to the usage of the `reactor!` macro in the fetcher tests;
+//       remove once the macro is deleted.
+#[cfg(test)]
+pub(crate) use crate::testing::fake_deploy_acceptor;
 
 use crate::{
     effect::{EffectBuilder, Effects},
