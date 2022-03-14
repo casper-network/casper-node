@@ -47,9 +47,9 @@ function main() {
     do_await_deploy_inclusion
     # 11. Run Health Checks
     # ... restarts=15: due to node being stopped and started
-    # ... errors=ignore: ticket sre issue 77
+    # ... crashes=5: expected in an emergency restart scenario?
     source "$NCTL"/sh/scenarios/common/health_checks.sh \
-            errors='ignore' \
+            errors='0' \
             equivocators=0 \
             doppels=0 \
             crashes=0 \
