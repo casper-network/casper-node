@@ -142,7 +142,7 @@ const STORAGE_FILES: [&str; 5] = [
     "sse_index",
 ];
 
-type MissingBodiesIndex = HashMap<(Digest, HashingAlgorithmVersion), Vec<u64>>;
+type MissingBodiesIndex = HashMap<Digest, Vec<u64>>;
 
 /// A fatal storage component error.
 ///
@@ -1112,11 +1112,7 @@ impl Storage {
                     self.disjoint_block_height_sequences
                         .insert(block_header.height());
                 } else {
-                    match self.missing_block_bodies.entry((
-                        *block_header.body_hash(),
-                        block_header
-                            .hashing_algorithm_version(self.verifiable_chunked_hash_activation),
-                    )) {
+                    match self.missing_block_bodies.entry(*block_header.body_hash()) {
                         hash_map::Entry::Occupied(mut entry) => {
                             entry.get_mut().push(block_header.height());
                         }
@@ -1135,24 +1131,7 @@ impl Storage {
                     .highest_sequence_low_value();
                 responder.respond(result).ignore()
             }
-            StorageRequest::UpdateContiguousBlockInfo { responder } => {
-                self.refresh_contiguous_block_info()?;
-                responder.respond(()).ignore()
-            }
         })
-    }
-
-    /// Updates the list of block headers with missing bodies. If body happens to be
-    /// available, the header is removed from the list and the block
-    /// is reported as fully available.
-    fn refresh_contiguous_block_info(&mut self) -> Result<(), FatalStorageError> {
-        let (block_heights_still_without_bodies, new_block_heights_with_bodies) =
-            self.update_missing_block_bodies()?;
-
-        self.missing_block_bodies = block_heights_still_without_bodies;
-        self.disjoint_block_height_sequences
-            .extend(new_block_heights_with_bodies);
-        Ok(())
     }
 
     /// Returns `true` if there is a block body for the given block header available in storage.
@@ -1166,37 +1145,18 @@ impl Storage {
         Ok(maybe_block_body.is_some())
     }
 
-    /// Updates the list of missing block bodies per body hash.
-    fn update_missing_block_bodies(
-        &self,
-    ) -> Result<(MissingBodiesIndex, Vec<u64>), FatalStorageError> {
-        let mut block_heights_still_without_bodies = MissingBodiesIndex::new();
-        let mut new_block_heights_with_bodies = vec![];
-        let mut txn = self.env.begin_ro_txn()?;
-        for ((body_hash, hashing_algorithm_version), block_heights) in &self.missing_block_bodies {
-            match self.get_body_for_hash(&mut txn, body_hash, *hashing_algorithm_version)? {
-                Some(_) => new_block_heights_with_bodies.extend(block_heights),
-                None => {
-                    block_heights.iter().for_each(
-                        |height| match block_heights_still_without_bodies
-                            .entry((*body_hash, *hashing_algorithm_version))
-                        {
-                            hash_map::Entry::Occupied(mut entry) => {
-                                entry.get_mut().push(*height);
-                            }
-                            hash_map::Entry::Vacant(entry) => {
-                                entry.insert(vec![*height]);
-                            }
-                        },
-                    );
-                }
-            }
+    /// Updates the disjoint height sequences after the full block has been
+    /// put to storage. It adds the height of the written block and also
+    /// adds heights of blocks that share the same body.
+    fn update_disjoint_height_sequences(&mut self, block_header: &BlockHeader) {
+        self.disjoint_block_height_sequences
+            .insert(block_header.height());
+
+        if let Some(block_bodies_to_add) = self.missing_block_bodies.get(block_header.body_hash()) {
+            self.disjoint_block_height_sequences
+                .extend(block_bodies_to_add);
+            self.missing_block_bodies.remove(block_header.body_hash());
         }
-        txn.commit()?;
-        Ok((
-            block_heights_still_without_bodies,
-            new_block_heights_with_bodies,
-        ))
     }
 
     /// Put a single deploy into storage.
@@ -1269,8 +1229,8 @@ impl Storage {
 
         txn.commit()?;
 
-        self.refresh_contiguous_block_info()?;
-        self.disjoint_block_height_sequences.insert(block.height());
+        self.update_disjoint_height_sequences(block.header());
+
         Ok(true)
     }
 
@@ -1614,18 +1574,6 @@ impl Storage {
             HashingAlgorithmVersion::V2 => {
                 self.get_single_block_body_v2(tx, block_header.body_hash())
             }
-        }
-    }
-
-    fn get_body_for_hash<Tx: Transaction>(
-        &self,
-        tx: &mut Tx,
-        body_hash: &Digest,
-        hashing_algorithm_version: HashingAlgorithmVersion,
-    ) -> Result<Option<BlockBody>, LmdbExtError> {
-        match hashing_algorithm_version {
-            HashingAlgorithmVersion::V1 => self.get_single_block_body_v1(tx, body_hash),
-            HashingAlgorithmVersion::V2 => self.get_single_block_body_v2(tx, body_hash),
         }
     }
 

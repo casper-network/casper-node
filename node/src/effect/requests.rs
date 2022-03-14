@@ -409,8 +409,6 @@ pub(crate) enum StorageRequest {
         /// Responder to call with the result.
         responder: Responder<u64>,
     },
-    /// Recalculate the information about the contiguous blocks.
-    UpdateContiguousBlockInfo { responder: Responder<()> },
 }
 
 impl Display for StorageRequest {
@@ -502,9 +500,6 @@ impl Display for StorageRequest {
             }
             StorageRequest::GetLowestContiguousBlockHeight { .. } => {
                 write!(formatter, "get lowest contiguous block height",)
-            }
-            StorageRequest::UpdateContiguousBlockInfo { .. } => {
-                write!(formatter, "update info about contiguous blocks",)
             }
         }
     }

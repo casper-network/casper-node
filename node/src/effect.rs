@@ -929,18 +929,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Recalculate the information about the contiguous blocks.
-    pub(crate) async fn update_contiguous_block_info(self)
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::UpdateContiguousBlockInfo { responder },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
     /// Gets the requested block's transfers from storage.
     pub(crate) async fn get_block_transfers_from_storage(
         self,
