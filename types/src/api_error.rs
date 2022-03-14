@@ -338,6 +338,12 @@ pub enum ApiError {
     /// assert_eq!(ApiError::from(38), ApiError::MissingSystemContractHash);
     /// ```
     MissingSystemContractHash,
+    /// Exceeded a recursion depth limit.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(39), ApiError::ExceededRecursionDepth);
+    /// ```
+    ExceededRecursionDepth,
     /// Error specific to Auction contract. See
     /// [casper_types::system::auction::Error](crate::system::auction::Error).
     /// ```
@@ -392,6 +398,7 @@ impl From<bytesrepr::Error> for ApiError {
             bytesrepr::Error::Formatting => ApiError::Formatting,
             bytesrepr::Error::LeftOverBytes => ApiError::LeftOverBytes,
             bytesrepr::Error::OutOfMemory => ApiError::OutOfMemory,
+            bytesrepr::Error::ExceededRecursionDepth => ApiError::ExceededRecursionDepth,
         }
     }
 }
@@ -525,6 +532,7 @@ impl From<ApiError> for u32 {
             ApiError::DictionaryItemKeyExceedsLength => 36,
             ApiError::InvalidDictionaryItemKey => 37,
             ApiError::MissingSystemContractHash => 38,
+            ApiError::ExceededRecursionDepth => 39,
             ApiError::AuctionError(value) => AUCTION_ERROR_OFFSET + u32::from(value),
             ApiError::ContractHeader(value) => HEADER_ERROR_OFFSET + u32::from(value),
             ApiError::Mint(value) => MINT_ERROR_OFFSET + u32::from(value),
@@ -575,6 +583,7 @@ impl From<u32> for ApiError {
             36 => ApiError::DictionaryItemKeyExceedsLength,
             37 => ApiError::InvalidDictionaryItemKey,
             38 => ApiError::MissingSystemContractHash,
+            39 => ApiError::ExceededRecursionDepth,
             USER_ERROR_MIN..=USER_ERROR_MAX => ApiError::User(value as u16),
             HP_ERROR_MIN..=HP_ERROR_MAX => ApiError::HandlePayment(value as u8),
             MINT_ERROR_MIN..=MINT_ERROR_MAX => ApiError::Mint(value as u8),
@@ -630,6 +639,7 @@ impl Debug for ApiError {
             }
             ApiError::InvalidDictionaryItemKey => write!(f, "ApiError::InvalidDictionaryItemKey")?,
             ApiError::MissingSystemContractHash => write!(f, "ApiError::MissingContractHash")?,
+            ApiError::ExceededRecursionDepth => write!(f, "ApiError::ExceededRecursionDepth")?,
             ApiError::AuctionError(value) => write!(
                 f,
                 "ApiError::AuctionError({:?})",
