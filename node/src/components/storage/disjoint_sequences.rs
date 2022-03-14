@@ -20,8 +20,8 @@ enum InsertOutcome {
 }
 
 /// Represents a continuous sequence of `u64`s.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, DataSize)]
-struct Sequence {
+#[derive(Copy, Clone, Debug, Eq, PartialEq, DataSize, Ord, PartialOrd)]
+pub(crate) struct Sequence {
     /// The upper bound (inclusive) of the sequence.
     high: u64,
     /// The lower bound (inclusive) of the sequence.
@@ -35,6 +35,11 @@ impl Sequence {
             high: value,
             low: value,
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_with_bounds(low: u64, high: u64) -> Self {
+        Sequence { high, low }
     }
 
     /// Tries to insert `value` into the sequence.
@@ -150,6 +155,11 @@ impl DisjointSequences {
             .first()
             .map(|sequence| sequence.low)
             .unwrap_or(u64::MAX)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn sequences(&self) -> &Vec<Sequence> {
+        &self.sequences
     }
 }
 

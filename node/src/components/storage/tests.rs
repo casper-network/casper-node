@@ -28,6 +28,7 @@ use crate::{
     },
     crypto::AsymmetricKeyExt,
     effect::{requests::StorageRequest, Multiple},
+    storage::disjoint_sequences::Sequence,
     testing::{ComponentHarness, TestRng, UnitTestEvent},
     types::{
         Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Deploy, DeployHash,
@@ -37,6 +38,23 @@ use crate::{
 };
 
 type BlockGenerators = Vec<fn(&mut TestRng) -> (Block, EraId)>;
+
+impl Storage {
+    fn disjoint_sequences(&self) -> &Vec<Sequence> {
+        self.disjoint_block_height_sequences.sequences()
+    }
+
+    fn add_missing_block_body(&mut self, block_header: &BlockHeader) {
+        match self.missing_block_bodies.entry(*block_header.body_hash()) {
+            std::collections::hash_map::Entry::Occupied(mut entry) => {
+                entry.get_mut().push(block_header.height());
+            }
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(vec![block_header.height()]);
+            }
+        }
+    }
+}
 
 fn new_config(harness: &ComponentHarness<UnitTestEvent>) -> Config {
     const MIB: usize = 1024 * 1024;
@@ -1635,4 +1653,66 @@ fn can_put_and_get_blocks_v2() {
             Some(expected_block)
         );
     }
+}
+
+#[test]
+fn update_disjoint_height_sequences() {
+    let mut harness = ComponentHarness::default();
+    let verifiable_chunked_hash_activation = EraId::from(1);
+
+    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+
+    // Put single block, it should unconditionally be available in
+    // `disjoint_block_height_sequences`.
+    let (block_1, _) = random_block_at_height(&mut harness.rng, 1, Block::random_v1);
+    storage.update_disjoint_height_sequences(block_1.header());
+    assert_eq!(
+        storage.disjoint_sequences(),
+        &vec![Sequence::new_with_bounds(1, 1)]
+    );
+
+    // Indicate that there are two block headers with missing bodies.
+    let (block_2, _) = random_block_at_height(&mut harness.rng, 2, Block::random_v1);
+    let body_hash = block_2.header().body_hash();
+    storage.add_missing_block_body(block_2.header());
+
+    let mut block_3 = block_2.clone();
+    block_3.set_height(3, verifiable_chunked_hash_activation);
+    storage.add_missing_block_body(block_3.header());
+
+    let mut expected_missing_block_bodies = HashMap::new();
+    expected_missing_block_bodies.insert(*body_hash, vec![2, 3]);
+
+    assert_eq!(expected_missing_block_bodies, storage.missing_block_bodies);
+    assert_eq!(
+        storage.disjoint_sequences(),
+        &vec![Sequence::new_with_bounds(1, 1)],
+        "disjoint sequences should stay intact"
+    );
+
+    // Write another random block.
+    // Disjoint sequences should now contain two separate sequences, one for block 1
+    // and the other for block 4.
+    let (block_4, _) = random_block_at_height(&mut harness.rng, 4, Block::random_v1);
+    storage.update_disjoint_height_sequences(block_4.header());
+    let mut sequences = storage.disjoint_sequences().clone();
+    sequences.sort();
+    assert_eq!(
+        sequences,
+        vec![
+            Sequence::new_with_bounds(1, 1),
+            Sequence::new_with_bounds(4, 4),
+        ]
+    );
+
+    // Write full block with the same block body as the two missing ones.
+    // All 5 blocks should now be considered available.
+    let mut block_5 = block_3.clone();
+    block_5.set_height(5, verifiable_chunked_hash_activation);
+    storage.update_disjoint_height_sequences(block_5.header());
+
+    assert_eq!(
+        storage.disjoint_sequences(),
+        &vec![Sequence::new_with_bounds(1, 5)]
+    );
 }
