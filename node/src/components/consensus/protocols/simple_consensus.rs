@@ -509,6 +509,10 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         }
     }
 
+    /// Returns a bit field where each bit stands for a validator: the least significant one for
+    /// `first_idx` and the most significant one for `fist_idx + 127`, wrapping around at the total
+    /// number of validators. The bits of the validators in `index_iter` that fall into that
+    /// range are set to `1`, the others are `0`.
     #[allow(clippy::integer_arithmetic)] // TODO
     fn validator_bit_field(
         &self,
@@ -518,16 +522,20 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         let mut bit_field = 0;
         let validator_count = self.weights.len() as u32;
         for ValidatorIndex(v_idx) in index_iter {
+            // The validator's bit is v_idx - first_idx, but we wrap around.
             let i = v_idx
                 .checked_sub(first_idx)
                 .unwrap_or(v_idx + validator_count - first_idx);
             if i < 128 {
-                bit_field |= 1 << i;
+                bit_field |= 1 << i; // Set bit number i to 1.
             }
         }
         bit_field
     }
 
+    /// Returns an iterator over all validator indexes whose bits in the `bit_field` are `1`, where
+    /// the least significant one stands for `first_idx` and the most significant one for
+    /// `first_idx + 127`, wrapping around.
     #[allow(clippy::integer_arithmetic)] // TODO
     fn iter_validator_bit_field(
         &self,
@@ -535,12 +543,15 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         mut bit_field: u128,
     ) -> impl Iterator<Item = ValidatorIndex> {
         let validator_count = self.weights.len() as u32;
-        let mut idx = first_idx.0;
+        let mut idx = first_idx.0; // The last bit stands for first_idx.
         iter::from_fn(move || {
             if bit_field == 0 {
-                return None;
+                return None; // No remaining bits with value 1.
             }
             let zeros = bit_field.trailing_zeros();
+            // The index of the validator whose bit is 1. We shift the bits to the right so that the
+            // least significant bit now corresponds to this one, then we output the index and set
+            // the bit to 0.
             idx = (idx + zeros) % validator_count;
             bit_field >>= zeros;
             bit_field &= !1;
