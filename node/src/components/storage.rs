@@ -50,7 +50,7 @@ use std::{
     fmt::{self, Display, Formatter},
     fs, io, mem,
     path::{Path, PathBuf},
-    sync::{Arc, RwLock},
+    sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
 use datasize::DataSize;
@@ -295,6 +295,23 @@ pub enum Error {
         /// The hash of the superfluous body part.
         part_hash: Digest,
     },
+    /// A lock on the index has been poisoned, likely due to a crash by a background task.
+    #[error("indices lock poisoned")]
+    IndicesLockPoisoned,
+}
+
+// While we usually avoid blanked `From` impls on errors, the type is specific enough (includes
+// `Indices`) to make an exception to this rule here for both read and write lock poisoning.
+impl<'a> From<PoisonError<RwLockReadGuard<'a, Indices>>> for Error {
+    fn from(_: PoisonError<RwLockReadGuard<'a, Indices>>) -> Self {
+        Error::IndicesLockPoisoned
+    }
+}
+
+impl<'a> From<PoisonError<RwLockWriteGuard<'a, Indices>>> for Error {
+    fn from(_: PoisonError<RwLockWriteGuard<'a, Indices>>) -> Self {
+        Error::IndicesLockPoisoned
+    }
 }
 
 // We wholesale wrap lmdb errors and treat them as internal errors here.
@@ -682,20 +699,14 @@ impl Storage {
             StorageRequest::GetBlockHeaderAtHeight { height, responder } => {
                 let block_header = {
                     let mut txn = self.env.begin_ro_txn()?;
-                    let indices = self
-                        .indices
-                        .read()
-                        .expect("could not lock indices, lock poisoned");
+                    let indices = self.indices.read()?;
                     self.get_block_header_by_height(&mut txn, &indices, height)?
                 };
                 responder.respond(block_header).await
             }
             StorageRequest::GetBlockAtHeight { height, responder } => {
                 let block_by_height = {
-                    let indices = self
-                        .indices
-                        .read()
-                        .expect("could not lock indices, lock poisoned");
+                    let indices = self.indices.read()?;
                     self.get_block_by_height(&mut self.env.begin_ro_txn()?, &indices, height)?
                 };
                 responder.respond(block_by_height).await
@@ -703,10 +714,7 @@ impl Storage {
             StorageRequest::GetHighestBlock { responder } => {
                 let highest_block = {
                     let mut txn = self.env.begin_ro_txn()?;
-                    let indices = self
-                        .indices
-                        .read()
-                        .expect("could not lock indices, lock poisoned");
+                    let indices = self.indices.read()?;
                     self.get_highest_block(&mut txn, &indices)?
                 };
                 responder.respond(highest_block).await
@@ -714,10 +722,7 @@ impl Storage {
             StorageRequest::GetSwitchBlockHeaderAtEraId { era_id, responder } => {
                 let switch_block_header_at_era_id = {
                     let txn = &mut self.env.begin_ro_txn()?;
-                    let indices = self
-                        .indices
-                        .read()
-                        .expect("could not lock indices, lock poisoned");
+                    let indices = self.indices.read()?;
                     self.get_switch_block_header_by_era_id(txn, &indices, era_id)?
                 };
                 responder.respond(switch_block_header_at_era_id).await
@@ -728,10 +733,7 @@ impl Storage {
             } => {
                 let block_header_for_deploy = {
                     let mut txn = self.env.begin_ro_txn()?;
-                    let indices = self
-                        .indices
-                        .read()
-                        .expect("could not lock indices, lock poisoned");
+                    let indices = self.indices.read()?;
 
                     self.get_block_header_by_deploy_hash(&mut txn, &indices, deploy_hash)?
                 };
@@ -851,12 +853,9 @@ impl Storage {
         &self,
     ) -> Result<Option<(Block, BlockSignatures)>, Error> {
         let mut txn = self.env.begin_ro_txn()?;
-        let indices = self
-            .indices
-            .read()
-            .expect("could not lock indices, lock poisoned");
+        let indices = self.indices.read()?;
         let maybe_highest_known_height: Option<u64> = {
-            let indices = self.indices.read().expect("indices lock poisoned");
+            let indices = self.indices.read()?;
             indices.block_height_index.keys().last().cloned()
         };
         let highest_block: Block = if let Some(block) = maybe_highest_known_height
@@ -939,10 +938,7 @@ impl Storage {
         block_height: u64,
     ) -> Result<Option<(Block, BlockSignatures)>, Error> {
         let mut txn = self.env.begin_ro_txn()?;
-        let indices = self
-            .indices
-            .read()
-            .expect("could not lock indices, lock poisoned");
+        let indices = self.indices.read()?;
         let block: Block =
             if let Some(block) = self.get_block_by_height(&mut txn, &indices, block_height)? {
                 block
@@ -1074,7 +1070,7 @@ impl Storage {
         }
 
         {
-            let mut indices = self.indices.write().expect("storage index lock poisoned");
+            let mut indices = self.indices.write()?;
 
             // Deref mut, avoiding a borrow checker error further down due to partial borrows.
             let ind: &mut Indices = &mut *indices;
@@ -1099,10 +1095,7 @@ impl Storage {
         height: u64,
     ) -> Result<Option<BlockHeaderWithMetadata>, Error> {
         let mut txn = self.env.begin_ro_txn()?;
-        let indices = self
-            .indices
-            .read()
-            .expect("could not lock indices, lock poisoned");
+        let indices = self.indices.read()?;
         let maybe_block_header_and_finality_signatures =
             self.get_block_header_and_metadata_by_height(&mut txn, &indices, height)?;
         drop(txn);
@@ -1125,29 +1118,20 @@ impl Storage {
 
     /// Retrieves single block by height by looking it up in the index and returning it.
     pub fn read_block_by_height(&self, height: u64) -> Result<Option<Block>, Error> {
-        let indices = self
-            .indices
-            .read()
-            .expect("could not lock indices, lock poisoned");
+        let indices = self.indices.read()?;
         self.get_block_by_height(&mut self.env.begin_ro_txn()?, &indices, height)
     }
 
     /// Gets the highest block.
     pub fn read_highest_block(&self) -> Result<Option<Block>, Error> {
-        let indices = self
-            .indices
-            .read()
-            .expect("could not lock indices, lock poisoned");
+        let indices = self.indices.read()?;
         self.get_highest_block(&mut self.env.begin_ro_txn()?, &indices)
     }
 
     /// Gets the header of the highest block.
     pub fn read_highest_block_header(&self) -> Result<Option<BlockHeader>, Error> {
         let txn = &mut self.env.begin_ro_txn()?;
-        let indices = self
-            .indices
-            .read()
-            .expect("could not lock indices, lock poisoned");
+        let indices = self.indices.read()?;
         indices
             .block_height_index
             .keys()
@@ -1254,10 +1238,7 @@ impl Storage {
         ttl: TimeDiff,
     ) -> Result<Vec<(DeployHash, DeployHeader)>, Error> {
         let mut txn = self.env.begin_ro_txn()?;
-        let indices = self
-            .indices
-            .read()
-            .expect("could not lock indices, lock poisoned");
+        let indices = self.indices.read()?;
         // We're interested in deploys whose TTL hasn't expired yet.
         let ttl_expired = |block: &Block| block.timestamp().elapsed() < ttl;
         let mut deploys = Vec::new();
@@ -1818,10 +1799,7 @@ impl Storage {
             .env
             .begin_ro_txn()
             .expect("Could not start read only transaction for lmdb");
-        let indices = self
-            .indices
-            .read()
-            .expect("could not lock indices, lock poisoned");
+        let indices = self.indices.read().expect("index lock poisoned");
         let switch_block = self
             .get_switch_block_by_era_id(
                 &mut read_only_lmdb_transaction,
