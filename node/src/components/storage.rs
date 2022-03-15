@@ -537,6 +537,7 @@ impl Storage {
         let mut deleted_block_hashes = HashSet::new();
         let mut deleted_block_body_hashes_v1 = HashSet::new();
         let mut full_block_heights = Vec::with_capacity(1_000_000);
+        let mut missing_block_bodies = MissingBodiesIndex::new();
         // Note: `iter_start` has an undocumented panic if called on an empty database. We rely on
         //       the iterator being at the start when created.
         for (_, raw_val) in cursor.iter() {
@@ -591,6 +592,15 @@ impl Storage {
                 )?;
 
                 full_block_heights.push(block_header.height());
+            } else {
+                match missing_block_bodies.entry(*block_header.body_hash()) {
+                    hash_map::Entry::Occupied(mut entry) => {
+                        entry.get_mut().push(block_header.height());
+                    }
+                    hash_map::Entry::Vacant(entry) => {
+                        entry.insert(vec![block_header.height()]);
+                    }
+                }
             }
         }
         info!("block store reindexing complete");
@@ -636,7 +646,7 @@ impl Storage {
             finality_threshold_fraction,
             last_emergency_restart,
             verifiable_chunked_hash_activation,
-            missing_block_bodies: Default::default(),
+            missing_block_bodies,
         })
     }
 
