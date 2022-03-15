@@ -150,11 +150,8 @@ impl DisjointSequences {
     }
 
     /// Returns the `low` value from the highest sequence, or `u64::MAX` if there are no sequences.
-    pub(super) fn highest_sequence_low_value(&self) -> u64 {
-        self.sequences
-            .first()
-            .map(|sequence| sequence.low)
-            .unwrap_or(u64::MAX)
+    pub(super) fn highest_sequence_low_value(&self) -> Option<u64> {
+        self.sequences.first().map(|sequence| sequence.low)
     }
 
     #[cfg(test)]
@@ -294,24 +291,24 @@ mod tests {
     #[test]
     fn should_get_highest_sequence_low_value() {
         let mut disjoint_sequences = DisjointSequences::default();
-        assert_eq!(disjoint_sequences.highest_sequence_low_value(), u64::MAX);
+        assert_eq!(disjoint_sequences.highest_sequence_low_value(), None);
 
         disjoint_sequences.insert(10);
-        assert_eq!(disjoint_sequences.highest_sequence_low_value(), 10);
+        assert_eq!(disjoint_sequences.highest_sequence_low_value(), Some(10));
 
         disjoint_sequences.insert(11);
-        assert_eq!(disjoint_sequences.highest_sequence_low_value(), 10);
+        assert_eq!(disjoint_sequences.highest_sequence_low_value(), Some(10));
 
         disjoint_sequences.insert(5);
-        assert_eq!(disjoint_sequences.highest_sequence_low_value(), 10);
+        assert_eq!(disjoint_sequences.highest_sequence_low_value(), Some(10));
 
         disjoint_sequences.insert(6);
-        assert_eq!(disjoint_sequences.highest_sequence_low_value(), 10);
+        assert_eq!(disjoint_sequences.highest_sequence_low_value(), Some(10));
 
         disjoint_sequences.insert(13);
-        assert_eq!(disjoint_sequences.highest_sequence_low_value(), 13);
+        assert_eq!(disjoint_sequences.highest_sequence_low_value(), Some(13));
 
         disjoint_sequences.insert(14);
-        assert_eq!(disjoint_sequences.highest_sequence_low_value(), 13);
+        assert_eq!(disjoint_sequences.highest_sequence_low_value(), Some(13));
     }
 }

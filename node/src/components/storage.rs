@@ -44,7 +44,7 @@ mod tests;
 #[cfg(test)]
 use std::collections::BTreeSet;
 use std::{
-    collections::{btree_map, hash_map, BTreeMap, HashMap, HashSet},
+    collections::{btree_map, BTreeMap, HashMap, HashSet},
     convert::TryFrom,
     fmt::{self, Display, Formatter},
     fs, io, mem,
@@ -593,14 +593,10 @@ impl Storage {
 
                 full_block_heights.push(block_header.height());
             } else {
-                match missing_block_bodies.entry(*block_header.body_hash()) {
-                    hash_map::Entry::Occupied(mut entry) => {
-                        entry.get_mut().push(block_header.height());
-                    }
-                    hash_map::Entry::Vacant(entry) => {
-                        entry.insert(vec![block_header.height()]);
-                    }
-                }
+                missing_block_bodies
+                    .entry(*block_header.body_hash())
+                    .or_default()
+                    .push(block_header.height());
             }
         }
         info!("block store reindexing complete");
@@ -1122,14 +1118,10 @@ impl Storage {
                     self.disjoint_block_height_sequences
                         .insert(block_header.height());
                 } else {
-                    match self.missing_block_bodies.entry(*block_header.body_hash()) {
-                        hash_map::Entry::Occupied(mut entry) => {
-                            entry.get_mut().push(block_header.height());
-                        }
-                        hash_map::Entry::Vacant(entry) => {
-                            entry.insert(vec![block_header.height()]);
-                        }
-                    }
+                    self.missing_block_bodies
+                        .entry(*block_header.body_hash())
+                        .or_default()
+                        .push(block_header.height());
                 }
 
                 txn.commit()?;
@@ -1138,7 +1130,11 @@ impl Storage {
             StorageRequest::GetLowestContiguousBlockHeight { responder } => {
                 let result = self
                     .disjoint_block_height_sequences
-                    .highest_sequence_low_value();
+                    .highest_sequence_low_value()
+                    .unwrap_or_else(|| {
+                        error!("storage disjoint sequences of block heights should not be empty");
+                        u64::MAX
+                    });
                 responder.respond(result).ignore()
             }
         })

@@ -1,7 +1,7 @@
 //! Unit tests for the storage component.
 
 use std::{
-    collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     convert::TryFrom,
     fs::{self, File},
     thread,
@@ -44,14 +44,10 @@ impl Storage {
     }
 
     fn add_missing_block_body(&mut self, block_header: &BlockHeader) {
-        match self.missing_block_bodies.entry(*block_header.body_hash()) {
-            Entry::Occupied(mut entry) => {
-                entry.get_mut().push(block_header.height());
-            }
-            Entry::Vacant(entry) => {
-                entry.insert(vec![block_header.height()]);
-            }
-        }
+        self.missing_block_bodies
+            .entry(*block_header.body_hash())
+            .or_default()
+            .push(block_header.height());
     }
 }
 
