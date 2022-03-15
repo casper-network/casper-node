@@ -1706,11 +1706,13 @@ fn update_disjoint_height_sequences() {
     );
 
     // Write full block with the same block body as the two missing ones.
-    // All 5 blocks should now be considered available.
+    // All 5 blocks should now be considered available and missing bodies
+    // map should be empty.
     let mut block_5 = block_3.clone();
     block_5.set_height(5, verifiable_chunked_hash_activation);
     storage.update_disjoint_height_sequences(block_5.header());
 
+    assert_eq!(HashMap::new(), storage.missing_block_bodies);
     assert_eq!(
         storage.disjoint_sequences(),
         &vec![Sequence::new_with_bounds(1, 5)]
