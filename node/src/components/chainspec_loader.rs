@@ -39,9 +39,7 @@ use crate::{
     reactor::ReactorExit,
     storage::StorageRequest,
     types::{
-        chainspec::{
-            Error, ProtocolConfig, CHAINSPEC_NAME, GENESIS_ACCOUNTS_NAME, GLOBAL_STATE_UPDATE,
-        },
+        chainspec::{ChainspecRawBytes, Error, ProtocolConfig, CHAINSPEC_FILENAME},
         ActivationPoint, BlockHeader, Chainspec, ChainspecInfo, ExitCode,
     },
     utils::{self, Loadable},
@@ -49,8 +47,6 @@ use crate::{
 };
 
 const UPGRADE_CHECK_INTERVAL: Duration = Duration::from_secs(60);
-#[cfg(test)]
-const TEST_DIRECTORY: &str = "test/valid/1_0_0";
 
 /// `ChainspecHandler` events.
 #[derive(Debug, From, Serialize)]
@@ -143,42 +139,10 @@ pub(crate) struct CurrentRunInfo {
     pub(crate) last_emergency_restart: Option<EraId>,
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct ChainspecRawBytes {
-    chainspec_bytes: Vec<u8>,
-    maybe_genesis_accounts_bytes: Option<Vec<u8>>,
-    maybe_global_state_bytes: Option<Vec<u8>>,
-}
-
-impl ChainspecRawBytes {
-    pub(crate) fn new(
-        chainspec_bytes: Vec<u8>,
-        maybe_genesis_accounts_bytes: Option<Vec<u8>>,
-        maybe_global_state_bytes: Option<Vec<u8>>,
-    ) -> Self {
-        ChainspecRawBytes {
-            chainspec_bytes,
-            maybe_genesis_accounts_bytes,
-            maybe_global_state_bytes,
-        }
-    }
-
-    pub(crate) fn chainspec_bytes(&self) -> &Vec<u8> {
-        &self.chainspec_bytes
-    }
-
-    pub(crate) fn maybe_genesis_accounts_bytes(&self) -> &Option<Vec<u8>> {
-        &self.maybe_genesis_accounts_bytes
-    }
-
-    pub(crate) fn maybe_global_state_bytes(&self) -> &Option<Vec<u8>> {
-        &self.maybe_global_state_bytes
-    }
-}
-
 #[derive(Clone, DataSize, Debug)]
 pub(crate) struct ChainspecLoader {
     chainspec: Arc<Chainspec>,
+    chainspec_raw_bytes: Arc<ChainspecRawBytes>,
     /// The path to the folder where all chainspec and upgrade_point files will be stored in
     /// subdirs corresponding to their versions.
     root_dir: PathBuf,
@@ -195,8 +159,11 @@ impl ChainspecLoader {
         P: AsRef<Path>,
         REv: From<Event> + From<StorageRequest> + Send,
     {
+        let (chainspec, chainspec_raw_bytes) =
+            <(Chainspec, ChainspecRawBytes)>::from_path(&chainspec_dir.as_ref())?;
         Ok(Self::new_with_chainspec_and_path(
-            Arc::new(Chainspec::from_path(&chainspec_dir.as_ref())?),
+            Arc::new(chainspec),
+            Arc::new(chainspec_raw_bytes),
             chainspec_dir,
             effect_builder,
         ))
@@ -205,6 +172,7 @@ impl ChainspecLoader {
     #[cfg(test)]
     pub(crate) fn new_with_chainspec<REv>(
         chainspec: Arc<Chainspec>,
+        chainspec_raw_bytes: Arc<ChainspecRawBytes>,
         effect_builder: EffectBuilder<REv>,
     ) -> (Self, Effects<Event>)
     where
@@ -212,13 +180,15 @@ impl ChainspecLoader {
     {
         Self::new_with_chainspec_and_path(
             chainspec,
-            &RESOURCES_PATH.join(TEST_DIRECTORY),
+            chainspec_raw_bytes,
+            &RESOURCES_PATH.join("local"),
             effect_builder,
         )
     }
 
     fn new_with_chainspec_and_path<P, REv>(
         chainspec: Arc<Chainspec>,
+        chainspec_raw_bytes: Arc<ChainspecRawBytes>,
         chainspec_dir: P,
         effect_builder: EffectBuilder<REv>,
     ) -> (Self, Effects<Event>)
@@ -238,6 +208,7 @@ impl ChainspecLoader {
         if !chainspec.is_valid() || root_dir.as_os_str().is_empty() {
             let chainspec_loader = ChainspecLoader {
                 chainspec,
+                chainspec_raw_bytes,
                 root_dir,
                 reactor_exit: Some(ReactorExit::ProcessShouldExit(ExitCode::Abort)),
                 next_upgrade: None,
@@ -280,6 +251,7 @@ impl ChainspecLoader {
 
         let chainspec_loader = ChainspecLoader {
             chainspec,
+            chainspec_raw_bytes,
             root_dir,
             reactor_exit,
             next_upgrade,
@@ -453,42 +425,9 @@ where
             Event::Request(ChainspecLoaderRequest::GetCurrentRunInfo(responder)) => {
                 responder.respond(self.get_current_run_info()).ignore()
             }
-            Event::Request(ChainspecLoaderRequest::GetChainspecRawBytes(responder)) => {
-                let chainspec_file_path = self
-                    .root_dir
-                    .join(dir_name_from_version(&self.chainspec.protocol_version()))
-                    .join(CHAINSPEC_NAME);
-
-                let chainspec_bytes = match fs::read(chainspec_file_path) {
-                    Ok(chainspec_bytes) => chainspec_bytes,
-                    Err(error) => {
-                        error!("Could not read chainspec: {}", error);
-                        vec![]
-                    }
-                };
-
-                let genesis_accounts_file_path = self
-                    .root_dir
-                    .join(dir_name_from_version(&self.chainspec.protocol_version()))
-                    .join(GENESIS_ACCOUNTS_NAME);
-
-                let maybe_genesis_accounts_bytes = fs::read(genesis_accounts_file_path).ok();
-
-                let upgrade_toml_file_path = self
-                    .root_dir
-                    .join(dir_name_from_version(&self.chainspec.protocol_version()))
-                    .join(GLOBAL_STATE_UPDATE);
-
-                let maybe_global_state_bytes = fs::read(upgrade_toml_file_path).ok();
-
-                let raw_chainspec_bytes = ChainspecRawBytes::new(
-                    chainspec_bytes,
-                    maybe_genesis_accounts_bytes,
-                    maybe_global_state_bytes,
-                );
-
-                responder.respond(raw_chainspec_bytes).ignore()
-            }
+            Event::Request(ChainspecLoaderRequest::GetChainspecRawBytes(responder)) => responder
+                .respond(Arc::clone(&self.chainspec_raw_bytes))
+                .ignore(),
             Event::CheckForNextUpgrade => self.check_for_next_upgrade(effect_builder),
             Event::GotNextUpgrade(next_upgrade) => self.handle_got_next_upgrade(next_upgrade),
         }
@@ -507,15 +446,14 @@ struct UpgradePoint {
 impl UpgradePoint {
     /// Parses a chainspec file at the given path as an `UpgradePoint`.
     fn from_chainspec_path<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
-        let bytes = utils::read_file(path.as_ref().join(&CHAINSPEC_NAME))
+        let bytes = utils::read_file(path.as_ref().join(&CHAINSPEC_FILENAME))
             .map_err(Error::LoadUpgradePoint)?;
         Ok(toml::from_slice(&bytes)?)
     }
 }
 
-#[allow(clippy::single_char_pattern)]
 fn dir_name_from_version(version: &ProtocolVersion) -> PathBuf {
-    PathBuf::from(version.to_string().replace(".", "_"))
+    PathBuf::from(version.to_string().replace('.', "_"))
 }
 
 /// Iterates the given path, returning the subdir representing the immediate next SemVer version
@@ -544,8 +482,7 @@ fn next_installed_version(
         };
 
         let subdir_name = match path.file_name() {
-            #[allow(clippy::single_char_pattern)]
-            Some(name) => name.to_string_lossy().replace("_", "."),
+            Some(name) => name.to_string_lossy().replace('_', "."),
             None => continue,
         };
 
@@ -618,7 +555,7 @@ mod tests {
     use super::*;
     use crate::{
         testing::TestRng,
-        types::{chainspec::CHAINSPEC_NAME, Block},
+        types::{chainspec::CHAINSPEC_FILENAME, Block},
     };
 
     #[test]
@@ -813,7 +750,7 @@ mod tests {
         let subdir = root_dir.join(dir_name_from_version(version));
         fs::create_dir(&subdir).unwrap();
 
-        let path = subdir.join(CHAINSPEC_NAME);
+        let path = subdir.join(CHAINSPEC_FILENAME);
         fs::write(
             path,
             toml::to_string_pretty(&chainspec).expect("should encode to toml"),
@@ -883,7 +820,7 @@ mod tests {
         let path_v1_0_0 = tempdir
             .path()
             .join(dir_name_from_version(&v1_0_0))
-            .join(CHAINSPEC_NAME);
+            .join(CHAINSPEC_FILENAME);
         fs::write(
             &path_v1_0_0,
             toml::to_string_pretty(&chainspec_v0_9_9).expect("should encode to toml"),

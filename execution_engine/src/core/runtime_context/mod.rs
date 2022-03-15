@@ -25,11 +25,11 @@ use casper_types::{
 
 use crate::{
     core::{
-        engine_state::{execution_effect::ExecutionEffect, EngineConfig},
+        engine_state::{execution_effect::ExecutionEffect, EngineConfig, SystemContractRegistry},
         execution::{AddressGenerator, Error},
         runtime_context::dictionary::DictionaryValue,
         tracking_copy::{AddResult, TrackingCopy, TrackingCopyExt},
-        Address, SystemContractRegistry,
+        Address,
     },
     shared::{execution_journal::ExecutionJournal, newtypes::CorrelationId},
     storage::global_state::StateReader,
@@ -814,8 +814,7 @@ where
     pub(crate) fn is_system_contract(&self, contract_hash: &ContractHash) -> Result<bool, Error> {
         Ok(self
             .system_contract_registry()?
-            .values()
-            .any(|system_hash| system_hash == contract_hash))
+            .has_contract_hash(contract_hash))
     }
 
     /// Charges gas for specified amount of bytes used.

@@ -451,40 +451,25 @@
             "type": "object"
           },
           "ChainspecRawBytes": {
+            "description": "The raw bytes of the chainspec.toml, genesis accounts.toml, and global_state.toml files.",
             "properties": {
               "chainspec_bytes": {
-                "items": {
-                  "format": "uint8",
-                  "minimum": 0.0,
-                  "type": "integer"
-                },
-                "type": "array"
+                "description": "Hex-encoded raw bytes of the current chainspec.toml file.",
+                "type": "string"
               },
               "maybe_genesis_accounts_bytes": {
-                "items": {
-                  "format": "uint8",
-                  "minimum": 0.0,
-                  "type": "integer"
-                },
-                "type": [
-                  "array",
-                  "null"
-                ]
+                "description": "Hex-encoded raw bytes of the current genesis accounts.toml file.",
+                "type": "string"
               },
               "maybe_global_state_bytes": {
-                "items": {
-                  "format": "uint8",
-                  "minimum": 0.0,
-                  "type": "integer"
-                },
-                "type": [
-                  "array",
-                  "null"
-                ]
+                "description": "Hex-encoded raw bytes of the current global_state.toml file.",
+                "type": "string"
               }
             },
             "required": [
-              "chainspec_bytes"
+              "chainspec_bytes",
+              "maybe_genesis_accounts_bytes",
+              "maybe_global_state_bytes"
             ],
             "type": "object"
           },
@@ -3687,10 +3672,7 @@
                 "value": {
                   "api_version": "1.4.3",
                   "chainspec_bytes": {
-                    "chainspec_bytes": [
-                      42,
-                      42
-                    ],
+                    "chainspec_bytes": "2a2a",
                     "maybe_genesis_accounts_bytes": null,
                     "maybe_global_state_bytes": null
                   }
@@ -3721,7 +3703,7 @@
               "type": "object"
             }
           },
-          "summary": "returns the raw bytes of the chainspec file"
+          "summary": "returns the raw bytes of the chainspec.toml, genesis accounts.toml, and global_state.toml files"
         },
         {
           "examples": [

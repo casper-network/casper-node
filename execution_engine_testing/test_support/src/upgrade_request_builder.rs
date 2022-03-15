@@ -2,9 +2,7 @@ use std::collections::BTreeMap;
 
 use num_rational::Ratio;
 
-use casper_execution_engine::core::{
-    engine_state::UpgradeConfig, ChainspecRegistry, CHAINSPEC_RAW,
-};
+use casper_execution_engine::core::engine_state::{ChainspecRegistry, UpgradeConfig};
 use casper_hashing::Digest;
 use casper_types::{EraId, Key, ProtocolVersion, StoredValue};
 
@@ -121,11 +119,6 @@ impl UpgradeRequestBuilder {
 
 impl Default for UpgradeRequestBuilder {
     fn default() -> Self {
-        let chainspec_registry = {
-            let mut registry = ChainspecRegistry::new();
-            registry.insert(CHAINSPEC_RAW.to_string(), Digest::default());
-            registry
-        };
         UpgradeRequestBuilder {
             pre_state_hash: Default::default(),
             current_protocol_version: Default::default(),
@@ -137,7 +130,7 @@ impl Default for UpgradeRequestBuilder {
             new_round_seigniorage_rate: None,
             new_unbonding_delay: None,
             global_state_update: Default::default(),
-            chainspec_registry,
+            chainspec_registry: ChainspecRegistry::new_with_optional_global_state(&[], None),
         }
     }
 }

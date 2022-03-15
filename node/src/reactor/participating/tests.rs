@@ -34,7 +34,7 @@ use crate::{
     },
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
-        ActivationPoint, BlockHeader, Chainspec, ExitCode, Timestamp,
+        ActivationPoint, BlockHeader, Chainspec, ChainspecRawBytes, ExitCode, Timestamp,
     },
     utils::{External, Loadable, WithDir, RESOURCES_PATH},
     NodeRng,
@@ -45,6 +45,7 @@ struct TestChain {
     keys: Vec<Arc<SecretKey>>,
     storages: Vec<TempDir>,
     chainspec: Arc<Chainspec>,
+    chainspec_raw_bytes: Arc<ChainspecRawBytes>,
 }
 
 type Nodes = crate::testing::network::Nodes<FilterReactor<participating::Reactor>>;
@@ -84,7 +85,8 @@ impl TestChain {
         stakes: BTreeMap<PublicKey, U512>,
     ) -> Self {
         // Load the `local` chainspec.
-        let mut chainspec = Chainspec::from_resources("local");
+        let (mut chainspec, chainspec_raw_bytes) =
+            <(Chainspec, ChainspecRawBytes)>::from_resources("local");
 
         // Override accounts with those generated from the keys.
         let accounts = stakes
@@ -118,8 +120,9 @@ impl TestChain {
 
         TestChain {
             keys,
-            chainspec: Arc::new(chainspec),
             storages: Vec::new(),
+            chainspec: Arc::new(chainspec),
+            chainspec_raw_bytes: Arc::new(chainspec_raw_bytes),
         }
     }
 
@@ -173,6 +176,7 @@ impl TestChain {
             let mut initializer_runner = Runner::<initializer::Reactor>::new_with_chainspec(
                 (false, WithDir::new(root.clone(), cfg)),
                 Arc::clone(&self.chainspec),
+                Arc::clone(&self.chainspec_raw_bytes),
             )
             .await?;
             let reactor_exit = initializer_runner.run(rng).await;

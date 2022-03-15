@@ -19,12 +19,8 @@ use num_rational::Ratio;
 use once_cell::sync::Lazy;
 
 use casper_execution_engine::{
-    core::{
-        engine_state::{
-            genesis::{ExecConfig, GenesisAccount, GenesisConfig},
-            run_genesis_request::RunGenesisRequest,
-        },
-        ChainspecRegistry, CHAINSPEC_RAW, GENESIS_ACCOUNTS_RAW,
+    core::engine_state::{
+        ChainspecRegistry, ExecConfig, GenesisAccount, GenesisConfig, RunGenesisRequest,
     },
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
@@ -146,15 +142,8 @@ pub static DEFAULT_GENESIS_CONFIG: Lazy<GenesisConfig> = Lazy::new(|| {
     )
 });
 /// Default [`ChainspecRegistry`].
-pub static DEFAULT_CHAINSPEC_REGISTRY: Lazy<ChainspecRegistry> = Lazy::new(|| {
-    let mut chainspec_registry = ChainspecRegistry::new();
-    chainspec_registry.insert(CHAINSPEC_RAW.to_string(), *DEFAULT_GENESIS_CONFIG_HASH);
-    chainspec_registry.insert(
-        GENESIS_ACCOUNTS_RAW.to_string(),
-        *DEFAULT_GENESIS_CONFIG_HASH,
-    );
-    chainspec_registry
-});
+pub static DEFAULT_CHAINSPEC_REGISTRY: Lazy<ChainspecRegistry> =
+    Lazy::new(|| ChainspecRegistry::new_with_genesis(&[1, 2, 3], &[4, 5, 6]));
 /// Default [`RunGenesisRequest`].
 pub static DEFAULT_RUN_GENESIS_REQUEST: Lazy<RunGenesisRequest> = Lazy::new(|| {
     RunGenesisRequest::new(

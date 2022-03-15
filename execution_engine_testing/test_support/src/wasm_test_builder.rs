@@ -15,17 +15,13 @@ use log::LevelFilter;
 use bytesrepr::FromBytes;
 use casper_execution_engine::{
     core::{
-        engine_state,
         engine_state::{
-            era_validators::GetEraValidatorsRequest,
-            execute_request::ExecuteRequest,
-            execution_result::ExecutionResult,
-            run_genesis_request::RunGenesisRequest,
-            step::{StepRequest, StepSuccess},
-            BalanceResult, EngineConfig, EngineState, GenesisSuccess, GetBidsRequest, QueryRequest,
-            QueryResult, StepError, UpgradeConfig, UpgradeSuccess,
+            self, BalanceResult, EngineConfig, EngineState, ExecuteRequest, ExecutionResult,
+            GenesisSuccess, GetBidsRequest, GetEraValidatorsRequest, QueryRequest, QueryResult,
+            RunGenesisRequest, StepError, StepRequest, StepSuccess, SystemContractRegistry,
+            UpgradeConfig, UpgradeSuccess,
         },
-        execution, SystemContractRegistry,
+        execution,
     },
     shared::{
         additive_map::AdditiveMap,

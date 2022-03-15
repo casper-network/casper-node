@@ -5,7 +5,10 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_RUN_GENESIS_REQUEST,
     MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::core::{engine_state::Error, execution, SystemContractRegistry};
+use casper_execution_engine::core::{
+    engine_state::{Error, SystemContractRegistry},
+    execution,
+};
 use casper_hashing::Digest;
 use casper_types::{
     account::AccountHash,

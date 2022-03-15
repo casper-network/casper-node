@@ -24,12 +24,9 @@ use thiserror::Error;
 use tracing::{debug, error, info, trace};
 
 use casper_execution_engine::{
-    core::{
-        engine_state::{
-            self, genesis::GenesisSuccess, EngineConfig, EngineState, GetEraValidatorsError,
-            GetEraValidatorsRequest, UpgradeConfig, UpgradeSuccess,
-        },
-        ChainspecRegistry, CHAINSPEC_RAW, GENESIS_ACCOUNTS_RAW, GLOBAL_STATE_RAW,
+    core::engine_state::{
+        self, genesis::GenesisError, ChainspecRegistry, EngineConfig, EngineState, GenesisSuccess,
+        GetEraValidatorsError, GetEraValidatorsRequest, UpgradeConfig, UpgradeSuccess,
     },
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::{
@@ -43,19 +40,16 @@ use casper_hashing::Digest;
 use casper_types::{EraId, Key, ProtocolVersion, StoredValue};
 
 use crate::{
-    components::{
-        chainspec_loader::ChainspecRawBytes,
-        contract_runtime::types::StepEffectAndUpcomingEraValidators, Component,
-    },
+    components::{contract_runtime::types::StepEffectAndUpcomingEraValidators, Component},
     effect::{
         announcements::{ContractRuntimeAnnouncement, ControlAnnouncement},
         incoming::{TrieRequest, TrieRequestIncoming},
-        requests::{ChainspecLoaderRequest, ContractRuntimeRequest, NetworkRequest},
+        requests::{ContractRuntimeRequest, NetworkRequest},
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
     protocol::Message,
-    types::{BlockHash, BlockHeader, Chainspec, Deploy, FinalizedBlock},
+    types::{BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, FinalizedBlock},
     NodeRng,
 };
 pub(crate) use config::Config;
@@ -202,7 +196,6 @@ where
         + From<ContractRuntimeAnnouncement>
         + From<ControlAnnouncement>
         + From<NetworkRequest<Message>>
-        + From<ChainspecLoaderRequest>
         + Send,
 {
     type Event = Event;
@@ -266,46 +259,23 @@ impl ContractRuntime {
         REv: From<ContractRuntimeRequest>
             + From<ContractRuntimeAnnouncement>
             + From<ControlAnnouncement>
-            + From<ChainspecLoaderRequest>
             + Send,
     {
         match request {
             ContractRuntimeRequest::CommitGenesis {
                 chainspec,
+                chainspec_raw_bytes,
                 responder,
             } => {
-                let engine_state = Arc::clone(&self.engine_state);
-                async move {
-                    let chainspec_raw_bytes = effect_builder.get_chainspec_raw_bytes().await;
-                    let chainspec_registry = Self::create_chainspec_registry(chainspec_raw_bytes);
-                    let result =
-                        Self::commit_genesis(&engine_state, &chainspec, chainspec_registry);
-                    responder.respond(result).await
-                }
-                .ignore()
+                let result = self.commit_genesis(&chainspec, &chainspec_raw_bytes);
+                responder.respond(result).ignore()
             }
             ContractRuntimeRequest::Upgrade {
-                mut upgrade_config,
+                upgrade_config,
                 responder,
-            } => {
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let chainspec_raw_bytes = effect_builder.get_chainspec_raw_bytes().await;
-                    let chainspec_registry = Self::create_chainspec_registry(chainspec_raw_bytes);
-
-                    upgrade_config.with_chainspec_registry(chainspec_registry);
-
-                    responder
-                        .respond(Self::commit_upgrade(
-                            &engine_state,
-                            &metrics,
-                            *upgrade_config,
-                        ))
-                        .await
-                }
-                .ignore()
-            }
+            } => responder
+                .respond(self.commit_upgrade(*upgrade_config))
+                .ignore(),
             ContractRuntimeRequest::Query {
                 query_request,
                 responder,
@@ -623,36 +593,50 @@ impl ContractRuntime {
 
     /// Commits a genesis request.
     fn commit_genesis(
-        engine_state: &EngineState<LmdbGlobalState>,
+        &self,
         chainspec: &Chainspec,
-        chainspec_registry: ChainspecRegistry,
+        chainspec_raw_bytes: &ChainspecRawBytes,
     ) -> Result<GenesisSuccess, engine_state::Error> {
         let correlation_id = CorrelationId::new();
         let genesis_config_hash = chainspec.hash();
         let protocol_version = chainspec.protocol_config.version;
         // Transforms a chainspec into a valid genesis config for execution engine.
         let ee_config = chainspec.into();
-        let result = engine_state.commit_genesis(
+
+        let chainspec_registry = ChainspecRegistry::new_with_genesis(
+            chainspec_raw_bytes.chainspec_bytes(),
+            chainspec_raw_bytes
+                .maybe_genesis_accounts_bytes()
+                .ok_or_else(|| {
+                    error!("failed to provide genesis account bytes in commit genesis");
+                    engine_state::Error::Genesis(Box::new(
+                        GenesisError::MissingChainspecRegistryEntry,
+                    ))
+                })?,
+        );
+
+        let result = self.engine_state.commit_genesis(
             correlation_id,
             genesis_config_hash,
             protocol_version,
             &ee_config,
             chainspec_registry,
         );
-        engine_state.flush_environment()?;
+        self.engine_state.flush_environment()?;
         result
     }
 
     fn commit_upgrade(
-        engine_state: &EngineState<LmdbGlobalState>,
-        metrics: &Metrics,
+        &self,
         upgrade_config: UpgradeConfig,
     ) -> Result<UpgradeSuccess, engine_state::Error> {
         debug!(?upgrade_config, "upgrade");
         let start = Instant::now();
-        let result = engine_state.commit_upgrade(CorrelationId::new(), upgrade_config);
-        engine_state.flush_environment()?;
-        metrics
+        let result = self
+            .engine_state
+            .commit_upgrade(CorrelationId::new(), upgrade_config);
+        self.engine_state.flush_environment()?;
+        self.metrics
             .commit_upgrade
             .observe(start.elapsed().as_secs_f64());
         debug!(?result, "upgrade result");
@@ -793,21 +777,6 @@ impl ContractRuntime {
         let result = engine_state.get_trie_full(correlation_id, trie_key);
         metrics.get_trie.observe(start.elapsed().as_secs_f64());
         result
-    }
-
-    fn create_chainspec_registry(chainspec_bytes: ChainspecRawBytes) -> ChainspecRegistry {
-        let mut chainspec_registry = ChainspecRegistry::new();
-        let chainspec_file_hash = Digest::hash(chainspec_bytes.chainspec_bytes());
-        chainspec_registry.insert(CHAINSPEC_RAW.into(), chainspec_file_hash);
-        if let Some(genesis_accounts_bytes) = chainspec_bytes.maybe_genesis_accounts_bytes() {
-            let genesis_accounts_hash = Digest::hash(genesis_accounts_bytes);
-            chainspec_registry.insert(GENESIS_ACCOUNTS_RAW.to_string(), genesis_accounts_hash);
-        }
-        if let Some(global_state_toml_bytes) = chainspec_bytes.maybe_global_state_bytes() {
-            let global_state_toml_hash = Digest::hash(global_state_toml_bytes);
-            chainspec_registry.insert(GLOBAL_STATE_RAW.to_string(), global_state_toml_hash);
-        }
-        chainspec_registry
     }
 
     /// Returns the engine state, for testing only.

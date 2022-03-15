@@ -13,7 +13,7 @@ use crate::{
     crypto::AsymmetricKeyExt,
     reactor::{EventQueueHandle, QueueKind, Scheduler},
     testing::TestRng,
-    types::{BlockPayload, TimeDiff},
+    types::{BlockPayload, ChainspecRawBytes, TimeDiff},
     utils::{self, Loadable},
 };
 
@@ -167,8 +167,8 @@ async fn validate_block(
     // Create the reactor and component.
     let reactor = MockReactor::new();
     let effect_builder = EffectBuilder::new(EventQueueHandle::without_shutdown(reactor.scheduler));
-    let chainspec = Arc::new(Chainspec::from_resources("local"));
-    let mut block_validator = BlockValidator::new(chainspec);
+    let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
+    let mut block_validator = BlockValidator::new(Arc::new(chainspec));
 
     // Pass the block to the component. This future will eventually resolve to the result, i.e.
     // whether the block is valid or not.

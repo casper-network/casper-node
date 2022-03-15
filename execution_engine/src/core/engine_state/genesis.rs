@@ -40,12 +40,14 @@ use casper_types::{
 
 use crate::{
     core::{
-        engine_state::{execution_effect::ExecutionEffect, EngineConfig},
+        engine_state::{
+            execution_effect::ExecutionEffect, ChainspecRegistry, EngineConfig,
+            SystemContractRegistry,
+        },
         execution,
         execution::{AddressGenerator, Executor},
         runtime::RuntimeStack,
         tracking_copy::{TrackingCopy, TrackingCopyExt},
-        ChainspecRegistry, SystemContractRegistry, CHAINSPEC_RAW, GENESIS_ACCOUNTS_RAW,
     },
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::global_state::StateProvider,
@@ -728,7 +730,7 @@ pub enum GenesisError {
         validator_slots: u32,
     },
     /// The chainspec registry is missing a required entry.
-    MissingChainspecRegistryEntry(String),
+    MissingChainspecRegistryEntry,
 }
 
 pub(crate) struct GenesisInstaller<S>
@@ -1372,16 +1374,8 @@ where
         &self,
         chainspec_registry: ChainspecRegistry,
     ) -> Result<(), GenesisError> {
-        if chainspec_registry.get(CHAINSPEC_RAW).is_none() {
-            return Err(GenesisError::MissingChainspecRegistryEntry(
-                CHAINSPEC_RAW.to_string(),
-            ));
-        }
-
-        if chainspec_registry.get(GENESIS_ACCOUNTS_RAW).is_none() {
-            return Err(GenesisError::MissingChainspecRegistryEntry(
-                GENESIS_ACCOUNTS_RAW.to_string(),
-            ));
+        if chainspec_registry.genesis_accounts_raw_hash().is_none() {
+            return Err(GenesisError::MissingChainspecRegistryEntry);
         }
         let cl_value_registry = CLValue::from_t(chainspec_registry)
             .map_err(|error| GenesisError::CLValue(error.to_string()))?;
