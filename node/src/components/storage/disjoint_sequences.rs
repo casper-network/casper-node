@@ -21,7 +21,7 @@ enum InsertOutcome {
 
 /// Represents a continuous sequence of `u64`s.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, DataSize, Ord, PartialOrd)]
-pub(crate) struct Sequence {
+pub(super) struct Sequence {
     /// The upper bound (inclusive) of the sequence.
     high: u64,
     /// The lower bound (inclusive) of the sequence.
@@ -142,11 +142,11 @@ impl DisjointSequences {
     }
 
     /// Inserts multiple values produced by the given interator.
-    pub(super) fn extend<'a, T>(&mut self, iter: T)
+    pub(super) fn extend<T>(&mut self, iter: T)
     where
-        T: IntoIterator<Item = &'a u64>,
+        T: IntoIterator<Item = u64>,
     {
-        iter.into_iter().for_each(|height| self.insert(*height))
+        iter.into_iter().for_each(|height| self.insert(height))
     }
 
     /// Returns the `low` value from the highest sequence, or `u64::MAX` if there are no sequences.
@@ -243,11 +243,11 @@ mod tests {
         expected.extend(to_be_inserted.clone());
 
         let mut disjoint_sequences = DisjointSequences::default();
-        disjoint_sequences.extend(to_be_inserted.iter());
+        disjoint_sequences.extend(to_be_inserted);
         assert_matches(&disjoint_sequences, &expected);
 
         // Extending with empty set should not modify the sequences.
-        disjoint_sequences.extend(Vec::<u64>::new().iter());
+        disjoint_sequences.extend(Vec::<u64>::new());
         assert_matches(&disjoint_sequences, &expected);
     }
 

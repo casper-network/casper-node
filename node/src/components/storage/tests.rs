@@ -1,7 +1,7 @@
 //! Unit tests for the storage component.
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
     convert::TryFrom,
     fs::{self, File},
     thread,
@@ -17,9 +17,9 @@ use casper_hashing::Digest;
 use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, SecretKey, U512};
 
 use super::{
-    construct_block_body_to_block_header_reverse_lookup, garbage_collect_block_body_v2_db,
-    move_storage_files_to_network_subdir, should_move_storage_files_to_network_subdir, Config,
-    Storage,
+    construct_block_body_to_block_header_reverse_lookup, disjoint_sequences::Sequence,
+    garbage_collect_block_body_v2_db, move_storage_files_to_network_subdir,
+    should_move_storage_files_to_network_subdir, Config, Storage,
 };
 use crate::{
     components::{
@@ -28,7 +28,6 @@ use crate::{
     },
     crypto::AsymmetricKeyExt,
     effect::{requests::StorageRequest, Multiple},
-    storage::disjoint_sequences::Sequence,
     testing::{ComponentHarness, TestRng, UnitTestEvent},
     types::{
         Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Deploy, DeployHash,
@@ -46,10 +45,10 @@ impl Storage {
 
     fn add_missing_block_body(&mut self, block_header: &BlockHeader) {
         match self.missing_block_bodies.entry(*block_header.body_hash()) {
-            std::collections::hash_map::Entry::Occupied(mut entry) => {
+            Entry::Occupied(mut entry) => {
                 entry.get_mut().push(block_header.height());
             }
-            std::collections::hash_map::Entry::Vacant(entry) => {
+            Entry::Vacant(entry) => {
                 entry.insert(vec![block_header.height()]);
             }
         }

@@ -1108,7 +1108,7 @@ impl Storage {
                     self.verifiable_chunked_hash_activation,
                 )?;
 
-                if self.has_corresponsing_body(&mut txn, &block_header)? {
+                if self.has_corresponding_body(&mut txn, &block_header)? {
                     self.disjoint_block_height_sequences
                         .insert(block_header.height());
                 } else {
@@ -1135,7 +1135,7 @@ impl Storage {
     }
 
     /// Returns `true` if there is a block body for the given block header available in storage.
-    fn has_corresponsing_body<Tx: Transaction>(
+    fn has_corresponding_body<Tx: Transaction>(
         &self,
         txn: &mut Tx,
         block_header: &BlockHeader,
@@ -1152,10 +1152,11 @@ impl Storage {
         self.disjoint_block_height_sequences
             .insert(block_header.height());
 
-        if let Some(block_bodies_to_add) = self.missing_block_bodies.get(block_header.body_hash()) {
+        if let Some(block_bodies_to_add) =
+            self.missing_block_bodies.remove(block_header.body_hash())
+        {
             self.disjoint_block_height_sequences
                 .extend(block_bodies_to_add);
-            self.missing_block_bodies.remove(block_header.body_hash());
         }
     }
 
