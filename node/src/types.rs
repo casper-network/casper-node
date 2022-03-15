@@ -26,8 +26,8 @@ pub use block::{
     HashingAlgorithmVersion, MerkleBlockBody, MerkleBlockBodyPart, MerkleLinkedListNode,
 };
 pub(crate) use block::{BlockHeaderWithMetadata, BlockPayload, BlockWithMetadata};
-pub(crate) use chainspec::ActivationPoint;
 pub use chainspec::Chainspec;
+pub(crate) use chainspec::{ActivationPoint, ChainspecRawBytes};
 pub use datasize::DataSize;
 pub use deploy::{
     Approval, Deploy, DeployConfigurationFailure, DeployHash, DeployHeader, DeployMetadata,

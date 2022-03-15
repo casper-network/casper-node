@@ -3,12 +3,14 @@ use std::{sync::Arc, time::Duration};
 use datasize::DataSize;
 use num::rational::Ratio;
 
-use casper_execution_engine::core::engine_state::UpgradeConfig;
+use casper_execution_engine::core::engine_state::{ChainspecRegistry, UpgradeConfig};
 use casper_types::{bytesrepr, EraId, ProtocolVersion};
 
 use crate::{
     components::consensus::ChainspecConsensusExt,
-    types::{BlockHash, BlockHeader, Chainspec, NodeConfig, TimeDiff, Timestamp},
+    types::{
+        BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, NodeConfig, TimeDiff, Timestamp,
+    },
     SmallNetworkConfig,
 };
 
@@ -152,8 +154,13 @@ impl Config {
     pub(super) fn new_upgrade_config(
         &self,
         upgrade_block_header: &BlockHeader,
+        chainspec_raw_bytes: Arc<ChainspecRawBytes>,
     ) -> Result<Box<UpgradeConfig>, bytesrepr::Error> {
         let global_state_update = self.chainspec.protocol_config.get_update_mapping()?;
+        let chainspec_registry = ChainspecRegistry::new_with_optional_global_state(
+            chainspec_raw_bytes.chainspec_bytes(),
+            chainspec_raw_bytes.maybe_global_state_bytes(),
+        );
         let upgrade_config = UpgradeConfig::new(
             *upgrade_block_header.state_root_hash(),
             upgrade_block_header.protocol_version(),
@@ -165,6 +172,7 @@ impl Config {
             Some(self.chainspec.core_config.round_seigniorage_rate),
             Some(self.chainspec.core_config.unbonding_delay),
             global_state_update,
+            chainspec_registry,
         );
         Ok(Box::new(upgrade_config))
     }

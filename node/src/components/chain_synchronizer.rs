@@ -202,9 +202,14 @@ impl ChainSynchronizer {
         }
 
         info!("initial run at genesis");
-        effect_builder
-            .commit_genesis(self.config.chainspec())
-            .event(Event::CommitGenesisResult)
+        let chainspec = self.config.chainspec();
+        async move {
+            let chainspec_raw_bytes = effect_builder.get_chainspec_raw_bytes().await;
+            effect_builder
+                .commit_genesis(chainspec, chainspec_raw_bytes)
+                .await
+        }
+        .event(Event::CommitGenesisResult)
     }
 
     fn commit_upgrade(
@@ -213,23 +218,27 @@ impl ChainSynchronizer {
         upgrade_block_header: BlockHeader,
     ) -> Effects<Event> {
         info!("committing upgrade");
-        let upgrade_config = match self.config.new_upgrade_config(&upgrade_block_header) {
-            Ok(state_update) => state_update,
-            Err(error) => {
-                return fatal!(
-                    effect_builder,
-                    "failed to get global state update from config: {}",
-                    error
-                )
-                .ignore();
-            }
-        };
-        effect_builder
-            .upgrade_contract_runtime(upgrade_config)
-            .event(|result| Event::UpgradeResult {
-                upgrade_block_header,
-                result,
-            })
+        let config = self.config.clone();
+        let cloned_upgrade_block_header = upgrade_block_header.clone();
+        async move {
+            let chainspec_raw_bytes = effect_builder.get_chainspec_raw_bytes().await;
+            let upgrade_config = match config
+                .new_upgrade_config(&cloned_upgrade_block_header, chainspec_raw_bytes)
+            {
+                Ok(state_update) => state_update,
+                Err(error) => {
+                    error!(?error, "failed to get global state update from config");
+                    return Err(error.into());
+                }
+            };
+            effect_builder
+                .upgrade_contract_runtime(upgrade_config)
+                .await
+        }
+        .event(|result| Event::UpgradeResult {
+            upgrade_block_header,
+            result,
+        })
     }
 
     fn handle_commit_genesis_result(

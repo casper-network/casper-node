@@ -450,6 +450,29 @@
             ],
             "type": "object"
           },
+          "ChainspecRawBytes": {
+            "description": "The raw bytes of the chainspec.toml, genesis accounts.toml, and global_state.toml files.",
+            "properties": {
+              "chainspec_bytes": {
+                "description": "Hex-encoded raw bytes of the current chainspec.toml file.",
+                "type": "string"
+              },
+              "maybe_genesis_accounts_bytes": {
+                "description": "Hex-encoded raw bytes of the current genesis accounts.toml file.",
+                "type": "string"
+              },
+              "maybe_global_state_bytes": {
+                "description": "Hex-encoded raw bytes of the current global_state.toml file.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "chainspec_bytes",
+              "maybe_genesis_accounts_bytes",
+              "maybe_global_state_bytes"
+            ],
+            "type": "object"
+          },
           "Contract": {
             "additionalProperties": false,
             "description": "A contract struct that can be serialized as  JSON object.",
@@ -3638,6 +3661,49 @@
             }
           },
           "summary": "returns status changes of active validators"
+        },
+        {
+          "examples": [
+            {
+              "name": "info_get_chainspec_example",
+              "params": [],
+              "result": {
+                "name": "info_get_chainspec_example_result",
+                "value": {
+                  "api_version": "1.4.3",
+                  "chainspec_bytes": {
+                    "chainspec_bytes": "2a2a",
+                    "maybe_genesis_accounts_bytes": null,
+                    "maybe_global_state_bytes": null
+                  }
+                }
+              }
+            }
+          ],
+          "name": "info_get_chainspec",
+          "params": [],
+          "result": {
+            "name": "info_get_chainspec_result",
+            "schema": {
+              "description": "Result for the \"info_get_chainspec\" RPC.",
+              "properties": {
+                "api_version": {
+                  "description": "The RPC API version.",
+                  "type": "string"
+                },
+                "chainspec_bytes": {
+                  "$ref": "#/components/schemas/ChainspecRawBytes",
+                  "description": "The chainspec file bytes."
+                }
+              },
+              "required": [
+                "api_version",
+                "chainspec_bytes"
+              ],
+              "type": "object"
+            }
+          },
+          "summary": "returns the raw bytes of the chainspec.toml, genesis accounts.toml, and global_state.toml files"
         },
         {
           "examples": [

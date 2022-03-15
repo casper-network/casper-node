@@ -2,9 +2,10 @@ use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    InMemoryWasmTestBuilder, DEFAULT_AUCTION_DELAY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG,
-    DEFAULT_UNBONDING_DELAY, DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
+    InMemoryWasmTestBuilder, DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+    DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
+    DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
 use casper_execution_engine::core::engine_state::{
     genesis::{ExecConfig, GenesisAccount, GenesisValidator},
@@ -84,8 +85,12 @@ fn should_run_genesis() {
         unbonding_delay,
         genesis_timestamp,
     );
-    let run_genesis_request =
-        RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, exec_config);
+    let run_genesis_request = RunGenesisRequest::new(
+        GENESIS_CONFIG_HASH.into(),
+        protocol_version,
+        exec_config,
+        DEFAULT_CHAINSPEC_REGISTRY.clone(),
+    );
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
@@ -154,8 +159,12 @@ fn should_track_total_token_supply_in_mint() {
         unbonding_delay,
         genesis_timestamp,
     );
-    let run_genesis_request =
-        RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, ee_config);
+    let run_genesis_request = RunGenesisRequest::new(
+        GENESIS_CONFIG_HASH.into(),
+        protocol_version,
+        ee_config,
+        DEFAULT_CHAINSPEC_REGISTRY.clone(),
+    );
 
     let mut builder = InMemoryWasmTestBuilder::default();
 

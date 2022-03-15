@@ -37,7 +37,7 @@ use crate::{
     protocol::Message,
     reactor::{self, EventQueueHandle, QueueKind, Runner},
     testing::ConditionCheckReactor,
-    types::{Block, Chainspec, Deploy, NodeId},
+    types::{Block, Chainspec, ChainspecRawBytes, Deploy, NodeId},
     utils::{Loadable, WithDir},
     NodeRng,
 };
@@ -411,7 +411,7 @@ impl reactor::Reactor for Reactor {
         let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
 
-        let chainspec = Chainspec::from_resources("local");
+        let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
 
         let deploy_acceptor =
             DeployAcceptor::new(super::Config::new(VERIFY_ACCOUNTS), &chainspec, registry).unwrap();
@@ -694,7 +694,7 @@ async fn run_deploy_acceptor_without_timeout(
     let mut runner: Runner<ConditionCheckReactor<Reactor>> =
         Runner::new(test_scenario, &mut rng).await.unwrap();
 
-    let chainspec = Chainspec::from_resources("local");
+    let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
 
     let block = Box::new(Block::random_with_verifiable_chunked_hash_activation(
         &mut rng,

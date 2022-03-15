@@ -53,7 +53,7 @@ use crate::{
         network::{Network, NetworkedReactor},
         ConditionCheckReactor, TestRng,
     },
-    types::{Chainspec, Deploy, NodeId},
+    types::{Chainspec, ChainspecRawBytes, Deploy, NodeId},
     utils::{Loadable, WithDir},
     NodeRng,
 };
@@ -244,7 +244,7 @@ impl reactor::Reactor for Reactor {
 
         let deploy_acceptor = DeployAcceptor::new(
             deploy_acceptor::Config::new(false),
-            &Chainspec::from_resources("local"),
+            &<(Chainspec, ChainspecRawBytes)>::from_resources("local").0,
             registry,
         )
         .unwrap();

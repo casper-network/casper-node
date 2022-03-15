@@ -40,7 +40,10 @@ use casper_types::{
 
 use crate::{
     core::{
-        engine_state::{execution_effect::ExecutionEffect, EngineConfig},
+        engine_state::{
+            execution_effect::ExecutionEffect, ChainspecRegistry, EngineConfig,
+            SystemContractRegistry,
+        },
         execution,
         execution::{AddressGenerator, Executor},
         runtime::RuntimeStack,
@@ -52,8 +55,6 @@ use crate::{
 
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
 const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
-/// Type alias for the system contract registry.
-pub type SystemContractRegistry = BTreeMap<String, ContractHash>;
 
 /// Represents an outcome of a successful genesis run.
 #[derive(Debug)]
@@ -728,6 +729,8 @@ pub enum GenesisError {
         /// Number of validator slots specified.
         validator_slots: u32,
     },
+    /// The chainspec registry is missing a required entry.
+    MissingChainspecRegistryEntry,
 }
 
 pub(crate) struct GenesisInstaller<S>
@@ -1363,6 +1366,23 @@ where
         self.tracking_copy.borrow_mut().write(
             Key::SystemContractRegistry,
             StoredValue::CLValue(cl_registry),
+        );
+        Ok(())
+    }
+
+    pub(crate) fn store_chainspec_registry(
+        &self,
+        chainspec_registry: ChainspecRegistry,
+    ) -> Result<(), GenesisError> {
+        if chainspec_registry.genesis_accounts_raw_hash().is_none() {
+            return Err(GenesisError::MissingChainspecRegistryEntry);
+        }
+        let cl_value_registry = CLValue::from_t(chainspec_registry)
+            .map_err(|error| GenesisError::CLValue(error.to_string()))?;
+
+        self.tracking_copy.borrow_mut().write(
+            Key::ChainspecRegistry,
+            StoredValue::CLValue(cl_value_registry),
         );
         Ok(())
     }

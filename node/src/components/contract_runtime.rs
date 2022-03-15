@@ -25,8 +25,8 @@ use tracing::{debug, error, info, trace};
 
 use casper_execution_engine::{
     core::engine_state::{
-        self, genesis::GenesisSuccess, EngineConfig, EngineState, GetEraValidatorsError,
-        GetEraValidatorsRequest, UpgradeConfig, UpgradeSuccess,
+        self, genesis::GenesisError, ChainspecRegistry, EngineConfig, EngineState, GenesisSuccess,
+        GetEraValidatorsError, GetEraValidatorsRequest, UpgradeConfig, UpgradeSuccess,
     },
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::{
@@ -49,7 +49,7 @@ use crate::{
     },
     fatal,
     protocol::Message,
-    types::{BlockHash, BlockHeader, Chainspec, Deploy, FinalizedBlock},
+    types::{BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, FinalizedBlock},
     NodeRng,
 };
 pub(crate) use config::Config;
@@ -264,9 +264,10 @@ impl ContractRuntime {
         match request {
             ContractRuntimeRequest::CommitGenesis {
                 chainspec,
+                chainspec_raw_bytes,
                 responder,
             } => {
-                let result = self.commit_genesis(&chainspec);
+                let result = self.commit_genesis(&chainspec, &chainspec_raw_bytes);
                 responder.respond(result).ignore()
             }
             ContractRuntimeRequest::Upgrade {
@@ -595,17 +596,35 @@ impl ContractRuntime {
     }
 
     /// Commits a genesis request.
-    fn commit_genesis(&self, chainspec: &Chainspec) -> Result<GenesisSuccess, engine_state::Error> {
+    fn commit_genesis(
+        &self,
+        chainspec: &Chainspec,
+        chainspec_raw_bytes: &ChainspecRawBytes,
+    ) -> Result<GenesisSuccess, engine_state::Error> {
         let correlation_id = CorrelationId::new();
         let genesis_config_hash = chainspec.hash();
         let protocol_version = chainspec.protocol_config.version;
         // Transforms a chainspec into a valid genesis config for execution engine.
         let ee_config = chainspec.into();
+
+        let chainspec_registry = ChainspecRegistry::new_with_genesis(
+            chainspec_raw_bytes.chainspec_bytes(),
+            chainspec_raw_bytes
+                .maybe_genesis_accounts_bytes()
+                .ok_or_else(|| {
+                    error!("failed to provide genesis account bytes in commit genesis");
+                    engine_state::Error::Genesis(Box::new(
+                        GenesisError::MissingChainspecRegistryEntry,
+                    ))
+                })?,
+        );
+
         let result = self.engine_state.commit_genesis(
             correlation_id,
             genesis_config_hash,
             protocol_version,
             &ee_config,
+            chainspec_registry,
         );
         self.engine_state.flush_environment()?;
         result

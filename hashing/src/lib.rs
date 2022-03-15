@@ -32,7 +32,7 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    checksummed_hex,
+    checksummed_hex, CLType, CLTyped,
 };
 pub use chunk_with_proof::ChunkWithProof;
 pub use error::MerkleConstructionError;
@@ -223,6 +223,12 @@ impl Digest {
             .try_into()
             .map_err(|_| Error::IncorrectDigestLength(hex_input.as_ref().len()))?;
         Ok(Digest(slice))
+    }
+}
+
+impl CLTyped for Digest {
+    fn cl_type() -> CLType {
+        CLType::ByteArray(Digest::LENGTH as u32)
     }
 }
 

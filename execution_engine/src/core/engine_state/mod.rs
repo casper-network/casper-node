@@ -1,5 +1,6 @@
 //!  This module contains all the execution related code.
 pub mod balance;
+pub mod chainspec_registry;
 pub mod deploy_item;
 pub mod engine_config;
 pub mod era_validators;
@@ -14,6 +15,7 @@ pub mod op;
 pub mod query;
 pub mod run_genesis_request;
 pub mod step;
+pub mod system_contract_registry;
 mod transfer;
 pub mod upgrade;
 
@@ -52,6 +54,7 @@ use casper_types::{
 
 pub use self::{
     balance::{BalanceRequest, BalanceResult},
+    chainspec_registry::ChainspecRegistry,
     deploy_item::DeployItem,
     engine_config::{EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT},
     era_validators::{GetEraValidatorsError, GetEraValidatorsRequest},
@@ -60,10 +63,12 @@ pub use self::{
     execute_request::ExecuteRequest,
     execution::Error as ExecError,
     execution_result::{ExecutionResult, ForcedTransferResult},
-    genesis::{ExecConfig, GenesisAccount, GenesisSuccess, SystemContractRegistry},
+    genesis::{ExecConfig, GenesisAccount, GenesisConfig, GenesisSuccess},
     get_bids::{GetBidsRequest, GetBidsResult},
     query::{QueryRequest, QueryResult},
+    run_genesis_request::RunGenesisRequest,
     step::{RewardItem, SlashItem, StepError, StepRequest, StepSuccess},
+    system_contract_registry::SystemContractRegistry,
     transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
     upgrade::{UpgradeConfig, UpgradeSuccess},
 };
@@ -189,6 +194,7 @@ where
         genesis_config_hash: Digest,
         protocol_version: ProtocolVersion,
         ee_config: &ExecConfig,
+        chainspec_registry: ChainspecRegistry,
     ) -> Result<GenesisSuccess, Error> {
         // Preliminaries
         let initial_root_hash = self.state.empty_root();
@@ -231,6 +237,8 @@ where
 
         // Create standard payment
         genesis_installer.create_standard_payment()?;
+
+        genesis_installer.store_chainspec_registry(chainspec_registry)?;
 
         // Commit the transforms.
         let execution_effect = genesis_installer.finalize();
@@ -331,6 +339,16 @@ where
             error!("Missing system handle payment contract hash");
             Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
         })?;
+
+        // Write the chainspec registry to global state
+        let cl_value_chainspec_registry =
+            CLValue::from_t(upgrade_config.chainspec_registry().clone())
+                .map_err(|error| Error::Bytesrepr(error.to_string()))?;
+
+        tracking_copy.borrow_mut().write(
+            Key::ChainspecRegistry,
+            StoredValue::CLValue(cl_value_chainspec_registry),
+        );
 
         // Cycle through the system contracts and update
         // their metadata if there is a change in entry points.

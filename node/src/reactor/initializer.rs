@@ -24,7 +24,9 @@ use crate::{
         announcements::{
             ChainspecLoaderAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
         },
-        requests::{ContractRuntimeRequest, NetworkRequest, StorageRequest},
+        requests::{
+            ChainspecLoaderRequest, ContractRuntimeRequest, NetworkRequest, StorageRequest,
+        },
         EffectBuilder, Effects,
     },
     protocol::Message,
@@ -61,6 +63,10 @@ pub(crate) enum Event {
     /// Contract runtime announcement.
     #[from]
     ContractRuntimeAnnouncement(#[serde(skip_serializing)] ContractRuntimeAnnouncement),
+
+    /// ChainspecLoader request.
+    #[from]
+    ChainspecLoaderRequest(ChainspecLoaderRequest),
 
     /// Storage request.
     #[from]
@@ -103,6 +109,7 @@ impl ReactorEvent for Event {
             Event::ChainspecLoaderAnnouncement(_) => "ChainspecLoaderAnnouncement",
             Event::ContractRuntimeAnnouncement(_) => "ContractRuntimeAnnouncement",
             Event::NetworkRequest(_) => "NetworkRequest",
+            Event::ChainspecLoaderRequest(_) => "ChainspecLoaderRequest",
         }
     }
 }
@@ -125,6 +132,9 @@ impl Display for Event {
                 write!(formatter, "contract runtime announcement: {}", ann)
             }
             Event::NetworkRequest(request) => write!(formatter, "network request: {:?}", request),
+            Event::ChainspecLoaderRequest(req) => {
+                write!(formatter, "chainspec_loader request: {}", req)
+            }
         }
     }
 }
@@ -273,6 +283,14 @@ impl reactor::Reactor for Reactor {
                 self.chainspec_loader
                     .handle_event(effect_builder, rng, event),
             ),
+            Event::ChainspecLoaderRequest(event) => reactor::wrap_effects(
+                Event::Chainspec,
+                self.chainspec_loader.handle_event(
+                    effect_builder,
+                    rng,
+                    chainspec_loader::Event::Request(event),
+                ),
+            ),
             Event::Storage(event) => reactor::wrap_effects(
                 Event::Storage,
                 self.storage.handle_event(effect_builder, rng, event),
@@ -327,7 +345,7 @@ pub(crate) mod tests {
     use super::*;
     use crate::{
         testing::network::NetworkedReactor,
-        types::{Chainspec, NodeId},
+        types::{Chainspec, ChainspecRawBytes, NodeId},
     };
     use std::sync::Arc;
 
@@ -337,10 +355,11 @@ pub(crate) mod tests {
             registry: &Registry,
             event_queue: EventQueueHandle<Event>,
             chainspec: Arc<Chainspec>,
+            chainspec_raw_bytes: Arc<ChainspecRawBytes>,
         ) -> Result<(Self, Effects<Event>), Error> {
             let effect_builder = EffectBuilder::new(event_queue);
             let (chainspec_loader, chainspec_effects) =
-                ChainspecLoader::new_with_chainspec(chainspec, effect_builder);
+                ChainspecLoader::new_with_chainspec(chainspec, chainspec_raw_bytes, effect_builder);
             Self::new_with_chainspec_loader(config, registry, chainspec_loader, chainspec_effects)
         }
     }

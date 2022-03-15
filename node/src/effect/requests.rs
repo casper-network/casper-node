@@ -48,8 +48,8 @@ use crate::{
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
         Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload, BlockSignatures,
-        BlockWithMetadata, Chainspec, ChainspecInfo, Deploy, DeployHash, DeployMetadata,
-        FinalizedBlock, Item, NodeId, StatusFeed, TimeDiff,
+        BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy, DeployHash,
+        DeployMetadata, FinalizedBlock, Item, NodeId, StatusFeed, TimeDiff,
     },
     utils::{DisplayIter, Source},
 };
@@ -770,6 +770,8 @@ pub(crate) enum ContractRuntimeRequest {
     CommitGenesis {
         /// The chainspec.
         chainspec: Arc<Chainspec>,
+        /// The chainspec files' raw bytes.
+        chainspec_raw_bytes: Arc<ChainspecRawBytes>,
         /// Responder to call with the result.
         responder: Responder<Result<GenesisSuccess, engine_state::Error>>,
     },
@@ -1000,11 +1002,15 @@ pub(crate) enum ConsensusRequest {
 
 /// ChainspecLoader component requests.
 #[derive(Debug, Serialize)]
+#[allow(clippy::enum_variant_names)]
 pub(crate) enum ChainspecLoaderRequest {
     /// Chainspec info request.
     GetChainspecInfo(Responder<ChainspecInfo>),
     /// Request for information about the current run.
     GetCurrentRunInfo(Responder<CurrentRunInfo>),
+    /// Request for the chainspec file bytes with the genesis_accounts and global_state bytes, if
+    /// they are present.
+    GetChainspecRawBytes(Responder<Arc<ChainspecRawBytes>>),
 }
 
 impl Display for ChainspecLoaderRequest {
@@ -1012,6 +1018,7 @@ impl Display for ChainspecLoaderRequest {
         match self {
             ChainspecLoaderRequest::GetChainspecInfo(_) => write!(f, "get chainspec info"),
             ChainspecLoaderRequest::GetCurrentRunInfo(_) => write!(f, "get current run info"),
+            ChainspecLoaderRequest::GetChainspecRawBytes(_) => write!(f, "get chainspec raw bytes"),
         }
     }
 }

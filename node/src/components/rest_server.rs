@@ -197,7 +197,10 @@ impl Finalize for RestServer {
 #[cfg(test)]
 mod schema_tests {
     use crate::{
-        rpcs::{docs::OpenRpcSchema, info::GetValidatorChangesResult},
+        rpcs::{
+            docs::OpenRpcSchema,
+            info::{GetChainspecResult, GetValidatorChangesResult},
+        },
         testing::assert_schema,
         types::GetStatusResult,
     };
@@ -228,5 +231,14 @@ mod schema_tests {
             env!("CARGO_MANIFEST_DIR")
         );
         assert_schema(schema_path, schema_for!(OpenRpcSchema));
+    }
+
+    #[test]
+    fn schema_chainspec_bytes() {
+        let schema_path = format!(
+            "{}/../resources/test/rest_schema_chainspec_bytes.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        assert_schema(schema_path, schema_for!(GetChainspecResult));
     }
 }

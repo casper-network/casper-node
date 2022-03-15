@@ -111,8 +111,9 @@ use crate::{
     reactor::{EventQueueHandle, QueueKind},
     types::{
         Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload, BlockSignatures,
-        BlockWithMetadata, Chainspec, ChainspecInfo, Deploy, DeployHash, DeployHeader,
-        DeployMetadata, FinalitySignature, FinalizedBlock, Item, NodeId, TimeDiff, Timestamp,
+        BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy, DeployHash,
+        DeployHeader, DeployMetadata, FinalitySignature, FinalizedBlock, Item, NodeId, TimeDiff,
+        Timestamp,
     },
     utils::{SharedFlag, Source},
 };
@@ -1450,6 +1451,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn commit_genesis(
         self,
         chainspec: Arc<Chainspec>,
+        chainspec_raw_bytes: Arc<ChainspecRawBytes>,
     ) -> Result<GenesisSuccess, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
@@ -1457,6 +1459,7 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| ContractRuntimeRequest::CommitGenesis {
                 chainspec,
+                chainspec_raw_bytes,
                 responder,
             },
             QueueKind::Regular,
@@ -1839,6 +1842,19 @@ impl<REv> EffectBuilder<REv> {
                 finished: responder,
             },
             QueueKind::Control,
+        )
+        .await
+    }
+
+    /// Get the bytes for the chainspec file and genesis_accounts
+    /// and global_state bytes if the files are present.
+    pub(crate) async fn get_chainspec_raw_bytes(self) -> Arc<ChainspecRawBytes>
+    where
+        REv: From<ChainspecLoaderRequest> + Send,
+    {
+        self.make_request(
+            ChainspecLoaderRequest::GetChainspecRawBytes,
+            QueueKind::Regular,
         )
         .await
     }
