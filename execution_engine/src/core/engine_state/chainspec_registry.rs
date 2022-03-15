@@ -1,6 +1,6 @@
 //! The registry of chainspec hash digests.
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, convert::TryFrom};
 
 use serde::{Deserialize, Serialize};
 
@@ -84,8 +84,12 @@ impl ChainspecRegistry {
         }
         map
     }
+}
 
-    fn from_map(map: BytesreprChainspecRegistry) -> Result<Self, bytesrepr::Error> {
+impl TryFrom<BytesreprChainspecRegistry> for ChainspecRegistry {
+    type Error = bytesrepr::Error;
+
+    fn try_from(map: BytesreprChainspecRegistry) -> Result<Self, Self::Error> {
         let chainspec_raw_hash = *map
             .get(Self::CHAINSPEC_RAW_MAP_KEY)
             .ok_or(bytesrepr::Error::Formatting)?;
@@ -112,7 +116,7 @@ impl ToBytes for ChainspecRegistry {
 impl FromBytes for ChainspecRegistry {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (map, remainder) = BytesreprChainspecRegistry::from_bytes(bytes)?;
-        let chainspec_registry = ChainspecRegistry::from_map(map)?;
+        let chainspec_registry = ChainspecRegistry::try_from(map)?;
         Ok((chainspec_registry, remainder))
     }
 }
