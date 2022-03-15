@@ -162,7 +162,7 @@ impl IndexedMerkleProof {
         Digest::hash_merkle_root(*count, raw_root)
     }
 
-    pub(crate) fn merkle_proof(&self) -> &[Digest] {
+    pub fn merkle_proof(&self) -> &[Digest] {
         &self.merkle_proof
     }
 

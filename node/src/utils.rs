@@ -4,9 +4,8 @@
 mod display_error;
 pub(crate) mod ds;
 mod external;
-pub(crate) mod pid_file;
 pub(crate) mod rlimit;
-mod round_robin;
+pub(crate) mod round_robin;
 pub(crate) mod umask;
 pub mod work_queue;
 

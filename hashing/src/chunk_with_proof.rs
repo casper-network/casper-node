@@ -4,7 +4,11 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 
-use crate::{error::MerkleConstructionError, indexed_merkle_proof::IndexedMerkleProof, Digest};
+use crate::{
+    error::{ChunkWithProofVerificationError, MerkleConstructionError},
+    indexed_merkle_proof::IndexedMerkleProof,
+    Digest,
+};
 
 /// Represents a chunk of data with attached proof.
 #[derive(DataSize, PartialEq, Eq, Debug, Clone, JsonSchema, Serialize, Deserialize)]
@@ -86,21 +90,35 @@ impl ChunkWithProof {
         self.chunk.as_slice()
     }
 
+    /// Convert a chunk with proof into the underlying chunk.
+    pub fn into_chunk(self) -> Bytes {
+        self.chunk
+    }
+
     /// Returns the `IndexedMerkleProof`.
     pub fn proof(&self) -> &IndexedMerkleProof {
         &self.proof
     }
 
-    /// Returns `true` if the proof for the chunk is valid, `false` otherwise.
-    pub fn verify(&self) -> bool {
-        if self.proof.verify().is_err() {
-            return false;
+    /// Verify the integrity of this chunk with indexed Merkle proof.
+    pub fn verify(&self) -> Result<(), ChunkWithProofVerificationError> {
+        let _ = self.proof().verify()?;
+        let first_digest_in_indexed_merkle_proof =
+            self.proof().merkle_proof().first().ok_or_else(|| {
+                ChunkWithProofVerificationError::ChunkWithProofHasEmptyMerkleProof {
+                    chunk_with_proof: self.clone(),
+                }
+            })?;
+        let hash_of_chunk = Digest::hash(self.chunk());
+        if *first_digest_in_indexed_merkle_proof != hash_of_chunk {
+            return Err(
+                ChunkWithProofVerificationError::FirstDigestInMerkleProofDidNotMatchHashOfChunk {
+                    first_digest_in_indexed_merkle_proof: *first_digest_in_indexed_merkle_proof,
+                    hash_of_chunk,
+                },
+            );
         }
-        let chunk_hash = Digest::hash(self.chunk());
-        self.proof
-            .merkle_proof()
-            .first()
-            .map_or(false, |first_hash| chunk_hash == *first_hash)
+        Ok(())
     }
 }
 
@@ -190,7 +208,7 @@ mod tests {
             assert!((0..number_of_chunks)
                 .into_iter()
                 .map(|chunk_index| { ChunkWithProof::new(data.as_slice(), chunk_index).unwrap() })
-                .all(|chunk_with_proof| chunk_with_proof.verify()));
+                .all(|chunk_with_proof| chunk_with_proof.verify().is_ok()));
         }
     }
 
@@ -224,10 +242,10 @@ mod tests {
     fn verifies_chunk_with_proofs(test_data: TestDataSize) {
         for data in [prepare_bytes(test_data.0), vec![0u8; test_data.0]] {
             let chunk_with_proof = ChunkWithProof::new(data.as_slice(), 0).unwrap();
-            assert!(chunk_with_proof.verify());
+            assert!(chunk_with_proof.verify().is_ok());
 
             let chunk_with_incorrect_proof = chunk_with_proof.replace_first_proof();
-            assert!(!chunk_with_incorrect_proof.verify());
+            assert!(chunk_with_incorrect_proof.verify().is_err());
         }
     }
 
@@ -277,7 +295,7 @@ mod tests {
         // This test needs specific data sizes, hence it doesn't use the proptest
 
         let chunk_with_proof = ChunkWithProof::new(&[], 0).expect("should create with empty data");
-        assert!(chunk_with_proof.verify());
+        assert!(chunk_with_proof.verify().is_ok());
 
         let chunk_with_proof =
             ChunkWithProof::new(&[], 1).expect_err("should error with empty data and index > 0");

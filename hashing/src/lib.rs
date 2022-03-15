@@ -8,7 +8,7 @@
 #![warn(missing_docs)]
 
 mod chunk_with_proof;
-mod error;
+pub mod error;
 mod indexed_merkle_proof;
 
 use std::{
@@ -78,13 +78,6 @@ impl Digest {
         hasher.update(data);
         hasher.finalize_variable(|hash| ret.clone_from_slice(hash));
         Digest(ret)
-    }
-
-    // Temporarily unused, see comments inside `Digest::hash()` for details.
-    #[allow(unused)]
-    #[inline(always)]
-    fn should_hash_with_chunks<T: AsRef<[u8]>>(data: T) -> bool {
-        data.as_ref().len() > ChunkWithProof::CHUNK_SIZE_BYTES
     }
 
     /// Hashes a pair of byte slices.
@@ -586,17 +579,6 @@ mod tests {
             hash_lower_hex,
             "fd1214a627473ffc6d6cc97e7012e6344d74abbf987b48cde5d0642049a0db98"
         );
-    }
-
-    #[test]
-    fn picks_correct_hashing_method() {
-        let data_smaller_than_chunk_size = vec![];
-        assert!(!Digest::should_hash_with_chunks(
-            data_smaller_than_chunk_size
-        ));
-
-        let data_bigger_than_chunk_size = vec![0; ChunkWithProof::CHUNK_SIZE_BYTES * 2];
-        assert!(Digest::should_hash_with_chunks(data_bigger_than_chunk_size));
     }
 
     #[test]

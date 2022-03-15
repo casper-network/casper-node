@@ -75,6 +75,14 @@ impl ReactorEvent for Event {
             None
         }
     }
+
+    fn try_into_control(self) -> Option<ControlAnnouncement> {
+        if let Self::ControlAnnouncement(ctrl_ann) = self {
+            Some(ctrl_ann)
+        } else {
+            None
+        }
+    }
 }
 
 impl Display for Event {
@@ -412,7 +420,6 @@ impl reactor::Reactor for Reactor {
             &storage_withdir,
             None,
             ProtocolVersion::from_parts(1, 0, 0),
-            false,
             "test",
             Ratio::new(1, 3),
             None,

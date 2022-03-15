@@ -32,12 +32,12 @@ use casper_execution_engine::{
     storage::{
         global_state::lmdb::LmdbGlobalState,
         transaction_source::lmdb::LmdbEnvironment,
-        trie::{Trie, TrieOrChunk, TrieOrChunkId},
+        trie::{TrieOrChunk, TrieOrChunkId},
         trie_store::lmdb::LmdbTrieStore,
     },
 };
 use casper_hashing::Digest;
-use casper_types::{EraId, Key, ProtocolVersion, StoredValue};
+use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion};
 
 use crate::{
     components::{contract_runtime::types::StepEffectAndUpcomingEraValidators, Component},
@@ -389,15 +389,20 @@ impl ContractRuntime {
                 }
                 .ignore()
             }
-            ContractRuntimeRequest::PutTrie { trie, responder } => {
-                trace!(?trie, "put_trie request");
+            ContractRuntimeRequest::PutTrie {
+                trie_bytes,
+                responder,
+            } => {
+                trace!(?trie_bytes, "put_trie request");
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
                 async move {
                     let correlation_id = CorrelationId::new();
                     let start = Instant::now();
-                    let result = engine_state
-                        .put_trie_and_find_missing_descendant_trie_keys(correlation_id, &*trie);
+                    let result = engine_state.put_trie_and_find_missing_descendant_trie_keys(
+                        correlation_id,
+                        &*trie_bytes,
+                    );
                     // PERF: this *could* be called only periodically.
                     if let Err(lmdb_error) = engine_state.flush_environment() {
                         fatal!(
@@ -516,8 +521,7 @@ impl ContractRuntime {
                 async move {
                     let correlation_id = CorrelationId::new();
                     let start = Instant::now();
-                    let result =
-                        engine_state.missing_trie_keys(correlation_id, vec![trie_key], false);
+                    let result = engine_state.missing_trie_keys(correlation_id, vec![trie_key]);
                     metrics
                         .missing_trie_keys
                         .observe(start.elapsed().as_secs_f64());
@@ -643,8 +647,9 @@ impl ContractRuntime {
         result
     }
 
-    /// Retrieve trie keys for the integrity check.
-    pub(crate) fn trie_store_check(
+    /// Retrieve trie keys
+    #[cfg(test)]
+    pub(crate) fn retrieve_trie_keys(
         &self,
         trie_keys: Vec<Digest>,
     ) -> Result<Vec<Digest>, engine_state::Error> {
@@ -652,7 +657,7 @@ impl ContractRuntime {
         let start = Instant::now();
         let result = self
             .engine_state
-            .missing_trie_keys(correlation_id, trie_keys, true);
+            .missing_trie_keys(correlation_id, trie_keys);
         self.metrics
             .missing_trie_keys
             .observe(start.elapsed().as_secs_f64());
@@ -771,7 +776,7 @@ impl ContractRuntime {
         engine_state: &EngineState<LmdbGlobalState>,
         metrics: &Metrics,
         trie_key: Digest,
-    ) -> Result<Option<Trie<Key, StoredValue>>, engine_state::Error> {
+    ) -> Result<Option<Bytes>, engine_state::Error> {
         let correlation_id = CorrelationId::new();
         let start = Instant::now();
         let result = engine_state.get_trie_full(correlation_id, trie_key);

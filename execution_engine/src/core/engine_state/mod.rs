@@ -35,7 +35,7 @@ use tracing::{debug, error};
 use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
-    bytesrepr::ToBytes,
+    bytesrepr::{Bytes, ToBytes},
     contracts::NamedKeys,
     system::{
         auction::{
@@ -92,7 +92,7 @@ use crate::{
         global_state::{
             lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
         },
-        trie::{Trie, TrieOrChunk, TrieOrChunkId},
+        trie::{TrieOrChunk, TrieOrChunkId},
     },
 };
 
@@ -1891,7 +1891,7 @@ where
         &self,
         correlation_id: CorrelationId,
         trie_key: Digest,
-    ) -> Result<Option<Trie<Key, StoredValue>>, Error>
+    ) -> Result<Option<Bytes>, Error>
     where
         Error: From<S::Error>,
     {
@@ -1902,31 +1902,29 @@ where
     pub fn put_trie_and_find_missing_descendant_trie_keys(
         &self,
         correlation_id: CorrelationId,
-        trie: &Trie<Key, StoredValue>,
+        trie_bytes: &[u8],
     ) -> Result<Vec<Digest>, Error>
     where
         Error: From<S::Error>,
     {
-        let inserted_trie_key = self.state.put_trie(correlation_id, trie)?;
-        let missing_descendant_trie_keys =
-            self.state
-                .missing_trie_keys(correlation_id, vec![inserted_trie_key], false)?;
+        let inserted_trie_key = self.state.put_trie(correlation_id, trie_bytes)?;
+        let missing_descendant_trie_keys = self
+            .state
+            .missing_trie_keys(correlation_id, vec![inserted_trie_key])?;
         Ok(missing_descendant_trie_keys)
     }
 
-    /// Performs a lookup for a list of missing root hashes and optionally performs an integrity
-    /// check on each node
+    /// Performs a lookup for a list of missing root hashes.
     pub fn missing_trie_keys(
         &self,
         correlation_id: CorrelationId,
         trie_keys: Vec<Digest>,
-        check_integrity: bool,
     ) -> Result<Vec<Digest>, Error>
     where
         Error: From<S::Error>,
     {
         self.state
-            .missing_trie_keys(correlation_id, trie_keys, check_integrity)
+            .missing_trie_keys(correlation_id, trie_keys)
             .map_err(Error::from)
     }
 

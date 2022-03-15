@@ -59,7 +59,7 @@
 //! some point. Failing to do so will result in a resource leak.
 
 pub(crate) mod announcements;
-pub(crate) mod console;
+pub(crate) mod diagnostics_port;
 pub(crate) mod incoming;
 pub(crate) mod requests;
 
@@ -88,13 +88,12 @@ use casper_execution_engine::{
         UpgradeSuccess,
     },
     shared::execution_journal::ExecutionJournal,
-    storage::trie::{Trie, TrieOrChunk, TrieOrChunkId},
+    storage::trie::{TrieOrChunk, TrieOrChunkId},
 };
 use casper_hashing::Digest;
 use casper_types::{
     account::Account, system::auction::EraValidators, Contract, ContractPackage, EraId,
-    ExecutionEffect, ExecutionResult, Key, ProtocolVersion, PublicKey, StoredValue, Transfer, URef,
-    U512,
+    ExecutionEffect, ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer, URef, U512,
 };
 
 use crate::{
@@ -106,7 +105,7 @@ use crate::{
             BlockAndExecutionEffects, BlockExecutionError, EraValidatorsRequest, ExecutionPreState,
         },
         deploy_acceptor,
-        fetcher::{FetchResult, TrieFetcherResult},
+        fetcher::FetchResult,
         small_network::FromIncoming,
     },
     reactor::{EventQueueHandle, QueueKind},
@@ -124,14 +123,16 @@ use announcements::{
     DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
     RpcServerAnnouncement,
 };
+use casper_types::bytesrepr::Bytes;
 use requests::{
     BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
     ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
-    NetworkRequest, StorageRequest, TrieFetcherRequest,
+    NetworkRequest, StorageRequest,
 };
 
 use self::{
-    console::DumpConsensusStateRequest,
+    announcements::QueueDumpFormat,
+    diagnostics_port::DumpConsensusStateRequest,
     requests::{BeginGossipRequest, StateStoreRequest},
 };
 
@@ -1040,7 +1041,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_trie_full(
         self,
         trie_key: Digest,
-    ) -> Result<Option<Trie<Key, StoredValue>>, engine_state::Error>
+    ) -> Result<Option<Bytes>, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {
@@ -1057,13 +1058,16 @@ impl<REv> EffectBuilder<REv> {
     /// Puts a trie into the trie store and asynchronously returns any missing descendant trie keys.
     pub(crate) async fn put_trie_and_find_missing_descendant_trie_keys(
         self,
-        trie: Box<Trie<Key, StoredValue>>,
+        trie_bytes: Bytes,
     ) -> Result<Vec<Digest>, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
-            |responder| ContractRuntimeRequest::PutTrie { trie, responder },
+            |responder| ContractRuntimeRequest::PutTrie {
+                trie_bytes,
+                responder,
+            },
             QueueKind::Regular,
         )
         .await
@@ -1251,24 +1255,6 @@ impl<REv> EffectBuilder<REv> {
             |responder| FetcherRequest {
                 id,
                 peer,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Requests a trie node from a peer.
-    ///
-    /// `peers` should be a **non-empty** set of peers to fetch from.
-    pub(crate) async fn fetch_trie(self, hash: Digest, peers: Vec<NodeId>) -> TrieFetcherResult
-    where
-        REv: From<TrieFetcherRequest>,
-    {
-        self.make_request(
-            |responder| TrieFetcherRequest {
-                peers,
-                hash,
                 responder,
             },
             QueueKind::Regular,
@@ -1826,7 +1812,7 @@ impl<REv> EffectBuilder<REv> {
 
     /// Dump consensus state for a specific era, using the supplied function to serialize the
     /// output.
-    pub(crate) async fn console_dump_consensus_state(
+    pub(crate) async fn diagnostics_port_dump_consensus_state(
         self,
         era_id: Option<EraId>,
         serialize: fn(&EraDump<'_>) -> Result<Vec<u8>, Cow<'static, str>>,
@@ -1839,6 +1825,21 @@ impl<REv> EffectBuilder<REv> {
                 era_id,
                 serialize,
                 responder,
+            },
+            QueueKind::Control,
+        )
+        .await
+    }
+
+    /// Dump the event queue contents to the diagnostics port, using the given serializer.
+    pub(crate) async fn diagnostics_port_dump_queue(self, dump_format: QueueDumpFormat)
+    where
+        REv: From<ControlAnnouncement>,
+    {
+        self.make_request(
+            |responder| ControlAnnouncement::QueueDumpRequest {
+                dump_format,
+                finished: responder,
             },
             QueueKind::Control,
         )

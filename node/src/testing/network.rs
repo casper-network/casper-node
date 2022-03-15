@@ -3,6 +3,7 @@
 use std::{
     collections::{hash_map::Entry, HashMap},
     fmt::Debug,
+    mem,
     time::Duration,
 };
 
@@ -18,6 +19,7 @@ use crate::{
     effect::{EffectBuilder, Effects},
     reactor::{Finalize, Reactor, Runner},
     testing::TestRng,
+    tls::KeyFingerprint,
     types::NodeId,
     NodeRng,
 };
@@ -28,9 +30,20 @@ use crate::{
 pub(crate) type Nodes<R> = HashMap<NodeId, Runner<ConditionCheckReactor<R>>>;
 
 /// A reactor with networking functionality.
+///
+/// Test reactors implementing this SHOULD implement at least the `node_id` function if they have
+/// proper networking functionality.
 pub(crate) trait NetworkedReactor: Sized {
     /// Returns the node ID assigned to this specific reactor instance.
-    fn node_id(&self) -> NodeId;
+    ///
+    /// The default implementation generates a pseudo-id base on its memory address.
+    fn node_id(&self) -> NodeId {
+        #[allow(trivial_casts)]
+        let addr = self as *const _ as usize;
+        let mut raw: [u8; KeyFingerprint::LENGTH] = [0; KeyFingerprint::LENGTH];
+        raw[0..(mem::size_of::<usize>())].copy_from_slice(&addr.to_be_bytes());
+        NodeId::from(KeyFingerprint::from(raw))
+    }
 }
 
 /// Time interval for which to poll an observed testing network when no events have occurred.

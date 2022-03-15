@@ -5,24 +5,26 @@ use std::{
         atomic::{self, AtomicBool},
         Arc,
     },
-    time::Duration,
 };
 
 use async_trait::async_trait;
 use datasize::DataSize;
-use futures::stream::{futures_unordered::FuturesUnordered, StreamExt};
+use futures::{
+    stream::{futures_unordered::FuturesUnordered, StreamExt},
+    TryStreamExt,
+};
 use prometheus::IntGauge;
 use quanta::Instant;
 use tracing::{info, trace, warn};
 
-use casper_execution_engine::storage::trie::Trie;
+use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
 use casper_hashing::Digest;
-use casper_types::{EraId, Key, ProtocolVersion, PublicKey, StoredValue, U512};
+use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion, PublicKey, U512};
 
 use super::{metrics::Metrics, Config};
 use crate::{
     components::{
-        chain_synchronizer::error::Error,
+        chain_synchronizer::error::{Error, FetchTrieError},
         consensus::{self},
         contract_runtime::ExecutionPreState,
         fetcher::{FetchResult, FetchedData, FetcherError},
@@ -62,9 +64,6 @@ impl<'a> Drop for ScopeTimer<'a> {
     }
 }
 
-/// The duration after which a warning for long-running tasks will be emitted.
-const FOREVER_WARN_TIMEOUT: Duration = Duration::from_secs(60);
-
 struct ChainSyncContext<'a> {
     effect_builder: &'a EffectBuilder<JoinerEvent>,
     config: &'a Config,
@@ -93,9 +92,11 @@ impl<'a> ChainSyncContext<'a> {
     }
 }
 
-/// Fetches an item. Keeps retrying to fetch until it is successful. Assumes no integrity check is
-/// necessary for the item. Not suited to fetching a block header or block by height, which require
-/// verification with finality signatures.
+/// Restrict the fan-out for a trie being retrieved by chunks to query at most 10 peers at a time.
+const TRIE_CHUNK_FETCH_FAN_OUT: usize = 10;
+
+/// Fetches an item. Keeps retrying to fetch until it is successful. Not suited to fetching a block
+/// header or block by height, which require verification with finality signatures.
 async fn fetch_retry_forever<T>(
     effect_builder: EffectBuilder<JoinerEvent>,
     config: &Config,
@@ -150,44 +151,95 @@ where
     }
 }
 
+enum TrieAlreadyPresentOrDownloaded {
+    AlreadyPresent,
+    Downloaded(Bytes),
+}
+
 async fn fetch_trie_retry_forever(
     id: Digest,
     ctx: &ChainSyncContext<'_>,
-) -> FetchedData<Trie<Key, StoredValue>> {
-    let started = Instant::now();
-    let mut last_warning = started;
+) -> Result<TrieAlreadyPresentOrDownloaded, FetchTrieError> {
+    let trie_or_chunk = match fetch_retry_forever::<TrieOrChunk>(
+        *ctx.effect_builder,
+        ctx.config,
+        TrieOrChunkId(0, id),
+    )
+    .await?
+    {
+        FetchedData::FromStorage { .. } => {
+            return Ok(TrieAlreadyPresentOrDownloaded::AlreadyPresent)
+        }
+        FetchedData::FromPeer {
+            item: trie_or_chunk,
+            ..
+        } => *trie_or_chunk,
+    };
+    let chunk_with_proof = match trie_or_chunk {
+        TrieOrChunk::Trie(trie) => return Ok(TrieAlreadyPresentOrDownloaded::Downloaded(trie)),
+        TrieOrChunk::ChunkWithProof(chunk_with_proof) => chunk_with_proof,
+    };
 
-    loop {
-        let peers = ctx.effect_builder.get_fully_connected_peers().await;
-        let peer_count = peers.len();
-        if !peers.is_empty() {
-            trace!(?id, "attempting to fetch a trie",);
-            match ctx.effect_builder.fetch_trie(id, peers).await {
-                Ok(fetched_data) => {
-                    trace!(?id, "got trie successfully",);
-                    return fetched_data;
+    debug_assert!(
+        chunk_with_proof.proof().index() == 0,
+        "Proof index was not 0.  Proof index: {}",
+        chunk_with_proof.proof().index()
+    );
+    let count = chunk_with_proof.proof().count();
+    let first_chunk = chunk_with_proof.into_chunk();
+    // Start stream iter to get each chunk.
+    // Start from 1 because proof.index() == 0.
+    // Build a map of the chunks.
+    let chunk_map_result = futures::stream::iter(1..count)
+        .map(|index| async move {
+            match fetch_retry_forever::<TrieOrChunk>(
+                *ctx.effect_builder,
+                ctx.config,
+                TrieOrChunkId(index, id),
+            )
+            .await?
+            {
+                FetchedData::FromStorage { .. } => {
+                    Err(FetchTrieError::TrieBeingFetchByChunksSomehowFetchedFromStorage)
                 }
-                Err(error) => {
-                    warn!(?id, %error, "fast sync could not fetch a trie; trying again")
-                }
+                FetchedData::FromPeer { item, .. } => match *item {
+                    TrieOrChunk::Trie(_) => Err(
+                        FetchTrieError::TrieBeingFetchedByChunksSomehowFetchWholeFromPeer {
+                            digest: id,
+                        },
+                    ),
+                    TrieOrChunk::ChunkWithProof(chunk_with_proof) => {
+                        let index = chunk_with_proof.proof().index();
+                        let chunk = chunk_with_proof.into_chunk();
+                        Ok((index, chunk))
+                    }
+                },
             }
-        }
+        })
+        // Do not try to fetch all of the trie chunks at once; only fetch at most
+        // TRIE_CHUNK_FETCH_FAN_OUT at a time.
+        // Doing `buffer_unordered` followed by `try_collect` here means if one of the
+        // fetches fails, then the outstanding futures are canceled.
+        .buffer_unordered(TRIE_CHUNK_FETCH_FAN_OUT)
+        .try_collect::<BTreeMap<u64, Bytes>>()
+        .await;
 
-        // Emit a warning in the logs only occasionally, avoiding spam when when poorly connected.
-        let now = Instant::now();
-        if now.duration_since(last_warning) > FOREVER_WARN_TIMEOUT {
-            last_warning = now;
-            let since = now.duration_since(started);
-            warn!(
-                ?id,
-                ?since,
-                %peer_count,
-                "still trying to fetch trie, either failed or no suitable peers"
-            );
+    // Handle if a parallel process downloaded all the trie chunks before us.
+    let mut chunk_map = match chunk_map_result {
+        Ok(chunk_map) => chunk_map,
+        Err(FetchTrieError::TrieBeingFetchByChunksSomehowFetchedFromStorage) => {
+            // trie must have been downloaded by a parallel process...
+            return Ok(TrieAlreadyPresentOrDownloaded::AlreadyPresent);
         }
+        Err(error) => {
+            return Err(error);
+        }
+    };
+    chunk_map.insert(0, first_chunk);
 
-        tokio::time::sleep(ctx.config.retry_interval()).await
-    }
+    // Concatenate all of the chunks into a trie
+    let trie_bytes = chunk_map.into_values().flat_map(Vec::<u8>::from).collect();
+    Ok(TrieAlreadyPresentOrDownloaded::Downloaded(trie_bytes))
 }
 
 /// Fetches and stores a block header from the network.
@@ -468,15 +520,15 @@ async fn fetch_and_store_trie(
     trie_key: Digest,
     ctx: &ChainSyncContext<'_>,
 ) -> Result<Vec<Digest>, Error> {
-    let fetched_trie = fetch_trie_retry_forever(trie_key, ctx).await;
+    let fetched_trie = fetch_trie_retry_forever(trie_key, ctx).await?;
     match fetched_trie {
-        FetchedData::FromStorage { .. } => Ok(ctx
+        TrieAlreadyPresentOrDownloaded::AlreadyPresent => Ok(ctx
             .effect_builder
             .find_missing_descendant_trie_keys(trie_key)
             .await?),
-        FetchedData::FromPeer { item: trie, .. } => Ok(ctx
+        TrieAlreadyPresentOrDownloaded::Downloaded(trie_bytes) => Ok(ctx
             .effect_builder
-            .put_trie_and_find_missing_descendant_trie_keys(trie)
+            .put_trie_and_find_missing_descendant_trie_keys(trie_bytes)
             .await?),
     }
 }

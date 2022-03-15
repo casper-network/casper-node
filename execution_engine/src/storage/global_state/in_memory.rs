@@ -1,10 +1,7 @@
 use std::{ops::Deref, sync::Arc};
 
 use casper_hashing::{ChunkWithProof, Digest};
-use casper_types::{
-    bytesrepr::{self},
-    Key, StoredValue,
-};
+use casper_types::{bytesrepr::Bytes, Key, StoredValue};
 
 use crate::{
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
@@ -259,8 +256,7 @@ impl StateProvider for InMemoryGlobalState {
             || Ok(None),
             |bytes| {
                 if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
-                    let deserialized_trie = bytesrepr::deserialize(bytes.into())?;
-                    Ok(Some(TrieOrChunk::Trie(Box::new(deserialized_trie))))
+                    Ok(Some(TrieOrChunk::Trie(bytes.to_owned().into())))
                 } else {
                     let chunk_with_proof = ChunkWithProof::new(bytes, trie_index)?;
                     Ok(Some(TrieOrChunk::ChunkWithProof(chunk_with_proof)))
@@ -275,18 +271,16 @@ impl StateProvider for InMemoryGlobalState {
         &self,
         _correlation_id: CorrelationId,
         trie_key: &Digest,
-    ) -> Result<Option<Trie<Key, StoredValue>>, Self::Error> {
+    ) -> Result<Option<Bytes>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
-        let ret: Option<Trie<Key, StoredValue>> = self.trie_store.get(&txn, trie_key)?;
+        let ret: Option<Bytes> =
+            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?
+                .map(|slice| slice.to_owned().into());
         txn.commit()?;
         Ok(ret)
     }
 
-    fn put_trie(
-        &self,
-        correlation_id: CorrelationId,
-        trie: &Trie<Key, StoredValue>,
-    ) -> Result<Digest, Self::Error> {
+    fn put_trie(&self, correlation_id: CorrelationId, trie: &[u8]) -> Result<Digest, Self::Error> {
         let mut txn = self.environment.create_read_write_txn()?;
         let trie_hash = put_trie::<
             Key,
@@ -299,28 +293,21 @@ impl StateProvider for InMemoryGlobalState {
         Ok(trie_hash)
     }
 
-    /// Finds all of the keys of missing descendant `Trie<Key,StoredValue>` values and optionally
-    /// performs an integrity check on each node
+    /// Finds all of the keys of missing descendant `Trie<Key,StoredValue>` values.
     fn missing_trie_keys(
         &self,
         correlation_id: CorrelationId,
         trie_keys: Vec<Digest>,
-        check_integrity: bool,
     ) -> Result<Vec<Digest>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
-        let missing_descendants = missing_trie_keys::<
-            Key,
-            StoredValue,
-            InMemoryReadTransaction,
-            InMemoryTrieStore,
-            Self::Error,
-        >(
-            correlation_id,
-            &txn,
-            self.trie_store.deref(),
-            trie_keys,
-            check_integrity,
-        )?;
+        let missing_descendants =
+            missing_trie_keys::<
+                Key,
+                StoredValue,
+                InMemoryReadTransaction,
+                InMemoryTrieStore,
+                Self::Error,
+            >(correlation_id, &txn, self.trie_store.deref(), trie_keys)?;
         txn.commit()?;
         Ok(missing_descendants)
     }

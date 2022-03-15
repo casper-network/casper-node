@@ -5,7 +5,8 @@
 
 use std::{
     collections::BTreeMap,
-    fmt::{self, Display, Formatter},
+    fmt::{self, Debug, Display, Formatter},
+    fs::File,
 };
 
 use itertools::Itertools;
@@ -14,7 +15,9 @@ use serde::Serialize;
 use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey, U512};
 
 use crate::{
-    components::{chainspec_loader::NextUpgrade, deploy_acceptor::Error},
+    components::{
+        chainspec_loader::NextUpgrade, deploy_acceptor::Error, diagnostics_port::FileSerializer,
+    },
     effect::Responder,
     types::{
         Block, Deploy, DeployHash, DeployHeader, FinalitySignature, FinalizedBlock, Item, NodeId,
@@ -31,7 +34,7 @@ use crate::{
 /// Control announcements also use a priority queue to ensure that a component that reports a fatal
 /// error is given as few follow-up events as possible. However, there currently is no guarantee
 /// that this happens.
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
 #[must_use]
 pub(crate) enum ControlAnnouncement {
     /// The component has encountered a fatal error and cannot continue.
@@ -45,6 +48,49 @@ pub(crate) enum ControlAnnouncement {
         /// Error message.
         msg: String,
     },
+    // An external event queue dump has been requested.
+    QueueDumpRequest {
+        /// The format to dump the queue in.
+        #[serde(skip)]
+        dump_format: QueueDumpFormat,
+        /// Responder called when the dump has been finished.
+        finished: Responder<()>,
+    },
+}
+
+/// Queue dump format with handler.
+#[derive(Serialize)]
+pub(crate) enum QueueDumpFormat {
+    /// Dump using given serde serializer.
+    Serde(#[serde(skip)] FileSerializer),
+    /// Dump writing debug output to file.
+    Debug(#[serde(skip)] File),
+}
+
+impl QueueDumpFormat {
+    /// Creates a new queue dump serde format.
+    pub(crate) fn serde(serializer: FileSerializer) -> Self {
+        QueueDumpFormat::Serde(serializer)
+    }
+
+    /// Creates a new queue dump debug format.
+    pub(crate) fn debug(file: File) -> Self {
+        QueueDumpFormat::Debug(file)
+    }
+}
+
+impl Debug for ControlAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::FatalError { file, line, msg } => f
+                .debug_struct("FatalError")
+                .field("file", file)
+                .field("line", line)
+                .field("msg", msg)
+                .finish(),
+            Self::QueueDumpRequest { .. } => f.debug_struct("QueueDump").finish_non_exhaustive(),
+        }
+    }
 }
 
 impl Display for ControlAnnouncement {
@@ -52,6 +98,9 @@ impl Display for ControlAnnouncement {
         match self {
             ControlAnnouncement::FatalError { file, line, msg } => {
                 write!(f, "fatal error [{}:{}]: {}", file, line, msg)
+            }
+            ControlAnnouncement::QueueDumpRequest { .. } => {
+                write!(f, "dump event queue")
             }
         }
     }

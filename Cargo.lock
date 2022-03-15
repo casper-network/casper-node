@@ -498,6 +498,7 @@ dependencies = [
  "ed25519-dalek",
  "either",
  "enum-iterator",
+ "erased-serde",
  "fake_instant",
  "fs2",
  "futures",

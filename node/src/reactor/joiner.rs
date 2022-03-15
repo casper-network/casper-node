@@ -27,14 +27,12 @@ use crate::{
     components::{
         chain_synchronizer::{self, ChainSynchronizer, JoiningOutcome},
         chainspec_loader::{self, ChainspecLoader},
-        console::{self, Console},
         contract_runtime::ContractRuntime,
         deploy_acceptor::{self, DeployAcceptor},
+        diagnostics_port::{self, DiagnosticsPort},
         event_stream_server,
         event_stream_server::{DeployGetter, EventStreamServer},
-        fetcher::{
-            self, FetchedOrNotFound, Fetcher, FetcherBuilder, TrieFetcher, TrieFetcherEvent,
-        },
+        fetcher::{self, FetchedOrNotFound, Fetcher, FetcherBuilder},
         gossiper::{self, Gossiper},
         metrics::Metrics,
         rest_server::{self, RestServer},
@@ -49,7 +47,7 @@ use crate::{
             ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
             LinearChainAnnouncement,
         },
-        console::DumpConsensusStateRequest,
+        diagnostics_port::DumpConsensusStateRequest,
         incoming::{
             ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
             NetRequestIncoming, NetResponse, NetResponseIncoming, TrieRequestIncoming,
@@ -58,7 +56,7 @@ use crate::{
         requests::{
             BeginGossipRequest, ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest,
             FetcherRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest, RestRequest,
-            StorageRequest, TrieFetcherRequest,
+            StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -143,10 +141,6 @@ pub(crate) enum JoinerEvent {
     #[from]
     TrieOrChunkFetcher(#[serde(skip_serializing)] fetcher::Event<TrieOrChunk>),
 
-    /// Trie fetcher event.
-    #[from]
-    TrieFetcher(#[serde(skip_serializing)] TrieFetcherEvent),
-
     /// Deploy acceptor event.
     #[from]
     DeployAcceptor(#[serde(skip_serializing)] deploy_acceptor::Event),
@@ -164,9 +158,9 @@ pub(crate) enum JoinerEvent {
     #[from]
     StorageRequest(StorageRequest),
 
-    /// Console event.
+    /// Diagnostics port event.
     #[from]
-    Console(console::Event),
+    DiagnosticsPort(diagnostics_port::Event),
 
     /// Contract runtime event.
     #[from]
@@ -184,10 +178,6 @@ pub(crate) enum JoinerEvent {
     /// Trie or chunk fetcher request.
     #[from]
     TrieOrChunkFetcherRequest(#[serde(skip_serializing)] FetcherRequest<TrieOrChunk>),
-
-    /// Trie or chunk fetcher request.
-    #[from]
-    TrieFetcherRequest(#[serde(skip_serializing)] TrieFetcherRequest),
 
     /// Block header with metadata by height fetcher request.
     #[from]
@@ -291,6 +281,15 @@ impl ReactorEvent for JoinerEvent {
             None
         }
     }
+
+    fn try_into_control(self) -> Option<ControlAnnouncement> {
+        if let Self::ControlAnnouncement(ctrl_ann) = self {
+            Some(ctrl_ann)
+        } else {
+            None
+        }
+    }
+
     fn description(&self) -> &'static str {
         match self {
             JoinerEvent::ChainSynchronizer(_) => "ChainSynchronizer",
@@ -306,16 +305,14 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::BlockByHeightFetcher(_) => "BlockByHeightFetcher",
             JoinerEvent::DeployFetcher(_) => "DeployFetcher",
             JoinerEvent::TrieOrChunkFetcher(_) => "TrieOrChunkFetcher",
-            JoinerEvent::TrieFetcher(_) => "TrieFetcher",
             JoinerEvent::DeployAcceptor(_) => "DeployAcceptor",
             JoinerEvent::ContractRuntime(_) => "ContractRuntime",
             JoinerEvent::AddressGossiper(_) => "AddressGossiper",
-            JoinerEvent::Console(_) => "Console",
+            JoinerEvent::DiagnosticsPort(_) => "DiagnosticsPort",
             JoinerEvent::BlockFetcherRequest(_) => "BlockFetcherRequest",
             JoinerEvent::BlockByHeightFetcherRequest(_) => "BlockByHeightFetcherRequest",
             JoinerEvent::DeployFetcherRequest(_) => "DeployFetcherRequest",
             JoinerEvent::TrieOrChunkFetcherRequest(_) => "TrieOrChunkFetcherRequest",
-            JoinerEvent::TrieFetcherRequest(_) => "TrieFetcherRequest",
             JoinerEvent::DumpConsensusStateRequest(_) => "DumpConsensusStateRequest",
             JoinerEvent::ControlAnnouncement(_) => "ControlAnnouncement",
             JoinerEvent::ContractRuntimeAnnouncement(_) => "ContractRuntimeAnnouncement",
@@ -408,9 +405,6 @@ impl Display for JoinerEvent {
             JoinerEvent::TrieOrChunkFetcherRequest(request) => {
                 write!(f, "trie or chunk fetcher request: {}", request)
             }
-            JoinerEvent::TrieFetcherRequest(request) => {
-                write!(f, "trie fetcher request: {}", request)
-            }
             JoinerEvent::BlockFetcher(event) => write!(f, "block fetcher: {}", event),
             JoinerEvent::BlockByHeightFetcherRequest(request) => {
                 write!(f, "block by height fetcher request: {}", request)
@@ -418,14 +412,13 @@ impl Display for JoinerEvent {
             JoinerEvent::TrieOrChunkFetcher(event) => {
                 write!(f, "trie or chunk fetcher: {}", event)
             }
-            JoinerEvent::TrieFetcher(event) => write!(f, "trie fetcher: {}", event),
             JoinerEvent::DeployFetcher(event) => write!(f, "deploy fetcher event: {}", event),
             JoinerEvent::ContractRuntime(event) => write!(f, "contract runtime event: {:?}", event),
             JoinerEvent::ContractRuntimeAnnouncement(announcement) => {
                 write!(f, "block executor announcement: {}", announcement)
             }
             JoinerEvent::AddressGossiper(event) => write!(f, "address gossiper: {}", event),
-            JoinerEvent::Console(event) => write!(f, "console: {}", event),
+            JoinerEvent::DiagnosticsPort(event) => write!(f, "diagnostics port: {}", event),
             JoinerEvent::AddressGossiperAnnouncement(ann) => {
                 write!(f, "address gossiper announcement: {}", ann)
             }
@@ -499,9 +492,7 @@ pub(crate) struct Reactor {
     block_by_height_fetcher: Fetcher<BlockWithMetadata>,
     block_header_and_finality_signatures_by_height_fetcher: Fetcher<BlockHeaderWithMetadata>,
     trie_or_chunk_fetcher: Fetcher<TrieOrChunk>,
-    // Handles requests for fetching tries from the network.
-    trie_fetcher: TrieFetcher,
-    console: Console,
+    diagnostics_port: DiagnosticsPort,
     block_header_by_hash_fetcher: Fetcher<BlockHeader>,
     #[data_size(skip)]
     deploy_acceptor: DeployAcceptor,
@@ -555,8 +546,10 @@ impl reactor::Reactor for Reactor {
         let metrics = Metrics::new(registry.clone());
 
         let chainspec = chainspec_loader.chainspec().as_ref();
-        let (console, console_effects) =
-            Console::new(&WithDir::new(&root, config.console.clone()), event_queue)?;
+        let (diagnostics_port, diagnostics_port_effects) = DiagnosticsPort::new(
+            &WithDir::new(&root, config.diagnostics_port.clone()),
+            event_queue,
+        )?;
 
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
@@ -568,7 +561,10 @@ impl reactor::Reactor for Reactor {
         )?;
 
         let mut effects = reactor::wrap_effects(JoinerEvent::SmallNetwork, small_network_effects);
-        effects.extend(reactor::wrap_effects(JoinerEvent::Console, console_effects));
+        effects.extend(reactor::wrap_effects(
+            JoinerEvent::DiagnosticsPort,
+            diagnostics_port_effects,
+        ));
 
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
@@ -625,7 +621,6 @@ impl reactor::Reactor for Reactor {
         let block_header_by_hash_fetcher = fetcher_builder.build("block_header")?;
 
         let trie_or_chunk_fetcher = fetcher_builder.build("trie_or_chunk")?;
-        let trie_fetcher = TrieFetcher::new(verifiable_chunked_hash_activation);
 
         let deploy_acceptor = DeployAcceptor::new(
             config.deploy_acceptor,
@@ -662,14 +657,13 @@ impl reactor::Reactor for Reactor {
                 block_header_by_hash_fetcher,
                 block_header_and_finality_signatures_by_height_fetcher,
                 trie_or_chunk_fetcher,
-                trie_fetcher,
                 deploy_acceptor,
                 event_queue_metrics,
                 rest_server,
                 event_stream_server,
                 memory_metrics,
                 node_startup_instant,
-                console,
+                diagnostics_port,
                 deploy_gossiper,
             },
             effects,
@@ -803,10 +797,6 @@ impl reactor::Reactor for Reactor {
                 self.trie_or_chunk_fetcher
                     .handle_event(effect_builder, rng, event),
             ),
-            JoinerEvent::TrieFetcher(event) => reactor::wrap_effects(
-                JoinerEvent::TrieFetcher,
-                self.trie_fetcher.handle_event(effect_builder, rng, event),
-            ),
             JoinerEvent::ContractRuntime(event) => reactor::wrap_effects(
                 JoinerEvent::ContractRuntime,
                 self.contract_runtime
@@ -823,9 +813,10 @@ impl reactor::Reactor for Reactor {
                 self.address_gossiper
                     .handle_event(effect_builder, rng, event),
             ),
-            JoinerEvent::Console(event) => reactor::wrap_effects(
-                JoinerEvent::Console,
-                self.console.handle_event(effect_builder, rng, event),
+            JoinerEvent::DiagnosticsPort(event) => reactor::wrap_effects(
+                JoinerEvent::DiagnosticsPort,
+                self.diagnostics_port
+                    .handle_event(effect_builder, rng, event),
             ),
             JoinerEvent::AddressGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
                 gossiped_address,
@@ -925,11 +916,6 @@ impl reactor::Reactor for Reactor {
                 effect_builder,
                 rng,
                 JoinerEvent::TrieOrChunkFetcher(request.into()),
-            ),
-            JoinerEvent::TrieFetcherRequest(request) => self.dispatch_event(
-                effect_builder,
-                rng,
-                JoinerEvent::TrieFetcher(request.into()),
             ),
             JoinerEvent::ConsensusMessageIncoming(incoming) => {
                 debug!(%incoming, "ignoring incoming consensus message");

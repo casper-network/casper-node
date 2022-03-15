@@ -25,12 +25,12 @@ use casper_execution_engine::{
         query::{QueryRequest, QueryResult},
         UpgradeConfig, UpgradeSuccess,
     },
-    storage::trie::{Trie, TrieOrChunk, TrieOrChunkId},
+    storage::trie::{TrieOrChunk, TrieOrChunkId},
 };
 use casper_hashing::Digest;
 use casper_types::{
-    system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
-    StoredValue, Transfer, URef,
+    bytesrepr::Bytes, system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion,
+    PublicKey, Transfer, URef,
 };
 
 use crate::{
@@ -42,7 +42,7 @@ use crate::{
             BlockAndExecutionEffects, BlockExecutionError, EraValidatorsRequest, ExecutionPreState,
         },
         deploy_acceptor::Error,
-        fetcher::{FetchResult, TrieFetcherResult},
+        fetcher::FetchResult,
     },
     effect::Responder,
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
@@ -53,6 +53,10 @@ use crate::{
     },
     utils::{DisplayIter, Source},
 };
+
+// Redirection for reactor macro.
+#[allow(unused_imports)]
+pub(crate) use super::diagnostics_port::DumpConsensusStateRequest;
 
 const _STORAGE_REQUEST_SIZE: usize = mem::size_of::<StorageRequest>();
 const_assert!(_STORAGE_REQUEST_SIZE < 89);
@@ -836,12 +840,12 @@ pub(crate) enum ContractRuntimeRequest {
         /// The ID of the trie to be read.
         trie_key: Digest,
         /// Responder to call with the result.
-        responder: Responder<Result<Option<Trie<Key, StoredValue>>, engine_state::Error>>,
+        responder: Responder<Result<Option<Bytes>, engine_state::Error>>,
     },
     /// Insert a trie into global storage
     PutTrie {
         /// The hash of the value to get from the `TrieStore`
-        trie: Box<Trie<Key, StoredValue>>,
+        trie_bytes: Bytes,
         /// Responder to call with the result. Contains the missing descendants of the inserted
         /// trie.
         responder: Responder<Result<Vec<Digest>, engine_state::Error>>,
@@ -927,8 +931,8 @@ impl Display for ContractRuntimeRequest {
             ContractRuntimeRequest::GetTrieFull { trie_key, .. } => {
                 write!(formatter, "get trie_key: {}", trie_key)
             }
-            ContractRuntimeRequest::PutTrie { trie, .. } => {
-                write!(formatter, "trie: {:?}", trie)
+            ContractRuntimeRequest::PutTrie { trie_bytes, .. } => {
+                write!(formatter, "trie: {:?}", trie_bytes)
             }
             ContractRuntimeRequest::ExecuteBlock {
                 finalized_block, ..
@@ -960,24 +964,6 @@ where
 impl<T: Item> Display for FetcherRequest<T> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(formatter, "request item by id {}", self.id)
-    }
-}
-
-/// TrieFetcher related requests.
-#[derive(DataSize, Debug, Serialize)]
-#[must_use]
-pub(crate) struct TrieFetcherRequest {
-    /// The peers to try to fetch from.
-    pub(crate) peers: Vec<NodeId>,
-    /// The hash of the trie node.
-    pub(crate) hash: Digest,
-    /// Responder to call with the result.
-    pub(crate) responder: Responder<TrieFetcherResult>,
-}
-
-impl Display for TrieFetcherRequest {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        write!(formatter, "request trie by hash {}", self.hash)
     }
 }
 
