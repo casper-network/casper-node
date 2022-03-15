@@ -35,16 +35,16 @@
 //! The storage component itself is panic free and in general reports three classes of errors:
 //! Corruption, temporary resource exhaustion and potential bugs.
 
+mod disjoint_sequences;
 mod lmdb_ext;
 mod object_pool;
-
 #[cfg(test)]
 mod tests;
 
 #[cfg(test)]
 use std::collections::BTreeSet;
 use std::{
-    collections::{btree_map::Entry, BTreeMap, HashSet},
+    collections::{btree_map, BTreeMap, HashMap, HashSet},
     convert::TryFrom,
     fmt::{self, Display, Formatter},
     fs, io, mem,
@@ -97,6 +97,7 @@ use crate::{
     utils::{display_error, WithDir},
     NodeRng,
 };
+use disjoint_sequences::DisjointSequences;
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
 use object_pool::ObjectPool;
 
@@ -140,6 +141,8 @@ const STORAGE_FILES: [&str; 5] = [
     "storage.lmdb-lock",
     "sse_index",
 ];
+
+type MissingBodiesIndex = HashMap<Digest, Vec<u64>>;
 
 /// A fatal storage component error.
 ///
@@ -358,6 +361,12 @@ pub struct Storage {
     state_store_db: Database,
     /// A map of block height to block ID.
     block_height_index: BTreeMap<u64, BlockHash>,
+    /// A set of disjoint sequences of block heights of blocks which are fully stored (not just the
+    /// headers).
+    disjoint_block_height_sequences: DisjointSequences,
+    /// For a given block body hash, stores a vector of block heights representing blocks for which
+    /// we don't have the block body stored.
+    missing_block_bodies: MissingBodiesIndex,
     /// A map of era ID to switch block ID.
     switch_block_era_id_index: BTreeMap<EraId, BlockHash>,
     /// A map of deploy hashes to hashes of blocks containing them.
@@ -527,6 +536,8 @@ impl Storage {
 
         let mut deleted_block_hashes = HashSet::new();
         let mut deleted_block_body_hashes_v1 = HashSet::new();
+        let mut full_block_heights = Vec::with_capacity(1_000_000);
+        let mut missing_block_bodies = MissingBodiesIndex::new();
         // Note: `iter_start` has an undocumented panic if called on an empty database. We rely on
         //       the iterator being at the start when created.
         for (_, raw_val) in cursor.iter() {
@@ -579,11 +590,20 @@ impl Storage {
                     block_header.hash(verifiable_chunked_hash_activation),
                     &block_body,
                 )?;
+
+                full_block_heights.push(block_header.height());
+            } else {
+                missing_block_bodies
+                    .entry(*block_header.body_hash())
+                    .or_default()
+                    .push(block_header.height());
             }
         }
         info!("block store reindexing complete");
         drop(cursor);
         block_txn.commit()?;
+
+        let disjoint_block_height_sequences = DisjointSequences::from(full_block_heights);
 
         let deleted_block_hashes_raw = deleted_block_hashes.iter().map(BlockHash::as_ref).collect();
 
@@ -614,6 +634,7 @@ impl Storage {
             transfer_db,
             state_store_db,
             block_height_index,
+            disjoint_block_height_sequences,
             switch_block_era_id_index,
             deploy_hash_index,
             enable_mem_deduplication: config.enable_mem_deduplication,
@@ -621,6 +642,7 @@ impl Storage {
             finality_threshold_fraction,
             last_emergency_restart,
             verifiable_chunked_hash_activation,
+            missing_block_bodies,
         })
     }
 
@@ -1091,10 +1113,57 @@ impl Storage {
                     &block_header,
                     self.verifiable_chunked_hash_activation,
                 )?;
+
+                if self.has_corresponding_body(&mut txn, &block_header)? {
+                    self.disjoint_block_height_sequences
+                        .insert(block_header.height());
+                } else {
+                    self.missing_block_bodies
+                        .entry(*block_header.body_hash())
+                        .or_default()
+                        .push(block_header.height());
+                }
+
                 txn.commit()?;
                 responder.respond(true).ignore()
             }
+            StorageRequest::GetLowestContiguousBlockHeight { responder } => {
+                let result = self
+                    .disjoint_block_height_sequences
+                    .highest_sequence_low_value()
+                    .unwrap_or_else(|| {
+                        error!("storage disjoint sequences of block heights should not be empty");
+                        u64::MAX
+                    });
+                responder.respond(result).ignore()
+            }
         })
+    }
+
+    /// Returns `true` if there is a block body for the given block header available in storage.
+    fn has_corresponding_body<Tx: Transaction>(
+        &self,
+        txn: &mut Tx,
+        block_header: &BlockHeader,
+    ) -> Result<bool, FatalStorageError> {
+        // TODO[RC]: Possible optimization: Can we check if a body exists w/o retrieving it?
+        let maybe_block_body = self.get_body_for_block_header(txn, block_header)?;
+        Ok(maybe_block_body.is_some())
+    }
+
+    /// Updates the disjoint height sequences after the full block has been
+    /// put to storage. It adds the height of the written block and also
+    /// adds heights of blocks that share the same body.
+    fn update_disjoint_height_sequences(&mut self, block_header: &BlockHeader) {
+        self.disjoint_block_height_sequences
+            .insert(block_header.height());
+
+        if let Some(block_bodies_to_add) =
+            self.missing_block_bodies.remove(block_header.body_hash())
+        {
+            self.disjoint_block_height_sequences
+                .extend(block_bodies_to_add);
+        }
     }
 
     /// Put a single deploy into storage.
@@ -1164,7 +1233,11 @@ impl Storage {
             block.header().hash(self.verifiable_chunked_hash_activation),
             block.body(),
         )?;
+
         txn.commit()?;
+
+        self.update_disjoint_height_sequences(block.header());
+
         Ok(true)
     }
 
@@ -1755,10 +1828,10 @@ fn insert_to_block_header_indices(
 
     if block_header.is_switch_block() {
         match switch_block_era_id_index.entry(block_header.era_id()) {
-            Entry::Vacant(entry) => {
+            btree_map::Entry::Vacant(entry) => {
                 let _ = entry.insert(block_hash);
             }
-            Entry::Occupied(entry) => {
+            btree_map::Entry::Occupied(entry) => {
                 if *entry.get() != block_hash {
                     return Err(FatalStorageError::DuplicateEraIdIndex {
                         era_id: block_header.era_id(),

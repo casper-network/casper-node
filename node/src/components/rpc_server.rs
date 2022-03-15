@@ -294,6 +294,14 @@ where
                 }
                 .ignore()
             }
+            Event::RpcRequest(RpcRequest::GetLowestContiguousBlockHeight { responder }) => {
+                effect_builder
+                    .get_lowest_contiguous_block_height_from_storage()
+                    .event(move |height| Event::GetLowestContiguousBlockHeightResult {
+                        height,
+                        main_responder: responder,
+                    })
+            }
             Event::GetBlockResult {
                 maybe_id: _,
                 result,
@@ -329,6 +337,10 @@ where
                 peers,
                 main_responder,
             } => main_responder.respond(peers).ignore(),
+            Event::GetLowestContiguousBlockHeightResult {
+                height,
+                main_responder,
+            } => main_responder.respond(height).ignore(),
         }
     }
 }

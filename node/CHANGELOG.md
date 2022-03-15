@@ -36,6 +36,7 @@ All notable changes to this project will be documented in this file.  The format
 * Connection handshake timeouts can now be configured via the `handshake_timeout` variable (they were hardcoded at 20 seconds before).
 * `Key::SystemContractRegistry` is now readable and can be queried via the RPC.
 * Requests for data from a peer are now de-prioritized over networking messages necessary for consensus and chain advancement.
+* JSON-RPC responses which fail to provide requested data will now also include an indication of that node's lowest contiguous block height, i.e. the block from which it holds all subsequent global state
 
 ### Deprecated
 * Deprecate the `starting_state_root_hash` field from the REST and JSON-RPC status endpoints.

@@ -13,7 +13,6 @@ use hyper::Body;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use tracing::info;
 use warp_json_rpc::Builder;
 
 use casper_hashing::Digest;
@@ -115,7 +114,7 @@ pub enum ParseBlockIdentifierError {
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GetBlockParams {
-    /// The block hash.
+    /// The block identifier.
     pub block_identifier: BlockIdentifier,
 }
 
@@ -162,17 +161,10 @@ impl RpcWithOptionalParamsExt for GetBlock {
             // Get the block.
             let maybe_block_id = maybe_params.map(|params| params.block_identifier);
             let json_block = match get_block_with_metadata(maybe_block_id, effect_builder).await {
-                Ok(Some(BlockWithMetadata {
+                Ok(BlockWithMetadata {
                     block,
                     finality_signatures,
-                })) => JsonBlock::new(block, Some(finality_signatures)),
-                Ok(None) => {
-                    let error = warp_json_rpc::Error::custom(
-                        ErrorCode::NoSuchBlock as i64,
-                        "block not known",
-                    );
-                    return Ok(response_builder.error(error)?);
-                }
+                }) => JsonBlock::new(block, Some(finality_signatures)),
                 Err(error) => return Ok(response_builder.error(error)?),
             };
 
@@ -254,15 +246,8 @@ impl RpcWithOptionalParamsExt for GetBlockTransfers {
         async move {
             // Get the block.
             let maybe_block_id = maybe_params.map(|params| params.block_identifier);
-            let block_hash = match get_block(maybe_block_id, effect_builder).await {
-                Ok(Some(block)) => *block.hash(),
-                Ok(None) => {
-                    return Ok(response_builder.success(Self::ResponseResult::new(
-                        api_version,
-                        None,
-                        None,
-                    ))?)
-                }
+            let block_hash = match common::get_block(maybe_block_id, effect_builder).await {
+                Ok(block) => *block.hash(),
                 Err(error) => return Ok(response_builder.error(error)?),
             };
 
@@ -334,15 +319,15 @@ impl RpcWithOptionalParamsExt for GetStateRootHash {
         async move {
             // Get the block.
             let maybe_block_id = maybe_params.map(|params| params.block_identifier);
-            let maybe_block = match get_block(maybe_block_id, effect_builder).await {
-                Ok(maybe_block) => maybe_block,
+            let block = match common::get_block(maybe_block_id, effect_builder).await {
+                Ok(block) => block,
                 Err(error) => return Ok(response_builder.error(error)?),
             };
 
             // Return the result.
             let result = Self::ResponseResult {
                 api_version,
-                state_root_hash: maybe_block.map(|block| *block.state_root_hash()),
+                state_root_hash: Some(*block.state_root_hash()),
             };
             Ok(response_builder.success(result)?)
         }
@@ -400,19 +385,9 @@ impl RpcWithOptionalParamsExt for GetEraInfoBySwitchBlock {
         async move {
             // TODO: decide if/how to handle era id
             let maybe_block_id = maybe_params.map(|params| params.block_identifier);
-            let maybe_block = match get_block(maybe_block_id, effect_builder).await {
-                Ok(maybe_block) => maybe_block,
+            let block = match common::get_block(maybe_block_id, effect_builder).await {
+                Ok(block) => block,
                 Err(error) => return Ok(response_builder.error(error)?),
-            };
-
-            let block = match maybe_block {
-                Some(block) => block,
-                None => {
-                    return Ok(response_builder.success(Self::ResponseResult {
-                        api_version,
-                        era_summary: None,
-                    })?)
-                }
             };
 
             if !block.header().is_switch_block() {
@@ -422,70 +397,40 @@ impl RpcWithOptionalParamsExt for GetEraInfoBySwitchBlock {
                 })?);
             }
 
-            let era_id = block.header().era_id();
             let state_root_hash = block.state_root_hash().to_owned();
+            let era_id = block.header().era_id();
             let base_key = Key::EraInfo(era_id);
             let path = Vec::new();
-            let query_result = effect_builder
-                .make_request(
-                    |responder| RpcRequest::QueryGlobalState {
-                        state_root_hash,
-                        base_key,
-                        path,
-                        responder,
-                    },
-                    QueueKind::Api,
-                )
-                .await;
 
-            let (stored_value, proof_bytes) = match common::extract_query_result(query_result) {
-                Ok(tuple) => tuple,
-                Err((error_code, error_msg)) => {
-                    info!("{}", error_msg);
-                    return Ok(response_builder
-                        .error(warp_json_rpc::Error::custom(error_code as i64, error_msg))?);
+            let query_result =
+                common::run_query_and_encode(effect_builder, state_root_hash, base_key, path).await;
+
+            match query_result {
+                Ok((stored_value, merkle_proof)) => {
+                    let result = Self::ResponseResult {
+                        api_version,
+                        era_summary: Some(EraSummary {
+                            block_hash: *block.hash(),
+                            era_id,
+                            stored_value,
+                            state_root_hash,
+                            merkle_proof,
+                        }),
+                    };
+                    Ok(response_builder.success(result)?)
                 }
-            };
-
-            let block_hash = block.hash().to_owned();
-
-            let result = Self::ResponseResult {
-                api_version,
-                era_summary: Some(EraSummary {
-                    block_hash,
-                    era_id,
-                    stored_value,
-                    state_root_hash,
-                    merkle_proof: base16::encode_lower(&proof_bytes),
-                }),
-            };
-
-            Ok(response_builder.success(result)?)
+                Err(error) => Ok(response_builder.error(error)?),
+            }
         }
         .boxed()
     }
 }
 
-async fn get_block<REv: ReactorEventT>(
+pub(super) async fn get_block_with_metadata<REv: ReactorEventT>(
     maybe_id: Option<BlockIdentifier>,
     effect_builder: EffectBuilder<REv>,
-) -> Result<Option<Block>, warp_json_rpc::Error> {
-    match get_block_with_metadata(maybe_id, effect_builder).await {
-        Ok(Some(BlockWithMetadata { block, .. })) => Ok(Some(block)),
-        Ok(None) => Err(warp_json_rpc::Error::custom(
-            ErrorCode::NoSuchBlock as i64,
-            "block not known",
-        )),
-        Err(error) => Err(error),
-    }
-}
-
-async fn get_block_with_metadata<REv: ReactorEventT>(
-    maybe_id: Option<BlockIdentifier>,
-    effect_builder: EffectBuilder<REv>,
-) -> Result<Option<BlockWithMetadata>, warp_json_rpc::Error> {
+) -> Result<BlockWithMetadata, warp_json_rpc::Error> {
     // Get the block from storage or the latest from the linear chain.
-    let getting_specific_block = maybe_id.is_some();
     let maybe_result = effect_builder
         .make_request(
             |responder| RpcRequest::GetBlock {
@@ -496,13 +441,28 @@ async fn get_block_with_metadata<REv: ReactorEventT>(
         )
         .await;
 
-    if maybe_result.is_none() && getting_specific_block {
-        info!("failed to get {:?} from storage", maybe_id.unwrap());
-        return Err(warp_json_rpc::Error::custom(
-            ErrorCode::NoSuchBlock as i64,
-            "block not known",
-        ));
+    if let Some(block_with_metadata) = maybe_result {
+        return Ok(block_with_metadata);
     }
 
-    Ok(maybe_result)
+    let error = match maybe_id {
+        Some(BlockIdentifier::Hash(block_hash)) => common::missing_block_or_state_root_error(
+            effect_builder,
+            ErrorCode::NoSuchBlock,
+            format!("block {:?} not stored on this node", block_hash.inner()),
+        ),
+        Some(BlockIdentifier::Height(block_height)) => common::missing_block_or_state_root_error(
+            effect_builder,
+            ErrorCode::NoSuchBlock,
+            format!("block at height {} not stored on this node", block_height),
+        ),
+        None => common::missing_block_or_state_root_error(
+            effect_builder,
+            ErrorCode::InternalError,
+            "failed to get highest block".to_string(),
+        ),
+    }
+    .await;
+
+    Err(error)
 }

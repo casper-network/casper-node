@@ -3789,7 +3789,7 @@
               "required": false,
               "schema": {
                 "$ref": "#/components/schemas/BlockIdentifier",
-                "description": "The block hash."
+                "description": "The block identifier."
               }
             }
           ],
