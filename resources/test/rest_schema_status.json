@@ -116,21 +116,17 @@
         "$ref": "#/definitions/PeerEntry"
       }
     },
-    "PeerEntry": {
-      "description": "Node peer entry.",
-      "type": "object",
-      "required": [
-        "address",
-        "node_id"
-      ],
-      "properties": {
-        "node_id": {
-          "description": "Node id.",
-          "type": "string"
-        },
-        "address": {
-          "description": "Node address.",
-          "type": "string"
+    "additionalProperties": false,
+    "definitions": {
+      "Digest": {
+        "description": "Hex-encoded hash digest.",
+        "type": "string"
+      },
+      "PeersMap": {
+        "description": "Map of peer IDs to network addresses.",
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/PeerEntry"
         }
       },
       "additionalProperties": false
@@ -153,19 +149,52 @@
         "timestamp": {
           "$ref": "#/definitions/Timestamp"
         },
-        "era_id": {
-          "$ref": "#/definitions/EraId"
-        },
-        "height": {
-          "type": "integer",
-          "format": "uint64",
-          "minimum": 0.0
-        },
-        "state_root_hash": {
-          "$ref": "#/definitions/Digest"
-        },
-        "creator": {
-          "$ref": "#/definitions/PublicKey"
+        "additionalProperties": false
+      },
+      "BlockHash": {
+        "description": "A cryptographic hash identifying a [`Block`](struct.Block.html).",
+        "allOf": [
+          {
+            "$ref": "#/definitions/Digest"
+          }
+        ]
+      },
+      "Timestamp": {
+        "description": "Timestamp formatted as per RFC 3339",
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0.0
+      },
+      "EraId": {
+        "description": "Era ID newtype.",
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0.0
+      },
+      "PublicKey": {
+        "description": "Hex-encoded cryptographic public key, including the algorithm tag prefix.",
+        "type": "string"
+      },
+      "TimeDiff": {
+        "description": "Human-readable duration.",
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0.0
+      },
+      "NextUpgrade": {
+        "description": "Information about the next protocol upgrade.",
+        "type": "object",
+        "required": [
+          "activation_point",
+          "protocol_version"
+        ],
+        "properties": {
+          "activation_point": {
+            "$ref": "#/definitions/ActivationPoint"
+          },
+          "protocol_version": {
+            "type": "string"
+          }
         }
       },
       "additionalProperties": false

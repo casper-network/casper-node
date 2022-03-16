@@ -684,7 +684,7 @@ impl reactor::Reactor for Reactor {
         contract_runtime.set_initial_state(ExecutionPreState::from_block_header(
             &latest_block_header,
             chainspec.protocol_config.verifiable_chunked_hash_activation,
-        ));
+        ))?;
 
         let block_validator = BlockValidator::new(Arc::clone(chainspec));
         let linear_chain = linear_chain::LinearChainComponent::new(
@@ -897,6 +897,7 @@ impl reactor::Reactor for Reactor {
 
                 let event = block_proposer::Event::BufferDeploy {
                     hash: deploy.deploy_or_transfer_hash(),
+                    approvals: deploy.approvals().clone(),
                     deploy_info: Box::new(deploy_info),
                 };
                 let mut effects = self.dispatch_event(

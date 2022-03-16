@@ -4,7 +4,7 @@
 use std::{
     array::TryFromSliceError,
     cmp,
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
     error::Error as StdError,
     fmt::{self, Debug, Display, Formatter},
     hash,
@@ -34,8 +34,7 @@ use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     runtime_args,
     system::standard_payment::ARG_AMOUNT,
-    AsymmetricType, EraId, ExecutionResult, Motes, PublicKey, RuntimeArgs, SecretKey, Signature,
-    U512,
+    ExecutionResult, Motes, PublicKey, RuntimeArgs, SecretKey, Signature, U512,
 };
 
 use super::{BlockHash, Item, Tag, TimeDiff, Timestamp};
@@ -79,23 +78,16 @@ static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
     let serialized_header = serialize_header(&header);
     let hash = DeployHash::new(Digest::hash(&serialized_header));
 
-    let signature = Signature::from_hex(
-        "012dbf03817a51794a8e19e0724884075e6d1fbec326b766ecfa6658b41f81290da85e23b24e88b1c8d976\
-            1185c961daee1adab0649912a6477bcd2e69bd91bd08"
-            .as_bytes(),
-    )
-    .unwrap();
-    let approval = Approval {
-        signer: PublicKey::from(secret_key),
-        signature,
-    };
+    let mut approvals = BTreeSet::new();
+    let approval = Approval::create(&hash, secret_key);
+    approvals.insert(approval);
 
     Deploy {
         hash,
         header,
         payment,
         session,
-        approvals: vec![approval],
+        approvals,
         is_valid: OnceCell::new(),
     }
 });
@@ -541,6 +533,13 @@ pub struct Approval {
 }
 
 impl Approval {
+    /// Creates an approval for the given deploy hash using the given secret key.
+    pub fn create(hash: &DeployHash, secret_key: &SecretKey) -> Self {
+        let signer = PublicKey::from(secret_key);
+        let signature = crypto::sign(hash, secret_key, &signer);
+        Self { signer, signature }
+    }
+
     /// Returns the public key of the approval's signer.
     pub fn signer(&self) -> &PublicKey {
         &self.signer
@@ -549,6 +548,16 @@ impl Approval {
     /// Returns the approval signature.
     pub fn signature(&self) -> &Signature {
         &self.signature
+    }
+}
+
+#[cfg(test)]
+impl Approval {
+    pub fn random(rng: &mut TestRng) -> Self {
+        Self {
+            signer: PublicKey::random(rng),
+            signature: Signature::ed25519([0; Signature::ED25519_LENGTH]).unwrap(),
+        }
     }
 }
 
@@ -580,6 +589,53 @@ impl FromBytes for Approval {
     }
 }
 
+/// The hash of a deploy (or transfer) together with signatures approving it for execution.
+#[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct DeployWithApprovals {
+    /// The hash of the deploy.
+    deploy_hash: DeployHash,
+    /// The approvals for the deploy.
+    approvals: BTreeSet<Approval>,
+}
+
+impl DeployWithApprovals {
+    /// Creates a new `DeployWithApprovals`.
+    pub fn new(deploy_hash: DeployHash, approvals: BTreeSet<Approval>) -> Self {
+        Self {
+            deploy_hash,
+            approvals,
+        }
+    }
+
+    /// Returns the deploy hash.
+    pub fn deploy_hash(&self) -> &DeployHash {
+        &self.deploy_hash
+    }
+
+    /// Returns the approvals.
+    pub fn approvals(&self) -> &BTreeSet<Approval> {
+        &self.approvals
+    }
+}
+
+/// A set of approvals that has been agreed upon by consensus to approve of a specific deploy.
+#[derive(DataSize, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct FinalizedApprovals(BTreeSet<Approval>);
+
+impl FinalizedApprovals {
+    /// Creates a new instance of `FinalizedApprovals`.
+    pub fn new(approvals: BTreeSet<Approval>) -> Self {
+        Self(approvals)
+    }
+}
+
+impl AsRef<BTreeSet<Approval>> for FinalizedApprovals {
+    /// Returns the approvals as a reference to the set.
+    fn as_ref(&self) -> &BTreeSet<Approval> {
+        &self.0
+    }
+}
+
 /// A deploy; an item containing a smart contract along with the requester's signature(s).
 #[derive(Clone, DataSize, Eq, Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -588,7 +644,7 @@ pub struct Deploy {
     header: DeployHeader,
     payment: ExecutableDeployItem,
     session: ExecutableDeployItem,
-    approvals: Vec<Approval>,
+    approvals: BTreeSet<Approval>,
     #[serde(skip)]
     #[data_size(with = ds::once_cell)]
     is_valid: OnceCell<Result<(), DeployConfigurationFailure>>,
@@ -695,7 +751,7 @@ impl Deploy {
             header,
             payment,
             session,
-            approvals: vec![],
+            approvals: BTreeSet::new(),
             is_valid: OnceCell::new(),
         };
 
@@ -705,10 +761,8 @@ impl Deploy {
 
     /// Adds a signature of this deploy's hash to its approvals.
     pub fn sign(&mut self, secret_key: &SecretKey) {
-        let signer = PublicKey::from(secret_key);
-        let signature = crypto::sign(&self.hash, secret_key, &signer);
-        let approval = Approval { signer, signature };
-        self.approvals.push(approval);
+        let approval = Approval::create(&self.hash, secret_key);
+        self.approvals.insert(approval);
     }
 
     /// Returns the `DeployHash` identifying this `Deploy`.
@@ -737,7 +791,7 @@ impl Deploy {
     }
 
     /// Returns the `Approval`s for this deploy.
-    pub fn approvals(&self) -> &[Approval] {
+    pub fn approvals(&self) -> &BTreeSet<Approval> {
         &self.approvals
     }
 
@@ -950,6 +1004,59 @@ impl Deploy {
     }
 }
 
+/// A deploy combined with a potential set of finalized approvals.
+///
+/// Represents a deploy, along with a potential set of approvals different from those contained in
+/// the deploy itself. If such a set of approvals is present, it indicates that the set contained
+/// the deploy was not the set  used to validate the execution of the deploy after consensus.
+///
+/// A typical case where these can differ is if a deploy is sent with an original set of approvals
+/// to the local node, while a second set of approvals makes it to the proposing node. The local
+/// node has to adhere to the proposer's approvals to obtain the same outcome.
+#[derive(DataSize, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct DeployWithFinalizedApprovals {
+    /// The deploy that likely has been included in a block.
+    deploy: Deploy,
+    /// Approvals used to verify the deploy during block execution.
+    finalized_approvals: Option<FinalizedApprovals>,
+}
+
+impl DeployWithFinalizedApprovals {
+    /// Creates a new deploy with finalized approvals from parts.
+    pub fn new(deploy: Deploy, finalized_approvals: Option<FinalizedApprovals>) -> Self {
+        Self {
+            deploy,
+            finalized_approvals,
+        }
+    }
+
+    /// Creates a naive deploy by potentially substituting the approvals with the finalized
+    /// approvals.
+    pub fn into_naive(self) -> Deploy {
+        let mut deploy = self.deploy;
+        if let Some(finalized_approvals) = self.finalized_approvals {
+            deploy.approvals = finalized_approvals.0;
+        }
+
+        deploy
+    }
+
+    /// Extracts the original deploy by discarding the finalized approvals.
+    pub fn discard_finalized_approvals(self) -> Deploy {
+        self.deploy
+    }
+
+    #[cfg(test)]
+    pub(crate) fn original_approvals(&self) -> &BTreeSet<Approval> {
+        self.deploy.approvals()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn finalized_approvals(&self) -> Option<&FinalizedApprovals> {
+        self.finalized_approvals.as_ref()
+    }
+}
+
 #[cfg(test)]
 impl Deploy {
     /// Generates a completely random instance.
@@ -1030,6 +1137,37 @@ impl Deploy {
             deploy.header.ttl,
             deploy.header.gas_price,
             deploy.header.dependencies,
+            deploy.header.chain_name,
+            payment,
+            session,
+            &secret_key,
+            None,
+        )
+    }
+
+    pub(crate) fn random_valid_native_transfer_without_deps(rng: &mut TestRng) -> Self {
+        let deploy = Self::random(rng);
+        let transfer_args = runtime_args! {
+            "amount" => *MAX_PAYMENT,
+            "source" => PublicKey::random(rng).to_account_hash(),
+            "target" => PublicKey::random(rng).to_account_hash(),
+        };
+        let payment_args = runtime_args! {
+            "amount" => U512::from(10),
+        };
+        let session = ExecutableDeployItem::Transfer {
+            args: transfer_args,
+        };
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: Bytes::new(),
+            args: payment_args,
+        };
+        let secret_key = SecretKey::random(rng);
+        Deploy::new(
+            Timestamp::now(),
+            deploy.header.ttl,
+            deploy.header.gas_price,
+            vec![],
             deploy.header.chain_name,
             payment,
             session,
@@ -1431,7 +1569,7 @@ impl FromBytes for Deploy {
         let (hash, remainder) = DeployHash::from_bytes(remainder)?;
         let (payment, remainder) = ExecutableDeployItem::from_bytes(remainder)?;
         let (session, remainder) = ExecutableDeployItem::from_bytes(remainder)?;
-        let (approvals, remainder) = Vec::<Approval>::from_bytes(remainder)?;
+        let (approvals, remainder) = BTreeSet::<Approval>::from_bytes(remainder)?;
         let maybe_valid_deploy = Deploy {
             header,
             hash,
@@ -1599,7 +1737,7 @@ mod tests {
     fn not_valid_due_to_empty_approvals() {
         let mut rng = crate::new_rng();
         let mut deploy = create_deploy(&mut rng, DeployConfig::default().max_ttl, 0, "net-1");
-        deploy.approvals = vec![];
+        deploy.approvals = BTreeSet::new();
         assert!(deploy.approvals.is_empty());
         check_is_not_valid(deploy, DeployConfigurationFailure::EmptyApprovals)
     }
@@ -1611,11 +1749,20 @@ mod tests {
 
         let deploy2 = Deploy::random(&mut rng);
 
-        deploy.approvals.extend(deploy2.approvals);
+        deploy.approvals.extend(deploy2.approvals.clone());
+        // the expected index for the invalid approval will be the first index at which there is an
+        // approval coming from deploy2
+        let expected_index = deploy
+            .approvals
+            .iter()
+            .enumerate()
+            .find(|(_, approval)| deploy2.approvals.contains(approval))
+            .map(|(index, _)| index)
+            .unwrap();
         check_is_not_valid(
             deploy,
             DeployConfigurationFailure::InvalidApproval {
-                index: 1,
+                index: expected_index,
                 error_msg: String::new(), // This field is ignored in the check.
             },
         );

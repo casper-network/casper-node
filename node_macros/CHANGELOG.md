@@ -13,6 +13,14 @@ All notable changes to this project will be documented in this file.  The format
 ## [Unreleased]
 
 
+
+## 1.4.3
+
+### Changed
+* Update to fix new clippy warnings.
+
+
+
 ## [1.4.0] - 2021-10-04
 
 ### Changed

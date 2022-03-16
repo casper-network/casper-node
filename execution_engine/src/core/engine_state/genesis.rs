@@ -4,20 +4,17 @@ use std::{cell::RefCell, collections::BTreeMap, fmt, iter, rc::Rc};
 use datasize::DataSize;
 use num::Zero;
 use num_rational::Ratio;
-use parity_wasm::elements::Module;
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
 use serde::{Deserialize, Serialize};
-use tracing::error;
 
 use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::{ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys},
-    runtime_args,
     system::{
         auction::{
             self, Bid, Bids, DelegationRate, Delegator, SeigniorageRecipient,
@@ -27,15 +24,12 @@ use casper_types::{
             SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
         handle_payment,
-        mint::{
-            self, ARG_AMOUNT, ARG_ROUND_SEIGNIORAGE_RATE, METHOD_MINT, ROUND_SEIGNIORAGE_RATE_KEY,
-            TOTAL_SUPPLY_KEY,
-        },
-        standard_payment, CallStackElement, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
+        mint::{self, ARG_ROUND_SEIGNIORAGE_RATE, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
+        standard_payment, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
-    ContractWasm, ContractWasmHash, DeployHash, EntryPointType, EntryPoints, EraId, Gas, Key,
-    Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, URef, U512,
+    ContractWasm, ContractWasmHash, EntryPoints, EraId, Key, Motes, Phase, ProtocolVersion,
+    PublicKey, SecretKey, StoredValue, URef, U512,
 };
 
 use crate::{
@@ -45,9 +39,8 @@ use crate::{
             SystemContractRegistry,
         },
         execution,
-        execution::{AddressGenerator, Executor},
-        runtime::RuntimeStack,
-        tracking_copy::{TrackingCopy, TrackingCopyExt},
+        execution::AddressGenerator,
+        tracking_copy::TrackingCopy,
     },
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::global_state::StateProvider,
@@ -738,15 +731,12 @@ where
     S: StateProvider,
     S::Error: Into<execution::Error>,
 {
-    genesis_config_hash: Digest,
-    virtual_system_account: Account,
     protocol_version: ProtocolVersion,
     correlation_id: CorrelationId,
+    engine_config: EngineConfig,
     exec_config: ExecConfig,
     address_generator: Rc<RefCell<AddressGenerator>>,
-    executor: Executor,
     tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
-    system_module: Module,
 }
 
 impl<S> GenesisInstaller<S>
@@ -761,10 +751,7 @@ where
         engine_config: EngineConfig,
         exec_config: ExecConfig,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
-        system_module: Module,
     ) -> Self {
-        let executor = Executor::new(engine_config);
-
         let phase = Phase::System;
         let genesis_config_hash_bytes = genesis_config_hash.as_ref();
 
@@ -782,20 +769,19 @@ where
         };
 
         let key = Key::Account(system_account_addr);
-        let value = { StoredValue::Account(virtual_system_account.clone()) };
+        let value = { StoredValue::Account(virtual_system_account) };
 
-        tracking_copy.borrow_mut().write(key, value);
+        let _ = tracking_copy
+            .borrow_mut()
+            .write(key, value, engine_config.max_stored_value_size());
 
         GenesisInstaller {
-            genesis_config_hash,
-            virtual_system_account,
             protocol_version,
             correlation_id,
+            engine_config,
             exec_config,
             address_generator,
-            executor,
             tracking_copy,
-            system_module,
         }
     }
 
@@ -803,29 +789,30 @@ where
         self.tracking_copy.borrow().effect()
     }
 
-    pub(crate) fn create_mint(&mut self) -> Result<ContractHash, GenesisError> {
-        let round_seigniorage_rate_uref =
-            {
-                let round_seigniorage_rate_uref = self
-                    .address_generator
-                    .borrow_mut()
-                    .new_uref(AccessRights::READ_ADD_WRITE);
+    fn create_mint(&mut self) -> Result<Key, GenesisError> {
+        let round_seigniorage_rate_uref = {
+            let round_seigniorage_rate_uref = self
+                .address_generator
+                .borrow_mut()
+                .new_uref(AccessRights::READ_ADD_WRITE);
 
-                let (round_seigniorage_rate_numer, round_seigniorage_rate_denom) =
-                    self.exec_config.round_seigniorage_rate().into();
-                let round_seigniorage_rate: Ratio<U512> = Ratio::new(
-                    round_seigniorage_rate_numer.into(),
-                    round_seigniorage_rate_denom.into(),
-                );
+            let (round_seigniorage_rate_numer, round_seigniorage_rate_denom) =
+                self.exec_config.round_seigniorage_rate().into();
+            let round_seigniorage_rate: Ratio<U512> = Ratio::new(
+                round_seigniorage_rate_numer.into(),
+                round_seigniorage_rate_denom.into(),
+            );
 
+            let _ =
                 self.tracking_copy.borrow_mut().write(
                     round_seigniorage_rate_uref.into(),
                     StoredValue::CLValue(CLValue::from_t(round_seigniorage_rate).map_err(
                         |_| GenesisError::CLValue(ARG_ROUND_SEIGNIORAGE_RATE.to_string()),
                     )?),
+                    self.engine_config.max_stored_value_size(),
                 );
-                round_seigniorage_rate_uref
-            };
+            round_seigniorage_rate_uref
+        };
 
         let total_supply_uref = {
             let total_supply_uref = self
@@ -833,12 +820,13 @@ where
                 .borrow_mut()
                 .new_uref(AccessRights::READ_ADD_WRITE);
 
-            self.tracking_copy.borrow_mut().write(
+            let _ = self.tracking_copy.borrow_mut().write(
                 total_supply_uref.into(),
                 StoredValue::CLValue(
                     CLValue::from_t(U512::zero())
                         .map_err(|_| GenesisError::CLValue(TOTAL_SUPPLY_KEY.to_string()))?,
                 ),
+                self.engine_config.max_stored_value_size(),
             );
             total_supply_uref
         };
@@ -871,20 +859,18 @@ where
             partial_registry.insert(HANDLE_PAYMENT.to_string(), DEFAULT_ADDRESS.into());
             let cl_registry = CLValue::from_t(partial_registry)
                 .map_err(|error| GenesisError::CLValue(error.to_string()))?;
-            self.tracking_copy.borrow_mut().write(
+            let _ = self.tracking_copy.borrow_mut().write(
                 Key::SystemContractRegistry,
                 StoredValue::CLValue(cl_registry),
+                self.engine_config.max_stored_value_size(),
             );
         }
 
-        Ok(mint_hash)
+        Ok(total_supply_uref.into())
     }
 
-    pub fn create_handle_payment(&self) -> Result<ContractHash, GenesisError> {
-        let handle_payment_payment_purse = self.create_purse(
-            U512::zero(),
-            DeployHash::new(self.genesis_config_hash.value()),
-        )?;
+    fn create_handle_payment(&self) -> Result<ContractHash, GenesisError> {
+        let handle_payment_payment_purse = self.create_purse(U512::zero())?;
 
         let named_keys = {
             let mut named_keys = NamedKeys::new();
@@ -907,7 +893,7 @@ where
         Ok(handle_payment_hash)
     }
 
-    pub(crate) fn create_auction(&self) -> Result<ContractHash, GenesisError> {
+    fn create_auction(&self, total_supply_key: Key) -> Result<ContractHash, GenesisError> {
         let locked_funds_period_millis = self.exec_config.locked_funds_period_millis();
         let auction_delay: u64 = self.exec_config.auction_delay();
         let genesis_timestamp_millis: u64 = self.exec_config.genesis_timestamp_millis();
@@ -946,13 +932,15 @@ where
             }
         }
 
+        let mut total_staked_amount = U512::zero();
+
         let validators = {
             let mut validators = Bids::new();
 
             for genesis_validator in genesis_validators {
                 let public_key = genesis_validator.public_key();
 
-                let staked_amount = genesis_validator.staked_amount();
+                let staked_amount = genesis_validator.staked_amount().value();
                 if staked_amount.is_zero() {
                     return Err(GenesisError::InvalidBondAmount { public_key });
                 }
@@ -966,17 +954,16 @@ where
                 }
                 debug_assert_ne!(public_key, PublicKey::System);
 
-                let purse_uref = self.create_purse(
-                    staked_amount.value(),
-                    DeployHash::new(public_key.to_account_hash().value()),
-                )?;
+                total_staked_amount += staked_amount;
+
+                let purse_uref = self.create_purse(staked_amount)?;
                 let release_timestamp_millis =
                     genesis_timestamp_millis + locked_funds_period_millis;
                 let founding_validator = {
                     let mut bid = Bid::locked(
                         public_key.clone(),
                         purse_uref,
-                        staked_amount.value(),
+                        staked_amount,
                         delegation_rate,
                         release_timestamp_millis,
                     );
@@ -990,10 +977,8 @@ where
                     ) in genesis_delegators.iter()
                     {
                         if (*validator_public_key).clone() == public_key.clone() {
-                            let purse_uref = self.create_purse(
-                                delegator_delegated_amount.value(),
-                                DeployHash::new(delegator_public_key.to_account_hash().value()),
-                            )?;
+                            let purse_uref =
+                                self.create_purse(delegator_delegated_amount.value())?;
 
                             let delegator = Delegator::locked(
                                 (*delegator_public_key).clone(),
@@ -1024,6 +1009,16 @@ where
             validators
         };
 
+        let _ = self.tracking_copy.borrow_mut().add(
+            CorrelationId::default(),
+            total_supply_key,
+            StoredValue::CLValue(
+                CLValue::from_t(total_staked_amount)
+                    .map_err(|_| GenesisError::CLValue(TOTAL_SUPPLY_KEY.to_string()))?,
+            ),
+            self.engine_config.max_stored_value_size(),
+        );
+
         let initial_seigniorage_recipients =
             self.initial_seigniorage_recipients(&validators, auction_delay);
 
@@ -1031,12 +1026,13 @@ where
             .address_generator
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
-        self.tracking_copy.borrow_mut().write(
+        let _ = self.tracking_copy.borrow_mut().write(
             era_id_uref.into(),
             StoredValue::CLValue(
                 CLValue::from_t(INITIAL_ERA_ID)
                     .map_err(|_| GenesisError::CLValue(ERA_ID_KEY.to_string()))?,
             ),
+            self.engine_config.max_stored_value_size(),
         );
         named_keys.insert(ERA_ID_KEY.into(), era_id_uref.into());
 
@@ -1044,12 +1040,13 @@ where
             .address_generator
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
-        self.tracking_copy.borrow_mut().write(
+        let _ = self.tracking_copy.borrow_mut().write(
             era_end_timestamp_millis_uref.into(),
             StoredValue::CLValue(
                 CLValue::from_t(INITIAL_ERA_END_TIMESTAMP_MILLIS)
                     .map_err(|_| GenesisError::CLValue(ERA_END_TIMESTAMP_MILLIS_KEY.to_string()))?,
             ),
+            self.engine_config.max_stored_value_size(),
         );
         named_keys.insert(
             ERA_END_TIMESTAMP_MILLIS_KEY.into(),
@@ -1060,11 +1057,12 @@ where
             .address_generator
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
-        self.tracking_copy.borrow_mut().write(
+        let _ = self.tracking_copy.borrow_mut().write(
             initial_seigniorage_recipients_uref.into(),
             StoredValue::CLValue(CLValue::from_t(initial_seigniorage_recipients).map_err(
                 |_| GenesisError::CLValue(SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_string()),
             )?),
+            self.engine_config.max_stored_value_size(),
         );
         named_keys.insert(
             SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.into(),
@@ -1073,10 +1071,11 @@ where
 
         for (validator_public_key, bid) in validators.into_iter() {
             let validator_account_hash = AccountHash::from(&validator_public_key);
-            self.tracking_copy.borrow_mut().write(
+            let _ = self.tracking_copy.borrow_mut().write(
                 Key::Bid(validator_account_hash),
                 StoredValue::Bid(Box::new(bid)),
-            )
+                self.engine_config.max_stored_value_size(),
+            );
         }
 
         let validator_slots = self.exec_config.validator_slots();
@@ -1084,12 +1083,13 @@ where
             .address_generator
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
-        self.tracking_copy.borrow_mut().write(
+        let _ = self.tracking_copy.borrow_mut().write(
             validator_slots_uref.into(),
             StoredValue::CLValue(
                 CLValue::from_t(validator_slots)
                     .map_err(|_| GenesisError::CLValue(VALIDATOR_SLOTS_KEY.to_string()))?,
             ),
+            self.engine_config.max_stored_value_size(),
         );
         named_keys.insert(VALIDATOR_SLOTS_KEY.into(), validator_slots_uref.into());
 
@@ -1097,12 +1097,13 @@ where
             .address_generator
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
-        self.tracking_copy.borrow_mut().write(
+        let _ = self.tracking_copy.borrow_mut().write(
             auction_delay_uref.into(),
             StoredValue::CLValue(
                 CLValue::from_t(auction_delay)
                     .map_err(|_| GenesisError::CLValue(AUCTION_DELAY_KEY.to_string()))?,
             ),
+            self.engine_config.max_stored_value_size(),
         );
         named_keys.insert(AUCTION_DELAY_KEY.into(), auction_delay_uref.into());
 
@@ -1110,12 +1111,13 @@ where
             .address_generator
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
-        self.tracking_copy.borrow_mut().write(
+        let _ = self.tracking_copy.borrow_mut().write(
             locked_funds_period_uref.into(),
             StoredValue::CLValue(
                 CLValue::from_t(locked_funds_period_millis)
                     .map_err(|_| GenesisError::CLValue(LOCKED_FUNDS_PERIOD_KEY.to_string()))?,
             ),
+            self.engine_config.max_stored_value_size(),
         );
         named_keys.insert(
             LOCKED_FUNDS_PERIOD_KEY.into(),
@@ -1127,12 +1129,13 @@ where
             .address_generator
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
-        self.tracking_copy.borrow_mut().write(
+        let _ = self.tracking_copy.borrow_mut().write(
             unbonding_delay_uref.into(),
             StoredValue::CLValue(
                 CLValue::from_t(unbonding_delay)
                     .map_err(|_| GenesisError::CLValue(UNBONDING_DELAY_KEY.to_string()))?,
             ),
+            self.engine_config.max_stored_value_size(),
         );
         named_keys.insert(UNBONDING_DELAY_KEY.into(), unbonding_delay_uref.into());
 
@@ -1150,7 +1153,7 @@ where
         Ok(auction_hash)
     }
 
-    pub(crate) fn create_standard_payment(&self) -> Result<ContractHash, GenesisError> {
+    fn create_standard_payment(&self) -> Result<ContractHash, GenesisError> {
         let named_keys = NamedKeys::new();
 
         let entry_points = standard_payment::standard_payment_entry_points();
@@ -1167,20 +1170,19 @@ where
         Ok(standard_payment_hash)
     }
 
-    pub(crate) fn create_accounts(&self) -> Result<(), GenesisError> {
+    fn create_accounts(&self, total_supply_key: Key) -> Result<(), GenesisError> {
         let accounts = {
-            let mut ret: Vec<GenesisAccount> = self.exec_config.accounts.to_vec();
+            let mut ret: Vec<GenesisAccount> = self.exec_config.accounts().to_vec();
             let system_account = GenesisAccount::system();
-            ret.push(system_account);
+            ret.push(system_account); // todo load bearing remove or not? probably dont need anymore
             ret
         };
 
+        let mut total_supply = U512::zero();
+
         for account in accounts {
             let account_hash = account.account_hash();
-            let main_purse = self.create_purse(
-                account.balance().value(),
-                DeployHash::new(account_hash.value()),
-            )?;
+            let main_purse = self.create_purse(account.balance().value())?;
 
             let key = Key::Account(account_hash);
             let stored_value = StoredValue::Account(Account::create(
@@ -1189,8 +1191,23 @@ where
                 main_purse,
             ));
 
-            self.tracking_copy.borrow_mut().write(key, stored_value);
+            let _ = self.tracking_copy.borrow_mut().write(
+                key,
+                stored_value,
+                self.engine_config.max_stored_value_size(),
+            );
+
+            total_supply += account.balance().value();
         }
+
+        let _ = self.tracking_copy.borrow_mut().write(
+            total_supply_key,
+            StoredValue::CLValue(
+                CLValue::from_t(total_supply)
+                    .map_err(|_| GenesisError::CLValue(TOTAL_SUPPLY_KEY.to_string()))?,
+            ),
+            self.engine_config.max_stored_value_size(),
+        );
 
         Ok(())
     }
@@ -1217,22 +1234,24 @@ where
         initial_seigniorage_recipients
     }
 
-    fn create_purse(&self, amount: U512, deploy_hash: DeployHash) -> Result<URef, GenesisError> {
-        let args = runtime_args! {
-            ARG_AMOUNT => amount,
-        };
+    fn create_purse(&self, amount: U512) -> Result<URef, GenesisError> {
+        let purse_addr = self.address_generator.borrow_mut().create_address();
 
-        let registry = self
-            .tracking_copy
-            .borrow_mut()
-            .get_system_contracts(self.correlation_id)
-            .map_err(execution::Error::from)
-            .map_err(GenesisError::ExecutionError)?;
+        let balance_cl_value =
+            CLValue::from_t(amount).map_err(|error| GenesisError::CLValue(error.to_string()))?;
+        let _ = self.tracking_copy.borrow_mut().write(
+            Key::Balance(purse_addr),
+            StoredValue::CLValue(balance_cl_value),
+            self.engine_config.max_stored_value_size(),
+        );
 
-        let mint_hash = registry.get(MINT).ok_or_else(|| {
-            error!("Missing system mint contract hash");
-            GenesisError::MissingSystemContractHash(MINT.to_string())
-        })?;
+        let purse_cl_value = CLValue::unit();
+        let purse_uref = URef::new(purse_addr, AccessRights::READ_ADD_WRITE);
+        let _ = self.tracking_copy.borrow_mut().write(
+            Key::URef(purse_uref),
+            StoredValue::CLValue(purse_cl_value),
+            self.engine_config.max_stored_value_size(),
+        );
 
         let base_key = Key::Hash(mint_hash.value());
         let mint = {
@@ -1327,16 +1346,20 @@ where
             contract_package
         };
 
-        self.tracking_copy.borrow_mut().write(
+        let _ = self.tracking_copy.borrow_mut().write(
             contract_wasm_hash.into(),
             StoredValue::ContractWasm(contract_wasm),
+            self.engine_config.max_stored_value_size(),
         );
-        self.tracking_copy
-            .borrow_mut()
-            .write(contract_hash.into(), StoredValue::Contract(contract));
-        self.tracking_copy.borrow_mut().write(
+        let _ = self.tracking_copy.borrow_mut().write(
+            contract_hash.into(),
+            StoredValue::Contract(contract),
+            self.engine_config.max_stored_value_size(),
+        );
+        let _ = self.tracking_copy.borrow_mut().write(
             contract_package_hash.into(),
             StoredValue::ContractPackage(contract_package),
+            self.engine_config.max_stored_value_size(),
         );
 
         (contract_package_hash, contract_hash)
@@ -1363,14 +1386,15 @@ where
         partial_registry.insert(contract_name.to_string(), contract_hash);
         let cl_registry = CLValue::from_t(partial_registry)
             .map_err(|error| GenesisError::CLValue(error.to_string()))?;
-        self.tracking_copy.borrow_mut().write(
+        let _ = self.tracking_copy.borrow_mut().write(
             Key::SystemContractRegistry,
             StoredValue::CLValue(cl_registry),
+            self.engine_config.max_stored_value_size(),
         );
         Ok(())
     }
 
-    pub(crate) fn store_chainspec_registry(
+    fn store_chainspec_registry(
         &self,
         chainspec_registry: ChainspecRegistry,
     ) -> Result<(), GenesisError> {
@@ -1384,6 +1408,31 @@ where
             Key::ChainspecRegistry,
             StoredValue::CLValue(cl_value_registry),
         );
+        Ok(())
+    }
+
+    /// Performs a complete system installation.
+    pub(crate) fn install(
+        &mut self,
+        chainspec_registry: ChainspecRegistry,
+    ) -> Result<(), GenesisError> {
+        // Create mint
+        let total_supply_key = self.create_mint()?;
+
+        // Create all genesis accounts
+        self.create_accounts(total_supply_key)?;
+
+        // Create the auction and setup the stake of all genesis validators.
+        self.create_auction(total_supply_key)?;
+
+        // Create handle payment
+        self.create_handle_payment()?;
+
+        // Create standard payment
+        self.create_standard_payment()?;
+
+        self.store_chainspec_registry(chainspec_registry)?;
+
         Ok(())
     }
 }

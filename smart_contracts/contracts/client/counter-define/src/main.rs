@@ -12,7 +12,7 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    api_error, bytesrepr, contracts::NamedKeys, runtime_args, ApiError, CLType, CLValue,
+    api_error, bytesrepr, contracts::NamedKeys, runtime_args, ApiError, CLType, CLTyped, CLValue,
     ContractPackageHash, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key, Parameter,
     RuntimeArgs, URef,
 };
@@ -103,7 +103,7 @@ fn get_entry_points() -> EntryPoints {
         ENTRYPOINT_SESSION,
         vec![Parameter::new(
             ARG_CONTRACT_HASH_NAME,
-            CLType::ByteArray(32),
+            Option::<Key>::cl_type(),
         )],
         CLType::Unit,
         EntryPointAccess::Public,

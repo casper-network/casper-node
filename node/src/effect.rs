@@ -1117,10 +1117,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested deploys from the deploy store.
+    ///
+    /// Returns the "original" deploys, which are the first received by the node, along with a
+    /// potentially different set of approvals used during execution of the recorded block.
     pub(crate) async fn get_deploys_from_storage(
         self,
         deploy_hashes: Vec<DeployHash>,
-    ) -> Vec<Option<Deploy>>
+    ) -> SmallVec<[Option<DeployWithFinalizedApprovals>; 1]>
     where
         REv: From<StorageRequest>,
     {
@@ -1158,7 +1161,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_deploy_and_metadata_from_storage(
         self,
         deploy_hash: DeployHash,
-    ) -> Option<(Deploy, DeployMetadata)>
+    ) -> Option<(DeployWithFinalizedApprovals, DeployMetadata)>
     where
         REv: From<StorageRequest>,
     {
@@ -1867,6 +1870,27 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             ChainspecLoaderRequest::GetChainspecRawBytes,
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Stores a set of given finalized approvals in storage.
+    ///
+    /// Any previously stored finalized approvals for the given hash are quietly overwritten
+    pub(crate) async fn store_finalized_approvals(
+        self,
+        deploy_hash: DeployHash,
+        finalized_approvals: FinalizedApprovals,
+    ) where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::StoreFinalizedApprovals {
+                deploy_hash,
+                finalized_approvals,
+                responder,
+            },
             QueueKind::Regular,
         )
         .await

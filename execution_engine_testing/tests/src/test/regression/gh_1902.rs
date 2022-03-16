@@ -5,11 +5,8 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{
-    core::engine_state::ExecuteRequest,
-    shared::system_config::auction_costs::{
-        DEFAULT_ADD_BID_COST, DEFAULT_DELEGATE_COST, DEFAULT_UNDELEGATE_COST,
-        DEFAULT_WITHDRAW_BID_COST,
-    },
+    core::engine_state::{engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, ExecuteRequest},
+    shared::system_config::auction_costs::{DEFAULT_ADD_BID_COST, DEFAULT_DELEGATE_COST},
 };
 use casper_types::{
     account::{Account, AccountHash},
@@ -22,7 +19,7 @@ use casper_types::{
 };
 
 const BOND_AMOUNT: u64 = 42;
-const DELEGATE_AMOUNT: u64 = 100;
+const DELEGATE_AMOUNT: u64 = 100 + DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 const DELEGATION_RATE: DelegationRate = 10;
 
 static ACCOUNT_1_SECRET_KEY: Lazy<SecretKey> =

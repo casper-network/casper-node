@@ -1,7 +1,7 @@
 use crate::{
     account::AccountHash,
     system::{mint::Error, CallStackElement},
-    Key, Phase,
+    Key, Phase, URef, U512,
 };
 
 /// Provider of runtime host functionality.
@@ -20,4 +20,13 @@ pub trait RuntimeProvider {
 
     /// This method should handle obtaining a given named [`Key`] under a `name`.
     fn get_key(&self, name: &str) -> Option<Key>;
+
+    /// Returns approved CSPR spending limit.
+    fn get_approved_spending_limit(&self) -> U512;
+
+    /// Signal to host that `transferred` amount of tokens has been transferred.
+    fn sub_approved_spending_limit(&mut self, transferred: U512);
+
+    /// Returns main purse of the sender account.
+    fn get_main_purse(&self) -> URef;
 }

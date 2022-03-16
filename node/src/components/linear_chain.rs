@@ -13,9 +13,10 @@ use num::rational::Ratio;
 use prometheus::Registry;
 use tracing::error;
 
-use casper_types::{EraId, ProtocolVersion};
-
-use self::metrics::Metrics;
+use self::{
+    metrics::Metrics,
+    state::{Outcome, Outcomes},
+};
 use super::Component;
 use crate::{
     components::linear_chain::state::{Outcome, Outcomes},

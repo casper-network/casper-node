@@ -60,6 +60,7 @@ use lmdb::{
 };
 use num_rational::Ratio;
 use serde::{Deserialize, Serialize};
+use smallvec::SmallVec;
 use static_assertions::const_assert;
 #[cfg(test)]
 use tempfile::TempDir;
@@ -90,9 +91,9 @@ use crate::{
     reactor::ReactorEvent,
     types::{
         error::BlockValidationError, Block, BlockBody, BlockHash, BlockHeader,
-        BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, Deploy, DeployHash,
-        DeployMetadata, HashingAlgorithmVersion, Item, MerkleBlockBody, MerkleBlockBodyPart,
-        MerkleLinkedListNode, NodeId, TimeDiff,
+        BlockHeaderWithMetadata, BlockSignatures, Deploy, DeployHash, DeployHeader, DeployMetadata,
+        DeployWithFinalizedApprovals, FinalizedApprovals, HashingAlgorithmVersion, Item,
+        MerkleBlockBody, MerkleBlockBodyPart, MerkleLinkedListNode, SharedObject, TimeDiff,
     },
     utils::{display_error, WithDir},
     NodeRng,
@@ -120,7 +121,7 @@ const DEFAULT_MAX_DEPLOY_METADATA_STORE_SIZE: usize = 300 * GIB;
 /// Default max state store size.
 const DEFAULT_MAX_STATE_STORE_SIZE: usize = 10 * GIB;
 /// Maximum number of allowed dbs.
-const MAX_DB_COUNT: u32 = 11;
+const MAX_DB_COUNT: u32 = 12;
 
 /// OS-specific lmdb flags.
 #[cfg(not(target_os = "macos"))]
@@ -293,6 +294,15 @@ pub enum FatalStorageError {
     /// Failed to serialize an item that was found in local storage.
     #[error("failed to serialized stored item")]
     StoredItemSerializationFailure(#[source] bincode::Error),
+    /// We tried to store finalized approvals for a nonexistent deploy.
+    #[error(
+        "Tried to store FinalizedApprovals for a nonexistent deploy. \
+        Deploy hash: {deploy_hash:?}"
+    )]
+    UnexpectedFinalizedApprovals {
+        /// The missing deploy hash.
+        deploy_hash: DeployHash,
+    },
 }
 
 // We wholesale wrap lmdb errors and treat them as internal errors here.
@@ -359,6 +369,9 @@ pub struct Storage {
     /// The state storage database.
     #[data_size(skip)]
     state_store_db: Database,
+    /// The finalized approvals database.
+    #[data_size(skip)]
+    finalized_approvals_db: Database,
     /// A map of block height to block ID.
     block_height_index: BTreeMap<u64, BlockHash>,
     /// A set of disjoint sequences of block heights of blocks which are fully stored (not just the
@@ -520,6 +533,8 @@ impl Storage {
         let deploy_metadata_db = env.create_db(Some("deploy_metadata"), DatabaseFlags::empty())?;
         let transfer_db = env.create_db(Some("transfer"), DatabaseFlags::empty())?;
         let state_store_db = env.create_db(Some("state_store"), DatabaseFlags::empty())?;
+        let finalized_approvals_db =
+            env.create_db(Some("finalized_approvals"), DatabaseFlags::empty())?;
         let block_body_v1_db = env.create_db(Some("block_body"), DatabaseFlags::empty())?;
         let block_body_v2_db = env.create_db(Some("block_body_merkle"), DatabaseFlags::empty())?;
         let deploy_hashes_db = env.create_db(Some("deploy_hashes"), DatabaseFlags::empty())?;
@@ -633,6 +648,7 @@ impl Storage {
             deploy_metadata_db,
             transfer_db,
             state_store_db,
+            finalized_approvals_db,
             block_height_index,
             disjoint_block_height_sequences,
             switch_block_era_id_index,
@@ -865,7 +881,10 @@ impl Storage {
                 deploy_hashes,
                 responder,
             } => responder
-                .respond(self.get_deploys(&mut self.env.begin_ro_txn()?, deploy_hashes.as_slice())?)
+                .respond(self.get_deploys_with_finalized_approvals(
+                    &mut self.env.begin_ro_txn()?,
+                    deploy_hashes.as_slice(),
+                )?)
                 .ignore(),
             StorageRequest::PutExecutionResults {
                 block_hash,
@@ -932,18 +951,22 @@ impl Storage {
             } => {
                 let mut txn = self.env.begin_ro_txn()?;
 
-                // A missing deploy causes an early `None` return.
-                let deploy: Deploy =
-                    if let Some(deploy) = txn.get_value(self.deploy_db, &deploy_hash)? {
+                let deploy = {
+                    let opt_deploy =
+                        self.get_deploy_with_finalized_approvals(&mut txn, &deploy_hash)?;
+
+                    if let Some(deploy) = opt_deploy {
                         deploy
                     } else {
                         return Ok(responder.respond(None).ignore());
-                    };
+                    }
+                };
 
                 // Missing metadata is filled using a default.
                 let metadata = self
                     .get_deploy_metadata(&mut txn, &deploy_hash)?
                     .unwrap_or_default();
+
                 responder.respond(Some((deploy, metadata))).ignore()
             }
             StorageRequest::GetBlockAndMetadataByHash {
@@ -1137,6 +1160,13 @@ impl Storage {
                     });
                 responder.respond(result).ignore()
             }
+            StorageRequest::StoreFinalizedApprovals {
+                ref deploy_hash,
+                ref finalized_approvals,
+                responder,
+            } => responder
+                .respond(self.store_finalized_approvals(deploy_hash, finalized_approvals)?)
+                .ignore(),
         })
     }
 
@@ -1592,16 +1622,45 @@ impl Storage {
         tx.get_value(self.block_body_v1_db, block_body_hash)
     }
 
-    /// Retrieves a set of deploys from storage.
-    fn get_deploys<Tx: Transaction>(
+    /// Retrieves a set of deploys from storage, along with their potential finalized approvals.
+    fn get_deploys_with_finalized_approvals<Tx: Transaction>(
         &self,
         tx: &mut Tx,
         deploy_hashes: &[DeployHash],
-    ) -> Result<Vec<Option<Deploy>>, LmdbExtError> {
+    ) -> Result<SmallVec<[Option<DeployWithFinalizedApprovals>; 1]>, LmdbExtError> {
         deploy_hashes
             .iter()
-            .map(|deploy_hash| tx.get_value(self.deploy_db, deploy_hash))
+            .map(|deploy_hash| self.get_deploy_with_finalized_approvals(tx, deploy_hash))
             .collect()
+    }
+
+    /// Retrieves a single deploy along with its finalized approvals from storage
+    fn get_deploy_with_finalized_approvals<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        deploy_hash: &DeployHash,
+    ) -> Result<Option<DeployWithFinalizedApprovals>, LmdbExtError> {
+        let maybe_original_deploy = tx.get_value(self.deploy_db, deploy_hash)?;
+        if let Some(deploy) = maybe_original_deploy {
+            let maybe_finalized_approvals =
+                tx.get_value(self.finalized_approvals_db, deploy_hash)?;
+            Ok(Some(DeployWithFinalizedApprovals::new(
+                deploy,
+                maybe_finalized_approvals,
+            )))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Returns the deploy's header.
+    fn get_deploy_header<Tx: Transaction>(
+        &self,
+        txn: &mut Tx,
+        deploy_hash: &DeployHash,
+    ) -> Result<Option<DeployHeader>, LmdbExtError> {
+        let maybe_deploy: Option<Deploy> = txn.get_value(self.deploy_db, deploy_hash)?;
+        Ok(maybe_deploy.map(|deploy| deploy.header().clone()))
     }
 
     /// Retrieves deploy metadata associated with deploy.
@@ -1795,6 +1854,30 @@ impl Storage {
 
         let message = Message::new_get_response_from_serialized(<T as Item>::TAG, shared);
         Ok(effect_builder.send_message(sender, message).ignore())
+    }
+
+    /// Stores a set of finalized approvals.
+    pub fn store_finalized_approvals(
+        &self,
+        deploy_hash: &DeployHash,
+        finalized_approvals: &FinalizedApprovals,
+    ) -> Result<(), Error> {
+        let maybe_original_deploy = self.read_deploy_by_hash(*deploy_hash)?;
+        let original_deploy = maybe_original_deploy.ok_or(Error::UnexpectedFinalizedApprovals {
+            deploy_hash: *deploy_hash,
+        })?;
+        // Only store the finalized approvals if they are different from the original ones.
+        if original_deploy.approvals() != finalized_approvals.as_ref() {
+            let mut txn = self.env.begin_rw_txn()?;
+            let _ = txn.put_value(
+                self.finalized_approvals_db,
+                deploy_hash,
+                finalized_approvals,
+                true,
+            )?;
+            txn.commit()?;
+        }
+        Ok(())
     }
 }
 
@@ -2019,6 +2102,40 @@ impl Storage {
             .expect("could not create RO transaction");
         txn.get_value(self.deploy_db, &deploy_hash)
             .expect("could not retrieve value from storage")
+    }
+
+    /// Directly returns a deploy metadata from internal store.
+    ///
+    /// # Panics
+    ///
+    /// Panics if an IO error occurs.
+    pub(crate) fn get_deploy_metadata_by_hash(
+        &self,
+        deploy_hash: &DeployHash,
+    ) -> Option<DeployMetadata> {
+        let mut txn = self
+            .env
+            .begin_ro_txn()
+            .expect("could not create RO transaction");
+        self.get_deploy_metadata(&mut txn, deploy_hash)
+            .expect("could not retrieve deploy metadata from storage")
+    }
+
+    /// Directly returns a deploy with finalized approvals from internal store.
+    ///
+    /// # Panics
+    ///
+    /// Panics if an IO error occurs.
+    pub(crate) fn get_deploy_with_finalized_approvals_by_hash(
+        &self,
+        deploy_hash: &DeployHash,
+    ) -> Option<DeployWithFinalizedApprovals> {
+        let mut txn = self
+            .env
+            .begin_ro_txn()
+            .expect("could not create RO transaction");
+        self.get_deploy_with_finalized_approvals(&mut txn, deploy_hash)
+            .expect("could not retrieve a deploy with finalized approvals from storage")
     }
 
     /// Reads all known deploy hashes from the internal store.

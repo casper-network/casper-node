@@ -36,6 +36,40 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+
+## 1.5.0
+
+### Changed
+* Temporarily limit the size of individual values stored in global state.
+
+### Security
+* `amount` argument is now required for transactions wanting to send tokens using account's main purse. It is now an upper limit on all tokens being transferred within the transaction.
+* Significant rework around the responsibilities of the executor, runtime and runtime context objects, with a focus on removing alternate execution paths where unintended escalation of privilege was possible.
+* Attenuate the main purse URef to remove WRITE permissions by default when returned via `ret` or passed as a runtime argument.
+* Fix a potential panic during Wasm preprocessing.
+* `get_era_validators` performs a query rather than execution.
+
+
+
+## 1.4.4 - 2021-12-29
+
+### Changed
+* No longer checksum-hex encode hash digest and address types.
+
+
+
+## 1.4.3 - 2021-12-06
+
+### Changed
+* Auction contract now handles minting into an existing purse.
+* Default maximum stack size in `WasmConfig` changed to 188.
+* Default behavior of LMDB changed to use [`NO_READAHEAD`](https://docs.rs/lmdb/0.8.0/lmdb/struct.EnvironmentFlags.html#associatedconstant.NO_READAHEAD)
+
+### Fixed
+* Fix a case where an unlocked and partially unbonded genesis validator with smaller stake incorrectly occupies slot for a non-genesis validator with higher stake.
+
+
+
 ## [1.4.2] - 2021-11-11
 
 ### Changed
