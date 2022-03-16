@@ -55,7 +55,6 @@ use signal_hook::{consts::TERM_SIGNALS, flag};
 pub(crate) use components::{
     block_proposer::Config as BlockProposerConfig, consensus::Config as ConsensusConfig,
     contract_runtime::Config as ContractRuntimeConfig,
-    deploy_acceptor::Config as DeployAcceptorConfig,
     diagnostics_port::Config as DiagnosticsPortConfig,
     event_stream_server::Config as EventStreamServerConfig, fetcher::Config as FetcherConfig,
     gossiper::Config as GossipConfig, rest_server::Config as RestServerConfig,

@@ -622,7 +622,7 @@ impl reactor::Reactor for Reactor {
             NodeState::Participating,
         )?;
 
-        let deploy_acceptor = DeployAcceptor::new(config.deploy_acceptor, &*chainspec, registry)?;
+        let deploy_acceptor = DeployAcceptor::new(&*chainspec_loader.chainspec(), registry)?;
         let deploy_fetcher = Fetcher::new(
             "deploy",
             config.fetcher,

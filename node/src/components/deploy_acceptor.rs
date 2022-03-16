@@ -1,4 +1,3 @@
-mod config;
 mod event;
 mod metrics;
 mod tests;
@@ -40,9 +39,7 @@ use crate::{
     NodeRng,
 };
 
-pub(crate) use config::Config;
-pub(crate) use event::Event;
-use event::EventMetadata;
+pub(crate) use event::{Event, EventMetadata};
 
 const ARG_TARGET: &str = "target";
 
@@ -151,14 +148,12 @@ pub struct DeployAcceptor {
     chain_name: String,
     protocol_version: ProtocolVersion,
     deploy_config: DeployConfig,
-    verify_accounts: bool,
     max_associated_keys: u32,
     metrics: metrics::Metrics,
 }
 
 impl DeployAcceptor {
     pub(crate) fn new(
-        config: Config,
         chainspec: &Chainspec,
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
@@ -167,7 +162,6 @@ impl DeployAcceptor {
             protocol_version: chainspec.protocol_version(),
             deploy_config: chainspec.deploy_config,
             max_associated_keys: chainspec.core_config.max_associated_keys,
-            verify_accounts: config.verify_accounts(),
             metrics: metrics::Metrics::new(registry)?,
         })
     }
@@ -219,22 +213,13 @@ impl DeployAcceptor {
             }
         }
 
-        if self.verify_accounts {
-            effect_builder
-                .get_highest_block_header_from_storage()
-                .event(move |maybe_block_header| Event::GetBlockHeaderResult {
-                    event_metadata: EventMetadata::new(deploy, source, maybe_responder),
-                    maybe_block_header: Box::new(maybe_block_header),
-                    verification_start_timestamp,
-                })
-        } else {
-            effect_builder
-                .immediately()
-                .event(move |_| Event::VerifyDeployCryptographicValidity {
-                    event_metadata: EventMetadata::new(deploy, source, maybe_responder),
-                    verification_start_timestamp,
-                })
-        }
+        effect_builder
+            .get_highest_block_header_from_storage()
+            .event(move |maybe_block_header| Event::GetBlockHeaderResult {
+                event_metadata: EventMetadata::new(deploy, source, maybe_responder),
+                maybe_block_header: Box::new(maybe_block_header),
+                verification_start_timestamp,
+            })
     }
 
     fn handle_get_block_result<REv: ReactorEventT>(
@@ -951,14 +936,6 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
                 contract_package_hash,
                 maybe_package_version,
                 maybe_contract_package,
-                verification_start_timestamp,
-            ),
-            Event::VerifyDeployCryptographicValidity {
-                event_metadata,
-                verification_start_timestamp,
-            } => self.validate_deploy_cryptography(
-                effect_builder,
-                event_metadata,
                 verification_start_timestamp,
             ),
             Event::PutToStorageResult {

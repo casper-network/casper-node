@@ -45,6 +45,7 @@ All notable changes to this project will be documented in this file.  The format
 * Legacy synchronization from genesis in favor of fast sync has been removed.
 * The `casper-mainnet` feature flag has been removed.
 * Integrity check has been removed.
+* Remove `verify_accounts` option from `config.toml`, meaning deploys received from clients always undergo account balance checks to assess suitability for execution or not.
 
 
 

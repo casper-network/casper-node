@@ -50,7 +50,6 @@ impl Drop for Reactor {
 pub struct FetcherTestConfig {
     fetcher_config: Config,
     storage_config: storage::Config,
-    deploy_acceptor_config: deploy_acceptor::Config,
     temp_dir: TempDir,
 }
 
@@ -60,7 +59,6 @@ impl Default for FetcherTestConfig {
         FetcherTestConfig {
             fetcher_config: Default::default(),
             storage_config,
-            deploy_acceptor_config: deploy_acceptor::Config::new(false),
             temp_dir,
         }
     }
@@ -93,7 +91,7 @@ reactor!(Reactor {
                 .protocol_config
                 .verifiable_chunked_hash_activation,
         );
-        deploy_acceptor = DeployAcceptor(cfg.deploy_acceptor_config, &*chainspec_loader.chainspec(), registry);
+        fake_deploy_acceptor = infallible FakeDeployAcceptor();
         deploy_fetcher = Fetcher::<Deploy>(
             "deploy",
             cfg.fetcher_config,
@@ -125,7 +123,7 @@ reactor!(Reactor {
         DeployAcceptorAnnouncement -> [deploy_fetcher];
         // Currently the RpcServerAnnouncement is misnamed - it solely tells of new deploys arriving
         // from a client.
-        RpcServerAnnouncement -> [deploy_acceptor];
+        RpcServerAnnouncement -> [fake_deploy_acceptor];
         ChainspecLoaderAnnouncement -> [!];
 
         // The `handle_net_response` function implements the entire "custom" logic found in this test
@@ -186,7 +184,7 @@ impl Reactor {
                 self.dispatch_event(
                     effect_builder,
                     rng,
-                    ReactorEvent::DeployAcceptor(deploy_acceptor::Event::Accept {
+                    ReactorEvent::FakeDeployAcceptor(deploy_acceptor::Event::Accept {
                         deploy,
                         source: Source::Peer(response.sender),
                         maybe_responder: None,
@@ -307,9 +305,10 @@ async fn assert_settled(
     // assert_eq!(expected_result.is_some(), maybe_stored_deploy.is_some());
     let actual_fetcher_result = fetched.lock().unwrap().1.clone();
     match (expected_result, actual_fetcher_result, maybe_stored_deploy) {
-        // Timed-out case: should not have a stored deploy
-        (ExpectedFetchedDeployResult::TimedOut, Some(Err(FetcherError::TimedOut { .. })), None) => {
-        }
+        // Timed-out case: despite the delayed response causing a timeout, the response does arrive,
+        // and the TestDeployAcceptor unconditionally accepts the deploy and stores it. For the
+        // test, we don't care whether it was stored or not, just that the TimedOut event fired.
+        (ExpectedFetchedDeployResult::TimedOut, Some(Err(FetcherError::TimedOut { .. })), _) => {}
         // FromStorage case: expect deploy to correspond to item fetched, as well as stored item
         (
             ExpectedFetchedDeployResult::FromStorage { expected_deploy },

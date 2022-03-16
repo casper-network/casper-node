@@ -18,13 +18,13 @@ use casper_types::{
 /// A utility struct to hold duplicated information across events.
 #[derive(Debug, Serialize)]
 pub(crate) struct EventMetadata {
-    pub(super) deploy: Box<Deploy>,
-    pub(super) source: Source,
-    pub(super) maybe_responder: Option<Responder<Result<(), Error>>>,
+    pub(crate) deploy: Box<Deploy>,
+    pub(crate) source: Source,
+    pub(crate) maybe_responder: Option<Responder<Result<(), Error>>>,
 }
 
 impl EventMetadata {
-    pub(super) fn new(
+    pub(crate) fn new(
         deploy: Box<Deploy>,
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
@@ -90,11 +90,6 @@ pub(crate) enum Event {
         contract_package_hash: ContractPackageHash,
         maybe_package_version: Option<ContractVersion>,
         maybe_contract_package: Option<ContractPackage>,
-        verification_start_timestamp: Timestamp,
-    },
-    /// The event to initiate the verification of the `Deploy`'s cryptographic validity.
-    VerifyDeployCryptographicValidity {
-        event_metadata: EventMetadata,
         verification_start_timestamp: Timestamp,
     },
 }
@@ -179,13 +174,6 @@ impl Display for Event {
                     "verifying contract package to validate deploy with hash {} with state hash: {}.",
                     event_metadata.deploy.id(),
                     prestate_hash
-                )
-            }
-            Event::VerifyDeployCryptographicValidity { event_metadata, .. } => {
-                write!(
-                    formatter,
-                    "verifying deploy cryptographic validity for deploy with hash {}.",
-                    event_metadata.deploy.id(),
                 )
             }
         }
