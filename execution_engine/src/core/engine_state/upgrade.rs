@@ -11,7 +11,10 @@ use casper_types::{
 };
 
 use crate::{
-    core::{engine_state::execution_effect::ExecutionEffect, tracking_copy::TrackingCopy},
+    core::{
+        engine_state::{execution_effect::ExecutionEffect, ChainspecRegistry},
+        tracking_copy::TrackingCopy,
+    },
     shared::newtypes::CorrelationId,
     storage::global_state::StateProvider,
 };
@@ -48,6 +51,7 @@ pub struct UpgradeConfig {
     new_round_seigniorage_rate: Option<Ratio<u64>>,
     new_unbonding_delay: Option<u64>,
     global_state_update: BTreeMap<Key, StoredValue>,
+    chainspec_registry: ChainspecRegistry,
 }
 
 impl UpgradeConfig {
@@ -64,6 +68,7 @@ impl UpgradeConfig {
         new_round_seigniorage_rate: Option<Ratio<u64>>,
         new_unbonding_delay: Option<u64>,
         global_state_update: BTreeMap<Key, StoredValue>,
+        chainspec_registry: ChainspecRegistry,
     ) -> Self {
         UpgradeConfig {
             pre_state_hash,
@@ -76,6 +81,7 @@ impl UpgradeConfig {
             new_round_seigniorage_rate,
             new_unbonding_delay,
             global_state_update,
+            chainspec_registry,
         }
     }
 
@@ -127,6 +133,11 @@ impl UpgradeConfig {
     /// Returns new map of emergency global state updates.
     pub fn global_state_update(&self) -> &BTreeMap<Key, StoredValue> {
         &self.global_state_update
+    }
+
+    /// Returns a reference to the chainspec registry.
+    pub fn chainspec_registry(&self) -> &ChainspecRegistry {
+        &self.chainspec_registry
     }
 
     /// Sets new pre state hash.

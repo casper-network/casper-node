@@ -540,4 +540,4 @@ volumes:
   temp: {}
 
 trigger:
-  cron: [ nightly-tests-cron ]
+  cron: [ nightly-tests-cron, feat-fast-sync ]

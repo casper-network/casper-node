@@ -31,13 +31,12 @@ pub(crate) mod reactor;
 #[cfg(test)]
 pub(crate) mod testing;
 pub(crate) mod tls;
-pub mod utils;
 
 // Public API
 pub mod cli;
 pub mod crypto;
 pub mod types;
-
+pub mod utils;
 pub use components::{
     contract_runtime,
     rpc_server::rpcs,
@@ -56,30 +55,18 @@ use signal_hook::{consts::TERM_SIGNALS, flag};
 pub(crate) use components::{
     block_proposer::Config as BlockProposerConfig, consensus::Config as ConsensusConfig,
     contract_runtime::Config as ContractRuntimeConfig,
-    deploy_acceptor::Config as DeployAcceptorConfig,
     diagnostics_port::Config as DiagnosticsPortConfig,
     event_stream_server::Config as EventStreamServerConfig, fetcher::Config as FetcherConfig,
-    gossiper::Config as GossipConfig, linear_chain_sync::Config as LinearChainSyncConfig,
-    rest_server::Config as RestServerConfig, rpc_server::Config as RpcServerConfig,
-    small_network::Config as SmallNetworkConfig,
+    gossiper::Config as GossipConfig, rest_server::Config as RestServerConfig,
+    rpc_server::Config as RpcServerConfig, small_network::Config as SmallNetworkConfig,
 };
-
 pub(crate) use types::NodeRng;
 
 /// The maximum thread count which should be spawned by the tokio runtime.
 pub const MAX_THREAD_COUNT: usize = 512;
 
 fn version_string(color: bool) -> String {
-    let mut version = format!(
-        "{}-{}{}",
-        env!("CARGO_PKG_VERSION"),
-        env!("VERGEN_SHA_SHORT"),
-        if cfg!(feature = "casper-mainnet") {
-            "-casper-mainnet"
-        } else {
-            ""
-        }
-    );
+    let mut version = format!("{}-{}", env!("CARGO_PKG_VERSION"), env!("VERGEN_SHA_SHORT"));
 
     // Add a `@DEBUG` (or similar) tag to release string on non-release builds.
     if env!("NODE_BUILD_PROFILE") != "release" {

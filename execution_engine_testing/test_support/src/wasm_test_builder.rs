@@ -15,15 +15,11 @@ use log::LevelFilter;
 use bytesrepr::FromBytes;
 use casper_execution_engine::{
     core::{
-        engine_state,
         engine_state::{
-            era_validators::GetEraValidatorsRequest,
-            execute_request::ExecuteRequest,
-            execution_result::ExecutionResult,
-            run_genesis_request::RunGenesisRequest,
-            step::{StepRequest, StepSuccess},
-            BalanceResult, EngineConfig, EngineState, GenesisSuccess, GetBidsRequest, QueryRequest,
-            QueryResult, StepError, SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
+            self, BalanceResult, EngineConfig, EngineState, ExecuteRequest, ExecutionResult,
+            GenesisSuccess, GetBidsRequest, GetEraValidatorsRequest, QueryRequest, QueryResult,
+            RunGenesisRequest, StepError, StepRequest, StepSuccess, SystemContractRegistry,
+            UpgradeConfig, UpgradeSuccess,
         },
         execution,
     },
@@ -385,6 +381,7 @@ where
                 run_genesis_request.genesis_config_hash(),
                 run_genesis_request.protocol_version(),
                 run_genesis_request.ee_config(),
+                run_genesis_request.chainspec_registry().clone(),
             )
             .expect("Unable to get genesis response");
 

@@ -617,7 +617,7 @@ mod tests {
         // proper JSON header present.
         assert_eq!(
             output,
-            r#"{"queues":{"Control":[],"NetworkIncoming":[],"Network":[],"Regular":[],"Api":[]}}"#
+            r#"{"queues":{"Control":[],"NetworkIncoming":[],"NetworkLowPriority":[],"Network":[],"Regular":[],"Api":[]}}"#
         );
     }
 
@@ -630,7 +630,7 @@ mod tests {
         // The output will be empty queues in debug format.
         assert_eq!(
             output,
-            r#"QueueDump { queues: {Control: [], NetworkIncoming: [], Network: [], Regular: [], Api: []} }"#
+            r#"QueueDump { queues: {Control: [], NetworkIncoming: [], NetworkLowPriority: [], Network: [], Regular: [], Api: []} }"#
         );
     }
 
@@ -655,7 +655,7 @@ mod tests {
         // `PartialEq` implementations.
         scheduler.dump(|dump| {
             let debug_repr = format!("{:?}", dump);
-            assert_eq!(debug_repr, r#"QueueDump { queues: {Control: [], NetworkIncoming: [], Network: [SmallNetwork(SweepOutgoing)], Regular: [SmallNetwork(GossipOurAddress)], Api: []} }"#);
+            assert_eq!(debug_repr, r#"QueueDump { queues: {Control: [], NetworkIncoming: [], NetworkLowPriority: [], Network: [SmallNetwork(SweepOutgoing)], Regular: [SmallNetwork(GossipOurAddress)], Api: []} }"#);
         }).await;
     }
 }

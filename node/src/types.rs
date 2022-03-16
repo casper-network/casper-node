@@ -25,9 +25,9 @@ pub use block::{
     Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, FinalitySignature, FinalizedBlock,
     HashingAlgorithmVersion, MerkleBlockBody, MerkleBlockBodyPart, MerkleLinkedListNode,
 };
-pub(crate) use block::{BlockByHeight, BlockHeaderWithMetadata, BlockPayload};
-pub(crate) use chainspec::ActivationPoint;
+pub(crate) use block::{BlockHeaderWithMetadata, BlockPayload, BlockWithMetadata};
 pub use chainspec::Chainspec;
+pub(crate) use chainspec::{ActivationPoint, ChainspecRawBytes};
 pub use datasize::DataSize;
 pub use deploy::{
     Approval, Deploy, DeployConfigurationFailure, DeployHash, DeployHeader, DeployMetadata,
@@ -35,12 +35,11 @@ pub use deploy::{
 };
 pub use error::BlockValidationError;
 pub use exit_code::ExitCode;
-pub use item::{Item, Tag};
+pub(crate) use item::{Item, Tag};
 pub use node_config::NodeConfig;
 pub(crate) use node_id::NodeId;
 pub use peers_map::PeersMap;
-pub(crate) use shared_object::SharedObject;
-pub use status_feed::{ChainspecInfo, GetStatusResult, StatusFeed};
+pub use status_feed::{ChainspecInfo, GetStatusResult, NodeState, StatusFeed};
 pub use timestamp::{TimeDiff, Timestamp};
 
 /// An object-safe RNG trait that requires a cryptographically strong random number generator.

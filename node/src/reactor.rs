@@ -56,20 +56,25 @@ use tokio::time::{Duration, Instant};
 use tracing::{debug, debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
 
+use casper_types::EraId;
 use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
 
 use crate::{
+    components::fetcher,
     effect::{
-        announcements::{ControlAnnouncement, QueueDumpFormat},
-        Effect, EffectBuilder, Effects,
+        announcements::{BlocklistAnnouncement, ControlAnnouncement, QueueDumpFormat},
+        Effect, EffectBuilder, EffectExt, Effects,
     },
-    types::ExitCode,
+    types::{ExitCode, Item, NodeId},
     unregister_metric,
     utils::{self, SharedFlag, WeightedRoundRobin},
     NodeRng, TERMINATION_REQUESTED,
 };
 #[cfg(test)]
-use crate::{reactor::initializer::Reactor as InitializerReactor, types::Chainspec};
+use crate::{
+    reactor::initializer::Reactor as InitializerReactor,
+    types::{Chainspec, ChainspecRawBytes},
+};
 pub(crate) use queue_kind::QueueKind;
 use stats_alloc::{Stats, INSTRUMENTED_SYSTEM};
 
@@ -815,14 +820,20 @@ impl Runner<InitializerReactor> {
     pub(crate) async fn new_with_chainspec(
         cfg: <InitializerReactor as Reactor>::Config,
         chainspec: Arc<Chainspec>,
+        chainspec_raw_bytes: Arc<ChainspecRawBytes>,
     ) -> Result<Self, <InitializerReactor as Reactor>::Error> {
         let registry = Registry::new();
         let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
 
         let is_shutting_down = SharedFlag::new();
         let event_queue = EventQueueHandle::new(scheduler, is_shutting_down);
-        let (reactor, initial_effects) =
-            InitializerReactor::new_with_chainspec(cfg, &registry, event_queue, chainspec)?;
+        let (reactor, initial_effects) = InitializerReactor::new_with_chainspec(
+            cfg,
+            &registry,
+            event_queue,
+            chainspec,
+            chainspec_raw_bytes,
+        )?;
 
         // Run all effects from component instantiation.
         let span = debug_span!("process initial effects");
@@ -900,4 +911,38 @@ where
         .into_iter()
         .map(move |effect| wrap_effect(wrap.clone(), effect))
         .collect()
+}
+
+pub(crate) fn handle_fetch_response<R, T>(
+    reactor: &mut R,
+    effect_builder: EffectBuilder<<R as Reactor>::Event>,
+    rng: &mut NodeRng,
+    sender: NodeId,
+    serialized_item: &[u8],
+    verifiable_chunked_hash_activation: EraId,
+) -> Effects<<R as Reactor>::Event>
+where
+    T: Item,
+    R: Reactor,
+    <R as Reactor>::Event: From<fetcher::Event<T>> + From<BlocklistAnnouncement>,
+{
+    match fetcher::Event::<T>::from_get_response_serialized_item(
+        sender,
+        serialized_item,
+        verifiable_chunked_hash_activation,
+    ) {
+        Some(fetcher_event) => {
+            Reactor::dispatch_event(reactor, effect_builder, rng, fetcher_event.into())
+        }
+        None => {
+            info!(
+                "{} sent us a {:?} item we couldn't parse, banning peer",
+                sender,
+                T::TAG
+            );
+            effect_builder
+                .announce_disconnect_from_peer(sender)
+                .ignore()
+        }
+    }
 }

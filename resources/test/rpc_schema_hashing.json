@@ -450,6 +450,29 @@
             ],
             "type": "object"
           },
+          "ChainspecRawBytes": {
+            "description": "The raw bytes of the chainspec.toml, genesis accounts.toml, and global_state.toml files.",
+            "properties": {
+              "chainspec_bytes": {
+                "description": "Hex-encoded raw bytes of the current chainspec.toml file.",
+                "type": "string"
+              },
+              "maybe_genesis_accounts_bytes": {
+                "description": "Hex-encoded raw bytes of the current genesis accounts.toml file.",
+                "type": "string"
+              },
+              "maybe_global_state_bytes": {
+                "description": "Hex-encoded raw bytes of the current global_state.toml file.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "chainspec_bytes",
+              "maybe_genesis_accounts_bytes",
+              "maybe_global_state_bytes"
+            ],
+            "type": "object"
+          },
           "Contract": {
             "additionalProperties": false,
             "description": "A contract struct that can be serialized as  JSON object.",
@@ -1921,6 +1944,15 @@
               "protocol_version"
             ],
             "type": "object"
+          },
+          "NodeState": {
+            "description": "The various possible states of operation for the node.",
+            "enum": [
+              "FastSyncing",
+              "SyncingToGenesis",
+              "Participating"
+            ],
+            "type": "string"
           },
           "OpKind": {
             "description": "The type of operation performed while executing a deploy.",
@@ -3466,6 +3498,7 @@
                     "activation_point": 42,
                     "protocol_version": "2.0.1"
                   },
+                  "node_state": "Participating",
                   "our_public_signing_key": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
                   "peers": [
                     {
@@ -3474,7 +3507,7 @@
                     }
                   ],
                   "round_length": "1m 5s 536ms",
-                  "starting_state_root_hash": "0202020202020202020202020202020202020202020202020202020202020202",
+                  "starting_state_root_hash": "0000000000000000000000000000000000000000000000000000000000000000",
                   "uptime": "13s"
                 }
               }
@@ -3522,6 +3555,10 @@
                   ],
                   "description": "Information about the next scheduled upgrade."
                 },
+                "node_state": {
+                  "$ref": "#/components/schemas/NodeState",
+                  "description": "The current state of node."
+                },
                 "our_public_signing_key": {
                   "anyOf": [
                     {
@@ -3550,6 +3587,7 @@
                 },
                 "starting_state_root_hash": {
                   "$ref": "#/components/schemas/Digest",
+                  "deprecated": true,
                   "description": "The state root hash used at the start of the current session."
                 },
                 "uptime": {
@@ -3561,6 +3599,7 @@
                 "api_version",
                 "build_version",
                 "chainspec_name",
+                "node_state",
                 "peers",
                 "starting_state_root_hash",
                 "uptime"
@@ -3622,6 +3661,49 @@
             }
           },
           "summary": "returns status changes of active validators"
+        },
+        {
+          "examples": [
+            {
+              "name": "info_get_chainspec_example",
+              "params": [],
+              "result": {
+                "name": "info_get_chainspec_example_result",
+                "value": {
+                  "api_version": "1.4.3",
+                  "chainspec_bytes": {
+                    "chainspec_bytes": "2a2a",
+                    "maybe_genesis_accounts_bytes": null,
+                    "maybe_global_state_bytes": null
+                  }
+                }
+              }
+            }
+          ],
+          "name": "info_get_chainspec",
+          "params": [],
+          "result": {
+            "name": "info_get_chainspec_result",
+            "schema": {
+              "description": "Result for the \"info_get_chainspec\" RPC.",
+              "properties": {
+                "api_version": {
+                  "description": "The RPC API version.",
+                  "type": "string"
+                },
+                "chainspec_bytes": {
+                  "$ref": "#/components/schemas/ChainspecRawBytes",
+                  "description": "The chainspec file bytes."
+                }
+              },
+              "required": [
+                "api_version",
+                "chainspec_bytes"
+              ],
+              "type": "object"
+            }
+          },
+          "summary": "returns the raw bytes of the chainspec.toml, genesis accounts.toml, and global_state.toml files"
         },
         {
           "examples": [
@@ -3707,7 +3789,7 @@
               "required": false,
               "schema": {
                 "$ref": "#/components/schemas/BlockIdentifier",
-                "description": "The block hash."
+                "description": "The block identifier."
               }
             }
           ],

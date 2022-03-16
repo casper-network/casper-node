@@ -18,6 +18,7 @@ use rand::{
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use tracing::error;
 
 use casper_hashing::Digest;
 use casper_types::{
@@ -29,10 +30,9 @@ use casper_types::{
     EntryPoint, EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs, StoredValue, U512,
 };
 
-use super::error;
 use crate::{
     core::{
-        engine_state::{genesis::SystemContractRegistry, Error, ExecError, MAX_PAYMENT_AMOUNT},
+        engine_state::{Error, ExecError, SystemContractRegistry, MAX_PAYMENT_AMOUNT},
         execution,
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
@@ -378,7 +378,7 @@ impl ExecutableDeployItem {
 
         match self {
             ExecutableDeployItem::Transfer { .. } => {
-                return Err(error::Error::InvalidDeployItemVariant("Transfer".into()))
+                return Err(Error::InvalidDeployItemVariant("Transfer".into()))
             }
             ExecutableDeployItem::ModuleBytes { module_bytes, .. }
                 if module_bytes.is_empty() && phase == Phase::Payment =>
@@ -431,7 +431,7 @@ impl ExecutableDeployItem {
                         expected: protocol_version.value().major,
                         actual: contract.protocol_version().value().major,
                     };
-                    return Err(error::Error::Exec(exec_error));
+                    return Err(Error::Exec(exec_error));
                 }
 
                 contract_package = tracking_copy
@@ -441,7 +441,7 @@ impl ExecutableDeployItem {
             ExecutableDeployItem::StoredContractByName { name, .. } => {
                 // `ContractHash` is stored in named keys.
                 base_key = account.named_keys().get(name).cloned().ok_or_else(|| {
-                    error::Error::Exec(execution::Error::NamedKeyNotFound(name.to_string()))
+                    Error::Exec(execution::Error::NamedKeyNotFound(name.to_string()))
                 })?;
 
                 contract_hash =
@@ -456,7 +456,7 @@ impl ExecutableDeployItem {
                         expected: protocol_version.value().major,
                         actual: contract.protocol_version().value().major,
                     };
-                    return Err(error::Error::Exec(exec_error));
+                    return Err(Error::Exec(exec_error));
                 }
 
                 contract_package = tracking_copy
@@ -471,7 +471,7 @@ impl ExecutableDeployItem {
                         .get(name)
                         .cloned()
                         .ok_or_else(|| {
-                            error::Error::Exec(execution::Error::NamedKeyNotFound(name.to_string()))
+                            Error::Exec(execution::Error::NamedKeyNotFound(name.to_string()))
                         })?
                         .into_hash()
                         .ok_or(Error::InvalidKeyVariant)?
@@ -487,21 +487,21 @@ impl ExecutableDeployItem {
 
                 let contract_version_key = maybe_version_key
                     .or_else(|| contract_package.current_contract_version())
-                    .ok_or(error::Error::Exec(
-                        execution::Error::NoActiveContractVersions(contract_package_hash),
-                    ))?;
+                    .ok_or(Error::Exec(execution::Error::NoActiveContractVersions(
+                        contract_package_hash,
+                    )))?;
 
                 if !contract_package.is_version_enabled(contract_version_key) {
-                    return Err(error::Error::Exec(
-                        execution::Error::InvalidContractVersion(contract_version_key),
-                    ));
+                    return Err(Error::Exec(execution::Error::InvalidContractVersion(
+                        contract_version_key,
+                    )));
                 }
 
                 let looked_up_contract_hash: ContractHash = contract_package
                     .lookup_contract_hash(contract_version_key)
-                    .ok_or(error::Error::Exec(
-                        execution::Error::InvalidContractVersion(contract_version_key),
-                    ))?
+                    .ok_or(Error::Exec(execution::Error::InvalidContractVersion(
+                        contract_version_key,
+                    )))?
                     .to_owned();
 
                 contract = tracking_copy
@@ -526,22 +526,22 @@ impl ExecutableDeployItem {
                 let contract_version_key = maybe_version_key
                     .or_else(|| contract_package.current_contract_version())
                     .ok_or({
-                        error::Error::Exec(execution::Error::NoActiveContractVersions(
+                        Error::Exec(execution::Error::NoActiveContractVersions(
                             *contract_package_hash,
                         ))
                     })?;
 
                 if !contract_package.is_version_enabled(contract_version_key) {
-                    return Err(error::Error::Exec(
-                        execution::Error::InvalidContractVersion(contract_version_key),
-                    ));
+                    return Err(Error::Exec(execution::Error::InvalidContractVersion(
+                        contract_version_key,
+                    )));
                 }
 
                 let looked_up_contract_hash = *contract_package
                     .lookup_contract_hash(contract_version_key)
-                    .ok_or(error::Error::Exec(
-                        execution::Error::InvalidContractVersion(contract_version_key),
-                    ))?;
+                    .ok_or(Error::Exec(execution::Error::InvalidContractVersion(
+                        contract_version_key,
+                    )))?;
                 contract = tracking_copy
                     .borrow_mut()
                     .get_contract(correlation_id, looked_up_contract_hash)?;
@@ -557,13 +557,10 @@ impl ExecutableDeployItem {
             .entry_point(entry_point_name)
             .cloned()
             .ok_or_else(|| {
-                error::Error::Exec(execution::Error::NoSuchMethod(entry_point_name.to_owned()))
+                Error::Exec(execution::Error::NoSuchMethod(entry_point_name.to_owned()))
             })?;
 
-        if system_contract_registry
-            .values()
-            .any(|value| *value == contract_hash)
-        {
+        if system_contract_registry.has_contract_hash(&contract_hash) {
             let module = wasm::do_nothing_module(preprocessor)?;
             return Ok(DeployMetadata {
                 kind: DeployKind::System,

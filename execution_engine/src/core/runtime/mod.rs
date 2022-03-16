@@ -116,6 +116,7 @@ pub fn key_to_tuple(key: Key) -> Option<([u8; 32], AccessRights)> {
         Key::Unbond(_) => None,
         Key::Dictionary(_) => None,
         Key::SystemContractRegistry => None,
+        Key::ChainspecRegistry => None,
     }
 }
 
@@ -2074,8 +2075,7 @@ where
         if !self
             .context
             .system_contract_registry()?
-            .values()
-            .any(|&system_hash| system_hash == contract_hash)
+            .has_contract_hash(&contract_hash)
         {
             let entry_point_args_lookup: BTreeMap<&str, &Parameter> = entry_point
                 .args()

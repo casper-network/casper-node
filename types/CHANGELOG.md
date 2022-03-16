@@ -14,19 +14,16 @@ All notable changes to this project will be documented in this file.  The format
 ## [Unreleased]
 
 ### Added
-* Added new `bytesrepr::Error::NotRepresentable` error variant that represents values that are not representable by the serialization format.
+* Add new `bytesrepr::Error::NotRepresentable` error variant that represents values that are not representable by the serialization format.
+* Add new `Key::ChainspecRegistry` key variant under which the `ChainspecRegistry` is written.
+* Add a new type `WithdrawPurses` which is meant to represent `UnbondingPurses` as they exist in current live networks.
 
 ### Changed
-* Extended `UnbondingPurses` to take a new field `new_validator` which represents the validator to whom tokens will be re-delegated.
-
-### Added
-* Added a new type `WithdrawPurses` which are meant to represent `UnbondingPurses` as they exist in current live networks.
-
-### Changed
+* Extend `UnbondingPurses` to take a new field `new_validator` which represents the validator to whom tokens will be re-delegated.
 * Disable checksummed-hex encoding, but leave checksummed-hex decoding in place.
 * Increase `DICTIONARY_ITEM_KEY_MAX_LENGTH` to 128.
 * Fixed some integer casts.
-
+* Extended `UnbondingPurses` to take a new field `new_validator` which represents the validator to whom tokens will be re-delegated.
 
 
 ## 1.4.5 - 2021-12-06

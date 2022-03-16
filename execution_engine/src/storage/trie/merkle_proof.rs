@@ -161,8 +161,8 @@ where
     /// The steps in this function reflect `operations::rehash`.
     pub fn compute_state_hash(&self) -> Result<Digest, bytesrepr::Error> {
         let mut hash = {
-            let leaf_bytes = Trie::leaf(self.key, self.value.to_owned()).to_bytes()?;
-            Digest::hash(&leaf_bytes)
+            let leaf = Trie::leaf(self.key, self.value.to_owned());
+            leaf.trie_hash()?
         };
 
         for (proof_step_index, proof_step) in self.proof_steps.iter().enumerate() {

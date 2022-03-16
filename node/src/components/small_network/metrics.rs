@@ -32,6 +32,8 @@ pub(super) struct Metrics {
     pub(super) out_count_deploy_transfer: IntCounter,
     /// Count of outgoing messages with block request/response payload.
     pub(super) out_count_block_transfer: IntCounter,
+    /// Count of outgoing messages with trie request/response payload.
+    pub(super) out_count_trie_transfer: IntCounter,
     /// Count of outgoing messages with other payload.
     pub(super) out_count_other: IntCounter,
 
@@ -47,6 +49,8 @@ pub(super) struct Metrics {
     pub(super) out_bytes_deploy_transfer: IntCounter,
     /// Volume in bytes of outgoing messages with block request/response payload.
     pub(super) out_bytes_block_transfer: IntCounter,
+    /// Volume in bytes of outgoing messages with block request/response payload.
+    pub(super) out_bytes_trie_transfer: IntCounter,
     /// Volume in bytes of outgoing messages with other payload.
     pub(super) out_bytes_other: IntCounter,
 
@@ -106,6 +110,10 @@ impl Metrics {
             "net_out_count_block_transfer",
             "count of outgoing messages with block request/response payload",
         )?;
+        let out_count_trie_transfer = IntCounter::new(
+            "net_out_count_trie_transfer",
+            "count of outgoing messages with trie payloads",
+        )?;
         let out_count_other = IntCounter::new(
             "net_out_count_other",
             "count of outgoing messages with other payload",
@@ -134,6 +142,10 @@ impl Metrics {
         let out_bytes_block_transfer = IntCounter::new(
             "net_out_bytes_block_transfer",
             "volume in bytes of outgoing messages with block request/response payload",
+        )?;
+        let out_bytes_trie_transfer = IntCounter::new(
+            "net_out_bytes_trie_transfer",
+            "volume in bytes of outgoing messages with trie payloads",
         )?;
         let out_bytes_other = IntCounter::new(
             "net_out_bytes_other",
@@ -173,6 +185,7 @@ impl Metrics {
         registry.register(Box::new(out_count_address_gossip.clone()))?;
         registry.register(Box::new(out_count_deploy_transfer.clone()))?;
         registry.register(Box::new(out_count_block_transfer.clone()))?;
+        registry.register(Box::new(out_count_trie_transfer.clone()))?;
         registry.register(Box::new(out_count_other.clone()))?;
 
         registry.register(Box::new(out_bytes_protocol.clone()))?;
@@ -181,6 +194,7 @@ impl Metrics {
         registry.register(Box::new(out_bytes_address_gossip.clone()))?;
         registry.register(Box::new(out_bytes_deploy_transfer.clone()))?;
         registry.register(Box::new(out_bytes_block_transfer.clone()))?;
+        registry.register(Box::new(out_bytes_trie_transfer.clone()))?;
         registry.register(Box::new(out_bytes_other.clone()))?;
 
         registry.register(Box::new(out_state_connecting.clone()))?;
@@ -201,6 +215,7 @@ impl Metrics {
             out_count_address_gossip,
             out_count_deploy_transfer,
             out_count_block_transfer,
+            out_count_trie_transfer,
             out_count_other,
             out_bytes_protocol,
             out_bytes_consensus,
@@ -208,6 +223,7 @@ impl Metrics {
             out_bytes_address_gossip,
             out_bytes_deploy_transfer,
             out_bytes_block_transfer,
+            out_bytes_trie_transfer,
             out_bytes_other,
             out_state_connecting,
             out_state_waiting,
@@ -246,6 +262,10 @@ impl Metrics {
                     metrics.out_bytes_block_transfer.inc_by(size);
                     metrics.out_count_block_transfer.inc();
                 }
+                MessageKind::TrieTransfer => {
+                    metrics.out_bytes_trie_transfer.inc_by(size);
+                    metrics.out_count_trie_transfer.inc();
+                }
                 MessageKind::Other => {
                     metrics.out_bytes_other.inc_by(size);
                     metrics.out_count_other.inc();
@@ -282,6 +302,7 @@ impl Drop for Metrics {
         unregister_metric!(self.registry, self.out_count_address_gossip);
         unregister_metric!(self.registry, self.out_count_deploy_transfer);
         unregister_metric!(self.registry, self.out_count_block_transfer);
+        unregister_metric!(self.registry, self.out_count_trie_transfer);
         unregister_metric!(self.registry, self.out_count_other);
 
         unregister_metric!(self.registry, self.out_bytes_protocol);
@@ -290,6 +311,7 @@ impl Drop for Metrics {
         unregister_metric!(self.registry, self.out_bytes_address_gossip);
         unregister_metric!(self.registry, self.out_bytes_deploy_transfer);
         unregister_metric!(self.registry, self.out_bytes_block_transfer);
+        unregister_metric!(self.registry, self.out_bytes_trie_transfer);
         unregister_metric!(self.registry, self.out_bytes_other);
         unregister_metric!(self.registry, self.out_state_connecting);
         unregister_metric!(self.registry, self.out_state_waiting);

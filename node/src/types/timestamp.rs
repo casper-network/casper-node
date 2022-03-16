@@ -69,15 +69,28 @@ impl Timestamp {
         Timestamp(self.0.saturating_sub(other.0))
     }
 
+    /// Returns the sum of `self` and `other`, or the maximum possible value if that would be
+    /// exceeded.
+    pub fn saturating_add(self, other: TimeDiff) -> Timestamp {
+        Timestamp(self.0.saturating_add(other.0))
+    }
+
     /// Returns the number of trailing zeros in the number of milliseconds since the epoch.
     pub fn trailing_zeros(&self) -> u8 {
         self.0.trailing_zeros() as u8
     }
+}
 
+#[cfg(test)]
+impl Timestamp {
     /// Generates a random instance using a `TestRng`.
-    #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
         Timestamp(1_596_763_000_000 + rng.gen_range(200_000..1_000_000))
+    }
+
+    /// Checked subtraction for timestamps
+    pub fn checked_sub(self, other: TimeDiff) -> Option<Timestamp> {
+        self.0.checked_sub(other.0).map(Timestamp)
     }
 }
 

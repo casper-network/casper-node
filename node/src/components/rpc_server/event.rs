@@ -13,7 +13,7 @@ use casper_types::{system::auction::EraValidators, Transfer};
 use crate::{
     effect::{requests::RpcRequest, Responder},
     rpcs::chain::BlockIdentifier,
-    types::{Block, BlockHash, BlockSignatures, Deploy, DeployHash, DeployMetadata, NodeId},
+    types::{BlockHash, BlockWithMetadata, Deploy, DeployHash, DeployMetadata, NodeId},
 };
 
 #[derive(Debug, From)]
@@ -22,8 +22,8 @@ pub(crate) enum Event {
     RpcRequest(RpcRequest),
     GetBlockResult {
         maybe_id: Option<BlockIdentifier>,
-        result: Box<Option<(Block, BlockSignatures)>>,
-        main_responder: Responder<Option<(Block, BlockSignatures)>>,
+        result: Box<Option<BlockWithMetadata>>,
+        main_responder: Responder<Option<BlockWithMetadata>>,
     },
     GetBlockTransfersResult {
         block_hash: BlockHash,
@@ -54,6 +54,10 @@ pub(crate) enum Event {
     GetBalanceResult {
         result: Result<BalanceResult, engine_state::Error>,
         main_responder: Responder<Result<BalanceResult, engine_state::Error>>,
+    },
+    GetLowestContiguousBlockHeightResult {
+        height: u64,
+        main_responder: Responder<u64>,
     },
 }
 
@@ -99,6 +103,11 @@ impl Display for Event {
                 write!(formatter, "get deploy result for {}: {:?}", hash, result)
             }
             Event::GetPeersResult { peers, .. } => write!(formatter, "get peers: {}", peers.len()),
+            Event::GetLowestContiguousBlockHeightResult { height, .. } => write!(
+                formatter,
+                "get lowest contiguous block height result: {}",
+                height
+            ),
         }
     }
 }

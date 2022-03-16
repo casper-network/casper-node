@@ -287,6 +287,10 @@ where
                 error!("should not remove the system contract registry key");
                 Err(Error::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied))
             }
+            Key::ChainspecRegistry => {
+                error!("should not remove the chainspec registry key");
+                Err(Error::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied))
+            }
         }
     }
 
@@ -733,6 +737,7 @@ where
                 false
             }
             Key::SystemContractRegistry => true,
+            Key::ChainspecRegistry => true,
         }
     }
 
@@ -754,6 +759,7 @@ where
                 false
             }
             Key::SystemContractRegistry => false,
+            Key::ChainspecRegistry => false,
         }
     }
 
@@ -775,6 +781,7 @@ where
                 false
             }
             Key::SystemContractRegistry => false,
+            Key::ChainspecRegistry => false,
         }
     }
 
@@ -807,8 +814,7 @@ where
     pub(crate) fn is_system_contract(&self, contract_hash: &ContractHash) -> Result<bool, Error> {
         Ok(self
             .system_contract_registry()?
-            .values()
-            .any(|system_hash| system_hash == contract_hash))
+            .has_contract_hash(contract_hash))
     }
 
     /// Charges gas for specified amount of bytes used.

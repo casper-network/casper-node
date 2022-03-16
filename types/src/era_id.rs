@@ -56,10 +56,12 @@ impl EraId {
     }
 
     /// Returns a successor to current era.
+    ///
+    /// For `u64::MAX`, this returns `u64::MAX` again: We want to make sure this doesn't panic, and
+    /// that era number will never be reached in practice.
     #[must_use]
-    #[allow(clippy::integer_arithmetic)] // The caller must make sure this doesn't overflow.
     pub fn successor(self) -> EraId {
-        EraId::from(self.0 + 1)
+        EraId::from(self.0.saturating_add(1))
     }
 
     /// Returns the current era plus `x`, or `None` if that would overflow
@@ -80,8 +82,8 @@ impl EraId {
 
     /// Returns the current era plus `x`, or [`EraId::MAX`] if overflow would occur.
     #[must_use]
-    pub fn saturating_add(self, rhs: EraId) -> EraId {
-        EraId(self.0.saturating_add(rhs.0))
+    pub fn saturating_add(self, rhs: u64) -> EraId {
+        EraId(self.0.saturating_add(rhs))
     }
 
     /// Returns the current era times `x`, or [`EraId::MAX`] if overflow would occur.
