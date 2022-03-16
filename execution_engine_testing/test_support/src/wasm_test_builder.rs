@@ -1171,4 +1171,23 @@ where
         self.transforms = Vec::new();
         self
     }
+
+    /// Advances eras by num_eras
+    pub fn advance_eras_by(&mut self, num_eras: u64) {
+        for _ in 0..=num_eras {
+            let step_request = StepRequestBuilder::new()
+                .with_parent_state_hash(self.get_post_state_hash())
+                .with_protocol_version(ProtocolVersion::V1_0_0)
+                .with_next_era_id(self.get_era().successor())
+                .with_run_auction(true)
+                .build();
+            self.step(step_request)
+                .expect("must execute third step request post upgrade");
+        }
+    }
+
+    /// Advances eras by configured amount
+    pub fn advance_eras_by_configured_amount(&mut self) {
+        self.advance_eras_by(DEFAULT_AUCTION_DELAY);
+    }
 }

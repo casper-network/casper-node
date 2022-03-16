@@ -4043,15 +4043,7 @@ fn should_not_restake_after_full_unbond() {
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     // advance past the initial auction delay due to special condition of post-genesis behavior.
-    for _ in 0..4 {
-        let step_request = StepRequestBuilder::new()
-            .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
-            .with_next_era_id(builder.get_era() + 1)
-            .build();
-
-        builder.step(step_request).expect("should step");
-    }
+    builder.advance_eras_by(4);
 
     let validator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
