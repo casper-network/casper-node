@@ -1405,24 +1405,37 @@ impl<C: Context> Default for RoundOutcome<C> {
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
 pub(crate) enum Message<C: Context> {
-    // Partial information about the sender's protocol state. The receiver should send missing
-    // data.
+    /// Partial information about the sender's protocol state. The receiver should send missing
+    /// data.
+    ///
+    /// The sender chooses a random peer and a random era, and includes in its `SyncState` message
+    /// information about received proposals, echos and votes. The idea is to set the `i`-th bit in
+    /// the `u128` fields to `1` if we have a signature from the `i`-th validator.
+    ///
+    /// To keep the size of these messages constant even if there are more than 128 validators, a
+    /// random interval is selected and only information about validators in that interval is
+    /// included: The bit with the lowest significance corresponds to validator number
+    /// `first_validator_idx`, and the one with the highest to
+    /// `(first_validator_idx + 127) % validator_count`.
+    ///
+    /// For example if there are 500 validators and `first_validator_idx` is 450, the `u128`'s bits
+    /// refer to validators 450, 451, ..., 499, 0, 1, ..., 77.
     SyncState {
-        // The round the information refers to.
+        /// The round the information refers to.
         round_id: RoundId,
-        // The proposal hash with the most echos (by weight).
+        /// The proposal hash with the most echos (by weight).
         proposal_hash: Option<C::Hash>,
-        // Whether the sender has the proposal with that hash.
+        /// Whether the sender has the proposal with that hash.
         proposal: bool,
-        // The index of the first validator covered by the bit fields below.
+        /// The index of the first validator covered by the bit fields below.
         first_validator_idx: ValidatorIndex,
-        // A bit field with 1 for every validator the sender has an echo from.
+        /// A bit field with 1 for every validator the sender has an echo from.
         echos: u128,
-        // A bit field with 1 for every validator the sender has a `true` vote from.
+        /// A bit field with 1 for every validator the sender has a `true` vote from.
         true_votes: u128,
-        // A bit field with 1 for every validator the sender has a `false` vote from.
+        /// A bit field with 1 for every validator the sender has a `false` vote from.
         false_votes: u128,
-        // A bit field with 1 for every validator the sender has evidence against.
+        /// A bit field with 1 for every validator the sender has evidence against.
         faulty: u128,
         instance_id: C::InstanceId,
     },
