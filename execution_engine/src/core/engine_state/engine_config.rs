@@ -8,8 +8,6 @@ pub const DEFAULT_MAX_QUERY_DEPTH: u64 = 5;
 pub const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
 /// Default value for maximum runtime call stack height configuration option.
 pub const DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT: u32 = 12;
-/// Default value for maximum delegators per validator.
-pub const DEFAULT_MAX_DELEGATOR_SIZE_LIMIT: u32 = 950;
 /// Default value for minimum delegation amount in motes.
 pub const DEFAULT_MINIMUM_DELEGATION_AMOUNT: u64 = 500 * 1_000_000_000;
 
@@ -23,7 +21,6 @@ pub struct EngineConfig {
     /// [`Weight`](casper_types::account::Weight)s) for a single account.
     max_associated_keys: u32,
     max_runtime_call_stack_height: u32,
-    max_delegator_size_limit: u32,
     minimum_delegation_amount: u64,
     wasm_config: WasmConfig,
     system_config: SystemConfig,
@@ -35,7 +32,6 @@ impl Default for EngineConfig {
             max_query_depth: DEFAULT_MAX_QUERY_DEPTH,
             max_associated_keys: DEFAULT_MAX_ASSOCIATED_KEYS,
             max_runtime_call_stack_height: DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-            max_delegator_size_limit: DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
             minimum_delegation_amount: DEFAULT_MINIMUM_DELEGATION_AMOUNT,
             wasm_config: WasmConfig::default(),
             system_config: SystemConfig::default(),
@@ -49,7 +45,6 @@ impl EngineConfig {
         max_query_depth: u64,
         max_associated_keys: u32,
         max_runtime_call_stack_height: u32,
-        max_delegator_size_limit: u32,
         minimum_delegation_amount: u64,
         wasm_config: WasmConfig,
         system_config: SystemConfig,
@@ -58,7 +53,6 @@ impl EngineConfig {
             max_query_depth,
             max_associated_keys,
             max_runtime_call_stack_height,
-            max_delegator_size_limit,
             minimum_delegation_amount,
             wasm_config,
             system_config,
@@ -73,11 +67,6 @@ impl EngineConfig {
     /// Returns the current max runtime call stack height config.
     pub fn max_runtime_call_stack_height(&self) -> u32 {
         self.max_runtime_call_stack_height
-    }
-
-    /// Returns the current maximum of delegators per validator.
-    pub fn max_delegator_size_limit(&self) -> u32 {
-        self.max_delegator_size_limit
     }
 
     /// Returns the current wasm config.

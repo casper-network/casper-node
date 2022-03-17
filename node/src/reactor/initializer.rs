@@ -8,7 +8,7 @@ use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::Serialize;
 use thiserror::Error;
-use tracing::{error, info, warn};
+use tracing::{error, warn};
 
 use casper_execution_engine::core::engine_state;
 
@@ -206,14 +206,6 @@ impl Reactor {
                 .verifiable_chunked_hash_activation,
         )?;
 
-        // TODO[RC]: Remove while removing the `max_delegator_size_limit`
-        let max_delegator_size_limit = 0;
-
-        info!(
-            "the maximum delegators per validator is currently set to: {}",
-            max_delegator_size_limit
-        );
-
         let contract_runtime = ContractRuntime::new(
             chainspec_loader.chainspec().protocol_config.version,
             storage.root_path(),
@@ -225,7 +217,6 @@ impl Reactor {
                 .chainspec()
                 .core_config
                 .max_runtime_call_stack_height,
-            max_delegator_size_limit,
             chainspec_loader
                 .chainspec()
                 .core_config

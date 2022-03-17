@@ -460,19 +460,6 @@ where
     Ok(bid)
 }
 
-/// Returns the current number of delegators tracked by the auction contract.
-pub(crate) fn get_total_number_of_delegators<P>(provider: &mut P) -> Result<usize, Error>
-where
-    P: StorageProvider + RuntimeProvider + ?Sized,
-{
-    let bids = get_bids(provider)?;
-    let total_number_of_delegators = bids
-        .iter()
-        .map(|(_validator_public_key, bid)| bid.delegators().len())
-        .sum();
-    Ok(total_number_of_delegators)
-}
-
 /// Returns the era validators from a snapshot.
 ///
 /// This is `pub` as it is used not just in the relevant auction entry point, but also by the

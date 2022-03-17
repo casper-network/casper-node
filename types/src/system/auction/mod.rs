@@ -242,7 +242,6 @@ pub trait Auction:
         delegator_public_key: PublicKey,
         validator_public_key: PublicKey,
         amount: U512,
-        max_delegator_size_limit: usize,
         minimum_delegation_amount: u64,
     ) -> Result<U512, ApiError> {
         let provided_account_hash =
@@ -262,21 +261,8 @@ pub trait Auction:
 
         let bid = detail::read_bid_for_validator(self, validator_account_hash)?;
 
-        if bid.delegators().len() >= max_delegator_size_limit {
-            return Err(Error::ExceededDelegatorSizeLimit.into());
-        }
-
         if amount < U512::from(minimum_delegation_amount) {
             return Err(Error::DelegationAmountTooSmall.into());
-        }
-
-        let current_total_no_of_delegators = detail::get_total_number_of_delegators(self)?;
-
-        let max_global_delegator_capacity =
-            detail::get_validator_slots(self)? * max_delegator_size_limit;
-
-        if (current_total_no_of_delegators + 1) >= max_global_delegator_capacity {
-            return Err(Error::GlobalDelegatorCapacityReached.into());
         }
 
         detail::handle_delegation(
