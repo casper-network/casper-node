@@ -245,10 +245,12 @@ impl Reactor {
         )?;
 
         let max_delegator_size_limit = compute_max_delegator_size_limit(
-            chainspec_loader
-                .chainspec()
-                .core_config
-                .max_stored_value_size,
+            // TODO[RC]: Remove while removing the `max_delegator_size_limit`
+            0,
+            // chainspec_loader
+            //     .chainspec()
+            //     .core_config
+            //     .max_stored_value_size,
             chainspec_loader.chainspec().core_config.auction_delay,
             chainspec_loader.chainspec().core_config.validator_slots,
         );
@@ -269,10 +271,6 @@ impl Reactor {
                 .chainspec()
                 .core_config
                 .max_runtime_call_stack_height,
-            chainspec_loader
-                .chainspec()
-                .core_config
-                .max_stored_value_size,
             max_delegator_size_limit,
             chainspec_loader
                 .chainspec()

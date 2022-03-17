@@ -63,7 +63,7 @@ where
         snapshot: SeigniorageRecipientsSnapshot,
     ) -> Result<(), Error> {
         self.context
-            .metered_write_gs_seigniorage_recipients_snapshot(uref.into(), snapshot)
+            .write_gs_seigniorage_recipients_snapshot(uref.into(), snapshot)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
     }
 
