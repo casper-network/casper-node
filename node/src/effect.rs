@@ -92,8 +92,8 @@ use casper_execution_engine::{
 };
 use casper_hashing::Digest;
 use casper_types::{
-    account::Account, system::auction::EraValidators, Contract, ContractPackage, EraId,
-    ExecutionEffect, ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer, URef, U512,
+    account::Account, bytesrepr::Bytes, system::auction::EraValidators, Contract, ContractPackage,
+    EraId, ExecutionEffect, ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer, URef, U512,
 };
 
 use crate::{
@@ -112,8 +112,8 @@ use crate::{
     types::{
         Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload, BlockSignatures,
         BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy, DeployHash,
-        DeployHeader, DeployMetadata, FinalitySignature, FinalizedBlock, Item, NodeId, TimeDiff,
-        Timestamp,
+        DeployHeader, DeployMetadata, DeployWithFinalizedApprovals, FinalitySignature,
+        FinalizedApprovals, FinalizedBlock, Item, NodeId, TimeDiff, Timestamp,
     },
     utils::{SharedFlag, Source},
 };
@@ -123,7 +123,6 @@ use announcements::{
     DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
     RpcServerAnnouncement,
 };
-use casper_types::bytesrepr::Bytes;
 use requests::{
     BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
     ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
@@ -1117,10 +1116,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested deploys from the deploy store.
+    ///
+    /// Returns the "original" deploys, which are the first received by the node, along with a
+    /// potentially different set of approvals used during execution of the recorded block.
     pub(crate) async fn get_deploys_from_storage(
         self,
         deploy_hashes: Vec<DeployHash>,
-    ) -> Vec<Option<Deploy>>
+    ) -> SmallVec<[Option<DeployWithFinalizedApprovals>; 1]>
     where
         REv: From<StorageRequest>,
     {
@@ -1158,7 +1160,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_deploy_and_metadata_from_storage(
         self,
         deploy_hash: DeployHash,
-    ) -> Option<(Deploy, DeployMetadata)>
+    ) -> Option<(DeployWithFinalizedApprovals, DeployMetadata)>
     where
         REv: From<StorageRequest>,
     {
@@ -1867,6 +1869,27 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             ChainspecLoaderRequest::GetChainspecRawBytes,
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Stores a set of given finalized approvals in storage.
+    ///
+    /// Any previously stored finalized approvals for the given hash are quietly overwritten
+    pub(crate) async fn store_finalized_approvals(
+        self,
+        deploy_hash: DeployHash,
+        finalized_approvals: FinalizedApprovals,
+    ) where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::StoreFinalizedApprovals {
+                deploy_hash,
+                finalized_approvals,
+                responder,
+            },
             QueueKind::Regular,
         )
         .await

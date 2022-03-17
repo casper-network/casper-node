@@ -8,8 +8,8 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::shared::system_config::DEFAULT_WASMLESS_TRANSFER_COST;
 use casper_types::{
-    account::AccountHash, runtime_args, AccessRights, DeployHash, PublicKey, RuntimeArgs,
-    SecretKey, Transfer, TransferAddr, U512,
+    account::AccountHash, runtime_args, system::mint, AccessRights, Contract, ContractHash,
+    DeployHash, PublicKey, RuntimeArgs, SecretKey, Transfer, TransferAddr, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
@@ -19,11 +19,13 @@ const TRANSFER_ARG_AMOUNT: &str = "amount";
 const TRANSFER_ARG_ID: &str = "id";
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNTS: &str = "transfer_purse_to_accounts.wasm";
-const TRANSFER_ARG_SOURCE: &str = "source";
 const TRANSFER_ARG_TARGETS: &str = "targets";
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNTS_STORED: &str = "transfer_purse_to_accounts_stored.wasm";
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNTS_SUBCALL: &str = "transfer_purse_to_accounts_subcall.wasm";
+
+const HASH_KEY_NAME: &str = "transfer_purse_to_accounts_hash";
+const PURSE_NAME: &str = "purse";
 
 static ALICE_KEY: Lazy<PublicKey> = Lazy::new(|| {
     let secret_key = SecretKey::ed25519_from_bytes([3; 32]).unwrap();
@@ -250,10 +252,6 @@ fn should_record_wasm_transfers() {
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
-        .expect("should have default account");
-
     let alice_id = Some(0);
     let bob_id = Some(1);
     let carol_id = Some(2);
@@ -270,7 +268,7 @@ fn should_record_wasm_transfers() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_PURSE_TO_ACCOUNTS,
         runtime_args! {
-            TRANSFER_ARG_SOURCE => default_account.main_purse(),
+            mint::ARG_AMOUNT => *TRANSFER_AMOUNT_1 + *TRANSFER_AMOUNT_2 + *TRANSFER_AMOUNT_3,
             TRANSFER_ARG_TARGETS => targets,
         },
     )
@@ -393,14 +391,14 @@ fn should_record_wasm_transfers_with_subcall() {
     let bob_id = Some(1);
     let carol_id = Some(2);
 
-    let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
-        .expect("should have default account");
+    let total_transfer_amount = *TRANSFER_AMOUNT_1 + *TRANSFER_AMOUNT_2 + *TRANSFER_AMOUNT_3;
 
     let store_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_PURSE_TO_ACCOUNTS_STORED,
-        runtime_args! {},
+        runtime_args! {
+            mint::ARG_AMOUNT => total_transfer_amount,
+        },
     )
     .build();
 
@@ -416,7 +414,7 @@ fn should_record_wasm_transfers_with_subcall() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_PURSE_TO_ACCOUNTS_SUBCALL,
         runtime_args! {
-            TRANSFER_ARG_SOURCE => default_account.main_purse(),
+            mint::ARG_AMOUNT => total_transfer_amount,
             TRANSFER_ARG_TARGETS => targets,
         },
     )
@@ -433,6 +431,23 @@ fn should_record_wasm_transfers_with_subcall() {
 
     builder.exec(store_request).commit().expect_success();
     builder.exec(transfer_request).commit().expect_success();
+
+    let default_account = builder
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .expect("should have default account");
+
+    let contract_hash = default_account.named_keys()[HASH_KEY_NAME]
+        .into_hash()
+        .map(ContractHash::new)
+        .expect("should have contract hash");
+
+    let contract: Contract = builder
+        .get_contract(contract_hash)
+        .expect("should have stored contract");
+
+    let contract_purse = contract.named_keys()[PURSE_NAME]
+        .into_uref()
+        .expect("should have purse");
 
     let alice_account = builder
         .get_account(*ALICE_ADDR)
@@ -490,7 +505,7 @@ fn should_record_wasm_transfers_with_subcall() {
         tmp
     };
 
-    let expected_alice = Transfer {
+    let session_expected_alice = Transfer {
         deploy_hash: transfer_deploy_hash,
         from: *DEFAULT_ACCOUNT_ADDR,
         to: Some(*ALICE_ADDR),
@@ -501,7 +516,7 @@ fn should_record_wasm_transfers_with_subcall() {
         id: alice_id,
     };
 
-    let expected_bob = Transfer {
+    let session_expected_bob = Transfer {
         deploy_hash: transfer_deploy_hash,
         from: *DEFAULT_ACCOUNT_ADDR,
         to: Some(*BOB_ADDR),
@@ -512,7 +527,7 @@ fn should_record_wasm_transfers_with_subcall() {
         id: bob_id,
     };
 
-    let expected_carol = Transfer {
+    let session_expected_carol = Transfer {
         deploy_hash: transfer_deploy_hash,
         from: *DEFAULT_ACCOUNT_ADDR,
         to: Some(*CAROL_ADDR),
@@ -523,8 +538,70 @@ fn should_record_wasm_transfers_with_subcall() {
         id: carol_id,
     };
 
-    const EXPECTED_COUNT: Option<usize> = Some(2);
-    for expected in &[expected_alice, expected_bob, expected_carol] {
-        assert_eq!(transfer_counts.get(expected).cloned(), EXPECTED_COUNT);
+    const SESSION_EXPECTED_COUNT: Option<usize> = Some(1);
+    for (i, expected) in [
+        session_expected_alice,
+        session_expected_bob,
+        session_expected_carol,
+    ]
+    .iter()
+    .enumerate()
+    {
+        assert_eq!(
+            transfer_counts.get(expected).cloned(),
+            SESSION_EXPECTED_COUNT,
+            "transfer {} has unexpected value",
+            i
+        );
+    }
+
+    let stored_expected_alice = Transfer {
+        deploy_hash: transfer_deploy_hash,
+        from: *DEFAULT_ACCOUNT_ADDR,
+        to: Some(*ALICE_ADDR),
+        source: contract_purse,
+        target: alice_attenuated_main_purse,
+        amount: *TRANSFER_AMOUNT_1,
+        gas: U512::zero(),
+        id: alice_id,
+    };
+
+    let stored_expected_bob = Transfer {
+        deploy_hash: transfer_deploy_hash,
+        from: *DEFAULT_ACCOUNT_ADDR,
+        to: Some(*BOB_ADDR),
+        source: contract_purse,
+        target: bob_attenuated_main_purse,
+        amount: *TRANSFER_AMOUNT_2,
+        gas: U512::zero(),
+        id: bob_id,
+    };
+
+    let stored_expected_carol = Transfer {
+        deploy_hash: transfer_deploy_hash,
+        from: *DEFAULT_ACCOUNT_ADDR,
+        to: Some(*CAROL_ADDR),
+        source: contract_purse,
+        target: carol_attenuated_main_purse,
+        amount: *TRANSFER_AMOUNT_3,
+        gas: U512::zero(),
+        id: carol_id,
+    };
+
+    const STORED_EXPECTED_COUNT: Option<usize> = Some(1);
+    for (i, expected) in [
+        stored_expected_alice,
+        stored_expected_bob,
+        stored_expected_carol,
+    ]
+    .iter()
+    .enumerate()
+    {
+        assert_eq!(
+            transfer_counts.get(expected).cloned(),
+            STORED_EXPECTED_COUNT,
+            "transfer {} has unexpected value",
+            i
+        );
     }
 }

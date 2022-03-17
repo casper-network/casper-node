@@ -60,6 +60,39 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+
+## 1.4.5
+
+### Added
+* Add a temporary chainspec setting `max_stored_value_size` to limit the size of individual values stored in global state.
+* Add a chainspec setting `minimum_delegation_amount` to limit the minimal amount of motes that can be delegated by a first time delegator.
+* Add a chainspec setting `block_max_approval_count` to limit the maximum number of approvals across all deploys in a single block.
+* Add a `finalized_approvals` field to the GetDeploy RPC, which if `true` causes the response to include finalized approvals substituted for the originally-received ones.
+
+### Fixed
+* Include deploy approvals in block payloads upon which consensus operates.
+* Fixes a bug where historical auction data was unavailable via `get-auction-info` RPC.
+
+
+
+## 1.4.4 - 2021-12-29
+
+### Added
+* Add `contract_runtime_latest_commit_step` gauge metric indicating the execution duration of the latest `commit_step` call.
+
+### Changed
+* No longer checksum-hex encode various types.
+
+
+
+## 1.4.3 - 2021-12-06
+
+### Changed
+* `enable_manual_sync` configuration parameter defaults to `true`.
+* Default behavior of LMDB changed to use [`NO_READAHEAD`](https://docs.rs/lmdb/0.8.0/lmdb/struct.EnvironmentFlags.html#associatedconstant.NO_READAHEAD)
+
+
+
 ## [1.4.2] - 2021-11-11
 
 ### Changed

@@ -32,6 +32,10 @@ pub struct CoreConfig {
     pub(crate) max_associated_keys: u32,
     /// Maximum height of contract runtime call stack.
     pub(crate) max_runtime_call_stack_height: u32,
+    /// Maximum serialized size of values stored in global state.
+    pub(crate) max_stored_value_size: u32,
+    /// The minimum bound of motes that can be delegated to a validator.
+    pub(crate) minimum_delegation_amount: u64,
 }
 
 #[cfg(test)]
@@ -50,6 +54,8 @@ impl CoreConfig {
         );
         let max_associated_keys = rng.gen();
         let max_runtime_call_stack_height = rng.gen();
+        let max_stored_value_size = rng.gen();
+        let minimum_delegation_amount = rng.gen::<u32>() as u64;
 
         CoreConfig {
             era_duration,
@@ -61,6 +67,8 @@ impl CoreConfig {
             round_seigniorage_rate,
             max_associated_keys,
             max_runtime_call_stack_height,
+            max_stored_value_size,
+            minimum_delegation_amount,
         }
     }
 }
@@ -77,6 +85,8 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.round_seigniorage_rate.to_bytes()?);
         buffer.extend(self.max_associated_keys.to_bytes()?);
         buffer.extend(self.max_runtime_call_stack_height.to_bytes()?);
+        buffer.extend(self.max_stored_value_size.to_bytes()?);
+        buffer.extend(self.minimum_delegation_amount.to_bytes()?);
         Ok(buffer)
     }
 
@@ -90,6 +100,8 @@ impl ToBytes for CoreConfig {
             + self.round_seigniorage_rate.serialized_length()
             + self.max_associated_keys.serialized_length()
             + self.max_runtime_call_stack_height.serialized_length()
+            + self.max_stored_value_size.serialized_length()
+            + self.minimum_delegation_amount.serialized_length()
     }
 }
 
@@ -102,8 +114,10 @@ impl FromBytes for CoreConfig {
         let (locked_funds_period, remainder) = TimeDiff::from_bytes(remainder)?;
         let (unbonding_delay, remainder) = u64::from_bytes(remainder)?;
         let (round_seigniorage_rate, remainder) = Ratio::<u64>::from_bytes(remainder)?;
-        let (max_associated_keys, remainder) = FromBytes::from_bytes(remainder)?;
-        let (max_runtime_call_stack_height, remainder) = FromBytes::from_bytes(remainder)?;
+        let (max_associated_keys, remainder) = u32::from_bytes(remainder)?;
+        let (max_runtime_call_stack_height, remainder) = u32::from_bytes(remainder)?;
+        let (max_stored_value_size, remainder) = u32::from_bytes(remainder)?;
+        let (minimum_delegation_amount, remainder) = u64::from_bytes(remainder)?;
         let config = CoreConfig {
             era_duration,
             minimum_era_height,
@@ -114,6 +128,8 @@ impl FromBytes for CoreConfig {
             round_seigniorage_rate,
             max_associated_keys,
             max_runtime_call_stack_height,
+            max_stored_value_size,
+            minimum_delegation_amount,
         };
         Ok((config, remainder))
     }

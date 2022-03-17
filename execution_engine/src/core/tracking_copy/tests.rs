@@ -24,6 +24,8 @@ use crate::{
     },
 };
 
+const MAX_STORED_VALUE_SIZE: u32 = 8 * 1024 * 1024;
+
 struct CountingDb {
     count: Rc<Cell<i32>>,
     value: Option<StoredValue>,
@@ -138,7 +140,7 @@ fn tracking_copy_write() {
     let two = StoredValue::CLValue(CLValue::from_t(2_i32).unwrap());
 
     // writing should work
-    tc.write(k, one.clone());
+    let _ = tc.write(k, one.clone(), MAX_STORED_VALUE_SIZE);
     // write does not need to query the DB
     let db_value = counter.get();
     assert_eq!(db_value, 0);
@@ -149,7 +151,7 @@ fn tracking_copy_write() {
     );
 
     // writing again should update the values
-    tc.write(k, two.clone());
+    let _ = tc.write(k, two.clone(), MAX_STORED_VALUE_SIZE);
     let db_value = counter.get();
     assert_eq!(db_value, 0);
     assert_eq!(
@@ -169,7 +171,7 @@ fn tracking_copy_add_i32() {
     let three = StoredValue::CLValue(CLValue::from_t(3_i32).unwrap());
 
     // adding should work
-    let add = tc.add(correlation_id, k, three.clone());
+    let add = tc.add(correlation_id, k, three.clone(), MAX_STORED_VALUE_SIZE);
     assert_matches!(add, Ok(_));
 
     // Adding creates an add transform.
@@ -179,7 +181,7 @@ fn tracking_copy_add_i32() {
     );
 
     // adding again should update the values
-    let add = tc.add(correlation_id, k, three);
+    let add = tc.add(correlation_id, k, three, MAX_STORED_VALUE_SIZE);
     assert_matches!(add, Ok(_));
     assert_eq!(
         tc.journal,
@@ -218,12 +220,13 @@ fn tracking_copy_add_named_key() {
         correlation_id,
         k,
         StoredValue::CLValue(CLValue::from_t(3_i32).unwrap()),
+        MAX_STORED_VALUE_SIZE,
     );
     assert_matches!(failed_add, Ok(AddResult::TypeMismatch(_)));
     assert!(tc.journal.is_empty());
 
     // adding correct type works
-    let add = tc.add(correlation_id, k, named_key);
+    let add = tc.add(correlation_id, k, named_key, MAX_STORED_VALUE_SIZE);
     assert_matches!(add, Ok(_));
     assert_eq!(
         tc.journal,
@@ -235,7 +238,7 @@ fn tracking_copy_add_named_key() {
 
     // adding again updates the values
     map.insert(name2.clone(), u2);
-    let add = tc.add(correlation_id, k, other_named_key);
+    let add = tc.add(correlation_id, k, other_named_key, MAX_STORED_VALUE_SIZE);
     assert_matches!(add, Ok(_));
     assert_eq!(
         tc.journal,
@@ -257,7 +260,7 @@ fn tracking_copy_rw() {
     // reading then writing should update the op
     let value = StoredValue::CLValue(CLValue::from_t(3_i32).unwrap());
     let _ = tc.read(correlation_id, &k);
-    tc.write(k, value.clone());
+    let _ = tc.write(k, value.clone(), MAX_STORED_VALUE_SIZE);
     assert_eq!(
         tc.journal,
         ExecutionJournal::new(vec![(k, Transform::Identity), (k, Transform::Write(value))])
@@ -275,7 +278,7 @@ fn tracking_copy_ra() {
     // reading then adding should update the op
     let value = StoredValue::CLValue(CLValue::from_t(3_i32).unwrap());
     let _ = tc.read(correlation_id, &k);
-    let _ = tc.add(correlation_id, k, value);
+    let _ = tc.add(correlation_id, k, value, MAX_STORED_VALUE_SIZE);
     assert_eq!(
         tc.journal,
         ExecutionJournal::new(vec![(k, Transform::Identity), (k, Transform::AddInt32(3))])
@@ -293,8 +296,8 @@ fn tracking_copy_aw() {
     // adding then writing should update the op
     let value = StoredValue::CLValue(CLValue::from_t(3_i32).unwrap());
     let write_value = StoredValue::CLValue(CLValue::from_t(7_i32).unwrap());
-    let _ = tc.add(correlation_id, k, value);
-    tc.write(k, write_value.clone());
+    let _ = tc.add(correlation_id, k, value, MAX_STORED_VALUE_SIZE);
+    let _ = tc.write(k, write_value.clone(), MAX_STORED_VALUE_SIZE);
     assert_eq!(
         tc.journal,
         ExecutionJournal::new(vec![
@@ -931,7 +934,7 @@ fn get_keys_should_return_keys_in_the_uref_keyspace() {
     let cl_value = CLValue::from_t(U512::from(2)).expect("should convert");
     let uref_3_value = StoredValue::CLValue(cl_value);
     let uref_3_key = Key::URef(URef::new([10; 32], AccessRights::READ_ADD_WRITE));
-    tracking_copy.write(uref_3_key, uref_3_value);
+    let _ = tracking_copy.write(uref_3_key, uref_3_value, MAX_STORED_VALUE_SIZE);
 
     let key_set = tracking_copy
         .get_keys(correlation_id, &KeyTag::URef)
@@ -967,7 +970,7 @@ fn get_keys_should_handle_reads_from_empty_trie() {
     let cl_value = CLValue::from_t(U512::zero()).expect("should convert");
     let uref_1_value = StoredValue::CLValue(cl_value);
     let uref_1_key = Key::URef(URef::new([8; 32], AccessRights::READ_ADD_WRITE));
-    tracking_copy.write(uref_1_key, uref_1_value);
+    let _ = tracking_copy.write(uref_1_key, uref_1_value, MAX_STORED_VALUE_SIZE);
 
     let key_set = tracking_copy
         .get_keys(correlation_id, &KeyTag::URef)
@@ -980,7 +983,7 @@ fn get_keys_should_handle_reads_from_empty_trie() {
     let cl_value = CLValue::from_t(U512::one()).expect("should convert");
     let uref_2_value = StoredValue::CLValue(cl_value);
     let uref_2_key = Key::URef(URef::new([9; 32], AccessRights::READ_ADD_WRITE));
-    tracking_copy.write(uref_2_key, uref_2_value);
+    let _ = tracking_copy.write(uref_2_key, uref_2_value, MAX_STORED_VALUE_SIZE);
 
     let key_set = tracking_copy
         .get_keys(correlation_id, &KeyTag::URef)
@@ -999,7 +1002,7 @@ fn get_keys_should_handle_reads_from_empty_trie() {
         fake_purse,
     ));
     let account_key = Key::Account(account_hash);
-    tracking_copy.write(account_key, account_value);
+    let _ = tracking_copy.write(account_key, account_value, MAX_STORED_VALUE_SIZE);
 
     assert_eq!(key_set.len(), 2);
     assert!(key_set.contains(&uref_1_key.normalize()));
@@ -1010,7 +1013,7 @@ fn get_keys_should_handle_reads_from_empty_trie() {
     let cl_value = CLValue::from_t(U512::from(2)).expect("should convert");
     let uref_3_value = StoredValue::CLValue(cl_value);
     let uref_3_key = Key::URef(URef::new([10; 32], AccessRights::READ_ADD_WRITE));
-    tracking_copy.write(uref_3_key, uref_3_value);
+    let _ = tracking_copy.write(uref_3_key, uref_3_value, MAX_STORED_VALUE_SIZE);
 
     let key_set = tracking_copy
         .get_keys(correlation_id, &KeyTag::URef)

@@ -5,9 +5,9 @@ mod signature;
 mod signature_cache;
 mod state;
 
-use datasize::DataSize;
 use std::convert::Infallible;
 
+use datasize::DataSize;
 use itertools::Itertools;
 use num::rational::Ratio;
 use prometheus::Registry;
@@ -15,10 +15,12 @@ use tracing::error;
 
 use casper_types::{EraId, ProtocolVersion};
 
-use self::metrics::Metrics;
-use super::Component;
+use self::{
+    metrics::Metrics,
+    state::{LinearChain, Outcome, Outcomes},
+};
 use crate::{
-    components::linear_chain::state::{Outcome, Outcomes},
+    components::Component,
     effect::{
         announcements::LinearChainAnnouncement,
         requests::{
@@ -30,9 +32,7 @@ use crate::{
     types::ActivationPoint,
     NodeRng,
 };
-
 pub(crate) use event::Event;
-use state::LinearChain;
 
 #[derive(DataSize, Debug)]
 pub(crate) struct LinearChainComponent {

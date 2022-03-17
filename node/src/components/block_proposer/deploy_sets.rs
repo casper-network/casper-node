@@ -1,14 +1,15 @@
 use std::{
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
     fmt::{self, Display, Formatter},
     hash::Hash,
 };
 
 use datasize::DataSize;
 use itertools::{Either, Itertools};
+use serde::{Deserialize, Serialize};
 
 use super::{BlockHeight, CachedState, DeployInfo, FinalizationQueue};
-use crate::types::{Block, DeployHash, TimeDiff, Timestamp};
+use crate::types::{Approval, Block, DeployHash, TimeDiff, Timestamp};
 
 pub(crate) struct PruneResult {
     pub(crate) total_pruned: usize,
@@ -24,15 +25,22 @@ impl PruneResult {
     }
 }
 
+#[derive(Clone, DataSize, Debug, Serialize, Deserialize)]
+pub(super) struct PendingDeployInfo {
+    pub(super) approvals: BTreeSet<Approval>,
+    pub(super) info: DeployInfo,
+    pub(super) timestamp: Timestamp,
+}
+
 /// Stores the internal state of the BlockProposer.
 #[derive(Clone, DataSize, Debug, Default)]
 pub(super) struct BlockProposerDeploySets {
     /// The collection of deploys pending for inclusion in a block, with a timestamp of when we
     /// received them.
-    pub(super) pending_deploys: HashMap<DeployHash, (DeployInfo, Timestamp)>,
+    pub(super) pending_deploys: HashMap<DeployHash, PendingDeployInfo>,
     /// The collection of transfers pending for inclusion in a block, with a timestamp of when we
     /// received them.
-    pub(super) pending_transfers: HashMap<DeployHash, (DeployInfo, Timestamp)>,
+    pub(super) pending_transfers: HashMap<DeployHash, PendingDeployInfo>,
     /// The deploys that have already been included in a finalized block, and their earliest known
     /// expiry date.
     pub(super) finalized_deploys: HashMap<DeployHash, Timestamp>,
@@ -169,12 +177,10 @@ where
 /// Prunes expired deploy information from an individual pending deploy collection, returns the
 /// hashes of deploys pruned.
 pub(super) fn prune_pending_deploys(
-    deploys: &mut HashMap<DeployHash, (DeployInfo, Timestamp)>,
+    deploys: &mut HashMap<DeployHash, PendingDeployInfo>,
     current_instant: Timestamp,
 ) -> Vec<DeployHash> {
-    hashmap_drain_filter_in_place(deploys, |(deploy_info, _)| {
-        deploy_info.header.expired(current_instant)
-    })
+    hashmap_drain_filter_in_place(deploys, |data| data.info.header.expired(current_instant))
 }
 
 #[cfg(test)]
@@ -186,7 +192,7 @@ mod tests {
     #[test]
     fn prunes_pending_deploys() {
         let mut test_rng = TestRng::new();
-        let mut deploys: HashMap<DeployHash, (DeployInfo, Timestamp)> = HashMap::new();
+        let mut deploys: HashMap<DeployHash, PendingDeployInfo> = HashMap::new();
         let now = Timestamp::now();
 
         let deploy_1 = testing::create_not_expired_deploy(now, &mut test_rng);
@@ -195,11 +201,46 @@ mod tests {
         let deploy_4 = testing::create_not_expired_deploy(now, &mut test_rng);
         let deploy_5 = testing::create_expired_deploy(now, &mut test_rng);
 
-        deploys.insert(*deploy_1.id(), (deploy_1.deploy_info().unwrap(), now));
-        deploys.insert(*deploy_2.id(), (deploy_2.deploy_info().unwrap(), now));
-        deploys.insert(*deploy_3.id(), (deploy_3.deploy_info().unwrap(), now));
-        deploys.insert(*deploy_4.id(), (deploy_4.deploy_info().unwrap(), now));
-        deploys.insert(*deploy_5.id(), (deploy_5.deploy_info().unwrap(), now));
+        deploys.insert(
+            *deploy_1.id(),
+            PendingDeployInfo {
+                approvals: BTreeSet::new(),
+                info: deploy_1.deploy_info().unwrap(),
+                timestamp: now,
+            },
+        );
+        deploys.insert(
+            *deploy_2.id(),
+            PendingDeployInfo {
+                approvals: BTreeSet::new(),
+                info: deploy_2.deploy_info().unwrap(),
+                timestamp: now,
+            },
+        );
+        deploys.insert(
+            *deploy_3.id(),
+            PendingDeployInfo {
+                approvals: BTreeSet::new(),
+                info: deploy_3.deploy_info().unwrap(),
+                timestamp: now,
+            },
+        );
+        deploys.insert(
+            *deploy_4.id(),
+            PendingDeployInfo {
+                approvals: BTreeSet::new(),
+                info: deploy_4.deploy_info().unwrap(),
+                timestamp: now,
+            },
+        );
+        deploys.insert(
+            *deploy_5.id(),
+            PendingDeployInfo {
+                approvals: BTreeSet::new(),
+                info: deploy_5.deploy_info().unwrap(),
+                timestamp: now,
+            },
+        );
 
         // We expect deploys created with `create_expired_deploy` to be drained
         let mut expected_drained = vec![*deploy_2.id(), *deploy_3.id(), *deploy_5.id()];

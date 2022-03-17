@@ -21,6 +21,9 @@ use crate::{
     Key, URef, U128, U256, U512,
 };
 
+// This must be less than 300 in order to avoid a stack overflow when deserializing.
+pub(crate) const CL_TYPE_RECURSION_DEPTH: u8 = 50;
+
 const CL_TYPE_TAG_BOOL: u8 = 0;
 const CL_TYPE_TAG_I32: u8 = 1;
 const CL_TYPE_TAG_I64: u8 = 2;
@@ -208,89 +211,96 @@ impl CLType {
     }
 }
 
-#[allow(clippy::cognitive_complexity)]
 impl FromBytes for CLType {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, remainder) = u8::from_bytes(bytes)?;
-        match tag {
-            CL_TYPE_TAG_BOOL => Ok((CLType::Bool, remainder)),
-            CL_TYPE_TAG_I32 => Ok((CLType::I32, remainder)),
-            CL_TYPE_TAG_I64 => Ok((CLType::I64, remainder)),
-            CL_TYPE_TAG_U8 => Ok((CLType::U8, remainder)),
-            CL_TYPE_TAG_U32 => Ok((CLType::U32, remainder)),
-            CL_TYPE_TAG_U64 => Ok((CLType::U64, remainder)),
-            CL_TYPE_TAG_U128 => Ok((CLType::U128, remainder)),
-            CL_TYPE_TAG_U256 => Ok((CLType::U256, remainder)),
-            CL_TYPE_TAG_U512 => Ok((CLType::U512, remainder)),
-            CL_TYPE_TAG_UNIT => Ok((CLType::Unit, remainder)),
-            CL_TYPE_TAG_STRING => Ok((CLType::String, remainder)),
-            CL_TYPE_TAG_KEY => Ok((CLType::Key, remainder)),
-            CL_TYPE_TAG_UREF => Ok((CLType::URef, remainder)),
-            CL_TYPE_TAG_PUBLIC_KEY => Ok((CLType::PublicKey, remainder)),
-            CL_TYPE_TAG_OPTION => {
-                let (inner_type, remainder) = CLType::from_bytes(remainder)?;
-                let cl_type = CLType::Option(Box::new(inner_type));
-                Ok((cl_type, remainder))
-            }
-            CL_TYPE_TAG_LIST => {
-                let (inner_type, remainder) = CLType::from_bytes(remainder)?;
-                let cl_type = CLType::List(Box::new(inner_type));
-                Ok((cl_type, remainder))
-            }
-            CL_TYPE_TAG_BYTE_ARRAY => {
-                let (len, remainder) = u32::from_bytes(remainder)?;
-                let cl_type = CLType::ByteArray(len);
-                Ok((cl_type, remainder))
-            }
-            CL_TYPE_TAG_RESULT => {
-                let (ok_type, remainder) = CLType::from_bytes(remainder)?;
-                let (err_type, remainder) = CLType::from_bytes(remainder)?;
-                let cl_type = CLType::Result {
-                    ok: Box::new(ok_type),
-                    err: Box::new(err_type),
-                };
-                Ok((cl_type, remainder))
-            }
-            CL_TYPE_TAG_MAP => {
-                let (key_type, remainder) = CLType::from_bytes(remainder)?;
-                let (value_type, remainder) = CLType::from_bytes(remainder)?;
-                let cl_type = CLType::Map {
-                    key: Box::new(key_type),
-                    value: Box::new(value_type),
-                };
-                Ok((cl_type, remainder))
-            }
-            CL_TYPE_TAG_TUPLE1 => {
-                let (mut inner_types, remainder) = parse_cl_tuple_types(1, remainder)?;
-                // NOTE: Assumed safe as `parse_cl_tuple_types` is expected to have exactly 1
-                // element
-                let cl_type = CLType::Tuple1([inner_types.pop_front().unwrap()]);
-                Ok((cl_type, remainder))
-            }
-            CL_TYPE_TAG_TUPLE2 => {
-                let (mut inner_types, remainder) = parse_cl_tuple_types(2, remainder)?;
-                // NOTE: Assumed safe as `parse_cl_tuple_types` is expected to have exactly 2
-                // elements
-                let cl_type = CLType::Tuple2([
-                    inner_types.pop_front().unwrap(),
-                    inner_types.pop_front().unwrap(),
-                ]);
-                Ok((cl_type, remainder))
-            }
-            CL_TYPE_TAG_TUPLE3 => {
-                let (mut inner_types, remainder) = parse_cl_tuple_types(3, remainder)?;
-                // NOTE: Assumed safe as `parse_cl_tuple_types` is expected to have exactly 3
-                // elements
-                let cl_type = CLType::Tuple3([
-                    inner_types.pop_front().unwrap(),
-                    inner_types.pop_front().unwrap(),
-                    inner_types.pop_front().unwrap(),
-                ]);
-                Ok((cl_type, remainder))
-            }
-            CL_TYPE_TAG_ANY => Ok((CLType::Any, remainder)),
-            _ => Err(bytesrepr::Error::Formatting),
+        depth_limited_from_bytes(0, bytes)
+    }
+}
+
+fn depth_limited_from_bytes(depth: u8, bytes: &[u8]) -> Result<(CLType, &[u8]), bytesrepr::Error> {
+    if depth >= CL_TYPE_RECURSION_DEPTH {
+        return Err(bytesrepr::Error::ExceededRecursionDepth);
+    }
+    let depth = depth + 1;
+    let (tag, remainder) = u8::from_bytes(bytes)?;
+    match tag {
+        CL_TYPE_TAG_BOOL => Ok((CLType::Bool, remainder)),
+        CL_TYPE_TAG_I32 => Ok((CLType::I32, remainder)),
+        CL_TYPE_TAG_I64 => Ok((CLType::I64, remainder)),
+        CL_TYPE_TAG_U8 => Ok((CLType::U8, remainder)),
+        CL_TYPE_TAG_U32 => Ok((CLType::U32, remainder)),
+        CL_TYPE_TAG_U64 => Ok((CLType::U64, remainder)),
+        CL_TYPE_TAG_U128 => Ok((CLType::U128, remainder)),
+        CL_TYPE_TAG_U256 => Ok((CLType::U256, remainder)),
+        CL_TYPE_TAG_U512 => Ok((CLType::U512, remainder)),
+        CL_TYPE_TAG_UNIT => Ok((CLType::Unit, remainder)),
+        CL_TYPE_TAG_STRING => Ok((CLType::String, remainder)),
+        CL_TYPE_TAG_KEY => Ok((CLType::Key, remainder)),
+        CL_TYPE_TAG_UREF => Ok((CLType::URef, remainder)),
+        CL_TYPE_TAG_PUBLIC_KEY => Ok((CLType::PublicKey, remainder)),
+        CL_TYPE_TAG_OPTION => {
+            let (inner_type, remainder) = depth_limited_from_bytes(depth, remainder)?;
+            let cl_type = CLType::Option(Box::new(inner_type));
+            Ok((cl_type, remainder))
         }
+        CL_TYPE_TAG_LIST => {
+            let (inner_type, remainder) = depth_limited_from_bytes(depth, remainder)?;
+            let cl_type = CLType::List(Box::new(inner_type));
+            Ok((cl_type, remainder))
+        }
+        CL_TYPE_TAG_BYTE_ARRAY => {
+            let (len, remainder) = u32::from_bytes(remainder)?;
+            let cl_type = CLType::ByteArray(len);
+            Ok((cl_type, remainder))
+        }
+        CL_TYPE_TAG_RESULT => {
+            let (ok_type, remainder) = depth_limited_from_bytes(depth, remainder)?;
+            let (err_type, remainder) = depth_limited_from_bytes(depth, remainder)?;
+            let cl_type = CLType::Result {
+                ok: Box::new(ok_type),
+                err: Box::new(err_type),
+            };
+            Ok((cl_type, remainder))
+        }
+        CL_TYPE_TAG_MAP => {
+            let (key_type, remainder) = depth_limited_from_bytes(depth, remainder)?;
+            let (value_type, remainder) = depth_limited_from_bytes(depth, remainder)?;
+            let cl_type = CLType::Map {
+                key: Box::new(key_type),
+                value: Box::new(value_type),
+            };
+            Ok((cl_type, remainder))
+        }
+        CL_TYPE_TAG_TUPLE1 => {
+            let (mut inner_types, remainder) = parse_cl_tuple_types(depth, 1, remainder)?;
+            // NOTE: Assumed safe as `parse_cl_tuple_types` is expected to have exactly 1
+            // element
+            let cl_type = CLType::Tuple1([inner_types.pop_front().unwrap()]);
+            Ok((cl_type, remainder))
+        }
+        CL_TYPE_TAG_TUPLE2 => {
+            let (mut inner_types, remainder) = parse_cl_tuple_types(depth, 2, remainder)?;
+            // NOTE: Assumed safe as `parse_cl_tuple_types` is expected to have exactly 2
+            // elements
+            let cl_type = CLType::Tuple2([
+                inner_types.pop_front().unwrap(),
+                inner_types.pop_front().unwrap(),
+            ]);
+            Ok((cl_type, remainder))
+        }
+        CL_TYPE_TAG_TUPLE3 => {
+            let (mut inner_types, remainder) = parse_cl_tuple_types(depth, 3, remainder)?;
+            // NOTE: Assumed safe as `parse_cl_tuple_types` is expected to have exactly 3
+            // elements
+            let cl_type = CLType::Tuple3([
+                inner_types.pop_front().unwrap(),
+                inner_types.pop_front().unwrap(),
+                inner_types.pop_front().unwrap(),
+            ]);
+            Ok((cl_type, remainder))
+        }
+        CL_TYPE_TAG_ANY => Ok((CLType::Any, remainder)),
+        _ => Err(bytesrepr::Error::Formatting),
     }
 }
 
@@ -307,12 +317,13 @@ fn serialize_cl_tuple_type<'a, T: IntoIterator<Item = &'a Box<CLType>>>(
 }
 
 fn parse_cl_tuple_types(
+    depth: u8,
     count: usize,
     mut bytes: &[u8],
 ) -> Result<(VecDeque<Box<CLType>>, &[u8]), bytesrepr::Error> {
     let mut cl_types = VecDeque::with_capacity(count);
     for _ in 0..count {
-        let (cl_type, remainder) = CLType::from_bytes(bytes)?;
+        let (cl_type, remainder) = depth_limited_from_bytes(depth, bytes)?;
         cl_types.push_back(Box::new(cl_type));
         bytes = remainder;
     }
@@ -497,7 +508,7 @@ impl<T: CLTyped> CLTyped for Ratio<T> {
 
 #[cfg(test)]
 mod tests {
-    use std::{fmt::Debug, string::ToString};
+    use std::{fmt::Debug, iter, string::ToString};
 
     use super::*;
     use crate::{
@@ -690,6 +701,45 @@ mod tests {
         let x = (-1i32, 1u32, String::from("a"));
 
         round_trip(&x);
+    }
+
+    #[test]
+    fn parsing_nested_tuple_1_cltype_should_not_stack_overflow() {
+        // The bytesrepr representation of the CLType for a
+        // nested (((...((),),...),),) looks like:
+        // [18, 18, 18, ..., 9]
+
+        for i in 1..1000 {
+            let bytes = iter::repeat(CL_TYPE_TAG_TUPLE1)
+                .take(i)
+                .chain(iter::once(CL_TYPE_TAG_UNIT))
+                .collect();
+            match bytesrepr::deserialize(bytes) {
+                Ok(parsed_cltype) => assert!(matches!(parsed_cltype, CLType::Tuple1(_))),
+                Err(error) => assert_eq!(error, bytesrepr::Error::ExceededRecursionDepth),
+            }
+        }
+    }
+
+    #[test]
+    fn parsing_nested_tuple_1_value_should_not_stack_overflow() {
+        // The bytesrepr representation of the CLValue for a
+        // nested (((...((),),...),),) looks like:
+        // [0, 0, 0, 0, 18, 18, 18, ..., 18, 9]
+
+        for i in 1..1000 {
+            let bytes = iter::repeat(0)
+                .take(4)
+                .chain(iter::repeat(CL_TYPE_TAG_TUPLE1).take(i))
+                .chain(iter::once(CL_TYPE_TAG_UNIT))
+                .collect();
+            match bytesrepr::deserialize::<CLValue>(bytes) {
+                Ok(parsed_clvalue) => {
+                    assert!(matches!(parsed_clvalue.cl_type(), CLType::Tuple1(_)))
+                }
+                Err(error) => assert_eq!(error, bytesrepr::Error::ExceededRecursionDepth),
+            }
+        }
     }
 
     #[test]

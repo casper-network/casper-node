@@ -23,7 +23,7 @@ use crate::{
     protocol::Message,
     types::{
         Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy,
-        DeployHash, Item, NodeId,
+        DeployHash, DeployWithFinalizedApprovals, Item, NodeId,
     },
     utils::Source,
     FetcherConfig, NodeRng,
@@ -305,7 +305,12 @@ impl ItemFetcher<Deploy> for Fetcher<Deploy> {
             .event(move |mut results| Event::GetFromStorageResult {
                 id,
                 peer,
-                maybe_item: Box::new(results.pop().expect("can only contain one result")),
+                maybe_item: Box::new(
+                    results
+                        .pop()
+                        .expect("can only contain one result")
+                        .map(DeployWithFinalizedApprovals::into_naive),
+                ),
             })
     }
 }

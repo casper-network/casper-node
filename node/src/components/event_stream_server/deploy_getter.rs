@@ -9,7 +9,7 @@ use tracing::error;
 use crate::{
     effect::EffectBuilder,
     reactor::{joiner::JoinerEvent, participating::ParticipatingEvent},
-    types::{Deploy, DeployHash},
+    types::{Deploy, DeployHash, DeployWithFinalizedApprovals},
 };
 
 /// A struct holding the two effect builders in use during the lifetime of the event stream
@@ -82,7 +82,10 @@ impl DeployGetter {
         if maybe_deploys.len() != 1 {
             panic!("should return exactly one deploy");
         }
-        maybe_deploys.pop().unwrap()
+        maybe_deploys
+            .pop()
+            .unwrap()
+            .map(DeployWithFinalizedApprovals::into_naive)
     }
 }
 

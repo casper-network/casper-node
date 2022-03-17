@@ -31,8 +31,8 @@ steps:
   commands:
   - make setup
 
-# The below is duplicated for pull and push 
-# due to environment bug with caching. 
+# The below is duplicated for pull and push
+# due to environment bug with caching.
 - name: cargo-test-pr
   <<: *buildenv
   environment:
@@ -372,18 +372,36 @@ steps:
   commands:
   - "./ci/build_update_package.sh"
 
-- name: publish-github-pre-release
-  image: plugins/github-release
-  settings:
-    api_key:
-      from_secret: github_token
-    checksum:
-    - sha256
-    - md5
-    files:
-    - "./target/upgrade_build/*.gz"
-    prerelease:
-    - true
+#- name: publish-github-pre-release
+#  image: plugins/github-release
+#  settings:
+#    api_key:
+#      from_secret: github_token
+#    checksum:
+#    - sha256
+#    - md5
+#    files:
+#    - "./target/debian/*.deb"
+#    - "./target/release/rpmbuild/RPMS/x86_64/*.rpm"
+#    - "./target/upgrade_build/*.gz"
+#    prerelease:
+#    - true
+#  when:
+#    ref:
+#    - refs/tags/v*
+
+- name: publish-crate
+  image: casperlabs/node-build-u1804
+  commands:
+    - "./ci/publish_to_crates_io.sh"
+  environment:
+    CARGO_TOKEN:
+      from_secret: crates_io_token
+
+- name: as-setup
+  image: casperlabs/node-build-u1804
+  commands:
+    - "make setup-as"
 
 - name: as-contract-publish
   image: plugins/npm

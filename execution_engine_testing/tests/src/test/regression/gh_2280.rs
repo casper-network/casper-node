@@ -2,12 +2,14 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_STORED_VALUE_SIZE,
+    DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{
     core::engine_state::{
-        EngineConfig, UpgradeConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+        engine_config::{DEFAULT_MAX_DELEGATOR_SIZE_LIMIT, DEFAULT_MINIMUM_DELEGATION_AMOUNT},
+        EngineConfig, UpgradeConfig, DEFAULT_MAX_QUERY_DEPTH,
+        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
     },
     shared::{
         host_function_costs::{Cost, HostFunction, HostFunctionCosts},
@@ -22,8 +24,8 @@ use casper_execution_engine::{
     },
 };
 use casper_types::{
-    account::AccountHash, runtime_args, ContractHash, EraId, Gas, Key, Motes, ProtocolVersion,
-    PublicKey, RuntimeArgs, SecretKey, U512,
+    account::AccountHash, runtime_args, system::mint, ContractHash, EraId, Gas, Key, Motes,
+    ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const TRANSFER_TO_ACCOUNT_CONTRACT: &str = "transfer_to_account.wasm";
@@ -677,6 +679,7 @@ fn setup() -> (InMemoryWasmTestBuilder, TestContext) {
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
     let session_args = runtime_args! {
+        mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
         ARG_FAUCET_FUNDS => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
     };
     let install_request = ExecuteRequestBuilder::standard(
@@ -714,6 +717,9 @@ fn make_engine_config(new_mint_costs: MintCosts, new_wasm_config: WasmConfig) ->
         DEFAULT_MAX_QUERY_DEPTH,
         DEFAULT_MAX_ASSOCIATED_KEYS,
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+        DEFAULT_MAX_STORED_VALUE_SIZE,
+        DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
+        DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         new_wasm_config,
         new_system_config,
     )

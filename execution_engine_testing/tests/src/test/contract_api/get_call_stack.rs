@@ -7,7 +7,7 @@ use casper_engine_test_support::{
 use casper_execution_engine::storage::global_state::in_memory::InMemoryGlobalState;
 use casper_types::{
     account::Account, runtime_args, system::CallStackElement, CLValue, ContractHash,
-    ContractPackageHash, EntryPointType, HashAddr, Key, RuntimeArgs, StoredValue,
+    ContractPackageHash, EntryPointType, HashAddr, Key, RuntimeArgs, StoredValue, U512,
 };
 
 use get_call_stack_recursive_subcall::{
@@ -64,6 +64,16 @@ fn store_contract(builder: &mut WasmTestBuilder<InMemoryGlobalState>, session_fi
         .exec(store_contract_request)
         .commit()
         .expect_success();
+}
+
+// Constant from the contracts used in the tests below.
+const LARGE_AMOUNT: u64 = 1_500_000_000_000;
+
+// In the payment or session phase, this test will try to transfer `len + 1` times
+// a fixed amount of `1_500_000_000_000` from the main purse of the account.
+// We need to provide an explicit approval via passing that as an `amount` argument.
+pub fn approved_amount(idx: usize) -> U512 {
+    U512::from(LARGE_AMOUNT * (idx + 1) as u64)
 }
 
 trait AccountExt {
@@ -323,10 +333,10 @@ fn assert_call_stack_matches_calls(call_stack: Vec<CallStackElement>, calls: &[C
 mod session {
     use casper_engine_test_support::{ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR};
     use casper_execution_engine::shared::transform::Transform;
-    use casper_types::{runtime_args, Key, RuntimeArgs};
+    use casper_types::{runtime_args, system::mint, Key, RuntimeArgs};
 
     use super::{
-        AccountExt, ARG_CALLS, ARG_CURRENT_DEPTH, CONTRACT_CALL_RECURSIVE_SUBCALL,
+        approved_amount, AccountExt, ARG_CALLS, ARG_CURRENT_DEPTH, CONTRACT_CALL_RECURSIVE_SUBCALL,
         CONTRACT_FORWARDER_ENTRYPOINT_CONTRACT, CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
         CONTRACT_NAME, CONTRACT_PACKAGE_NAME,
     };
@@ -354,6 +364,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -385,6 +396,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -423,6 +435,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -460,6 +473,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -499,6 +513,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -537,6 +552,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -574,6 +590,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -609,6 +626,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -640,6 +658,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -678,6 +697,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -715,6 +735,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -746,6 +767,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -787,6 +809,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -821,6 +844,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -854,6 +878,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -884,6 +909,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -915,6 +941,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -949,6 +976,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -992,6 +1020,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -1026,6 +1055,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -1060,6 +1090,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -1094,6 +1125,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -1137,6 +1169,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -1170,6 +1203,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -1206,6 +1240,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -1235,6 +1270,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -1263,6 +1299,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -1292,6 +1329,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -1320,6 +1358,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -1349,6 +1388,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -1376,6 +1416,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -1403,6 +1444,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -1441,6 +1483,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -1478,6 +1521,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -1514,6 +1558,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -1547,6 +1592,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -1584,6 +1630,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -1619,6 +1666,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -1653,6 +1701,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -1684,6 +1733,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -1715,6 +1765,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -1749,6 +1800,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -1783,6 +1835,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -1817,6 +1870,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -1851,6 +1905,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -1885,6 +1940,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -1918,6 +1974,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -1951,6 +2008,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -1985,6 +2043,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -2019,6 +2078,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -2053,6 +2113,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -2087,6 +2148,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -2121,6 +2183,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -2155,6 +2218,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -2188,6 +2252,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -2221,6 +2286,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -2266,6 +2332,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -2303,6 +2370,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -2339,6 +2407,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -2372,6 +2441,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -2409,6 +2479,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -2444,6 +2515,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -2478,6 +2550,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -2509,6 +2582,7 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 },
             )
             .build();
@@ -2526,11 +2600,12 @@ mod payment {
     use casper_engine_test_support::{
         DeployItemBuilder, ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR,
     };
-    use casper_execution_engine::shared::wasm;
-    use casper_types::{runtime_args, RuntimeArgs};
+    use casper_types::{runtime_args, system::mint, RuntimeArgs};
+
+    use crate::wasm_utils;
 
     use super::{
-        AccountExt, ARG_CALLS, ARG_CURRENT_DEPTH, CONTRACT_CALL_RECURSIVE_SUBCALL,
+        approved_amount, AccountExt, ARG_CALLS, ARG_CURRENT_DEPTH, CONTRACT_CALL_RECURSIVE_SUBCALL,
         CONTRACT_FORWARDER_ENTRYPOINT_SESSION, CONTRACT_NAME, CONTRACT_PACKAGE_NAME,
     };
 
@@ -2566,11 +2641,12 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
                     .with_payment_code(CONTRACT_CALL_RECURSIVE_SUBCALL, args)
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -2612,11 +2688,12 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
                     .with_payment_code(CONTRACT_CALL_RECURSIVE_SUBCALL, args)
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -2657,11 +2734,12 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
                     .with_payment_code(CONTRACT_CALL_RECURSIVE_SUBCALL, args)
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -2700,11 +2778,12 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
                     .with_payment_code(CONTRACT_CALL_RECURSIVE_SUBCALL, args)
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -2749,11 +2828,12 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
                     .with_payment_code(CONTRACT_CALL_RECURSIVE_SUBCALL, args)
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -2791,11 +2871,12 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
                     .with_payment_code(CONTRACT_CALL_RECURSIVE_SUBCALL, args)
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -2832,11 +2913,12 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
                     .with_payment_code(CONTRACT_CALL_RECURSIVE_SUBCALL, args)
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -2870,11 +2952,12 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
                     .with_payment_code(CONTRACT_CALL_RECURSIVE_SUBCALL, args)
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -2909,6 +2992,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
 
                 let deploy = DeployItemBuilder::new()
@@ -2919,7 +3003,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -2955,6 +3039,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -2964,7 +3049,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3001,6 +3086,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
 
                 let deploy = DeployItemBuilder::new()
@@ -3011,7 +3097,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3047,6 +3133,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -3056,7 +3143,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3094,6 +3181,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
 
                 let deploy = DeployItemBuilder::new()
@@ -3103,7 +3191,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3140,6 +3228,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -3148,7 +3237,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3183,6 +3272,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -3191,7 +3281,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3226,6 +3316,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -3234,7 +3325,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3269,6 +3360,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -3277,7 +3369,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3312,6 +3404,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -3320,7 +3413,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3355,6 +3448,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -3363,7 +3457,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3398,6 +3492,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -3406,7 +3501,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3442,6 +3537,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -3450,7 +3546,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3486,6 +3582,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -3494,7 +3591,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3529,6 +3626,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -3537,7 +3635,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3572,6 +3670,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -3580,7 +3679,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3626,6 +3725,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -3634,7 +3734,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3673,6 +3773,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -3681,7 +3782,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3719,6 +3820,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -3727,7 +3829,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3762,6 +3864,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -3770,7 +3873,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3810,6 +3913,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -3818,7 +3922,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3856,6 +3960,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -3864,7 +3969,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3901,6 +4006,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -3909,7 +4015,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
@@ -3943,6 +4049,7 @@ mod payment {
                 let args = runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
+                    mint::ARG_AMOUNT => approved_amount(*len),
                 };
                 let deploy = DeployItemBuilder::new()
                     .with_address(sender)
@@ -3951,7 +4058,7 @@ mod payment {
                         CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
                         args,
                     )
-                    .with_session_bytes(wasm::do_nothing_bytes(), RuntimeArgs::default())
+                    .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                     .with_authorization_keys(&[sender])
                     .with_deploy_hash(deploy_hash)
                     .build();
