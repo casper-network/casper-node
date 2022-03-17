@@ -91,8 +91,9 @@ use crate::{
     types::{
         error::BlockValidationError, Block, BlockBody, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, Deploy, DeployHash,
-        DeployMetadata, DeployWithFinalizedApprovals, FinalizedApprovals, HashingAlgorithmVersion,
-        Item, MerkleBlockBody, MerkleBlockBodyPart, MerkleLinkedListNode, NodeId, TimeDiff,
+        DeployMetadata, DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedApprovalsWithId,
+        HashingAlgorithmVersion, Item, MerkleBlockBody, MerkleBlockBodyPart, MerkleLinkedListNode,
+        NodeId, TimeDiff,
     },
     utils::{display_error, WithDir},
     NodeRng,
@@ -741,6 +742,31 @@ impl Storage {
             NetRequest::Deploy(ref serialized_id) => {
                 let id = decode_item_id::<Deploy>(serialized_id)?;
                 let opt_item = self.get_deploy(id).map_err(FatalStorageError::from)?;
+
+                Ok(self.update_pool_and_send(
+                    effect_builder,
+                    incoming.sender,
+                    serialized_id,
+                    id,
+                    opt_item,
+                )?)
+            }
+            NetRequest::FinalizedApprovals(ref serialized_id) => {
+                let id = decode_item_id::<FinalizedApprovalsWithId>(serialized_id)?;
+                let opt_item = self
+                    .env
+                    .begin_ro_txn()
+                    .map_err(Into::into)
+                    .and_then(|mut tx| {
+                        self.get_deploy_with_finalized_approvals(&mut tx, &id)
+                            .map_err(FatalStorageError::from)
+                    })?
+                    .map(|deploy| {
+                        FinalizedApprovalsWithId::new(
+                            id,
+                            FinalizedApprovals::new(deploy.into_naive().approvals().clone()),
+                        )
+                    });
 
                 Ok(self.update_pool_and_send(
                     effect_builder,
@@ -1715,6 +1741,31 @@ impl Storage {
         }
     }
 
+    /// Stores a set of finalized approvals.
+    pub fn store_finalized_approvals(
+        &self,
+        deploy_hash: &DeployHash,
+        finalized_approvals: &FinalizedApprovals,
+    ) -> Result<(), FatalStorageError> {
+        let maybe_original_deploy = self.read_deploy_by_hash(*deploy_hash)?;
+        let original_deploy =
+            maybe_original_deploy.ok_or(FatalStorageError::UnexpectedFinalizedApprovals {
+                deploy_hash: *deploy_hash,
+            })?;
+        // Only store the finalized approvals if they are different from the original ones.
+        if original_deploy.approvals() != finalized_approvals.as_ref() {
+            let mut txn = self.env.begin_rw_txn()?;
+            let _ = txn.put_value(
+                self.finalized_approvals_db,
+                deploy_hash,
+                finalized_approvals,
+                true,
+            )?;
+            txn.commit()?;
+        }
+        Ok(())
+    }
+
     /// Retrieves single block header by height by looking it up in the index and returning it;
     /// returns `None` if they are less than the fault tolerance threshold, or if the block is from
     /// before the most recent emergency upgrade.
@@ -1843,31 +1894,6 @@ impl Storage {
 
         let message = Message::new_get_response_from_serialized(<T as Item>::TAG, shared);
         Ok(effect_builder.send_message(sender, message).ignore())
-    }
-
-    /// Stores a set of finalized approvals.
-    pub fn store_finalized_approvals(
-        &self,
-        deploy_hash: &DeployHash,
-        finalized_approvals: &FinalizedApprovals,
-    ) -> Result<(), FatalStorageError> {
-        let maybe_original_deploy = self.read_deploy_by_hash(*deploy_hash)?;
-        let original_deploy =
-            maybe_original_deploy.ok_or(FatalStorageError::UnexpectedFinalizedApprovals {
-                deploy_hash: *deploy_hash,
-            })?;
-        // Only store the finalized approvals if they are different from the original ones.
-        if original_deploy.approvals() != finalized_approvals.as_ref() {
-            let mut txn = self.env.begin_rw_txn()?;
-            let _ = txn.put_value(
-                self.finalized_approvals_db,
-                deploy_hash,
-                finalized_approvals,
-                true,
-            )?;
-            txn.commit()?;
-        }
-        Ok(())
     }
 }
 

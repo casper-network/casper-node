@@ -32,7 +32,7 @@ pub use datasize::DataSize;
 pub use deploy::{
     Approval, Deploy, DeployConfigurationFailure, DeployHash, DeployHeader, DeployMetadata,
     DeployOrTransferHash, DeployWithApprovals, DeployWithFinalizedApprovals, Error as DeployError,
-    ExcessiveSizeError as ExcessiveSizeDeployError, FinalizedApprovals,
+    ExcessiveSizeError as ExcessiveSizeDeployError, FinalizedApprovals, FinalizedApprovalsWithId,
 };
 pub use error::BlockValidationError;
 pub use exit_code::ExitCode;

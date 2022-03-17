@@ -13,7 +13,7 @@ use crate::{
     crypto::AsymmetricKeyExt,
     reactor::{EventQueueHandle, QueueKind, Scheduler},
     testing::TestRng,
-    types::{BlockPayload, ChainspecRawBytes, TimeDiff},
+    types::{BlockPayload, ChainspecRawBytes, DeployWithApprovals, TimeDiff},
     utils::{self, Loadable},
 };
 
