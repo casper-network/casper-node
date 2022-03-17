@@ -63,7 +63,6 @@ use crate::{
 };
 
 const MAX_ASSOCIATED_KEYS: u32 = 100;
-const MAX_STORED_VALUE_SIZE: u32 = 8 * 1024 * 1024;
 
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
@@ -242,7 +241,6 @@ impl reactor::Reactor for Reactor {
             SystemConfig::default(),
             MAX_ASSOCIATED_KEYS,
             DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-            MAX_STORED_VALUE_SIZE,
             DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
             DEFAULT_MINIMUM_DELEGATION_AMOUNT,
             registry,

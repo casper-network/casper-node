@@ -46,6 +46,7 @@ All notable changes to this project will be documented in this file.  The format
 * The `casper-mainnet` feature flag has been removed.
 * Integrity check has been removed.
 * Remove `verify_accounts` option from `config.toml`, meaning deploys received from clients always undergo account balance checks to assess suitability for execution or not.
+* Remove a temporary chainspec setting `max_stored_value_size` to limit the size of individual values stored in global state.
 
 
 

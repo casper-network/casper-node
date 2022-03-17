@@ -2,8 +2,8 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_STORED_VALUE_SIZE,
-    DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
+    DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     core::{
@@ -997,7 +997,6 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
         DEFAULT_MAX_QUERY_DEPTH,
         new_max_associated_keys,
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        DEFAULT_MAX_STORED_VALUE_SIZE,
         DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         WasmConfig::default(),

@@ -52,7 +52,6 @@ impl CoreConfig {
         );
         let max_associated_keys = rng.gen();
         let max_runtime_call_stack_height = rng.gen();
-        let max_stored_value_size = rng.gen();
         let minimum_delegation_amount = rng.gen::<u32>() as u64;
 
         CoreConfig {

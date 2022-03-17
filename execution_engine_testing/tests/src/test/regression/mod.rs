@@ -36,7 +36,6 @@ mod gh_1688;
 mod gh_1902;
 mod gh_1931;
 mod gh_2280;
-mod gh_2605;
 mod gov_116;
 mod gov_74;
 mod gov_89_regression;
