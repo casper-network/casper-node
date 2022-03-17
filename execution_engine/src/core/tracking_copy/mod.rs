@@ -320,9 +320,6 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
         }
     }
 
-    /// If the serialized length of `value` is not more than `max_value_size`, writes `key,value`
-    /// and returns `WriteResult::Success`.  Otherwise, the write fails and
-    /// `WriteResult::ValueTooLarge` is returned.
     pub(super) fn write(&mut self, key: Key, value: StoredValue) {
         let normalized_key = key.normalize();
         self.cache.insert_write(normalized_key, value.clone());

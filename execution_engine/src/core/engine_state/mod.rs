@@ -353,7 +353,6 @@ where
                 CLValue::from_t(new_validator_slots)
                     .map_err(|_| Error::Bytesrepr("new_validator_slots".to_string()))?,
             );
-            // Writing a `u32` will not exceed write size limit.
             let _ = tracking_copy.borrow_mut().write(validator_slots_key, value);
         }
 
@@ -367,7 +366,6 @@ where
                 CLValue::from_t(new_auction_delay)
                     .map_err(|_| Error::Bytesrepr("new_auction_delay".to_string()))?,
             );
-            // Writing a `u64` will not exceed write size limit.
             let _ = tracking_copy.borrow_mut().write(auction_delay_key, value);
         }
 
@@ -381,7 +379,6 @@ where
                 CLValue::from_t(new_locked_funds_period)
                     .map_err(|_| Error::Bytesrepr("new_locked_funds_period".to_string()))?,
             );
-            // Writing a `u64` will not exceed write size limit.
             let _ = tracking_copy
                 .borrow_mut()
                 .write(locked_funds_period_key, value);
@@ -397,7 +394,6 @@ where
                 CLValue::from_t(new_unbonding_delay)
                     .map_err(|_| Error::Bytesrepr("new_unbonding_delay".to_string()))?,
             );
-            // Writing a `u64` will not exceed write size limit.
             let _ = tracking_copy.borrow_mut().write(unbonding_delay_key, value);
         }
 
@@ -416,7 +412,6 @@ where
                 CLValue::from_t(new_round_seigniorage_rate)
                     .map_err(|_| Error::Bytesrepr("new_round_seigniorage_rate".to_string()))?,
             );
-            // Writing a `Ratio<U512>` will not exceed write size limit.
             let _ = tracking_copy
                 .borrow_mut()
                 .write(locked_funds_period_key, value);
@@ -838,7 +833,6 @@ where
                             let new_account =
                                 Account::create(public_key, Default::default(), main_purse);
                             // write new account
-                            // Writing a default new `Account` will not exceed write size limit.
                             let _ = tracking_copy
                                 .borrow_mut()
                                 .write(Key::Account(public_key), StoredValue::Account(new_account));
@@ -1131,7 +1125,6 @@ where
                 account.main_purse(),
                 cost,
             );
-            // Writing a `DeployInfo` will not exceed write size limit.
             let _ = tracking_copy.borrow_mut().write(
                 Key::DeployInfo(deploy_item.deploy_hash),
                 StoredValue::DeployInfo(deploy_info),
@@ -1543,7 +1536,6 @@ where
                 account.main_purse(),
                 cost,
             );
-            // Writing a `DeployInfo` will not exceed write size limit.
             let _ = session_tracking_copy.borrow_mut().write(
                 Key::DeployInfo(deploy_hash),
                 StoredValue::DeployInfo(deploy_info),

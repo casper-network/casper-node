@@ -56,9 +56,6 @@ pub trait StorageProvider {
     fn record_era_info(&mut self, era_id: EraId, era_info: EraInfo) -> Result<(), Error>;
 
     /// Writes a `SeigniorageRecipientsSnapshot` to global state and charges for bytes stored.
-    ///
-    /// The value is force-written, i.e. accidentally exceeding the write size limit will not cause
-    /// this to return `Err`.
     fn write_seigniorage_recipients_snapshot(
         &mut self,
         uref: URef,
