@@ -660,7 +660,8 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 !echo_map.is_empty()
             });
         }
-        for round_id in self.first_non_finalized_round_id..=*self.rounds.keys().last().unwrap_or(&0)
+        for round_id in
+            self.first_non_finalized_round_id..=self.rounds.keys().last().copied().unwrap_or(0)
         {
             if self.rounds[&round_id].outcome.quorum_echos.is_none() {
                 if let Some(hash) = self.rounds[&round_id]
