@@ -1,13 +1,15 @@
 use std::{
     any::Any,
     cmp::Reverse,
-    collections::{btree_map, BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{btree_map, BTreeMap, HashMap, HashSet},
     fmt::Debug,
+    iter,
     path::PathBuf,
 };
 
 use datasize::DataSize;
 use itertools::Itertools;
+use rand::{seq::IteratorRandom, Rng};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
@@ -305,7 +307,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         // TODO: In this protocol the interval should be shorter than in Highway.
         if let Some(interval) = sc.config.request_state_interval {
             outcomes.push(ProtocolOutcome::ScheduleTimer(
-                now.max(sc.params.start_timestamp()) + interval,
+                now.max(sc.params.start_timestamp()) + interval / 100,
                 TIMER_ID_SYNC_PEER,
             ));
         }
@@ -448,19 +450,103 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     }
 
     fn create_sync_state_message(&self) -> Message<C> {
-        let round_outcomes = (self.first_non_finalized_round_id..=self.current_round())
-            .map(|round_id| {
-                self.round(round_id)
-                    .map(|round| round.outcome.clone())
-                    .unwrap_or_default()
-            })
-            .collect();
+        let mut rng = rand::thread_rng(); // TODO: Pass in.
+        let first_validator_idx = ValidatorIndex(rng.gen_range(0..self.weights.len() as u32));
+        let faulty = self.validator_bit_field(first_validator_idx, self.faults.keys().cloned());
+        let current_round = self.current_round();
+        let round_id = (self.first_non_finalized_round_id..=current_round)
+            .choose(&mut rng)
+            .unwrap_or(current_round);
+        let round = match self.round(round_id) {
+            Some(round) => round,
+            None => {
+                return Message::new_empty_round_sync_state(
+                    round_id,
+                    first_validator_idx,
+                    faulty,
+                    self.instance_id,
+                );
+            }
+        };
+        let true_votes =
+            self.validator_bit_field(first_validator_idx, round.votes[&true].keys_some());
+        let false_votes =
+            self.validator_bit_field(first_validator_idx, round.votes[&false].keys_some());
+        let proposal_hash = round.outcome.quorum_echos.or_else(|| {
+            round
+                .echos
+                .iter()
+                .max_by_key(|(_, echo_map)| self.sum_weights(echo_map.keys()))
+                .map(|(hash, _)| *hash)
+        });
+        let mut echos = 0;
+        let mut proposal = false;
+        if let Some(hash) = proposal_hash {
+            echos =
+                self.validator_bit_field(first_validator_idx, round.echos[&hash].keys().cloned());
+            proposal = round.proposals.contains_key(&hash);
+        }
         Message::SyncState {
-            first_non_finalized_round_id: self.first_non_finalized_round_id,
-            round_outcomes,
-            faulty_validators: self.faults.keys().cloned().collect(),
+            round_id,
+            proposal_hash,
+            proposal,
+            first_validator_idx,
+            echos,
+            true_votes,
+            false_votes,
+            faulty,
             instance_id: self.instance_id,
         }
+    }
+
+    /// Returns a bit field where each bit stands for a validator: the least significant one for
+    /// `first_idx` and the most significant one for `fist_idx + 127`, wrapping around at the total
+    /// number of validators. The bits of the validators in `index_iter` that fall into that
+    /// range are set to `1`, the others are `0`.
+    #[allow(clippy::integer_arithmetic)] // TODO
+    fn validator_bit_field(
+        &self,
+        ValidatorIndex(first_idx): ValidatorIndex,
+        index_iter: impl Iterator<Item = ValidatorIndex>,
+    ) -> u128 {
+        let mut bit_field = 0;
+        let validator_count = self.weights.len() as u32;
+        for ValidatorIndex(v_idx) in index_iter {
+            // The validator's bit is v_idx - first_idx, but we wrap around.
+            let i = v_idx
+                .checked_sub(first_idx)
+                .unwrap_or(v_idx + validator_count - first_idx);
+            if i < 128 {
+                bit_field |= 1 << i; // Set bit number i to 1.
+            }
+        }
+        bit_field
+    }
+
+    /// Returns an iterator over all validator indexes whose bits in the `bit_field` are `1`, where
+    /// the least significant one stands for `first_idx` and the most significant one for
+    /// `first_idx + 127`, wrapping around.
+    #[allow(clippy::integer_arithmetic)] // TODO
+    fn iter_validator_bit_field(
+        &self,
+        first_idx: ValidatorIndex,
+        mut bit_field: u128,
+    ) -> impl Iterator<Item = ValidatorIndex> {
+        let validator_count = self.weights.len() as u32;
+        let mut idx = first_idx.0; // The last bit stands for first_idx.
+        iter::from_fn(move || {
+            if bit_field == 0 {
+                return None; // No remaining bits with value 1.
+            }
+            let zeros = bit_field.trailing_zeros();
+            // The index of the validator whose bit is 1. We shift the bits to the right so that the
+            // least significant bit now corresponds to this one, then we output the index and set
+            // the bit to 0.
+            idx = (idx + zeros) % validator_count;
+            bit_field >>= zeros;
+            bit_field &= !1;
+            Some(ValidatorIndex(idx))
+        })
     }
 
     /// Creates a message to send our protocol state info to a random peer.
@@ -566,7 +652,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         }
         // Remove all Votes and Echos from the faulty validator: They count towards every quorum now
         // so nobody has to store their messages.
-        // TODO make sure we recompute all quorums, explicitly or implicitly
         for round in self.rounds.values_mut() {
             round.votes.get_mut(&false).unwrap()[validator_idx] = None;
             round.votes.get_mut(&true).unwrap()[validator_idx] = None;
@@ -575,90 +660,157 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 !echo_map.is_empty()
             });
         }
+        for round_id in
+            self.first_non_finalized_round_id..=self.rounds.keys().last().copied().unwrap_or(0)
+        {
+            if self.rounds[&round_id].outcome.quorum_echos.is_none() {
+                if let Some(hash) = self.rounds[&round_id]
+                    .echos
+                    .iter()
+                    .find(|(_, echo_map)| self.is_quorum(echo_map.keys().copied()))
+                    .map(|(hash, _)| *hash)
+                {
+                    // The double-signing made us cross the quorum threshold.
+                    self.round_mut(round_id).outcome.quorum_echos = Some(hash);
+                }
+            }
+            if self.rounds[&round_id].outcome.quorum_votes.is_none()
+                && self.is_quorum(self.rounds[&round_id].votes[&true].keys_some())
+            {
+                // The new Vote made us cross the quorum threshold for committing the round.
+                self.round_mut(round_id).outcome.quorum_votes = Some(true);
+                // If there is already an accepted proposal, it is finalized.
+                if self.rounds[&round_id].has_accepted_proposal() {
+                    outcomes.extend(self.finalize_round(round_id));
+                }
+            }
+            if self.rounds[&round_id].outcome.quorum_votes.is_none()
+                && self.is_quorum(self.rounds[&round_id].votes[&false].keys_some())
+            {
+                // The new Vote made us cross the quorum threshold for making the round skippable.
+                self.round_mut(round_id).outcome.quorum_votes = Some(false);
+                // If there wasn't already an accepted proposal, this starts the next round.
+                if !self.rounds[&round_id].has_accepted_proposal()
+                    && self.current_round() > round_id
+                {
+                    let now = Timestamp::now();
+                    outcomes.push(ProtocolOutcome::ScheduleTimer(now, TIMER_ID_ROUND));
+                }
+            }
+            // Check whether proposal in this round is now accepted.
+            outcomes.extend(self.check_proposal(round_id));
+        }
         outcomes
     }
 
     /// When we receive a request to synchronize, we must take a careful diff of our state and the
     /// state in the sync state to ensure we send them exactly what they need to get back up to
     /// speed in the network.
+    #[allow(clippy::too_many_arguments)] // TODO
     fn handle_sync_state(
         &self,
-        first_non_finalized_round_id: RoundId,
-        round_outcomes: Vec<RoundOutcome<C>>,
-        faulty_validators: BTreeSet<ValidatorIndex>,
+        round_id: RoundId,
+        proposal_hash: Option<C::Hash>,
+        has_proposal: bool,
+        first_validator_idx: ValidatorIndex,
+        echos: u128,
+        true_votes: u128,
+        false_votes: u128,
+        faulty: u128,
         sender: NodeId,
     ) -> ProtocolOutcomes<C> {
         // TODO: Limit how much time and bandwidth we spend on each peer.
         // TODO: Send only enough signatures for quorum.
         // TODO: Combine multiple `SignedMessage`s with the same values into one.
         // TODO: Refactor to something more readable!!
-        (first_non_finalized_round_id..)
-            .zip(round_outcomes)
-            .filter_map(|(round_id, round_outcome)| {
-                let our_round = self.round(round_id)?;
-                let our_outcome = &our_round.outcome;
-                let to_proto_outcome = |(content, validator_idx, signature): (
-                    Content<C>,
-                    ValidatorIndex,
-                    C::Signature,
-                )| {
-                    let msg = Message::Signed {
-                        round_id,
-                        instance_id: self.instance_id,
-                        content,
-                        validator_idx,
-                        signature,
-                    };
-                    ProtocolOutcome::CreatedTargetedMessage(msg.serialize(), sender)
-                };
-                let mut contents = vec![];
-                if let (None, Some(hash)) = (round_outcome.quorum_echos, our_outcome.quorum_echos) {
-                    let to_echo = |(vidx, signature): (&ValidatorIndex, &C::Signature)| {
-                        (Content::Echo(hash), *vidx, *signature)
-                    };
-                    contents.extend(our_round.echos.get(&hash)?.iter().map(to_echo));
+        let round = match self.round(round_id) {
+            Some(round) => round,
+            None => return vec![],
+        };
+        if first_validator_idx.0 >= self.weights.len() as u32 {
+            info!(
+                first_validator_idx = first_validator_idx.0,
+                ?sender,
+                "invalid SyncState message"
+            );
+            return vec![];
+        }
+        let mut contents = vec![];
+        if let Some(hash) = proposal_hash {
+            if let Some(echo_map) = round.echos.get(&hash) {
+                let our_echos =
+                    self.validator_bit_field(first_validator_idx, echo_map.keys().cloned());
+                let missing_echos = our_echos & !echos;
+                for v_idx in self.iter_validator_bit_field(first_validator_idx, missing_echos) {
+                    contents.push((Content::Echo(hash), v_idx, echo_map[&v_idx]));
                 }
-                if let (Some(_), None, Some(_)) = (
-                    round_outcome.quorum_echos,
-                    round_outcome.accepted_proposal_height,
-                    our_outcome.accepted_proposal_height,
-                ) {
-                    let hash = our_outcome.quorum_echos?;
-                    let (proposal, signature) = our_round.proposals.get(&hash)?;
-                    contents.push((
-                        Content::Proposal(proposal.clone()),
-                        self.leader(round_id),
-                        *signature,
+            }
+            if !has_proposal {
+                if let Some((proposal, signature)) = round.proposals.get(&hash) {
+                    let content = Content::Proposal(proposal.clone());
+                    contents.push((content, self.leader(round_id), *signature));
+                }
+            }
+        } else if let Some(hash) = round.outcome.quorum_echos {
+            for (v_idx, signature) in &round.echos[&hash] {
+                contents.push((Content::Echo(hash), *v_idx, *signature));
+            }
+        }
+        let our_true_votes =
+            self.validator_bit_field(first_validator_idx, round.votes[&true].keys_some());
+        let missing_true_votes = our_true_votes & !true_votes;
+        for v_idx in self.iter_validator_bit_field(first_validator_idx, missing_true_votes) {
+            let signature = round.votes[&true][v_idx].unwrap();
+            contents.push((Content::Vote(true), v_idx, signature));
+        }
+        let our_false_votes =
+            self.validator_bit_field(first_validator_idx, round.votes[&false].keys_some());
+        let missing_false_votes = our_false_votes & !false_votes;
+        for v_idx in self.iter_validator_bit_field(first_validator_idx, missing_false_votes) {
+            let signature = round.votes[&false][v_idx].unwrap();
+            contents.push((Content::Vote(false), v_idx, signature));
+        }
+        let mut outcomes = contents
+            .into_iter()
+            .map(|(content, validator_idx, signature)| {
+                let msg = Message::Signed {
+                    round_id,
+                    instance_id: self.instance_id,
+                    content,
+                    validator_idx,
+                    signature,
+                };
+                ProtocolOutcome::CreatedTargetedMessage(msg.serialize(), sender)
+            })
+            .collect_vec();
+        let our_faulty = self.validator_bit_field(first_validator_idx, self.faults.keys().cloned());
+        let missing_faulty = our_faulty & !faulty;
+        for v_idx in self.iter_validator_bit_field(first_validator_idx, missing_faulty) {
+            match &self.faults[&v_idx] {
+                Fault::Banned => {
+                    error!(
+                        validator_index = v_idx.0,
+                        ?sender,
+                        "peer disagrees about banned validator"
+                    );
+                }
+                Fault::Direct(msg0, msg1) => {
+                    outcomes.push(ProtocolOutcome::CreatedTargetedMessage(
+                        msg0.serialize(),
+                        sender,
+                    ));
+                    outcomes.push(ProtocolOutcome::CreatedTargetedMessage(
+                        msg1.serialize(),
+                        sender,
                     ));
                 }
-                if let (None, Some(vote)) = (round_outcome.quorum_votes, our_outcome.quorum_votes) {
-                    let to_vote = |(vidx, signature): (ValidatorIndex, &C::Signature)| {
-                        (Content::Vote(vote), vidx, *signature)
-                    };
-                    contents.extend(our_round.votes[&vote].iter_some().map(to_vote));
+                Fault::Indirect => {
+                    let vid = self.validators.id(v_idx).unwrap().clone();
+                    outcomes.push(ProtocolOutcome::SendEvidence(sender, vid));
                 }
-                Some(contents.into_iter().map(to_proto_outcome).collect_vec())
-            })
-            .flatten()
-            .chain(
-                self.faults
-                    .iter()
-                    .filter(|(vidx, _)| !faulty_validators.contains(vidx))
-                    .flat_map(|(vidx, fault)| match fault {
-                        Fault::Banned => vec![],
-                        Fault::Direct(msg0, msg1) => {
-                            vec![
-                                ProtocolOutcome::CreatedTargetedMessage(msg0.serialize(), sender),
-                                ProtocolOutcome::CreatedTargetedMessage(msg1.serialize(), sender),
-                            ]
-                        }
-                        Fault::Indirect => vec![ProtocolOutcome::SendEvidence(
-                            sender,
-                            self.validators.id(*vidx).unwrap().clone(),
-                        )],
-                    }),
-            )
-            .collect()
+            }
+        }
+        outcomes
     }
 
     /// The main entry point for non-synchronization messages. This function mostly authenticates
@@ -1182,7 +1334,12 @@ impl<C: Context + 'static> SimpleConsensus<C> {
 
     /// Returns the total weight of validators known to be faulty.
     fn faulty_weight(&self) -> Weight {
-        self.faults.keys().map(|vidx| self.weights[*vidx]).sum()
+        self.sum_weights(self.faults.keys())
+    }
+
+    /// Returns the sum of the weights of the given validators.
+    fn sum_weights<'a>(&self, vidxs: impl Iterator<Item = &'a ValidatorIndex>) -> Weight {
+        vidxs.map(|vidx| self.weights[*vidx]).sum()
     }
 
     /// Retrieves a shared reference to the round.
@@ -1277,14 +1434,39 @@ impl<C: Context> Default for RoundOutcome<C> {
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
 pub(crate) enum Message<C: Context> {
-    // A dependency request. u64 is a random UUID identifying the request.
-    // RequestDependency(u64),
+    /// Partial information about the sender's protocol state. The receiver should send missing
+    /// data.
+    ///
+    /// The sender chooses a random peer and a random era, and includes in its `SyncState` message
+    /// information about received proposals, echos and votes. The idea is to set the `i`-th bit in
+    /// the `u128` fields to `1` if we have a signature from the `i`-th validator.
+    ///
+    /// To keep the size of these messages constant even if there are more than 128 validators, a
+    /// random interval is selected and only information about validators in that interval is
+    /// included: The bit with the lowest significance corresponds to validator number
+    /// `first_validator_idx`, and the one with the highest to
+    /// `(first_validator_idx + 127) % validator_count`.
+    ///
+    /// For example if there are 500 validators and `first_validator_idx` is 450, the `u128`'s bits
+    /// refer to validators 450, 451, ..., 499, 0, 1, ..., 77.
     SyncState {
-        /// The lowest round ID of a block that could still be finalized in the future.
-        first_non_finalized_round_id: RoundId,
-        round_outcomes: Vec<RoundOutcome<C>>,
+        /// The round the information refers to.
+        round_id: RoundId,
+        /// The proposal hash with the most echos (by weight).
+        proposal_hash: Option<C::Hash>,
+        /// Whether the sender has the proposal with that hash.
+        proposal: bool,
+        /// The index of the first validator covered by the bit fields below.
+        first_validator_idx: ValidatorIndex,
+        /// A bit field with 1 for every validator the sender has an echo from.
+        echos: u128,
+        /// A bit field with 1 for every validator the sender has a `true` vote from.
+        true_votes: u128,
+        /// A bit field with 1 for every validator the sender has a `false` vote from.
+        false_votes: u128,
+        /// A bit field with 1 for every validator the sender has evidence against.
+        faulty: u128,
         instance_id: C::InstanceId,
-        faulty_validators: BTreeSet<ValidatorIndex>,
     },
     Signed {
         round_id: RoundId,
@@ -1296,6 +1478,25 @@ pub(crate) enum Message<C: Context> {
 }
 
 impl<C: Context> Message<C> {
+    fn new_empty_round_sync_state(
+        round_id: RoundId,
+        first_validator_idx: ValidatorIndex,
+        faulty: u128,
+        instance_id: C::InstanceId,
+    ) -> Self {
+        Message::SyncState {
+            round_id,
+            proposal_hash: None,
+            proposal: false,
+            first_validator_idx,
+            echos: 0,
+            true_votes: 0,
+            false_votes: 0,
+            faulty,
+            instance_id,
+        }
+    }
+
     fn serialize(&self) -> Vec<u8> {
         bincode::serialize(self).expect("should serialize message")
     }
@@ -1333,14 +1534,24 @@ where
                 vec![outcome]
             }
             Ok(Message::SyncState {
-                first_non_finalized_round_id,
-                round_outcomes,
-                faulty_validators,
+                round_id,
+                proposal_hash,
+                proposal,
+                first_validator_idx,
+                echos,
+                true_votes,
+                false_votes,
+                faulty,
                 instance_id: _,
             }) => self.handle_sync_state(
-                first_non_finalized_round_id,
-                round_outcomes,
-                faulty_validators,
+                round_id,
+                proposal_hash,
+                proposal,
+                first_validator_idx,
+                echos,
+                true_votes,
+                false_votes,
+                faulty,
                 sender,
             ),
             Ok(Message::Signed {
