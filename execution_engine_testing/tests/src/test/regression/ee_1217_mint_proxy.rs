@@ -82,18 +82,6 @@ fn should_fail_to_get_funds_from_faucet_stored() {
             if api_error == ApiError::from(mint::Error::InvalidContext) => {}
         _ => panic!("should be an error"),
     }
-
-    // TODO - confirm if this is important.
-    // Verify that even though execution failed, we still emit the `Identity` transform for the
-    // contract we called.
-    // let transforms = builder.get_execution_journals().last().unwrap().clone();
-    // assert!(
-    //     transforms
-    //         .iter()
-    //         .any(|(key, transform)| *key == Key::Hash(contract_hash)
-    //             && transform == &Transform::Identity),
-    //     "Expected `Transform::Identity` for the called contract even for failed execution."
-    // );
 }
 
 #[ignore]
