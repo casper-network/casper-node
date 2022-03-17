@@ -30,8 +30,8 @@ use crate::{
     effect::{requests::StorageRequest, Multiple},
     testing::{ComponentHarness, TestRng, UnitTestEvent},
     types::{
-        Block, BlockHash, BlockHeader, BlockSignatures, Deploy, DeployHash, DeployMetadata,
-        DeployWithFinalizedApprovals, FinalitySignature, HashingAlgorithmVersion,
+        Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Deploy, DeployHash,
+        DeployMetadata, DeployWithFinalizedApprovals, FinalitySignature, FinalizedBlock,
     },
     utils::WithDir,
 };

@@ -258,7 +258,9 @@ pub trait Auction:
 
         let source = self.get_main_purse()?;
 
-        let bid = detail::read_bid_for_validator(self, provided_account_hash)?;
+        let validator_account_hash = AccountHash::from(&validator_public_key);
+
+        let bid = detail::read_bid_for_validator(self, validator_account_hash)?;
 
         if bid.delegators().len() >= max_delegator_size_limit {
             return Err(Error::ExceededDelegatorSizeLimit.into());

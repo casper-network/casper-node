@@ -12,7 +12,8 @@ mod utils;
 use std::{
     cmp,
     collections::{BTreeMap, BTreeSet},
-    convert::TryFrom,
+    convert::{TryFrom, TryInto},
+    iter::FromIterator,
 };
 
 use parity_wasm::elements::Module;
@@ -41,12 +42,11 @@ use casper_types::{
     TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
 };
 
-use self::host_function_flag::HostFunctionFlag;
 use crate::{
     core::{
         engine_state::EngineConfig,
         execution::{self, Error},
-        runtime::{host_function_flag::HostFunctionFlag, scoped_instrumenter::ScopedInstrumenter},
+        runtime::host_function_flag::HostFunctionFlag,
         runtime_context::{self, RuntimeContext},
     },
     shared::{
@@ -569,6 +569,7 @@ where
     fn call_host_mint(
         &mut self,
         entry_point_name: &str,
+        named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         access_rights: ContextAccessRights,
         stack: RuntimeStack,
@@ -579,7 +580,7 @@ where
         let runtime_context = self.context.new_from_self(
             base_key,
             EntryPointType::Contract,
-            &mut named_keys,
+            named_keys,
             access_rights,
             runtime_args.to_owned(),
         );
@@ -690,6 +691,7 @@ where
     fn call_host_handle_payment(
         &mut self,
         entry_point_name: &str,
+        named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         access_rights: ContextAccessRights,
         stack: RuntimeStack,
@@ -700,7 +702,7 @@ where
         let runtime_context = self.context.new_from_self(
             base_key,
             EntryPointType::Contract,
-            &mut named_keys,
+            named_keys,
             access_rights,
             runtime_args.to_owned(),
         );
@@ -781,6 +783,7 @@ where
     fn call_host_auction(
         &mut self,
         entry_point_name: &str,
+        named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         access_rights: ContextAccessRights,
         stack: RuntimeStack,
@@ -791,7 +794,7 @@ where
         let runtime_context = self.context.new_from_self(
             base_key,
             EntryPointType::Contract,
-            &mut named_keys,
+            named_keys,
             access_rights,
             runtime_args.to_owned(),
         );
@@ -2848,7 +2851,7 @@ where
             Err(_) => return Ok(Err(ApiError::OutOfMemory)),
         };
         let total_keys_bytes = total_keys.to_le_bytes();
-        if let Err(error) = self.memory.set(len_ptr, &total_keys_bytes) {
+        if let Err(error) = self.try_get_memory()?.set(len_ptr, &total_keys_bytes) {
             return Err(Error::Interpreter(error.into()).into());
         }
 
@@ -2868,7 +2871,7 @@ where
         }
 
         let length_bytes = length.to_le_bytes();
-        if let Err(error) = self.memory.set(result_size_ptr, &length_bytes) {
+        if let Err(error) = self.try_get_memory()?.set(result_size_ptr, &length_bytes) {
             return Err(Error::Interpreter(error.into()).into());
         }
 

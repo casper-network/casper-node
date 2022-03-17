@@ -332,7 +332,8 @@ fn assert_call_stack_matches_calls(call_stack: Vec<CallStackElement>, calls: &[C
 
 mod session {
     use casper_engine_test_support::{ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR};
-    use casper_types::{runtime_args, system::mint, RuntimeArgs};
+    use casper_execution_engine::shared::transform::Transform;
+    use casper_types::{runtime_args, system::mint, Key, RuntimeArgs};
 
     use super::{
         approved_amount, AccountExt, ARG_CALLS, ARG_CURRENT_DEPTH, CONTRACT_CALL_RECURSIVE_SUBCALL,

@@ -220,17 +220,6 @@ fn should_add_and_take_deploys() {
     assert!(empty_block.deploys().is_empty());
     assert!(empty_block.transfers().is_empty());
 
-    // but they shouldn't be returned if we include it in the past deploys
-    let deploy_hashes = block.deploys_and_transfers_iter().collect_vec();
-    let block = proposer.propose_block_payload(
-        DeployConfig::default(),
-        BlockContext::new(block_time2, vec![block]),
-        vec![],
-        true,
-    );
-    assert!(block.deploys().is_empty());
-    assert!(block.transfers().is_empty());
-
     // finalize the block
     let finalized_block =
         FinalizedBlock::new((*block).clone(), None, block_time2, era1, 1, pub_key);
@@ -335,7 +324,15 @@ fn should_successfully_prune() {
     );
 
     // pending => finalized
-    let block = BlockPayload::new(vec![*deploy1.id()], vec![], vec![], false);
+    let block = BlockPayload::new(
+        vec![DeployWithApprovals::new(
+            *deploy1.id(),
+            deploy1.approvals().clone(),
+        )],
+        vec![],
+        vec![],
+        false,
+    );
     let finalized_block = FinalizedBlock::new(block, None, test_time, era1, 1, pub_key);
     proposer.handle_finalized_block(&finalized_block);
 
@@ -404,7 +401,15 @@ fn should_keep_track_of_unhandled_deploys() {
         deploy1.deploy_info().unwrap(),
     );
     // But we DO mark it as finalized, by it's hash
-    let block = BlockPayload::new(vec![*deploy1.id(), *deploy2.id()], vec![], vec![], false);
+    let block = BlockPayload::new(
+        vec![
+            DeployWithApprovals::new(*deploy1.id(), deploy1.approvals().clone()),
+            DeployWithApprovals::new(*deploy2.id(), deploy2.approvals().clone()),
+        ],
+        vec![],
+        vec![],
+        false,
+    );
     let finalized_block = FinalizedBlock::new(block, None, test_time, era1, 1, pub_key);
     proposer.handle_finalized_block(&finalized_block);
 

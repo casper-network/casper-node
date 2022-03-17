@@ -38,8 +38,8 @@ use casper_types::{
         self,
         auction::{
             self, Bids, DelegationRate, EraValidators, Error as AuctionError, UnbondingPurses,
-            ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY,
-            ARG_VALIDATOR, ERA_ID_KEY, INITIAL_ERA_ID,
+            ValidatorWeights, WithdrawPurses, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
+            ARG_NEW_VALIDATOR, ARG_PUBLIC_KEY, ARG_VALIDATOR, ERA_ID_KEY, INITIAL_ERA_ID,
         },
     },
     EraId, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U256, U512,
@@ -3222,7 +3222,7 @@ fn should_delegate_and_redelegate() {
         *BID_ACCOUNT_1_ADDR,
         CONTRACT_REDELEGATE,
         runtime_args! {
-            ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
+            ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1 + DEFAULT_MINIMUM_DELEGATION_AMOUNT),
             ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
             ARG_DELEGATOR => BID_ACCOUNT_1_PK.clone(),
             ARG_NEW_VALIDATOR => NON_FOUNDER_VALIDATOR_2_PK.clone()
@@ -3281,13 +3281,16 @@ fn should_delegate_and_redelegate() {
     let delegated_amount_1 = *delegators[&BID_ACCOUNT_1_PK].staked_amount();
     assert_eq!(
         delegated_amount_1,
-        U512::from(DELEGATE_AMOUNT_1 - UNDELEGATE_AMOUNT_1)
+        U512::from(DELEGATE_AMOUNT_1 - UNDELEGATE_AMOUNT_1 - DEFAULT_MINIMUM_DELEGATION_AMOUNT)
     );
 
     let delegators = bids[&NON_FOUNDER_VALIDATOR_2_PK].delegators();
     assert_eq!(delegators.len(), 1);
     let redelegated_amount_1 = *delegators[&BID_ACCOUNT_1_PK].staked_amount();
-    assert_eq!(redelegated_amount_1, U512::from(UNDELEGATE_AMOUNT_1));
+    assert_eq!(
+        redelegated_amount_1,
+        U512::from(UNDELEGATE_AMOUNT_1 + DEFAULT_MINIMUM_DELEGATION_AMOUNT)
+    );
 }
 
 #[ignore]
@@ -3464,7 +3467,7 @@ fn should_handle_redelegation_to_inactive_validator() {
         *DELEGATOR_1_ADDR,
         CONTRACT_REDELEGATE,
         runtime_args! {
-            ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
+            ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1 + DEFAULT_MINIMUM_DELEGATION_AMOUNT),
             ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
             ARG_DELEGATOR => DELEGATOR_1.clone(),
             ARG_NEW_VALIDATOR => BID_ACCOUNT_1_PK.clone()
@@ -3493,7 +3496,7 @@ fn should_handle_redelegation_to_inactive_validator() {
         *DELEGATOR_2_ADDR,
         CONTRACT_REDELEGATE,
         runtime_args! {
-            ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
+            ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1 + DEFAULT_MINIMUM_DELEGATION_AMOUNT),
             ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
             ARG_DELEGATOR => DELEGATOR_2.clone(),
             ARG_NEW_VALIDATOR => NON_FOUNDER_VALIDATOR_2_PK.clone()
@@ -3530,7 +3533,8 @@ fn should_handle_redelegation_to_inactive_validator() {
     // back to the main purse.
     let delegator_1_purse_balance_after = builder.get_purse_balance(delegator_1_main_purse);
     assert_eq!(
-        delegator_1_purse_balance_before + U512::from(UNDELEGATE_AMOUNT_1),
+        delegator_1_purse_balance_before
+            + U512::from(UNDELEGATE_AMOUNT_1 + DEFAULT_MINIMUM_DELEGATION_AMOUNT),
         delegator_1_purse_balance_after
     );
 
@@ -3730,7 +3734,7 @@ fn should_continue_auction_state_from_release_1_4_x() {
         *DELEGATOR_2_ADDR,
         CONTRACT_REDELEGATE,
         runtime_args! {
-            ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
+            ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1 + DEFAULT_MINIMUM_DELEGATION_AMOUNT),
             ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
             ARG_DELEGATOR => DELEGATOR_2.clone(),
             ARG_NEW_VALIDATOR => GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone()
@@ -3794,13 +3798,16 @@ fn should_continue_auction_state_from_release_1_4_x() {
     let delegated_amount_1 = *delegators[&DELEGATOR_2].staked_amount();
     assert_eq!(
         delegated_amount_1,
-        U512::from(DELEGATE_AMOUNT_1 - UNDELEGATE_AMOUNT_1)
+        U512::from(DELEGATE_AMOUNT_1 - UNDELEGATE_AMOUNT_1 - DEFAULT_MINIMUM_DELEGATION_AMOUNT)
     );
 
     let delegators = bids[&GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY].delegators();
     assert_eq!(delegators.len(), 1);
     let redelegated_amount_1 = *delegators[&DELEGATOR_2].staked_amount();
-    assert_eq!(redelegated_amount_1, U512::from(UNDELEGATE_AMOUNT_1));
+    assert_eq!(
+        redelegated_amount_1,
+        U512::from(UNDELEGATE_AMOUNT_1 + DEFAULT_MINIMUM_DELEGATION_AMOUNT)
+    );
 }
 
 #[ignore]
@@ -3988,7 +3995,7 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
         *DELEGATOR_2_ADDR,
         CONTRACT_REDELEGATE,
         runtime_args! {
-            ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
+            ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1 + DEFAULT_MINIMUM_DELEGATION_AMOUNT),
             ARG_VALIDATOR => GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(),
             ARG_DELEGATOR => DELEGATOR_2.clone(),
             ARG_NEW_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone()
@@ -4076,7 +4083,7 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
     // Since we have re-delegated to an inactive validator,
     // the funds should cycle back to the delegator.
     assert_eq!(
-        delegator_4_purse_balance_before + UNDELEGATE_AMOUNT_1,
+        delegator_4_purse_balance_before + UNDELEGATE_AMOUNT_1 + DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         delegator_4_purse_balance_after
     );
 
@@ -4085,7 +4092,7 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
     let delegated_amount_1 = *delegators[&DELEGATOR_2].staked_amount();
     assert_eq!(
         delegated_amount_1,
-        U512::from(DELEGATE_AMOUNT_1 - UNDELEGATE_AMOUNT_1)
+        U512::from(DELEGATE_AMOUNT_1 - UNDELEGATE_AMOUNT_1 - DEFAULT_MINIMUM_DELEGATION_AMOUNT)
     );
 }
 

@@ -34,7 +34,7 @@ use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     runtime_args,
     system::standard_payment::ARG_AMOUNT,
-    ExecutionResult, Motes, PublicKey, RuntimeArgs, SecretKey, Signature, U512,
+    EraId, ExecutionResult, Motes, PublicKey, RuntimeArgs, SecretKey, Signature, U512,
 };
 
 use super::{BlockHash, Item, Tag, TimeDiff, Timestamp};

@@ -34,21 +34,21 @@ use tracing::{debug, error, warn};
 use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
-    bytesrepr::{ToBytes, U8_SERIALIZED_LENGTH},
+    bytesrepr::{Bytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::NamedKeys,
     system::{
         auction::{
-            self, EraValidators, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS,
-            ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY,
-            LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY,
-            VALIDATOR_SLOTS_KEY,
+            self, EraValidators, UnbondingPurse, ARG_ERA_END_TIMESTAMP_MILLIS,
+            ARG_EVICTED_VALIDATORS, ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS,
+            AUCTION_DELAY_KEY, ERA_ID_KEY, LOCKED_FUNDS_PERIOD_KEY,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
         handle_payment,
         mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, ApiError, BlockTime, CLValue, ContractHash, DeployHash, DeployInfo, Gas, Key,
-    KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
+    AccessRights, ApiError, BlockTime, CLValue, ContractHash, DeployHash, DeployInfo, EraId, Gas,
+    Key, KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
 };
 
 pub use self::{
@@ -75,7 +75,7 @@ use crate::{
     core::{
         engine_state::{
             executable_deploy_item::ExecutionKind,
-            execution_result::ExecutionResultBuilder,
+            execution_result::{ExecutionResultBuilder, ExecutionResults},
             genesis::GenesisInstaller,
             upgrade::{ProtocolUpgradeError, SystemUpgrader},
         },
@@ -212,9 +212,7 @@ where
             tracking_copy,
         );
 
-        genesis_installer.install()?;
-
-        genesis_installer.store_chainspec_registry(chainspec_registry)?;
+        genesis_installer.install(chainspec_registry)?;
 
         // Commit the transforms.
         let execution_effect = genesis_installer.finalize();
@@ -324,6 +322,7 @@ where
         tracking_copy.borrow_mut().write(
             Key::ChainspecRegistry,
             StoredValue::CLValue(cl_value_chainspec_registry),
+            self.config.max_stored_value_size(),
         );
 
         // Cycle through the system contracts and update
@@ -523,9 +522,11 @@ where
                     .withdraw_to_unbond()
                     .ok_or_else(|| Error::Bytesrepr("unbond".to_string()))?;
 
-                tracking_copy
-                    .borrow_mut()
-                    .write(unbonding_key, StoredValue::Unbonding(unbonding_purses))
+                let _ = tracking_copy.borrow_mut().write(
+                    unbonding_key,
+                    StoredValue::Unbonding(unbonding_purses),
+                    self.config.max_stored_value_size(),
+                );
             }
         }
 

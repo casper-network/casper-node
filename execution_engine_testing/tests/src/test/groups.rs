@@ -985,8 +985,7 @@ fn should_not_call_group_restricted_stored_payment_code_from_invalid_account() {
         .expect("should be account");
 
     let response = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");

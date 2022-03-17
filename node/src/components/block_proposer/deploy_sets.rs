@@ -9,7 +9,7 @@ use itertools::{Either, Itertools};
 use serde::{Deserialize, Serialize};
 
 use super::{BlockHeight, CachedState, DeployInfo, FinalizationQueue};
-use crate::types::{Approval, DeployHash, DeployHeader, Timestamp};
+use crate::types::{Approval, Block, DeployHash, TimeDiff, Timestamp};
 
 pub(crate) struct PruneResult {
     pub(crate) total_pruned: usize,
@@ -41,8 +41,9 @@ pub(super) struct BlockProposerDeploySets {
     /// The collection of transfers pending for inclusion in a block, with a timestamp of when we
     /// received them.
     pub(super) pending_transfers: HashMap<DeployHash, PendingDeployInfo>,
-    /// The deploys that have already been included in a finalized block.
-    pub(super) finalized_deploys: HashMap<DeployHash, DeployHeader>,
+    /// The deploys that have already been included in a finalized block, and their earliest known
+    /// expiry date.
+    pub(super) finalized_deploys: HashMap<DeployHash, Timestamp>,
     /// The transfers that have already been included in a finalized block, and their earliest
     /// known expiry date.
     pub(super) finalized_transfers: HashMap<DeployHash, Timestamp>,

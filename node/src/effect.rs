@@ -92,8 +92,8 @@ use casper_execution_engine::{
 };
 use casper_hashing::Digest;
 use casper_types::{
-    account::Account, system::auction::EraValidators, Contract, ContractPackage, EraId,
-    ExecutionEffect, ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer, URef, U512,
+    account::Account, bytesrepr::Bytes, system::auction::EraValidators, Contract, ContractPackage,
+    EraId, ExecutionEffect, ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer, URef, U512,
 };
 
 use crate::{
@@ -112,8 +112,8 @@ use crate::{
     types::{
         Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload, BlockSignatures,
         BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy, DeployHash,
-        DeployHeader, DeployMetadata, FinalitySignature, FinalizedBlock, Item, NodeId, TimeDiff,
-        Timestamp,
+        DeployHeader, DeployMetadata, DeployWithFinalizedApprovals, FinalitySignature,
+        FinalizedApprovals, FinalizedBlock, Item, NodeId, TimeDiff, Timestamp,
     },
     utils::{SharedFlag, Source},
 };
@@ -123,7 +123,6 @@ use announcements::{
     DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
     RpcServerAnnouncement,
 };
-use casper_types::bytesrepr::Bytes;
 use requests::{
     BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
     ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,

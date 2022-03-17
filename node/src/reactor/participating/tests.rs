@@ -2,13 +2,12 @@ use std::{collections::BTreeMap, iter, sync::Arc, time::Duration};
 
 use anyhow::bail;
 use either::Either;
-use log::{error, info};
 use num::Zero;
 use num_rational::Ratio;
 use rand::Rng;
 use tempfile::TempDir;
 use tokio::time;
-use tracing::error;
+use tracing::{error, info};
 
 use casper_execution_engine::core::engine_state::GetBidsRequest;
 use casper_types::{
@@ -36,7 +35,7 @@ use crate::{
     },
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
-        ActivationPoint, BlockHeader, Chainspec, Deploy, ExitCode, Timestamp,
+        ActivationPoint, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, ExitCode, Timestamp,
     },
     utils::{External, Loadable, Source, WithDir, RESOURCES_PATH},
     NodeRng,

@@ -12,10 +12,10 @@ use std::{
 use lmdb::DatabaseFlags;
 use log::LevelFilter;
 
-use bytesrepr::FromBytes;
 use casper_execution_engine::{
     core::{
         engine_state::{
+            self,
             era_validators::GetEraValidatorsRequest,
             execute_request::ExecuteRequest,
             execution_result::ExecutionResult,
@@ -48,7 +48,8 @@ use casper_execution_engine::{
 use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
-    bytesrepr, runtime_args,
+    bytesrepr::{self, FromBytes},
+    runtime_args,
     system::{
         auction::{
             Bids, EraValidators, UnbondingPurses, ValidatorWeights, WithdrawPurses,
@@ -549,37 +550,6 @@ where
 
         let engine_state = Rc::get_mut(&mut self.engine_state).unwrap();
         engine_state.update_config(engine_config);
-
-        let empty_path: Vec<String> = vec![];
-
-        if let Ok(StoredValue::CLValue(cl_registry)) = self.query(
-            self.post_state_hash,
-            Key::SystemContractRegistry,
-            &empty_path,
-        ) {
-            let registry = CLValue::into_t::<SystemContractRegistry>(cl_registry).unwrap();
-            if self.mint_contract_hash.is_none() {
-                self.mint_contract_hash = Some(*registry.get(MINT).expect("should have mint hash"))
-            };
-            if self.handle_payment_contract_hash.is_none() {
-                self.handle_payment_contract_hash = Some(
-                    *registry
-                        .get(HANDLE_PAYMENT)
-                        .expect("should have handle payment hash"),
-                )
-            }
-            if self.standard_payment_hash.is_none() {
-                self.standard_payment_hash = Some(
-                    *registry
-                        .get(STANDARD_PAYMENT)
-                        .expect("should have standard payment hash"),
-                )
-            }
-            if self.auction_contract_hash.is_none() {
-                self.auction_contract_hash =
-                    Some(*registry.get(AUCTION).expect("should have auction hash"))
-            }
-        }
 
         let result = self
             .engine_state
@@ -1190,7 +1160,8 @@ where
     /// Returns a trie by hash.
     pub fn get_trie(&mut self, state_hash: Digest) -> Option<Trie<Key, StoredValue>> {
         self.engine_state
-            .get_trie(CorrelationId::default(), state_hash)
+            .get_trie_full(CorrelationId::default(), state_hash)
             .unwrap()
+            .map(|bytes| bytesrepr::deserialize(bytes.into()).unwrap())
     }
 }

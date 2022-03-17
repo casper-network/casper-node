@@ -26,7 +26,8 @@ use tracing::{debug, error, info, trace};
 use casper_execution_engine::{
     core::engine_state::{
         self, genesis::GenesisError, ChainspecRegistry, EngineConfig, EngineState, GenesisSuccess,
-        GetEraValidatorsError, GetEraValidatorsRequest, UpgradeConfig, UpgradeSuccess,
+        GetEraValidatorsError, GetEraValidatorsRequest, SystemContractRegistry, UpgradeConfig,
+        UpgradeSuccess,
     },
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::{

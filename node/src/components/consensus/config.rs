@@ -3,7 +3,6 @@ use std::{path::Path, sync::Arc};
 use datasize::DataSize;
 use serde::Deserialize;
 
-use casper_hashing::Digest;
 use casper_types::{PublicKey, SecretKey};
 
 use crate::{

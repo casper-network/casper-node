@@ -39,7 +39,7 @@ use crate::{
         appendable_block::{AddError, AppendableBlock},
         chainspec::DeployConfig,
         Approval, BlockPayload, Chainspec, DeployHash, DeployHeader, DeployOrTransferHash,
-        DeployWithApprovals, Timestamp,
+        DeployWithApprovals, FinalizedBlock, Timestamp,
     },
     NodeRng,
 };
@@ -407,14 +407,14 @@ impl BlockProposerReady {
     fn handle_finalized_block(&mut self, block: &FinalizedBlock) -> Effects<Event> {
         for deploy_hash in block.deploy_hashes() {
             let expiry = match self.sets.pending_deploys.remove(deploy_hash) {
-                Some((deploy_info, _)) => deploy_info.header.expires(),
+                Some(deploy_info) => deploy_info.info.header.expires(),
                 None => block.timestamp().saturating_add(self.deploy_config.max_ttl),
             };
             self.sets.add_finalized_deploy(*deploy_hash, expiry);
         }
         for transfer_hash in block.transfer_hashes() {
             let expiry = match self.sets.pending_transfers.remove(transfer_hash) {
-                Some((deploy_info, _)) => deploy_info.header.expires(),
+                Some(deploy_info) => deploy_info.info.header.expires(),
                 None => block.timestamp().saturating_add(self.deploy_config.max_ttl),
             };
             self.sets.add_finalized_transfer(*transfer_hash, expiry);

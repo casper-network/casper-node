@@ -37,7 +37,7 @@ use crate::{
     },
     types::{
         appendable_block::AppendableBlock, Approval, Block, Chainspec, Deploy, DeployHash,
-        DeployOrTransferHash, DeployWithApprovals, Timestamp,
+        DeployOrTransferHash, DeployWithApprovals, NodeId, Timestamp,
     },
     NodeRng,
 };

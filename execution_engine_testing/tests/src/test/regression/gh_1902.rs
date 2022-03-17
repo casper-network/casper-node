@@ -6,7 +6,10 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     core::engine_state::{engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, ExecuteRequest},
-    shared::system_config::auction_costs::{DEFAULT_ADD_BID_COST, DEFAULT_DELEGATE_COST},
+    shared::system_config::auction_costs::{
+        DEFAULT_ADD_BID_COST, DEFAULT_DELEGATE_COST, DEFAULT_UNDELEGATE_COST,
+        DEFAULT_WITHDRAW_BID_COST,
+    },
 };
 use casper_types::{
     account::{Account, AccountHash},

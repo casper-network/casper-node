@@ -30,8 +30,8 @@ use casper_execution_engine::{
 };
 use casper_hashing::Digest;
 use casper_types::{
-    system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
-    StoredValue, Transfer, URef,
+    bytesrepr::Bytes, system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion,
+    PublicKey, Transfer, URef,
 };
 
 use crate::{
@@ -48,9 +48,10 @@ use crate::{
     effect::Responder,
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
-        Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Chainspec, ChainspecInfo,
-        Deploy, DeployHash, DeployHeader, DeployMetadata, DeployWithFinalizedApprovals,
-        FinalizedApprovals, FinalizedBlock, Item, NodeId, StatusFeed, TimeDiff,
+        Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload, BlockSignatures,
+        BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy, DeployHash,
+        DeployMetadata, DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedBlock, Item,
+        NodeId, StatusFeed, TimeDiff,
     },
     utils::{DisplayIter, Source},
 };

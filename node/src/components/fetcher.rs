@@ -22,8 +22,8 @@ use crate::{
     },
     protocol::Message,
     types::{
-        Block, BlockByHeight, BlockHash, Deploy, DeployHash, DeployWithFinalizedApprovals, Item,
-        NodeId,
+        Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy,
+        DeployHash, DeployWithFinalizedApprovals, Item, NodeId,
     },
     utils::Source,
     FetcherConfig, NodeRng,

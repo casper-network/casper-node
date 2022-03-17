@@ -75,7 +75,6 @@ use casper_types::{
 
 // The reactor! macro needs this in the fetcher tests
 pub(crate) use crate::effect::requests::StorageRequest;
-
 use crate::{
     components::{
         consensus, consensus::error::FinalitySignatureError, fetcher::FetchedOrNotFound, Component,
@@ -91,9 +90,9 @@ use crate::{
     reactor::ReactorEvent,
     types::{
         error::BlockValidationError, Block, BlockBody, BlockHash, BlockHeader,
-        BlockHeaderWithMetadata, BlockSignatures, Deploy, DeployHash, DeployHeader, DeployMetadata,
-        DeployWithFinalizedApprovals, FinalizedApprovals, HashingAlgorithmVersion, Item,
-        MerkleBlockBody, MerkleBlockBodyPart, MerkleLinkedListNode, SharedObject, TimeDiff,
+        BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, Deploy, DeployHash,
+        DeployMetadata, DeployWithFinalizedApprovals, FinalizedApprovals, HashingAlgorithmVersion,
+        Item, MerkleBlockBody, MerkleBlockBodyPart, MerkleLinkedListNode, NodeId, TimeDiff,
     },
     utils::{display_error, WithDir},
     NodeRng,
@@ -1653,16 +1652,6 @@ impl Storage {
         }
     }
 
-    /// Returns the deploy's header.
-    fn get_deploy_header<Tx: Transaction>(
-        &self,
-        txn: &mut Tx,
-        deploy_hash: &DeployHash,
-    ) -> Result<Option<DeployHeader>, LmdbExtError> {
-        let maybe_deploy: Option<Deploy> = txn.get_value(self.deploy_db, deploy_hash)?;
-        Ok(maybe_deploy.map(|deploy| deploy.header().clone()))
-    }
-
     /// Retrieves deploy metadata associated with deploy.
     ///
     /// If no deploy metadata is stored for the specific deploy, an empty metadata instance will be
@@ -1861,11 +1850,12 @@ impl Storage {
         &self,
         deploy_hash: &DeployHash,
         finalized_approvals: &FinalizedApprovals,
-    ) -> Result<(), Error> {
+    ) -> Result<(), FatalStorageError> {
         let maybe_original_deploy = self.read_deploy_by_hash(*deploy_hash)?;
-        let original_deploy = maybe_original_deploy.ok_or(Error::UnexpectedFinalizedApprovals {
-            deploy_hash: *deploy_hash,
-        })?;
+        let original_deploy =
+            maybe_original_deploy.ok_or(FatalStorageError::UnexpectedFinalizedApprovals {
+                deploy_hash: *deploy_hash,
+            })?;
         // Only store the finalized approvals if they are different from the original ones.
         if original_deploy.approvals() != finalized_approvals.as_ref() {
             let mut txn = self.env.begin_rw_txn()?;

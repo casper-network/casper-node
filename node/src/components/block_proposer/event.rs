@@ -13,7 +13,7 @@ use casper_types::Motes;
 use super::{BlockHeight, CachedState};
 use crate::{
     effect::requests::BlockProposerRequest,
-    types::{Approval, DeployHash, DeployHeader, DeployOrTransferHash, FinalizedBlock},
+    types::{Approval, Block, DeployHeader, DeployOrTransferHash, FinalizedBlock},
 };
 
 /// Information about a deploy.

@@ -8,6 +8,7 @@ use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::Serialize;
 use thiserror::Error;
+use tracing::{error, info, warn};
 
 use casper_execution_engine::core::engine_state;
 use casper_types::{
@@ -402,8 +403,10 @@ impl reactor::Reactor for Reactor {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use std::{collections::BTreeMap, sync::Arc};
+
     use super::*;
-    use crate::{testing::network::NetworkedReactor, types::Chainspec};
+
     use casper_execution_engine::core::engine_state::engine_config::DEFAULT_MAX_STORED_VALUE_SIZE;
     use casper_types::{
         bytesrepr::ToBytes,
@@ -413,7 +416,11 @@ pub(crate) mod tests {
         },
         EraId, PublicKey, SecretKey, U256, U512,
     };
-    use std::{collections::BTreeMap, sync::Arc};
+
+    use crate::{
+        testing::network::NetworkedReactor,
+        types::{Chainspec, ChainspecRawBytes, NodeId},
+    };
 
     impl Reactor {
         pub(crate) fn new_with_chainspec(

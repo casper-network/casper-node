@@ -83,11 +83,6 @@ impl EngineConfig {
     }
 
     /// Returns the current max runtime call stack height config.
-    pub fn max_runtime_call_stack_height(&self) -> u32 {
-        self.max_runtime_call_stack_height
-    }
-
-    /// Returns the current max runtime call stack height config.
     pub fn max_stored_value_size(&self) -> u32 {
         self.max_stored_value_size
     }

@@ -34,12 +34,6 @@ impl From<RuntimeStackOverflow> for GetEraValidatorsError {
     }
 }
 
-impl From<RuntimeStackOverflow> for GetEraValidatorsError {
-    fn from(overflow: RuntimeStackOverflow) -> Self {
-        GetEraValidatorsError::Other(Error::from(overflow))
-    }
-}
-
 impl GetEraValidatorsError {
     /// Returns `true` if the result represents missing era validators.
     pub fn is_era_validators_missing(&self) -> bool {

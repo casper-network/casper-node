@@ -57,6 +57,9 @@ static VALIDATOR_1_SECRET_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::ed25519_from_bytes([123; SecretKey::ED25519_LENGTH]).unwrap());
 static VALIDATOR_1: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*VALIDATOR_1_SECRET_KEY));
 const VALIDATOR_1_STAKE: u64 = 250_000;
+static VALIDATOR_2_SECRET_KEY: Lazy<SecretKey> =
+    Lazy::new(|| SecretKey::ed25519_from_bytes([124; SecretKey::ED25519_LENGTH]).unwrap());
+static VALIDATOR_2: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*VALIDATOR_2_SECRET_KEY));
 const BOND_AMOUNT: u64 = 42;
 const BID_AMOUNT: u64 = 99 + DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 const TRANSFER_AMOUNT: u64 = 123;
@@ -402,7 +405,7 @@ fn delegate_and_undelegate_have_expected_costs() {
         runtime_args! {
             auction::ARG_DELEGATOR => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
             auction::ARG_VALIDATOR => VALIDATOR_1.clone(),
-            auction::ARG_AMOUNT => U512::from(10u64),
+            auction::ARG_AMOUNT => U512::from(DEFAULT_MINIMUM_DELEGATION_AMOUNT),
             auction::ARG_NEW_VALIDATOR => VALIDATOR_2.clone()
         },
     )
@@ -427,7 +430,7 @@ fn delegate_and_undelegate_have_expected_costs() {
         runtime_args! {
             auction::ARG_DELEGATOR => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
             auction::ARG_VALIDATOR => VALIDATOR_1.clone(),
-            auction::ARG_AMOUNT => U512::from(BID_AMOUNT - 10u64),
+            auction::ARG_AMOUNT => U512::from(BID_AMOUNT - DEFAULT_MINIMUM_DELEGATION_AMOUNT),
         },
     )
     .build();
@@ -584,7 +587,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
         runtime_args! {
             auction::ARG_DELEGATOR => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
             auction::ARG_VALIDATOR => VALIDATOR_1.clone(),
-            auction::ARG_AMOUNT => U512::from(10u64),
+            auction::ARG_AMOUNT => U512::from(DEFAULT_MINIMUM_DELEGATION_AMOUNT),
             auction::ARG_NEW_VALIDATOR => VALIDATOR_2.clone()
         },
     )
@@ -610,7 +613,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
         runtime_args! {
             auction::ARG_DELEGATOR => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
             auction::ARG_VALIDATOR => VALIDATOR_1.clone(),
-            auction::ARG_AMOUNT => U512::from(BID_AMOUNT - 10u64),
+            auction::ARG_AMOUNT => U512::from(BID_AMOUNT - DEFAULT_MINIMUM_DELEGATION_AMOUNT),
         },
     )
     .with_protocol_version(*NEW_PROTOCOL_VERSION)

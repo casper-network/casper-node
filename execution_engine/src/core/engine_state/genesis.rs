@@ -1253,60 +1253,6 @@ where
             self.engine_config.max_stored_value_size(),
         );
 
-        let base_key = Key::Hash(mint_hash.value());
-        let mint = {
-            if let StoredValue::Contract(contract) = self
-                .tracking_copy
-                .borrow_mut()
-                .read(self.correlation_id, &base_key)
-                .map_err(|_| GenesisError::InvalidMintKey)?
-                .ok_or(GenesisError::MissingMintContract)?
-            {
-                contract
-            } else {
-                return Err(GenesisError::UnexpectedStoredValue);
-            }
-        };
-
-        let mut named_keys = mint.named_keys().clone();
-
-        let mut stack =
-            RuntimeStack::new(self.executor.config().max_runtime_call_stack_height() as usize);
-        stack
-            .push(CallStackElement::session(
-                PublicKey::System.to_account_hash(),
-            ))
-            .unwrap();
-
-        let (_instance, mut runtime) = self
-            .executor
-            .create_runtime(
-                self.system_module.clone(),
-                EntryPointType::Contract,
-                args.clone(),
-                &mut named_keys,
-                Default::default(),
-                base_key,
-                &self.virtual_system_account,
-                Default::default(),
-                Default::default(),
-                deploy_hash,
-                Gas::new(U512::MAX),
-                Rc::clone(&self.address_generator),
-                self.protocol_version,
-                self.correlation_id,
-                Rc::clone(&self.tracking_copy),
-                Phase::System,
-                stack,
-            )
-            .map_err(|_| GenesisError::UnableToCreateRuntime)?;
-
-        let purse_uref = runtime
-            .call_contract(*mint_hash, METHOD_MINT, args)
-            .map_err(GenesisError::ExecutionError)?
-            .into_t::<Result<URef, mint::Error>>()
-            .map_err(|cl_value_error| GenesisError::CLValue(cl_value_error.to_string()))?
-            .map_err(GenesisError::MintError)?;
         Ok(purse_uref)
     }
 
@@ -1407,6 +1353,7 @@ where
         self.tracking_copy.borrow_mut().write(
             Key::ChainspecRegistry,
             StoredValue::CLValue(cl_value_registry),
+            self.engine_config.max_stored_value_size(),
         );
         Ok(())
     }
