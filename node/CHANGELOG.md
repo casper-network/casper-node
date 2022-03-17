@@ -37,7 +37,6 @@ All notable changes to this project will be documented in this file.  The format
 * `Key::SystemContractRegistry` is now readable and can be queried via the RPC.
 * Requests for data from a peer are now de-prioritized over networking messages necessary for consensus and chain advancement.
 * JSON-RPC responses which fail to provide requested data will now also include an indication of that node's lowest contiguous block height, i.e. the block from which it holds all subsequent global state
-* OpenSSL has been bumped to version 1.1.1.n, if compiling with vendored OpenSSL to address [CVE-2022-0778](https://www.openssl.org/news/secadv/20220315.txt).
 
 ### Deprecated
 * Deprecate the `starting_state_root_hash` field from the REST and JSON-RPC status endpoints.
@@ -48,17 +47,8 @@ All notable changes to this project will be documented in this file.  The format
 * Integrity check has been removed.
 * Remove `verify_accounts` option from `config.toml`, meaning deploys received from clients always undergo account balance checks to assess suitability for execution or not.
 
-
-
-## 1.4.3 - 2021-12-06
-
-### Added
-* Add new event to the main SSE server stream accessed via `<IP:Port>/events/main` which emits hashes of expired deploys.
-
-### Changed
-* `enable_manual_sync` configuration parameter defaults to `true`.
-* Default behavior of LMDB changed to use [`NO_READAHEAD`](https://docs.rs/lmdb/0.8.0/lmdb/struct.EnvironmentFlags.html#associatedconstant.NO_READAHEAD).
-
+### Security
+* OpenSSL has been bumped to version 1.1.1.n, if compiling with vendored OpenSSL to address [CVE-2022-0778](https://www.openssl.org/news/secadv/20220315.txt).
 
 
 
@@ -88,9 +78,12 @@ All notable changes to this project will be documented in this file.  The format
 
 ## 1.4.3 - 2021-12-06
 
+### Added
+* Add new event to the main SSE server stream accessed via `<IP:Port>/events/main` which emits hashes of expired deploys.
+
 ### Changed
 * `enable_manual_sync` configuration parameter defaults to `true`.
-* Default behavior of LMDB changed to use [`NO_READAHEAD`](https://docs.rs/lmdb/0.8.0/lmdb/struct.EnvironmentFlags.html#associatedconstant.NO_READAHEAD)
+* Default behavior of LMDB changed to use [`NO_READAHEAD`](https://docs.rs/lmdb/0.8.0/lmdb/struct.EnvironmentFlags.html#associatedconstant.NO_READAHEAD).
 
 
 
