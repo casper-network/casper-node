@@ -505,8 +505,7 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
     builder.exec(call_contract_request).commit();
 
     let response = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");
@@ -527,8 +526,7 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
     builder.exec(call_versioned_contract_request).commit();
 
     let response = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");
@@ -554,12 +552,14 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
 
     assert!(matches!(
         call_versioned_contract_error,
-        Error::Exec(execution::Error::TypeMismatch(type_mismatch)) if type_mismatch ==
-&expected_type_mismatch     ));
+        Error::Exec(execution::Error::TypeMismatch(type_mismatch))
+            if *type_mismatch == expected_type_mismatch
+    ));
     assert!(matches!(
         call_contract_error,
-        Error::Exec(execution::Error::TypeMismatch(type_mismatch)) if type_mismatch ==
-expected_type_mismatch     ));
+        Error::Exec(execution::Error::TypeMismatch(type_mismatch))
+            if type_mismatch == expected_type_mismatch
+    ));
 }
 
 #[ignore]
@@ -613,8 +613,7 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
     builder.exec(call_contract_request).commit();
 
     let response = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");
@@ -635,8 +634,7 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
     builder.exec(call_versioned_contract_request).commit();
 
     let response = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");
@@ -663,7 +661,7 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
     assert!(matches!(
         call_versioned_contract_error,
         Error::Exec(execution::Error::TypeMismatch(type_mismatch))
-        if type_mismatch == &expected_type_mismatch
+        if *type_mismatch == expected_type_mismatch
     ));
     assert!(matches!(
         call_contract_error,
