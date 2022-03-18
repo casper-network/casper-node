@@ -406,11 +406,10 @@ impl TryFrom<u8> for Error {
             d if d == Error::MissingDelegations as u8 => Ok(Error::MissingDelegations),
             d if d == Error::MismatchedEraValidators as u8 => Ok(Error::MismatchedEraValidators),
             d if d == Error::MintReward as u8 => Ok(Error::MintReward),
-            d if d == Error::MintReduceTotalSupply as u8 => Ok(Error::MintReduceTotalSupply),
             d if d == Error::InvalidValidatorSlotsValue as u8 => {
                 Ok(Error::InvalidValidatorSlotsValue)
             }
-            d if d == Error::TransferToDelegatorPurse as u8 => Ok(Error::TransferToDelegatorPurse),
+            d if d == Error::MintReduceTotalSupply as u8 => Ok(Error::MintReduceTotalSupply),
             d if d == Error::TransferToDelegatorPurse as u8 => Ok(Error::TransferToDelegatorPurse),
             d if d == Error::ValidatorRewardTransfer as u8 => Ok(Error::ValidatorRewardTransfer),
             d if d == Error::DelegatorRewardTransfer as u8 => Ok(Error::DelegatorRewardTransfer),
@@ -426,10 +425,16 @@ impl TryFrom<u8> for Error {
             d if d == Error::Transfer as u8 => Ok(Error::Transfer),
             d if d == Error::DelegationRateTooLarge as u8 => Ok(Error::DelegationRateTooLarge),
             d if d == Error::DelegatorFundsLocked as u8 => Ok(Error::DelegatorFundsLocked),
-            d if d == Error::GasLimit as u8 => Ok(Error::GasLimit),
             d if d == Error::ArithmeticOverflow as u8 => Ok(Error::ArithmeticOverflow),
+            d if d == Error::GasLimit as u8 => Ok(Error::GasLimit),
             d if d == Error::RuntimeStackOverflow as u8 => Ok(Error::RuntimeStackOverflow),
             d if d == Error::MintError as u8 => Ok(Error::MintError),
+            d if d == Error::ExceededDelegatorSizeLimit as u8 => {
+                Ok(Error::ExceededDelegatorSizeLimit)
+            }
+            d if d == Error::GlobalDelegatorCapacityReached as u8 => {
+                Ok(Error::GlobalDelegatorCapacityReached)
+            }
             d if d == Error::DelegationAmountTooSmall as u8 => Ok(Error::DelegationAmountTooSmall),
             d if d == Error::RuntimeStack as u8 => Ok(Error::RuntimeStack),
             _ => Err(TryFromU8ForError(())),
