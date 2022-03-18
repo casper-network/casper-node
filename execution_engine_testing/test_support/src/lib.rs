@@ -58,8 +58,6 @@ pub const DEFAULT_CHAIN_NAME: &str = "casper-execution-engine-testing";
 pub const DEFAULT_GENESIS_TIMESTAMP_MILLIS: u64 = 0;
 /// Default maximum number of associated keys.
 pub const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
-/// Default max serialized size of `StoredValue`s.
-pub const DEFAULT_MAX_STORED_VALUE_SIZE: u32 = 8 * 1024 * 1024;
 /// Default block time.
 pub const DEFAULT_BLOCK_TIME: u64 = 0;
 /// Default gas price.

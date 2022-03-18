@@ -26,14 +26,15 @@ use crate::{
     components::{
         chain_synchronizer::error::{Error, FetchTrieError},
         consensus::{self},
-        contract_runtime::ExecutionPreState,
+        contract_runtime::{BlockAndExecutionEffects, ExecutionPreState},
         fetcher::{FetchResult, FetchedData, FetcherError},
     },
     effect::{requests::FetcherRequest, EffectBuilder},
     reactor::joiner::JoinerEvent,
     types::{
         Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata,
-        Deploy, DeployHash, FinalizedBlock, Item, TimeDiff, Timestamp,
+        Deploy, DeployHash, FinalizedApprovals, FinalizedApprovalsWithId, FinalizedBlock, Item,
+        NodeId, TimeDiff, Timestamp,
     },
     utils::work_queue::WorkQueue,
 };
@@ -277,14 +278,34 @@ async fn fetch_and_store_deploy(
     let fetched_deploy =
         fetch_retry_forever::<Deploy>(*ctx.effect_builder, ctx.config, deploy_or_transfer_hash)
             .await?;
-    match fetched_deploy {
-        FetchedData::FromStorage { item: deploy } => Ok(deploy),
+    Ok(match fetched_deploy {
+        FetchedData::FromStorage { item: deploy } => deploy,
         FetchedData::FromPeer { item: deploy, .. } => {
             ctx.effect_builder
                 .put_deploy_to_storage(deploy.clone())
                 .await;
-            Ok(deploy)
+            deploy
         }
+    })
+}
+
+/// Fetches finalized approvals for a deploy.
+/// Note: this function doesn't store the approvals. They are intended to be stored after
+/// confirming that the execution results match the received block.
+async fn fetch_finalized_approvals(
+    deploy_hash: DeployHash,
+    peer: NodeId,
+    ctx: &ChainSyncContext<'_>,
+) -> Result<FinalizedApprovalsWithId, FetcherError<FinalizedApprovalsWithId>> {
+    let fetched_approvals = ctx
+        .effect_builder
+        .fetch::<FinalizedApprovalsWithId>(deploy_hash, peer)
+        .await?;
+    match fetched_approvals {
+        FetchedData::FromStorage { item: approvals } => Ok(*approvals),
+        FetchedData::FromPeer {
+            item: approvals, ..
+        } => Ok(*approvals),
     }
 }
 
@@ -1039,6 +1060,34 @@ async fn handle_upgrade(ctx: &ChainSyncContext<'_>) -> Result<bool, Error> {
     Ok(false)
 }
 
+async fn retry_execution_with_approvals_from_peer(
+    deploys: &mut Vec<Deploy>,
+    transfers: &mut Vec<Deploy>,
+    peer: NodeId,
+    block: &Block,
+    execution_pre_state: &ExecutionPreState,
+    ctx: &ChainSyncContext<'_>,
+) -> Result<BlockAndExecutionEffects, Error> {
+    for deploy in deploys.iter_mut().chain(transfers.iter_mut()) {
+        let new_approvals = fetch_finalized_approvals(*deploy.id(), peer, ctx).await?;
+        deploy.replace_approvals(new_approvals.into_inner());
+    }
+    Ok(ctx
+        .effect_builder
+        .execute_finalized_block(
+            block.protocol_version(),
+            execution_pre_state.clone(),
+            FinalizedBlock::from(block.clone()),
+            deploys.clone(),
+            transfers.clone(),
+        )
+        .await?)
+}
+
+/// Maximum number of times the node will try to download finalized approvals from a single peer in
+/// an attempt to find a set of approvals matching the block execution results.
+const APPROVAL_FETCH_RETRIES: usize = 2;
+
 async fn execute_blocks(
     most_recent_block_header: &BlockHeader,
     trusted_key_block_info: &KeyBlockInfo,
@@ -1087,9 +1136,9 @@ async fn execute_blocks(
             Some(block_with_metadata) => block_with_metadata.block,
         };
 
-        let deploys = fetch_and_store_deploys(block.deploy_hashes().iter(), ctx).await?;
+        let mut deploys = fetch_and_store_deploys(block.deploy_hashes().iter(), ctx).await?;
 
-        let transfers = fetch_and_store_deploys(block.transfer_hashes().iter(), ctx).await?;
+        let mut transfers = fetch_and_store_deploys(block.transfer_hashes().iter(), ctx).await?;
 
         info!(
             era_id = ?block.header().era_id(),
@@ -1104,16 +1153,62 @@ async fn execute_blocks(
                 block.protocol_version(),
                 execution_pre_state.clone(),
                 FinalizedBlock::from(block.clone()),
-                deploys,
-                transfers,
+                deploys.clone(),
+                transfers.clone(),
             )
             .await?;
 
         if block != *block_and_execution_effects.block() {
-            return Err(Error::ExecutedBlockIsNotTheSameAsDownloadedBlock {
-                executed_block: Box::new(Block::from(block_and_execution_effects)),
-                downloaded_block: Box::new(block.clone()),
-            });
+            // Could be wrong approvals - fetch new sets of approvals from a single peer and retry.
+            // Retry up to two times.
+            let mut success = false;
+            for peer in ctx
+                .effect_builder
+                .get_fully_connected_peers()
+                .await
+                .into_iter()
+                .take(APPROVAL_FETCH_RETRIES)
+            {
+                info!(block_hash=%block.hash(), "start - re-executing finalized block");
+                let block_and_execution_effects = retry_execution_with_approvals_from_peer(
+                    &mut deploys,
+                    &mut transfers,
+                    peer,
+                    &block,
+                    &execution_pre_state,
+                    ctx,
+                )
+                .await?;
+                info!(block_hash=%block.hash(), "finish - re-executing finalized block");
+                if block == *block_and_execution_effects.block() {
+                    success = true;
+                    break;
+                } else {
+                    warn!(
+                        %peer,
+                        "block executed with approvals from this peer doesn't match the received \
+                        block; blocking peer"
+                    );
+                    ctx.effect_builder.announce_disconnect_from_peer(peer).await;
+                }
+            }
+            if success {
+                // matching now! store new approval sets for the deploys
+                for deploy in deploys.into_iter().chain(transfers.into_iter()) {
+                    ctx.effect_builder
+                        .store_finalized_approvals(
+                            *deploy.id(),
+                            FinalizedApprovals::new(deploy.approvals().clone()),
+                        )
+                        .await;
+                }
+            } else {
+                // didn't work again - give up
+                return Err(Error::ExecutedBlockIsNotTheSameAsDownloadedBlock {
+                    executed_block: Box::new(Block::from(block_and_execution_effects)),
+                    downloaded_block: Box::new(block.clone()),
+                });
+            }
         }
 
         most_recent_block_header = block.take_header();

@@ -58,8 +58,6 @@ round_seigniorage_rate = [7, 87535408]
 max_associated_keys = 100
 # Maximum height of contract runtime call stack.
 max_runtime_call_stack_height = 12
-# Maximum serialized size of values stored in global state.
-max_stored_value_size = 8_388_608
 # Minimum allowed delegation amount in motes
 minimum_delegation_amount = 500_000_000_000
 # Enables strict arguments checking when calling a contract.

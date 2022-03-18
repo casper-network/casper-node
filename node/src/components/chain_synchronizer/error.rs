@@ -13,7 +13,10 @@ use casper_types::{EraId, ProtocolVersion};
 
 use crate::{
     components::{contract_runtime::BlockExecutionError, fetcher::FetcherError},
-    types::{Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy},
+    types::{
+        Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy,
+        FinalizedApprovalsWithId,
+    },
 };
 
 #[derive(Error, Debug, Serialize)]
@@ -70,6 +73,9 @@ pub(crate) enum Error {
 
     #[error(transparent)]
     DeployWithMetadataFetcher(#[from] FetcherError<Deploy>),
+
+    #[error(transparent)]
+    FinalizedApprovalsFetcher(#[from] FetcherError<FinalizedApprovalsWithId>),
 
     #[error(
         "executed block is not the same as downloaded block. \

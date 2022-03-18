@@ -262,10 +262,11 @@ pub enum Error {
     /// assert_eq!(39, Error::ArithmeticOverflow as u8);
     /// ```
     ArithmeticOverflow = 39,
-
-    // NOTE: These variants below and related plumbing will be removed once support for WASM
-    // system contracts will be dropped.
-    #[doc(hidden)]
+    /// Execution exceeded the gas limit.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(40, Error::GasLimit as u8);
+    /// ```
     GasLimit = 40,
     /// Too many frames on the runtime stack.
     /// ```
@@ -281,12 +282,14 @@ pub enum Error {
     /// ```
     MintError = 42,
     /// The validator has exceeded the maximum amount of delegators allowed.
+    /// NOTE: This variant is no longer in use.
     /// ```
     /// # use casper_types::system::auction::Error;
     /// assert_eq!(43, Error::ExceededDelegatorSizeLimit as u8);
     /// ```
     ExceededDelegatorSizeLimit = 43,
     /// The global delegator capacity for the auction has been reached.
+    /// NOTE: This variant is no longer in use.
     /// ```
     /// # use casper_types::system::auction::Error;
     /// assert_eq!(44, Error::GlobalDelegatorCapacityReached as u8);
@@ -349,12 +352,12 @@ impl Display for Error {
             Error::DelegationRateTooLarge => formatter.write_str("Delegation rate too large"),
             Error::DelegatorFundsLocked => formatter.write_str("Delegator's funds are locked"),
             Error::ArithmeticOverflow => formatter.write_str("Arithmetic overflow"),
+            Error::GasLimit => formatter.write_str("Execution exceeded the gas limit"),
             Error::RuntimeStackOverflow => formatter.write_str("Runtime stack overflow"),
             Error::MintError => formatter.write_str("An error in the mint contract execution"),
             Error::ExceededDelegatorSizeLimit => formatter.write_str("The amount of delegators per validator has been exceeded"),
             Error::GlobalDelegatorCapacityReached => formatter.write_str("The global delegator capacity has been reached"),
             Error::DelegationAmountTooSmall => formatter.write_str("The delegated amount is below the minimum allowed"),
-            Error::GasLimit => formatter.write_str("GasLimit"),
             Error::RuntimeStack => formatter.write_str("Runtime stack error"),
         }
     }
@@ -403,11 +406,10 @@ impl TryFrom<u8> for Error {
             d if d == Error::MissingDelegations as u8 => Ok(Error::MissingDelegations),
             d if d == Error::MismatchedEraValidators as u8 => Ok(Error::MismatchedEraValidators),
             d if d == Error::MintReward as u8 => Ok(Error::MintReward),
-            d if d == Error::MintReduceTotalSupply as u8 => Ok(Error::MintReduceTotalSupply),
             d if d == Error::InvalidValidatorSlotsValue as u8 => {
                 Ok(Error::InvalidValidatorSlotsValue)
             }
-            d if d == Error::TransferToDelegatorPurse as u8 => Ok(Error::TransferToDelegatorPurse),
+            d if d == Error::MintReduceTotalSupply as u8 => Ok(Error::MintReduceTotalSupply),
             d if d == Error::TransferToDelegatorPurse as u8 => Ok(Error::TransferToDelegatorPurse),
             d if d == Error::ValidatorRewardTransfer as u8 => Ok(Error::ValidatorRewardTransfer),
             d if d == Error::DelegatorRewardTransfer as u8 => Ok(Error::DelegatorRewardTransfer),
@@ -423,8 +425,8 @@ impl TryFrom<u8> for Error {
             d if d == Error::Transfer as u8 => Ok(Error::Transfer),
             d if d == Error::DelegationRateTooLarge as u8 => Ok(Error::DelegationRateTooLarge),
             d if d == Error::DelegatorFundsLocked as u8 => Ok(Error::DelegatorFundsLocked),
-            d if d == Error::GasLimit as u8 => Ok(Error::GasLimit),
             d if d == Error::ArithmeticOverflow as u8 => Ok(Error::ArithmeticOverflow),
+            d if d == Error::GasLimit as u8 => Ok(Error::GasLimit),
             d if d == Error::RuntimeStackOverflow as u8 => Ok(Error::RuntimeStackOverflow),
             d if d == Error::MintError as u8 => Ok(Error::MintError),
             d if d == Error::ExceededDelegatorSizeLimit as u8 => {

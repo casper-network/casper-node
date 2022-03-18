@@ -155,11 +155,7 @@ pub fn set_seigniorage_recipients_snapshot<P>(
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
-    let key = provider
-        .named_keys_get(SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY)
-        .ok_or(Error::MissingKey)?;
-    let uref = key.into_uref().ok_or(Error::InvalidKeyVariant)?;
-    provider.write_seigniorage_recipients_snapshot(uref, snapshot)
+    write_to(provider, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, snapshot)
 }
 
 pub fn get_validator_slots<P>(provider: &mut P) -> Result<usize, Error>
@@ -458,19 +454,6 @@ where
         }
     };
     Ok(bid)
-}
-
-/// Returns the current number of delegators tracked by the auction contract.
-pub(crate) fn get_total_number_of_delegators<P>(provider: &mut P) -> Result<usize, Error>
-where
-    P: StorageProvider + RuntimeProvider + ?Sized,
-{
-    let bids = get_bids(provider)?;
-    let total_number_of_delegators = bids
-        .iter()
-        .map(|(_validator_public_key, bid)| bid.delegators().len())
-        .sum();
-    Ok(total_number_of_delegators)
 }
 
 /// Returns the era validators from a snapshot.

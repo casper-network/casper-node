@@ -22,6 +22,8 @@ All notable changes to this project will be documented in this file.  The format
 * Change contract runtime to allow caching GlobalState changes during execution of a single block.
 * Fix some integer casts.
 * Change both genesis and upgrade functions to write `ChainspecRegistry` under the fixed `Key::ChainspecRegistry`.
+* Lift the temporary limit of the size of individual values stored in global state.
+* Lift the temporary limit of the global maximum delegator capacity.
 
 
 

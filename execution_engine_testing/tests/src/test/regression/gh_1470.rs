@@ -3,14 +3,13 @@ use std::collections::BTreeMap;
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_MAX_ASSOCIATED_KEYS,
-    DEFAULT_MAX_STORED_VALUE_SIZE, DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{
     core::{
         engine_state::{
-            engine_config::{DEFAULT_MAX_DELEGATOR_SIZE_LIMIT, DEFAULT_MINIMUM_DELEGATION_AMOUNT},
-            EngineConfig, Error, SystemContractRegistry, DEFAULT_MAX_QUERY_DEPTH,
-            DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+            engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, EngineConfig, Error,
+            SystemContractRegistry, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         },
         execution,
     },
@@ -76,8 +75,6 @@ fn setup() -> InMemoryWasmTestBuilder {
         DEFAULT_MAX_QUERY_DEPTH,
         DEFAULT_MAX_ASSOCIATED_KEYS,
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        DEFAULT_MAX_STORED_VALUE_SIZE,
-        DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         strict_argument_checking,
         WasmConfig::default(),
