@@ -16,7 +16,7 @@ use casper_types::{
     },
     bytesrepr::ToBytes,
     contracts::NamedKeys,
-    system::auction::{EraInfo, SeigniorageRecipientsSnapshot},
+    system::auction::EraInfo,
     AccessRights, BlockTime, CLType, CLValue, ContextAccessRights, Contract, ContractHash,
     ContractPackage, ContractPackageHash, DeployHash, DeployInfo, EntryPointAccess, EntryPointType,
     Gas, GrantedAccess, Key, KeyTag, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue,
@@ -920,25 +920,6 @@ where
         self.validate_key(&key)?;
         self.validate_value(&stored_value)?;
         self.metered_write_gs_unsafe(key, stored_value)
-    }
-
-    /// Writes a `SeigniorageRecipientsSnapshot` to global state and charges for bytes stored.
-    pub(crate) fn write_gs_seigniorage_recipients_snapshot(
-        &mut self,
-        key: Key,
-        snapshot: SeigniorageRecipientsSnapshot,
-    ) -> Result<(), Error> {
-        let cl_value = CLValue::from_t(snapshot).map_err(Error::from)?;
-        let stored_value = StoredValue::CLValue(cl_value);
-        self.validate_writeable(&key)?;
-        self.validate_key(&key)?;
-        self.validate_value(&stored_value)?;
-
-        let bytes_count = stored_value.serialized_length();
-        self.charge_gas_storage(bytes_count)?;
-
-        self.tracking_copy.borrow_mut().write(key, stored_value);
-        Ok(())
     }
 
     /// Adds data to a global state key and charges for bytes stored.

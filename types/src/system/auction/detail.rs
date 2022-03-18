@@ -155,11 +155,7 @@ pub fn set_seigniorage_recipients_snapshot<P>(
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
-    let key = provider
-        .named_keys_get(SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY)
-        .ok_or(Error::MissingKey)?;
-    let uref = key.into_uref().ok_or(Error::InvalidKeyVariant)?;
-    provider.write_seigniorage_recipients_snapshot(uref, snapshot)
+    write_to(provider, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, snapshot)
 }
 
 pub fn get_validator_slots<P>(provider: &mut P) -> Result<usize, Error>

@@ -4,7 +4,7 @@ use crate::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::{
-        auction::{Bid, EraId, EraInfo, Error, SeigniorageRecipientsSnapshot, UnbondingPurse},
+        auction::{Bid, EraId, EraInfo, Error, UnbondingPurse},
         mint,
     },
     CLTyped, Key, KeyTag, URef, BLAKE2B_DIGEST_LENGTH, U512,
@@ -54,13 +54,6 @@ pub trait StorageProvider {
 
     /// Records era info at the given era id.
     fn record_era_info(&mut self, era_id: EraId, era_info: EraInfo) -> Result<(), Error>;
-
-    /// Writes a `SeigniorageRecipientsSnapshot` to global state and charges for bytes stored.
-    fn write_seigniorage_recipients_snapshot(
-        &mut self,
-        uref: URef,
-        snapshot: SeigniorageRecipientsSnapshot,
-    ) -> Result<(), Error>;
 }
 
 /// Provides an access to mint.

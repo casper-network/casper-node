@@ -262,10 +262,11 @@ pub enum Error {
     /// assert_eq!(39, Error::ArithmeticOverflow as u8);
     /// ```
     ArithmeticOverflow = 39,
-
-    // NOTE: These variants below and related plumbing will be removed once support for WASM
-    // system contracts will be dropped.
-    #[doc(hidden)]
+    /// Execution exceeded the gas limit.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(40, Error::GasLimit as u8);
+    /// ```
     GasLimit = 40,
     /// Too many frames on the runtime stack.
     /// ```
@@ -280,14 +281,20 @@ pub enum Error {
     /// assert_eq!(42, Error::MintError as u8);
     /// ```
     MintError = 42,
-
-    // The validator has exceeded the maximum amount of delegators allowed.
-    // Note: This variant is no longer in use.
-    // ExceededDelegatorSizeLimit = 43,
-
-    // The global delegator capacity for the auction has been reached.
-    // Note: This variant is no longer in use.
-    // GlobalDelegatorCapacityReached = 44,
+    /// The validator has exceeded the maximum amount of delegators allowed.
+    /// NOTE: This variant is no longer in use.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(43, Error::ExceededDelegatorSizeLimit as u8);
+    /// ```
+    ExceededDelegatorSizeLimit = 43,
+    /// The global delegator capacity for the auction has been reached.
+    /// NOTE: This variant is no longer in use.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(44, Error::GlobalDelegatorCapacityReached as u8);
+    /// ```
+    GlobalDelegatorCapacityReached = 44,
     /// The delegated amount is below the minimum allowed.
     /// ```
     /// # use casper_types::system::auction::Error;
@@ -345,10 +352,12 @@ impl Display for Error {
             Error::DelegationRateTooLarge => formatter.write_str("Delegation rate too large"),
             Error::DelegatorFundsLocked => formatter.write_str("Delegator's funds are locked"),
             Error::ArithmeticOverflow => formatter.write_str("Arithmetic overflow"),
+            Error::GasLimit => formatter.write_str("Execution exceeded the gas limit"),
             Error::RuntimeStackOverflow => formatter.write_str("Runtime stack overflow"),
             Error::MintError => formatter.write_str("An error in the mint contract execution"),
+            Error::ExceededDelegatorSizeLimit => formatter.write_str("The amount of delegators per validator has been exceeded"),
+            Error::GlobalDelegatorCapacityReached => formatter.write_str("The global delegator capacity has been reached"),
             Error::DelegationAmountTooSmall => formatter.write_str("The delegated amount is below the minimum allowed"),
-            Error::GasLimit => formatter.write_str("GasLimit"),
             Error::RuntimeStack => formatter.write_str("Runtime stack error"),
         }
     }

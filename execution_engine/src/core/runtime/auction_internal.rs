@@ -7,7 +7,7 @@ use casper_types::{
     system::{
         auction::{
             AccountProvider, Auction, Bid, EraInfo, Error, MintProvider, RuntimeProvider,
-            SeigniorageRecipientsSnapshot, StorageProvider, UnbondingPurse,
+            StorageProvider, UnbondingPurse,
         },
         mint,
     },
@@ -54,16 +54,6 @@ where
         let cl_value = CLValue::from_t(value).map_err(|_| Error::CLValue)?;
         self.context
             .metered_write_gs(uref.into(), StoredValue::CLValue(cl_value))
-            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
-    }
-
-    fn write_seigniorage_recipients_snapshot(
-        &mut self,
-        uref: URef,
-        snapshot: SeigniorageRecipientsSnapshot,
-    ) -> Result<(), Error> {
-        self.context
-            .write_gs_seigniorage_recipients_snapshot(uref.into(), snapshot)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
     }
 
