@@ -7,6 +7,7 @@ use std::{
     ops::{Add, AddAssign},
 };
 
+use datasize::DataSize;
 use num::traits::{AsPrimitive, WrappingAdd};
 
 use casper_types::{
@@ -57,7 +58,7 @@ impl From<CLValueError> for Error {
 /// Note that all arithmetic variants of [`Transform`] are commutative which means that a given
 /// collection of them can be executed in any order to produce the same end result.
 #[allow(clippy::large_enum_variant)]
-#[derive(PartialEq, Eq, Debug, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone, DataSize)]
 pub enum Transform {
     /// An identity transformation that does not modify a value in the global state.
     ///
@@ -85,6 +86,7 @@ pub enum Transform {
     /// This transform assumes that the existing stored value is either an Account or a Contract.
     AddKeys(NamedKeys),
     /// Represents the case where applying a transform would cause an error.
+    #[data_size(skip)]
     Failure(Error),
 }
 
@@ -221,6 +223,11 @@ impl Transform {
                 StoredValue::Withdraw(_) => {
                     let expected = "Contract or Account".to_string();
                     let found = "Withdraw".to_string();
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
+                }
+                StoredValue::Unbonding(_) => {
+                    let expected = "Contract or Account".to_string();
+                    let found = "Unbonding".to_string();
                     Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
             },
@@ -360,9 +367,12 @@ impl From<&Transform> for casper_types::Transform {
             Transform::Write(StoredValue::Bid(bid)) => {
                 casper_types::Transform::WriteBid(bid.clone())
             }
-            Transform::Write(StoredValue::Withdraw(unbonding_purses)) => {
+            Transform::Write(StoredValue::Unbonding(unbonding_purses)) => {
                 casper_types::Transform::WriteWithdraw(unbonding_purses.clone())
             }
+            Transform::Write(StoredValue::Withdraw(_)) => casper_types::Transform::Failure(
+                "withdraw purses should not be be written to global state".to_string(),
+            ),
             Transform::AddInt32(value) => casper_types::Transform::AddInt32(*value),
             Transform::AddUInt64(value) => casper_types::Transform::AddUInt64(*value),
             Transform::AddUInt128(value) => casper_types::Transform::AddUInt128(*value),

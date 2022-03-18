@@ -13,10 +13,10 @@ use rand::{
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
-use super::{blake2b, FromStrError};
+use super::FromStrError;
 use crate::{
     bytesrepr::{Error, FromBytes, ToBytes},
-    checksummed_hex, CLType, CLTyped, PublicKey, BLAKE2B_DIGEST_LENGTH,
+    checksummed_hex, crypto, CLType, CLTyped, PublicKey, BLAKE2B_DIGEST_LENGTH,
 };
 
 /// The length in bytes of a [`AccountHash`].
@@ -154,7 +154,7 @@ impl TryFrom<&alloc::vec::Vec<u8>> for AccountHash {
 
 impl From<&PublicKey> for AccountHash {
     fn from(public_key: &PublicKey) -> Self {
-        AccountHash::from_public_key(public_key, blake2b)
+        AccountHash::from_public_key(public_key, crypto::blake2b)
     }
 }
 
@@ -185,6 +185,12 @@ impl ToBytes for AccountHash {
     #[inline(always)]
     fn serialized_length(&self) -> usize {
         self.0.serialized_length()
+    }
+
+    #[inline(always)]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.extend_from_slice(&self.0);
+        Ok(())
     }
 }
 

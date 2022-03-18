@@ -3,6 +3,8 @@
 
 use alloc::vec::Vec;
 
+#[cfg(feature = "datasize")]
+use datasize::DataSize;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -15,6 +17,7 @@ use crate::{
 
 /// Represents a party delegating their stake to a validator (or "delegatee")
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Delegator {
@@ -59,6 +62,11 @@ impl Delegator {
             validator_public_key,
             vesting_schedule,
         }
+    }
+
+    /// Returns public key of the delegator.
+    pub fn delegator_public_key(&self) -> &PublicKey {
+        &self.delegator_public_key
     }
 
     /// Returns the staked amount
@@ -164,6 +172,15 @@ impl ToBytes for Delegator {
             + self.bonding_purse.serialized_length()
             + self.validator_public_key.serialized_length()
             + self.vesting_schedule.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.delegator_public_key.write_bytes(writer)?;
+        self.staked_amount.write_bytes(writer)?;
+        self.bonding_purse.write_bytes(writer)?;
+        self.validator_public_key.write_bytes(writer)?;
+        self.vesting_schedule.write_bytes(writer)?;
+        Ok(())
     }
 }
 

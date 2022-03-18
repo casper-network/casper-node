@@ -17,6 +17,7 @@ impl BlockTime {
 
     /// Saturating integer subtraction. Computes `self - other`, saturating at `0` instead of
     /// overflowing.
+    #[must_use]
     pub fn saturating_sub(self, other: BlockTime) -> Self {
         BlockTime(self.0.saturating_sub(other.0))
     }

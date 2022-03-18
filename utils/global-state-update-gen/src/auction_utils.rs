@@ -64,10 +64,8 @@ pub fn find_large_bids(
     builder: &mut LmdbWasmTestBuilder,
     new_snapshot: &SeigniorageRecipientsSnapshot,
 ) -> BTreeSet<PublicKey> {
-    let min_bid = new_snapshot
-        .values()
-        .next()
-        .unwrap()
+    let seigniorage_recipients = new_snapshot.values().next().unwrap();
+    let min_bid = seigniorage_recipients
         .values()
         .map(SeigniorageRecipient::stake)
         .min()
@@ -75,7 +73,9 @@ pub fn find_large_bids(
     builder
         .get_bids()
         .into_iter()
-        .filter(|(_pkey, bid)| bid.staked_amount() >= min_bid)
+        .filter(|(pkey, bid)| {
+            bid.staked_amount() >= min_bid && !seigniorage_recipients.contains_key(pkey)
+        })
         .map(|(pkey, _bid)| pkey)
         .collect()
 }
@@ -134,7 +134,7 @@ pub fn generate_entries_removing_withdraws(
     builder: &mut LmdbWasmTestBuilder,
     validators_diff: &ValidatorsDiff,
 ) -> BTreeMap<Key, StoredValue> {
-    let withdraws = builder.get_withdraws();
+    let withdraws = builder.get_unbonds();
     let withdraw_keys: BTreeSet<_> = withdraws.keys().collect();
     validators_diff
         .removed

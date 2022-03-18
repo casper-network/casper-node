@@ -34,7 +34,10 @@ use casper_types::{
 
 use crate::{
     core::{
-        engine_state::{execution_effect::ExecutionEffect, EngineConfig},
+        engine_state::{
+            execution_effect::ExecutionEffect, ChainspecRegistry, EngineConfig,
+            SystemContractRegistry,
+        },
         execution,
         execution::AddressGenerator,
         tracking_copy::TrackingCopy,
@@ -45,8 +48,6 @@ use crate::{
 
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
 const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
-/// Type alias for the system contract registry.
-pub type SystemContractRegistry = BTreeMap<String, ContractHash>;
 
 /// Represents an outcome of a successful genesis run.
 #[derive(Debug)]
@@ -721,6 +722,8 @@ pub enum GenesisError {
         /// Number of validator slots specified.
         validator_slots: u32,
     },
+    /// The chainspec registry is missing a required entry.
+    MissingChainspecRegistryEntry,
 }
 
 pub(crate) struct GenesisInstaller<S>
@@ -1337,8 +1340,29 @@ where
         Ok(())
     }
 
+    fn store_chainspec_registry(
+        &self,
+        chainspec_registry: ChainspecRegistry,
+    ) -> Result<(), GenesisError> {
+        if chainspec_registry.genesis_accounts_raw_hash().is_none() {
+            return Err(GenesisError::MissingChainspecRegistryEntry);
+        }
+        let cl_value_registry = CLValue::from_t(chainspec_registry)
+            .map_err(|error| GenesisError::CLValue(error.to_string()))?;
+
+        self.tracking_copy.borrow_mut().write(
+            Key::ChainspecRegistry,
+            StoredValue::CLValue(cl_value_registry),
+            self.engine_config.max_stored_value_size(),
+        );
+        Ok(())
+    }
+
     /// Performs a complete system installation.
-    pub(crate) fn install(&mut self) -> Result<(), GenesisError> {
+    pub(crate) fn install(
+        &mut self,
+        chainspec_registry: ChainspecRegistry,
+    ) -> Result<(), GenesisError> {
         // Create mint
         let total_supply_key = self.create_mint()?;
 
@@ -1353,6 +1377,8 @@ where
 
         // Create standard payment
         self.create_standard_payment()?;
+
+        self.store_chainspec_registry(chainspec_registry)?;
 
         Ok(())
     }

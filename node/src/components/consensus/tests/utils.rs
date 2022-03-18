@@ -6,9 +6,10 @@ use once_cell::sync::Lazy;
 use casper_types::{system::auction::DelegationRate, Motes, PublicKey, SecretKey, U512};
 
 use crate::{
+    tls::{KeyFingerprint, Sha512},
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
-        ActivationPoint, Chainspec, Timestamp,
+        ActivationPoint, Chainspec, ChainspecRawBytes, NodeId, Timestamp,
     },
     utils::Loadable,
 };
@@ -16,6 +17,12 @@ use crate::{
 pub static ALICE_SECRET_KEY: Lazy<Arc<SecretKey>> =
     Lazy::new(|| Arc::new(SecretKey::ed25519_from_bytes([0; SecretKey::ED25519_LENGTH]).unwrap()));
 pub static ALICE_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&**ALICE_SECRET_KEY));
+pub static ALICE_NODE_ID: Lazy<NodeId> = Lazy::new(|| {
+    NodeId::from(KeyFingerprint::from(Sha512::new(match *ALICE_PUBLIC_KEY {
+        PublicKey::Ed25519(pub_key) => pub_key,
+        _ => panic!("ALICE_PUBLIC_KEY is Ed25519"),
+    })))
+});
 
 pub static BOB_PRIVATE_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::ed25519_from_bytes([1; SecretKey::ED25519_LENGTH]).unwrap());
@@ -28,7 +35,7 @@ where
     I: IntoIterator<Item = (PublicKey, T)>,
     T: Into<U512>,
 {
-    let mut chainspec = Chainspec::from_resources("local");
+    let (mut chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
     let accounts = stakes
         .into_iter()
         .map(|(pk, stake)| {

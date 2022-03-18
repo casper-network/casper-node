@@ -13,13 +13,16 @@ use casper_types::{
     RuntimeArgs, U512,
 };
 
+const CONTRACT_ADD_ASSOCIATED_KEY: &str = "add_associated_key.wasm";
 const CONTRACT_ADD_UPDATE_ASSOCIATED_KEY: &str = "add_update_associated_key.wasm";
-const CONTRACT_AUTHORIZED_KEYS: &str = "authorized_keys.wasm";
+const CONTRACT_SET_ACTION_THRESHOLDS: &str = "set_action_thresholds.wasm";
 const ARG_KEY_MANAGEMENT_THRESHOLD: &str = "key_management_threshold";
 const ARG_DEPLOY_THRESHOLD: &str = "deploy_threshold";
 const ARG_ACCOUNT: &str = "account";
+const ARG_WEIGHT: &str = "weight";
 const KEY_1: AccountHash = AccountHash::new([254; 32]);
 const KEY_2: AccountHash = AccountHash::new([253; 32]);
+const KEY_2_WEIGHT: Weight = Weight::new(100);
 const KEY_3: AccountHash = AccountHash::new([252; 32]);
 
 #[ignore]
@@ -27,7 +30,7 @@ const KEY_3: AccountHash = AccountHash::new([252; 32]);
 fn should_deploy_with_authorized_identity_key() {
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_AUTHORIZED_KEYS,
+        CONTRACT_SET_ACTION_THRESHOLDS,
         runtime_args! {
             ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(1),
             ARG_DEPLOY_THRESHOLD => Weight::new(1),
@@ -54,7 +57,7 @@ fn should_raise_auth_failure_with_invalid_key() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
             .with_session_code(
-                CONTRACT_AUTHORIZED_KEYS,
+                CONTRACT_SET_ACTION_THRESHOLDS,
                 runtime_args! {
                     ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(1),
                     ARG_DEPLOY_THRESHOLD => Weight::new(1)
@@ -77,6 +80,7 @@ fn should_raise_auth_failure_with_invalid_key() {
         .get_exec_result(0)
         .expect("should have exec response")
         .get(0)
+        .cloned()
         .expect("should have at least one deploy result");
 
     assert!(
@@ -103,7 +107,7 @@ fn should_raise_auth_failure_with_invalid_keys() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
             .with_session_code(
-                CONTRACT_AUTHORIZED_KEYS,
+                CONTRACT_SET_ACTION_THRESHOLDS,
                 runtime_args! {
                     ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(1),
                     ARG_DEPLOY_THRESHOLD => Weight::new(1)
@@ -126,6 +130,7 @@ fn should_raise_auth_failure_with_invalid_keys() {
         .get_exec_result(0)
         .expect("should have exec response")
         .get(0)
+        .cloned()
         .expect("should have at least one deploy result");
 
     assert!(deploy_result.has_precondition_failure());
@@ -167,7 +172,7 @@ fn should_raise_deploy_authorization_failure() {
     // a key with weight=2.
     let exec_request_4 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_AUTHORIZED_KEYS,
+        CONTRACT_SET_ACTION_THRESHOLDS,
         runtime_args! {
             ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(4),
             ARG_DEPLOY_THRESHOLD => Weight::new(3)
@@ -200,7 +205,7 @@ fn should_raise_deploy_authorization_failure() {
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
             // Next deploy will see deploy threshold == 4, keymgmnt == 5
             .with_session_code(
-                CONTRACT_AUTHORIZED_KEYS,
+                CONTRACT_SET_ACTION_THRESHOLDS,
                 runtime_args! {
                     ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(5),
                     ARG_DEPLOY_THRESHOLD => Weight::new(4)
@@ -221,6 +226,7 @@ fn should_raise_deploy_authorization_failure() {
             .get_exec_result(0)
             .expect("should have exec response")
             .get(0)
+            .cloned()
             .expect("should have at least one deploy result");
 
         assert!(deploy_result.has_precondition_failure());
@@ -236,7 +242,7 @@ fn should_raise_deploy_authorization_failure() {
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
             // change deployment threshold to 4
             .with_session_code(
-                CONTRACT_AUTHORIZED_KEYS,
+                CONTRACT_SET_ACTION_THRESHOLDS,
                 runtime_args! {
                     ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(6),
                     ARG_DEPLOY_THRESHOLD => Weight::new(5)
@@ -260,7 +266,7 @@ fn should_raise_deploy_authorization_failure() {
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
             // change deployment threshold to 4
             .with_session_code(
-                CONTRACT_AUTHORIZED_KEYS,
+                CONTRACT_SET_ACTION_THRESHOLDS,
                 runtime_args! {
                     ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(0),
                     ARG_DEPLOY_THRESHOLD => Weight::new(0)
@@ -282,6 +288,7 @@ fn should_raise_deploy_authorization_failure() {
             .get_exec_result(0)
             .expect("should have exec response")
             .get(0)
+            .cloned()
             .expect("should have at least one deploy result");
 
         assert!(deploy_result.has_precondition_failure());
@@ -298,7 +305,7 @@ fn should_raise_deploy_authorization_failure() {
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
             // change deployment threshold to 4
             .with_session_code(
-                CONTRACT_AUTHORIZED_KEYS,
+                CONTRACT_SET_ACTION_THRESHOLDS,
                 runtime_args! {
                     ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(0),
                     ARG_DEPLOY_THRESHOLD => Weight::new(0)
@@ -358,7 +365,7 @@ fn should_authorize_deploy_with_multiple_keys() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
             .with_session_code(
-                CONTRACT_AUTHORIZED_KEYS,
+                CONTRACT_SET_ACTION_THRESHOLDS,
                 runtime_args! {
                     ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(0),
                     ARG_DEPLOY_THRESHOLD => Weight::new(0),
@@ -390,7 +397,17 @@ fn should_not_authorize_deploy_with_duplicated_keys() {
 
     let exec_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_AUTHORIZED_KEYS,
+        CONTRACT_ADD_ASSOCIATED_KEY,
+        runtime_args! {
+            ARG_ACCOUNT => KEY_2,
+            ARG_WEIGHT => KEY_2_WEIGHT,
+        },
+    )
+    .build();
+
+    let exec_request_3 = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_SET_ACTION_THRESHOLDS,
         runtime_args! {
             ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(4),
             ARG_DEPLOY_THRESHOLD => Weight::new(3)
@@ -399,15 +416,17 @@ fn should_not_authorize_deploy_with_duplicated_keys() {
     .build();
     // Basic deploy with single key
     let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
     builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         // Reusing a test contract that would add new key
         .exec(exec_request_1)
         .expect_success()
-        .commit()
-        .exec(exec_request_2)
-        .expect_success()
         .commit();
+
+    builder.exec(exec_request_2).expect_success().commit();
+
+    builder.exec(exec_request_3).expect_success().commit();
 
     let exec_request_3 = {
         let deploy = DeployItemBuilder::new()
@@ -416,7 +435,7 @@ fn should_not_authorize_deploy_with_duplicated_keys() {
                 ARG_AMOUNT => *DEFAULT_PAYMENT,
             })
             .with_session_code(
-                CONTRACT_AUTHORIZED_KEYS,
+                CONTRACT_SET_ACTION_THRESHOLDS,
                 runtime_args! {
                     ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(0),
                     ARG_DEPLOY_THRESHOLD => Weight::new(0)
@@ -434,6 +453,7 @@ fn should_not_authorize_deploy_with_duplicated_keys() {
         .get_exec_result(0)
         .expect("should have exec response")
         .get(0)
+        .cloned()
         .expect("should have at least one deploy result");
 
     assert!(
@@ -472,7 +492,7 @@ fn should_not_authorize_transfer_without_deploy_key_threshold() {
     .build();
     let update_thresholds_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_AUTHORIZED_KEYS,
+        CONTRACT_SET_ACTION_THRESHOLDS,
         runtime_args! {
             ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(5),
             ARG_DEPLOY_THRESHOLD => Weight::new(5),
@@ -521,6 +541,7 @@ fn should_not_authorize_transfer_without_deploy_key_threshold() {
         .get_exec_result(3)
         .expect("should have response")
         .first()
+        .cloned()
         .expect("should have first result");
     let error = response.as_error().expect("should have error");
     assert!(matches!(

@@ -48,13 +48,12 @@ function main() {
     # 11. Run Health Checks
     # ... restarts=15: due to node being stopped and started
     # ... crashes=5: expected in an emergency restart scenario?
-    # ... errors=ignore: ticket sre issue 77
     source "$NCTL"/sh/scenarios/common/health_checks.sh \
-            errors='ignore' \
+            errors='0' \
             equivocators=0 \
             doppels=0 \
-            crashes=5 \
-            restarts=15 \
+            crashes=0 \
+            restarts=10 \
             ejections=0
 
     log "------------------------------------------------------------"
@@ -72,7 +71,7 @@ function log_step() {
 
 function do_await_genesis_era_to_complete() {
     log_step "awaiting genesis era to complete"
-    while [ "$(get_chain_era)" != "1" ]; do
+    while [ "$(get_chain_era)" != "2" ]; do
         sleep 1.0
     done
 }

@@ -14,8 +14,14 @@ All notable changes to this project will be documented in this file.  The format
 ## [Unreleased]
 
 ### Added
-
+* Add a new entry point `redelegate` to the Auction system contract which allows users to redelegate to another validator without having to unbond. The function signature for the entrypoint is: `redelegate(delegator: PublicKey, validator: PublicKey, amount: U512, new_validator: PublicKey)`
+* Add a new type `ChainspecRegistry` which contains the hashes of the `chainspec.toml` and will optionally contain the hashes for `accounts.toml` and `global_state.toml`.
 * Add ability to enable strict args checking when executing a contract; i.e. that all non-optional args are provided and of the correct `CLType`.
+
+### Changed
+* Change contract runtime to allow caching GlobalState changes during execution of a single block.
+* Fix some integer casts.
+* Change both genesis and upgrade functions to write `ChainspecRegistry` under the fixed `Key::ChainspecRegistry`.
 
 
 
@@ -66,8 +72,6 @@ All notable changes to this project will be documented in this file.  The format
 * Added genesis validation step to ensure there are more genesis validators than validator slots.
 * Added a support for passing a public key as a `target` argument in native transfers.
 * Added a `max_associated_keys` configuration option for a hard limit of associated keys under accounts.
-
-
 
 ### Changed
 * Documented `storage` module and children.

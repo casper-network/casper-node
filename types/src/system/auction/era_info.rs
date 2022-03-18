@@ -3,6 +3,8 @@
 
 use alloc::{boxed::Box, vec::Vec};
 
+#[cfg(feature = "datasize")]
+use datasize::DataSize;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -17,6 +19,7 @@ const SEIGNIORAGE_ALLOCATION_DELEGATOR_TAG: u8 = 1;
 
 /// Information about a seigniorage allocation
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub enum SeigniorageAllocation {
@@ -79,25 +82,7 @@ impl SeigniorageAllocation {
 impl ToBytes for SeigniorageAllocation {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
-        buffer.append(&mut self.tag().to_bytes()?);
-        match self {
-            SeigniorageAllocation::Validator {
-                validator_public_key,
-                amount,
-            } => {
-                buffer.append(&mut validator_public_key.to_bytes()?);
-                buffer.append(&mut amount.to_bytes()?);
-            }
-            SeigniorageAllocation::Delegator {
-                delegator_public_key,
-                validator_public_key,
-                amount,
-            } => {
-                buffer.append(&mut delegator_public_key.to_bytes()?);
-                buffer.append(&mut validator_public_key.to_bytes()?);
-                buffer.append(&mut amount.to_bytes()?);
-            }
-        }
+        self.write_bytes(&mut buffer)?;
         Ok(buffer)
     }
 
@@ -118,6 +103,29 @@ impl ToBytes for SeigniorageAllocation {
                         + amount.serialized_length()
                 }
             }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        writer.push(self.tag());
+        match self {
+            SeigniorageAllocation::Validator {
+                validator_public_key,
+                amount,
+            } => {
+                validator_public_key.write_bytes(writer)?;
+                amount.write_bytes(writer)?;
+            }
+            SeigniorageAllocation::Delegator {
+                delegator_public_key,
+                validator_public_key,
+                amount,
+            } => {
+                delegator_public_key.write_bytes(writer)?;
+                validator_public_key.write_bytes(writer)?;
+                amount.write_bytes(writer)?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -159,6 +167,7 @@ impl CLTyped for SeigniorageAllocation {
 
 /// Auction metadata.  Intended to be recorded at each era.
 #[derive(Debug, Default, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct EraInfo {
@@ -208,11 +217,18 @@ impl EraInfo {
 
 impl ToBytes for EraInfo {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        self.seigniorage_allocations.to_bytes()
+        let mut result = bytesrepr::allocate_buffer(self)?;
+        self.seigniorage_allocations().write_bytes(&mut result)?;
+        Ok(result)
     }
 
     fn serialized_length(&self) -> usize {
         self.seigniorage_allocations.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.seigniorage_allocations().write_bytes(writer)?;
+        Ok(())
     }
 }
 

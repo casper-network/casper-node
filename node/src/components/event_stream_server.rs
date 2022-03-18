@@ -161,6 +161,12 @@ impl EventStreamServer {
     }
 }
 
+impl Drop for EventStreamServer {
+    fn drop(&mut self) {
+        let _ = self.broadcast(SseData::Shutdown);
+    }
+}
+
 impl<REv> Component<REv> for EventStreamServer
 where
     REv: ReactorEventT,

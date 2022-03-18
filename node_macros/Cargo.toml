@@ -8,7 +8,7 @@ readme = "README.md"
 documentation = "https://docs.rs/casper-node-macros"
 homepage = "https://casperlabs.io"
 repository = "https://github.com/CasperLabs/casper-node/tree/master/node_macros"
-license-file = "../LICENSE"
+license = "Apache-2.0"
 
 [dependencies]
 indexmap = "1.6.0"

@@ -13,6 +13,13 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+### Added
+* Added `WasmTestBuilder::get_execution_journals` method for returning execution journals for all test runs.
+
+### Changed
+* `WasmTestBuilder::get_transforms` is deprecated in favor of `WasmTestBuilder::get_execution_journals`.
+* `deploy_hash` field is now defaulted to a random value rather than zeros in `DeployItemBuilder`.
+
 
 
 ## 2.1.0

@@ -112,17 +112,20 @@ pub enum SseData {
     },
     /// New finality signature received.
     FinalitySignature(Box<FinalitySignature>),
+    /// The execution effects produced by a `StepRequest`.
     Step {
         era_id: EraId,
         #[data_size(skip)]
         execution_effect: ExecutionEffect,
     },
+    /// The node is about to shut down.
+    Shutdown,
 }
 
 impl SseData {
     pub(super) fn should_include(&self, filter: &[EventFilter]) -> bool {
         match self {
-            SseData::ApiVersion(_) => true,
+            SseData::ApiVersion(_) | SseData::Shutdown => true,
             SseData::BlockAdded { .. } => filter.contains(&EventFilter::BlockAdded),
             SseData::DeployAccepted { .. } => filter.contains(&EventFilter::DeployAccepted),
             SseData::DeployProcessed { .. } => filter.contains(&EventFilter::DeployProcessed),
@@ -316,7 +319,8 @@ async fn filter_map_server_sent_event(
         | &SseData::DeployExpired { .. }
         | &SseData::Fault { .. }
         | &SseData::Step { .. }
-        | &SseData::FinalitySignature(_) => Some(Ok(WarpServerSentEvent::default()
+        | &SseData::FinalitySignature(_)
+        | &SseData::Shutdown => Some(Ok(WarpServerSentEvent::default()
             .json_data(&event.data)
             .unwrap_or_else(|error| {
                 warn!(%error, ?event, "failed to jsonify sse event");
@@ -660,6 +664,10 @@ mod tests {
             id: Some(rng.gen()),
             data: SseData::random_step(&mut rng),
         };
+        let shutdown = ServerSentEvent {
+            id: Some(rng.gen()),
+            data: SseData::Shutdown,
+        };
 
         // `EventFilter::Main` should only filter out `DeployAccepted`s and `FinalitySignature`s.
         should_not_filter_out(&api_version, &MAIN_FILTER[..], getter.clone()).await;
@@ -668,14 +676,16 @@ mod tests {
         should_not_filter_out(&deploy_expired, &MAIN_FILTER[..], getter.clone()).await;
         should_not_filter_out(&fault, &MAIN_FILTER[..], getter.clone()).await;
         should_not_filter_out(&step, &MAIN_FILTER[..], getter.clone()).await;
+        should_not_filter_out(&shutdown, &MAIN_FILTER, getter.clone()).await;
 
         should_filter_out(&deploy_accepted, &MAIN_FILTER[..], getter.clone()).await;
         should_filter_out(&finality_signature, &MAIN_FILTER[..], getter.clone()).await;
 
         // `EventFilter::DeployAccepted` should filter out everything except `ApiVersion`s and
-        // `DeployAccepted`s.
+        // `DeployAccepted`s and `Shutdown`'s.
         should_not_filter_out(&api_version, &DEPLOYS_FILTER[..], getter.clone()).await;
         should_not_filter_out(&deploy_accepted, &DEPLOYS_FILTER[..], getter.clone()).await;
+        should_not_filter_out(&shutdown, &DEPLOYS_FILTER[..], getter.clone()).await;
 
         should_filter_out(&block_added, &DEPLOYS_FILTER[..], getter.clone()).await;
         should_filter_out(&deploy_processed, &DEPLOYS_FILTER[..], getter.clone()).await;
@@ -684,10 +694,11 @@ mod tests {
         should_filter_out(&finality_signature, &DEPLOYS_FILTER[..], getter.clone()).await;
         should_filter_out(&step, &DEPLOYS_FILTER[..], getter.clone()).await;
 
-        // `EventFilter::Signatures` should filter out everything except `ApiVersion`s and
-        // `FinalitySignature`s.
+        // `EventFilter::Signatures` should filter out everything except `ApiVersion`s,
+        // `FinalitySignature`s and `Shutdown`s.
         should_not_filter_out(&api_version, &SIGNATURES_FILTER[..], getter.clone()).await;
         should_not_filter_out(&finality_signature, &SIGNATURES_FILTER[..], getter.clone()).await;
+        should_not_filter_out(&shutdown, &SIGNATURES_FILTER[..], getter.clone()).await;
 
         should_filter_out(&block_added, &SIGNATURES_FILTER[..], getter.clone()).await;
         should_filter_out(&deploy_accepted, &SIGNATURES_FILTER[..], getter.clone()).await;
@@ -740,6 +751,10 @@ mod tests {
             id: None,
             data: SseData::random_step(&mut rng),
         };
+        let malformed_shutdown = ServerSentEvent {
+            id: None,
+            data: SseData::Shutdown,
+        };
 
         for filter in &[
             &MAIN_FILTER[..],
@@ -754,6 +769,7 @@ mod tests {
             should_filter_out(&malformed_fault, filter, getter.clone()).await;
             should_filter_out(&malformed_finality_signature, filter, getter.clone()).await;
             should_filter_out(&malformed_step, filter, getter.clone()).await;
+            should_filter_out(&malformed_shutdown, filter, getter.clone()).await;
         }
     }
 

@@ -4,22 +4,24 @@
 //! module documentation for details.
 
 use std::{
-    collections::HashMap,
-    fmt::{self, Display, Formatter},
+    collections::BTreeMap,
+    fmt::{self, Debug, Display, Formatter},
+    fs::File,
 };
 
 use itertools::Itertools;
 use serde::Serialize;
 
-use casper_types::{EraId, ExecutionResult, PublicKey};
+use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey, U512};
 
 use crate::{
     components::{
-        chainspec_loader::NextUpgrade, deploy_acceptor::Error, small_network::GossipedAddress,
+        chainspec_loader::NextUpgrade, deploy_acceptor::Error, diagnostics_port::FileSerializer,
     },
     effect::Responder,
     types::{
-        Block, Deploy, DeployHash, DeployHeader, FinalitySignature, FinalizedBlock, Item, Timestamp,
+        Block, Deploy, DeployHash, DeployHeader, FinalitySignature, FinalizedBlock, Item, NodeId,
+        Timestamp,
     },
     utils::Source,
 };
@@ -32,7 +34,7 @@ use crate::{
 /// Control announcements also use a priority queue to ensure that a component that reports a fatal
 /// error is given as few follow-up events as possible. However, there currently is no guarantee
 /// that this happens.
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
 #[must_use]
 pub(crate) enum ControlAnnouncement {
     /// The component has encountered a fatal error and cannot continue.
@@ -46,6 +48,49 @@ pub(crate) enum ControlAnnouncement {
         /// Error message.
         msg: String,
     },
+    // An external event queue dump has been requested.
+    QueueDumpRequest {
+        /// The format to dump the queue in.
+        #[serde(skip)]
+        dump_format: QueueDumpFormat,
+        /// Responder called when the dump has been finished.
+        finished: Responder<()>,
+    },
+}
+
+/// Queue dump format with handler.
+#[derive(Serialize)]
+pub(crate) enum QueueDumpFormat {
+    /// Dump using given serde serializer.
+    Serde(#[serde(skip)] FileSerializer),
+    /// Dump writing debug output to file.
+    Debug(#[serde(skip)] File),
+}
+
+impl QueueDumpFormat {
+    /// Creates a new queue dump serde format.
+    pub(crate) fn serde(serializer: FileSerializer) -> Self {
+        QueueDumpFormat::Serde(serializer)
+    }
+
+    /// Creates a new queue dump debug format.
+    pub(crate) fn debug(file: File) -> Self {
+        QueueDumpFormat::Debug(file)
+    }
+}
+
+impl Debug for ControlAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::FatalError { file, line, msg } => f
+                .debug_struct("FatalError")
+                .field("file", file)
+                .field("line", line)
+                .field("msg", msg)
+                .finish(),
+            Self::QueueDumpRequest { .. } => f.debug_struct("QueueDump").finish_non_exhaustive(),
+        }
+    }
 }
 
 impl Display for ControlAnnouncement {
@@ -54,44 +99,8 @@ impl Display for ControlAnnouncement {
             ControlAnnouncement::FatalError { file, line, msg } => {
                 write!(f, "fatal error [{}:{}]: {}", file, line, msg)
             }
-        }
-    }
-}
-
-/// A networking layer announcement.
-#[derive(Debug, Serialize)]
-#[must_use]
-pub(crate) enum NetworkAnnouncement<I, P> {
-    /// A payload message has been received from a peer.
-    MessageReceived {
-        /// The sender of the message
-        sender: I,
-        /// The message payload
-        payload: P,
-    },
-    /// Our public listening address should be gossiped across the network.
-    GossipOurAddress(GossipedAddress),
-    /// A new peer connection was established.
-    ///
-    /// IMPORTANT NOTE: This announcement is a work-around for some short-term functionality. Do
-    ///                 not rely on or use this for anything without asking anyone that has written
-    ///                 this section of the code first!
-    NewPeer(I),
-}
-
-impl<I, P> Display for NetworkAnnouncement<I, P>
-where
-    I: Display,
-    P: Display,
-{
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            NetworkAnnouncement::MessageReceived { sender, payload } => {
-                write!(formatter, "received from {}: {}", sender, payload)
-            }
-            NetworkAnnouncement::GossipOurAddress(_) => write!(formatter, "gossip our address"),
-            NetworkAnnouncement::NewPeer(id) => {
-                write!(formatter, "new peer connection established to {}", id)
+            ControlAnnouncement::QueueDumpRequest { .. } => {
+                write!(f, "dump event queue")
             }
         }
     }
@@ -122,13 +131,13 @@ impl Display for RpcServerAnnouncement {
 
 /// A `DeployAcceptor` announcement.
 #[derive(Debug, Serialize)]
-pub(crate) enum DeployAcceptorAnnouncement<I> {
+pub(crate) enum DeployAcceptorAnnouncement {
     /// A deploy which wasn't previously stored on this node has been accepted and stored.
     AcceptedNewDeploy {
         /// The new deploy.
         deploy: Box<Deploy>,
         /// The source (peer or client) of the deploy.
-        source: Source<I>,
+        source: Source,
     },
 
     /// An invalid deploy was received.
@@ -136,11 +145,11 @@ pub(crate) enum DeployAcceptorAnnouncement<I> {
         /// The invalid deploy.
         deploy: Box<Deploy>,
         /// The source (peer or client) of the deploy.
-        source: Source<I>,
+        source: Source,
     },
 }
 
-impl<I: Display> Display for DeployAcceptorAnnouncement<I> {
+impl Display for DeployAcceptorAnnouncement {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source } => write!(
@@ -215,15 +224,12 @@ impl Display for ConsensusAnnouncement {
 
 /// A block-list related announcement.
 #[derive(Debug, Serialize)]
-pub(crate) enum BlocklistAnnouncement<I> {
+pub(crate) enum BlocklistAnnouncement {
     /// A given peer committed a blockable offense.
-    OffenseCommitted(Box<I>),
+    OffenseCommitted(Box<NodeId>),
 }
 
-impl<I> Display for BlocklistAnnouncement<I>
-where
-    I: Display,
-{
+impl Display for BlocklistAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             BlocklistAnnouncement::OffenseCommitted(peer) => {
@@ -231,15 +237,6 @@ where
             }
         }
     }
-}
-
-/// A ContractRuntimeAnnouncement's block.
-#[derive(Debug)]
-pub(crate) struct LinearChainBlock {
-    /// The block.
-    pub(crate) block: Block,
-    /// The results of executing the deploys in this block.
-    pub(crate) execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
 }
 
 /// A Gossiper announcement.
@@ -297,6 +294,55 @@ impl Display for ChainspecLoaderAnnouncement {
         match self {
             ChainspecLoaderAnnouncement::UpgradeActivationPointRead(next_upgrade) => {
                 write!(f, "read {}", next_upgrade)
+            }
+        }
+    }
+}
+
+/// A ContractRuntime announcement.
+#[derive(Debug, Serialize)]
+pub(crate) enum ContractRuntimeAnnouncement {
+    /// A new block from the linear chain was produced.
+    LinearChainBlock {
+        /// The block.
+        block: Box<Block>,
+        /// The results of executing the deploys in this block.
+        // #[serde(skip_serializing)]
+        execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
+    },
+    /// A step was committed successfully and has altered global state.
+    CommitStepSuccess {
+        /// The era id in which the step was committed to global state.
+        era_id: EraId,
+        /// The operations and transforms committed to global state.
+        execution_effect: ExecutionEffect,
+    },
+    /// New era validators.
+    UpcomingEraValidators {
+        /// The era id in which the step was committed to global state.
+        era_that_is_ending: EraId,
+        /// The validators for the eras after the `era_that_is_ending` era.
+        upcoming_era_validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
+    },
+}
+
+impl Display for ContractRuntimeAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ContractRuntimeAnnouncement::LinearChainBlock { block, .. } => {
+                write!(f, "created linear chain block {}", block.hash())
+            }
+            ContractRuntimeAnnouncement::CommitStepSuccess { era_id, .. } => {
+                write!(f, "commit step completed for {}", era_id)
+            }
+            ContractRuntimeAnnouncement::UpcomingEraValidators {
+                era_that_is_ending, ..
+            } => {
+                write!(
+                    f,
+                    "upcoming era validators after current {}.",
+                    era_that_is_ending,
+                )
             }
         }
     }

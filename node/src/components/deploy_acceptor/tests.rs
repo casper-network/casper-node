@@ -8,6 +8,7 @@ use std::{
 
 use derive_more::From;
 use futures::channel::oneshot;
+use num_rational::Ratio;
 use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::Serialize;
@@ -21,7 +22,7 @@ use casper_execution_engine::{
 };
 use casper_types::{
     account::{Account, ActionThresholds, AssociatedKeys, Weight},
-    CLValue, ProtocolVersion, StoredValue, URef, U512,
+    CLValue, StoredValue, URef, U512,
 };
 
 use super::*;
@@ -29,18 +30,18 @@ use crate::{
     components::storage::{self, Storage},
     effect::{
         announcements::{ControlAnnouncement, DeployAcceptorAnnouncement},
-        requests::ContractRuntimeRequest,
+        requests::{ContractRuntimeRequest, NetworkRequest},
         Responder,
     },
     logging,
+    protocol::Message,
     reactor::{self, EventQueueHandle, QueueKind, Runner},
     testing::ConditionCheckReactor,
-    types::{Block, Chainspec, Deploy, NodeId},
+    types::{Block, Chainspec, ChainspecRawBytes, Deploy, NodeId},
     utils::{Loadable, WithDir},
     NodeRng,
 };
 
-const VERIFY_ACCOUNTS: bool = true;
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 const TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -56,9 +57,13 @@ enum Event {
     #[from]
     ControlAnnouncement(ControlAnnouncement),
     #[from]
-    DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement<NodeId>),
+    DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement),
     #[from]
     ContractRuntime(#[serde(skip_serializing)] ContractRuntimeRequest),
+    #[from]
+    StorageRequest(StorageRequest),
+    #[from]
+    NetworkRequest(NetworkRequest<Message>),
 }
 
 impl ReactorEvent for Event {
@@ -69,11 +74,13 @@ impl ReactorEvent for Event {
             None
         }
     }
-}
 
-impl From<StorageRequest> for Event {
-    fn from(request: StorageRequest) -> Self {
-        Event::Storage(storage::Event::from(request))
+    fn try_into_control(self) -> Option<ControlAnnouncement> {
+        if let Self::ControlAnnouncement(ctrl_ann) = self {
+            Some(ctrl_ann)
+        } else {
+            None
+        }
     }
 }
 
@@ -90,6 +97,8 @@ impl Display for Event {
             Event::ContractRuntime(event) => {
                 write!(formatter, "contract-runtime event: {:?}", event)
             }
+            Event::StorageRequest(request) => write!(formatter, "storage request: {:?}", request),
+            Event::NetworkRequest(request) => write!(formatter, "network request: {:?}", request),
         }
     }
 }
@@ -154,7 +163,7 @@ enum TestScenario {
 }
 
 impl TestScenario {
-    fn source(&self, rng: &mut NodeRng) -> Source<NodeId> {
+    fn source(&self, rng: &mut NodeRng) -> Source {
         match self {
             TestScenario::FromPeerInvalidDeploy
             | TestScenario::FromPeerValidDeploy
@@ -400,19 +409,19 @@ impl reactor::Reactor for Reactor {
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
+
+        let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
+
+        let deploy_acceptor = DeployAcceptor::new(&chainspec, registry).unwrap();
+
         let storage = Storage::new(
             &storage_withdir,
             None,
             ProtocolVersion::from_parts(1, 0, 0),
-            false,
             "test",
-        )
-        .unwrap();
-
-        let deploy_acceptor = DeployAcceptor::new(
-            super::Config::new(VERIFY_ACCOUNTS),
-            &Chainspec::from_resources("local"),
-            registry,
+            Ratio::new(1, 3),
+            None,
+            chainspec.protocol_config.verifiable_chunked_hash_activation,
         )
         .unwrap();
 
@@ -438,6 +447,10 @@ impl reactor::Reactor for Reactor {
             Event::Storage(event) => reactor::wrap_effects(
                 Event::Storage,
                 self.storage.handle_event(effect_builder, rng, event),
+            ),
+            Event::StorageRequest(req) => reactor::wrap_effects(
+                Event::Storage,
+                self.storage.handle_event(effect_builder, rng, req.into()),
             ),
             Event::DeployAcceptor(event) => reactor::wrap_effects(
                 Event::DeployAcceptor,
@@ -588,6 +601,7 @@ impl reactor::Reactor for Reactor {
                 }
                 _ => panic!("should not receive {:?}", event),
             },
+            Event::NetworkRequest(_) => panic!("test does not handle network requests"),
         }
     }
 
@@ -604,7 +618,7 @@ fn put_block_to_storage(
         effect_builder
             .into_inner()
             .schedule(
-                StorageRequest::PutBlock { block, responder },
+                storage::Event::StorageRequest(StorageRequest::PutBlock { block, responder }),
                 QueueKind::Regular,
             )
             .ignore()
@@ -619,7 +633,7 @@ fn put_deploy_to_storage(
         effect_builder
             .into_inner()
             .schedule(
-                StorageRequest::PutDeploy { deploy, responder },
+                storage::Event::StorageRequest(StorageRequest::PutDeploy { deploy, responder }),
                 QueueKind::Regular,
             )
             .ignore()
@@ -628,7 +642,7 @@ fn put_deploy_to_storage(
 
 fn schedule_accept_deploy(
     deploy: Box<Deploy>,
-    source: Source<NodeId>,
+    source: Source,
     responder: Responder<Result<(), super::Error>>,
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
     |effect_builder: EffectBuilder<Event>| {
@@ -648,7 +662,7 @@ fn schedule_accept_deploy(
 
 fn inject_balance_check_for_peer(
     deploy: Box<Deploy>,
-    source: Source<NodeId>,
+    source: Source,
     responder: Responder<Result<(), super::Error>>,
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
     |effect_builder: EffectBuilder<Event>| {
@@ -678,7 +692,12 @@ async fn run_deploy_acceptor_without_timeout(
     let mut runner: Runner<ConditionCheckReactor<Reactor>> =
         Runner::new(test_scenario, &mut rng).await.unwrap();
 
-    let block = Box::new(Block::random(&mut rng));
+    let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
+
+    let block = Box::new(Block::random_with_verifiable_chunked_hash_activation(
+        &mut rng,
+        chainspec.protocol_config.verifiable_chunked_hash_activation,
+    ));
     // Create a responder to assert that the block was successfully injected into storage.
     let (block_sender, block_receiver) = oneshot::channel();
     let block_responder = Responder::without_shutdown(block_sender);

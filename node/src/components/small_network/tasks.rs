@@ -10,7 +10,7 @@ use std::{
     time::Duration,
 };
 
-use casper_types::PublicKey;
+use casper_types::{ProtocolVersion, PublicKey};
 use futures::{
     future::{self, Either},
     stream::{SplitSink, SplitStream},
@@ -21,6 +21,7 @@ use openssl::{
     ssl::Ssl,
 };
 use prometheus::IntGauge;
+use rand::Rng;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tokio::{
     net::TcpStream,
@@ -40,20 +41,15 @@ use super::{
     event::{IncomingConnection, OutgoingConnection},
     framed,
     limiter::LimiterHandle,
-    message::{ConsensusKeyPair, PayloadWeights},
+    message::{ConsensusKeyPair, EstimatorWeights},
     Event, FramedTransport, Message, Metrics, Payload, Transport,
 };
 use crate::{
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert},
-    types::NodeId,
+    types::{NodeId, TimeDiff},
     utils::display_error,
 };
-
-// TODO: Constants need to be made configurable.
-
-/// Maximum time allowed to send or receive a handshake.
-const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// Low-level TLS connection function.
 ///
@@ -181,8 +177,18 @@ where
     pub(super) public_addr: SocketAddr,
     /// Optional set of consensus keys, to identify as a validator during handshake.
     pub(super) consensus_keys: Option<ConsensusKeyPair>,
+    /// Timeout for handshake completion.
+    pub(super) handshake_timeout: TimeDiff,
     /// Weights to estimate payloads with.
-    pub(super) payload_weights: PayloadWeights,
+    pub(super) payload_weights: EstimatorWeights,
+    /// Whether or not to reject incompatible versions during handshake.
+    pub(super) reject_incompatible_versions: bool,
+    /// The protocol version at which (or under) tarpitting is enabled.
+    pub(super) tarpit_version_threshold: Option<ProtocolVersion>,
+    /// If tarpitting is enabled, duration for which connections should be kept open.
+    pub(super) tarpit_duration: TimeDiff,
+    /// The chance, expressed as a number between 0.0 and 1.0, of triggering the tarpit.
+    pub(super) tarpit_chance: f32,
 }
 
 /// Handles an incoming connection.
@@ -330,11 +336,14 @@ where
         connection_id,
     );
 
-    io_timeout(HANDSHAKE_TIMEOUT, transport.send(Arc::new(handshake)))
-        .await
-        .map_err(ConnectionError::HandshakeSend)?;
+    io_timeout(
+        context.handshake_timeout.into(),
+        transport.send(Arc::new(handshake)),
+    )
+    .await
+    .map_err(ConnectionError::HandshakeSend)?;
 
-    let remote_handshake = io_opt_timeout(HANDSHAKE_TIMEOUT, transport.next())
+    let remote_handshake = io_opt_timeout(context.handshake_timeout.into(), transport.next())
         .await
         .map_err(ConnectionError::HandshakeRecv)?;
 
@@ -350,6 +359,33 @@ where
         // The handshake was valid, we can check the network name.
         if network_name != context.chain_info.network_name {
             return Err(ConnectionError::WrongNetwork(network_name));
+        }
+
+        // If there is a version mismatch, we treat it as a connection error. We do not ban peers
+        // for this error, but instead rely on exponential backoff, as bans would result in issues
+        // during upgrades where nodes may have a legitimate reason for differing versions.
+        //
+        // Since we are not using SemVer for versioning, we cannot make any assumptions about
+        // compatibility, so we allow only exact version matches.
+        if context.reject_incompatible_versions
+            && protocol_version != context.chain_info.protocol_version
+        {
+            if let Some(threshold) = context.tarpit_version_threshold {
+                if protocol_version <= threshold {
+                    let mut rng = crate::new_rng();
+
+                    if rng.gen_bool(context.tarpit_chance as f64) {
+                        // If tarpitting is enabled, we hold open the connection for a specific
+                        // amount of time, to reduce load on other nodes and keep them from
+                        // reconnecting.
+                        info!(duration=?context.tarpit_duration, "randomly tarpitting node");
+                        tokio::time::sleep(Duration::from(context.tarpit_duration)).await;
+                    } else {
+                        debug!(p = context.tarpit_chance, "randomly not tarpitting node");
+                    }
+                }
+            }
+            return Err(ConnectionError::IncompatibleVersion(protocol_version));
         }
 
         let peer_consensus_public_key = consensus_certificate
@@ -467,6 +503,13 @@ where
                             msg.payload_incoming_resource_estimate(&context.payload_weights),
                         )
                         .await;
+
+                    let queue_kind = if msg.is_low_priority() {
+                        QueueKind::NetworkLowPriority
+                    } else {
+                        QueueKind::NetworkIncoming
+                    };
+
                     context
                         .event_queue
                         .schedule(
@@ -475,7 +518,7 @@ where
                                 msg: Box::new(msg),
                                 span: span.clone(),
                             },
-                            QueueKind::NetworkIncoming,
+                            queue_kind,
                         )
                         .await;
                 }

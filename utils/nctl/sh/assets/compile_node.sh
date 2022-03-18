@@ -13,9 +13,9 @@ source "$NCTL"/sh/utils/main.sh
 pushd "$NCTL_CASPER_HOME" || exit
 
 if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
-    cargo build --package casper-node --features casper-mainnet
+    cargo build --package casper-node
 else
-    cargo build --release --package casper-node --features casper-mainnet
+    cargo build --release --package casper-node
 fi
 
 popd || exit

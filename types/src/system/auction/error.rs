@@ -275,6 +275,10 @@ pub enum Error {
     RuntimeStackOverflow = 41,
     /// An error that is raised when there is an error in the mint contract that cannot
     /// be mapped to a specific auction error.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(42, Error::MintError as u8);
+    /// ```
     MintError = 42,
     /// The validator has exceeded the maximum amount of delegators allowed.
     /// ```

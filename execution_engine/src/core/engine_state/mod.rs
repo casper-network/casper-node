@@ -1,5 +1,6 @@
 //!  This module contains all the execution related code.
 pub mod balance;
+pub mod chainspec_registry;
 pub mod deploy_item;
 pub mod engine_config;
 pub mod era_validators;
@@ -14,6 +15,7 @@ pub mod op;
 pub mod query;
 pub mod run_genesis_request;
 pub mod step;
+pub mod system_contract_registry;
 mod transfer;
 pub mod upgrade;
 
@@ -32,25 +34,26 @@ use tracing::{debug, error, warn};
 use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
-    bytesrepr::{ToBytes, U8_SERIALIZED_LENGTH},
+    bytesrepr::{Bytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::NamedKeys,
     system::{
         auction::{
-            self, EraValidators, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS,
-            ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY,
-            LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY,
-            VALIDATOR_SLOTS_KEY,
+            self, EraValidators, UnbondingPurse, ARG_ERA_END_TIMESTAMP_MILLIS,
+            ARG_EVICTED_VALIDATORS, ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS,
+            AUCTION_DELAY_KEY, ERA_ID_KEY, LOCKED_FUNDS_PERIOD_KEY,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
         handle_payment,
         mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, ApiError, BlockTime, CLValue, ContractHash, DeployHash, DeployInfo, Gas, Key,
-    KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
+    AccessRights, ApiError, BlockTime, CLValue, ContractHash, DeployHash, DeployInfo, EraId, Gas,
+    Key, KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
 };
 
 pub use self::{
     balance::{BalanceRequest, BalanceResult},
+    chainspec_registry::ChainspecRegistry,
     deploy_item::DeployItem,
     engine_config::{EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT},
     era_validators::{GetEraValidatorsError, GetEraValidatorsRequest},
@@ -58,11 +61,13 @@ pub use self::{
     executable_deploy_item::{ExecutableDeployItem, ExecutableDeployItemIdentifier},
     execute_request::ExecuteRequest,
     execution::Error as ExecError,
-    execution_result::{ExecutionResult, ExecutionResults, ForcedTransferResult},
-    genesis::{ExecConfig, GenesisAccount, GenesisSuccess, SystemContractRegistry},
+    execution_result::{ExecutionResult, ForcedTransferResult},
+    genesis::{ExecConfig, GenesisAccount, GenesisConfig, GenesisSuccess},
     get_bids::{GetBidsRequest, GetBidsResult},
     query::{QueryRequest, QueryResult},
+    run_genesis_request::RunGenesisRequest,
     step::{RewardItem, SlashItem, StepError, StepRequest, StepSuccess},
+    system_contract_registry::SystemContractRegistry,
     transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
     upgrade::{UpgradeConfig, UpgradeSuccess},
 };
@@ -70,7 +75,7 @@ use crate::{
     core::{
         engine_state::{
             executable_deploy_item::ExecutionKind,
-            execution_result::ExecutionResultBuilder,
+            execution_result::{ExecutionResultBuilder, ExecutionResults},
             genesis::GenesisInstaller,
             upgrade::{ProtocolUpgradeError, SystemUpgrader},
         },
@@ -80,8 +85,10 @@ use crate::{
     },
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
     storage::{
-        global_state::{lmdb::LmdbGlobalState, StateProvider},
-        trie::Trie,
+        global_state::{
+            lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
+        },
+        trie::{TrieOrChunk, TrieOrChunkId},
     },
 };
 
@@ -109,6 +116,13 @@ pub struct EngineState<S> {
     state: S,
 }
 
+impl EngineState<ScratchGlobalState> {
+    /// Returns the inner state
+    pub fn into_inner(self) -> ScratchGlobalState {
+        self.state
+    }
+}
+
 impl EngineState<LmdbGlobalState> {
     /// Flushes the LMDB environment to disk when manual sync is enabled in the config.toml.
     pub fn flush_environment(&self) -> Result<(), lmdb::Error> {
@@ -117,11 +131,31 @@ impl EngineState<LmdbGlobalState> {
         }
         Ok(())
     }
+
+    /// Provide a local cached-only version of engine-state.
+    pub fn get_scratch_engine_state(&self) -> EngineState<ScratchGlobalState> {
+        EngineState {
+            config: self.config,
+            state: self.state.create_scratch(),
+        }
+    }
+
+    /// Writes state cached in an EngineState<ScratchEngineState> to LMDB.
+    pub fn write_scratch_to_lmdb(
+        &self,
+        state_root_hash: Digest,
+        scratch_global_state: ScratchGlobalState,
+    ) -> Result<Digest, Error> {
+        let stored_values = scratch_global_state.into_inner();
+        self.state
+            .put_stored_values(CorrelationId::new(), state_root_hash, stored_values)
+            .map_err(Into::into)
+    }
 }
 
 impl<S> EngineState<S>
 where
-    S: StateProvider,
+    S: StateProvider + CommitProvider,
     S::Error: Into<execution::Error>,
 {
     /// Creates new engine state.
@@ -156,6 +190,7 @@ where
         genesis_config_hash: Digest,
         protocol_version: ProtocolVersion,
         ee_config: &ExecConfig,
+        chainspec_registry: ChainspecRegistry,
     ) -> Result<GenesisSuccess, Error> {
         // Preliminaries
         let initial_root_hash = self.state.empty_root();
@@ -177,7 +212,7 @@ where
             tracking_copy,
         );
 
-        genesis_installer.install()?;
+        genesis_installer.install(chainspec_registry)?;
 
         // Commit the transforms.
         let execution_effect = genesis_installer.finalize();
@@ -278,6 +313,17 @@ where
             error!("Missing system handle payment contract hash");
             Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
         })?;
+
+        // Write the chainspec registry to global state
+        let cl_value_chainspec_registry =
+            CLValue::from_t(upgrade_config.chainspec_registry().clone())
+                .map_err(|error| Error::Bytesrepr(error.to_string()))?;
+
+        tracking_copy.borrow_mut().write(
+            Key::ChainspecRegistry,
+            StoredValue::CLValue(cl_value_chainspec_registry),
+            self.config.max_stored_value_size(),
+        );
 
         // Cycle through the system contracts and update
         // their metadata if there is a change in entry points.
@@ -406,6 +452,82 @@ where
                 warn!(%key, serialized_length=%value.serialized_length(), "wrote an upgrade config value which is too large");
             }
             tracking_copy.borrow_mut().force_write(*key, value.clone());
+        }
+
+        // This is a one time data transformation which will be removed
+        // in a following upgrade.
+        // TODO: CRef={https://github.com/casper-network/casper-node/issues/2479}
+        {
+            let withdraw_keys = tracking_copy
+                .borrow_mut()
+                .get_keys(correlation_id, &KeyTag::Withdraw)
+                .map_err(|_| Error::FailedToGetWithdrawKeys)?;
+
+            let (unbonding_delay, current_era_id) = {
+                let auction_contract = tracking_copy
+                    .borrow_mut()
+                    .get_contract(correlation_id, *auction_hash)?;
+
+                let unbonding_delay_key = auction_contract.named_keys()[UNBONDING_DELAY_KEY];
+                let delay = tracking_copy
+                    .borrow_mut()
+                    .read(correlation_id, &unbonding_delay_key)
+                    .map_err(|error| error.into())?
+                    .ok_or(Error::FailedToRetrieveUnbondingDelay)?
+                    .as_cl_value()
+                    .ok_or_else(|| Error::Bytesrepr("unbonding_delay".to_string()))?
+                    .clone()
+                    .into_t::<u64>()
+                    .map_err(execution::Error::from)?;
+
+                let era_id_key = auction_contract.named_keys()[ERA_ID_KEY];
+
+                let era_id = tracking_copy
+                    .borrow_mut()
+                    .read(correlation_id, &era_id_key)
+                    .map_err(|error| error.into())?
+                    .ok_or(Error::FailedToRetrieveEraId)?
+                    .as_cl_value()
+                    .ok_or_else(|| Error::Bytesrepr("era_id".to_string()))?
+                    .clone()
+                    .into_t::<EraId>()
+                    .map_err(execution::Error::from)?;
+
+                (delay, era_id)
+            };
+
+            for key in withdraw_keys {
+                // Transform only those withdraw purses that are still to be
+                // processed in the unbonding queue.
+                let withdraw_purses = tracking_copy
+                    .borrow_mut()
+                    .read(correlation_id, &key)
+                    .map_err(|_| Error::FailedToGetWithdrawKeys)?
+                    .ok_or(Error::FailedToGetStoredWithdraws)?
+                    .as_withdraw()
+                    .ok_or(Error::FailedToGetWithdrawPurses)?
+                    .to_owned();
+
+                let unbonding_purses: Vec<UnbondingPurse> = withdraw_purses
+                    .into_iter()
+                    .filter_map(|purse| {
+                        if purse.era_of_creation() + unbonding_delay >= current_era_id {
+                            return Some(UnbondingPurse::from(purse));
+                        }
+                        None
+                    })
+                    .collect();
+
+                let unbonding_key = key
+                    .withdraw_to_unbond()
+                    .ok_or_else(|| Error::Bytesrepr("unbond".to_string()))?;
+
+                let _ = tracking_copy.borrow_mut().write(
+                    unbonding_key,
+                    StoredValue::Unbonding(unbonding_purses),
+                    self.config.max_stored_value_size(),
+                );
+            }
         }
 
         let execution_effect = tracking_copy.borrow().effect();
@@ -587,7 +709,7 @@ where
 
         let base_key = Key::Account(deploy_item.address);
 
-        let account_public_key = match base_key.into_account() {
+        let account_hash = match base_key.into_account() {
             Some(account_addr) => account_addr,
             None => {
                 return Ok(ExecutionResult::precondition_failure(
@@ -600,7 +722,7 @@ where
 
         let account = match self.get_authorized_account(
             correlation_id,
-            account_public_key,
+            account_hash,
             &authorization_keys,
             Rc::clone(&tracking_copy),
         ) {
@@ -1610,39 +1732,46 @@ where
         correlation_id: CorrelationId,
         pre_state_hash: Digest,
         effects: AdditiveMap<Key, Transform>,
-    ) -> Result<Digest, Error>
-    where
-        Error: From<S::Error>,
-    {
+    ) -> Result<Digest, Error> {
         self.state
             .commit(correlation_id, pre_state_hash, effects)
-            .map_err(Error::from)
+            .map_err(|err| Error::Exec(err.into()))
     }
 
-    /// Gets a trie object for given state root hash.
+    /// Gets a trie (or chunk) object for given state root hash.
     pub fn get_trie(
         &self,
         correlation_id: CorrelationId,
-        trie_key: Digest,
-    ) -> Result<Option<Trie<Key, StoredValue>>, Error>
+        trie_or_chunk_id: TrieOrChunkId,
+    ) -> Result<Option<TrieOrChunk>, Error>
     where
         Error: From<S::Error>,
     {
-        self.state
-            .get_trie(correlation_id, &trie_key)
-            .map_err(Error::from)
+        Ok(self.state.get_trie(correlation_id, trie_or_chunk_id)?)
+    }
+
+    /// Gets a trie object for given state root hash.
+    pub fn get_trie_full(
+        &self,
+        correlation_id: CorrelationId,
+        trie_key: Digest,
+    ) -> Result<Option<Bytes>, Error>
+    where
+        Error: From<S::Error>,
+    {
+        Ok(self.state.get_trie_full(correlation_id, &trie_key)?)
     }
 
     /// Puts a trie and finds missing descendant trie keys.
     pub fn put_trie_and_find_missing_descendant_trie_keys(
         &self,
         correlation_id: CorrelationId,
-        trie: &Trie<Key, StoredValue>,
+        trie_bytes: &[u8],
     ) -> Result<Vec<Digest>, Error>
     where
         Error: From<S::Error>,
     {
-        let inserted_trie_key = self.state.put_trie(correlation_id, trie)?;
+        let inserted_trie_key = self.state.put_trie(correlation_id, trie_bytes)?;
         let missing_descendant_trie_keys = self
             .state
             .missing_trie_keys(correlation_id, vec![inserted_trie_key])?;

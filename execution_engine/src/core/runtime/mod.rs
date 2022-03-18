@@ -5,7 +5,6 @@ mod externals;
 mod handle_payment_internal;
 mod host_function_flag;
 mod mint_internal;
-mod scoped_instrumenter;
 pub mod stack;
 mod standard_payment_internal;
 mod utils;
@@ -13,7 +12,8 @@ mod utils;
 use std::{
     cmp,
     collections::{BTreeMap, BTreeSet},
-    convert::TryFrom,
+    convert::{TryFrom, TryInto},
+    iter::FromIterator,
 };
 
 use parity_wasm::elements::Module;
@@ -46,8 +46,9 @@ use crate::{
     core::{
         engine_state::EngineConfig,
         execution::{self, Error},
-        runtime::{host_function_flag::HostFunctionFlag, scoped_instrumenter::ScopedInstrumenter},
+        runtime::host_function_flag::HostFunctionFlag,
         runtime_context::{self, RuntimeContext},
+        tracking_copy::TrackingCopyExt,
     },
     shared::{
         host_function_costs::{Cost, HostFunction},
@@ -240,7 +241,8 @@ where
         }
     }
 
-    fn is_valid_uref(&mut self, uref_ptr: u32, uref_size: u32) -> Result<bool, Trap> {
+    #[allow(clippy::wrong_self_convention)]
+    fn is_valid_uref(&self, uref_ptr: u32, uref_size: u32) -> Result<bool, Trap> {
         let bytes = self.bytes_from_mem(uref_ptr, uref_size as usize)?;
         let uref: URef = bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?;
         Ok(self.context.validate_uref(&uref).is_ok())
@@ -278,8 +280,11 @@ where
             return Err(Error::Interpreter(error.into()).into());
         }
 
-        // For all practical purposes following cast is assumed to be safe
-        let bytes_size = key_bytes.len() as u32;
+        // SAFETY: For all practical purposes following conversion is assumed to be safe
+        let bytes_size: u32 = key_bytes
+            .len()
+            .try_into()
+            .expect("Keys should not serialize to many bytes");
         let size_bytes = bytes_size.to_le_bytes(); // Wasm is little-endian
         if let Err(error) = self.try_get_memory()?.set(bytes_written_ptr, &size_bytes) {
             return Err(Error::Interpreter(error.into()).into());
@@ -355,6 +360,10 @@ where
     /// Checks if immediate caller is of session type of the same account as the provided account
     /// hash.
     fn is_allowed_session_caller(&self, provided_account_hash: &AccountHash) -> bool {
+        if self.context.get_caller() == PublicKey::System.to_account_hash() {
+            return true;
+        }
+
         if let Some(CallStackElement::Session { account_hash }) = self.get_immediate_caller() {
             return account_hash == provided_account_hash;
         }
@@ -398,7 +407,10 @@ where
             Ok(stack) => stack.call_stack_elements(),
             Err(_error) => return Ok(Err(ApiError::Unhandled)),
         };
-        let call_stack_len = call_stack.len() as u32;
+        let call_stack_len: u32 = match call_stack.len().try_into() {
+            Ok(value) => value,
+            Err(_) => return Ok(Err(ApiError::OutOfMemory)),
+        };
         let call_stack_len_bytes = call_stack_len.to_le_bytes();
 
         if let Err(error) = self
@@ -414,7 +426,12 @@ where
 
         let call_stack_cl_value = CLValue::from_t(call_stack.clone()).map_err(Error::CLValue)?;
 
-        let call_stack_cl_value_bytes_len = call_stack_cl_value.inner_bytes().len() as u32;
+        let call_stack_cl_value_bytes_len: u32 =
+            match call_stack_cl_value.inner_bytes().len().try_into() {
+                Ok(value) => value,
+                Err(_) => return Ok(Err(ApiError::OutOfMemory)),
+            };
+
         if let Err(error) = self.write_host_buffer(call_stack_cl_value) {
             return Ok(Err(error));
         }
@@ -433,13 +450,7 @@ where
 
     /// Return some bytes from the memory and terminate the current `sub_call`. Note that the return
     /// type is `Trap`, indicating that this function will always kill the current Wasm instance.
-    fn ret(
-        &mut self,
-        value_ptr: u32,
-        value_size: usize,
-        scoped_instrumenter: &mut ScopedInstrumenter,
-    ) -> Trap {
-        const UREF_COUNT: &str = "uref_count";
+    fn ret(&mut self, value_ptr: u32, value_size: usize) -> Trap {
         self.host_buffer = None;
         let memory = match self.try_get_memory() {
             Ok(memory) => memory,
@@ -460,7 +471,6 @@ where
                 };
                 match urefs {
                     Ok(urefs) => {
-                        scoped_instrumenter.add_property(UREF_COUNT, urefs.len());
                         for uref in &urefs {
                             if let Err(error) = self.context.validate_uref(uref) {
                                 return Trap::from(error);
@@ -468,16 +478,10 @@ where
                         }
                         Error::Ret(urefs).into()
                     }
-                    Err(e) => {
-                        scoped_instrumenter.add_property(UREF_COUNT, 0);
-                        e.into()
-                    }
+                    Err(e) => e.into(),
                 }
             }
-            Err(e) => {
-                scoped_instrumenter.add_property(UREF_COUNT, 0);
-                e.into()
-            }
+            Err(e) => e.into(),
         }
     }
 
@@ -566,18 +570,25 @@ where
     fn call_host_mint(
         &mut self,
         entry_point_name: &str,
-        named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         access_rights: ContextAccessRights,
         stack: RuntimeStack,
     ) -> Result<CLValue, Error> {
         let gas_counter = self.gas_counter();
 
-        let base_key = self.context.get_system_contract(MINT)?.into();
+        let mint_hash = self.context.get_system_contract(MINT)?;
+        let base_key = Key::from(mint_hash);
+        let mint_contract = self
+            .context
+            .state()
+            .borrow_mut()
+            .get_contract(self.context.correlation_id(), mint_hash)?;
+        let mut named_keys = mint_contract.named_keys().to_owned();
+
         let runtime_context = self.context.new_from_self(
             base_key,
             EntryPointType::Contract,
-            named_keys,
+            &mut named_keys,
             access_rights,
             runtime_args.to_owned(),
         );
@@ -688,18 +699,25 @@ where
     fn call_host_handle_payment(
         &mut self,
         entry_point_name: &str,
-        named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         access_rights: ContextAccessRights,
         stack: RuntimeStack,
     ) -> Result<CLValue, Error> {
         let gas_counter = self.gas_counter();
 
-        let base_key = self.context.get_system_contract(HANDLE_PAYMENT)?.into();
+        let handle_payment_hash = self.context.get_system_contract(HANDLE_PAYMENT)?;
+        let base_key = Key::from(handle_payment_hash);
+        let handle_payment_contract = self
+            .context
+            .state()
+            .borrow_mut()
+            .get_contract(self.context.correlation_id(), handle_payment_hash)?;
+        let mut named_keys = handle_payment_contract.named_keys().to_owned();
+
         let runtime_context = self.context.new_from_self(
             base_key,
             EntryPointType::Contract,
-            named_keys,
+            &mut named_keys,
             access_rights,
             runtime_args.to_owned(),
         );
@@ -780,18 +798,25 @@ where
     fn call_host_auction(
         &mut self,
         entry_point_name: &str,
-        named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         access_rights: ContextAccessRights,
         stack: RuntimeStack,
     ) -> Result<CLValue, Error> {
         let gas_counter = self.gas_counter();
 
-        let base_key = self.context.get_system_contract(AUCTION)?.into();
+        let auction_hash = self.context.get_system_contract(AUCTION)?;
+        let base_key = Key::from(auction_hash);
+        let auction_contract = self
+            .context
+            .state()
+            .borrow_mut()
+            .get_contract(self.context.correlation_id(), auction_hash)?;
+        let mut named_keys = auction_contract.named_keys().to_owned();
+
         let runtime_context = self.context.new_from_self(
             base_key,
             EntryPointType::Contract,
-            named_keys,
+            &mut named_keys,
             access_rights,
             runtime_args.to_owned(),
         );
@@ -869,6 +894,30 @@ where
 
                 let result = runtime
                     .undelegate(delegator, validator, amount)
+                    .map_err(Self::reverter)?;
+
+                CLValue::from_t(result).map_err(Self::reverter)
+            })(),
+
+            auction::METHOD_REDELEGATE => (|| {
+                runtime.charge_system_contract_call(auction_costs.undelegate)?;
+
+                let delegator = Self::get_named_argument(runtime_args, auction::ARG_DELEGATOR)?;
+                let validator = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
+                let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
+                let new_validator =
+                    Self::get_named_argument(runtime_args, auction::ARG_NEW_VALIDATOR)?;
+
+                let minimum_delegation_amount = self.config.minimum_delegation_amount();
+
+                let result = runtime
+                    .redelegate(
+                        delegator,
+                        validator,
+                        amount,
+                        new_validator,
+                        minimum_delegation_amount,
+                    )
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)
@@ -1277,29 +1326,16 @@ where
         access_rights.extend(&extended_access_rights);
 
         if self.is_mint(context_key) {
-            return self.call_host_mint(
-                entry_point.name(),
-                &mut named_keys,
-                &context_args,
-                access_rights,
-                stack,
-            );
+            return self.call_host_mint(entry_point.name(), &context_args, access_rights, stack);
         } else if self.is_handle_payment(context_key) {
             return self.call_host_handle_payment(
                 entry_point.name(),
-                &mut named_keys,
                 &context_args,
                 access_rights,
                 stack,
             );
         } else if self.is_auction(context_key) {
-            return self.call_host_auction(
-                entry_point.name(),
-                &mut named_keys,
-                &context_args,
-                access_rights,
-                stack,
-            );
+            return self.call_host_auction(entry_point.name(), &context_args, access_rights, stack);
         }
 
         let module: Module = {
@@ -1397,16 +1433,13 @@ where
         entry_point_name: &str,
         args_bytes: Vec<u8>,
         result_size_ptr: u32,
-        scoped_instrumenter: &mut ScopedInstrumenter,
     ) -> Result<Result<(), ApiError>, Error> {
         // Exit early if the host buffer is already occupied
         if let Err(err) = self.check_host_buffer() {
             return Ok(Err(err));
         }
         let args: RuntimeArgs = bytesrepr::deserialize(args_bytes)?;
-        scoped_instrumenter.pause();
         let result = self.call_contract(contract_hash, entry_point_name, args)?;
-        scoped_instrumenter.unpause();
         self.manage_call_contract_host_buffer(result_size_ptr, result)
     }
 
@@ -1417,21 +1450,18 @@ where
         entry_point_name: String,
         args_bytes: Vec<u8>,
         result_size_ptr: u32,
-        scoped_instrumenter: &mut ScopedInstrumenter,
     ) -> Result<Result<(), ApiError>, Error> {
         // Exit early if the host buffer is already occupied
         if let Err(err) = self.check_host_buffer() {
             return Ok(Err(err));
         }
         let args: RuntimeArgs = bytesrepr::deserialize(args_bytes)?;
-        scoped_instrumenter.pause();
         let result = self.call_versioned_contract(
             contract_package_hash,
             contract_version,
             entry_point_name,
             args,
         )?;
-        scoped_instrumenter.unpause();
         self.manage_call_contract_host_buffer(result_size_ptr, result)
     }
 
@@ -1448,7 +1478,10 @@ where
         result_size_ptr: u32,
         result: CLValue,
     ) -> Result<Result<(), ApiError>, Error> {
-        let result_size = result.inner_bytes().len() as u32; // considered to be safe
+        let result_size: u32 = match result.inner_bytes().len().try_into() {
+            Ok(value) => value,
+            Err(_) => return Ok(Err(ApiError::OutOfMemory)),
+        };
 
         // leave the host buffer set to `None` if there's nothing to write there
         if result_size != 0 {
@@ -1472,23 +1505,17 @@ where
         &mut self,
         total_keys_ptr: u32,
         result_size_ptr: u32,
-        scoped_instrumenter: &mut ScopedInstrumenter,
     ) -> Result<Result<(), ApiError>, Trap> {
-        scoped_instrumenter.add_property(
-            "names_total_length",
-            self.context
-                .named_keys()
-                .keys()
-                .map(|name| name.len())
-                .sum::<usize>(),
-        );
-
         if !self.can_write_to_host_buffer() {
             // Exit early if the host buffer is already occupied
             return Ok(Err(ApiError::HostBufferFull));
         }
 
-        let total_keys = self.context.named_keys().len() as u32;
+        let total_keys: u32 = match self.context.named_keys().len().try_into() {
+            Ok(value) => value,
+            Err(_) => return Ok(Err(ApiError::OutOfMemory)),
+        };
+
         let total_keys_bytes = total_keys.to_le_bytes();
         if let Err(error) = self
             .try_get_memory()?
@@ -1505,7 +1532,11 @@ where
         let named_keys =
             CLValue::from_t(self.context.named_keys().clone()).map_err(Error::CLValue)?;
 
-        let length = named_keys.inner_bytes().len() as u32;
+        let length: u32 = match named_keys.inner_bytes().len().try_into() {
+            Ok(value) => value,
+            Err(_) => return Ok(Err(ApiError::BufferTooSmall)),
+        };
+
         if let Err(error) = self.write_host_buffer(named_keys) {
             return Ok(Err(error));
         }
@@ -1698,8 +1729,11 @@ where
                 return Err(Error::Interpreter(error.into()));
             }
 
-            // Following cast is assumed to be safe
-            let bytes_size = key_bytes.len() as u32;
+            // SAFETY: For all practical purposes following conversion is assumed to be safe
+            let bytes_size: u32 = key_bytes
+                .len()
+                .try_into()
+                .expect("Serialized value should fit within the limit");
             let size_bytes = bytes_size.to_le_bytes(); // Wasm is little-endian
             if let Err(error) = self.try_get_memory()?.set(bytes_written_ptr, &size_bytes) {
                 return Err(Error::Interpreter(error.into()));
@@ -1860,7 +1894,11 @@ where
             None => return Ok(Err(ApiError::ValueNotFound)),
         };
 
-        let value_size = cl_value.inner_bytes().len() as u32;
+        let value_size: u32 = match cl_value.inner_bytes().len().try_into() {
+            Ok(value) => value,
+            Err(_) => return Ok(Err(ApiError::BufferTooSmall)),
+        };
+
         if let Err(error) = self.write_host_buffer(cl_value) {
             return Ok(Err(error));
         }
@@ -2409,7 +2447,11 @@ where
             return Err(Error::Interpreter(error.into()));
         }
 
-        let bytes_written = sliced_buf.len() as u32;
+        // Never panics because we check that `serialized_value.len()` fits in `u32`.
+        let bytes_written: u32 = sliced_buf
+            .len()
+            .try_into()
+            .expect("Size of buffer should fit within limit");
         let bytes_written_data = bytes_written.to_le_bytes();
 
         if let Err(error) = self
@@ -2438,11 +2480,17 @@ where
         let name_bytes = self.bytes_from_mem(name_ptr, name_size)?;
         let name = String::from_utf8_lossy(&name_bytes);
 
-        let arg_size = match self.context.args().get(&name) {
+        let arg_size: u32 = match self.context.args().get(&name) {
             Some(arg) if arg.inner_bytes().len() > u32::max_value() as usize => {
                 return Ok(Err(ApiError::OutOfMemory));
             }
-            Some(arg) => arg.inner_bytes().len() as u32,
+            Some(arg) => {
+                // SAFETY: Safe to unwrap as we asserted length above
+                arg.inner_bytes()
+                    .len()
+                    .try_into()
+                    .expect("Should fit within the range")
+            }
             None => return Ok(Err(ApiError::MissingArgument)),
         };
 
@@ -2728,7 +2776,11 @@ where
             None => return Ok(Err(ApiError::ValueNotFound)),
         };
 
-        let value_size = cl_value.inner_bytes().len() as u32;
+        let value_size: u32 = match cl_value.inner_bytes().len().try_into() {
+            Ok(value) => value,
+            Err(_) => return Ok(Err(ApiError::BufferTooSmall)),
+        };
+
         if let Err(error) = self.write_host_buffer(cl_value) {
             return Ok(Err(error));
         }
@@ -2795,5 +2847,51 @@ where
                 Ok(self.context.is_system_contract(contract_hash)?)
             }
         }
+    }
+
+    fn load_authorization_keys(
+        &mut self,
+        len_ptr: u32,
+        result_size_ptr: u32,
+    ) -> Result<Result<(), ApiError>, Trap> {
+        if !self.can_write_to_host_buffer() {
+            // Exit early if the host buffer is already occupied
+            return Ok(Err(ApiError::HostBufferFull));
+        }
+
+        // A set of keys is converted into a vector so it can be written to a host buffer
+        let authorization_keys =
+            Vec::from_iter(self.context.authorization_keys().clone().into_iter());
+
+        let total_keys: u32 = match authorization_keys.len().try_into() {
+            Ok(value) => value,
+            Err(_) => return Ok(Err(ApiError::OutOfMemory)),
+        };
+        let total_keys_bytes = total_keys.to_le_bytes();
+        if let Err(error) = self.try_get_memory()?.set(len_ptr, &total_keys_bytes) {
+            return Err(Error::Interpreter(error.into()).into());
+        }
+
+        if total_keys == 0 {
+            // No need to do anything else, we leave host buffer empty.
+            return Ok(Ok(()));
+        }
+
+        let authorization_keys = CLValue::from_t(authorization_keys).map_err(Error::CLValue)?;
+
+        let length: u32 = match authorization_keys.inner_bytes().len().try_into() {
+            Ok(value) => value,
+            Err(_) => return Ok(Err(ApiError::OutOfMemory)),
+        };
+        if let Err(error) = self.write_host_buffer(authorization_keys) {
+            return Ok(Err(error));
+        }
+
+        let length_bytes = length.to_le_bytes();
+        if let Err(error) = self.try_get_memory()?.set(result_size_ptr, &length_bytes) {
+            return Err(Error::Interpreter(error.into()).into());
+        }
+
+        Ok(Ok(()))
     }
 }

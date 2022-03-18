@@ -13,8 +13,43 @@ All notable changes to this project will be documented in this file.  The format
 ## [Unreleased]
 
 ### Added
+* Introduce fast-syncing to join the network, avoiding the need to execute every block to catch up.
+* Add `max_parallel_deploy_fetches` and `max_parallel_trie_fetches` config options to the `[node]` section to control how many requests are made in parallel while syncing.
+* Add `retry_interval` to `[node]` config section to control the delay between retry attempts while syncing.
+* Add `sync_to_genesis` to `[node]` config section, along with syncing to genesis capabilities.
+* Add new event to the main SSE server stream across all endpoints `<IP:PORT>/events/*` which emits a shutdown event when the node shuts down.
+* Add `SIGUSR2` signal handling to dump the queue in JSON format (see "Changed" section for `SIGUSR1`).
+* A diagnostic port can now be enabled via the `[diagnostics_port]` section in the configuration file. See the `README.md` for details.
+* Add capabilities for known nodes to slow down the reconnection process of outdated legacy nodes still out on the internet.
+* Add `strict_argument_checking` to the chainspec to enable strict args checking when executing a contract; i.e. that all non-optional args are provided and of the correct `CLType`.
+* Add `verifiable_chunked_hash_activation` to the chainspec to specify the first era in which the new Merkle tree-based hashing scheme is used.
+* In addition to `consensus` and `deploy_requests`, the following values can now be controlled via the `[network.estimator_weights]` section in config: `gossip`, `finality_signatures`, `deploy_responses`, `block_requests`, `block_responses`, `trie_requests` and `trie_responses`.
+* Nodes will now also gossip deploys onwards while joining.
+* Add run-mode field to the `/status` endpoint and the `info_get_status` JSON-RPC.
+* Add new REST `/chainspec` and JSON-RPC `info_get_chainspec` endpoints that return the raw bytes of the `chainspec.toml`, `accounts.toml` and `global_state.toml` files as read at node startup.
 
-* Add a chainspec setting `strict_argument_checking` to enable strict args checking when executing a contract; i.e. that all non-optional args are provided and of the correct `CLType`.
+### Changed
+* Detection of a crash no longer triggers DB integrity checks to run on node start; the checks can be triggered manually instead.
+* `SIGUSR1` now only dumps the queue in the debug text format.
+* Incoming connections from peers are rejected if they are exceeding the default incoming connections per peer limit of 3.
+* Nodes no longer connect to nodes that do not speak the same protocol version by default.
+* Chain automatically creates a switch block immediately after genesis or an upgrade.
+* Connection handshake timeouts can now be configured via the `handshake_timeout` variable (they were hardcoded at 20 seconds before).
+* `Key::SystemContractRegistry` is now readable and can be queried via the RPC.
+* Requests for data from a peer are now de-prioritized over networking messages necessary for consensus and chain advancement.
+* JSON-RPC responses which fail to provide requested data will now also include an indication of that node's lowest contiguous block height, i.e. the block from which it holds all subsequent global state
+
+### Deprecated
+* Deprecate the `starting_state_root_hash` field from the REST and JSON-RPC status endpoints.
+
+### Removed
+* Legacy synchronization from genesis in favor of fast sync has been removed.
+* The `casper-mainnet` feature flag has been removed.
+* Integrity check has been removed.
+* Remove `verify_accounts` option from `config.toml`, meaning deploys received from clients always undergo account balance checks to assess suitability for execution or not.
+
+### Security
+* OpenSSL has been bumped to version 1.1.1.n, if compiling with vendored OpenSSL to address [CVE-2022-0778](https://www.openssl.org/news/secadv/20220315.txt).
 
 
 
@@ -44,9 +79,12 @@ All notable changes to this project will be documented in this file.  The format
 
 ## 1.4.3 - 2021-12-06
 
+### Added
+* Add new event to the main SSE server stream accessed via `<IP:Port>/events/main` which emits hashes of expired deploys.
+
 ### Changed
 * `enable_manual_sync` configuration parameter defaults to `true`.
-* Default behavior of LMDB changed to use [`NO_READAHEAD`](https://docs.rs/lmdb/0.8.0/lmdb/struct.EnvironmentFlags.html#associatedconstant.NO_READAHEAD)
+* Default behavior of LMDB changed to use [`NO_READAHEAD`](https://docs.rs/lmdb/0.8.0/lmdb/struct.EnvironmentFlags.html#associatedconstant.NO_READAHEAD).
 
 
 
@@ -63,11 +101,11 @@ All notable changes to this project will be documented in this file.  The format
 * The block proposer component now retains pending deploys and transfers across a restart.
 
 
+
 ## [1.4.0] - 2021-10-04
 
 ### Added
 * Add `enable_manual_sync` boolean option to `[contract_runtime]` in the config.toml which enables manual LMDB sync.
-* Add new event to the main SSE server stream accessed via `<IP:Port>/events/main` which emits hashes of expired deploys.
 * Add `contract_runtime_execute_block` histogram tracking execution time of a whole block.
 * Long-running events now log their event type.
 * Individual weights for traffic throttling can now be set through the configuration value `network.estimator_weights`.

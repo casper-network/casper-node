@@ -82,20 +82,31 @@ where
     /// by `AsymmetricType::to_hex()`.
     fn from_hex<A: AsRef<[u8]>>(input: A) -> Result<Self, Error> {
         if input.as_ref().len() < 2 {
-            return Err(Error::AsymmetricKey("too short".to_string()));
+            return Err(Error::AsymmetricKey(
+                "failed to decode from hex: too short".to_string(),
+            ));
         }
 
-        let (tag_bytes, key_bytes) = input.as_ref().split_at(2);
+        let (tag_hex, key_hex) = input.as_ref().split_at(2);
 
-        let tag = checksummed_hex::decode(&tag_bytes)?;
-        let key_bytes = checksummed_hex::decode(&key_bytes)?;
+        let tag = checksummed_hex::decode(&tag_hex)?;
+        let key_bytes = checksummed_hex::decode(&key_hex)?;
 
         match tag[0] {
+            SYSTEM_TAG => {
+                if key_bytes.is_empty() {
+                    Ok(Self::system())
+                } else {
+                    Err(Error::AsymmetricKey(
+                        "failed to decode from hex: invalid system variant".to_string(),
+                    ))
+                }
+            }
             ED25519_TAG => Self::ed25519_from_bytes(&key_bytes),
             SECP256K1_TAG => Self::secp256k1_from_bytes(&key_bytes),
             _ => Err(Error::AsymmetricKey(format!(
-                "invalid tag.  Expected {} or {}, got {}",
-                ED25519_TAG, SECP256K1_TAG, tag[0]
+                "failed to decode from hex: invalid tag.  Expected {}, {} or {}, got {}",
+                SYSTEM_TAG, ED25519_TAG, SECP256K1_TAG, tag[0]
             ))),
         }
     }
@@ -355,6 +366,21 @@ impl ToBytes for PublicKey {
                 PublicKey::Secp256k1(_) => Self::SECP256K1_LENGTH,
             }
     }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            PublicKey::System => writer.push(SYSTEM_TAG),
+            PublicKey::Ed25519(pk) => {
+                writer.push(ED25519_TAG);
+                writer.extend_from_slice(pk.as_bytes());
+            }
+            PublicKey::Secp256k1(pk) => {
+                writer.push(SECP256K1_TAG);
+                writer.extend_from_slice(&pk.to_bytes());
+            }
+        }
+        Ok(())
+    }
 }
 
 impl FromBytes for PublicKey {
@@ -591,6 +617,23 @@ impl ToBytes for Signature {
                 Signature::Ed25519(_) => Self::ED25519_LENGTH,
                 Signature::Secp256k1(_) => Self::SECP256K1_LENGTH,
             }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            Signature::System => {
+                writer.push(SYSTEM_TAG);
+            }
+            Signature::Ed25519(ed25519_signature) => {
+                writer.push(ED25519_TAG);
+                writer.extend(&ed25519_signature.to_bytes());
+            }
+            Signature::Secp256k1(signature) => {
+                writer.push(SECP256K1_TAG);
+                writer.extend_from_slice(signature.as_ref());
+            }
+        }
+        Ok(())
     }
 }
 

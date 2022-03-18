@@ -16,7 +16,7 @@ use thiserror::Error;
 use tracing::warn;
 
 use crate::{
-    components::{consensus::EraSupervisor, storage::Storage},
+    components::{consensus::EraSupervisor, contract_runtime::ContractRuntime, storage::Storage},
     effect::{announcements::ControlAnnouncement, EffectBuilder, EffectExt, Effects},
     reactor::{
         initializer::Reactor as InitializerReactor,
@@ -25,7 +25,7 @@ use crate::{
         wrap_effects, EventQueueHandle, QueueKind, Reactor, ReactorEvent, ReactorExit, Scheduler,
     },
     testing::network::NetworkedReactor,
-    types::{Chainspec, NodeId},
+    types::{Chainspec, ChainspecRawBytes, NodeId},
     utils::{self, WithDir, RESOURCES_PATH},
     NodeRng,
 };
@@ -66,6 +66,14 @@ pub(crate) enum MultiStageTestEvent {
 impl ReactorEvent for MultiStageTestEvent {
     fn as_control(&self) -> Option<&ControlAnnouncement> {
         if let Self::ControlAnnouncement(ref ctrl_ann) = self {
+            Some(ctrl_ann)
+        } else {
+            None
+        }
+    }
+
+    fn try_into_control(self) -> Option<ControlAnnouncement> {
+        if let Self::ControlAnnouncement(ctrl_ann) = self {
             Some(ctrl_ann)
         } else {
             None
@@ -120,7 +128,7 @@ pub(crate) enum MultiStageTestReactor {
 }
 
 impl MultiStageTestReactor {
-    pub(crate) fn consensus(&self) -> Option<&EraSupervisor<NodeId>> {
+    pub(crate) fn consensus(&self) -> Option<&EraSupervisor> {
         match self {
             MultiStageTestReactor::Deactivated => unreachable!(),
             MultiStageTestReactor::Initializer { .. }
@@ -155,6 +163,31 @@ impl MultiStageTestReactor {
             } => Some(participating_reactor.storage()),
         }
     }
+
+    pub(crate) fn contract_runtime(&self) -> Option<&ContractRuntime> {
+        match self {
+            MultiStageTestReactor::Deactivated => unreachable!(),
+            MultiStageTestReactor::Initializer {
+                initializer_reactor,
+                ..
+            } => Some(initializer_reactor.contract_runtime()),
+            MultiStageTestReactor::Joiner { joiner_reactor, .. } => {
+                Some(joiner_reactor.contract_runtime())
+            }
+            MultiStageTestReactor::JoinerFinalizing {
+                maybe_participating_init_config: None,
+                ..
+            } => None,
+            MultiStageTestReactor::JoinerFinalizing {
+                maybe_participating_init_config: Some(participating_init_config),
+                ..
+            } => Some(participating_init_config.contract_runtime()),
+            MultiStageTestReactor::Participating {
+                participating_reactor,
+                ..
+            } => Some(participating_reactor.contract_runtime()),
+        }
+    }
 }
 
 /// Long-running task that forwards events arriving on one scheduler to another.
@@ -172,6 +205,7 @@ where
 pub(crate) struct InitializerReactorConfigWithChainspec {
     config: <InitializerReactor as Reactor>::Config,
     chainspec: Arc<Chainspec>,
+    chainspec_raw_bytes: Arc<ChainspecRawBytes>,
 }
 
 impl Reactor for MultiStageTestReactor {
@@ -199,6 +233,7 @@ impl Reactor for MultiStageTestReactor {
             registry,
             initializer_event_queue_handle,
             initializer_reactor_config_with_chainspec.chainspec,
+            initializer_reactor_config_with_chainspec.chainspec_raw_bytes,
         )
         .map_err(MultiStageTestReactorError::CouldNotMakeInitializerReactor)?;
 
@@ -403,15 +438,13 @@ impl Reactor for MultiStageTestReactor {
                         warn!("when transitioning from joiner to participating, left {} effects unhandled", dropped_events_count)
                     }
 
-                    assert_eq!(
-                        joiner_event_queue_handle
-                            .event_queues_counts()
-                            .values()
-                            .sum::<usize>(),
-                        0,
-                        "before transitioning from joiner to participating, \
-                         there should be no unprocessed events"
-                    );
+                    let joiner_event_queue_length = joiner_event_queue_handle
+                        .event_queues_counts()
+                        .values()
+                        .sum::<usize>();
+                    if joiner_event_queue_length != 0 {
+                        warn!("before transitioning from joiner to participating, there should be no unprocessed events, left {} unprocessed events", joiner_event_queue_length)
+                    }
 
                     // `into_participating_config` is just waiting for networking sockets to shut
                     // down and will not stall on disabled event processing, so
@@ -512,8 +545,7 @@ impl Reactor for MultiStageTestReactor {
 }
 
 impl NetworkedReactor for MultiStageTestReactor {
-    type NodeId = NodeId;
-    fn node_id(&self) -> Self::NodeId {
+    fn node_id(&self) -> NodeId {
         match self {
             MultiStageTestReactor::Deactivated => unreachable!(),
             MultiStageTestReactor::Initializer {

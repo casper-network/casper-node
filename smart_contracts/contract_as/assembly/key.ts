@@ -44,6 +44,32 @@ export class AccountHash {
         return !this.equalsTo(other);
     }
 
+    @operator(">")
+    greaterThan(other: AccountHash): bool {
+        for (let i = 0; i < 32; i++) {
+            if (this.bytes[i] > other.bytes[i]) {
+                return true;
+            }
+            if (this.bytes[i] < other.bytes[i]) {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    @operator("<")
+    lowerThan(other: AccountHash): bool {
+        for (let i = 0; i < 32; i++) {
+            if (this.bytes[i] < other.bytes[i]) {
+                return true;
+            }
+            if (this.bytes[i] > other.bytes[i]) {
+                return false;
+            }
+        }
+        return false;
+    }
+
     static fromPublicKey(publicKey: PublicKey) : AccountHash {
         let algorithmName = publicKey.getAlgorithmName();
         let algorithmNameBytes = encodeUTF8(algorithmName);

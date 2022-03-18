@@ -189,6 +189,7 @@ function _step_07()
 {
     local NODE_ID
     local TRUSTED_HASH
+    local SLEEP_COUNT
 
     log_step_upgrades 7 "joining passive nodes"
 
@@ -218,7 +219,19 @@ function _step_07()
     done
 
     log "... ... awaiting new nodes to start"
-    sleep 60
+
+    while [ "$(get_count_of_up_nodes)" != '10' ]; do
+        sleep 1.0
+        SLEEP_COUNT=$((SLEEP_COUNT + 1))
+        log "NODE_COUNT_UP: $(get_count_of_up_nodes)"
+        log "Sleep time: $SLEEP_COUNT seconds"
+
+        if [ "$SLEEP_COUNT" -ge "60" ]; then
+            log "Timeout reached of 1 minute! Exiting ..."
+            exit 1
+        fi
+    done
+
     await_n_eras 1
     await_n_blocks 1
 }

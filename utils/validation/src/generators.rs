@@ -6,7 +6,7 @@ use std::{
 use casper_types::{
     account::{Account, AccountHash, ActionThresholds, AssociatedKeys, Weight},
     contracts::{ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys},
-    system::auction::{Bid, EraInfo, SeigniorageAllocation, UnbondingPurse},
+    system::auction::{Bid, EraInfo, SeigniorageAllocation, UnbondingPurse, WithdrawPurse},
     AccessRights, CLType, CLTyped, CLValue, Contract, ContractHash, ContractPackage,
     ContractPackageHash, ContractVersionKey, ContractWasm, ContractWasmHash, DeployHash,
     DeployInfo, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key,
@@ -108,12 +108,27 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         100,
         u64::MAX,
     );
+    let withdraw_purse_1 = WithdrawPurse::new(
+        URef::new([10; 32], AccessRights::READ),
+        PublicKey::from(&validator_secret_key),
+        PublicKey::from(&validator_secret_key),
+        EraId::new(41),
+        U512::from(60_000_000_000u64),
+    );
+    let withdraw_purse_2 = WithdrawPurse::new(
+        URef::new([11; 32], AccessRights::READ),
+        PublicKey::from(&validator_secret_key),
+        PublicKey::from(&delegator_secret_key),
+        EraId::new(42),
+        U512::from(50_000_000_000u64),
+    );
     let unbonding_purse_1 = UnbondingPurse::new(
         URef::new([10; 32], AccessRights::READ),
         PublicKey::from(&validator_secret_key),
         PublicKey::from(&validator_secret_key),
         EraId::new(41),
         U512::from(60_000_000_000u64),
+        None,
     );
     let unbonding_purse_2 = UnbondingPurse::new(
         URef::new([11; 32], AccessRights::READ),
@@ -121,6 +136,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         PublicKey::from(&delegator_secret_key),
         EraId::new(42),
         U512::from(50_000_000_000u64),
+        None,
     );
 
     let transform = {
@@ -372,6 +388,14 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         stored_value.insert(
             "Withdraw".to_string(),
             ABITestCase::from_inputs(vec![StoredValue::Withdraw(vec![
+                withdraw_purse_1,
+                withdraw_purse_2,
+            ])
+            .into()])?,
+        );
+        stored_value.insert(
+            "Unbonding".to_string(),
+            ABITestCase::from_inputs(vec![StoredValue::Unbonding(vec![
                 unbonding_purse_1,
                 unbonding_purse_2,
             ])

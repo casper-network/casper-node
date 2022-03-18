@@ -1,8 +1,9 @@
 use std::collections::BTreeSet;
 
 use casper_types::{
-    account::{self, AccountHash},
+    account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
+    crypto,
     system::{
         auction::{
             AccountProvider, Auction, Bid, EraInfo, Error, MintProvider, RuntimeProvider,
@@ -85,9 +86,9 @@ where
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
     }
 
-    fn read_withdraw(&mut self, account_hash: &AccountHash) -> Result<Vec<UnbondingPurse>, Error> {
-        match self.context.read_gs(&Key::Withdraw(*account_hash)) {
-            Ok(Some(StoredValue::Withdraw(unbonding_purses))) => Ok(unbonding_purses),
+    fn read_unbond(&mut self, account_hash: &AccountHash) -> Result<Vec<UnbondingPurse>, Error> {
+        match self.context.read_gs(&Key::Unbond(*account_hash)) {
+            Ok(Some(StoredValue::Unbonding(unbonding_purses))) => Ok(unbonding_purses),
             Ok(Some(_)) => Err(Error::Storage),
             Ok(None) => Ok(Vec::new()),
             Err(execution::Error::BytesRepr(_)) => Err(Error::Serialization),
@@ -98,15 +99,15 @@ where
         }
     }
 
-    fn write_withdraw(
+    fn write_unbond(
         &mut self,
         account_hash: AccountHash,
         unbonding_purses: Vec<UnbondingPurse>,
     ) -> Result<(), Error> {
         self.context
             .metered_write_gs_unsafe(
-                Key::Withdraw(account_hash),
-                StoredValue::Withdraw(unbonding_purses),
+                Key::Unbond(account_hash),
+                StoredValue::Unbonding(unbonding_purses),
             )
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
     }
@@ -139,7 +140,7 @@ where
     }
 
     fn blake2b<T: AsRef<[u8]>>(&self, data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
-        account::blake2b(data)
+        crypto::blake2b(data)
     }
 }
 
@@ -150,7 +151,7 @@ where
 {
     fn unbond(&mut self, unbonding_purse: &UnbondingPurse) -> Result<(), Error> {
         let account_hash =
-            AccountHash::from_public_key(unbonding_purse.unbonder_public_key(), account::blake2b);
+            AccountHash::from_public_key(unbonding_purse.unbonder_public_key(), crypto::blake2b);
         let maybe_value = self
             .context
             .read_gs_direct(&Key::Account(account_hash))

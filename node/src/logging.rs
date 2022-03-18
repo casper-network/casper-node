@@ -171,7 +171,7 @@ where
                 writer,
                 " {}{:<6}{}",
                 color.prefix(),
-                meta.level().to_string(),
+                meta.level(),
                 color.suffix()
             )?;
         } else {

@@ -200,6 +200,7 @@ impl Display for FromStrError {
 /// A (labelled) "user group". Each method of a versioned contract may be
 /// associated with one or more user groups which are allowed to call it.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Group(String);
 
@@ -229,6 +230,11 @@ impl ToBytes for Group {
     fn serialized_length(&self) -> usize {
         self.0.serialized_length()
     }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.value().write_bytes(writer)?;
+        Ok(())
+    }
 }
 
 impl FromBytes for Group {
@@ -248,6 +254,7 @@ pub type ProtocolVersionMajor = u32;
 
 /// Major element of `ProtocolVersion` combined with `ContractVersion`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ContractVersionKey(ProtocolVersionMajor, ContractVersion);
 
 impl ContractVersionKey {
@@ -290,6 +297,12 @@ impl ToBytes for ContractVersionKey {
 
     fn serialized_length(&self) -> usize {
         CONTRACT_VERSION_KEY_SERIALIZED_LENGTH
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.0.write_bytes(writer)?;
+        self.1.write_bytes(writer)?;
+        Ok(())
     }
 }
 
@@ -385,6 +398,12 @@ impl ToBytes for ContractHash {
     #[inline(always)]
     fn serialized_length(&self) -> usize {
         self.0.serialized_length()
+    }
+
+    #[inline(always)]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        writer.extend_from_slice(&self.0);
+        Ok(())
     }
 }
 
@@ -528,6 +547,12 @@ impl ToBytes for ContractPackageHash {
     fn serialized_length(&self) -> usize {
         self.0.serialized_length()
     }
+
+    #[inline(always)]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        writer.extend_from_slice(&self.0);
+        Ok(())
+    }
 }
 
 impl FromBytes for ContractPackageHash {
@@ -608,6 +633,7 @@ impl JsonSchema for ContractPackageHash {
 
 /// A enum to determine the lock status of the contract package.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub enum ContractPackageStatus {
     /// The package is locked and cannot be versioned.
     Locked,
@@ -648,6 +674,14 @@ impl ToBytes for ContractPackageStatus {
             ContractPackageStatus::Locked => true.serialized_length(),
         }
     }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            ContractPackageStatus::Locked => writer.push(u8::from(true)),
+            ContractPackageStatus::Unlocked => writer.push(u8::from(false)),
+        }
+        Ok(())
+    }
 }
 
 impl FromBytes for ContractPackageStatus {
@@ -660,6 +694,7 @@ impl FromBytes for ContractPackageStatus {
 
 /// Contract definition, metadata, and security container.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ContractPackage {
     /// Key used to add or disable versions
     access_key: URef,
@@ -853,13 +888,11 @@ impl ContractPackage {
 impl ToBytes for ContractPackage {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-
-        result.append(&mut self.access_key.to_bytes()?);
-        result.append(&mut self.versions.to_bytes()?);
-        result.append(&mut self.disabled_versions.to_bytes()?);
-        result.append(&mut self.groups.to_bytes()?);
-        result.append(&mut self.lock_status.to_bytes()?);
-
+        self.access_key().write_bytes(&mut result)?;
+        self.versions().write_bytes(&mut result)?;
+        self.disabled_versions().write_bytes(&mut result)?;
+        self.groups().write_bytes(&mut result)?;
+        self.lock_status.write_bytes(&mut result)?;
         Ok(result)
     }
 
@@ -869,6 +902,15 @@ impl ToBytes for ContractPackage {
             + self.disabled_versions.serialized_length()
             + self.groups.serialized_length()
             + self.lock_status.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.access_key().write_bytes(writer)?;
+        self.versions().write_bytes(writer)?;
+        self.disabled_versions().write_bytes(writer)?;
+        self.groups().write_bytes(writer)?;
+        self.lock_status.write_bytes(writer)?;
+        Ok(())
     }
 }
 
@@ -896,6 +938,7 @@ pub type EntryPointsMap = BTreeMap<String, EntryPoint>;
 
 /// Collection of named entry points
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct EntryPoints(EntryPointsMap);
 
 impl Default for EntryPoints {
@@ -913,6 +956,11 @@ impl ToBytes for EntryPoints {
     }
     fn serialized_length(&self) -> usize {
         self.0.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        (&self.0).write_bytes(writer)?;
+        Ok(())
     }
 }
 
@@ -953,6 +1001,16 @@ impl EntryPoints {
     pub fn take_entry_points(self) -> Vec<EntryPoint> {
         self.0.into_iter().map(|(_name, value)| value).collect()
     }
+
+    /// Returns the length of the entry points
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Checks if the `EntryPoints` is empty.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
 }
 
 impl From<Vec<EntryPoint>> for EntryPoints {
@@ -970,6 +1028,7 @@ pub type NamedKeys = BTreeMap<String, Key>;
 
 /// Methods and type signatures supported by a contract.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct Contract {
     contract_package_hash: ContractPackageHash,
     contract_wasm_hash: ContractWasmHash,
@@ -1099,11 +1158,11 @@ impl Contract {
 impl ToBytes for Contract {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-        result.append(&mut self.contract_package_hash.to_bytes()?);
-        result.append(&mut self.contract_wasm_hash.to_bytes()?);
-        result.append(&mut self.named_keys.to_bytes()?);
-        result.append(&mut self.entry_points.to_bytes()?);
-        result.append(&mut self.protocol_version.to_bytes()?);
+        self.contract_package_hash().write_bytes(&mut result)?;
+        self.contract_wasm_hash().write_bytes(&mut result)?;
+        self.named_keys().write_bytes(&mut result)?;
+        self.entry_points().write_bytes(&mut result)?;
+        self.protocol_version().write_bytes(&mut result)?;
         Ok(result)
     }
 
@@ -1113,6 +1172,15 @@ impl ToBytes for Contract {
             + ToBytes::serialized_length(&self.contract_wasm_hash)
             + ToBytes::serialized_length(&self.protocol_version)
             + ToBytes::serialized_length(&self.named_keys)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.contract_package_hash().write_bytes(writer)?;
+        self.contract_wasm_hash().write_bytes(writer)?;
+        self.named_keys().write_bytes(writer)?;
+        self.entry_points().write_bytes(writer)?;
+        self.protocol_version().write_bytes(writer)?;
+        Ok(())
     }
 }
 
@@ -1151,6 +1219,7 @@ impl Default for Contract {
 /// Context of method execution
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum EntryPointType {
     /// Runs as session code
@@ -1166,6 +1235,11 @@ impl ToBytes for EntryPointType {
 
     fn serialized_length(&self) -> usize {
         1
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        writer.push(*self as u8);
+        Ok(())
     }
 }
 
@@ -1195,6 +1269,7 @@ pub type Parameters = Vec<Parameter>;
 /// Type signature of a method. Order of arguments matter since can be
 /// referenced by index as well as name.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct EntryPoint {
     name: String,
@@ -1300,6 +1375,15 @@ impl ToBytes for EntryPoint {
             + self.access.serialized_length()
             + self.entry_point_type.serialized_length()
     }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.name().write_bytes(writer)?;
+        self.args.write_bytes(writer)?;
+        self.ret.append_bytes(writer)?;
+        self.access().write_bytes(writer)?;
+        self.entry_point_type().write_bytes(writer)?;
+        Ok(())
+    }
 }
 
 impl FromBytes for EntryPoint {
@@ -1326,6 +1410,7 @@ impl FromBytes for EntryPoint {
 /// Enum describing the possible access control options for a contract entry
 /// point (method).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum EntryPointAccess {
     /// Anyone can call this method (no access controls).
@@ -1369,6 +1454,19 @@ impl ToBytes for EntryPointAccess {
             EntryPointAccess::Groups(groups) => 1 + groups.serialized_length(),
         }
     }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            EntryPointAccess::Public => {
+                writer.push(ENTRYPOINTACCESS_PUBLIC_TAG);
+            }
+            EntryPointAccess::Groups(groups) => {
+                writer.push(ENTRYPOINTACCESS_GROUPS_TAG);
+                groups.write_bytes(writer)?;
+            }
+        }
+        Ok(())
+    }
 }
 
 impl FromBytes for EntryPointAccess {
@@ -1389,6 +1487,7 @@ impl FromBytes for EntryPointAccess {
 
 /// Parameter to a method
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Parameter {
     name: String,
@@ -1431,6 +1530,11 @@ impl ToBytes for Parameter {
 
     fn serialized_length(&self) -> usize {
         ToBytes::serialized_length(&self.name) + self.cl_type.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        (&self.name).write_bytes(writer)?;
+        self.cl_type.append_bytes(writer)
     }
 }
 
@@ -1711,5 +1815,29 @@ mod tests {
             access_rights.has_access_rights_to_uref(&expected_uref),
             "multiple access right bits to the same uref should coalesce"
         );
+    }
+}
+
+#[cfg(test)]
+mod prop_tests {
+    use proptest::prelude::*;
+
+    use crate::{bytesrepr, gens};
+
+    proptest! {
+        // #![proptest_config(ProptestConfig {
+        //     cases: 1024,
+        //     .. ProptestConfig::default()
+        // })]
+
+        #[test]
+        fn test_value_contract(contract in gens::contract_arb()) {
+            bytesrepr::test_serialization_roundtrip(&contract);
+        }
+
+        #[test]
+        fn test_value_contract_package(contract_pkg in gens::contract_package_arb()) {
+            bytesrepr::test_serialization_roundtrip(&contract_pkg);
+        }
     }
 }

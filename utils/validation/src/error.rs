@@ -4,6 +4,8 @@ use thiserror::Error;
 
 use casper_types::bytesrepr;
 
+use crate::test_case;
+
 #[derive(Error, Debug)]
 pub enum Error {
     #[error(transparent)]
@@ -18,6 +20,8 @@ pub enum Error {
     NoExtension(PathBuf),
     #[error("{0}")]
     Bytesrepr(bytesrepr::Error),
+    #[error(transparent)]
+    TestCase(#[from] test_case::Error),
 }
 
 impl From<bytesrepr::Error> for Error {

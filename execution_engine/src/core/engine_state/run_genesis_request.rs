@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use casper_hashing::Digest;
 use casper_types::ProtocolVersion;
 
-use super::genesis::ExecConfig;
+use super::{genesis::ExecConfig, ChainspecRegistry};
 
 /// Represents a genesis request.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -17,6 +17,7 @@ pub struct RunGenesisRequest {
     genesis_config_hash: Digest,
     protocol_version: ProtocolVersion,
     ee_config: ExecConfig,
+    chainspec_registry: ChainspecRegistry,
 }
 
 impl RunGenesisRequest {
@@ -25,11 +26,13 @@ impl RunGenesisRequest {
         genesis_config_hash: Digest,
         protocol_version: ProtocolVersion,
         ee_config: ExecConfig,
+        chainspec_registry: ChainspecRegistry,
     ) -> RunGenesisRequest {
         RunGenesisRequest {
             genesis_config_hash,
             protocol_version,
             ee_config,
+            chainspec_registry,
         }
     }
 
@@ -48,6 +51,11 @@ impl RunGenesisRequest {
         &self.ee_config
     }
 
+    /// Returns a reference to the chainspec registry.
+    pub fn chainspec_registry(&self) -> &ChainspecRegistry {
+        &self.chainspec_registry
+    }
+
     /// Returns a EE config and consumes the object.
     pub fn take_ee_config(self) -> ExecConfig {
         self.ee_config
@@ -60,6 +68,16 @@ impl Distribution<RunGenesisRequest> for Standard {
         let genesis_config_hash = Digest::hash(&input);
         let protocol_version = ProtocolVersion::from_parts(rng.gen(), rng.gen(), rng.gen());
         let ee_config = rng.gen();
-        RunGenesisRequest::new(genesis_config_hash, protocol_version, ee_config)
+
+        let chainspec_file_bytes: [u8; 10] = rng.gen();
+        let genesis_account_file_bytes: [u8; 15] = rng.gen();
+        let chainspec_registry =
+            ChainspecRegistry::new_with_genesis(&chainspec_file_bytes, &genesis_account_file_bytes);
+        RunGenesisRequest::new(
+            genesis_config_hash,
+            protocol_version,
+            ee_config,
+            chainspec_registry,
+        )
     }
 }

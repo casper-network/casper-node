@@ -38,12 +38,12 @@ use crate::{
     effect::{
         announcements::RpcServerAnnouncement,
         requests::{
-            ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, LinearChainRequest,
-            MetricsRequest, NetworkInfoRequest, RpcRequest, StorageRequest,
+            ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, MetricsRequest,
+            NetworkInfoRequest, RpcRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects, Responder,
     },
-    types::{NodeId, StatusFeed},
+    types::{NodeState, StatusFeed},
     utils::{self, ListeningError},
     NodeRng,
 };
@@ -53,14 +53,13 @@ pub(crate) use event::Event;
 /// A helper trait capturing all of this components Request type dependencies.
 pub(crate) trait ReactorEventT:
     From<Event>
-    + From<RpcRequest<NodeId>>
+    + From<RpcRequest>
     + From<RpcServerAnnouncement>
     + From<ChainspecLoaderRequest>
     + From<ContractRuntimeRequest>
     + From<ConsensusRequest>
-    + From<LinearChainRequest<NodeId>>
     + From<MetricsRequest>
-    + From<NetworkInfoRequest<NodeId>>
+    + From<NetworkInfoRequest>
     + From<StorageRequest>
     + Send
 {
@@ -68,14 +67,13 @@ pub(crate) trait ReactorEventT:
 
 impl<REv> ReactorEventT for REv where
     REv: From<Event>
-        + From<RpcRequest<NodeId>>
+        + From<RpcRequest>
         + From<RpcServerAnnouncement>
         + From<ChainspecLoaderRequest>
         + From<ContractRuntimeRequest>
         + From<ConsensusRequest>
-        + From<LinearChainRequest<NodeId>>
         + From<MetricsRequest>
-        + From<NetworkInfoRequest<NodeId>>
+        + From<NetworkInfoRequest>
         + From<StorageRequest>
         + Send
         + 'static
@@ -86,6 +84,8 @@ impl<REv> ReactorEventT for REv where
 pub(crate) struct RpcServer {
     /// The instant at which the node has started.
     node_startup_instant: Instant,
+    /// The current state of the node.
+    node_state: NodeState,
 }
 
 impl RpcServer {
@@ -94,6 +94,7 @@ impl RpcServer {
         effect_builder: EffectBuilder<REv>,
         api_version: ProtocolVersion,
         node_startup_instant: Instant,
+        node_state: NodeState,
     ) -> Result<Self, ListeningError>
     where
         REv: ReactorEventT,
@@ -108,7 +109,12 @@ impl RpcServer {
 
         Ok(RpcServer {
             node_startup_instant,
+            node_state,
         })
+    }
+
+    fn node_state(&self) -> NodeState {
+        self.node_state
     }
 }
 
@@ -281,6 +287,7 @@ where
                 }),
             Event::RpcRequest(RpcRequest::GetStatus { responder }) => {
                 let node_uptime = self.node_startup_instant.elapsed();
+                let node_state = self.node_state();
                 async move {
                     let (last_added_block, peers, chainspec_info, consensus_status) = join!(
                         effect_builder.get_highest_block_from_storage(),
@@ -294,10 +301,19 @@ where
                         chainspec_info,
                         consensus_status,
                         node_uptime,
+                        node_state,
                     );
                     responder.respond(status_feed).await;
                 }
                 .ignore()
+            }
+            Event::RpcRequest(RpcRequest::GetLowestContiguousBlockHeight { responder }) => {
+                effect_builder
+                    .get_lowest_contiguous_block_height_from_storage()
+                    .event(move |height| Event::GetLowestContiguousBlockHeightResult {
+                        height,
+                        main_responder: responder,
+                    })
             }
             Event::GetBlockResult {
                 maybe_id: _,
@@ -334,56 +350,35 @@ where
                 peers,
                 main_responder,
             } => main_responder.respond(peers).ignore(),
+            Event::GetLowestContiguousBlockHeightResult {
+                height,
+                main_responder,
+            } => main_responder.respond(height).ignore(),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
-
-    use assert_json_diff::assert_json_eq;
     use schemars::schema_for_value;
-    use serde_json::Value;
 
-    use crate::rpcs::docs::OPEN_RPC_SCHEMA;
+    use crate::{rpcs::docs::OPEN_RPC_SCHEMA, testing::assert_schema};
 
     #[test]
     fn schema() {
-        // The expected schema depends on the hashing algorithm selected by the `casper-mainnet`
-        // feature.
+        // To generate the contents to replace the input JSON file, run the test
+        // and print the `actual_schema_string` by uncommenting the `println!`
+        // towards the end of the test.
         //
-        // To generate the contents to replace the input JSON files, run the test with and without
-        // the feature enabled and print the `actual_schema_string` by uncommenting the `println!`
-        // towards the end of the test
         // ```
-        // cargo t --features=casper-mainnet components::rpc_server::tests::schema -- --nocapture
-        // cargo t --no-default-features components::rpc_server::tests::schema -- --nocapture
+        // cargo t components::rpc_server::tests::schema -- --nocapture
         // ```
-        //
-        // Note: Please review the diff of the input files to avoid any breaking changes.
 
-        #[cfg(feature = "casper-mainnet")]
         let schema_path = format!(
-            "{}/../resources/test/rpc_schema_hashing_V1.json",
+            "{}/../resources/test/rpc_schema_hashing.json",
             env!("CARGO_MANIFEST_DIR")
         );
 
-        #[cfg(not(feature = "casper-mainnet"))]
-        let schema_path = format!(
-            "{}/../resources/test/rpc_schema_hashing_V2.json",
-            env!("CARGO_MANIFEST_DIR")
-        );
-
-        let expected_schema = fs::read_to_string(schema_path).unwrap();
-        let expected_schema: Value = serde_json::from_str(expected_schema.trim()).unwrap();
-
-        let actual_schema = schema_for_value!(OPEN_RPC_SCHEMA.clone());
-        let actual_schema_string = serde_json::to_string_pretty(&actual_schema).unwrap();
-        let actual_schema: Value = serde_json::from_str(&actual_schema_string).unwrap();
-
-        // println!("{}", actual_schema_string);
-
-        assert_json_eq!(actual_schema, expected_schema);
+        assert_schema(schema_path, schema_for_value!(OPEN_RPC_SCHEMA.clone()));
     }
 }

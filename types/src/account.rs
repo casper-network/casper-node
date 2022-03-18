@@ -16,10 +16,8 @@ use core::{
     iter,
 };
 
-use blake2::{
-    digest::{Update, VariableOutput},
-    VarBlake2b,
-};
+#[cfg(feature = "datasize")]
+use datasize::DataSize;
 
 pub use self::{
     account_hash::{AccountHash, ACCOUNT_HASH_FORMATTED_STRING_PREFIX, ACCOUNT_HASH_LENGTH},
@@ -32,11 +30,12 @@ pub use self::{
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::NamedKeys,
-    AccessRights, ContextAccessRights, Key, URef, BLAKE2B_DIGEST_LENGTH,
+    crypto, AccessRights, ContextAccessRights, Key, URef, BLAKE2B_DIGEST_LENGTH,
 };
 
 /// Represents an Account in the global state.
 #[derive(PartialEq, Eq, Clone, Debug, Serialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct Account {
     account_hash: AccountHash,
     named_keys: NamedKeys,
@@ -261,11 +260,11 @@ impl Account {
 impl ToBytes for Account {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-        result.append(&mut self.account_hash.to_bytes()?);
-        result.append(&mut self.named_keys.to_bytes()?);
-        result.append(&mut self.main_purse.to_bytes()?);
-        result.append(&mut self.associated_keys.to_bytes()?);
-        result.append(&mut self.action_thresholds.to_bytes()?);
+        self.account_hash().write_bytes(&mut result)?;
+        self.named_keys().write_bytes(&mut result)?;
+        self.main_purse.write_bytes(&mut result)?;
+        self.associated_keys().write_bytes(&mut result)?;
+        self.action_thresholds().write_bytes(&mut result)?;
         Ok(result)
     }
 
@@ -275,6 +274,15 @@ impl ToBytes for Account {
             + self.main_purse.serialized_length()
             + self.associated_keys.serialized_length()
             + self.action_thresholds.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.account_hash().write_bytes(writer)?;
+        self.named_keys().write_bytes(writer)?;
+        self.main_purse().write_bytes(writer)?;
+        self.associated_keys().write_bytes(writer)?;
+        self.action_thresholds().write_bytes(writer)?;
+        Ok(())
     }
 }
 
@@ -299,16 +307,12 @@ impl FromBytes for Account {
 }
 
 #[doc(hidden)]
+#[deprecated(
+    since = "1.4.4",
+    note = "function moved to casper_types::crypto::blake2b"
+)]
 pub fn blake2b<T: AsRef<[u8]>>(data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
-    let mut result = [0; BLAKE2B_DIGEST_LENGTH];
-    // NOTE: Assumed safe as `BLAKE2B_DIGEST_LENGTH` is a valid value for a hasher
-    let mut hasher = VarBlake2b::new(BLAKE2B_DIGEST_LENGTH).expect("should create hasher");
-
-    hasher.update(data);
-    hasher.finalize_variable(|slice| {
-        result.copy_from_slice(slice);
-    });
-    result
+    crypto::blake2b(data)
 }
 
 /// Errors that can occur while adding a new [`AccountHash`] to an account's associated keys map.

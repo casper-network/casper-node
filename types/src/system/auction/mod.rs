@@ -26,7 +26,7 @@ pub use era_info::*;
 pub use error::Error;
 pub use providers::{AccountProvider, MintProvider, RuntimeProvider, StorageProvider};
 pub use seigniorage_recipient::SeigniorageRecipient;
-pub use unbonding_purse::UnbondingPurse;
+pub use unbonding_purse::{UnbondingPurse, WithdrawPurse};
 
 /// Representation of delegation rate of tokens. Range from 0..=100.
 pub type DelegationRate = u8;
@@ -48,6 +48,9 @@ pub type SeigniorageRecipientsSnapshot = BTreeMap<EraId, SeigniorageRecipients>;
 
 /// Validators and delegators mapped to their unbonding purses.
 pub type UnbondingPurses = BTreeMap<AccountHash, Vec<UnbondingPurse>>;
+
+/// Validators and delegators mapped to their withdraw purses.
+pub type WithdrawPurses = BTreeMap<AccountHash, Vec<WithdrawPurse>>;
 
 /// Bonding auction contract interface
 pub trait Auction:
@@ -202,6 +205,7 @@ pub trait Auction:
             public_key.clone(), // validator is the unbonder
             *bid.bonding_purse(),
             amount,
+            None,
         )?;
 
         if updated_stake.is_zero() {
@@ -213,6 +217,7 @@ pub trait Auction:
                     delegator_public_key.clone(),
                     *delegator.bonding_purse(),
                     *delegator.staked_amount(),
+                    None,
                 )?;
             }
 
@@ -255,82 +260,33 @@ pub trait Auction:
 
         let validator_account_hash = AccountHash::from(&validator_public_key);
 
-        let mut bid = match self.read_bid(&validator_account_hash)? {
-            Some(bid) => bid,
-            None => {
-                // Return early if target validator is not in `bids`
-                return Err(Error::ValidatorNotFound.into());
-            }
-        };
+        let bid = detail::read_bid_for_validator(self, validator_account_hash)?;
 
-        let delegators = bid.delegators_mut();
+        if bid.delegators().len() >= max_delegator_size_limit {
+            return Err(Error::ExceededDelegatorSizeLimit.into());
+        }
 
-        let new_delegation_amount = match delegators.get_mut(&delegator_public_key) {
-            Some(delegator) => {
-                self.mint_transfer_direct(
-                    Some(PublicKey::System.to_account_hash()),
-                    source,
-                    *delegator.bonding_purse(),
-                    amount,
-                    None,
-                )
-                .map_err(|_| Error::TransferToDelegatorPurse)?
-                .map_err(|mint_error| {
-                    // Propagate mint contract's error that occured during execution of transfer
-                    // entrypoint. This will improve UX in case of (for example)
-                    // unapproved spending limit error.
-                    ApiError::from(mint_error)
-                })?;
-                delegator.increase_stake(amount)?;
-                *delegator.staked_amount()
-            }
-            None => {
-                if delegators.len() >= max_delegator_size_limit {
-                    return Err(Error::ExceededDelegatorSizeLimit.into());
-                }
+        if amount < U512::from(minimum_delegation_amount) {
+            return Err(Error::DelegationAmountTooSmall.into());
+        }
 
-                if amount < U512::from(minimum_delegation_amount) {
-                    return Err(Error::DelegationAmountTooSmall.into());
-                }
+        let current_total_no_of_delegators = detail::get_total_number_of_delegators(self)?;
 
-                let current_total_no_of_delegators = detail::get_total_number_of_delegators(self)?;
+        let max_global_delegator_capacity =
+            detail::get_validator_slots(self)? * max_delegator_size_limit;
 
-                let max_global_delegator_capacity =
-                    detail::get_validator_slots(self)? * max_delegator_size_limit;
+        if (current_total_no_of_delegators + 1) >= max_global_delegator_capacity {
+            return Err(Error::GlobalDelegatorCapacityReached.into());
+        }
 
-                if (current_total_no_of_delegators + 1) >= max_global_delegator_capacity {
-                    return Err(Error::GlobalDelegatorCapacityReached.into());
-                }
-
-                let bonding_purse = self.create_purse()?;
-                self.mint_transfer_direct(
-                    Some(PublicKey::System.to_account_hash()),
-                    source,
-                    bonding_purse,
-                    amount,
-                    None,
-                )
-                .map_err(|_| Error::TransferToDelegatorPurse)?
-                .map_err(|mint_error| {
-                    // Propagate mint contract's error that occured during execution of transfer
-                    // entrypoint. This will improve UX in case of (for example)
-                    // unapproved spending limit error.
-                    ApiError::from(mint_error)
-                })?;
-                let delegator = Delegator::unlocked(
-                    delegator_public_key.clone(),
-                    amount,
-                    bonding_purse,
-                    validator_public_key,
-                );
-                delegators.insert(delegator_public_key.clone(), delegator);
-                amount
-            }
-        };
-
-        self.write_bid(validator_account_hash, bid)?;
-
-        Ok(new_delegation_amount)
+        detail::handle_delegation(
+            self,
+            bid,
+            delegator_public_key,
+            validator_public_key,
+            source,
+            amount,
+        )
     }
 
     /// Removes specified amount of motes (or the value from the collection altogether, if the
@@ -370,6 +326,70 @@ pub trait Auction:
                     delegator_public_key.clone(),
                     *delegator.bonding_purse(),
                     amount,
+                    None,
+                )?;
+
+                let era_end_timestamp_millis = detail::get_era_end_timestamp_millis(self)?;
+                let updated_stake = delegator.decrease_stake(amount, era_end_timestamp_millis)?;
+                if updated_stake == U512::zero() {
+                    delegators.remove(&delegator_public_key);
+                };
+                updated_stake
+            }
+            None => return Err(Error::DelegatorNotFound),
+        };
+
+        self.write_bid(validator_account_hash, bid)?;
+
+        Ok(new_amount)
+    }
+
+    /// Removes specified amount of motes (or the value from the collection altogether, if the
+    /// remaining amount is 0) from the entry in delegators map for given validator and creates a
+    /// new unbonding request to the queue, which when processed will redelegate the
+    /// specified amount of motes to new validator.
+    ///
+    /// The arguments are the delegator's key, the validator's key, the amount,
+    /// and the new validator's key.
+    ///
+    /// Returns the remaining bid amount if the new validator is inactive.
+    fn redelegate(
+        &mut self,
+        delegator_public_key: PublicKey,
+        validator_public_key: PublicKey,
+        amount: U512,
+        new_validator: PublicKey,
+        minimum_delegation_amount: u64,
+    ) -> Result<U512, Error> {
+        let provided_account_hash =
+            AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
+
+        if !self.is_allowed_session_caller(&provided_account_hash) {
+            return Err(Error::InvalidContext);
+        }
+
+        if amount < U512::from(minimum_delegation_amount) {
+            return Err(Error::DelegationAmountTooSmall);
+        }
+
+        let validator_account_hash = AccountHash::from(&validator_public_key);
+
+        let mut bid = match self.read_bid(&validator_account_hash)? {
+            Some(bid) => bid,
+            None => return Err(Error::ValidatorNotFound),
+        };
+
+        let delegators = bid.delegators_mut();
+
+        let new_amount = match delegators.get_mut(&delegator_public_key) {
+            Some(delegator) => {
+                detail::create_unbonding_purse(
+                    self,
+                    validator_public_key,
+                    delegator_public_key.clone(),
+                    *delegator.bonding_purse(),
+                    amount,
+                    Some(new_validator),
                 )?;
 
                 let era_end_timestamp_millis = detail::get_era_end_timestamp_millis(self)?;
@@ -413,13 +433,13 @@ pub trait Auction:
 
             let validator_account_hash = AccountHash::from(&validator_public_key);
             // Update unbonding entries for given validator
-            let unbonding_purses = self.read_withdraw(&validator_account_hash)?;
+            let unbonding_purses = self.read_unbond(&validator_account_hash)?;
             if !unbonding_purses.is_empty() {
                 burned_amount += unbonding_purses
                     .into_iter()
                     .map(|unbonding_purse| *unbonding_purse.amount())
                     .sum();
-                self.write_withdraw(validator_account_hash, Vec::new())?;
+                self.write_unbond(validator_account_hash, Vec::new())?;
             }
         }
 
@@ -437,9 +457,9 @@ pub trait Auction:
         &mut self,
         era_end_timestamp_millis: u64,
         evicted_validators: Vec<PublicKey>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ApiError> {
         if self.get_caller() != PublicKey::System.to_account_hash() {
-            return Err(Error::InvalidCaller);
+            return Err(Error::InvalidCaller.into());
         }
 
         let validator_slots = detail::get_validator_slots(self)?;
@@ -523,7 +543,7 @@ pub trait Auction:
             for era_validator in winners.keys() {
                 let seigniorage_recipient = match bids.get(era_validator) {
                     Some(bid) => bid.into(),
-                    None => return Err(Error::BidNotFound),
+                    None => return Err(Error::BidNotFound.into()),
                 };
                 recipients.insert(era_validator.clone(), seigniorage_recipient);
             }
@@ -555,10 +575,6 @@ pub trait Auction:
         let seigniorage_recipients = self.read_seigniorage_recipients()?;
         let base_round_reward = self.read_base_round_reward()?;
         let era_id = detail::get_era_id(self)?;
-
-        if reward_factors.keys().ne(seigniorage_recipients.keys()) {
-            return Err(Error::MismatchedEraValidators);
-        }
 
         let mut era_info = EraInfo::new();
         let seigniorage_allocations = era_info.seigniorage_allocations_mut();

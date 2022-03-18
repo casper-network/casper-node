@@ -1,0 +1,465 @@
+{
+  "genesis_request": {
+    "ee_config": {
+      "accounts": [
+        {
+          "Account": {
+            "balance": "100000000000000000",
+            "public_key": "01d5af25e204ad03d0a26e236996404f1be51a60948bcc026cd084a83690b756d3",
+            "validator": null
+          }
+        },
+        {
+          "Account": {
+            "balance": "100000000000000000",
+            "public_key": "01bb47d33d777b4559bb917d1825827421c4a6b1b9737f12e1c58ea4305af88b74",
+            "validator": null
+          }
+        }
+      ],
+      "auction_delay": 3,
+      "genesis_timestamp_millis": 0,
+      "locked_funds_period_millis": 7776000000,
+      "round_seigniorage_rate": [
+        6414,
+        623437335209
+      ],
+      "system_config": {
+        "auction_costs": {
+          "activate_bid": 10000,
+          "add_bid": 10000,
+          "delegate": 10000,
+          "distribute": 10000,
+          "get_era_validators": 10000,
+          "read_era_id": 10000,
+          "read_seigniorage_recipients": 10000,
+          "run_auction": 10000,
+          "slash": 10000,
+          "undelegate": 10000,
+          "withdraw_bid": 10000,
+          "withdraw_delegator_reward": 10000,
+          "withdraw_validator_reward": 10000
+        },
+        "handle_payment_costs": {
+          "finalize_payment": 10000,
+          "get_payment_purse": 10000,
+          "get_refund_purse": 10000,
+          "set_refund_purse": 10000
+        },
+        "mint_costs": {
+          "balance": 10000,
+          "create": 2500000000,
+          "mint": 2500000000,
+          "read_base_round_reward": 10000,
+          "reduce_total_supply": 10000,
+          "transfer": 10000
+        },
+        "standard_payment_costs": {
+          "pay": 10000
+        },
+        "wasmless_transfer_cost": 100000000
+      },
+      "unbonding_delay": 14,
+      "validator_slots": 5,
+      "wasm_config": {
+        "host_function_costs": {
+          "add": {
+            "arguments": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "cost": 5800
+          },
+          "add_associated_key": {
+            "arguments": [
+              0,
+              0,
+              0
+            ],
+            "cost": 9000
+          },
+          "add_contract_version": {
+            "arguments": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "cost": 200
+          },
+          "blake2b": {
+            "arguments": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "cost": 200
+          },
+          "call_contract": {
+            "arguments": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              420,
+              0
+            ],
+            "cost": 4500
+          },
+          "call_versioned_contract": {
+            "arguments": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "cost": 200
+          },
+          "create_contract_package_at_hash": {
+            "arguments": [
+              0,
+              0
+            ],
+            "cost": 200
+          },
+          "create_contract_user_group": {
+            "arguments": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "cost": 200
+          },
+          "create_purse": {
+            "arguments": [
+              0,
+              0
+            ],
+            "cost": 2500000000
+          },
+          "dictionary_get": {
+            "arguments": [
+              0,
+              590,
+              0
+            ],
+            "cost": 5500
+          },
+          "dictionary_put": {
+            "arguments": [
+              0,
+              1800,
+              0,
+              520
+            ],
+            "cost": 9500
+          },
+          "disable_contract_version": {
+            "arguments": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "cost": 200
+          },
+          "get_balance": {
+            "arguments": [
+              0,
+              0,
+              0
+            ],
+            "cost": 3800
+          },
+          "get_blocktime": {
+            "arguments": [
+              0
+            ],
+            "cost": 330
+          },
+          "get_caller": {
+            "arguments": [
+              0
+            ],
+            "cost": 380
+          },
+          "get_key": {
+            "arguments": [
+              0,
+              440,
+              0,
+              0,
+              0
+            ],
+            "cost": 2000
+          },
+          "get_main_purse": {
+            "arguments": [
+              0
+            ],
+            "cost": 1300
+          },
+          "get_named_arg": {
+            "arguments": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "cost": 200
+          },
+          "get_named_arg_size": {
+            "arguments": [
+              0,
+              0,
+              0
+            ],
+            "cost": 200
+          },
+          "get_phase": {
+            "arguments": [
+              0
+            ],
+            "cost": 710
+          },
+          "get_system_contract": {
+            "arguments": [
+              0,
+              0,
+              0
+            ],
+            "cost": 1100
+          },
+          "has_key": {
+            "arguments": [
+              0,
+              840
+            ],
+            "cost": 1500
+          },
+          "is_valid_uref": {
+            "arguments": [
+              0,
+              0
+            ],
+            "cost": 760
+          },
+          "load_named_keys": {
+            "arguments": [
+              0,
+              0
+            ],
+            "cost": 42000
+          },
+          "new_uref": {
+            "arguments": [
+              0,
+              0,
+              590
+            ],
+            "cost": 17000
+          },
+          "print": {
+            "arguments": [
+              0,
+              4600
+            ],
+            "cost": 20000
+          },
+          "provision_contract_user_group_uref": {
+            "arguments": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "cost": 200
+          },
+          "put_key": {
+            "arguments": [
+              0,
+              1100,
+              0,
+              0
+            ],
+            "cost": 38000
+          },
+          "read_host_buffer": {
+            "arguments": [
+              0,
+              310,
+              0
+            ],
+            "cost": 3500
+          },
+          "read_value": {
+            "arguments": [
+              0,
+              0,
+              0
+            ],
+            "cost": 6000
+          },
+          "remove_associated_key": {
+            "arguments": [
+              0,
+              0
+            ],
+            "cost": 4200
+          },
+          "remove_contract_user_group": {
+            "arguments": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "cost": 200
+          },
+          "remove_contract_user_group_urefs": {
+            "arguments": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "cost": 200
+          },
+          "remove_key": {
+            "arguments": [
+              0,
+              3200
+            ],
+            "cost": 61000
+          },
+          "ret": {
+            "arguments": [
+              0,
+              420
+            ],
+            "cost": 23000
+          },
+          "revert": {
+            "arguments": [
+              0
+            ],
+            "cost": 500
+          },
+          "set_action_threshold": {
+            "arguments": [
+              0,
+              0
+            ],
+            "cost": 74000
+          },
+          "transfer_from_purse_to_account": {
+            "arguments": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "cost": 2500000000
+          },
+          "transfer_from_purse_to_purse": {
+            "arguments": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "cost": 82000
+          },
+          "transfer_to_account": {
+            "arguments": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "cost": 2500000000
+          },
+          "update_associated_key": {
+            "arguments": [
+              0,
+              0,
+              0
+            ],
+            "cost": 4200
+          },
+          "write": {
+            "arguments": [
+              0,
+              0,
+              0,
+              980
+            ],
+            "cost": 14000
+          }
+        },
+        "max_memory": 64,
+        "max_stack_height": 188,
+        "opcode_costs": {
+          "add": 210,
+          "bit": 300,
+          "const": 110,
+          "control_flow": 440,
+          "conversion": 420,
+          "current_memory": 290,
+          "div": 320,
+          "global": 390,
+          "grow_memory": 240000,
+          "integer_comparison": 250,
+          "load": 2500,
+          "local": 390,
+          "mul": 240,
+          "nop": 200,
+          "regular": 210,
+          "store": 4700,
+          "unreachable": 270
+        },
+        "storage_costs": {
+          "gas_per_byte": 625000
+        }
+      }
+    },
+    "genesis_config_hash": "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a",
+    "protocol_version": "1.0.0"
+  },
+  "post_state_hash": "f3047c087de9e9bac49de080e061e3313c7227ddc9ce22b8c9c617c397569987"
+}
