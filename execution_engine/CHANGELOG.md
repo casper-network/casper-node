@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.  The format
 ### Added
 * Add a new entry point `redelegate` to the Auction system contract which allows users to redelegate to another validator without having to unbond. The function signature for the entrypoint is: `redelegate(delegator: PublicKey, validator: PublicKey, amount: U512, new_validator: PublicKey)`
 * Add a new type `ChainspecRegistry` which contains the hashes of the `chainspec.toml` and will optionally contain the hashes for `accounts.toml` and `global_state.toml`.
+* Add ability to enable strict args checking when executing a contract; i.e. that all non-optional args are provided and of the correct `CLType`.
 
 ### Changed
 * Change contract runtime to allow caching GlobalState changes during execution of a single block.
@@ -23,19 +24,6 @@ All notable changes to this project will be documented in this file.  The format
 * Change both genesis and upgrade functions to write `ChainspecRegistry` under the fixed `Key::ChainspecRegistry`.
 * Lift the temporary limit of the size of individual values stored in global state.
 * Lift the temporary limit of the global maximum delegator capacity.
-
-
-
-## 1.4.3 - 2021-12-06
-
-### Changed
-* Auction contract now handles minting into an existing purse.
-* Default maximum stack size in `WasmConfig` changed to 188.
-* Default behavior of LMDB changed to use [`NO_READAHEAD`](https://docs.rs/lmdb/0.8.0/lmdb/struct.EnvironmentFlags.html#associatedconstant.NO_READAHEAD)
-
-### Fixed
-* Fix a case where an unlocked and partially unbonded genesis validator with smaller stake incorrectly occupies slot for a non-genesis validator with higher stake.
-
 
 
 

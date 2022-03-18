@@ -55,6 +55,8 @@ max_associated_keys = 100
 max_runtime_call_stack_height = 12
 # Minimum allowed delegation amount in motes
 minimum_delegation_amount = 500_000_000_000
+# Enables strict arguments checking when calling a contract; i.e. that all non-optional args are provided and of the correct `CLType`.
+strict_argument_checking = false
 
 [highway]
 # A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.

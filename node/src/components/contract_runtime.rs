@@ -557,6 +557,7 @@ impl ContractRuntime {
         max_associated_keys: u32,
         max_runtime_call_stack_height: u32,
         minimum_delegation_amount: u64,
+        strict_argument_checking: bool,
         registry: &Registry,
         verifiable_chunked_hash_activation: EraId,
     ) -> Result<Self, ConfigError> {
@@ -587,6 +588,7 @@ impl ContractRuntime {
             max_associated_keys,
             max_runtime_call_stack_height,
             minimum_delegation_amount,
+            strict_argument_checking,
             wasm_config,
             system_config,
         );

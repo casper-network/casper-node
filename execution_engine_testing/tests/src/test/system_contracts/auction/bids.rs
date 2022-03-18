@@ -18,6 +18,7 @@ use casper_execution_engine::{
             engine_config::{
                 DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_QUERY_DEPTH,
                 DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT, DEFAULT_MINIMUM_DELEGATION_AMOUNT,
+                DEFAULT_STRICT_ARGUMENT_CHECKING,
             },
             genesis::{GenesisAccount, GenesisValidator},
             EngineConfig, Error, RewardItem,
@@ -2621,6 +2622,7 @@ fn should_release_vfta_holder_stake() {
         DEFAULT_MAX_ASSOCIATED_KEYS,
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         NEW_MINIMUM_DELEGATION_AMOUNT,
+        DEFAULT_STRICT_ARGUMENT_CHECKING,
         WasmConfig::default(),
         SystemConfig::default(),
     );

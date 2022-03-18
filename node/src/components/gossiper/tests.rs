@@ -20,7 +20,8 @@ use tracing::debug;
 
 use casper_execution_engine::{
     core::engine_state::{
-        engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+        engine_config::{DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING},
+        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
     },
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
@@ -241,6 +242,7 @@ impl reactor::Reactor for Reactor {
             MAX_ASSOCIATED_KEYS,
             DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
             DEFAULT_MINIMUM_DELEGATION_AMOUNT,
+            DEFAULT_STRICT_ARGUMENT_CHECKING,
             registry,
             verifiable_chunked_hash_activation.into(),
         )

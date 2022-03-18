@@ -11,8 +11,8 @@ use casper_engine_test_support::{
 use casper_execution_engine::shared::system_config::auction_costs::DEFAULT_ADD_BID_COST;
 use casper_execution_engine::{
     core::engine_state::{
-        engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, EngineConfig, DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+        engine_config::{DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING},
+        EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
     },
     shared::{
         host_function_costs::{HostFunction, HostFunctionCosts},
@@ -164,6 +164,7 @@ fn initialize_isolated_storage_costs() -> InMemoryWasmTestBuilder {
         DEFAULT_MAX_ASSOCIATED_KEYS,
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
+        DEFAULT_STRICT_ARGUMENT_CHECKING,
         *STORAGE_COSTS_ONLY,
         SystemConfig::default(),
     );

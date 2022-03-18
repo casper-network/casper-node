@@ -7,8 +7,8 @@ use casper_engine_test_support::{
 use casper_execution_engine::{
     core::{
         engine_state::{
-            engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, EngineConfig, Error,
-            DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+            engine_config::{DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING},
+            EngineConfig, Error, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         },
         execution::Error as ExecError,
     },
@@ -119,6 +119,7 @@ fn should_observe_stack_height_limit() {
             DEFAULT_MAX_ASSOCIATED_KEYS,
             DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
             DEFAULT_MINIMUM_DELEGATION_AMOUNT,
+            DEFAULT_STRICT_ARGUMENT_CHECKING,
             WasmConfig::new(
                 DEFAULT_WASM_MAX_MEMORY,
                 NEW_WASM_STACK_HEIGHT,
