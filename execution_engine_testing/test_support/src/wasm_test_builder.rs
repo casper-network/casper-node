@@ -1171,21 +1171,29 @@ where
     }
 
     /// Advances eras by num_eras
-    pub fn advance_eras_by(&mut self, num_eras: u64) {
-        for _ in 0..=num_eras {
-            let step_request = StepRequestBuilder::new()
+    pub fn advance_eras_by(
+        &mut self,
+        num_eras: u64,
+        configure: Option<fn(StepRequestBuilder) -> StepRequestBuilder>,
+    ) {
+        for _ in 0..num_eras {
+            let mut step_request_builder = StepRequestBuilder::new()
                 .with_parent_state_hash(self.get_post_state_hash())
                 .with_protocol_version(ProtocolVersion::V1_0_0)
                 .with_next_era_id(self.get_era().successor())
-                .with_run_auction(true)
-                .build();
-            self.step(step_request)
-                .expect("must execute third step request post upgrade");
+                .with_run_auction(true);
+
+            if let Some(configure) = configure {
+                step_request_builder = configure(step_request_builder);
+            }
+
+            self.step(step_request_builder.build())
+                .expect("failed to execute step request");
         }
     }
 
     /// Advances eras by configured amount
     pub fn advance_eras_by_default_auction_delay(&mut self) {
-        self.advance_eras_by(DEFAULT_AUCTION_DELAY);
+        self.advance_eras_by(DEFAULT_AUCTION_DELAY + 1, None);
     }
 }
