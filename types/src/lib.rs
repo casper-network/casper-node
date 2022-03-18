@@ -18,7 +18,7 @@
 )]
 #![warn(missing_docs)]
 
-#[cfg_attr(not(test), macro_use)]
+#[cfg_attr(not(any(test, feature = "std")), macro_use)]
 extern crate alloc;
 
 mod access_rights;

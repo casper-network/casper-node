@@ -1,0 +1,16 @@
+[package]
+name = "capnp-conv-test"
+version = "0.1.0"
+edition = "2021"
+
+[build-dependencies]
+capnpc = "0.14.5"
+
+[dev-dependencies]
+capnp = "0.14.5"
+capnp-conv = { path = "..", features = ["std"] }
+byteorder = { version = "1.3.2", features = ["i128"] }
+derive_more = "0.15.0"
+proptest = "1.0.0"
+ref-cast = "1.0.6"
+test-strategy = "0.1.2"

@@ -1,0 +1,5 @@
+[alias]
+xtask = "run --manifest-path ./xtask/Cargo.toml --"
+
+[env]
+CARGO_WORKSPACE_DIR = { value = "", relative = true }

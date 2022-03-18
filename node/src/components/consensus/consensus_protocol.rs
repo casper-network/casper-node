@@ -10,7 +10,7 @@ use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use casper_hashing::Digest;
-use casper_types::bytesrepr::ToBytes;
+use casper_types::{bytesrepr::ToBytes, PublicKey};
 
 use crate::{
     components::consensus::{traits::Context, ActionId, TimerId},
@@ -96,46 +96,25 @@ where
 }
 
 /// Equivocation and reward information to be included in the terminal finalized block.
-#[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(bound(
-    serialize = "VID: Ord + Serialize",
-    deserialize = "VID: Ord + Deserialize<'de>",
-))]
-pub struct EraReport<VID> {
+#[derive(
+    Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, Default,
+)]
+pub struct EraReport {
     /// The set of equivocators.
-    pub(crate) equivocators: Vec<VID>,
+    pub(crate) equivocators: Vec<PublicKey>,
     /// Rewards for finalization of earlier blocks.
     ///
     /// This is a measure of the value of each validator's contribution to consensus, in
     /// fractions of the configured maximum block reward.
-    pub(crate) rewards: BTreeMap<VID, u64>,
+    pub(crate) rewards: BTreeMap<PublicKey, u64>,
     /// Validators that haven't produced any unit during the era.
-    pub(crate) inactive_validators: Vec<VID>,
+    pub(crate) inactive_validators: Vec<PublicKey>,
 }
 
-impl<VID> Default for EraReport<VID>
-where
-    VID: Ord,
-{
-    fn default() -> Self {
-        EraReport {
-            equivocators: vec![],
-            rewards: BTreeMap::new(),
-            inactive_validators: vec![],
-        }
-    }
-}
-
-impl<VID> EraReport<VID> {
-    pub fn hash(&self) -> Digest
-    where
-        VID: ToBytes,
-    {
+impl EraReport {
+    pub fn hash(&self) -> Digest {
         // Helper function to hash slice of validators
-        fn hash_slice_of_validators<VID>(slice_of_validators: &[VID]) -> Digest
-        where
-            VID: ToBytes,
-        {
+        fn hash_slice_of_validators(slice_of_validators: &[PublicKey]) -> Digest {
             Digest::hash_merkle_tree(slice_of_validators.iter().map(|validator| {
                 Digest::hash(validator.to_bytes().expect("Could not serialize validator"))
             }))

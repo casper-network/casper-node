@@ -8,7 +8,10 @@ use thiserror::Error;
 use casper_hashing::Digest;
 use casper_types::{bytesrepr, EraId, PublicKey, U512};
 
-use crate::types::{block::EraReport, Block, BlockHash};
+use crate::{
+    components::consensus::EraReport,
+    types::{Block, BlockHash},
+};
 
 /// An error that can arise when creating a block from a finalized block and other components
 #[derive(Error, Debug, Serialize)]

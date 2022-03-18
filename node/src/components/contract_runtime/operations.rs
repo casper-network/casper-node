@@ -266,7 +266,7 @@ fn commit_step(
     maybe_metrics: Option<Arc<Metrics>>,
     protocol_version: ProtocolVersion,
     pre_state_root_hash: Digest,
-    era_report: &EraReport<PublicKey>,
+    era_report: &EraReport,
     era_end_timestamp_millis: u64,
     next_era_id: EraId,
 ) -> Result<StepSuccess, StepError> {

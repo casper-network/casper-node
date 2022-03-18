@@ -14,6 +14,7 @@ use core::{
     marker::Copy,
 };
 
+use capnp_conv::{capnp_conv_error, CapnpConvError, CorrespondingCapnp, ReadCapnp, WriteCapnp};
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 use ed25519_dalek::{
@@ -28,6 +29,10 @@ use k256::ecdsa::{
 #[cfg(feature = "json-schema")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+use casper_capnp_types::capnp::public_key_capnp::{
+    platform_public_key as capnp_platform_public_key, user_public_key as capnp_user_public_key,
+};
 
 use crate::{
     account::AccountHash,
@@ -207,6 +212,193 @@ pub enum PublicKey {
     /// secp256k1 public key.
     #[cfg_attr(feature = "datasize", data_size(skip))]
     Secp256k1(Secp256k1PublicKey),
+}
+
+impl CorrespondingCapnp for PublicKey {
+    type Type = capnp_platform_public_key::Owned;
+}
+
+impl<'a> WriteCapnp<'a> for PublicKey {
+    fn write_capnp(&self, writer: &mut <Self::Type as capnp::traits::Owned<'a>>::Builder) {
+        let mut inner = writer.reborrow();
+
+        match self {
+            PublicKey::System => inner.set_system(()),
+            PublicKey::Ed25519(ed25519_pubkey) => {
+                let bytes = ed25519_pubkey.as_bytes();
+                let mut builder = inner.init_user_public_key().init_ed25519();
+                builder.set_byte0(bytes[0]);
+                builder.set_byte1(bytes[1]);
+                builder.set_byte2(bytes[2]);
+                builder.set_byte3(bytes[3]);
+                builder.set_byte4(bytes[4]);
+                builder.set_byte5(bytes[5]);
+                builder.set_byte6(bytes[6]);
+                builder.set_byte7(bytes[7]);
+                builder.set_byte8(bytes[8]);
+                builder.set_byte9(bytes[9]);
+                builder.set_byte10(bytes[10]);
+                builder.set_byte11(bytes[11]);
+                builder.set_byte12(bytes[12]);
+                builder.set_byte13(bytes[13]);
+                builder.set_byte14(bytes[14]);
+                builder.set_byte15(bytes[15]);
+                builder.set_byte16(bytes[16]);
+                builder.set_byte17(bytes[17]);
+                builder.set_byte18(bytes[18]);
+                builder.set_byte19(bytes[19]);
+                builder.set_byte20(bytes[20]);
+                builder.set_byte21(bytes[20]);
+                builder.set_byte21(bytes[21]);
+                builder.set_byte22(bytes[22]);
+                builder.set_byte23(bytes[23]);
+                builder.set_byte24(bytes[24]);
+                builder.set_byte25(bytes[25]);
+                builder.set_byte26(bytes[26]);
+                builder.set_byte27(bytes[27]);
+                builder.set_byte28(bytes[28]);
+                builder.set_byte29(bytes[29]);
+                builder.set_byte30(bytes[30]);
+                builder.set_byte31(bytes[31]);
+            }
+            PublicKey::Secp256k1(secp256k1_pubkey) => {
+                let encoded_point = k256::EncodedPoint::from(secp256k1_pubkey);
+                let bytes = encoded_point.as_ref();
+                let mut builder = inner.init_user_public_key().init_secp256k1();
+                builder.set_byte0(bytes[0]);
+                builder.set_byte1(bytes[1]);
+                builder.set_byte2(bytes[2]);
+                builder.set_byte3(bytes[3]);
+                builder.set_byte4(bytes[4]);
+                builder.set_byte5(bytes[5]);
+                builder.set_byte6(bytes[6]);
+                builder.set_byte7(bytes[7]);
+                builder.set_byte8(bytes[8]);
+                builder.set_byte9(bytes[9]);
+                builder.set_byte10(bytes[10]);
+                builder.set_byte11(bytes[11]);
+                builder.set_byte12(bytes[12]);
+                builder.set_byte13(bytes[13]);
+                builder.set_byte14(bytes[14]);
+                builder.set_byte15(bytes[15]);
+                builder.set_byte16(bytes[16]);
+                builder.set_byte17(bytes[17]);
+                builder.set_byte18(bytes[18]);
+                builder.set_byte19(bytes[19]);
+                builder.set_byte20(bytes[20]);
+                builder.set_byte21(bytes[20]);
+                builder.set_byte21(bytes[21]);
+                builder.set_byte22(bytes[22]);
+                builder.set_byte23(bytes[23]);
+                builder.set_byte24(bytes[24]);
+                builder.set_byte25(bytes[25]);
+                builder.set_byte26(bytes[26]);
+                builder.set_byte27(bytes[27]);
+                builder.set_byte28(bytes[28]);
+                builder.set_byte29(bytes[29]);
+                builder.set_byte30(bytes[30]);
+                builder.set_byte31(bytes[31]);
+                builder.set_byte32(bytes[32]);
+            }
+        }
+    }
+}
+
+impl<'a> ReadCapnp<'a> for PublicKey {
+    fn read_capnp(
+        reader: &<Self::Type as capnp::traits::Owned<'a>>::Reader,
+    ) -> Result<Self, CapnpConvError> {
+        match reader.which()? {
+            capnp_platform_public_key::WhichReader::System(_) => Ok(PublicKey::System),
+            capnp_platform_public_key::WhichReader::UserPublicKey(reader_result) => {
+                match reader_result?.which()? {
+                    capnp_user_public_key::WhichReader::Ed25519(reader_result) => {
+                        let reader = reader_result?;
+                        let bytes: [u8; 32] = [
+                            reader.get_byte0(),
+                            reader.get_byte1(),
+                            reader.get_byte2(),
+                            reader.get_byte3(),
+                            reader.get_byte4(),
+                            reader.get_byte5(),
+                            reader.get_byte6(),
+                            reader.get_byte7(),
+                            reader.get_byte8(),
+                            reader.get_byte9(),
+                            reader.get_byte10(),
+                            reader.get_byte11(),
+                            reader.get_byte12(),
+                            reader.get_byte13(),
+                            reader.get_byte14(),
+                            reader.get_byte15(),
+                            reader.get_byte16(),
+                            reader.get_byte17(),
+                            reader.get_byte18(),
+                            reader.get_byte19(),
+                            reader.get_byte20(),
+                            reader.get_byte21(),
+                            reader.get_byte22(),
+                            reader.get_byte23(),
+                            reader.get_byte24(),
+                            reader.get_byte25(),
+                            reader.get_byte26(),
+                            reader.get_byte27(),
+                            reader.get_byte28(),
+                            reader.get_byte29(),
+                            reader.get_byte30(),
+                            reader.get_byte31(),
+                        ];
+                        Ok(PublicKey::Ed25519(
+                            ed25519_dalek::PublicKey::from_bytes(&bytes)
+                                .map_err(|err| capnp_conv_error!(err))?,
+                        ))
+                    }
+                    capnp_user_public_key::WhichReader::Secp256k1(reader_result) => {
+                        let reader = reader_result?;
+                        let bytes: [u8; 33] = [
+                            reader.get_byte0(),
+                            reader.get_byte1(),
+                            reader.get_byte2(),
+                            reader.get_byte3(),
+                            reader.get_byte4(),
+                            reader.get_byte5(),
+                            reader.get_byte6(),
+                            reader.get_byte7(),
+                            reader.get_byte8(),
+                            reader.get_byte9(),
+                            reader.get_byte10(),
+                            reader.get_byte11(),
+                            reader.get_byte12(),
+                            reader.get_byte13(),
+                            reader.get_byte14(),
+                            reader.get_byte15(),
+                            reader.get_byte16(),
+                            reader.get_byte17(),
+                            reader.get_byte18(),
+                            reader.get_byte19(),
+                            reader.get_byte20(),
+                            reader.get_byte21(),
+                            reader.get_byte22(),
+                            reader.get_byte23(),
+                            reader.get_byte24(),
+                            reader.get_byte25(),
+                            reader.get_byte26(),
+                            reader.get_byte27(),
+                            reader.get_byte28(),
+                            reader.get_byte29(),
+                            reader.get_byte30(),
+                            reader.get_byte31(),
+                            reader.get_byte32(),
+                        ];
+                        Ok(PublicKey::Secp256k1(
+                            Secp256k1PublicKey::from_sec1_bytes(&bytes)
+                                .map_err(|err| capnp_conv_error!(err))?,
+                        ))
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl PublicKey {

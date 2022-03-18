@@ -1,6 +1,3 @@
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
 #[cfg(test)]
 use std::iter;
 use std::{
@@ -31,7 +28,7 @@ use casper_types::{
 };
 
 use crate::{
-    components::consensus,
+    components::consensus::EraReport,
     crypto::{self, AsymmetricKeyExt},
     rpcs::docs::DocExample,
     types::{
@@ -272,9 +269,6 @@ impl Display for BlockPayload {
         )
     }
 }
-
-/// Equivocation and reward information to be included in the terminal finalized block.
-pub type EraReport = consensus::EraReport<PublicKey>;
 
 impl Display for EraReport {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {

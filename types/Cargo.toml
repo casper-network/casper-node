@@ -11,10 +11,14 @@ repository = "https://github.com/CasperLabs/casper-node/tree/master/types"
 license = "Apache-2.0"
 
 [dependencies]
+anyhow = { version = "1", default-features = false }
 base16 = { version = "0.2.1", default-features = false, features = ["alloc"] }
 base64 = { version = "0.13.0", default-features = false }
 bitflags = "1"
 blake2 = { version = "0.9.0", default-features = false }
+capnp = { version = "0.14.5", default-features = false }
+capnp-conv = { path = "../capnp_conv", default-features = false }
+casper-capnp-types = { path = "../capnp_types", default-features = false }
 datasize = { version = "0.2.4", optional = true }
 ed25519-dalek = { version = "1.0.0", default-features = false, features = ["rand", "u64_backend"] }
 hex = { version = "0.4.2", default-features = false, features = ["alloc"] }
@@ -46,10 +50,10 @@ serde_test = "1.0.117"
 strum = { version = "0.21", features = ["derive"] }
 
 [features]
+default = []
 json-schema = ["once_cell", "schemars"]
 gens = ["proptest"]
-# DEPRECATED - enabling `std` has no effect.
-std = []
+std = ["anyhow/std", "casper-capnp-types/std", "capnp-conv/std", "ed25519-dalek/std", "k256/std"]
 
 [[bench]]
 name = "bytesrepr_bench"

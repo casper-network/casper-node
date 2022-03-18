@@ -23,7 +23,8 @@ bytes = "1.0.1"
 casper-execution-engine = { version = "1.4.3", path = "../execution_engine" }
 casper-node-macros = { version = "1.4.2", path = "../node_macros" }
 casper-hashing = { version = "1.4.2", path = "../hashing" }
-casper-types = { version = "1.4.5", path = "../types", features = ["datasize", "gens", "json-schema"] }
+casper-types = { version = "1.4.5", path = "../types", features = ["datasize", "gens", "json-schema", "std"] }
+capnp-conv = { path = "../capnp_conv" }
 chrono = "0.4.10"
 datasize = { version = "0.2.10", features = ["detailed", "fake_clock-types", "futures-types", "smallvec-types"] }
 derive_more = "0.99.7"

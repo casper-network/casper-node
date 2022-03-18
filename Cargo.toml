@@ -1,5 +1,8 @@
 [workspace]
 members = [
+    "capnp_conv",
+    "capnp_conv/capnp_conv_test",
+    "capnp_types",
     "ci/casper_updater",
     "execution_engine",
     "execution_engine_testing/test_support",
@@ -13,9 +16,11 @@ members = [
     "utils/global-state-update-gen",
     "utils/retrieve-state",
     "utils/validation",
+    "xtask"
 ]
 
 default-members = [
+    "capnp_conv",
     "ci/casper_updater",
     "execution_engine",
     "execution_engine_testing/test_support",

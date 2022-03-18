@@ -1,0 +1,12 @@
+[package]
+name = "xtask"
+version = "0.1.0"
+edition = "2021"
+
+# This follows matklad's "xtask" pattern presented here: https://github.com/matklad/cargo-xtask
+# Polyfill for cargo workflows feature: http://aturon.github.io/tech/2018/04/05/workflows/
+
+[dependencies]
+capnp = "0.14.5"
+capnpc = "0.14.5"
+glob = "0.3.0"

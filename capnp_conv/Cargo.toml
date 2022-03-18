@@ -1,0 +1,15 @@
+[package]
+name = "capnp-conv"
+version = "0.11.0"
+authors = [ "David Renshaw <dwrenshaw@gmail.com>", "real <real@freedomlayer.org>"]
+license = "MIT"
+edition = "2021"
+
+[dependencies]
+anyhow = { version = "1", default-features = false }
+capnp = { version = "0.14.5", default-features = false }
+capnp_conv_derive = { path = "capnp_conv_derive", package = "capnp-conv-derive" }
+
+[features]
+default = ["std"]
+std = ["anyhow/std", "capnp/std"]
