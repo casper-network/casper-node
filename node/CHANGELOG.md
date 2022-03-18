@@ -47,17 +47,8 @@ All notable changes to this project will be documented in this file.  The format
 * Integrity check has been removed.
 * Remove `verify_accounts` option from `config.toml`, meaning deploys received from clients always undergo account balance checks to assess suitability for execution or not.
 
-
-
-## 1.4.3 - 2021-12-06
-
-### Added
-* Add new event to the main SSE server stream accessed via `<IP:Port>/events/main` which emits hashes of expired deploys.
-
-### Changed
-* `enable_manual_sync` configuration parameter defaults to `true`.
-* Default behavior of LMDB changed to use [`NO_READAHEAD`](https://docs.rs/lmdb/0.8.0/lmdb/struct.EnvironmentFlags.html#associatedconstant.NO_READAHEAD).
-
+### Security
+* OpenSSL has been bumped to version 1.1.1.n, if compiling with vendored OpenSSL to address [CVE-2022-0778](https://www.openssl.org/news/secadv/20220315.txt).
 
 
 
@@ -87,9 +78,12 @@ All notable changes to this project will be documented in this file.  The format
 
 ## 1.4.3 - 2021-12-06
 
+### Added
+* Add new event to the main SSE server stream accessed via `<IP:Port>/events/main` which emits hashes of expired deploys.
+
 ### Changed
 * `enable_manual_sync` configuration parameter defaults to `true`.
-* Default behavior of LMDB changed to use [`NO_READAHEAD`](https://docs.rs/lmdb/0.8.0/lmdb/struct.EnvironmentFlags.html#associatedconstant.NO_READAHEAD)
+* Default behavior of LMDB changed to use [`NO_READAHEAD`](https://docs.rs/lmdb/0.8.0/lmdb/struct.EnvironmentFlags.html#associatedconstant.NO_READAHEAD).
 
 
 

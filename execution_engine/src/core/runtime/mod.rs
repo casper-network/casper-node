@@ -48,6 +48,7 @@ use crate::{
         execution::{self, Error},
         runtime::host_function_flag::HostFunctionFlag,
         runtime_context::{self, RuntimeContext},
+        tracking_copy::TrackingCopyExt,
     },
     shared::{
         host_function_costs::{Cost, HostFunction},
@@ -569,18 +570,25 @@ where
     fn call_host_mint(
         &mut self,
         entry_point_name: &str,
-        named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         access_rights: ContextAccessRights,
         stack: RuntimeStack,
     ) -> Result<CLValue, Error> {
         let gas_counter = self.gas_counter();
 
-        let base_key = self.context.get_system_contract(MINT)?.into();
+        let mint_hash = self.context.get_system_contract(MINT)?;
+        let base_key = Key::from(mint_hash);
+        let mint_contract = self
+            .context
+            .state()
+            .borrow_mut()
+            .get_contract(self.context.correlation_id(), mint_hash)?;
+        let mut named_keys = mint_contract.named_keys().to_owned();
+
         let runtime_context = self.context.new_from_self(
             base_key,
             EntryPointType::Contract,
-            named_keys,
+            &mut named_keys,
             access_rights,
             runtime_args.to_owned(),
         );
@@ -691,18 +699,25 @@ where
     fn call_host_handle_payment(
         &mut self,
         entry_point_name: &str,
-        named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         access_rights: ContextAccessRights,
         stack: RuntimeStack,
     ) -> Result<CLValue, Error> {
         let gas_counter = self.gas_counter();
 
-        let base_key = self.context.get_system_contract(HANDLE_PAYMENT)?.into();
+        let handle_payment_hash = self.context.get_system_contract(HANDLE_PAYMENT)?;
+        let base_key = Key::from(handle_payment_hash);
+        let handle_payment_contract = self
+            .context
+            .state()
+            .borrow_mut()
+            .get_contract(self.context.correlation_id(), handle_payment_hash)?;
+        let mut named_keys = handle_payment_contract.named_keys().to_owned();
+
         let runtime_context = self.context.new_from_self(
             base_key,
             EntryPointType::Contract,
-            named_keys,
+            &mut named_keys,
             access_rights,
             runtime_args.to_owned(),
         );
@@ -783,18 +798,25 @@ where
     fn call_host_auction(
         &mut self,
         entry_point_name: &str,
-        named_keys: &mut NamedKeys,
         runtime_args: &RuntimeArgs,
         access_rights: ContextAccessRights,
         stack: RuntimeStack,
     ) -> Result<CLValue, Error> {
         let gas_counter = self.gas_counter();
 
-        let base_key = self.context.get_system_contract(AUCTION)?.into();
+        let auction_hash = self.context.get_system_contract(AUCTION)?;
+        let base_key = Key::from(auction_hash);
+        let auction_contract = self
+            .context
+            .state()
+            .borrow_mut()
+            .get_contract(self.context.correlation_id(), auction_hash)?;
+        let mut named_keys = auction_contract.named_keys().to_owned();
+
         let runtime_context = self.context.new_from_self(
             base_key,
             EntryPointType::Contract,
-            named_keys,
+            &mut named_keys,
             access_rights,
             runtime_args.to_owned(),
         );
@@ -1296,29 +1318,16 @@ where
         access_rights.extend(&extended_access_rights);
 
         if self.is_mint(context_key) {
-            return self.call_host_mint(
-                entry_point.name(),
-                &mut named_keys,
-                &context_args,
-                access_rights,
-                stack,
-            );
+            return self.call_host_mint(entry_point.name(), &context_args, access_rights, stack);
         } else if self.is_handle_payment(context_key) {
             return self.call_host_handle_payment(
                 entry_point.name(),
-                &mut named_keys,
                 &context_args,
                 access_rights,
                 stack,
             );
         } else if self.is_auction(context_key) {
-            return self.call_host_auction(
-                entry_point.name(),
-                &mut named_keys,
-                &context_args,
-                access_rights,
-                stack,
-            );
+            return self.call_host_auction(entry_point.name(), &context_args, access_rights, stack);
         }
 
         let module: Module = {
