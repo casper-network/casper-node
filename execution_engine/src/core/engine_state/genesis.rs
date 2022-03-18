@@ -35,8 +35,7 @@ use casper_types::{
 use crate::{
     core::{
         engine_state::{
-            execution_effect::ExecutionEffect, ChainspecRegistry, EngineConfig,
-            SystemContractRegistry,
+            execution_effect::ExecutionEffect, ChainspecRegistry, SystemContractRegistry,
         },
         execution,
         execution::AddressGenerator,
@@ -733,7 +732,6 @@ where
 {
     protocol_version: ProtocolVersion,
     correlation_id: CorrelationId,
-    engine_config: EngineConfig,
     exec_config: ExecConfig,
     address_generator: Rc<RefCell<AddressGenerator>>,
     tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
@@ -748,7 +746,6 @@ where
         genesis_config_hash: Digest,
         protocol_version: ProtocolVersion,
         correlation_id: CorrelationId,
-        engine_config: EngineConfig,
         exec_config: ExecConfig,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     ) -> Self {
@@ -771,14 +768,11 @@ where
         let key = Key::Account(system_account_addr);
         let value = { StoredValue::Account(virtual_system_account) };
 
-        let _ = tracking_copy
-            .borrow_mut()
-            .write(key, value, engine_config.max_stored_value_size());
+        let _ = tracking_copy.borrow_mut().write(key, value);
 
         GenesisInstaller {
             protocol_version,
             correlation_id,
-            engine_config,
             exec_config,
             address_generator,
             tracking_copy,
@@ -809,7 +803,6 @@ where
                     StoredValue::CLValue(CLValue::from_t(round_seigniorage_rate).map_err(
                         |_| GenesisError::CLValue(ARG_ROUND_SEIGNIORAGE_RATE.to_string()),
                     )?),
-                    self.engine_config.max_stored_value_size(),
                 );
             round_seigniorage_rate_uref
         };
@@ -826,7 +819,6 @@ where
                     CLValue::from_t(U512::zero())
                         .map_err(|_| GenesisError::CLValue(TOTAL_SUPPLY_KEY.to_string()))?,
                 ),
-                self.engine_config.max_stored_value_size(),
             );
             total_supply_uref
         };
@@ -862,7 +854,6 @@ where
             let _ = self.tracking_copy.borrow_mut().write(
                 Key::SystemContractRegistry,
                 StoredValue::CLValue(cl_registry),
-                self.engine_config.max_stored_value_size(),
             );
         }
 
@@ -1016,7 +1007,6 @@ where
                 CLValue::from_t(total_staked_amount)
                     .map_err(|_| GenesisError::CLValue(TOTAL_SUPPLY_KEY.to_string()))?,
             ),
-            self.engine_config.max_stored_value_size(),
         );
 
         let initial_seigniorage_recipients =
@@ -1032,7 +1022,6 @@ where
                 CLValue::from_t(INITIAL_ERA_ID)
                     .map_err(|_| GenesisError::CLValue(ERA_ID_KEY.to_string()))?,
             ),
-            self.engine_config.max_stored_value_size(),
         );
         named_keys.insert(ERA_ID_KEY.into(), era_id_uref.into());
 
@@ -1046,7 +1035,6 @@ where
                 CLValue::from_t(INITIAL_ERA_END_TIMESTAMP_MILLIS)
                     .map_err(|_| GenesisError::CLValue(ERA_END_TIMESTAMP_MILLIS_KEY.to_string()))?,
             ),
-            self.engine_config.max_stored_value_size(),
         );
         named_keys.insert(
             ERA_END_TIMESTAMP_MILLIS_KEY.into(),
@@ -1062,7 +1050,6 @@ where
             StoredValue::CLValue(CLValue::from_t(initial_seigniorage_recipients).map_err(
                 |_| GenesisError::CLValue(SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_string()),
             )?),
-            self.engine_config.max_stored_value_size(),
         );
         named_keys.insert(
             SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.into(),
@@ -1074,7 +1061,6 @@ where
             let _ = self.tracking_copy.borrow_mut().write(
                 Key::Bid(validator_account_hash),
                 StoredValue::Bid(Box::new(bid)),
-                self.engine_config.max_stored_value_size(),
             );
         }
 
@@ -1089,7 +1075,6 @@ where
                 CLValue::from_t(validator_slots)
                     .map_err(|_| GenesisError::CLValue(VALIDATOR_SLOTS_KEY.to_string()))?,
             ),
-            self.engine_config.max_stored_value_size(),
         );
         named_keys.insert(VALIDATOR_SLOTS_KEY.into(), validator_slots_uref.into());
 
@@ -1103,7 +1088,6 @@ where
                 CLValue::from_t(auction_delay)
                     .map_err(|_| GenesisError::CLValue(AUCTION_DELAY_KEY.to_string()))?,
             ),
-            self.engine_config.max_stored_value_size(),
         );
         named_keys.insert(AUCTION_DELAY_KEY.into(), auction_delay_uref.into());
 
@@ -1117,7 +1101,6 @@ where
                 CLValue::from_t(locked_funds_period_millis)
                     .map_err(|_| GenesisError::CLValue(LOCKED_FUNDS_PERIOD_KEY.to_string()))?,
             ),
-            self.engine_config.max_stored_value_size(),
         );
         named_keys.insert(
             LOCKED_FUNDS_PERIOD_KEY.into(),
@@ -1135,7 +1118,6 @@ where
                 CLValue::from_t(unbonding_delay)
                     .map_err(|_| GenesisError::CLValue(UNBONDING_DELAY_KEY.to_string()))?,
             ),
-            self.engine_config.max_stored_value_size(),
         );
         named_keys.insert(UNBONDING_DELAY_KEY.into(), unbonding_delay_uref.into());
 
@@ -1191,11 +1173,7 @@ where
                 main_purse,
             ));
 
-            let _ = self.tracking_copy.borrow_mut().write(
-                key,
-                stored_value,
-                self.engine_config.max_stored_value_size(),
-            );
+            let _ = self.tracking_copy.borrow_mut().write(key, stored_value);
 
             total_supply += account.balance().value();
         }
@@ -1206,7 +1184,6 @@ where
                 CLValue::from_t(total_supply)
                     .map_err(|_| GenesisError::CLValue(TOTAL_SUPPLY_KEY.to_string()))?,
             ),
-            self.engine_config.max_stored_value_size(),
         );
 
         Ok(())
@@ -1242,16 +1219,14 @@ where
         let _ = self.tracking_copy.borrow_mut().write(
             Key::Balance(purse_addr),
             StoredValue::CLValue(balance_cl_value),
-            self.engine_config.max_stored_value_size(),
         );
 
         let purse_cl_value = CLValue::unit();
         let purse_uref = URef::new(purse_addr, AccessRights::READ_ADD_WRITE);
-        let _ = self.tracking_copy.borrow_mut().write(
-            Key::URef(purse_uref),
-            StoredValue::CLValue(purse_cl_value),
-            self.engine_config.max_stored_value_size(),
-        );
+        let _ = self
+            .tracking_copy
+            .borrow_mut()
+            .write(Key::URef(purse_uref), StoredValue::CLValue(purse_cl_value));
 
         Ok(purse_uref)
     }
@@ -1295,17 +1270,14 @@ where
         let _ = self.tracking_copy.borrow_mut().write(
             contract_wasm_hash.into(),
             StoredValue::ContractWasm(contract_wasm),
-            self.engine_config.max_stored_value_size(),
         );
-        let _ = self.tracking_copy.borrow_mut().write(
-            contract_hash.into(),
-            StoredValue::Contract(contract),
-            self.engine_config.max_stored_value_size(),
-        );
+        let _ = self
+            .tracking_copy
+            .borrow_mut()
+            .write(contract_hash.into(), StoredValue::Contract(contract));
         let _ = self.tracking_copy.borrow_mut().write(
             contract_package_hash.into(),
             StoredValue::ContractPackage(contract_package),
-            self.engine_config.max_stored_value_size(),
         );
 
         (contract_package_hash, contract_hash)
@@ -1335,7 +1307,6 @@ where
         let _ = self.tracking_copy.borrow_mut().write(
             Key::SystemContractRegistry,
             StoredValue::CLValue(cl_registry),
-            self.engine_config.max_stored_value_size(),
         );
         Ok(())
     }
@@ -1353,7 +1324,6 @@ where
         self.tracking_copy.borrow_mut().write(
             Key::ChainspecRegistry,
             StoredValue::CLValue(cl_value_registry),
-            self.engine_config.max_stored_value_size(),
         );
         Ok(())
     }

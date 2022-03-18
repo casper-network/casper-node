@@ -7,16 +7,16 @@ use std::{
     rc::Rc,
 };
 
-use tracing::{error, warn};
+use tracing::error;
 
 use casper_types::{
     account::{
         Account, AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure,
         UpdateKeyFailure, Weight,
     },
-    bytesrepr::{ToBytes, U8_SERIALIZED_LENGTH},
+    bytesrepr::ToBytes,
     contracts::NamedKeys,
-    system::auction::{EraInfo, SeigniorageRecipientsSnapshot},
+    system::auction::EraInfo,
     AccessRights, BlockTime, CLType, CLValue, ContextAccessRights, Contract, ContractHash,
     ContractPackage, ContractPackageHash, DeployHash, DeployInfo, EntryPointAccess, EntryPointType,
     Gas, GrantedAccess, Key, KeyTag, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue,
@@ -28,7 +28,7 @@ use crate::{
         engine_state::{execution_effect::ExecutionEffect, EngineConfig, SystemContractRegistry},
         execution::{AddressGenerator, Error},
         runtime_context::dictionary::DictionaryValue,
-        tracking_copy::{AddResult, TrackingCopy, TrackingCopyExt, WriteResult},
+        tracking_copy::{AddResult, TrackingCopy, TrackingCopyExt},
     },
     shared::{execution_journal::ExecutionJournal, newtypes::CorrelationId},
     storage::global_state::StateReader,
@@ -563,11 +563,10 @@ where
     pub fn write_transfer(&mut self, key: Key, value: Transfer) {
         if let Key::Transfer(_) = key {
             // Writing a `Transfer` will not exceed write size limit.
-            let _ = self.tracking_copy.borrow_mut().write(
-                key,
-                StoredValue::Transfer(value),
-                self.engine_config.max_stored_value_size(),
-            );
+            let _ = self
+                .tracking_copy
+                .borrow_mut()
+                .write(key, StoredValue::Transfer(value));
         } else {
             panic!("Do not use this function for writing non-transfer keys")
         }
@@ -577,11 +576,10 @@ where
     pub fn write_era_info(&mut self, key: Key, value: EraInfo) {
         if let Key::EraInfo(_) = key {
             // Writing an `EraInfo` for 100 validators will not exceed write size limit.
-            let _ = self.tracking_copy.borrow_mut().write(
-                key,
-                StoredValue::EraInfo(value),
-                self.engine_config.max_stored_value_size(),
-            );
+            let _ = self
+                .tracking_copy
+                .borrow_mut()
+                .write(key, StoredValue::EraInfo(value));
         } else {
             panic!("Do not use this function for writing non-era-info keys")
         }
@@ -904,14 +902,10 @@ where
         let bytes_count = stored_value.serialized_length();
         self.charge_gas_storage(bytes_count)?;
 
-        match self.tracking_copy.borrow_mut().write(
-            key.into(),
-            stored_value,
-            self.engine_config.max_stored_value_size(),
-        ) {
-            WriteResult::Success => Ok(()),
-            WriteResult::ValueTooLarge => Err(Error::ValueTooLarge),
-        }
+        self.tracking_copy
+            .borrow_mut()
+            .write(key.into(), stored_value);
+        Ok(())
     }
 
     /// Writes data to a global state and charges for bytes stored.
@@ -928,36 +922,6 @@ where
         self.metered_write_gs_unsafe(key, stored_value)
     }
 
-    /// Writes a `SeigniorageRecipientsSnapshot` to global state and charges for bytes stored.
-    ///
-    /// The value is force-written, i.e. accidentally exceeding the write size limit will not cause
-    /// this to return `Err`.
-    pub(crate) fn metered_write_gs_seigniorage_recipients_snapshot(
-        &mut self,
-        key: Key,
-        snapshot: SeigniorageRecipientsSnapshot,
-    ) -> Result<(), Error> {
-        let cl_value = CLValue::from_t(snapshot).map_err(Error::from)?;
-        let stored_value = StoredValue::CLValue(cl_value);
-        self.validate_writeable(&key)?;
-        self.validate_key(&key)?;
-        self.validate_value(&stored_value)?;
-
-        let bytes_count = stored_value.serialized_length();
-        self.charge_gas_storage(bytes_count)?;
-
-        let computed_trie_leaf = U8_SERIALIZED_LENGTH
-            .saturating_add(key.serialized_length())
-            .saturating_add(stored_value.serialized_length());
-        if computed_trie_leaf > self.engine_config.max_stored_value_size() as usize {
-            warn!(%key, serialized_length=%stored_value.serialized_length(), "wrote a seigniorage recipients snapshot which is too large");
-        }
-        self.tracking_copy
-            .borrow_mut()
-            .force_write(key, stored_value);
-        Ok(())
-    }
-
     /// Adds data to a global state key and charges for bytes stored.
     ///
     /// This method performs full validation of the key to be written.
@@ -969,18 +933,16 @@ where
         let value_bytes_count = value.serialized_length();
         self.charge_gas_storage(value_bytes_count)?;
 
-        match self.tracking_copy.borrow_mut().add(
-            self.correlation_id,
-            key,
-            value,
-            self.engine_config.max_stored_value_size(),
-        ) {
+        match self
+            .tracking_copy
+            .borrow_mut()
+            .add(self.correlation_id, key, value)
+        {
             Err(storage_error) => Err(storage_error.into()),
             Ok(AddResult::Success) => Ok(()),
             Ok(AddResult::KeyNotFound(key)) => Err(Error::KeyNotFound(key)),
             Ok(AddResult::TypeMismatch(type_mismatch)) => Err(Error::TypeMismatch(type_mismatch)),
             Ok(AddResult::Serialization(error)) => Err(Error::BytesRepr(error)),
-            Ok(AddResult::ValueTooLarge) => Err(Error::ValueTooLarge),
         }
     }
 

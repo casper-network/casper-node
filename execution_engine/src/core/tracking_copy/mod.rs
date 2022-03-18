@@ -12,11 +12,10 @@ use std::{
 
 use linked_hash_map::LinkedHashMap;
 use thiserror::Error;
-use tracing::warn;
 
 use casper_hashing::Digest;
 use casper_types::{
-    bytesrepr::{self, ToBytes, U8_SERIALIZED_LENGTH},
+    bytesrepr::{self},
     CLType, CLValue, CLValueError, Key, KeyTag, StoredValue, StoredValueTypeMismatch, Tagged, U512,
 };
 
@@ -221,7 +220,6 @@ pub enum AddResult {
     KeyNotFound(Key),
     TypeMismatch(StoredValueTypeMismatch),
     Serialization(bytesrepr::Error),
-    ValueTooLarge,
 }
 
 impl From<CLValueError> for AddResult {
@@ -235,12 +233,6 @@ impl From<CLValueError> for AddResult {
             }
         }
     }
-}
-
-#[derive(Debug)]
-pub(crate) enum WriteResult {
-    Success,
-    ValueTooLarge,
 }
 
 impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
@@ -328,31 +320,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
         }
     }
 
-    /// If the serialized length of `value` is not more than `max_value_size`, writes `key,value`
-    /// and returns `WriteResult::Success`.  Otherwise, the write fails and
-    /// `WriteResult::ValueTooLarge` is returned.
-    pub(super) fn write(
-        &mut self,
-        key: Key,
-        value: StoredValue,
-        max_value_size: u32,
-    ) -> WriteResult {
-        // Takes serialized trie leaf size into consideration
-        let leaf_serialized_length = U8_SERIALIZED_LENGTH
-            .saturating_add(key.serialized_length())
-            .saturating_add(value.serialized_length());
-        if leaf_serialized_length > max_value_size as usize {
-            warn!(?key, ?value, "attempted writing value which is too large");
-            return WriteResult::ValueTooLarge;
-        }
-        let normalized_key = key.normalize();
-        self.cache.insert_write(normalized_key, value.clone());
-        self.journal.push((normalized_key, Transform::Write(value)));
-        WriteResult::Success
-    }
-
-    /// Infallible write of `key,value`, ignoring the engine config's `max_stored_value_size`.
-    pub(super) fn force_write(&mut self, key: Key, value: StoredValue) {
+    pub(super) fn write(&mut self, key: Key, value: StoredValue) {
         let normalized_key = key.normalize();
         self.cache.insert_write(normalized_key, value.clone());
         self.journal.push((normalized_key, Transform::Write(value)));
@@ -367,7 +335,6 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
         correlation_id: CorrelationId,
         key: Key,
         value: StoredValue,
-        max_value_size: u32,
     ) -> Result<AddResult, R::Error> {
         let normalized_key = key.normalize();
         let current_value = match self.get(correlation_id, &normalized_key)? {
@@ -424,13 +391,6 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
 
         match transform.clone().apply(current_value) {
             Ok(new_value) => {
-                let leaf_serialized_length = U8_SERIALIZED_LENGTH
-                    .saturating_add(key.serialized_length())
-                    .saturating_add(new_value.serialized_length());
-
-                if leaf_serialized_length > max_value_size as usize {
-                    return Ok(AddResult::ValueTooLarge);
-                }
                 self.cache.insert_write(normalized_key, new_value);
                 self.journal.push((normalized_key, transform));
                 Ok(AddResult::Success)
