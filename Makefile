@@ -1,4 +1,8 @@
 # This supports environments where $HOME/.cargo/env has not been sourced (CI, CLion Makefile runner)
+
+# Enable sse4.2 and avx for FastCRC support in RocksDb.
+RUSTFLAGS_SSE42AVX = RUSTFLAGS="--cfg feature="casper-mainnet" -C target-feature=+sse4.2,+avx"
+
 CARGO  = $(or $(shell which cargo),  $(HOME)/.cargo/bin/cargo)
 RUSTUP = $(or $(shell which rustup), $(HOME)/.cargo/bin/rustup)
 NPM    = $(or $(shell which npm),    /usr/bin/npm)
@@ -174,7 +178,7 @@ clean:
 
 .PHONY: build-for-packaging
 build-for-packaging: build-client-contracts
-	$(LEGACY) $(CARGO) build --release
+	$(RUSTFLAGS_SSE42AVX) $(CARGO) build --release
 
 .PHONY: package
 package:

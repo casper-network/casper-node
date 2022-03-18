@@ -3,10 +3,10 @@
 /// In-memory implementation of global state.
 pub mod in_memory;
 
-/// Lmdb implementation of global state.
-pub mod lmdb;
+/// Db implementation of global state.
+pub mod db;
 
-/// Lmdb implementation of global state with cache.
+/// Implementation of global state with cache.
 pub mod scratch;
 
 use std::{collections::HashMap, hash::BuildHasher};
@@ -102,7 +102,7 @@ pub trait StateProvider {
     fn empty_root(&self) -> Digest;
 
     /// Reads a `Trie` (possibly chunked) from the state if it is present
-    fn get_trie(
+    fn get_trie_or_chunk(
         &self,
         correlation_id: CorrelationId,
         trie_or_chunk_id: TrieOrChunkId,

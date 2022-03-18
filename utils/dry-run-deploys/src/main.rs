@@ -1,8 +1,10 @@
 use std::{path::PathBuf, time::Instant};
 
+use casper_hashing::Digest;
 use histogram::Histogram;
 use indicatif::{ProgressBar, ProgressStyle};
 use structopt::StructOpt;
+use tracing::info;
 
 use casper_node::{
     contract_runtime::{execute_finalized_block, ExecutionPreState},
@@ -18,22 +20,23 @@ use casper_types::EraId;
 
 #[derive(Debug, StructOpt)]
 struct Opts {
-    #[structopt(short, long, required = true, default_value = retrieve_state::CHAIN_DOWNLOAD_PATH)]
+    #[structopt(long, default_value = retrieve_state::CHAIN_DOWNLOAD_PATH)]
     chain_download_path: PathBuf,
 
-    #[structopt(short, long, required = true, default_value = retrieve_state::LMDB_PATH)]
+    #[structopt(long, default_value = retrieve_state::LMDB_PATH)]
     lmdb_path: PathBuf,
 
+    #[structopt(long, default_value = retrieve_state::ROCKSDB_PATH)]
+    rocksdb_path: PathBuf,
+
     #[structopt(
-        short,
         long,
-        required = true,
         default_value = "1",
         about = "Starting block height for execution. Must be > 0."
     )]
     starting_block_height: u64,
 
-    #[structopt(short, long)]
+    #[structopt(long)]
     ending_block_height: Option<u64>,
 
     #[structopt(short, long)]
@@ -47,14 +50,22 @@ struct Opts {
         about = "Max LMDB database size, may be useful to set this when running under valgrind."
     )]
     max_db_size: Option<usize>,
+
+    #[structopt(
+        long = "run-rocksdb-migration",
+        about = "Perform the rocksdb migration from lmdb to rockdb for all tries present in lmdb."
+    )]
+    run_rocksdb_migration: bool,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
+    env_logger::init();
     let opts = Opts::from_args();
 
     let chain_download_path = normalize_path(&opts.chain_download_path)?;
     let lmdb_path = normalize_path(&opts.lmdb_path)?;
+    let rocksdb_path = normalize_path(&opts.rocksdb_path)?;
 
     // TODO: Consider reading the proper `chainspec` in the `dry-run-deploys` tool.
     let verifiable_chunked_hash_activation = EraId::from(0u64);
@@ -67,6 +78,20 @@ async fn main() -> Result<(), anyhow::Error> {
         .max_db_size
         .unwrap_or(retrieve_state::DEFAULT_MAX_DB_SIZE);
 
+    if opts.run_rocksdb_migration {
+        let (engine_state, _env) = storage::load_execution_engine(
+            lmdb_path,
+            rocksdb_path,
+            max_db_size,
+            Digest::from([0; 32]),
+            opts.manual_sync_enabled,
+            casper_execution_engine::rocksdb_defaults(),
+        )?;
+        info!("Running migration of data from lmdb to rocksdb...");
+        casper_node::migrate_lmdb_data_to_rocksdb(engine_state, storage, false);
+        return Ok(());
+    }
+
     let load_height = opts.starting_block_height.saturating_sub(1);
     // Grab the block previous
     let previous_block = storage
@@ -76,9 +101,11 @@ async fn main() -> Result<(), anyhow::Error> {
     let previous_block_header = previous_block.take_header();
     let (engine_state, _env) = storage::load_execution_engine(
         lmdb_path,
+        rocksdb_path,
         max_db_size,
         *previous_block_header.state_root_hash(),
         opts.manual_sync_enabled,
+        casper_execution_engine::rocksdb_defaults(),
     )?;
 
     let mut execution_pre_state = ExecutionPreState::from_block_header(
@@ -92,7 +119,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .ending_block_height
         .unwrap_or_else(|| highest_height_in_chain.unwrap().take_header().height());
 
-    println!(
+    info!(
         "Starting at height: {}\nExecuting blocks stored in {} height {} to {}.\n",
         previous_block_header.height(),
         opts.chain_download_path.display(),
@@ -101,7 +128,7 @@ async fn main() -> Result<(), anyhow::Error> {
     );
 
     if opts.verbose {
-        eprintln!("height, block_hash, transfer_count, deploy_count, execution_time_µs");
+        info!("height, block_hash, transfer_count, deploy_count, execution_time_µs");
     }
 
     let progress = if !opts.verbose {
@@ -160,7 +187,7 @@ async fn main() -> Result<(), anyhow::Error> {
             ExecutionPreState::from_block_header(&header, verifiable_chunked_hash_activation);
         execute_count += 1;
         if opts.verbose {
-            eprintln!(
+            info!(
                 "{}, {}, {}, {}, {}",
                 header.height(),
                 block_hash,
@@ -187,7 +214,7 @@ async fn main() -> Result<(), anyhow::Error> {
         progress.as_ref().expect("should exist").finish();
     }
 
-    println!(
+    info!(
         "Executed {} blocks.\nMax: {}µs\n50th: {}µs\n99.9th: {}µs\n",
         execute_count, maximum, duration50th, duration999th
     );

@@ -30,6 +30,9 @@ All notable changes to this project will be documented in this file.  The format
 ## 1.5.0
 
 ### Changed
+* Changed backend datastore to use RocksDb, along with migrations for existing data from LMDB to RocksDb.
+* (Perf) Changed contract runtime to allow caching GlobalState changes during execution of a single block.
+* Fixed some integer casts.
 * Temporarily limit the size of individual values stored in global state.
 
 ### Security

@@ -1,6 +1,6 @@
 use clap::ArgMatches;
 
-use casper_engine_test_support::LmdbWasmTestBuilder;
+use casper_engine_test_support::DbWasmTestBuilder;
 use casper_types::{CLValue, StoredValue};
 
 use crate::{
@@ -28,7 +28,7 @@ pub(crate) fn generate_validators_update(matches: &ArgMatches<'_>) {
 
     // Open the global state that should be in the supplied directory.
     let mut test_builder =
-        LmdbWasmTestBuilder::open_raw(data_dir, Default::default(), hash_from_str(state_hash));
+        DbWasmTestBuilder::open_raw(data_dir, Default::default(), hash_from_str(state_hash));
 
     // Read the old SeigniorageRecipientsSnapshot
     let (validators_key, old_snapshot) = read_snapshot(&test_builder);

@@ -15,8 +15,10 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Added
 * Added `WasmTestBuilder::get_execution_journals` method for returning execution journals for all test runs.
+* Added `disk_use` binary for profiling disk use and general performance of the execution engine.
 
 ### Changed
+* Extracted some auction and transfer bench code to test_support in support of new `disk_use` binary.
 * `WasmTestBuilder::get_transforms` is deprecated in favor of `WasmTestBuilder::get_execution_journals`.
 * `deploy_hash` field is now defaulted to a random value rather than zeros in `DeployItemBuilder`.
 

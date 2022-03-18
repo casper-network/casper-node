@@ -39,12 +39,18 @@ use crate::{
 type BlockGenerators = Vec<fn(&mut TestRng) -> (Block, EraId)>;
 
 impl Storage {
-    fn disjoint_sequences(&self) -> &Vec<Sequence> {
-        self.disjoint_block_height_sequences.sequences()
+    fn disjoint_sequences(&self) -> Vec<Sequence> {
+        self.disjoint_block_height_sequences
+            .read()
+            .unwrap()
+            .sequences()
+            .clone()
     }
 
     fn add_missing_block_body(&mut self, block_header: &BlockHeader) {
         self.missing_block_bodies
+            .write()
+            .unwrap()
             .entry(*block_header.body_hash())
             .or_default()
             .push(block_header.height());
@@ -169,12 +175,14 @@ fn get_block_header_at_height(storage: &mut Storage, height: u64) -> Option<Bloc
 
 /// Requests block at a specific height from a storage component.
 fn get_block_at_height(storage: &mut Storage, height: u64) -> Option<Block> {
+    let indices = &*storage.indices.read().expect("mutex poisoned");
     storage
         .get_block_by_height(
             &mut storage
                 .env()
                 .begin_ro_txn()
                 .expect("could not get transaction"),
+            indices,
             height,
         )
         .expect("could not get block by height")
@@ -1670,10 +1678,12 @@ fn update_disjoint_height_sequences() {
     // Put single block, it should unconditionally be available in
     // `disjoint_block_height_sequences`.
     let (block_1, _) = random_block_at_height(&mut harness.rng, 1, Block::random_v1);
-    storage.update_disjoint_height_sequences(block_1.header());
+    storage
+        .update_disjoint_height_sequences(block_1.header())
+        .unwrap();
     assert_eq!(
         storage.disjoint_sequences(),
-        &vec![Sequence::new_with_bounds(1, 1)]
+        vec![Sequence::new_with_bounds(1, 1)]
     );
 
     // Indicate that there are two block headers with missing bodies.
@@ -1688,10 +1698,13 @@ fn update_disjoint_height_sequences() {
     let mut expected_missing_block_bodies = HashMap::new();
     expected_missing_block_bodies.insert(*body_hash, vec![2, 3]);
 
-    assert_eq!(expected_missing_block_bodies, storage.missing_block_bodies);
+    assert_eq!(
+        &expected_missing_block_bodies,
+        &*storage.missing_block_bodies.read().unwrap()
+    );
     assert_eq!(
         storage.disjoint_sequences(),
-        &vec![Sequence::new_with_bounds(1, 1)],
+        vec![Sequence::new_with_bounds(0, 1)],
         "disjoint sequences should stay intact"
     );
 
@@ -1699,8 +1712,10 @@ fn update_disjoint_height_sequences() {
     // Disjoint sequences should now contain two separate sequences, one for block 1
     // and the other for block 4.
     let (block_4, _) = random_block_at_height(&mut harness.rng, 4, Block::random_v1);
-    storage.update_disjoint_height_sequences(block_4.header());
-    let mut sequences = storage.disjoint_sequences().clone();
+    storage
+        .update_disjoint_height_sequences(block_4.header())
+        .unwrap();
+    let mut sequences = storage.disjoint_sequences();
     sequences.sort();
     assert_eq!(
         sequences,
@@ -1715,11 +1730,16 @@ fn update_disjoint_height_sequences() {
     // map should be empty.
     let mut block_5 = block_3.clone();
     block_5.set_height(5, verifiable_chunked_hash_activation);
-    storage.update_disjoint_height_sequences(block_5.header());
+    storage
+        .update_disjoint_height_sequences(block_5.header())
+        .unwrap();
 
-    assert_eq!(HashMap::new(), storage.missing_block_bodies);
+    assert_eq!(
+        &HashMap::new(),
+        &*storage.missing_block_bodies.read().unwrap()
+    );
     assert_eq!(
         storage.disjoint_sequences(),
-        &vec![Sequence::new_with_bounds(1, 5)]
+        vec![Sequence::new_with_bounds(0, 5)]
     );
 }

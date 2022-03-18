@@ -1,6 +1,9 @@
 //! Reactor used to initialize a node.
 
-use std::fmt::{self, Display, Formatter};
+use std::{
+    fmt::{self, Display, Formatter},
+    sync::Arc,
+};
 
 use datasize::DataSize;
 use derive_more::From;
@@ -8,7 +11,7 @@ use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::Serialize;
 use thiserror::Error;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 
 use casper_execution_engine::core::engine_state;
 
@@ -154,6 +157,10 @@ pub(crate) enum Error {
     #[error("storage error: {0}")]
     Storage(#[from] storage::FatalStorageError),
 
+    /// Execution engine storage error, can happen during rocksdb migration from lmdb.
+    #[error(transparent)]
+    ExecutionEngineStorage(#[from] casper_execution_engine::storage::error::Error),
+
     /// `ContractRuntime` component error.
     #[error("contract runtime config error: {0}")]
     ContractRuntime(#[from] contract_runtime::ConfigError),
@@ -231,6 +238,25 @@ impl Reactor {
                 .protocol_config
                 .verifiable_chunked_hash_activation,
         )?;
+
+        {
+            let engine_state = Arc::clone(contract_runtime.engine_state());
+            // We need to be synchronous here, ensures migration (of just the highest block) is
+            // complete before proceeding.
+            match storage.read_highest_block_header()? {
+                Some(highest_block_header) => {
+                    engine_state.migrate_state_root_to_rocksdb_if_needed(
+                        *highest_block_header.state_root_hash(),
+                        false,
+                    )?;
+                }
+                None => {
+                    info!(
+                        "unable to find highest block header while migrating from lmdb to rocksdb"
+                    );
+                }
+            }
+        }
 
         let effects = reactor::wrap_effects(Event::Chainspec, chainspec_effects);
 
