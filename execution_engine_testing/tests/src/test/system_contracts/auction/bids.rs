@@ -3177,17 +3177,7 @@ fn should_delegate_and_redelegate() {
         builder.exec(request).commit().expect_success();
     }
 
-    for _ in 0..=DEFAULT_AUCTION_DELAY {
-        let step_request = StepRequestBuilder::new()
-            .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
-            .with_next_era_id(builder.get_era().successor())
-            .build();
-
-        builder
-            .step(step_request)
-            .expect("must execute third step request post upgrade");
-    }
+    builder.advance_eras_by_default_auction_delay();
 
     let delegator_1_undelegate_purse = builder
         .get_account(*BID_ACCOUNT_1_ADDR)
@@ -3414,17 +3404,7 @@ fn should_handle_redelegation_to_inactive_validator() {
         builder.exec(request).commit().expect_success();
     }
 
-    for _ in 0..=DEFAULT_AUCTION_DELAY {
-        let step_request = StepRequestBuilder::new()
-            .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
-            .with_next_era_id(builder.get_era().successor())
-            .build();
-
-        builder
-            .step(step_request)
-            .expect("must execute step request");
-    }
+    builder.advance_eras_by_default_auction_delay();
 
     let delegator_1_main_purse = builder
         .get_account(*DELEGATOR_1_ADDR)

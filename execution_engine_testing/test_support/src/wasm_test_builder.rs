@@ -55,12 +55,13 @@ use casper_types::{
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,
-    DeployHash, DeployInfo, EraId, Gas, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue, Transfer,
-    TransferAddr, URef, U512,
+    DeployHash, DeployInfo, EraId, Gas, Key, KeyTag, ProtocolVersion, PublicKey, RuntimeArgs,
+    StoredValue, Transfer, TransferAddr, URef, U512,
 };
 
 use crate::{
-    utils, ExecuteRequestBuilder, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
+    utils, ExecuteRequestBuilder, StepRequestBuilder, DEFAULT_AUCTION_DELAY, DEFAULT_PROPOSER_ADDR,
+    DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
 };
 
 /// LMDB initial map size is calculated based on DEFAULT_LMDB_PAGES and systems page size.
@@ -1167,5 +1168,24 @@ where
         self.upgrade_results = Vec::new();
         self.transforms = Vec::new();
         self
+    }
+
+    /// Advances eras by num_eras
+    pub fn advance_eras_by(&mut self, num_eras: u64) {
+        for _ in 0..=num_eras {
+            let step_request = StepRequestBuilder::new()
+                .with_parent_state_hash(self.get_post_state_hash())
+                .with_protocol_version(ProtocolVersion::V1_0_0)
+                .with_next_era_id(self.get_era().successor())
+                .with_run_auction(true)
+                .build();
+            self.step(step_request)
+                .expect("must execute third step request post upgrade");
+        }
+    }
+
+    /// Advances eras by configured amount
+    pub fn advance_eras_by_default_auction_delay(&mut self) {
+        self.advance_eras_by(DEFAULT_AUCTION_DELAY);
     }
 }
