@@ -8,7 +8,6 @@ name = 'test-chain'
 maximum_net_message_size = 23_068_672
 
 [core]
-strict_argument_checking = false
 era_duration = '3minutes'
 minimum_era_height = 9
 validator_slots = 5
@@ -20,6 +19,7 @@ max_associated_keys = 100
 max_runtime_call_stack_height = 12
 max_stored_value_size = 8_388_608
 minimum_delegation_amount = 500_000_000_000
+strict_argument_checking = false
 
 [highway]
 finality_threshold_fraction = [2, 25]

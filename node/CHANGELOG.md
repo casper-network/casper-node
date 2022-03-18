@@ -12,6 +12,10 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+### Added
+
+* Add a chainspec setting `strict_argument_checking` to enable strict args checking when executing a contract; i.e. that all non-optional args are provided and of the correct `CLType`.
+
 
 
 ## 1.4.5
