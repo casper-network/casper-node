@@ -289,6 +289,9 @@ async fn fetch_and_store_deploy(
     })
 }
 
+/// Fetches finalized approvals for a deploy.
+/// Note: this function doesn't store the approvals. They are intended to be stored after
+/// confirming that the execution results match the received block.
 async fn fetch_finalized_approvals(
     deploy_hash: DeployHash,
     peer: NodeId,
@@ -1081,6 +1084,10 @@ async fn retry_execution_with_approvals_from_peer(
         .await?)
 }
 
+/// Maximum number of times the node will try to download finalized approvals from a single peer in
+/// an attempt to find a set of approvals matching the block execution results.
+const APPROVAL_FETCH_RETRIES: usize = 2;
+
 async fn execute_blocks(
     most_recent_block_header: &BlockHeader,
     trusted_key_block_info: &KeyBlockInfo,
@@ -1160,9 +1167,9 @@ async fn execute_blocks(
                 .get_fully_connected_peers()
                 .await
                 .into_iter()
-                .take(2)
+                .take(APPROVAL_FETCH_RETRIES)
             {
-                info!("start - re-executing finalized block - {}", block.hash());
+                info!(block_hash=%block.hash(), "start - re-executing finalized block");
                 let block_and_execution_effects = retry_execution_with_approvals_from_peer(
                     &mut deploys,
                     &mut transfers,
@@ -1172,10 +1179,17 @@ async fn execute_blocks(
                     ctx,
                 )
                 .await?;
-                info!("finish - re-executing finalized block - {}", block.hash());
+                info!(block_hash=%block.hash(), "finish - re-executing finalized block");
                 if block == *block_and_execution_effects.block() {
                     success = true;
                     break;
+                } else {
+                    warn!(
+                        %peer,
+                        "block executed with approvals from this peer doesn't match the received \
+                        block; blocking peer"
+                    );
+                    ctx.effect_builder.announce_disconnect_from_peer(peer).await;
                 }
             }
             if success {

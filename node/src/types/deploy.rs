@@ -660,7 +660,7 @@ impl FinalizedApprovalsWithId {
     }
 }
 
-/// Error type containing the error message passed from crypto::verify
+/// Error type containing the error message passed from `crypto::verify`
 #[derive(Debug, Error)]
 #[error("invalid approval from {signer}: {error}")]
 pub struct FinalizedApprovalsVerificationError {
