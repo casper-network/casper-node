@@ -3,9 +3,9 @@
 # Synopsis.
 # ----------------------------------------------------------------
 
-# 1. Start v1 running at current mainnet commit.
+# 1. Start v1 running at ProtocolVersion 1_3_0 commit.
 # 2. Waits for genesis era to complete.
-# 3. Await 3 eras and Query auction-info at block height 1.
+# 3. Query auction-info at block height 1.
 # 4. Run through an upgrade
 # 5. Query auction-info at block height 1 and compare with previous result.
 # 6. Successful test cleanup.
