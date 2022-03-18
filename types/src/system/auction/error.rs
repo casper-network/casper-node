@@ -280,18 +280,26 @@ pub enum Error {
     /// assert_eq!(42, Error::MintError as u8);
     /// ```
     MintError = 42,
+
+    // The validator has exceeded the maximum amount of delegators allowed.
+    // Note: This variant is no longer in use.
+    // ExceededDelegatorSizeLimit = 43,
+
+    // The global delegator capacity for the auction has been reached.
+    // Note: This variant is no longer in use.
+    // GlobalDelegatorCapacityReached = 44,
     /// The delegated amount is below the minimum allowed.
     /// ```
     /// # use casper_types::system::auction::Error;
-    /// assert_eq!(43, Error::DelegationAmountTooSmall as u8);
+    /// assert_eq!(45, Error::DelegationAmountTooSmall as u8);
     /// ```
-    DelegationAmountTooSmall = 43,
+    DelegationAmountTooSmall = 45,
     /// Runtime stack error.
     /// ```
     /// # use casper_types::system::auction::Error;
-    /// assert_eq!(44, Error::RuntimeStack as u8);
+    /// assert_eq!(46, Error::RuntimeStack as u8);
     /// ```
-    RuntimeStack = 44,
+    RuntimeStack = 46,
 }
 
 impl Display for Error {
