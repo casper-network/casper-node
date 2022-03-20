@@ -28,9 +28,10 @@ use casper_execution_engine::{
     },
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::{
-        global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment,
-        trie_store::lmdb::LmdbTrieStore,
+        global_state::db::DbGlobalState, transaction_source::db::LmdbEnvironment,
+        trie_store::db::LmdbTrieStore,
     },
+    ROCKS_DB_DATA_DIR,
 };
 use casper_hashing::Digest;
 use casper_types::ProtocolVersion;
@@ -133,7 +134,7 @@ type ExecQueue = Arc<Mutex<BTreeMap<u64, (FinalizedBlock, Vec<Deploy>, Vec<Deplo
 #[derive(DataSize)]
 pub(crate) struct ContractRuntime {
     execution_pre_state: Arc<Mutex<ExecutionPreState>>,
-    engine_state: Arc<EngineState<LmdbGlobalState>>,
+    engine_state: Arc<EngineState<DbGlobalState>>,
     metrics: Arc<Metrics>,
     protocol_version: ProtocolVersion,
 
@@ -444,7 +445,13 @@ impl ContractRuntime {
             DatabaseFlags::empty(),
         )?);
 
-        let global_state = LmdbGlobalState::empty(environment, trie_store)?;
+        let global_state = DbGlobalState::empty(
+            environment,
+            trie_store,
+            storage_dir.join(ROCKS_DB_DATA_DIR),
+            casper_execution_engine::rocksdb_defaults(),
+        )?;
+
         let engine_config = EngineConfig::new(
             contract_runtime_config.max_query_depth(),
             max_associated_keys,
@@ -505,6 +512,7 @@ impl ContractRuntime {
     }
 
     /// Retrieve trie keys for the integrity check.
+    #[allow(dead_code)]
     pub(crate) fn trie_store_check(
         &self,
         trie_keys: Vec<Digest>,
@@ -552,7 +560,7 @@ impl ContractRuntime {
 
     #[allow(clippy::too_many_arguments)]
     async fn execute_finalized_block_or_requeue<REv>(
-        engine_state: Arc<EngineState<LmdbGlobalState>>,
+        engine_state: Arc<EngineState<DbGlobalState>>,
         metrics: Arc<Metrics>,
         exec_queue: ExecQueue,
         execution_pre_state: Arc<Mutex<ExecutionPreState>>,
@@ -626,8 +634,7 @@ impl ContractRuntime {
     }
 
     /// Returns the engine state, for testing only.
-    #[cfg(test)]
-    pub(crate) fn engine_state(&self) -> &Arc<EngineState<LmdbGlobalState>> {
+    pub(crate) fn engine_state(&self) -> &Arc<EngineState<DbGlobalState>> {
         &self.engine_state
     }
 }

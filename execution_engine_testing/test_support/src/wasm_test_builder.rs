@@ -37,11 +37,11 @@ use casper_execution_engine::{
     },
     storage::{
         global_state::{
-            in_memory::InMemoryGlobalState, lmdb::LmdbGlobalState, StateProvider, StateReader,
+            db::DbGlobalState, in_memory::InMemoryGlobalState, StateProvider, StateReader,
         },
-        transaction_source::lmdb::LmdbEnvironment,
+        transaction_source::db::LmdbEnvironment,
         trie::{merkle_proof::TrieMerkleProof, Trie},
-        trie_store::lmdb::LmdbTrieStore,
+        trie_store::db::LmdbTrieStore,
     },
 };
 use casper_hashing::Digest;
@@ -79,7 +79,7 @@ const GLOBAL_STATE_DIR: &str = "global_state";
 /// Wasm test builder where state is held entirely in memory.
 pub type InMemoryWasmTestBuilder = WasmTestBuilder<InMemoryGlobalState>;
 /// Wasm test builder where state is held in LMDB.
-pub type LmdbWasmTestBuilder = WasmTestBuilder<LmdbGlobalState>;
+pub type LmdbWasmTestBuilder = WasmTestBuilder<DbGlobalState>;
 
 /// Builder for simple WASM test
 pub struct WasmTestBuilder<S> {
@@ -99,6 +99,8 @@ pub struct WasmTestBuilder<S> {
     genesis_transforms: Option<AdditiveMap<Key, Transform>>,
     /// System contract registry
     system_contract_registry: Option<SystemContractRegistry>,
+    /// Global state dir, for implementations that define one.
+    global_state_dir: Option<PathBuf>,
 }
 
 impl<S> WasmTestBuilder<S> {
@@ -126,6 +128,7 @@ impl Default for InMemoryWasmTestBuilder {
             genesis_account: None,
             genesis_transforms: None,
             system_contract_registry: None,
+            global_state_dir: None,
         }
     }
 }
@@ -144,6 +147,7 @@ impl<S> Clone for WasmTestBuilder<S> {
             genesis_account: self.genesis_account.clone(),
             genesis_transforms: self.genesis_transforms.clone(),
             system_contract_registry: self.system_contract_registry.clone(),
+            global_state_dir: self.global_state_dir.clone(),
         }
     }
 }
@@ -190,8 +194,14 @@ impl LmdbWasmTestBuilder {
                 .expect("should create LmdbTrieStore"),
         );
 
-        let global_state =
-            LmdbGlobalState::empty(environment, trie_store).expect("should create LmdbGlobalState");
+        let global_state = DbGlobalState::empty(
+            environment,
+            trie_store,
+            global_state_dir.join("rocksdb-data"),
+            casper_execution_engine::rocksdb_defaults(),
+        )
+        .expect("should create DbGlobalState");
+
         let engine_state = EngineState::new(global_state, engine_config);
         WasmTestBuilder {
             engine_state: Rc::new(engine_state),
@@ -203,6 +213,7 @@ impl LmdbWasmTestBuilder {
             genesis_account: None,
             genesis_transforms: None,
             system_contract_registry: None,
+            global_state_dir: Some(global_state_dir),
         }
     }
 
@@ -251,9 +262,18 @@ impl LmdbWasmTestBuilder {
         let trie_store =
             Arc::new(LmdbTrieStore::open(&environment, None).expect("should open LmdbTrieStore"));
 
-        let global_state =
-            LmdbGlobalState::empty(environment, trie_store).expect("should create LmdbGlobalState");
+        let global_state = DbGlobalState::empty(
+            environment,
+            trie_store,
+            global_state_dir.as_ref().join("rocksdb-data"),
+            casper_execution_engine::rocksdb_defaults(),
+        )
+        .expect("should create DbGlobalState");
+
         let engine_state = EngineState::new(global_state, engine_config);
+        engine_state
+            .migrate_state_root_to_rocksdb_if_needed(post_state_hash, false)
+            .expect("unable to migrate state root from lmdb to rocksdb");
         WasmTestBuilder {
             engine_state: Rc::new(engine_state),
             exec_results: Vec::new(),
@@ -264,6 +284,7 @@ impl LmdbWasmTestBuilder {
             genesis_account: None,
             genesis_transforms: None,
             system_contract_registry: None,
+            global_state_dir: Some(global_state_dir.as_ref().to_path_buf()),
         }
     }
 

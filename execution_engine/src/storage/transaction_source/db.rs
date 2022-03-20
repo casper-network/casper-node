@@ -1,18 +1,132 @@
-use std::path::Path;
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use casper_types::bytesrepr::Bytes;
 use lmdb::{
     self, Database, Environment, EnvironmentFlags, RoTransaction, RwTransaction, WriteFlags,
 };
+use rocksdb::{BoundColumnFamily, DBWithThreadMode, MultiThreaded, Options};
 
 use crate::storage::{
     error,
-    transaction_source::{Readable, Transaction, TransactionSource, Writable},
+    transaction_source::{
+        Readable, Transaction, TransactionSource, Writable, ROCKS_DB_TRIE_V1_COLUMN_FAMILY,
+    },
     MAX_DBS,
 };
 
 /// Filename for the LMDB database created by the EE.
-const EE_DB_FILENAME: &str = "data.lmdb";
+const EE_LMDB_FILENAME: &str = "data.lmdb";
+/// newtype over alt db.
+#[derive(Clone)]
+pub struct RocksDb {
+    db: Arc<DBWithThreadMode<MultiThreaded>>,
+}
+
+impl RocksDb {
+    /// Check if a state root has been marked as migrated from lmdb to rocksdb.
+    pub(crate) fn is_state_root_migrated(&self, state_root: &[u8]) -> Result<bool, error::Error> {
+        let cf = self.trie_column_family()?;
+        Ok(self.db.get_cf(&cf, state_root)?.is_some())
+    }
+
+    fn trie_column_family(&self) -> Result<Arc<BoundColumnFamily<'_>>, error::Error> {
+        self.db
+            .cf_handle(ROCKS_DB_TRIE_V1_COLUMN_FAMILY)
+            .ok_or_else(|| {
+                error::Error::UnableToOpenColumnFamily(ROCKS_DB_TRIE_V1_COLUMN_FAMILY.to_string())
+            })
+    }
+}
+
+impl Transaction for RocksDb {
+    type Error = error::Error;
+
+    type Handle = RocksDb;
+
+    fn commit(self) -> Result<(), Self::Error> {
+        // NO OP as rockdb doesn't use transactions.
+        Ok(())
+    }
+}
+
+impl Readable for RocksDb {
+    fn read(&self, _handle: Self::Handle, key: &[u8]) -> Result<Option<Bytes>, Self::Error> {
+        let cf = self.trie_column_family()?;
+        Ok(self.db.get_cf(&cf, key)?.map(|some| {
+            let value = some.as_ref();
+            Bytes::from(value)
+        }))
+    }
+}
+
+impl Writable for RocksDb {
+    fn write(
+        &mut self,
+        _handle: Self::Handle,
+        key: &[u8],
+        value: &[u8],
+    ) -> Result<(), Self::Error> {
+        let cf = self.trie_column_family()?;
+        let _result = self.db.put_cf(&cf, key, value)?;
+        Ok(())
+    }
+}
+
+/// Environment for rocksdb.
+#[derive(Clone)]
+pub struct RocksDbStore {
+    pub(crate) rocksdb: RocksDb,
+    pub(crate) path: PathBuf,
+}
+
+impl RocksDbStore {
+    /// Create a new environment for alternative db.
+    pub fn new(
+        path: impl AsRef<Path>,
+        rocksdb_opts: Options,
+    ) -> Result<RocksDbStore, rocksdb::Error> {
+        let db = Arc::new(DBWithThreadMode::<MultiThreaded>::open_cf(
+            &rocksdb_opts,
+            path.as_ref(),
+            vec![ROCKS_DB_TRIE_V1_COLUMN_FAMILY],
+        )?);
+
+        let rocksdb = RocksDb { db };
+
+        Ok(RocksDbStore {
+            rocksdb,
+            path: path.as_ref().to_path_buf(),
+        })
+    }
+
+    /// Return the path to the backing rocksdb files.
+    pub fn path(&self) -> PathBuf {
+        self.path.clone()
+    }
+}
+
+// TODO: remove this abstraction entirely when we've moved from lmdb to rocksdb for global state.
+
+impl<'a> TransactionSource<'a> for RocksDbStore {
+    type Error = error::Error;
+
+    type Handle = RocksDb;
+
+    type ReadTransaction = RocksDb;
+
+    type ReadWriteTransaction = RocksDb;
+
+    fn create_read_txn(&'a self) -> Result<Self::ReadTransaction, Self::Error> {
+        Ok(self.rocksdb.clone())
+    }
+
+    fn create_read_write_txn(&'a self) -> Result<Self::ReadWriteTransaction, Self::Error> {
+        Ok(self.rocksdb.clone())
+    }
+}
 
 impl<'a> Transaction for RoTransaction<'a> {
     type Error = lmdb::Error;
@@ -95,7 +209,7 @@ impl LmdbEnvironment {
             .set_max_dbs(MAX_DBS)
             .set_map_size(map_size)
             .set_max_readers(max_readers)
-            .open(&path.as_ref().join(EE_DB_FILENAME))?;
+            .open(&path.as_ref().join(EE_LMDB_FILENAME))?;
         Ok(LmdbEnvironment {
             env,
             manual_sync_enabled,

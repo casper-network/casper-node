@@ -14,7 +14,7 @@ use casper_execution_engine::{
         RewardItem, StepError, StepRequest, StepSuccess,
     },
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
-    storage::global_state::lmdb::LmdbGlobalState,
+    storage::global_state::db::DbGlobalState,
 };
 use casper_hashing::Digest;
 use casper_types::{EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, U512};
@@ -32,7 +32,7 @@ use crate::{
 
 /// Executes a finalized block.
 pub fn execute_finalized_block(
-    engine_state: &EngineState<LmdbGlobalState>,
+    engine_state: &EngineState<DbGlobalState>,
     metrics: Option<Arc<Metrics>>,
     protocol_version: ProtocolVersion,
     execution_pre_state: ExecutionPreState,
@@ -168,7 +168,7 @@ pub fn execute_finalized_block(
 
 /// Commits the execution effects.
 fn commit_execution_effects(
-    engine_state: &EngineState<LmdbGlobalState>,
+    engine_state: &EngineState<DbGlobalState>,
     metrics: Option<Arc<Metrics>>,
     state_root_hash: Digest,
     deploy_hash: DeployHash,
@@ -211,7 +211,7 @@ fn commit_execution_effects(
 }
 
 fn commit_transforms(
-    engine_state: &EngineState<LmdbGlobalState>,
+    engine_state: &EngineState<DbGlobalState>,
     metrics: Option<Arc<Metrics>>,
     state_root_hash: Digest,
     effects: AdditiveMap<Key, Transform>,
@@ -228,7 +228,7 @@ fn commit_transforms(
 }
 
 fn execute(
-    engine_state: &EngineState<LmdbGlobalState>,
+    engine_state: &EngineState<DbGlobalState>,
     metrics: Option<Arc<Metrics>>,
     execute_request: ExecuteRequest,
 ) -> Result<VecDeque<EngineExecutionResult>, engine_state::Error> {
@@ -244,7 +244,7 @@ fn execute(
 }
 
 fn commit_step(
-    engine_state: &EngineState<LmdbGlobalState>,
+    engine_state: &EngineState<DbGlobalState>,
     maybe_metrics: Option<Arc<Metrics>>,
     protocol_version: ProtocolVersion,
     pre_state_root_hash: Digest,

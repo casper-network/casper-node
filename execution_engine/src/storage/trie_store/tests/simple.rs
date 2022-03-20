@@ -8,10 +8,10 @@ use crate::storage::{
     error::{self, in_memory},
     store::StoreExt,
     transaction_source::{
-        in_memory::InMemoryEnvironment, lmdb::LmdbEnvironment, Transaction, TransactionSource,
+        db::LmdbEnvironment, in_memory::InMemoryEnvironment, Transaction, TransactionSource,
     },
     trie::Trie,
-    trie_store::{in_memory::InMemoryTrieStore, lmdb::LmdbTrieStore, TrieStore},
+    trie_store::{db::LmdbTrieStore, in_memory::InMemoryTrieStore, TrieStore},
     DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
 };
 

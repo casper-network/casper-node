@@ -2,7 +2,7 @@
 
 use casper_execution_engine::{
     core::engine_state::{Error as EngineStateError, StepError},
-    storage::error::lmdb::Error as StorageLmdbError,
+    storage::error::db::Error as StorageLmdbError,
 };
 
 use crate::{

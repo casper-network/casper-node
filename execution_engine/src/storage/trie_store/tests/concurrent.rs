@@ -10,10 +10,10 @@ use super::TestData;
 use crate::storage::{
     store::Store,
     transaction_source::{
-        in_memory::InMemoryEnvironment, lmdb::LmdbEnvironment, Transaction, TransactionSource,
+        db::LmdbEnvironment, in_memory::InMemoryEnvironment, Transaction, TransactionSource,
     },
     trie::Trie,
-    trie_store::{in_memory::InMemoryTrieStore, lmdb::LmdbTrieStore},
+    trie_store::{db::LmdbTrieStore, in_memory::InMemoryTrieStore},
     DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
 };
 

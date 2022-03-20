@@ -1244,6 +1244,7 @@ impl Storage {
     }
 
     /// Retrieves the state root hashes from storage to check the integrity of the trie store.
+    #[allow(dead_code)]
     pub(crate) fn read_state_root_hashes_for_trie_check(&self) -> Result<Vec<Digest>, Error> {
         let mut blake_hashes: Vec<Digest> = Vec::new();
         let txn = self.env.begin_ro_txn()?;

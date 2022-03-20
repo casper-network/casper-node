@@ -1,6 +1,9 @@
 //! Reactor used to initialize a node.
 
-use std::fmt::{self, Display, Formatter};
+use std::{
+    fmt::{self, Display, Formatter},
+    sync::Arc,
+};
 
 use datasize::DataSize;
 use derive_more::From;
@@ -202,6 +205,10 @@ pub(crate) enum Error {
     #[error("storage error: {0}")]
     Storage(#[from] storage::Error),
 
+    /// Execution engine storage error, can happen during rocksdb migration from lmdb.
+    #[error(transparent)]
+    ExecutionEngineStorage(#[from] casper_execution_engine::storage::error::Error),
+
     /// `ContractRuntime` component error.
     #[error("contract runtime config error: {0}")]
     ContractRuntime(#[from] contract_runtime::ConfigError),
@@ -219,6 +226,7 @@ pub(crate) enum Error {
         "Missing trie keys. Number of state roots: {state_root_count}, \
          Number of missing trie keys: {missing_trie_key_count}"
     )]
+    #[allow(unused)]
     MissingTrieKeys {
         /// The number of state roots in all of the block headers.
         state_root_count: usize,
@@ -292,22 +300,22 @@ impl Reactor {
             registry,
         )?;
 
-        // TODO: This integrity check is misplaced, it should be part of the components
-        // `handle_event` function. Ideally it would be in the constructor, but since a query to
-        // storage needs to be made, this is not possible.
-        //
-        // Refactoring this has been postponed for now, since it is unclear whether time-consuming
-        // integrity checks are even a good idea, as they can block the node for one or more hours
-        // on restarts (online checks are an alternative).
-        if crashed {
-            info!("running trie-store integrity check, this may take a while");
-            let state_roots = storage.read_state_root_hashes_for_trie_check()?;
-            let missing_trie_keys = contract_runtime.trie_store_check(state_roots.clone())?;
-            if !missing_trie_keys.is_empty() {
-                return Err(Error::MissingTrieKeys {
-                    state_root_count: state_roots.len(),
-                    missing_trie_key_count: missing_trie_keys.len(),
-                });
+        {
+            let engine_state = Arc::clone(contract_runtime.engine_state());
+            // We need to be synchronous here, ensures migration (of just the highest block) is
+            // complete before proceeding.
+            match storage.read_highest_block()? {
+                Some(highest_block) => {
+                    engine_state.migrate_state_root_to_rocksdb_if_needed(
+                        *highest_block.state_root_hash(),
+                        false,
+                    )?;
+                }
+                None => {
+                    info!(
+                        "unable to find highest block header while migrating from lmdb to rocksdb"
+                    );
+                }
             }
         }
 
