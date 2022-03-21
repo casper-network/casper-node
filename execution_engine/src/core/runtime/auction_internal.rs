@@ -4,10 +4,7 @@ use casper_types::{
     account::{self, AccountHash},
     bytesrepr::{FromBytes, ToBytes},
     system::{
-        auction::{
-            AccountProvider, Auction, Bid, EraInfo, Error, MintProvider, RuntimeProvider,
-            SeigniorageRecipientsSnapshot, StorageProvider, UnbondingPurse,
-        },
+        auction::{Bid, EraInfo, Error, SeigniorageRecipientsSnapshot, UnbondingPurse},
         mint,
     },
     CLTyped, CLValue, EraId, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue, URef,
@@ -15,7 +12,14 @@ use casper_types::{
 };
 
 use super::Runtime;
-use crate::{core::execution, storage::global_state::StateReader};
+use crate::{
+    core::execution,
+    storage::global_state::StateReader,
+    system::auction::{
+        providers::{AccountProvider, MintProvider, RuntimeProvider, StorageProvider},
+        Auction,
+    },
+};
 
 impl From<execution::Error> for Option<Error> {
     fn from(exec_error: execution::Error) -> Self {

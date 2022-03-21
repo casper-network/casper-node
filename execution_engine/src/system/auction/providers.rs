@@ -1,13 +1,13 @@
-use alloc::{collections::BTreeSet, vec::Vec};
+use std::collections::BTreeSet;
 
-use crate::{
+use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::{
-        auction::{Bid, EraId, EraInfo, Error, SeigniorageRecipientsSnapshot, UnbondingPurse},
+        auction::{Bid, EraInfo, Error, SeigniorageRecipientsSnapshot, UnbondingPurse},
         mint,
     },
-    CLTyped, Key, KeyTag, URef, BLAKE2B_DIGEST_LENGTH, U512,
+    CLTyped, EraId, Key, KeyTag, URef, BLAKE2B_DIGEST_LENGTH, U512,
 };
 
 /// Provider of runtime host functionality.

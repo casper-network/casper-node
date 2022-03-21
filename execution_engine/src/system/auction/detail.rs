@@ -1,16 +1,21 @@
-use alloc::{collections::BTreeMap, vec::Vec};
-use core::convert::TryInto;
+use std::{collections::BTreeMap, convert::TryInto};
 
 use num_rational::Ratio;
 
-use crate::{
+use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::auction::{
-        constants::*, Auction, Bids, EraId, Error, RuntimeProvider, SeigniorageAllocation,
-        SeigniorageRecipientsSnapshot, StorageProvider, UnbondingPurse, UnbondingPurses,
+        Bids, Error, SeigniorageAllocation, SeigniorageRecipientsSnapshot, UnbondingPurse,
+        UnbondingPurses, AUCTION_DELAY_KEY, ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY,
+        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
     },
-    CLTyped, Key, KeyTag, PublicKey, URef, U512,
+    CLTyped, EraId, Key, KeyTag, PublicKey, URef, U512,
+};
+
+use super::{
+    providers::{RuntimeProvider, StorageProvider},
+    Auction,
 };
 
 use super::{EraValidators, ValidatorWeights};
