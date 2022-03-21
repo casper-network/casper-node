@@ -4108,7 +4108,7 @@ fn should_not_restake_after_full_unbond() {
         .expect_success()
         .commit();
 
-    builder.advance_eras_by(1, None);
+    builder.advance_eras_by(1, vec![]);
 
     let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
 
@@ -4118,7 +4118,7 @@ fn should_not_restake_after_full_unbond() {
         U512::from(DELEGATOR_1_STAKE)
     );
 
-    builder.advance_eras_by(1, None);
+    builder.advance_eras_by(1, vec![]);
 
     // undelegate in the era right after we delegated.
     undelegate(
@@ -4147,15 +4147,13 @@ fn should_not_restake_after_full_unbond() {
     );
 
     // step until validator receives rewards.
-    builder.advance_eras_by(2, None);
+    builder.advance_eras_by(2, vec![]);
 
     // validator receives rewards after this step.
+
     builder.advance_eras_by(
         1,
-        Some(|step_request_builder| {
-            step_request_builder
-                .with_reward_item(RewardItem::new(VALIDATOR_1.clone(), BLOCK_REWARD))
-        }),
+        [RewardItem::new(VALIDATOR_1.clone(), BLOCK_REWARD)].into(),
     );
 
     // Delegator should not remain delegated even though they were eligible for rewards in the
@@ -4179,7 +4177,7 @@ fn delegator_full_unbond_during_first_reward_era() {
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     // advance past the initial auction delay due to special condition of post-genesis behavior.
-    builder.advance_eras_by(4, None);
+    builder.advance_eras_by(4, vec![]);
 
     let validator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -4244,7 +4242,7 @@ fn delegator_full_unbond_during_first_reward_era() {
         .commit();
 
     // first step after funding, adding bid and delegating.
-    builder.advance_eras_by(1, None);
+    builder.advance_eras_by(1, vec![]);
 
     let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone())
         .expect("should be delegator");
@@ -4255,7 +4253,7 @@ fn delegator_full_unbond_during_first_reward_era() {
     );
 
     // step until validator receives rewards.
-    builder.advance_eras_by(3, None);
+    builder.advance_eras_by(3, vec![]);
 
     // assert that the validator should indeed receive rewards and that
     // the delegator is scheduled to receive rewards this era.
@@ -4305,10 +4303,7 @@ fn delegator_full_unbond_during_first_reward_era() {
     // validator receives rewards after this step.
     builder.advance_eras_by(
         1,
-        Some(|step_request_builder| {
-            step_request_builder
-                .with_reward_item(RewardItem::new(VALIDATOR_1.clone(), BLOCK_REWARD))
-        }),
+        [RewardItem::new(VALIDATOR_1.clone(), BLOCK_REWARD)].into(),
     );
 
     // Delegator should not remain delegated even though they were eligible for rewards in the

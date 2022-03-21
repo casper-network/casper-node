@@ -18,8 +18,8 @@ use casper_execution_engine::{
         engine_state::{
             self, BalanceResult, EngineConfig, EngineState, ExecuteRequest, ExecutionResult,
             GenesisSuccess, GetBidsRequest, GetEraValidatorsRequest, QueryRequest, QueryResult,
-            RunGenesisRequest, StepError, StepRequest, StepSuccess, SystemContractRegistry,
-            UpgradeConfig, UpgradeSuccess,
+            RewardItem, RunGenesisRequest, StepError, StepRequest, StepSuccess,
+            SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
         },
         execution,
     },
@@ -1171,11 +1171,7 @@ where
     }
 
     /// Advances eras by num_eras
-    pub fn advance_eras_by(
-        &mut self,
-        num_eras: u64,
-        configure: Option<fn(StepRequestBuilder) -> StepRequestBuilder>,
-    ) {
+    pub fn advance_eras_by(&mut self, num_eras: u64, mut reward_items: Vec<RewardItem>) {
         for _ in 0..num_eras {
             let mut step_request_builder = StepRequestBuilder::new()
                 .with_parent_state_hash(self.get_post_state_hash())
@@ -1183,8 +1179,8 @@ where
                 .with_next_era_id(self.get_era().successor())
                 .with_run_auction(true);
 
-            if let Some(configure) = configure {
-                step_request_builder = configure(step_request_builder);
+            while let Some(reward_item) = reward_items.pop() {
+                step_request_builder = step_request_builder.with_reward_item(reward_item);
             }
 
             self.step(step_request_builder.build())
@@ -1194,6 +1190,6 @@ where
 
     /// Advances eras by configured amount
     pub fn advance_eras_by_default_auction_delay(&mut self) {
-        self.advance_eras_by(DEFAULT_AUCTION_DELAY + 1, None);
+        self.advance_eras_by(DEFAULT_AUCTION_DELAY + 1, vec![]);
     }
 }

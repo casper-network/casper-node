@@ -3221,11 +3221,11 @@ fn should_delegate_and_redelegate() {
 
         builder.advance_eras_by(
             1,
-            Some(|step_request_builder| {
-                step_request_builder
-                    .with_reward_item(RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1))
-                    .with_reward_item(RewardItem::new(NON_FOUNDER_VALIDATOR_2_PK.clone(), 1))
-            }),
+            [
+                RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1),
+                RewardItem::new(NON_FOUNDER_VALIDATOR_2_PK.clone(), 1),
+            ]
+            .into(),
         );
     }
 
@@ -3432,11 +3432,11 @@ fn should_handle_redelegation_to_inactive_validator() {
 
     builder.advance_eras_by(
         1,
-        Some(|step_request_builder| {
-            step_request_builder
-                .with_reward_item(RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1))
-                .with_reward_item(RewardItem::new(NON_FOUNDER_VALIDATOR_2_PK.clone(), 1))
-        }),
+        [
+            RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1),
+            RewardItem::new(NON_FOUNDER_VALIDATOR_2_PK.clone(), 1),
+        ]
+        .into(),
     );
 
     let valid_redelegate_request = ExecuteRequestBuilder::standard(
@@ -3465,11 +3465,11 @@ fn should_handle_redelegation_to_inactive_validator() {
 
         builder.advance_eras_by(
             1,
-            Some(|step_request_builder| {
-                step_request_builder
-                    .with_reward_item(RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1))
-                    .with_reward_item(RewardItem::new(NON_FOUNDER_VALIDATOR_2_PK.clone(), 1))
-            }),
+            [
+                RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1),
+                RewardItem::new(NON_FOUNDER_VALIDATOR_2_PK.clone(), 1),
+            ]
+            .into(),
         );
     }
 
@@ -3547,18 +3547,12 @@ fn should_continue_auction_state_from_release_1_4_x() {
 
     builder.advance_eras_by(
         1,
-        Some(|step_request_builder| {
-            step_request_builder
-                .with_reward_item(RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1))
-                .with_reward_item(RewardItem::new(
-                    GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(),
-                    0,
-                ))
-                .with_reward_item(RewardItem::new(
-                    GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(),
-                    0,
-                ))
-        }),
+        [
+            RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1),
+            RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(), 0),
+            RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(), 0),
+        ]
+        .into(),
     );
 
     let delegator_1_purse_balance_post_step =
@@ -3579,18 +3573,12 @@ fn should_continue_auction_state_from_release_1_4_x() {
 
     builder.advance_eras_by(
         1,
-        Some(|step_request_builder| {
-            step_request_builder
-                .with_reward_item(RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1))
-                .with_reward_item(RewardItem::new(
-                    GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(),
-                    0,
-                ))
-                .with_reward_item(RewardItem::new(
-                    GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(),
-                    0,
-                ))
-        }),
+        [
+            RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1),
+            RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(), 0),
+            RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(), 0),
+        ]
+        .into(),
     );
 
     let delegator_2_purse_balance_post_step =
@@ -3611,18 +3599,12 @@ fn should_continue_auction_state_from_release_1_4_x() {
 
     builder.advance_eras_by(
         1,
-        Some(|step_request_builder| {
-            step_request_builder
-                .with_reward_item(RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1))
-                .with_reward_item(RewardItem::new(
-                    GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(),
-                    0,
-                ))
-                .with_reward_item(RewardItem::new(
-                    GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(),
-                    0,
-                ))
-        }),
+        [
+            RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1),
+            RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(), 0),
+            RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(), 0),
+        ]
+        .into(),
     );
 
     let delegator_3_purse_balance_post_step =
@@ -3697,18 +3679,12 @@ fn should_continue_auction_state_from_release_1_4_x() {
 
         builder.advance_eras_by(
             1,
-            Some(|step_request_builder| {
-                step_request_builder
-                    .with_reward_item(RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1))
-                    .with_reward_item(RewardItem::new(
-                        GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(),
-                        0,
-                    ))
-                    .with_reward_item(RewardItem::new(
-                        GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(),
-                        0,
-                    ))
-            }),
+            [
+                RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1),
+                RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(), 0),
+                RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(), 0),
+            ]
+            .into(),
         );
     }
 
@@ -3793,18 +3769,12 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
 
     builder.advance_eras_by(
         1,
-        Some(|step_request_builder| {
-            step_request_builder
-                .with_reward_item(RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1))
-                .with_reward_item(RewardItem::new(
-                    GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(),
-                    0,
-                ))
-                .with_reward_item(RewardItem::new(
-                    GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(),
-                    0,
-                ))
-        }),
+        [
+            RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1),
+            RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(), 0),
+            RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(), 0),
+        ]
+        .into(),
     );
 
     let delegator_1_purse_balance_post_step =
@@ -3825,18 +3795,12 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
 
     builder.advance_eras_by(
         1,
-        Some(|step_request_builder| {
-            step_request_builder
-                .with_reward_item(RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1))
-                .with_reward_item(RewardItem::new(
-                    GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(),
-                    0,
-                ))
-                .with_reward_item(RewardItem::new(
-                    GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(),
-                    0,
-                ))
-        }),
+        [
+            RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1),
+            RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(), 0),
+            RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(), 0),
+        ]
+        .into(),
     );
 
     let delegator_2_purse_balance_post_step =
@@ -3857,18 +3821,12 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
 
     builder.advance_eras_by(
         1,
-        Some(|step_request_builder| {
-            step_request_builder
-                .with_reward_item(RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1))
-                .with_reward_item(RewardItem::new(
-                    GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(),
-                    0,
-                ))
-                .with_reward_item(RewardItem::new(
-                    GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(),
-                    0,
-                ))
-        }),
+        [
+            RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1),
+            RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(), 0),
+            RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(), 0),
+        ]
+        .into(),
     );
 
     let delegator_3_purse_balance_post_step =
@@ -3941,18 +3899,12 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
 
     builder.advance_eras_by(
         DEFAULT_AUCTION_DELAY + 1,
-        Some(|step_request_builder| {
-            step_request_builder
-                .with_reward_item(RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1))
-                .with_reward_item(RewardItem::new(
-                    GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(),
-                    0,
-                ))
-                .with_reward_item(RewardItem::new(
-                    GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(),
-                    0,
-                ))
-        }),
+        [
+            RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1),
+            RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(), 0),
+            RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(), 0),
+        ]
+        .into(),
     );
 
     let delegator_4_purse = builder
@@ -3971,17 +3923,11 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
 
         builder.advance_eras_by(
             1,
-            Some(|step_request_builder| {
-                step_request_builder
-                    .with_reward_item(RewardItem::new(
-                        GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(),
-                        0,
-                    ))
-                    .with_reward_item(RewardItem::new(
-                        GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(),
-                        0,
-                    ))
-            }),
+            [
+                RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(), 0),
+                RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(), 0),
+            ]
+            .into(),
         );
     }
 
