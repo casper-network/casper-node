@@ -1,69 +1,35 @@
+use once_cell::sync::Lazy;
+
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_types::{
-    account::AccountHash, crypto, runtime_args, system::mint, ContractHash, Key, PublicKey,
-    RuntimeArgs, SecretKey, U512,
+    account::AccountHash, runtime_args, system::mint, ContractHash, Key, PublicKey, RuntimeArgs,
+    SecretKey, U512,
 };
 
-// Test constants.
-const FAUCET_INSTALLER_SESSION: &str = "faucet_stored.wasm";
-const FAUCET_CONTRACT_NAMED_KEY: &str = "faucet";
-const INSTALLER_FUND_AMOUNT: u64 = 500_000_000_000_000;
-const TWO_HOURS_AS_MILLIS: u64 = 7_200_000;
-const FAUCET_ID: u64 = 1337;
+// test constants.
+use super::{
+    ARG_AMOUNT, ARG_AVAILABLE_AMOUNT, ARG_DISTRIBUTIONS_PER_INTERVAL, ARG_ID, ARG_TARGET,
+    ARG_TIME_INTERVAL, AUTHORIZED_ACCOUNT_NAMED_KEY, AVAILABLE_AMOUNT_NAMED_KEY,
+    DISTRIBUTIONS_PER_INTERVAL_NAMED_KEY, ENTRY_POINT_AUTHORIZE_TO, ENTRY_POINT_FAUCET,
+    ENTRY_POINT_SET_VARIABLES, FAUCET_CONTRACT_NAMED_KEY, FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID,
+    FAUCET_INSTALLER_SESSION, FAUCET_PURSE_NAMED_KEY, INSTALLER_ACCOUNT, INSTALLER_FUND_AMOUNT,
+    INSTALLER_NAMED_KEY, LAST_DISTRIBUTION_TIME_NAMED_KEY, REMAINING_REQUESTS_NAMED_KEY,
+    TIME_INTERVAL_NAMED_KEY, TWO_HOURS_AS_MILLIS,
+};
 
-// contract args and entry points.
-const ARG_TARGET: &str = "target";
-const ARG_AMOUNT: &str = "amount";
-const ARG_ID: &str = "id";
-const ARG_AVAILABLE_AMOUNT: &str = "available_amount";
-const ARG_TIME_INTERVAL: &str = "time_interval";
-const ARG_DISTRIBUTIONS_PER_INTERVAL: &str = "distributions_per_interval";
-const ENTRY_POINT_FAUCET: &str = "call_faucet";
-const ENTRY_POINT_SET_VARIABLES: &str = "set_variables";
-const ENTRY_POINT_AUTHORIZE_TO: &str = "authorize_to";
-
-// stored contract named keys.
-const AVAILABLE_AMOUNT_NAMED_KEY: &str = "available_amount";
-const TIME_INTERVAL_NAMED_KEY: &str = "time_interval";
-const LAST_DISTRIBUTION_TIME_NAMED_KEY: &str = "last_distribution_time";
-const FAUCET_PURSE_NAMED_KEY: &str = "faucet_purse";
-const INSTALLER_NAMED_KEY: &str = "installer";
-const DISTRIBUTIONS_PER_INTERVAL_NAMED_KEY: &str = "distributions_per_interval";
-const REMAINING_REQUESTS_NAMED_KEY: &str = "remaining_requests";
-const AUTHORIZED_ACCOUNT_NAMED_KEY: &str = "authorized_account";
-
-#[ignore]
-#[test]
-fn should_install_faucet_contract() {
-    let installer_secret_key =
-        SecretKey::ed25519_from_bytes([1; 32]).expect("failed to create secret key");
-    let installer_public_key = PublicKey::from(&installer_secret_key);
-    let installer_account = AccountHash::from_public_key(&installer_public_key, crypto::blake2b);
-
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST).commit();
-
-    let fund_installer_account_request = ExecuteRequestBuilder::transfer(
-        *DEFAULT_ACCOUNT_ADDR,
-        runtime_args! {
-            mint::ARG_TARGET => installer_account,
-            mint::ARG_AMOUNT => INSTALLER_FUND_AMOUNT,
-            mint::ARG_ID => <Option<u64>>::None
-        },
-    )
-    .build();
-
+fn fund_installer(builder: &mut InMemoryWasmTestBuilder) {
     builder
         .exec(fund_installer_account_request)
         .expect_success()
         .commit();
+}
 
-    let faucet_fund_amount = U512::from(500_000u64);
+fn install_faucet(builder: &mut InMemoryWasmTestBuilder, faucet_fund_amount: U512) {
     let installer_session_request = ExecuteRequestBuilder::standard(
-        installer_account,
+        *INSTALLER_ACCOUNT,
         FAUCET_INSTALLER_SESSION,
         runtime_args! {ARG_ID => FAUCET_ID, ARG_AMOUNT => faucet_fund_amount},
     )
@@ -73,9 +39,19 @@ fn should_install_faucet_contract() {
         .exec(installer_session_request)
         .expect_success()
         .commit();
+}
+
+#[ignore]
+#[test]
+fn should_install_faucet_contract() {
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST).commit();
+
+    fund_installer(&mut builder);
+    install_faucet(&mut builder, U512::from(500_000u32));
 
     let installer_named_keys = builder
-        .get_expected_account(installer_account)
+        .get_expected_account(*INSTALLER_ACCOUNT)
         .named_keys()
         .clone();
 
@@ -184,44 +160,16 @@ fn should_install_faucet_contract() {
 #[ignore]
 #[test]
 fn should_allow_installer_to_set_variables() {
-    let installer_secret_key =
-        SecretKey::ed25519_from_bytes([1; 32]).expect("failed to create secret key");
-    let installer_public_key = PublicKey::from(&installer_secret_key);
-    let installer_account = AccountHash::from_public_key(&installer_public_key, crypto::blake2b);
-
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST).commit();
 
-    let fund_installer_account_request = ExecuteRequestBuilder::transfer(
-        *DEFAULT_ACCOUNT_ADDR,
-        runtime_args! {
-            mint::ARG_TARGET => installer_account,
-            mint::ARG_AMOUNT => INSTALLER_FUND_AMOUNT,
-            mint::ARG_ID => <Option<u64>>::None
-        },
-    )
-    .build();
-
-    builder
-        .exec(fund_installer_account_request)
-        .expect_success()
-        .commit();
-
     let faucet_fund_amount = U512::from(500_000u64);
-    let installer_session_request = ExecuteRequestBuilder::standard(
-        installer_account,
-        FAUCET_INSTALLER_SESSION,
-        runtime_args! {ARG_ID => FAUCET_ID, ARG_AMOUNT => faucet_fund_amount},
-    )
-    .build();
 
-    builder
-        .exec(installer_session_request)
-        .expect_success()
-        .commit();
+    fund_installer(&mut builder);
+    install_faucet(&mut builder, faucet_fund_amount);
 
     let faucet_contract_hash = builder
-        .get_expected_account(installer_account)
+        .get_expected_account(*INSTALLER_ACCOUNT)
         .named_keys()
         .get(&format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID))
         .cloned()
@@ -297,8 +245,8 @@ fn should_allow_installer_to_set_variables() {
 
     let installer_set_variable_request = {
         let deploy_item = DeployItemBuilder::new()
-            .with_address(installer_account)
-            .with_authorization_keys(&[installer_account])
+            .with_address(*INSTALLER_ACCOUNT)
+            .with_authorization_keys(&[*INSTALLER_ACCOUNT])
             .with_stored_session_named_key(
                 &format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID),
                 ENTRY_POINT_SET_VARIABLES,
