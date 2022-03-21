@@ -1,5 +1,8 @@
 mod faucet;
-mod faucet_deploy_builder;
+pub mod faucet_test_helpers;
+
+use casper_types::account::AccountHash;
+use once_cell::sync::Lazy;
 
 // Test constants.
 pub const FAUCET_INSTALLER_SESSION: &str = "faucet_stored.wasm";
