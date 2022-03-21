@@ -487,12 +487,6 @@ impl JsonSchema for ContractHash {
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ContractPackageHash(HashAddr);
 
-impl From<&str> for ContractPackageHash { // Should we do a TryFrom? instead to allow for failure.
-    fn from(_: &str) -> Self {
-        todo!()
-    }
-}
-
 impl ContractPackageHash {
     /// Constructs a new `ContractPackageHash` from the raw bytes of the contract package hash.
     pub const fn new(value: HashAddr) -> ContractPackageHash {
