@@ -74,9 +74,9 @@ impl UnbondingPurse {
 
     /// Returns public key of unbonder.
     ///
-    /// For withdrawal requests that originated from validator's public key through
-    /// [`crate::system::auction::Auction::withdraw_bid`] entrypoint this is equal to
-    /// [`UnbondingPurse::validator_public_key`] and [`UnbondingPurse::is_validator`] is `true`.
+    /// For withdrawal requests that originated from validator's public key through `withdraw_bid`
+    /// entrypoint this is equal to [`UnbondingPurse::validator_public_key`] and
+    /// [`UnbondingPurse::is_validator`] is `true`.
     pub fn unbonder_public_key(&self) -> &PublicKey {
         &self.unbonder_public_key
     }
