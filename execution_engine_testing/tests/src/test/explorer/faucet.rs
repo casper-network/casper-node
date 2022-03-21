@@ -1,5 +1,3 @@
-use once_cell::sync::Lazy;
-
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
@@ -11,35 +9,19 @@ use casper_types::{
 
 // test constants.
 use super::{
+    faucet_test_helpers::{
+        get_faucet_contract_hash, query_stored_value, FaucetAuthorizeAccountRequestBuilder,
+        FaucetConfigRequestBuilder, FaucetFundRequestBuilder, FaucetInstallSessionRequestBuilder,
+        FundAccountRequestBuilder,
+    },
     ARG_AMOUNT, ARG_AVAILABLE_AMOUNT, ARG_DISTRIBUTIONS_PER_INTERVAL, ARG_ID, ARG_TARGET,
     ARG_TIME_INTERVAL, AUTHORIZED_ACCOUNT_NAMED_KEY, AVAILABLE_AMOUNT_NAMED_KEY,
     DISTRIBUTIONS_PER_INTERVAL_NAMED_KEY, ENTRY_POINT_AUTHORIZE_TO, ENTRY_POINT_FAUCET,
-    ENTRY_POINT_SET_VARIABLES, FAUCET_CONTRACT_NAMED_KEY, FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID,
-    FAUCET_INSTALLER_SESSION, FAUCET_PURSE_NAMED_KEY, INSTALLER_ACCOUNT, INSTALLER_FUND_AMOUNT,
-    INSTALLER_NAMED_KEY, LAST_DISTRIBUTION_TIME_NAMED_KEY, REMAINING_REQUESTS_NAMED_KEY,
-    TIME_INTERVAL_NAMED_KEY, TWO_HOURS_AS_MILLIS,
+    ENTRY_POINT_SET_VARIABLES, FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID, FAUCET_INSTALLER_SESSION,
+    FAUCET_PURSE_NAMED_KEY, INSTALLER_ACCOUNT, INSTALLER_FUND_AMOUNT, INSTALLER_NAMED_KEY,
+    LAST_DISTRIBUTION_TIME_NAMED_KEY, REMAINING_REQUESTS_NAMED_KEY, TIME_INTERVAL_NAMED_KEY,
+    TWO_HOURS_AS_MILLIS,
 };
-
-fn fund_installer(builder: &mut InMemoryWasmTestBuilder) {
-    builder
-        .exec(fund_installer_account_request)
-        .expect_success()
-        .commit();
-}
-
-fn install_faucet(builder: &mut InMemoryWasmTestBuilder, faucet_fund_amount: U512) {
-    let installer_session_request = ExecuteRequestBuilder::standard(
-        *INSTALLER_ACCOUNT,
-        FAUCET_INSTALLER_SESSION,
-        runtime_args! {ARG_ID => FAUCET_ID, ARG_AMOUNT => faucet_fund_amount},
-    )
-    .build();
-
-    builder
-        .exec(installer_session_request)
-        .expect_success()
-        .commit();
-}
 
 #[ignore]
 #[test]
@@ -47,8 +29,22 @@ fn should_install_faucet_contract() {
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST).commit();
 
-    fund_installer(&mut builder);
-    install_faucet(&mut builder, U512::from(500_000u32));
+    let fund_installer_account_request = FundAccountRequestBuilder::new()
+        .with_target_account(*INSTALLER_ACCOUNT)
+        .with_fund_amount(U512::from(INSTALLER_FUND_AMOUNT))
+        .build();
+
+    builder
+        .exec(fund_installer_account_request)
+        .expect_success()
+        .commit();
+
+    let install_faucet_request = FaucetInstallSessionRequestBuilder::new().build();
+
+    builder
+        .exec(install_faucet_request)
+        .expect_success()
+        .commit();
 
     let installer_named_keys = builder
         .get_expected_account(*INSTALLER_ACCOUNT)
@@ -68,26 +64,14 @@ fn should_install_faucet_contract() {
 
     // check installer is set.
     builder
-        .query(
-            None,
-            Key::Hash(
-                faucet_named_key
-                    .into_hash()
-                    .expect("failed to convert key into hash"),
-            ),
-            &[INSTALLER_NAMED_KEY.to_string()],
-        )
+        .query(None, *faucet_named_key, &[INSTALLER_NAMED_KEY.to_string()])
         .expect("failed to find installer named key");
 
     // check time interval
     builder
         .query(
             None,
-            Key::Hash(
-                faucet_named_key
-                    .into_hash()
-                    .expect("failed to convert key into hash"),
-            ),
+            *faucet_named_key,
             &[TIME_INTERVAL_NAMED_KEY.to_string()],
         )
         .expect("failed to find time interval named key");
@@ -96,11 +80,7 @@ fn should_install_faucet_contract() {
     builder
         .query(
             None,
-            Key::Hash(
-                faucet_named_key
-                    .into_hash()
-                    .expect("failed to convert key into hash"),
-            ),
+            *faucet_named_key,
             &[LAST_DISTRIBUTION_TIME_NAMED_KEY.to_string()],
         )
         .expect("failed to find last distribution named key");
@@ -109,11 +89,7 @@ fn should_install_faucet_contract() {
     builder
         .query(
             None,
-            Key::Hash(
-                faucet_named_key
-                    .into_hash()
-                    .expect("failed to convert key into hash"),
-            ),
+            *faucet_named_key,
             &[FAUCET_PURSE_NAMED_KEY.to_string()],
         )
         .expect("failed to find faucet purse named key");
@@ -122,11 +98,7 @@ fn should_install_faucet_contract() {
     builder
         .query(
             None,
-            Key::Hash(
-                faucet_named_key
-                    .into_hash()
-                    .expect("failed to convert key into hash"),
-            ),
+            *faucet_named_key,
             &[AVAILABLE_AMOUNT_NAMED_KEY.to_string()],
         )
         .expect("failed to find available amount named key");
@@ -135,11 +107,7 @@ fn should_install_faucet_contract() {
     builder
         .query(
             None,
-            Key::Hash(
-                faucet_named_key
-                    .into_hash()
-                    .expect("failed to convert key into hash"),
-            ),
+            *faucet_named_key,
             &[REMAINING_REQUESTS_NAMED_KEY.to_string()],
         )
         .expect("failed to find remaining requests named key");
@@ -147,11 +115,7 @@ fn should_install_faucet_contract() {
     builder
         .query(
             None,
-            Key::Hash(
-                faucet_named_key
-                    .into_hash()
-                    .expect("failed to convert key into hash"),
-            ),
+            *faucet_named_key,
             &[AUTHORIZED_ACCOUNT_NAMED_KEY.to_string()],
         )
         .expect("failed to find authorized account named key");
@@ -163,19 +127,30 @@ fn should_allow_installer_to_set_variables() {
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST).commit();
 
+    let installer_fund_amount = U512::from(INSTALLER_FUND_AMOUNT);
     let faucet_fund_amount = U512::from(500_000u64);
 
-    fund_installer(&mut builder);
-    install_faucet(&mut builder, faucet_fund_amount);
+    let fund_installer_account_request = FundAccountRequestBuilder::new()
+        .with_target_account(*INSTALLER_ACCOUNT)
+        .with_fund_amount(installer_fund_amount)
+        .build();
 
-    let faucet_contract_hash = builder
-        .get_expected_account(*INSTALLER_ACCOUNT)
-        .named_keys()
-        .get(&format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID))
-        .cloned()
-        .and_then(Key::into_hash)
-        .map(ContractHash::new)
-        .expect("failed to find faucet contract");
+    builder
+        .exec(fund_installer_account_request)
+        .expect_success()
+        .commit();
+
+    let installer_session_request = FaucetInstallSessionRequestBuilder::new()
+        .with_installer_account(*INSTALLER_ACCOUNT)
+        .with_faucet_fund_amount(faucet_fund_amount)
+        .build();
+
+    builder
+        .exec(installer_session_request)
+        .expect_success()
+        .commit();
+
+    let faucet_contract_hash = get_faucet_contract_hash(&mut builder, *INSTALLER_ACCOUNT);
 
     // check the balance of the faucet's purse before
     let faucet_contract = builder
@@ -192,124 +167,69 @@ fn should_allow_installer_to_set_variables() {
     let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
     assert_eq!(faucet_purse_balance, faucet_fund_amount);
 
-    let available_amount = builder
-        .query(
-            None,
-            faucet_contract_hash.into(),
-            &[AVAILABLE_AMOUNT_NAMED_KEY.to_string()],
-        )
-        .expect("failed to find available amount named key")
-        .as_cl_value()
-        .cloned()
-        .expect("failed to convert to cl value")
-        .into_t::<U512>()
-        .expect("failed to convert into U512");
+    let available_amount: U512 = query_stored_value(
+        &mut builder,
+        faucet_contract_hash.into(),
+        vec![AVAILABLE_AMOUNT_NAMED_KEY.to_string()],
+    );
 
     // the available amount per interval will be zero until the installer calls
     // the set_variable entrypoint to finish setup.
     assert_eq!(available_amount, U512::zero());
 
-    let time_interval = builder
-        .query(
-            None,
-            faucet_contract_hash.into(),
-            &[TIME_INTERVAL_NAMED_KEY.to_string()],
-        )
-        .expect("failed to find time interval named key")
-        .as_cl_value()
-        .cloned()
-        .expect("failed to convert to cl value")
-        .into_t::<u64>()
-        .expect("failed to convert to u64");
+    let time_interval: u64 = query_stored_value(
+        &mut builder,
+        faucet_contract_hash.into(),
+        vec![TIME_INTERVAL_NAMED_KEY.to_string()],
+    );
 
     // defaults to around two hours.
     assert_eq!(time_interval, TWO_HOURS_AS_MILLIS);
 
-    let distributions_per_interval = builder
-        .query(
-            None,
-            faucet_contract_hash.into(),
-            &[DISTRIBUTIONS_PER_INTERVAL_NAMED_KEY.to_string()],
-        )
-        .expect("failed to find distributions per interval named key")
-        .as_cl_value()
-        .cloned()
-        .expect("failed to convert to cl value")
-        .into_t::<u64>()
-        .expect("failed to convert to u64");
+    let distributions_per_interval: u64 = query_stored_value(
+        &mut builder,
+        faucet_contract_hash.into(),
+        vec![DISTRIBUTIONS_PER_INTERVAL_NAMED_KEY.to_string()],
+    );
 
     assert_eq!(distributions_per_interval, 0u64);
 
     let assigned_time_interval = 10_000u64;
     let assigned_distributions_per_interval = 2u64;
 
-    let installer_set_variable_request = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(*INSTALLER_ACCOUNT)
-            .with_authorization_keys(&[*INSTALLER_ACCOUNT])
-            .with_stored_session_named_key(
-                &format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID),
-                ENTRY_POINT_SET_VARIABLES,
-                runtime_args! {
-                    ARG_AVAILABLE_AMOUNT => Some(faucet_fund_amount),
-                    ARG_TIME_INTERVAL => Some(assigned_time_interval),
-                    ARG_DISTRIBUTIONS_PER_INTERVAL => Some(assigned_distributions_per_interval)
-                },
-            )
-            .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
-            .with_deploy_hash([3; 32])
-            .build();
-
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let installer_set_variable_request = FaucetConfigRequestBuilder::new()
+        .with_time_interval(Some(assigned_time_interval))
+        .with_distributions_per_interval(Some(assigned_distributions_per_interval))
+        .with_available_amount(Some(faucet_fund_amount))
+        .with_faucet_contract_hash(faucet_contract_hash)
+        .build();
 
     builder
         .exec(installer_set_variable_request)
         .expect_success()
         .commit();
 
-    let available_amount = builder
-        .query(
-            None,
-            faucet_contract_hash.into(),
-            &[AVAILABLE_AMOUNT_NAMED_KEY.to_string()],
-        )
-        .expect("failed to find available amount named key")
-        .as_cl_value()
-        .cloned()
-        .expect("failed to convert to cl value")
-        .into_t::<U512>()
-        .expect("failed to convert into U512");
+    let available_amount: U512 = query_stored_value(
+        &mut builder,
+        faucet_contract_hash.into(),
+        vec![AVAILABLE_AMOUNT_NAMED_KEY.to_string()],
+    );
 
     assert_eq!(available_amount, faucet_fund_amount);
 
-    let time_interval = builder
-        .query(
-            None,
-            faucet_contract_hash.into(),
-            &[TIME_INTERVAL_NAMED_KEY.to_string()],
-        )
-        .expect("failed to find time interval named key")
-        .as_cl_value()
-        .cloned()
-        .expect("failed to convert to cl value")
-        .into_t::<u64>()
-        .expect("failed to convert to u64");
+    let time_interval: u64 = query_stored_value(
+        &mut builder,
+        faucet_contract_hash.into(),
+        vec![TIME_INTERVAL_NAMED_KEY.to_string()],
+    );
 
     assert_eq!(time_interval, assigned_time_interval);
 
-    let distributions_per_interval = builder
-        .query(
-            None,
-            faucet_contract_hash.into(),
-            &[DISTRIBUTIONS_PER_INTERVAL_NAMED_KEY.to_string()],
-        )
-        .expect("failed to find distributions per interval named key")
-        .as_cl_value()
-        .cloned()
-        .expect("failed to convert to cl value")
-        .into_t::<u64>()
-        .expect("failed to convert to u64");
+    let distributions_per_interval: u64 = query_stored_value(
+        &mut builder,
+        faucet_contract_hash.into(),
+        vec![DISTRIBUTIONS_PER_INTERVAL_NAMED_KEY.to_string()],
+    );
 
     assert_eq!(
         distributions_per_interval,
