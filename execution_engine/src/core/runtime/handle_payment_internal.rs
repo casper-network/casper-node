@@ -1,12 +1,14 @@
 use casper_types::{
-    account::AccountHash,
-    system::handle_payment::{Error, HandlePayment, MintProvider, RuntimeProvider},
-    BlockTime, Key, Phase, StoredValue, TransferredTo, URef, U512,
+    account::AccountHash, system::handle_payment::Error, BlockTime, Key, Phase, StoredValue,
+    TransferredTo, URef, U512,
 };
 
 use crate::{
     core::{execution, runtime::Runtime},
     storage::global_state::StateReader,
+    system::handle_payment::{
+        mint_provider::MintProvider, runtime_provider::RuntimeProvider, HandlePayment,
+    },
 };
 
 impl From<execution::Error> for Option<Error> {
