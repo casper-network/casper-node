@@ -10,17 +10,17 @@ use casper_types::{
 // test constants.
 use super::{
     faucet_test_helpers::{
-        get_faucet_contract_hash, query_stored_value, FaucetAuthorizeAccountRequestBuilder,
-        FaucetConfigRequestBuilder, FaucetFundRequestBuilder, FaucetInstallSessionRequestBuilder,
+        query_stored_value, FaucetAuthorizeAccountRequestBuilder, FaucetConfigRequestBuilder,
+        FaucetDeployHelper, FaucetFundRequestBuilder, FaucetInstallSessionRequestBuilder,
         FundAccountRequestBuilder,
     },
     ARG_AMOUNT, ARG_AVAILABLE_AMOUNT, ARG_DISTRIBUTIONS_PER_INTERVAL, ARG_ID, ARG_TARGET,
     ARG_TIME_INTERVAL, AUTHORIZED_ACCOUNT_NAMED_KEY, AVAILABLE_AMOUNT_NAMED_KEY,
     DISTRIBUTIONS_PER_INTERVAL_NAMED_KEY, ENTRY_POINT_AUTHORIZE_TO, ENTRY_POINT_FAUCET,
-    ENTRY_POINT_SET_VARIABLES, FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID, FAUCET_INSTALLER_SESSION,
-    FAUCET_PURSE_NAMED_KEY, INSTALLER_ACCOUNT, INSTALLER_FUND_AMOUNT, INSTALLER_NAMED_KEY,
-    LAST_DISTRIBUTION_TIME_NAMED_KEY, REMAINING_REQUESTS_NAMED_KEY, TIME_INTERVAL_NAMED_KEY,
-    TWO_HOURS_AS_MILLIS,
+    ENTRY_POINT_SET_VARIABLES, FAUCET_CONTRACT_NAMED_KEY, FAUCET_FUND_AMOUNT, FAUCET_ID,
+    FAUCET_INSTALLER_SESSION, FAUCET_PURSE_NAMED_KEY, FAUCET_TIME_INTERVAL, INSTALLER_ACCOUNT,
+    INSTALLER_FUND_AMOUNT, INSTALLER_NAMED_KEY, LAST_DISTRIBUTION_TIME_NAMED_KEY,
+    REMAINING_REQUESTS_NAMED_KEY, TIME_INTERVAL_NAMED_KEY, TWO_HOURS_AS_MILLIS,
 };
 
 #[ignore]
@@ -127,45 +127,30 @@ fn should_allow_installer_to_set_variables() {
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST).commit();
 
-    let installer_fund_amount = U512::from(INSTALLER_FUND_AMOUNT);
-    let faucet_fund_amount = U512::from(500_000u64);
-
-    let fund_installer_account_request = FundAccountRequestBuilder::new()
-        .with_target_account(*INSTALLER_ACCOUNT)
-        .with_fund_amount(installer_fund_amount)
-        .build();
-
-    builder
-        .exec(fund_installer_account_request)
-        .expect_success()
-        .commit();
-
-    let installer_session_request = FaucetInstallSessionRequestBuilder::new()
+    let mut helper = FaucetDeployHelper::new()
         .with_installer_account(*INSTALLER_ACCOUNT)
-        .with_faucet_fund_amount(faucet_fund_amount)
-        .build();
+        .with_installer_fund_amount(U512::from(INSTALLER_FUND_AMOUNT))
+        .with_faucet_purse_fund_amount(U512::from(FAUCET_FUND_AMOUNT))
+        .with_faucet_available_amount(Some(U512::from(FAUCET_FUND_AMOUNT)))
+        .with_faucet_distributions_per_interval(Some(2))
+        .with_faucet_time_interval(Some(FAUCET_TIME_INTERVAL));
 
     builder
-        .exec(installer_session_request)
+        .exec(helper.fund_installer_request())
         .expect_success()
         .commit();
 
-    let faucet_contract_hash = get_faucet_contract_hash(&mut builder, *INSTALLER_ACCOUNT);
+    builder
+        .exec(helper.faucet_install_request())
+        .expect_success()
+        .commit();
 
-    // check the balance of the faucet's purse before
-    let faucet_contract = builder
-        .get_contract(faucet_contract_hash)
-        .expect("failed to find faucet contract");
+    let faucet_contract_hash = helper.query_and_set_faucet_contract_hash(&builder);
 
-    let faucet_purse = faucet_contract
-        .named_keys()
-        .get(FAUCET_PURSE_NAMED_KEY)
-        .cloned()
-        .and_then(Key::into_uref)
-        .expect("failed to find faucet purse");
-
-    let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
-    assert_eq!(faucet_purse_balance, faucet_fund_amount);
+    assert_eq!(
+        helper.query_faucet_purse_balance(&builder),
+        helper.faucet_purse_fund_amount()
+    );
 
     let available_amount: U512 = query_stored_value(
         &mut builder,
@@ -194,18 +179,8 @@ fn should_allow_installer_to_set_variables() {
 
     assert_eq!(distributions_per_interval, 0u64);
 
-    let assigned_time_interval = 10_000u64;
-    let assigned_distributions_per_interval = 2u64;
-
-    let installer_set_variable_request = FaucetConfigRequestBuilder::new()
-        .with_time_interval(Some(assigned_time_interval))
-        .with_distributions_per_interval(Some(assigned_distributions_per_interval))
-        .with_available_amount(Some(faucet_fund_amount))
-        .with_faucet_contract_hash(faucet_contract_hash)
-        .build();
-
     builder
-        .exec(installer_set_variable_request)
+        .exec(helper.faucet_config_request())
         .expect_success()
         .commit();
 
@@ -215,7 +190,7 @@ fn should_allow_installer_to_set_variables() {
         vec![AVAILABLE_AMOUNT_NAMED_KEY.to_string()],
     );
 
-    assert_eq!(available_amount, faucet_fund_amount);
+    assert_eq!(available_amount, helper.faucet_purse_fund_amount());
 
     let time_interval: u64 = query_stored_value(
         &mut builder,
@@ -223,7 +198,7 @@ fn should_allow_installer_to_set_variables() {
         vec![TIME_INTERVAL_NAMED_KEY.to_string()],
     );
 
-    assert_eq!(time_interval, assigned_time_interval);
+    assert_eq!(time_interval, helper.faucet_time_interval().unwrap());
 
     let distributions_per_interval: u64 = query_stored_value(
         &mut builder,
@@ -233,7 +208,7 @@ fn should_allow_installer_to_set_variables() {
 
     assert_eq!(
         distributions_per_interval,
-        assigned_distributions_per_interval
+        helper.faucet_distributions_per_interval().unwrap()
     );
 }
 
