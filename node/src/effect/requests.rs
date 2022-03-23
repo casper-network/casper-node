@@ -403,11 +403,11 @@ pub(crate) enum StorageRequest {
         /// stored.
         responder: Responder<bool>,
     },
-    /// Retrieve the lowest height from which we have an unbroken chain of stored blocks (not just
-    /// headers) ending in the highest stored block.
-    GetLowestContiguousBlockHeight {
+    /// Retrieve the highest contiguous height range of fully available blocks (not just block
+    /// headers). Returns (u64::MAX, u64::MAX) when there are no sequences.
+    GetHighestContiguousBlockHeightRange {
         /// Responder to call with the result.
-        responder: Responder<u64>,
+        responder: Responder<(u64, u64)>,
     },
 }
 
@@ -498,8 +498,8 @@ impl Display for StorageRequest {
                     block_height
                 )
             }
-            StorageRequest::GetLowestContiguousBlockHeight { .. } => {
-                write!(formatter, "get lowest contiguous block height",)
+            StorageRequest::GetHighestContiguousBlockHeightRange { .. } => {
+                write!(formatter, "get highest contiguous block height range",)
             }
         }
     }
@@ -675,10 +675,10 @@ pub(crate) enum RpcRequest {
         /// Responder to call with the result.
         responder: Responder<StatusFeed>,
     },
-    /// Return the lowest contiguous block height.
-    GetLowestContiguousBlockHeight {
+    /// Return the highest contiguous height range of fully available blocks.
+    GetHighestContiguousBlockHeightRange {
         /// Responder to call with the result.
-        responder: Responder<u64>,
+        responder: Responder<(u64, u64)>,
     },
 }
 
@@ -729,7 +729,7 @@ impl Display for RpcRequest {
             RpcRequest::GetDeploy { hash, .. } => write!(formatter, "get {}", hash),
             RpcRequest::GetPeers { .. } => write!(formatter, "get peers"),
             RpcRequest::GetStatus { .. } => write!(formatter, "get status"),
-            RpcRequest::GetLowestContiguousBlockHeight { .. } => {
+            RpcRequest::GetHighestContiguousBlockHeightRange { .. } => {
                 write!(formatter, "get lowest contiguous block height")
             }
         }

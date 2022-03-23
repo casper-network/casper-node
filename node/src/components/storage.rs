@@ -1127,13 +1127,13 @@ impl Storage {
                 txn.commit()?;
                 responder.respond(true).ignore()
             }
-            StorageRequest::GetLowestContiguousBlockHeight { responder } => {
+            StorageRequest::GetHighestContiguousBlockHeightRange { responder } => {
                 let result = self
                     .disjoint_block_height_sequences
-                    .highest_sequence_low_value()
+                    .highest_sequence()
                     .unwrap_or_else(|| {
                         error!("storage disjoint sequences of block heights should not be empty");
-                        u64::MAX
+                        (u64::MAX, u64::MAX)
                     });
                 responder.respond(result).ignore()
             }

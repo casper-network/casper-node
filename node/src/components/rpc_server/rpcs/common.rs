@@ -77,35 +77,34 @@ pub(super) async fn run_query_and_encode<REv: ReactorEventT>(
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorData {
-    /// The lowest block height from which this node has contiguous blocks to the tip of the chain.
-    LowestContiguousBlockHeight(u64),
+    /// The highest contiguous height range of fully available blocks.
+    HighestContiguousBlockHeightRange((u64, u64)),
 }
 
 impl ErrorData {
-    pub(super) fn lowest_contiguous_block_height(height: u64) -> Self {
-        ErrorData::LowestContiguousBlockHeight(height)
+    pub(super) fn highest_contiguous_block_height_range(low: u64, high: u64) -> Self {
+        ErrorData::HighestContiguousBlockHeightRange((low, high))
     }
 }
 
-/// Returns a `warp_json_rpc::Error` which includes the lowest contiguous block height as the
-/// additional `data` field.
+/// Returns a `warp_json_rpc::Error` which includes the highest contiguous height range of fully
+/// available blocks as the additional `data` field.
 pub(super) async fn missing_block_or_state_root_error<REv: ReactorEventT>(
     effect_builder: EffectBuilder<REv>,
     error_code: ErrorCode,
     error_message: String,
 ) -> warp_json_rpc::Error {
-    let lowest_contiguous_block_height = effect_builder
+    let (low, high) = effect_builder
         .make_request(
-            |responder| RpcRequest::GetLowestContiguousBlockHeight { responder },
+            |responder| RpcRequest::GetHighestContiguousBlockHeightRange { responder },
             QueueKind::Api,
         )
         .await;
 
-    info!(lowest_contiguous_block_height, "{}", error_message);
+    info!(low, high, "{}", error_message);
 
-    warp_json_rpc::Error::custom(error_code as i64, error_message).with_data(
-        ErrorData::lowest_contiguous_block_height(lowest_contiguous_block_height),
-    )
+    warp_json_rpc::Error::custom(error_code as i64, error_message)
+        .with_data(ErrorData::highest_contiguous_block_height_range(low, high))
 }
 
 pub(super) async fn get_block<REv: ReactorEventT>(
