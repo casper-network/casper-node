@@ -294,13 +294,17 @@ where
                 }
                 .ignore()
             }
-            Event::RpcRequest(RpcRequest::GetLowestContiguousBlockHeight { responder }) => {
-                effect_builder
-                    .get_lowest_contiguous_block_height_from_storage()
-                    .event(move |height| Event::GetLowestContiguousBlockHeightResult {
-                        height,
-                        main_responder: responder,
-                    })
+            Event::RpcRequest(RpcRequest::GetHighestContiguousBlockHeightRange { responder }) => {
+                async move {
+                    responder
+                        .respond(
+                            effect_builder
+                                .get_highest_contiguous_block_range_from_storage()
+                                .await,
+                        )
+                        .await
+                }
+                .ignore()
             }
             Event::GetBlockResult {
                 maybe_id: _,
@@ -337,10 +341,6 @@ where
                 peers,
                 main_responder,
             } => main_responder.respond(peers).ignore(),
-            Event::GetLowestContiguousBlockHeightResult {
-                height,
-                main_responder,
-            } => main_responder.respond(height).ignore(),
         }
     }
 }

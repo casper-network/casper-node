@@ -1019,14 +1019,14 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Requests the lowest height from which we have an unbroken chain of stored blocks (not just
-    /// headers) ending in the highest stored block.
-    pub(crate) async fn get_lowest_contiguous_block_height_from_storage(self) -> u64
+    /// Requests the highest contiguous height range of fully available blocks (not just block
+    /// headers).
+    pub(crate) async fn get_highest_contiguous_block_range_from_storage(self) -> (u64, u64)
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetLowestContiguousBlockHeight { responder },
+            |responder| StorageRequest::GetHighestContiguousBlockHeightRange { responder },
             QueueKind::Regular,
         )
         .await
