@@ -36,7 +36,7 @@ All notable changes to this project will be documented in this file.  The format
 * Connection handshake timeouts can now be configured via the `handshake_timeout` variable (they were hardcoded at 20 seconds before).
 * `Key::SystemContractRegistry` is now readable and can be queried via the RPC.
 * Requests for data from a peer are now de-prioritized over networking messages necessary for consensus and chain advancement.
-* JSON-RPC responses which fail to provide requested data will now also include an indication of that node's lowest contiguous block height, i.e. the block from which it holds all subsequent global state
+* JSON-RPC responses which fail to provide requested data will now also include an indication of that node's highest contiguous block height range, i.e. the block heights for which it holds all global state
 * OpenSSL has been bumped to version 1.1.1.n, if compiling with vendored OpenSSL to address [CVE-2022-0778](https://www.openssl.org/news/secadv/20220315.txt).
 
 ### Deprecated

@@ -77,7 +77,7 @@ pub(super) async fn run_query_and_encode<REv: ReactorEventT>(
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorData {
-    /// The highest contiguous height range of fully available blocks.
+    /// The highest contiguous height range (inclusive) of fully available blocks.
     HighestContiguousBlockHeightRange((u64, u64)),
 }
 

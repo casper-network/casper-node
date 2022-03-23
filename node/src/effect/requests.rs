@@ -730,7 +730,7 @@ impl Display for RpcRequest {
             RpcRequest::GetPeers { .. } => write!(formatter, "get peers"),
             RpcRequest::GetStatus { .. } => write!(formatter, "get status"),
             RpcRequest::GetHighestContiguousBlockHeightRange { .. } => {
-                write!(formatter, "get lowest contiguous block height")
+                write!(formatter, "get highest contiguous block height range")
             }
         }
     }
