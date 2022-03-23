@@ -4,7 +4,7 @@ use casper_hashing::Digest;
 use histogram::Histogram;
 use indicatif::{ProgressBar, ProgressStyle};
 use structopt::StructOpt;
-use tracing::info;
+use tracing::{error, info};
 
 use casper_node::{
     contract_runtime::{execute_finalized_block, ExecutionPreState},
@@ -88,8 +88,37 @@ async fn main() -> Result<(), anyhow::Error> {
             casper_execution_engine::rocksdb_defaults(),
         )?;
         info!("Running migration of data from lmdb to rocksdb...");
-        casper_node::migrate_lmdb_data_to_rocksdb(engine_state, storage, false);
-        return Ok(());
+
+        let mut state_roots = Vec::new();
+        let latest_block = storage.read_highest_block();
+        if let Ok(Some(latest_block)) = latest_block {
+            let latest_block_header = latest_block.take_header();
+            for height in (0..=latest_block_header.height()).rev() {
+                let block_header = match storage.read_block_by_height(height) {
+                    Ok(Some(block)) => block.header().clone(),
+                    Ok(None) => {
+                        error!(
+                            "unable to retrieve block at height {} for migration to rocksdb",
+                            height,
+                        );
+                        continue;
+                    }
+                    Err(err) => {
+                        error!(
+                            "unable to retrieve parent block at height {} for migration to rocksdb {:?}",
+                            height, err,
+                        );
+                        continue;
+                    }
+                };
+                state_roots.push(*block_header.state_root_hash());
+            }
+            casper_node::migrate_lmdb_data_to_rocksdb(engine_state, state_roots, false);
+            return Ok(());
+        } else {
+            error!("unable to find a highest block in storage");
+            return Err(anyhow::anyhow!("unable to find a highest block in storage"));
+        }
     }
 
     let load_height = opts.starting_block_height.saturating_sub(1);
