@@ -277,7 +277,12 @@ impl ChainSynchronizer {
                     PublicKey::System,
                 );
 
-                self.execute_block(effect_builder, None, initial_pre_state, finalized_block)
+                self.execute_immediate_switch_block(
+                    effect_builder,
+                    None,
+                    initial_pre_state,
+                    finalized_block,
+                )
             }
             Err(error) => {
                 error!(%error, "failed to commit genesis");
@@ -316,7 +321,7 @@ impl ChainSynchronizer {
                     initial_pre_state.next_block_height(),
                     PublicKey::System,
                 );
-                self.execute_block(
+                self.execute_immediate_switch_block(
                     effect_builder,
                     Some(upgrade_block_header),
                     initial_pre_state,
@@ -333,7 +338,7 @@ impl ChainSynchronizer {
     /// Creates a switch block after an upgrade or genesis. This block has the system public key as
     /// a proposer and doesn't contain any deploys or transfers. It is the only block in its era,
     /// and no consensus instance is run for era 0 or an upgrade point era.
-    fn execute_block(
+    fn execute_immediate_switch_block(
         &self,
         effect_builder: EffectBuilder<JoinerEvent>,
         maybe_upgrade_block_header: Option<BlockHeader>,
@@ -358,13 +363,13 @@ impl ChainSynchronizer {
                 .await;
             Ok(block_and_execution_effects)
         }
-        .event(|result| Event::ExecuteBlockResult {
+        .event(|result| Event::ExecuteImmediateSwitchBlockResult {
             maybe_upgrade_block_header,
             result,
         })
     }
 
-    fn handle_execute_block_result(
+    fn handle_execute_immediate_switch_block_result(
         &mut self,
         effect_builder: EffectBuilder<JoinerEvent>,
         maybe_upgrade_block_header: Option<BlockHeader>,
@@ -435,12 +440,14 @@ impl Component<JoinerEvent> for ChainSynchronizer {
                 upgrade_block_header,
                 result,
             } => self.handle_upgrade_result(effect_builder, upgrade_block_header, result),
-            Event::ExecuteBlockResult {
+            Event::ExecuteImmediateSwitchBlockResult {
                 maybe_upgrade_block_header,
                 result,
-            } => {
-                self.handle_execute_block_result(effect_builder, maybe_upgrade_block_header, result)
-            }
+            } => self.handle_execute_immediate_switch_block_result(
+                effect_builder,
+                maybe_upgrade_block_header,
+                result,
+            ),
             Event::GotUpgradeActivationPoint(next_upgrade) => {
                 self.handle_got_next_upgrade(next_upgrade)
             }

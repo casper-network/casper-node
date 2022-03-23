@@ -25,7 +25,7 @@ pub(crate) enum Event {
         result: Result<UpgradeSuccess, engine_state::Error>,
     },
     /// The result of executing a finalized block.
-    ExecuteBlockResult {
+    ExecuteImmediateSwitchBlockResult {
         maybe_upgrade_block_header: Option<BlockHeader>,
         #[serde(skip_serializing)]
         result: Result<BlockAndExecutionEffects, BlockExecutionError>,
@@ -53,8 +53,12 @@ impl Display for Event {
             Event::UpgradeResult { result, .. } => {
                 write!(formatter, "upgrade result: {:?}", result)
             }
-            Event::ExecuteBlockResult { result, .. } => {
-                write!(formatter, "execute block result: {:?}", result)
+            Event::ExecuteImmediateSwitchBlockResult { result, .. } => {
+                write!(
+                    formatter,
+                    "execute immediate switch block result: {:?}",
+                    result
+                )
             }
             Event::GotUpgradeActivationPoint(activation_point) => {
                 write!(
