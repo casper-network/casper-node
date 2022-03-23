@@ -19,6 +19,9 @@ function main() {
         pushd "$ROOT_DIR"
         nctl-compile
 
+        # Clear Old Stages
+        nctl-stage-teardown
+
         # Stage
         get_remotes
         stage_remotes
@@ -87,6 +90,7 @@ function build_from_settings_file() {
 # i.e: if current RC is 1.2 then dev will be setup as 1.3
 function dev_branch_settings() {
     local PATH_TO_STAGE=${1}
+    local STARTING_VERSION=${2}
     local INCREMENT
     local RC_VERSION
 
@@ -97,6 +101,12 @@ function dev_branch_settings() {
 
     RC_VERSION=$(echo "$RC_VERSION" | sed 's/\./\_/g')
     INCREMENT=$(echo "$INCREMENT" | sed 's/\./\_/g')
+
+    # check if a version to start at was given
+    if [ ! -z $STARTING_VERSION ]; then
+        # overwrite start version
+        RC_VERSION=$(echo "$STARTING_VERSION" | sed 's/\./\_/g')
+    fi
 
     mkdir -p "$(get_path_to_stage '1')"
 
@@ -156,6 +166,22 @@ function start_upgrade_scenario_9() {
     nctl-exec-upgrade-scenario-9
 }
 
+function start_upgrade_scenario_10() {
+    log "... Setting up custom starting version"
+    local PATH_TO_STAGE
+
+    PATH_TO_STAGE="$(get_path_to_stage 1)"
+
+    log "... tearing down old stages"
+    nctl-stage-teardown
+
+    log "... creating new stage"
+    dev_branch_settings "$PATH_TO_STAGE" "1.3.0"
+    build_from_settings_file
+
+    log "... Starting Upgrade Scenario 10"
+    nctl-exec-upgrade-scenario-10
+}
 
 # ----------------------------------------------------------------
 # ENTRY POINT
