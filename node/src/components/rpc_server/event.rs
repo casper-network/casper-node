@@ -55,11 +55,6 @@ pub(crate) enum Event {
         result: Result<BalanceResult, engine_state::Error>,
         main_responder: Responder<Result<BalanceResult, engine_state::Error>>,
     },
-    GetHighestContiguousBlockHeightRange {
-        low: u64,
-        high: u64,
-        main_responder: Responder<(u64, u64)>,
-    },
 }
 
 impl Display for Event {
@@ -104,11 +99,6 @@ impl Display for Event {
                 write!(formatter, "get deploy result for {}: {:?}", hash, result)
             }
             Event::GetPeersResult { peers, .. } => write!(formatter, "get peers: {}", peers.len()),
-            Event::GetHighestContiguousBlockHeightRange { low, high, .. } => write!(
-                formatter,
-                "get highest contiguous block height range result: ({}, {})",
-                low, high
-            ),
         }
     }
 }

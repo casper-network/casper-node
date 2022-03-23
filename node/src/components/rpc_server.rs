@@ -295,15 +295,16 @@ where
                 .ignore()
             }
             Event::RpcRequest(RpcRequest::GetHighestContiguousBlockHeightRange { responder }) => {
-                effect_builder
-                    .get_highest_contiguous_block_range_from_storage()
-                    .event(
-                        move |(low, high)| Event::GetHighestContiguousBlockHeightRange {
-                            low,
-                            high,
-                            main_responder: responder,
-                        },
-                    )
+                async move {
+                    responder
+                        .respond(
+                            effect_builder
+                                .get_highest_contiguous_block_range_from_storage()
+                                .await,
+                        )
+                        .await
+                }
+                .ignore()
             }
             Event::GetBlockResult {
                 maybe_id: _,
@@ -340,11 +341,6 @@ where
                 peers,
                 main_responder,
             } => main_responder.respond(peers).ignore(),
-            Event::GetHighestContiguousBlockHeightRange {
-                low,
-                high,
-                main_responder,
-            } => main_responder.respond((low, high)).ignore(),
         }
     }
 }
