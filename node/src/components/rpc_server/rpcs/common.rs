@@ -101,7 +101,10 @@ pub(super) async fn missing_block_or_state_root_error<REv: ReactorEventT>(
         )
         .await;
 
-    info!(low, high, "{}", error_message);
+    info!(
+        low,
+        high, "got request for non-existent data, will respond with msg: {}", error_message
+    );
 
     warp_json_rpc::Error::custom(error_code as i64, error_message)
         .with_data(ErrorData::highest_contiguous_block_height_range(low, high))
