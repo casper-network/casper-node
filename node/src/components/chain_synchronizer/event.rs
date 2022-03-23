@@ -25,9 +25,12 @@ pub(crate) enum Event {
         result: Result<UpgradeSuccess, engine_state::Error>,
     },
     /// The result of executing a finalized block.
-    ExecuteBlockResult(
-        #[serde(skip_serializing)] Result<BlockAndExecutionEffects, BlockExecutionError>,
-    ),
+    ExecuteBlockResult {
+        maybe_upgrade_block_header: Option<BlockHeader>,
+        #[serde(skip_serializing)]
+        result: Result<BlockAndExecutionEffects, BlockExecutionError>,
+    },
+
     /// A new upgrade activation point was announced.
     GotUpgradeActivationPoint(ActivationPoint),
 }
@@ -50,7 +53,7 @@ impl Display for Event {
             Event::UpgradeResult { result, .. } => {
                 write!(formatter, "upgrade result: {:?}", result)
             }
-            Event::ExecuteBlockResult(result) => {
+            Event::ExecuteBlockResult { result, .. } => {
                 write!(formatter, "execute block result: {:?}", result)
             }
             Event::GotUpgradeActivationPoint(activation_point) => {

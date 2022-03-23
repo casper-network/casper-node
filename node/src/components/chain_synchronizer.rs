@@ -4,7 +4,7 @@ mod event;
 mod metrics;
 mod operations;
 
-use std::{convert::Infallible, fmt::Debug, sync::Arc};
+use std::{collections::HashSet, convert::Infallible, fmt::Debug, sync::Arc};
 
 use datasize::DataSize;
 use prometheus::Registry;
@@ -44,6 +44,7 @@ pub(crate) enum JoiningOutcome {
     /// block immediately afterwards.
     RanUpgradeOrGenesis {
         block_and_execution_effects: BlockAndExecutionEffects,
+        validators_to_sign_immediate_switch_block: HashSet<PublicKey>,
     },
 }
 
@@ -276,7 +277,7 @@ impl ChainSynchronizer {
                     PublicKey::System,
                 );
 
-                self.execute_block(effect_builder, initial_pre_state, finalized_block)
+                self.execute_block(effect_builder, None, initial_pre_state, finalized_block)
             }
             Err(error) => {
                 error!(%error, "failed to commit genesis");
@@ -315,7 +316,12 @@ impl ChainSynchronizer {
                     initial_pre_state.next_block_height(),
                     PublicKey::System,
                 );
-                self.execute_block(effect_builder, initial_pre_state, finalized_block)
+                self.execute_block(
+                    effect_builder,
+                    Some(upgrade_block_header),
+                    initial_pre_state,
+                    finalized_block,
+                )
             }
             Err(error) => {
                 error!(%error, "failed to commit upgrade");
@@ -330,6 +336,7 @@ impl ChainSynchronizer {
     fn execute_block(
         &self,
         effect_builder: EffectBuilder<JoinerEvent>,
+        maybe_upgrade_block_header: Option<BlockHeader>,
         initial_pre_state: ExecutionPreState,
         finalized_block: FinalizedBlock,
     ) -> Effects<Event> {
@@ -351,26 +358,52 @@ impl ChainSynchronizer {
                 .await;
             Ok(block_and_execution_effects)
         }
-        .event(Event::ExecuteBlockResult)
+        .event(|result| Event::ExecuteBlockResult {
+            maybe_upgrade_block_header,
+            result,
+        })
     }
 
     fn handle_execute_block_result(
         &mut self,
         effect_builder: EffectBuilder<JoinerEvent>,
+        maybe_upgrade_block_header: Option<BlockHeader>,
         result: Result<BlockAndExecutionEffects, BlockExecutionError>,
     ) -> Effects<Event> {
-        match result {
-            Ok(block_and_execution_effects) => {
-                self.joining_outcome = Some(JoiningOutcome::RanUpgradeOrGenesis {
-                    block_and_execution_effects,
-                });
-                Effects::new()
-            }
+        let block_and_execution_effects = match result {
+            Ok(block_and_execution_effects) => block_and_execution_effects,
             Err(error) => {
                 error!(%error, "failed to execute block");
-                fatal!(effect_builder, "{}", error).ignore()
+                return fatal!(effect_builder, "{}", error).ignore();
             }
-        }
+        };
+
+        // If the upgrade block is `None`, this is a genesis switch block, so we can use the
+        // validator set from that.
+        let maybe_era_end = maybe_upgrade_block_header
+            .as_ref()
+            .unwrap_or_else(|| block_and_execution_effects.block.header())
+            .era_end();
+        let validators_to_sign_immediate_switch_block = match maybe_era_end {
+            Some(era_end) => era_end
+                .next_era_validator_weights()
+                .keys()
+                .cloned()
+                .collect(),
+            None => {
+                error!("upgrade/genesis block is not a switch block");
+                return fatal!(
+                    effect_builder,
+                    "upgrade/genesis block is not a switch block"
+                )
+                .ignore();
+            }
+        };
+        self.joining_outcome = Some(JoiningOutcome::RanUpgradeOrGenesis {
+            block_and_execution_effects,
+            validators_to_sign_immediate_switch_block,
+        });
+        Effects::new()
     }
 
     fn handle_got_next_upgrade(&mut self, next_upgrade: ActivationPoint) -> Effects<Event> {
@@ -402,8 +435,11 @@ impl Component<JoinerEvent> for ChainSynchronizer {
                 upgrade_block_header,
                 result,
             } => self.handle_upgrade_result(effect_builder, upgrade_block_header, result),
-            Event::ExecuteBlockResult(result) => {
-                self.handle_execute_block_result(effect_builder, result)
+            Event::ExecuteBlockResult {
+                maybe_upgrade_block_header,
+                result,
+            } => {
+                self.handle_execute_block_result(effect_builder, maybe_upgrade_block_header, result)
             }
             Event::GotUpgradeActivationPoint(next_upgrade) => {
                 self.handle_got_next_upgrade(next_upgrade)

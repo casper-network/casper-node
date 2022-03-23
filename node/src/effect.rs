@@ -1005,20 +1005,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Requests the key block header for the given era ID, ie. the header of the switch block at
-    /// the era before (if one exists).
-    pub(crate) async fn get_key_block_header_for_era_id_from_storage(
-        self,
-        era_id: EraId,
-    ) -> Option<BlockHeader>
-    where
-        REv: From<StorageRequest>,
-    {
-        let era_before = era_id.checked_sub(1)?;
-        self.get_switch_block_header_at_era_id_from_storage(era_before)
-            .await
-    }
-
     /// Requests the lowest height from which we have an unbroken chain of stored blocks (not just
     /// headers) ending in the highest stored block.
     pub(crate) async fn get_lowest_contiguous_block_height_from_storage(self) -> u64
@@ -1749,7 +1735,11 @@ impl<REv> EffectBuilder<REv> {
             // we don't support getting the validators from before the last emergency restart
             return None;
         }
-        self.get_key_block_header_for_era_id_from_storage(era_id)
+        // Era 0 contains no blocks other than the genesis immediate switch block which can be used
+        // to get the validators for era 0.  For any other era `n`, we need the switch block from
+        // era `n-1` to get the validators for `n`.
+        let era_before = era_id.saturating_sub(1);
+        self.get_switch_block_header_at_era_id_from_storage(era_before)
             .await
             .and_then(BlockHeader::maybe_take_next_era_validator_weights)
     }
