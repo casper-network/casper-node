@@ -281,6 +281,8 @@ pub(crate) enum StorageRequest {
     GetBlockHeader {
         /// Hash of block to get header of.
         block_hash: BlockHash,
+        /// TODO[RC]
+        only_from_highest_contiguous_range: bool,
         /// Responder to call with the result.  Returns `None` is the block header doesn't exist in
         /// local storage.
         responder: Responder<Option<BlockHeader>>,

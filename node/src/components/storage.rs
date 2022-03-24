@@ -842,9 +842,14 @@ impl Storage {
             }
             StorageRequest::GetBlockHeader {
                 block_hash,
+                only_from_highest_contiguous_range,
                 responder,
             } => responder
-                .respond(self.get_single_block_header(&mut self.env.begin_ro_txn()?, &block_hash)?)
+                .respond(self.get_single_block_header_restricted(
+                    &mut self.env.begin_ro_txn()?,
+                    &block_hash,
+                    only_from_highest_contiguous_range,
+                )?)
                 .ignore(),
             StorageRequest::CheckBlockHeaderExistence {
                 block_height,
@@ -1449,6 +1454,34 @@ impl Storage {
     }
 
     /// Retrieves a single block header in a separate transaction from storage.
+    // TODO[RC]: Deduplicate with `get_single_block_header()`
+    fn get_single_block_header_restricted<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        block_hash: &BlockHash,
+        only_from_highest_contiguous_range: bool,
+    ) -> Result<Option<BlockHeader>, FatalStorageError> {
+        let block_header: BlockHeader = match tx.get_value(self.block_header_db, &block_hash)? {
+            Some(block_header) => block_header,
+            None => return Ok(None),
+        };
+
+        if !self.should_return_block(block_header.height(), only_from_highest_contiguous_range) {
+            return Ok(None);
+        }
+
+        let found_block_header_hash = block_header.hash(self.verifiable_chunked_hash_activation);
+        if found_block_header_hash != *block_hash {
+            return Err(FatalStorageError::BlockHeaderNotStoredUnderItsHash {
+                queried_block_hash_bytes: block_hash.as_ref().to_vec(),
+                found_block_header_hash,
+                block_header: Box::new(block_header),
+            });
+        };
+        Ok(Some(block_header))
+    }
+
+    /// Retrieves a single block header in a separate transaction from storage.
     fn get_single_block_header<Tx: Transaction>(
         &self,
         tx: &mut Tx,
@@ -1458,6 +1491,7 @@ impl Storage {
             Some(block_header) => block_header,
             None => return Ok(None),
         };
+
         let found_block_header_hash = block_header.hash(self.verifiable_chunked_hash_activation);
         if found_block_header_hash != *block_hash {
             return Err(FatalStorageError::BlockHeaderNotStoredUnderItsHash {

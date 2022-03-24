@@ -853,6 +853,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_block_header_from_storage(
         self,
         block_hash: BlockHash,
+        only_from_highest_contiguous_range: bool,
     ) -> Option<BlockHeader>
     where
         REv: From<StorageRequest>,
@@ -860,6 +861,7 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| StorageRequest::GetBlockHeader {
                 block_hash,
+                only_from_highest_contiguous_range,
                 responder,
             },
             QueueKind::Regular,

@@ -213,7 +213,7 @@ where
                 }),
             Event::RpcRequest(RpcRequest::GetBlock {
                 maybe_id: None,
-                only_from_highest_contiguous_range: _, // Requesting for higest block cannot be restricted by block availability index
+                only_from_highest_contiguous_range: _, /* Requesting for higest block cannot be restricted by block availability index */
                 responder,
             }) => effect_builder
                 .get_highest_block_with_metadata_from_storage()
