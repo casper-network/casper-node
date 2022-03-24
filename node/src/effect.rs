@@ -1176,6 +1176,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_block_at_height_with_metadata_from_storage(
         self,
         block_height: u64,
+        only_from_highest_contiguous_range: bool,
     ) -> Option<BlockWithMetadata>
     where
         REv: From<StorageRequest>,
@@ -1183,6 +1184,7 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| StorageRequest::GetBlockAndMetadataByHeight {
                 block_height,
+                only_from_highest_contiguous_range,
                 responder,
             },
             QueueKind::Regular,
@@ -1230,6 +1232,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_block_with_metadata_from_storage(
         self,
         block_hash: BlockHash,
+        only_from_highest_contiguous_range: bool,
     ) -> Option<BlockWithMetadata>
     where
         REv: From<StorageRequest>,
@@ -1237,6 +1240,7 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| StorageRequest::GetBlockAndMetadataByHash {
                 block_hash,
+                only_from_highest_contiguous_range,
                 responder,
             },
             QueueKind::Regular,

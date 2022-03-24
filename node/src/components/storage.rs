@@ -948,6 +948,7 @@ impl Storage {
             }
             StorageRequest::GetBlockAndMetadataByHash {
                 block_hash,
+                only_from_highest_contiguous_range,
                 responder,
             } => {
                 let mut txn = self.env.begin_ro_txn()?;
@@ -958,6 +959,11 @@ impl Storage {
                     } else {
                         return Ok(responder.respond(None).ignore());
                     };
+
+                if !self.should_return_block(block.height(), only_from_highest_contiguous_range) {
+                    return Ok(responder.respond(None).ignore());
+                }
+
                 // Check that the hash of the block retrieved is correct.
                 if block_hash != *block.hash() {
                     error!(
@@ -995,8 +1001,13 @@ impl Storage {
                 .ignore(),
             StorageRequest::GetBlockAndMetadataByHeight {
                 block_height,
+                only_from_highest_contiguous_range,
                 responder,
             } => {
+                if !self.should_return_block(block_height, only_from_highest_contiguous_range) {
+                    return Ok(responder.respond(None).ignore());
+                }
+
                 let mut txn = self.env.begin_ro_txn()?;
 
                 let block: Block =
@@ -1138,6 +1149,25 @@ impl Storage {
                 responder.respond(result).ignore()
             }
         })
+    }
+
+    /// TODO[RC]: docs
+    /// TODO[RC]: unit test
+    fn should_return_block(
+        &self,
+        block_height: u64,
+        only_from_highest_contiguous_range: bool,
+    ) -> bool {
+        // TODO[RC]: Could be written more concisely, but refactor only after it's unit tested
+        if only_from_highest_contiguous_range {
+            let highest_sequence = self.disjoint_block_height_sequences.highest_sequence();
+            if let Some(highest_sequence) = highest_sequence {
+                return highest_sequence.0 >= block_height && highest_sequence.1 <= block_height;
+            } else {
+                return false;
+            }
+        }
+        true
     }
 
     /// Returns `true` if there is a block body for the given block header available in storage.

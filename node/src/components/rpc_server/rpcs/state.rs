@@ -383,8 +383,11 @@ impl RpcWithOptionalParamsExt for GetAuctionInfo {
         api_version: ProtocolVersion,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
+                        // This RPC request is restricted by the block availability index.
+                        let only_from_highest_contiguous_range = true;
+
             let maybe_block_id = maybe_params.map(|params| params.block_identifier);
-            let block = match common::get_block(maybe_block_id, effect_builder).await {
+            let block = match common::get_block(maybe_block_id, only_from_highest_contiguous_range,effect_builder).await {
                 Ok(block) => block,
                 Err(error) => return Ok(response_builder.error(error)?),
             };
@@ -520,8 +523,17 @@ impl RpcWithParamsExt for GetAccountInfo {
         api_version: ProtocolVersion,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
+            // This RPC request is restricted by the block availability index.
+            let only_from_highest_contiguous_range = true;
+
             let maybe_block_id = params.block_identifier;
-            let block = match common::get_block(maybe_block_id, effect_builder).await {
+            let block = match common::get_block(
+                maybe_block_id,
+                only_from_highest_contiguous_range,
+                effect_builder,
+            )
+            .await
+            {
                 Ok(block) => block,
                 Err(error) => return Ok(response_builder.error(error)?),
             };

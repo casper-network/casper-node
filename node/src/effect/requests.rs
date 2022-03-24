@@ -365,6 +365,8 @@ pub(crate) enum StorageRequest {
     GetBlockAndMetadataByHash {
         /// The hash of the block.
         block_hash: BlockHash,
+        /// TODO[RC]
+        only_from_highest_contiguous_range: bool,
         /// The responder to call with the results.
         responder: Responder<Option<BlockWithMetadata>>,
     },
@@ -372,6 +374,8 @@ pub(crate) enum StorageRequest {
     GetBlockAndMetadataByHeight {
         /// The height of the block.
         block_height: BlockHeight,
+        /// TODO[RC]
+        only_from_highest_contiguous_range: bool,
         /// The responder to call with the results.
         responder: Responder<Option<BlockWithMetadata>>,
     },
@@ -611,6 +615,8 @@ pub(crate) enum RpcRequest {
     GetBlock {
         /// The identifier (can either be a hash or the height) of the block to be retrieved.
         maybe_id: Option<BlockIdentifier>,
+        /// TODO[RC]
+        only_from_highest_contiguous_range: bool,
         /// Responder to call with the result.
         responder: Responder<Option<BlockWithMetadata>>,
     },
