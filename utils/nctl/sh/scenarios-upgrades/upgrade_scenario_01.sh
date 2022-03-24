@@ -39,42 +39,10 @@ function _main()
     _step_03
     _step_04
     _step_05 "$STAGE_ID"
-
-    _copy_new_client_binary "$STAGE_ID"
-
     _step_06 "$INITIAL_PROTOCOL_VERSION"
     _step_07
     _step_08 "$INITIAL_PROTOCOL_VERSION"
     _step_09
-}
-
-function _copy_new_client_binary()
-{
-    local STAGE_ID=${1}
-    local PATH_TO_STAGE
-    local PATH_TO_STAGE_SETTINGS
-    local HIGHEST_VERSION_AND_TYPE
-    local HIGHEST_VERSION
-    local UPGRADED_CLIENT_PATH
-    local CLIENT_PATH
-
-    # Source the settings.sh file.
-    PATH_TO_STAGE="$(get_path_to_stage $STAGE_ID)"
-    PATH_TO_STAGE_SETTINGS="$PATH_TO_STAGE/settings.sh"
-    source "$PATH_TO_STAGE_SETTINGS"
-
-    # Read the last line - will be e.g. "1_5_0:local".
-    HIGHEST_VERSION_AND_TYPE="${NCTL_STAGE_TARGETS[-1]}"
-
-    # Extract the version from the line.
-    IFS=':' read -ra SPLIT_LINE <<< "$HIGHEST_VERSION_AND_TYPE"
-    HIGHEST_VERSION="${SPLIT_LINE[0]}"
-
-    UPGRADED_CLIENT_PATH="$PATH_TO_STAGE/$HIGHEST_VERSION/casper-client"
-    CLIENT_PATH="$(get_path_to_client)"
-    log "Replacing client binary at $CLIENT_PATH with $UPGRADED_CLIENT_PATH"
-
-    cp "$UPGRADED_CLIENT_PATH" "$CLIENT_PATH"
 }
 
 # Step 01: Start network from pre-built stage.
