@@ -27,7 +27,7 @@ impl SlashItem {
 }
 
 /// The definition of a reward item.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RewardItem {
     /// The public key of the validator that will be rewarded.
     pub validator_id: PublicKey,
