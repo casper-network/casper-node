@@ -50,7 +50,7 @@ pub mod u_ref {
       self.reader.total_size()
     }
     #[inline]
-    pub fn get_urefaddr(self) -> ::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash::Reader<'a>> {
+    pub fn get_urefaddr(self) -> ::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash32::Reader<'a>> {
       ::capnp::traits::FromPointerReader::get_from_pointer(&self.reader.get_pointer_field(0), ::core::option::Option::None)
     }
     pub fn has_urefaddr(&self) -> bool {
@@ -111,15 +111,15 @@ pub mod u_ref {
       self.builder.into_reader().total_size()
     }
     #[inline]
-    pub fn get_urefaddr(self) -> ::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash::Builder<'a>> {
+    pub fn get_urefaddr(self) -> ::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash32::Builder<'a>> {
       ::capnp::traits::FromPointerBuilder::get_from_pointer(self.builder.get_pointer_field(0), ::core::option::Option::None)
     }
     #[inline]
-    pub fn set_urefaddr(&mut self, value: crate::capnp::hash_with_32_bytes_capnp::hash::Reader<'_>) -> ::capnp::Result<()> {
+    pub fn set_urefaddr(&mut self, value: crate::capnp::hash_with_32_bytes_capnp::hash32::Reader<'_>) -> ::capnp::Result<()> {
       ::capnp::traits::SetPointerBuilder::set_pointer_builder(self.builder.get_pointer_field(0), value, false)
     }
     #[inline]
-    pub fn init_urefaddr(self, ) -> crate::capnp::hash_with_32_bytes_capnp::hash::Builder<'a> {
+    pub fn init_urefaddr(self, ) -> crate::capnp::hash_with_32_bytes_capnp::hash32::Builder<'a> {
       ::capnp::traits::FromPointerBuilder::init_pointer(self.builder.get_pointer_field(0), 0)
     }
     pub fn has_urefaddr(&self) -> bool {
@@ -142,7 +142,7 @@ pub mod u_ref {
     }
   }
   impl Pipeline  {
-    pub fn get_urefaddr(&self) -> crate::capnp::hash_with_32_bytes_capnp::hash::Pipeline {
+    pub fn get_urefaddr(&self) -> crate::capnp::hash_with_32_bytes_capnp::hash32::Pipeline {
       ::capnp::capability::FromTypelessPipeline::new(self._typeless.get_pointer_field(0))
     }
   }

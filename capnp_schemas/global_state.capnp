@@ -2,33 +2,23 @@
 
 using import "account.capnp".Account;
 using import "deploy_info.capnp".DeployInfo;
-using import "hash_with_32_bytes.capnp".Hash;
+using import "hash_with_32_bytes.capnp".Hash32;
+using import "map.capnp".StringMap;
 using import "transfer.capnp".Transfer;
 using import "uref.capnp".URef;
-using import "system_contract_registry.capnp".SystemContractRegistry;
-
-struct AccountKey {
-  prefixTag @0 :UInt8 = 0;
-  accountHash @1 :Hash;
-}
-
-struct ContractKey {
-  prefixTag @0 :UInt8 = 1;
-  contractHash @1 :Hash;
-}
 
 struct Key {
   union {
-    account @0 :Hash;
-    hash @1 :Hash;
-    uRef @2 :Hash;
-    transfer @3 :Hash;
-    deployInfo @4 :Hash;
+    account @0 :Hash32;
+    hash @1 :Hash32;
+    uRef @2 :Hash32;
+    transfer @3 :Hash32;
+    deployInfo @4 :Hash32;
     eraInfo @5 :UInt64;
-    balance @6 :Hash;
-    bid @7 :Hash;
-    withdraw @8 :Hash;
-    dictionary @9 :Hash;
+    balance @6 :Hash32;
+    bid @7 :Hash32;
+    withdraw @8 :Hash32;
+    dictionary @9 :Hash32;
     systemContractRegistry @10 :Void;
   }
 }
@@ -45,17 +35,17 @@ struct GlobalStateEntry {
   }
 
   union {
-    account @0 : Entry(Hash, Account);
+    account @0 :Entry(Hash32, Account);
 
     # TODO: These are wrong
-    contract @1 :Entry(Hash, Hash);
-    uref @2 :Entry(URef, Hash);
+    contract @1 :Entry(Hash32, Hash32);
+    uref @2 :Entry(URef, Hash32);
 
     # TODO: Consider moving these 3 out of global state & add them to the block body instead (or "block extras" or something)?
-    transferAddr @3 :Entry(Hash, Transfer);
-    deployInfo @4 :Entry(Hash, DeployInfo);
+    transferAddr @3 :Entry(Hash32, Transfer);
+    deployInfo @4 :Entry(Hash32, DeployInfo);
     # eraInfo @5 :Entry(EraId, );
 
-    systemContractRegistry @5 :SystemContractRegistry;
+    systemContractRegistry @5 :StringMap(Hash32);
   }
 }

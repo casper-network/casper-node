@@ -1,11 +1,11 @@
 @0xb9a7130ecbd1c7ba;
 
-using import "hash_with_32_bytes.capnp".Hash;
+using import "hash_with_32_bytes.capnp".Hash32;
 using import "uref.capnp".URef;
 
 struct Transfer {
-  deployHash @0 :Hash;
-  from @1 :Hash;
+  deployHash32 @0 :Hash32;
+  from @1 :Hash32;
   to @2 :Destination;
 
   # TODO: Why do these need to be URefs and not just hashes?
@@ -18,7 +18,7 @@ struct Transfer {
 
   struct Destination {
     union {
-       anotherAccountHash @0 :Hash;
+       anotherAccountHash32 @0 :Hash32;
        notApplicable @1 :Void;
     }
   }

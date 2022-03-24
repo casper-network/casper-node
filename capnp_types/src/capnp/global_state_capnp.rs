@@ -3,306 +3,6 @@
 // source: global_state.capnp
 
 
-pub mod account_key {
-  #[derive(Copy, Clone)]
-  pub struct Owned(());
-  impl <'a> ::capnp::traits::Owned<'a> for Owned { type Reader = Reader<'a>; type Builder = Builder<'a>; }
-  impl <'a> ::capnp::traits::OwnedStruct<'a> for Owned { type Reader = Reader<'a>; type Builder = Builder<'a>; }
-  impl ::capnp::traits::Pipelined for Owned { type Pipeline = Pipeline; }
-
-  #[derive(Clone, Copy)]
-  pub struct Reader<'a> { reader: ::capnp::private::layout::StructReader<'a> }
-
-  impl <'a,> ::capnp::traits::HasTypeId for Reader<'a,>  {
-    #[inline]
-    fn type_id() -> u64 { _private::TYPE_ID }
-  }
-  impl <'a,> ::capnp::traits::FromStructReader<'a> for Reader<'a,>  {
-    fn new(reader: ::capnp::private::layout::StructReader<'a>) -> Reader<'a,> {
-      Reader { reader,  }
-    }
-  }
-
-  impl <'a,> ::capnp::traits::FromPointerReader<'a> for Reader<'a,>  {
-    fn get_from_pointer(reader: &::capnp::private::layout::PointerReader<'a>, default: ::core::option::Option<&'a [capnp::Word]>) -> ::capnp::Result<Reader<'a,>> {
-      ::core::result::Result::Ok(::capnp::traits::FromStructReader::new(reader.get_struct(default)?))
-    }
-  }
-
-  impl <'a,> ::capnp::traits::IntoInternalStructReader<'a> for Reader<'a,>  {
-    fn into_internal_struct_reader(self) -> ::capnp::private::layout::StructReader<'a> {
-      self.reader
-    }
-  }
-
-  impl <'a,> ::capnp::traits::Imbue<'a> for Reader<'a,>  {
-    fn imbue(&mut self, cap_table: &'a ::capnp::private::layout::CapTable) {
-      self.reader.imbue(::capnp::private::layout::CapTableReader::Plain(cap_table))
-    }
-  }
-
-  impl <'a,> Reader<'a,>  {
-    pub fn reborrow(&self) -> Reader<'_,> {
-      Reader { .. *self }
-    }
-
-    pub fn total_size(&self) -> ::capnp::Result<::capnp::MessageSize> {
-      self.reader.total_size()
-    }
-    #[inline]
-    pub fn get_prefix_tag(self) -> u8 {
-      self.reader.get_data_field::<u8>(0)
-    }
-    #[inline]
-    pub fn get_account_hash(self) -> ::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash::Reader<'a>> {
-      ::capnp::traits::FromPointerReader::get_from_pointer(&self.reader.get_pointer_field(0), ::core::option::Option::None)
-    }
-    pub fn has_account_hash(&self) -> bool {
-      !self.reader.get_pointer_field(0).is_null()
-    }
-  }
-
-  pub struct Builder<'a> { builder: ::capnp::private::layout::StructBuilder<'a> }
-  impl <'a,> ::capnp::traits::HasStructSize for Builder<'a,>  {
-    #[inline]
-    fn struct_size() -> ::capnp::private::layout::StructSize { _private::STRUCT_SIZE }
-  }
-  impl <'a,> ::capnp::traits::HasTypeId for Builder<'a,>  {
-    #[inline]
-    fn type_id() -> u64 { _private::TYPE_ID }
-  }
-  impl <'a,> ::capnp::traits::FromStructBuilder<'a> for Builder<'a,>  {
-    fn new(builder: ::capnp::private::layout::StructBuilder<'a>) -> Builder<'a, > {
-      Builder { builder,  }
-    }
-  }
-
-  impl <'a,> ::capnp::traits::ImbueMut<'a> for Builder<'a,>  {
-    fn imbue_mut(&mut self, cap_table: &'a mut ::capnp::private::layout::CapTable) {
-      self.builder.imbue(::capnp::private::layout::CapTableBuilder::Plain(cap_table))
-    }
-  }
-
-  impl <'a,> ::capnp::traits::FromPointerBuilder<'a> for Builder<'a,>  {
-    fn init_pointer(builder: ::capnp::private::layout::PointerBuilder<'a>, _size: u32) -> Builder<'a,> {
-      ::capnp::traits::FromStructBuilder::new(builder.init_struct(_private::STRUCT_SIZE))
-    }
-    fn get_from_pointer(builder: ::capnp::private::layout::PointerBuilder<'a>, default: ::core::option::Option<&'a [capnp::Word]>) -> ::capnp::Result<Builder<'a,>> {
-      ::core::result::Result::Ok(::capnp::traits::FromStructBuilder::new(builder.get_struct(_private::STRUCT_SIZE, default)?))
-    }
-  }
-
-  impl <'a,> ::capnp::traits::SetPointerBuilder for Reader<'a,>  {
-    fn set_pointer_builder<'b>(pointer: ::capnp::private::layout::PointerBuilder<'b>, value: Reader<'a,>, canonicalize: bool) -> ::capnp::Result<()> { pointer.set_struct(&value.reader, canonicalize) }
-  }
-
-  impl <'a,> Builder<'a,>  {
-    pub fn into_reader(self) -> Reader<'a,> {
-      ::capnp::traits::FromStructReader::new(self.builder.into_reader())
-    }
-    pub fn reborrow(&mut self) -> Builder<'_,> {
-      Builder { .. *self }
-    }
-    pub fn reborrow_as_reader(&self) -> Reader<'_,> {
-      ::capnp::traits::FromStructReader::new(self.builder.into_reader())
-    }
-
-    pub fn total_size(&self) -> ::capnp::Result<::capnp::MessageSize> {
-      self.builder.into_reader().total_size()
-    }
-    #[inline]
-    pub fn get_prefix_tag(self) -> u8 {
-      self.builder.get_data_field::<u8>(0)
-    }
-    #[inline]
-    pub fn set_prefix_tag(&mut self, value: u8)  {
-      self.builder.set_data_field::<u8>(0, value);
-    }
-    #[inline]
-    pub fn get_account_hash(self) -> ::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash::Builder<'a>> {
-      ::capnp::traits::FromPointerBuilder::get_from_pointer(self.builder.get_pointer_field(0), ::core::option::Option::None)
-    }
-    #[inline]
-    pub fn set_account_hash(&mut self, value: crate::capnp::hash_with_32_bytes_capnp::hash::Reader<'_>) -> ::capnp::Result<()> {
-      ::capnp::traits::SetPointerBuilder::set_pointer_builder(self.builder.get_pointer_field(0), value, false)
-    }
-    #[inline]
-    pub fn init_account_hash(self, ) -> crate::capnp::hash_with_32_bytes_capnp::hash::Builder<'a> {
-      ::capnp::traits::FromPointerBuilder::init_pointer(self.builder.get_pointer_field(0), 0)
-    }
-    pub fn has_account_hash(&self) -> bool {
-      !self.builder.get_pointer_field(0).is_null()
-    }
-  }
-
-  pub struct Pipeline { _typeless: ::capnp::any_pointer::Pipeline }
-  impl ::capnp::capability::FromTypelessPipeline for Pipeline {
-    fn new(typeless: ::capnp::any_pointer::Pipeline) -> Pipeline {
-      Pipeline { _typeless: typeless,  }
-    }
-  }
-  impl Pipeline  {
-    pub fn get_account_hash(&self) -> crate::capnp::hash_with_32_bytes_capnp::hash::Pipeline {
-      ::capnp::capability::FromTypelessPipeline::new(self._typeless.get_pointer_field(0))
-    }
-  }
-  mod _private {
-    use capnp::private::layout;
-    pub const STRUCT_SIZE: layout::StructSize = layout::StructSize { data: 1, pointers: 1 };
-    pub const TYPE_ID: u64 = 0x82cf_84a8_de30_cdaa;
-  }
-}
-
-pub mod contract_key {
-  #[derive(Copy, Clone)]
-  pub struct Owned(());
-  impl <'a> ::capnp::traits::Owned<'a> for Owned { type Reader = Reader<'a>; type Builder = Builder<'a>; }
-  impl <'a> ::capnp::traits::OwnedStruct<'a> for Owned { type Reader = Reader<'a>; type Builder = Builder<'a>; }
-  impl ::capnp::traits::Pipelined for Owned { type Pipeline = Pipeline; }
-
-  #[derive(Clone, Copy)]
-  pub struct Reader<'a> { reader: ::capnp::private::layout::StructReader<'a> }
-
-  impl <'a,> ::capnp::traits::HasTypeId for Reader<'a,>  {
-    #[inline]
-    fn type_id() -> u64 { _private::TYPE_ID }
-  }
-  impl <'a,> ::capnp::traits::FromStructReader<'a> for Reader<'a,>  {
-    fn new(reader: ::capnp::private::layout::StructReader<'a>) -> Reader<'a,> {
-      Reader { reader,  }
-    }
-  }
-
-  impl <'a,> ::capnp::traits::FromPointerReader<'a> for Reader<'a,>  {
-    fn get_from_pointer(reader: &::capnp::private::layout::PointerReader<'a>, default: ::core::option::Option<&'a [capnp::Word]>) -> ::capnp::Result<Reader<'a,>> {
-      ::core::result::Result::Ok(::capnp::traits::FromStructReader::new(reader.get_struct(default)?))
-    }
-  }
-
-  impl <'a,> ::capnp::traits::IntoInternalStructReader<'a> for Reader<'a,>  {
-    fn into_internal_struct_reader(self) -> ::capnp::private::layout::StructReader<'a> {
-      self.reader
-    }
-  }
-
-  impl <'a,> ::capnp::traits::Imbue<'a> for Reader<'a,>  {
-    fn imbue(&mut self, cap_table: &'a ::capnp::private::layout::CapTable) {
-      self.reader.imbue(::capnp::private::layout::CapTableReader::Plain(cap_table))
-    }
-  }
-
-  impl <'a,> Reader<'a,>  {
-    pub fn reborrow(&self) -> Reader<'_,> {
-      Reader { .. *self }
-    }
-
-    pub fn total_size(&self) -> ::capnp::Result<::capnp::MessageSize> {
-      self.reader.total_size()
-    }
-    #[inline]
-    pub fn get_prefix_tag(self) -> u8 {
-      self.reader.get_data_field_mask::<u8>(0, 1)
-    }
-    #[inline]
-    pub fn get_contract_hash(self) -> ::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash::Reader<'a>> {
-      ::capnp::traits::FromPointerReader::get_from_pointer(&self.reader.get_pointer_field(0), ::core::option::Option::None)
-    }
-    pub fn has_contract_hash(&self) -> bool {
-      !self.reader.get_pointer_field(0).is_null()
-    }
-  }
-
-  pub struct Builder<'a> { builder: ::capnp::private::layout::StructBuilder<'a> }
-  impl <'a,> ::capnp::traits::HasStructSize for Builder<'a,>  {
-    #[inline]
-    fn struct_size() -> ::capnp::private::layout::StructSize { _private::STRUCT_SIZE }
-  }
-  impl <'a,> ::capnp::traits::HasTypeId for Builder<'a,>  {
-    #[inline]
-    fn type_id() -> u64 { _private::TYPE_ID }
-  }
-  impl <'a,> ::capnp::traits::FromStructBuilder<'a> for Builder<'a,>  {
-    fn new(builder: ::capnp::private::layout::StructBuilder<'a>) -> Builder<'a, > {
-      Builder { builder,  }
-    }
-  }
-
-  impl <'a,> ::capnp::traits::ImbueMut<'a> for Builder<'a,>  {
-    fn imbue_mut(&mut self, cap_table: &'a mut ::capnp::private::layout::CapTable) {
-      self.builder.imbue(::capnp::private::layout::CapTableBuilder::Plain(cap_table))
-    }
-  }
-
-  impl <'a,> ::capnp::traits::FromPointerBuilder<'a> for Builder<'a,>  {
-    fn init_pointer(builder: ::capnp::private::layout::PointerBuilder<'a>, _size: u32) -> Builder<'a,> {
-      ::capnp::traits::FromStructBuilder::new(builder.init_struct(_private::STRUCT_SIZE))
-    }
-    fn get_from_pointer(builder: ::capnp::private::layout::PointerBuilder<'a>, default: ::core::option::Option<&'a [capnp::Word]>) -> ::capnp::Result<Builder<'a,>> {
-      ::core::result::Result::Ok(::capnp::traits::FromStructBuilder::new(builder.get_struct(_private::STRUCT_SIZE, default)?))
-    }
-  }
-
-  impl <'a,> ::capnp::traits::SetPointerBuilder for Reader<'a,>  {
-    fn set_pointer_builder<'b>(pointer: ::capnp::private::layout::PointerBuilder<'b>, value: Reader<'a,>, canonicalize: bool) -> ::capnp::Result<()> { pointer.set_struct(&value.reader, canonicalize) }
-  }
-
-  impl <'a,> Builder<'a,>  {
-    pub fn into_reader(self) -> Reader<'a,> {
-      ::capnp::traits::FromStructReader::new(self.builder.into_reader())
-    }
-    pub fn reborrow(&mut self) -> Builder<'_,> {
-      Builder { .. *self }
-    }
-    pub fn reborrow_as_reader(&self) -> Reader<'_,> {
-      ::capnp::traits::FromStructReader::new(self.builder.into_reader())
-    }
-
-    pub fn total_size(&self) -> ::capnp::Result<::capnp::MessageSize> {
-      self.builder.into_reader().total_size()
-    }
-    #[inline]
-    pub fn get_prefix_tag(self) -> u8 {
-      self.builder.get_data_field_mask::<u8>(0, 1)
-    }
-    #[inline]
-    pub fn set_prefix_tag(&mut self, value: u8)  {
-      self.builder.set_data_field_mask::<u8>(0, value, 1);
-    }
-    #[inline]
-    pub fn get_contract_hash(self) -> ::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash::Builder<'a>> {
-      ::capnp::traits::FromPointerBuilder::get_from_pointer(self.builder.get_pointer_field(0), ::core::option::Option::None)
-    }
-    #[inline]
-    pub fn set_contract_hash(&mut self, value: crate::capnp::hash_with_32_bytes_capnp::hash::Reader<'_>) -> ::capnp::Result<()> {
-      ::capnp::traits::SetPointerBuilder::set_pointer_builder(self.builder.get_pointer_field(0), value, false)
-    }
-    #[inline]
-    pub fn init_contract_hash(self, ) -> crate::capnp::hash_with_32_bytes_capnp::hash::Builder<'a> {
-      ::capnp::traits::FromPointerBuilder::init_pointer(self.builder.get_pointer_field(0), 0)
-    }
-    pub fn has_contract_hash(&self) -> bool {
-      !self.builder.get_pointer_field(0).is_null()
-    }
-  }
-
-  pub struct Pipeline { _typeless: ::capnp::any_pointer::Pipeline }
-  impl ::capnp::capability::FromTypelessPipeline for Pipeline {
-    fn new(typeless: ::capnp::any_pointer::Pipeline) -> Pipeline {
-      Pipeline { _typeless: typeless,  }
-    }
-  }
-  impl Pipeline  {
-    pub fn get_contract_hash(&self) -> crate::capnp::hash_with_32_bytes_capnp::hash::Pipeline {
-      ::capnp::capability::FromTypelessPipeline::new(self._typeless.get_pointer_field(0))
-    }
-  }
-  mod _private {
-    use capnp::private::layout;
-    pub const STRUCT_SIZE: layout::StructSize = layout::StructSize { data: 1, pointers: 1 };
-    pub const TYPE_ID: u64 = 0x82ee_24ec_34cc_1d8c;
-  }
-}
-
 pub mod key {
   pub use self::Which::{Account,Hash,URef,Transfer,DeployInfo,EraInfo,Balance,Bid,Withdraw,Dictionary,SystemContractRegistry};
 
@@ -499,12 +199,12 @@ pub mod key {
       self.builder.into_reader().total_size()
     }
     #[inline]
-    pub fn set_account(&mut self, value: crate::capnp::hash_with_32_bytes_capnp::hash::Reader<'_>) -> ::capnp::Result<()> {
+    pub fn set_account(&mut self, value: crate::capnp::hash_with_32_bytes_capnp::hash32::Reader<'_>) -> ::capnp::Result<()> {
       self.builder.set_data_field::<u16>(0, 0);
       ::capnp::traits::SetPointerBuilder::set_pointer_builder(self.builder.get_pointer_field(0), value, false)
     }
     #[inline]
-    pub fn init_account(self, ) -> crate::capnp::hash_with_32_bytes_capnp::hash::Builder<'a> {
+    pub fn init_account(self, ) -> crate::capnp::hash_with_32_bytes_capnp::hash32::Builder<'a> {
       self.builder.set_data_field::<u16>(0, 0);
       ::capnp::traits::FromPointerBuilder::init_pointer(self.builder.get_pointer_field(0), 0)
     }
@@ -513,12 +213,12 @@ pub mod key {
       !self.builder.get_pointer_field(0).is_null()
     }
     #[inline]
-    pub fn set_hash(&mut self, value: crate::capnp::hash_with_32_bytes_capnp::hash::Reader<'_>) -> ::capnp::Result<()> {
+    pub fn set_hash(&mut self, value: crate::capnp::hash_with_32_bytes_capnp::hash32::Reader<'_>) -> ::capnp::Result<()> {
       self.builder.set_data_field::<u16>(0, 1);
       ::capnp::traits::SetPointerBuilder::set_pointer_builder(self.builder.get_pointer_field(0), value, false)
     }
     #[inline]
-    pub fn init_hash(self, ) -> crate::capnp::hash_with_32_bytes_capnp::hash::Builder<'a> {
+    pub fn init_hash(self, ) -> crate::capnp::hash_with_32_bytes_capnp::hash32::Builder<'a> {
       self.builder.set_data_field::<u16>(0, 1);
       ::capnp::traits::FromPointerBuilder::init_pointer(self.builder.get_pointer_field(0), 0)
     }
@@ -527,12 +227,12 @@ pub mod key {
       !self.builder.get_pointer_field(0).is_null()
     }
     #[inline]
-    pub fn set_u_ref(&mut self, value: crate::capnp::hash_with_32_bytes_capnp::hash::Reader<'_>) -> ::capnp::Result<()> {
+    pub fn set_u_ref(&mut self, value: crate::capnp::hash_with_32_bytes_capnp::hash32::Reader<'_>) -> ::capnp::Result<()> {
       self.builder.set_data_field::<u16>(0, 2);
       ::capnp::traits::SetPointerBuilder::set_pointer_builder(self.builder.get_pointer_field(0), value, false)
     }
     #[inline]
-    pub fn init_u_ref(self, ) -> crate::capnp::hash_with_32_bytes_capnp::hash::Builder<'a> {
+    pub fn init_u_ref(self, ) -> crate::capnp::hash_with_32_bytes_capnp::hash32::Builder<'a> {
       self.builder.set_data_field::<u16>(0, 2);
       ::capnp::traits::FromPointerBuilder::init_pointer(self.builder.get_pointer_field(0), 0)
     }
@@ -541,12 +241,12 @@ pub mod key {
       !self.builder.get_pointer_field(0).is_null()
     }
     #[inline]
-    pub fn set_transfer(&mut self, value: crate::capnp::hash_with_32_bytes_capnp::hash::Reader<'_>) -> ::capnp::Result<()> {
+    pub fn set_transfer(&mut self, value: crate::capnp::hash_with_32_bytes_capnp::hash32::Reader<'_>) -> ::capnp::Result<()> {
       self.builder.set_data_field::<u16>(0, 3);
       ::capnp::traits::SetPointerBuilder::set_pointer_builder(self.builder.get_pointer_field(0), value, false)
     }
     #[inline]
-    pub fn init_transfer(self, ) -> crate::capnp::hash_with_32_bytes_capnp::hash::Builder<'a> {
+    pub fn init_transfer(self, ) -> crate::capnp::hash_with_32_bytes_capnp::hash32::Builder<'a> {
       self.builder.set_data_field::<u16>(0, 3);
       ::capnp::traits::FromPointerBuilder::init_pointer(self.builder.get_pointer_field(0), 0)
     }
@@ -555,12 +255,12 @@ pub mod key {
       !self.builder.get_pointer_field(0).is_null()
     }
     #[inline]
-    pub fn set_deploy_info(&mut self, value: crate::capnp::hash_with_32_bytes_capnp::hash::Reader<'_>) -> ::capnp::Result<()> {
+    pub fn set_deploy_info(&mut self, value: crate::capnp::hash_with_32_bytes_capnp::hash32::Reader<'_>) -> ::capnp::Result<()> {
       self.builder.set_data_field::<u16>(0, 4);
       ::capnp::traits::SetPointerBuilder::set_pointer_builder(self.builder.get_pointer_field(0), value, false)
     }
     #[inline]
-    pub fn init_deploy_info(self, ) -> crate::capnp::hash_with_32_bytes_capnp::hash::Builder<'a> {
+    pub fn init_deploy_info(self, ) -> crate::capnp::hash_with_32_bytes_capnp::hash32::Builder<'a> {
       self.builder.set_data_field::<u16>(0, 4);
       ::capnp::traits::FromPointerBuilder::init_pointer(self.builder.get_pointer_field(0), 0)
     }
@@ -574,12 +274,12 @@ pub mod key {
       self.builder.set_data_field::<u64>(1, value);
     }
     #[inline]
-    pub fn set_balance(&mut self, value: crate::capnp::hash_with_32_bytes_capnp::hash::Reader<'_>) -> ::capnp::Result<()> {
+    pub fn set_balance(&mut self, value: crate::capnp::hash_with_32_bytes_capnp::hash32::Reader<'_>) -> ::capnp::Result<()> {
       self.builder.set_data_field::<u16>(0, 6);
       ::capnp::traits::SetPointerBuilder::set_pointer_builder(self.builder.get_pointer_field(0), value, false)
     }
     #[inline]
-    pub fn init_balance(self, ) -> crate::capnp::hash_with_32_bytes_capnp::hash::Builder<'a> {
+    pub fn init_balance(self, ) -> crate::capnp::hash_with_32_bytes_capnp::hash32::Builder<'a> {
       self.builder.set_data_field::<u16>(0, 6);
       ::capnp::traits::FromPointerBuilder::init_pointer(self.builder.get_pointer_field(0), 0)
     }
@@ -588,12 +288,12 @@ pub mod key {
       !self.builder.get_pointer_field(0).is_null()
     }
     #[inline]
-    pub fn set_bid(&mut self, value: crate::capnp::hash_with_32_bytes_capnp::hash::Reader<'_>) -> ::capnp::Result<()> {
+    pub fn set_bid(&mut self, value: crate::capnp::hash_with_32_bytes_capnp::hash32::Reader<'_>) -> ::capnp::Result<()> {
       self.builder.set_data_field::<u16>(0, 7);
       ::capnp::traits::SetPointerBuilder::set_pointer_builder(self.builder.get_pointer_field(0), value, false)
     }
     #[inline]
-    pub fn init_bid(self, ) -> crate::capnp::hash_with_32_bytes_capnp::hash::Builder<'a> {
+    pub fn init_bid(self, ) -> crate::capnp::hash_with_32_bytes_capnp::hash32::Builder<'a> {
       self.builder.set_data_field::<u16>(0, 7);
       ::capnp::traits::FromPointerBuilder::init_pointer(self.builder.get_pointer_field(0), 0)
     }
@@ -602,12 +302,12 @@ pub mod key {
       !self.builder.get_pointer_field(0).is_null()
     }
     #[inline]
-    pub fn set_withdraw(&mut self, value: crate::capnp::hash_with_32_bytes_capnp::hash::Reader<'_>) -> ::capnp::Result<()> {
+    pub fn set_withdraw(&mut self, value: crate::capnp::hash_with_32_bytes_capnp::hash32::Reader<'_>) -> ::capnp::Result<()> {
       self.builder.set_data_field::<u16>(0, 8);
       ::capnp::traits::SetPointerBuilder::set_pointer_builder(self.builder.get_pointer_field(0), value, false)
     }
     #[inline]
-    pub fn init_withdraw(self, ) -> crate::capnp::hash_with_32_bytes_capnp::hash::Builder<'a> {
+    pub fn init_withdraw(self, ) -> crate::capnp::hash_with_32_bytes_capnp::hash32::Builder<'a> {
       self.builder.set_data_field::<u16>(0, 8);
       ::capnp::traits::FromPointerBuilder::init_pointer(self.builder.get_pointer_field(0), 0)
     }
@@ -616,12 +316,12 @@ pub mod key {
       !self.builder.get_pointer_field(0).is_null()
     }
     #[inline]
-    pub fn set_dictionary(&mut self, value: crate::capnp::hash_with_32_bytes_capnp::hash::Reader<'_>) -> ::capnp::Result<()> {
+    pub fn set_dictionary(&mut self, value: crate::capnp::hash_with_32_bytes_capnp::hash32::Reader<'_>) -> ::capnp::Result<()> {
       self.builder.set_data_field::<u16>(0, 9);
       ::capnp::traits::SetPointerBuilder::set_pointer_builder(self.builder.get_pointer_field(0), value, false)
     }
     #[inline]
-    pub fn init_dictionary(self, ) -> crate::capnp::hash_with_32_bytes_capnp::hash::Builder<'a> {
+    pub fn init_dictionary(self, ) -> crate::capnp::hash_with_32_bytes_capnp::hash32::Builder<'a> {
       self.builder.set_data_field::<u16>(0, 9);
       ::capnp::traits::FromPointerBuilder::init_pointer(self.builder.get_pointer_field(0), 0)
     }
@@ -722,8 +422,8 @@ pub mod key {
     Dictionary(A8),
     SystemContractRegistry(()),
   }
-  pub type WhichReader<'a,> = Which<::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash::Reader<'a>>,::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash::Reader<'a>>,::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash::Reader<'a>>,::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash::Reader<'a>>,::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash::Reader<'a>>,::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash::Reader<'a>>,::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash::Reader<'a>>,::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash::Reader<'a>>,::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash::Reader<'a>>>;
-  pub type WhichBuilder<'a,> = Which<::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash::Builder<'a>>,::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash::Builder<'a>>,::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash::Builder<'a>>,::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash::Builder<'a>>,::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash::Builder<'a>>,::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash::Builder<'a>>,::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash::Builder<'a>>,::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash::Builder<'a>>,::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash::Builder<'a>>>;
+  pub type WhichReader<'a,> = Which<::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash32::Reader<'a>>,::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash32::Reader<'a>>,::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash32::Reader<'a>>,::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash32::Reader<'a>>,::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash32::Reader<'a>>,::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash32::Reader<'a>>,::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash32::Reader<'a>>,::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash32::Reader<'a>>,::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash32::Reader<'a>>>;
+  pub type WhichBuilder<'a,> = Which<::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash32::Builder<'a>>,::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash32::Builder<'a>>,::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash32::Builder<'a>>,::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash32::Builder<'a>>,::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash32::Builder<'a>>,::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash32::Builder<'a>>,::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash32::Builder<'a>>,::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash32::Builder<'a>>,::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash32::Builder<'a>>>;
 }
 
 pub mod global_state_entry {
@@ -885,12 +585,12 @@ pub mod global_state_entry {
       self.builder.into_reader().total_size()
     }
     #[inline]
-    pub fn set_account(&mut self, value: crate::capnp::global_state_capnp::global_state_entry::entry::Reader<'_,crate::capnp::hash_with_32_bytes_capnp::hash::Owned,crate::capnp::account_capnp::account::Owned>) -> ::capnp::Result<()> {
+    pub fn set_account(&mut self, value: crate::capnp::global_state_capnp::global_state_entry::entry::Reader<'_,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned,crate::capnp::account_capnp::account::Owned>) -> ::capnp::Result<()> {
       self.builder.set_data_field::<u16>(0, 0);
-      <crate::capnp::global_state_capnp::global_state_entry::entry::Reader<'_,crate::capnp::hash_with_32_bytes_capnp::hash::Owned,crate::capnp::account_capnp::account::Owned> as ::capnp::traits::SetPointerBuilder>::set_pointer_builder(self.builder.get_pointer_field(0), value, false)
+      <crate::capnp::global_state_capnp::global_state_entry::entry::Reader<'_,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned,crate::capnp::account_capnp::account::Owned> as ::capnp::traits::SetPointerBuilder>::set_pointer_builder(self.builder.get_pointer_field(0), value, false)
     }
     #[inline]
-    pub fn init_account(self, ) -> crate::capnp::global_state_capnp::global_state_entry::entry::Builder<'a,crate::capnp::hash_with_32_bytes_capnp::hash::Owned,crate::capnp::account_capnp::account::Owned> {
+    pub fn init_account(self, ) -> crate::capnp::global_state_capnp::global_state_entry::entry::Builder<'a,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned,crate::capnp::account_capnp::account::Owned> {
       self.builder.set_data_field::<u16>(0, 0);
       ::capnp::traits::FromPointerBuilder::init_pointer(self.builder.get_pointer_field(0), 0)
     }
@@ -899,12 +599,12 @@ pub mod global_state_entry {
       !self.builder.get_pointer_field(0).is_null()
     }
     #[inline]
-    pub fn set_contract(&mut self, value: crate::capnp::global_state_capnp::global_state_entry::entry::Reader<'_,crate::capnp::hash_with_32_bytes_capnp::hash::Owned,crate::capnp::hash_with_32_bytes_capnp::hash::Owned>) -> ::capnp::Result<()> {
+    pub fn set_contract(&mut self, value: crate::capnp::global_state_capnp::global_state_entry::entry::Reader<'_,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned>) -> ::capnp::Result<()> {
       self.builder.set_data_field::<u16>(0, 1);
-      <crate::capnp::global_state_capnp::global_state_entry::entry::Reader<'_,crate::capnp::hash_with_32_bytes_capnp::hash::Owned,crate::capnp::hash_with_32_bytes_capnp::hash::Owned> as ::capnp::traits::SetPointerBuilder>::set_pointer_builder(self.builder.get_pointer_field(0), value, false)
+      <crate::capnp::global_state_capnp::global_state_entry::entry::Reader<'_,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned> as ::capnp::traits::SetPointerBuilder>::set_pointer_builder(self.builder.get_pointer_field(0), value, false)
     }
     #[inline]
-    pub fn init_contract(self, ) -> crate::capnp::global_state_capnp::global_state_entry::entry::Builder<'a,crate::capnp::hash_with_32_bytes_capnp::hash::Owned,crate::capnp::hash_with_32_bytes_capnp::hash::Owned> {
+    pub fn init_contract(self, ) -> crate::capnp::global_state_capnp::global_state_entry::entry::Builder<'a,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned> {
       self.builder.set_data_field::<u16>(0, 1);
       ::capnp::traits::FromPointerBuilder::init_pointer(self.builder.get_pointer_field(0), 0)
     }
@@ -913,12 +613,12 @@ pub mod global_state_entry {
       !self.builder.get_pointer_field(0).is_null()
     }
     #[inline]
-    pub fn set_uref(&mut self, value: crate::capnp::global_state_capnp::global_state_entry::entry::Reader<'_,crate::capnp::uref_capnp::u_ref::Owned,crate::capnp::hash_with_32_bytes_capnp::hash::Owned>) -> ::capnp::Result<()> {
+    pub fn set_uref(&mut self, value: crate::capnp::global_state_capnp::global_state_entry::entry::Reader<'_,crate::capnp::uref_capnp::u_ref::Owned,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned>) -> ::capnp::Result<()> {
       self.builder.set_data_field::<u16>(0, 2);
-      <crate::capnp::global_state_capnp::global_state_entry::entry::Reader<'_,crate::capnp::uref_capnp::u_ref::Owned,crate::capnp::hash_with_32_bytes_capnp::hash::Owned> as ::capnp::traits::SetPointerBuilder>::set_pointer_builder(self.builder.get_pointer_field(0), value, false)
+      <crate::capnp::global_state_capnp::global_state_entry::entry::Reader<'_,crate::capnp::uref_capnp::u_ref::Owned,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned> as ::capnp::traits::SetPointerBuilder>::set_pointer_builder(self.builder.get_pointer_field(0), value, false)
     }
     #[inline]
-    pub fn init_uref(self, ) -> crate::capnp::global_state_capnp::global_state_entry::entry::Builder<'a,crate::capnp::uref_capnp::u_ref::Owned,crate::capnp::hash_with_32_bytes_capnp::hash::Owned> {
+    pub fn init_uref(self, ) -> crate::capnp::global_state_capnp::global_state_entry::entry::Builder<'a,crate::capnp::uref_capnp::u_ref::Owned,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned> {
       self.builder.set_data_field::<u16>(0, 2);
       ::capnp::traits::FromPointerBuilder::init_pointer(self.builder.get_pointer_field(0), 0)
     }
@@ -927,12 +627,12 @@ pub mod global_state_entry {
       !self.builder.get_pointer_field(0).is_null()
     }
     #[inline]
-    pub fn set_transfer_addr(&mut self, value: crate::capnp::global_state_capnp::global_state_entry::entry::Reader<'_,crate::capnp::hash_with_32_bytes_capnp::hash::Owned,crate::capnp::transfer_capnp::transfer::Owned>) -> ::capnp::Result<()> {
+    pub fn set_transfer_addr(&mut self, value: crate::capnp::global_state_capnp::global_state_entry::entry::Reader<'_,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned,crate::capnp::transfer_capnp::transfer::Owned>) -> ::capnp::Result<()> {
       self.builder.set_data_field::<u16>(0, 3);
-      <crate::capnp::global_state_capnp::global_state_entry::entry::Reader<'_,crate::capnp::hash_with_32_bytes_capnp::hash::Owned,crate::capnp::transfer_capnp::transfer::Owned> as ::capnp::traits::SetPointerBuilder>::set_pointer_builder(self.builder.get_pointer_field(0), value, false)
+      <crate::capnp::global_state_capnp::global_state_entry::entry::Reader<'_,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned,crate::capnp::transfer_capnp::transfer::Owned> as ::capnp::traits::SetPointerBuilder>::set_pointer_builder(self.builder.get_pointer_field(0), value, false)
     }
     #[inline]
-    pub fn init_transfer_addr(self, ) -> crate::capnp::global_state_capnp::global_state_entry::entry::Builder<'a,crate::capnp::hash_with_32_bytes_capnp::hash::Owned,crate::capnp::transfer_capnp::transfer::Owned> {
+    pub fn init_transfer_addr(self, ) -> crate::capnp::global_state_capnp::global_state_entry::entry::Builder<'a,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned,crate::capnp::transfer_capnp::transfer::Owned> {
       self.builder.set_data_field::<u16>(0, 3);
       ::capnp::traits::FromPointerBuilder::init_pointer(self.builder.get_pointer_field(0), 0)
     }
@@ -941,12 +641,12 @@ pub mod global_state_entry {
       !self.builder.get_pointer_field(0).is_null()
     }
     #[inline]
-    pub fn set_deploy_info(&mut self, value: crate::capnp::global_state_capnp::global_state_entry::entry::Reader<'_,crate::capnp::hash_with_32_bytes_capnp::hash::Owned,crate::capnp::deploy_info_capnp::deploy_info::Owned>) -> ::capnp::Result<()> {
+    pub fn set_deploy_info(&mut self, value: crate::capnp::global_state_capnp::global_state_entry::entry::Reader<'_,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned,crate::capnp::deploy_info_capnp::deploy_info::Owned>) -> ::capnp::Result<()> {
       self.builder.set_data_field::<u16>(0, 4);
-      <crate::capnp::global_state_capnp::global_state_entry::entry::Reader<'_,crate::capnp::hash_with_32_bytes_capnp::hash::Owned,crate::capnp::deploy_info_capnp::deploy_info::Owned> as ::capnp::traits::SetPointerBuilder>::set_pointer_builder(self.builder.get_pointer_field(0), value, false)
+      <crate::capnp::global_state_capnp::global_state_entry::entry::Reader<'_,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned,crate::capnp::deploy_info_capnp::deploy_info::Owned> as ::capnp::traits::SetPointerBuilder>::set_pointer_builder(self.builder.get_pointer_field(0), value, false)
     }
     #[inline]
-    pub fn init_deploy_info(self, ) -> crate::capnp::global_state_capnp::global_state_entry::entry::Builder<'a,crate::capnp::hash_with_32_bytes_capnp::hash::Owned,crate::capnp::deploy_info_capnp::deploy_info::Owned> {
+    pub fn init_deploy_info(self, ) -> crate::capnp::global_state_capnp::global_state_entry::entry::Builder<'a,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned,crate::capnp::deploy_info_capnp::deploy_info::Owned> {
       self.builder.set_data_field::<u16>(0, 4);
       ::capnp::traits::FromPointerBuilder::init_pointer(self.builder.get_pointer_field(0), 0)
     }
@@ -955,12 +655,12 @@ pub mod global_state_entry {
       !self.builder.get_pointer_field(0).is_null()
     }
     #[inline]
-    pub fn set_system_contract_registry(&mut self, value: crate::capnp::system_contract_registry_capnp::system_contract_registry::Reader<'_>) -> ::capnp::Result<()> {
+    pub fn set_system_contract_registry(&mut self, value: crate::capnp::map_capnp::string_map::Reader<'_,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned>) -> ::capnp::Result<()> {
       self.builder.set_data_field::<u16>(0, 5);
-      ::capnp::traits::SetPointerBuilder::set_pointer_builder(self.builder.get_pointer_field(0), value, false)
+      <crate::capnp::map_capnp::string_map::Reader<'_,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned> as ::capnp::traits::SetPointerBuilder>::set_pointer_builder(self.builder.get_pointer_field(0), value, false)
     }
     #[inline]
-    pub fn init_system_contract_registry(self, ) -> crate::capnp::system_contract_registry_capnp::system_contract_registry::Builder<'a> {
+    pub fn init_system_contract_registry(self, ) -> crate::capnp::map_capnp::string_map::Builder<'a,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned> {
       self.builder.set_data_field::<u16>(0, 5);
       ::capnp::traits::FromPointerBuilder::init_pointer(self.builder.get_pointer_field(0), 0)
     }
@@ -1027,8 +727,8 @@ pub mod global_state_entry {
     DeployInfo(A4),
     SystemContractRegistry(A5),
   }
-  pub type WhichReader<'a,> = Which<::capnp::Result<crate::capnp::global_state_capnp::global_state_entry::entry::Reader<'a,crate::capnp::hash_with_32_bytes_capnp::hash::Owned,crate::capnp::account_capnp::account::Owned>>,::capnp::Result<crate::capnp::global_state_capnp::global_state_entry::entry::Reader<'a,crate::capnp::hash_with_32_bytes_capnp::hash::Owned,crate::capnp::hash_with_32_bytes_capnp::hash::Owned>>,::capnp::Result<crate::capnp::global_state_capnp::global_state_entry::entry::Reader<'a,crate::capnp::uref_capnp::u_ref::Owned,crate::capnp::hash_with_32_bytes_capnp::hash::Owned>>,::capnp::Result<crate::capnp::global_state_capnp::global_state_entry::entry::Reader<'a,crate::capnp::hash_with_32_bytes_capnp::hash::Owned,crate::capnp::transfer_capnp::transfer::Owned>>,::capnp::Result<crate::capnp::global_state_capnp::global_state_entry::entry::Reader<'a,crate::capnp::hash_with_32_bytes_capnp::hash::Owned,crate::capnp::deploy_info_capnp::deploy_info::Owned>>,::capnp::Result<crate::capnp::system_contract_registry_capnp::system_contract_registry::Reader<'a>>>;
-  pub type WhichBuilder<'a,> = Which<::capnp::Result<crate::capnp::global_state_capnp::global_state_entry::entry::Builder<'a,crate::capnp::hash_with_32_bytes_capnp::hash::Owned,crate::capnp::account_capnp::account::Owned>>,::capnp::Result<crate::capnp::global_state_capnp::global_state_entry::entry::Builder<'a,crate::capnp::hash_with_32_bytes_capnp::hash::Owned,crate::capnp::hash_with_32_bytes_capnp::hash::Owned>>,::capnp::Result<crate::capnp::global_state_capnp::global_state_entry::entry::Builder<'a,crate::capnp::uref_capnp::u_ref::Owned,crate::capnp::hash_with_32_bytes_capnp::hash::Owned>>,::capnp::Result<crate::capnp::global_state_capnp::global_state_entry::entry::Builder<'a,crate::capnp::hash_with_32_bytes_capnp::hash::Owned,crate::capnp::transfer_capnp::transfer::Owned>>,::capnp::Result<crate::capnp::global_state_capnp::global_state_entry::entry::Builder<'a,crate::capnp::hash_with_32_bytes_capnp::hash::Owned,crate::capnp::deploy_info_capnp::deploy_info::Owned>>,::capnp::Result<crate::capnp::system_contract_registry_capnp::system_contract_registry::Builder<'a>>>;
+  pub type WhichReader<'a,> = Which<::capnp::Result<crate::capnp::global_state_capnp::global_state_entry::entry::Reader<'a,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned,crate::capnp::account_capnp::account::Owned>>,::capnp::Result<crate::capnp::global_state_capnp::global_state_entry::entry::Reader<'a,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned>>,::capnp::Result<crate::capnp::global_state_capnp::global_state_entry::entry::Reader<'a,crate::capnp::uref_capnp::u_ref::Owned,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned>>,::capnp::Result<crate::capnp::global_state_capnp::global_state_entry::entry::Reader<'a,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned,crate::capnp::transfer_capnp::transfer::Owned>>,::capnp::Result<crate::capnp::global_state_capnp::global_state_entry::entry::Reader<'a,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned,crate::capnp::deploy_info_capnp::deploy_info::Owned>>,::capnp::Result<crate::capnp::map_capnp::string_map::Reader<'a,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned>>>;
+  pub type WhichBuilder<'a,> = Which<::capnp::Result<crate::capnp::global_state_capnp::global_state_entry::entry::Builder<'a,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned,crate::capnp::account_capnp::account::Owned>>,::capnp::Result<crate::capnp::global_state_capnp::global_state_entry::entry::Builder<'a,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned>>,::capnp::Result<crate::capnp::global_state_capnp::global_state_entry::entry::Builder<'a,crate::capnp::uref_capnp::u_ref::Owned,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned>>,::capnp::Result<crate::capnp::global_state_capnp::global_state_entry::entry::Builder<'a,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned,crate::capnp::transfer_capnp::transfer::Owned>>,::capnp::Result<crate::capnp::global_state_capnp::global_state_entry::entry::Builder<'a,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned,crate::capnp::deploy_info_capnp::deploy_info::Owned>>,::capnp::Result<crate::capnp::map_capnp::string_map::Builder<'a,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned>>>;
 
   pub mod entry { /* K,V */
     #[derive(Copy, Clone)]

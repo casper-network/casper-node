@@ -15,8 +15,6 @@ pub mod map_capnp;
 #[allow(unused)]
 pub mod public_key_capnp;
 #[allow(unused)]
-pub mod system_contract_registry_capnp;
-#[allow(unused)]
 pub mod transfer_capnp;
 #[allow(unused)]
 pub mod uref_capnp;

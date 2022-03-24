@@ -64,7 +64,7 @@ pub mod account {
       !self.reader.get_pointer_field(1).is_null()
     }
     #[inline]
-    pub fn get_associated_keys(self) -> ::capnp::Result<crate::capnp::map_capnp::weight_map::Reader<'a,crate::capnp::hash_with_32_bytes_capnp::hash::Owned>> {
+    pub fn get_associated_keys(self) -> ::capnp::Result<crate::capnp::map_capnp::weight_map::Reader<'a,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned>> {
       ::capnp::traits::FromPointerReader::get_from_pointer(&self.reader.get_pointer_field(2), ::core::option::Option::None)
     }
     pub fn has_associated_keys(&self) -> bool {
@@ -159,15 +159,15 @@ pub mod account {
       !self.builder.get_pointer_field(1).is_null()
     }
     #[inline]
-    pub fn get_associated_keys(self) -> ::capnp::Result<crate::capnp::map_capnp::weight_map::Builder<'a,crate::capnp::hash_with_32_bytes_capnp::hash::Owned>> {
+    pub fn get_associated_keys(self) -> ::capnp::Result<crate::capnp::map_capnp::weight_map::Builder<'a,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned>> {
       ::capnp::traits::FromPointerBuilder::get_from_pointer(self.builder.get_pointer_field(2), ::core::option::Option::None)
     }
     #[inline]
-    pub fn set_associated_keys(&mut self, value: crate::capnp::map_capnp::weight_map::Reader<'_,crate::capnp::hash_with_32_bytes_capnp::hash::Owned>) -> ::capnp::Result<()> {
-      <crate::capnp::map_capnp::weight_map::Reader<'_,crate::capnp::hash_with_32_bytes_capnp::hash::Owned> as ::capnp::traits::SetPointerBuilder>::set_pointer_builder(self.builder.get_pointer_field(2), value, false)
+    pub fn set_associated_keys(&mut self, value: crate::capnp::map_capnp::weight_map::Reader<'_,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned>) -> ::capnp::Result<()> {
+      <crate::capnp::map_capnp::weight_map::Reader<'_,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned> as ::capnp::traits::SetPointerBuilder>::set_pointer_builder(self.builder.get_pointer_field(2), value, false)
     }
     #[inline]
-    pub fn init_associated_keys(self, ) -> crate::capnp::map_capnp::weight_map::Builder<'a,crate::capnp::hash_with_32_bytes_capnp::hash::Owned> {
+    pub fn init_associated_keys(self, ) -> crate::capnp::map_capnp::weight_map::Builder<'a,crate::capnp::hash_with_32_bytes_capnp::hash32::Owned> {
       ::capnp::traits::FromPointerBuilder::init_pointer(self.builder.get_pointer_field(2), 0)
     }
     pub fn has_associated_keys(&self) -> bool {
@@ -204,7 +204,7 @@ pub mod account {
     pub fn get_main_purse(&self) -> crate::capnp::uref_capnp::u_ref::Pipeline {
       ::capnp::capability::FromTypelessPipeline::new(self._typeless.get_pointer_field(1))
     }
-    pub fn get_associated_keys(&self) -> crate::capnp::map_capnp::weight_map::Pipeline<crate::capnp::hash_with_32_bytes_capnp::hash::Owned> {
+    pub fn get_associated_keys(&self) -> crate::capnp::map_capnp::weight_map::Pipeline<crate::capnp::hash_with_32_bytes_capnp::hash32::Owned> {
       ::capnp::capability::FromTypelessPipeline::new(self._typeless.get_pointer_field(2))
     }
   }

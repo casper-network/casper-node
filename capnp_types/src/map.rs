@@ -6,6 +6,7 @@ use alloc::collections::BTreeMap;
 
 use capnp_conv::{CapnpConvError, CorrespondingCapnp, ReadCapnp, WriteCapnp};
 
+// TODO: Add Refcast so I can be used with the With bit of the capnp-conv macro
 #[derive(Eq, PartialEq, Debug)]
 #[repr(transparent)]
 struct Map<K, V>(BTreeMap<K, V>);

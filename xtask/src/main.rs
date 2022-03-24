@@ -45,20 +45,30 @@ fn capnpc_rust() -> Result<(), DynError> {
     }
     let mut parent_capnp_module = std::fs::File::create(&master_capnp_module_path)?;
 
-    let mut capnp_compiler = capnpc::CompilerCommand::new();
-    capnp_compiler
-        .output_path(&output_dir_path)
-        .default_parent_module(vec![capnp_types_dir_name.to_string()])
-        .src_prefix(&capnp_schemas_dir_name);
-
     for glob_result in glob::glob(&format!(
-        "{}/{}/*.capnp",
+        "{}/{}/[a-zA-Z]*.capnp",
         env!("CARGO_WORKSPACE_DIR"),
         capnp_schemas_dir_name,
     ))? {
         let capnp_file = glob_result?;
 
+        println!(
+            "Compiling {}",
+            capnp_file
+                .as_os_str()
+                .to_str()
+                .ok_or_else(|| std::io::Error::new(
+                    std::io::ErrorKind::Unsupported,
+                    "Could not make string for file from glob."
+                ))?
+        );
+        let mut capnp_compiler = capnpc::CompilerCommand::new();
+        capnp_compiler
+            .output_path(&output_dir_path)
+            .default_parent_module(vec![capnp_types_dir_name.to_string()])
+            .src_prefix(&capnp_schemas_dir_name);
         capnp_compiler.file(&capnp_file);
+        capnp_compiler.run().map_err(DynError::from)?;
 
         // Module name is the base name with . replaced with _
         let capnp_rust_module_name = capnp_file
@@ -73,5 +83,5 @@ fn capnpc_rust() -> Result<(), DynError> {
         parent_capnp_module
             .write_all(format!("pub mod {};\n", capnp_rust_module_name).as_bytes())?;
     }
-    capnp_compiler.run().map_err(Into::into)
+    Ok(())
 }

@@ -3,7 +3,7 @@
 // source: hash_with_32_bytes.capnp
 
 
-pub mod hash {
+pub mod hash32 {
   #[derive(Copy, Clone)]
   pub struct Owned(());
   impl <'a> ::capnp::traits::Owned<'a> for Owned { type Reader = Reader<'a>; type Builder = Builder<'a>; }
@@ -496,6 +496,6 @@ pub mod hash {
   mod _private {
     use capnp::private::layout;
     pub const STRUCT_SIZE: layout::StructSize = layout::StructSize { data: 4, pointers: 0 };
-    pub const TYPE_ID: u64 = 0xc7e7_4389_b282_c879;
+    pub const TYPE_ID: u64 = 0xa2e7_49fc_2d9f_59c8;
   }
 }

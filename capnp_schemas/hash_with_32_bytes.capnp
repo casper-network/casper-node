@@ -1,6 +1,6 @@
 @0xcac8c8b851514934;
 
-struct Hash {
+struct Hash32 {
   byte0 @0 :UInt8;
   byte1 @1 :UInt8;
   byte2 @2 :UInt8;

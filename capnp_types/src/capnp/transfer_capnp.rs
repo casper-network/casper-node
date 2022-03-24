@@ -50,14 +50,14 @@ pub mod transfer {
       self.reader.total_size()
     }
     #[inline]
-    pub fn get_deploy_hash(self) -> ::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash::Reader<'a>> {
+    pub fn get_deploy_hash32(self) -> ::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash32::Reader<'a>> {
       ::capnp::traits::FromPointerReader::get_from_pointer(&self.reader.get_pointer_field(0), ::core::option::Option::None)
     }
-    pub fn has_deploy_hash(&self) -> bool {
+    pub fn has_deploy_hash32(&self) -> bool {
       !self.reader.get_pointer_field(0).is_null()
     }
     #[inline]
-    pub fn get_from(self) -> ::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash::Reader<'a>> {
+    pub fn get_from(self) -> ::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash32::Reader<'a>> {
       ::capnp::traits::FromPointerReader::get_from_pointer(&self.reader.get_pointer_field(1), ::core::option::Option::None)
     }
     pub fn has_from(&self) -> bool {
@@ -156,30 +156,30 @@ pub mod transfer {
       self.builder.into_reader().total_size()
     }
     #[inline]
-    pub fn get_deploy_hash(self) -> ::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash::Builder<'a>> {
+    pub fn get_deploy_hash32(self) -> ::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash32::Builder<'a>> {
       ::capnp::traits::FromPointerBuilder::get_from_pointer(self.builder.get_pointer_field(0), ::core::option::Option::None)
     }
     #[inline]
-    pub fn set_deploy_hash(&mut self, value: crate::capnp::hash_with_32_bytes_capnp::hash::Reader<'_>) -> ::capnp::Result<()> {
+    pub fn set_deploy_hash32(&mut self, value: crate::capnp::hash_with_32_bytes_capnp::hash32::Reader<'_>) -> ::capnp::Result<()> {
       ::capnp::traits::SetPointerBuilder::set_pointer_builder(self.builder.get_pointer_field(0), value, false)
     }
     #[inline]
-    pub fn init_deploy_hash(self, ) -> crate::capnp::hash_with_32_bytes_capnp::hash::Builder<'a> {
+    pub fn init_deploy_hash32(self, ) -> crate::capnp::hash_with_32_bytes_capnp::hash32::Builder<'a> {
       ::capnp::traits::FromPointerBuilder::init_pointer(self.builder.get_pointer_field(0), 0)
     }
-    pub fn has_deploy_hash(&self) -> bool {
+    pub fn has_deploy_hash32(&self) -> bool {
       !self.builder.get_pointer_field(0).is_null()
     }
     #[inline]
-    pub fn get_from(self) -> ::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash::Builder<'a>> {
+    pub fn get_from(self) -> ::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash32::Builder<'a>> {
       ::capnp::traits::FromPointerBuilder::get_from_pointer(self.builder.get_pointer_field(1), ::core::option::Option::None)
     }
     #[inline]
-    pub fn set_from(&mut self, value: crate::capnp::hash_with_32_bytes_capnp::hash::Reader<'_>) -> ::capnp::Result<()> {
+    pub fn set_from(&mut self, value: crate::capnp::hash_with_32_bytes_capnp::hash32::Reader<'_>) -> ::capnp::Result<()> {
       ::capnp::traits::SetPointerBuilder::set_pointer_builder(self.builder.get_pointer_field(1), value, false)
     }
     #[inline]
-    pub fn init_from(self, ) -> crate::capnp::hash_with_32_bytes_capnp::hash::Builder<'a> {
+    pub fn init_from(self, ) -> crate::capnp::hash_with_32_bytes_capnp::hash32::Builder<'a> {
       ::capnp::traits::FromPointerBuilder::init_pointer(self.builder.get_pointer_field(1), 0)
     }
     pub fn has_from(&self) -> bool {
@@ -284,10 +284,10 @@ pub mod transfer {
     }
   }
   impl Pipeline  {
-    pub fn get_deploy_hash(&self) -> crate::capnp::hash_with_32_bytes_capnp::hash::Pipeline {
+    pub fn get_deploy_hash32(&self) -> crate::capnp::hash_with_32_bytes_capnp::hash32::Pipeline {
       ::capnp::capability::FromTypelessPipeline::new(self._typeless.get_pointer_field(0))
     }
-    pub fn get_from(&self) -> crate::capnp::hash_with_32_bytes_capnp::hash::Pipeline {
+    pub fn get_from(&self) -> crate::capnp::hash_with_32_bytes_capnp::hash32::Pipeline {
       ::capnp::capability::FromTypelessPipeline::new(self._typeless.get_pointer_field(1))
     }
     pub fn get_to(&self) -> crate::capnp::transfer_capnp::transfer::destination::Pipeline {
@@ -310,7 +310,7 @@ pub mod transfer {
   }
 
   pub mod destination {
-    pub use self::Which::{AnotherAccountHash,NotApplicable};
+    pub use self::Which::{AnotherAccountHash32,NotApplicable};
 
     #[derive(Copy, Clone)]
     pub struct Owned(());
@@ -357,7 +357,7 @@ pub mod transfer {
       pub fn total_size(&self) -> ::capnp::Result<::capnp::MessageSize> {
         self.reader.total_size()
       }
-      pub fn has_another_account_hash(&self) -> bool {
+      pub fn has_another_account_hash32(&self) -> bool {
         if self.reader.get_data_field::<u16>(0) != 0 { return false; }
         !self.reader.get_pointer_field(0).is_null()
       }
@@ -365,7 +365,7 @@ pub mod transfer {
       pub fn which(self) -> ::core::result::Result<WhichReader<'a,>, ::capnp::NotInSchema> {
         match self.reader.get_data_field::<u16>(0) {
           0 => {
-            ::core::result::Result::Ok(AnotherAccountHash(
+            ::core::result::Result::Ok(AnotherAccountHash32(
               ::capnp::traits::FromPointerReader::get_from_pointer(&self.reader.get_pointer_field(0), ::core::option::Option::None)
             ))
           }
@@ -428,16 +428,16 @@ pub mod transfer {
         self.builder.into_reader().total_size()
       }
       #[inline]
-      pub fn set_another_account_hash(&mut self, value: crate::capnp::hash_with_32_bytes_capnp::hash::Reader<'_>) -> ::capnp::Result<()> {
+      pub fn set_another_account_hash32(&mut self, value: crate::capnp::hash_with_32_bytes_capnp::hash32::Reader<'_>) -> ::capnp::Result<()> {
         self.builder.set_data_field::<u16>(0, 0);
         ::capnp::traits::SetPointerBuilder::set_pointer_builder(self.builder.get_pointer_field(0), value, false)
       }
       #[inline]
-      pub fn init_another_account_hash(self, ) -> crate::capnp::hash_with_32_bytes_capnp::hash::Builder<'a> {
+      pub fn init_another_account_hash32(self, ) -> crate::capnp::hash_with_32_bytes_capnp::hash32::Builder<'a> {
         self.builder.set_data_field::<u16>(0, 0);
         ::capnp::traits::FromPointerBuilder::init_pointer(self.builder.get_pointer_field(0), 0)
       }
-      pub fn has_another_account_hash(&self) -> bool {
+      pub fn has_another_account_hash32(&self) -> bool {
         if self.builder.get_data_field::<u16>(0) != 0 { return false; }
         !self.builder.get_pointer_field(0).is_null()
       }
@@ -449,7 +449,7 @@ pub mod transfer {
       pub fn which(self) -> ::core::result::Result<WhichBuilder<'a,>, ::capnp::NotInSchema> {
         match self.builder.get_data_field::<u16>(0) {
           0 => {
-            ::core::result::Result::Ok(AnotherAccountHash(
+            ::core::result::Result::Ok(AnotherAccountHash32(
               ::capnp::traits::FromPointerBuilder::get_from_pointer(self.builder.get_pointer_field(0), ::core::option::Option::None)
             ))
           }
@@ -477,11 +477,11 @@ pub mod transfer {
       pub const TYPE_ID: u64 = 0xe600_7869_084f_cc60;
     }
     pub enum Which<A0> {
-      AnotherAccountHash(A0),
+      AnotherAccountHash32(A0),
       NotApplicable(()),
     }
-    pub type WhichReader<'a,> = Which<::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash::Reader<'a>>>;
-    pub type WhichBuilder<'a,> = Which<::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash::Builder<'a>>>;
+    pub type WhichReader<'a,> = Which<::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash32::Reader<'a>>>;
+    pub type WhichBuilder<'a,> = Which<::capnp::Result<crate::capnp::hash_with_32_bytes_capnp::hash32::Builder<'a>>>;
   }
 
   pub mod user_defined_id {
