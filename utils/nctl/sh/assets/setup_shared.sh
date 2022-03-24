@@ -437,7 +437,9 @@ function setup_asset_global_state_toml() {
     PATH_TO_NET="$(get_path_to_net)"
 
     #Checks stages dir for lowest protocol version
-    PRE_1_4_0=$(find $(get_path_to_stages)/stage-1/* -maxdepth 1 -type d | awk -F'/' '{print $11}' | tr -d '_' | sort | head -n 1)
+    pushd "$(get_path_to_stages)/stage-1/"
+    PRE_1_4_0=$(find ./* -maxdepth 0 -type d | awk -F'/' '{ print $2 }' | tr -d '_' | sort | head -n 1)
+    popd
 
     for IDX in $(seq 1 "$COUNT_NODES")
     do
