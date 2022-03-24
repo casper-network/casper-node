@@ -1147,6 +1147,7 @@ impl Storage {
                 let result = self
                     .disjoint_block_height_sequences
                     .highest_sequence()
+                    .map(|sequence| (sequence.low, sequence.high))
                     .unwrap_or_else(|| {
                         error!("storage disjoint sequences of block heights should not be empty");
                         (u64::MAX, u64::MAX)
@@ -1156,23 +1157,21 @@ impl Storage {
         })
     }
 
-    /// TODO[RC]: docs
-    /// TODO[RC]: unit test
+    /// Returns `true` is the storage should attempt to return a block. Depending on the
+    /// `only_from_highest_contiguous_range` flag it should be unconditional or restricted by the
+    /// highest disjoined block sequence.
     fn should_return_block(
         &self,
         block_height: u64,
         only_from_highest_contiguous_range: bool,
     ) -> bool {
-        // TODO[RC]: Could be written more concisely, but refactor only after it's unit tested
         if only_from_highest_contiguous_range {
-            let highest_sequence = self.disjoint_block_height_sequences.highest_sequence();
-            if let Some(highest_sequence) = highest_sequence {
-                return block_height >= highest_sequence.0 && block_height <= highest_sequence.1;
-            } else {
-                return false;
-            }
+            self.disjoint_block_height_sequences
+                .highest_sequence()
+                .map_or(false, |sequence| sequence.contains(block_height))
+        } else {
+            true
         }
-        true
     }
 
     /// Returns `true` if there is a block body for the given block header available in storage.

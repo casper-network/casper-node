@@ -23,9 +23,9 @@ enum InsertOutcome {
 #[derive(Copy, Clone, Debug, Eq, PartialEq, DataSize, Ord, PartialOrd)]
 pub(super) struct Sequence {
     /// The upper bound (inclusive) of the sequence.
-    high: u64,
+    pub(super) high: u64,
     /// The lower bound (inclusive) of the sequence.
-    low: u64,
+    pub(super) low: u64,
 }
 
 impl Sequence {
@@ -59,6 +59,11 @@ impl Sequence {
         } else {
             InsertOutcome::TooLow
         }
+    }
+
+    /// Returns `true` if a sequence contains the value.
+    pub(super) fn contains(&self, value: u64) -> bool {
+        value >= self.low && value <= self.high
     }
 }
 
@@ -150,10 +155,8 @@ impl DisjointSequences {
     }
 
     /// Returns the highest sequence, or `None` if there are no sequences.
-    pub(super) fn highest_sequence(&self) -> Option<(u64, u64)> {
-        self.sequences
-            .first()
-            .map(|sequence| (sequence.low, sequence.high))
+    pub(super) fn highest_sequence(&self) -> Option<&Sequence> {
+        self.sequences.first()
     }
 
     #[cfg(test)]
@@ -218,6 +221,22 @@ mod tests {
             }
         }
         assert_eq!(&actual_set, expected)
+    }
+
+    #[test]
+    fn check_contains() {
+        // Single item sequence
+        let seq = Sequence::new_with_bounds(1, 1);
+        assert!(!seq.contains(0));
+        assert!(seq.contains(1));
+        assert!(!seq.contains(2));
+
+        // Mutliple item sequence
+        let seq = Sequence::new_with_bounds(1, 2);
+        assert!(!seq.contains(0));
+        assert!(seq.contains(1));
+        assert!(seq.contains(2));
+        assert!(!seq.contains(3));
     }
 
     #[test]
@@ -296,12 +315,21 @@ mod tests {
         assert_eq!(disjoint_sequences.highest_sequence(), None);
 
         disjoint_sequences.extend([1]);
-        assert_eq!(disjoint_sequences.highest_sequence(), Some((1, 1)));
+        assert_eq!(
+            disjoint_sequences.highest_sequence(),
+            Some(&Sequence { low: 1, high: 1 })
+        );
 
         disjoint_sequences.extend([5, 6]);
-        assert_eq!(disjoint_sequences.highest_sequence(), Some((5, 6)));
+        assert_eq!(
+            disjoint_sequences.highest_sequence(),
+            Some(&Sequence { low: 5, high: 6 })
+        );
 
         disjoint_sequences.extend([8, 9]);
-        assert_eq!(disjoint_sequences.highest_sequence(), Some((8, 9)));
+        assert_eq!(
+            disjoint_sequences.highest_sequence(),
+            Some(&Sequence { low: 8, high: 9 })
+        );
     }
 }
