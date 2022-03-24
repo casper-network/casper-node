@@ -1167,7 +1167,7 @@ impl Storage {
         if only_from_highest_contiguous_range {
             let highest_sequence = self.disjoint_block_height_sequences.highest_sequence();
             if let Some(highest_sequence) = highest_sequence {
-                return highest_sequence.0 >= block_height && highest_sequence.1 <= block_height;
+                return block_height >= highest_sequence.0 && block_height <= highest_sequence.1;
             } else {
                 return false;
             }
