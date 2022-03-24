@@ -1742,7 +1742,7 @@ fn should_restrict_returned_blocks() {
     assert!(storage.should_return_block(6, false));
 
     // With restriction, the node should attemt to return only the blocks that are
-    // on the highest disjoint sequence, i.e blocsk 4 and 5 only.
+    // on the highest disjoint sequence, i.e blocks 4 and 5 only.
     assert!(!storage.should_return_block(0, true));
     assert!(!storage.should_return_block(1, true));
     assert!(!storage.should_return_block(2, true));
