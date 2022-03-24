@@ -149,9 +149,11 @@ impl DisjointSequences {
         iter.into_iter().for_each(|height| self.insert(height))
     }
 
-    /// Returns the `low` value from the highest sequence, or `u64::MAX` if there are no sequences.
-    pub(super) fn highest_sequence_low_value(&self) -> Option<u64> {
-        self.sequences.first().map(|sequence| sequence.low)
+    /// Returns the highest sequence, or `None` if there are no sequences.
+    pub(super) fn highest_sequence(&self) -> Option<(u64, u64)> {
+        self.sequences
+            .first()
+            .map(|sequence| (sequence.low, sequence.high))
     }
 
     #[cfg(test)]
@@ -289,26 +291,17 @@ mod tests {
     }
 
     #[test]
-    fn should_get_highest_sequence_low_value() {
+    fn should_get_highest_sequence() {
         let mut disjoint_sequences = DisjointSequences::default();
-        assert_eq!(disjoint_sequences.highest_sequence_low_value(), None);
+        assert_eq!(disjoint_sequences.highest_sequence(), None);
 
-        disjoint_sequences.insert(10);
-        assert_eq!(disjoint_sequences.highest_sequence_low_value(), Some(10));
+        disjoint_sequences.extend([1]);
+        assert_eq!(disjoint_sequences.highest_sequence(), Some((1, 1)));
 
-        disjoint_sequences.insert(11);
-        assert_eq!(disjoint_sequences.highest_sequence_low_value(), Some(10));
+        disjoint_sequences.extend([5, 6]);
+        assert_eq!(disjoint_sequences.highest_sequence(), Some((5, 6)));
 
-        disjoint_sequences.insert(5);
-        assert_eq!(disjoint_sequences.highest_sequence_low_value(), Some(10));
-
-        disjoint_sequences.insert(6);
-        assert_eq!(disjoint_sequences.highest_sequence_low_value(), Some(10));
-
-        disjoint_sequences.insert(13);
-        assert_eq!(disjoint_sequences.highest_sequence_low_value(), Some(13));
-
-        disjoint_sequences.insert(14);
-        assert_eq!(disjoint_sequences.highest_sequence_low_value(), Some(13));
+        disjoint_sequences.extend([8, 9]);
+        assert_eq!(disjoint_sequences.highest_sequence(), Some((8, 9)));
     }
 }

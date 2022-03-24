@@ -430,14 +430,6 @@ steps:
   commands:
   - "./ci/publish_to_crates_io.sh"
 
-- name: update-default-branch
-  image: casperlabs/node-build-u1804
-  environment:
-    GITHUB_TOKEN:
-      from_secret: github_token_def_branch
-  commands:
-    - "./ci/change_default_branch.py"
-
 - name: notify
   image: plugins/slack
   settings:
