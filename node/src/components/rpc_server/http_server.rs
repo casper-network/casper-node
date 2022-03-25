@@ -119,7 +119,8 @@ pub(super) async fn run<REv: ReactorEventT>(
     // https://github.com/seanmonstar/warp/pull/513 moves forward.
     let service_routes_gzip = warp::header::exact("accept-encoding", "gzip")
         .and(service_routes.clone())
-        .with(warp::compression::gzip());
+        .with(warp::compression::gzip())
+        .with(warp::cors().allow_any_origin());
 
     // TODO - we can't catch cases where we should return `warp_json_rpc::Error::INVALID_REQUEST`
     //        (i.e. where the request is JSON, but not valid JSON-RPC).  This will require an
