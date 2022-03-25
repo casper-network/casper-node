@@ -1,4 +1,4 @@
-use crate::{ApiError, URef};
+use casper_types::{ApiError, URef};
 
 /// Provider of an account related functionality.
 pub trait AccountProvider {

@@ -1,55 +1,21 @@
-//! Contains implementation of a Auction contract functionality.
-mod bid;
-mod constants;
-mod delegator;
-mod detail;
-mod entry_points;
-mod era_info;
-mod error;
-mod providers;
-mod seigniorage_recipient;
-mod unbonding_purse;
+pub(crate) mod detail;
+pub(crate) mod providers;
 
-use alloc::{collections::BTreeMap, vec::Vec};
+use std::collections::BTreeMap;
+
+use casper_types::{
+    account::AccountHash,
+    system::auction::{
+        Bid, DelegationRate, EraInfo, EraValidators, Error, SeigniorageRecipients,
+        ValidatorWeights, BLOCK_REWARD, DELEGATION_RATE_DENOMINATOR,
+    },
+    EraId, PublicKey, U512,
+};
 
 use num_rational::Ratio;
 use num_traits::{CheckedMul, CheckedSub};
 
-use crate::{account::AccountHash, EraId, PublicKey, U512};
-
-pub use bid::{Bid, VESTING_SCHEDULE_LENGTH_MILLIS};
-pub use constants::*;
-pub use delegator::Delegator;
-pub use entry_points::auction_entry_points;
-pub use era_info::*;
-pub use error::Error;
-pub use providers::{AccountProvider, MintProvider, RuntimeProvider, StorageProvider};
-pub use seigniorage_recipient::SeigniorageRecipient;
-pub use unbonding_purse::{UnbondingPurse, WithdrawPurse};
-
-/// Representation of delegation rate of tokens. Range from 0..=100.
-pub type DelegationRate = u8;
-
-/// Validators mapped to their bids.
-pub type Bids = BTreeMap<PublicKey, Bid>;
-
-/// Weights of validators. "Weight" in this context means a sum of their stakes.
-pub type ValidatorWeights = BTreeMap<PublicKey, U512>;
-
-/// List of era validators
-pub type EraValidators = BTreeMap<EraId, ValidatorWeights>;
-
-/// Collection of seigniorage recipients.
-pub type SeigniorageRecipients = BTreeMap<PublicKey, SeigniorageRecipient>;
-
-/// Snapshot of `SeigniorageRecipients` for a given era.
-pub type SeigniorageRecipientsSnapshot = BTreeMap<EraId, SeigniorageRecipients>;
-
-/// Validators and delegators mapped to their unbonding purses.
-pub type UnbondingPurses = BTreeMap<AccountHash, Vec<UnbondingPurse>>;
-
-/// Validators and delegators mapped to their withdraw purses.
-pub type WithdrawPurses = BTreeMap<AccountHash, Vec<WithdrawPurse>>;
+use self::providers::{AccountProvider, MintProvider, RuntimeProvider, StorageProvider};
 
 /// Bonding auction contract interface
 pub trait Auction:

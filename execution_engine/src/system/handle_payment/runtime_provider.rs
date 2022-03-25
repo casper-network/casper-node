@@ -1,4 +1,4 @@
-use crate::{account::AccountHash, system::handle_payment::Error, BlockTime, Key, Phase};
+use casper_types::{account::AccountHash, system::handle_payment::Error, BlockTime, Key, Phase};
 
 /// Provider of runtime host functionality.
 pub trait RuntimeProvider {

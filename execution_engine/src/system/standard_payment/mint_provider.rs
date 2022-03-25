@@ -1,4 +1,4 @@
-use crate::{ApiError, URef, U512};
+use casper_types::{ApiError, URef, U512};
 
 /// Provides an access to mint.
 pub trait MintProvider {

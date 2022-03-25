@@ -29,11 +29,9 @@ use casper_types::{
     },
     system::{
         self,
-        auction::{self, Auction, EraInfo},
-        handle_payment::{self, HandlePayment},
-        mint::{self, Mint},
-        standard_payment::{self, StandardPayment},
-        CallStackElement, SystemContractType, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
+        auction::{self, EraInfo},
+        handle_payment, mint, standard_payment, CallStackElement, SystemContractType, AUCTION,
+        HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, ApiError, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash,
     ContractVersionKey, ContractWasm, DeployHash, EntryPointType, EraId, Gas, Key, NamedArg,
@@ -55,6 +53,10 @@ use crate::{
         wasm_config::WasmConfig,
     },
     storage::global_state::StateReader,
+    system::{
+        auction::Auction, handle_payment::HandlePayment, mint::Mint,
+        standard_payment::StandardPayment,
+    },
 };
 pub use stack::{RuntimeStack, RuntimeStackFrame, RuntimeStackOverflow};
 

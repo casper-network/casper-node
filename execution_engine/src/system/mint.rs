@@ -1,19 +1,22 @@
-//! Contains implementation of a Mint contract functionality.
-mod constants;
-mod entry_points;
-mod error;
-mod runtime_provider;
-mod storage_provider;
-mod system_provider;
+pub(crate) mod runtime_provider;
+pub(crate) mod storage_provider;
+pub(crate) mod system_provider;
 
 use num_rational::Ratio;
 use num_traits::CheckedMul;
 
-use crate::{account::AccountHash, system::CallStackElement, Key, Phase, PublicKey, URef, U512};
+use casper_types::{
+    account::AccountHash,
+    system::{
+        mint::{Error, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
+        CallStackElement,
+    },
+    Key, Phase, PublicKey, URef, U512,
+};
 
-pub use crate::system::mint::{
-    constants::*, entry_points::mint_entry_points, error::Error, runtime_provider::RuntimeProvider,
-    storage_provider::StorageProvider, system_provider::SystemProvider,
+use crate::system::mint::{
+    runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
+    system_provider::SystemProvider,
 };
 
 /// Mint trait.
