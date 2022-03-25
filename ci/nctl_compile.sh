@@ -2,20 +2,11 @@
 set -e
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)"
+NCTL_CLIENT_BRANCH='dev'
 
 # Activate Environment
 pushd "$ROOT_DIR"
 source $(pwd)/utils/nctl/activate
-
-# TODO: Remove this after feat-fast-sync merges to dev
-#
-# Hack for picking between dev and feat-fast-sync branch for client
-# ... casper-mainnet feature flag is removed in feat-fast-sync
-if ( cat "$NCTL"/sh/assets/compile_client.sh | grep -q casper-mainnet ); then
-    NCTL_CLIENT_BRANCH='dev'
-else
-    NCTL_CLIENT_BRANCH='feat-fast-sync'
-fi
 
 # Clone the client and launcher repos if required.
 if [ ! -d "$NCTL_CASPER_CLIENT_HOME" ]; then

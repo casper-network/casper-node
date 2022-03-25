@@ -158,9 +158,18 @@ impl RpcWithOptionalParamsExt for GetBlock {
         api_version: ProtocolVersion,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
+            // This RPC request is restricted by the block availability index.
+            let only_from_available_block_range = true;
+
             // Get the block.
             let maybe_block_id = maybe_params.map(|params| params.block_identifier);
-            let json_block = match get_block_with_metadata(maybe_block_id, effect_builder).await {
+            let json_block = match get_block_with_metadata(
+                maybe_block_id,
+                only_from_available_block_range,
+                effect_builder,
+            )
+            .await
+            {
                 Ok(BlockWithMetadata {
                     block,
                     finality_signatures,
@@ -244,9 +253,18 @@ impl RpcWithOptionalParamsExt for GetBlockTransfers {
         api_version: ProtocolVersion,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
+            // This RPC request is restricted by the block availability index.
+            let only_from_available_block_range = true;
+
             // Get the block.
             let maybe_block_id = maybe_params.map(|params| params.block_identifier);
-            let block_hash = match common::get_block(maybe_block_id, effect_builder).await {
+            let block_hash = match common::get_block(
+                maybe_block_id,
+                only_from_available_block_range,
+                effect_builder,
+            )
+            .await
+            {
                 Ok(block) => *block.hash(),
                 Err(error) => return Ok(response_builder.error(error)?),
             };
@@ -317,9 +335,18 @@ impl RpcWithOptionalParamsExt for GetStateRootHash {
         api_version: ProtocolVersion,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
+            // This RPC request is restricted by the block availability index.
+            let only_from_available_block_range = true;
+
             // Get the block.
             let maybe_block_id = maybe_params.map(|params| params.block_identifier);
-            let block = match common::get_block(maybe_block_id, effect_builder).await {
+            let block = match common::get_block(
+                maybe_block_id,
+                only_from_available_block_range,
+                effect_builder,
+            )
+            .await
+            {
                 Ok(block) => block,
                 Err(error) => return Ok(response_builder.error(error)?),
             };
@@ -383,9 +410,18 @@ impl RpcWithOptionalParamsExt for GetEraInfoBySwitchBlock {
         api_version: ProtocolVersion,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
+            // This RPC request is restricted by the block availability index.
+            let only_from_available_block_range = true;
+
             // TODO: decide if/how to handle era id
             let maybe_block_id = maybe_params.map(|params| params.block_identifier);
-            let block = match common::get_block(maybe_block_id, effect_builder).await {
+            let block = match common::get_block(
+                maybe_block_id,
+                only_from_available_block_range,
+                effect_builder,
+            )
+            .await
+            {
                 Ok(block) => block,
                 Err(error) => return Ok(response_builder.error(error)?),
             };
@@ -428,6 +464,7 @@ impl RpcWithOptionalParamsExt for GetEraInfoBySwitchBlock {
 
 pub(super) async fn get_block_with_metadata<REv: ReactorEventT>(
     maybe_id: Option<BlockIdentifier>,
+    only_from_available_block_range: bool,
     effect_builder: EffectBuilder<REv>,
 ) -> Result<BlockWithMetadata, warp_json_rpc::Error> {
     // Get the block from storage or the latest from the linear chain.
@@ -435,6 +472,7 @@ pub(super) async fn get_block_with_metadata<REv: ReactorEventT>(
         .make_request(
             |responder| RpcRequest::GetBlock {
                 maybe_id,
+                only_from_available_block_range,
                 responder,
             },
             QueueKind::Api,
@@ -445,6 +483,9 @@ pub(super) async fn get_block_with_metadata<REv: ReactorEventT>(
         return Ok(block_with_metadata);
     }
 
+    // TODO: Potential optimization: We might want to make the `GetBlock` actually return the
+    // highest disjoint sequence of block heights, so we don't need to request it again inside the
+    // `missing_block_or_state_root_error` function.
     let error = match maybe_id {
         Some(BlockIdentifier::Hash(block_hash)) => common::missing_block_or_state_root_error(
             effect_builder,
