@@ -1157,7 +1157,7 @@ impl Storage {
         })
     }
 
-    /// Returns `true` is the storage should attempt to return a block. Depending on the
+    /// Returns `true` if the storage should attempt to return a block. Depending on the
     /// `only_from_highest_contiguous_range` flag it should be unconditional or restricted by the
     /// highest disjoined block sequence.
     fn should_return_block(
