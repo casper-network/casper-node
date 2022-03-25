@@ -47,9 +47,9 @@ use crate::{
     effect::Responder,
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
-        Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload, BlockSignatures,
-        BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, ContiguousBlockRange,
-        Deploy, DeployHash, DeployMetadata, FinalizedBlock, Item, NodeId, StatusFeed, TimeDiff,
+        AvailableBlockRange, Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload,
+        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
+        DeployHash, DeployMetadata, FinalizedBlock, Item, NodeId, StatusFeed, TimeDiff,
     },
     utils::{DisplayIter, Source},
 };
@@ -403,22 +403,22 @@ pub(crate) enum StorageRequest {
         /// stored.
         responder: Responder<bool>,
     },
-    /// Update the lowest contiguous block height in storage.
+    /// Update the lowest available block height in storage.
     // Note - this is a request rather than an announcement as the chain synchronizer needs to
     // ensure the request has been completed before it can exit, i.e. it awaits the response.
     // Otherwise, the joiner reactor might exit before handling the announcement and it would go
     // un-actioned.
-    UpdateLowestContiguousBlockHeight {
+    UpdateLowestAvailableBlockHeight {
         /// The new height.
         height: u64,
         /// Responder to call when complete.
         responder: Responder<()>,
     },
-    /// Retrieve the highest contiguous height range of fully available blocks (not just block
-    /// headers). Returns (u64::MAX, u64::MAX) when there are no sequences.
-    GetHighestContiguousBlockHeightRange {
+    /// Retrieve the height range of fully available blocks (not just block headers). Returns
+    /// `[u64::MAX, u64::MAX]` when there are no sequences.
+    GetAvailableBlockRange {
         /// Responder to call with the result.
-        responder: Responder<ContiguousBlockRange>,
+        responder: Responder<AvailableBlockRange>,
     },
 }
 
@@ -509,15 +509,15 @@ impl Display for StorageRequest {
                     block_height
                 )
             }
-            StorageRequest::UpdateLowestContiguousBlockHeight { height, .. } => {
+            StorageRequest::UpdateLowestAvailableBlockHeight { height, .. } => {
                 write!(
                     formatter,
-                    "update lowest contiguous block height to {}",
+                    "update lowest available block height to {}",
                     height
                 )
             }
-            StorageRequest::GetHighestContiguousBlockHeightRange { .. } => {
-                write!(formatter, "get highest contiguous block height range",)
+            StorageRequest::GetAvailableBlockRange { .. } => {
+                write!(formatter, "get available block range",)
             }
         }
     }
@@ -693,10 +693,10 @@ pub(crate) enum RpcRequest {
         /// Responder to call with the result.
         responder: Responder<StatusFeed>,
     },
-    /// Return the highest contiguous height range of fully available blocks.
-    GetHighestContiguousBlockHeightRange {
+    /// Return the height range of fully available blocks.
+    GetAvailableBlockRange {
         /// Responder to call with the result.
-        responder: Responder<ContiguousBlockRange>,
+        responder: Responder<AvailableBlockRange>,
     },
 }
 
@@ -747,8 +747,8 @@ impl Display for RpcRequest {
             RpcRequest::GetDeploy { hash, .. } => write!(formatter, "get {}", hash),
             RpcRequest::GetPeers { .. } => write!(formatter, "get peers"),
             RpcRequest::GetStatus { .. } => write!(formatter, "get status"),
-            RpcRequest::GetHighestContiguousBlockHeightRange { .. } => {
-                write!(formatter, "get highest contiguous block height range")
+            RpcRequest::GetAvailableBlockRange { .. } => {
+                write!(formatter, "get available block range")
             }
         }
     }

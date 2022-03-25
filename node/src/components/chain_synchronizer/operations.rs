@@ -904,7 +904,7 @@ pub(super) async fn run_chain_sync_task(
 
     verify_trusted_block_header(&chain_sync_context)?;
 
-    let lowest_contiguous_block_height = if config.sync_to_genesis() {
+    let lowest_available_block_height = if config.sync_to_genesis() {
         // If backfilling to genesis is moved to a background task, we should change this to
         // `trusted_block_header.height()` and update storage as we backfill.
         0
@@ -912,7 +912,7 @@ pub(super) async fn run_chain_sync_task(
         trusted_block_header.height()
     };
     effect_builder
-        .update_lowest_contiguous_block_height_in_storage(lowest_contiguous_block_height)
+        .update_lowest_available_block_height_in_storage(lowest_available_block_height)
         .await;
 
     if handle_emergency_restart(&chain_sync_context).await? {

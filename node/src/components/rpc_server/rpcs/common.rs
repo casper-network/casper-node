@@ -15,7 +15,7 @@ use super::{
 use crate::{
     effect::EffectBuilder,
     reactor::QueueKind,
-    types::{json_compatibility::StoredValue, Block, ContiguousBlockRange},
+    types::{json_compatibility::StoredValue, AvailableBlockRange, Block},
 };
 
 pub(super) static MERKLE_PROOF: Lazy<String> = Lazy::new(|| {
@@ -77,32 +77,31 @@ pub(super) async fn run_query_and_encode<REv: ReactorEventT>(
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorData {
-    /// The highest contiguous height range (inclusive) of fully available blocks.
-    HighestContiguousBlockHeightRange(ContiguousBlockRange),
+    /// The height range (inclusive) of fully available blocks.
+    AvailableBlockRange(AvailableBlockRange),
 }
 
-/// Returns a `warp_json_rpc::Error` which includes the highest contiguous height range of fully
-/// available blocks as the additional `data` field.
+/// Returns a `warp_json_rpc::Error` which includes the height range of fully available blocks as
+/// the additional `data` field.
 pub(super) async fn missing_block_or_state_root_error<REv: ReactorEventT>(
     effect_builder: EffectBuilder<REv>,
     error_code: ErrorCode,
     error_message: String,
 ) -> warp_json_rpc::Error {
-    let contiguous_block_range = effect_builder
+    let available_block_range = effect_builder
         .make_request(
-            |responder| RpcRequest::GetHighestContiguousBlockHeightRange { responder },
+            |responder| RpcRequest::GetAvailableBlockRange { responder },
             QueueKind::Api,
         )
         .await;
 
     debug!(
-        %contiguous_block_range,
+        %available_block_range,
         "got request for non-existent data, will respond with msg: {}", error_message
     );
 
-    warp_json_rpc::Error::custom(error_code as i64, error_message).with_data(
-        ErrorData::HighestContiguousBlockHeightRange(contiguous_block_range),
-    )
+    warp_json_rpc::Error::custom(error_code as i64, error_message)
+        .with_data(ErrorData::AvailableBlockRange(available_block_range))
 }
 
 pub(super) async fn get_block<REv: ReactorEventT>(

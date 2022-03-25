@@ -110,10 +110,10 @@ use crate::{
     },
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload, BlockSignatures,
-        BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, ContiguousBlockRange,
-        Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature, FinalizedBlock, Item,
-        NodeId, TimeDiff, Timestamp,
+        AvailableBlockRange, Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload,
+        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
+        DeployHash, DeployHeader, DeployMetadata, FinalitySignature, FinalizedBlock, Item, NodeId,
+        TimeDiff, Timestamp,
     },
     utils::{SharedFlag, Source},
 };
@@ -1005,28 +1005,25 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Updates the lowest contiguous block height in storage.
-    pub(crate) async fn update_lowest_contiguous_block_height_in_storage(self, height: u64)
+    /// Updates the lowest available block height in storage.
+    pub(crate) async fn update_lowest_available_block_height_in_storage(self, height: u64)
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::UpdateLowestContiguousBlockHeight { height, responder },
+            |responder| StorageRequest::UpdateLowestAvailableBlockHeight { height, responder },
             QueueKind::Regular,
         )
         .await
     }
 
-    /// Requests the highest contiguous height range of fully available blocks (not just block
-    /// headers).
-    pub(crate) async fn get_highest_contiguous_block_range_from_storage(
-        self,
-    ) -> ContiguousBlockRange
+    /// Requests the height range of fully available blocks (not just block headers).
+    pub(crate) async fn get_available_block_range_from_storage(self) -> AvailableBlockRange
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetHighestContiguousBlockHeightRange { responder },
+            |responder| StorageRequest::GetAvailableBlockRange { responder },
             QueueKind::Regular,
         )
         .await

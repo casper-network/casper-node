@@ -30,7 +30,7 @@ use crate::{
     effect::{requests::StorageRequest, Multiple},
     testing::{ComponentHarness, TestRng, UnitTestEvent},
     types::{
-        Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures, ContiguousBlockRange, Deploy,
+        AvailableBlockRange, Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Deploy,
         DeployHash, DeployMetadata, FinalitySignature, FinalizedBlock,
     },
     utils::WithDir,
@@ -1638,7 +1638,7 @@ fn can_put_and_get_blocks_v2() {
 }
 
 #[test]
-fn should_update_lowest_contiguous_block_height_when_not_stored() {
+fn should_update_lowest_available_block_height_when_not_stored() {
     const NEW_LOW: u64 = 100;
     let mut harness = ComponentHarness::default();
     let verifiable_chunked_hash_activation = EraId::new(u64::MAX);
@@ -1647,46 +1647,46 @@ fn should_update_lowest_contiguous_block_height_when_not_stored() {
         let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
 
         assert_eq!(
-            storage.get_highest_contiguous_block_height_range(),
-            ContiguousBlockRange::new(0, 0).unwrap()
+            storage.get_available_block_range(),
+            AvailableBlockRange::new(0, 0).unwrap()
         );
 
         // Updating to a block height we don't have in storage should not change the range.
         storage
-            .update_lowest_contiguous_block_height(NEW_LOW)
+            .update_lowest_available_block_height(NEW_LOW)
             .unwrap();
         assert_eq!(
-            storage.get_highest_contiguous_block_height_range(),
-            ContiguousBlockRange::new(0, 0).unwrap()
+            storage.get_available_block_range(),
+            AvailableBlockRange::new(0, 0).unwrap()
         );
 
         // Store a block at height 100 and update.  Should update the range.
         let (block, _) = random_block_at_height(&mut harness.rng, NEW_LOW, Block::random_v1);
         storage.write_block(&block).unwrap();
         storage
-            .update_lowest_contiguous_block_height(NEW_LOW)
+            .update_lowest_available_block_height(NEW_LOW)
             .unwrap();
         assert_eq!(
-            storage.get_highest_contiguous_block_height_range(),
-            ContiguousBlockRange::new(NEW_LOW, NEW_LOW).unwrap()
+            storage.get_available_block_range(),
+            AvailableBlockRange::new(NEW_LOW, NEW_LOW).unwrap()
         );
 
         // Store a block at height 101.  Should update the high value only.
         let (block, _) = random_block_at_height(&mut harness.rng, NEW_LOW + 1, Block::random_v1);
         storage.write_block(&block).unwrap();
         assert_eq!(
-            storage.get_highest_contiguous_block_height_range(),
-            ContiguousBlockRange::new(NEW_LOW, NEW_LOW + 1).unwrap()
+            storage.get_available_block_range(),
+            AvailableBlockRange::new(NEW_LOW, NEW_LOW + 1).unwrap()
         );
     }
 
-    // Should have persisted the `lowest_contiguous_block_height`, so that a new instance will be
+    // Should have persisted the `lowest_available_block_height`, so that a new instance will be
     // initialized with the previous value.
     {
         let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
         assert_eq!(
-            storage.get_highest_contiguous_block_height_range(),
-            ContiguousBlockRange::new(NEW_LOW, NEW_LOW + 1).unwrap()
+            storage.get_available_block_range(),
+            AvailableBlockRange::new(NEW_LOW, NEW_LOW + 1).unwrap()
         );
     }
 }
@@ -1700,17 +1700,17 @@ fn setup_range(low: u64, high: u64) -> ComponentHarness<UnitTestEvent> {
     storage.write_block(&block).unwrap();
     let (block, _) = random_block_at_height(&mut harness.rng, high, Block::random_v1);
     storage.write_block(&block).unwrap();
-    storage.update_lowest_contiguous_block_height(low).unwrap();
+    storage.update_lowest_available_block_height(low).unwrap();
     assert_eq!(
-        storage.get_highest_contiguous_block_height_range(),
-        ContiguousBlockRange::new(low, high).unwrap()
+        storage.get_available_block_range(),
+        AvailableBlockRange::new(low, high).unwrap()
     );
 
     harness
 }
 
 #[test]
-fn should_update_lowest_contiguous_block_height_when_below_stored_range() {
+fn should_update_lowest_available_block_height_when_below_stored_range() {
     // Set an initial storage instance to have a range of [100, 101].
     const INITIAL_LOW: u64 = 100;
     const INITIAL_HIGH: u64 = INITIAL_LOW + 1;
@@ -1722,32 +1722,32 @@ fn should_update_lowest_contiguous_block_height_when_below_stored_range() {
     {
         let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
         assert_eq!(
-            storage.get_highest_contiguous_block_height_range(),
-            ContiguousBlockRange::new(INITIAL_LOW, INITIAL_HIGH).unwrap()
+            storage.get_available_block_range(),
+            AvailableBlockRange::new(INITIAL_LOW, INITIAL_HIGH).unwrap()
         );
 
         // Check that updating to a value lower than the current low is actioned.
         let (block, _) = random_block_at_height(&mut harness.rng, NEW_LOW, Block::random_v1);
         storage.write_block(&block).unwrap();
         storage
-            .update_lowest_contiguous_block_height(NEW_LOW)
+            .update_lowest_available_block_height(NEW_LOW)
             .unwrap();
         assert_eq!(
-            storage.get_highest_contiguous_block_height_range(),
-            ContiguousBlockRange::new(NEW_LOW, INITIAL_HIGH).unwrap()
+            storage.get_available_block_range(),
+            AvailableBlockRange::new(NEW_LOW, INITIAL_HIGH).unwrap()
         );
     }
 
     // Check the update was persisted.
     let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
     assert_eq!(
-        storage.get_highest_contiguous_block_height_range(),
-        ContiguousBlockRange::new(NEW_LOW, INITIAL_HIGH).unwrap()
+        storage.get_available_block_range(),
+        AvailableBlockRange::new(NEW_LOW, INITIAL_HIGH).unwrap()
     );
 }
 
 #[test]
-fn should_update_lowest_contiguous_block_height_when_above_initial_range() {
+fn should_update_lowest_available_block_height_when_above_initial_range() {
     // Set an initial storage instance to have a range of [100, 101].
     const INITIAL_LOW: u64 = 100;
     const INITIAL_HIGH: u64 = INITIAL_LOW + 1;
@@ -1759,8 +1759,8 @@ fn should_update_lowest_contiguous_block_height_when_above_initial_range() {
     {
         let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
         assert_eq!(
-            storage.get_highest_contiguous_block_height_range(),
-            ContiguousBlockRange::new(INITIAL_LOW, INITIAL_HIGH).unwrap()
+            storage.get_available_block_range(),
+            AvailableBlockRange::new(INITIAL_LOW, INITIAL_HIGH).unwrap()
         );
 
         // Check that updating the low value to a value higher than the INITIAL (not current) high
@@ -1768,24 +1768,24 @@ fn should_update_lowest_contiguous_block_height_when_above_initial_range() {
         let (block, _) = random_block_at_height(&mut harness.rng, NEW_LOW, Block::random_v1);
         storage.write_block(&block).unwrap();
         storage
-            .update_lowest_contiguous_block_height(NEW_LOW)
+            .update_lowest_available_block_height(NEW_LOW)
             .unwrap();
         assert_eq!(
-            storage.get_highest_contiguous_block_height_range(),
-            ContiguousBlockRange::new(NEW_LOW, NEW_LOW).unwrap()
+            storage.get_available_block_range(),
+            AvailableBlockRange::new(NEW_LOW, NEW_LOW).unwrap()
         );
     }
 
     // Check the update was persisted.
     let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
     assert_eq!(
-        storage.get_highest_contiguous_block_height_range(),
-        ContiguousBlockRange::new(NEW_LOW, NEW_LOW).unwrap()
+        storage.get_available_block_range(),
+        AvailableBlockRange::new(NEW_LOW, NEW_LOW).unwrap()
     );
 }
 
 #[test]
-fn should_not_update_lowest_contiguous_block_height_when_within_initial_range() {
+fn should_not_update_lowest_available_block_height_when_within_initial_range() {
     // Set an initial storage instance to have a range of [100, 101].
     const INITIAL_LOW: u64 = 100;
     const INITIAL_HIGH: u64 = INITIAL_LOW + 1;
@@ -1794,15 +1794,15 @@ fn should_not_update_lowest_contiguous_block_height_when_within_initial_range() 
 
     let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
     assert_eq!(
-        storage.get_highest_contiguous_block_height_range(),
-        ContiguousBlockRange::new(INITIAL_LOW, INITIAL_HIGH).unwrap()
+        storage.get_available_block_range(),
+        AvailableBlockRange::new(INITIAL_LOW, INITIAL_HIGH).unwrap()
     );
 
     storage
-        .update_lowest_contiguous_block_height(INITIAL_HIGH)
+        .update_lowest_available_block_height(INITIAL_HIGH)
         .unwrap();
     assert_eq!(
-        storage.get_highest_contiguous_block_height_range(),
-        ContiguousBlockRange::new(INITIAL_LOW, INITIAL_HIGH).unwrap()
+        storage.get_available_block_range(),
+        AvailableBlockRange::new(INITIAL_LOW, INITIAL_HIGH).unwrap()
     );
 }

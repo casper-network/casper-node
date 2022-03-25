@@ -88,10 +88,10 @@ use crate::{
     protocol::Message,
     reactor::ReactorEvent,
     types::{
-        error::BlockValidationError, Block, BlockBody, BlockHash, BlockHeader,
-        BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, ContiguousBlockRange, Deploy,
-        DeployHash, DeployMetadata, HashingAlgorithmVersion, Item, MerkleBlockBody,
-        MerkleBlockBodyPart, MerkleLinkedListNode, NodeId, TimeDiff,
+        error::BlockValidationError, AvailableBlockRange, Block, BlockBody, BlockHash, BlockHeader,
+        BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, Deploy, DeployHash,
+        DeployMetadata, HashingAlgorithmVersion, Item, MerkleBlockBody, MerkleBlockBodyPart,
+        MerkleLinkedListNode, NodeId, TimeDiff,
     },
     utils::{display_error, WithDir},
     NodeRng,
@@ -102,8 +102,8 @@ use object_pool::ObjectPool;
 /// Filename for the LMDB database created by the Storage component.
 const STORAGE_DB_FILENAME: &str = "storage.lmdb";
 /// The key in the state store DB under which the storage component's
-/// `lowest_contiguous_block_height` field is persisted.
-const KEY_LOWEST_CONTIGUOUS_BLOCK_HEIGHT: &str = "lowest_contiguous_block_height";
+/// `lowest_available_block_height` field is persisted.
+const KEY_LOWEST_AVAILABLE_BLOCK_HEIGHT: &str = "lowest_available_block_height";
 
 /// We can set this very low, as there is only a single reader/writer accessing the component at any
 /// one time.
@@ -362,7 +362,7 @@ pub struct Storage {
     block_height_index: BTreeMap<u64, BlockHash>,
     /// The height of the highest block from which this node has an unbroken sequence of full
     /// blocks stored (and the corresponding global state).
-    lowest_contiguous_block_height: u64,
+    lowest_available_block_height: u64,
     /// Highest block available when storage is constructed.
     highest_block_at_startup: u64,
     /// A map of era ID to switch block ID.
@@ -592,9 +592,9 @@ impl Storage {
         drop(cursor);
         block_txn.commit()?;
 
-        let mut lowest_contiguous_block_height = {
+        let mut lowest_available_block_height = {
             let mut txn = env.begin_ro_txn()?;
-            txn.get_value_bytesrepr(state_store_db, &KEY_LOWEST_CONTIGUOUS_BLOCK_HEIGHT)?
+            txn.get_value_bytesrepr(state_store_db, &KEY_LOWEST_AVAILABLE_BLOCK_HEIGHT)?
                 .unwrap_or_default()
         };
         let highest_block_at_startup = block_height_index
@@ -603,10 +603,10 @@ impl Storage {
             .copied()
             .unwrap_or_default();
         if let Err(error) =
-            ContiguousBlockRange::new(lowest_contiguous_block_height, highest_block_at_startup)
+            AvailableBlockRange::new(lowest_available_block_height, highest_block_at_startup)
         {
             error!(%error);
-            lowest_contiguous_block_height = highest_block_at_startup;
+            lowest_available_block_height = highest_block_at_startup;
         }
 
         let deleted_block_hashes_raw = deleted_block_hashes.iter().map(BlockHash::as_ref).collect();
@@ -638,7 +638,7 @@ impl Storage {
             transfer_db,
             state_store_db,
             block_height_index,
-            lowest_contiguous_block_height,
+            lowest_available_block_height,
             highest_block_at_startup,
             switch_block_era_id_index,
             deploy_hash_index,
@@ -1121,13 +1121,13 @@ impl Storage {
                 txn.commit()?;
                 responder.respond(true).ignore()
             }
-            StorageRequest::UpdateLowestContiguousBlockHeight { height, responder } => {
-                self.update_lowest_contiguous_block_height(height)?;
+            StorageRequest::UpdateLowestAvailableBlockHeight { height, responder } => {
+                self.update_lowest_available_block_height(height)?;
                 responder.respond(()).ignore()
             }
-            StorageRequest::GetHighestContiguousBlockHeightRange { responder } => responder
-                .respond(self.get_highest_contiguous_block_height_range())
-                .ignore(),
+            StorageRequest::GetAvailableBlockRange { responder } => {
+                responder.respond(self.get_available_block_range()).ignore()
+            }
         })
     }
 
@@ -1758,34 +1758,34 @@ impl Storage {
         Ok(effect_builder.send_message(sender, message).ignore())
     }
 
-    fn get_highest_contiguous_block_height_range(&self) -> ContiguousBlockRange {
+    fn get_available_block_range(&self) -> AvailableBlockRange {
         let high = self
             .block_height_index
             .keys()
             .last()
             .copied()
             .unwrap_or_default();
-        let low = self.lowest_contiguous_block_height;
-        match ContiguousBlockRange::new(low, high) {
+        let low = self.lowest_available_block_height;
+        match AvailableBlockRange::new(low, high) {
             Ok(range) => range,
             Err(error) => {
                 error!(%error);
-                ContiguousBlockRange::default()
+                AvailableBlockRange::default()
             }
         }
     }
 
-    fn update_lowest_contiguous_block_height(
+    fn update_lowest_available_block_height(
         &mut self,
         new_height: u64,
     ) -> Result<(), FatalStorageError> {
         // We should update the value if it wasn't already stored, or if the new value is outside
-        // the highest contiguous range at startup (after pruning due to hard-reset).
+        // the available range at startup (after pruning due to hard-reset).
         let should_update = {
             let mut txn = self.env.begin_ro_txn()?;
             match txn.get_value_bytesrepr::<_, u64>(
                 self.state_store_db,
-                &KEY_LOWEST_CONTIGUOUS_BLOCK_HEIGHT,
+                &KEY_LOWEST_AVAILABLE_BLOCK_HEIGHT,
             )? {
                 Some(height) => new_height < height || new_height > self.highest_block_at_startup,
                 None => true,
@@ -1800,19 +1800,19 @@ impl Storage {
             let mut txn = self.env.begin_rw_txn()?;
             txn.put_value_bytesrepr::<_, u64>(
                 self.state_store_db,
-                &KEY_LOWEST_CONTIGUOUS_BLOCK_HEIGHT,
+                &KEY_LOWEST_AVAILABLE_BLOCK_HEIGHT,
                 &new_height,
                 true,
             )?;
             txn.commit()?;
-            self.lowest_contiguous_block_height = new_height;
+            self.lowest_available_block_height = new_height;
         } else {
             error!(
                 %new_height,
-                "failed to update lowest_contiguous_block_height as not in height index"
+                "failed to update lowest_available_block_height as not in height index"
             );
             // We don't need to return a fatal error here as an invalid
-            // `lowest_contiguous_block_height` is not a critical error.
+            // `lowest_available_block_height` is not a critical error.
         }
 
         Ok(())

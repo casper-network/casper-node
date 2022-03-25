@@ -12,8 +12,8 @@ use tracing::error;
 #[derive(
     Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Error,
 )]
-#[error("invalid contiguous block range [low: {}, high: {}]", .low, .high)]
-pub struct ContiguousBlockRangeError {
+#[error("invalid available block range [low: {}, high: {}]", .low, .high)]
+pub struct AvailableBlockRangeError {
     low: u64,
     high: u64,
 }
@@ -23,39 +23,39 @@ pub struct ContiguousBlockRangeError {
     Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, JsonSchema,
 )]
 #[serde(deny_unknown_fields)]
-pub struct ContiguousBlockRange {
+pub struct AvailableBlockRange {
     /// The inclusive lower bound of the range.
     low: u64,
     /// The inclusive upper bound of the range.
     high: u64,
 }
 
-impl ContiguousBlockRange {
+impl AvailableBlockRange {
     /// Returns a new `ContiguousBlockRange`.
-    pub fn new(low: u64, high: u64) -> Result<Self, ContiguousBlockRangeError> {
+    pub fn new(low: u64, high: u64) -> Result<Self, AvailableBlockRangeError> {
         if low > high {
-            let error = ContiguousBlockRangeError { low, high };
+            let error = AvailableBlockRangeError { low, high };
             error!("{}", error);
             return Err(error);
         }
-        Ok(ContiguousBlockRange { low, high })
+        Ok(AvailableBlockRange { low, high })
     }
 }
 
-impl Default for ContiguousBlockRange {
+impl Default for AvailableBlockRange {
     fn default() -> Self {
-        ContiguousBlockRange {
+        AvailableBlockRange {
             low: u64::MAX,
             high: u64::MAX,
         }
     }
 }
 
-impl Display for ContiguousBlockRange {
+impl Display for AvailableBlockRange {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
-            "contiguous block range [{}, {}]",
+            "available block range [{}, {}]",
             self.low, self.high
         )
     }
