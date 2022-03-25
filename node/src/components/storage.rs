@@ -1452,8 +1452,9 @@ impl Storage {
         self.get_blocks_while(&mut txn, ttl_not_expired)
     }
 
-    /// Retrieves a single block header in a separate transaction from storage.
-    // TODO[RC]: Deduplicate with `get_single_block_header()`
+    /// Retrieves a single block header in a given transaction from storage
+    /// respecting the possible restriction on whether the block
+    /// should be present in the available blocks index.
     fn get_single_block_header_restricted<Tx: Transaction>(
         &self,
         tx: &mut Tx,
@@ -1469,18 +1470,11 @@ impl Storage {
             return Ok(None);
         }
 
-        let found_block_header_hash = block_header.hash(self.verifiable_chunked_hash_activation);
-        if found_block_header_hash != *block_hash {
-            return Err(FatalStorageError::BlockHeaderNotStoredUnderItsHash {
-                queried_block_hash_bytes: block_hash.as_ref().to_vec(),
-                found_block_header_hash,
-                block_header: Box::new(block_header),
-            });
-        };
+        self.validate_block_header_hash(&block_header, block_hash)?;
         Ok(Some(block_header))
     }
 
-    /// Retrieves a single block header in a separate transaction from storage.
+    /// Retrieves a single block header in a given transaction from storage.
     fn get_single_block_header<Tx: Transaction>(
         &self,
         tx: &mut Tx,
@@ -1490,16 +1484,25 @@ impl Storage {
             Some(block_header) => block_header,
             None => return Ok(None),
         };
+        self.validate_block_header_hash(&block_header, block_hash)?;
+        Ok(Some(block_header))
+    }
 
+    /// Validates the block header hash against the expected block hash.
+    fn validate_block_header_hash(
+        &self,
+        block_header: &BlockHeader,
+        block_hash: &BlockHash,
+    ) -> Result<(), FatalStorageError> {
         let found_block_header_hash = block_header.hash(self.verifiable_chunked_hash_activation);
         if found_block_header_hash != *block_hash {
             return Err(FatalStorageError::BlockHeaderNotStoredUnderItsHash {
                 queried_block_hash_bytes: block_hash.as_ref().to_vec(),
                 found_block_header_hash,
-                block_header: Box::new(block_header),
+                block_header: Box::new(block_header.clone()),
             });
         };
-        Ok(Some(block_header))
+        Ok(())
     }
 
     /// Checks whether a block at the given height exists in the block height index (and, since the
