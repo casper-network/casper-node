@@ -629,6 +629,10 @@ async fn fast_sync(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, BlockHea
     // Synchronize the trie store for the most recent block header.
     sync_trie_store(*most_recent_block_header.state_root_hash(), ctx).await?;
 
+    ctx.effect_builder
+        .update_lowest_available_block_height_in_storage(most_recent_block_header.height())
+        .await;
+
     Ok((trusted_key_block_info, most_recent_block_header))
 }
 
@@ -818,6 +822,10 @@ async fn sync_to_genesis(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, Bl
 
     // Sync forward until we are at the current version.
     let most_recent_block = fetch_forward(trusted_block, &mut trusted_key_block_info, ctx).await?;
+
+    ctx.effect_builder
+        .update_lowest_available_block_height_in_storage(0)
+        .await;
 
     Ok((trusted_key_block_info, most_recent_block.take_header()))
 }

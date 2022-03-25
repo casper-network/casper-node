@@ -3,7 +3,7 @@ use std::convert::TryFrom;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn};
+use tracing::{debug, warn};
 
 use casper_hashing::Digest;
 use casper_types::{bytesrepr::ToBytes, Key};
@@ -15,7 +15,7 @@ use super::{
 use crate::{
     effect::EffectBuilder,
     reactor::QueueKind,
-    types::{json_compatibility::StoredValue, Block},
+    types::{json_compatibility::StoredValue, AvailableBlockRange, Block},
 };
 
 pub(super) static MERKLE_PROOF: Lazy<String> = Lazy::new(|| {
@@ -77,45 +77,39 @@ pub(super) async fn run_query_and_encode<REv: ReactorEventT>(
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorData {
-    /// The highest contiguous height range (inclusive) of fully available blocks.
-    HighestContiguousBlockHeightRange((u64, u64)),
+    /// The height range (inclusive) of fully available blocks.
+    AvailableBlockRange(AvailableBlockRange),
 }
 
-impl ErrorData {
-    pub(super) fn highest_contiguous_block_height_range(low: u64, high: u64) -> Self {
-        ErrorData::HighestContiguousBlockHeightRange((low, high))
-    }
-}
-
-/// Returns a `warp_json_rpc::Error` which includes the highest contiguous height range of fully
-/// available blocks as the additional `data` field.
+/// Returns a `warp_json_rpc::Error` which includes the height range of fully available blocks as
+/// the additional `data` field.
 pub(super) async fn missing_block_or_state_root_error<REv: ReactorEventT>(
     effect_builder: EffectBuilder<REv>,
     error_code: ErrorCode,
     error_message: String,
 ) -> warp_json_rpc::Error {
-    let (low, high) = effect_builder
+    let available_block_range = effect_builder
         .make_request(
-            |responder| RpcRequest::GetHighestContiguousBlockHeightRange { responder },
+            |responder| RpcRequest::GetAvailableBlockRange { responder },
             QueueKind::Api,
         )
         .await;
 
-    info!(
-        low,
-        high, "got request for non-existent data, will respond with msg: {}", error_message
+    debug!(
+        %available_block_range,
+        "got request for non-existent data, will respond with msg: {}", error_message
     );
 
     warp_json_rpc::Error::custom(error_code as i64, error_message)
-        .with_data(ErrorData::highest_contiguous_block_height_range(low, high))
+        .with_data(ErrorData::AvailableBlockRange(available_block_range))
 }
 
 pub(super) async fn get_block<REv: ReactorEventT>(
     maybe_id: Option<BlockIdentifier>,
-    only_from_highest_contiguous_range: bool,
+    only_from_available_block_range: bool,
     effect_builder: EffectBuilder<REv>,
 ) -> Result<Block, warp_json_rpc::Error> {
-    chain::get_block_with_metadata(maybe_id, only_from_highest_contiguous_range, effect_builder)
+    chain::get_block_with_metadata(maybe_id, only_from_available_block_range, effect_builder)
         .await
         .map(|block_with_metadata| block_with_metadata.block)
 }

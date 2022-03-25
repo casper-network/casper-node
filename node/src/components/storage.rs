@@ -35,7 +35,6 @@
 //! The storage component itself is panic free and in general reports three classes of errors:
 //! Corruption, temporary resource exhaustion and potential bugs.
 
-mod disjoint_sequences;
 mod lmdb_ext;
 mod object_pool;
 #[cfg(test)]
@@ -44,7 +43,7 @@ mod tests;
 #[cfg(test)]
 use std::collections::BTreeSet;
 use std::{
-    collections::{btree_map, BTreeMap, HashMap, HashSet},
+    collections::{btree_map::Entry, BTreeMap, HashSet},
     convert::TryFrom,
     fmt::{self, Display, Formatter},
     fs, io, mem,
@@ -89,7 +88,7 @@ use crate::{
     protocol::Message,
     reactor::ReactorEvent,
     types::{
-        error::BlockValidationError, Block, BlockBody, BlockHash, BlockHeader,
+        error::BlockValidationError, AvailableBlockRange, Block, BlockBody, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, Deploy, DeployHash,
         DeployMetadata, HashingAlgorithmVersion, Item, MerkleBlockBody, MerkleBlockBodyPart,
         MerkleLinkedListNode, NodeId, TimeDiff,
@@ -97,12 +96,14 @@ use crate::{
     utils::{display_error, WithDir},
     NodeRng,
 };
-use disjoint_sequences::DisjointSequences;
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
 use object_pool::ObjectPool;
 
 /// Filename for the LMDB database created by the Storage component.
 const STORAGE_DB_FILENAME: &str = "storage.lmdb";
+/// The key in the state store DB under which the storage component's
+/// `lowest_available_block_height` field is persisted.
+const KEY_LOWEST_AVAILABLE_BLOCK_HEIGHT: &str = "lowest_available_block_height";
 
 /// We can set this very low, as there is only a single reader/writer accessing the component at any
 /// one time.
@@ -141,8 +142,6 @@ const STORAGE_FILES: [&str; 5] = [
     "storage.lmdb-lock",
     "sse_index",
 ];
-
-type MissingBodiesIndex = HashMap<Digest, Vec<u64>>;
 
 /// A fatal storage component error.
 ///
@@ -361,12 +360,11 @@ pub struct Storage {
     state_store_db: Database,
     /// A map of block height to block ID.
     block_height_index: BTreeMap<u64, BlockHash>,
-    /// A set of disjoint sequences of block heights of blocks which are fully stored (not just the
-    /// headers).
-    disjoint_block_height_sequences: DisjointSequences,
-    /// For a given block body hash, stores a vector of block heights representing blocks for which
-    /// we don't have the block body stored.
-    missing_block_bodies: MissingBodiesIndex,
+    /// The height of the highest block from which this node has an unbroken sequence of full
+    /// blocks stored (and the corresponding global state).
+    lowest_available_block_height: u64,
+    /// Highest block available when storage is constructed.
+    highest_block_at_startup: u64,
     /// A map of era ID to switch block ID.
     switch_block_era_id_index: BTreeMap<EraId, BlockHash>,
     /// A map of deploy hashes to hashes of blocks containing them.
@@ -536,8 +534,6 @@ impl Storage {
 
         let mut deleted_block_hashes = HashSet::new();
         let mut deleted_block_body_hashes_v1 = HashSet::new();
-        let mut full_block_heights = Vec::with_capacity(1_000_000);
-        let mut missing_block_bodies = MissingBodiesIndex::new();
         // Note: `iter_start` has an undocumented panic if called on an empty database. We rely on
         //       the iterator being at the start when created.
         for (_, raw_val) in cursor.iter() {
@@ -590,20 +586,28 @@ impl Storage {
                     block_header.hash(verifiable_chunked_hash_activation),
                     &block_body,
                 )?;
-
-                full_block_heights.push(block_header.height());
-            } else {
-                missing_block_bodies
-                    .entry(*block_header.body_hash())
-                    .or_default()
-                    .push(block_header.height());
             }
         }
         info!("block store reindexing complete");
         drop(cursor);
         block_txn.commit()?;
 
-        let disjoint_block_height_sequences = DisjointSequences::from(full_block_heights);
+        let mut lowest_available_block_height = {
+            let mut txn = env.begin_ro_txn()?;
+            txn.get_value_bytesrepr(state_store_db, &KEY_LOWEST_AVAILABLE_BLOCK_HEIGHT)?
+                .unwrap_or_default()
+        };
+        let highest_block_at_startup = block_height_index
+            .keys()
+            .last()
+            .copied()
+            .unwrap_or_default();
+        if let Err(error) =
+            AvailableBlockRange::new(lowest_available_block_height, highest_block_at_startup)
+        {
+            error!(%error);
+            lowest_available_block_height = highest_block_at_startup;
+        }
 
         let deleted_block_hashes_raw = deleted_block_hashes.iter().map(BlockHash::as_ref).collect();
 
@@ -634,7 +638,8 @@ impl Storage {
             transfer_db,
             state_store_db,
             block_height_index,
-            disjoint_block_height_sequences,
+            lowest_available_block_height,
+            highest_block_at_startup,
             switch_block_era_id_index,
             deploy_hash_index,
             enable_mem_deduplication: config.enable_mem_deduplication,
@@ -642,7 +647,6 @@ impl Storage {
             finality_threshold_fraction,
             last_emergency_restart,
             verifiable_chunked_hash_activation,
-            missing_block_bodies,
         })
     }
 
@@ -842,13 +846,13 @@ impl Storage {
             }
             StorageRequest::GetBlockHeader {
                 block_hash,
-                only_from_highest_contiguous_range,
+                only_from_available_block_range,
                 responder,
             } => responder
                 .respond(self.get_single_block_header_restricted(
                     &mut self.env.begin_ro_txn()?,
                     &block_hash,
-                    only_from_highest_contiguous_range,
+                    only_from_available_block_range,
                 )?)
                 .ignore(),
             StorageRequest::CheckBlockHeaderExistence {
@@ -953,7 +957,7 @@ impl Storage {
             }
             StorageRequest::GetBlockAndMetadataByHash {
                 block_hash,
-                only_from_highest_contiguous_range,
+                only_from_available_block_range,
                 responder,
             } => {
                 let mut txn = self.env.begin_ro_txn()?;
@@ -965,7 +969,7 @@ impl Storage {
                         return Ok(responder.respond(None).ignore());
                     };
 
-                if !self.should_return_block(block.height(), only_from_highest_contiguous_range) {
+                if !self.should_return_block(block.height(), only_from_available_block_range) {
                     return Ok(responder.respond(None).ignore());
                 }
 
@@ -1006,10 +1010,10 @@ impl Storage {
                 .ignore(),
             StorageRequest::GetBlockAndMetadataByHeight {
                 block_height,
-                only_from_highest_contiguous_range,
+                only_from_available_block_range,
                 responder,
             } => {
-                if !self.should_return_block(block_height, only_from_highest_contiguous_range) {
+                if !self.should_return_block(block_height, only_from_available_block_range) {
                     return Ok(responder.respond(None).ignore());
                 }
 
@@ -1130,74 +1134,17 @@ impl Storage {
                     self.verifiable_chunked_hash_activation,
                 )?;
 
-                if self.has_corresponding_body(&mut txn, &block_header)? {
-                    self.disjoint_block_height_sequences
-                        .insert(block_header.height());
-                } else {
-                    self.missing_block_bodies
-                        .entry(*block_header.body_hash())
-                        .or_default()
-                        .push(block_header.height());
-                }
-
                 txn.commit()?;
                 responder.respond(true).ignore()
             }
-            StorageRequest::GetHighestContiguousBlockHeightRange { responder } => {
-                let result = self
-                    .disjoint_block_height_sequences
-                    .highest_sequence()
-                    .map(|sequence| (sequence.low, sequence.high))
-                    .unwrap_or_else(|| {
-                        error!("storage disjoint sequences of block heights should not be empty");
-                        (u64::MAX, u64::MAX)
-                    });
-                responder.respond(result).ignore()
+            StorageRequest::UpdateLowestAvailableBlockHeight { height, responder } => {
+                self.update_lowest_available_block_height(height)?;
+                responder.respond(()).ignore()
+            }
+            StorageRequest::GetAvailableBlockRange { responder } => {
+                responder.respond(self.get_available_block_range()).ignore()
             }
         })
-    }
-
-    /// Returns `true` if the storage should attempt to return a block. Depending on the
-    /// `only_from_highest_contiguous_range` flag it should be unconditional or restricted by the
-    /// highest disjoined block sequence.
-    fn should_return_block(
-        &self,
-        block_height: u64,
-        only_from_highest_contiguous_range: bool,
-    ) -> bool {
-        if only_from_highest_contiguous_range {
-            self.disjoint_block_height_sequences
-                .highest_sequence()
-                .map_or(false, |sequence| sequence.contains(block_height))
-        } else {
-            true
-        }
-    }
-
-    /// Returns `true` if there is a block body for the given block header available in storage.
-    fn has_corresponding_body<Tx: Transaction>(
-        &self,
-        txn: &mut Tx,
-        block_header: &BlockHeader,
-    ) -> Result<bool, FatalStorageError> {
-        // TODO[RC]: Possible optimization: Can we check if a body exists w/o retrieving it?
-        let maybe_block_body = self.get_body_for_block_header(txn, block_header)?;
-        Ok(maybe_block_body.is_some())
-    }
-
-    /// Updates the disjoint height sequences after the full block has been
-    /// put to storage. It adds the height of the written block and also
-    /// adds heights of blocks that share the same body.
-    fn update_disjoint_height_sequences(&mut self, block_header: &BlockHeader) {
-        self.disjoint_block_height_sequences
-            .insert(block_header.height());
-
-        if let Some(block_bodies_to_add) =
-            self.missing_block_bodies.remove(block_header.body_hash())
-        {
-            self.disjoint_block_height_sequences
-                .extend(block_bodies_to_add);
-        }
     }
 
     /// Put a single deploy into storage.
@@ -1267,11 +1214,7 @@ impl Storage {
             block.header().hash(self.verifiable_chunked_hash_activation),
             block.body(),
         )?;
-
         txn.commit()?;
-
-        self.update_disjoint_height_sequences(block.header());
-
         Ok(true)
     }
 
@@ -1459,14 +1402,14 @@ impl Storage {
         &self,
         tx: &mut Tx,
         block_hash: &BlockHash,
-        only_from_highest_contiguous_range: bool,
+        only_from_available_block_range: bool,
     ) -> Result<Option<BlockHeader>, FatalStorageError> {
         let block_header: BlockHeader = match tx.get_value(self.block_header_db, &block_hash)? {
             Some(block_header) => block_header,
             None => return Ok(None),
         };
 
-        if !self.should_return_block(block_header.height(), only_from_highest_contiguous_range) {
+        if !self.should_return_block(block_header.height(), only_from_available_block_range) {
             return Ok(None);
         }
 
@@ -1862,6 +1805,87 @@ impl Storage {
         let message = Message::new_get_response_from_serialized(<T as Item>::TAG, shared);
         Ok(effect_builder.send_message(sender, message).ignore())
     }
+
+    /// Returns `true` if the storage should attempt to return a block. Depending on the
+    /// `only_from_available_block_range` flag it should be unconditional or restricted by the
+    /// available block range.
+    fn should_return_block(
+        &self,
+        block_height: u64,
+        only_from_available_block_range: bool,
+    ) -> bool {
+        if only_from_available_block_range {
+            self.get_available_block_range().contains(block_height)
+        } else {
+            true
+        }
+    }
+
+    fn get_available_block_range(&self) -> AvailableBlockRange {
+        let high = self
+            .block_height_index
+            .keys()
+            .last()
+            .copied()
+            .unwrap_or_default();
+        let low = self.lowest_available_block_height;
+        match AvailableBlockRange::new(low, high) {
+            Ok(range) => range,
+            Err(error) => {
+                error!(%error);
+                AvailableBlockRange::default()
+            }
+        }
+    }
+
+    fn update_lowest_available_block_height(
+        &mut self,
+        new_height: u64,
+    ) -> Result<(), FatalStorageError> {
+        // We should update the value if
+        // * it wasn't already stored, or
+        // * the new value is lower than the available range at startup, or
+        // * the new value is 2 or more higher than (after pruning due to hard-reset) the available
+        //   range at startup, as that would mean there's a gap of at least one block with
+        //   unavailable global state.
+        let should_update = {
+            let mut txn = self.env.begin_ro_txn()?;
+            match txn.get_value_bytesrepr::<_, u64>(
+                self.state_store_db,
+                &KEY_LOWEST_AVAILABLE_BLOCK_HEIGHT,
+            )? {
+                Some(height) => {
+                    new_height < height || new_height > self.highest_block_at_startup + 1
+                }
+                None => true,
+            }
+        };
+
+        if !should_update {
+            return Ok(());
+        }
+
+        if self.block_height_index.contains_key(&new_height) {
+            let mut txn = self.env.begin_rw_txn()?;
+            txn.put_value_bytesrepr::<_, u64>(
+                self.state_store_db,
+                &KEY_LOWEST_AVAILABLE_BLOCK_HEIGHT,
+                &new_height,
+                true,
+            )?;
+            txn.commit()?;
+            self.lowest_available_block_height = new_height;
+        } else {
+            error!(
+                %new_height,
+                "failed to update lowest_available_block_height as not in height index"
+            );
+            // We don't need to return a fatal error here as an invalid
+            // `lowest_available_block_height` is not a critical error.
+        }
+
+        Ok(())
+    }
 }
 
 /// Decodes an item's ID, typically from an incoming request.
@@ -1894,10 +1918,10 @@ fn insert_to_block_header_indices(
 
     if block_header.is_switch_block() {
         match switch_block_era_id_index.entry(block_header.era_id()) {
-            btree_map::Entry::Vacant(entry) => {
+            Entry::Vacant(entry) => {
                 let _ = entry.insert(block_hash);
             }
-            btree_map::Entry::Occupied(entry) => {
+            Entry::Occupied(entry) => {
                 if *entry.get() != block_hash {
                     return Err(FatalStorageError::DuplicateEraIdIndex {
                         era_id: block_header.era_id(),

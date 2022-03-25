@@ -1,6 +1,7 @@
 //! Common types used across multiple components.
 
 pub(crate) mod appendable_block;
+mod available_block_range;
 mod block;
 pub mod chainspec;
 mod deploy;
@@ -20,6 +21,7 @@ use rand::{CryptoRng, RngCore};
 #[cfg(not(test))]
 use rand_chacha::ChaCha20Rng;
 
+pub use available_block_range::{AvailableBlockRange, AvailableBlockRangeError};
 pub use block::{
     json_compatibility::{JsonBlock, JsonBlockHeader},
     Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, FinalitySignature, FinalizedBlock,
