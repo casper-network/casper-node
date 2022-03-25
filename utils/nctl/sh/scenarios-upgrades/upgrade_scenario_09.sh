@@ -4,7 +4,7 @@
 # ----------------------------------------------------------------
 
 # Step 01: Start network from pre-built stage.
-# Step 02: Await era-id >= 1.
+# Step 02: Await era-id >= 2.
 # Step 03: Stage nodes 1-5 and upgrade.
 # Step 04: Assert upgraded nodes 1-5.
 # Step 05: Assert nodes 1-5 didn't stall.
