@@ -106,10 +106,10 @@ pub(super) async fn missing_block_or_state_root_error<REv: ReactorEventT>(
 
 pub(super) async fn get_block<REv: ReactorEventT>(
     maybe_id: Option<BlockIdentifier>,
-    only_from_highest_contiguous_range: bool,
+    only_from_available_block_range: bool,
     effect_builder: EffectBuilder<REv>,
 ) -> Result<Block, warp_json_rpc::Error> {
-    chain::get_block_with_metadata(maybe_id, only_from_highest_contiguous_range, effect_builder)
+    chain::get_block_with_metadata(maybe_id, only_from_available_block_range, effect_builder)
         .await
         .map(|block_with_metadata| block_with_metadata.block)
 }

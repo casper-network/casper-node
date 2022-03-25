@@ -283,7 +283,7 @@ pub(crate) enum StorageRequest {
         block_hash: BlockHash,
         /// Flag indicating whether storage should check the block availability before trying to
         /// retrieve it.
-        only_from_highest_contiguous_range: bool,
+        only_from_available_block_range: bool,
         /// Responder to call with the result.  Returns `None` is the block header doesn't exist in
         /// local storage.
         responder: Responder<Option<BlockHeader>>,
@@ -370,7 +370,7 @@ pub(crate) enum StorageRequest {
         block_hash: BlockHash,
         /// Flag indicating whether storage should check the block availability before trying to
         /// retrieve it.
-        only_from_highest_contiguous_range: bool,
+        only_from_available_block_range: bool,
         /// The responder to call with the results.
         responder: Responder<Option<BlockWithMetadata>>,
     },
@@ -380,7 +380,7 @@ pub(crate) enum StorageRequest {
         block_height: BlockHeight,
         /// Flag indicating whether storage should check the block availability before trying to
         /// retrieve it.
-        only_from_highest_contiguous_range: bool,
+        only_from_available_block_range: bool,
         /// The responder to call with the results.
         responder: Responder<Option<BlockWithMetadata>>,
     },
@@ -640,7 +640,7 @@ pub(crate) enum RpcRequest {
         maybe_id: Option<BlockIdentifier>,
         /// Flag indicating whether storage should check the block availability before trying to
         /// retrieve it.
-        only_from_highest_contiguous_range: bool,
+        only_from_available_block_range: bool,
         /// Responder to call with the result.
         responder: Responder<Option<BlockWithMetadata>>,
     },

@@ -474,10 +474,10 @@ impl ItemFetcher<BlockHeader> for Fetcher<BlockHeader> {
         peer: NodeId,
     ) -> Effects<Event<BlockHeader>> {
         // Requests from fetcher are not restricted by the block availability index.
-        let only_from_highest_contiguous_range = false;
+        let only_from_available_block_range = false;
 
         effect_builder
-            .get_block_header_from_storage(id, only_from_highest_contiguous_range)
+            .get_block_header_from_storage(id, only_from_available_block_range)
             .event(move |maybe_block_header| Event::GetFromStorageResult {
                 id,
                 peer,

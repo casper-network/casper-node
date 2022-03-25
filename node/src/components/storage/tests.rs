@@ -1514,7 +1514,7 @@ fn can_put_and_get_block() {
     let mut harness = ComponentHarness::default();
 
     // This test is not restricted by the block availability index.
-    let only_from_highest_contiguous_range = false;
+    let only_from_available_block_range = false;
 
     // Create a random block using the legacy hashing scheme, store and load it.
     let (block, verifiable_chunked_hash_activation) = Block::random_v1(&mut harness.rng);
@@ -1539,7 +1539,7 @@ fn can_put_and_get_block() {
     let response = harness.send_request(&mut storage, |responder| {
         StorageRequest::GetBlockHeader {
             block_hash: *block.hash(),
-            only_from_highest_contiguous_range,
+            only_from_available_block_range,
             responder,
         }
         .into()
@@ -1826,7 +1826,7 @@ fn should_restrict_returned_blocks() {
     // The available range is 4-5.
     storage.update_lowest_available_block_height(4).unwrap();
 
-    // Without restriction, the node should attemt to return any requested block
+    // Without restriction, the node should attempt to return any requested block
     // regardless if it is in the disjoint sequences.
     assert!(storage.should_return_block(0, false));
     assert!(storage.should_return_block(1, false));
@@ -1836,7 +1836,7 @@ fn should_restrict_returned_blocks() {
     assert!(storage.should_return_block(5, false));
     assert!(storage.should_return_block(6, false));
 
-    // With restriction, the node should attemt to return only the blocks that are
+    // With restriction, the node should attempt to return only the blocks that are
     // on the highest disjoint sequence, i.e blocks 4 and 5 only.
     assert!(!storage.should_return_block(0, true));
     assert!(!storage.should_return_block(1, true));

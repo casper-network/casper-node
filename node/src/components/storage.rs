@@ -846,13 +846,13 @@ impl Storage {
             }
             StorageRequest::GetBlockHeader {
                 block_hash,
-                only_from_highest_contiguous_range,
+                only_from_available_block_range,
                 responder,
             } => responder
                 .respond(self.get_single_block_header_restricted(
                     &mut self.env.begin_ro_txn()?,
                     &block_hash,
-                    only_from_highest_contiguous_range,
+                    only_from_available_block_range,
                 )?)
                 .ignore(),
             StorageRequest::CheckBlockHeaderExistence {
@@ -957,7 +957,7 @@ impl Storage {
             }
             StorageRequest::GetBlockAndMetadataByHash {
                 block_hash,
-                only_from_highest_contiguous_range,
+                only_from_available_block_range,
                 responder,
             } => {
                 let mut txn = self.env.begin_ro_txn()?;
@@ -969,7 +969,7 @@ impl Storage {
                         return Ok(responder.respond(None).ignore());
                     };
 
-                if !self.should_return_block(block.height(), only_from_highest_contiguous_range) {
+                if !self.should_return_block(block.height(), only_from_available_block_range) {
                     return Ok(responder.respond(None).ignore());
                 }
 
@@ -1010,10 +1010,10 @@ impl Storage {
                 .ignore(),
             StorageRequest::GetBlockAndMetadataByHeight {
                 block_height,
-                only_from_highest_contiguous_range,
+                only_from_available_block_range,
                 responder,
             } => {
-                if !self.should_return_block(block_height, only_from_highest_contiguous_range) {
+                if !self.should_return_block(block_height, only_from_available_block_range) {
                     return Ok(responder.respond(None).ignore());
                 }
 
@@ -1145,21 +1145,6 @@ impl Storage {
                 responder.respond(self.get_available_block_range()).ignore()
             }
         })
-    }
-
-    /// Returns `true` if the storage should attempt to return a block. Depending on the
-    /// `only_from_highest_contiguous_range` flag it should be unconditional or restricted by the
-    /// available block range.
-    fn should_return_block(
-        &self,
-        block_height: u64,
-        only_from_highest_contiguous_range: bool,
-    ) -> bool {
-        if only_from_highest_contiguous_range {
-            self.get_available_block_range().contains(block_height)
-        } else {
-            true
-        }
     }
 
     /// Put a single deploy into storage.
@@ -1417,14 +1402,14 @@ impl Storage {
         &self,
         tx: &mut Tx,
         block_hash: &BlockHash,
-        only_from_highest_contiguous_range: bool,
+        only_from_available_block_range: bool,
     ) -> Result<Option<BlockHeader>, FatalStorageError> {
         let block_header: BlockHeader = match tx.get_value(self.block_header_db, &block_hash)? {
             Some(block_header) => block_header,
             None => return Ok(None),
         };
 
-        if !self.should_return_block(block_header.height(), only_from_highest_contiguous_range) {
+        if !self.should_return_block(block_header.height(), only_from_available_block_range) {
             return Ok(None);
         }
 
@@ -1821,6 +1806,21 @@ impl Storage {
         Ok(effect_builder.send_message(sender, message).ignore())
     }
 
+    /// Returns `true` if the storage should attempt to return a block. Depending on the
+    /// `only_from_available_block_range` flag it should be unconditional or restricted by the
+    /// available block range.
+    fn should_return_block(
+        &self,
+        block_height: u64,
+        only_from_available_block_range: bool,
+    ) -> bool {
+        if only_from_available_block_range {
+            self.get_available_block_range().contains(block_height)
+        } else {
+            true
+        }
+    }
+
     fn get_available_block_range(&self) -> AvailableBlockRange {
         let high = self
             .block_height_index
@@ -1846,7 +1846,8 @@ impl Storage {
         // * it wasn't already stored, or
         // * the new value is lower than the available range at startup, or
         // * the new value is 2 or more higher than (after pruning due to hard-reset) the available
-        //   range at startup.
+        //   range at startup, as that would mean there's a gap of at least one block with
+        //   unavailable global state.
         let should_update = {
             let mut txn = self.env.begin_ro_txn()?;
             match txn.get_value_bytesrepr::<_, u64>(

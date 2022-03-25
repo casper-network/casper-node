@@ -31,7 +31,7 @@ pub struct AvailableBlockRange {
 }
 
 impl AvailableBlockRange {
-    /// Returns a new `ContiguousBlockRange`.
+    /// Returns a new `AvailableBlockRange`.
     pub fn new(low: u64, high: u64) -> Result<Self, AvailableBlockRangeError> {
         if low > high {
             let error = AvailableBlockRangeError { low, high };

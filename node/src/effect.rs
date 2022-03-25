@@ -853,7 +853,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_block_header_from_storage(
         self,
         block_hash: BlockHash,
-        only_from_highest_contiguous_range: bool,
+        only_from_available_block_range: bool,
     ) -> Option<BlockHeader>
     where
         REv: From<StorageRequest>,
@@ -861,7 +861,7 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| StorageRequest::GetBlockHeader {
                 block_hash,
-                only_from_highest_contiguous_range,
+                only_from_available_block_range,
                 responder,
             },
             QueueKind::Regular,
@@ -1175,7 +1175,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_block_at_height_with_metadata_from_storage(
         self,
         block_height: u64,
-        only_from_highest_contiguous_range: bool,
+        only_from_available_block_range: bool,
     ) -> Option<BlockWithMetadata>
     where
         REv: From<StorageRequest>,
@@ -1183,7 +1183,7 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| StorageRequest::GetBlockAndMetadataByHeight {
                 block_height,
-                only_from_highest_contiguous_range,
+                only_from_available_block_range,
                 responder,
             },
             QueueKind::Regular,
@@ -1231,7 +1231,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_block_with_metadata_from_storage(
         self,
         block_hash: BlockHash,
-        only_from_highest_contiguous_range: bool,
+        only_from_available_block_range: bool,
     ) -> Option<BlockWithMetadata>
     where
         REv: From<StorageRequest>,
@@ -1239,7 +1239,7 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| StorageRequest::GetBlockAndMetadataByHash {
                 block_hash,
-                only_from_highest_contiguous_range,
+                only_from_available_block_range,
                 responder,
             },
             QueueKind::Regular,
