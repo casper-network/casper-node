@@ -27,6 +27,7 @@
 mod event_queue_metrics;
 pub(crate) mod initializer;
 pub(crate) mod joiner;
+pub(crate) mod offloaded;
 pub(crate) mod participating;
 mod queue_kind;
 
