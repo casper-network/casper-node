@@ -650,16 +650,6 @@ async fn get_trusted_key_block_info(ctx: &ChainSyncContext<'_>) -> Result<KeyBlo
             block_header_with_future_version: Box::new(ctx.trusted_block_header.clone()),
         });
     }
-    // If the trusted block's version is older than ours we also return an error, except if we are
-    // at the current activation point, i.e. at an upgrade.
-    if ctx.trusted_block_header.protocol_version() < ctx.config.protocol_version()
-        && ctx.trusted_block_header.next_block_era_id() != ctx.config.activation_point()
-    {
-        return Err(Error::TrustedBlockHasOldVersion {
-            current_version: ctx.config.protocol_version(),
-            block_header_with_old_version: Box::new(ctx.trusted_block_header.clone()),
-        });
-    }
 
     // Fetch each parent hash one by one until we have the switch block info
     // This will crash if we try to get the parent hash of genesis, which is the default [0u8; 32]

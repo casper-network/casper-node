@@ -1,17 +1,21 @@
-use alloc::{collections::BTreeMap, vec::Vec};
-use core::convert::TryInto;
+use std::{collections::BTreeMap, convert::TryInto};
 
 use num_rational::Ratio;
 
-use crate::{
+use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::auction::{
-        constants::*, Auction, Bids, Delegator, EraId, Error, MintProvider, RuntimeProvider,
-        SeigniorageAllocation, SeigniorageRecipientsSnapshot, StorageProvider, UnbondingPurse,
-        UnbondingPurses,
+        Bids, Delegator, Error, SeigniorageAllocation, SeigniorageRecipientsSnapshot,
+        UnbondingPurse, UnbondingPurses, AUCTION_DELAY_KEY, ERA_END_TIMESTAMP_MILLIS_KEY,
+        ERA_ID_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
     },
-    CLTyped, Key, KeyTag, PublicKey, URef, U512,
+    CLTyped, EraId, Key, KeyTag, PublicKey, URef, U512,
+};
+
+use super::{
+    providers::{MintProvider, RuntimeProvider, StorageProvider},
+    Auction,
 };
 
 fn read_from<P, T>(provider: &mut P, name: &str) -> Result<T, Error>

@@ -1513,6 +1513,9 @@ fn should_garbage_collect() {
 fn can_put_and_get_block() {
     let mut harness = ComponentHarness::default();
 
+    // This test is not restricted by the block availability index.
+    let only_from_highest_contiguous_range = false;
+
     // Create a random block using the legacy hashing scheme, store and load it.
     let (block, verifiable_chunked_hash_activation) = Block::random_v1(&mut harness.rng);
     let block = Box::new(block);
@@ -1536,6 +1539,7 @@ fn can_put_and_get_block() {
     let response = harness.send_request(&mut storage, |responder| {
         StorageRequest::GetBlockHeader {
             block_hash: *block.hash(),
+            only_from_highest_contiguous_range,
             responder,
         }
         .into()
@@ -1805,4 +1809,40 @@ fn should_not_update_lowest_available_block_height_when_within_initial_range() {
         storage.get_available_block_range(),
         AvailableBlockRange::new(INITIAL_LOW, INITIAL_HIGH).unwrap()
     );
+}
+
+#[test]
+fn should_restrict_returned_blocks() {
+    let mut harness = ComponentHarness::default();
+    let verifiable_chunked_hash_activation = EraId::new(u64::MAX);
+
+    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+
+    // Create the following disjoint sequences: 1-2 4-5
+    [1, 2, 4, 5].iter().for_each(|height| {
+        let (block, _) = random_block_at_height(&mut harness.rng, *height, Block::random_v1);
+        storage.write_block(&block).unwrap();
+    });
+    // The available range is 4-5.
+    storage.update_lowest_available_block_height(4).unwrap();
+
+    // Without restriction, the node should attemt to return any requested block
+    // regardless if it is in the disjoint sequences.
+    assert!(storage.should_return_block(0, false));
+    assert!(storage.should_return_block(1, false));
+    assert!(storage.should_return_block(2, false));
+    assert!(storage.should_return_block(3, false));
+    assert!(storage.should_return_block(4, false));
+    assert!(storage.should_return_block(5, false));
+    assert!(storage.should_return_block(6, false));
+
+    // With restriction, the node should attemt to return only the blocks that are
+    // on the highest disjoint sequence, i.e blocks 4 and 5 only.
+    assert!(!storage.should_return_block(0, true));
+    assert!(!storage.should_return_block(1, true));
+    assert!(!storage.should_return_block(2, true));
+    assert!(!storage.should_return_block(3, true));
+    assert!(storage.should_return_block(4, true));
+    assert!(storage.should_return_block(5, true));
+    assert!(!storage.should_return_block(6, true));
 }

@@ -1,4 +1,4 @@
-use crate::{
+use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     system::mint::Error,
     CLTyped, URef, U512,

@@ -1,4 +1,4 @@
-use crate::{
+use casper_types::{
     account::AccountHash,
     system::{mint::Error, CallStackElement},
     Key, Phase,

@@ -40,6 +40,11 @@ impl AvailableBlockRange {
         }
         Ok(AvailableBlockRange { low, high })
     }
+
+    /// Returns `true` if `height` is within the range.
+    pub fn contains(&self, height: u64) -> bool {
+        height >= self.low && height <= self.high
+    }
 }
 
 impl Default for AvailableBlockRange {

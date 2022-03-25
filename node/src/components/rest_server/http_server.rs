@@ -35,7 +35,8 @@ pub(super) async fn run<REv: ReactorEventT>(
             .or(rest_metrics)
             .or(rest_open_rpc)
             .or(rest_validator_changes)
-            .or(rest_chainspec_filter),
+            .or(rest_chainspec_filter)
+            .with(warp::cors().allow_any_origin()),
     );
 
     // Start the server, passing a oneshot receiver to allow the server to be shut down gracefully.
