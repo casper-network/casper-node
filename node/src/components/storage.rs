@@ -842,9 +842,14 @@ impl Storage {
             }
             StorageRequest::GetBlockHeader {
                 block_hash,
+                only_from_highest_contiguous_range,
                 responder,
             } => responder
-                .respond(self.get_single_block_header(&mut self.env.begin_ro_txn()?, &block_hash)?)
+                .respond(self.get_single_block_header_restricted(
+                    &mut self.env.begin_ro_txn()?,
+                    &block_hash,
+                    only_from_highest_contiguous_range,
+                )?)
                 .ignore(),
             StorageRequest::CheckBlockHeaderExistence {
                 block_height,
@@ -948,6 +953,7 @@ impl Storage {
             }
             StorageRequest::GetBlockAndMetadataByHash {
                 block_hash,
+                only_from_highest_contiguous_range,
                 responder,
             } => {
                 let mut txn = self.env.begin_ro_txn()?;
@@ -958,6 +964,11 @@ impl Storage {
                     } else {
                         return Ok(responder.respond(None).ignore());
                     };
+
+                if !self.should_return_block(block.height(), only_from_highest_contiguous_range) {
+                    return Ok(responder.respond(None).ignore());
+                }
+
                 // Check that the hash of the block retrieved is correct.
                 if block_hash != *block.hash() {
                     error!(
@@ -995,8 +1006,13 @@ impl Storage {
                 .ignore(),
             StorageRequest::GetBlockAndMetadataByHeight {
                 block_height,
+                only_from_highest_contiguous_range,
                 responder,
             } => {
+                if !self.should_return_block(block_height, only_from_highest_contiguous_range) {
+                    return Ok(responder.respond(None).ignore());
+                }
+
                 let mut txn = self.env.begin_ro_txn()?;
 
                 let block: Block =
@@ -1131,6 +1147,7 @@ impl Storage {
                 let result = self
                     .disjoint_block_height_sequences
                     .highest_sequence()
+                    .map(|sequence| (sequence.low, sequence.high))
                     .unwrap_or_else(|| {
                         error!("storage disjoint sequences of block heights should not be empty");
                         (u64::MAX, u64::MAX)
@@ -1138,6 +1155,23 @@ impl Storage {
                 responder.respond(result).ignore()
             }
         })
+    }
+
+    /// Returns `true` if the storage should attempt to return a block. Depending on the
+    /// `only_from_highest_contiguous_range` flag it should be unconditional or restricted by the
+    /// highest disjoined block sequence.
+    fn should_return_block(
+        &self,
+        block_height: u64,
+        only_from_highest_contiguous_range: bool,
+    ) -> bool {
+        if only_from_highest_contiguous_range {
+            self.disjoint_block_height_sequences
+                .highest_sequence()
+                .map_or(false, |sequence| sequence.contains(block_height))
+        } else {
+            true
+        }
     }
 
     /// Returns `true` if there is a block body for the given block header available in storage.
@@ -1418,7 +1452,29 @@ impl Storage {
         self.get_blocks_while(&mut txn, ttl_not_expired)
     }
 
-    /// Retrieves a single block header in a separate transaction from storage.
+    /// Retrieves a single block header in a given transaction from storage
+    /// respecting the possible restriction on whether the block
+    /// should be present in the available blocks index.
+    fn get_single_block_header_restricted<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        block_hash: &BlockHash,
+        only_from_highest_contiguous_range: bool,
+    ) -> Result<Option<BlockHeader>, FatalStorageError> {
+        let block_header: BlockHeader = match tx.get_value(self.block_header_db, &block_hash)? {
+            Some(block_header) => block_header,
+            None => return Ok(None),
+        };
+
+        if !self.should_return_block(block_header.height(), only_from_highest_contiguous_range) {
+            return Ok(None);
+        }
+
+        self.validate_block_header_hash(&block_header, block_hash)?;
+        Ok(Some(block_header))
+    }
+
+    /// Retrieves a single block header in a given transaction from storage.
     fn get_single_block_header<Tx: Transaction>(
         &self,
         tx: &mut Tx,
@@ -1428,15 +1484,25 @@ impl Storage {
             Some(block_header) => block_header,
             None => return Ok(None),
         };
+        self.validate_block_header_hash(&block_header, block_hash)?;
+        Ok(Some(block_header))
+    }
+
+    /// Validates the block header hash against the expected block hash.
+    fn validate_block_header_hash(
+        &self,
+        block_header: &BlockHeader,
+        block_hash: &BlockHash,
+    ) -> Result<(), FatalStorageError> {
         let found_block_header_hash = block_header.hash(self.verifiable_chunked_hash_activation);
         if found_block_header_hash != *block_hash {
             return Err(FatalStorageError::BlockHeaderNotStoredUnderItsHash {
                 queried_block_hash_bytes: block_hash.as_ref().to_vec(),
                 found_block_header_hash,
-                block_header: Box::new(block_header),
+                block_header: Box::new(block_header.clone()),
             });
         };
-        Ok(Some(block_header))
+        Ok(())
     }
 
     /// Checks whether a block at the given height exists in the block height index (and, since the
