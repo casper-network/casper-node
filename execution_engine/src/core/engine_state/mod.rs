@@ -38,10 +38,10 @@ use casper_types::{
     contracts::NamedKeys,
     system::{
         auction::{
-            self, EraValidators, UnbondingPurse, ARG_ERA_END_TIMESTAMP_MILLIS,
-            ARG_EVICTED_VALIDATORS, ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS,
-            AUCTION_DELAY_KEY, ERA_ID_KEY, LOCKED_FUNDS_PERIOD_KEY,
-            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+            EraValidators, UnbondingPurse, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS,
+            ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY, ERA_ID_KEY,
+            LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY,
+            VALIDATOR_SLOTS_KEY,
         },
         handle_payment,
         mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
@@ -90,6 +90,7 @@ use crate::{
         },
         trie::{TrieOrChunk, TrieOrChunkId},
     },
+    system::auction,
 };
 
 /// The maximum amount of motes that payment code execution can cost.
@@ -1816,7 +1817,7 @@ where
             }
         };
 
-        let era_validators_result = auction::era_validators_from_snapshot(snapshot);
+        let era_validators_result = auction::detail::era_validators_from_snapshot(snapshot);
         Ok(era_validators_result)
     }
 

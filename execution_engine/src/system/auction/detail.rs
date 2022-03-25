@@ -1,20 +1,21 @@
-use alloc::{collections::BTreeMap, vec::Vec};
-use core::convert::TryInto;
+use std::{collections::BTreeMap, convert::TryInto};
 
 use num_rational::Ratio;
 
-use crate::{
+use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::auction::{
-        constants::*, Auction, Bids, Delegator, EraId, Error, MintProvider, RuntimeProvider,
-        SeigniorageAllocation, SeigniorageRecipientsSnapshot, StorageProvider, UnbondingPurse,
-        UnbondingPurses,
+        Bids, Delegator, Error, SeigniorageAllocation, SeigniorageRecipientsSnapshot,
+        UnbondingPurse, UnbondingPurses, AUCTION_DELAY_KEY, ERA_END_TIMESTAMP_MILLIS_KEY,
+        ERA_ID_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
     },
-    ApiError, CLTyped, Key, KeyTag, PublicKey, URef, U512,
+    ApiError, CLTyped, EraId, Key, KeyTag, PublicKey, URef, U512,
 };
 
-use super::{Bid, EraValidators, ValidatorWeights};
+use super::{
+    Auction, Bid, EraValidators, MintProvider, RuntimeProvider, StorageProvider, ValidatorWeights,
+};
 
 fn read_from<P, T>(provider: &mut P, name: &str) -> Result<T, Error>
 where
@@ -460,7 +461,9 @@ where
 ///
 /// This is `pub` as it is used not just in the relevant auction entry point, but also by the
 /// engine state while directly querying for the era validators.
-pub fn era_validators_from_snapshot(snapshot: SeigniorageRecipientsSnapshot) -> EraValidators {
+pub(crate) fn era_validators_from_snapshot(
+    snapshot: SeigniorageRecipientsSnapshot,
+) -> EraValidators {
     snapshot
         .into_iter()
         .map(|(era_id, recipients)| {

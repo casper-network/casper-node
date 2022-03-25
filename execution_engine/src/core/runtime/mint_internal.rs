@@ -1,15 +1,19 @@
 use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
-    system::{
-        mint::{Error, Mint, RuntimeProvider, StorageProvider, SystemProvider},
-        CallStackElement,
-    },
+    system::{mint::Error, CallStackElement},
     CLTyped, CLValue, Key, Phase, StoredValue, URef, U512,
 };
 
 use super::Runtime;
-use crate::{core::execution, storage::global_state::StateReader};
+use crate::{
+    core::execution,
+    storage::global_state::StateReader,
+    system::mint::{
+        runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
+        system_provider::SystemProvider, Mint,
+    },
+};
 
 impl From<execution::Error> for Option<Error> {
     fn from(exec_error: execution::Error) -> Self {
