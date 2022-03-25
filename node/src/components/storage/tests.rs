@@ -1751,11 +1751,11 @@ fn should_update_lowest_available_block_height_when_below_stored_range() {
 }
 
 #[test]
-fn should_update_lowest_available_block_height_when_above_initial_range() {
+fn should_update_lowest_available_block_height_when_above_initial_range_with_gap() {
     // Set an initial storage instance to have a range of [100, 101].
     const INITIAL_LOW: u64 = 100;
     const INITIAL_HIGH: u64 = INITIAL_LOW + 1;
-    const NEW_LOW: u64 = INITIAL_HIGH + 1;
+    const NEW_LOW: u64 = INITIAL_HIGH + 2;
 
     let mut harness = setup_range(INITIAL_LOW, INITIAL_HIGH);
     let verifiable_chunked_hash_activation = EraId::new(u64::MAX);
@@ -1767,7 +1767,7 @@ fn should_update_lowest_available_block_height_when_above_initial_range() {
             AvailableBlockRange::new(INITIAL_LOW, INITIAL_HIGH).unwrap()
         );
 
-        // Check that updating the low value to a value higher than the INITIAL (not current) high
+        // Check that updating the low value to a value 2 higher than the INITIAL (not current) high
         // is actioned.
         let (block, _) = random_block_at_height(&mut harness.rng, NEW_LOW, Block::random_v1);
         storage.write_block(&block).unwrap();
@@ -1785,6 +1785,44 @@ fn should_update_lowest_available_block_height_when_above_initial_range() {
     assert_eq!(
         storage.get_available_block_range(),
         AvailableBlockRange::new(NEW_LOW, NEW_LOW).unwrap()
+    );
+}
+
+#[test]
+fn should_not_update_lowest_available_block_height_when_above_initial_range_with_no_gap() {
+    // Set an initial storage instance to have a range of [100, 101].
+    const INITIAL_LOW: u64 = 100;
+    const INITIAL_HIGH: u64 = INITIAL_LOW + 1;
+    const NEW_LOW: u64 = INITIAL_HIGH + 1;
+
+    let mut harness = setup_range(INITIAL_LOW, INITIAL_HIGH);
+    let verifiable_chunked_hash_activation = EraId::new(u64::MAX);
+
+    {
+        let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+        assert_eq!(
+            storage.get_available_block_range(),
+            AvailableBlockRange::new(INITIAL_LOW, INITIAL_HIGH).unwrap()
+        );
+
+        // Check that updating the low value to a value 1 higher than the INITIAL (not current) high
+        // is a no-op.
+        let (block, _) = random_block_at_height(&mut harness.rng, NEW_LOW, Block::random_v1);
+        storage.write_block(&block).unwrap();
+        storage
+            .update_lowest_available_block_height(NEW_LOW)
+            .unwrap();
+        assert_eq!(
+            storage.get_available_block_range(),
+            AvailableBlockRange::new(INITIAL_LOW, NEW_LOW).unwrap()
+        );
+    }
+
+    // Check the update was persisted.
+    let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    assert_eq!(
+        storage.get_available_block_range(),
+        AvailableBlockRange::new(INITIAL_LOW, NEW_LOW).unwrap()
     );
 }
 
