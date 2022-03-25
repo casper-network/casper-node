@@ -205,7 +205,7 @@ where
                 );
 
                 // Replay postponed events onto new state.
-                for ev in pending.into_iter() {
+                for ev in pending.drain(..) {
                     effects.extend(new_ready_state.handle_event(effect_builder, ev));
                 }
 
