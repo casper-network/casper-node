@@ -1779,15 +1779,20 @@ impl Storage {
         &mut self,
         new_height: u64,
     ) -> Result<(), FatalStorageError> {
-        // We should update the value if it wasn't already stored, or if the new value is outside
-        // the available range at startup (after pruning due to hard-reset).
+        // We should update the value if
+        // * it wasn't already stored, or
+        // * the new value is lower than the available range at startup, or
+        // * the new value is 2 or more higher than (after pruning due to hard-reset) the available
+        //   range at startup.
         let should_update = {
             let mut txn = self.env.begin_ro_txn()?;
             match txn.get_value_bytesrepr::<_, u64>(
                 self.state_store_db,
                 &KEY_LOWEST_AVAILABLE_BLOCK_HEIGHT,
             )? {
-                Some(height) => new_height < height || new_height > self.highest_block_at_startup,
+                Some(height) => {
+                    new_height < height || new_height > self.highest_block_at_startup + 1
+                }
                 None => true,
             }
         };
