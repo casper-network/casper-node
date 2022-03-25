@@ -65,6 +65,7 @@ use crate::{
         self,
         event_queue_metrics::EventQueueMetrics,
         initializer,
+        offloaded::Offloaded,
         participating::{self, Error, ParticipatingInitConfig},
         EventQueueHandle, Finalize, ReactorExit,
     },
@@ -484,7 +485,7 @@ pub(crate) struct Reactor {
     address_gossiper: Gossiper<GossipedAddress, JoinerEvent>,
     config: participating::Config,
     chainspec_loader: ChainspecLoader,
-    storage: Storage,
+    storage: Offloaded<Storage>,
     contract_runtime: ContractRuntime,
     chain_synchronizer: ChainSynchronizer,
     deploy_fetcher: Fetcher<Deploy>,
@@ -528,10 +529,12 @@ impl reactor::Reactor for Reactor {
         let initializer::Reactor {
             config: with_dir_config,
             chainspec_loader,
-            storage,
+            storage: storage_offloaded,
             contract_runtime,
             small_network_identity,
         } = initializer;
+
+        let storage = storage_offloaded.into_inner();
 
         // We don't need to be super precise about the startup time, i.e.
         // we can skip the time spent in `initializer` for the sake of code simplicity.
@@ -644,7 +647,7 @@ impl reactor::Reactor for Reactor {
                 address_gossiper,
                 config,
                 chainspec_loader,
-                storage,
+                storage: Offloaded::new(storage),
                 contract_runtime,
                 chain_synchronizer,
                 block_by_hash_fetcher,
@@ -1112,7 +1115,7 @@ impl Reactor {
             chainspec_loader: self.chainspec_loader,
             config: self.config,
             contract_runtime: self.contract_runtime,
-            storage: self.storage,
+            storage: self.storage.into_inner(),
             joining_outcome,
             event_stream_server: self.event_stream_server,
             small_network_identity: SmallNetworkIdentity::from(&self.small_network),
@@ -1135,7 +1138,8 @@ impl NetworkedReactor for Reactor {
 impl Reactor {
     /// Inspect storage.
     pub(crate) fn storage(&self) -> &Storage {
-        &self.storage
+        todo!()
+        // &self.storage
     }
 
     /// Inspect the contract runtime.

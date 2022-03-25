@@ -68,7 +68,10 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     protocol::Message,
-    reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
+    reactor::{
+        self, event_queue_metrics::EventQueueMetrics, offloaded::Offloaded, EventQueueHandle,
+        ReactorExit,
+    },
     types::{Deploy, DeployHash, ExitCode, FinalitySignature, NodeState},
     utils::{Source, WithDir},
     NodeRng,
@@ -448,7 +451,8 @@ pub(crate) struct ParticipatingInitConfig {
 impl ParticipatingInitConfig {
     /// Inspect storage.
     pub(crate) fn storage(&self) -> &Storage {
-        &self.storage
+        todo!()
+        // &self.storage
     }
 
     /// Inspect the contract runtime.
@@ -469,7 +473,7 @@ pub(crate) struct Reactor {
     metrics: Metrics,
     small_network: SmallNetwork<ParticipatingEvent, Message>,
     address_gossiper: Gossiper<GossipedAddress, ParticipatingEvent>,
-    storage: Storage,
+    storage: Offloaded<Storage>,
     contract_runtime: ContractRuntime,
     rpc_server: RpcServer,
     rest_server: RestServer,
@@ -502,7 +506,8 @@ impl Reactor {
 
     /// Inspect storage.
     pub(crate) fn storage(&self) -> &Storage {
-        &self.storage
+        todo!()
+        // &self.storage
     }
 
     /// Inspect contract runtime.
@@ -747,7 +752,7 @@ impl reactor::Reactor for Reactor {
                 metrics,
                 small_network,
                 address_gossiper,
-                storage,
+                storage: Offloaded::new(storage),
                 contract_runtime,
                 rpc_server,
                 rest_server,

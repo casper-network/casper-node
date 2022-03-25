@@ -30,7 +30,7 @@ use crate::{
         EffectBuilder, Effects,
     },
     protocol::Message,
-    reactor::{self, participating, EventQueueHandle, ReactorExit},
+    reactor::{self, offloaded::Offloaded, participating, EventQueueHandle, ReactorExit},
     types::chainspec,
     utils::WithDir,
     NodeRng,
@@ -172,7 +172,7 @@ pub(crate) enum Error {
 pub(crate) struct Reactor {
     pub(super) config: WithDir<participating::Config>,
     pub(super) chainspec_loader: ChainspecLoader,
-    pub(super) storage: Storage,
+    pub(super) storage: Offloaded<Storage>,
     pub(super) contract_runtime: ContractRuntime,
     pub(super) small_network_identity: SmallNetworkIdentity,
 }
@@ -231,7 +231,7 @@ impl Reactor {
         let reactor = Reactor {
             config,
             chainspec_loader,
-            storage,
+            storage: Offloaded::new(storage),
             contract_runtime,
             small_network_identity,
         };
@@ -243,7 +243,8 @@ impl Reactor {
 impl Reactor {
     /// Inspect storage.
     pub(crate) fn storage(&self) -> &Storage {
-        &self.storage
+        todo!()
+        // &self.storage
     }
 
     /// Inspect the contract runtime.
