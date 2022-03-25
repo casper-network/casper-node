@@ -17,9 +17,9 @@ use casper_hashing::Digest;
 use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, SecretKey, U512};
 
 use super::{
-    construct_block_body_to_block_header_reverse_lookup, disjoint_sequences::Sequence,
-    garbage_collect_block_body_v2_db, move_storage_files_to_network_subdir,
-    should_move_storage_files_to_network_subdir, Config, Storage,
+    construct_block_body_to_block_header_reverse_lookup, garbage_collect_block_body_v2_db,
+    move_storage_files_to_network_subdir, should_move_storage_files_to_network_subdir, Config,
+    Storage,
 };
 use crate::{
     components::{
@@ -30,26 +30,13 @@ use crate::{
     effect::{requests::StorageRequest, Multiple},
     testing::{ComponentHarness, TestRng, UnitTestEvent},
     types::{
-        Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Deploy, DeployHash,
-        DeployMetadata, FinalitySignature, FinalizedBlock,
+        Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures, ContiguousBlockRange, Deploy,
+        DeployHash, DeployMetadata, FinalitySignature, FinalizedBlock,
     },
     utils::WithDir,
 };
 
 type BlockGenerators = Vec<fn(&mut TestRng) -> (Block, EraId)>;
-
-impl Storage {
-    fn disjoint_sequences(&self) -> &Vec<Sequence> {
-        self.disjoint_block_height_sequences.sequences()
-    }
-
-    fn add_missing_block_body(&mut self, block_header: &BlockHeader) {
-        self.missing_block_bodies
-            .entry(*block_header.body_hash())
-            .or_default()
-            .push(block_header.height());
-    }
-}
 
 fn new_config(harness: &ComponentHarness<UnitTestEvent>) -> Config {
     const MIB: usize = 1024 * 1024;
@@ -1651,65 +1638,171 @@ fn can_put_and_get_blocks_v2() {
 }
 
 #[test]
-fn update_disjoint_height_sequences() {
+fn should_update_lowest_contiguous_block_height_when_not_stored() {
+    const NEW_LOW: u64 = 100;
     let mut harness = ComponentHarness::default();
-    let verifiable_chunked_hash_activation = EraId::from(1);
+    let verifiable_chunked_hash_activation = EraId::new(u64::MAX);
+
+    {
+        let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+
+        assert_eq!(
+            storage.get_highest_contiguous_block_height_range(),
+            ContiguousBlockRange::new(0, 0).unwrap()
+        );
+
+        // Updating to a block height we don't have in storage should not change the range.
+        storage
+            .update_lowest_contiguous_block_height(NEW_LOW)
+            .unwrap();
+        assert_eq!(
+            storage.get_highest_contiguous_block_height_range(),
+            ContiguousBlockRange::new(0, 0).unwrap()
+        );
+
+        // Store a block at height 100 and update.  Should update the range.
+        let (block, _) = random_block_at_height(&mut harness.rng, NEW_LOW, Block::random_v1);
+        storage.write_block(&block).unwrap();
+        storage
+            .update_lowest_contiguous_block_height(NEW_LOW)
+            .unwrap();
+        assert_eq!(
+            storage.get_highest_contiguous_block_height_range(),
+            ContiguousBlockRange::new(NEW_LOW, NEW_LOW).unwrap()
+        );
+
+        // Store a block at height 101.  Should update the high value only.
+        let (block, _) = random_block_at_height(&mut harness.rng, NEW_LOW + 1, Block::random_v1);
+        storage.write_block(&block).unwrap();
+        assert_eq!(
+            storage.get_highest_contiguous_block_height_range(),
+            ContiguousBlockRange::new(NEW_LOW, NEW_LOW + 1).unwrap()
+        );
+    }
+
+    // Should have persisted the `lowest_contiguous_block_height`, so that a new instance will be
+    // initialized with the previous value.
+    {
+        let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+        assert_eq!(
+            storage.get_highest_contiguous_block_height_range(),
+            ContiguousBlockRange::new(NEW_LOW, NEW_LOW + 1).unwrap()
+        );
+    }
+}
+
+fn setup_range(low: u64, high: u64) -> ComponentHarness<UnitTestEvent> {
+    let mut harness = ComponentHarness::default();
+    let verifiable_chunked_hash_activation = EraId::new(u64::MAX);
 
     let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
-
-    // Put single block, it should unconditionally be available in
-    // `disjoint_block_height_sequences`.
-    let (block_1, _) = random_block_at_height(&mut harness.rng, 1, Block::random_v1);
-    storage.update_disjoint_height_sequences(block_1.header());
+    let (block, _) = random_block_at_height(&mut harness.rng, low, Block::random_v1);
+    storage.write_block(&block).unwrap();
+    let (block, _) = random_block_at_height(&mut harness.rng, high, Block::random_v1);
+    storage.write_block(&block).unwrap();
+    storage.update_lowest_contiguous_block_height(low).unwrap();
     assert_eq!(
-        storage.disjoint_sequences(),
-        &vec![Sequence::new_with_bounds(1, 1)]
+        storage.get_highest_contiguous_block_height_range(),
+        ContiguousBlockRange::new(low, high).unwrap()
     );
 
-    // Indicate that there are two block headers with missing bodies.
-    let (block_2, _) = random_block_at_height(&mut harness.rng, 2, Block::random_v1);
-    let body_hash = block_2.header().body_hash();
-    storage.add_missing_block_body(block_2.header());
+    harness
+}
 
-    let mut block_3 = block_2.clone();
-    block_3.set_height(3, verifiable_chunked_hash_activation);
-    storage.add_missing_block_body(block_3.header());
+#[test]
+fn should_update_lowest_contiguous_block_height_when_below_stored_range() {
+    // Set an initial storage instance to have a range of [100, 101].
+    const INITIAL_LOW: u64 = 100;
+    const INITIAL_HIGH: u64 = INITIAL_LOW + 1;
+    const NEW_LOW: u64 = INITIAL_LOW - 1;
 
-    let mut expected_missing_block_bodies = HashMap::new();
-    expected_missing_block_bodies.insert(*body_hash, vec![2, 3]);
+    let mut harness = setup_range(INITIAL_LOW, INITIAL_HIGH);
+    let verifiable_chunked_hash_activation = EraId::new(u64::MAX);
 
-    assert_eq!(expected_missing_block_bodies, storage.missing_block_bodies);
+    {
+        let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+        assert_eq!(
+            storage.get_highest_contiguous_block_height_range(),
+            ContiguousBlockRange::new(INITIAL_LOW, INITIAL_HIGH).unwrap()
+        );
+
+        // Check that updating to a value lower than the current low is actioned.
+        let (block, _) = random_block_at_height(&mut harness.rng, NEW_LOW, Block::random_v1);
+        storage.write_block(&block).unwrap();
+        storage
+            .update_lowest_contiguous_block_height(NEW_LOW)
+            .unwrap();
+        assert_eq!(
+            storage.get_highest_contiguous_block_height_range(),
+            ContiguousBlockRange::new(NEW_LOW, INITIAL_HIGH).unwrap()
+        );
+    }
+
+    // Check the update was persisted.
+    let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
     assert_eq!(
-        storage.disjoint_sequences(),
-        &vec![Sequence::new_with_bounds(1, 1)],
-        "disjoint sequences should stay intact"
+        storage.get_highest_contiguous_block_height_range(),
+        ContiguousBlockRange::new(NEW_LOW, INITIAL_HIGH).unwrap()
+    );
+}
+
+#[test]
+fn should_update_lowest_contiguous_block_height_when_above_initial_range() {
+    // Set an initial storage instance to have a range of [100, 101].
+    const INITIAL_LOW: u64 = 100;
+    const INITIAL_HIGH: u64 = INITIAL_LOW + 1;
+    const NEW_LOW: u64 = INITIAL_HIGH + 1;
+
+    let mut harness = setup_range(INITIAL_LOW, INITIAL_HIGH);
+    let verifiable_chunked_hash_activation = EraId::new(u64::MAX);
+
+    {
+        let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+        assert_eq!(
+            storage.get_highest_contiguous_block_height_range(),
+            ContiguousBlockRange::new(INITIAL_LOW, INITIAL_HIGH).unwrap()
+        );
+
+        // Check that updating the low value to a value higher than the INITIAL (not current) high
+        // is actioned.
+        let (block, _) = random_block_at_height(&mut harness.rng, NEW_LOW, Block::random_v1);
+        storage.write_block(&block).unwrap();
+        storage
+            .update_lowest_contiguous_block_height(NEW_LOW)
+            .unwrap();
+        assert_eq!(
+            storage.get_highest_contiguous_block_height_range(),
+            ContiguousBlockRange::new(NEW_LOW, NEW_LOW).unwrap()
+        );
+    }
+
+    // Check the update was persisted.
+    let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    assert_eq!(
+        storage.get_highest_contiguous_block_height_range(),
+        ContiguousBlockRange::new(NEW_LOW, NEW_LOW).unwrap()
+    );
+}
+
+#[test]
+fn should_not_update_lowest_contiguous_block_height_when_within_initial_range() {
+    // Set an initial storage instance to have a range of [100, 101].
+    const INITIAL_LOW: u64 = 100;
+    const INITIAL_HIGH: u64 = INITIAL_LOW + 1;
+    let harness = setup_range(INITIAL_LOW, INITIAL_HIGH);
+    let verifiable_chunked_hash_activation = EraId::new(u64::MAX);
+
+    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    assert_eq!(
+        storage.get_highest_contiguous_block_height_range(),
+        ContiguousBlockRange::new(INITIAL_LOW, INITIAL_HIGH).unwrap()
     );
 
-    // Write another random block.
-    // Disjoint sequences should now contain two separate sequences, one for block 1
-    // and the other for block 4.
-    let (block_4, _) = random_block_at_height(&mut harness.rng, 4, Block::random_v1);
-    storage.update_disjoint_height_sequences(block_4.header());
-    let mut sequences = storage.disjoint_sequences().clone();
-    sequences.sort();
+    storage
+        .update_lowest_contiguous_block_height(INITIAL_HIGH)
+        .unwrap();
     assert_eq!(
-        sequences,
-        vec![
-            Sequence::new_with_bounds(1, 1),
-            Sequence::new_with_bounds(4, 4),
-        ]
-    );
-
-    // Write full block with the same block body as the two missing ones.
-    // All 5 blocks should now be considered available and missing bodies
-    // map should be empty.
-    let mut block_5 = block_3.clone();
-    block_5.set_height(5, verifiable_chunked_hash_activation);
-    storage.update_disjoint_height_sequences(block_5.header());
-
-    assert_eq!(HashMap::new(), storage.missing_block_bodies);
-    assert_eq!(
-        storage.disjoint_sequences(),
-        &vec![Sequence::new_with_bounds(1, 5)]
+        storage.get_highest_contiguous_block_height_range(),
+        ContiguousBlockRange::new(INITIAL_LOW, INITIAL_HIGH).unwrap()
     );
 }

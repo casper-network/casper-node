@@ -3,7 +3,7 @@ use std::convert::TryFrom;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn};
+use tracing::{debug, warn};
 
 use casper_hashing::Digest;
 use casper_types::{bytesrepr::ToBytes, Key};
@@ -15,7 +15,7 @@ use super::{
 use crate::{
     effect::EffectBuilder,
     reactor::QueueKind,
-    types::{json_compatibility::StoredValue, Block},
+    types::{json_compatibility::StoredValue, Block, ContiguousBlockRange},
 };
 
 pub(super) static MERKLE_PROOF: Lazy<String> = Lazy::new(|| {
@@ -78,13 +78,7 @@ pub(super) async fn run_query_and_encode<REv: ReactorEventT>(
 #[serde(rename_all = "snake_case")]
 pub enum ErrorData {
     /// The highest contiguous height range (inclusive) of fully available blocks.
-    HighestContiguousBlockHeightRange((u64, u64)),
-}
-
-impl ErrorData {
-    pub(super) fn highest_contiguous_block_height_range(low: u64, high: u64) -> Self {
-        ErrorData::HighestContiguousBlockHeightRange((low, high))
-    }
+    HighestContiguousBlockHeightRange(ContiguousBlockRange),
 }
 
 /// Returns a `warp_json_rpc::Error` which includes the highest contiguous height range of fully
@@ -94,20 +88,21 @@ pub(super) async fn missing_block_or_state_root_error<REv: ReactorEventT>(
     error_code: ErrorCode,
     error_message: String,
 ) -> warp_json_rpc::Error {
-    let (low, high) = effect_builder
+    let contiguous_block_range = effect_builder
         .make_request(
             |responder| RpcRequest::GetHighestContiguousBlockHeightRange { responder },
             QueueKind::Api,
         )
         .await;
 
-    info!(
-        low,
-        high, "got request for non-existent data, will respond with msg: {}", error_message
+    debug!(
+        %contiguous_block_range,
+        "got request for non-existent data, will respond with msg: {}", error_message
     );
 
-    warp_json_rpc::Error::custom(error_code as i64, error_message)
-        .with_data(ErrorData::highest_contiguous_block_height_range(low, high))
+    warp_json_rpc::Error::custom(error_code as i64, error_message).with_data(
+        ErrorData::HighestContiguousBlockHeightRange(contiguous_block_range),
+    )
 }
 
 pub(super) async fn get_block<REv: ReactorEventT>(

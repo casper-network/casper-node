@@ -3,6 +3,7 @@
 pub(crate) mod appendable_block;
 mod block;
 pub mod chainspec;
+mod contiguous_block_range;
 mod deploy;
 pub mod error;
 mod exit_code;
@@ -28,6 +29,7 @@ pub use block::{
 pub(crate) use block::{BlockHeaderWithMetadata, BlockPayload, BlockWithMetadata};
 pub use chainspec::Chainspec;
 pub(crate) use chainspec::{ActivationPoint, ChainspecRawBytes};
+pub use contiguous_block_range::{ContiguousBlockRange, ContiguousBlockRangeError};
 pub use datasize::DataSize;
 pub use deploy::{
     Approval, Deploy, DeployConfigurationFailure, DeployHash, DeployHeader, DeployMetadata,
