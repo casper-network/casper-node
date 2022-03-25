@@ -167,7 +167,7 @@ impl From<Vec<u64>> for DisjointSequences {
         input.sort_unstable();
 
         let sequences = input
-            .drain(..)
+            .into_iter()
             .peekable()
             .batching(|iter| match iter.next() {
                 None => None,

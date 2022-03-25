@@ -449,7 +449,7 @@ async fn run_gossip(rng: &mut TestRng, network_size: usize, deploy_count: usize)
     .unzip();
 
     // Give each deploy to a randomly-chosen node to be gossiped.
-    for deploy in deploys.drain(..) {
+    for deploy in deploys.into_iter() {
         let index: usize = rng.gen_range(0..network_size);
         network
             .process_injected_effect_on(&node_ids[index], announce_deploy_received(deploy, None))

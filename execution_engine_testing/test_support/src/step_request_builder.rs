@@ -48,6 +48,13 @@ impl StepRequestBuilder {
         self
     }
 
+    /// Appends the given vector of [`RewardItem`] into `reward_items`.
+    pub fn with_reward_items(mut self, reward_items: Vec<RewardItem>) -> Self {
+        let mut local = reward_items;
+        self.reward_items.append(&mut local);
+        self
+    }
+
     /// Pushes the given [`EvictItem`] into `evict_items`.
     pub fn with_evict_item(mut self, evict_item: EvictItem) -> Self {
         self.evict_items.push(evict_item);
