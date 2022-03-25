@@ -172,7 +172,7 @@ pub(crate) enum Error {
 pub(crate) struct Reactor {
     pub(super) config: WithDir<participating::Config>,
     pub(super) chainspec_loader: ChainspecLoader,
-    pub(super) storage: Offloaded<Storage>,
+    pub(super) storage: Offloaded<Event, Storage>,
     pub(super) contract_runtime: ContractRuntime,
     pub(super) small_network_identity: SmallNetworkIdentity,
 }
@@ -181,6 +181,7 @@ impl Reactor {
     fn new_with_chainspec_loader(
         config: <Self as reactor::Reactor>::Config,
         registry: &Registry,
+        event_queue: EventQueueHandle<<Self as reactor::Reactor>::Event>,
         chainspec_loader: ChainspecLoader,
         chainspec_effects: Effects<chainspec_loader::Event>,
     ) -> Result<(Self, Effects<Event>), Error> {
@@ -227,11 +228,12 @@ impl Reactor {
         let effects = reactor::wrap_effects(Event::Chainspec, chainspec_effects);
 
         let small_network_identity = SmallNetworkIdentity::new()?;
+        let effect_builder = EffectBuilder::new(event_queue);
 
         let reactor = Reactor {
             config,
             chainspec_loader,
-            storage: Offloaded::new(storage),
+            storage: Offloaded::new(effect_builder, storage),
             contract_runtime,
             small_network_identity,
         };
@@ -269,7 +271,13 @@ impl reactor::Reactor for Reactor {
         // Construct the `ChainspecLoader` first so we fail fast if the chainspec is invalid.
         let (chainspec_loader, chainspec_effects) =
             ChainspecLoader::new(config.dir(), effect_builder)?;
-        Self::new_with_chainspec_loader(config, registry, chainspec_loader, chainspec_effects)
+        Self::new_with_chainspec_loader(
+            config,
+            registry,
+            event_queue,
+            chainspec_loader,
+            chainspec_effects,
+        )
     }
 
     fn dispatch_event(
@@ -361,7 +369,13 @@ pub(crate) mod tests {
             let effect_builder = EffectBuilder::new(event_queue);
             let (chainspec_loader, chainspec_effects) =
                 ChainspecLoader::new_with_chainspec(chainspec, chainspec_raw_bytes, effect_builder);
-            Self::new_with_chainspec_loader(config, registry, chainspec_loader, chainspec_effects)
+            Self::new_with_chainspec_loader(
+                config,
+                registry,
+                event_queue,
+                chainspec_loader,
+                chainspec_effects,
+            )
         }
     }
 
