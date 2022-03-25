@@ -19,8 +19,9 @@ pub mod shared;
 /// Storage for the execution engine.
 pub mod storage;
 
-// Re-export RocksDb defaults used by our backend. These are required to open the database as
-// it can fail if other settings are used. Alternatively, the settings that were used to open
-// a column family can be determined by examining the `OPTIONS-*` files in
-// `ROCKS_DB_DATA_DIR`.
+/// Re-export RocksDb defaults used by our backend. These are required to open the database as
+/// it can fail if other settings are used. Alternatively, the settings that were used to open
+/// a column family can be determined by examining the `OPTIONS-*` files in
+/// `ROCKS_DB_DATA_DIR`.
 pub use storage::transaction_source::{rocksdb_defaults, ROCKS_DB_DATA_DIR};
+mod system;

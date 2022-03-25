@@ -36,41 +36,9 @@ function _main()
       _step_01 "$STAGE_ID"
       _step_02
       _step_03
-
-      _copy_new_client_binary "$STAGE_ID"
-
       _step_04
       _step_05
       _step_06
-}
-
-function _copy_new_client_binary()
-{
-    local STAGE_ID=${1}
-    local PATH_TO_STAGE
-    local PATH_TO_STAGE_SETTINGS
-    local HIGHEST_VERSION_AND_TYPE
-    local HIGHEST_VERSION
-    local UPGRADED_CLIENT_PATH
-    local CLIENT_PATH
-
-    # Source the settings.sh file.
-    PATH_TO_STAGE="$(get_path_to_stage $STAGE_ID)"
-    PATH_TO_STAGE_SETTINGS="$PATH_TO_STAGE/settings.sh"
-    source "$PATH_TO_STAGE_SETTINGS"
-
-    # Read the last line - will be e.g. "1_5_0:local".
-    HIGHEST_VERSION_AND_TYPE="${NCTL_STAGE_TARGETS[-1]}"
-
-    # Extract the version from the line.
-    IFS=':' read -ra SPLIT_LINE <<< "$HIGHEST_VERSION_AND_TYPE"
-    HIGHEST_VERSION="${SPLIT_LINE[0]}"
-
-    UPGRADED_CLIENT_PATH="$PATH_TO_STAGE/$HIGHEST_VERSION/casper-client"
-    CLIENT_PATH="$(get_path_to_client)"
-    log "Replacing client binary at $CLIENT_PATH with $UPGRADED_CLIENT_PATH"
-
-    cp "$UPGRADED_CLIENT_PATH" "$CLIENT_PATH"
 }
 
 # Step 01: Start network from pre-built stage.
@@ -81,8 +49,7 @@ function _step_01()
     log_step_upgrades 1 "starting network from stage ($STAGE_ID)"
 
     source "$NCTL/sh/assets/setup_from_stage.sh" \
-            stage="$STAGE_ID" \
-            accounts_path="$NCTL/sh/scenarios/accounts_toml/upgrade_scenario_3.accounts.toml"
+            stage="$STAGE_ID"
     source "$NCTL/sh/node/start.sh" node=all
 }
 

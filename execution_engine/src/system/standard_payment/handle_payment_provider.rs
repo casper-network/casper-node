@@ -1,4 +1,4 @@
-use crate::{ApiError, URef};
+use casper_types::{ApiError, URef};
 
 /// Provider of handle payment functionality.
 pub trait HandlePaymentProvider {
