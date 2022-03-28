@@ -639,6 +639,13 @@ impl reactor::Reactor for Reactor {
             chainspec_loader.start_checking_for_upgrades(effect_builder),
         ));
 
+        let (offloaded_storage, offloaded_storage_effects) =
+            Offloaded::new(JoinerEvent::Storage, effect_builder, storage);
+        effects.extend(reactor::wrap_effects(
+            JoinerEvent::Storage,
+            offloaded_storage_effects,
+        ));
+
         Ok((
             Self {
                 root,
@@ -647,7 +654,7 @@ impl reactor::Reactor for Reactor {
                 address_gossiper,
                 config,
                 chainspec_loader,
-                storage: Offloaded::new(effect_builder, storage),
+                storage: offloaded_storage,
                 contract_runtime,
                 chain_synchronizer,
                 block_by_hash_fetcher,

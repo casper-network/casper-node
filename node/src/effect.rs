@@ -434,7 +434,8 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Extract the event queue handle out of the effect builder.
-    #[cfg(test)]
+    ///
+    /// Warning: Code that is not reactor plumbing should not call this function.
     pub(crate) fn into_inner(self) -> EventQueueHandle<REv> {
         self.event_queue
     }

@@ -236,6 +236,11 @@ impl<REv> EventQueueHandle<REv> {
     pub(crate) fn shutdown_flag(&self) -> SharedFlag {
         self.is_shutting_down
     }
+
+    /// Returns a reference to the underlying scheduler.
+    pub(crate) fn raw_scheduler(&self) -> &'static Scheduler<REv> {
+        self.scheduler
+    }
 }
 
 /// Reactor core.

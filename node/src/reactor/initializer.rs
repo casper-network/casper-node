@@ -225,15 +225,22 @@ impl Reactor {
                 .verifiable_chunked_hash_activation,
         )?;
 
-        let effects = reactor::wrap_effects(Event::Chainspec, chainspec_effects);
+        let mut effects = reactor::wrap_effects(Event::Chainspec, chainspec_effects);
 
         let small_network_identity = SmallNetworkIdentity::new()?;
         let effect_builder = EffectBuilder::new(event_queue);
 
+        let (offloaded_storage, offloaded_storage_effects) =
+            Offloaded::new(Event::Storage, effect_builder, storage);
+        effects.extend(reactor::wrap_effects(
+            Event::Storage,
+            offloaded_storage_effects,
+        ));
+
         let reactor = Reactor {
             config,
             chainspec_loader,
-            storage: Offloaded::new(effect_builder, storage),
+            storage: offloaded_storage,
             contract_runtime,
             small_network_identity,
         };

@@ -747,12 +747,19 @@ impl reactor::Reactor for Reactor {
 
         event_stream_server.set_participating_effect_builder(effect_builder);
 
+        let (offloaded_storage, offloaded_storage_effects) =
+            Offloaded::new(ParticipatingEvent::Storage, effect_builder, storage);
+        effects.extend(reactor::wrap_effects(
+            ParticipatingEvent::Storage,
+            offloaded_storage_effects,
+        ));
+
         Ok((
             Reactor {
                 metrics,
                 small_network,
                 address_gossiper,
-                storage: Offloaded::new(effect_builder, storage),
+                storage: offloaded_storage,
                 contract_runtime,
                 rpc_server,
                 rest_server,

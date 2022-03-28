@@ -14,7 +14,7 @@ use tracing::{debug, warn};
 use crate::{
     components::Component,
     effect::{announcements::ControlAnnouncement, EffectBuilder, EffectExt, Effects},
-    fatal,
+    fatal, reactor,
     types::NodeRng,
     utils::child_rng::ChildRng,
 };
@@ -56,19 +56,24 @@ where
 
 /// Runs a component, processing events received on the `event_receiver` channel.
 ///
-/// At startup, the runner first waits to acquire an RNG through the `rng_receiver`.
+/// At startup, the runner first waits to acquire an RNG through the `rng_receiver`. Any effects
+/// from processing the events will be passed on through `effects_sender`.
 ///
-/// Exits once the events channel is closed, or if not RNG could be obtained.
-fn component_runner<REv, C>(
+/// Exits once the events channel is closed, no RNG could be obtained at the start or sending
+/// passing on effects failed.
+fn component_runner<REv, C, W>(
     effect_builder: EffectBuilder<REv>,
     event_receiver: mpsc::Receiver<<C as Component<REv>>::Event>,
     mut component: C,
     rng_receiver: mpsc::Receiver<NodeRng>,
+    effects_sender: tokio::sync::mpsc::UnboundedSender<Effects<REv>>,
+    event_wrap: W,
 ) -> C
 where
-    REv: From<ControlAnnouncement> + Send,
+    REv: From<ControlAnnouncement> + Send + 'static,
     C: Component<REv>,
-    REv: 'static,
+    <C as Component<REv>>::Event: Send + 'static,
+    W: Fn(<C as Component<REv>>::Event) -> REv + Send + Clone + 'static,
 {
     let mut rng = match rng_receiver.recv() {
         Ok(rng) => rng,
@@ -82,9 +87,14 @@ where
     drop(rng_receiver);
 
     while let Ok(event) = event_receiver.recv() {
-        let effects = component.handle_event(effect_builder, &mut rng, event);
+        let effects = reactor::wrap_effects(
+            event_wrap.clone(),
+            component.handle_event(effect_builder, &mut rng, event),
+        );
 
-        // todo!("handle effects");
+        if effects_sender.send(effects).is_err() {
+            todo!()
+        }
     }
 
     debug!("shutting down component runner after channel was closed");
@@ -98,22 +108,58 @@ where
     <C as Component<REv>>::Event: Send + 'static,
     REv: From<ControlAnnouncement> + Send + 'static,
 {
+    // Result<(SmallNetwork<REv, P>, Effects<Event<P>>)>
+
     /// Creates a new offloaded component.
-    pub(crate) fn new(effect_builder: EffectBuilder<REv>, component: C) -> Self {
+    pub(crate) fn new<W>(
+        event_wrap: W,
+        effect_builder: EffectBuilder<REv>,
+        component: C,
+    ) -> (Self, Effects<<C as Component<REv>>::Event>)
+    where
+        W: Fn(<C as Component<REv>>::Event) -> REv + Send + Clone + 'static,
+    {
         let (event_sender, event_receiver) = mpsc::channel();
         let (rng_sender, rng_receiver) = mpsc::channel();
+        let (effects_sender, mut effects_receiver) = tokio::sync::mpsc::unbounded_channel();
 
         // Start background thread for running the component.
         let component_runner = thread::spawn(move || {
-            component_runner(effect_builder, event_receiver, component, rng_receiver)
+            component_runner(
+                effect_builder,
+                event_receiver,
+                component,
+                rng_receiver,
+                effects_sender,
+                event_wrap,
+            )
         });
 
-        Offloaded {
-            component_runner,
-            event_sender,
-            rng_sender: Some(rng_sender),
-            _phantom: PhantomData,
+        // Note: The `effects_receiving_task` will be the only effect returned here, and an outer
+        // `wrap_effects` is entirely unnecessary, as we always call ignore in it. This function
+        // still returns `Effects<<C as Component<REv>>::Event>` to keep in line with the typical
+        // signature of other components.
+        let effects_receiving_task = async move {
+            while let Some(effects) = effects_receiver.recv().await {
+                let scheduler = effect_builder.into_inner().raw_scheduler();
+                reactor::process_effects(
+                    None, // TOOD: Preserve ancestors.
+                    scheduler, effects,
+                )
+                .await;
+            }
         }
+        .ignore();
+
+        (
+            Offloaded {
+                component_runner,
+                event_sender,
+                rng_sender: Some(rng_sender),
+                _phantom: PhantomData,
+            },
+            effects_receiving_task,
+        )
     }
 
     /// Deconstructs the offloaded component.
@@ -154,7 +200,7 @@ where
     ) -> Effects<Self::Event> {
         // Initialize the RNG if not initialized.
         if let Some(rng_sender) = self.rng_sender.take() {
-            if let Err(_) = rng_sender.send(rng.new_child()) {
+            if rng_sender.send(rng.new_child()).is_err() {
                 return fatal!(effect_builder, "could not send RNG down to component").ignore();
             }
         }
