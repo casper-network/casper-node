@@ -15,7 +15,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Added
 * Added `WasmTestBuilder::get_execution_journals` method for returning execution journals for all test runs.
-* Added `WasmTestBuilder::advance_era`, `WasmTestBuilder::advance_eras_by`, and `WasmTestBuilder::advance_era`, and `WasmTestBuilder::advance_eras_by_default_auction_delay` to remove boilerplate code for tests.
+* Added `WasmTestBuilder::advance_era`, `WasmTestBuilder::advance_eras_by`, and `WasmTestBuilder::advance_eras_by_default_auction_delay` to remove boilerplate code for tests.
 
 ### Changed
 * `WasmTestBuilder::get_transforms` is deprecated in favor of `WasmTestBuilder::get_execution_journals`.
