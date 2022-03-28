@@ -6,9 +6,8 @@ use casper_engine_test_support::{
     DbWasmTestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_EXEC_CONFIG,
     DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{
-    core::engine_state::{ChainspecRegistry, EngineConfig, RunGenesisRequest},
-    rocksdb_defaults,
+use casper_execution_engine::core::engine_state::{
+    ChainspecRegistry, EngineConfig, RunGenesisRequest,
 };
 use casper_hashing::Digest;
 use casper_types::{EraId, Key, ProtocolVersion};
@@ -102,7 +101,7 @@ fn should_upgrade_chainspec_registry(cfg: TestConfig) {
             db_fixture::builder_from_global_state_fixture(db_fixture::RELEASE_1_4_4);
         builder
     } else {
-        let mut builder = DbWasmTestBuilder::new(data_dir.path(), rocksdb_defaults());
+        let mut builder = DbWasmTestBuilder::new(data_dir.path());
         builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
         builder
     };

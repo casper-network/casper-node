@@ -99,11 +99,7 @@ pub fn generate_fixture(
     let fixture_root = lmdb_fixtures_root.join(name);
 
     let engine_config = EngineConfig::default();
-    let mut builder = DbWasmTestBuilder::new_with_config(
-        &fixture_root,
-        engine_config,
-        casper_execution_engine::rocksdb_defaults(),
-    );
+    let mut builder = DbWasmTestBuilder::new_with_config(&fixture_root, engine_config);
 
     builder.run_genesis(&genesis_request);
 

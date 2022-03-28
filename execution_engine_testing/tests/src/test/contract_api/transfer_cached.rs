@@ -35,8 +35,7 @@ const ID_NONE: Option<u64> = None;
 #[test]
 fn should_transfer_to_account_with_correct_balances() {
     let data_dir = TempDir::new().expect("should create temp dir");
-    let mut builder =
-        DbWasmTestBuilder::new(data_dir.path(), casper_execution_engine::rocksdb_defaults());
+    let mut builder = DbWasmTestBuilder::new(data_dir.path());
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -93,8 +92,7 @@ fn should_transfer_to_account_with_correct_balances() {
 #[test]
 fn should_transfer_from_default_and_then_to_another_account() {
     let data_dir = TempDir::new().expect("should create temp dir");
-    let mut builder =
-        DbWasmTestBuilder::new(data_dir.path(), casper_execution_engine::rocksdb_defaults());
+    let mut builder = DbWasmTestBuilder::new(data_dir.path());
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 

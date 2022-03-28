@@ -19,11 +19,10 @@ pub fn multiple_native_transfers(
     purse_count: usize,
     use_scratch: bool,
     run_auction: bool,
-    rocksdb_opts: rocksdb::Options,
     block_count: usize,
 ) -> Vec<(usize, usize, usize, usize)> {
     let data_dir = TempDir::new().expect("should create temp dir");
-    let mut builder = DbWasmTestBuilder::new(data_dir.as_ref(), rocksdb_opts);
+    let mut builder = DbWasmTestBuilder::new(data_dir.as_ref());
     let delegator_keys = auction::generate_public_keys(100);
     let validator_keys = auction::generate_public_keys(100);
 
@@ -131,14 +130,8 @@ fn main() {
     let mut time_report =
         BufWriter::new(File::create(format!("time-report-{}.csv", column_name)).unwrap());
 
-    let rocksdb_results = multiple_native_transfers(
-        transfers_per_block,
-        purse_count,
-        true,
-        false,
-        casper_execution_engine::rocksdb_defaults(),
-        block_count,
-    );
+    let rocksdb_results =
+        multiple_native_transfers(transfers_per_block, purse_count, true, false, block_count);
     let transfer_counts = rocksdb_results
         .iter()
         .map(|(_, _, transfers, _)| *transfers)

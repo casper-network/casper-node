@@ -16,7 +16,6 @@ fn setup_bench_run_auction(
     group: &mut BenchmarkGroup<WallTime>,
     validator_count: usize,
     delegator_count: usize,
-    rocksdb_opts: rocksdb::Options,
 ) {
     // Setup delegator public keys
     let delegator_keys = casper_engine_test_support::auction::generate_public_keys(delegator_count);
@@ -24,8 +23,7 @@ fn setup_bench_run_auction(
 
     let data_dir = TempDir::new().expect("should create temp dir");
     let engine_config = EngineConfig::default();
-    let mut builder =
-        DbWasmTestBuilder::new_with_config(data_dir.as_ref(), engine_config, rocksdb_opts);
+    let mut builder = DbWasmTestBuilder::new_with_config(data_dir.as_ref(), engine_config);
     casper_engine_test_support::auction::run_genesis_and_create_initial_accounts(
         &mut builder,
         &validator_keys,
@@ -99,12 +97,7 @@ pub fn auction_bench(c: &mut Criterion) {
             "Starting bench of {} validators and {} delegators",
             validator_count, delegator_count
         );
-        setup_bench_run_auction(
-            &mut group,
-            validator_count,
-            delegator_count,
-            casper_execution_engine::rocksdb_defaults(),
-        );
+        setup_bench_run_auction(&mut group, validator_count, delegator_count);
         println!("Ended bench");
     }
     group.finish();

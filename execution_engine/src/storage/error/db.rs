@@ -35,9 +35,9 @@ pub enum Error {
     #[error("unable to open column family {0}")]
     UnableToOpenColumnFamily(String),
 
-    /// Could not get data under a trie key in lmdb while migrating to rockdb.
+    /// Could not get data under a trie key in lmdb while migrating to rocksdb.
     #[error("corrupt state root {state_root} could not find value under trie key {trie_key}")]
-    CorruptLmdbStateRootDuringMigrationToRocksdb {
+    CorruptLmdbStateRootDuringMigrationToRocksDb {
         /// Trie key that couldn't be found.
         trie_key: Digest,
         /// State root being migrated.

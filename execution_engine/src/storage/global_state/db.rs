@@ -23,6 +23,7 @@ use crate::{
         },
         store::Store,
         transaction_source::{
+            self,
             db::{LmdbEnvironment, RocksDb, RocksDbStore},
             Readable, Transaction, TransactionSource, Writable,
         },
@@ -134,7 +135,7 @@ impl DbGlobalState {
                     )?;
                 }
                 None => {
-                    return Err(error::Error::CorruptLmdbStateRootDuringMigrationToRocksdb {
+                    return Err(error::Error::CorruptLmdbStateRootDuringMigrationToRocksDb {
                         trie_key: next_trie_key,
                         state_root,
                     });
@@ -158,11 +159,11 @@ impl DbGlobalState {
         environment: Arc<LmdbEnvironment>,
         trie_store: Arc<LmdbTrieStore>,
         rocksdb_path: impl AsRef<Path>,
-        rocksdb_opts: rocksdb::Options,
     ) -> Result<Self, error::Error> {
-        let rocksdb_store = RocksDbStore::new(rocksdb_path, rocksdb_opts)?;
+        let rocksdb_store =
+            RocksDbStore::new(rocksdb_path, transaction_source::rocksdb_defaults())?;
 
-        let root_hash: Digest = {
+        let empty_root_hash: Digest = {
             let (root_hash, root) = create_hashed_empty_trie::<Key, StoredValue>()?;
             let mut txn = environment.create_read_write_txn()?;
             let mut rocksdb_txn = rocksdb_store.create_read_write_txn()?;
@@ -172,12 +173,12 @@ impl DbGlobalState {
             environment.env().sync(true)?;
             root_hash
         };
-        Ok(DbGlobalState::new(
-            environment,
-            trie_store,
-            root_hash,
+        Ok(DbGlobalState {
+            lmdb_environment: environment,
+            lmdb_trie_store: trie_store,
+            empty_root_hash,
             rocksdb_store,
-        ))
+        })
     }
 
     /// Creates a state from an existing environment, store, and root_hash.
@@ -186,14 +187,17 @@ impl DbGlobalState {
         environment: Arc<LmdbEnvironment>,
         trie_store: Arc<LmdbTrieStore>,
         empty_root_hash: Digest,
-        rocksdb_store: RocksDbStore,
-    ) -> Self {
-        DbGlobalState {
+        rocksdb_path: impl AsRef<Path>,
+    ) -> Result<Self, error::Error> {
+        let rocksdb_store =
+            RocksDbStore::new(rocksdb_path, transaction_source::rocksdb_defaults())?;
+
+        Ok(DbGlobalState {
             lmdb_environment: environment,
             lmdb_trie_store: trie_store,
             empty_root_hash,
             rocksdb_store,
-        }
+        })
     }
 
     /// Creates an in-memory cache for changes written.
@@ -201,7 +205,7 @@ impl DbGlobalState {
         ScratchGlobalState::new(self.clone())
     }
 
-    /// Write stored values to LMDB.
+    /// Write stored values to RocksDb.
     pub fn put_stored_values(
         &self,
         correlation_id: CorrelationId,
@@ -416,8 +420,7 @@ impl StateProvider for DbGlobalState {
         Ok(trie_hash)
     }
 
-    /// Finds all of the keys of missing descendant `Trie<K,V>` values and optionally performs an
-    /// integrity check on each node
+    /// Finds all of the keys of missing descendant `Trie<K,V>` values.
     fn missing_trie_keys(
         &self,
         correlation_id: CorrelationId,
@@ -512,13 +515,8 @@ mod tests {
         let trie_store =
             Arc::new(LmdbTrieStore::new(&environment, None, DatabaseFlags::empty()).unwrap());
 
-        let engine_state = DbGlobalState::empty(
-            environment,
-            trie_store,
-            &rocksdb_temp_dir.path(),
-            crate::rocksdb_defaults(),
-        )
-        .unwrap();
+        let engine_state =
+            DbGlobalState::empty(environment, trie_store, &rocksdb_temp_dir.path()).unwrap();
         let mut current_root = engine_state.empty_root_hash;
         for TestPair { key, value } in create_test_pairs() {
             let mut stored_values = HashMap::new();

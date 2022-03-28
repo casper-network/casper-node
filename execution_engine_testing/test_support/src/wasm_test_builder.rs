@@ -45,6 +45,7 @@ use casper_execution_engine::{
         transaction_source::db::LmdbEnvironment,
         trie::{merkle_proof::TrieMerkleProof, Trie},
         trie_store::db::LmdbTrieStore,
+        ROCKS_DB_DATA_DIR,
     },
 };
 use casper_hashing::Digest;
@@ -182,11 +183,10 @@ impl InMemoryWasmTestBuilder {
 }
 
 impl DbWasmTestBuilder {
-    /// Returns an [`DbWasmTestBuilder`] with configuration.
+    /// Returns a `DbWasmTestBuilder` using the provided configuration options.
     pub fn new_with_config<T: AsRef<OsStr> + ?Sized>(
         data_dir: &T,
         engine_config: EngineConfig,
-        rocksdb_opts: rocksdb::Options,
     ) -> Self {
         Self::initialize_logging();
         let page_size = *OS_PAGE_SIZE;
@@ -209,8 +209,7 @@ impl DbWasmTestBuilder {
         let global_state = DbGlobalState::empty(
             environment,
             trie_store,
-            global_state_dir.join("rocksdb-data"),
-            rocksdb_opts,
+            global_state_dir.join(ROCKS_DB_DATA_DIR),
         )
         .expect("should create DbGlobalState");
         let engine_state = EngineState::new(global_state, engine_config);
@@ -250,9 +249,9 @@ impl DbWasmTestBuilder {
         Ok(total)
     }
 
-    /// Returns a new [`DbWasmTestBuilder`].
-    pub fn new<T: AsRef<OsStr> + ?Sized>(data_dir: &T, rocksdb_opts: rocksdb::Options) -> Self {
-        Self::new_with_config(data_dir, EngineConfig::default(), rocksdb_opts)
+    /// Returns a new `DbWasmTestBuilder`.
+    pub fn new<T: AsRef<OsStr> + ?Sized>(data_dir: &T) -> Self {
+        Self::new_with_config(data_dir, EngineConfig::default())
     }
 
     /// Creates a new instance of builder using the supplied configurations, opening wrapped LMDBs
@@ -292,8 +291,7 @@ impl DbWasmTestBuilder {
         let global_state = DbGlobalState::empty(
             environment,
             trie_store,
-            global_state_dir.as_ref().join("rocksdb-data"),
-            casper_execution_engine::rocksdb_defaults(),
+            global_state_dir.as_ref().join(ROCKS_DB_DATA_DIR),
         )
         .expect("should create DbGlobalState");
         let engine_state = EngineState::new(global_state, engine_config);

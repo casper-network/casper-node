@@ -85,7 +85,6 @@ async fn main() -> Result<(), anyhow::Error> {
             max_db_size,
             Digest::from([0; 32]),
             opts.manual_sync_enabled,
-            casper_execution_engine::rocksdb_defaults(),
         )?;
         info!("Running migration of data from lmdb to rocksdb...");
 
@@ -134,7 +133,6 @@ async fn main() -> Result<(), anyhow::Error> {
         max_db_size,
         *previous_block_header.state_root_hash(),
         opts.manual_sync_enabled,
-        casper_execution_engine::rocksdb_defaults(),
     )?;
 
     let mut execution_pre_state = ExecutionPreState::from_block_header(

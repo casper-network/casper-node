@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.  The format
 * Add ability to enable strict args checking when executing a contract; i.e. that all non-optional args are provided and of the correct `CLType`.
 
 ### Changed
+* Change backend datastore to use RocksDb, along with migrations for existing data from LMDB to RocksDb.
 * Change contract runtime to allow caching GlobalState changes during execution of a single block.
 * Fix some integer casts.
 * Change both genesis and upgrade functions to write `ChainspecRegistry` under the fixed `Key::ChainspecRegistry`.
@@ -30,9 +31,6 @@ All notable changes to this project will be documented in this file.  The format
 ## 1.5.0
 
 ### Changed
-* Changed backend datastore to use RocksDb, along with migrations for existing data from LMDB to RocksDb.
-* (Perf) Changed contract runtime to allow caching GlobalState changes during execution of a single block.
-* Fixed some integer casts.
 * Temporarily limit the size of individual values stored in global state.
 
 ### Security

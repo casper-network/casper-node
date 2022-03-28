@@ -35,8 +35,8 @@ use casper_execution_engine::{
         transaction_source::db::LmdbEnvironment,
         trie::{TrieOrChunk, TrieOrChunkId},
         trie_store::db::LmdbTrieStore,
+        ROCKS_DB_DATA_DIR,
     },
-    ROCKS_DB_DATA_DIR,
 };
 use casper_hashing::Digest;
 use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion};
@@ -271,48 +271,15 @@ impl ContractRuntime {
                 chainspec_raw_bytes,
                 responder,
             } => {
-                let engine_state = Arc::clone(&self.engine_state);
-                async move {
-                    let result = commit_genesis(&engine_state, &chainspec, &chainspec_raw_bytes);
-                    if let Err(lmdb_error) = engine_state.flush_environment() {
-                        fatal!(
-                            effect_builder,
-                            "error flushing lmdb environment {:?}",
-                            lmdb_error
-                        )
-                        .await;
-                    } else {
-                        trace!(?result, "commit_genesis response");
-                        responder.respond(result).await;
-                    }
-                }
+                let result = self.commit_genesis(&chainspec, &chainspec_raw_bytes);
+                responder.respond(result).ignore()
             }
-            .ignore(),
             ContractRuntimeRequest::Upgrade {
                 upgrade_config,
                 responder,
-            } => {
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let result = commit_upgrade(*upgrade_config, &engine_state, metrics);
-                    match engine_state.flush_environment() {
-                        Err(db_error) => {
-                            fatal!(
-                                effect_builder,
-                                "error flushing lmdb environment {:?}",
-                                db_error
-                            )
-                            .await;
-                        }
-                        Ok(_) => {
-                            trace!(?result, "commit_upgrade response");
-                            responder.respond(result).await;
-                        }
-                    }
-                }
-            }
-            .ignore(),
+            } => responder
+                .respond(self.commit_upgrade(*upgrade_config))
+                .ignore(),
             ContractRuntimeRequest::Query {
                 query_request,
                 responder,
@@ -580,54 +547,6 @@ impl ContractRuntime {
     }
 }
 
-fn commit_upgrade(
-    upgrade_config: UpgradeConfig,
-    engine_state: &EngineState<DbGlobalState>,
-    metrics: Arc<Metrics>,
-) -> Result<UpgradeSuccess, engine_state::Error> {
-    debug!(?upgrade_config, "upgrade");
-    let start = Instant::now();
-    let result = engine_state.commit_upgrade(CorrelationId::new(), upgrade_config);
-    metrics
-        .commit_upgrade
-        .observe(start.elapsed().as_secs_f64());
-    debug!(?result, "upgrade result");
-    result
-}
-
-/// Commits a genesis request.
-fn commit_genesis(
-    engine_state: &EngineState<DbGlobalState>,
-    chainspec: &Chainspec,
-    chainspec_raw_bytes: &ChainspecRawBytes,
-) -> Result<GenesisSuccess, engine_state::Error> {
-    let correlation_id = CorrelationId::new();
-    let genesis_config_hash = chainspec.hash();
-    let protocol_version = chainspec.protocol_config.version;
-    // Transforms a chainspec into a valid genesis config for execution engine.
-    let ee_config = chainspec.into();
-
-    let chainspec_registry = ChainspecRegistry::new_with_genesis(
-        chainspec_raw_bytes.chainspec_bytes(),
-        chainspec_raw_bytes
-            .maybe_genesis_accounts_bytes()
-            .ok_or_else(|| {
-                error!("failed to provide genesis account bytes in commit genesis");
-                engine_state::Error::Genesis(Box::new(GenesisError::MissingChainspecRegistryEntry))
-            })?,
-    );
-
-    let result = engine_state.commit_genesis(
-        correlation_id,
-        genesis_config_hash,
-        protocol_version,
-        &ee_config,
-        chainspec_registry,
-    );
-    engine_state.flush_environment()?;
-    result
-}
-
 impl ContractRuntime {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
@@ -664,12 +583,8 @@ impl ContractRuntime {
             DatabaseFlags::empty(),
         )?);
 
-        let global_state = DbGlobalState::empty(
-            environment,
-            trie_store,
-            storage_dir.join(ROCKS_DB_DATA_DIR),
-            casper_execution_engine::rocksdb_defaults(),
-        )?;
+        let global_state =
+            DbGlobalState::empty(environment, trie_store, storage_dir.join(ROCKS_DB_DATA_DIR))?;
         let engine_config = EngineConfig::new(
             contract_runtime_config.max_query_depth(),
             max_associated_keys,
@@ -697,6 +612,57 @@ impl ContractRuntime {
 
     fn verifiable_chunked_hash_activation(&self) -> EraId {
         self.verifiable_chunked_hash_activation
+    }
+
+    fn commit_genesis(
+        &self,
+        chainspec: &Chainspec,
+        chainspec_raw_bytes: &ChainspecRawBytes,
+    ) -> Result<GenesisSuccess, engine_state::Error> {
+        let correlation_id = CorrelationId::new();
+        let genesis_config_hash = chainspec.hash();
+        let protocol_version = chainspec.protocol_config.version;
+        // Transforms a chainspec into a valid genesis config for execution engine.
+        let ee_config = chainspec.into();
+
+        let chainspec_registry = ChainspecRegistry::new_with_genesis(
+            chainspec_raw_bytes.chainspec_bytes(),
+            chainspec_raw_bytes
+                .maybe_genesis_accounts_bytes()
+                .ok_or_else(|| {
+                    error!("failed to provide genesis account bytes in commit genesis");
+                    engine_state::Error::Genesis(Box::new(
+                        GenesisError::MissingChainspecRegistryEntry,
+                    ))
+                })?,
+        );
+
+        let result = self.engine_state.commit_genesis(
+            correlation_id,
+            genesis_config_hash,
+            protocol_version,
+            &ee_config,
+            chainspec_registry,
+        );
+        self.engine_state.flush_environment()?;
+        result
+    }
+
+    fn commit_upgrade(
+        &self,
+        upgrade_config: UpgradeConfig,
+    ) -> Result<UpgradeSuccess, engine_state::Error> {
+        debug!(?upgrade_config, "upgrade");
+        let start = Instant::now();
+        let result = self
+            .engine_state
+            .commit_upgrade(CorrelationId::new(), upgrade_config);
+        self.engine_state.flush_environment()?;
+        self.metrics
+            .commit_upgrade
+            .observe(start.elapsed().as_secs_f64());
+        debug!(?result, "upgrade result");
+        result
     }
 
     /// Retrieve trie keys

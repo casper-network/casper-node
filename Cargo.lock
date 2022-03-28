@@ -388,7 +388,7 @@ dependencies = [
 
 [[package]]
 name = "casper-engine-test-support"
-version = "2.0.3"
+version = "2.1.0"
 dependencies = [
  "casper-execution-engine",
  "casper-hashing",

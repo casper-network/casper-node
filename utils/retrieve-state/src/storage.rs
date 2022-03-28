@@ -9,8 +9,7 @@ use lmdb::DatabaseFlags;
 use casper_execution_engine::{
     core::engine_state::{EngineConfig, EngineState},
     storage::{
-        global_state::db::DbGlobalState,
-        transaction_source::db::{LmdbEnvironment, RocksDbStore},
+        global_state::db::DbGlobalState, transaction_source::db::LmdbEnvironment,
         trie_store::db::LmdbTrieStore,
     },
 };
@@ -68,7 +67,6 @@ pub fn load_execution_engine(
     default_max_db_size: usize,
     state_root_hash: Digest,
     manual_sync_enabled: bool,
-    rocksdb_opts: rocksdb::Options,
 ) -> Result<(Arc<EngineState<DbGlobalState>>, Arc<LmdbEnvironment>), anyhow::Error> {
     let lmdb_data_file = ee_lmdb_path.as_ref().join("data.lmdb");
     if !ee_lmdb_path.as_ref().join("data.lmdb").exists() {
@@ -80,13 +78,12 @@ pub fn load_execution_engine(
     let lmdb_environment =
         create_lmdb_environment(&ee_lmdb_path, default_max_db_size, manual_sync_enabled)?;
     let lmdb_trie_store = Arc::new(LmdbTrieStore::open(&lmdb_environment, None)?);
-    let rocksdb_store = RocksDbStore::new(rocksdb_path.as_ref(), rocksdb_opts)?;
     let global_state = DbGlobalState::new(
         Arc::clone(&lmdb_environment),
         lmdb_trie_store,
         state_root_hash,
-        rocksdb_store,
-    );
+        rocksdb_path,
+    )?;
     Ok((
         Arc::new(EngineState::new(global_state, EngineConfig::default())),
         lmdb_environment,
@@ -117,12 +114,8 @@ pub fn create_execution_engine(
         None,
         DatabaseFlags::empty(),
     )?);
-    let global_state = DbGlobalState::empty(
-        Arc::clone(&lmdb_environment),
-        lmdb_trie_store,
-        rocksdb_path,
-        casper_execution_engine::rocksdb_defaults(),
-    )?;
+    let global_state =
+        DbGlobalState::empty(Arc::clone(&lmdb_environment), lmdb_trie_store, rocksdb_path)?;
 
     Ok((
         Arc::new(EngineState::new(global_state, EngineConfig::default())),

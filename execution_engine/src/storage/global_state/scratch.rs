@@ -321,13 +321,8 @@ mod tests {
         let trie_store =
             Arc::new(LmdbTrieStore::new(&environment, None, DatabaseFlags::empty()).unwrap());
 
-        let engine_state = DbGlobalState::empty(
-            environment,
-            trie_store,
-            tempdir().unwrap(),
-            crate::rocksdb_defaults(),
-        )
-        .unwrap();
+        let engine_state =
+            DbGlobalState::empty(environment, trie_store, tempdir().unwrap()).unwrap();
         let mut current_root = engine_state.empty_root_hash;
         for TestPair { key, value } in create_test_pairs() {
             let mut stored_values = HashMap::new();

@@ -77,14 +77,14 @@ impl Writable for RocksDb {
 
 /// Environment for rocksdb.
 #[derive(Clone)]
-pub struct RocksDbStore {
+pub(crate) struct RocksDbStore {
     pub(crate) rocksdb: RocksDb,
     pub(crate) path: PathBuf,
 }
 
 impl RocksDbStore {
     /// Create a new environment for RocksDB.
-    pub fn new(
+    pub(crate) fn new(
         path: impl AsRef<Path>,
         rocksdb_opts: Options,
     ) -> Result<RocksDbStore, rocksdb::Error> {
@@ -103,7 +103,7 @@ impl RocksDbStore {
     }
 
     /// Return the path to the backing rocksdb files.
-    pub fn path(&self) -> PathBuf {
+    pub(crate) fn path(&self) -> PathBuf {
         self.path.clone()
     }
 }

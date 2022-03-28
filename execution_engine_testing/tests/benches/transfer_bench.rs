@@ -19,7 +19,7 @@ pub fn transfer_to_existing_accounts(group: &mut BenchmarkGroup<WallTime>, shoul
     let bootstrap_accounts = vec![target_account];
 
     let data_dir = TempDir::new().expect("should create temp dir");
-    let mut builder = DbWasmTestBuilder::new(data_dir.as_ref(), Default::default());
+    let mut builder = DbWasmTestBuilder::new(data_dir.as_ref());
     transfer::create_initial_accounts_and_run_genesis(
         &mut builder,
         bootstrap_accounts.clone(),
@@ -44,7 +44,7 @@ pub fn transfer_to_existing_accounts(group: &mut BenchmarkGroup<WallTime>, shoul
     );
 
     let data_dir = TempDir::new().expect("should create temp dir");
-    let mut builder = DbWasmTestBuilder::new(data_dir.as_ref(), Default::default());
+    let mut builder = DbWasmTestBuilder::new(data_dir.as_ref());
     transfer::create_initial_accounts_and_run_genesis(
         &mut builder,
         bootstrap_accounts,
@@ -82,7 +82,7 @@ pub fn multiple_native_transfers<M>(
     let bootstrap_accounts = vec![target_account];
 
     let data_dir = TempDir::new().expect("should create temp dir");
-    let mut builder = DbWasmTestBuilder::new(data_dir.as_ref(), Default::default());
+    let mut builder = DbWasmTestBuilder::new(data_dir.as_ref());
     transfer::create_initial_accounts_and_run_genesis(
         &mut builder,
         bootstrap_accounts,
@@ -123,7 +123,7 @@ pub fn transfer_to_existing_purses(group: &mut BenchmarkGroup<WallTime>, should_
     let bootstrap_accounts = vec![target_account];
 
     let data_dir = TempDir::new().expect("should create temp dir");
-    let mut builder = DbWasmTestBuilder::new(data_dir.as_ref(), Default::default());
+    let mut builder = DbWasmTestBuilder::new(data_dir.as_ref());
     transfer::create_initial_accounts_and_run_genesis(
         &mut builder,
         bootstrap_accounts.clone(),
@@ -152,7 +152,7 @@ pub fn transfer_to_existing_purses(group: &mut BenchmarkGroup<WallTime>, should_
     );
 
     let data_dir = TempDir::new().expect("should create temp dir");
-    let mut builder = DbWasmTestBuilder::new(data_dir.as_ref(), Default::default());
+    let mut builder = DbWasmTestBuilder::new(data_dir.as_ref());
     transfer::create_initial_accounts_and_run_genesis(
         &mut builder,
         bootstrap_accounts,

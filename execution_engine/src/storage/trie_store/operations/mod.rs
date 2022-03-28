@@ -260,7 +260,7 @@ where
             .and_then(|bytes| bytes.get(0))
         {
             // if this is a leaf don't parse (ie, the first byte is 0), just continue
-            Some(0) => continue,
+            Some(&Trie::<K, V>::LEAF_TAG) => continue,
             // Either no entry under trie key or data is empty.  If data is empty then the trie is
             // corrupted. Either way treat as missing.
             None => {

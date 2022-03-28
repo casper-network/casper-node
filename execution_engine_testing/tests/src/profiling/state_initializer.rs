@@ -66,11 +66,7 @@ fn main() {
     };
 
     let engine_config = EngineConfig::default();
-    let mut builder = DbWasmTestBuilder::new_with_config(
-        &data_dir,
-        engine_config,
-        casper_execution_engine::rocksdb_defaults(),
-    );
+    let mut builder = DbWasmTestBuilder::new_with_config(&data_dir, engine_config);
 
     let exec_config = ExecConfig::new(
         DEFAULT_ACCOUNTS.clone(),

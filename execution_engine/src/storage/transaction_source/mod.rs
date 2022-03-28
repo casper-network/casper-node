@@ -78,7 +78,7 @@ pub trait TransactionSource<'a> {
 }
 
 /// Default constructor for rocksdb options.
-pub fn rocksdb_defaults() -> Options {
+pub(super) fn rocksdb_defaults() -> Options {
     let mut factory_opts = BlockBasedOptions::default();
     factory_opts.set_block_size(ROCKS_DB_BLOCK_SIZE_BYTES);
 
