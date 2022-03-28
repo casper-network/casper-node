@@ -10,6 +10,8 @@ use std::{
 use rand::{self, CryptoRng, Error, Rng, RngCore, SeedableRng};
 use rand_pcg::Pcg64Mcg;
 
+use crate::utils::child_rng::ChildRng;
+
 thread_local! {
     static THIS_THREAD_HAS_RNG: RefCell<bool> = RefCell::new(false);
 }
@@ -83,6 +85,21 @@ impl TestRng {
             }
             *flag.borrow_mut() = true;
         });
+    }
+}
+
+impl ChildRng for TestRng {
+    fn new_child(&mut self) -> Self {
+        // Creating a child would usually done by simply creating an RNG from a randomly generated
+        // seed and calling `from_seed`. However we prevent the creation of arbitrary RNGs with
+        // `TestRng`, so we have to copy the method content here, sans the check. This still only
+        // allows creating new RNGs only from existing one, enforcing one "master" RNG.
+        let mut seed = Seed::default();
+        self.fill(&mut seed);
+
+        // Note: We do not use `Self::from_rng` to avoid having to add an unwrap.
+        let new_rng = Pcg64Mcg::from_seed(seed);
+        TestRng { seed, rng: new_rng }
     }
 }
 

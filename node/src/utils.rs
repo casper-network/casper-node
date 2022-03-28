@@ -1,6 +1,7 @@
 //! Various functions that are not limited to a particular module, but are too small to warrant
 //! being factored out into standalone crates.
 
+pub(crate) mod child_rng;
 mod display_error;
 pub(crate) mod ds;
 mod external;
