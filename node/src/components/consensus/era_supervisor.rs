@@ -55,7 +55,6 @@ use crate::{
         DeployOrTransferHash, FinalitySignature, FinalizedApprovals, FinalizedBlock, NodeId,
         TimeDiff, Timestamp,
     },
-    utils::WithDir,
     NodeRng,
 };
 
@@ -147,7 +146,9 @@ impl EraSupervisor {
     pub(crate) fn new<REv: ReactorEventT>(
         current_era: EraId,
         storage_dir: &Path,
-        config: WithDir<Config>,
+        secret_signing_key: Arc<SecretKey>,
+        public_signing_key: PublicKey,
+        config: Config,
         effect_builder: EffectBuilder<REv>,
         chainspec: Arc<Chainspec>,
         latest_block_header: &BlockHeader,
@@ -166,8 +167,6 @@ impl EraSupervisor {
             );
         }
         let unit_files_folder = storage_dir.join("unit_files");
-        let (root, config) = config.into_parts();
-        let (secret_signing_key, public_signing_key) = config.load_keys(root)?;
         info!(our_id = %public_signing_key, "EraSupervisor pubkey",);
         let metrics =
             Metrics::new(registry).expect("failed to set up and register consensus metrics");

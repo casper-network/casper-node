@@ -188,9 +188,10 @@ where
                 .ignore(),
             Event::RpcRequest(RpcRequest::GetBlock {
                 maybe_id: Some(BlockIdentifier::Hash(hash)),
+                only_from_available_block_range,
                 responder,
             }) => effect_builder
-                .get_block_with_metadata_from_storage(hash)
+                .get_block_with_metadata_from_storage(hash, only_from_available_block_range)
                 .event(move |result| Event::GetBlockResult {
                     maybe_id: Some(BlockIdentifier::Hash(hash)),
                     result: Box::new(result),
@@ -198,9 +199,13 @@ where
                 }),
             Event::RpcRequest(RpcRequest::GetBlock {
                 maybe_id: Some(BlockIdentifier::Height(height)),
+                only_from_available_block_range,
                 responder,
             }) => effect_builder
-                .get_block_at_height_with_metadata_from_storage(height)
+                .get_block_at_height_with_metadata_from_storage(
+                    height,
+                    only_from_available_block_range,
+                )
                 .event(move |result| Event::GetBlockResult {
                     maybe_id: Some(BlockIdentifier::Height(height)),
                     result: Box::new(result),
@@ -208,6 +213,8 @@ where
                 }),
             Event::RpcRequest(RpcRequest::GetBlock {
                 maybe_id: None,
+                only_from_available_block_range: _, /* Requesting for higest block cannot be
+                                                     * restricted by block availability index */
                 responder,
             }) => effect_builder
                 .get_highest_block_with_metadata_from_storage()
@@ -307,14 +314,16 @@ where
                 }
                 .ignore()
             }
-            Event::RpcRequest(RpcRequest::GetLowestContiguousBlockHeight { responder }) => {
-                effect_builder
-                    .get_lowest_contiguous_block_height_from_storage()
-                    .event(move |height| Event::GetLowestContiguousBlockHeightResult {
-                        height,
-                        main_responder: responder,
-                    })
+            Event::RpcRequest(RpcRequest::GetAvailableBlockRange { responder }) => async move {
+                responder
+                    .respond(
+                        effect_builder
+                            .get_available_block_range_from_storage()
+                            .await,
+                    )
+                    .await
             }
+            .ignore(),
             Event::GetBlockResult {
                 maybe_id: _,
                 result,
@@ -350,10 +359,6 @@ where
                 peers,
                 main_responder,
             } => main_responder.respond(peers).ignore(),
-            Event::GetLowestContiguousBlockHeightResult {
-                height,
-                main_responder,
-            } => main_responder.respond(height).ignore(),
         }
     }
 }

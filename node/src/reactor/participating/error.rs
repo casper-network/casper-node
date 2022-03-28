@@ -5,7 +5,8 @@ use crate::{
         chain_synchronizer, contract_runtime, contract_runtime::BlockExecutionError,
         diagnostics_port, small_network, storage,
     },
-    utils::ListeningError,
+    crypto::Error as CryptoError,
+    utils::{ListeningError, LoadError},
 };
 use casper_execution_engine::core::engine_state;
 use casper_types::bytesrepr;
@@ -60,6 +61,10 @@ pub(crate) enum Error {
     /// `DiagnosticsPort` component error.
     #[error("diagnostics port: {0}")]
     DiagnosticsPort(#[from] diagnostics_port::Error),
+
+    /// Error while loading the signing key pair.
+    #[error("signing key pair load error: {0}")]
+    LoadSigningKeyPair(#[from] LoadError<CryptoError>),
 }
 
 impl From<bytesrepr::Error> for Error {

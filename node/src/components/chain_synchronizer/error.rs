@@ -47,15 +47,6 @@ pub(crate) enum Error {
         block_header_with_future_version: Box<BlockHeader>,
     },
 
-    #[error(
-        "the trusted block has an older version. Current version is {current_version}, \
-         but trusted block header has older version: {block_header_with_old_version:?}"
-    )]
-    TrustedBlockHasOldVersion {
-        current_version: ProtocolVersion,
-        block_header_with_old_version: Box<BlockHeader>,
-    },
-
     #[error(transparent)]
     BlockFetcher(#[from] FetcherError<Block>),
 

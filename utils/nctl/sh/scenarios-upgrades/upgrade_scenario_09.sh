@@ -4,13 +4,13 @@
 # ----------------------------------------------------------------
 
 # Step 01: Start network from pre-built stage.
-# Step 02: Await era-id >= 1.
+# Step 02: Await era-id >= 2.
 # Step 03: Stage nodes 1-5 and upgrade.
 # Step 04: Assert upgraded nodes 1-5.
 # Step 05: Assert nodes 1-5 didn't stall.
 # Step 06: Await 1 era.
 # Step 07: Stage node-6 with old trusted hash.
-# Step 08: Verify failed node-6.
+# Step 08: Verify that node-6 successfully syncs.
 # Step 09: Terminate.
 
 # ----------------------------------------------------------------
@@ -69,11 +69,11 @@ function _step_01()
     source "$NCTL/sh/node/start.sh" node=all
 }
 
-# Step 02: Await era-id >= 1.
+# Step 02: Await era-id >= 2.
 function _step_02()
 {
-    log_step_upgrades 2 "awaiting genesis era completion"
-    await_until_era_n 1
+    log_step_upgrades 2 "awaiting until era 2"
+    await_until_era_n 2
 }
 
 # Step 03: Stage nodes 1-5 and upgrade.
@@ -161,7 +161,9 @@ function _step_07()
     local N2_PROTO_VERSION
 
     # Use trusted hash prior to upgrade point
-    HASH="$($(get_path_to_client) get-block -b 1 --node-address "$(get_node_address_rpc '2')" | jq -r '.result.block.hash')"
+    # Block 31 should be in era 2 or 3 - so before the upgrade, but after era 0, which is important
+    # because a node can't get the validators set for a block in era 0.
+    HASH="$($(get_path_to_client) get-block -b 31 --node-address "$(get_node_address_rpc '2')" | jq -r '.result.block.hash')"
 
     # Node 2 would be running the upgrade if we made it this far in the test.
     # sed is for switching from: ie. 1.0.0 -> 1_0_0
@@ -180,32 +182,40 @@ function _step_07()
     source "$NCTL/sh/node/start.sh" node='6' hash="$HASH"
 }
 
-# Step 08: Check for expected failure.
+# Step 08: Assert nodes 1-6 didn't stall
 function _step_08()
 {
-    local NODE_ID=${1}
-    local NODE_PATH
-    local LOG_MSG
+    while [ "$(get_count_of_up_nodes)" != '6' ]; do
+        sleep 1.0
+        SLEEP_COUNT=$((SLEEP_COUNT + 1))
+        log "NODE_COUNT_UP: $(get_count_of_up_nodes)"
+        log "Sleep time: $SLEEP_COUNT seconds"
 
-    LOG_MSG='the trusted block has an older version'
+        if [ "$SLEEP_COUNT" -ge "60" ]; then
+            log "Timeout reached of 1 minute! Exiting ..."
+            exit 1
+        fi
+    done
 
-    log_step_upgrades 8 "Checking for failed node-$NODE_ID..."
+    local HEIGHT_1
+    local HEIGHT_2
+    local NODE_ID
 
-    NODE_PATH="$(get_path_to_node $NODE_ID)"
+    log_step_upgrades 8 "Asserting nodes 1 thru 6 didn't stall"
 
-    if ( cat "$NODE_PATH"/logs/stdout.log | grep -q "$LOG_MSG" ); then
-        log "...Message Found - '$LOG_MSG' [expected]"
-    else
-        log "ERROR: Message Not Found - '$LOG_MSG'"
-        exit 1
-    fi
-
-    if ( nctl-status | grep "node-$NODE_ID" | grep -q 'EXITED' ); then
-        log "...node-$NODE_ID found stopped [expected]"
-    else
-        log "ERROR: node-$NODE_ID found still running!"
-        exit 1
-    fi
+    HEIGHT_1=$(get_chain_height 2)
+    await_n_blocks '5' 'true' '2'
+    for NODE_ID in $(seq 1 6)
+    do
+        HEIGHT_2=$(get_chain_height "$NODE_ID")
+        if [ "$HEIGHT_2" != "N/A" ] && [ "$HEIGHT_2" -le "$HEIGHT_1" ]; then
+            log "ERROR :: upgrade failure :: node-$NODE_ID has stalled"
+            log " ... node-$NODE_ID : $HEIGHT_2 <= $HEIGHT_1"
+            exit 1
+        else
+            log " ... no stall detected on node-$NODE_ID: $HEIGHT_2 > $HEIGHT_1 [expected]"
+        fi
+    done
 }
 
 # Step 09: Terminate.

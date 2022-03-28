@@ -650,6 +650,10 @@ async fn fast_sync(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, BlockHea
     // Synchronize the trie store for the most recent block header.
     sync_trie_store(*most_recent_block_header.state_root_hash(), ctx).await?;
 
+    ctx.effect_builder
+        .update_lowest_available_block_height_in_storage(most_recent_block_header.height())
+        .await;
+
     Ok((trusted_key_block_info, most_recent_block_header))
 }
 
@@ -665,16 +669,6 @@ async fn get_trusted_key_block_info(ctx: &ChainSyncContext<'_>) -> Result<KeyBlo
         return Err(Error::RetrievedBlockHeaderFromFutureVersion {
             current_version: ctx.config.protocol_version(),
             block_header_with_future_version: Box::new(ctx.trusted_block_header.clone()),
-        });
-    }
-    // If the trusted block's version is older than ours we also return an error, except if we are
-    // at the current activation point, i.e. at an upgrade.
-    if ctx.trusted_block_header.protocol_version() < ctx.config.protocol_version()
-        && ctx.trusted_block_header.next_block_era_id() != ctx.config.activation_point()
-    {
-        return Err(Error::TrustedBlockHasOldVersion {
-            current_version: ctx.config.protocol_version(),
-            block_header_with_old_version: Box::new(ctx.trusted_block_header.clone()),
         });
     }
 
@@ -849,6 +843,10 @@ async fn sync_to_genesis(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, Bl
 
     // Sync forward until we are at the current version.
     let most_recent_block = fetch_forward(trusted_block, &mut trusted_key_block_info, ctx).await?;
+
+    ctx.effect_builder
+        .update_lowest_available_block_height_in_storage(0)
+        .await;
 
     Ok((trusted_key_block_info, most_recent_block.take_header()))
 }
