@@ -474,7 +474,7 @@ impl TryFrom<&str> for ContractHash {
             checksummed_hex::decode(hex_string).map_err(TryFromUnformattedStrError::Hex)?;
 
         let hash_addr = HashAddr::try_from(raw_bytes)
-            .map_err(|e| TryFromUnformattedStrError::Hash(TryFromSliceForContractHashError(())))?;
+            .map_err(|_| TryFromUnformattedStrError::Hash(TryFromSliceForContractHashError(())))?;
         Ok(ContractHash(hash_addr))
     }
 }
