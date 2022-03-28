@@ -130,8 +130,8 @@ impl TryFrom<u8> for Error {
 pub enum TryFromUnformattedStrError {
     /// Error when decoding a hex string
     Hex(base16::DecodeError),
-    ///
-    Hash(TryFromSliceForContractHashError),
+    /// Error when converting from raw bytes
+    Hash(TryFromSliceError),
 }
 
 /// Associated error type of `TryFrom<&[u8]>` for `ContractHash`.
@@ -472,9 +472,8 @@ impl TryFrom<&str> for ContractHash {
     fn try_from(hex_string: &str) -> Result<Self, Self::Error> {
         let raw_bytes =
             checksummed_hex::decode(hex_string).map_err(TryFromUnformattedStrError::Hex)?;
-
-        let hash_addr = HashAddr::try_from(raw_bytes)
-            .map_err(|_| TryFromUnformattedStrError::Hash(TryFromSliceForContractHashError(())))?;
+        let hash_addr =
+            HashAddr::try_from(raw_bytes.as_slice()).map_err(TryFromUnformattedStrError::Hash)?;
         Ok(ContractHash(hash_addr))
     }
 }
@@ -633,8 +632,8 @@ impl TryFrom<&str> for ContractPackageHash {
         let raw_bytes =
             checksummed_hex::decode(hex_string).map_err(TryFromUnformattedStrError::Hex)?;
 
-        let hash_addr = HashAddr::try_from(raw_bytes)
-            .map_err(|_| TryFromUnformattedStrError::Hash(TryFromSliceForContractHashError(())))?;
+        let hash_addr =
+            HashAddr::try_from(raw_bytes.as_slice()).map_err(TryFromUnformattedStrError::Hash)?;
         Ok(ContractPackageHash(hash_addr))
     }
 }
