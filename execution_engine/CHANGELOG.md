@@ -9,13 +9,6 @@ All notable changes to this project will be documented in this file.  The format
 [comment]: <> (Fixed:      any bug fixes)
 [comment]: <> (Security:   in case of vulnerabilities)
 
-## 1.4.?? - 2022-03-27
-
-### Added
-* Utility function advance_eras_by for WasmTestBuilder 
-* Utility function advance_eras_by_default_auction_delay for WasmTestBuilder
-
-
 ## [Unreleased]
 
 ### Added
