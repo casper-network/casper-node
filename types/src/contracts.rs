@@ -125,15 +125,6 @@ impl TryFrom<u8> for Error {
     }
 }
 
-/// An error from parsing a unformatted contract string
-#[derive(Debug)]
-pub enum TryFromUnformattedStrError {
-    /// Error when decoding a hex string
-    Hex(base16::DecodeError),
-    ///
-    Hash(TryFromSliceForContractHashError),
-}
-
 /// Associated error type of `TryFrom<&[u8]>` for `ContractHash`.
 #[derive(Debug)]
 pub struct TryFromSliceForContractHashError(());
@@ -457,18 +448,6 @@ impl AsRef<[u8]> for ContractHash {
     }
 }
 
-impl TryFrom<&str> for ContractHash {
-    type Error = TryFromUnformattedStrError;
-    fn try_from(hex_string: &str) -> Result<Self, Self::Error> {
-        let raw_bytes = checksummed_hex::decode(hex_string)
-            .map_err(|decode_error| TryFromUnformattedStrError::Hex(decode_error))?;
-
-        let hash_addr = HashAddr::try_from(raw_bytes)
-            .map_err(|_| TryFromUnformattedStrError::Hash(TryFromSliceForContractHashError(())))?;
-        Ok(ContractHash(hash_addr))
-    }
-}
-
 impl TryFrom<&[u8]> for ContractHash {
     type Error = TryFromSliceForContractHashError;
 
@@ -614,18 +593,6 @@ impl<'de> Deserialize<'de> for ContractPackageHash {
 impl AsRef<[u8]> for ContractPackageHash {
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
-    }
-}
-
-impl TryFrom<&str> for ContractPackageHash {
-    type Error = TryFromUnformattedStrError;
-    fn try_from(hex_string: &str) -> Result<Self, Self::Error> {
-        let raw_bytes = checksummed_hex::decode(hex_string)
-            .map_err(|decode_error| TryFromUnformattedStrError::Hex(decode_error))?;
-
-        let hash_addr = HashAddr::try_from(raw_bytes)
-            .map_err(|_| TryFromUnformattedStrError::Hash(TryFromSliceForContractHashError(())))?;
-        Ok(ContractPackageHash(hash_addr))
     }
 }
 
