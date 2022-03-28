@@ -20,7 +20,7 @@ All notable changes to this project will be documented in this file.  The format
 ### Changed
 * `WasmTestBuilder::get_transforms` is deprecated in favor of `WasmTestBuilder::get_execution_journals`.
 * `deploy_hash` field is now defaulted to a random value rather than zeros in `DeployItemBuilder`.
-* Replaced boilerplate code in bids.rs and distribute.rs with methods `WasmTestBuilder::advance_era`, `WasmTestBuilder::advance_eras_by`, and `WasmTestBuilder::advance_era`, and `WasmTestBuilder::advance_eras_by_default_auction_delay`
+* Replaced boilerplate code in bids.rs and distribute.rs with methods `WasmTestBuilder::advance_era`, `WasmTestBuilder::advance_eras_by`, and `WasmTestBuilder::advance_eras_by_default_auction_delay`
 
 
 
