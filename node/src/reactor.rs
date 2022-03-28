@@ -496,8 +496,7 @@ where
 
         // Run all effects from component instantiation.
         process_effects(None, scheduler, initial_effects)
-            .instrument(debug_span!("process initial effects"))
-            .await;
+            .instrument(debug_span!("process initial effects"));
 
         info!("reactor main loop is ready");
 
@@ -653,8 +652,7 @@ where
             self.scheduler,
             effects,
         )
-        .in_current_span()
-        .await;
+        .in_current_span();
 
         self.current_event_id += 1;
 
@@ -793,12 +791,10 @@ where
 
         let effects = create_effects(effect_builder);
 
-        process_effects(None, self.scheduler, effects)
-            .instrument(debug_span!(
-                "process injected effects",
-                ev = self.current_event_id
-            ))
-            .await;
+        process_effects(None, self.scheduler, effects).instrument(debug_span!(
+            "process injected effects",
+            ev = self.current_event_id
+        ));
     }
 
     /// Processes a single event if there is one, returns `None` otherwise.
@@ -843,9 +839,7 @@ impl Runner<InitializerReactor> {
 
         // Run all effects from component instantiation.
         let span = debug_span!("process initial effects");
-        process_effects(None, scheduler, initial_effects)
-            .instrument(span)
-            .await;
+        process_effects(None, scheduler, initial_effects).instrument(span);
 
         info!("reactor main loop is ready");
 
@@ -872,7 +866,7 @@ impl Runner<InitializerReactor> {
 /// Spawns tasks that will process the given effects.
 ///
 /// Result events from processing the events will be scheduled with the given ancestor.
-async fn process_effects<Ev>(
+fn process_effects<Ev>(
     ancestor: Option<NonZeroU64>,
     scheduler: &'static Scheduler<Ev>,
     effects: Effects<Ev>,

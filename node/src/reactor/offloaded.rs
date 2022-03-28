@@ -145,8 +145,7 @@ where
                 reactor::process_effects(
                     None, // TOOD: Preserve ancestors.
                     scheduler, effects,
-                )
-                .await;
+                );
             }
         }
         .ignore();
