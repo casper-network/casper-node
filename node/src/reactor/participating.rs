@@ -1301,7 +1301,7 @@ pub fn migrate_lmdb_data_to_rocksdb(
                 );
                 total_state_roots_migrated += 1;
             }
-            Ok(false) => debug!(
+            Ok(false) => info!(
                 %state_root_hash,
                 "state root already migrated",
             ),

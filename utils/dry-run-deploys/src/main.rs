@@ -89,34 +89,40 @@ async fn main() -> Result<(), anyhow::Error> {
         info!("Running migration of data from lmdb to rocksdb...");
 
         let mut state_roots = Vec::new();
-        let latest_block = storage.read_highest_block();
-        if let Ok(Some(latest_block)) = latest_block {
-            let latest_block_header = latest_block.take_header();
-            for height in (0..=latest_block_header.height()).rev() {
-                let block_header = match storage.read_block_by_height(height) {
-                    Ok(Some(block)) => block.header().clone(),
-                    Ok(None) => {
-                        error!(
-                            "unable to retrieve block at height {} for migration to rocksdb",
-                            height,
-                        );
-                        continue;
-                    }
-                    Err(err) => {
-                        error!(
+        match storage.read_highest_block() {
+            Ok(Some(latest_block)) => {
+                let latest_block_header = latest_block.take_header();
+                for height in (0..=latest_block_header.height()).rev() {
+                    let block_header = match storage.read_block_by_height(height) {
+                        Ok(Some(block)) => block.header().clone(),
+                        Ok(None) => {
+                            error!(
+                                "unable to retrieve block at height {} for migration to rocksdb",
+                                height,
+                            );
+                            continue;
+                        }
+                        Err(err) => {
+                            error!(
                             "unable to retrieve parent block at height {} for migration to rocksdb {:?}",
                             height, err,
                         );
-                        continue;
-                    }
-                };
-                state_roots.push(*block_header.state_root_hash());
+                            continue;
+                        }
+                    };
+                    state_roots.push(*block_header.state_root_hash());
+                }
+                casper_node::migrate_lmdb_data_to_rocksdb(engine_state, state_roots, false);
+                return Ok(());
             }
-            casper_node::migrate_lmdb_data_to_rocksdb(engine_state, state_roots, false);
-            return Ok(());
-        } else {
-            error!("unable to find a highest block in storage");
-            return Err(anyhow::anyhow!("unable to find a highest block in storage"));
+            Ok(None) => {
+                info!("no highest block in storage");
+                return Err(anyhow::anyhow!("no highest block in storage"));
+            }
+            Err(_) => {
+                error!("unable to find a highest block in storage");
+                return Err(anyhow::anyhow!("unable to find a highest block in storage"));
+            }
         }
     }
 

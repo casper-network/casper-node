@@ -134,14 +134,19 @@ impl EngineState<DbGlobalState> {
         state_root: Digest,
         limit_rate: bool,
     ) -> Result<bool, storage::error::db::Error> {
+        let state_root_bytes = &state_root.value();
         if !self
             .state
             .rocksdb_store
             .rocksdb
-            .is_state_root_migrated(&state_root.value())?
+            .is_state_root_migrated(state_root_bytes)?
         {
             self.state
                 .migrate_state_root_to_rocksdb(state_root, limit_rate)?;
+            self.state
+                .rocksdb_store
+                .rocksdb
+                .mark_state_root_migrated(state_root_bytes)?;
             Ok(true)
         } else {
             Ok(false)

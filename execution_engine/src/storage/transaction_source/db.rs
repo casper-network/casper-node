@@ -8,17 +8,20 @@ use lmdb::{
 };
 use rocksdb::{BoundColumnFamily, DBWithThreadMode, MultiThreaded, Options};
 
+use casper_types::bytesrepr::Bytes;
+
 use crate::storage::{
     error,
     transaction_source::{
-        Readable, Transaction, TransactionSource, Writable, ROCKS_DB_TRIE_V1_COLUMN_FAMILY,
+        Readable, Transaction, TransactionSource, Writable,
+        ROCKS_DB_LMDB_MIGRATED_STATE_ROOTS_COLUMN_FAMILY, ROCKS_DB_TRIE_V1_COLUMN_FAMILY,
     },
     MAX_DBS,
 };
-use casper_types::bytesrepr::Bytes;
 
 /// Filename for the LMDB database created by the EE.
 const EE_LMDB_FILENAME: &str = "data.lmdb";
+
 /// Newtype over RocksDB.
 #[derive(Clone)]
 pub struct RocksDb {
@@ -28,15 +31,38 @@ pub struct RocksDb {
 impl RocksDb {
     /// Check if a state root has been marked as migrated from lmdb to rocksdb.
     pub(crate) fn is_state_root_migrated(&self, state_root: &[u8]) -> Result<bool, error::Error> {
-        let cf = self.trie_column_family()?;
-        Ok(self.db.get_cf(&cf, state_root)?.is_some())
+        let lmdb_migration_column = self.lmdb_tries_migrated_column()?;
+        Ok(self
+            .db
+            .get_cf(&lmdb_migration_column, state_root)?
+            .is_some())
     }
 
+    /// Marks a state root as migrated from lmdb to rocksdb.
+    pub(crate) fn mark_state_root_migrated(&self, state_root: &[u8]) -> Result<(), error::Error> {
+        let lmdb_migration_column = self.lmdb_tries_migrated_column()?;
+        self.db.put_cf(&lmdb_migration_column, state_root, &[])?;
+        Ok(())
+    }
+
+    /// Trie V1 column family.
     fn trie_column_family(&self) -> Result<Arc<BoundColumnFamily<'_>>, error::Error> {
         self.db
             .cf_handle(ROCKS_DB_TRIE_V1_COLUMN_FAMILY)
             .ok_or_else(|| {
                 error::Error::UnableToOpenColumnFamily(ROCKS_DB_TRIE_V1_COLUMN_FAMILY.to_string())
+            })
+    }
+
+    /// Column family tracking state roots migrated from lmdb (supports safely resuming if the node
+    /// were to be stopped during a migration).
+    fn lmdb_tries_migrated_column(&self) -> Result<Arc<BoundColumnFamily<'_>>, error::Error> {
+        self.db
+            .cf_handle(ROCKS_DB_LMDB_MIGRATED_STATE_ROOTS_COLUMN_FAMILY)
+            .ok_or_else(|| {
+                error::Error::UnableToOpenColumnFamily(
+                    ROCKS_DB_LMDB_MIGRATED_STATE_ROOTS_COLUMN_FAMILY.to_string(),
+                )
             })
     }
 }
@@ -47,7 +73,7 @@ impl Transaction for RocksDb {
     type Handle = RocksDb;
 
     fn commit(self) -> Result<(), Self::Error> {
-        // NO OP as rockdb doesn't use transactions.
+        // NO OP as rocksdb doesn't use transactions.
         Ok(())
     }
 }
@@ -91,7 +117,10 @@ impl RocksDbStore {
         let db = Arc::new(DBWithThreadMode::<MultiThreaded>::open_cf(
             &rocksdb_opts,
             path.as_ref(),
-            vec![ROCKS_DB_TRIE_V1_COLUMN_FAMILY],
+            vec![
+                ROCKS_DB_TRIE_V1_COLUMN_FAMILY,
+                ROCKS_DB_LMDB_MIGRATED_STATE_ROOTS_COLUMN_FAMILY,
+            ],
         )?);
 
         let rocksdb = RocksDb { db };
