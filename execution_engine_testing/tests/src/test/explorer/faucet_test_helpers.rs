@@ -15,8 +15,9 @@ use casper_types::{
 use super::{
     ARG_AMOUNT, ARG_AVAILABLE_AMOUNT, ARG_DISTRIBUTIONS_PER_INTERVAL, ARG_ID, ARG_TARGET,
     ARG_TIME_INTERVAL, ENTRY_POINT_AUTHORIZE_TO, ENTRY_POINT_FAUCET, ENTRY_POINT_SET_VARIABLES,
-    FAUCET_CONTRACT_NAMED_KEY, FAUCET_FUND_AMOUNT, FAUCET_ID, FAUCET_INSTALLER_SESSION,
-    FAUCET_PURSE_NAMED_KEY, INSTALLER_ACCOUNT, INSTALLER_FUND_AMOUNT, TWO_HOURS_AS_MILLIS,
+    FAUCET_CALL_DEFAULT_PAYMENT, FAUCET_CONTRACT_NAMED_KEY, FAUCET_FUND_AMOUNT, FAUCET_ID,
+    FAUCET_INSTALLER_SESSION, FAUCET_PURSE_NAMED_KEY, INSTALLER_ACCOUNT, INSTALLER_FUND_AMOUNT,
+    TWO_HOURS_AS_MILLIS,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -257,9 +258,9 @@ impl FaucetCallerAccount {
 pub struct FaucetFundRequestBuilder {
     faucet_contract_hash: Option<ContractHash>,
     caller_account: FaucetCallerAccount,
-    target_account: Option<AccountHash>,
-    fund_amount: Option<U512>,
-    fund_id: Option<u64>,
+    arg_target: Option<AccountHash>,
+    arg_fund_amount: Option<U512>,
+    arg_id: Option<u64>,
     payment_amount: U512,
 }
 
@@ -268,28 +269,43 @@ impl FaucetFundRequestBuilder {
         Self::default()
     }
 
-    pub fn with_installer_account(mut self, installer_account: AccountHash) -> Self {
+    pub fn as_installer_account(mut self, installer_account: AccountHash) -> Self {
         self.caller_account = FaucetCallerAccount::Installer(installer_account);
         self
     }
 
-    pub fn with_authorized_account(mut self, authorized_account: AccountHash) -> Self {
+    pub fn as_authorized_account(mut self, authorized_account: AccountHash) -> Self {
         self.caller_account = FaucetCallerAccount::Authorized(authorized_account);
         self
     }
 
-    pub fn with_user_account(mut self, user_account: AccountHash) -> Self {
+    pub fn as_user_account(mut self, user_account: AccountHash) -> Self {
         self.caller_account = FaucetCallerAccount::User(user_account);
         self
     }
 
-    pub fn with_fund_amount(mut self, fund_amount: U512) -> Self {
-        self.fund_amount = Some(fund_amount);
+    pub fn with_arg_fund_amount(mut self, fund_amount: U512) -> Self {
+        self.arg_fund_amount = Some(fund_amount);
+        self
+    }
+
+    pub fn with_arg_target(mut self, target: AccountHash) -> Self {
+        self.arg_target = Some(target);
+        self
+    }
+
+    pub fn with_arg_id(mut self, id: Option<u64>) -> Self {
+        self.arg_id = id;
         self
     }
 
     pub fn with_payment_amount(mut self, payment_amount: U512) -> Self {
         self.payment_amount = payment_amount;
+        self
+    }
+
+    pub fn with_faucet_contract_hash(mut self, faucet_contract_hash: ContractHash) -> Self {
+        self.faucet_contract_hash = Some(faucet_contract_hash);
         self
     }
 
@@ -303,10 +319,16 @@ impl FaucetFundRequestBuilder {
                 self.faucet_contract_hash
                     .expect("must supply faucet contract hash"),
                 ENTRY_POINT_FAUCET,
-                runtime_args! {
-                    ARG_TARGET => self.target_account.unwrap(),
-                    ARG_AMOUNT => self.fund_amount,
-                    ARG_ID => self.fund_id
+                match self.caller_account {
+                    FaucetCallerAccount::Installer(_)
+                    | FaucetCallerAccount::Authorized(_) => runtime_args! {
+                        ARG_TARGET => self.arg_target.expect("must supply arg target when calling as installer or authorized account"),
+                        ARG_AMOUNT => self.arg_fund_amount.expect("must supply arg amount when calling as installer or authorized account"),
+                        ARG_ID => self.arg_id
+                    },
+                    FaucetCallerAccount::User(_) => runtime_args! {
+                       ARG_ID => self.arg_id
+                    },
                 },
             )
             .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => self.payment_amount})
@@ -320,12 +342,12 @@ impl FaucetFundRequestBuilder {
 impl Default for FaucetFundRequestBuilder {
     fn default() -> Self {
         Self {
-            fund_amount: None,
-            payment_amount: U512::from(3_000_000_000u64),
+            arg_fund_amount: None,
+            payment_amount: U512::from(FAUCET_CALL_DEFAULT_PAYMENT),
             faucet_contract_hash: None,
             caller_account: FaucetCallerAccount::Installer(*INSTALLER_ACCOUNT),
-            target_account: None,
-            fund_id: None,
+            arg_target: None,
+            arg_id: None,
         }
     }
 }
@@ -525,6 +547,13 @@ impl FaucetDeployHelper {
             .with_available_amount(self.faucet_available_amount)
             .with_time_interval(self.faucet_time_interval)
             .build()
+    }
+
+    pub fn new_faucet_fund_request_builder(&self) -> FaucetFundRequestBuilder {
+        FaucetFundRequestBuilder::new().with_faucet_contract_hash(
+            self.faucet_contract_hash()
+                .expect("must supply faucet contract hash"),
+        )
     }
 }
 

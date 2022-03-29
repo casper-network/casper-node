@@ -110,6 +110,7 @@ pub extern "C" fn call() {
             vec![
                 Parameter::new(faucet::ARG_ID, CLType::Option(Box::new(CLType::U64))),
                 Parameter::new(faucet::ARG_TARGET, CLType::PublicKey),
+                Parameter::new(faucet::ARG_AMOUNT, CLType::U512),
             ],
             CLType::Unit,
             EntryPointAccess::Public,
