@@ -35,6 +35,7 @@
 //! The storage component itself is panic free and in general reports three classes of errors:
 //! Corruption, temporary resource exhaustion and potential bugs.
 
+mod error;
 mod lmdb_ext;
 mod object_pool;
 #[cfg(test)]
@@ -46,7 +47,7 @@ use std::{
     collections::{btree_map::Entry, BTreeMap, HashSet},
     convert::TryFrom,
     fmt::{self, Display, Formatter},
-    fs, io, mem,
+    fs, mem,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -62,7 +63,6 @@ use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
 #[cfg(test)]
 use tempfile::TempDir;
-use thiserror::Error;
 use tracing::{debug, error, info, warn};
 
 use casper_hashing::Digest;
@@ -78,7 +78,6 @@ use crate::{
     components::{
         consensus, consensus::error::FinalitySignatureError, fetcher::FetchedOrNotFound, Component,
     },
-    crypto,
     effect::{
         incoming::{NetRequest, NetRequestIncoming},
         requests::{NetworkRequest, StateStoreRequest},
@@ -88,14 +87,16 @@ use crate::{
     protocol::Message,
     reactor::ReactorEvent,
     types::{
-        error::BlockValidationError, AvailableBlockRange, Block, BlockBody, BlockHash, BlockHeader,
-        BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, Deploy, DeployHash,
-        DeployMetadata, HashingAlgorithmVersion, Item, MerkleBlockBody, MerkleBlockBodyPart,
-        MerkleLinkedListNode, NodeId, TimeDiff,
+        AvailableBlockRange, Block, BlockBody, BlockHash, BlockHeader, BlockHeaderWithMetadata,
+        BlockSignatures, BlockWithMetadata, Deploy, DeployHash, DeployMetadata,
+        HashingAlgorithmVersion, Item, MerkleBlockBody, MerkleBlockBodyPart, MerkleLinkedListNode,
+        NodeId, TimeDiff,
     },
     utils::{display_error, WithDir},
     NodeRng,
 };
+pub use error::FatalStorageError;
+use error::GetRequestError;
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
 use object_pool::ObjectPool;
 
@@ -142,180 +143,6 @@ const STORAGE_FILES: [&str; 5] = [
     "storage.lmdb-lock",
     "sse_index",
 ];
-
-/// A fatal storage component error.
-///
-/// An error of this kinds indicates that storage is corrupted or otherwise irrecoverably broken, at
-/// least for the moment. It should usually be followed by swift termination of the node.
-#[derive(Debug, Error)]
-pub enum FatalStorageError {
-    /// Failure to create the root database directory.
-    #[error("failed to create database directory `{}`: {}", .0.display(), .1)]
-    CreateDatabaseDirectory(PathBuf, io::Error),
-    /// Found a duplicate block-at-height index entry.
-    #[error("duplicate entries for block at height {height}: {first} / {second}")]
-    DuplicateBlockIndex {
-        /// Height at which duplicate was found.
-        height: u64,
-        /// First block hash encountered at `height`.
-        first: BlockHash,
-        /// Second block hash encountered at `height`.
-        second: BlockHash,
-    },
-    /// Found a duplicate switch-block-at-era-id index entry.
-    #[error("duplicate entries for switch block at era id {era_id}: {first} / {second}")]
-    DuplicateEraIdIndex {
-        /// Era ID at which duplicate was found.
-        era_id: EraId,
-        /// First block hash encountered at `era_id`.
-        first: BlockHash,
-        /// Second block hash encountered at `era_id`.
-        second: BlockHash,
-    },
-    /// Found a duplicate switch-block-at-era-id index entry.
-    #[error("duplicate entries for blocks for deploy {deploy_hash}: {first} / {second}")]
-    DuplicateDeployIndex {
-        /// Deploy hash at which duplicate was found.
-        deploy_hash: DeployHash,
-        /// First block hash encountered at `deploy_hash`.
-        first: BlockHash,
-        /// Second block hash encountered at `deploy_hash`.
-        second: BlockHash,
-    },
-    /// LMDB error while operating.
-    #[error("internal database error: {0}")]
-    InternalStorage(#[from] LmdbExtError),
-    /// Filesystem error while trying to move file.
-    #[error("unable to move file {source_path} to {dest_path}: {original_error}")]
-    UnableToMoveFile {
-        /// The path to the file that should have been moved.
-        source_path: PathBuf,
-        /// The path where the file should have been moved to.
-        dest_path: PathBuf,
-        /// The original `io::Error` from `fs::rename`.
-        original_error: io::Error,
-    },
-    /// Mix of missing and found storage files.
-    #[error("expected files to exist: {missing_files:?}.")]
-    MissingStorageFiles {
-        /// The files that were not be found in the storage directory.
-        missing_files: Vec<PathBuf>,
-    },
-    /// Error when validating a block.
-    #[error(transparent)]
-    BlockValidation(#[from] BlockValidationError),
-    /// A block header was not stored under its hash.
-    #[error(
-        "Block header not stored under its hash. \
-         Queried block hash bytes: {queried_block_hash_bytes:x?}, \
-         Found block header hash bytes: {found_block_header_hash:x?}, \
-         Block header: {block_header}"
-    )]
-    BlockHeaderNotStoredUnderItsHash {
-        /// The queried block hash.
-        queried_block_hash_bytes: Vec<u8>,
-        /// The actual header of the block hash.
-        found_block_header_hash: BlockHash,
-        /// The block header found in storage.
-        block_header: Box<BlockHeader>,
-    },
-    /// Block body did not have a block header.
-    #[error(
-        "No block header corresponding to block body found in LMDB. \
-         Block body hash: {block_body_hash:?}, \
-         Hashing algorithm version: {hashing_algorithm_version:?}, \
-         Block body: {block_body:?}"
-    )]
-    NoBlockHeaderForBlockBody {
-        /// The block body hash.
-        block_body_hash: Digest,
-        /// The hashing algorithm of the block body.
-        hashing_algorithm_version: HashingAlgorithmVersion,
-        /// The block body.
-        block_body: Box<BlockBody>,
-    },
-    /// Unexpected hashing algorithm version.
-    #[error(
-        "Unexpected hashing algorithm version. \
-         Expected: {expected_hashing_algorithm_version:?}, \
-         Actual: {actual_hashing_algorithm_version:?}"
-    )]
-    UnexpectedHashingAlgorithmVersion {
-        /// Expected hashing algorithm version.
-        expected_hashing_algorithm_version: HashingAlgorithmVersion,
-        /// Actual hashing algorithm version.
-        actual_hashing_algorithm_version: HashingAlgorithmVersion,
-    },
-    /// Could not find block body part.
-    #[error(
-        "Could not find block body part with Merkle linked list node hash: \
-         {merkle_linked_list_node_hash:?}"
-    )]
-    CouldNotFindBlockBodyPart {
-        /// The block hash queried.
-        block_hash: BlockHash,
-        /// The hash of the node in the Merkle linked list.
-        merkle_linked_list_node_hash: Digest,
-    },
-    /// Could not verify finality signatures for block.
-    #[error("{0} in signature verification. Database is corrupted.")]
-    SignatureVerification(crypto::Error),
-    /// Corrupted block signature index.
-    #[error(
-        "Block signatures not indexed by their block hash. \
-         Key bytes in LMDB: {raw_key:x?}, \
-         Block hash bytes in record: {block_hash_bytes:x?}"
-    )]
-    CorruptedBlockSignatureIndex {
-        /// The key in the block signature index.
-        raw_key: Vec<u8>,
-        /// The block hash of the signatures found in the index.
-        block_hash_bytes: Vec<u8>,
-    },
-    /// Switch block does not contain era end.
-    #[error("switch block does not contain era end: {0:?}")]
-    InvalidSwitchBlock(Box<BlockHeader>),
-    /// Insufficient or wrong finality signatures.
-    #[error(transparent)]
-    FinalitySignature(#[from] FinalitySignatureError),
-    /// A block body was found to have more parts than expected.
-    #[error(
-        "Found an unexpected part of a block body in the database: \
-        {part_hash:?}"
-    )]
-    UnexpectedBlockBodyPart {
-        /// The block body with the issue.
-        block_body_hash: Digest,
-        /// The hash of the superfluous body part.
-        part_hash: Digest,
-    },
-    /// Failed to serialize an item that was found in local storage.
-    #[error("failed to serialized stored item")]
-    StoredItemSerializationFailure(#[source] bincode::Error),
-}
-
-// We wholesale wrap lmdb errors and treat them as internal errors here.
-impl From<lmdb::Error> for FatalStorageError {
-    fn from(err: lmdb::Error) -> Self {
-        LmdbExtError::from(err).into()
-    }
-}
-
-/// An error that may occur when handling a get request.
-///
-/// Wraps a fatal error, callers should check whether the variant is of the fatal or non-fatal kind.
-#[derive(Debug, Error)]
-enum GetRequestError {
-    /// A fatal error occurred.
-    #[error(transparent)]
-    Fatal(#[from] FatalStorageError),
-    /// Failed to serialized an item ID on an incoming item request.
-    #[error("failed to deserialize incoming item id")]
-    MalformedIncomingItemId(#[source] bincode::Error),
-    /// Received a get request for a gossiped address, which is unanswerable.
-    #[error("received a request for a gossiped address")]
-    GossipedAddressNotGettable,
-}
 
 /// Storage component.
 #[derive(DataSize, Debug)]
