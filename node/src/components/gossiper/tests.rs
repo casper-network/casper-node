@@ -441,7 +441,7 @@ async fn run_gossip(rng: &mut TestRng, network_size: usize, deploy_count: usize)
     let node_ids = network.add_nodes(rng, network_size).await;
 
     // Create `deploy_count` random deploys.
-    let (all_deploy_hashes, mut deploys): (BTreeSet<_>, Vec<_>) = iter::repeat_with(|| {
+    let (all_deploy_hashes, deploys): (BTreeSet<_>, Vec<_>) = iter::repeat_with(|| {
         let deploy = Box::new(Deploy::random_valid_native_transfer(rng));
         (*deploy.id(), deploy)
     })

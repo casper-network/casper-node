@@ -1171,27 +1171,38 @@ where
     }
 
     /// Advances eras by num_eras
-    pub fn advance_eras_by(&mut self, num_eras: u64, reward_items: Vec<RewardItem>) {
-        for _ in 0..num_eras {
-            let step_request_builder = StepRequestBuilder::new()
-                .with_parent_state_hash(self.get_post_state_hash())
-                .with_protocol_version(ProtocolVersion::V1_0_0)
-                .with_next_era_id(self.get_era().successor())
-                .with_reward_items(reward_items.clone())
-                .with_run_auction(true);
+    pub fn advance_eras_by(
+        &mut self,
+        num_eras: u64,
+        reward_items: impl IntoIterator<Item = RewardItem>,
+    ) {
+        let step_request_builder = StepRequestBuilder::new()
+            .with_protocol_version(ProtocolVersion::V1_0_0)
+            .with_reward_items(reward_items)
+            .with_run_auction(true);
 
-            self.step(step_request_builder.build())
+        for _ in 0..num_eras {
+            let step_request = step_request_builder
+                .clone()
+                .with_parent_state_hash(self.get_post_state_hash())
+                .with_next_era_id(self.get_era().successor())
+                .build();
+
+            self.step(step_request)
                 .expect("failed to execute step request");
         }
     }
 
     /// Advances eras by configured amount
-    pub fn advance_eras_by_default_auction_delay(&mut self, reward_items: Vec<RewardItem>) {
+    pub fn advance_eras_by_default_auction_delay(
+        &mut self,
+        reward_items: impl IntoIterator<Item = RewardItem>,
+    ) {
         self.advance_eras_by(DEFAULT_AUCTION_DELAY + 1, reward_items);
     }
 
     /// Advances by a single era.
-    pub fn advance_era(&mut self, reward_items: Vec<RewardItem>) {
+    pub fn advance_era(&mut self, reward_items: impl IntoIterator<Item = RewardItem>) {
         self.advance_eras_by(1, reward_items);
     }
 }

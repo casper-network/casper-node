@@ -6,7 +6,7 @@ use casper_hashing::Digest;
 use casper_types::{EraId, ProtocolVersion};
 
 /// Builder for creating a [`StepRequest`].
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StepRequestBuilder {
     parent_state_hash: Digest,
     protocol_version: ProtocolVersion,
@@ -49,9 +49,8 @@ impl StepRequestBuilder {
     }
 
     /// Appends the given vector of [`RewardItem`] into `reward_items`.
-    pub fn with_reward_items(mut self, reward_items: Vec<RewardItem>) -> Self {
-        let mut local = reward_items;
-        self.reward_items.append(&mut local);
+    pub fn with_reward_items(mut self, reward_items: impl IntoIterator<Item = RewardItem>) -> Self {
+        self.reward_items.extend(reward_items);
         self
     }
 
