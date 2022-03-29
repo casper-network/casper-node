@@ -164,8 +164,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let initial_server_address = SocketAddr::V4(SocketAddrV4::new(opts.server_ip, port));
     let url = address_to_url(initial_server_address);
 
-    // TODO: Consider reading the proper `chainspec` in the `retrieve-state` tool.
-    let verifiable_chunked_hash_activation = EraId::from(0u64);
+    let verifiable_chunked_hash_activation = EraId::from(u64::MAX);
 
     let maybe_highest_block = opts.highest_block;
     let maybe_download_block = opts

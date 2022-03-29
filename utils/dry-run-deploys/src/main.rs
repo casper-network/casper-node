@@ -67,8 +67,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let lmdb_path = normalize_path(&opts.lmdb_path)?;
     let rocksdb_path = normalize_path(&opts.rocksdb_path)?;
 
-    // TODO: Consider reading the proper `chainspec` in the `dry-run-deploys` tool.
-    let verifiable_chunked_hash_activation = EraId::from(0u64);
+    let verifiable_chunked_hash_activation = EraId::from(u64::MAX);
 
     // Create a separate lmdb for block/deploy storage at chain_download_path.
     let storage = create_storage(&chain_download_path, verifiable_chunked_hash_activation)
