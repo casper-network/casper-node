@@ -1,10 +1,12 @@
+use num_rational::Ratio;
+
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_types::{
-    account::AccountHash, runtime_args, system::mint, ContractHash, Key, PublicKey, RuntimeArgs,
-    SecretKey, U512,
+    account::AccountHash, crypto, runtime_args, system::mint, ContractHash, Key, PublicKey,
+    RuntimeArgs, SecretKey, U512,
 };
 
 // test constants.
@@ -17,10 +19,11 @@ use super::{
     ARG_AMOUNT, ARG_AVAILABLE_AMOUNT, ARG_DISTRIBUTIONS_PER_INTERVAL, ARG_ID, ARG_TARGET,
     ARG_TIME_INTERVAL, AUTHORIZED_ACCOUNT_NAMED_KEY, AVAILABLE_AMOUNT_NAMED_KEY,
     DISTRIBUTIONS_PER_INTERVAL_NAMED_KEY, ENTRY_POINT_AUTHORIZE_TO, ENTRY_POINT_FAUCET,
-    ENTRY_POINT_SET_VARIABLES, FAUCET_CONTRACT_NAMED_KEY, FAUCET_FUND_AMOUNT, FAUCET_ID,
-    FAUCET_INSTALLER_SESSION, FAUCET_PURSE_NAMED_KEY, FAUCET_TIME_INTERVAL, INSTALLER_ACCOUNT,
-    INSTALLER_FUND_AMOUNT, INSTALLER_NAMED_KEY, LAST_DISTRIBUTION_TIME_NAMED_KEY,
-    REMAINING_REQUESTS_NAMED_KEY, TIME_INTERVAL_NAMED_KEY, TWO_HOURS_AS_MILLIS,
+    ENTRY_POINT_SET_VARIABLES, FAUCET_CALL_DEFAULT_PAYMENT, FAUCET_CONTRACT_NAMED_KEY,
+    FAUCET_FUND_AMOUNT, FAUCET_ID, FAUCET_INSTALLER_SESSION, FAUCET_PURSE_NAMED_KEY,
+    FAUCET_TIME_INTERVAL, INSTALLER_ACCOUNT, INSTALLER_FUND_AMOUNT, INSTALLER_NAMED_KEY,
+    LAST_DISTRIBUTION_TIME_NAMED_KEY, REMAINING_REQUESTS_NAMED_KEY, TIME_INTERVAL_NAMED_KEY,
+    TWO_HOURS_AS_MILLIS,
 };
 
 #[ignore]
@@ -215,390 +218,131 @@ fn should_allow_installer_to_set_variables() {
 #[ignore]
 #[test]
 fn should_fund_new_account() {
-    let installer_account = AccountHash::new([1u8; 32]);
-    let user_account = AccountHash::new([2u8; 32]);
-
     let mut builder = InMemoryWasmTestBuilder::default();
+
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST).commit();
 
-    let fund_installer_account_request = ExecuteRequestBuilder::transfer(
-        *DEFAULT_ACCOUNT_ADDR,
-        runtime_args! {
-            mint::ARG_TARGET => installer_account,
-            mint::ARG_AMOUNT => INSTALLER_FUND_AMOUNT,
-            mint::ARG_ID => <Option<u64>>::None
-        },
-    )
-    .build();
+    let faucet_purse_fund_amount = U512::from(9_000_000_000u64);
+    let faucet_distributions_per_interval = 3;
+
+    let mut helper = FaucetDeployHelper::default()
+        .with_faucet_purse_fund_amount(faucet_purse_fund_amount)
+        .with_faucet_available_amount(Some(faucet_purse_fund_amount))
+        .with_faucet_distributions_per_interval(Some(faucet_distributions_per_interval));
 
     builder
-        .exec(fund_installer_account_request)
+        .exec(helper.fund_installer_request())
         .expect_success()
         .commit();
 
-    let faucet_fund_amount = U512::from(500_000u64);
-    let installer_session_request = ExecuteRequestBuilder::standard(
-        installer_account,
-        FAUCET_INSTALLER_SESSION,
-        runtime_args! {ARG_ID => FAUCET_ID, ARG_AMOUNT => faucet_fund_amount },
-    )
-    .build();
-
     builder
-        .exec(installer_session_request)
+        .exec(helper.faucet_install_request())
         .expect_success()
         .commit();
 
-    let faucet_contract_hash = builder
-        .get_expected_account(installer_account)
-        .named_keys()
-        .get(&format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID))
-        .cloned()
-        .and_then(Key::into_hash)
-        .map(ContractHash::new)
-        .expect("failed to find faucet contract");
-
-    // check the balance of the faucet's purse before
-    let faucet_contract = builder
-        .get_contract(faucet_contract_hash)
-        .expect("failed to find faucet contract");
-
-    let faucet_purse = faucet_contract
-        .named_keys()
-        .get(FAUCET_PURSE_NAMED_KEY)
-        .cloned()
-        .and_then(Key::into_uref)
-        .expect("failed to find faucet purse");
-
-    let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
-    assert_eq!(faucet_purse_balance, faucet_fund_amount);
-
-    let available_amount = builder
-        .query(
-            None,
-            faucet_contract_hash.into(),
-            &[AVAILABLE_AMOUNT_NAMED_KEY.to_string()],
-        )
-        .expect("failed to find available amount named key")
-        .as_cl_value()
-        .cloned()
-        .expect("failed to convert to cl value")
-        .into_t::<U512>()
-        .expect("failed to convert into U512");
-
-    // the available amount per interval will be zero until the installer calls
-    // the set_variable entrypoint to finish setup.
-    assert_eq!(available_amount, U512::zero());
-
-    let assigned_time_interval = 10_000u64;
-    let assigned_distributions_per_interval = 2u64;
-    let installer_set_variable_request = ExecuteRequestBuilder::contract_call_by_hash(
-        installer_account,
-        faucet_contract_hash,
-        ENTRY_POINT_SET_VARIABLES,
-        runtime_args! {
-            ARG_AVAILABLE_AMOUNT => Some(faucet_fund_amount),
-            ARG_TIME_INTERVAL => Some(assigned_time_interval),
-            ARG_DISTRIBUTIONS_PER_INTERVAL => Some(assigned_distributions_per_interval)
-        },
-    )
-    .build();
+    helper.query_and_set_faucet_contract_hash(&mut builder);
 
     builder
-        .exec(installer_set_variable_request)
+        .exec(helper.faucet_config_request())
         .expect_success()
         .commit();
 
-    let available_amount = builder
-        .query(
-            None,
-            faucet_contract_hash.into(),
-            &[AVAILABLE_AMOUNT_NAMED_KEY.to_string()],
-        )
-        .expect("failed to find available amount named key")
-        .as_cl_value()
-        .cloned()
-        .expect("failed to convert to cl value")
-        .into_t::<U512>()
-        .expect("failed to convert into U512");
+    let new_account = AccountHash::new([7u8; 32]);
 
-    assert_eq!(available_amount, faucet_fund_amount);
+    let new_account_fund_amount = U512::from(5_000_000_000u64);
+    let fund_new_account_request = helper
+        .new_faucet_fund_request_builder()
+        .as_installer_account(helper.installer_account())
+        .with_arg_target(new_account)
+        .with_arg_fund_amount(new_account_fund_amount)
+        .build();
 
-    let remaining_requests = builder
-        .query(
-            None,
-            faucet_contract_hash.into(),
-            &[REMAINING_REQUESTS_NAMED_KEY.to_string()],
-        )
-        .expect("failed to find available amount named key")
-        .as_cl_value()
-        .cloned()
-        .expect("failed to convert to cl value")
-        .into_t::<U512>()
-        .expect("failed to convert into U512");
+    let faucet_purse_uref = helper.query_faucet_purse(&mut builder);
+    let faucet_purse_balance_before = builder.get_purse_balance(faucet_purse_uref);
+
+    builder
+        .exec(fund_new_account_request)
+        .expect_success()
+        .commit();
+
+    let faucet_purse_balance_after = builder.get_purse_balance(faucet_purse_uref);
 
     assert_eq!(
-        remaining_requests,
-        U512::from(assigned_distributions_per_interval)
+        faucet_purse_balance_after,
+        faucet_purse_balance_before - new_account_fund_amount
     );
 
-    let user_fund_amount = U512::from(100_000);
-    let faucet_call_by_installer = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(installer_account)
-            .with_authorization_keys(&[installer_account])
-            .with_stored_session_named_key(
-                &format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID),
-                ENTRY_POINT_FAUCET,
-                runtime_args! {ARG_TARGET => user_account, ARG_AMOUNT => user_fund_amount, ARG_ID => <Option<u64>>::None},
-            )
-            .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
-            .with_deploy_hash([4; 32])
-            .build();
+    let new_account_actual_purse_balance =
+        builder.get_purse_balance(builder.get_expected_account(new_account).main_purse());
 
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
-
-    builder
-        .exec(faucet_call_by_installer)
-        .expect_success()
-        .commit();
-
-    let faucet_contract = builder
-        .get_contract(faucet_contract_hash)
-        .expect("failed to find faucet contract");
-
-    let faucet_purse = faucet_contract
-        .named_keys()
-        .get(FAUCET_PURSE_NAMED_KEY)
-        .cloned()
-        .and_then(Key::into_uref)
-        .expect("failed to find faucet purse");
-
-    let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
-    assert_eq!(faucet_purse_balance, faucet_fund_amount - user_fund_amount);
-
-    // check the balance of the user's main purse
-    let user_main_purse_balance_after =
-        builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
-    assert_eq!(user_main_purse_balance_after, user_fund_amount);
+    assert_eq!(new_account_actual_purse_balance, new_account_fund_amount);
 }
 
 #[ignore]
 #[test]
 fn should_fund_existing_account() {
-    let installer_account = AccountHash::new([1u8; 32]);
-    let user_account = AccountHash::new([2u8; 32]);
+    let user_account = AccountHash::new([7u8; 32]);
 
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST).commit();
 
-    let fund_installer_account_request = ExecuteRequestBuilder::transfer(
-        *DEFAULT_ACCOUNT_ADDR,
-        runtime_args! {
-            mint::ARG_TARGET => installer_account,
-            mint::ARG_AMOUNT => INSTALLER_FUND_AMOUNT,
-            mint::ARG_ID => <Option<u64>>::None
-        },
-    )
-    .build();
+    let faucet_purse_fund_amount = U512::from(9_000_000_000u64);
+    let faucet_distributions_per_interval = 3;
+
+    let mut helper = FaucetDeployHelper::default()
+        .with_faucet_purse_fund_amount(faucet_purse_fund_amount)
+        .with_faucet_available_amount(Some(faucet_purse_fund_amount))
+        .with_faucet_distributions_per_interval(Some(faucet_distributions_per_interval));
 
     builder
-        .exec(fund_installer_account_request)
+        .exec(helper.fund_installer_request())
         .expect_success()
         .commit();
 
-    let faucet_fund_amount = U512::from(200_000_000_000_000u64);
-    let installer_session_request = ExecuteRequestBuilder::standard(
-        installer_account,
-        FAUCET_INSTALLER_SESSION,
-        runtime_args! {ARG_ID => FAUCET_ID, ARG_AMOUNT => faucet_fund_amount},
-    )
-    .build();
+    let user_account_initial_balance = U512::from(5_000_000_000u64);
+
+    let fund_user_request = FundAccountRequestBuilder::new()
+        .with_target_account(user_account)
+        .with_fund_amount(user_account_initial_balance)
+        .build();
+
+    builder.exec(fund_user_request).expect_success().commit();
 
     builder
-        .exec(installer_session_request)
+        .exec(helper.faucet_install_request())
         .expect_success()
         .commit();
 
-    let faucet_contract_hash = builder
-        .get_expected_account(installer_account)
-        .named_keys()
-        .get(&format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID))
-        .cloned()
-        .and_then(Key::into_hash)
-        .map(ContractHash::new)
-        .expect("failed to find faucet contract");
-
-    // check the balance of the faucet's purse before
-    let faucet_contract = builder
-        .get_contract(faucet_contract_hash)
-        .expect("failed to find faucet contract");
-
-    let faucet_purse = faucet_contract
-        .named_keys()
-        .get(FAUCET_PURSE_NAMED_KEY)
-        .cloned()
-        .and_then(Key::into_uref)
-        .expect("failed to find faucet purse");
-
-    let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
-    assert_eq!(faucet_purse_balance, faucet_fund_amount);
-
-    let available_amount = builder
-        .query(
-            None,
-            faucet_contract_hash.into(),
-            &[AVAILABLE_AMOUNT_NAMED_KEY.to_string()],
-        )
-        .expect("failed to find available amount named key")
-        .as_cl_value()
-        .cloned()
-        .expect("failed to convert to cl value")
-        .into_t::<U512>()
-        .expect("failed to convert into U512");
-
-    // the available amount per interval will be zero until the installer calls
-    // the set_variable entrypoint to finish setup.
-    assert_eq!(available_amount, U512::zero());
-
-    let assigned_time_interval = 10_000u64;
-    let assigned_distributions_per_interval = 2u64;
-    let installer_set_variables_request = ExecuteRequestBuilder::contract_call_by_name(
-        installer_account,
-        &format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID),
-        ENTRY_POINT_SET_VARIABLES,
-        runtime_args! {
-            ARG_AVAILABLE_AMOUNT => Some(faucet_fund_amount),
-            ARG_TIME_INTERVAL => Some(assigned_time_interval),
-            ARG_DISTRIBUTIONS_PER_INTERVAL => Some(assigned_distributions_per_interval)
-        },
-    )
-    .build();
+    helper.query_and_set_faucet_contract_hash(&mut builder);
 
     builder
-        .exec(installer_set_variables_request)
+        .exec(helper.faucet_config_request())
         .expect_success()
         .commit();
 
-    let available_amount = builder
-        .query(
-            None,
-            faucet_contract_hash.into(),
-            &[AVAILABLE_AMOUNT_NAMED_KEY.to_string()],
-        )
-        .expect("failed to find available amount named key")
-        .as_cl_value()
-        .cloned()
-        .expect("failed to convert to cl value")
-        .into_t::<U512>()
-        .expect("failed to convert into U512");
-
-    assert_eq!(
-        available_amount, faucet_fund_amount,
-        "available amount must match faucet fund amount"
-    );
-
-    let remaining_requests = builder
-        .query(
-            None,
-            faucet_contract_hash.into(),
-            &[REMAINING_REQUESTS_NAMED_KEY.to_string()],
-        )
-        .expect("failed to find available amount named key")
-        .as_cl_value()
-        .cloned()
-        .expect("failed to convert to cl value")
-        .into_t::<U512>()
-        .expect("failed to convert into U512");
-
-    assert_eq!(
-        remaining_requests,
-        U512::from(assigned_distributions_per_interval),
-    );
-
-    let user_fund_amount = U512::from(3_000_000_000u64);
-    let faucet_call_by_installer = ExecuteRequestBuilder::contract_call_by_name(
-        installer_account,
-        &format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID),
-        ENTRY_POINT_FAUCET,
-        runtime_args! {
-            ARG_TARGET => user_account,
-            ARG_AMOUNT => user_fund_amount,
-            ARG_ID => <Option<u64>>::None,
-        },
-    )
-    .build();
+    let user_purse_uref = builder.get_expected_account(user_account).main_purse();
+    let user_purse_balance_before = builder.get_purse_balance(user_purse_uref);
 
     builder
-        .exec(faucet_call_by_installer)
+        .exec(
+            helper
+                .new_faucet_fund_request_builder()
+                .as_user_account(user_account)
+                .build(),
+        )
         .expect_success()
         .commit();
 
-    let faucet_contract = builder
-        .get_contract(faucet_contract_hash)
-        .expect("failed to find faucet contract");
-
-    let faucet_purse = faucet_contract
-        .named_keys()
-        .get(FAUCET_PURSE_NAMED_KEY)
-        .cloned()
-        .and_then(Key::into_uref)
-        .expect("failed to find faucet purse");
-
-    let half_of_faucet_fund_amount = faucet_fund_amount / 2;
-    let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
-    assert_eq!(faucet_purse_balance, faucet_fund_amount - user_fund_amount,);
-
-    // check the balance of the user's main purse
-    let user_main_purse_balance_after =
-        builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
-    assert_eq!(user_main_purse_balance_after, user_fund_amount,);
-
-    let faucet_call_by_user = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(user_account)
-            .with_authorization_keys(&[user_account])
-            .with_stored_session_hash(
-                faucet_contract_hash,
-                ENTRY_POINT_FAUCET,
-                runtime_args! {ARG_TARGET => user_account, ARG_ID => <Option<u64>>::None},
-            )
-            .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => user_fund_amount})
-            .with_deploy_hash([4; 32])
-            .build();
-
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
-
-    builder.exec(faucet_call_by_user).expect_success().commit();
-
-    let remaining_requests = builder
-        .query(
-            None,
-            faucet_contract_hash.into(),
-            &[REMAINING_REQUESTS_NAMED_KEY.to_string()],
-        )
-        .expect("failed to find available amount named key")
-        .as_cl_value()
-        .cloned()
-        .expect("failed to convert to cl value")
-        .into_t::<U512>()
-        .expect("failed to convert into U512");
+    let user_purse_balance_after = builder.get_purse_balance(user_purse_uref);
+    let one_distribution = Ratio::new(
+        faucet_purse_fund_amount,
+        faucet_distributions_per_interval.into(),
+    )
+    .to_integer();
 
     assert_eq!(
-        remaining_requests,
-        U512::from(assigned_distributions_per_interval - 1),
-    );
-    let user_main_purse_balance_after =
-        builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
-
-    assert_eq!(user_main_purse_balance_after, half_of_faucet_fund_amount,);
-
-    let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
-    assert_eq!(
-        faucet_purse_balance,
-        faucet_fund_amount - half_of_faucet_fund_amount - user_fund_amount,
+        user_purse_balance_after,
+        user_purse_balance_before + one_distribution - FAUCET_CALL_DEFAULT_PAYMENT
     );
 }
 
