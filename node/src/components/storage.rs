@@ -150,20 +150,6 @@ pub struct Storage {
     storage: StorageInner,
 }
 
-impl Storage {
-    pub(crate) fn read_switch_block_header_by_era_id(
-        &self,
-        switch_block_era_id: EraId,
-    ) -> Result<Option<BlockHeader>, FatalStorageError> {
-        self.storage
-            .read_switch_block_header_by_era_id(switch_block_era_id)
-    }
-
-    pub(crate) fn root_path(&self) -> &Path {
-        self.storage.root_path()
-    }
-}
-
 /// The inner storage component.
 #[derive(DataSize, Debug)]
 pub struct StorageInner {
@@ -339,6 +325,60 @@ impl Storage {
                 verifiable_chunked_hash_activation,
             )?,
         })
+    }
+
+    pub(crate) fn read_switch_block_header_by_era_id(
+        &self,
+        switch_block_era_id: EraId,
+    ) -> Result<Option<BlockHeader>, FatalStorageError> {
+        self.storage
+            .read_switch_block_header_by_era_id(switch_block_era_id)
+    }
+
+    pub(crate) fn root_path(&self) -> &Path {
+        self.storage.root_path()
+    }
+
+    // Note: Methods on `Storage` other than new should disappear and be replaced by an accessor
+    // that exposes `StorageInner`, once the latter becomes the publically shared storage object.
+
+    /// Reads a block from storage.
+    #[inline]
+    pub fn read_block(&self, block_hash: &BlockHash) -> Result<Option<Block>, FatalStorageError> {
+        self.storage.read_block(block_hash)
+    }
+
+    /// Retrieves single block by height by looking it up in the index and returning it.
+    #[inline]
+    pub fn read_block_by_height(&self, height: u64) -> Result<Option<Block>, FatalStorageError> {
+        self.storage.read_block_by_height(height)
+    }
+
+    /// Gets the highest block.
+    pub fn read_highest_block(&self) -> Result<Option<Block>, FatalStorageError> {
+        let mut tx = self.storage.env.begin_ro_txn()?;
+        self.storage.get_highest_block(&mut tx)
+    }
+
+    /// Directly returns a deploy from internal store.
+    pub fn read_deploy_by_hash(
+        &self,
+        deploy_hash: DeployHash,
+    ) -> Result<Option<Deploy>, FatalStorageError> {
+        let mut txn = self.storage.env.begin_ro_txn()?;
+        Ok(txn.get_value(self.storage.deploy_db, &deploy_hash)?)
+    }
+
+    /// Put a single deploy into storage.
+    #[inline]
+    pub fn put_deploy(&self, deploy: &Deploy) -> Result<bool, FatalStorageError> {
+        self.storage.put_deploy(deploy)
+    }
+
+    /// Write a block to storage.
+    #[inline]
+    pub fn write_block(&mut self, block: &Block) -> Result<bool, FatalStorageError> {
+        self.storage.write_block(block)
     }
 }
 
@@ -1033,15 +1073,6 @@ impl StorageInner {
         self.get_single_block(&mut self.env.begin_ro_txn()?, block_hash)
     }
 
-    /// Directly returns a deploy from internal store.
-    pub fn read_deploy_by_hash(
-        &self,
-        deploy_hash: DeployHash,
-    ) -> Result<Option<Deploy>, FatalStorageError> {
-        let mut txn = self.env.begin_ro_txn()?;
-        Ok(txn.get_value(self.deploy_db, &deploy_hash)?)
-    }
-
     /// Writes a block to storage, updating indices as necessary
     /// Returns `Ok(true)` if the block has been successfully written, `Ok(false)` if a part of it
     /// couldn't be written because it already existed, and `Err(_)` if there was an error.
@@ -1130,11 +1161,6 @@ impl StorageInner {
     /// Retrieves single block by height by looking it up in the index and returning it.
     pub fn read_block_by_height(&self, height: u64) -> Result<Option<Block>, FatalStorageError> {
         self.get_block_by_height(&mut self.env.begin_ro_txn()?, height)
-    }
-
-    /// Gets the highest block.
-    pub fn read_highest_block(&self) -> Result<Option<Block>, FatalStorageError> {
-        self.get_highest_block(&mut self.env.begin_ro_txn()?)
     }
 
     /// Retrieves single block by height by looking it up in the index and returning it.
@@ -2059,10 +2085,6 @@ impl Storage {
     ) -> Result<Option<BlockHeaderWithMetadata>, FatalStorageError> {
         self.storage
             .read_block_header_and_sufficient_finality_signatures_by_height(height)
-    }
-
-    pub fn read_block(&self, block_hash: &BlockHash) -> Result<Option<Block>, FatalStorageError> {
-        self.storage.read_block(block_hash)
     }
 
     /// Retrieves the highest block header from the storage, if one exists.
