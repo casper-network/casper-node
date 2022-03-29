@@ -1122,18 +1122,6 @@ impl StorageInner {
         Ok(maybe_block_and_finality_signatures)
     }
 
-    /// Retrieves single block header by height by looking it up in the index and returning it.
-    fn get_block_header_by_height<Tx: Transaction>(
-        &self,
-        tx: &mut Tx,
-        height: u64,
-    ) -> Result<Option<BlockHeader>, FatalStorageError> {
-        self.block_height_index
-            .get(&height)
-            .and_then(|block_hash| self.get_single_block_header(tx, block_hash).transpose())
-            .transpose()
-    }
-
     /// Retrieves single block by height by looking it up in the index and returning it.
     pub fn read_block_by_height(&self, height: u64) -> Result<Option<Block>, FatalStorageError> {
         self.get_block_by_height(&mut self.env.begin_ro_txn()?, height)
@@ -1142,14 +1130,6 @@ impl StorageInner {
     /// Gets the highest block.
     pub fn read_highest_block(&self) -> Result<Option<Block>, FatalStorageError> {
         self.get_highest_block(&mut self.env.begin_ro_txn()?)
-    }
-
-    /// Retrieves a block header to handle a network request.
-    pub fn read_block_header_by_height(
-        &self,
-        height: u64,
-    ) -> Result<Option<BlockHeader>, FatalStorageError> {
-        self.get_block_header_by_height(&mut self.env.begin_ro_txn()?, height)
     }
 
     /// Retrieves single block by height by looking it up in the index and returning it.
@@ -1216,15 +1196,6 @@ impl StorageInner {
                     .transpose()
             })
             .transpose()
-    }
-
-    /// Retrieves the highest block header from the storage, if one exists.
-    pub fn read_highest_block_header(&self) -> Result<Option<BlockHeader>, FatalStorageError> {
-        let highest_block_hash = match self.block_height_index.iter().last() {
-            Some((_, highest_block_hash)) => highest_block_hash,
-            None => return Ok(None),
-        };
-        self.read_block_header_by_hash(highest_block_hash)
     }
 
     /// Returns vector blocks that satisfy the predicate, starting from the latest one and following
@@ -1972,10 +1943,11 @@ impl Storage {
     /// Panics if an IO error occurs.
     pub(crate) fn get_deploy_by_hash(&self, deploy_hash: DeployHash) -> Option<Deploy> {
         let mut txn = self
+            .storage
             .env
             .begin_ro_txn()
             .expect("could not create RO transaction");
-        txn.get_value(self.deploy_db, &deploy_hash)
+        txn.get_value(self.storage.deploy_db, &deploy_hash)
             .expect("could not retrieve value from storage")
     }
 
@@ -1986,12 +1958,13 @@ impl Storage {
     /// Panics on any IO or db corruption error.
     pub(crate) fn get_all_deploy_hashes(&self) -> BTreeSet<DeployHash> {
         let txn = self
+            .storage
             .env
             .begin_ro_txn()
             .expect("could not create RO transaction");
 
         let mut cursor = txn
-            .open_ro_cursor(self.deploy_db)
+            .open_ro_cursor(self.storage.deploy_db)
             .expect("could not create cursor");
 
         cursor
@@ -2002,19 +1975,16 @@ impl Storage {
             .collect()
     }
 
-    pub fn env(&self) -> &Environment {
-        &self.env
-    }
-
     /// Retrieves single switch block by era ID by looking it up in the index and returning it.
     fn get_switch_block_by_era_id<Tx: Transaction>(
         &self,
         tx: &mut Tx,
         era_id: EraId,
     ) -> Result<Option<Block>, FatalStorageError> {
-        self.switch_block_era_id_index
+        self.storage
+            .switch_block_era_id_index
             .get(&era_id)
-            .and_then(|block_hash| self.get_single_block(tx, block_hash).transpose())
+            .and_then(|block_hash| self.storage.get_single_block(tx, block_hash).transpose())
             .transpose()
     }
 
@@ -2028,6 +1998,7 @@ impl Storage {
         switch_block_era_num: u64,
     ) -> Option<Block> {
         let mut read_only_lmdb_transaction = self
+            .storage
             .env
             .begin_ro_txn()
             .expect("Could not start read only transaction for lmdb");
@@ -2041,6 +2012,52 @@ impl Storage {
             .commit()
             .expect("Could not commit transaction");
         switch_block
+    }
+
+    /// Retrieves a single block header by height by looking it up in the index and returning it.
+    pub fn read_block_header_by_height(
+        &self,
+        height: u64,
+    ) -> Result<Option<BlockHeader>, FatalStorageError> {
+        let mut tx = self.storage.env.begin_ro_txn()?;
+
+        self.storage
+            .block_height_index
+            .get(&height)
+            .and_then(|block_hash| {
+                self.storage
+                    .get_single_block_header(&mut tx, block_hash)
+                    .transpose()
+            })
+            .transpose()
+    }
+
+    /// Retrieves a single block by height by looking it up in the index and returning it.
+    fn get_block_by_height(&self, height: u64) -> Result<Option<Block>, FatalStorageError> {
+        let mut tx = self.storage.env.begin_ro_txn()?;
+
+        self.storage.get_block_by_height(&mut tx, height)
+    }
+
+    pub fn read_block_header_and_sufficient_finality_signatures_by_height(
+        &self,
+        height: u64,
+    ) -> Result<Option<BlockHeaderWithMetadata>, FatalStorageError> {
+        self.storage
+            .read_block_header_and_sufficient_finality_signatures_by_height(height)
+    }
+
+    pub fn read_block(&self, block_hash: &BlockHash) -> Result<Option<Block>, FatalStorageError> {
+        self.storage.read_block(block_hash)
+    }
+
+    /// Retrieves the highest block header from the storage, if one exists.
+    pub fn read_highest_block_header(&self) -> Result<Option<BlockHeader>, FatalStorageError> {
+        let highest_block_hash = match self.storage.block_height_index.iter().last() {
+            Some((_, highest_block_hash)) => highest_block_hash,
+            None => return Ok(None),
+        };
+        self.storage.read_block_header_by_hash(highest_block_hash)
     }
 }
 
