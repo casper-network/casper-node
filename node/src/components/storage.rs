@@ -317,9 +317,29 @@ enum GetRequestError {
     GossipedAddressNotGettable,
 }
 
-/// The storage component.
+/// Storage component.
 #[derive(DataSize, Debug)]
 pub struct Storage {
+    storage: StorageInner,
+}
+
+impl Storage {
+    pub(crate) fn read_switch_block_header_by_era_id(
+        &self,
+        switch_block_era_id: EraId,
+    ) -> Result<Option<BlockHeader>, FatalStorageError> {
+        self.storage
+            .read_switch_block_header_by_era_id(switch_block_era_id)
+    }
+
+    pub(crate) fn root_path(&self) -> &Path {
+        self.storage.root_path()
+    }
+}
+
+/// The inner storage component.
+#[derive(DataSize, Debug)]
+pub struct StorageInner {
     /// Storage location.
     root: PathBuf,
     /// Environment holding LMDB databases.
@@ -429,9 +449,12 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         let outcome = match event {
-            Event::StorageRequest(req) => self.handle_storage_request::<REv>(req),
+            Event::StorageRequest(req) => self.storage.handle_storage_request::<REv>(req),
             Event::NetRequestIncoming(ref incoming) => {
-                match self.handle_net_request_incoming::<REv>(effect_builder, incoming) {
+                match self
+                    .storage
+                    .handle_net_request_incoming::<REv>(effect_builder, incoming)
+                {
                     Ok(effects) => Ok(effects),
                     Err(GetRequestError::Fatal(fatal_error)) => Err(fatal_error),
                     Err(ref other_err) => {
@@ -443,9 +466,9 @@ where
                     }
                 }
             }
-            Event::StateStoreRequest(req) => {
-                self.handle_state_store_request::<REv>(effect_builder, req)
-            }
+            Event::StateStoreRequest(req) => self
+                .storage
+                .handle_state_store_request::<REv>(effect_builder, req),
         };
 
         // On success, execute the effects. For errors, we crash on fatal ones, but only log
@@ -462,6 +485,31 @@ where
 
 impl Storage {
     /// Creates a new storage component.
+    pub fn new(
+        cfg: &WithDir<Config>,
+        hard_reset_to_start_of_era: Option<EraId>,
+        protocol_version: ProtocolVersion,
+        network_name: &str,
+        finality_threshold_fraction: Ratio<u64>,
+        last_emergency_restart: Option<EraId>,
+        verifiable_chunked_hash_activation: EraId,
+    ) -> Result<Self, FatalStorageError> {
+        Ok(Storage {
+            storage: StorageInner::new(
+                cfg,
+                hard_reset_to_start_of_era,
+                protocol_version,
+                network_name,
+                finality_threshold_fraction,
+                last_emergency_restart,
+                verifiable_chunked_hash_activation,
+            )?,
+        })
+    }
+}
+
+impl StorageInner {
+    /// Creates a new inner storage.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         cfg: &WithDir<Config>,
@@ -655,10 +703,7 @@ impl Storage {
         &mut self,
         _effect_builder: EffectBuilder<REv>,
         req: StateStoreRequest,
-    ) -> Result<Effects<Event>, FatalStorageError>
-    where
-        Self: Component<REv>,
-    {
+    ) -> Result<Effects<Event>, FatalStorageError> {
         // Incoming requests are fairly simple database write. Errors are handled one level above on
         // the call stack, so all we have to do is load or store a value.
         match req {
@@ -706,7 +751,6 @@ impl Storage {
         incoming: &NetRequestIncoming,
     ) -> Result<Effects<Event>, GetRequestError>
     where
-        Self: Component<REv>,
         REv: From<NetworkRequest<Message>> + Send,
     {
         if self.enable_mem_deduplication {
@@ -801,10 +845,7 @@ impl Storage {
     fn handle_storage_request<REv>(
         &mut self,
         req: StorageRequest,
-    ) -> Result<Effects<Event>, FatalStorageError>
-    where
-        Self: Component<REv>,
-    {
+    ) -> Result<Effects<Event>, FatalStorageError> {
         // Note: Database IO is handled in a blocking fashion on purpose throughout this function.
         // The rationale is that long IO operations are very rare and cache misses frequent, so on
         // average the actual execution time will be very low.
