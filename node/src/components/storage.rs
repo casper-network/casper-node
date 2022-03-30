@@ -204,7 +204,8 @@ pub struct StorageInner {
     /// An in-memory pool of already loaded serialized items.
     ///
     /// Keyed by serialized item ID, contains the serialized item.
-    serialized_item_pool: ObjectPool<Box<[u8]>>,
+    #[data_size(skip)]
+    serialized_item_pool: RwLock<ObjectPool<Box<[u8]>>>,
     /// The fraction of validators, by weight, that have to sign a block to prove its finality.
     #[data_size(skip)]
     finality_threshold_fraction: Ratio<u64>,
@@ -563,7 +564,7 @@ impl StorageInner {
             highest_block_at_startup,
             indices: RwLock::new(indices),
             enable_mem_deduplication: config.enable_mem_deduplication,
-            serialized_item_pool: ObjectPool::new(config.mem_pool_prune_interval),
+            serialized_item_pool: RwLock::new(ObjectPool::new(config.mem_pool_prune_interval)),
             finality_threshold_fraction,
             last_emergency_restart,
             verifiable_chunked_hash_activation,
@@ -627,9 +628,13 @@ impl StorageInner {
     {
         if self.enable_mem_deduplication {
             let unique_id = incoming.message.unique_id();
-            if let Some(serialized_item) = self
+
+            let serialized_item_pool = self
                 .serialized_item_pool
-                .get(AsRef::<[u8]>::as_ref(&unique_id))
+                .try_read()
+                .map_err(FatalStorageError::from)?;
+            if let Some(serialized_item) =
+                serialized_item_pool.get(AsRef::<[u8]>::as_ref(&unique_id))
             {
                 // We found an item in the pool. We can short-circuit all
                 // deserialization/serialization and return the canned item
@@ -1722,8 +1727,8 @@ impl StorageInner {
         let shared: Arc<[u8]> = serialized.into();
 
         if self.enable_mem_deduplication && fetched_or_not_found.was_found() {
-            self.serialized_item_pool
-                .put(serialized_id.into(), Arc::downgrade(&shared));
+            let mut serialized_item_pool = self.serialized_item_pool.try_write()?;
+            serialized_item_pool.put(serialized_id.into(), Arc::downgrade(&shared));
         }
 
         let message = Message::new_get_response_from_serialized(<T as Item>::TAG, shared);

@@ -10,7 +10,7 @@ use tracing::error;
 use casper_hashing::Digest;
 use casper_types::EraId;
 
-use super::{lmdb_ext::LmdbExtError, Indices};
+use super::{lmdb_ext::LmdbExtError, object_pool::ObjectPool, Indices};
 use crate::{
     components::consensus::error::FinalitySignatureError,
     crypto,
@@ -179,6 +179,16 @@ pub enum FatalStorageError {
     /// Attempting to re-lock a non-reentrant lock on the same thread.
     #[error("indices lock blocked, possible bug")]
     IndicesLockBlocked,
+    /// Locking the item memory pool lock failed due to lock poisoning.
+    ///
+    /// A thread holding the lock has crashed.
+    #[error("item pool lock poisoned")]
+    ItemPoolLockPoisoned,
+    /// Tried to re-enter item memory pool lock.
+    ///
+    /// Attempting to re-lock a non-reentrant lock on the same thread.
+    #[error("item pool lock lock blocked, possible bug")]
+    ItemPoolLockBlocked,
 }
 
 // We wholesale wrap lmdb errors and treat them as internal errors here.
@@ -204,6 +214,24 @@ impl<'a> From<TryLockError<RwLockWriteGuard<'a, Indices>>> for FatalStorageError
         match err {
             TryLockError::Poisoned(_) => FatalStorageError::IndicesLockPoisoned,
             TryLockError::WouldBlock => FatalStorageError::IndicesLockBlocked,
+        }
+    }
+}
+
+impl<'a> From<TryLockError<RwLockReadGuard<'a, ObjectPool<Box<[u8]>>>>> for FatalStorageError {
+    fn from(err: TryLockError<RwLockReadGuard<'a, ObjectPool<Box<[u8]>>>>) -> Self {
+        match err {
+            TryLockError::Poisoned(_) => FatalStorageError::ItemPoolLockPoisoned,
+            TryLockError::WouldBlock => FatalStorageError::ItemPoolLockBlocked,
+        }
+    }
+}
+
+impl<'a> From<TryLockError<RwLockWriteGuard<'a, ObjectPool<Box<[u8]>>>>> for FatalStorageError {
+    fn from(err: TryLockError<RwLockWriteGuard<'a, ObjectPool<Box<[u8]>>>>) -> Self {
+        match err {
+            TryLockError::Poisoned(_) => FatalStorageError::ItemPoolLockPoisoned,
+            TryLockError::WouldBlock => FatalStorageError::ItemPoolLockBlocked,
         }
     }
 }
