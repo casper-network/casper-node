@@ -27,6 +27,8 @@ use super::{ACCOUNT_1_ADDR, DEFAULT_ADMIN_ACCOUNT_ADDR, DEFAULT_PRIVATE_CHAIN_GE
 
 const ACCOUNT_MANAGEMENT_CONTRACT: &str = "account_management.wasm";
 const ADD_ASSOCIATED_KEY_CONTRACT: &str = "add_associated_key.wasm";
+const SET_ACTION_THRESHOLDS_CONTRACT: &str = "set_action_thresholds.wasm";
+const UPDATE_ASSOCIATED_KEY_CONTRACT: &str = "update_associated_key.wasm";
 const CONTRACT_HASH_NAME: &str = "contract_hash";
 const DISABLE_ACCOUNT_ENTRYPOINT: &str = "disable_account";
 const ENABLE_ACCOUNT_ENTRYPOINT: &str = "enable_account";
@@ -34,6 +36,9 @@ const ARG_ACCOUNT_HASH: &str = "account_hash";
 
 const ARG_ACCOUNT: &str = "account";
 const ARG_WEIGHT: &str = "weight";
+
+const ARG_KEY_MANAGEMENT_THRESHOLD: &str = "key_management_threshold";
+const ARG_DEPLOY_THRESHOLD: &str = "deploy_threshold";
 
 /// Creates minimal session code that does only one "nop" opcode
 pub fn do_minimum_bytes() -> Vec<u8> {
@@ -79,6 +84,104 @@ fn should_not_resolve_private_chain_host_functions_on_public_chain() {
         Error::Exec(execution::Error::Interpreter(msg))
         if msg == "host module doesn't export function with name casper_control_management"
     ));
+}
+
+#[ignore]
+#[test]
+fn genesis_accounts_should_not_update_key_weight() {
+    let mut builder = setup();
+
+    let account_1 = builder
+        .get_account(*ACCOUNT_1_ADDR)
+        .expect("should have account 1");
+    assert_eq!(
+        account_1.action_thresholds(),
+        &ActionThresholds {
+            deployment: Weight::new(1),
+            key_management: Weight::MAX,
+        }
+    );
+
+    let exec_request_1 = {
+        let session_args = runtime_args! {
+            ARG_ACCOUNT => *ACCOUNT_1_ADDR,
+            ARG_WEIGHT => Weight::MAX,
+        };
+        ExecuteRequestBuilder::standard(
+            *ACCOUNT_1_ADDR,
+            UPDATE_ASSOCIATED_KEY_CONTRACT,
+            session_args,
+        )
+        .build()
+    };
+
+    builder.exec(exec_request_1).expect_failure().commit();
+
+    let error = builder.get_error().expect("should have error");
+    assert!(
+        matches!(
+            error,
+            Error::Exec(execution::Error::Revert(ApiError::PermissionDenied))
+        ),
+        "{:?}",
+        error
+    );
+
+    let exec_request_2 = {
+        let session_args = runtime_args! {
+            ARG_ACCOUNT => *DEFAULT_ADMIN_ACCOUNT_ADDR,
+            ARG_WEIGHT => Weight::new(1),
+        };
+        ExecuteRequestBuilder::standard(
+            *ACCOUNT_1_ADDR,
+            UPDATE_ASSOCIATED_KEY_CONTRACT,
+            session_args,
+        )
+        .build()
+    };
+
+    builder.exec(exec_request_2).expect_failure().commit();
+}
+
+#[ignore]
+#[test]
+fn genesis_accounts_should_not_modify_action_thresholds() {
+    let mut builder = setup();
+
+    let account_1 = builder
+        .get_account(*ACCOUNT_1_ADDR)
+        .expect("should have account 1");
+    assert_eq!(
+        account_1.action_thresholds(),
+        &ActionThresholds {
+            deployment: Weight::new(1),
+            key_management: Weight::MAX,
+        }
+    );
+
+    let exec_request = {
+        let session_args = runtime_args! {
+            ARG_DEPLOY_THRESHOLD => Weight::new(1),
+            ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(1),
+        };
+        ExecuteRequestBuilder::standard(
+            *ACCOUNT_1_ADDR,
+            SET_ACTION_THRESHOLDS_CONTRACT,
+            session_args,
+        )
+        .build()
+    };
+
+    builder.exec(exec_request).expect_failure().commit();
+    let error = builder.get_error().expect("should have error");
+    assert!(
+        matches!(
+            error,
+            Error::Exec(execution::Error::Revert(ApiError::PermissionDenied))
+        ),
+        "{:?}",
+        error
+    );
 }
 
 #[ignore]
