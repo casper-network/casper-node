@@ -1,4 +1,8 @@
-use std::{io, path::PathBuf};
+use std::{
+    io,
+    path::PathBuf,
+    sync::{RwLockReadGuard, RwLockWriteGuard, TryLockError},
+};
 
 use thiserror::Error;
 use tracing::error;
@@ -6,7 +10,7 @@ use tracing::error;
 use casper_hashing::Digest;
 use casper_types::EraId;
 
-use super::lmdb_ext::LmdbExtError;
+use super::{lmdb_ext::LmdbExtError, Indices};
 use crate::{
     components::consensus::error::FinalitySignatureError,
     crypto,
@@ -165,12 +169,42 @@ pub enum FatalStorageError {
     /// Failed to serialize an item that was found in local storage.
     #[error("failed to serialized stored item")]
     StoredItemSerializationFailure(#[source] bincode::Error),
+    /// Locking the indices lock failed due to lock poisoning.
+    ///
+    /// A thread holding the lock has crashed.
+    #[error("indices lock poisoned")]
+    IndicesLockPoisoned,
+    /// Tried to re-enter indices lock.
+    ///
+    /// Attempting to re-lock a non-reentrant lock on the same thread.
+    #[error("indices lock blocked, possible bug")]
+    IndicesLockBlocked,
 }
 
 // We wholesale wrap lmdb errors and treat them as internal errors here.
 impl From<lmdb::Error> for FatalStorageError {
     fn from(err: lmdb::Error) -> Self {
         LmdbExtError::from(err).into()
+    }
+}
+
+// While we usually avoid blanked `From` impls on errors, the type is specific enough (includes
+// `Indices`) to make an exception to this rule here for both read and write lock poisoning.
+impl<'a> From<TryLockError<RwLockReadGuard<'a, Indices>>> for FatalStorageError {
+    fn from(err: TryLockError<RwLockReadGuard<'a, Indices>>) -> Self {
+        match err {
+            TryLockError::Poisoned(_) => FatalStorageError::IndicesLockPoisoned,
+            TryLockError::WouldBlock => FatalStorageError::IndicesLockBlocked,
+        }
+    }
+}
+
+impl<'a> From<TryLockError<RwLockWriteGuard<'a, Indices>>> for FatalStorageError {
+    fn from(err: TryLockError<RwLockWriteGuard<'a, Indices>>) -> Self {
+        match err {
+            TryLockError::Poisoned(_) => FatalStorageError::IndicesLockPoisoned,
+            TryLockError::WouldBlock => FatalStorageError::IndicesLockBlocked,
+        }
     }
 }
 
