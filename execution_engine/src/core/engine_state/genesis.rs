@@ -1,7 +1,14 @@
 //! Support for a genesis process.
-use std::{borrow::Cow, cell::RefCell, collections::BTreeMap, fmt, iter, rc::Rc};
+use std::{
+    borrow::Cow,
+    cell::RefCell,
+    collections::{BTreeMap, BTreeSet},
+    fmt, iter,
+    rc::Rc,
+};
 
 use datasize::DataSize;
+use itertools::Itertools;
 use num::Zero;
 use num_rational::Ratio;
 use parity_wasm::elements::Module;
@@ -54,7 +61,6 @@ use crate::{
         wasm_config::WasmConfig,
     },
     storage::global_state::StateProvider,
-    system::mint::AdministrativeAccounts,
 };
 
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
@@ -165,7 +171,7 @@ pub struct DelegatorAccount {
 }
 
 /// Special account in the system used for private chains.
-#[derive(DataSize, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(DataSize, Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct AdministratorAccount {
     public_key: PublicKey,
     balance: Motes,
@@ -301,7 +307,11 @@ impl GenesisAccount {
             GenesisAccount::Administrator(AdministratorAccount {
                 public_key: _,
                 balance: _,
-            }) => todo!(),
+            }) => {
+                // This is defaulted to zero because administrator accounts are filtered out before
+                // validator set is created at the genesis.
+                Motes::zero()
+            }
         }
     }
 
@@ -609,7 +619,7 @@ pub struct ExecConfig {
     round_seigniorage_rate: Ratio<u64>,
     unbonding_delay: u64,
     genesis_timestamp_millis: u64,
-    chain_kind: ChainKind, // todo remove
+    chain_kind: ChainKind,
 }
 
 impl ExecConfig {
@@ -814,6 +824,20 @@ pub enum GenesisError {
     },
     /// The chainspec registry is missing a required entry.
     MissingChainspecRegistryEntry,
+    /// Genesis does not support administrative accounts on a public chain.
+    UnsupportedAdministratorAccounts,
+    /// Duplicated administrator entry.
+    ///
+    /// This error can occur only on private chains.
+    DuplicatedAdministratorEntry,
+    /// Error adding administrator account.
+    AddAdministratorAccount(AddKeyFailure),
+}
+
+impl From<AddKeyFailure> for GenesisError {
+    fn from(v: AddKeyFailure) -> Self {
+        Self::AddAdministratorAccount(v)
+    }
 }
 
 pub(crate) struct GenesisInstaller<S>
@@ -925,26 +949,27 @@ where
             total_supply_uref
         };
 
-        let special_accounts_uref =
+        let administrative_accounts_uref =
             if self.is_private_chain() {
-                let special_accounts: AdministrativeAccounts = self
+                let administrative_accounts: BTreeSet<AccountHash> = self
                     .exec_config
                     .administrative_accounts()
                     .map(|AdministratorAccount { public_key, .. }| public_key.to_account_hash())
                     .collect();
 
-                let special_accounts_uref = self
+                let administrative_accounts_uref = self
                     .address_generator
                     .borrow_mut()
                     .new_uref(AccessRights::READ_ADD_WRITE);
 
                 self.tracking_copy.borrow_mut().write(
-                    special_accounts_uref.into(),
-                    StoredValue::CLValue(CLValue::from_t(special_accounts).map_err(|_| {
-                        GenesisError::CLValue(ADMINISTRATIVE_ACCOUNTS_KEY.to_string())
-                    })?),
+                    administrative_accounts_uref.into(),
+                    StoredValue::CLValue(CLValue::from_t(administrative_accounts).map_err(
+                        |_| GenesisError::CLValue(ADMINISTRATIVE_ACCOUNTS_KEY.to_string()),
+                    )?),
                 );
-                Some(special_accounts_uref)
+
+                Some(administrative_accounts_uref)
             } else {
                 // Don't create administrative accounts for public chains.
                 None
@@ -958,7 +983,7 @@ where
             );
             named_keys.insert(TOTAL_SUPPLY_KEY.to_string(), total_supply_uref.into());
 
-            if let Some(special_accounts_uref) = special_accounts_uref {
+            if let Some(special_accounts_uref) = administrative_accounts_uref {
                 named_keys.insert(
                     ADMINISTRATIVE_ACCOUNTS_KEY.to_string(),
                     special_accounts_uref.into(),
@@ -1288,7 +1313,24 @@ where
             ret
         };
 
-        let special_accounts: Vec<&AdministratorAccount> =
+        if self.exec_config.administrative_accounts().next().is_some() && !self.is_private_chain() {
+            return Err(GenesisError::UnsupportedAdministratorAccounts);
+        }
+
+        if self.is_private_chain()
+            && self
+                .exec_config
+                .administrative_accounts()
+                .duplicates_by(|admin| &admin.public_key)
+                .next()
+                .is_some()
+        {
+            // Ensure no duplicate administrator accounts are specified as this might raise errors
+            // during genesis process when administrator accounts are added to associated keys.
+            return Err(GenesisError::DuplicatedAdministratorEntry);
+        }
+
+        let administrative_accounts: BTreeSet<&AdministratorAccount> =
             self.exec_config.administrative_accounts().collect();
 
         for account in accounts.iter() {
@@ -1306,20 +1348,17 @@ where
                     Account::create(account_hash, NamedKeys::default(), main_purse)
                 };
 
-                for AdministratorAccount { public_key, .. } in special_accounts.iter() {
+                for AdministratorAccount { public_key, .. } in administrative_accounts.iter() {
                     let special_account_hash = public_key.to_account_hash();
                     match account.add_associated_key(special_account_hash, Weight::MAX) {
                         Ok(()) => {}
                         Err(AddKeyFailure::DuplicateKey)
                             if special_account_hash == account_hash =>
                         {
-                            // We're creating a special account and we can't put duplicated identity
-                            // key here.
+                            // We're creating a special account itself and associated key already
+                            // exists for it.
                         }
-                        Err(error) => {
-                            // todo validate special accounts
-                            panic!("{:?}", error);
-                        }
+                        Err(error) => return Err(error.into()),
                     }
                 }
 

@@ -19,9 +19,6 @@ use crate::system::mint::{
     system_provider::SystemProvider,
 };
 
-/// List of special accounts in the system.
-pub type AdministrativeAccounts = Vec<AccountHash>;
-
 /// Mint trait.
 pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
     /// Mint new token with given `initial_balance` balance. Returns new purse on success, otherwise

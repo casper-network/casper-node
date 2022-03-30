@@ -3,7 +3,7 @@
 
 use alloc::{
     boxed::Box,
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     string::String,
     vec::Vec,
 };
@@ -426,6 +426,12 @@ impl<T: CLTyped> CLTyped for Option<T> {
 }
 
 impl<T: CLTyped> CLTyped for Vec<T> {
+    fn cl_type() -> CLType {
+        CLType::List(Box::new(T::cl_type()))
+    }
+}
+
+impl<T: CLTyped> CLTyped for BTreeSet<T> {
     fn cl_type() -> CLType {
         CLType::List(Box::new(T::cl_type()))
     }

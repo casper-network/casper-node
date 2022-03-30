@@ -1,12 +1,18 @@
 use std::{collections::BTreeSet, iter::FromIterator};
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_AUCTION_DELAY,
+    DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE,
+    DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
+    DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
 use casper_execution_engine::{
     core::{
-        engine_state::{engine_config::EngineConfigBuilder, Error},
+        engine_state::{
+            engine_config::EngineConfigBuilder, Error, ExecConfig, GenesisAccount,
+            RunGenesisRequest,
+        },
         execution,
     },
     shared::chain_kind::ChainKind,
@@ -23,7 +29,10 @@ use parity_wasm::{
     elements::{Instruction, Instructions},
 };
 
-use super::{ACCOUNT_1_ADDR, DEFAULT_ADMIN_ACCOUNT_ADDR, DEFAULT_PRIVATE_CHAIN_GENESIS};
+use super::{
+    ACCOUNT_1_ADDR, DEFAULT_ADMIN_ACCOUNT_ADDR, DEFAULT_PRIVATE_CHAIN_GENESIS,
+    PRIVATE_CHAIN_DEFAULT_ACCOUNTS,
+};
 
 const ACCOUNT_MANAGEMENT_CONTRACT: &str = "account_management.wasm";
 const ADD_ASSOCIATED_KEY_CONTRACT: &str = "add_associated_key.wasm";
@@ -60,6 +69,92 @@ pub fn do_minimum_bytes() -> Vec<u8> {
         .build()
         .build();
     parity_wasm::serialize(module).expect("should serialize")
+}
+
+#[should_panic(expected = "UnsupportedAdministratorAccounts")]
+#[ignore]
+#[test]
+fn should_not_run_genesis_with_administrator_accounts_on_public_chain() {
+    let chain_kind = ChainKind::Public;
+
+    let engine_config = EngineConfigBuilder::default()
+        // This change below makes genesis config validation to fail as administrator accounts are
+        // only valid for private chains.
+        .with_chain_kind(chain_kind)
+        .build();
+
+    let mut builder = InMemoryWasmTestBuilder::new_with_config(engine_config);
+
+    let genesis_config = ExecConfig::new(
+        PRIVATE_CHAIN_DEFAULT_ACCOUNTS.clone(),
+        *DEFAULT_WASM_CONFIG,
+        *DEFAULT_SYSTEM_CONFIG,
+        DEFAULT_VALIDATOR_SLOTS,
+        DEFAULT_AUCTION_DELAY,
+        DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+        DEFAULT_ROUND_SEIGNIORAGE_RATE,
+        DEFAULT_UNBONDING_DELAY,
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+        chain_kind,
+    );
+
+    let modified_genesis_request = RunGenesisRequest::new(
+        *DEFAULT_GENESIS_CONFIG_HASH,
+        *DEFAULT_PROTOCOL_VERSION,
+        genesis_config,
+        DEFAULT_CHAINSPEC_REGISTRY.clone(),
+    );
+
+    builder.run_genesis(&modified_genesis_request);
+}
+
+#[should_panic(expected = "DuplicatedAdministratorEntry")]
+#[ignore]
+#[test]
+fn should_not_run_genesis_with_duplicated_administrator_accounts() {
+    let chain_kind = ChainKind::Private;
+
+    let engine_config = EngineConfigBuilder::default()
+        // This change below makes genesis config validation to fail as administrator accounts are
+        // only valid for private chains.
+        .with_chain_kind(chain_kind)
+        .build();
+
+    let mut builder = InMemoryWasmTestBuilder::new_with_config(engine_config);
+
+    let duplicated_administrator_accounts = {
+        let mut accounts = PRIVATE_CHAIN_DEFAULT_ACCOUNTS.clone();
+        accounts.extend(
+            PRIVATE_CHAIN_DEFAULT_ACCOUNTS
+                .iter()
+                .filter_map(GenesisAccount::as_administrator_account)
+                .cloned()
+                .map(GenesisAccount::Administrator),
+        );
+        accounts
+    };
+
+    let genesis_config = ExecConfig::new(
+        duplicated_administrator_accounts,
+        *DEFAULT_WASM_CONFIG,
+        *DEFAULT_SYSTEM_CONFIG,
+        DEFAULT_VALIDATOR_SLOTS,
+        DEFAULT_AUCTION_DELAY,
+        DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+        DEFAULT_ROUND_SEIGNIORAGE_RATE,
+        DEFAULT_UNBONDING_DELAY,
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+        chain_kind,
+    );
+
+    let modified_genesis_request = RunGenesisRequest::new(
+        *DEFAULT_GENESIS_CONFIG_HASH,
+        *DEFAULT_PROTOCOL_VERSION,
+        genesis_config,
+        DEFAULT_CHAINSPEC_REGISTRY.clone(),
+    );
+
+    builder.run_genesis(&modified_genesis_request);
 }
 
 #[ignore]

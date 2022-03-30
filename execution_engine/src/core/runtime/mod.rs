@@ -51,9 +51,7 @@ use crate::{
     shared::host_function_costs::{Cost, HostFunction},
     storage::global_state::StateReader,
     system::{
-        auction::Auction,
-        handle_payment::HandlePayment,
-        mint::{AdministrativeAccounts, Mint},
+        auction::Auction, handle_payment::HandlePayment, mint::Mint,
         standard_payment::StandardPayment,
     },
 };
@@ -3797,7 +3795,7 @@ where
             return Err(Error::InvalidChainKind);
         }
 
-        let administrative_accounts: AdministrativeAccounts = {
+        let administrative_accounts: BTreeSet<AccountHash> = {
             let mint = self.get_mint_contract()?;
             let mint_contract: Contract = self.context.read_gs_typed(&Key::from(mint))?;
 
