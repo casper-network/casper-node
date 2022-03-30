@@ -1,6 +1,6 @@
 //! Support for runtime configuration of the execution engine - as an integral property of the
 //! `EngineState` instance.
-use crate::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
+use crate::shared::{chain_kind::ChainKind, system_config::SystemConfig, wasm_config::WasmConfig};
 
 /// Default value for a maximum query depth configuration option.
 pub const DEFAULT_MAX_QUERY_DEPTH: u64 = 5;
@@ -21,6 +21,7 @@ pub struct EngineConfig {
     max_runtime_call_stack_height: u32,
     wasm_config: WasmConfig,
     system_config: SystemConfig,
+    chain_kind: ChainKind,
 }
 
 impl Default for EngineConfig {
@@ -31,6 +32,7 @@ impl Default for EngineConfig {
             max_runtime_call_stack_height: DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
             wasm_config: WasmConfig::default(),
             system_config: SystemConfig::default(),
+            chain_kind: ChainKind::default(),
         }
     }
 }
@@ -55,6 +57,12 @@ impl EngineConfig {
     pub fn system_config(&self) -> &SystemConfig {
         &self.system_config
     }
+
+    /// Get the engine config's chain kind.
+    #[must_use]
+    pub fn chain_kind(&self) -> ChainKind {
+        self.chain_kind
+    }
 }
 
 /// This is a builder pattern applied to the [`EngineConfig`] structure to shield any changes to the
@@ -68,6 +76,7 @@ pub struct EngineConfigBuilder {
     max_runtime_call_stack_height: Option<u32>,
     wasm_config: Option<WasmConfig>,
     system_config: Option<SystemConfig>,
+    chain_kind: Option<ChainKind>,
 }
 
 impl EngineConfigBuilder {
@@ -116,6 +125,12 @@ impl EngineConfigBuilder {
         self
     }
 
+    /// Sets new chain kind.
+    pub fn with_chain_kind(mut self, chain_kind: ChainKind) -> Self {
+        self.chain_kind = Some(chain_kind);
+        self
+    }
+
     /// Build a new [`EngineConfig`] object.
     pub fn build(self) -> EngineConfig {
         let max_query_depth = self.max_query_depth.unwrap_or(DEFAULT_MAX_QUERY_DEPTH);
@@ -127,12 +142,14 @@ impl EngineConfigBuilder {
             .unwrap_or(DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT);
         let wasm_config = self.wasm_config.unwrap_or_default();
         let system_config = self.system_config.unwrap_or_default();
+        let chain_kind = self.chain_kind.unwrap_or_default();
         EngineConfig {
             max_query_depth,
             max_associated_keys,
             max_runtime_call_stack_height,
             wasm_config,
             system_config,
+            chain_kind,
         }
     }
 }

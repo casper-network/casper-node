@@ -163,6 +163,9 @@ pub enum Error {
     /// An attempt to push to the runtime stack which is already at the maximum height.
     #[error("Runtime stack overflow")]
     RuntimeStackOverflow,
+    /// An attempt to use private chain operation mode on public chain.
+    #[error("Invalid chain kind")]
+    InvalidChainKind,
 }
 
 impl From<wasm_prep::PreprocessingError> for Error {

@@ -22,7 +22,7 @@ use casper_execution_engine::{
     core::engine_state::{
         ChainspecRegistry, ExecConfig, GenesisAccount, GenesisConfig, RunGenesisRequest,
     },
-    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
+    shared::{chain_kind::ChainKind, system_config::SystemConfig, wasm_config::WasmConfig},
 };
 use casper_hashing::Digest;
 use casper_types::{account::AccountHash, Motes, ProtocolVersion, PublicKey, SecretKey, U512};
@@ -56,8 +56,6 @@ pub const DEFAULT_ROUND_SEIGNIORAGE_RATE: Ratio<u64> = Ratio::new_raw(6414, 6234
 pub const DEFAULT_CHAIN_NAME: &str = "casper-execution-engine-testing";
 /// Default genesis timestamp in milliseconds.
 pub const DEFAULT_GENESIS_TIMESTAMP_MILLIS: u64 = 0;
-/// Default maximum number of associated keys.
-pub const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
 /// Default block time.
 pub const DEFAULT_BLOCK_TIME: u64 = 0;
 /// Default gas price.
@@ -118,6 +116,9 @@ pub static DEFAULT_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(1_500_000_000_0
 pub static DEFAULT_WASM_CONFIG: Lazy<WasmConfig> = Lazy::new(WasmConfig::default);
 /// Default [`SystemConfig`].
 pub static DEFAULT_SYSTEM_CONFIG: Lazy<SystemConfig> = Lazy::new(SystemConfig::default);
+/// Default [`ChainKind`].
+pub const DEFAULT_CHAIN_KIND: ChainKind = ChainKind::Public;
+
 /// Default [`ExecConfig`].
 pub static DEFAULT_EXEC_CONFIG: Lazy<ExecConfig> = Lazy::new(|| {
     ExecConfig::new(
@@ -130,6 +131,7 @@ pub static DEFAULT_EXEC_CONFIG: Lazy<ExecConfig> = Lazy::new(|| {
         DEFAULT_ROUND_SEIGNIORAGE_RATE,
         DEFAULT_UNBONDING_DELAY,
         DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+        DEFAULT_CHAIN_KIND,
     )
 });
 /// Default [`GenesisConfig`].

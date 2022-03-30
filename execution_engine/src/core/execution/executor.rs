@@ -81,8 +81,8 @@ impl Executor {
     }
 
     /// Returns config.
-    pub fn config(&self) -> EngineConfig {
-        self.config
+    pub fn config(&self) -> &EngineConfig {
+        &self.config
     }
 
     /// Executes a WASM module.
@@ -120,7 +120,7 @@ impl Executor {
         let (instance, memory) = on_fail_charge!(instance_and_memory(
             module.clone(),
             protocol_version,
-            self.config.wasm_config()
+            &self.config,
         ));
 
         let access_rights = {
@@ -626,7 +626,7 @@ impl Executor {
         );
 
         let (instance, memory) =
-            instance_and_memory(module.clone(), protocol_version, self.config.wasm_config())?;
+            instance_and_memory(module.clone(), protocol_version, &self.config)?;
 
         let runtime = Runtime::new(self.config, memory, module, runtime_context, stack);
 

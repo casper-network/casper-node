@@ -5,6 +5,8 @@ use wasmi::{
     MemoryInstance, MemoryRef, ModuleImportResolver, Signature, ValueType,
 };
 
+use crate::shared::chain_kind::ChainKind;
+
 use super::{
     error::ResolverError, memory_resolver::MemoryResolver, v1_function_index::FunctionIndex,
 };
@@ -12,13 +14,15 @@ use super::{
 pub(crate) struct RuntimeModuleImportResolver {
     memory: RefCell<Option<MemoryRef>>,
     max_memory: u32,
+    chain_kind: ChainKind,
 }
 
 impl RuntimeModuleImportResolver {
-    pub(crate) fn new(max_memory: u32) -> Self {
+    pub(crate) fn new(max_memory: u32, chain_kind: ChainKind) -> Self {
         Self {
             memory: RefCell::new(None),
             max_memory,
+            chain_kind,
         }
     }
 }
@@ -233,6 +237,12 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
                 Signature::new(&[ValueType::I32; 2][..], Some(ValueType::I32)),
                 FunctionIndex::LoadAuthorizationKeys.into(),
             ),
+            "casper_control_management" if self.chain_kind.is_private() => {
+                FuncInstance::alloc_host(
+                    Signature::new(&[ValueType::I32; 3][..], Some(ValueType::I32)),
+                    FunctionIndex::ControlManagementFuncIndex.into(),
+                )
+            }
             _ => {
                 return Err(InterpreterError::Function(format!(
                     "host module doesn't export function with name {}",

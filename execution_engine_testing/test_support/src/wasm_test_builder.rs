@@ -118,27 +118,7 @@ impl<S> WasmTestBuilder<S> {
 
 impl Default for InMemoryWasmTestBuilder {
     fn default() -> Self {
-        Self::initialize_logging();
-        let engine_config = EngineConfig::default();
-
-        let global_state = InMemoryGlobalState::empty().expect("should create global state");
-        let engine_state = EngineState::new(global_state, engine_config);
-
-        WasmTestBuilder {
-            engine_state: Rc::new(engine_state),
-            exec_results: Vec::new(),
-            upgrade_results: Vec::new(),
-            genesis_hash: None,
-            post_state_hash: None,
-            transforms: Vec::new(),
-            genesis_account: None,
-            genesis_transforms: None,
-            mint_contract_hash: None,
-            handle_payment_contract_hash: None,
-            standard_payment_hash: None,
-            auction_contract_hash: None,
-            scratch_engine_state: None,
-        }
+        Self::new_with_config(EngineConfig::default())
     }
 }
 
@@ -175,10 +155,27 @@ impl InMemoryWasmTestBuilder {
         let engine_state = EngineState::new(global_state, engine_config);
         WasmTestBuilder {
             engine_state: Rc::new(engine_state),
-            genesis_hash: Some(post_state_hash),
+            exec_results: Vec::new(),
+            upgrade_results: Vec::new(),
+            genesis_hash: None,
             post_state_hash: Some(post_state_hash),
-            ..Default::default()
+            transforms: Vec::new(),
+            genesis_account: None,
+            genesis_transforms: None,
+            mint_contract_hash: None,
+            handle_payment_contract_hash: None,
+            standard_payment_hash: None,
+            auction_contract_hash: None,
+            scratch_engine_state: None,
         }
+    }
+
+    /// Returns an empty [`InMemoryWasmTestBuilder`].
+    pub fn new_with_config(engine_config: EngineConfig) -> Self {
+        Self::initialize_logging();
+        let global_state = InMemoryGlobalState::empty().expect("should create global state");
+        let root_hash = global_state.empty_root_hash();
+        Self::new(global_state, engine_config, root_hash)
     }
 }
 

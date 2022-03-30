@@ -48,13 +48,12 @@ use crate::{
         tracking_copy::TrackingCopyExt,
         Address,
     },
-    shared::{
-        host_function_costs::{Cost, HostFunction},
-        wasm_config::WasmConfig,
-    },
+    shared::host_function_costs::{Cost, HostFunction},
     storage::global_state::StateReader,
     system::{
-        auction::Auction, handle_payment::HandlePayment, mint::Mint,
+        auction::Auction,
+        handle_payment::HandlePayment,
+        mint::{AdministrativeAccounts, Mint},
         standard_payment::StandardPayment,
     },
 };
@@ -85,10 +84,10 @@ pub struct Runtime<'a, R> {
 pub fn instance_and_memory(
     parity_module: Module,
     protocol_version: ProtocolVersion,
-    wasm_config: &WasmConfig,
+    engine_config: &EngineConfig,
 ) -> Result<(ModuleRef, MemoryRef), Error> {
     let module = wasmi::Module::from_parity_wasm_module(parity_module)?;
-    let resolver = create_module_resolver(protocol_version, wasm_config)?;
+    let resolver = create_module_resolver(protocol_version, engine_config)?;
     let mut imports = ImportsBuilder::new();
     imports.push_resolver("env", &resolver);
     let not_started_module = ModuleInstance::new(&module, &imports)?;
@@ -2251,7 +2250,7 @@ where
         let entry_point_name = entry_point.name();
 
         let (instance, memory) =
-            instance_and_memory(module.clone(), protocol_version, self.config.wasm_config())?;
+            instance_and_memory(module.clone(), protocol_version, &self.config)?;
 
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
@@ -3113,7 +3112,7 @@ where
             id,
         )? {
             Ok(()) => {
-                let account = Account::create(target, Default::default(), target_purse);
+                let account = Account::create(target, NamedKeys::default(), target_purse);
                 self.context.write_account(target_key, account)?;
                 Ok(Ok(TransferredTo::NewAccount))
             }
@@ -3784,6 +3783,99 @@ where
         let length_bytes = length.to_le_bytes();
         if let Err(error) = self.memory.set(result_size_ptr, &length_bytes) {
             return Err(Error::Interpreter(error.into()).into());
+        }
+
+        Ok(Ok(()))
+    }
+
+    /// Calls the "is_special_account" method on the mint contract at the given mint.
+    ///
+    /// This method is valid only if the chain is running in private mode.
+    fn is_administrative_account(&mut self, account_hash: &AccountHash) -> Result<bool, Error> {
+        if self.config.chain_kind().is_public() {
+            // This is only valid for private chains.
+            return Err(Error::InvalidChainKind);
+        }
+
+        let administrative_accounts: AdministrativeAccounts = {
+            let mint = self.get_mint_contract()?;
+            let mint_contract: Contract = self.context.read_gs_typed(&Key::from(mint))?;
+
+            let administrative_accounts_name = mint::ADMINISTRATIVE_ACCOUNTS_KEY;
+            let administrative_accounts_key =
+                match mint_contract.named_keys().get(administrative_accounts_name) {
+                    Some(key @ Key::URef(_)) => key,
+                    Some(key) => {
+                        // Genesis writes a URef entry if at least one administrative account is
+                        // defined.
+                        return Err(Error::KeyIsNotAURef(*key));
+                    }
+                    None => {
+                        // Lack of administrative accounts in the mint contract indicates private
+                        // chain
+                        return Err(Error::NamedKeyNotFound(
+                            administrative_accounts_name.to_string(),
+                        ));
+                    }
+                };
+
+            match self.context.read_gs_direct(administrative_accounts_key)? {
+                Some(StoredValue::CLValue(cl_value)) => cl_value.into_t()?,
+                Some(_) => return Err(Error::UnexpectedStoredValueVariant),
+                None => {
+                    // Lack of value under a URef means we definetely dont have administrative
+                    // accounts in this chain.
+                    return Ok(false);
+                }
+            }
+        };
+        Ok(administrative_accounts.contains(account_hash))
+    }
+
+    pub(crate) fn control_management(
+        &mut self,
+        key: Key,
+        enable: bool,
+    ) -> Result<Result<(), ApiError>, Error> {
+        if !self.config.chain_kind().is_private() {
+            // This host function should resolve only if the chain is set to a private one.
+            return Ok(Err(ApiError::PermissionDenied));
+        }
+
+        if !self.is_administrative_account(&self.context.account().account_hash())? {
+            // Only special accounts can use this host function.
+            return Ok(Err(ApiError::PermissionDenied));
+        }
+
+        match key {
+            account_key @ Key::Account(_) => {
+                match self.context.read_gs_direct(&account_key)? {
+                    Some(StoredValue::Account(mut account)) => {
+                        let deployment_threshold = if enable {
+                            // Enable
+                            Weight::new(1)
+                        } else {
+                            // Disable
+                            Weight::MAX
+                        };
+
+                        account
+                            .set_action_threshold(ActionType::Deployment, deployment_threshold)?;
+
+                        self.context.write_account(account_key, account)?;
+                    }
+                    Some(_) => {
+                        // Key::Account is only expected to contain only stored values of Account
+                        // type.
+                        return Err(Error::UnexpectedStoredValueVariant);
+                    }
+                    None => return Ok(Err(ApiError::InvalidArgument)),
+                }
+            }
+            Key::Hash(_) => {
+                todo!()
+            }
+            _ => return Ok(Err(ApiError::InvalidArgument)),
         }
 
         Ok(Ok(()))

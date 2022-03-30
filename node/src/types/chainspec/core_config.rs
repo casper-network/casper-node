@@ -1,3 +1,4 @@
+use casper_execution_engine::shared::chain_kind::ChainKind;
 use datasize::DataSize;
 use num::rational::Ratio;
 #[cfg(test)]
@@ -32,6 +33,8 @@ pub struct CoreConfig {
     pub(crate) max_associated_keys: u32,
     /// Maximum height of contract runtime call stack.
     pub(crate) max_runtime_call_stack_height: u32,
+    /// Determines mode of operation of a chain.
+    pub(crate) chain_kind: ChainKind,
 }
 
 #[cfg(test)]
@@ -50,6 +53,7 @@ impl CoreConfig {
         );
         let max_associated_keys = rng.gen();
         let max_runtime_call_stack_height = rng.gen();
+        let chain_kind = rng.gen();
 
         CoreConfig {
             era_duration,
@@ -61,6 +65,7 @@ impl CoreConfig {
             round_seigniorage_rate,
             max_associated_keys,
             max_runtime_call_stack_height,
+            chain_kind,
         }
     }
 }
@@ -77,6 +82,7 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.round_seigniorage_rate.to_bytes()?);
         buffer.extend(self.max_associated_keys.to_bytes()?);
         buffer.extend(self.max_runtime_call_stack_height.to_bytes()?);
+        buffer.extend(self.chain_kind.to_bytes()?);
         Ok(buffer)
     }
 
@@ -90,6 +96,7 @@ impl ToBytes for CoreConfig {
             + self.round_seigniorage_rate.serialized_length()
             + self.max_associated_keys.serialized_length()
             + self.max_runtime_call_stack_height.serialized_length()
+            + self.chain_kind.serialized_length()
     }
 }
 
@@ -104,6 +111,7 @@ impl FromBytes for CoreConfig {
         let (round_seigniorage_rate, remainder) = Ratio::<u64>::from_bytes(remainder)?;
         let (max_associated_keys, remainder) = FromBytes::from_bytes(remainder)?;
         let (max_runtime_call_stack_height, remainder) = FromBytes::from_bytes(remainder)?;
+        let (chain_kind, remainder) = FromBytes::from_bytes(remainder)?;
         let config = CoreConfig {
             era_duration,
             minimum_era_height,
@@ -114,6 +122,7 @@ impl FromBytes for CoreConfig {
             round_seigniorage_rate,
             max_associated_keys,
             max_runtime_call_stack_height,
+            chain_kind,
         };
         Ok((config, remainder))
     }

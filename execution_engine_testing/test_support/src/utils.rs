@@ -21,7 +21,7 @@ use casper_types::{account::Account, Gas, Key, StoredValue};
 
 use super::{DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY};
 use crate::{
-    DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_CHAIN_NAME,
+    DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_CHAIN_KIND, DEFAULT_CHAIN_NAME,
     DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
     DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION, DEFAULT_VALIDATOR_SLOTS,
     DEFAULT_WASM_CONFIG,
@@ -142,6 +142,7 @@ pub fn create_exec_config(accounts: Vec<GenesisAccount>) -> ExecConfig {
     let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
     let unbonding_delay = DEFAULT_UNBONDING_DELAY;
     let genesis_timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
+    let chain_kind = DEFAULT_CHAIN_KIND;
     ExecConfig::new(
         accounts,
         wasm_config,
@@ -152,6 +153,7 @@ pub fn create_exec_config(accounts: Vec<GenesisAccount>) -> ExecConfig {
         round_seigniorage_rate,
         unbonding_delay,
         genesis_timestamp_millis,
+        chain_kind,
     )
 }
 

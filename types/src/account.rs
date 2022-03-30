@@ -68,7 +68,25 @@ impl Account {
     /// [`ActionThresholds`].
     pub fn create(account: AccountHash, named_keys: NamedKeys, main_purse: URef) -> Self {
         let associated_keys = AssociatedKeys::new(account, Weight::new(1));
+
         let action_thresholds: ActionThresholds = Default::default();
+        Account::new(
+            account,
+            named_keys,
+            main_purse,
+            associated_keys,
+            action_thresholds,
+        )
+    }
+
+    /// An [`Account`] constructor with presets for a private chain.
+    pub fn create_private_chain(account: AccountHash, main_purse: URef) -> Self {
+        let named_keys = NamedKeys::new();
+        let associated_keys = AssociatedKeys::new(account, Weight::new(1));
+        let action_thresholds = ActionThresholds {
+            deployment: Weight::new(1),
+            key_management: Weight::MAX,
+        };
         Account::new(
             account,
             named_keys,

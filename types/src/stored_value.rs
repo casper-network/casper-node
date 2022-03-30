@@ -181,6 +181,15 @@ impl StoredValue {
             StoredValue::Unbonding(_) => Tag::Unbonding,
         }
     }
+
+    /// Consumes self and returns inner [`CLValue`].
+    pub fn into_clvalue(self) -> Option<CLValue> {
+        if let Self::CLValue(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
 }
 
 impl From<CLValue> for StoredValue {

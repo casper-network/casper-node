@@ -1,5 +1,6 @@
 //! The shared logic of the execution engine.
 pub mod additive_map;
+pub mod chain_kind;
 pub mod execution_journal;
 pub mod host_function_costs;
 pub mod logging;

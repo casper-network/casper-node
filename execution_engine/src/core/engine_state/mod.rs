@@ -909,7 +909,7 @@ where
                     match maybe_uref {
                         Some(main_purse) => {
                             let new_account =
-                                Account::create(public_key, Default::default(), main_purse);
+                                Account::create(public_key, NamedKeys::default(), main_purse);
                             mint_extra_keys.push(Key::from(main_purse));
                             // write new account
                             tracking_copy
@@ -1974,9 +1974,12 @@ where
         let base_key = Key::from(*auction_contract_hash);
         let gas_limit = Gas::new(U512::from(std::u64::MAX));
         let virtual_system_account = {
-            let named_keys = NamedKeys::new();
             let purse = URef::new(Default::default(), AccessRights::READ_ADD_WRITE);
-            Account::create(PublicKey::System.to_account_hash(), named_keys, purse)
+            Account::create(
+                PublicKey::System.to_account_hash(),
+                NamedKeys::default(),
+                purse,
+            )
         };
         let authorization_keys = BTreeSet::from_iter(vec![PublicKey::System.to_account_hash()]);
         let blocktime = BlockTime::default();
@@ -2112,9 +2115,8 @@ where
         let system_account_addr = PublicKey::System.to_account_hash();
 
         let virtual_system_account = {
-            let named_keys = NamedKeys::new();
             let purse = URef::new(Default::default(), AccessRights::READ_ADD_WRITE);
-            Account::create(system_account_addr, named_keys, purse)
+            Account::create(system_account_addr, NamedKeys::default(), purse)
         };
         let authorization_keys = {
             let mut ret = BTreeSet::new();

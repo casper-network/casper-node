@@ -29,6 +29,11 @@ impl AssociatedKeys {
         AssociatedKeys(bt)
     }
 
+    /// Adds multiple associated keys to the container.
+    pub fn extend_from_slice(&mut self, associated_keys: &[(AccountHash, Weight)]) {
+        self.0.extend(associated_keys.iter().cloned());
+    }
+
     /// Adds new AssociatedKey to the set.
     /// Returns true if added successfully, false otherwise.
     pub fn add_key(&mut self, key: AccountHash, weight: Weight) -> Result<(), AddKeyFailure> {
