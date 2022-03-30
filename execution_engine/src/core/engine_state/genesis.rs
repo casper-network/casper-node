@@ -390,11 +390,11 @@ impl GenesisAccount {
         }
     }
 
-    /// Returns `true` if the genesis account is [`Special`].
+    /// Returns `true` if the genesis account is [`Administrator`].
     ///
-    /// [`Special`]: GenesisAccount::Special
+    /// [`Administrator`]: GenesisAccount::Administrator
     #[must_use]
-    pub fn is_special(&self) -> bool {
+    pub fn is_administrator(&self) -> bool {
         matches!(self, Self::Administrator(..))
     }
 }
