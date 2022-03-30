@@ -25,8 +25,9 @@ use tracing::{debug, error, info, trace};
 
 use casper_execution_engine::{
     core::engine_state::{
-        self, genesis::GenesisError, ChainspecRegistry, EngineConfig, EngineState, GenesisSuccess,
-        GetEraValidatorsError, GetEraValidatorsRequest, UpgradeConfig, UpgradeSuccess,
+        self, engine_config::EngineConfigBuilder, genesis::GenesisError, ChainspecRegistry,
+        EngineState, GenesisSuccess, GetEraValidatorsError, GetEraValidatorsRequest, UpgradeConfig,
+        UpgradeSuccess,
     },
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::{
@@ -569,13 +570,14 @@ impl ContractRuntime {
         )?);
 
         let global_state = LmdbGlobalState::empty(environment, trie_store)?;
-        let engine_config = EngineConfig::new(
-            contract_runtime_config.max_query_depth(),
-            max_associated_keys,
-            max_runtime_call_stack_height,
-            wasm_config,
-            system_config,
-        );
+
+        let engine_config = EngineConfigBuilder::new()
+            .with_max_query_depth(contract_runtime_config.max_query_depth())
+            .with_max_associated_keys(max_associated_keys)
+            .with_max_runtime_call_stack_height(max_runtime_call_stack_height)
+            .with_wasm_config(wasm_config)
+            .with_system_config(system_config)
+            .build();
 
         let engine_state = Arc::new(EngineState::new(global_state, engine_config));
 

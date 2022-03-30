@@ -4,14 +4,11 @@ use num_rational::Ratio;
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY,
-    DEFAULT_WASM_CONFIG,
+    DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY, DEFAULT_WASM_CONFIG,
 };
 
 use casper_execution_engine::{
-    core::engine_state::{
-        EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-    },
+    core::engine_state::engine_config::{EngineConfigBuilder, DEFAULT_MAX_ASSOCIATED_KEYS},
     shared::{
         host_function_costs::HostFunctionCosts,
         opcode_costs::{
@@ -23,11 +20,6 @@ use casper_execution_engine::{
             DEFAULT_UNREACHABLE_COST,
         },
         storage_costs::StorageCosts,
-        system_config::{
-            auction_costs::AuctionCosts, handle_payment_costs::HandlePaymentCosts,
-            mint_costs::MintCosts, standard_payment_costs::StandardPaymentCosts, SystemConfig,
-            DEFAULT_WASMLESS_TRANSFER_COST,
-        },
         wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
     },
 };
@@ -131,13 +123,9 @@ fn should_allow_only_wasm_costs_patch_version() {
             .build()
     };
 
-    let engine_config = EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_ASSOCIATED_KEYS,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        new_wasm_config,
-        SystemConfig::default(),
-    );
+    let engine_config = EngineConfigBuilder::default()
+        .with_wasm_config(new_wasm_config)
+        .build();
 
     builder
         .upgrade_with_upgrade_request(engine_config, &mut upgrade_request)
@@ -173,13 +161,9 @@ fn should_allow_only_wasm_costs_minor_version() {
             .build()
     };
 
-    let engine_config = EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_ASSOCIATED_KEYS,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        new_wasm_config,
-        SystemConfig::default(),
-    );
+    let engine_config = EngineConfigBuilder::default()
+        .with_wasm_config(new_wasm_config)
+        .build();
 
     builder
         .upgrade_with_upgrade_request(engine_config, &mut upgrade_request)
@@ -659,21 +643,9 @@ fn should_increase_max_associated_keys_after_upgrade() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
-    let new_system_config = SystemConfig::new(
-        DEFAULT_WASMLESS_TRANSFER_COST,
-        AuctionCosts::default(),
-        MintCosts::default(),
-        HandlePaymentCosts::default(),
-        StandardPaymentCosts::default(),
-    );
-
-    let new_engine_config = EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_ASSOCIATED_KEYS + 1,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        *DEFAULT_WASM_CONFIG,
-        new_system_config,
-    );
+    let new_engine_config = EngineConfigBuilder::default()
+        .with_max_associated_keys(DEFAULT_MAX_ASSOCIATED_KEYS + 1)
+        .build();
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()

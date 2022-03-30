@@ -4,13 +4,14 @@ use once_cell::sync::Lazy;
 use casper_engine_test_support::{
     utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
     UpgradeRequestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
-    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PAYMENT,
-    DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
+    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
+    DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     core::engine_state::{
-        genesis::GenesisValidator, EngineConfig, GenesisAccount, DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+        engine_config::{EngineConfigBuilder, DEFAULT_MAX_ASSOCIATED_KEYS},
+        genesis::GenesisValidator,
+        GenesisAccount,
     },
     shared::{
         host_function_costs::{Cost, HostFunction, HostFunctionCosts},
@@ -193,13 +194,10 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
         new_standard_payment_costs,
     );
 
-    let new_engine_config = EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        new_max_associated_keys,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        WasmConfig::default(),
-        new_system_config,
-    );
+    let new_engine_config = EngineConfigBuilder::default()
+        .with_max_associated_keys(new_max_associated_keys)
+        .with_system_config(new_system_config)
+        .build();
 
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
@@ -465,13 +463,10 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
         new_standard_payment_costs,
     );
 
-    let new_engine_config = EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        new_max_associated_keys,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        WasmConfig::default(),
-        new_system_config,
-    );
+    let new_engine_config = EngineConfigBuilder::default()
+        .with_max_associated_keys(new_max_associated_keys)
+        .with_system_config(new_system_config)
+        .build();
 
     let mut builder = InMemoryWasmTestBuilder::default();
     let accounts = {
@@ -938,13 +933,11 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         new_standard_payment_costs,
     );
 
-    let new_engine_config = EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        new_max_associated_keys,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        new_wasm_config,
-        new_system_config,
-    );
+    let new_engine_config = EngineConfigBuilder::default()
+        .with_max_associated_keys(new_max_associated_keys)
+        .with_wasm_config(new_wasm_config)
+        .with_system_config(new_system_config)
+        .build();
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
