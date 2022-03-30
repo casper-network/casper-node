@@ -63,6 +63,7 @@ use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
 #[cfg(test)]
 use tempfile::TempDir;
+use tokio::sync::Semaphore;
 use tracing::{debug, error, info, warn};
 
 use casper_hashing::Digest;
@@ -92,7 +93,7 @@ use crate::{
         HashingAlgorithmVersion, Item, MerkleBlockBody, MerkleBlockBodyPart, MerkleLinkedListNode,
         NodeId, TimeDiff,
     },
-    utils::{display_error, WithDir},
+    utils::{display_error, FlattenResult, WithDir},
     NodeRng,
 };
 pub use error::FatalStorageError;
@@ -144,10 +145,15 @@ const STORAGE_FILES: [&str; 5] = [
     "sse_index",
 ];
 
+const STORAGE_SYNC_TASK_LIMIT: usize = 32;
+
 /// Storage component.
 #[derive(DataSize, Debug)]
 pub struct Storage {
+    /// The inner storage component.
     storage: Arc<StorageInner>,
+    /// Semaphore guarding the maximum number of storage accesses running in parallel.
+    sync_task_limiter: Arc<Semaphore>,
 }
 
 /// The inner storage component.
@@ -272,6 +278,7 @@ where
     ) -> Effects<Self::Event> {
         // We create an additional reference to the inner storage.
         let storage = self.storage.clone();
+        let sync_task_limiter = self.sync_task_limiter.clone();
 
         async move {
             // The actual operation can now be moved into a closure that has its own independent
@@ -299,14 +306,18 @@ where
                 }
             };
 
-            // Run the operation, collecting the output effects.
-            let outcome =
-                match tokio::task::spawn_blocking(perform_op).await.map_err(FatalStorageError::FailedToJoinBackgroundTask)  {
-                    // Note: `Result::flatten` is unstable at this time.
-                    Ok(Ok(v)) => Ok(v),
-                    Ok(Err(e)) => Err(e),
-                    Err(e) => Err(e)
-                };
+            // While the operation is ready to run, we do not want to spawn an arbitrarily large
+            // number of synchronous background tasks, especially since tokio does not put
+            // meaningful bounds on these by default. For this reason, we limit the maximum number
+            // of blocking tasks using a semaphore.
+            let outcome = match sync_task_limiter.acquire().await {
+                Ok(_permit) =>{
+                    tokio::task::spawn_blocking(perform_op).await.map_err(FatalStorageError::FailedToJoinBackgroundTask).flatten_result()
+                },
+                Err(err) => Err(
+                    FatalStorageError::SemaphoreClosedUnexpectedly(err),
+                ),
+            };
 
             // On success, execute the effects (we are in an async function, so we can await them
             // directly). For errors, we crash on fatal ones, but only log non-fatal ones.
@@ -354,6 +365,7 @@ impl Storage {
                 last_emergency_restart,
                 verifiable_chunked_hash_activation,
             )?),
+            sync_task_limiter: Arc::new(Semaphore::new(STORAGE_SYNC_TASK_LIMIT)),
         })
     }
 

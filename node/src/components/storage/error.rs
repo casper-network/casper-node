@@ -5,7 +5,7 @@ use std::{
 };
 
 use thiserror::Error;
-use tokio::task::JoinError;
+use tokio::{sync::AcquireError, task::JoinError};
 use tracing::error;
 
 use casper_hashing::Digest;
@@ -193,6 +193,11 @@ pub enum FatalStorageError {
     /// Failed to join the storage background task.
     #[error("failed to join storage background task")]
     FailedToJoinBackgroundTask(JoinError),
+    /// The semaphore guarding parallel sync task execution was closed.
+    ///
+    /// This should not happen outside of crashes.
+    #[error("task semaphore was unexpectedly closed")]
+    SemaphoreClosedUnexpectedly(AcquireError),
 }
 
 // We wholesale wrap lmdb errors and treat them as internal errors here.
