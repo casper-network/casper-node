@@ -5,6 +5,7 @@ use std::{
 };
 
 use thiserror::Error;
+use tokio::task::JoinError;
 use tracing::error;
 
 use casper_hashing::Digest;
@@ -189,6 +190,9 @@ pub enum FatalStorageError {
     /// Attempting to re-lock a non-reentrant lock on the same thread.
     #[error("item pool lock lock blocked, possible bug")]
     ItemPoolLockBlocked,
+    /// Failed to join the storage background task.
+    #[error("failed to join storage background task")]
+    FailedToJoinBackgroundTask(JoinError),
 }
 
 // We wholesale wrap lmdb errors and treat them as internal errors here.

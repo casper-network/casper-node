@@ -1658,7 +1658,7 @@ fn should_update_lowest_available_block_height_when_not_stored() {
     let verifiable_chunked_hash_activation = EraId::new(u64::MAX);
 
     {
-        let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+        let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
 
         assert_eq!(
             storage
@@ -1726,7 +1726,7 @@ fn setup_range(low: u64, high: u64) -> ComponentHarness<UnitTestEvent> {
     let mut harness = ComponentHarness::default();
     let verifiable_chunked_hash_activation = EraId::new(u64::MAX);
 
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
     let (block, _) = random_block_at_height(&mut harness.rng, low, Block::random_v1);
     storage.storage.write_block(&block).unwrap();
     let (block, _) = random_block_at_height(&mut harness.rng, high, Block::random_v1);
@@ -1757,7 +1757,7 @@ fn should_update_lowest_available_block_height_when_below_stored_range() {
     let verifiable_chunked_hash_activation = EraId::new(u64::MAX);
 
     {
-        let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+        let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
         assert_eq!(
             storage
                 .storage
@@ -1804,7 +1804,7 @@ fn should_update_lowest_available_block_height_when_above_initial_range_with_gap
     let verifiable_chunked_hash_activation = EraId::new(u64::MAX);
 
     {
-        let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+        let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
         assert_eq!(
             storage
                 .storage
@@ -1852,7 +1852,7 @@ fn should_not_update_lowest_available_block_height_when_above_initial_range_with
     let verifiable_chunked_hash_activation = EraId::new(u64::MAX);
 
     {
-        let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+        let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
         assert_eq!(
             storage
                 .storage
@@ -1897,7 +1897,7 @@ fn should_not_update_lowest_available_block_height_when_within_initial_range() {
     let harness = setup_range(INITIAL_LOW, INITIAL_HIGH);
     let verifiable_chunked_hash_activation = EraId::new(u64::MAX);
 
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
     assert_eq!(
         storage
             .storage
@@ -1924,7 +1924,7 @@ fn should_restrict_returned_blocks() {
     let mut harness = ComponentHarness::default();
     let verifiable_chunked_hash_activation = EraId::new(u64::MAX);
 
-    let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
+    let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
 
     // Create the following disjoint sequences: 1-2 4-5
     [1, 2, 4, 5].iter().for_each(|height| {

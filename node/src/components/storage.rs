@@ -81,7 +81,7 @@ use crate::{
     effect::{
         incoming::{NetRequest, NetRequestIncoming},
         requests::{NetworkRequest, StateStoreRequest},
-        EffectBuilder, EffectExt, Effects,
+        EffectBuilder, EffectExt, Effects, Multiple,
     },
     fatal,
     protocol::Message,
@@ -147,7 +147,7 @@ const STORAGE_FILES: [&str; 5] = [
 /// Storage component.
 #[derive(DataSize, Debug)]
 pub struct Storage {
-    storage: StorageInner,
+    storage: Arc<StorageInner>,
 }
 
 /// The inner storage component.
@@ -270,38 +270,66 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        let outcome = match event {
-            Event::StorageRequest(req) => self.storage.handle_storage_request::<REv>(req),
-            Event::NetRequestIncoming(ref incoming) => {
-                match self
-                    .storage
-                    .handle_net_request_incoming::<REv>(effect_builder, incoming)
-                {
-                    Ok(effects) => Ok(effects),
-                    Err(GetRequestError::Fatal(fatal_error)) => Err(fatal_error),
-                    Err(ref other_err) => {
-                        warn!(sender=%incoming.sender, err=display_error(other_err), "error handling net request");
-                        // We could still send the requestor a "not found" message, and could do
-                        // so even in the fatal case, but it is safer to not do so at the
-                        // moment, giving less surface area for possible amplification attacks.
-                        Ok(Effects::new())
+        // We create an additional reference to the inner storage.
+        let storage = self.storage.clone();
+
+        async move {
+            // The actual operation can now be moved into a closure that has its own independent
+            // storage handle.
+            let perform_op = move || {
+                match event {
+                    Event::StorageRequest(req) => storage.handle_storage_request::<REv>(req),
+                    Event::NetRequestIncoming(ref incoming) => {
+                        match storage
+                            .handle_net_request_incoming::<REv>(effect_builder, incoming)
+                        {
+                            Ok(effects) => Ok(effects),
+                            Err(GetRequestError::Fatal(fatal_error)) => Err(fatal_error),
+                            Err(ref other_err) => {
+                                warn!(sender=%incoming.sender, err=display_error(other_err), "error handling net request");
+                                // We could still send the requestor a "not found" message, and could do
+                                // so even in the fatal case, but it is safer to not do so at the
+                                // moment, giving less surface area for possible amplification attacks.
+                                Ok(Effects::new())
+                            }
+                        }
                     }
+                    Event::StateStoreRequest(req) => storage
+                        .handle_state_store_request::<REv>(effect_builder, req),
+                }
+            };
+
+            // Run the operation, collecting the output effects.
+            let outcome =
+                match tokio::task::spawn_blocking(perform_op).await.map_err(FatalStorageError::FailedToJoinBackgroundTask)  {
+                    // Note: `Result::flatten` is unstable at this time.
+                    Ok(Ok(v)) => Ok(v),
+                    Ok(Err(e)) => Err(e),
+                    Err(e) => Err(e)
+                };
+
+            // On success, execute the effects (we are in an async function, so we can await them
+            // directly). For errors, we crash on fatal ones, but only log non-fatal ones.
+            //
+            // This is almost equivalent to executing the effects, except that they are not run in
+            // parallel if there are multiple.
+            match outcome {
+                Ok(effects) => {
+                    // Run all returned effects in a single future.
+                    let outputs = futures::future::join_all(effects.into_iter()).await;
+
+                    // Flatten resulting events.
+                    let events: Multiple<_> = outputs.into_iter().flatten().collect();
+
+                     events
+                },
+                Err(ref err) => {
+                    // Any error is turned into a fatal effect, the component itself does not panic.
+                    fatal!(effect_builder, "storage error: {}", display_error(err)).await;
+                    Multiple::new()
                 }
             }
-            Event::StateStoreRequest(req) => self
-                .storage
-                .handle_state_store_request::<REv>(effect_builder, req),
-        };
-
-        // On success, execute the effects. For errors, we crash on fatal ones, but only log
-        // non-fatal ones.
-        match outcome {
-            Ok(effects) => effects,
-            Err(ref err) => {
-                // Any error is turned into a fatal effect, the component itself does not panic.
-                fatal!(effect_builder, "storage error: {}", display_error(err)).ignore()
-            }
-        }
+        }.ignore()
     }
 }
 
@@ -317,7 +345,7 @@ impl Storage {
         verifiable_chunked_hash_activation: EraId,
     ) -> Result<Self, FatalStorageError> {
         Ok(Storage {
-            storage: StorageInner::new(
+            storage: Arc::new(StorageInner::new(
                 cfg,
                 hard_reset_to_start_of_era,
                 protocol_version,
@@ -325,7 +353,7 @@ impl Storage {
                 finality_threshold_fraction,
                 last_emergency_restart,
                 verifiable_chunked_hash_activation,
-            )?,
+            )?),
         })
     }
 
