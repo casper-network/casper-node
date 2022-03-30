@@ -145,8 +145,6 @@ const STORAGE_FILES: [&str; 5] = [
     "sse_index",
 ];
 
-const STORAGE_SYNC_TASK_LIMIT: usize = 32;
-
 /// Storage component.
 #[derive(DataSize, Debug)]
 pub struct Storage {
@@ -365,7 +363,7 @@ impl Storage {
                 last_emergency_restart,
                 verifiable_chunked_hash_activation,
             )?),
-            sync_task_limiter: Arc::new(Semaphore::new(STORAGE_SYNC_TASK_LIMIT)),
+            sync_task_limiter: Arc::new(Semaphore::new(cfg.value().max_sync_tasks as usize)),
         })
     }
 
@@ -2035,6 +2033,8 @@ pub struct Config {
     enable_mem_deduplication: bool,
     /// How many loads before memory duplication checks for dead references.
     mem_pool_prune_interval: u16,
+    /// Maximum number of parallel synchronous storage tasks to spawn.
+    max_sync_tasks: u16,
 }
 
 impl Default for Config {
@@ -2048,6 +2048,7 @@ impl Default for Config {
             max_state_store_size: DEFAULT_MAX_STATE_STORE_SIZE,
             enable_mem_deduplication: true,
             mem_pool_prune_interval: 4096,
+            max_sync_tasks: 32,
         }
     }
 }
