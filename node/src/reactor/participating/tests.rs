@@ -230,7 +230,9 @@ impl SwitchBlocks {
         for era_number in 0..era_count {
             let mut header_iter = nodes.values().map(|runner| {
                 let storage = runner.participating().storage();
-                let maybe_block = storage.transactional_get_switch_block_by_era_id(era_number);
+                let maybe_block = storage
+                    .transactional_get_switch_block_by_era_id(era_number)
+                    .expect("failed to get switch block by era id");
                 maybe_block.expect("missing switch block").take_header()
             });
             let header = header_iter.next().unwrap();

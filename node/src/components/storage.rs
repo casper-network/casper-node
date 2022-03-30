@@ -49,7 +49,7 @@ use std::{
     fmt::{self, Display, Formatter},
     fs, mem,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, RwLock},
 };
 
 use datasize::DataSize;
@@ -197,7 +197,8 @@ pub struct StorageInner {
     /// Highest block available when storage is constructed.
     highest_block_at_startup: u64,
     /// Various indices used by the component.
-    indices: Indices,
+    #[data_size(skip)]
+    indices: RwLock<Indices>,
     /// Whether or not memory deduplication is enabled.
     enable_mem_deduplication: bool,
     /// An in-memory pool of already loaded serialized items.
@@ -357,7 +358,8 @@ impl Storage {
     /// Gets the highest block.
     pub fn read_highest_block(&self) -> Result<Option<Block>, FatalStorageError> {
         let mut tx = self.storage.env.begin_ro_txn()?;
-        self.storage.get_highest_block(&mut tx)
+        let indices = self.storage.indices.try_read()?;
+        self.storage.get_highest_block(&mut tx, &indices)
     }
 
     /// Directly returns a deploy from internal store.
@@ -377,7 +379,7 @@ impl Storage {
 
     /// Write a block to storage.
     #[inline]
-    pub fn write_block(&mut self, block: &Block) -> Result<bool, FatalStorageError> {
+    pub fn write_block(&self, block: &Block) -> Result<bool, FatalStorageError> {
         self.storage.write_block(block)
     }
 }
@@ -478,8 +480,7 @@ impl StorageInner {
             }
 
             insert_to_block_header_indices(
-                &mut indices.block_height_index,
-                &mut indices.switch_block_era_id_index,
+                &mut indices,
                 &block_header,
                 verifiable_chunked_hash_activation,
             )?;
@@ -560,7 +561,7 @@ impl StorageInner {
             state_store_db,
             lowest_available_block_height,
             highest_block_at_startup,
-            indices,
+            indices: RwLock::new(indices),
             enable_mem_deduplication: config.enable_mem_deduplication,
             serialized_item_pool: ObjectPool::new(config.mem_pool_prune_interval),
             finality_threshold_fraction,
@@ -571,7 +572,7 @@ impl StorageInner {
 
     /// Handles a state store request.
     fn handle_state_store_request<REv>(
-        &mut self,
+        &self,
         _effect_builder: EffectBuilder<REv>,
         req: StateStoreRequest,
     ) -> Result<Effects<Event>, FatalStorageError> {
@@ -617,7 +618,7 @@ impl StorageInner {
     }
 
     fn handle_net_request_incoming<REv>(
-        &mut self,
+        &self,
         effect_builder: EffectBuilder<REv>,
         incoming: &NetRequestIncoming,
     ) -> Result<Effects<Event>, GetRequestError>
@@ -714,7 +715,7 @@ impl StorageInner {
 
     /// Handles a storage request.
     fn handle_storage_request<REv>(
-        &mut self,
+        &self,
         req: StorageRequest,
     ) -> Result<Effects<Event>, FatalStorageError> {
         // Note: Database IO is handled in a blocking fashion on purpose throughout this function.
@@ -730,28 +731,35 @@ impl StorageInner {
             } => responder.respond(self.read_block(&block_hash)?).ignore(),
             StorageRequest::GetHighestBlock { responder } => {
                 let mut txn = self.env.begin_ro_txn()?;
+                let indices = self.indices.try_read()?;
                 responder
-                    .respond(self.get_highest_block(&mut txn)?)
+                    .respond(self.get_highest_block(&mut txn, &indices)?)
                     .ignore()
             }
             StorageRequest::GetHighestBlockHeader { responder } => {
                 let mut txn = self.env.begin_ro_txn()?;
+                let indices = self.indices.try_read()?;
                 responder
-                    .respond(self.get_highest_block_header(&mut txn)?)
+                    .respond(self.get_highest_block_header(&mut txn, &indices)?)
                     .ignore()
             }
-            StorageRequest::GetSwitchBlockHeaderAtEraId { era_id, responder } => responder
-                .respond(
-                    self.get_switch_block_header_by_era_id(&mut self.env.begin_ro_txn()?, era_id)?,
-                )
-                .ignore(),
+            StorageRequest::GetSwitchBlockHeaderAtEraId { era_id, responder } => {
+                let indices = self.indices.try_read()?;
+                let mut tx = self.env.begin_ro_txn()?;
+                responder
+                    .respond(self.get_switch_block_header_by_era_id(&mut tx, &indices, era_id)?)
+                    .ignore()
+            }
             StorageRequest::GetBlockHeaderForDeploy {
                 deploy_hash,
                 responder,
             } => {
+                let mut tx = self.env.begin_ro_txn()?;
+                let indices = self.indices.try_read()?;
                 responder
                     .respond(self.get_block_header_by_deploy_hash(
-                        &mut self.env.begin_ro_txn()?,
+                        &mut tx,
+                        &indices,
                         deploy_hash,
                     )?)
                     .ignore()
@@ -770,9 +778,12 @@ impl StorageInner {
             StorageRequest::CheckBlockHeaderExistence {
                 block_height,
                 responder,
-            } => responder
-                .respond(self.block_header_exists(block_height))
-                .ignore(),
+            } => {
+                let indices = self.indices.try_read()?;
+                responder
+                    .respond(self.block_header_exists(&indices, block_height))
+                    .ignore()
+            }
             StorageRequest::GetBlockTransfers {
                 block_hash,
                 responder,
@@ -881,7 +892,7 @@ impl StorageInner {
                         return Ok(responder.respond(None).ignore());
                     };
 
-                if !self.should_return_block(block.height(), only_from_available_block_range) {
+                if !(self.should_return_block(block.height(), only_from_available_block_range)?) {
                     return Ok(responder.respond(None).ignore());
                 }
 
@@ -925,18 +936,22 @@ impl StorageInner {
                 only_from_available_block_range,
                 responder,
             } => {
-                if !self.should_return_block(block_height, only_from_available_block_range) {
+                if !(self.should_return_block(block_height, only_from_available_block_range)?) {
                     return Ok(responder.respond(None).ignore());
                 }
 
                 let mut txn = self.env.begin_ro_txn()?;
 
-                let block: Block =
-                    if let Some(block) = self.get_block_by_height(&mut txn, block_height)? {
+                let block: Block = {
+                    let indices = self.indices.try_read()?;
+                    if let Some(block) =
+                        self.get_block_by_height(&mut txn, &indices, block_height)?
+                    {
                         block
                     } else {
                         return Ok(responder.respond(None).ignore());
-                    };
+                    }
+                };
 
                 let hash = block.hash();
                 let finality_signatures = match self.get_finality_signatures(&mut txn, hash)? {
@@ -952,17 +967,23 @@ impl StorageInner {
             }
             StorageRequest::GetHighestBlockWithMetadata { responder } => {
                 let mut txn = self.env.begin_ro_txn()?;
-                let highest_block: Block = if let Some(block) = self
-                    .indices
-                    .block_height_index
-                    .keys()
-                    .last()
-                    .and_then(|&height| self.get_block_by_height(&mut txn, height).transpose())
-                    .transpose()?
-                {
-                    block
-                } else {
-                    return Ok(responder.respond(None).ignore());
+
+                let highest_block: Block = {
+                    let indices = self.indices.try_read()?;
+                    if let Some(block) = indices
+                        .block_height_index
+                        .keys()
+                        .last()
+                        .and_then(|&height| {
+                            self.get_block_by_height(&mut txn, &indices, height)
+                                .transpose()
+                        })
+                        .transpose()?
+                    {
+                        block
+                    } else {
+                        return Ok(responder.respond(None).ignore());
+                    }
                 };
                 let hash = highest_block.hash();
                 let finality_signatures = match self.get_finality_signatures(&mut txn, hash)? {
@@ -1016,8 +1037,10 @@ impl StorageInner {
                 block_height,
                 responder,
             } => {
+                let indices = self.indices.try_read()?;
                 let result = self.get_block_header_and_sufficient_finality_signatures_by_height(
                     &mut self.env.begin_ro_txn()?,
+                    &indices,
                     block_height,
                 )?;
                 responder.respond(result).ignore()
@@ -1040,12 +1063,15 @@ impl StorageInner {
                     txn.abort();
                     return Ok(responder.respond(false).ignore());
                 }
-                insert_to_block_header_indices(
-                    &mut self.indices.block_height_index,
-                    &mut self.indices.switch_block_era_id_index,
-                    &block_header,
-                    self.verifiable_chunked_hash_activation,
-                )?;
+
+                {
+                    let mut indices = self.indices.try_write()?;
+                    insert_to_block_header_indices(
+                        &mut indices,
+                        &block_header,
+                        self.verifiable_chunked_hash_activation,
+                    )?;
+                }
 
                 txn.commit()?;
                 responder.respond(true).ignore()
@@ -1054,9 +1080,9 @@ impl StorageInner {
                 self.update_lowest_available_block_height(height)?;
                 responder.respond(()).ignore()
             }
-            StorageRequest::GetAvailableBlockRange { responder } => {
-                responder.respond(self.get_available_block_range()).ignore()
-            }
+            StorageRequest::GetAvailableBlockRange { responder } => responder
+                .respond(self.get_available_block_range()?)
+                .ignore(),
         })
     }
 
@@ -1076,7 +1102,7 @@ impl StorageInner {
     /// Writes a block to storage, updating indices as necessary
     /// Returns `Ok(true)` if the block has been successfully written, `Ok(false)` if a part of it
     /// couldn't be written because it already existed, and `Err(_)` if there was an error.
-    pub fn write_block(&mut self, block: &Block) -> Result<bool, FatalStorageError> {
+    pub fn write_block(&self, block: &Block) -> Result<bool, FatalStorageError> {
         // Validate the block prior to inserting it into the database
         block.verify(self.verifiable_chunked_hash_activation)?;
         let mut txn = self.env.begin_rw_txn()?;
@@ -1107,17 +1133,20 @@ impl StorageInner {
             txn.abort();
             return Ok(false);
         }
-        insert_to_block_header_indices(
-            &mut self.indices.block_height_index,
-            &mut self.indices.switch_block_era_id_index,
-            block.header(),
-            self.verifiable_chunked_hash_activation,
-        )?;
-        insert_to_deploy_index(
-            &mut self.indices.deploy_hash_index,
-            block.header().hash(self.verifiable_chunked_hash_activation),
-            block.body(),
-        )?;
+
+        {
+            let mut indices = self.indices.try_write()?;
+            insert_to_block_header_indices(
+                &mut indices,
+                block.header(),
+                self.verifiable_chunked_hash_activation,
+            )?;
+            insert_to_deploy_index(
+                &mut indices.deploy_hash_index,
+                block.header().hash(self.verifiable_chunked_hash_activation),
+                block.body(),
+            )?;
+        }
         txn.commit()?;
         Ok(true)
     }
@@ -1127,7 +1156,9 @@ impl StorageInner {
         &self,
         switch_block_era_id: EraId,
     ) -> Result<Option<BlockHeader>, FatalStorageError> {
-        self.get_switch_block_header_by_era_id(&mut self.env.begin_ro_txn()?, switch_block_era_id)
+        let mut tx = self.env.begin_ro_txn()?;
+        let indices = self.indices.try_read()?;
+        self.get_switch_block_header_by_era_id(&mut tx, &indices, switch_block_era_id)
     }
 
     /// Retrieves a block header by height.
@@ -1138,8 +1169,11 @@ impl StorageInner {
         height: u64,
     ) -> Result<Option<BlockHeaderWithMetadata>, FatalStorageError> {
         let mut txn = self.env.begin_ro_txn()?;
-        let maybe_block_header_and_finality_signatures =
-            self.get_block_header_and_sufficient_finality_signatures_by_height(&mut txn, height)?;
+        let indices = self.indices.try_read()?;
+        let maybe_block_header_and_finality_signatures = self
+            .get_block_header_and_sufficient_finality_signatures_by_height(
+                &mut txn, &indices, height,
+            )?;
         drop(txn);
         Ok(maybe_block_header_and_finality_signatures)
     }
@@ -1152,24 +1186,27 @@ impl StorageInner {
         height: u64,
     ) -> Result<Option<BlockWithMetadata>, FatalStorageError> {
         let mut txn = self.env.begin_ro_txn()?;
-        let maybe_block_and_finality_signatures =
-            self.get_block_and_sufficient_finality_signatures_by_height(&mut txn, height)?;
+        let indices = self.indices.try_read()?;
+        let maybe_block_and_finality_signatures = self
+            .get_block_and_sufficient_finality_signatures_by_height(&mut txn, &indices, height)?;
         drop(txn);
         Ok(maybe_block_and_finality_signatures)
     }
 
     /// Retrieves single block by height by looking it up in the index and returning it.
     pub fn read_block_by_height(&self, height: u64) -> Result<Option<Block>, FatalStorageError> {
-        self.get_block_by_height(&mut self.env.begin_ro_txn()?, height)
+        let indices = self.indices.try_read()?;
+        self.get_block_by_height(&mut self.env.begin_ro_txn()?, &indices, height)
     }
 
     /// Retrieves single block by height by looking it up in the index and returning it.
     fn get_block_by_height<Tx: Transaction>(
         &self,
         tx: &mut Tx,
+        indices: &Indices,
         height: u64,
     ) -> Result<Option<Block>, FatalStorageError> {
-        self.indices
+        indices
             .block_height_index
             .get(&height)
             .and_then(|block_hash| self.get_single_block(tx, block_hash).transpose())
@@ -1181,10 +1218,11 @@ impl StorageInner {
     fn get_switch_block_header_by_era_id<Tx: Transaction>(
         &self,
         tx: &mut Tx,
+        indices: &Indices,
         era_id: EraId,
     ) -> Result<Option<BlockHeader>, FatalStorageError> {
-        debug!(switch_block_era_id_index = ?self.indices.switch_block_era_id_index);
-        self.indices
+        debug!(switch_block_era_id_index = ?indices.switch_block_era_id_index);
+        indices
             .switch_block_era_id_index
             .get(&era_id)
             .and_then(|block_hash| self.get_single_block_header(tx, block_hash).transpose())
@@ -1196,9 +1234,10 @@ impl StorageInner {
     fn get_block_header_by_deploy_hash<Tx: Transaction>(
         &self,
         tx: &mut Tx,
+        indices: &Indices,
         deploy_hash: DeployHash,
     ) -> Result<Option<BlockHeader>, FatalStorageError> {
-        self.indices
+        indices
             .deploy_hash_index
             .get(&deploy_hash)
             .and_then(|block_hash| self.get_single_block_header(tx, block_hash).transpose())
@@ -1209,12 +1248,13 @@ impl StorageInner {
     fn get_highest_block<Tx: Transaction>(
         &self,
         txn: &mut Tx,
+        indices: &Indices,
     ) -> Result<Option<Block>, FatalStorageError> {
-        self.indices
+        indices
             .block_height_index
             .keys()
             .last()
-            .and_then(|&height| self.get_block_by_height(txn, height).transpose())
+            .and_then(|&height| self.get_block_by_height(txn, indices, height).transpose())
             .transpose()
     }
 
@@ -1222,8 +1262,9 @@ impl StorageInner {
     fn get_highest_block_header<Tx: Transaction>(
         &self,
         txn: &mut Tx,
+        indices: &Indices,
     ) -> Result<Option<BlockHeader>, FatalStorageError> {
-        self.indices
+        indices
             .block_height_index
             .iter()
             .last()
@@ -1239,12 +1280,13 @@ impl StorageInner {
     fn get_blocks_while<F, Tx: Transaction>(
         &self,
         txn: &mut Tx,
+        indices: &Indices,
         predicate: F,
     ) -> Result<Vec<Block>, FatalStorageError>
     where
         F: Fn(&Block) -> bool,
     {
-        let mut next_block = self.get_highest_block(txn)?;
+        let mut next_block = self.get_highest_block(txn, indices)?;
         let mut blocks = Vec::new();
         loop {
             match next_block {
@@ -1265,9 +1307,10 @@ impl StorageInner {
     /// Returns the vector of blocks that could still have deploys whose TTL hasn't expired yet.
     fn get_finalized_blocks(&self, ttl: TimeDiff) -> Result<Vec<Block>, FatalStorageError> {
         let mut txn = self.env.begin_ro_txn()?;
+        let indices = self.indices.try_read()?;
         // We're interested in deploys whose TTL hasn't expired yet.
         let ttl_not_expired = |block: &Block| block.timestamp().elapsed() < ttl;
-        self.get_blocks_while(&mut txn, ttl_not_expired)
+        self.get_blocks_while(&mut txn, &indices, ttl_not_expired)
     }
 
     /// Retrieves a single block header in a given transaction from storage
@@ -1284,7 +1327,7 @@ impl StorageInner {
             None => return Ok(None),
         };
 
-        if !self.should_return_block(block_header.height(), only_from_available_block_range) {
+        if !(self.should_return_block(block_header.height(), only_from_available_block_range)?) {
             return Ok(None);
         }
 
@@ -1326,8 +1369,8 @@ impl StorageInner {
     /// Checks whether a block at the given height exists in the block height index (and, since the
     /// index is initialized on startup based on the actual contents of storage, if it exists in
     /// storage).
-    fn block_header_exists(&self, block_height: u64) -> bool {
-        self.indices.block_height_index.contains_key(&block_height)
+    fn block_header_exists(&self, indices: &Indices, block_height: u64) -> bool {
+        indices.block_height_index.contains_key(&block_height)
     }
 
     /// Retrieves a single Merklized block body in a separate transaction from storage.
@@ -1527,12 +1570,15 @@ impl StorageInner {
     fn get_block_and_sufficient_finality_signatures_by_height<Tx: Transaction>(
         &self,
         tx: &mut Tx,
+        indices: &Indices,
         height: u64,
     ) -> Result<Option<BlockWithMetadata>, FatalStorageError> {
         let BlockHeaderWithMetadata {
             block_header,
             block_signatures,
-        } = match self.get_block_header_and_sufficient_finality_signatures_by_height(tx, height)? {
+        } = match self
+            .get_block_header_and_sufficient_finality_signatures_by_height(tx, indices, height)?
+        {
             None => return Ok(None),
             Some(block_header_with_metadata) => block_header_with_metadata,
         };
@@ -1557,9 +1603,10 @@ impl StorageInner {
     fn get_block_header_and_sufficient_finality_signatures_by_height<Tx: Transaction>(
         &self,
         tx: &mut Tx,
+        indices: &Indices,
         height: u64,
     ) -> Result<Option<BlockHeaderWithMetadata>, FatalStorageError> {
-        let block_hash = match self.indices.block_height_index.get(&height) {
+        let block_hash = match indices.block_height_index.get(&height) {
             None => return Ok(None),
             Some(block_hash) => block_hash,
         };
@@ -1567,10 +1614,11 @@ impl StorageInner {
             None => return Ok(None),
             Some(block_header) => block_header,
         };
-        let block_signatures = match self.get_sufficient_finality_signatures(tx, &block_header)? {
-            None => return Ok(None),
-            Some(signatures) => signatures,
-        };
+        let block_signatures =
+            match self.get_sufficient_finality_signatures(tx, indices, &block_header)? {
+                None => return Ok(None),
+                Some(signatures) => signatures,
+            };
         Ok(Some(BlockHeaderWithMetadata {
             block_header,
             block_signatures,
@@ -1583,6 +1631,7 @@ impl StorageInner {
     fn get_sufficient_finality_signatures<Tx: Transaction>(
         &self,
         tx: &mut Tx,
+        indices: &Indices,
         block_header: &BlockHeader,
     ) -> Result<Option<BlockSignatures>, FatalStorageError> {
         if let Some(last_emergency_restart) = self.last_emergency_restart {
@@ -1602,8 +1651,7 @@ impl StorageInner {
             None => return Ok(None),
             Some(block_signatures) => block_signatures,
         };
-        let switch_block_hash = match self
-            .indices
+        let switch_block_hash = match indices
             .switch_block_era_id_index
             .get(&(block_header.era_id() - 1))
         {
@@ -1656,7 +1704,7 @@ impl StorageInner {
     /// If the given item is `None`, returns a non-pooled serialization of
     /// `FetchedOrNotFound::NotFound`.
     fn update_pool_and_send<REv, T>(
-        &mut self,
+        &self,
         effect_builder: EffectBuilder<REv>,
         sender: NodeId,
         serialized_id: &[u8],
@@ -1689,17 +1737,17 @@ impl StorageInner {
         &self,
         block_height: u64,
         only_from_available_block_range: bool,
-    ) -> bool {
+    ) -> Result<bool, FatalStorageError> {
         if only_from_available_block_range {
-            self.get_available_block_range().contains(block_height)
+            Ok(self.get_available_block_range()?.contains(block_height))
         } else {
-            true
+            Ok(true)
         }
     }
 
-    fn get_available_block_range(&self) -> AvailableBlockRange {
-        let high = self
-            .indices
+    fn get_available_block_range(&self) -> Result<AvailableBlockRange, FatalStorageError> {
+        let indices = self.indices.try_read()?;
+        let high = indices
             .block_height_index
             .keys()
             .last()
@@ -1707,16 +1755,16 @@ impl StorageInner {
             .unwrap_or_default();
         let low = self.lowest_available_block_height;
         match AvailableBlockRange::new(low, high) {
-            Ok(range) => range,
+            Ok(range) => Ok(range),
             Err(error) => {
                 error!(%error);
-                AvailableBlockRange::default()
+                Ok(AvailableBlockRange::default())
             }
         }
     }
 
     fn update_lowest_available_block_height(
-        &mut self,
+        &self,
         new_height: u64,
     ) -> Result<(), FatalStorageError> {
         // We should update the value if
@@ -1742,7 +1790,8 @@ impl StorageInner {
             return Ok(());
         }
 
-        if self.indices.block_height_index.contains_key(&new_height) {
+        let indices = self.indices.try_read()?;
+        if indices.block_height_index.contains_key(&new_height) {
             let mut txn = self.env.begin_rw_txn()?;
             txn.put_value_bytesrepr::<_, u64>(
                 self.state_store_db,
@@ -1777,13 +1826,12 @@ where
 ///
 /// If a duplicate entry is encountered, neither index is updated and an error is returned.
 fn insert_to_block_header_indices(
-    block_height_index: &mut BTreeMap<u64, BlockHash>,
-    switch_block_era_id_index: &mut BTreeMap<EraId, BlockHash>,
+    indices: &mut Indices,
     block_header: &BlockHeader,
     verifiable_chunked_hash_activation: EraId,
 ) -> Result<(), FatalStorageError> {
     let block_hash = block_header.hash(verifiable_chunked_hash_activation);
-    if let Some(first) = block_height_index.get(&block_header.height()) {
+    if let Some(first) = indices.block_height_index.get(&block_header.height()) {
         if *first != block_hash {
             return Err(FatalStorageError::DuplicateBlockIndex {
                 height: block_header.height(),
@@ -1794,7 +1842,10 @@ fn insert_to_block_header_indices(
     }
 
     if block_header.is_switch_block() {
-        match switch_block_era_id_index.entry(block_header.era_id()) {
+        match indices
+            .switch_block_era_id_index
+            .entry(block_header.era_id())
+        {
             Entry::Vacant(entry) => {
                 let _ = entry.insert(block_hash);
             }
@@ -1810,7 +1861,9 @@ fn insert_to_block_header_indices(
         }
     }
 
-    let _ = block_height_index.insert(block_header.height(), block_hash);
+    let _ = indices
+        .block_height_index
+        .insert(block_header.height(), block_hash);
     Ok(())
 }
 
@@ -2017,10 +2070,10 @@ impl Storage {
     fn get_switch_block_by_era_id<Tx: Transaction>(
         &self,
         tx: &mut Tx,
+        indices: &Indices,
         era_id: EraId,
     ) -> Result<Option<Block>, FatalStorageError> {
-        self.storage
-            .indices
+        indices
             .switch_block_era_id_index
             .get(&era_id)
             .and_then(|block_hash| self.storage.get_single_block(tx, block_hash).transpose())
@@ -2035,22 +2088,24 @@ impl Storage {
     pub(crate) fn transactional_get_switch_block_by_era_id(
         &self,
         switch_block_era_num: u64,
-    ) -> Option<Block> {
+    ) -> Result<Option<Block>, FatalStorageError> {
         let mut read_only_lmdb_transaction = self
             .storage
             .env
             .begin_ro_txn()
             .expect("Could not start read only transaction for lmdb");
+        let indices = self.storage.indices.try_read()?;
         let switch_block = self
             .get_switch_block_by_era_id(
                 &mut read_only_lmdb_transaction,
+                &indices,
                 EraId::from(switch_block_era_num),
             )
             .expect("LMDB panicked trying to get switch block");
         read_only_lmdb_transaction
             .commit()
             .expect("Could not commit transaction");
-        switch_block
+        Ok(switch_block)
     }
 
     /// Retrieves a single block header by height by looking it up in the index and returning it.
@@ -2075,8 +2130,9 @@ impl Storage {
     /// Retrieves a single block by height by looking it up in the index and returning it.
     fn get_block_by_height(&self, height: u64) -> Result<Option<Block>, FatalStorageError> {
         let mut tx = self.storage.env.begin_ro_txn()?;
+        let indices = self.storage.indices.try_read()?;
 
-        self.storage.get_block_by_height(&mut tx, height)
+        self.storage.get_block_by_height(&mut tx, &indices, height)
     }
 
     pub fn read_block_header_and_sufficient_finality_signatures_by_height(

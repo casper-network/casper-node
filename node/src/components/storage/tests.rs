@@ -1661,7 +1661,10 @@ fn should_update_lowest_available_block_height_when_not_stored() {
         let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
 
         assert_eq!(
-            storage.storage.get_available_block_range(),
+            storage
+                .storage
+                .get_available_block_range()
+                .expect("failed to available block range"),
             AvailableBlockRange::new(0, 0).unwrap()
         );
 
@@ -1671,7 +1674,10 @@ fn should_update_lowest_available_block_height_when_not_stored() {
             .update_lowest_available_block_height(NEW_LOW)
             .unwrap();
         assert_eq!(
-            storage.storage.get_available_block_range(),
+            storage
+                .storage
+                .get_available_block_range()
+                .expect("failed to available block range"),
             AvailableBlockRange::new(0, 0).unwrap()
         );
 
@@ -1683,7 +1689,10 @@ fn should_update_lowest_available_block_height_when_not_stored() {
             .update_lowest_available_block_height(NEW_LOW)
             .unwrap();
         assert_eq!(
-            storage.storage.get_available_block_range(),
+            storage
+                .storage
+                .get_available_block_range()
+                .expect("failed to available block range"),
             AvailableBlockRange::new(NEW_LOW, NEW_LOW).unwrap()
         );
 
@@ -1691,7 +1700,10 @@ fn should_update_lowest_available_block_height_when_not_stored() {
         let (block, _) = random_block_at_height(&mut harness.rng, NEW_LOW + 1, Block::random_v1);
         storage.storage.write_block(&block).unwrap();
         assert_eq!(
-            storage.storage.get_available_block_range(),
+            storage
+                .storage
+                .get_available_block_range()
+                .expect("failed to available block range"),
             AvailableBlockRange::new(NEW_LOW, NEW_LOW + 1).unwrap()
         );
     }
@@ -1701,7 +1713,10 @@ fn should_update_lowest_available_block_height_when_not_stored() {
     {
         let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
         assert_eq!(
-            storage.storage.get_available_block_range(),
+            storage
+                .storage
+                .get_available_block_range()
+                .expect("failed to available block range"),
             AvailableBlockRange::new(NEW_LOW, NEW_LOW + 1).unwrap()
         );
     }
@@ -1721,7 +1736,10 @@ fn setup_range(low: u64, high: u64) -> ComponentHarness<UnitTestEvent> {
         .update_lowest_available_block_height(low)
         .unwrap();
     assert_eq!(
-        storage.storage.get_available_block_range(),
+        storage
+            .storage
+            .get_available_block_range()
+            .expect("failed to available block range"),
         AvailableBlockRange::new(low, high).unwrap()
     );
 
@@ -1741,7 +1759,10 @@ fn should_update_lowest_available_block_height_when_below_stored_range() {
     {
         let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
         assert_eq!(
-            storage.storage.get_available_block_range(),
+            storage
+                .storage
+                .get_available_block_range()
+                .expect("failed to available block range"),
             AvailableBlockRange::new(INITIAL_LOW, INITIAL_HIGH).unwrap()
         );
 
@@ -1753,7 +1774,10 @@ fn should_update_lowest_available_block_height_when_below_stored_range() {
             .update_lowest_available_block_height(NEW_LOW)
             .unwrap();
         assert_eq!(
-            storage.storage.get_available_block_range(),
+            storage
+                .storage
+                .get_available_block_range()
+                .expect("failed to available block range"),
             AvailableBlockRange::new(NEW_LOW, INITIAL_HIGH).unwrap()
         );
     }
@@ -1761,7 +1785,10 @@ fn should_update_lowest_available_block_height_when_below_stored_range() {
     // Check the update was persisted.
     let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
     assert_eq!(
-        storage.storage.get_available_block_range(),
+        storage
+            .storage
+            .get_available_block_range()
+            .expect("failed to available block range"),
         AvailableBlockRange::new(NEW_LOW, INITIAL_HIGH).unwrap()
     );
 }
@@ -1779,7 +1806,10 @@ fn should_update_lowest_available_block_height_when_above_initial_range_with_gap
     {
         let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
         assert_eq!(
-            storage.storage.get_available_block_range(),
+            storage
+                .storage
+                .get_available_block_range()
+                .expect("failed to available block range"),
             AvailableBlockRange::new(INITIAL_LOW, INITIAL_HIGH).unwrap()
         );
 
@@ -1792,7 +1822,10 @@ fn should_update_lowest_available_block_height_when_above_initial_range_with_gap
             .update_lowest_available_block_height(NEW_LOW)
             .unwrap();
         assert_eq!(
-            storage.storage.get_available_block_range(),
+            storage
+                .storage
+                .get_available_block_range()
+                .expect("failed to available block range"),
             AvailableBlockRange::new(NEW_LOW, NEW_LOW).unwrap()
         );
     }
@@ -1800,7 +1833,10 @@ fn should_update_lowest_available_block_height_when_above_initial_range_with_gap
     // Check the update was persisted.
     let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
     assert_eq!(
-        storage.storage.get_available_block_range(),
+        storage
+            .storage
+            .get_available_block_range()
+            .expect("failed to available block range"),
         AvailableBlockRange::new(NEW_LOW, NEW_LOW).unwrap()
     );
 }
@@ -1818,7 +1854,10 @@ fn should_not_update_lowest_available_block_height_when_above_initial_range_with
     {
         let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
         assert_eq!(
-            storage.storage.get_available_block_range(),
+            storage
+                .storage
+                .get_available_block_range()
+                .expect("failed to available block range"),
             AvailableBlockRange::new(INITIAL_LOW, INITIAL_HIGH).unwrap()
         );
 
@@ -1831,7 +1870,10 @@ fn should_not_update_lowest_available_block_height_when_above_initial_range_with
             .update_lowest_available_block_height(NEW_LOW)
             .unwrap();
         assert_eq!(
-            storage.storage.get_available_block_range(),
+            storage
+                .storage
+                .get_available_block_range()
+                .expect("failed to available block range"),
             AvailableBlockRange::new(INITIAL_LOW, NEW_LOW).unwrap()
         );
     }
@@ -1839,7 +1881,10 @@ fn should_not_update_lowest_available_block_height_when_above_initial_range_with
     // Check the update was persisted.
     let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
     assert_eq!(
-        storage.storage.get_available_block_range(),
+        storage
+            .storage
+            .get_available_block_range()
+            .expect("failed to available block range"),
         AvailableBlockRange::new(INITIAL_LOW, NEW_LOW).unwrap()
     );
 }
@@ -1854,7 +1899,10 @@ fn should_not_update_lowest_available_block_height_when_within_initial_range() {
 
     let mut storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
     assert_eq!(
-        storage.storage.get_available_block_range(),
+        storage
+            .storage
+            .get_available_block_range()
+            .expect("failed to available block range"),
         AvailableBlockRange::new(INITIAL_LOW, INITIAL_HIGH).unwrap()
     );
 
@@ -1863,7 +1911,10 @@ fn should_not_update_lowest_available_block_height_when_within_initial_range() {
         .update_lowest_available_block_height(INITIAL_HIGH)
         .unwrap();
     assert_eq!(
-        storage.storage.get_available_block_range(),
+        storage
+            .storage
+            .get_available_block_range()
+            .expect("failed to available block range"),
         AvailableBlockRange::new(INITIAL_LOW, INITIAL_HIGH).unwrap()
     );
 }
@@ -1888,21 +1939,63 @@ fn should_restrict_returned_blocks() {
 
     // Without restriction, the node should attempt to return any requested block
     // regardless if it is in the disjoint sequences.
-    assert!(storage.storage.should_return_block(0, false));
-    assert!(storage.storage.should_return_block(1, false));
-    assert!(storage.storage.should_return_block(2, false));
-    assert!(storage.storage.should_return_block(3, false));
-    assert!(storage.storage.should_return_block(4, false));
-    assert!(storage.storage.should_return_block(5, false));
-    assert!(storage.storage.should_return_block(6, false));
+    assert!(storage
+        .storage
+        .should_return_block(0, false)
+        .expect("should return block failed"));
+    assert!(storage
+        .storage
+        .should_return_block(1, false)
+        .expect("should return block failed"));
+    assert!(storage
+        .storage
+        .should_return_block(2, false)
+        .expect("should return block failed"));
+    assert!(storage
+        .storage
+        .should_return_block(3, false)
+        .expect("should return block failed"));
+    assert!(storage
+        .storage
+        .should_return_block(4, false)
+        .expect("should return block failed"));
+    assert!(storage
+        .storage
+        .should_return_block(5, false)
+        .expect("should return block failed"));
+    assert!(storage
+        .storage
+        .should_return_block(6, false)
+        .expect("should return block failed"));
 
     // With restriction, the node should attempt to return only the blocks that are
     // on the highest disjoint sequence, i.e blocks 4 and 5 only.
-    assert!(!storage.storage.should_return_block(0, true));
-    assert!(!storage.storage.should_return_block(1, true));
-    assert!(!storage.storage.should_return_block(2, true));
-    assert!(!storage.storage.should_return_block(3, true));
-    assert!(storage.storage.should_return_block(4, true));
-    assert!(storage.storage.should_return_block(5, true));
-    assert!(!storage.storage.should_return_block(6, true));
+    assert!(!storage
+        .storage
+        .should_return_block(0, true)
+        .expect("should return block failed"));
+    assert!(!storage
+        .storage
+        .should_return_block(1, true)
+        .expect("should return block failed"));
+    assert!(!storage
+        .storage
+        .should_return_block(2, true)
+        .expect("should return block failed"));
+    assert!(!storage
+        .storage
+        .should_return_block(3, true)
+        .expect("should return block failed"));
+    assert!(storage
+        .storage
+        .should_return_block(4, true)
+        .expect("should return block failed"));
+    assert!(storage
+        .storage
+        .should_return_block(5, true)
+        .expect("should return block failed"));
+    assert!(!storage
+        .storage
+        .should_return_block(6, true)
+        .expect("should return block failed"));
 }
