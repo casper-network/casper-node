@@ -191,9 +191,6 @@ pub struct StorageInner {
     /// The state storage database.
     #[data_size(skip)]
     state_store_db: Database,
-    /// The height of the highest block from which this node has an unbroken sequence of full
-    /// blocks stored (and the corresponding global state).
-    lowest_available_block_height: u64,
     /// Highest block available when storage is constructed.
     highest_block_at_startup: u64,
     /// Various indices used by the component.
@@ -224,6 +221,9 @@ struct Indices {
     switch_block_era_id_index: BTreeMap<EraId, BlockHash>,
     /// A map of deploy hashes to hashes of blocks containing them.
     deploy_hash_index: BTreeMap<DeployHash, BlockHash>,
+    /// The height of the highest block from which this node has an unbroken sequence of full
+    /// blocks stored (and the corresponding global state).
+    lowest_available_block_height: u64,
 }
 
 /// A storage component event.
@@ -514,7 +514,7 @@ impl StorageInner {
         drop(cursor);
         block_txn.commit()?;
 
-        let mut lowest_available_block_height = {
+        indices.lowest_available_block_height = {
             let mut txn = env.begin_ro_txn()?;
             txn.get_value_bytesrepr(state_store_db, &KEY_LOWEST_AVAILABLE_BLOCK_HEIGHT)?
                 .unwrap_or_default()
@@ -525,11 +525,12 @@ impl StorageInner {
             .last()
             .copied()
             .unwrap_or_default();
-        if let Err(error) =
-            AvailableBlockRange::new(lowest_available_block_height, highest_block_at_startup)
-        {
+        if let Err(error) = AvailableBlockRange::new(
+            indices.lowest_available_block_height,
+            highest_block_at_startup,
+        ) {
             error!(%error);
-            lowest_available_block_height = highest_block_at_startup;
+            indices.lowest_available_block_height = highest_block_at_startup;
         }
 
         let deleted_block_hashes_raw = deleted_block_hashes.iter().map(BlockHash::as_ref).collect();
@@ -560,7 +561,6 @@ impl StorageInner {
             deploy_metadata_db,
             transfer_db,
             state_store_db,
-            lowest_available_block_height,
             highest_block_at_startup,
             indices: RwLock::new(indices),
             enable_mem_deduplication: config.enable_mem_deduplication,
@@ -1758,7 +1758,7 @@ impl StorageInner {
             .last()
             .copied()
             .unwrap_or_default();
-        let low = self.lowest_available_block_height;
+        let low = indices.lowest_available_block_height;
         match AvailableBlockRange::new(low, high) {
             Ok(range) => Ok(range),
             Err(error) => {
@@ -1795,7 +1795,7 @@ impl StorageInner {
             return Ok(());
         }
 
-        let indices = self.indices.try_read()?;
+        let mut indices = self.indices.try_write()?;
         if indices.block_height_index.contains_key(&new_height) {
             let mut txn = self.env.begin_rw_txn()?;
             txn.put_value_bytesrepr::<_, u64>(
@@ -1805,7 +1805,7 @@ impl StorageInner {
                 true,
             )?;
             txn.commit()?;
-            self.lowest_available_block_height = new_height;
+            indices.lowest_available_block_height = new_height;
         } else {
             error!(
                 %new_height,
@@ -2119,9 +2119,9 @@ impl Storage {
         height: u64,
     ) -> Result<Option<BlockHeader>, FatalStorageError> {
         let mut tx = self.storage.env.begin_ro_txn()?;
+        let indices = self.storage.indices.try_read()?;
 
-        self.storage
-            .indices
+        indices
             .block_height_index
             .get(&height)
             .and_then(|block_hash| {
@@ -2150,7 +2150,9 @@ impl Storage {
 
     /// Retrieves the highest block header from the storage, if one exists.
     pub fn read_highest_block_header(&self) -> Result<Option<BlockHeader>, FatalStorageError> {
-        let highest_block_hash = match self.storage.indices.block_height_index.iter().last() {
+        let indices = self.storage.indices.try_read()?;
+
+        let highest_block_hash = match indices.block_height_index.iter().last() {
             Some((_, highest_block_hash)) => highest_block_hash,
             None => return Ok(None),
         };
