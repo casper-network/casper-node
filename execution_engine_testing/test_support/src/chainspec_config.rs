@@ -16,7 +16,10 @@ use casper_execution_engine::{
 };
 use casper_types::ProtocolVersion;
 
-use crate::{DEFAULT_ACCOUNTS, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS};
+use crate::{
+    DEFAULT_ACCOUNTS, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+};
 
 /// The name of the chainspec file on disk.
 pub const CHAINSPEC_NAME: &str = "chainspec.toml";
@@ -121,6 +124,7 @@ impl ChainspecConfig {
             *DEFAULT_GENESIS_CONFIG_HASH,
             protocol_version,
             exec_config,
+            DEFAULT_CHAINSPEC_REGISTRY.clone(),
         ))
     }
 

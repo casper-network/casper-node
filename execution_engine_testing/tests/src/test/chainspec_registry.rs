@@ -4,7 +4,7 @@ use tempfile::TempDir;
 
 use casper_engine_test_support::{
     InMemoryWasmTestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_EXEC_CONFIG,
-    DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
+    DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::engine_state::{
     ChainspecRegistry, EngineConfig, RunGenesisRequest,
@@ -44,7 +44,7 @@ fn should_commit_chainspec_registry_during_genesis() {
         chainspec_registry,
     );
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
     builder.run_genesis(&run_genesis_request);
 
     let queried_registry = builder
@@ -82,7 +82,7 @@ fn should_fail_to_commit_genesis_when_missing_genesis_accounts_hash() {
         incomplete_chainspec_registry,
     );
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
     builder.run_genesis(&run_genesis_request);
 }
 
@@ -102,7 +102,7 @@ fn should_upgrade_chainspec_registry(cfg: TestConfig) {
         builder
     } else {
         let mut builder = LmdbWasmTestBuilder::new(data_dir.path());
-        builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+        builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
         builder
     };
 
