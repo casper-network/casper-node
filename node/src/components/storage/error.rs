@@ -1,7 +1,7 @@
 use std::{
     io,
     path::PathBuf,
-    sync::{RwLockReadGuard, RwLockWriteGuard, TryLockError},
+    sync::{PoisonError, RwLockReadGuard, RwLockWriteGuard},
 };
 
 use thiserror::Error;
@@ -175,21 +175,11 @@ pub enum FatalStorageError {
     /// A thread holding the lock has crashed.
     #[error("indices lock poisoned")]
     IndicesLockPoisoned,
-    /// Tried to re-enter indices lock.
-    ///
-    /// Attempting to re-lock a non-reentrant lock on the same thread.
-    #[error("indices lock blocked, possible bug")]
-    IndicesLockBlocked,
     /// Locking the item memory pool lock failed due to lock poisoning.
     ///
     /// A thread holding the lock has crashed.
     #[error("item pool lock poisoned")]
     ItemPoolLockPoisoned,
-    /// Tried to re-enter item memory pool lock.
-    ///
-    /// Attempting to re-lock a non-reentrant lock on the same thread.
-    #[error("item pool lock lock blocked, possible bug")]
-    ItemPoolLockBlocked,
     /// Failed to join the storage background task.
     #[error("failed to join storage background task")]
     FailedToJoinBackgroundTask(JoinError),
@@ -209,39 +199,27 @@ impl From<lmdb::Error> for FatalStorageError {
 
 // While we usually avoid blanked `From` impls on errors, the type is specific enough (includes
 // `Indices`) to make an exception to this rule here for both read and write lock poisoning.
-impl<'a> From<TryLockError<RwLockReadGuard<'a, Indices>>> for FatalStorageError {
-    fn from(err: TryLockError<RwLockReadGuard<'a, Indices>>) -> Self {
-        match err {
-            TryLockError::Poisoned(_) => FatalStorageError::IndicesLockPoisoned,
-            TryLockError::WouldBlock => FatalStorageError::IndicesLockBlocked,
-        }
+impl<'a> From<PoisonError<RwLockReadGuard<'a, Indices>>> for FatalStorageError {
+    fn from(_: PoisonError<RwLockReadGuard<'a, Indices>>) -> Self {
+        FatalStorageError::IndicesLockPoisoned
     }
 }
 
-impl<'a> From<TryLockError<RwLockWriteGuard<'a, Indices>>> for FatalStorageError {
-    fn from(err: TryLockError<RwLockWriteGuard<'a, Indices>>) -> Self {
-        match err {
-            TryLockError::Poisoned(_) => FatalStorageError::IndicesLockPoisoned,
-            TryLockError::WouldBlock => FatalStorageError::IndicesLockBlocked,
-        }
+impl<'a> From<PoisonError<RwLockWriteGuard<'a, Indices>>> for FatalStorageError {
+    fn from(_: PoisonError<RwLockWriteGuard<'a, Indices>>) -> Self {
+        FatalStorageError::IndicesLockPoisoned
     }
 }
 
-impl<'a> From<TryLockError<RwLockReadGuard<'a, ObjectPool<Box<[u8]>>>>> for FatalStorageError {
-    fn from(err: TryLockError<RwLockReadGuard<'a, ObjectPool<Box<[u8]>>>>) -> Self {
-        match err {
-            TryLockError::Poisoned(_) => FatalStorageError::ItemPoolLockPoisoned,
-            TryLockError::WouldBlock => FatalStorageError::ItemPoolLockBlocked,
-        }
+impl<'a> From<PoisonError<RwLockReadGuard<'a, ObjectPool<Box<[u8]>>>>> for FatalStorageError {
+    fn from(_: PoisonError<RwLockReadGuard<'a, ObjectPool<Box<[u8]>>>>) -> Self {
+        FatalStorageError::ItemPoolLockPoisoned
     }
 }
 
-impl<'a> From<TryLockError<RwLockWriteGuard<'a, ObjectPool<Box<[u8]>>>>> for FatalStorageError {
-    fn from(err: TryLockError<RwLockWriteGuard<'a, ObjectPool<Box<[u8]>>>>) -> Self {
-        match err {
-            TryLockError::Poisoned(_) => FatalStorageError::ItemPoolLockPoisoned,
-            TryLockError::WouldBlock => FatalStorageError::ItemPoolLockBlocked,
-        }
+impl<'a> From<PoisonError<RwLockWriteGuard<'a, ObjectPool<Box<[u8]>>>>> for FatalStorageError {
+    fn from(_: PoisonError<RwLockWriteGuard<'a, ObjectPool<Box<[u8]>>>>) -> Self {
+        FatalStorageError::ItemPoolLockPoisoned
     }
 }
 
