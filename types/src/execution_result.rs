@@ -185,12 +185,6 @@ impl ExecutionResult {
         &*EXECUTION_RESULT
     }
 
-    fn tag_byte(&self) -> u8 {
-        self.tag()
-            .to_u8()
-            .expect("ExecutionResultTag should be represented as u8")
-    }
-
     fn tag(&self) -> ExecutionResultTag {
         match self {
             ExecutionResult::Failure {
@@ -259,7 +253,8 @@ impl Distribution<ExecutionResult> for Standard {
 impl ToBytes for ExecutionResult {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
-        buffer.push(self.tag_byte());
+        let tag_byte = self.tag().to_u8().ok_or(bytesrepr::Error::Formatting)?;
+        buffer.push(tag_byte);
         match self {
             ExecutionResult::Failure {
                 effect,
@@ -442,12 +437,6 @@ pub enum OpKind {
 }
 
 impl OpKind {
-    fn tag_byte(&self) -> u8 {
-        self.tag()
-            .to_u8()
-            .expect("OpTag should be represented as u8")
-    }
-
     fn tag(&self) -> OpTag {
         match self {
             OpKind::Read => OpTag::Read,
@@ -460,7 +449,8 @@ impl OpKind {
 
 impl ToBytes for OpKind {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        self.tag_byte().to_bytes()
+        let tag_bytes = self.tag().to_u8().ok_or(bytesrepr::Error::Formatting)?;
+        tag_bytes.to_bytes()
     }
 
     fn serialized_length(&self) -> usize {
@@ -559,12 +549,6 @@ pub enum Transform {
 }
 
 impl Transform {
-    fn tag_byte(&self) -> u8 {
-        self.tag()
-            .to_u8()
-            .expect("TransformTag should be representable as a u8")
-    }
-
     fn tag(&self) -> TransformTag {
         match self {
             Transform::Identity => TransformTag::Identity,
@@ -592,7 +576,8 @@ impl Transform {
 impl ToBytes for Transform {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
-        buffer.insert(0, self.tag_byte());
+        let tag_bytes = self.tag().to_u8().ok_or(bytesrepr::Error::Formatting)?;
+        buffer.insert(0, tag_bytes);
         match self {
             Transform::Identity => {}
             Transform::WriteCLValue(value) => {
