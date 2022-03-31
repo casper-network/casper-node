@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 use std::{
     any::Any,
     cmp::Reverse,
@@ -198,9 +201,9 @@ where
 }
 
 impl<C: Context + 'static> SimpleConsensus<C> {
-    /// Creates a new boxed [`SimpleConsensus`] instance.
+    /// Creates a new [`SimpleConsensus`] instance.
     #[allow(clippy::too_many_arguments, clippy::type_complexity)]
-    pub(crate) fn new_boxed(
+    fn new(
         instance_id: C::InstanceId,
         validator_stakes: BTreeMap<C::ValidatorId, U512>,
         faulty: &HashSet<C::ValidatorId>,
@@ -211,7 +214,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         era_start_time: Timestamp,
         seed: u64,
         _now: Timestamp,
-    ) -> (Box<dyn ConsensusProtocol<C>>, ProtocolOutcomes<C>) {
+    ) -> SimpleConsensus<C> {
         let validators = protocols::common::validators::<C>(faulty, inactive, validator_stakes);
         let weights = protocols::common::validator_weights::<C>(&validators);
         let ftt = protocols::common::ftt::<C>(
@@ -254,7 +257,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             0,
         );
 
-        let sc = Box::new(SimpleConsensus {
+        SimpleConsensus {
             leader_sequence,
             proposals_waiting_for_parent: HashMap::new(),
             proposals_waiting_for_validation: HashMap::new(),
@@ -274,9 +277,36 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             weights,
             pending_proposal: None,
             progress_detected: false,
-        });
+        }
+    }
 
-        (sc, vec![])
+    /// Creates a new boxed [`SimpleConsensus`] instance.
+    #[allow(clippy::too_many_arguments, clippy::type_complexity)]
+    pub(crate) fn new_boxed(
+        instance_id: C::InstanceId,
+        validator_stakes: BTreeMap<C::ValidatorId, U512>,
+        faulty: &HashSet<C::ValidatorId>,
+        inactive: &HashSet<C::ValidatorId>,
+        chainspec: &Chainspec,
+        config: &Config,
+        prev_cp: Option<&dyn ConsensusProtocol<C>>,
+        era_start_time: Timestamp,
+        seed: u64,
+        now: Timestamp,
+    ) -> (Box<dyn ConsensusProtocol<C>>, ProtocolOutcomes<C>) {
+        let sc = Self::new(
+            instance_id,
+            validator_stakes,
+            faulty,
+            inactive,
+            chainspec,
+            config,
+            prev_cp,
+            era_start_time,
+            seed,
+            now,
+        );
+        (Box::new(sc), vec![])
     }
 
     /// Prints a log statement listing the inactive and faulty validators.
@@ -1443,7 +1473,7 @@ impl<C: Context> Proposal<C> {
 /// sync messages, which are somewhat decoupled from the rest of the
 /// protocol. This message, along with the instance and round ID,
 /// are what are signed by the active validators.
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
