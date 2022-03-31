@@ -17,39 +17,46 @@ use memory_metrics::MemoryMetrics;
 use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::Serialize;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, warn};
+
+use casper_execution_engine::storage::trie::TrieOrChunk;
 
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
 use crate::{
     components::{
-        block_validator::{self, BlockValidator},
+        chain_synchronizer::{self, ChainSynchronizer, JoiningOutcome},
         chainspec_loader::{self, ChainspecLoader},
-        console::{self, Console},
-        contract_runtime::{ContractRuntime, ContractRuntimeAnnouncement},
+        contract_runtime::ContractRuntime,
         deploy_acceptor::{self, DeployAcceptor},
+        diagnostics_port::{self, DiagnosticsPort},
         event_stream_server,
         event_stream_server::{DeployGetter, EventStreamServer},
-        fetcher::{self, Fetcher},
+        fetcher::{self, FetchedOrNotFound, Fetcher, FetcherBuilder},
         gossiper::{self, Gossiper},
-        linear_chain,
-        linear_chain_sync::{self, LinearChainSync},
         metrics::Metrics,
         rest_server::{self, RestServer},
         small_network::{self, GossipedAddress, SmallNetwork, SmallNetworkIdentity},
         storage::{self, Storage},
         Component,
     },
+    contract_runtime,
     effect::{
         announcements::{
-            ChainspecLoaderAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
-            GossiperAnnouncement, LinearChainAnnouncement, LinearChainBlock, NetworkAnnouncement,
+            BlocklistAnnouncement, ChainspecLoaderAnnouncement, ContractRuntimeAnnouncement,
+            ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
+            LinearChainAnnouncement,
         },
-        console::DumpConsensusStateRequest,
+        diagnostics_port::DumpConsensusStateRequest,
+        incoming::{
+            ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
+            NetRequestIncoming, NetResponse, NetResponseIncoming, TrieRequestIncoming,
+            TrieResponseIncoming,
+        },
         requests::{
-            BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
-            ContractRuntimeRequest, FetcherRequest, LinearChainRequest, MetricsRequest,
-            NetworkInfoRequest, NetworkRequest, RestRequest, StateStoreRequest, StorageRequest,
+            BeginGossipRequest, ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest,
+            FetcherRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest, RestRequest,
+            StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -62,8 +69,8 @@ use crate::{
         EventQueueHandle, Finalize, ReactorExit,
     },
     types::{
-        Block, BlockByHeight, BlockHeader, BlockHeaderWithMetadata, Deploy, ExitCode, Tag,
-        Timestamp,
+        Block, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy, DeployHash,
+        ExitCode, NodeId, NodeState,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -74,13 +81,17 @@ use crate::{
 #[derive(Debug, From, Serialize)]
 #[must_use]
 pub(crate) enum JoinerEvent {
+    /// Chain synchronizer event.
+    #[from]
+    ChainSynchronizer(chain_synchronizer::Event),
+
     /// Small Network event.
     #[from]
     SmallNetwork(small_network::Event<Message>),
 
     /// Storage event.
     #[from]
-    Storage(#[serde(skip_serializing)] storage::Event),
+    Storage(storage::Event),
 
     #[from]
     /// REST server event.
@@ -106,79 +117,98 @@ pub(crate) enum JoinerEvent {
     #[from]
     NetworkInfoRequest(#[serde(skip_serializing)] NetworkInfoRequest),
 
-    /// Linear chain fetcher event.
+    /// Block fetcher event.
     #[from]
     BlockFetcher(#[serde(skip_serializing)] fetcher::Event<Block>),
 
+    /// Block header (without metadata) fetcher event.
+    #[from]
+    BlockHeaderFetcher(#[serde(skip_serializing)] fetcher::Event<BlockHeader>),
+
+    /// Block header with metadata by height fetcher event.
+    #[from]
+    BlockHeaderByHeightFetcher(#[serde(skip_serializing)] fetcher::Event<BlockHeaderWithMetadata>),
+
     /// Linear chain (by height) fetcher event.
     #[from]
-    BlockByHeightFetcher(#[serde(skip_serializing)] fetcher::Event<BlockByHeight>),
+    BlockByHeightFetcher(#[serde(skip_serializing)] fetcher::Event<BlockWithMetadata>),
 
     /// Deploy fetcher event.
     #[from]
     DeployFetcher(#[serde(skip_serializing)] fetcher::Event<Deploy>),
 
+    /// Trie or chunk fetcher event.
+    #[from]
+    TrieOrChunkFetcher(#[serde(skip_serializing)] fetcher::Event<TrieOrChunk>),
+
     /// Deploy acceptor event.
     #[from]
     DeployAcceptor(#[serde(skip_serializing)] deploy_acceptor::Event),
-
-    /// Block validator event.
-    #[from]
-    BlockValidator(#[serde(skip_serializing)] block_validator::Event),
-
-    /// Linear chain event.
-    #[from]
-    LinearChainSync(#[serde(skip_serializing)] linear_chain_sync::Event),
-
-    /// Contract Runtime event.
-    #[from]
-    ContractRuntime(#[serde(skip_serializing)] ContractRuntimeRequest),
-
-    /// Linear chain event.
-    #[from]
-    LinearChain(#[serde(skip_serializing)] linear_chain::Event),
 
     /// Address gossiper event.
     #[from]
     AddressGossiper(gossiper::Event<GossipedAddress>),
 
-    /// Console event.
+    /// Deploy gossiper event.
     #[from]
-    Console(console::Event),
+    DeployGossiper(#[serde(skip_serializing)] gossiper::Event<Deploy>),
+
+    // Requests.
+    /// Storage request.
+    #[from]
+    StorageRequest(StorageRequest),
+
+    /// Diagnostics port event.
+    #[from]
+    DiagnosticsPort(diagnostics_port::Event),
+
+    /// Contract runtime event.
+    #[from]
+    ContractRuntime(contract_runtime::Event),
 
     /// Requests.
     /// Linear chain block by hash fetcher request.
     #[from]
     BlockFetcherRequest(#[serde(skip_serializing)] FetcherRequest<Block>),
 
+    /// Blocker header (with no metadata) fetcher request.
+    #[from]
+    BlockHeaderFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockHeader>),
+
+    /// Trie or chunk fetcher request.
+    #[from]
+    TrieOrChunkFetcherRequest(#[serde(skip_serializing)] FetcherRequest<TrieOrChunk>),
+
+    /// Block header with metadata by height fetcher request.
+    #[from]
+    BlockHeaderByHeightFetcherRequest(
+        #[serde(skip_serializing)] FetcherRequest<BlockHeaderWithMetadata>,
+    ),
+
     /// Linear chain block by height fetcher request.
     #[from]
-    BlockByHeightFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockByHeight>),
+    BlockByHeightFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockWithMetadata>),
 
     /// Deploy fetcher request.
     #[from]
     DeployFetcherRequest(#[serde(skip_serializing)] FetcherRequest<Deploy>),
 
-    /// Block validation request.
+    /// Address gossip request.
     #[from]
-    BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest),
+    BeginAddressGossipRequest(BeginGossipRequest<GossipedAddress>),
 
-    /// Block proposer request.
+    /// Contract runtime request.
     #[from]
-    BlockProposerRequest(#[serde(skip_serializing)] BlockProposerRequest),
-
-    /// Request for state storage.
-    #[from]
-    StateStoreRequest(#[serde(skip_serializing)] StateStoreRequest),
+    ContractRuntimeRequest(ContractRuntimeRequest),
 
     // Announcements
     /// A control announcement.
     #[from]
     ControlAnnouncement(ControlAnnouncement),
 
-    /// Network announcement.
+    /// Blocklist announcement.
     #[from]
-    NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<Message>),
+    BlocklistAnnouncement(#[serde(skip_serializing)] BlocklistAnnouncement),
 
     /// Block executor announcement.
     #[from]
@@ -192,6 +222,9 @@ pub(crate) enum JoinerEvent {
     #[from]
     DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement),
 
+    #[from]
+    DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
+
     /// Linear chain announcement.
     #[from]
     LinearChainAnnouncement(#[serde(skip_serializing)] LinearChainAnnouncement),
@@ -204,6 +237,37 @@ pub(crate) enum JoinerEvent {
     #[from]
     ConsensusRequest(#[serde(skip_serializing)] ConsensusRequest),
 
+    /// Incoming consensus network message.
+    #[from]
+    ConsensusMessageIncoming(ConsensusMessageIncoming),
+
+    /// Incoming deploy gossiper network message.
+    #[from]
+    DeployGossiperIncoming(GossiperIncoming<Deploy>),
+
+    /// Incoming address gossiper network message.
+    #[from]
+    AddressGossiperIncoming(GossiperIncoming<GossipedAddress>),
+
+    /// Incoming net request network message.
+    #[from]
+    NetRequestIncoming(NetRequestIncoming),
+
+    /// Incoming net response network message.
+    #[from]
+    NetResponseIncoming(NetResponseIncoming),
+
+    /// Incoming trie request network message.
+    #[from]
+    TrieRequestIncoming(TrieRequestIncoming),
+
+    /// Incoming trie response network message.
+    #[from]
+    TrieResponseIncoming(TrieResponseIncoming),
+
+    /// Incoming finality signature network message.
+    #[from]
+    FinalitySignatureIncoming(FinalitySignatureIncoming),
     /// Consensus dump request.
     #[from]
     DumpConsensusStateRequest(DumpConsensusStateRequest),
@@ -218,8 +282,17 @@ impl ReactorEvent for JoinerEvent {
         }
     }
 
+    fn try_into_control(self) -> Option<ControlAnnouncement> {
+        if let Self::ControlAnnouncement(ctrl_ann) = self {
+            Some(ctrl_ann)
+        } else {
+            None
+        }
+    }
+
     fn description(&self) -> &'static str {
         match self {
+            JoinerEvent::ChainSynchronizer(_) => "ChainSynchronizer",
             JoinerEvent::SmallNetwork(_) => "SmallNetwork",
             JoinerEvent::Storage(_) => "Storage",
             JoinerEvent::RestServer(_) => "RestServer",
@@ -231,41 +304,44 @@ impl ReactorEvent for JoinerEvent {
             JoinerEvent::BlockFetcher(_) => "BlockFetcher",
             JoinerEvent::BlockByHeightFetcher(_) => "BlockByHeightFetcher",
             JoinerEvent::DeployFetcher(_) => "DeployFetcher",
+            JoinerEvent::TrieOrChunkFetcher(_) => "TrieOrChunkFetcher",
             JoinerEvent::DeployAcceptor(_) => "DeployAcceptor",
-            JoinerEvent::BlockValidator(_) => "BlockValidator",
-            JoinerEvent::LinearChainSync(_) => "LinearChainSync",
             JoinerEvent::ContractRuntime(_) => "ContractRuntime",
-            JoinerEvent::LinearChain(_) => "LinearChain",
             JoinerEvent::AddressGossiper(_) => "AddressGossiper",
-            JoinerEvent::Console(_) => "Console",
+            JoinerEvent::DiagnosticsPort(_) => "DiagnosticsPort",
             JoinerEvent::BlockFetcherRequest(_) => "BlockFetcherRequest",
             JoinerEvent::BlockByHeightFetcherRequest(_) => "BlockByHeightFetcherRequest",
             JoinerEvent::DeployFetcherRequest(_) => "DeployFetcherRequest",
-            JoinerEvent::BlockValidatorRequest(_) => "BlockValidatorRequest",
-            JoinerEvent::BlockProposerRequest(_) => "BlockProposerRequest",
-            JoinerEvent::StateStoreRequest(_) => "StateStoreRequest",
+            JoinerEvent::TrieOrChunkFetcherRequest(_) => "TrieOrChunkFetcherRequest",
             JoinerEvent::DumpConsensusStateRequest(_) => "DumpConsensusStateRequest",
             JoinerEvent::ControlAnnouncement(_) => "ControlAnnouncement",
-            JoinerEvent::NetworkAnnouncement(_) => "NetworkAnnouncement",
             JoinerEvent::ContractRuntimeAnnouncement(_) => "ContractRuntimeAnnouncement",
             JoinerEvent::AddressGossiperAnnouncement(_) => "AddressGossiperAnnouncement",
             JoinerEvent::DeployAcceptorAnnouncement(_) => "DeployAcceptorAnnouncement",
             JoinerEvent::LinearChainAnnouncement(_) => "LinearChainAnnouncement",
             JoinerEvent::ChainspecLoaderAnnouncement(_) => "ChainspecLoaderAnnouncement",
             JoinerEvent::ConsensusRequest(_) => "ConsensusRequest",
+            JoinerEvent::BlockHeaderFetcher(_) => "BlockHeaderFetcher",
+            JoinerEvent::BlockHeaderByHeightFetcher(_) => "BlockHeaderByHeightFetcher",
+            JoinerEvent::BlockHeaderFetcherRequest(_) => "BlockHeaderFetcherRequest",
+            JoinerEvent::BlockHeaderByHeightFetcherRequest(_) => {
+                "BlockHeaderByHeightFetcherRequest"
+            }
+            JoinerEvent::BlocklistAnnouncement(_) => "BlocklistAnnouncement",
+            JoinerEvent::StorageRequest(_) => "StorageRequest",
+            JoinerEvent::BeginAddressGossipRequest(_) => "BeginAddressGossipRequest",
+            JoinerEvent::ConsensusMessageIncoming(_) => "ConsensusMessageIncoming",
+            JoinerEvent::DeployGossiperIncoming(_) => "DeployGossiperIncoming",
+            JoinerEvent::AddressGossiperIncoming(_) => "AddressGossiperIncoming",
+            JoinerEvent::NetRequestIncoming(_) => "NetRequestIncoming",
+            JoinerEvent::NetResponseIncoming(_) => "NetResponseIncoming",
+            JoinerEvent::TrieRequestIncoming(_) => "TrieRequestIncoming",
+            JoinerEvent::TrieResponseIncoming(_) => "TrieResponseIncoming",
+            JoinerEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
+            JoinerEvent::ContractRuntimeRequest(_) => "ContractRuntimeRequest",
+            JoinerEvent::DeployGossiper(_) => "DeployGossiper",
+            JoinerEvent::DeployGossiperAnnouncement(_) => "DeployGossiperAnnouncement",
         }
-    }
-}
-
-impl From<LinearChainRequest> for JoinerEvent {
-    fn from(req: LinearChainRequest) -> Self {
-        JoinerEvent::LinearChain(linear_chain::Event::Request(req))
-    }
-}
-
-impl From<StorageRequest> for JoinerEvent {
-    fn from(request: StorageRequest) -> Self {
-        JoinerEvent::Storage(request.into())
     }
 }
 
@@ -283,6 +359,14 @@ impl From<NetworkRequest<gossiper::Message<GossipedAddress>>> for JoinerEvent {
     }
 }
 
+impl From<NetworkRequest<gossiper::Message<Deploy>>> for JoinerEvent {
+    fn from(request: NetworkRequest<gossiper::Message<Deploy>>) -> Self {
+        JoinerEvent::SmallNetwork(small_network::Event::from(
+            request.map_payload(Message::from),
+        ))
+    }
+}
+
 impl From<RestRequest> for JoinerEvent {
     fn from(request: RestRequest) -> Self {
         JoinerEvent::RestServer(rest_server::Event::RestRequest(request))
@@ -292,8 +376,13 @@ impl From<RestRequest> for JoinerEvent {
 impl Display for JoinerEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            JoinerEvent::ChainSynchronizer(event) => {
+                write!(f, "chain synchronizer: {}", event)
+            }
             JoinerEvent::SmallNetwork(event) => write!(f, "small network: {}", event),
-            JoinerEvent::NetworkAnnouncement(event) => write!(f, "network announcement: {}", event),
+            JoinerEvent::BlocklistAnnouncement(event) => {
+                write!(f, "blocklist announcement: {}", event)
+            }
             JoinerEvent::Storage(request) => write!(f, "storage: {}", request),
             JoinerEvent::RestServer(event) => write!(f, "rest server: {}", event),
             JoinerEvent::EventStreamServer(event) => write!(f, "event stream server: {}", event),
@@ -302,31 +391,34 @@ impl Display for JoinerEvent {
             JoinerEvent::ChainspecLoaderRequest(req) => {
                 write!(f, "chainspec loader request: {}", req)
             }
+            JoinerEvent::StorageRequest(req) => write!(f, "storage request: {}", req),
             JoinerEvent::NetworkInfoRequest(req) => write!(f, "network info request: {}", req),
             JoinerEvent::BlockFetcherRequest(request) => {
                 write!(f, "block fetcher request: {}", request)
             }
-            JoinerEvent::BlockValidatorRequest(request) => {
-                write!(f, "block validator request: {}", request)
-            }
             JoinerEvent::DeployFetcherRequest(request) => {
                 write!(f, "deploy fetcher request: {}", request)
             }
-            JoinerEvent::LinearChainSync(event) => write!(f, "linear chain: {}", event),
+            JoinerEvent::BeginAddressGossipRequest(request) => {
+                write!(f, "begin address gossip request: {}", request)
+            }
+            JoinerEvent::TrieOrChunkFetcherRequest(request) => {
+                write!(f, "trie or chunk fetcher request: {}", request)
+            }
             JoinerEvent::BlockFetcher(event) => write!(f, "block fetcher: {}", event),
             JoinerEvent::BlockByHeightFetcherRequest(request) => {
                 write!(f, "block by height fetcher request: {}", request)
             }
-            JoinerEvent::BlockValidator(event) => write!(f, "block validator event: {}", event),
+            JoinerEvent::TrieOrChunkFetcher(event) => {
+                write!(f, "trie or chunk fetcher: {}", event)
+            }
             JoinerEvent::DeployFetcher(event) => write!(f, "deploy fetcher event: {}", event),
-            JoinerEvent::BlockProposerRequest(req) => write!(f, "block proposer request: {}", req),
             JoinerEvent::ContractRuntime(event) => write!(f, "contract runtime event: {:?}", event),
-            JoinerEvent::LinearChain(event) => write!(f, "linear chain event: {}", event),
             JoinerEvent::ContractRuntimeAnnouncement(announcement) => {
                 write!(f, "block executor announcement: {}", announcement)
             }
             JoinerEvent::AddressGossiper(event) => write!(f, "address gossiper: {}", event),
-            JoinerEvent::Console(event) => write!(f, "console: {}", event),
+            JoinerEvent::DiagnosticsPort(event) => write!(f, "diagnostics port: {}", event),
             JoinerEvent::AddressGossiperAnnouncement(ann) => {
                 write!(f, "address gossiper announcement: {}", ann)
             }
@@ -344,10 +436,40 @@ impl Display for JoinerEvent {
             JoinerEvent::ChainspecLoaderAnnouncement(ann) => {
                 write!(f, "chainspec loader announcement: {}", ann)
             }
-            JoinerEvent::StateStoreRequest(req) => write!(f, "state store request: {}", req),
             JoinerEvent::ConsensusRequest(req) => write!(f, "consensus request: {:?}", req),
+            JoinerEvent::BlockHeaderFetcher(block_header) => {
+                write!(f, "block header fetcher event: {}", block_header)
+            }
+            JoinerEvent::BlockHeaderFetcherRequest(req) => {
+                write!(f, "block header fetcher request: {}", req)
+            }
+            JoinerEvent::BlockHeaderByHeightFetcher(block_header_by_height) => {
+                write!(
+                    f,
+                    "block header by height fetcher event: {}",
+                    block_header_by_height
+                )
+            }
+            JoinerEvent::BlockHeaderByHeightFetcherRequest(req) => {
+                write!(f, "block header by height fetcher request: {}", req)
+            }
+            JoinerEvent::ConsensusMessageIncoming(inner) => write!(f, "incoming: {}", inner),
+            JoinerEvent::DeployGossiperIncoming(inner) => write!(f, "incoming: {}", inner),
+            JoinerEvent::AddressGossiperIncoming(inner) => write!(f, "incoming: {}", inner),
+            JoinerEvent::NetRequestIncoming(inner) => write!(f, "incoming: {}", inner),
+            JoinerEvent::NetResponseIncoming(inner) => write!(f, "incoming: {}", inner),
+            JoinerEvent::TrieRequestIncoming(inner) => write!(f, "incoming: {}", inner),
+            JoinerEvent::TrieResponseIncoming(inner) => write!(f, "incoming: {}", inner),
+            JoinerEvent::FinalitySignatureIncoming(inner) => write!(f, "incoming: {}", inner),
+            JoinerEvent::ContractRuntimeRequest(req) => {
+                write!(f, "contract runtime request: {}", req)
+            }
             JoinerEvent::DumpConsensusStateRequest(req) => {
                 write!(f, "consensus dump request: {}", req)
+            }
+            JoinerEvent::DeployGossiper(event) => write!(f, "deploy gossiper: {}", event),
+            JoinerEvent::DeployGossiperAnnouncement(ann) => {
+                write!(f, "deploy gossiper announcement: {}", ann)
             }
         }
     }
@@ -364,16 +486,14 @@ pub(crate) struct Reactor {
     chainspec_loader: ChainspecLoader,
     storage: Storage,
     contract_runtime: ContractRuntime,
-    linear_chain_fetcher: Fetcher<Block>,
-    linear_chain_sync: LinearChainSync,
-    block_validator: BlockValidator,
+    chain_synchronizer: ChainSynchronizer,
     deploy_fetcher: Fetcher<Deploy>,
-    linear_chain: linear_chain::LinearChainComponent,
-    console: Console,
-    // Handles request for linear chain block by height.
-    block_by_height_fetcher: Fetcher<BlockByHeight>,
-    pub(super) block_header_by_hash_fetcher: Fetcher<BlockHeader>,
-    pub(super) block_header_with_metadata_fetcher: Fetcher<BlockHeaderWithMetadata>,
+    block_by_hash_fetcher: Fetcher<Block>,
+    block_by_height_fetcher: Fetcher<BlockWithMetadata>,
+    block_header_and_finality_signatures_by_height_fetcher: Fetcher<BlockHeaderWithMetadata>,
+    trie_or_chunk_fetcher: Fetcher<TrieOrChunk>,
+    diagnostics_port: DiagnosticsPort,
+    block_header_by_hash_fetcher: Fetcher<BlockHeader>,
     #[data_size(skip)]
     deploy_acceptor: DeployAcceptor,
     #[data_size(skip)]
@@ -386,6 +506,7 @@ pub(crate) struct Reactor {
     #[data_size(skip)] // Never allocates data on the heap.
     memory_metrics: MemoryMetrics,
     node_startup_instant: Instant,
+    deploy_gossiper: Gossiper<Deploy, JoinerEvent>,
 }
 
 impl reactor::Reactor for Reactor {
@@ -405,19 +526,18 @@ impl reactor::Reactor for Reactor {
         let (root, initializer) = initializer.into_parts();
 
         let initializer::Reactor {
-            config,
+            config: with_dir_config,
             chainspec_loader,
             storage,
-            mut contract_runtime,
+            contract_runtime,
             small_network_identity,
         } = initializer;
 
         // We don't need to be super precise about the startup time, i.e.
         // we can skip the time spent in `initializer` for the sake of code simplicity.
         let node_startup_instant = Instant::now();
-
         // TODO: Remove wrapper around Reactor::Config instead.
-        let (_, config) = config.into_parts();
+        let (_, config) = with_dir_config.into_parts();
 
         let memory_metrics = MemoryMetrics::new(registry.clone())?;
 
@@ -425,8 +545,11 @@ impl reactor::Reactor for Reactor {
 
         let metrics = Metrics::new(registry.clone());
 
-        let (console, console_effects) =
-            Console::new(&WithDir::new(&root, config.console.clone()), event_queue)?;
+        let chainspec = chainspec_loader.chainspec().as_ref();
+        let (diagnostics_port, diagnostics_port_effects) = DiagnosticsPort::new(
+            &WithDir::new(&root, config.diagnostics_port.clone()),
+            event_queue,
+        )?;
 
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
@@ -434,49 +557,50 @@ impl reactor::Reactor for Reactor {
             Some(WithDir::new(&root, &config.consensus)),
             registry,
             small_network_identity,
-            chainspec_loader.chainspec().as_ref(),
+            chainspec,
         )?;
 
-        let linear_chain_fetcher = Fetcher::new("linear_chain", config.fetcher, registry)?;
-
         let mut effects = reactor::wrap_effects(JoinerEvent::SmallNetwork, small_network_effects);
-        effects.extend(reactor::wrap_effects(JoinerEvent::Console, console_effects));
+        effects.extend(reactor::wrap_effects(
+            JoinerEvent::DiagnosticsPort,
+            diagnostics_port_effects,
+        ));
 
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
 
+        let next_upgrade_activation_point = chainspec_loader.next_upgrade_activation_point();
         let effect_builder = EffectBuilder::new(event_queue);
+        let (chain_synchronizer, sync_effects) = ChainSynchronizer::new(
+            Arc::clone(chainspec_loader.chainspec()),
+            config.node.clone(),
+            config.network.clone(),
+            next_upgrade_activation_point,
+            chainspec.protocol_config.verifiable_chunked_hash_activation,
+            effect_builder,
+            registry,
+        )?;
+        effects.extend(reactor::wrap_effects(
+            JoinerEvent::ChainSynchronizer,
+            sync_effects,
+        ));
 
-        let trusted_hash = config.node.trusted_hash;
-
-        match trusted_hash {
-            None => {
-                let chainspec = chainspec_loader.chainspec();
-                let era_duration = chainspec.core_config.era_duration;
-                if let Some(start_time) = chainspec
-                    .protocol_config
-                    .activation_point
-                    .genesis_timestamp()
-                {
-                    if Timestamp::now() > start_time + era_duration {
-                        error!(
-                            now=?Timestamp::now(),
-                            genesis_era_end=?start_time + era_duration,
-                            "node started with no trusted hash after the expected end of \
-                             the genesis era! Please specify a trusted hash and restart.");
-                        panic!("should have trusted hash after genesis era")
-                    }
-                }
-            }
-            Some(hash) => info!(trusted_hash=%hash, "synchronizing linear chain"),
-        }
-
+        let verifiable_chunked_hash_activation = chainspec_loader
+            .chainspec()
+            .protocol_config
+            .verifiable_chunked_hash_activation;
         let protocol_version = &chainspec_loader.chainspec().protocol_config.version;
+        let node_state = if config.node.sync_to_genesis {
+            NodeState::SyncingToGenesis
+        } else {
+            NodeState::FastSyncing
+        };
         let rest_server = RestServer::new(
             config.rest_server.clone(),
             effect_builder,
             *protocol_version,
             node_startup_instant,
+            node_state,
         )?;
 
         let event_stream_server = EventStreamServer::new(
@@ -486,57 +610,27 @@ impl reactor::Reactor for Reactor {
             DeployGetter::new(effect_builder),
         )?;
 
-        let block_validator = BlockValidator::new(Arc::clone(chainspec_loader.chainspec()));
+        let fetcher_builder =
+            FetcherBuilder::new(config.fetcher, registry, verifiable_chunked_hash_activation);
 
-        let deploy_fetcher = Fetcher::new("deploy", config.fetcher, registry)?;
+        let deploy_fetcher = fetcher_builder.build("deploy")?;
+        let block_by_height_fetcher = fetcher_builder.build("block_by_height")?;
+        let block_by_hash_fetcher = fetcher_builder.build("block")?;
+        let block_header_and_finality_signatures_by_height_fetcher =
+            fetcher_builder.build("block_header_by_height")?;
+        let block_header_by_hash_fetcher = fetcher_builder.build("block_header")?;
 
-        let block_by_height_fetcher = Fetcher::new("block_by_height", config.fetcher, registry)?;
+        let trie_or_chunk_fetcher = fetcher_builder.build("trie_or_chunk")?;
 
-        let block_header_and_finality_signatures_by_height_fetcher: Fetcher<
-            BlockHeaderWithMetadata,
-        > = Fetcher::new(
-            "block_header_and_finality_signatures_by_height",
-            config.fetcher,
+        let deploy_acceptor = DeployAcceptor::new(&*chainspec_loader.chainspec(), registry)?;
+
+        let deploy_gossiper = Gossiper::new_for_partial_items(
+            "deploy_gossiper",
+            config.gossip,
+            gossiper::get_deploy_from_storage::<Deploy, JoinerEvent>,
             registry,
         )?;
 
-        let block_header_by_hash_fetcher: Fetcher<BlockHeader> =
-            Fetcher::new("block_header_by_hash", config.fetcher, registry)?;
-
-        let deploy_acceptor = DeployAcceptor::new(
-            config.deploy_acceptor,
-            &*chainspec_loader.chainspec(),
-            registry,
-        )?;
-
-        contract_runtime.set_initial_state(chainspec_loader.initial_execution_pre_state());
-        let linear_chain = linear_chain::LinearChainComponent::new(
-            registry,
-            *protocol_version,
-            chainspec_loader.chainspec().core_config.auction_delay,
-            chainspec_loader.chainspec().core_config.unbonding_delay,
-        )?;
-
-        let maybe_next_activation_point = chainspec_loader
-            .next_upgrade()
-            .map(|next_upgrade| next_upgrade.activation_point());
-        let (linear_chain_sync, init_sync_effects) = LinearChainSync::new::<JoinerEvent, Error>(
-            registry,
-            effect_builder,
-            chainspec_loader.chainspec(),
-            &storage,
-            trusted_hash,
-            chainspec_loader.initial_block().cloned(),
-            chainspec_loader.after_upgrade(),
-            maybe_next_activation_point,
-            chainspec_loader.initial_execution_pre_state(),
-            config.linear_chain_sync,
-        )?;
-
-        effects.extend(reactor::wrap_effects(
-            JoinerEvent::LinearChainSync,
-            init_sync_effects,
-        ));
         effects.extend(reactor::wrap_effects(
             JoinerEvent::ChainspecLoader,
             chainspec_loader.start_checking_for_upgrades(effect_builder),
@@ -552,22 +646,21 @@ impl reactor::Reactor for Reactor {
                 chainspec_loader,
                 storage,
                 contract_runtime,
-                linear_chain_sync,
-                linear_chain_fetcher,
-                block_validator,
+                chain_synchronizer,
+                block_by_hash_fetcher,
                 deploy_fetcher,
-                linear_chain,
-                console,
                 block_by_height_fetcher,
                 block_header_by_hash_fetcher,
-                block_header_with_metadata_fetcher:
-                    block_header_and_finality_signatures_by_height_fetcher,
+                block_header_and_finality_signatures_by_height_fetcher,
+                trie_or_chunk_fetcher,
                 deploy_acceptor,
                 event_queue_metrics,
                 rest_server,
                 event_stream_server,
                 memory_metrics,
                 node_startup_instant,
+                diagnostics_port,
+                deploy_gossiper,
             },
             effects,
         ))
@@ -580,6 +673,11 @@ impl reactor::Reactor for Reactor {
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
+            JoinerEvent::ChainSynchronizer(event) => reactor::wrap_effects(
+                JoinerEvent::ChainSynchronizer,
+                self.chain_synchronizer
+                    .handle_event(effect_builder, rng, event),
+            ),
             JoinerEvent::SmallNetwork(event) => reactor::wrap_effects(
                 JoinerEvent::SmallNetwork,
                 self.small_network.handle_event(effect_builder, rng, event),
@@ -587,117 +685,33 @@ impl reactor::Reactor for Reactor {
             JoinerEvent::ControlAnnouncement(ctrl_ann) => {
                 unreachable!("unhandled control announcement: {}", ctrl_ann)
             }
-            JoinerEvent::NetworkAnnouncement(NetworkAnnouncement::NewPeer(id)) => {
-                reactor::wrap_effects(
-                    JoinerEvent::LinearChainSync,
-                    self.linear_chain_sync.handle_event(
-                        effect_builder,
-                        rng,
-                        linear_chain_sync::Event::NewPeerConnected(id),
-                    ),
-                )
+            JoinerEvent::BlocklistAnnouncement(ann) => {
+                self.dispatch_event(effect_builder, rng, JoinerEvent::SmallNetwork(ann.into()))
             }
-            JoinerEvent::NetworkAnnouncement(NetworkAnnouncement::GossipOurAddress(
-                gossiped_address,
-            )) => {
-                let event = gossiper::Event::ItemReceived {
-                    item_id: gossiped_address,
-                    source: Source::Ourself,
-                };
-                self.dispatch_event(effect_builder, rng, JoinerEvent::AddressGossiper(event))
-            }
-            JoinerEvent::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
-                sender,
-                payload,
-            }) => match payload {
-                Message::GetResponse {
-                    tag: Tag::Block,
-                    serialized_item,
-                } => {
-                    let block = match bincode::deserialize(&serialized_item) {
-                        Ok(block) => Box::new(block),
-                        Err(err) => {
-                            error!("failed to decode block from {}: {}", sender, err);
-                            return Effects::new();
-                        }
-                    };
-                    let event = fetcher::Event::GotRemotely {
-                        item: block,
-                        source: Source::Peer(sender),
-                    };
-                    self.dispatch_event(effect_builder, rng, JoinerEvent::BlockFetcher(event))
-                }
-                Message::GetResponse {
-                    tag: Tag::BlockByHeight,
-                    serialized_item,
-                } => {
-                    let block_at_height: BlockByHeight =
-                        match bincode::deserialize(&serialized_item) {
-                            Ok(maybe_block) => maybe_block,
-                            Err(err) => {
-                                error!("failed to decode block from {}: {}", sender, err);
-                                return Effects::new();
-                            }
-                        };
-
-                    let event = match block_at_height {
-                        BlockByHeight::Absent(block_height) => fetcher::Event::AbsentRemotely {
-                            id: block_height,
-                            peer: sender,
-                        },
-                        BlockByHeight::Block(block) => fetcher::Event::GotRemotely {
-                            item: Box::new(BlockByHeight::Block(block)),
-                            source: Source::Peer(sender),
-                        },
-                    };
-                    self.dispatch_event(
-                        effect_builder,
-                        rng,
-                        JoinerEvent::BlockByHeightFetcher(event),
-                    )
-                }
-                Message::GetResponse {
-                    tag: Tag::Deploy,
-                    serialized_item,
-                } => {
-                    let deploy = match bincode::deserialize(&serialized_item) {
-                        Ok(deploy) => Box::new(deploy),
-                        Err(err) => {
-                            error!("failed to decode deploy from {}: {}", sender, err);
-                            return Effects::new();
-                        }
-                    };
-                    let event = JoinerEvent::DeployAcceptor(deploy_acceptor::Event::Accept {
-                        deploy,
-                        source: Source::Peer(sender),
-                        maybe_responder: None,
-                    });
-                    self.dispatch_event(effect_builder, rng, event)
-                }
-                Message::AddressGossiper(message) => {
-                    let event = JoinerEvent::AddressGossiper(gossiper::Event::MessageReceived {
-                        sender,
-                        message,
-                    });
-                    self.dispatch_event(effect_builder, rng, event)
-                }
-                Message::FinalitySignature(_) => {
-                    debug!("finality signatures not handled in joiner reactor");
-                    Effects::new()
-                }
-                other => {
-                    debug!(?other, "network announcement ignored.");
-                    Effects::new()
-                }
-            },
             JoinerEvent::DeployAcceptorAnnouncement(
                 DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
             ) => {
+                if let Err(error) = deploy.deploy_info() {
+                    error!(%error, "invalid deploy");
+                    return Effects::new();
+                };
+
                 let event = event_stream_server::Event::DeployAccepted(*deploy.id());
                 let mut effects =
                     self.dispatch_event(effect_builder, rng, JoinerEvent::EventStreamServer(event));
 
+                let event = gossiper::Event::ItemReceived {
+                    item_id: *deploy.id(),
+                    source: source.clone(),
+                };
+                effects.extend(self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    JoinerEvent::DeployGossiper(event),
+                ));
+
                 let event = fetcher::Event::GotRemotely {
+                    verifiable_chunked_hash_activation: None,
                     item: deploy,
                     source,
                 };
@@ -726,29 +740,14 @@ impl reactor::Reactor for Reactor {
                 rng,
                 JoinerEvent::BlockFetcher(request.into()),
             ),
-            JoinerEvent::BlockValidatorRequest(request) => self.dispatch_event(
-                effect_builder,
-                rng,
-                JoinerEvent::BlockValidator(request.into()),
-            ),
             JoinerEvent::DeployAcceptor(event) => reactor::wrap_effects(
                 JoinerEvent::DeployAcceptor,
                 self.deploy_acceptor
                     .handle_event(effect_builder, rng, event),
             ),
-            JoinerEvent::LinearChainSync(event) => reactor::wrap_effects(
-                JoinerEvent::LinearChainSync,
-                self.linear_chain_sync
-                    .handle_event(effect_builder, rng, event),
-            ),
             JoinerEvent::BlockFetcher(event) => reactor::wrap_effects(
                 JoinerEvent::BlockFetcher,
-                self.linear_chain_fetcher
-                    .handle_event(effect_builder, rng, event),
-            ),
-            JoinerEvent::BlockValidator(event) => reactor::wrap_effects(
-                JoinerEvent::BlockValidator,
-                self.block_validator
+                self.block_by_hash_fetcher
                     .handle_event(effect_builder, rng, event),
             ),
             JoinerEvent::DeployFetcher(event) => reactor::wrap_effects(
@@ -760,88 +759,60 @@ impl reactor::Reactor for Reactor {
                 self.block_by_height_fetcher
                     .handle_event(effect_builder, rng, event),
             ),
+            JoinerEvent::BlockHeaderFetcher(event) => reactor::wrap_effects(
+                JoinerEvent::BlockHeaderFetcher,
+                self.block_header_by_hash_fetcher
+                    .handle_event(effect_builder, rng, event),
+            ),
             JoinerEvent::DeployFetcherRequest(request) => self.dispatch_event(
                 effect_builder,
                 rng,
                 JoinerEvent::DeployFetcher(request.into()),
+            ),
+            JoinerEvent::StorageRequest(req) => reactor::wrap_effects(
+                JoinerEvent::Storage,
+                self.storage.handle_event(effect_builder, rng, req.into()),
+            ),
+            JoinerEvent::BeginAddressGossipRequest(req) => reactor::wrap_effects(
+                JoinerEvent::AddressGossiper,
+                self.address_gossiper
+                    .handle_event(effect_builder, rng, req.into()),
             ),
             JoinerEvent::BlockByHeightFetcherRequest(request) => self.dispatch_event(
                 effect_builder,
                 rng,
                 JoinerEvent::BlockByHeightFetcher(request.into()),
             ),
+            JoinerEvent::BlockHeaderFetcherRequest(request) => self.dispatch_event(
+                effect_builder,
+                rng,
+                JoinerEvent::BlockHeaderFetcher(request.into()),
+            ),
+            JoinerEvent::TrieOrChunkFetcher(event) => reactor::wrap_effects(
+                JoinerEvent::TrieOrChunkFetcher,
+                self.trie_or_chunk_fetcher
+                    .handle_event(effect_builder, rng, event),
+            ),
             JoinerEvent::ContractRuntime(event) => reactor::wrap_effects(
                 JoinerEvent::ContractRuntime,
                 self.contract_runtime
                     .handle_event(effect_builder, rng, event),
             ),
-            JoinerEvent::ContractRuntimeAnnouncement(
-                ContractRuntimeAnnouncement::LinearChainBlock(linear_chain_block),
-            ) => {
-                let LinearChainBlock {
-                    block,
-                    execution_results,
-                } = *linear_chain_block;
-                let mut effects = Effects::new();
-                let block_hash = *block.hash();
-
-                // send to linear chain
-                let reactor_event =
-                    JoinerEvent::LinearChain(linear_chain::Event::NewLinearChainBlock {
-                        block: Box::new(block),
-                        execution_results: execution_results
-                            .iter()
-                            .map(|(hash, _header, results)| (*hash, results.clone()))
-                            .collect(),
-                    });
-                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
-
-                // send to event stream
-                for (deploy_hash, deploy_header, execution_result) in execution_results {
-                    let reactor_event = JoinerEvent::EventStreamServer(
-                        event_stream_server::Event::DeployProcessed {
-                            deploy_hash,
-                            deploy_header: Box::new(deploy_header),
-                            block_hash,
-                            execution_result: Box::new(execution_result),
-                        },
-                    );
-                    effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
-                }
-
-                effects
-            }
-            JoinerEvent::ContractRuntimeAnnouncement(
-                ContractRuntimeAnnouncement::StepSuccess {
-                    era_id,
-                    execution_effect,
-                },
-            ) => self.dispatch_event(
-                effect_builder,
-                rng,
-                JoinerEvent::EventStreamServer(event_stream_server::Event::Step {
-                    era_id,
-                    execution_effect,
-                }),
+            JoinerEvent::ContractRuntimeRequest(req) => reactor::wrap_effects(
+                JoinerEvent::ContractRuntime,
+                self.contract_runtime
+                    .handle_event(effect_builder, rng, req.into()),
             ),
-            JoinerEvent::LinearChain(event) => reactor::wrap_effects(
-                JoinerEvent::LinearChain,
-                self.linear_chain.handle_event(effect_builder, rng, event),
-            ),
-            JoinerEvent::BlockProposerRequest(request) => {
-                // Consensus component should not be trying to create new blocks during joining
-                // phase.
-                error!("ignoring block proposer request {}", request);
-                Effects::new()
-            }
+            JoinerEvent::ContractRuntimeAnnouncement(_) => Effects::new(),
             JoinerEvent::AddressGossiper(event) => reactor::wrap_effects(
                 JoinerEvent::AddressGossiper,
                 self.address_gossiper
                     .handle_event(effect_builder, rng, event),
             ),
-            JoinerEvent::Console(event) => reactor::wrap_effects(
-                JoinerEvent::Console,
-                self.console.handle_event(effect_builder, rng, event),
+            JoinerEvent::DiagnosticsPort(event) => reactor::wrap_effects(
+                JoinerEvent::DiagnosticsPort,
+                self.diagnostics_port
+                    .handle_event(effect_builder, rng, event),
             ),
             JoinerEvent::AddressGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
                 gossiped_address,
@@ -857,21 +828,15 @@ impl reactor::Reactor for Reactor {
                 // We don't care about completion of gossiping an address.
                 Effects::new()
             }
-
             JoinerEvent::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded(block)) => {
-                let mut effects = reactor::wrap_effects(
+                reactor::wrap_effects(
                     JoinerEvent::EventStreamServer,
                     self.event_stream_server.handle_event(
                         effect_builder,
                         rng,
-                        event_stream_server::Event::BlockAdded(block.clone()),
+                        event_stream_server::Event::BlockAdded(block),
                     ),
-                );
-                let reactor_event =
-                    JoinerEvent::LinearChainSync(linear_chain_sync::Event::BlockHandled(block));
-                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
-
-                effects
+                )
             }
             JoinerEvent::LinearChainAnnouncement(
                 LinearChainAnnouncement::NewFinalitySignature(fs),
@@ -904,9 +869,6 @@ impl reactor::Reactor for Reactor {
                 rng,
                 JoinerEvent::ChainspecLoader(req.into()),
             ),
-            JoinerEvent::StateStoreRequest(req) => {
-                self.dispatch_event(effect_builder, rng, JoinerEvent::Storage(req.into()))
-            }
             JoinerEvent::NetworkInfoRequest(req) => {
                 let event = JoinerEvent::SmallNetwork(small_network::Event::from(req));
                 self.dispatch_event(effect_builder, rng, event)
@@ -919,8 +881,8 @@ impl reactor::Reactor for Reactor {
                 );
                 let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
 
-                let reactor_event = JoinerEvent::LinearChainSync(
-                    linear_chain_sync::Event::GotUpgradeActivationPoint(
+                let reactor_event = JoinerEvent::ChainSynchronizer(
+                    chain_synchronizer::Event::GotUpgradeActivationPoint(
                         next_upgrade.activation_point(),
                     ),
                 );
@@ -932,34 +894,108 @@ impl reactor::Reactor for Reactor {
                 // no consensus, respond with None
                 responder.respond(None).ignore()
             }
-            JoinerEvent::ContractRuntimeAnnouncement(
-                ContractRuntimeAnnouncement::UpcomingEraValidators { .. },
-            ) => {
-                // Upcoming validators are not used by joiner reactor
-                Effects::new()
-            }
             JoinerEvent::ConsensusRequest(ConsensusRequest::ValidatorChanges(responder)) => {
                 // no consensus, respond with empty map
                 responder.respond(BTreeMap::new()).ignore()
+            }
+            JoinerEvent::BlockHeaderByHeightFetcher(event) => reactor::wrap_effects(
+                JoinerEvent::BlockHeaderByHeightFetcher,
+                self.block_header_and_finality_signatures_by_height_fetcher
+                    .handle_event(effect_builder, rng, event),
+            ),
+            JoinerEvent::BlockHeaderByHeightFetcherRequest(request) => self.dispatch_event(
+                effect_builder,
+                rng,
+                JoinerEvent::BlockHeaderByHeightFetcher(request.into()),
+            ),
+            JoinerEvent::TrieOrChunkFetcherRequest(request) => self.dispatch_event(
+                effect_builder,
+                rng,
+                JoinerEvent::TrieOrChunkFetcher(request.into()),
+            ),
+            JoinerEvent::ConsensusMessageIncoming(incoming) => {
+                debug!(%incoming, "ignoring incoming consensus message");
+                Effects::new()
+            }
+            JoinerEvent::DeployGossiperIncoming(incoming) => reactor::wrap_effects(
+                JoinerEvent::DeployGossiper,
+                self.deploy_gossiper
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
+            JoinerEvent::AddressGossiperIncoming(incoming) => reactor::wrap_effects(
+                JoinerEvent::AddressGossiper,
+                self.address_gossiper
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
+            JoinerEvent::NetRequestIncoming(incoming) => reactor::wrap_effects(
+                JoinerEvent::Storage,
+                self.storage
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
+            JoinerEvent::NetResponseIncoming(NetResponseIncoming { sender, message }) => {
+                self.handle_get_response(effect_builder, rng, sender, message)
+            }
+            JoinerEvent::TrieRequestIncoming(incoming) => reactor::wrap_effects(
+                JoinerEvent::ContractRuntime,
+                self.contract_runtime
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
+            JoinerEvent::TrieResponseIncoming(TrieResponseIncoming { sender, message }) => {
+                reactor::handle_fetch_response::<Self, TrieOrChunk>(
+                    self,
+                    effect_builder,
+                    rng,
+                    sender,
+                    &message.0,
+                    self.chainspec_loader
+                        .chainspec()
+                        .protocol_config
+                        .verifiable_chunked_hash_activation,
+                )
+            }
+
+            JoinerEvent::FinalitySignatureIncoming(FinalitySignatureIncoming {
+                sender, ..
+            }) => {
+                debug!(%sender, "finality signatures not handled in joiner reactor");
+                Effects::new()
             }
             JoinerEvent::DumpConsensusStateRequest(req) => {
                 // We have no consensus running in the joiner, so we answer with `None`.
                 req.answer(Err(Cow::Borrowed("node is joining, no running consensus")))
                     .ignore()
             }
+            JoinerEvent::DeployGossiper(event) => reactor::wrap_effects(
+                JoinerEvent::DeployGossiper,
+                self.deploy_gossiper
+                    .handle_event(effect_builder, rng, event),
+            ),
+            JoinerEvent::DeployGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
+                gossiped_deploy_id,
+            )) => {
+                error!(%gossiped_deploy_id, "gossiper should not announce new deploy");
+                Effects::new()
+            }
+            JoinerEvent::DeployGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
+                _gossiped_deploy_id,
+            )) => {
+                // We never process any deploys onwards, so we can ignore successful gossip outcome
+                Effects::new()
+            }
         }
     }
 
     fn maybe_exit(&self) -> Option<ReactorExit> {
-        if self.linear_chain_sync.stopped_for_upgrade() {
-            Some(ReactorExit::ProcessShouldExit(ExitCode::Success))
-        } else if self.linear_chain_sync.stopped_for_downgrade() {
-            Some(ReactorExit::ProcessShouldExit(ExitCode::DowngradeVersion))
-        } else if self.linear_chain_sync.is_synced() {
-            Some(ReactorExit::ProcessShouldContinue)
-        } else {
-            None
-        }
+        self.chain_synchronizer
+            .joining_outcome()
+            .map(|outcome| match outcome {
+                JoiningOutcome::ShouldExitForUpgrade => {
+                    ReactorExit::ProcessShouldExit(ExitCode::Success)
+                }
+                JoiningOutcome::Synced { .. } | JoiningOutcome::RanUpgradeOrGenesis { .. } => {
+                    ReactorExit::ProcessShouldContinue
+                }
+            })
     }
 
     fn update_metrics(&mut self, event_queue_handle: EventQueueHandle<Self::Event>) {
@@ -970,24 +1006,114 @@ impl reactor::Reactor for Reactor {
 }
 
 impl Reactor {
+    fn handle_get_response(
+        &mut self,
+        effect_builder: EffectBuilder<JoinerEvent>,
+        rng: &mut NodeRng,
+        sender: NodeId,
+        message: NetResponse,
+    ) -> Effects<JoinerEvent> {
+        let verifiable_chunked_hash_activation = self
+            .chainspec_loader
+            .chainspec()
+            .protocol_config
+            .verifiable_chunked_hash_activation;
+        match message {
+            NetResponse::Deploy(ref serialized_item) => {
+                let deploy: Box<Deploy> = match bincode::deserialize::<
+                    FetchedOrNotFound<Deploy, DeployHash>,
+                >(serialized_item)
+                {
+                    Ok(FetchedOrNotFound::Fetched(deploy)) => Box::new(deploy),
+                    Ok(FetchedOrNotFound::NotFound(deploy_hash)) => {
+                        error!(
+                            "peer did not have deploy with hash {}: {}",
+                            sender, deploy_hash
+                        );
+                        return Effects::new();
+                    }
+                    Err(error) => {
+                        error!("failed to decode deploy from {}: {}", sender, error);
+                        return Effects::new();
+                    }
+                };
+
+                let event = JoinerEvent::DeployAcceptor(deploy_acceptor::Event::Accept {
+                    deploy,
+                    source: Source::Peer(sender),
+                    maybe_responder: None,
+                });
+                <Reactor as reactor::Reactor>::dispatch_event(self, effect_builder, rng, event)
+            }
+            NetResponse::Block(ref serialized_item) => {
+                reactor::handle_fetch_response::<Self, Block>(
+                    self,
+                    effect_builder,
+                    rng,
+                    sender,
+                    serialized_item,
+                    verifiable_chunked_hash_activation,
+                )
+            }
+            NetResponse::GossipedAddress(_) => {
+                // The item trait is used for both fetchers and gossiped things, but this kind of
+                // item is never fetched, only gossiped.
+                warn!(
+                    "Gossiped addresses are never fetched, banning peer: {}",
+                    sender
+                );
+                effect_builder
+                    .announce_disconnect_from_peer(sender)
+                    .ignore()
+            }
+            NetResponse::BlockAndMetadataByHeight(ref serialized_item) => {
+                reactor::handle_fetch_response::<Self, BlockWithMetadata>(
+                    self,
+                    effect_builder,
+                    rng,
+                    sender,
+                    serialized_item,
+                    verifiable_chunked_hash_activation,
+                )
+            }
+            NetResponse::BlockHeaderByHash(ref serialized_item) => {
+                reactor::handle_fetch_response::<Self, BlockHeader>(
+                    self,
+                    effect_builder,
+                    rng,
+                    sender,
+                    serialized_item,
+                    verifiable_chunked_hash_activation,
+                )
+            }
+            NetResponse::BlockHeaderAndFinalitySignaturesByHeight(ref serialized_item) => {
+                reactor::handle_fetch_response::<Self, BlockHeaderWithMetadata>(
+                    self,
+                    effect_builder,
+                    rng,
+                    sender,
+                    serialized_item,
+                    verifiable_chunked_hash_activation,
+                )
+            }
+        }
+    }
+
     /// Deconstructs the reactor into config useful for creating a Validator reactor. Shuts down
     /// the network, closing all incoming and outgoing connections, and frees up the listening
     /// socket.
     pub(crate) async fn into_participating_config(self) -> Result<ParticipatingInitConfig, Error> {
-        let maybe_latest_block_header = self.linear_chain_sync.into_maybe_latest_block_header();
-        // Clean the state of the linear_chain_sync before shutting it down.
-        #[cfg(not(feature = "fast-sync"))]
-        linear_chain_sync::clean_linear_chain_state(
-            &self.storage,
-            self.chainspec_loader.chainspec(),
-        )?;
+        let joining_outcome = self
+            .chain_synchronizer
+            .into_joining_outcome()
+            .ok_or(Error::InvalidJoiningOutcome)?;
         let config = ParticipatingInitConfig {
             root: self.root,
             chainspec_loader: self.chainspec_loader,
             config: self.config,
             contract_runtime: self.contract_runtime,
             storage: self.storage,
-            maybe_latest_block_header,
+            joining_outcome,
             event_stream_server: self.event_stream_server,
             small_network_identity: SmallNetworkIdentity::from(&self.small_network),
             node_startup_instant: self.node_startup_instant,
@@ -1000,7 +1126,7 @@ impl Reactor {
 
 #[cfg(test)]
 impl NetworkedReactor for Reactor {
-    fn node_id(&self) -> crate::types::NodeId {
+    fn node_id(&self) -> NodeId {
         self.small_network.node_id()
     }
 }
@@ -1010,5 +1136,10 @@ impl Reactor {
     /// Inspect storage.
     pub(crate) fn storage(&self) -> &Storage {
         &self.storage
+    }
+
+    /// Inspect the contract runtime.
+    pub(crate) fn contract_runtime(&self) -> &ContractRuntime {
+        &self.contract_runtime
     }
 }

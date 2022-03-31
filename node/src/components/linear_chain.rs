@@ -9,28 +9,27 @@ use datasize::DataSize;
 use std::convert::Infallible;
 
 use itertools::Itertools;
+use num::rational::Ratio;
 use prometheus::Registry;
-use tracing::{debug, error};
+use tracing::error;
 
-use self::{
-    metrics::Metrics,
-    state::{Outcome, Outcomes},
-};
+use casper_types::{EraId, ProtocolVersion};
+
+use self::metrics::Metrics;
 use super::Component;
 use crate::{
+    components::linear_chain::state::{Outcome, Outcomes},
     effect::{
         announcements::LinearChainAnnouncement,
         requests::{
-            ChainspecLoaderRequest, ContractRuntimeRequest, LinearChainRequest, NetworkRequest,
-            StorageRequest,
+            ChainspecLoaderRequest, ContractRuntimeRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, EffectResultExt, Effects,
     },
     protocol::Message,
-    types::BlockByHeight,
+    types::ActivationPoint,
     NodeRng,
 };
-use casper_types::ProtocolVersion;
 
 pub(crate) use event::Event;
 use state::LinearChain;
@@ -40,6 +39,9 @@ pub(crate) struct LinearChainComponent {
     linear_chain_state: LinearChain,
     #[data_size(skip)]
     metrics: Metrics,
+    /// If true, the process should stop execution to allow an upgrade to proceed.
+    stop_for_upgrade: bool,
+    verifiable_chunked_hash_activation: EraId,
 }
 
 impl LinearChainComponent {
@@ -48,13 +50,32 @@ impl LinearChainComponent {
         protocol_version: ProtocolVersion,
         auction_delay: u64,
         unbonding_delay: u64,
+        finality_threshold_fraction: Ratio<u64>,
+        next_upgrade_activation_point: Option<ActivationPoint>,
+        verifiable_chunked_hash_activation: EraId,
     ) -> Result<Self, prometheus::Error> {
         let metrics = Metrics::new(registry)?;
-        let linear_chain_state = LinearChain::new(protocol_version, auction_delay, unbonding_delay);
+        let linear_chain_state = LinearChain::new(
+            protocol_version,
+            auction_delay,
+            unbonding_delay,
+            finality_threshold_fraction,
+            next_upgrade_activation_point,
+        );
         Ok(LinearChainComponent {
             linear_chain_state,
             metrics,
+            stop_for_upgrade: false,
+            verifiable_chunked_hash_activation,
         })
+    }
+
+    pub(crate) fn stop_for_upgrade(&self) -> bool {
+        self.stop_for_upgrade
+    }
+
+    fn verifiable_chunked_hash_activation(&self) -> EraId {
+        self.verifiable_chunked_hash_activation
     }
 }
 
@@ -73,15 +94,18 @@ where
     outcomes
         .into_iter()
         .map(|outcome| match outcome {
-            Outcome::StoreBlockSignatures(block_signatures) => effect_builder
+            Outcome::StoreBlockSignatures(block_signatures, should_upgrade) => effect_builder
                 .put_signatures_to_storage(block_signatures)
-                .ignore(),
-            Outcome::StoreExecutionResults(block_hash, execution_results) => effect_builder
-                .put_execution_results_to_storage(block_hash, execution_results)
-                .ignore(),
-            Outcome::StoreBlock(block) => effect_builder
-                .put_block_to_storage(block.clone())
-                .event(move |_| Event::PutBlockResult { block }),
+                .events(move |_| should_upgrade.then(|| Event::Upgrade).into_iter()),
+            Outcome::StoreBlock(block, execution_results) => async move {
+                let block_hash = *block.hash();
+                effect_builder.put_block_to_storage(block.clone()).await;
+                effect_builder
+                    .put_execution_results_to_storage(block_hash, execution_results)
+                    .await;
+                block
+            }
+            .event(|block| Event::PutBlockResult { block }),
             Outcome::Gossip(fs) => {
                 let message = Message::FinalitySignature(fs);
                 effect_builder.broadcast_message(message).ignore()
@@ -137,35 +161,6 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::Request(LinearChainRequest::BlockRequest(block_hash, sender)) => async move {
-                match effect_builder.get_block_from_storage(block_hash).await {
-                    None => debug!("failed to get {} for {}", block_hash, sender),
-                    Some(block) => match Message::new_get_response(&block) {
-                        Ok(message) => effect_builder.send_message(sender, message).await,
-                        Err(error) => error!("failed to create get-response {}", error),
-                    },
-                }
-            }
-            .ignore(),
-            Event::Request(LinearChainRequest::BlockAtHeight(height, sender)) => async move {
-                let block_by_height = match effect_builder
-                    .get_block_at_height_from_storage(height)
-                    .await
-                {
-                    None => {
-                        debug!("failed to get {} for {}", height, sender);
-                        BlockByHeight::Absent(height)
-                    }
-                    Some(block) => BlockByHeight::new(block),
-                };
-                match Message::new_get_response(&block_by_height) {
-                    Ok(message) => effect_builder.send_message(sender, message).await,
-                    Err(error) => {
-                        error!("failed to create get-response {}", error);
-                    }
-                }
-            }
-            .ignore(),
             Event::NewLinearChainBlock {
                 block,
                 execution_results,
@@ -180,7 +175,9 @@ where
                 self.metrics
                     .block_completion_duration
                     .set(completion_duration as i64);
-                let outcomes = self.linear_chain_state.handle_put_block(block);
+                let outcomes = self
+                    .linear_chain_state
+                    .handle_put_block(block, self.verifiable_chunked_hash_activation());
                 outcomes_to_effects(effect_builder, outcomes)
             }
             Event::FinalitySignatureReceived(fs, gossiped) => {
@@ -202,6 +199,15 @@ where
                     is_bonded,
                 );
                 outcomes_to_effects(effect_builder, outcomes)
+            }
+            Event::Upgrade => {
+                self.stop_for_upgrade = true;
+                Effects::new()
+            }
+            Event::GotUpgradeActivationPoint(activation_point) => {
+                self.linear_chain_state
+                    .got_upgrade_activation_point(activation_point);
+                Effects::new()
             }
         }
     }

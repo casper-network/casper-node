@@ -5,17 +5,15 @@
 //! synchronization primitives under the hood.
 
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{BTreeMap, HashMap, VecDeque},
     fmt::Debug,
-    fs::File,
     hash::Hash,
-    io::{self, BufWriter, Write},
     num::NonZeroUsize,
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
 use enum_iterator::IntoEnumIterator;
-use serde::{ser::SerializeMap, Serialize, Serializer};
+use serde::Serialize;
 use tokio::sync::{Mutex, MutexGuard, Semaphore};
 use tracing::debug;
 
@@ -115,49 +113,17 @@ struct Slot<K> {
     tickets: usize,
 }
 
-impl<I, K> WeightedRoundRobin<I, K>
+#[derive(Debug, Serialize)]
+/// A dump of the internal queues.
+pub struct QueueDump<'a, K, I>
 where
-    I: Serialize,
-    K: Copy + Clone + Eq + Hash + IntoEnumIterator + Serialize,
+    K: Ord + Eq,
 {
-    /// Create a snapshot of the queue by locking it and serializing it.
+    /// Queues being dumped.
     ///
-    /// The serialized events are streamed directly into `serializer`.
-    ///
-    /// # Warning
-    ///
-    /// This function locks all queues in the order defined by the order defined by
-    /// `IntoEnumIterator`. Calling it multiple times in parallel is safe, but other code that locks
-    /// more than one queue at the same time needs to be aware of this.
-    pub async fn snapshot<S: Serializer>(&self, serializer: S) -> Result<(), S::Error> {
-        // Lock all queues in order get a snapshot, but release eagerly. This way we are guaranteed
-        // to have a consistent result, but we also allow for queues to be used again earlier.
-        let mut locks = Vec::new();
-
-        for kind in K::into_enum_iter() {
-            let queue_guard = self
-                .queues
-                .get(&kind)
-                .expect("missing queue while snapshotting")
-                .queue
-                .lock()
-                .await;
-
-            locks.push((kind, queue_guard));
-        }
-
-        let mut map = serializer.serialize_map(Some(locks.len()))?;
-
-        // By iterating over the guards, they are dropped in order.
-        for (kind, guard) in locks {
-            let vd = &*guard;
-            map.serialize_key(&kind)?;
-            map.serialize_value(vd)?;
-        }
-        map.end()?;
-
-        Ok(())
-    }
+    /// A `BTreeMap` is used to make the ordering constant, it will be in the natural order defined
+    /// by `Ord` on `K`.
+    queues: BTreeMap<K, &'a VecDeque<I>>,
 }
 
 impl<I, K> WeightedRoundRobin<I, K>
@@ -165,20 +131,20 @@ where
     I: Debug,
     K: Copy + Clone + Eq + Hash + IntoEnumIterator + Debug,
 {
-    /// Dump the contents of the queues (`Debug` representation) to a given file.
-    pub async fn debug_dump(&self, file: &mut File) -> Result<(), io::Error> {
+    /// Dump the queue contents to the given dumper function.
+    pub async fn dump<F: FnOnce(&QueueDump<K, I>)>(&self, dumper: F)
+    where
+        K: Ord,
+    {
         let locks = self.lock_queues().await;
-
-        let mut writer = BufWriter::new(file);
-        for (kind, guard) in locks {
-            let queue = &*guard;
-            writer.write_all(format!("Queue: {:?} ({}) [\n", kind, queue.len()).as_bytes())?;
-            for event in queue.iter() {
-                writer.write_all(format!("\t{:?}\n", event).as_bytes())?;
-            }
-            writer.write_all(b"]\n")?;
+        let mut queues = BTreeMap::new();
+        for (kind, guard) in &locks {
+            let queue = &**guard;
+            queues.insert(*kind, queue);
         }
-        writer.flush()
+
+        let queue_dump = QueueDump { queues };
+        dumper(&queue_dump);
     }
 
     /// Lock all queues in a well-defined order to avoid deadlocks conditions.

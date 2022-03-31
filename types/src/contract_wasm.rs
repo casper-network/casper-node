@@ -233,6 +233,7 @@ impl JsonSchema for ContractWasmHash {
 
 /// A container for contract's WASM bytes.
 #[derive(PartialEq, Eq, Clone, Serialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ContractWasm {
     bytes: Bytes,
 }

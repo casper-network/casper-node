@@ -2,6 +2,7 @@ use std::sync;
 
 use thiserror::Error;
 
+use casper_hashing::MerkleConstructionError;
 use casper_types::bytesrepr;
 
 /// Error enum encapsulating possible errors from in-memory implementation of data storage.
@@ -14,6 +15,10 @@ pub enum Error {
     /// Concurrency error.
     #[error("Another thread panicked while holding a lock")]
     Poison,
+
+    /// Merkle proof construction error
+    #[error("{0}")]
+    MerkleConstruction(#[from] MerkleConstructionError),
 }
 
 impl From<bytesrepr::Error> for Error {

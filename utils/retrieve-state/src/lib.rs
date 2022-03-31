@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    convert::TryInto,
     net::{AddrParseError, SocketAddr},
     sync::Arc,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -11,9 +12,8 @@ pub use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::{
-    core::engine_state::EngineState,
-    shared::newtypes::CorrelationId,
-    storage::{global_state::lmdb::LmdbGlobalState, trie::Trie},
+    core::engine_state::EngineState, shared::newtypes::CorrelationId,
+    storage::global_state::lmdb::LmdbGlobalState,
 };
 use casper_hashing::Digest;
 use casper_node::{
@@ -31,10 +31,7 @@ use casper_node::{
     types::{Block, BlockHash, Deploy, DeployOrTransferHash, JsonBlock},
     utils::work_queue::WorkQueue,
 };
-use casper_types::{
-    bytesrepr::{self, FromBytes},
-    Key, StoredValue,
-};
+use casper_types::{bytesrepr, bytesrepr::Bytes};
 use futures_channel::{mpsc::UnboundedSender, oneshot};
 use futures_util::SinkExt;
 use tokio::{
@@ -339,7 +336,7 @@ pub fn put_block_with_deploys(
             return Err(anyhow::anyhow!("deploy found in list of transfers"));
         }
     }
-    let block: Block = block_with_deploys.block.clone().into();
+    let block: Block = block_with_deploys.block.clone().try_into()?;
     storage.write_block(&block)?;
     Ok(())
 }
@@ -376,7 +373,7 @@ pub enum PeerMsg {
     /// Download and save the trie under this
     GetTrie(Digest),
     TrieDownloaded {
-        trie: Box<Trie<Key, StoredValue>>,
+        trie_bytes: Bytes,
         peer: SocketAddr,
         elapsed: Duration,
         len_in_bytes: usize,
@@ -457,7 +454,7 @@ pub async fn download_trie_channels(
         if let Some(msg) = base_recv.next().await {
             match msg {
                 Ok(PeerMsg::TrieDownloaded {
-                    trie,
+                    trie_bytes,
                     peer,
                     elapsed: _,
                     len_in_bytes,
@@ -466,7 +463,7 @@ pub async fn download_trie_channels(
                         engine_state
                             .put_trie_and_find_missing_descendant_trie_keys(
                                 CorrelationId::new(),
-                                &trie,
+                                &trie_bytes,
                             )
                             .unwrap()
                     });
@@ -553,11 +550,8 @@ pub async fn download_trie_channels(
         // Finishing state, we downloaded all the intermediate tries we found, as well as the state
         // root we started with.
         if tries_downloaded == total_tries_count + 1 {
-            let missing = engine_state.missing_trie_keys(
-                CorrelationId::new(),
-                vec![state_root_hash],
-                false,
-            )?;
+            let missing =
+                engine_state.missing_trie_keys(CorrelationId::new(), vec![state_root_hash])?;
 
             if missing.is_empty() {
                 info!("state root has no missing descendants.");
@@ -658,28 +652,13 @@ fn spawn_peer(
             .await
             {
                 Ok(GetTrieResult {
-                    maybe_trie_bytes: Some(blob),
+                    maybe_trie_bytes: Some(trie_bytes),
                     ..
                 }) => {
-                    let bytes: Vec<u8> = blob.into();
-                    let len_in_bytes = bytes.len();
-                    let trie: Trie<Key, StoredValue> = match FromBytes::from_bytes(&bytes) {
-                        Ok((trie, _)) => trie,
-                        Err(error) => {
-                            base_send
-                                .send(Err(PeerError::BadData {
-                                    peer_address: address,
-                                    trie_key: next_trie_key,
-                                    error,
-                                }))
-                                .await
-                                .expect("should send");
-                            return;
-                        }
-                    };
+                    let len_in_bytes = trie_bytes.as_ref().len();
                     base_send
                         .send(Ok(PeerMsg::TrieDownloaded {
-                            trie: Box::new(trie),
+                            trie_bytes,
                             peer: address,
                             elapsed: start.elapsed(),
                             len_in_bytes,
@@ -919,9 +898,8 @@ async fn fetch_and_store_trie(
 
             // similar to how the contract-runtime does related operations, spawn in a blocking task
             tokio::task::spawn_blocking(move || {
-                let (trie, _rest) = FromBytes::from_bytes(&bytes)?;
                 engine_state
-                    .put_trie_and_find_missing_descendant_trie_keys(CorrelationId::new(), &trie)
+                    .put_trie_and_find_missing_descendant_trie_keys(CorrelationId::new(), &bytes)
             })
             .await??
         }

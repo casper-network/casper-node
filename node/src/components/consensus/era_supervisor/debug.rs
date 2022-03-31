@@ -1,4 +1,4 @@
-//! Data types used solely for dumping of consensus data via the debug console.
+//! Data types used solely for dumping of consensus data via the diagnostics port.
 
 use std::{
     borrow::Cow,
@@ -28,9 +28,6 @@ pub(crate) struct EraDump<'a> {
     pub(crate) start_height: u64,
 
     // omitted: pending blocks
-    /// Validators banned in this and the next BONDED_ERAS eras, because they were faulty in the
-    /// previous switch block.
-    pub(crate) new_faulty: &'a Vec<PublicKey>,
     /// Validators that have been faulty in any of the recent BONDED_ERAS switch blocks. This
     /// includes `new_faulty`.
     pub(crate) faulty: &'a HashSet<PublicKey>,
@@ -66,7 +63,6 @@ impl<'a> EraDump<'a> {
             id: era_id,
             start_time: era.start_time,
             start_height: era.start_height,
-            new_faulty: &era.new_faulty,
             faulty: &era.faulty,
             cannot_propose: &era.cannot_propose,
             accusations: &era.accusations,

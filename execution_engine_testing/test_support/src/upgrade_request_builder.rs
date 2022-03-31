@@ -2,12 +2,11 @@ use std::collections::BTreeMap;
 
 use num_rational::Ratio;
 
-use casper_execution_engine::core::engine_state::UpgradeConfig;
+use casper_execution_engine::core::engine_state::{ChainspecRegistry, UpgradeConfig};
 use casper_hashing::Digest;
 use casper_types::{EraId, Key, ProtocolVersion, StoredValue};
 
 /// Builds an `UpgradeConfig`.
-#[derive(Default)]
 pub struct UpgradeRequestBuilder {
     pre_state_hash: Digest,
     current_protocol_version: ProtocolVersion,
@@ -19,6 +18,7 @@ pub struct UpgradeRequestBuilder {
     new_round_seigniorage_rate: Option<Ratio<u64>>,
     new_unbonding_delay: Option<u64>,
     global_state_update: BTreeMap<Key, StoredValue>,
+    chainspec_registry: ChainspecRegistry,
 }
 
 impl UpgradeRequestBuilder {
@@ -93,6 +93,12 @@ impl UpgradeRequestBuilder {
         self
     }
 
+    /// Sets the Chainspec registry.
+    pub fn with_chainspec_registry(mut self, chainspec_registry: ChainspecRegistry) -> Self {
+        self.chainspec_registry = chainspec_registry;
+        self
+    }
+
     /// Consumes the `UpgradeRequestBuilder` and returns an [`UpgradeConfig`].
     pub fn build(self) -> UpgradeConfig {
         UpgradeConfig::new(
@@ -106,6 +112,25 @@ impl UpgradeRequestBuilder {
             self.new_round_seigniorage_rate,
             self.new_unbonding_delay,
             self.global_state_update,
+            self.chainspec_registry,
         )
+    }
+}
+
+impl Default for UpgradeRequestBuilder {
+    fn default() -> Self {
+        UpgradeRequestBuilder {
+            pre_state_hash: Default::default(),
+            current_protocol_version: Default::default(),
+            new_protocol_version: Default::default(),
+            activation_point: None,
+            new_validator_slots: None,
+            new_auction_delay: None,
+            new_locked_funds_period_millis: None,
+            new_round_seigniorage_rate: None,
+            new_unbonding_delay: None,
+            global_state_update: Default::default(),
+            chainspec_registry: ChainspecRegistry::new_with_optional_global_state(&[], None),
+        }
     }
 }

@@ -9,7 +9,7 @@ use crate::{
     tls::{KeyFingerprint, Sha512},
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
-        ActivationPoint, Chainspec, NodeId, Timestamp,
+        ActivationPoint, Chainspec, ChainspecRawBytes, NodeId, Timestamp,
     },
     utils::Loadable,
 };
@@ -35,7 +35,7 @@ where
     I: IntoIterator<Item = (PublicKey, T)>,
     T: Into<U512>,
 {
-    let mut chainspec = Chainspec::from_resources("local");
+    let (mut chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
     let accounts = stakes
         .into_iter()
         .map(|(pk, stake)| {

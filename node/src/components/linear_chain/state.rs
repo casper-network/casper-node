@@ -2,20 +2,26 @@ use std::collections::HashMap;
 
 use datasize::DataSize;
 use itertools::Itertools;
+use num::rational::Ratio;
 use tracing::{debug, warn};
 
 use casper_hashing::Digest;
-use casper_types::{ExecutionResult, ProtocolVersion};
+use casper_types::{EraId, ExecutionResult, ProtocolVersion};
 
 use super::{
     pending_signatures::PendingSignatures, signature::Signature, signature_cache::SignatureCache,
 };
-use crate::types::{Block, BlockHash, BlockSignatures, DeployHash, FinalitySignature};
+use crate::{
+    components::{chain_synchronizer::KeyBlockInfo, consensus},
+    types::{ActivationPoint, Block, BlockHash, BlockSignatures, DeployHash, FinalitySignature},
+};
 
 #[derive(DataSize, Debug)]
 pub(crate) struct LinearChain {
     /// The most recently added block.
     latest_block: Option<Block>,
+    /// The key block information of the most recent eras.
+    key_block_info: HashMap<EraId, KeyBlockInfo>,
     /// Finality signatures to be inserted in a block once it is available.
     pending_finality_signatures: PendingSignatures,
     signature_cache: SignatureCache,
@@ -23,16 +29,21 @@ pub(crate) struct LinearChain {
     protocol_version: ProtocolVersion,
     auction_delay: u64,
     unbonding_delay: u64,
+    /// The fraction of validators, by weight, that have to sign a block to prove its finality.
+    #[data_size(skip)]
+    finality_threshold_fraction: Ratio<u64>,
+    /// The next upgrade activation point. When the key block for this era is fully signed, the
+    /// linear chain component indicates that the node should restart for an upgrade.
+    next_upgrade_activation_point: Option<ActivationPoint>,
 }
 
 #[derive(Debug, Eq, PartialEq)]
 pub(super) enum Outcome {
-    // Store block signatures to storage.
-    StoreBlockSignatures(BlockSignatures),
-    // Store execution results to storage.
-    StoreExecutionResults(BlockHash, HashMap<DeployHash, ExecutionResult>),
-    // Store block.
-    StoreBlock(Box<Block>),
+    // Store block signatures to storage. If the flag is `true` this completes the signatures for
+    // the last block before an upgrade.
+    StoreBlockSignatures(BlockSignatures, bool),
+    // Store block and execution results.
+    StoreBlock(Box<Block>, HashMap<DeployHash, ExecutionResult>),
     // Read finality signatures for the block from storage.
     LoadSignatures(Box<FinalitySignature>),
     // Gossip finality signature to peers.
@@ -58,15 +69,26 @@ impl LinearChain {
         protocol_version: ProtocolVersion,
         auction_delay: u64,
         unbonding_delay: u64,
+        finality_threshold_fraction: Ratio<u64>,
+        next_upgrade_activation_point: Option<ActivationPoint>,
     ) -> Self {
         LinearChain {
             latest_block: None,
+            key_block_info: Default::default(),
             pending_finality_signatures: PendingSignatures::new(),
             signature_cache: SignatureCache::new(),
             protocol_version,
             auction_delay,
             unbonding_delay,
+            next_upgrade_activation_point,
+            finality_threshold_fraction,
         }
+    }
+
+    /// Handles registering an upgrade activation point.
+    pub(super) fn got_upgrade_activation_point(&mut self, activation_point: ActivationPoint) {
+        debug!(?activation_point, "got an activation point");
+        self.next_upgrade_activation_point = Some(activation_point);
     }
 
     /// Returns whether we have already enqueued that finality signature.
@@ -114,19 +136,10 @@ impl LinearChain {
             ..
         } = fs.clone();
         if let Some(latest_block) = self.latest_block.as_ref() {
-            // If it's a switch block it has already forgotten its own era's validators,
-            // unbonded some old validators, and determined new ones. In that case, we
-            // should add 1 to last_block_era.
-            let current_era = latest_block.header().era_id()
-                + if latest_block.header().is_switch_block() {
-                    1
-                } else {
-                    0
-                };
-            let lowest_acceptable_era_id =
-                (current_era + self.auction_delay).saturating_sub(self.unbonding_delay);
-            let highest_acceptable_era_id = current_era + self.auction_delay;
-            if era_id < lowest_acceptable_era_id || era_id > highest_acceptable_era_id {
+            let current_era = latest_block.header().next_block_era_id();
+            if era_id < self.lowest_acceptable_era_id(current_era)
+                || era_id > self.highest_acceptable_era_id(current_era)
+            {
                 warn!(
                     era_id=%era_id.value(),
                     %public_key,
@@ -194,12 +207,16 @@ impl LinearChain {
         self.protocol_version
     }
 
-    pub(super) fn set_latest_block(&mut self, block: Block) {
-        self.latest_block = Some(block);
-    }
-
     fn latest_block(&self) -> &Option<Block> {
         &self.latest_block
+    }
+
+    fn lowest_acceptable_era_id(&self, current_era: EraId) -> EraId {
+        (current_era + self.auction_delay).saturating_sub(self.unbonding_delay)
+    }
+
+    fn highest_acceptable_era_id(&self, current_era: EraId) -> EraId {
+        current_era + self.auction_delay
     }
 
     /// Returns finality signatures for `block_hash`.
@@ -223,14 +240,37 @@ impl LinearChain {
         block: Box<Block>,
         execution_results: HashMap<DeployHash, ExecutionResult>,
     ) -> Outcomes {
-        let mut outcomes = vec![];
+        vec![Outcome::StoreBlock(block, execution_results)]
+    }
+
+    pub(super) fn handle_put_block(
+        &mut self,
+        block: Box<Block>,
+        verifiable_chunked_hash_activation: EraId,
+    ) -> Outcomes {
+        let mut outcomes = Vec::new();
         let signatures = self.new_block(&*block);
+        self.latest_block = Some(*block.clone());
+        if let Some(key_block_info) = KeyBlockInfo::maybe_from_block_header(
+            block.header(),
+            verifiable_chunked_hash_activation,
+        ) {
+            let current_era = key_block_info.era_id();
+            self.key_block_info.insert(current_era, key_block_info);
+            if let Some(old_era_id) = self.lowest_acceptable_era_id(current_era).checked_sub(1) {
+                self.key_block_info.remove(&old_era_id);
+            }
+        }
         if !signatures.is_empty() {
             let mut block_signatures = BlockSignatures::new(*block.hash(), block.header().era_id());
             for sig in signatures.iter() {
                 block_signatures.insert_proof(sig.public_key(), sig.signature());
             }
-            outcomes.push(Outcome::StoreBlockSignatures(block_signatures));
+            let should_upgrade = self.should_upgrade(&block_signatures);
+            outcomes.push(Outcome::StoreBlockSignatures(
+                block_signatures,
+                should_upgrade,
+            ));
             for signature in signatures {
                 if signature.is_local() {
                     outcomes.push(Outcome::Gossip(Box::new(signature.to_inner().clone())));
@@ -238,18 +278,37 @@ impl LinearChain {
                 outcomes.push(Outcome::AnnounceSignature(signature.take()));
             }
         };
-        let block_hash = *block.hash();
-        outcomes.push(Outcome::StoreBlock(block));
-        outcomes.push(Outcome::StoreExecutionResults(
-            block_hash,
-            execution_results,
-        ));
+        outcomes.push(Outcome::AnnounceBlock(block));
         outcomes
     }
 
-    pub(super) fn handle_put_block(&mut self, block: Box<Block>) -> Outcomes {
-        self.set_latest_block(*block.clone());
-        vec![Outcome::AnnounceBlock(block)]
+    fn should_upgrade(&self, signatures: &BlockSignatures) -> bool {
+        let signed_kb_info = match self
+            .key_block_info
+            .values()
+            .find(|kb_info| *kb_info.block_hash() == signatures.block_hash)
+        {
+            None => return false, // The signed block is not a key block.
+            Some(signed_kb_info) => signed_kb_info,
+        };
+        if self.next_upgrade_activation_point
+            != Some(ActivationPoint::EraId(signed_kb_info.era_id()))
+        {
+            return false; // This is not the next activation point.
+        }
+        let era_kb_info = match self.key_block_info.get(&signatures.era_id) {
+            None => {
+                warn!(?signed_kb_info, "missing previous key block info");
+                return false;
+            }
+            Some(era_kb_info) => era_kb_info,
+        };
+        consensus::check_sufficient_finality_signatures(
+            era_kb_info.validator_weights(),
+            self.finality_threshold_fraction,
+            signatures,
+        )
+        .is_ok()
     }
 
     pub(super) fn handle_finality_signature(
@@ -298,6 +357,12 @@ impl LinearChain {
             // storage. If `known_signatures` are already from cache then this will be a
             // noop.
             self.cache_signatures(*known_signatures.clone());
+        }
+        if let Some(key_block_info) = self.key_block_info.get(&fs.era_id) {
+            let is_bonded = key_block_info
+                .validator_weights()
+                .contains_key(&fs.public_key);
+            return self.handle_is_bonded(signatures, fs, is_bonded);
         }
         // Check if the validator is bonded in the era in which the block was created.
         // TODO: Use protocol version that is valid for the block's height.
@@ -369,7 +434,11 @@ impl LinearChain {
                         outcomes.push(Outcome::Gossip(new_fs.clone()));
                     }
                 };
-                outcomes.push(Outcome::StoreBlockSignatures(*known_signatures));
+                let should_upgrade = self.should_upgrade(&*known_signatures);
+                outcomes.push(Outcome::StoreBlockSignatures(
+                    *known_signatures,
+                    should_upgrade,
+                ));
                 outcomes
             }
         }
@@ -378,33 +447,40 @@ impl LinearChain {
 
 #[cfg(test)]
 mod tests {
-    use crate::{crypto::generate_ed25519_keypair, logging, testing::TestRng};
-    use casper_types::EraId;
+    use std::{collections::BTreeMap, fmt::Debug, iter};
+
+    use rand::Rng;
+
+    use casper_types::{EraId, PublicKey, SecretKey};
+
+    use crate::{
+        crypto::generate_ed25519_keypair, logging, testing::TestRng, types::FinalizedBlock,
+    };
 
     use super::*;
-
-    use core::fmt::Debug;
 
     #[test]
     fn new_block_no_sigs() {
         let mut rng = TestRng::new();
         let protocol_version = ProtocolVersion::V1_0_0;
-        let mut lc = LinearChain::new(protocol_version, 1u64, 1u64);
+        let mut lc = LinearChain::new(protocol_version, 1u64, 1u64, Ratio::new(1, 3), None);
         let block = Block::random(&mut rng);
         let execution_results = HashMap::new();
         let new_block_outcomes =
             lc.handle_new_block(Box::new(block.clone()), execution_results.clone());
-        let block_hash = *block.hash();
         match &*new_block_outcomes {
-            [Outcome::StoreBlock(outcome_block), Outcome::StoreExecutionResults(outcome_block_hash, outcome_execution_results)] =>
-            {
+            [Outcome::StoreBlock(outcome_block, outcome_execution_results)] => {
                 assert_eq!(&**outcome_block, &block);
-                assert_eq!(outcome_block_hash, &block_hash);
                 assert_eq!(outcome_execution_results, &execution_results);
             }
             others => panic!("unexpected outcome: {:?}", others),
         }
-        let block_stored_outcomes = lc.handle_put_block(Box::new(block.clone()));
+
+        // `verifiable_chunked_hash_activation` can be chosen arbitrarily
+        let verifiable_chunked_hash_activation = EraId::from(rng.gen_range(0..=10));
+
+        let block_stored_outcomes =
+            lc.handle_put_block(Box::new(block.clone()), verifiable_chunked_hash_activation);
         match &*block_stored_outcomes {
             [Outcome::AnnounceBlock(announced_block)] => {
                 assert_eq!(&**announced_block, &block);
@@ -441,7 +517,7 @@ mod tests {
     fn new_block_unvalidated_pending_sigs() {
         let mut rng = TestRng::new();
         let protocol_version = ProtocolVersion::V1_0_0;
-        let mut lc = LinearChain::new(protocol_version, 1u64, 1u64);
+        let mut lc = LinearChain::new(protocol_version, 1u64, 1u64, Ratio::new(1, 3), None);
         let block = Block::random(&mut rng);
         let block_hash = *block.hash();
         let block_era = block.header().era_id();
@@ -454,10 +530,7 @@ mod tests {
         let outcomes = lc.handle_new_block(Box::new(block), execution_results);
         // None of the signatures' creators have been confirmed to be bonded yet.
         // We should not gossip/store/announce any signatures yet.
-        assert!(matches!(
-            &*outcomes,
-            [Outcome::StoreBlock(_), Outcome::StoreExecutionResults(_, _)]
-        ));
+        assert!(matches!(&*outcomes, [Outcome::StoreBlock(_, _)]));
     }
 
     // Check that `left` is a subset of `right`.
@@ -483,8 +556,8 @@ mod tests {
     fn new_block_bonded_pending_sigs() {
         let mut rng = TestRng::new();
         let protocol_version = ProtocolVersion::V1_0_0;
-        let mut lc = LinearChain::new(protocol_version, 1u64, 1u64);
-        let block = Block::random(&mut rng);
+        let mut lc = LinearChain::new(protocol_version, 1u64, 1u64, Ratio::new(1, 3), None);
+        let block = Box::new(Block::random(&mut rng));
         let block_hash = *block.hash();
         let block_era = block.header().era_id();
         // Store some pending finality signatures
@@ -495,23 +568,28 @@ mod tests {
         mark_bonded(&mut lc, sig_a.clone());
         mark_bonded(&mut lc, sig_b.clone());
         let execution_results = HashMap::new();
-        let outcomes = lc.handle_new_block(Box::new(block.clone()), execution_results.clone());
+        let outcomes = lc.handle_new_block(block.clone(), execution_results.clone());
+        assert_equal(
+            vec![Outcome::StoreBlock(block.clone(), execution_results)],
+            outcomes,
+        );
+
+        // `verifiable_chunked_hash_activation` can be chosen arbitrarily
+        let verifiable_chunked_hash_activation = EraId::from(rng.gen_range(0..=10));
+
+        let outcomes = lc.handle_put_block(block.clone(), verifiable_chunked_hash_activation);
         // `sig_a` and `sig_b` are valid and created by bonded validators.
         let expected_outcomes = {
             let mut tmp = vec![];
             let mut block_signatures = BlockSignatures::new(block_hash, block_era);
             block_signatures.insert_proof(sig_a.public_key.clone(), sig_a.signature);
             block_signatures.insert_proof(sig_b.public_key.clone(), sig_b.signature);
-            tmp.push(Outcome::StoreBlockSignatures(block_signatures));
+            tmp.push(Outcome::StoreBlockSignatures(block_signatures, false));
             // Only `sig_a` was created locally and we don't "regossip" incoming signatures.
             tmp.push(Outcome::Gossip(Box::new(sig_a.clone())));
             tmp.push(Outcome::AnnounceSignature(Box::new(sig_a.clone())));
             tmp.push(Outcome::AnnounceSignature(Box::new(sig_b.clone())));
-            tmp.push(Outcome::StoreBlock(Box::new(block)));
-            tmp.push(Outcome::StoreExecutionResults(
-                block_hash,
-                execution_results,
-            ));
+            tmp.push(Outcome::AnnounceBlock(block));
             tmp
         };
         // Verify that all outcomes are expected.
@@ -528,7 +606,7 @@ mod tests {
             block_signatures.insert_proof(sig_a.public_key.clone(), sig_a.signature);
             block_signatures.insert_proof(sig_b.public_key.clone(), sig_b.signature);
             block_signatures.insert_proof(sig_c.public_key.clone(), sig_c.signature);
-            tmp.push(Outcome::StoreBlockSignatures(block_signatures));
+            tmp.push(Outcome::StoreBlockSignatures(block_signatures, false));
             tmp
         };
         assert_equal(expected_outcomes, outcomes);
@@ -538,7 +616,7 @@ mod tests {
     fn pending_sig_rejected() {
         let mut rng = TestRng::new();
         let protocol_version = ProtocolVersion::V1_0_0;
-        let mut lc = LinearChain::new(protocol_version, 1u64, 1u64);
+        let mut lc = LinearChain::new(protocol_version, 1u64, 1u64, Ratio::new(1, 3), None);
         let block_hash = BlockHash::random(&mut rng);
         let valid_sig = FinalitySignature::random_for_block(block_hash, 0);
         let handle_sig_outcomes = lc.handle_finality_signature(Box::new(valid_sig.clone()), false);
@@ -571,7 +649,7 @@ mod tests {
                 // After confirming that signature is valid and block known, we want to store the
                 // signature and announce it.
                 match &*outcomes {
-                    [Outcome::AnnounceSignature(outcome_fs), Outcome::StoreBlockSignatures(outcome_block_signatures)] =>
+                    [Outcome::AnnounceSignature(outcome_fs), Outcome::StoreBlockSignatures(outcome_block_signatures, false)] =>
                     {
                         assert_eq!(&fs, &**outcome_fs);
                         // LinearChain component will update the `block_signatures` with a new
@@ -591,7 +669,7 @@ mod tests {
         let _ = logging::init();
         let mut rng = TestRng::new();
         let protocol_version = ProtocolVersion::V1_0_0;
-        let mut lc = LinearChain::new(protocol_version, 1u64, 1u64);
+        let mut lc = LinearChain::new(protocol_version, 1u64, 1u64, Ratio::new(1, 3), None);
         let block = Block::random(&mut rng);
         let valid_sig =
             FinalitySignature::random_for_block(*block.hash(), block.header().era_id().value());
@@ -610,7 +688,17 @@ mod tests {
         let protocol_version = ProtocolVersion::V1_0_0;
         let auction_delay = 1;
         let unbonding_delay = 2;
-        let mut lc = LinearChain::new(protocol_version, auction_delay, unbonding_delay);
+        let mut lc = LinearChain::new(
+            protocol_version,
+            auction_delay,
+            unbonding_delay,
+            Ratio::new(1, 3),
+            None,
+        );
+
+        // `verifiable_chunked_hash_activation` can be chosen arbitrarily
+        let verifiable_chunked_hash_activation = EraId::from(rng.gen_range(0..=10));
+
         // Set the latest known block so that we can trigger the following checks.
         let block = Block::random_with_specifics(
             &mut rng,
@@ -618,10 +706,13 @@ mod tests {
             10,
             ProtocolVersion::V1_0_0,
             false,
+            verifiable_chunked_hash_activation,
         );
         let block_hash = *block.hash();
         let block_era = block.header().era_id();
-        let put_block_outcomes = lc.handle_put_block(Box::new(block.clone()));
+
+        let put_block_outcomes =
+            lc.handle_put_block(Box::new(block.clone()), verifiable_chunked_hash_activation);
         assert_eq!(put_block_outcomes.len(), 1);
         assert_eq!(
             lc.latest_block(),
@@ -653,24 +744,36 @@ mod tests {
         let protocol_version = ProtocolVersion::V1_0_0;
         let auction_delay = 1;
         let unbonding_delay = 2;
-        let mut lc = LinearChain::new(protocol_version, auction_delay, unbonding_delay);
+        let mut lc = LinearChain::new(
+            protocol_version,
+            auction_delay,
+            unbonding_delay,
+            Ratio::new(1, 3),
+            None,
+        );
+
+        // `verifiable_chunked_hash_activation` can be chosen arbitrarily
+        let verifiable_chunked_hash_activation = EraId::from(rng.gen_range(0..=10));
+
         // Set the latest known block so that we can trigger the following checks.
-        let block = Block::random_with_specifics(
+        let block = Box::new(Block::random_with_specifics(
             &mut rng,
             EraId::new(3),
             10,
             ProtocolVersion::V1_0_0,
             false,
-        );
+            verifiable_chunked_hash_activation,
+        ));
         let block_hash = *block.hash();
         let block_era = block.header().era_id();
-        let put_block_outcomes = lc.handle_new_block(Box::new(block.clone()), HashMap::new());
-        let expected_outcomes = vec![
-            Outcome::StoreBlock(Box::new(block)),
-            Outcome::StoreExecutionResults(block_hash, HashMap::new()),
-        ];
+        let new_block_outcomes = lc.handle_new_block(block.clone(), HashMap::new());
+        let expected_outcomes = vec![Outcome::StoreBlock(block.clone(), HashMap::new())];
+        assert_equal(expected_outcomes, new_block_outcomes);
+
+        let put_block_outcomes =
+            lc.handle_put_block(block.clone(), verifiable_chunked_hash_activation);
         // Verify that all outcomes are expected.
-        assert_equal(expected_outcomes, put_block_outcomes);
+        assert_equal(vec![Outcome::AnnounceBlock(block)], put_block_outcomes);
         let valid_sig = FinalitySignature::random_for_block(block_hash, block_era.value());
         let outcomes = lc.handle_finality_signature(Box::new(valid_sig.clone()), false);
         assert!(matches!(&*outcomes, [Outcome::LoadSignatures(_)]));
@@ -685,12 +788,224 @@ mod tests {
             let mut block_signatures = BlockSignatures::new(block_hash, block_era);
             block_signatures.insert_proof(valid_sig.public_key.clone(), valid_sig.signature);
             vec![
-                Outcome::StoreBlockSignatures(block_signatures),
+                Outcome::StoreBlockSignatures(block_signatures, false),
                 Outcome::Gossip(Box::new(valid_sig.clone())),
                 Outcome::AnnounceSignature(Box::new(valid_sig)),
             ]
         };
         // Verify that all outcomes are expected.
         assert_equal(expected_outcomes, outcomes);
+    }
+
+    #[test]
+    fn upgrade_when_fully_signed() {
+        let _ = logging::init();
+        let mut rng = TestRng::new();
+        let protocol_version = ProtocolVersion::V1_0_0;
+        let auction_delay = 1;
+        let unbonding_delay = 2;
+
+        // The next upgrade is scheduled for era 3.
+        let mut lc = LinearChain::new(
+            protocol_version,
+            auction_delay,
+            unbonding_delay,
+            Ratio::new(1, 3),
+            Some(ActivationPoint::EraId(3.into())),
+        );
+
+        // We have four validators, all with the same weight.
+        let secret_keys: Vec<SecretKey> = iter::repeat_with(|| {
+            SecretKey::ed25519_from_bytes(rng.gen::<[u8; SecretKey::ED25519_LENGTH]>()).unwrap()
+        })
+        .take(4)
+        .collect();
+        let validators: BTreeMap<_, _> = secret_keys
+            .iter()
+            .map(|sk| (PublicKey::from(sk), 100.into()))
+            .collect();
+
+        // `verifiable_chunked_hash_activation` can be chosen arbitrarily
+        let verifiable_chunked_hash_activation = EraId::from(rng.gen_range(0..=10));
+
+        // The switch block in era 1 defines how many validators need to sign the one in era 2.
+        let block = Box::new(
+            Block::new(
+                BlockHash::random(&mut rng),              // parent hash
+                rng.gen::<[u8; Digest::LENGTH]>().into(), // parent seed
+                rng.gen::<[u8; Digest::LENGTH]>().into(), // state root hash
+                FinalizedBlock::random_with_specifics(&mut rng, EraId::from(1), 10, true),
+                Some(validators.clone()),
+                protocol_version,
+                verifiable_chunked_hash_activation,
+            )
+            .unwrap(),
+        );
+
+        let outcomes = lc.handle_put_block(block.clone(), verifiable_chunked_hash_activation);
+        assert_equal(vec![Outcome::AnnounceBlock(block)], outcomes);
+
+        // The switch block in era 2 is the last before the upgrade.
+        let block = Box::new(
+            Block::new(
+                BlockHash::random(&mut rng),              // parent hash
+                rng.gen::<[u8; Digest::LENGTH]>().into(), // parent seed
+                rng.gen::<[u8; Digest::LENGTH]>().into(), // state root hash
+                FinalizedBlock::random_with_specifics(&mut rng, EraId::from(2), 20, true),
+                Some(validators),
+                protocol_version,
+                verifiable_chunked_hash_activation,
+            )
+            .unwrap(),
+        );
+
+        let era_id = block.header().era_id();
+        let signatures: Vec<_> = secret_keys
+            .iter()
+            .map(|sk| {
+                let pk = PublicKey::from(sk);
+                Box::new(FinalitySignature::new(*block.hash(), era_id, sk, pk))
+            })
+            .collect();
+
+        // The first signature has already been added.
+        let mut stored_sigs = Box::new(BlockSignatures::new(*block.hash(), era_id));
+        assert_equal(
+            vec![Outcome::LoadSignatures(signatures[0].clone())],
+            lc.handle_finality_signature(signatures[0].clone(), true),
+        );
+        assert_equal(
+            vec![],
+            lc.handle_cached_signatures(None, signatures[0].clone()),
+        );
+        stored_sigs.insert_proof(signatures[0].public_key.clone(), signatures[0].signature);
+
+        // When the block gets finalized, the first signature also gets announced.
+        assert_equal(
+            vec![
+                Outcome::AnnounceBlock(block.clone()),
+                Outcome::AnnounceSignature(signatures[0].clone()),
+                Outcome::StoreBlockSignatures(*stored_sigs.clone(), false),
+            ],
+            lc.handle_put_block(block, verifiable_chunked_hash_activation),
+        );
+
+        // Two signatures is not enough for an upgrade yet: The upgrade flag is false.
+        let outcomes =
+            lc.handle_cached_signatures(Some(stored_sigs.clone()), signatures[1].clone());
+        stored_sigs.insert_proof(signatures[1].public_key.clone(), signatures[1].signature);
+        assert_equal(
+            vec![
+                Outcome::AnnounceSignature(signatures[1].clone()),
+                Outcome::StoreBlockSignatures(*stored_sigs.clone(), false),
+            ],
+            outcomes,
+        );
+
+        // With the third signature the switch block is signed by more than 67%: The flag is true.
+        let outcomes =
+            lc.handle_cached_signatures(Some(stored_sigs.clone()), signatures[2].clone());
+        stored_sigs.insert_proof(signatures[2].public_key.clone(), signatures[2].signature);
+        assert_equal(
+            vec![
+                Outcome::AnnounceSignature(signatures[2].clone()),
+                Outcome::StoreBlockSignatures(*stored_sigs, true),
+            ],
+            outcomes,
+        );
+    }
+
+    #[test]
+    fn upgrade_when_fully_signed_and_got_signatures_before_block() {
+        let _ = logging::init();
+        let mut rng = TestRng::new();
+        let protocol_version = ProtocolVersion::V1_0_0;
+        let auction_delay = 1;
+        let unbonding_delay = 2;
+
+        // The next upgrade is scheduled for era 3.
+        let mut lc = LinearChain::new(
+            protocol_version,
+            auction_delay,
+            unbonding_delay,
+            Ratio::new(1, 3),
+            Some(ActivationPoint::EraId(3.into())),
+        );
+
+        // We have four validators, all with the same weight.
+        let secret_keys: Vec<SecretKey> = iter::repeat_with(|| {
+            SecretKey::ed25519_from_bytes(rng.gen::<[u8; SecretKey::ED25519_LENGTH]>()).unwrap()
+        })
+        .take(4)
+        .collect();
+        let validators: BTreeMap<_, _> = secret_keys
+            .iter()
+            .map(|sk| (PublicKey::from(sk), 100.into()))
+            .collect();
+
+        // `verifiable_chunked_hash_activation` can be chosen arbitrarily
+        let verifiable_chunked_hash_activation = EraId::from(rng.gen_range(0..=10));
+
+        // The switch block in era 1 defines how many validators need to sign the one in era 2.
+        let block = Box::new(
+            Block::new(
+                BlockHash::random(&mut rng),              // parent hash
+                rng.gen::<[u8; Digest::LENGTH]>().into(), // parent seed
+                rng.gen::<[u8; Digest::LENGTH]>().into(), // state root hash
+                FinalizedBlock::random_with_specifics(&mut rng, EraId::from(1), 10, true),
+                Some(validators.clone()),
+                protocol_version,
+                verifiable_chunked_hash_activation,
+            )
+            .unwrap(),
+        );
+        let outcomes = lc.handle_put_block(block.clone(), verifiable_chunked_hash_activation);
+        assert_equal(vec![Outcome::AnnounceBlock(block)], outcomes);
+
+        // The switch block in era 2 is the last before the upgrade.
+        let block = Box::new(
+            Block::new(
+                BlockHash::random(&mut rng),              // parent hash
+                rng.gen::<[u8; Digest::LENGTH]>().into(), // parent seed
+                rng.gen::<[u8; Digest::LENGTH]>().into(), // state root hash
+                FinalizedBlock::random_with_specifics(&mut rng, EraId::from(2), 20, true),
+                Some(validators),
+                protocol_version,
+                verifiable_chunked_hash_activation,
+            )
+            .unwrap(),
+        );
+
+        let era_id = block.header().era_id();
+        let signatures: Vec<_> = secret_keys
+            .iter()
+            .map(|sk| {
+                let pk = PublicKey::from(sk);
+                Box::new(FinalitySignature::new(*block.hash(), era_id, sk, pk))
+            })
+            .collect();
+
+        let mut expected_sigs = BlockSignatures::new(*block.hash(), era_id);
+        for fs in &signatures {
+            assert_equal(
+                vec![Outcome::LoadSignatures(fs.clone())],
+                lc.handle_finality_signature(fs.clone(), true),
+            );
+            assert_equal(vec![], lc.handle_cached_signatures(None, fs.clone()));
+            expected_sigs.insert_proof(fs.public_key.clone(), fs.signature);
+        }
+
+        let outcomes = lc.handle_put_block(block.clone(), verifiable_chunked_hash_activation);
+        assert_equal(
+            vec![
+                Outcome::AnnounceBlock(block),
+                Outcome::AnnounceSignature(signatures[0].clone()),
+                Outcome::AnnounceSignature(signatures[1].clone()),
+                Outcome::AnnounceSignature(signatures[2].clone()),
+                Outcome::AnnounceSignature(signatures[3].clone()),
+                Outcome::StoreBlockSignatures(expected_sigs, true),
+            ],
+            outcomes,
+        );
     }
 }

@@ -26,7 +26,7 @@ use crate::{
     crypto::AsymmetricKeyExt,
     effect::EffectBuilder,
     reactor::QueueKind,
-    types::{Block, BlockHash, Deploy, DeployHash, GetStatusResult, Item, PeersMap},
+    types::{Block, BlockHash, ChainspecRawBytes, Deploy, DeployHash, GetStatusResult, PeersMap},
 };
 
 static GET_DEPLOY_PARAMS: Lazy<GetDeployParams> = Lazy::new(|| GetDeployParams {
@@ -36,7 +36,7 @@ static GET_DEPLOY_RESULT: Lazy<GetDeployResult> = Lazy::new(|| GetDeployResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     deploy: Deploy::doc_example().clone(),
     execution_results: vec![JsonExecutionResult {
-        block_hash: Block::doc_example().id(),
+        block_hash: *Block::doc_example().hash(),
         result: ExecutionResult::example().clone(),
     }],
 });
@@ -52,6 +52,10 @@ static GET_VALIDATOR_CHANGES_RESULT: Lazy<GetValidatorChangesResult> = Lazy::new
         api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
         changes,
     }
+});
+static GET_CHAINSPEC_RESULT: Lazy<GetChainspecResult> = Lazy::new(|| GetChainspecResult {
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    chainspec_bytes: ChainspecRawBytes::new(vec![42, 42].into(), None, None),
 });
 
 /// Params for "info_get_deploy" RPC request.
@@ -337,6 +341,54 @@ impl RpcWithoutParamsExt for GetValidatorChanges {
         async move {
             let changes = effect_builder.get_consensus_validator_changes().await;
             let result = Self::ResponseResult::new(api_version, changes);
+            Ok(response_builder.success(result)?)
+        }
+        .boxed()
+    }
+}
+
+/// Result for the "info_get_chainspec" RPC.
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+pub struct GetChainspecResult {
+    /// The RPC API version.
+    #[schemars(with = "String")]
+    pub api_version: ProtocolVersion,
+    /// The chainspec file bytes.
+    pub chainspec_bytes: ChainspecRawBytes,
+}
+
+impl GetChainspecResult {
+    pub(crate) fn new(api_version: ProtocolVersion, chainspec_bytes: ChainspecRawBytes) -> Self {
+        Self {
+            api_version,
+            chainspec_bytes,
+        }
+    }
+}
+
+impl DocExample for GetChainspecResult {
+    fn doc_example() -> &'static Self {
+        &*GET_CHAINSPEC_RESULT
+    }
+}
+
+/// "info_get_chainspec" RPC.
+pub struct GetChainspec {}
+
+impl RpcWithoutParams for GetChainspec {
+    const METHOD: &'static str = "info_get_chainspec";
+    type ResponseResult = GetChainspecResult;
+}
+
+impl RpcWithoutParamsExt for GetChainspec {
+    fn handle_request<REv: ReactorEventT>(
+        effect_builder: EffectBuilder<REv>,
+        response_builder: Builder,
+        api_version: ProtocolVersion,
+    ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
+        async move {
+            let chainspec_bytes = effect_builder.get_chainspec_raw_bytes().await;
+            let result = Self::ResponseResult::new(api_version, (*chainspec_bytes).clone());
             Ok(response_builder.success(result)?)
         }
         .boxed()

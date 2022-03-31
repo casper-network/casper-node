@@ -57,9 +57,6 @@ pub struct Era {
     pub(crate) validation_states: HashMap<ProposedBlock<ClContext>, ValidationState>,
     /// Validators banned in this and the next BONDED_ERAS eras, because they were faulty in the
     /// previous switch block.
-    pub(crate) new_faulty: Vec<PublicKey>,
-    /// Validators that have been faulty in any of the recent BONDED_ERAS switch blocks. This
-    /// includes `new_faulty`.
     pub(crate) faulty: HashSet<PublicKey>,
     /// Validators that are excluded from proposing new blocks.
     pub(crate) cannot_propose: HashSet<PublicKey>,
@@ -74,7 +71,6 @@ impl Era {
         consensus: Box<dyn ConsensusProtocol<ClContext>>,
         start_time: Timestamp,
         start_height: u64,
-        new_faulty: Vec<PublicKey>,
         faulty: HashSet<PublicKey>,
         cannot_propose: HashSet<PublicKey>,
         validators: BTreeMap<PublicKey, U512>,
@@ -84,7 +80,6 @@ impl Era {
             start_time,
             start_height,
             validation_states: HashMap::new(),
-            new_faulty,
             faulty,
             cannot_propose,
             accusations: HashSet::new(),
@@ -180,7 +175,6 @@ impl DataSize for Era {
             start_time,
             start_height,
             validation_states,
-            new_faulty,
             faulty,
             cannot_propose,
             accusations,
@@ -217,7 +211,6 @@ impl DataSize for Era {
             .saturating_add(start_time.estimate_heap_size())
             .saturating_add(start_height.estimate_heap_size())
             .saturating_add(validation_states.estimate_heap_size())
-            .saturating_add(new_faulty.estimate_heap_size())
             .saturating_add(faulty.estimate_heap_size())
             .saturating_add(cannot_propose.estimate_heap_size())
             .saturating_add(accusations.estimate_heap_size())

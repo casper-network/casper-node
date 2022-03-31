@@ -1,7 +1,7 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
-use std::str::FromStr;
+use std::{collections::BTreeMap, str::FromStr};
 
 use datasize::DataSize;
 #[cfg(test)]
@@ -11,12 +11,13 @@ use tracing::error;
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    EraId, ProtocolVersion,
+    EraId, Key, ProtocolVersion, StoredValue,
 };
 
 use super::{ActivationPoint, GlobalStateUpdate};
 #[cfg(test)]
 use crate::testing::TestRng;
+use crate::types::BlockHeader;
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, DataSize, Debug)]
 pub struct ProtocolConfig {
@@ -32,9 +33,36 @@ pub struct ProtocolConfig {
     pub(crate) global_state_update: Option<GlobalStateUpdate>,
     /// The era ID in which the last emergency restart happened.
     pub(crate) last_emergency_restart: Option<EraId>,
+    /// The era ID starting at which the new Merkle tree-based hashing scheme is applied.
+    pub(crate) verifiable_chunked_hash_activation: EraId,
 }
 
 impl ProtocolConfig {
+    /// The the mapping of [`Key`]s to [`StoredValue`]s we will use to update global storage in the
+    /// event of an emergency update.
+    pub(crate) fn get_update_mapping(
+        &self,
+    ) -> Result<BTreeMap<Key, StoredValue>, bytesrepr::Error> {
+        let state_update = match &self.global_state_update {
+            Some(GlobalStateUpdate(state_update)) => state_update,
+            None => return Ok(BTreeMap::default()),
+        };
+        let mut update_mapping = BTreeMap::new();
+        for (key, stored_value_bytes) in state_update {
+            let stored_value = bytesrepr::deserialize(stored_value_bytes.clone().into())?;
+            update_mapping.insert(*key, stored_value);
+        }
+        Ok(update_mapping)
+    }
+
+    /// Returns whether the block header belongs to the last block before the upgrade to the
+    /// current protocol version.
+    pub(crate) fn is_last_block_before_activation(&self, block_header: &BlockHeader) -> bool {
+        block_header.protocol_version() < self.version
+            && block_header.is_switch_block()
+            && ActivationPoint::EraId(block_header.next_block_era_id()) == self.activation_point
+    }
+
     /// Checks whether the values set in the config make sense and returns `false` if they don't.
     pub(super) fn is_valid(&self) -> bool {
         // If this is not an emergency restart config, assert the `last_emergency_restart` is `None`
@@ -68,6 +96,7 @@ impl ProtocolConfig {
         );
         let activation_point = ActivationPoint::random(rng);
         let last_emergency_restart = rng.gen::<bool>().then(|| rng.gen());
+        let verifiable_chunked_hash_activation = EraId::from(rng.gen_range(0..5));
 
         ProtocolConfig {
             version: protocol_version,
@@ -75,6 +104,7 @@ impl ProtocolConfig {
             activation_point,
             global_state_update: None,
             last_emergency_restart,
+            verifiable_chunked_hash_activation,
         }
     }
 }
@@ -87,6 +117,7 @@ impl ToBytes for ProtocolConfig {
         buffer.extend(self.activation_point.to_bytes()?);
         buffer.extend(self.global_state_update.to_bytes()?);
         buffer.extend(self.last_emergency_restart.to_bytes()?);
+        buffer.extend(self.verifiable_chunked_hash_activation.to_bytes()?);
         Ok(buffer)
     }
 
@@ -96,6 +127,7 @@ impl ToBytes for ProtocolConfig {
             + self.activation_point.serialized_length()
             + self.global_state_update.serialized_length()
             + self.last_emergency_restart.serialized_length()
+            + self.verifiable_chunked_hash_activation.serialized_length()
     }
 }
 
@@ -108,12 +140,14 @@ impl FromBytes for ProtocolConfig {
         let (activation_point, remainder) = ActivationPoint::from_bytes(remainder)?;
         let (global_state_update, remainder) = Option::<GlobalStateUpdate>::from_bytes(remainder)?;
         let (last_emergency_restart, remainder) = Option::<EraId>::from_bytes(remainder)?;
+        let (verifiable_chunked_hash_activation, remainder) = EraId::from_bytes(remainder)?;
         let protocol_config = ProtocolConfig {
             version,
             hard_reset,
             activation_point,
             global_state_update,
             last_emergency_restart,
+            verifiable_chunked_hash_activation,
         };
         Ok((protocol_config, remainder))
     }
@@ -121,6 +155,8 @@ impl FromBytes for ProtocolConfig {
 
 #[cfg(test)]
 mod tests {
+    use crate::types::Block;
+
     use super::*;
 
     #[test]
@@ -181,5 +217,80 @@ mod tests {
 
         protocol_config.last_emergency_restart = Some(activation_point + 1);
         assert!(!protocol_config.is_valid());
+    }
+
+    #[test]
+    fn should_recognize_blocks_before_activation_point() {
+        let past_version = ProtocolVersion::from_parts(1, 0, 0);
+        let current_version = ProtocolVersion::from_parts(2, 0, 0);
+        let future_version = ProtocolVersion::from_parts(3, 0, 0);
+
+        let upgrade_era = EraId::from(5);
+        let previous_era = upgrade_era.saturating_sub(1);
+
+        let verifiable_chunked_hash_activation = EraId::from(0);
+
+        let mut rng = crate::new_rng();
+        let protocol_config = ProtocolConfig {
+            version: current_version,
+            hard_reset: false,
+            activation_point: ActivationPoint::EraId(upgrade_era),
+            global_state_update: None,
+            last_emergency_restart: None,
+            verifiable_chunked_hash_activation,
+        };
+
+        // The block before this protocol version: a switch block with previous era and version.
+        let block = Block::random_with_specifics(
+            &mut rng,
+            previous_era,
+            100,
+            past_version,
+            true,
+            verifiable_chunked_hash_activation,
+        );
+        assert!(protocol_config.is_last_block_before_activation(block.header()));
+
+        // Not the activation point: wrong era.
+        let block = Block::random_with_specifics(
+            &mut rng,
+            upgrade_era,
+            100,
+            past_version,
+            true,
+            verifiable_chunked_hash_activation,
+        );
+        assert!(!protocol_config.is_last_block_before_activation(block.header()));
+
+        // Not the activation point: wrong version.
+        let block = Block::random_with_specifics(
+            &mut rng,
+            previous_era,
+            100,
+            current_version,
+            true,
+            verifiable_chunked_hash_activation,
+        );
+        assert!(!protocol_config.is_last_block_before_activation(block.header()));
+        let block = Block::random_with_specifics(
+            &mut rng,
+            previous_era,
+            100,
+            future_version,
+            true,
+            verifiable_chunked_hash_activation,
+        );
+        assert!(!protocol_config.is_last_block_before_activation(block.header()));
+
+        // Not the activation point: not a switch block.
+        let block = Block::random_with_specifics(
+            &mut rng,
+            previous_era,
+            100,
+            past_version,
+            false,
+            verifiable_chunked_hash_activation,
+        );
+        assert!(!protocol_config.is_last_block_before_activation(block.header()));
     }
 }

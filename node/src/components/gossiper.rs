@@ -18,10 +18,11 @@ use std::{
 use tracing::{debug, error, warn};
 
 use crate::{
-    components::Component,
+    components::{fetcher::FetchedOrNotFound, Component},
     effect::{
         announcements::GossiperAnnouncement,
-        requests::{NetworkRequest, StorageRequest},
+        incoming::GossiperIncoming,
+        requests::{BeginGossipRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
     protocol::Message as NodeMessage,
@@ -467,7 +468,7 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         item: T,
         requester: NodeId,
     ) -> Effects<Event<T>> {
-        match NodeMessage::new_get_response(&item) {
+        match NodeMessage::new_get_response(&FetchedOrNotFound::Fetched(item)) {
             Ok(message) => effect_builder.send_message(requester, message).ignore(),
             Err(error) => {
                 error!("failed to create get-response: {}", error);
@@ -527,6 +528,16 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         let effects = match event {
+            Event::BeginGossipRequest(BeginGossipRequest {
+                item_id,
+                source,
+                responder,
+            }) => {
+                let mut effects = self.handle_item_received(effect_builder, item_id, source);
+                effects.extend(responder.respond(()).ignore());
+                effects
+            }
+
             Event::ItemReceived { item_id, source } => {
                 self.handle_item_received(effect_builder, item_id, source)
             }
@@ -541,7 +552,7 @@ where
             Event::CheckGetFromPeerTimeout { item_id, peer } => {
                 self.check_get_from_peer_timeout(effect_builder, item_id, peer)
             }
-            Event::MessageReceived { message, sender } => match message {
+            Event::Incoming(GossiperIncoming::<T> { sender, message }) => match message {
                 Message::Gossip(item_id) => self.handle_gossip(effect_builder, item_id, sender),
                 Message::GossipResponse {
                     item_id,

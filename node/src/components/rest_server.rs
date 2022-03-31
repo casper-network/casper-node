@@ -34,20 +34,19 @@ use casper_types::ProtocolVersion;
 
 use super::Component;
 use crate::{
+    components::rpc_server::rpcs::docs::OPEN_RPC_SCHEMA,
     effect::{
         requests::{
             ChainspecLoaderRequest, ConsensusRequest, MetricsRequest, NetworkInfoRequest,
-            StorageRequest,
+            RestRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
     reactor::Finalize,
-    types::StatusFeed,
+    types::{NodeState, StatusFeed},
     utils::{self, ListeningError},
     NodeRng,
 };
-
-use crate::{components::rpc_server::rpcs::docs::OPEN_RPC_SCHEMA, effect::requests::RestRequest};
 pub use config::Config;
 pub(crate) use event::Event;
 
@@ -87,6 +86,8 @@ pub(crate) struct RestServer {
     server_join_handle: Option<JoinHandle<()>>,
     /// The instant at which the node has started.
     node_startup_instant: Instant,
+    /// The current state of operation.
+    node_state: NodeState,
 }
 
 impl RestServer {
@@ -95,6 +96,7 @@ impl RestServer {
         effect_builder: EffectBuilder<REv>,
         api_version: ProtocolVersion,
         node_startup_instant: Instant,
+        node_state: NodeState,
     ) -> Result<Self, ListeningError>
     where
         REv: ReactorEventT,
@@ -114,6 +116,7 @@ impl RestServer {
             shutdown_sender,
             server_join_handle: Some(server_join_handle),
             node_startup_instant,
+            node_state,
         })
     }
 }
@@ -134,6 +137,7 @@ where
         match event {
             Event::RestRequest(RestRequest::Status { responder }) => {
                 let node_uptime = self.node_startup_instant.elapsed();
+                let node_state = self.node_state;
                 async move {
                     let (last_added_block, peers, chainspec_info, consensus_status) = join!(
                         effect_builder.get_highest_block_from_storage(),
@@ -147,6 +151,7 @@ where
                         chainspec_info,
                         consensus_status,
                         node_uptime,
+                        node_state,
                     );
                     responder.respond(status_feed).await;
                 }
@@ -192,7 +197,10 @@ impl Finalize for RestServer {
 #[cfg(test)]
 mod schema_tests {
     use crate::{
-        rpcs::{docs::OpenRpcSchema, info::GetValidatorChangesResult},
+        rpcs::{
+            docs::OpenRpcSchema,
+            info::{GetChainspecResult, GetValidatorChangesResult},
+        },
         testing::assert_schema,
         types::GetStatusResult,
     };
@@ -223,5 +231,14 @@ mod schema_tests {
             env!("CARGO_MANIFEST_DIR")
         );
         assert_schema(schema_path, schema_for!(OpenRpcSchema));
+    }
+
+    #[test]
+    fn schema_chainspec_bytes() {
+        let schema_path = format!(
+            "{}/../resources/test/rest_schema_chainspec_bytes.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        assert_schema(schema_path, schema_for!(GetChainspecResult));
     }
 }

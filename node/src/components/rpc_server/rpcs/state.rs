@@ -14,7 +14,10 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 use warp_json_rpc::Builder;
 
-use casper_execution_engine::core::engine_state::{BalanceResult, GetBidsResult, QueryResult};
+use casper_execution_engine::{
+    core::engine_state::{BalanceResult, GetBidsResult, QueryResult},
+    storage::trie::merkle_proof::TrieMerkleProof,
+};
 use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
@@ -22,10 +25,6 @@ use casper_types::{
     U512,
 };
 
-use super::{
-    docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
-    Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithParams, RpcWithParamsExt,
-};
 use crate::{
     components::rpc_server::rpcs::RpcWithOptionalParams,
     effect::EffectBuilder,
@@ -33,7 +32,9 @@ use crate::{
     rpcs::{
         chain::BlockIdentifier,
         common::{self, MERKLE_PROOF},
-        RpcWithOptionalParamsExt,
+        docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
+        Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithOptionalParamsExt, RpcWithParams,
+        RpcWithParamsExt,
     },
     types::{
         json_compatibility::{Account as JsonAccount, AuctionState, StoredValue},
@@ -190,34 +191,25 @@ impl RpcWithParamsExt for GetItem {
             };
 
             // Run the query.
-            let query_result = effect_builder
-                .make_request(
-                    |responder| RpcRequest::QueryGlobalState {
-                        state_root_hash: params.state_root_hash,
-                        base_key,
-                        path: params.path,
-                        responder,
-                    },
-                    QueueKind::Api,
-                )
-                .await;
+            let query_result = common::run_query_and_encode(
+                effect_builder,
+                params.state_root_hash,
+                base_key,
+                params.path,
+            )
+            .await;
 
-            let (stored_value, proof_bytes) = match common::extract_query_result(query_result) {
-                Ok(tuple) => tuple,
-                Err((error_code, error_msg)) => {
-                    info!("{}", error_msg);
-                    return Ok(response_builder
-                        .error(warp_json_rpc::Error::custom(error_code as i64, error_msg))?);
+            match query_result {
+                Ok((stored_value, merkle_proof)) => {
+                    let result = Self::ResponseResult {
+                        api_version,
+                        stored_value,
+                        merkle_proof,
+                    };
+                    Ok(response_builder.success(result)?)
                 }
-            };
-
-            let result = Self::ResponseResult {
-                api_version,
-                stored_value,
-                merkle_proof: base16::encode_lower(&proof_bytes),
-            };
-
-            Ok(response_builder.success(result)?)
+                Err(error) => Ok(response_builder.error(error)?),
+            }
         }
         .boxed()
     }
@@ -391,33 +383,13 @@ impl RpcWithOptionalParamsExt for GetAuctionInfo {
         api_version: ProtocolVersion,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
-            let maybe_id = maybe_params.map(|params| params.block_identifier);
-            let block: Block = {
-                let maybe_block = effect_builder
-                    .make_request(
-                        |responder| RpcRequest::GetBlock {
-                            maybe_id,
-                            responder,
-                        },
-                        QueueKind::Api,
-                    )
-                    .await;
+            // This RPC request is restricted by the block availability index.
+            let only_from_available_block_range = true;
 
-                match maybe_block {
-                    None => {
-                        let error_msg = if maybe_id.is_none() {
-                            "get-auction-info failed to get last added block".to_string()
-                        } else {
-                            "get-auction-info failed to get specified block".to_string()
-                        };
-                        info!("{}", error_msg);
-                        return Ok(response_builder.error(warp_json_rpc::Error::custom(
-                            ErrorCode::NoSuchBlock as i64,
-                            error_msg,
-                        ))?);
-                    }
-                    Some((block, _)) => block,
-                }
+            let maybe_block_id = maybe_params.map(|params| params.block_identifier);
+            let block = match common::get_block(maybe_block_id, only_from_available_block_range, effect_builder).await {
+                Ok(block) => block,
+                Err(error) => return Ok(response_builder.error(error)?),
             };
 
             let protocol_version = api_version;
@@ -438,21 +410,28 @@ impl RpcWithOptionalParamsExt for GetAuctionInfo {
                 .await;
 
             let bids = match get_bids_result {
-                Ok(get_bids_result) => match get_bids_result {
-                    GetBidsResult::RootNotFound => {
-                        error!(block_hash=?block.hash(), ?state_root_hash, "failed to get bids");
-                        return Ok(response_builder.error(warp_json_rpc::Error::custom(
-                            ErrorCode::InternalError as i64,
-                            format!("get-auction-info failed to get bids at block={:?}", block.hash()),
-                        ))?);
-                    }
-                    GetBidsResult::Success { bids } => bids,
-                },
-                Err(err) => {
-                    error!(block_hash=?block.hash(), ?state_root_hash, ?err, "failed to get bids");
+                Ok(GetBidsResult::Success { bids }) => bids,
+                Ok(GetBidsResult::RootNotFound) => {
+                    error!(
+                        block_hash=?block.hash(),
+                        ?state_root_hash,
+                        "root not found while trying to get bids"
+                    );
                     return Ok(response_builder.error(warp_json_rpc::Error::custom(
                         ErrorCode::InternalError as i64,
-                        format!("get-auction-info failed to get bids at block={:?}", block.hash()),
+                        format!("failed to get bids at block {:?}", block.hash().inner()),
+                    ))?);
+                }
+                Err(error) => {
+                    error!(
+                        block_hash=?block.hash(),
+                        ?state_root_hash,
+                        ?error,
+                        "failed to get bids"
+                    );
+                    return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                        ErrorCode::InternalError as i64,
+                        format!("error getting bids at block {:?}", block.hash().inner()),
                     ))?);
                 }
             };
@@ -474,7 +453,7 @@ impl RpcWithOptionalParamsExt for GetAuctionInfo {
                     error!(block_hash=?block.hash(), ?state_root_hash, ?err, "failed to get era validators");
                     return Ok(response_builder.error(warp_json_rpc::Error::custom(
                         ErrorCode::InternalError as i64,
-                        format!("get-auction-info failed to get validators at block={:?}", block.hash()),
+                        format!("failed to get validators at block {:?}", block.hash().inner()),
                     ))?);
                 }
             };
@@ -544,67 +523,40 @@ impl RpcWithParamsExt for GetAccountInfo {
         api_version: ProtocolVersion,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
+            // This RPC request is restricted by the block availability index.
+            let only_from_available_block_range = true;
+
+            let maybe_block_id = params.block_identifier;
+            let block = match common::get_block(
+                maybe_block_id,
+                only_from_available_block_range,
+                effect_builder,
+            )
+            .await
+            {
+                Ok(block) => block,
+                Err(error) => return Ok(response_builder.error(error)?),
+            };
+
+            let state_root_hash = *block.header().state_root_hash();
             let base_key = {
                 let account_hash = params.public_key.to_account_hash();
                 Key::Account(account_hash)
             };
-
-            let block: Block = {
-                let maybe_id = params.block_identifier;
-                let maybe_block = effect_builder
-                    .make_request(
-                        |responder| RpcRequest::GetBlock {
-                            maybe_id,
-                            responder,
-                        },
-                        QueueKind::Api,
-                    )
+            let query_result =
+                common::run_query_and_encode(effect_builder, state_root_hash, base_key, vec![])
                     .await;
 
-                match maybe_block {
-                    None => {
-                        let error_msg = if maybe_id.is_none() {
-                            "get-account-info failed to get last added block".to_string()
-                        } else {
-                            "get-account-info failed to get specified block".to_string()
-                        };
-                        info!("{}", error_msg);
-                        return Ok(response_builder.error(warp_json_rpc::Error::custom(
-                            ErrorCode::NoSuchBlock as i64,
-                            error_msg,
-                        ))?);
-                    }
-                    Some((block, _)) => block,
-                }
-            };
-
-            let state_root_hash = *block.header().state_root_hash();
-
-            let query_result = effect_builder
-                .make_request(
-                    |responder| RpcRequest::QueryGlobalState {
-                        state_root_hash,
-                        base_key,
-                        path: vec![],
-                        responder,
-                    },
-                    QueueKind::Api,
-                )
-                .await;
-
-            let (stored_value, proof_bytes) = match common::extract_query_result(query_result) {
+            let (stored_value, merkle_proof) = match query_result {
                 Ok(tuple) => tuple,
-                Err((error_code, error_msg)) => {
-                    info!("{}", error_msg);
-                    return Ok(response_builder
-                        .error(warp_json_rpc::Error::custom(error_code as i64, error_msg))?);
-                }
+                Err(error) => return Ok(response_builder.error(error)?),
             };
 
             let account = if let StoredValue::Account(account) = stored_value {
                 account
             } else {
-                let error_msg = "get-account-info failed to get specified account".to_string();
+                let error_msg = "failed to get specified account".to_string();
+                info!(?stored_value, "{}", error_msg);
                 return Ok(response_builder.error(warp_json_rpc::Error::custom(
                     ErrorCode::NoSuchAccount as i64,
                     error_msg,
@@ -614,7 +566,7 @@ impl RpcWithParamsExt for GetAccountInfo {
             let result = Self::ResponseResult {
                 api_version,
                 account,
-                merkle_proof: base16::encode_lower(&proof_bytes),
+                merkle_proof,
             };
 
             Ok(response_builder.success(result)?)
@@ -790,40 +742,20 @@ impl RpcWithParamsExt for GetDictionaryItem {
                     };
 
                     let empty_path = Vec::new();
-
-                    let query_result = effect_builder
-                        .make_request(
-                            |responder| RpcRequest::QueryGlobalState {
-                                state_root_hash: params.state_root_hash,
-                                base_key,
-                                path: empty_path,
-                                responder,
-                            },
-                            QueueKind::Api,
-                        )
-                        .await;
-
-                    let value = match query_result {
-                        Ok(QueryResult::Success { value, .. }) => value,
-                        Ok(query_result) => {
-                            let error_msg = format!("state query failed: {:?}", query_result);
-                            return Ok(response_builder.error(warp_json_rpc::Error::custom(
-                                ErrorCode::QueryFailed as i64,
-                                error_msg,
-                            ))?);
-                        }
-                        Err(error) => {
-                            let error_msg = format!("state query failed to execute: {:?}", error);
-                            return Ok(response_builder.error(warp_json_rpc::Error::custom(
-                                ErrorCode::QueryFailedToExecute as i64,
-                                error_msg,
-                            ))?);
-                        }
+                    let value = match run_query(
+                        effect_builder,
+                        params.state_root_hash,
+                        base_key,
+                        empty_path,
+                    )
+                    .await
+                    {
+                        Ok((value, _proofs)) => value,
+                        Err(error) => return Ok(response_builder.error(error)?),
                     };
-
                     params
                         .dictionary_identifier
-                        .get_dictionary_address(Some(*value))
+                        .get_dictionary_address(Some(value))
                 }
                 DictionaryIdentifier::URef { .. } | DictionaryIdentifier::Dictionary(_) => {
                     params.dictionary_identifier.get_dictionary_address(None)
@@ -840,35 +772,26 @@ impl RpcWithParamsExt for GetDictionaryItem {
                 }
             };
 
-            let query_result = effect_builder
-                .make_request(
-                    |responder| RpcRequest::QueryGlobalState {
-                        state_root_hash: params.state_root_hash,
-                        base_key: dictionary_query_key,
-                        path: vec![],
-                        responder,
-                    },
-                    QueueKind::Api,
-                )
-                .await;
+            let query_result = common::run_query_and_encode(
+                effect_builder,
+                params.state_root_hash,
+                dictionary_query_key,
+                vec![],
+            )
+            .await;
 
-            let (stored_value, proof_bytes) = match common::extract_query_result(query_result) {
-                Ok(tuple) => tuple,
-                Err((error_code, error_msg)) => {
-                    info!("{}", error_msg);
-                    return Ok(response_builder
-                        .error(warp_json_rpc::Error::custom(error_code as i64, error_msg))?);
+            match query_result {
+                Ok((stored_value, merkle_proof)) => {
+                    let result = Self::ResponseResult {
+                        api_version,
+                        dictionary_key: dictionary_query_key.to_formatted_string(),
+                        stored_value,
+                        merkle_proof,
+                    };
+                    Ok(response_builder.success(result)?)
                 }
-            };
-
-            let result = Self::ResponseResult {
-                api_version,
-                dictionary_key: dictionary_query_key.to_formatted_string(),
-                stored_value,
-                merkle_proof: base16::encode_lower(&proof_bytes),
-            };
-
-            Ok(response_builder.success(result)?)
+                Err(error) => Ok(response_builder.error(error)?),
+            }
         }
         .boxed()
     }
@@ -943,8 +866,11 @@ impl RpcWithParamsExt for QueryGlobalState {
         async move {
             let (state_root_hash, maybe_block_header) = match params.state_identifier {
                 GlobalStateIdentifier::BlockHash(block_hash) => {
+                    // This RPC request is restricted by the block availability index.
+                    let only_from_available_block_range = true;
+
                     match effect_builder
-                        .get_block_header_from_storage(block_hash)
+                        .get_block_header_from_storage(block_hash, only_from_available_block_range)
                         .await
                     {
                         Some(header) => {
@@ -978,35 +904,26 @@ impl RpcWithParamsExt for QueryGlobalState {
                 }
             };
 
-            let query_result = effect_builder
-                .make_request(
-                    |responder| RpcRequest::QueryGlobalState {
-                        state_root_hash,
-                        base_key,
-                        path: params.path,
-                        responder,
-                    },
-                    QueueKind::Api,
-                )
-                .await;
+            let query_result = common::run_query_and_encode(
+                effect_builder,
+                state_root_hash,
+                base_key,
+                params.path,
+            )
+            .await;
 
-            let (stored_value, proof_bytes) = match common::extract_query_result(query_result) {
-                Ok(tuple) => tuple,
-                Err((error_code, error_msg)) => {
-                    info!("{}", error_msg);
-                    return Ok(response_builder
-                        .error(warp_json_rpc::Error::custom(error_code as i64, error_msg))?);
+            match query_result {
+                Ok((stored_value, merkle_proof)) => {
+                    let result = Self::ResponseResult {
+                        api_version,
+                        block_header: maybe_block_header,
+                        stored_value,
+                        merkle_proof,
+                    };
+                    Ok(response_builder.success(result)?)
                 }
-            };
-
-            let result = Self::ResponseResult {
-                api_version,
-                block_header: maybe_block_header,
-                stored_value,
-                merkle_proof: base16::encode_lower(&proof_bytes),
-            };
-
-            Ok(response_builder.success(result)?)
+                Err(error) => Ok(response_builder.error(error)?),
+            }
         }
         .boxed()
     }
@@ -1065,38 +982,82 @@ impl RpcWithParamsExt for GetTrie {
         async move {
             let trie_key = params.trie_key;
 
-            let ee_trie = match effect_builder.get_trie(trie_key).await {
-                Ok(Some(trie)) => trie,
-                Ok(None) => {
-                    return Ok(response_builder.success(Self::ResponseResult {
+            let response = match effect_builder.get_trie_full(trie_key).await {
+                Ok(maybe_trie_bytes) => {
+                    let result = Self::ResponseResult {
                         api_version,
-                        maybe_trie_bytes: None,
-                    })?)
+                        maybe_trie_bytes,
+                    };
+
+                    response_builder.success(result)?
                 }
                 Err(error) => {
                     error!(?error, "failed to get trie");
-                    return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                    response_builder.error(warp_json_rpc::Error::custom(
                         ErrorCode::FailedToGetTrie as i64,
                         format!("failed to get trie: {:?}", error),
-                    ))?);
+                    ))?
                 }
             };
 
-            let trie_bytes = match ee_trie.to_bytes() {
-                Ok(bytes) => bytes,
-                Err(error) => {
-                    error!(?error, "failed to serialize trie");
-                    return Ok(response_builder.error(warp_json_rpc::Error::INTERNAL_ERROR)?);
-                }
-            };
-
-            let result = Self::ResponseResult {
-                api_version,
-                maybe_trie_bytes: Some(trie_bytes.into()),
-            };
-
-            Ok(response_builder.success(result)?)
+            Ok(response)
         }
         .boxed()
+    }
+}
+
+type QuerySuccess = (
+    DomainStoredValue,
+    Vec<TrieMerkleProof<Key, DomainStoredValue>>,
+);
+
+/// Runs a global state query and returns a tuple of the domain stored value and merkle proof of the
+/// value.
+///
+/// On error, a `warp_json_rpc::Error` is returned suitable for sending as a JSON-RPC response.
+pub(super) async fn run_query<REv: ReactorEventT>(
+    effect_builder: EffectBuilder<REv>,
+    state_root_hash: Digest,
+    base_key: Key,
+    path: Vec<String>,
+) -> Result<QuerySuccess, warp_json_rpc::Error> {
+    let query_result = effect_builder
+        .make_request(
+            |responder| RpcRequest::QueryGlobalState {
+                state_root_hash,
+                base_key,
+                path,
+                responder,
+            },
+            QueueKind::Api,
+        )
+        .await;
+
+    match query_result {
+        Ok(QueryResult::Success { value, proofs }) => Ok((*value, proofs)),
+        Ok(QueryResult::RootNotFound) => {
+            info!("query failed: root not found");
+            let error = common::missing_block_or_state_root_error(
+                effect_builder,
+                ErrorCode::NoSuchStateRoot,
+                format!("failed to get state root at {:?}", state_root_hash),
+            )
+            .await;
+            Err(error)
+        }
+        Ok(query_result) => {
+            info!(?query_result, "query failed");
+            Err(warp_json_rpc::Error::custom(
+                ErrorCode::QueryFailed as i64,
+                format!("state query failed: {:?}", query_result),
+            ))
+        }
+        Err(error) => {
+            info!(?error, "query failed to execute");
+            Err(warp_json_rpc::Error::custom(
+                ErrorCode::QueryFailedToExecute as i64,
+                format!("state query failed to execute: {:?}", error),
+            ))
+        }
     }
 }

@@ -14,7 +14,7 @@ use super::error::GlobalStateUpdateLoadError;
 
 #[cfg(test)]
 use crate::testing::TestRng;
-use crate::utils::{self, Loadable};
+use crate::utils;
 
 const GLOBAL_STATE_UPDATE_FILENAME: &str = "global_state.toml";
 
@@ -29,17 +29,20 @@ pub struct GlobalStateUpdateConfig {
     entries: Vec<GlobalStateUpdateEntry>,
 }
 
-impl Loadable for Option<GlobalStateUpdateConfig> {
-    type Error = GlobalStateUpdateLoadError;
-
-    fn from_path<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error> {
+impl GlobalStateUpdateConfig {
+    /// Returns `Self` and the raw bytes of the file.
+    ///
+    /// If the file doesn't exist, returns `Ok(None)`.
+    pub(super) fn from_dir<P: AsRef<Path>>(
+        path: P,
+    ) -> Result<Option<(Self, Bytes)>, GlobalStateUpdateLoadError> {
         let update_path = path.as_ref().join(GLOBAL_STATE_UPDATE_FILENAME);
         if !update_path.is_file() {
             return Ok(None);
         }
         let bytes = utils::read_file(update_path)?;
-        let toml_update: GlobalStateUpdateConfig = toml::from_slice(&bytes)?;
-        Ok(Some(toml_update))
+        let config: GlobalStateUpdateConfig = toml::from_slice(&bytes)?;
+        Ok(Some((config, Bytes::from(bytes))))
     }
 }
 
