@@ -73,7 +73,7 @@ fn to_json<'a>(cl_type: &CLType, bytes: &'a [u8]) -> Option<(Value, &'a [u8])> {
             }
         }
         CLType::Map { key, value } => {
-            let (num_keys, mut stream) = u32::from_bytes(bytes).unwrap();
+            let (num_keys, mut stream) = u32::from_bytes(bytes).ok()?;
             let mut result: Vec<Value> = Vec::new();
             for _ in 0..num_keys {
                 let (k, remainder) = to_json(key, stream)?;
