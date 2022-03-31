@@ -107,10 +107,6 @@ const STORAGE_DB_FILENAME: &str = "storage.lmdb";
 /// `lowest_available_block_height` field is persisted.
 const KEY_LOWEST_AVAILABLE_BLOCK_HEIGHT: &str = "lowest_available_block_height";
 
-/// We can set this very low, as there is only a single reader/writer accessing the component at any
-/// one time.
-const MAX_TRANSACTIONS: u32 = 1;
-
 /// One Gibibyte.
 const GIB: usize = 1024 * 1024 * 1024;
 
@@ -470,7 +466,9 @@ impl StorageInner {
                 // Disable read-ahead. Our data is not storead/read in sequence that would benefit from the read-ahead.
                 | EnvironmentFlags::NO_READAHEAD,
             )
-            .set_max_readers(MAX_TRANSACTIONS)
+            // We need at least `max_sync_tasks` readers, add an additional 8 for unforseen external
+            // reads (not likely, but it does not hurt to increase this limit).
+            .set_max_readers(config.max_sync_tasks as u32 + 8)
             .set_max_dbs(MAX_DB_COUNT)
             .set_map_size(total_size)
             .open(&root.join(STORAGE_DB_FILENAME))?;
