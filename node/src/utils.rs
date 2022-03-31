@@ -76,7 +76,7 @@ impl Display for ResolveAddressErrorKind {
     }
 }
 
-/// Backport of `Result::flatten`, see https://github.com/rust-lang/rust/issues/70142.
+/// Backport of `Result::flatten`, see <https://github.com/rust-lang/rust/issues/70142>.
 pub trait FlattenResult {
     /// The output of the flattening operation.
     type Output;
