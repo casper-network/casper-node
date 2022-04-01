@@ -65,28 +65,6 @@ static GENESIS_CUSTOM_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
 #[test]
 fn should_run_genesis() {
     let protocol_version = ProtocolVersion::V1_0_0;
-    // let wasm_config = *DEFAULT_WASM_CONFIG;
-    // let system_config = *DEFAULT_SYSTEM_CONFIG;
-    // let validator_slots = DEFAULT_VALIDATOR_SLOTS;
-    // let auction_delay = DEFAULT_AUCTION_DELAY;
-    // let locked_funds_period = DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
-    // let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
-    // let unbonding_delay = DEFAULT_UNBONDING_DELAY;
-    // let genesis_timestamp = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
-
-    // let exec_config = ExecConfig::new(
-    //     GENESIS_CUSTOM_ACCOUNTS.clone(),
-    //     wasm_config,
-    //     system_config,
-    //     validator_slots,
-    //     auction_delay,
-    //     locked_funds_period,
-    //     round_seigniorage_rate,
-    //     unbonding_delay,
-    //     genesis_timestamp,
-    // );
-    // let run_genesis_request =
-    //     RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, exec_config);
 
     let run_genesis_request = ChainspecConfig::create_genesis_request_from_production_chainspec(
         GENESIS_CUSTOM_ACCOUNTS.clone(),

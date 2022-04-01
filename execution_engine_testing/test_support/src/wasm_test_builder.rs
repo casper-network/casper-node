@@ -43,8 +43,6 @@ use casper_execution_engine::{
     },
 };
 use casper_hashing::Digest;
-use casper_types::system::auction::UNBONDING_DELAY_KEY;
-use casper_types::system::mint::ROUND_SEIGNIORAGE_RATE_KEY;
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::FromBytes,
@@ -53,9 +51,9 @@ use casper_types::{
         auction::{
             Bids, EraValidators, UnbondingPurses, ValidatorWeights, WithdrawPurses,
             ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS, AUCTION_DELAY_KEY, ERA_ID_KEY,
-            METHOD_RUN_AUCTION,
+            METHOD_RUN_AUCTION, UNBONDING_DELAY_KEY,
         },
-        mint::TOTAL_SUPPLY_KEY,
+        mint::{ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,
@@ -63,8 +61,8 @@ use casper_types::{
     TransferAddr, URef, U512,
 };
 
-use crate::chainspec_config::{ChainspecConfig, PRODUCTION_PATH};
 use crate::{
+    chainspec_config::{ChainspecConfig, PRODUCTION_PATH},
     utils, ExecuteRequestBuilder, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
 };
 
@@ -121,31 +119,31 @@ impl<S> WasmTestBuilder<S> {
     }
 }
 
-// impl Default for InMemoryWasmTestBuilder {
-//     fn default() -> Self {
-//         Self::initialize_logging();
-//         let engine_config = EngineConfig::default();
-//
-//         let global_state = InMemoryGlobalState::empty().expect("should create global state");
-//         let engine_state = EngineState::new(global_state, engine_config);
-//
-//         WasmTestBuilder {
-//             engine_state: Rc::new(engine_state),
-//             exec_results: Vec::new(),
-//             upgrade_results: Vec::new(),
-//             genesis_hash: None,
-//             post_state_hash: None,
-//             transforms: Vec::new(),
-//             genesis_account: None,
-//             genesis_transforms: None,
-//             mint_contract_hash: None,
-//             handle_payment_contract_hash: None,
-//             standard_payment_hash: None,
-//             auction_contract_hash: None,
-//             scratch_engine_state: None,
-//         }
-//     }
-// }
+impl Default for InMemoryWasmTestBuilder {
+    fn default() -> Self {
+        Self::initialize_logging();
+        let engine_config = EngineConfig::default();
+
+        let global_state = InMemoryGlobalState::empty().expect("should create global state");
+        let engine_state = EngineState::new(global_state, engine_config);
+
+        WasmTestBuilder {
+            engine_state: Rc::new(engine_state),
+            exec_results: Vec::new(),
+            upgrade_results: Vec::new(),
+            genesis_hash: None,
+            post_state_hash: None,
+            transforms: Vec::new(),
+            genesis_account: None,
+            genesis_transforms: None,
+            mint_contract_hash: None,
+            handle_payment_contract_hash: None,
+            standard_payment_hash: None,
+            auction_contract_hash: None,
+            scratch_engine_state: None,
+        }
+    }
+}
 
 // TODO: Deriving `Clone` for `WasmTestBuilder<S>` doesn't work correctly (unsure why), so
 // implemented by hand here.  Try to derive in the future with a different compiler version.

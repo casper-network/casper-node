@@ -8,10 +8,8 @@ use num_rational::Ratio;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 
-use casper_execution_engine::core::engine_state::run_genesis_request::RunGenesisRequest;
-use casper_execution_engine::core::engine_state::GenesisAccount;
 use casper_execution_engine::{
-    core::engine_state::ExecConfig,
+    core::engine_state::{run_genesis_request::RunGenesisRequest, ExecConfig, GenesisAccount},
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
 use casper_types::ProtocolVersion;
