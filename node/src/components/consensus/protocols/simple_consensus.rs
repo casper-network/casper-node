@@ -17,7 +17,7 @@ use casper_types::{system::auction::BLOCK_REWARD, U512};
 
 use crate::{
     components::consensus::{
-        config::{Config, ProtocolConfig},
+        config::Config,
         consensus_protocol::{
             BlockContext, ConsensusProtocol, FinalizedBlock, ProposedBlock, ProtocolOutcome,
             ProtocolOutcomes, TerminalBlockData,
@@ -30,7 +30,7 @@ use crate::{
         traits::{ConsensusValueT, Context, ValidatorSecret},
         ActionId, LeaderSequence, TimerId,
     },
-    types::{NodeId, TimeDiff, Timestamp},
+    types::{Chainspec, NodeId, TimeDiff, Timestamp},
     utils::{div_round, ds},
     NodeRng,
 };
@@ -231,7 +231,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         validator_stakes: BTreeMap<C::ValidatorId, U512>,
         faulty: &HashSet<C::ValidatorId>,
         inactive: &HashSet<C::ValidatorId>,
-        protocol_config: &ProtocolConfig,
+        chainspec: &Chainspec,
         config: &Config,
         prev_cp: Option<&dyn ConsensusProtocol<C>>,
         era_start_time: Timestamp,
@@ -240,17 +240,16 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     ) -> (Box<dyn ConsensusProtocol<C>>, ProtocolOutcomes<C>) {
         let validators = protocols::common::validators::<C>(faulty, inactive, validator_stakes);
         let weights = protocols::common::validator_weights::<C>(&validators);
-        let ftt = protocols::common::ftt::<C>(
-            protocol_config.highway.finality_threshold_fraction,
-            &validators,
-        );
+        let highway_config = &chainspec.highway_config;
+        let ftt =
+            protocols::common::ftt::<C>(highway_config.finality_threshold_fraction, &validators);
 
         // Use the estimate from the previous era as the proposal timeout. Start with one minimum
         // round length.
         let proposal_timeout = prev_cp
             .and_then(|cp| cp.as_any().downcast_ref::<SimpleConsensus<C>>())
             .map(|sc| sc.proposal_timeout)
-            .unwrap_or_else(|| protocol_config.highway.min_round_length());
+            .unwrap_or_else(|| highway_config.min_round_length());
 
         let mut can_propose: ValidatorMap<bool> = weights.iter().map(|_| true).collect();
         for vidx in validators.iter_cannot_propose_idx() {
@@ -270,13 +269,13 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         let params = Params::new(
             seed,
             BLOCK_REWARD,
-            (protocol_config.highway.reduced_reward_multiplier * BLOCK_REWARD).to_integer(),
-            protocol_config.highway.minimum_round_exponent,
-            protocol_config.highway.maximum_round_exponent,
-            protocol_config.highway.minimum_round_exponent,
-            protocol_config.minimum_era_height,
+            (highway_config.reduced_reward_multiplier * BLOCK_REWARD).to_integer(),
+            highway_config.minimum_round_exponent,
+            highway_config.maximum_round_exponent,
+            highway_config.minimum_round_exponent,
+            chainspec.core_config.minimum_era_height,
             era_start_time,
-            era_start_time + protocol_config.era_duration,
+            era_start_time + chainspec.core_config.era_duration,
             0,
         );
 

@@ -26,29 +26,21 @@ use serde::{Deserialize, Serialize};
 use tokio::task;
 use tracing::{debug, error, info, trace, warn};
 
-use casper_execution_engine::core::engine_state::{
-    self,
-    genesis::GenesisSuccess,
-    upgrade::{UpgradeConfig, UpgradeSuccess},
-};
-use casper_hashing::Digest;
-use casper_types::{bytesrepr::FromBytes, EraId, ProtocolVersion, StoredValue};
+use casper_types::{EraId, ProtocolVersion};
 
 #[cfg(test)]
 use crate::utils::RESOURCES_PATH;
 use crate::{
-    components::{contract_runtime::ExecutionPreState, Component},
+    components::Component,
     effect::{
-        announcements::ChainspecLoaderAnnouncement,
-        requests::{
-            ChainspecLoaderRequest, ContractRuntimeRequest, StateStoreRequest, StorageRequest,
-        },
+        announcements::ChainspecLoaderAnnouncement, requests::ChainspecLoaderRequest,
         EffectBuilder, EffectExt, Effects,
     },
     reactor::ReactorExit,
+    storage::StorageRequest,
     types::{
-        chainspec::{Error, ProtocolConfig, CHAINSPEC_NAME},
-        ActivationPoint, Block, BlockHash, BlockHeader, Chainspec, ChainspecInfo, ExitCode,
+        chainspec::{ChainspecRawBytes, Error, ProtocolConfig, CHAINSPEC_FILENAME},
+        ActivationPoint, BlockHeader, Chainspec, ChainspecInfo, ExitCode,
     },
     utils::{self, Loadable},
     NodeRng,
@@ -61,12 +53,8 @@ const UPGRADE_CHECK_INTERVAL: Duration = Duration::from_secs(60);
 pub(crate) enum Event {
     /// The result of getting the highest block from storage.
     Initialize {
-        maybe_highest_block: Option<Box<Block>>,
+        maybe_highest_block: Option<Box<BlockHeader>>,
     },
-    /// The result of contract runtime running the genesis process.
-    CommitGenesisResult(#[serde(skip_serializing)] Result<GenesisSuccess, engine_state::Error>),
-    /// The result of contract runtime running the upgrade process.
-    UpgradeResult(#[serde(skip_serializing)] Result<UpgradeSuccess, engine_state::Error>),
     #[from]
     Request(ChainspecLoaderRequest),
     /// Check config dir to see if an upgrade activation point is available, and if so announce it.
@@ -89,8 +77,6 @@ impl Display for Event {
                         .map_or_else(|| "None".to_string(), |block| block.to_string())
                 )
             }
-            Event::CommitGenesisResult(_) => write!(formatter, "commit genesis result"),
-            Event::UpgradeResult(_) => write!(formatter, "contract runtime upgrade result"),
             Event::Request(req) => write!(formatter, "chainspec_loader request: {}", req),
             Event::CheckForNextUpgrade => {
                 write!(formatter, "check for next upgrade")
@@ -150,24 +136,18 @@ impl Display for NextUpgrade {
 /// Basic information about the current run of the node software.
 #[derive(Clone, Debug)]
 pub(crate) struct CurrentRunInfo {
-    pub(crate) protocol_version: ProtocolVersion,
-    pub(crate) initial_state_root_hash: Digest,
     pub(crate) last_emergency_restart: Option<EraId>,
 }
 
 #[derive(Clone, DataSize, Debug)]
 pub(crate) struct ChainspecLoader {
     chainspec: Arc<Chainspec>,
+    chainspec_raw_bytes: Arc<ChainspecRawBytes>,
     /// The path to the folder where all chainspec and upgrade_point files will be stored in
     /// subdirs corresponding to their versions.
     root_dir: PathBuf,
-    /// If `Some`, we're finished loading and committing the chainspec.
     reactor_exit: Option<ReactorExit>,
-    /// The initial state root hash for this session.
-    initial_state_root_hash: Digest,
     next_upgrade: Option<NextUpgrade>,
-    initial_block: Option<Block>,
-    after_upgrade: bool,
 }
 
 impl ChainspecLoader {
@@ -177,10 +157,13 @@ impl ChainspecLoader {
     ) -> Result<(Self, Effects<Event>), Error>
     where
         P: AsRef<Path>,
-        REv: From<Event> + From<StorageRequest> + From<StateStoreRequest> + Send,
+        REv: From<Event> + From<StorageRequest> + Send,
     {
+        let (chainspec, chainspec_raw_bytes) =
+            <(Chainspec, ChainspecRawBytes)>::from_path(&chainspec_dir.as_ref())?;
         Ok(Self::new_with_chainspec_and_path(
-            Arc::new(Chainspec::from_path(&chainspec_dir.as_ref())?),
+            Arc::new(chainspec),
+            Arc::new(chainspec_raw_bytes),
             chainspec_dir,
             effect_builder,
         ))
@@ -189,22 +172,29 @@ impl ChainspecLoader {
     #[cfg(test)]
     pub(crate) fn new_with_chainspec<REv>(
         chainspec: Arc<Chainspec>,
+        chainspec_raw_bytes: Arc<ChainspecRawBytes>,
         effect_builder: EffectBuilder<REv>,
     ) -> (Self, Effects<Event>)
     where
-        REv: From<Event> + From<StorageRequest> + From<StateStoreRequest> + Send,
+        REv: From<Event> + From<StorageRequest> + Send,
     {
-        Self::new_with_chainspec_and_path(chainspec, &RESOURCES_PATH.join("local"), effect_builder)
+        Self::new_with_chainspec_and_path(
+            chainspec,
+            chainspec_raw_bytes,
+            &RESOURCES_PATH.join("local"),
+            effect_builder,
+        )
     }
 
     fn new_with_chainspec_and_path<P, REv>(
         chainspec: Arc<Chainspec>,
+        chainspec_raw_bytes: Arc<ChainspecRawBytes>,
         chainspec_dir: P,
         effect_builder: EffectBuilder<REv>,
     ) -> (Self, Effects<Event>)
     where
         P: AsRef<Path>,
-        REv: From<Event> + From<StorageRequest> + From<StateStoreRequest> + Send,
+        REv: From<Event> + From<StorageRequest> + Send,
     {
         let root_dir = chainspec_dir
             .as_ref()
@@ -218,12 +208,10 @@ impl ChainspecLoader {
         if !chainspec.is_valid() || root_dir.as_os_str().is_empty() {
             let chainspec_loader = ChainspecLoader {
                 chainspec,
+                chainspec_raw_bytes,
                 root_dir,
                 reactor_exit: Some(ReactorExit::ProcessShouldExit(ExitCode::Abort)),
-                initial_state_root_hash: Digest::default(),
                 next_upgrade: None,
-                initial_block: None,
-                after_upgrade: false,
             };
             return (chainspec_loader, Effects::new());
         }
@@ -242,14 +230,11 @@ impl ChainspecLoader {
             false
         };
 
-        // In case this is a version which should be immediately replaced by the next version, don't
-        // create any effects so we exit cleanly for an upgrade without touching the storage
-        // component.  Otherwise create effects which will allow us to initialize properly.
         let mut effects = if should_stop {
             Effects::new()
         } else {
             effect_builder
-                .get_highest_block_from_storage()
+                .get_highest_block_header_from_storage()
                 .event(|highest_block| Event::Initialize {
                     maybe_highest_block: highest_block.map(Box::new),
                 })
@@ -266,15 +251,57 @@ impl ChainspecLoader {
 
         let chainspec_loader = ChainspecLoader {
             chainspec,
+            chainspec_raw_bytes,
             root_dir,
             reactor_exit,
-            initial_state_root_hash: Digest::default(),
             next_upgrade,
-            initial_block: None,
-            after_upgrade: false,
         };
 
         (chainspec_loader, effects)
+    }
+
+    fn handle_initialize<REv>(
+        &mut self,
+        _effect_builder: EffectBuilder<REv>,
+        maybe_highest_block: Option<Box<BlockHeader>>,
+    ) -> Effects<Event>
+    where
+        REv: Send,
+    {
+        self.reactor_exit = Some(
+            Self::should_exit_for_upgrade(
+                maybe_highest_block,
+                self.next_upgrade_activation_point(),
+            )
+            .then(|| ReactorExit::ProcessShouldExit(ExitCode::Success))
+            .unwrap_or(ReactorExit::ProcessShouldContinue),
+        );
+        Effects::new()
+    }
+
+    fn should_exit_for_upgrade(
+        maybe_highest_block_header: Option<Box<BlockHeader>>,
+        maybe_next_upgrade_activation_point: Option<ActivationPoint>,
+    ) -> bool {
+        maybe_highest_block_header.map_or(false, |highest_block_header| {
+            maybe_next_upgrade_activation_point.map_or(false, |next_upgrade_activation_point| {
+                if highest_block_header.next_block_era_id()
+                    >= next_upgrade_activation_point.era_id()
+                {
+                    // This is an invalid run as the highest block era ID >= next activation
+                    // point, so we're running an outdated version.  Exit with success to
+                    // indicate we should upgrade.
+                    warn!(
+                        %next_upgrade_activation_point,
+                        %highest_block_header,
+                        "running outdated version: exit to upgrade"
+                    );
+                    true
+                } else {
+                    false
+                }
+            })
+        })
     }
 
     /// This is a workaround while we have multiple reactors.  It should be used in the joiner and
@@ -295,75 +322,14 @@ impl ChainspecLoader {
         self.reactor_exit
     }
 
-    /// Returns whether the current node instance is started immediately after an upgrade –
-    /// i.e. whether the last/highest block stored is a block that triggered the upgrade.
-    pub(crate) fn after_upgrade(&self) -> bool {
-        self.after_upgrade
-    }
-
-    /// The state root hash with which this session is starting.  It will be the result of running
-    /// `ContractRuntime::commit_genesis()` or `ContractRuntime::upgrade()` or else the state root
-    /// hash specified in the highest block.
-    pub(crate) fn initial_state_root_hash(&self) -> Digest {
-        self.initial_state_root_hash
-    }
-
-    /// The state the first block executed after startup will use. It contains:
-    ///   1. The state root to use when executing the next batch of deploys. See
-    /// [`Self::initial_state_root_hash`].
-    ///   2. The height of the next block to be added to the chain.
-    ///     - At genesis the height is 0.
-    ///     - Otherwise it is the successor of the last upgrade block.
-    ///   3. The parent hash for the first block to use when executing.
-    ///     - At genesis this is `[0u8; 32]`
-    ///     - Otherwise it is the block hash of the highest block.
-    ///   4. The _accumulated seed_ to be used in pseudo-random number generation and entropy will
-    /// be added.
-    ///     - At genesis this is `[0u8; 32]`
-    ///     - Otherwise it is the accumulated seed of the highest block.
-    pub(crate) fn initial_execution_pre_state(&self) -> ExecutionPreState {
-        match self.initial_block() {
-            None => ExecutionPreState::new(
-                0,
-                self.initial_state_root_hash(),
-                BlockHash::new(Digest::from([0u8; Digest::LENGTH])),
-                Digest::from([0u8; Digest::LENGTH]),
-            ),
-            Some(block) => ExecutionPreState::new(
-                block.height() + 1,
-                self.initial_state_root_hash(),
-                *block.hash(),
-                block.header().accumulated_seed(),
-            ),
-        }
-    }
-
     pub(crate) fn chainspec(&self) -> &Arc<Chainspec> {
         &self.chainspec
     }
 
-    pub(crate) fn next_upgrade(&self) -> Option<NextUpgrade> {
-        self.next_upgrade.clone()
-    }
-
-    pub(crate) fn initial_block_header(&self) -> Option<&BlockHeader> {
-        self.initial_block.as_ref().map(|block| block.header())
-    }
-
-    pub(crate) fn initial_block(&self) -> Option<&Block> {
-        self.initial_block.as_ref()
-    }
-
-    /// This returns the era at which we will be starting the operation, assuming the highest known
-    /// block is the last one. It will return the era of the highest known block, unless it is a
-    /// switch block, in which case it returns the successor to the era of the highest known block.
-    pub(crate) fn initial_era(&self) -> EraId {
-        // We want to start the Era Supervisor at the era right after the highest block we
-        // have. If the block is a switch block, that will be the era that comes next. If
-        // it's not, we continue the era the highest block belongs to.
-        self.initial_block_header()
-            .map(BlockHeader::next_block_era_id)
-            .unwrap_or_else(|| EraId::from(0))
+    pub(crate) fn next_upgrade_activation_point(&self) -> Option<ActivationPoint> {
+        self.next_upgrade
+            .as_ref()
+            .map(|next_upgrade| next_upgrade.activation_point())
     }
 
     /// Returns the era ID of where we should reset back to.  This means stored blocks in that and
@@ -375,240 +341,15 @@ impl ChainspecLoader {
             .then(|| self.chainspec.protocol_config.activation_point.era_id())
     }
 
-    fn handle_initialize<REv>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        maybe_highest_block: Option<Box<Block>>,
-    ) -> Effects<Event>
-    where
-        REv: From<Event> + From<StateStoreRequest> + From<ContractRuntimeRequest> + Send,
-    {
-        let highest_block = match maybe_highest_block {
-            Some(block) => {
-                self.initial_block = Some(*block.clone());
-                block
-            }
-            None => {
-                // This is an initial run since we have no blocks.
-                if self.chainspec.is_genesis() {
-                    // This is a valid initial run on a new network at genesis.
-                    trace!("valid initial run at genesis");
-                    return effect_builder
-                        .commit_genesis(Arc::clone(&self.chainspec))
-                        .event(Event::CommitGenesisResult);
-                } else {
-                    // This is an invalid run of a node version issued after genesis.  Instruct the
-                    // process to exit and downgrade the version.
-                    warn!(
-                        "invalid run, no blocks stored but not a genesis chainspec: exit to \
-                        downgrade"
-                    );
-                    self.reactor_exit =
-                        Some(ReactorExit::ProcessShouldExit(ExitCode::DowngradeVersion));
-                    return Effects::new();
-                }
-            }
-        };
-        let highest_block_era_id = highest_block.header().era_id();
-
-        let previous_protocol_version = highest_block.header().protocol_version();
-        let current_chainspec_activation_point =
-            self.chainspec.protocol_config.activation_point.era_id();
-
-        if highest_block_era_id.successor() == current_chainspec_activation_point {
-            if highest_block.header().is_switch_block() {
-                // This is a valid run immediately after upgrading the node version.
-                trace!("valid run immediately after upgrade");
-                let upgrade_config =
-                    self.new_upgrade_config(&highest_block, previous_protocol_version);
-                self.after_upgrade = true;
-                return effect_builder
-                    .upgrade_contract_runtime(upgrade_config)
-                    .event(Event::UpgradeResult);
-            } else {
-                // This is an invalid run where blocks are missing from storage.  Try exiting the
-                // process and downgrading the version to recover the missing blocks.
-                //
-                // TODO - if migrating data yields a new empty block as a means to store the
-                //        post-migration global state hash, we'll come to this code branch, and we
-                //        should not exit the process in that case.
-                warn!(
-                    %current_chainspec_activation_point,
-                    %highest_block,
-                    "invalid run, expected highest block to be switch block: exit to downgrade"
-                );
-                self.reactor_exit =
-                    Some(ReactorExit::ProcessShouldExit(ExitCode::DowngradeVersion));
-                return Effects::new();
-            }
-        }
-
-        if highest_block_era_id < current_chainspec_activation_point {
-            // This is an invalid run where blocks are missing from storage.  Try exiting the
-            // process and downgrading the version to recover the missing blocks.
-            warn!(
-                %current_chainspec_activation_point,
-                %highest_block,
-                "invalid run, missing blocks from storage: exit to downgrade"
-            );
-            self.reactor_exit = Some(ReactorExit::ProcessShouldExit(ExitCode::DowngradeVersion));
-            return Effects::new();
-        }
-
-        let (unplanned_shutdown, should_upgrade_if_valid_run) = match self.next_upgrade {
-            Some(ref next_upgrade) => {
-                let unplanned_shutdown =
-                    highest_block_era_id < next_upgrade.activation_point.era_id();
-                let should_upgrade_if_valid_run = highest_block.header().is_switch_block()
-                    && highest_block_era_id.successor() == next_upgrade.activation_point.era_id();
-                (unplanned_shutdown, should_upgrade_if_valid_run)
-            }
-            None => (true, false),
-        };
-
-        if unplanned_shutdown {
-            if previous_protocol_version == self.chainspec.protocol_config.version {
-                // This is a valid run, restarted after an unplanned shutdown.
-                if should_upgrade_if_valid_run {
-                    warn!(
-                        %current_chainspec_activation_point,
-                        %highest_block,
-                        "valid run after an unplanned shutdown when upgrade was due"
-                    );
-                    self.reactor_exit = Some(ReactorExit::ProcessShouldExit(ExitCode::Success));
-                } else {
-                    self.initial_state_root_hash = *highest_block.state_root_hash();
-                    info!(
-                        %current_chainspec_activation_point,
-                        %highest_block,
-                        "valid run after an unplanned shutdown before upgrade due"
-                    );
-                    self.reactor_exit = Some(ReactorExit::ProcessShouldContinue);
-                }
-            } else {
-                // This is an invalid run, where we previously forked and missed an upgrade.
-                warn!(
-                    current_chainspec_protocol_version = %self.chainspec.protocol_config.version,
-                    %current_chainspec_activation_point,
-                    %highest_block,
-                    "invalid run after missing an upgrade and forking"
-                );
-                self.reactor_exit = Some(ReactorExit::ProcessShouldExit(ExitCode::Abort));
-            }
-            return Effects::new();
-        }
-
-        // This is an invalid run as the highest block era ID >= next activation point, so we're
-        // running an outdated version.  Exit with success to indicate we should upgrade.
-        warn!(
-            next_upgrade_activation_point = %self
-                .next_upgrade
-                .as_ref()
-                .map(|next_upgrade| next_upgrade.activation_point.era_id())
-                .unwrap_or_default(),
-            %highest_block,
-            "running outdated version: exit to upgrade"
-        );
-        self.reactor_exit = Some(ReactorExit::ProcessShouldExit(ExitCode::Success));
-        Effects::new()
-    }
-
-    fn new_upgrade_config(
-        &self,
-        block: &Block,
-        previous_version: ProtocolVersion,
-    ) -> Box<UpgradeConfig> {
-        let new_version = self.chainspec.protocol_config.version;
-        let global_state_update = self
-            .chainspec
-            .protocol_config
-            .global_state_update
-            .as_ref()
-            .map(|state_update| {
-                state_update
-                    .0
-                    .iter()
-                    .map(|(key, stored_value_bytes)| {
-                        let stored_value = StoredValue::from_bytes(stored_value_bytes)
-                            .unwrap_or_else(|error| {
-                                panic!(
-                                "failed to parse global state value as StoredValue for upgrade: {}",
-                                error
-                            )
-                            })
-                            .0;
-                        (*key, stored_value)
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        Box::new(UpgradeConfig::new(
-            *block.state_root_hash(),
-            previous_version,
-            new_version,
-            Some(self.chainspec.protocol_config.activation_point.era_id()),
-            Some(self.chainspec.core_config.validator_slots),
-            Some(self.chainspec.core_config.auction_delay),
-            Some(self.chainspec.core_config.locked_funds_period.millis()),
-            Some(self.chainspec.core_config.round_seigniorage_rate),
-            Some(self.chainspec.core_config.unbonding_delay),
-            global_state_update,
-        ))
-    }
-
-    fn handle_commit_genesis_result(
-        &mut self,
-        result: Result<GenesisSuccess, engine_state::Error>,
-    ) {
-        match result {
-            Ok(GenesisSuccess {
-                post_state_hash,
-                execution_effect,
-            }) => {
-                info!("chainspec name {}", self.chainspec.network_config.name);
-                info!("genesis state root hash {}", post_state_hash);
-                trace!(%post_state_hash, ?execution_effect);
-                self.reactor_exit = Some(ReactorExit::ProcessShouldContinue);
-                self.initial_state_root_hash = post_state_hash;
-            }
-            Err(error) => {
-                error!("failed to commit genesis: {}", error);
-                self.reactor_exit = Some(ReactorExit::ProcessShouldExit(ExitCode::Abort));
-            }
-        }
-    }
-
-    fn handle_upgrade_result(&mut self, result: Result<UpgradeSuccess, engine_state::Error>) {
-        match result {
-            Ok(UpgradeSuccess {
-                post_state_hash,
-                execution_effect,
-            }) => {
-                info!("chainspec name {}", self.chainspec.network_config.name);
-                info!("state root hash {}", post_state_hash);
-                trace!(%post_state_hash, ?execution_effect);
-                self.reactor_exit = Some(ReactorExit::ProcessShouldContinue);
-                self.initial_state_root_hash = post_state_hash;
-            }
-            Err(error) => {
-                error!("failed to upgrade contract runtime: {}", error);
-                self.reactor_exit = Some(ReactorExit::ProcessShouldExit(ExitCode::Abort));
-            }
-        }
-    }
-
     fn new_chainspec_info(&self) -> ChainspecInfo {
         ChainspecInfo::new(
             self.chainspec.network_config.name.clone(),
-            self.initial_state_root_hash,
             self.next_upgrade.clone(),
         )
     }
 
     fn get_current_run_info(&self) -> CurrentRunInfo {
         CurrentRunInfo {
-            protocol_version: self.chainspec.protocol_config.version,
-            initial_state_root_hash: self.initial_state_root_hash,
             last_emergency_restart: self.chainspec.protocol_config.last_emergency_restart,
         }
     }
@@ -662,12 +403,7 @@ impl ChainspecLoader {
 
 impl<REv> Component<REv> for ChainspecLoader
 where
-    REv: From<Event>
-        + From<StorageRequest>
-        + From<StateStoreRequest>
-        + From<ContractRuntimeRequest>
-        + From<ChainspecLoaderAnnouncement>
-        + Send,
+    REv: From<Event> + From<ChainspecLoaderAnnouncement> + Send,
 {
     type Event = Event;
     type ConstructionError = Error;
@@ -681,22 +417,17 @@ where
         trace!("{}", event);
         match event {
             Event::Initialize {
-                maybe_highest_block: highest_block,
-            } => self.handle_initialize(effect_builder, highest_block),
-            Event::CommitGenesisResult(result) => {
-                self.handle_commit_genesis_result(result);
-                Effects::new()
-            }
-            Event::UpgradeResult(result) => {
-                self.handle_upgrade_result(result);
-                Effects::new()
-            }
+                maybe_highest_block,
+            } => self.handle_initialize(effect_builder, maybe_highest_block),
             Event::Request(ChainspecLoaderRequest::GetChainspecInfo(responder)) => {
                 responder.respond(self.new_chainspec_info()).ignore()
             }
             Event::Request(ChainspecLoaderRequest::GetCurrentRunInfo(responder)) => {
                 responder.respond(self.get_current_run_info()).ignore()
             }
+            Event::Request(ChainspecLoaderRequest::GetChainspecRawBytes(responder)) => responder
+                .respond(Arc::clone(&self.chainspec_raw_bytes))
+                .ignore(),
             Event::CheckForNextUpgrade => self.check_for_next_upgrade(effect_builder),
             Event::GotNextUpgrade(next_upgrade) => self.handle_got_next_upgrade(next_upgrade),
         }
@@ -715,15 +446,14 @@ struct UpgradePoint {
 impl UpgradePoint {
     /// Parses a chainspec file at the given path as an `UpgradePoint`.
     fn from_chainspec_path<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
-        let bytes = utils::read_file(path.as_ref().join(&CHAINSPEC_NAME))
+        let bytes = utils::read_file(path.as_ref().join(&CHAINSPEC_FILENAME))
             .map_err(Error::LoadUpgradePoint)?;
         Ok(toml::from_slice(&bytes)?)
     }
 }
 
-#[allow(clippy::single_char_pattern)]
 fn dir_name_from_version(version: &ProtocolVersion) -> PathBuf {
-    PathBuf::from(version.to_string().replace(".", "_"))
+    PathBuf::from(version.to_string().replace('.', "_"))
 }
 
 /// Iterates the given path, returning the subdir representing the immediate next SemVer version
@@ -752,8 +482,7 @@ fn next_installed_version(
         };
 
         let subdir_name = match path.file_name() {
-            #[allow(clippy::single_char_pattern)]
-            Some(name) => name.to_string_lossy().replace("_", "."),
+            Some(name) => name.to_string_lossy().replace('_', "."),
             None => continue,
         };
 
@@ -823,15 +552,107 @@ fn next_upgrade(dir: PathBuf, current_version: ProtocolVersion) -> Option<NextUp
 
 #[cfg(test)]
 mod tests {
-    use rand::Rng;
-
     use super::*;
     use crate::{
-        logging,
-        reactor::{participating::ParticipatingEvent, EventQueueHandle, QueueKind, Scheduler},
         testing::TestRng,
-        types::chainspec::CHAINSPEC_NAME,
+        types::{chainspec::CHAINSPEC_FILENAME, Block},
     };
+
+    #[test]
+    fn correctly_detects_when_to_exit_for_upgrade() {
+        let mut rng = crate::new_rng();
+        const HEIGHT: u64 = 10;
+        const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
+        const IS_NOT_SWITCH: bool = false;
+        const IS_SWITCH: bool = true;
+        const VERIFIABLE_CHUNKED_HASH_ACTIVATION: u64 = 10;
+
+        let highest_block_header = None;
+        let next_upgrade_activation_point = None;
+        assert!(!ChainspecLoader::should_exit_for_upgrade(
+            highest_block_header,
+            next_upgrade_activation_point
+        ));
+
+        let highest_block_header = Some(Box::new(
+            Block::random_with_specifics(
+                &mut rng,
+                EraId::from(2),
+                HEIGHT,
+                PROTOCOL_VERSION,
+                IS_NOT_SWITCH,
+                VERIFIABLE_CHUNKED_HASH_ACTIVATION.into(),
+            )
+            .header()
+            .clone(),
+        ));
+        let next_upgrade_activation_point = None;
+        assert!(!ChainspecLoader::should_exit_for_upgrade(
+            highest_block_header,
+            next_upgrade_activation_point
+        ));
+
+        let highest_block_header = None;
+        let next_upgrade_activation_point = Some(ActivationPoint::EraId(10.into()));
+        assert!(!ChainspecLoader::should_exit_for_upgrade(
+            highest_block_header,
+            next_upgrade_activation_point
+        ));
+
+        let highest_block_header = Some(Box::new(
+            Block::random_with_specifics(
+                &mut rng,
+                EraId::from(2),
+                HEIGHT,
+                PROTOCOL_VERSION,
+                IS_NOT_SWITCH,
+                VERIFIABLE_CHUNKED_HASH_ACTIVATION.into(),
+            )
+            .header()
+            .clone(),
+        ));
+        let next_upgrade_activation_point = Some(ActivationPoint::EraId(3.into()));
+        assert!(!ChainspecLoader::should_exit_for_upgrade(
+            highest_block_header,
+            next_upgrade_activation_point
+        ));
+
+        let highest_block_header = Some(Box::new(
+            Block::random_with_specifics(
+                &mut rng,
+                EraId::from(2),
+                HEIGHT,
+                PROTOCOL_VERSION,
+                IS_NOT_SWITCH,
+                VERIFIABLE_CHUNKED_HASH_ACTIVATION.into(),
+            )
+            .header()
+            .clone(),
+        ));
+        let next_upgrade_activation_point = Some(ActivationPoint::EraId(2.into()));
+        assert!(ChainspecLoader::should_exit_for_upgrade(
+            highest_block_header,
+            next_upgrade_activation_point
+        ));
+
+        let highest_block_header = Some(Box::new(
+            Block::random_with_specifics(
+                &mut rng,
+                EraId::from(2),
+                HEIGHT,
+                PROTOCOL_VERSION,
+                IS_SWITCH,
+                VERIFIABLE_CHUNKED_HASH_ACTIVATION.into(),
+            )
+            .header()
+            .clone(),
+        ));
+        let next_upgrade_activation_point = Some(ActivationPoint::EraId(3.into()));
+        assert!(ChainspecLoader::should_exit_for_upgrade(
+            highest_block_header,
+            next_upgrade_activation_point
+        ));
+    }
 
     #[test]
     fn should_get_next_installed_version() {
@@ -929,7 +750,7 @@ mod tests {
         let subdir = root_dir.join(dir_name_from_version(version));
         fs::create_dir(&subdir).unwrap();
 
-        let path = subdir.join(CHAINSPEC_NAME);
+        let path = subdir.join(CHAINSPEC_FILENAME);
         fs::write(
             path,
             toml::to_string_pretty(&chainspec).expect("should encode to toml"),
@@ -999,7 +820,7 @@ mod tests {
         let path_v1_0_0 = tempdir
             .path()
             .join(dir_name_from_version(&v1_0_0))
-            .join(CHAINSPEC_NAME);
+            .join(CHAINSPEC_FILENAME);
         fs::write(
             &path_v1_0_0,
             toml::to_string_pretty(&chainspec_v0_9_9).expect("should encode to toml"),
@@ -1014,395 +835,5 @@ mod tests {
         // Check we return `None` if the next version upgrade_point file is missing.
         fs::remove_file(&path_v1_0_0).unwrap();
         assert!(maybe_next_point(&current).is_none());
-    }
-
-    struct TestFixture {
-        chainspec_loader: ChainspecLoader,
-        effect_builder: EffectBuilder<ParticipatingEvent>,
-    }
-
-    impl TestFixture {
-        fn new() -> Self {
-            let _ = logging::init();
-
-            // By default the local chainspec is a genesis one.  We don't want that for most tests,
-            // so set it to V1.5.0 activated at era 300.
-            let mut chainspec = Chainspec::from_resources("local");
-            chainspec.protocol_config.version = ProtocolVersion::from_parts(1, 5, 0);
-            chainspec.protocol_config.activation_point = ActivationPoint::EraId(EraId::new(300));
-
-            let chainspec_loader = ChainspecLoader {
-                chainspec: Arc::new(chainspec),
-                root_dir: PathBuf::from("."),
-                reactor_exit: None,
-                initial_state_root_hash: Digest::default(),
-                next_upgrade: None,
-                initial_block: None,
-                after_upgrade: false,
-            };
-
-            let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
-            let effect_builder = EffectBuilder::new(EventQueueHandle::without_shutdown(scheduler));
-
-            TestFixture {
-                chainspec_loader,
-                effect_builder,
-            }
-        }
-
-        /// Returns the current chainspec's activation point.
-        fn current_activation_point(&self) -> EraId {
-            self.chainspec_loader
-                .chainspec
-                .protocol_config
-                .activation_point
-                .era_id()
-        }
-
-        /// Returns the current chainspec's protocol version.
-        fn current_protocol_version(&self) -> ProtocolVersion {
-            self.chainspec_loader.chainspec.protocol_config.version
-        }
-
-        /// Returns a protocol version earlier than the current chainspec's version.
-        fn earlier_protocol_version(&self) -> ProtocolVersion {
-            ProtocolVersion::from_parts(
-                self.current_protocol_version().value().major,
-                self.current_protocol_version().value().minor - 1,
-                0,
-            )
-        }
-
-        /// Returns a protocol version later than the current chainspec's version.
-        fn later_protocol_version(&self) -> ProtocolVersion {
-            ProtocolVersion::from_parts(
-                self.current_protocol_version().value().major,
-                self.current_protocol_version().value().minor + 1,
-                0,
-            )
-        }
-
-        /// Sets a valid value for the next upgrade in the chainspec loader.
-        fn set_next_upgrade(&mut self, era_diff: u64) {
-            self.chainspec_loader.next_upgrade = Some(NextUpgrade {
-                activation_point: ActivationPoint::EraId(
-                    self.current_activation_point() + era_diff,
-                ),
-                protocol_version: self.later_protocol_version(),
-            });
-        }
-
-        /// Calls `handle_initialize()` on the chainspec loader, asserting the provided block has
-        /// been recorded and that the expected number of effects were returned.
-        fn assert_handle_initialize(
-            &mut self,
-            maybe_highest_block: Option<Block>,
-            expected_effect_count: usize,
-        ) {
-            let effects = self.chainspec_loader.handle_initialize(
-                self.effect_builder,
-                maybe_highest_block.clone().map(Box::new),
-            );
-
-            assert_eq!(self.chainspec_loader.initial_block, maybe_highest_block);
-            assert_eq!(effects.len(), expected_effect_count);
-        }
-
-        /// Asserts that the chainspec loader indicates initialization is ongoing, i.e. that
-        /// `chainspec_loader.reactor_exit` is `None`.
-        fn assert_initialization_incomplete(&self) {
-            assert!(self.chainspec_loader.reactor_exit.is_none())
-        }
-
-        /// Asserts that the chainspec loader indicates initialization is complete and the node
-        /// process should not stop.
-        fn assert_process_should_continue(&self) {
-            assert_eq!(
-                self.chainspec_loader.reactor_exit,
-                Some(ReactorExit::ProcessShouldContinue)
-            )
-        }
-
-        /// Asserts that the chainspec loader indicates the process should stop to downgrade.
-        fn assert_process_should_downgrade(&self) {
-            assert_eq!(
-                self.chainspec_loader.reactor_exit,
-                Some(ReactorExit::ProcessShouldExit(ExitCode::DowngradeVersion))
-            )
-        }
-
-        /// Asserts that the chainspec loader indicates the process should stop to upgrade.
-        fn assert_process_should_upgrade(&self) {
-            assert_eq!(
-                self.chainspec_loader.reactor_exit,
-                Some(ReactorExit::ProcessShouldExit(ExitCode::Success))
-            )
-        }
-
-        /// Asserts that the chainspec loader indicates the process should stop with an error.
-        fn assert_process_should_abort(&self) {
-            assert_eq!(
-                self.chainspec_loader.reactor_exit,
-                Some(ReactorExit::ProcessShouldExit(ExitCode::Abort))
-            )
-        }
-    }
-
-    /// Simulates an initial run of the node where no blocks have been stored previously and the
-    /// chainspec is the genesis one.
-    #[test]
-    fn should_keep_running_if_first_run_at_genesis() {
-        let mut fixture = TestFixture::new();
-        fixture.chainspec_loader.chainspec = Arc::new(Chainspec::from_resources("local"));
-        assert!(fixture.chainspec_loader.chainspec.is_genesis());
-
-        // Should return a single effect (commit genesis).
-        fixture.assert_handle_initialize(None, 1);
-
-        // We're still waiting for the result of the commit genesis event.
-        fixture.assert_initialization_incomplete();
-    }
-
-    /// Simulates an initial run of the node where no blocks have been stored previously but the
-    /// chainspec is not the genesis one.
-    #[test]
-    fn should_downgrade_if_first_run_not_genesis() {
-        let mut fixture = TestFixture::new();
-        assert!(!fixture.chainspec_loader.chainspec.is_genesis());
-
-        fixture.assert_handle_initialize(None, 0);
-        fixture.assert_process_should_downgrade();
-    }
-
-    /// Simulates a valid run immediately after an upgrade.
-    #[test]
-    fn should_keep_running_after_upgrade() {
-        let mut fixture = TestFixture::new();
-        let mut rng = TestRng::new();
-
-        // Immediately after an upgrade, the highest block will be the switch block from the era
-        // immediately before the upgrade.
-        let previous_era = fixture.current_activation_point() - 1;
-        let height = rng.gen();
-        let earlier_version = fixture.earlier_protocol_version();
-        let highest_block =
-            Block::random_with_specifics(&mut rng, previous_era, height, earlier_version, true);
-
-        // Should return a single effect (commit upgrade).
-        fixture.assert_handle_initialize(Some(highest_block), 1);
-
-        // We're still waiting for the result of the commit upgrade event.
-        fixture.assert_initialization_incomplete();
-    }
-
-    /// Simulates an invalid run where the highest block is from the previous era, but isn't the
-    /// switch block.
-    ///
-    /// This is unlikely to happen unless a user modifies the launcher's config file to force the
-    /// wrong version of node to be executed, or somehow manually removes the last (switch) block
-    /// from storage as the node upgraded.
-    #[test]
-    fn should_downgrade_if_highest_block_is_from_previous_era_but_is_not_switch() {
-        let mut fixture = TestFixture::new();
-        let mut rng = TestRng::new();
-
-        // Make the highest block a non-switch block from the era immediately before the upgrade.
-        let previous_era = fixture.current_activation_point() - 1;
-        let height = rng.gen();
-        let earlier_version = fixture.earlier_protocol_version();
-        let highest_block =
-            Block::random_with_specifics(&mut rng, previous_era, height, earlier_version, false);
-
-        fixture.assert_handle_initialize(Some(highest_block), 0);
-        fixture.assert_process_should_downgrade();
-    }
-
-    /// Simulates an invalid run where the highest block is from an era before the previous era, and
-    /// may or may not be a switch block.
-    ///
-    /// This is unlikely to happen unless a user modifies the launcher's config file to force the
-    /// wrong version of node to be executed, or somehow manually removes later blocks from storage.
-    #[test]
-    fn should_downgrade_if_highest_block_is_from_earlier_era() {
-        let mut fixture = TestFixture::new();
-        let mut rng = TestRng::new();
-
-        // Make the highest block from an era before the one immediately before the upgrade.
-        let current_era = fixture.current_activation_point().value();
-        let previous_era = fixture.current_activation_point() - rng.gen_range(2..current_era);
-        let height = rng.gen();
-        let earlier_version = fixture.earlier_protocol_version();
-        let is_switch = rng.gen();
-        let highest_block = Block::random_with_specifics(
-            &mut rng,
-            previous_era,
-            height,
-            earlier_version,
-            is_switch,
-        );
-
-        fixture.assert_handle_initialize(Some(highest_block), 0);
-        fixture.assert_process_should_downgrade();
-    }
-
-    /// Simulates a valid run where the highest block is from an era the same or newer than the
-    /// current chainspec activation point, and there is no scheduled upcoming upgrade.
-    ///
-    /// This would happen in the case of an unplanned shutdown of the node.
-    #[test]
-    fn should_keep_running_if_unplanned_shutdown_and_no_upgrade_scheduled() {
-        let mut fixture = TestFixture::new();
-        let mut rng = TestRng::new();
-
-        // Make the highest block from an era the same or newer than the current chainspec one.
-        let future_era = fixture.current_activation_point() + rng.gen_range(0..3);
-        let height = rng.gen();
-        let current_version = fixture.current_protocol_version();
-        let is_switch = rng.gen();
-        let highest_block =
-            Block::random_with_specifics(&mut rng, future_era, height, current_version, is_switch);
-
-        fixture.assert_handle_initialize(Some(highest_block), 0);
-        fixture.assert_process_should_continue();
-    }
-
-    /// Simulates a valid run where the highest block is from an era the same or newer than the
-    /// current chainspec activation point, but older than a scheduled upgrade's activation point.
-    ///
-    /// This would happen in the case of an unplanned shutdown of the node.
-    #[test]
-    fn should_keep_running_if_unplanned_shutdown_and_future_upgrade_scheduled() {
-        let mut fixture = TestFixture::new();
-        let mut rng = TestRng::new();
-
-        // Set an upgrade for 10 eras after the current chainspec activation point.
-        let era_diff = 10;
-        fixture.set_next_upgrade(era_diff);
-
-        // Make the highest block from an era the same or newer than the current chainspec one.
-        let highest_block_era_diff = rng.gen_range(0..era_diff);
-        let future_era = fixture.current_activation_point() + highest_block_era_diff;
-        let height = rng.gen();
-        let current_version = fixture.current_protocol_version();
-        let is_switch = if highest_block_era_diff == era_diff - 1 {
-            // If the highest block is in the era immediately before the upgrade, ensure it's not a
-            // switch block, as in that case, the chainspec loader would indicate the node process
-            // should upgrade.
-            false
-        } else {
-            rng.gen()
-        };
-        let highest_block =
-            Block::random_with_specifics(&mut rng, future_era, height, current_version, is_switch);
-
-        fixture.assert_handle_initialize(Some(highest_block), 0);
-        fixture.assert_process_should_continue();
-    }
-
-    /// Simulates a valid run where the highest block is the switch block from the era immediately
-    /// before a scheduled upgrade's activation point.
-    ///
-    /// This would happen in the case of an unplanned shutdown of the node, probably due to not
-    /// staging the upgraded software in time for the upgrade.
-    #[test]
-    fn should_upgrade_if_unplanned_shutdown_and_future_upgrade_scheduled_with_all_blocks_stored() {
-        let mut fixture = TestFixture::new();
-        let mut rng = TestRng::new();
-
-        // Set an upgrade for 10 eras after the current chainspec activation point.
-        let era_diff = 10;
-        fixture.set_next_upgrade(era_diff);
-
-        // Make the highest block from the last era before the upgrade.
-        let future_era = fixture.current_activation_point() + era_diff - 1;
-        let height = rng.gen();
-        let current_version = fixture.current_protocol_version();
-        let is_switch = true;
-        let highest_block =
-            Block::random_with_specifics(&mut rng, future_era, height, current_version, is_switch);
-
-        fixture.assert_handle_initialize(Some(highest_block), 0);
-        fixture.assert_process_should_upgrade();
-    }
-
-    /// Simulates an invalid run where:
-    /// * the highest block is from an era the same or newer than the current chainspec activation
-    ///   point,
-    /// * there is no scheduled upcoming upgrade,
-    /// * and the protocol version of the highest block doesn't match the current chainspec version.
-    ///
-    /// This would happen in the case of an unplanned shutdown of the node after e.g. forking.
-    #[test]
-    fn should_abort_if_unplanned_shutdown_after_fork_and_no_upgrade_scheduled() {
-        let mut fixture = TestFixture::new();
-        let mut rng = TestRng::new();
-
-        // Make the highest block from an era the same or newer than the current chainspec one, but
-        // with an old protocol version.
-        let future_era = fixture.current_activation_point() + rng.gen_range(0..3);
-        let height = rng.gen();
-        let earlier_version = fixture.earlier_protocol_version();
-        let is_switch = rng.gen();
-        let highest_block =
-            Block::random_with_specifics(&mut rng, future_era, height, earlier_version, is_switch);
-
-        fixture.assert_handle_initialize(Some(highest_block), 0);
-        fixture.assert_process_should_abort();
-    }
-
-    /// Simulates an invalid run where:
-    /// * the highest block is from an era the same or newer than the current chainspec activation
-    ///   point,
-    /// * but older than a scheduled upgrade's activation point,
-    /// * and the protocol version of the highest block doesn't match the current chainspec version.
-    ///
-    /// This would happen in the case of an unplanned shutdown of the node after e.g. forking.
-    #[test]
-    fn should_abort_if_unplanned_shutdown_after_fork_and_future_upgrade_scheduled() {
-        let mut fixture = TestFixture::new();
-        let mut rng = TestRng::new();
-
-        // Set an upgrade for 10 eras after the current chainspec activation point.
-        let era_diff = 10;
-        fixture.set_next_upgrade(era_diff);
-
-        // Make the highest block from an era the same or newer than the current chainspec one, but
-        // with an old protocol version.
-        let future_era = fixture.current_activation_point() + rng.gen_range(0..era_diff);
-        let height = rng.gen();
-        let earlier_version = fixture.earlier_protocol_version();
-        let is_switch = rng.gen();
-        let highest_block =
-            Block::random_with_specifics(&mut rng, future_era, height, earlier_version, is_switch);
-
-        fixture.assert_handle_initialize(Some(highest_block), 0);
-        fixture.assert_process_should_abort();
-    }
-
-    /// Simulates an invalid run where the highest block is from an era the same or newer than the
-    /// than a scheduled upgrade's activation point.
-    ///
-    /// This is unlikely to happen unless a user modifies the launcher's config file to force the
-    /// wrong version of node to be executed.
-    #[test]
-    fn should_upgrade_if_highest_block_from_after_future_upgrade_activation_point() {
-        let mut fixture = TestFixture::new();
-        let mut rng = TestRng::new();
-
-        // Set an upgrade for 10 eras after the current chainspec activation point.
-        let era_diff = 10;
-        fixture.set_next_upgrade(era_diff);
-
-        // Make the highest block from an era the same or later than the upgrade activation point.
-        let future_era =
-            fixture.current_activation_point() + rng.gen_range(era_diff..(era_diff + 10));
-        let height = rng.gen();
-        let later_version = fixture.later_protocol_version();
-        let is_switch = rng.gen();
-        let highest_block =
-            Block::random_with_specifics(&mut rng, future_era, height, later_version, is_switch);
-
-        fixture.assert_handle_initialize(Some(highest_block), 0);
-        fixture.assert_process_should_upgrade();
     }
 }

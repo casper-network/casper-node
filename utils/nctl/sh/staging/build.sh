@@ -52,9 +52,9 @@ function set_stage_binaries()
 
     # Set node binary.
     if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
-        cargo build --package casper-node --features casper-mainnet
+        cargo build --package casper-node
     else
-        cargo build --release --package casper-node --features casper-mainnet
+        cargo build --release --package casper-node
     fi
 
     # Set client-side wasm.
@@ -72,9 +72,9 @@ function set_stage_binaries()
     pushd "$PATH_TO_CLIENT_SOURCE" || exit
 
     if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
-        cargo build --features casper-mainnet
+        cargo build
     else
-        cargo build --release --features casper-mainnet
+        cargo build --release
     fi
 
     popd || exit

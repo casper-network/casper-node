@@ -7,6 +7,8 @@ SCENARIOS_CHAINSPEC_DIR="$SCENARIOS_DIR/chainspecs"
 SCENARIOS_ACCOUNTS_DIR="$SCENARIOS_DIR/accounts_toml"
 SCENARIOS_CONFIGS_DIR="$SCENARIOS_DIR/configs"
 
+NCTL_CLIENT_BRANCH="${DRONE_BRANCH:='dev'}"
+
 # Activate Environment
 pushd "$DRONE_ROOT_DIR"
 source "$(pwd)"/utils/nctl/activate
@@ -47,8 +49,8 @@ function start_run_teardown() {
 
     # Start nctl network
     nctl-start
-    echo "Sleeping 90 to allow network startup"
-    sleep 90
+    echo "Sleeping 10s to allow network startup"
+    sleep 10
 
     # Run passed in test
     pushd "$SCENARIOS_DIR"
@@ -68,6 +70,8 @@ function run_nightly_upgrade_test() {
     bash -i ./ci/nctl_upgrade.sh test_id=5 skip_setup=true
     bash -i ./ci/nctl_upgrade.sh test_id=6 skip_setup=true
     bash -i ./ci/nctl_upgrade.sh test_id=7 skip_setup=true
+    bash -i ./ci/nctl_upgrade.sh test_id=8 skip_setup=true
+    bash -i ./ci/nctl_upgrade.sh test_id=9 skip_setup=true
 }
 
 start_run_teardown "itst01.sh"
@@ -80,7 +84,7 @@ start_run_teardown "itst14.sh"
 start_run_teardown "bond_its.sh"
 start_run_teardown "emergency_upgrade_test.sh"
 start_run_teardown "emergency_upgrade_test_balances.sh"
-start_run_teardown "sync_test.sh node=6 timeout=500"
+start_run_teardown "sync_test.sh timeout=500"
 start_run_teardown "gov96.sh"
 # Keep this test last
 start_run_teardown "sync_upgrade_test.sh node=6 era=5 timeout=500"

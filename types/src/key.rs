@@ -44,6 +44,7 @@ const WITHDRAW_PREFIX: &str = "withdraw-";
 const DICTIONARY_PREFIX: &str = "dictionary-";
 const UNBOND_PREFIX: &str = "unbond-";
 const SYSTEM_CONTRACT_REGISTRY_PREFIX: &str = "system-contract-registry-";
+const CHAINSPEC_REGISTRY_PREFIX: &str = "chainspec-registry-";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -58,7 +59,8 @@ pub const KEY_DICTIONARY_LENGTH: usize = 32;
 /// The maximum length for a `dictionary_item_key`.
 pub const DICTIONARY_ITEM_KEY_MAX_LENGTH: usize = 128;
 
-const SYSTEM_CONTRACT_REGISTRY_KEY: [u8; 32] = [0u8; 32];
+const SYSTEM_CONTRACT_REGISTRY_KEY_BYTES: [u8; 32] = [0u8; 32];
+const CHAINSPEC_REGISTRY_KEY_BYTES: [u8; 32] = [1u8; 32];
 const KEY_ID_SERIALIZED_LENGTH: usize = 1;
 // u8 used to determine the ID
 const KEY_HASH_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
@@ -72,7 +74,9 @@ const KEY_WITHDRAW_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HAS
 const KEY_UNBOND_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 const KEY_DICTIONARY_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_DICTIONARY_LENGTH;
 const KEY_SYSTEM_CONTRACT_REGISTRY_SERIALIZED_LENGTH: usize =
-    KEY_ID_SERIALIZED_LENGTH + SYSTEM_CONTRACT_REGISTRY_KEY.len();
+    KEY_ID_SERIALIZED_LENGTH + SYSTEM_CONTRACT_REGISTRY_KEY_BYTES.len();
+const KEY_CHAINSPEC_REGISTRY_SERIALIZED_LENGTH: usize =
+    KEY_ID_SERIALIZED_LENGTH + CHAINSPEC_REGISTRY_KEY_BYTES.len();
 
 /// An alias for [`Key`]s hash variant.
 pub type HashAddr = [u8; KEY_HASH_LENGTH];
@@ -96,6 +100,7 @@ pub enum KeyTag {
     Dictionary = 9,
     SystemContractRegistry = 10,
     Unbond = 11,
+    ChainspecRegistry = 12,
 }
 
 /// The type under which data (e.g. [`CLValue`](crate::CLValue)s, smart contracts, user accounts)
@@ -129,6 +134,8 @@ pub enum Key {
     SystemContractRegistry,
     /// A `Key` under which we store unbond information.
     Unbond(AccountHash),
+    /// A `Key` variant under which chainspec and other hashes are stored.
+    ChainspecRegistry,
 }
 
 /// Errors produced when converting a `String` into a `Key`.
@@ -158,6 +165,8 @@ pub enum FromStrError {
     SystemContractRegistry(String),
     /// Unbond parse error.
     Unbond(String),
+    /// Chainspec registry error.
+    ChainspecRegistry(String),
     /// Unknown prefix.
     UnknownPrefix,
 }
@@ -207,6 +216,9 @@ impl Display for FromStrError {
             FromStrError::Unbond(error) => {
                 write!(f, "unbond-key from string error: {}", error)
             }
+            FromStrError::ChainspecRegistry(error) => {
+                write!(f, "chainspec-registry-key from string error: {}", error)
+            }
             FromStrError::UnknownPrefix => write!(f, "unknown prefix for key"),
         }
     }
@@ -229,6 +241,7 @@ impl Key {
             Key::Dictionary(_) => String::from("Key::Dictionary"),
             Key::Unbond(_) => String::from("Key::Unbond"),
             Key::SystemContractRegistry => String::from("Key::SystemContractRegistry"),
+            Key::ChainspecRegistry => String::from("Key::ChainspecRegistry"),
         }
     }
 
@@ -288,7 +301,14 @@ impl Key {
                 format!(
                     "{}{}",
                     SYSTEM_CONTRACT_REGISTRY_PREFIX,
-                    base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_KEY)
+                    base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_KEY_BYTES)
+                )
+            }
+            Key::ChainspecRegistry => {
+                format!(
+                    "{}{}",
+                    CHAINSPEC_REGISTRY_PREFIX,
+                    base16::encode_lower(&CHAINSPEC_REGISTRY_KEY_BYTES)
                 )
             }
         }
@@ -385,6 +405,17 @@ impl Key {
                 )
             })?;
             return Ok(Key::SystemContractRegistry);
+        }
+
+        if let Some(registry_padding) = input.strip_prefix(CHAINSPEC_REGISTRY_PREFIX) {
+            let padded_bytes = checksummed_hex::decode(registry_padding)
+                .map_err(|error| FromStrError::ChainspecRegistry(error.to_string()))?;
+            let _padding: [u8; 32] = TryFrom::try_from(padded_bytes.as_ref()).map_err(|_| {
+                FromStrError::ChainspecRegistry(
+                    "Failed to deserialize chainspec registry key".to_string(),
+                )
+            })?;
+            return Ok(Key::ChainspecRegistry);
         }
 
         Err(FromStrError::UnknownPrefix)
@@ -498,7 +529,12 @@ impl Display for Key {
             Key::SystemContractRegistry => write!(
                 f,
                 "Key::SystemContractRegistry({})",
-                base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_KEY)
+                base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_KEY_BYTES)
+            ),
+            Key::ChainspecRegistry => write!(
+                f,
+                "Key::ChainspecRegistry({})",
+                base16::encode_lower(&CHAINSPEC_REGISTRY_KEY_BYTES)
             ),
         }
     }
@@ -525,6 +561,7 @@ impl Tagged<KeyTag> for Key {
             Key::Unbond(_) => KeyTag::Unbond,
             Key::Dictionary(_) => KeyTag::Dictionary,
             Key::SystemContractRegistry => KeyTag::SystemContractRegistry,
+            Key::ChainspecRegistry => KeyTag::ChainspecRegistry,
         }
     }
 }
@@ -611,8 +648,9 @@ impl ToBytes for Key {
                 result.append(&mut addr.to_bytes()?);
             }
             Key::SystemContractRegistry => {
-                result.append(&mut SYSTEM_CONTRACT_REGISTRY_KEY.to_bytes()?)
+                result.append(&mut SYSTEM_CONTRACT_REGISTRY_KEY_BYTES.to_bytes()?)
             }
+            Key::ChainspecRegistry => result.append(&mut CHAINSPEC_REGISTRY_KEY_BYTES.to_bytes()?),
         }
         Ok(result)
     }
@@ -633,6 +671,7 @@ impl ToBytes for Key {
             Key::Unbond(_) => KEY_UNBOND_SERIALIZED_LENGTH,
             Key::Dictionary(_) => KEY_DICTIONARY_SERIALIZED_LENGTH,
             Key::SystemContractRegistry => KEY_SYSTEM_CONTRACT_REGISTRY_SERIALIZED_LENGTH,
+            Key::ChainspecRegistry => KEY_CHAINSPEC_REGISTRY_SERIALIZED_LENGTH,
         }
     }
 
@@ -674,8 +713,9 @@ impl ToBytes for Key {
                 writer.extend_from_slice(addr);
             }
             Key::SystemContractRegistry => {
-                writer.extend_from_slice(&[0u8; 32]);
+                writer.extend_from_slice(&SYSTEM_CONTRACT_REGISTRY_KEY_BYTES);
             }
+            Key::ChainspecRegistry => writer.extend_from_slice(&CHAINSPEC_REGISTRY_KEY_BYTES),
         };
         Ok(())
     }
@@ -733,6 +773,10 @@ impl FromBytes for Key {
                 let (_, rem): ([u8; 32], &[u8]) = FromBytes::from_bytes(remainder)?;
                 Ok((Key::SystemContractRegistry, rem))
             }
+            tag if tag == KeyTag::ChainspecRegistry as u8 => {
+                let (_, rem): ([u8; 32], &[u8]) = FromBytes::from_bytes(remainder)?;
+                Ok((Key::ChainspecRegistry, rem))
+            }
             _ => Err(Error::Formatting),
         }
     }
@@ -753,6 +797,7 @@ impl Distribution<Key> for Standard {
             9 => Key::Dictionary(rng.gen()),
             10 => Key::SystemContractRegistry,
             11 => Key::Unbond(rng.gen()),
+            12 => Key::ChainspecRegistry,
             _ => unreachable!(),
         }
     }
@@ -775,6 +820,7 @@ mod serde_helpers {
         Dictionary(String),
         SystemContractRegistry(String),
         Unbond(String),
+        ChainspecRegistry(String),
     }
 
     impl From<&Key> for HumanReadable {
@@ -795,6 +841,7 @@ mod serde_helpers {
                 Key::SystemContractRegistry => {
                     HumanReadable::SystemContractRegistry(formatted_string)
                 }
+                Key::ChainspecRegistry => HumanReadable::ChainspecRegistry(formatted_string),
             }
         }
     }
@@ -822,6 +869,9 @@ mod serde_helpers {
                 HumanReadable::SystemContractRegistry(formatted_string) => {
                     Key::from_formatted_str(&formatted_string)
                 }
+                HumanReadable::ChainspecRegistry(formatted_string) => {
+                    Key::from_formatted_str(&formatted_string)
+                }
             }
         }
     }
@@ -840,6 +890,7 @@ mod serde_helpers {
         Dictionary(&'a HashAddr),
         SystemContractRegistry,
         Unbond(&'a AccountHash),
+        ChainspecRegistry,
     }
 
     impl<'a> From<&'a Key> for BinarySerHelper<'a> {
@@ -857,6 +908,7 @@ mod serde_helpers {
                 Key::Unbond(account_hash) => BinarySerHelper::Unbond(account_hash),
                 Key::Dictionary(addr) => BinarySerHelper::Dictionary(addr),
                 Key::SystemContractRegistry => BinarySerHelper::SystemContractRegistry,
+                Key::ChainspecRegistry => BinarySerHelper::ChainspecRegistry,
             }
         }
     }
@@ -875,6 +927,7 @@ mod serde_helpers {
         Dictionary(DictionaryAddr),
         SystemContractRegistry,
         Unbond(AccountHash),
+        ChainspecRegistry,
     }
 
     impl From<BinaryDeserHelper> for Key {
@@ -892,6 +945,7 @@ mod serde_helpers {
                 BinaryDeserHelper::Unbond(account_hash) => Key::Unbond(account_hash),
                 BinaryDeserHelper::Dictionary(addr) => Key::Dictionary(addr),
                 BinaryDeserHelper::SystemContractRegistry => Key::SystemContractRegistry,
+                BinaryDeserHelper::ChainspecRegistry => Key::ChainspecRegistry,
             }
         }
     }
@@ -942,9 +996,10 @@ mod tests {
     const BID_KEY: Key = Key::Bid(AccountHash::new([42; 32]));
     const WITHDRAW_KEY: Key = Key::Withdraw(AccountHash::new([42; 32]));
     const DICTIONARY_KEY: Key = Key::Dictionary([42; 32]);
-    const REGISTRY_KEY: Key = Key::SystemContractRegistry;
+    const SYSTEM_CONTRACT_REGISTRY_KEY: Key = Key::SystemContractRegistry;
+    const CHAINSPEC_REGISTRY_KEY: Key = Key::ChainspecRegistry;
     const UNBOND_KEY: Key = Key::Unbond(AccountHash::new([42; 32]));
-    const KEYS: [Key; 12] = [
+    const KEYS: [Key; 13] = [
         ACCOUNT_KEY,
         HASH_KEY,
         UREF_KEY,
@@ -955,7 +1010,8 @@ mod tests {
         BID_KEY,
         WITHDRAW_KEY,
         DICTIONARY_KEY,
-        REGISTRY_KEY,
+        SYSTEM_CONTRACT_REGISTRY_KEY,
+        CHAINSPEC_REGISTRY_KEY,
         UNBOND_KEY,
     ];
     const HEX_STRING: &str = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
@@ -1049,10 +1105,17 @@ mod tests {
             format!("Key::Dictionary({})", HEX_STRING)
         );
         assert_eq!(
-            format!("{}", REGISTRY_KEY),
+            format!("{}", SYSTEM_CONTRACT_REGISTRY_KEY),
             format!(
                 "Key::SystemContractRegistry({})",
-                base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_KEY)
+                base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_KEY_BYTES)
+            )
+        );
+        assert_eq!(
+            format!("{}", CHAINSPEC_REGISTRY_KEY),
+            format!(
+                "Key::ChainspecRegistry({})",
+                base16::encode_lower(&CHAINSPEC_REGISTRY_KEY_BYTES)
             )
         )
     }
@@ -1175,6 +1238,10 @@ mod tests {
             .unwrap_err()
             .to_string()
             .starts_with("system-contract-registry-key from string error: "));
+        assert!(Key::from_formatted_str(CHAINSPEC_REGISTRY_PREFIX)
+            .unwrap_err()
+            .to_string()
+            .starts_with("chainspec-registry-key from string error: "));
 
         let invalid_prefix = "a-0000000000000000000000000000000000000000000000000000000000000000";
         assert_eq!(
@@ -1215,7 +1282,11 @@ mod tests {
             format!(r#"{{"Dictionary":"dictionary-{}"}}"#, HEX_STRING),
             format!(
                 r#"{{"SystemContractRegistry":"system-contract-registry-{}"}}"#,
-                base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_KEY)
+                base16::encode_lower(&SYSTEM_CONTRACT_REGISTRY_KEY_BYTES)
+            ),
+            format!(
+                r#"{{"ChainspecRegistry":"chainspec-registry-{}"}}"#,
+                base16::encode_lower(&CHAINSPEC_REGISTRY_KEY_BYTES)
             ),
             format!(r#"{{"Unbond":"unbond-{}"}}"#, HEX_STRING),
         ];
@@ -1266,5 +1337,6 @@ mod tests {
         round_trip(&Key::Unbond(AccountHash::new(zeros)));
         round_trip(&Key::Dictionary(zeros));
         round_trip(&Key::SystemContractRegistry);
+        round_trip(&Key::ChainspecRegistry);
     }
 }

@@ -23,14 +23,14 @@ use casper_execution_engine::{
         genesis::GenesisSuccess,
         get_bids::{GetBidsRequest, GetBidsResult},
         query::{QueryRequest, QueryResult},
-        upgrade::{UpgradeConfig, UpgradeSuccess},
+        UpgradeConfig, UpgradeSuccess,
     },
-    storage::trie::Trie,
+    storage::trie::{TrieOrChunk, TrieOrChunkId},
 };
 use casper_hashing::Digest;
 use casper_types::{
-    system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey,
-    StoredValue, Transfer, URef,
+    bytesrepr::Bytes, system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion,
+    PublicKey, Transfer, URef,
 };
 
 use crate::{
@@ -47,17 +47,19 @@ use crate::{
     effect::Responder,
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
-        Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Chainspec, ChainspecInfo,
-        Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock, Item, NodeId, StatusFeed,
-        TimeDiff,
+        AvailableBlockRange, Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload,
+        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
+        DeployHash, DeployMetadata, FinalizedBlock, Item, NodeId, StatusFeed, TimeDiff,
     },
-    utils::DisplayIter,
+    utils::{DisplayIter, Source},
 };
 
+// Redirection for reactor macro.
+#[allow(unused_imports)]
+pub(crate) use super::diagnostics_port::DumpConsensusStateRequest;
+
 const _STORAGE_REQUEST_SIZE: usize = mem::size_of::<StorageRequest>();
-const _STATE_REQUEST_SIZE: usize = mem::size_of::<StateStoreRequest>();
 const_assert!(_STORAGE_REQUEST_SIZE < 89);
-const_assert!(_STATE_REQUEST_SIZE < 89);
 
 /// A metrics request.
 #[derive(Debug)]
@@ -179,6 +181,7 @@ pub(crate) enum NetworkInfoRequest {
     /// Get incoming and outgoing peers.
     GetPeers {
         /// Responder to be called with all connected peers.
+        /// Responds with a map from [NodeId]s to a socket address, represented as a string.
         responder: Responder<BTreeMap<NodeId, String>>,
     },
     /// Get the peers in random order.
@@ -191,11 +194,43 @@ pub(crate) enum NetworkInfoRequest {
 impl Display for NetworkInfoRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            NetworkInfoRequest::GetPeers { responder: _ } => write!(formatter, "get peers"),
+            NetworkInfoRequest::GetPeers { responder: _ } => {
+                write!(formatter, "get peers-to-socket-address map")
+            }
             NetworkInfoRequest::GetFullyConnectedPeers { responder: _ } => {
                 write!(formatter, "get fully connected peers")
             }
         }
+    }
+}
+
+/// A gossip request.
+///
+/// This request usually initiates gossiping process of the specifed item. Note that the gossiper
+/// will fetch the item itself, so only the ID is needed.
+///
+/// The responder will be called as soon as the gossiper has initiated the process.
+// Note: This request should eventually entirely replace `ItemReceived`.
+#[derive(Debug, Serialize)]
+#[must_use]
+pub(crate) struct BeginGossipRequest<T>
+where
+    T: Item,
+{
+    /// The ID of the item received.
+    pub(crate) item_id: T::Id,
+    /// The origin of this request.
+    pub(crate) source: Source,
+    /// Responder to notify that gossiping is complete.
+    pub(crate) responder: Responder<()>,
+}
+
+impl<T> Display for BeginGossipRequest<T>
+where
+    T: Item,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "begin gossip of {} from {}", self.item_id, self.source)
     }
 }
 
@@ -218,24 +253,15 @@ pub(crate) enum StorageRequest {
         /// storage.
         responder: Responder<Option<Block>>,
     },
-    /// Retrieve block header with given height.
-    GetBlockHeaderAtHeight {
-        /// Height of the block.
-        height: BlockHeight,
-        /// Responder.
-        responder: Responder<Option<BlockHeader>>,
-    },
-    /// Retrieve block with given height.
-    GetBlockAtHeight {
-        /// Height of the block.
-        height: BlockHeight,
-        /// Responder.
-        responder: Responder<Option<Block>>,
-    },
     /// Retrieve highest block.
     GetHighestBlock {
         /// Responder.
         responder: Responder<Option<Block>>,
+    },
+    /// Retrieve highest block header.
+    GetHighestBlockHeader {
+        /// Responder.
+        responder: Responder<Option<BlockHeader>>,
     },
     /// Retrieve switch block header with given era ID.
     GetSwitchBlockHeaderAtEraId {
@@ -255,9 +281,35 @@ pub(crate) enum StorageRequest {
     GetBlockHeader {
         /// Hash of block to get header of.
         block_hash: BlockHash,
+        /// Flag indicating whether storage should check the block availability before trying to
+        /// retrieve it.
+        only_from_available_block_range: bool,
         /// Responder to call with the result.  Returns `None` is the block header doesn't exist in
         /// local storage.
         responder: Responder<Option<BlockHeader>>,
+    },
+    /// Checks if a block header at the given height exists in storage.
+    CheckBlockHeaderExistence {
+        /// Height of the block to check.
+        block_height: u64,
+        /// Responder to call with the result.
+        responder: Responder<bool>,
+    },
+    /// Retrieve block header with sufficient finality signatures by height.
+    GetBlockHeaderAndSufficientFinalitySignaturesByHeight {
+        /// Height of block to get header of.
+        block_height: u64,
+        /// Responder to call with the result.  Returns `None` if the block header doesn't exist in
+        /// local storage.
+        responder: Responder<Option<BlockHeaderWithMetadata>>,
+    },
+    /// Retrieves a block header with sufficient finality signatures by height.
+    GetBlockAndSufficientFinalitySignaturesByHeight {
+        /// Height of block to get header of.
+        block_height: u64,
+        /// Responder to call with the result.  Returns `None` if the block header doesn't exist or
+        /// does not have sufficient finality signatures by height.
+        responder: Responder<Option<BlockWithMetadata>>,
     },
     /// Retrieve all transfers in a block with given hash.
     GetBlockTransfers {
@@ -282,13 +334,13 @@ pub(crate) enum StorageRequest {
         /// Responder to call with the results.
         responder: Responder<Vec<Option<Deploy>>>,
     },
-    /// Retrieve deploys that are finalized and whose TTL hasn't expired yet.
-    GetFinalizedDeploys {
+    /// Retrieve finalized blocks that whose deploy TTL hasn't expired yet.
+    GetFinalizedBlocks {
         /// Maximum TTL of block we're interested in.
         /// I.e. we don't want deploys from blocks that are older than this.
         ttl: TimeDiff,
         /// Responder to call with the results.
-        responder: Responder<Vec<(DeployHash, DeployHeader)>>,
+        responder: Responder<Vec<Block>>,
     },
     /// Store execution results for a set of deploys of a single block.
     ///
@@ -316,20 +368,26 @@ pub(crate) enum StorageRequest {
     GetBlockAndMetadataByHash {
         /// The hash of the block.
         block_hash: BlockHash,
+        /// Flag indicating whether storage should check the block availability before trying to
+        /// retrieve it.
+        only_from_available_block_range: bool,
         /// The responder to call with the results.
-        responder: Responder<Option<(Block, BlockSignatures)>>,
+        responder: Responder<Option<BlockWithMetadata>>,
     },
     /// Retrieve block and its metadata at a given height.
     GetBlockAndMetadataByHeight {
         /// The height of the block.
         block_height: BlockHeight,
+        /// Flag indicating whether storage should check the block availability before trying to
+        /// retrieve it.
+        only_from_available_block_range: bool,
         /// The responder to call with the results.
-        responder: Responder<Option<(Block, BlockSignatures)>>,
+        responder: Responder<Option<BlockWithMetadata>>,
     },
     /// Get the highest block and its metadata.
     GetHighestBlockWithMetadata {
         /// The responder to call the results with.
-        responder: Responder<Option<(Block, BlockSignatures)>>,
+        responder: Responder<Option<BlockWithMetadata>>,
     },
     /// Get finality signatures for a Block hash.
     GetBlockSignatures {
@@ -346,6 +404,31 @@ pub(crate) enum StorageRequest {
         /// stored.
         responder: Responder<bool>,
     },
+    /// Store a block header.
+    PutBlockHeader {
+        /// Block header that is to be stored.
+        block_header: Box<BlockHeader>,
+        /// Responder to call with the result, if true then the block header was successfully
+        /// stored.
+        responder: Responder<bool>,
+    },
+    /// Update the lowest available block height in storage.
+    // Note - this is a request rather than an announcement as the chain synchronizer needs to
+    // ensure the request has been completed before it can exit, i.e. it awaits the response.
+    // Otherwise, the joiner reactor might exit before handling the announcement and it would go
+    // un-actioned.
+    UpdateLowestAvailableBlockHeight {
+        /// The new height.
+        height: u64,
+        /// Responder to call when complete.
+        responder: Responder<()>,
+    },
+    /// Retrieve the height range of fully available blocks (not just block headers). Returns
+    /// `[u64::MAX, u64::MAX]` when there are no sequences.
+    GetAvailableBlockRange {
+        /// Responder to call with the result.
+        responder: Responder<AvailableBlockRange>,
+    },
 }
 
 impl Display for StorageRequest {
@@ -353,13 +436,10 @@ impl Display for StorageRequest {
         match self {
             StorageRequest::PutBlock { block, .. } => write!(formatter, "put {}", block),
             StorageRequest::GetBlock { block_hash, .. } => write!(formatter, "get {}", block_hash),
-            StorageRequest::GetBlockHeaderAtHeight { height, .. } => {
-                write!(formatter, "get block header at height {}", height)
-            }
-            StorageRequest::GetBlockAtHeight { height, .. } => {
-                write!(formatter, "get block at height {}", height)
-            }
             StorageRequest::GetHighestBlock { .. } => write!(formatter, "get highest block"),
+            StorageRequest::GetHighestBlockHeader { .. } => {
+                write!(formatter, "get highest block header")
+            }
             StorageRequest::GetSwitchBlockHeaderAtEraId { era_id, .. } => {
                 write!(formatter, "get switch block header at era id {}", era_id)
             }
@@ -368,6 +448,9 @@ impl Display for StorageRequest {
             }
             StorageRequest::GetBlockHeader { block_hash, .. } => {
                 write!(formatter, "get {}", block_hash)
+            }
+            StorageRequest::CheckBlockHeaderExistence { block_height, .. } => {
+                write!(formatter, "check existence {}", block_height)
             }
             StorageRequest::GetBlockTransfers { block_hash, .. } => {
                 write!(formatter, "get transfers for {}", block_hash)
@@ -409,8 +492,41 @@ impl Display for StorageRequest {
             StorageRequest::PutBlockSignatures { .. } => {
                 write!(formatter, "put finality signatures")
             }
-            StorageRequest::GetFinalizedDeploys { ttl, .. } => {
-                write!(formatter, "get finalized deploys, ttl: {:?}", ttl)
+            StorageRequest::GetFinalizedBlocks { ttl, .. } => {
+                write!(formatter, "get finalized blocks, ttl: {:?}", ttl)
+            }
+            StorageRequest::GetBlockHeaderAndSufficientFinalitySignaturesByHeight {
+                block_height,
+                ..
+            } => {
+                write!(
+                    formatter,
+                    "get block and metadata for block by height: {}",
+                    block_height
+                )
+            }
+            StorageRequest::PutBlockHeader { block_header, .. } => {
+                write!(formatter, "put block header: {}", block_header)
+            }
+            StorageRequest::GetBlockAndSufficientFinalitySignaturesByHeight {
+                block_height,
+                ..
+            } => {
+                write!(
+                    formatter,
+                    "get block and sufficient finality signatures by height: {}",
+                    block_height
+                )
+            }
+            StorageRequest::UpdateLowestAvailableBlockHeight { height, .. } => {
+                write!(
+                    formatter,
+                    "update lowest available block height to {}",
+                    height
+                )
+            }
+            StorageRequest::GetAvailableBlockRange { .. } => {
+                write!(formatter, "get available block range",)
             }
         }
     }
@@ -522,8 +638,11 @@ pub(crate) enum RpcRequest {
     GetBlock {
         /// The identifier (can either be a hash or the height) of the block to be retrieved.
         maybe_id: Option<BlockIdentifier>,
+        /// Flag indicating whether storage should check the block availability before trying to
+        /// retrieve it.
+        only_from_available_block_range: bool,
         /// Responder to call with the result.
-        responder: Responder<Option<(Block, BlockSignatures)>>,
+        responder: Responder<Option<BlockWithMetadata>>,
     },
     /// Return transfers for block by hash (if any).
     GetBlockTransfers {
@@ -559,6 +678,7 @@ pub(crate) enum RpcRequest {
         /// Responder to call with the result.
         responder: Responder<Result<GetBidsResult, engine_state::Error>>,
     },
+
     /// Query the global state at the given root hash.
     GetBalance {
         /// The state root hash.
@@ -584,6 +704,11 @@ pub(crate) enum RpcRequest {
     GetStatus {
         /// Responder to call with the result.
         responder: Responder<StatusFeed>,
+    },
+    /// Return the height range of fully available blocks.
+    GetAvailableBlockRange {
+        /// Responder to call with the result.
+        responder: Responder<AvailableBlockRange>,
     },
 }
 
@@ -634,6 +759,9 @@ impl Display for RpcRequest {
             RpcRequest::GetDeploy { hash, .. } => write!(formatter, "get {}", hash),
             RpcRequest::GetPeers { .. } => write!(formatter, "get peers"),
             RpcRequest::GetStatus { .. } => write!(formatter, "get status"),
+            RpcRequest::GetAvailableBlockRange { .. } => {
+                write!(formatter, "get available block range")
+            }
         }
     }
 }
@@ -685,11 +813,12 @@ pub(crate) enum ContractRuntimeRequest {
         /// The transfers for that `FinalizedBlock`
         transfers: Vec<Deploy>,
     },
-
     /// Commit genesis chainspec.
     CommitGenesis {
         /// The chainspec.
         chainspec: Arc<Chainspec>,
+        /// The chainspec files' raw bytes.
+        chainspec_raw_bytes: Arc<ChainspecRawBytes>,
         /// Responder to call with the result.
         responder: Responder<Result<GenesisSuccess, engine_state::Error>>,
     },
@@ -746,18 +875,33 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder,
         responder: Responder<Result<bool, GetEraValidatorsError>>,
     },
-    /// Get a trie by its hash key.
+    /// Get a trie or chunk by its ID.
     GetTrie {
-        /// The hash of the value to get from the `TrieStore`.
+        /// The ID of the trie (or chunk of a trie) to be read.
+        trie_or_chunk_id: TrieOrChunkId,
+        /// Responder to call with the result.
+        responder: Responder<Result<Option<TrieOrChunk>, engine_state::Error>>,
+    },
+    /// Get a trie by its ID.
+    GetTrieFull {
+        /// The ID of the trie to be read.
         trie_key: Digest,
         /// Responder to call with the result.
-        responder: Responder<Result<Option<Trie<Key, StoredValue>>, engine_state::Error>>,
+        responder: Responder<Result<Option<Bytes>, engine_state::Error>>,
     },
     /// Insert a trie into global storage
     PutTrie {
         /// The hash of the value to get from the `TrieStore`
-        trie: Box<Trie<Key, StoredValue>>,
-        /// Responder to call with the result.
+        trie_bytes: Bytes,
+        /// Responder to call with the result. Contains the missing descendants of the inserted
+        /// trie.
+        responder: Responder<Result<Vec<Digest>, engine_state::Error>>,
+    },
+    /// Find the missing descendants for a trie key
+    FindMissingDescendantTrieKeys {
+        /// The trie key to find the missing descendants for.
+        trie_key: Digest,
+        /// The responder to call with the result.
         responder: Responder<Result<Vec<Digest>, engine_state::Error>>,
     },
     /// Execute a provided protoblock
@@ -769,11 +913,11 @@ pub(crate) enum ContractRuntimeRequest {
         /// The finalized block to execute; must have the same height as the child height specified
         /// by the `execution_pre_state`.
         finalized_block: FinalizedBlock,
-        /// The deploys for the block to execute; must correspond to the deploy and execution
-        /// hashes of the `finalized_block` in that order.
+        /// The deploys for the block to execute; must correspond to the deploy hashes of the
+        /// `finalized_block` in that order.
         deploys: Vec<Deploy>,
-        /// The transfers for the block to execute; must correspond to the transfer and execution
-        /// hashes of the `finalized_block` in that order.
+        /// The transfers for the block to execute; must correspond to the transfer hashes of the
+        /// `finalized_block` in that order.
         transfers: Vec<Deploy>,
         /// Responder to call with the result.
         responder: Responder<Result<BlockAndExecutionEffects, BlockExecutionError>>,
@@ -790,6 +934,7 @@ impl Display for ContractRuntimeRequest {
             } => {
                 write!(formatter, "finalized_block: {}", finalized_block)
             }
+
             ContractRuntimeRequest::CommitGenesis { chainspec, .. } => {
                 write!(
                     formatter,
@@ -825,16 +970,24 @@ impl Display for ContractRuntimeRequest {
             } => {
                 write!(formatter, "is {} bonded in era {}", public_key, era_id)
             }
-            ContractRuntimeRequest::GetTrie { trie_key, .. } => {
+            ContractRuntimeRequest::GetTrie {
+                trie_or_chunk_id, ..
+            } => {
+                write!(formatter, "get trie_or_chunk_id: {}", trie_or_chunk_id)
+            }
+            ContractRuntimeRequest::GetTrieFull { trie_key, .. } => {
                 write!(formatter, "get trie_key: {}", trie_key)
             }
-            ContractRuntimeRequest::PutTrie { trie, .. } => {
-                write!(formatter, "trie: {:?}", trie)
+            ContractRuntimeRequest::PutTrie { trie_bytes, .. } => {
+                write!(formatter, "trie: {:?}", trie_bytes)
             }
             ContractRuntimeRequest::ExecuteBlock {
                 finalized_block, ..
             } => {
                 write!(formatter, "Execute finalized block: {}", finalized_block)
+            }
+            ContractRuntimeRequest::FindMissingDescendantTrieKeys { trie_key, .. } => {
+                write!(formatter, "Find missing descendant trie keys: {}", trie_key)
             }
         }
     }
@@ -843,23 +996,21 @@ impl Display for ContractRuntimeRequest {
 /// Fetcher related requests.
 #[derive(Debug, Serialize)]
 #[must_use]
-pub(crate) enum FetcherRequest<T: Item> {
-    /// Return the specified item if it exists, else `None`.
-    Fetch {
-        /// The ID of the item to be retrieved.
-        id: T::Id,
-        /// The peer id of the peer to be asked if the item is not held locally
-        peer: NodeId,
-        /// Responder to call with the result.
-        responder: Responder<Option<FetchResult<T>>>,
-    },
+pub(crate) struct FetcherRequest<T>
+where
+    T: Item,
+{
+    /// The ID of the item to be retrieved.
+    pub(crate) id: T::Id,
+    /// The peer id of the peer to be asked if the item is not held locally
+    pub(crate) peer: NodeId,
+    /// Responder to call with the result.
+    pub(crate) responder: Responder<FetchResult<T>>,
 }
 
 impl<T: Item> Display for FetcherRequest<T> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            FetcherRequest::Fetch { id, .. } => write!(formatter, "request item by id {}", id),
-        }
+        write!(formatter, "request item by id {}", self.id)
     }
 }
 
@@ -886,28 +1037,6 @@ impl Display for BlockValidationRequest {
 
 type BlockHeight = u64;
 
-#[derive(Debug, Serialize)]
-/// Requests issued to the Linear Chain component.
-pub(crate) enum LinearChainRequest {
-    /// Request whole block from the linear chain, by hash.
-    BlockRequest(BlockHash, NodeId),
-    /// Request for a linear chain block at height.
-    BlockAtHeight(BlockHeight, NodeId),
-}
-
-impl Display for LinearChainRequest {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            LinearChainRequest::BlockRequest(bh, peer) => {
-                write!(f, "block request for hash {} from {}", bh, peer)
-            }
-            LinearChainRequest::BlockAtHeight(height, sender) => {
-                write!(f, "block request for {} from {}", height, sender)
-            }
-        }
-    }
-}
-
 #[derive(DataSize, Debug)]
 #[must_use]
 /// Consensus component requests.
@@ -920,11 +1049,15 @@ pub(crate) enum ConsensusRequest {
 
 /// ChainspecLoader component requests.
 #[derive(Debug, Serialize)]
+#[allow(clippy::enum_variant_names)]
 pub(crate) enum ChainspecLoaderRequest {
     /// Chainspec info request.
     GetChainspecInfo(Responder<ChainspecInfo>),
     /// Request for information about the current run.
     GetCurrentRunInfo(Responder<CurrentRunInfo>),
+    /// Request for the chainspec file bytes with the genesis_accounts and global_state bytes, if
+    /// they are present.
+    GetChainspecRawBytes(Responder<Arc<ChainspecRawBytes>>),
 }
 
 impl Display for ChainspecLoaderRequest {
@@ -932,6 +1065,7 @@ impl Display for ChainspecLoaderRequest {
         match self {
             ChainspecLoaderRequest::GetChainspecInfo(_) => write!(f, "get chainspec info"),
             ChainspecLoaderRequest::GetCurrentRunInfo(_) => write!(f, "get current run info"),
+            ChainspecLoaderRequest::GetChainspecRawBytes(_) => write!(f, "get chainspec raw bytes"),
         }
     }
 }

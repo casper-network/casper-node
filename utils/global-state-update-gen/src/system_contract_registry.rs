@@ -4,7 +4,7 @@ use clap::ArgMatches;
 use lmdb::{self, Cursor, Environment, EnvironmentFlags, Transaction};
 
 use casper_engine_test_support::LmdbWasmTestBuilder;
-use casper_execution_engine::core::engine_state::genesis::SystemContractRegistry;
+use casper_execution_engine::core::engine_state::SystemContractRegistry;
 use casper_types::{
     bytesrepr::FromBytes,
     system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},

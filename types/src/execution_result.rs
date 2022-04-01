@@ -17,6 +17,8 @@ use alloc::{
     vec::Vec,
 };
 
+#[cfg(feature = "datasize")]
+use datasize::DataSize;
 use num::{FromPrimitive, ToPrimitive};
 use num_derive::{FromPrimitive, ToPrimitive};
 #[cfg(feature = "json-schema")]
@@ -149,6 +151,7 @@ static EXECUTION_RESULT: Lazy<ExecutionResult> = Lazy::new(|| {
 
 /// The result of executing a single deploy.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub enum ExecutionResult {
@@ -343,6 +346,7 @@ impl FromBytes for ExecutionResult {
 
 /// The journal of execution transforms from a single deploy.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Default, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct ExecutionEffect {
@@ -389,6 +393,7 @@ impl FromBytes for ExecutionEffect {
 
 /// An operation performed while executing a deploy.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Operation {
@@ -422,6 +427,7 @@ impl FromBytes for Operation {
 
 /// The type of operation performed while executing a deploy.
 #[derive(Clone, Copy, Eq, PartialEq, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub enum OpKind {
@@ -476,6 +482,7 @@ impl FromBytes for OpKind {
 
 /// A transformation performed while executing a deploy.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct TransformEntry {
@@ -509,6 +516,7 @@ impl FromBytes for TransformEntry {
 
 /// The actual transformation performed while executing a deploy.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub enum Transform {

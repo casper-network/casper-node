@@ -15,6 +15,9 @@ use core::{
     fmt::{self, Debug, Display, Formatter},
 };
 
+#[cfg(feature = "datasize")]
+use datasize::DataSize;
+
 pub use self::{
     account_hash::{AccountHash, ACCOUNT_HASH_FORMATTED_STRING_PREFIX, ACCOUNT_HASH_LENGTH},
     action_thresholds::ActionThresholds,
@@ -31,6 +34,7 @@ use crate::{
 
 /// Represents an Account in the global state.
 #[derive(PartialEq, Eq, Clone, Debug, Serialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct Account {
     account_hash: AccountHash,
     named_keys: NamedKeys,

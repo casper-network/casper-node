@@ -22,7 +22,7 @@ use casper_types::{system::auction::BLOCK_REWARD, U512};
 
 use crate::{
     components::consensus::{
-        config::{Config, ProtocolConfig},
+        config::Config,
         consensus_protocol::{
             BlockContext, ConsensusProtocol, ProposedBlock, ProtocolOutcome, ProtocolOutcomes,
         },
@@ -41,7 +41,7 @@ use crate::{
         traits::{ConsensusValueT, Context},
         ActionId, TimerId,
     },
-    types::{NodeId, TimeDiff, Timestamp},
+    types::{Chainspec, NodeId, TimeDiff, Timestamp},
     NodeRng,
 };
 
@@ -97,7 +97,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         validator_stakes: BTreeMap<C::ValidatorId, U512>,
         faulty: &HashSet<C::ValidatorId>,
         inactive: &HashSet<C::ValidatorId>,
-        protocol_config: &ProtocolConfig,
+        chainspec: &Chainspec,
         config: &Config,
         prev_cp: Option<&dyn ConsensusProtocol<C>>,
         era_start_time: Timestamp,
@@ -106,19 +106,18 @@ impl<C: Context + 'static> HighwayProtocol<C> {
     ) -> (Box<dyn ConsensusProtocol<C>>, ProtocolOutcomes<C>) {
         let validators_count = validator_stakes.len();
         let validators = protocols::common::validators::<C>(faulty, inactive, validator_stakes);
-        let ftt = protocols::common::ftt::<C>(
-            protocol_config.highway.finality_threshold_fraction,
-            &validators,
-        );
+        let highway_config = &chainspec.highway_config;
+        let ftt =
+            protocols::common::ftt::<C>(highway_config.finality_threshold_fraction, &validators);
 
         let round_success_meter = prev_cp
             .and_then(|cp| cp.as_any().downcast_ref::<HighwayProtocol<C>>())
             .map(|highway_proto| highway_proto.next_era_round_succ_meter(era_start_time.max(now)))
             .unwrap_or_else(|| {
                 RoundSuccessMeter::new(
-                    protocol_config.highway.minimum_round_exponent,
-                    protocol_config.highway.minimum_round_exponent,
-                    protocol_config.highway.maximum_round_exponent,
+                    highway_config.minimum_round_exponent,
+                    highway_config.minimum_round_exponent,
+                    highway_config.maximum_round_exponent,
                     era_start_time.max(now),
                     config.into(),
                 )
@@ -135,10 +134,11 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         // Allow about as many units as part of evidence for conflicting endorsements as we expect
         // a validator to create during an era. After that, they can endorse two conflicting forks
         // without getting faulty.
-        let min_round_len = state::round_len(protocol_config.highway.minimum_round_exponent);
-        let min_rounds_per_era = protocol_config
+        let min_round_len = state::round_len(highway_config.minimum_round_exponent);
+        let min_rounds_per_era = chainspec
+            .core_config
             .minimum_era_height
-            .max((TimeDiff::from(1) + protocol_config.era_duration) / min_round_len);
+            .max((TimeDiff::from(1) + chainspec.core_config.era_duration) / min_round_len);
         let endorsement_evidence_limit = min_rounds_per_era
             .saturating_mul(2)
             .min(MAX_ENDORSEMENT_EVIDENCE_LIMIT);
@@ -146,13 +146,13 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         let params = Params::new(
             seed,
             BLOCK_REWARD,
-            (protocol_config.highway.reduced_reward_multiplier * BLOCK_REWARD).to_integer(),
-            protocol_config.highway.minimum_round_exponent,
-            protocol_config.highway.maximum_round_exponent,
+            (highway_config.reduced_reward_multiplier * BLOCK_REWARD).to_integer(),
+            highway_config.minimum_round_exponent,
+            highway_config.maximum_round_exponent,
             init_round_exp,
-            protocol_config.minimum_era_height,
+            chainspec.core_config.minimum_era_height,
             era_start_time,
-            era_start_time + protocol_config.era_duration,
+            era_start_time + chainspec.core_config.era_duration,
             endorsement_evidence_limit,
         );
 
@@ -562,7 +562,6 @@ impl<C: Context + 'static> HighwayProtocol<C> {
             Vertex::Ping(ping) => trace!(?ping, "received ping"),
         }
     }
-
     /// Prevalidates the vertex but checks the cache for previously validated vertices.
     /// Avoids multiple validation of the same vertex.
     fn pre_validate_vertex(

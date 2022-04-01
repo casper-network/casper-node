@@ -1,6 +1,6 @@
 use std::{error, io, net::SocketAddr, result, sync::Arc};
 
-use casper_types::SecretKey;
+use casper_types::{ProtocolVersion, SecretKey};
 use datasize::DataSize;
 use openssl::{error::ErrorStack, ssl};
 use serde::Serialize;
@@ -142,6 +142,9 @@ pub enum ConnectionError {
     /// Peer reported a network name that does not match ours.
     #[error("peer is on different network: {0}")]
     WrongNetwork(String),
+    /// Peer reported an incompatible version.
+    #[error("peer is running incompatible version: {0}")]
+    IncompatibleVersion(ProtocolVersion),
     /// Peer sent a non-handshake message as its first message.
     #[error("peer did not send handshake")]
     DidNotSendHandshake,

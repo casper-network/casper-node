@@ -1,12 +1,13 @@
 #[cfg(test)]
 use std::net::{Ipv4Addr, SocketAddr};
 
+use casper_types::ProtocolVersion;
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use crate::types::TimeDiff;
 
-use super::PayloadWeights;
+use super::EstimatorWeights;
 
 /// Default binding address.
 ///
@@ -45,6 +46,10 @@ impl Default for Config {
             max_outgoing_byte_rate_non_validators: 0,
             max_incoming_message_rate_non_validators: 0,
             estimator_weights: Default::default(),
+            reject_incompatible_versions: true,
+            tarpit_version_threshold: None,
+            tarpit_duration: TimeDiff::from_seconds(600),
+            tarpit_chance: 0.2,
         }
     }
 }
@@ -77,7 +82,15 @@ pub struct Config {
     /// Maximum of requests answered from non-validating peers. Unlimited if 0.
     pub max_incoming_message_rate_non_validators: u32,
     /// Weight distribution for the payload impact estimator.
-    pub estimator_weights: PayloadWeights,
+    pub estimator_weights: EstimatorWeights,
+    /// Whether or not to reject incompatible versions during handshake.
+    pub reject_incompatible_versions: bool,
+    /// The protocol version at which (or under) tarpitting is enabled.
+    pub tarpit_version_threshold: Option<ProtocolVersion>,
+    /// If tarpitting is enabled, duration for which connections should be kept open.
+    pub tarpit_duration: TimeDiff,
+    /// The chance, expressed as a number between 0.0 and 1.0, of triggering the tarpit.
+    pub tarpit_chance: f32,
 }
 
 #[cfg(test)]

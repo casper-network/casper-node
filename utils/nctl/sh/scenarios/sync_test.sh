@@ -9,8 +9,8 @@ source "$NCTL"/sh/scenarios/common/itst.sh
 set -e
 
 #######################################
-# Runs an integration tests that tries to sync a new node
-# to an already running network.
+# Runs an integration tests that tries to sync 2 new nodes
+# (1 sync-to-genesis, 1 fast-sync) to an already running network.
 #
 # Arguments:
 #   `node=XXX` ID of a new node.
@@ -29,19 +29,22 @@ function main() {
     do_send_transfers
     # 3. Wait until they're all included in the chain.
     do_await_deploy_inclusion
-    # 4. Take a note of the last finalized block hash
+    # 3a. Take a note of the last finalized block hash
     do_read_lfb_hash
-    # 5. Send batch of Wasm deploys
+    # 4. Send batch of Wasm deploys
     do_send_wasm_deploys
-    # 6. Send batch of native transfers
+    # 5. Send batch of native transfers
     do_send_transfers
-    # 7. Wait until they're all included in the chain.
-    # 8. Start the node in sync mode using hash from 4)
-    do_start_new_node "$NEW_NODE_ID"
-    # 9. Wait until it's synchronized.
-    # 10. Verify that its last finalized block matches other nodes'.
-    # nctl-view-chain-root-hash
-    do_await_full_synchronization "$NEW_NODE_ID"
+    # 6. Wait until they're all included in the chain.
+    do_await_deploy_inclusion
+    # 7. Start the node in sync_to_genesis mode using hash from 4)
+    do_start_new_node "$SYNC_TO_GENESIS_NODE_ID" 'true'
+    # 8. Wait until sync_to_genesis node is synchronized.
+    do_await_full_synchronization "$SYNC_TO_GENESIS_NODE_ID"
+    # 9. Start the node in fast-sync mode using hash from 4)
+    do_start_new_node "$FAST_SYNC_NODE_ID" 'false'
+    # 10. Wait until fast-sync node is synchronized.
+    do_await_full_synchronization "$FAST_SYNC_NODE_ID"
     # 11. Run Closing Health Checks
     source "$NCTL"/sh/scenarios/common/health_checks.sh \
             errors=0 \
@@ -111,8 +114,19 @@ function do_read_lfb_hash() {
 
 function do_start_new_node() {
     local NODE_ID=${1}
+    local SYNC_TO_GENESIS_MODE=${2}
+    local CONFIG_PATH
+
+    CONFIG_PATH="$(find $(get_path_to_node $NODE_ID) -name config.toml)"
+
     log_step "starting new node-$NODE_ID. Syncing from hash=${LFB_HASH}"
     export RUST_LOG="info,casper_node::components::linear_chain_sync=trace"
+
+    if [ ! -z "$SYNC_TO_GENESIS_MODE" ]; then
+        sed -i "s/sync_to_genesis =.*/sync_to_genesis = $SYNC_TO_GENESIS_MODE/g" "$CONFIG_PATH"
+    fi
+    log "Sync-to-genesis mode: $(cat $CONFIG_PATH | grep 'sync_to_genesis')"
+
     # TODO: Do not hardcode.
     do_node_start "$NODE_ID" "$LFB_HASH"
 }
@@ -179,7 +193,8 @@ function prepare_wasm_batch() {
 # ENTRY POINT
 # ----------------------------------------------------------------
 
-unset NEW_NODE_ID
+unset SYNC_TO_GENESIS_NODE_ID
+unset FAST_SYNC_NODE_ID
 unset SYNC_TIMEOUT_SEC
 unset LFB_HASH
 STEP=0
@@ -188,13 +203,15 @@ for ARGUMENT in "$@"; do
     KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
     VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
     case "$KEY" in
-        node) NEW_NODE_ID=${VALUE} ;;
+        sync_to_genesis_node) SYNC_TO_GENESIS_NODE_ID=${VALUE} ;;
+        fast_sync_node) FAST_SYNC_NODE_ID=${VALUE} ;;
         timeout) SYNC_TIMEOUT_SEC=${VALUE} ;;
         *) ;;
     esac
 done
 
-NEW_NODE_ID=${NEW_NODE_ID:-"6"}
+SYNC_TO_GENESIS_NODE_ID=${SYNC_TO_GENESIS_NODE_ID:-"6"}
+FAST_SYNC_NODE_ID=${FAST_SYNC_NODE_ID:-"7"}
 SYNC_TIMEOUT_SEC=${SYNC_TIMEOUT_SEC:-"300"}
 
-main "$NEW_NODE_ID"
+main "$SYNC_TO_GENESIS_NODE_ID" "$FAST_SYNC_NODE_ID"
