@@ -7,8 +7,8 @@ use std::{
 
 use tracing::error;
 
-use casper_hashing::Digest;
-use casper_types::{Key, StoredValue};
+use casper_hashing::{ChunkWithProof, Digest};
+use casper_types::{bytesrepr::Bytes, Key, StoredValue};
 
 use crate::{
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
@@ -17,7 +17,7 @@ use crate::{
         global_state::{CommitError, CommitProvider, StateProvider, StateReader},
         store::Store,
         transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
-        trie::{merkle_proof::TrieMerkleProof, Trie},
+        trie::{merkle_proof::TrieMerkleProof, Trie, TrieOrChunk, TrieOrChunkId},
         trie_store::{
             lmdb::LmdbTrieStore,
             operations::{
@@ -277,19 +277,46 @@ impl StateProvider for ScratchGlobalState {
     fn get_trie(
         &self,
         _correlation_id: CorrelationId,
-        trie_key: &Digest,
-    ) -> Result<Option<Trie<Key, StoredValue>>, Self::Error> {
+        trie_or_chunk_id: TrieOrChunkId,
+    ) -> Result<Option<TrieOrChunk>, Self::Error> {
+        let TrieOrChunkId(trie_index, trie_key) = trie_or_chunk_id;
         let txn = self.environment.create_read_txn()?;
-        let ret: Option<Trie<Key, StoredValue>> = self.trie_store.get(&txn, trie_key)?;
+        let bytes = Store::<Digest, Trie<Digest, StoredValue>>::get_raw(
+            &*self.trie_store,
+            &txn,
+            &trie_key,
+        )?;
+
+        let maybe_trie_or_chunk = bytes.map_or_else(
+            || Ok(None),
+            |bytes| {
+                if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
+                    Ok(Some(TrieOrChunk::Trie(bytes.to_owned().into())))
+                } else {
+                    let chunk_with_proof = ChunkWithProof::new(bytes, trie_index)?;
+                    Ok(Some(TrieOrChunk::ChunkWithProof(chunk_with_proof)))
+                }
+            },
+        );
+
+        txn.commit()?;
+        maybe_trie_or_chunk
+    }
+
+    fn get_trie_full(
+        &self,
+        _correlation_id: CorrelationId,
+        trie_key: &Digest,
+    ) -> Result<Option<Bytes>, Self::Error> {
+        let txn = self.environment.create_read_txn()?;
+        let ret: Option<Bytes> =
+            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?
+                .map(|slice| slice.to_owned().into());
         txn.commit()?;
         Ok(ret)
     }
 
-    fn put_trie(
-        &self,
-        correlation_id: CorrelationId,
-        trie: &Trie<Key, StoredValue>,
-    ) -> Result<Digest, Self::Error> {
+    fn put_trie(&self, correlation_id: CorrelationId, trie: &[u8]) -> Result<Digest, Self::Error> {
         let mut txn = self.environment.create_read_write_txn()?;
         let trie_hash = put_trie::<
             Key,
@@ -307,7 +334,6 @@ impl StateProvider for ScratchGlobalState {
         &self,
         correlation_id: CorrelationId,
         trie_keys: Vec<Digest>,
-        check_integrity: bool,
     ) -> Result<Vec<Digest>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
         let missing_descendants =
@@ -316,7 +342,6 @@ impl StateProvider for ScratchGlobalState {
                 &txn,
                 self.trie_store.deref(),
                 trie_keys,
-                check_integrity,
             )?;
         txn.commit()?;
         Ok(missing_descendants)

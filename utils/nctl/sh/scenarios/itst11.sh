@@ -32,7 +32,8 @@ function main() {
     # 6. Look for one of the two nodes to report as faulty
     assert_equivication "5" "6"
     # 7. Run Health Checks
-    # ... errors=1: due to doppels being logged at ERROR level
+    # ... errors=ignore: can cause multiple errors non-deterministicly
+    #                    see: sre issue 347.
     # ... doppels=ignore: doppelganger purposely created in this test
     # ... equivocators=ignore: doppelganger can cause an equivocation
     source "$NCTL"/sh/scenarios/common/health_checks.sh \

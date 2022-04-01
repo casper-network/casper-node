@@ -54,9 +54,9 @@ fi
 
 # Ensure files are built
 cd "$CLIENT_ROOT_DIR"
-cargo build --release --features casper-mainnet
+cargo build --release
 cd "$NODE_ROOT_DIR"
-cargo build --release --package casper-node --features casper-mainnet
+cargo build --release --package casper-node
 make build-contract-rs/activate-bid
 make build-contract-rs/add-bid
 make build-contract-rs/delegate

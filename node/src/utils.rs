@@ -4,9 +4,8 @@
 mod display_error;
 pub(crate) mod ds;
 mod external;
-pub(crate) mod pid_file;
 pub(crate) mod rlimit;
-mod round_robin;
+pub(crate) mod round_robin;
 pub(crate) mod umask;
 pub mod work_queue;
 
@@ -37,9 +36,10 @@ use thiserror::Error;
 use tracing::{error, warn};
 
 pub(crate) use display_error::display_error;
+pub(crate) use external::External;
 #[cfg(test)]
 pub(crate) use external::RESOURCES_PATH;
-pub(crate) use external::{External, LoadError, Loadable};
+pub use external::{LoadError, Loadable};
 pub(crate) use round_robin::WeightedRoundRobin;
 
 use crate::types::NodeId;

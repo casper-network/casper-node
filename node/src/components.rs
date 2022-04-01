@@ -4,16 +4,16 @@
 //! Each component has a unified interface, expressed by the `Component` trait.
 pub(crate) mod block_proposer;
 pub(crate) mod block_validator;
+pub(crate) mod chain_synchronizer;
 pub(crate) mod chainspec_loader;
 pub(crate) mod consensus;
-pub(crate) mod console;
 pub mod contract_runtime;
 pub(crate) mod deploy_acceptor;
+pub(crate) mod diagnostics_port;
 pub(crate) mod event_stream_server;
 pub(crate) mod fetcher;
 pub(crate) mod gossiper;
 pub(crate) mod linear_chain;
-pub(crate) mod linear_chain_sync;
 pub(crate) mod rest_server;
 pub mod rpc_server;
 // The `in_memory_network` is public for use in doctests.
@@ -22,6 +22,10 @@ pub mod in_memory_network;
 pub(crate) mod metrics;
 pub(crate) mod small_network;
 pub mod storage;
+// TODO: this import is only required due to the usage of the `reactor!` macro in the fetcher tests;
+//       remove once the macro is deleted.
+#[cfg(test)]
+pub(crate) use crate::testing::fake_deploy_acceptor;
 
 use crate::{
     effect::{EffectBuilder, Effects},

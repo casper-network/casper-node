@@ -233,6 +233,7 @@ function setup_asset_chainspec()
     local ACTIVATION_POINT=${3}
     local PATH_TO_CHAINSPEC_TEMPLATE=${4}
     local IS_GENESIS=${5}
+    local CHUNKED_HASH_ACTIVATION=${6}
     local PATH_TO_CHAINSPEC
     local SCRIPT
 
@@ -257,6 +258,7 @@ function setup_asset_chainspec()
             "cfg=toml.load('$PATH_TO_CHAINSPEC');"
             "cfg['protocol']['activation_point']=$ACTIVATION_POINT;"
             "cfg['protocol']['version']='$PROTOCOL_VERSION';"
+            "cfg['protocol']['verifiable_chunked_hash_activation']=$CHUNKED_HASH_ACTIVATION;"
             "cfg['network']['name']='$(get_chain_name)';"
             "cfg['core']['validator_slots']=$COUNT_NODES;"
             "toml.dump(cfg, open('$PATH_TO_CHAINSPEC', 'w'));"

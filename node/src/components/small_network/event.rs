@@ -14,16 +14,15 @@ use tracing::Span;
 
 use super::{error::ConnectionError, FramedTransport, GossipedAddress, Message, NodeId};
 use crate::{
-    components::contract_runtime::ContractRuntimeAnnouncement,
     effect::{
-        announcements::BlocklistAnnouncement,
+        announcements::{BlocklistAnnouncement, ContractRuntimeAnnouncement},
         requests::{NetworkInfoRequest, NetworkRequest},
     },
     protocol::Message as ProtocolMessage,
 };
 
 const _SMALL_NETWORK_EVENT_SIZE: usize = mem::size_of::<Event<ProtocolMessage>>();
-const_assert!(_SMALL_NETWORK_EVENT_SIZE < 89);
+const_assert!(_SMALL_NETWORK_EVENT_SIZE < 90);
 
 /// A small network event.
 #[derive(Debug, From, Serialize)]

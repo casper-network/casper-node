@@ -16,7 +16,7 @@ use super::ReactorEventT;
 use crate::{
     effect::{requests::RestRequest, EffectBuilder},
     reactor::QueueKind,
-    rpcs::info::GetValidatorChangesResult,
+    rpcs::info::{GetChainspecResult, GetValidatorChangesResult},
     types::GetStatusResult,
 };
 
@@ -31,6 +31,9 @@ pub const JSON_RPC_SCHEMA_API_PATH: &str = "rpc-schema";
 
 /// The validator information URL path.
 pub const VALIDATOR_CHANGES_API_PATH: &str = "validator-changes";
+
+/// The chainspec file URL path.
+pub const CHAINSPEC_API_PATH: &str = "chainspec";
 
 pub(super) fn create_status_filter<REv: ReactorEventT>(
     effect_builder: EffectBuilder<REv>,
@@ -109,6 +112,23 @@ pub(super) fn create_validator_changes_filter<REv: ReactorEventT>(
                 .get_consensus_validator_changes()
                 .map(move |changes| {
                     let result = GetValidatorChangesResult::new(api_version, changes);
+                    Ok::<_, Rejection>(reply::json(&result).into_response())
+                })
+        })
+        .boxed()
+}
+
+pub(super) fn create_chainspec_filter<REv: ReactorEventT>(
+    effect_builder: EffectBuilder<REv>,
+    api_version: ProtocolVersion,
+) -> BoxedFilter<(Response<Body>,)> {
+    warp::get()
+        .and(warp::path(CHAINSPEC_API_PATH))
+        .and_then(move || {
+            effect_builder
+                .get_chainspec_raw_bytes()
+                .map(move |chainspec_bytes| {
+                    let result = GetChainspecResult::new(api_version, (*chainspec_bytes).clone());
                     Ok::<_, Rejection>(reply::json(&result).into_response())
                 })
         })

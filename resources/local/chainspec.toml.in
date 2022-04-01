@@ -14,6 +14,8 @@ hard_reset = false
 activation_point = '${TIMESTAMP}'
 # Optional era ID in which the last emergency restart happened.
 #last_emergency_restart = 0
+# The era ID starting at which the new Merkle tree-based hashing scheme is applied.
+verifiable_chunked_hash_activation = 2
 
 [network]
 # Human readable name for convenience; the genesis_hash is the true identifier.  The name influences the genesis hash by

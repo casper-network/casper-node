@@ -15,6 +15,10 @@ activation_point = 3000
 # Optional era ID in which the last emergency restart happened.
 #last_emergency_restart = 0
 
+# The era ID starting at which the new Merkle tree-based hashing scheme is applied.
+# TODO: Set this to the same value as the upgrade to the first version supporting Merkle tree-based hashing.
+verifiable_chunked_hash_activation = 9999
+
 [network]
 # Human readable name for convenience; the genesis_hash is the true identifier.  The name influences the genesis hash by
 # contributing to the seeding of the pseudo-random number generator used in contract-runtime for computing genesis

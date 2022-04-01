@@ -6,7 +6,7 @@ use super::Source;
 use crate::{
     components::deploy_acceptor::Error,
     effect::{announcements::RpcServerAnnouncement, Responder},
-    types::{Block, Deploy, Timestamp},
+    types::{BlockHeader, Deploy, Timestamp},
 };
 
 use casper_hashing::Digest;
@@ -18,13 +18,13 @@ use casper_types::{
 /// A utility struct to hold duplicated information across events.
 #[derive(Debug, Serialize)]
 pub(crate) struct EventMetadata {
-    pub(super) deploy: Box<Deploy>,
-    pub(super) source: Source,
-    pub(super) maybe_responder: Option<Responder<Result<(), Error>>>,
+    pub(crate) deploy: Box<Deploy>,
+    pub(crate) source: Source,
+    pub(crate) maybe_responder: Option<Responder<Result<(), Error>>>,
 }
 
 impl EventMetadata {
-    pub(super) fn new(
+    pub(crate) fn new(
         deploy: Box<Deploy>,
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
@@ -52,10 +52,10 @@ pub(crate) enum Event {
         is_new: bool,
         verification_start_timestamp: Timestamp,
     },
-    /// The result of querying the highest available `Block` from the storage component.
-    GetBlockResult {
+    /// The result of querying the highest available `BlockHeader` from the storage component.
+    GetBlockHeaderResult {
         event_metadata: EventMetadata,
-        maybe_block: Box<Option<Block>>,
+        maybe_block_header: Box<Option<BlockHeader>>,
         verification_start_timestamp: Timestamp,
     },
     /// The result of querying global state for the `Account` associated with the `Deploy`.
@@ -90,11 +90,6 @@ pub(crate) enum Event {
         contract_package_hash: ContractPackageHash,
         maybe_package_version: Option<ContractVersion>,
         maybe_contract_package: Option<ContractPackage>,
-        verification_start_timestamp: Timestamp,
-    },
-    /// The event to initiate the verification of the `Deploy`'s cryptographic validity.
-    VerifyDeployCryptographicValidity {
-        event_metadata: EventMetadata,
         verification_start_timestamp: Timestamp,
     },
 }
@@ -136,7 +131,7 @@ impl Display for Event {
                     )
                 }
             }
-            Event::GetBlockResult { event_metadata, .. } => {
+            Event::GetBlockHeaderResult { event_metadata, .. } => {
                 write!(
                     formatter,
                     "received highest block from storage to validate deploy with hash: {}.",
@@ -179,13 +174,6 @@ impl Display for Event {
                     "verifying contract package to validate deploy with hash {} with state hash: {}.",
                     event_metadata.deploy.id(),
                     prestate_hash
-                )
-            }
-            Event::VerifyDeployCryptographicValidity { event_metadata, .. } => {
-                write!(
-                    formatter,
-                    "verifying deploy cryptographic validity for deploy with hash {}.",
-                    event_metadata.deploy.id(),
                 )
             }
         }

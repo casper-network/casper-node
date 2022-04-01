@@ -20,7 +20,6 @@ use crate::{
     components::{chainspec_loader::NextUpgrade, gossiper, small_network, storage},
     crypto::AsymmetricKeyExt,
     effect::{
-        announcements::NetworkAnnouncement,
         requests::{ContractRuntimeRequest, NetworkRequest},
         EffectExt,
     },
@@ -35,7 +34,7 @@ use crate::{
     },
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
-        ActivationPoint, BlockHeader, Chainspec, ExitCode, Timestamp,
+        ActivationPoint, BlockHeader, Chainspec, ChainspecRawBytes, ExitCode, Timestamp,
     },
     utils::{External, Loadable, WithDir, RESOURCES_PATH},
     NodeRng,
@@ -46,6 +45,7 @@ struct TestChain {
     keys: Vec<Arc<SecretKey>>,
     storages: Vec<TempDir>,
     chainspec: Arc<Chainspec>,
+    chainspec_raw_bytes: Arc<ChainspecRawBytes>,
 }
 
 type Nodes = crate::testing::network::Nodes<FilterReactor<participating::Reactor>>;
@@ -85,7 +85,8 @@ impl TestChain {
         stakes: BTreeMap<PublicKey, U512>,
     ) -> Self {
         // Load the `local` chainspec.
-        let mut chainspec = Chainspec::from_resources("local");
+        let (mut chainspec, chainspec_raw_bytes) =
+            <(Chainspec, ChainspecRawBytes)>::from_resources("local");
 
         // Override accounts with those generated from the keys.
         let accounts = stakes
@@ -119,8 +120,9 @@ impl TestChain {
 
         TestChain {
             keys,
-            chainspec: Arc::new(chainspec),
             storages: Vec::new(),
+            chainspec: Arc::new(chainspec),
+            chainspec_raw_bytes: Arc::new(chainspec_raw_bytes),
         }
     }
 
@@ -172,8 +174,9 @@ impl TestChain {
 
             // We create an initializer reactor here and run it to completion.
             let mut initializer_runner = Runner::<initializer::Reactor>::new_with_chainspec(
-                (false, WithDir::new(root.clone(), cfg)),
+                WithDir::new(root.clone(), cfg),
                 Arc::clone(&self.chainspec),
+                Arc::clone(&self.chainspec_raw_bytes),
             )
             .await?;
             let reactor_exit = initializer_runner.run(rng).await;
@@ -340,10 +343,7 @@ async fn run_equivocator_network() {
         .set_filter(move |event| {
             let now = Timestamp::now();
             match &event {
-                ParticipatingEvent::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
-                    payload,
-                    ..
-                }) if matches!(*payload, Message::Consensus(_)) => {}
+                ParticipatingEvent::ConsensusMessageIncoming { .. } => {}
                 ParticipatingEvent::NetworkRequest(
                     NetworkRequest::SendMessage { payload, .. }
                     | NetworkRequest::Broadcast { payload, .. }
@@ -358,7 +358,7 @@ async fn run_equivocator_network() {
             Either::Right(event)
         });
 
-    let era_count = 3;
+    let era_count = 4;
 
     let timeout = Duration::from_secs(90 * era_count);
     info!("Waiting for {} eras to end.", era_count);
@@ -376,41 +376,33 @@ async fn run_equivocator_network() {
         return;
     }
 
-    // In the genesis era, Alice equivocates. Since eviction takes place with a delay of one
+    // Era 0 consists only of the genesis block.
+    // In era 1, Alice equivocates. Since eviction takes place with a delay of one
     // (`auction_delay`) era, she is still included in the next era's validator set.
-    assert_eq!(switch_blocks.equivocators(0), [alice_pk.clone()]);
-    assert_eq!(switch_blocks.inactive_validators(0), []);
-    assert!(bids[0][&alice_pk].inactive());
-    assert!(switch_blocks.next_era_validators(0).contains_key(&alice_pk));
-
-    // In era 1 Alice is banned. Banned validators count neither as faulty nor inactive, even
-    // though they cannot participate. In the next era, she will be evicted.
-    assert_eq!(switch_blocks.equivocators(1), []);
+    assert_eq!(switch_blocks.equivocators(1), [alice_pk.clone()]);
     assert_eq!(switch_blocks.inactive_validators(1), []);
     assert!(bids[1][&alice_pk].inactive());
-    assert!(!switch_blocks.next_era_validators(1).contains_key(&alice_pk));
+    assert!(switch_blocks.next_era_validators(1).contains_key(&alice_pk));
 
-    // In era 2 she is not a validator anymore and her bid remains deactivated.
+    // In era 2 Alice is banned. Banned validators count neither as faulty nor inactive, even
+    // though they cannot participate. In the next era, she will be evicted.
     assert_eq!(switch_blocks.equivocators(2), []);
     assert_eq!(switch_blocks.inactive_validators(2), []);
     assert!(bids[2][&alice_pk].inactive());
     assert!(!switch_blocks.next_era_validators(2).contains_key(&alice_pk));
+
+    // In era 3 she is not a validator anymore and her bid remains deactivated.
+    assert_eq!(switch_blocks.equivocators(3), []);
+    assert_eq!(switch_blocks.inactive_validators(3), []);
+    assert!(bids[3][&alice_pk].inactive());
+    assert!(!switch_blocks.next_era_validators(3).contains_key(&alice_pk));
 
     // We don't slash, so the stakes are never reduced.
     for (pk, stake) in &stakes {
         assert!(bids[0][pk].staked_amount() >= stake);
         assert!(bids[1][pk].staked_amount() >= stake);
         assert!(bids[2][pk].staked_amount() >= stake);
-    }
-
-    // The only era with direct evidence is era 0. After that Alice was banned or evicted.
-    let none: Vec<&PublicKey> = vec![];
-    let alice = vec![&alice_pk];
-    for runner in net.nodes().values() {
-        let consensus = runner.participating().consensus();
-        assert_eq!(consensus.validators_with_evidence(EraId::new(0)), alice);
-        assert_eq!(consensus.validators_with_evidence(EraId::new(1)), none);
-        assert_eq!(consensus.validators_with_evidence(EraId::new(2)), none);
+        assert!(bids[3][pk].staked_amount() >= stake);
     }
 }
 
@@ -437,7 +429,7 @@ async fn dont_upgrade_without_switch_block() {
         .await
         .expect("network initialization failed");
 
-    // An upgrade is scheduled for era 2, after the switch block in era 1 (height 3).
+    // An upgrade is scheduled for era 2, after the switch block in era 1 (height 2).
     // We artificially delay the execution of that block.
     for runner in net.runners_mut() {
         runner
@@ -453,23 +445,23 @@ async fn dont_upgrade_without_switch_block() {
             .await;
         let mut exec_request_received = false;
         runner.reactor_mut().inner_mut().set_filter(move |event| {
-            if let ParticipatingEvent::ContractRuntime(request) = &event {
-                if let ContractRuntimeRequest::EnqueueBlockForExecution {
+            if let ParticipatingEvent::ContractRuntimeRequest(
+                ContractRuntimeRequest::EnqueueBlockForExecution {
                     finalized_block, ..
-                } = request.as_ref()
+                },
+            ) = &event
+            {
+                if finalized_block.era_report().is_some()
+                    && finalized_block.era_id() == EraId::from(1)
+                    && !exec_request_received
                 {
-                    if finalized_block.era_report().is_some()
-                        && finalized_block.era_id() == EraId::from(1)
-                        && !exec_request_received
-                    {
-                        info!("delaying {}", finalized_block);
-                        exec_request_received = true;
-                        return Either::Left(
-                            time::sleep(Duration::from_secs(10)).event(move |_| event),
-                        );
-                    }
-                    info!("not delaying {}", finalized_block);
+                    info!("delaying {}", finalized_block);
+                    exec_request_received = true;
+                    return Either::Left(
+                        time::sleep(Duration::from_secs(10)).event(move |_| event),
+                    );
                 }
+                info!("not delaying {}", finalized_block);
             }
             Either::Right(event)
         });
@@ -494,7 +486,7 @@ async fn dont_upgrade_without_switch_block() {
         let header = runner
             .participating()
             .storage()
-            .read_block_header_and_finality_signatures_by_height(3)
+            .read_block_header_and_sufficient_finality_signatures_by_height(2)
             .expect("failed to read from storage")
             .expect("missing switch block")
             .block_header;

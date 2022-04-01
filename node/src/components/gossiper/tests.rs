@@ -8,6 +8,7 @@ use std::{
 };
 
 use derive_more::From;
+use num_rational::Ratio;
 use prometheus::Registry;
 use rand::Rng;
 use reactor::ReactorEvent;
@@ -26,28 +27,35 @@ use casper_types::ProtocolVersion;
 use super::*;
 use crate::{
     components::{
-        contract_runtime::{self, ContractRuntime, ContractRuntimeAnnouncement},
-        deploy_acceptor::{self, DeployAcceptor},
+        contract_runtime::{self, ContractRuntime},
+        deploy_acceptor,
+        fake_deploy_acceptor::FakeDeployAcceptor,
         in_memory_network::{self, InMemoryNetwork, NetworkController},
+        small_network::GossipedAddress,
         storage::{self, Storage},
     },
     effect::{
         announcements::{
-            ControlAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
-            NetworkAnnouncement, RpcServerAnnouncement,
+            ContractRuntimeAnnouncement, ControlAnnouncement, DeployAcceptorAnnouncement,
+            GossiperAnnouncement, RpcServerAnnouncement,
         },
-        requests::{ConsensusRequest, ContractRuntimeRequest, LinearChainRequest},
+        incoming::{
+            ConsensusMessageIncoming, FinalitySignatureIncoming, NetRequestIncoming, NetResponse,
+            NetResponseIncoming, TrieRequestIncoming, TrieResponseIncoming,
+        },
+        requests::{ConsensusRequest, ContractRuntimeRequest},
         Responder,
     },
+    fatal,
     protocol::Message as NodeMessage,
     reactor::{self, EventQueueHandle, Runner},
-    testing,
     testing::{
+        self,
         network::{Network, NetworkedReactor},
         ConditionCheckReactor, TestRng,
     },
-    types::{Chainspec, Deploy, NodeId, Tag},
-    utils::{Loadable, WithDir},
+    types::{Deploy, NodeId},
+    utils::WithDir,
     NodeRng,
 };
 
@@ -60,7 +68,7 @@ enum Event {
     #[from]
     Network(in_memory_network::Event<NodeMessage>),
     #[from]
-    Storage(#[serde(skip_serializing)] storage::Event),
+    Storage(storage::Event),
     #[from]
     DeployAcceptor(#[serde(skip_serializing)] deploy_acceptor::Event),
     #[from]
@@ -68,9 +76,9 @@ enum Event {
     #[from]
     NetworkRequest(NetworkRequest<NodeMessage>),
     #[from]
-    ControlAnnouncement(ControlAnnouncement),
+    StorageRequest(StorageRequest),
     #[from]
-    NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeMessage>),
+    ControlAnnouncement(ControlAnnouncement),
     #[from]
     RpcServerAnnouncement(#[serde(skip_serializing)] RpcServerAnnouncement),
     #[from]
@@ -78,7 +86,25 @@ enum Event {
     #[from]
     DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
     #[from]
-    ContractRuntime(#[serde(skip_serializing)] Box<ContractRuntimeRequest>),
+    ContractRuntime(contract_runtime::Event),
+    #[from]
+    ContractRuntimeRequest(ContractRuntimeRequest),
+    #[from]
+    ConsensusMessageIncoming(ConsensusMessageIncoming),
+    #[from]
+    DeployGossiperIncoming(GossiperIncoming<Deploy>),
+    #[from]
+    AddressGossiperIncoming(GossiperIncoming<GossipedAddress>),
+    #[from]
+    NetRequestIncoming(NetRequestIncoming),
+    #[from]
+    NetResponseIncoming(NetResponseIncoming),
+    #[from]
+    TrieRequestIncoming(TrieRequestIncoming),
+    #[from]
+    TrieResponseIncoming(TrieResponseIncoming),
+    #[from]
+    FinalitySignatureIncoming(FinalitySignatureIncoming),
 }
 
 impl ReactorEvent for Event {
@@ -89,17 +115,13 @@ impl ReactorEvent for Event {
             None
         }
     }
-}
 
-impl From<ContractRuntimeRequest> for Event {
-    fn from(contract_runtime_request: ContractRuntimeRequest) -> Self {
-        Event::ContractRuntime(Box::new(contract_runtime_request))
-    }
-}
-
-impl From<StorageRequest> for Event {
-    fn from(request: StorageRequest) -> Self {
-        Event::Storage(storage::Event::from(request))
+    fn try_into_control(self) -> Option<ControlAnnouncement> {
+        if let Self::ControlAnnouncement(ctrl_ann) = self {
+            Some(ctrl_ann)
+        } else {
+            None
+        }
     }
 }
 
@@ -111,12 +133,6 @@ impl From<NetworkRequest<Message<Deploy>>> for Event {
 
 impl From<ConsensusRequest> for Event {
     fn from(_request: ConsensusRequest) -> Self {
-        unimplemented!("not implemented for gossiper tests")
-    }
-}
-
-impl From<LinearChainRequest> for Event {
-    fn from(_request: LinearChainRequest) -> Self {
         unimplemented!("not implemented for gossiper tests")
     }
 }
@@ -134,9 +150,10 @@ impl Display for Event {
             Event::Storage(event) => write!(formatter, "storage: {}", event),
             Event::DeployAcceptor(event) => write!(formatter, "deploy acceptor: {}", event),
             Event::DeployGossiper(event) => write!(formatter, "deploy gossiper: {}", event),
+            Event::StorageRequest(req) => write!(formatter, "storage request: {}", req),
             Event::NetworkRequest(req) => write!(formatter, "network request: {}", req),
+            Event::ContractRuntimeRequest(req) => write!(formatter, "incoming: {}", req),
             Event::ControlAnnouncement(ctrl_ann) => write!(formatter, "control: {}", ctrl_ann),
-            Event::NetworkAnnouncement(ann) => write!(formatter, "network announcement: {}", ann),
             Event::RpcServerAnnouncement(ann) => {
                 write!(formatter, "api server announcement: {}", ann)
             }
@@ -149,6 +166,14 @@ impl Display for Event {
             Event::ContractRuntime(event) => {
                 write!(formatter, "contract-runtime event: {:?}", event)
             }
+            Event::ConsensusMessageIncoming(inner) => write!(formatter, "incoming: {}", inner),
+            Event::DeployGossiperIncoming(inner) => write!(formatter, "incoming: {}", inner),
+            Event::AddressGossiperIncoming(inner) => write!(formatter, "incoming: {}", inner),
+            Event::NetRequestIncoming(inner) => write!(formatter, "incoming: {}", inner),
+            Event::NetResponseIncoming(inner) => write!(formatter, "incoming: {}", inner),
+            Event::TrieRequestIncoming(inner) => write!(formatter, "incoming: {}", inner),
+            Event::TrieResponseIncoming(inner) => write!(formatter, "incoming: {}", inner),
+            Event::FinalitySignatureIncoming(inner) => write!(formatter, "incoming: {}", inner),
         }
     }
 }
@@ -163,7 +188,7 @@ enum Error {
 struct Reactor {
     network: InMemoryNetwork<NodeMessage>,
     storage: Storage,
-    deploy_acceptor: DeployAcceptor,
+    fake_deploy_acceptor: FakeDeployAcceptor,
     deploy_gossiper: Gossiper<Deploy, Event>,
     contract_runtime: ContractRuntime,
     _storage_tempdir: TempDir,
@@ -188,14 +213,19 @@ impl reactor::Reactor for Reactor {
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let network = NetworkController::create_node(event_queue, rng);
 
+        // `verifiable_chunked_hash_activation` can be chosen arbitrarily
+        let verifiable_chunked_hash_activation = rng.gen_range(0..=10);
+
         let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
         let storage = Storage::new(
             &storage_withdir,
             None,
             ProtocolVersion::from_parts(1, 0, 0),
-            false,
             "test",
+            Ratio::new(1, 3),
+            None,
+            verifiable_chunked_hash_activation.into(),
         )
         .unwrap();
 
@@ -209,15 +239,11 @@ impl reactor::Reactor for Reactor {
             MAX_ASSOCIATED_KEYS,
             DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
             registry,
+            verifiable_chunked_hash_activation.into(),
         )
         .unwrap();
 
-        let deploy_acceptor = DeployAcceptor::new(
-            deploy_acceptor::Config::new(false),
-            &Chainspec::from_resources("local"),
-            registry,
-        )
-        .unwrap();
+        let fake_deploy_acceptor = FakeDeployAcceptor::new();
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
             config,
@@ -228,7 +254,7 @@ impl reactor::Reactor for Reactor {
         let reactor = Reactor {
             network,
             storage,
-            deploy_acceptor,
+            fake_deploy_acceptor,
             deploy_gossiper,
             contract_runtime,
             _storage_tempdir: storage_tempdir,
@@ -252,7 +278,7 @@ impl reactor::Reactor for Reactor {
             ),
             Event::DeployAcceptor(event) => reactor::wrap_effects(
                 Event::DeployAcceptor,
-                self.deploy_acceptor
+                self.fake_deploy_acceptor
                     .handle_event(effect_builder, rng, event),
             ),
             Event::DeployGossiper(event) => reactor::wrap_effects(
@@ -265,79 +291,13 @@ impl reactor::Reactor for Reactor {
                 self.network
                     .handle_event(effect_builder, rng, request.into()),
             ),
+            Event::StorageRequest(request) => reactor::wrap_effects(
+                Event::Storage,
+                self.storage
+                    .handle_event(effect_builder, rng, request.into()),
+            ),
             Event::ControlAnnouncement(ctrl_ann) => {
                 unreachable!("unhandled control announcement: {}", ctrl_ann)
-            }
-            Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
-                sender,
-                payload,
-            }) => {
-                let reactor_event = match payload {
-                    NodeMessage::GetRequest {
-                        tag: Tag::Deploy,
-                        serialized_id,
-                    } => {
-                        // Note: This is copied almost verbatim from the validator reactor and
-                        // needs to be refactored.
-
-                        let deploy_hash = match bincode::deserialize(&serialized_id) {
-                            Ok(hash) => hash,
-                            Err(error) => {
-                                error!(
-                                    "failed to decode {:?} from {}: {}",
-                                    serialized_id, sender, error
-                                );
-                                return Effects::new();
-                            }
-                        };
-
-                        match self
-                            .storage
-                            .handle_deduplicated_legacy_direct_deploy_request(deploy_hash)
-                        {
-                            Some(serialized_item) => {
-                                let message = NodeMessage::new_get_response_raw_unchecked::<Deploy>(
-                                    serialized_item,
-                                );
-                                return effect_builder.send_message(sender, message).ignore();
-                            }
-
-                            None => {
-                                debug!(%sender, %deploy_hash, "failed to get deploy (not found)");
-                                return Effects::new();
-                            }
-                        }
-                    }
-                    NodeMessage::GetResponse {
-                        tag: Tag::Deploy,
-                        serialized_item,
-                    } => {
-                        let deploy = match bincode::deserialize(&serialized_item) {
-                            Ok(deploy) => Box::new(deploy),
-                            Err(error) => {
-                                error!("failed to decode deploy from {}: {}", sender, error);
-                                return Effects::new();
-                            }
-                        };
-                        Event::DeployAcceptor(deploy_acceptor::Event::Accept {
-                            deploy,
-                            source: Source::Peer(sender),
-                            maybe_responder: None,
-                        })
-                    }
-                    NodeMessage::DeployGossiper(message) => {
-                        Event::DeployGossiper(super::Event::MessageReceived { sender, message })
-                    }
-                    msg => panic!("should not get {}", msg),
-                };
-                self.dispatch_event(effect_builder, rng, reactor_event)
-            }
-            Event::NetworkAnnouncement(NetworkAnnouncement::GossipOurAddress(_)) => {
-                unreachable!("should not receive announcements of type GossipOurAddress");
-            }
-            Event::NetworkAnnouncement(NetworkAnnouncement::NewPeer(_)) => {
-                // We do not care about new peers in the gossiper test.
-                Effects::new()
             }
             Event::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived {
                 deploy,
@@ -372,11 +332,79 @@ impl reactor::Reactor for Reactor {
                 Event::Network,
                 self.network.handle_event(effect_builder, rng, event),
             ),
-            Event::ContractRuntime(event) => reactor::wrap_effects(
-                Into::into,
+            Event::ContractRuntimeRequest(req) => reactor::wrap_effects(
+                Event::ContractRuntime,
                 self.contract_runtime
-                    .handle_event(effect_builder, rng, *event),
+                    .handle_event(effect_builder, rng, req.into()),
             ),
+            Event::ContractRuntime(event) => reactor::wrap_effects(
+                Event::ContractRuntime,
+                self.contract_runtime
+                    .handle_event(effect_builder, rng, event),
+            ),
+            Event::DeployGossiperIncoming(incoming) => reactor::wrap_effects(
+                Event::DeployGossiper,
+                self.deploy_gossiper
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
+            Event::NetRequestIncoming(incoming) => reactor::wrap_effects(
+                Event::Storage,
+                self.storage
+                    .handle_event(effect_builder, rng, incoming.into()),
+            ),
+            Event::NetResponseIncoming(NetResponseIncoming { sender, message }) => match message {
+                NetResponse::Deploy(ref serialized_item) => {
+                    let deploy = match bincode::deserialize::<FetchedOrNotFound<Deploy, DeployHash>>(
+                        serialized_item,
+                    ) {
+                        Ok(FetchedOrNotFound::Fetched(deploy)) => Box::new(deploy),
+                        Ok(FetchedOrNotFound::NotFound(deploy_hash)) => {
+                            return fatal!(
+                                effect_builder,
+                                "peer did not have deploy with hash {}: {}",
+                                deploy_hash,
+                                sender,
+                            )
+                            .ignore();
+                        }
+                        Err(error) => {
+                            return fatal!(
+                                effect_builder,
+                                "failed to decode deploy from {}: {}",
+                                sender,
+                                error
+                            )
+                            .ignore();
+                        }
+                    };
+                    reactor::wrap_effects(
+                        Event::DeployAcceptor,
+                        self.fake_deploy_acceptor.handle_event(
+                            effect_builder,
+                            rng,
+                            deploy_acceptor::Event::Accept {
+                                deploy,
+                                source: Source::Peer(sender),
+                                maybe_responder: None,
+                            },
+                        ),
+                    )
+                }
+                other @ (NetResponse::Block(_)
+                | NetResponse::GossipedAddress(_)
+                | NetResponse::BlockAndMetadataByHeight(_)
+                | NetResponse::BlockHeaderByHash(_)
+                | NetResponse::BlockHeaderAndFinalitySignaturesByHeight(_)) => {
+                    fatal!(effect_builder, "unexpected net response: {:?}", other).ignore()
+                }
+            },
+            other @ (Event::ConsensusMessageIncoming(_)
+            | Event::FinalitySignatureIncoming(_)
+            | Event::AddressGossiperIncoming(_)
+            | Event::TrieRequestIncoming(_)
+            | Event::TrieResponseIncoming(_)) => {
+                fatal!(effect_builder, "should not receive {:?}", other).ignore()
+            }
         }
     }
 

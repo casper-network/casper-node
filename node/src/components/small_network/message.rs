@@ -11,11 +11,11 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
-use crate::crypto;
 #[cfg(test)]
 use crate::crypto::AsymmetricKeyExt;
 #[cfg(test)]
 use crate::testing::TestRng;
+use crate::{crypto, types::NodeId};
 
 use super::counting_format::ConnectionId;
 
@@ -53,9 +53,18 @@ impl<P: Payload> Message<P> {
         }
     }
 
+    /// Determines whether or not a message is low priority.
+    #[inline]
+    pub(super) fn is_low_priority(&self) -> bool {
+        match self {
+            Message::Handshake { .. } => false,
+            Message::Payload(payload) => payload.is_low_priority(),
+        }
+    }
+
     /// Returns the incoming resource estimate of the payload.
     #[inline]
-    pub(super) fn payload_incoming_resource_estimate(&self, weights: &PayloadWeights) -> u32 {
+    pub(super) fn payload_incoming_resource_estimate(&self, weights: &EstimatorWeights) -> u32 {
         match self {
             Message::Handshake { .. } => 0,
             Message::Payload(payload) => payload.incoming_resource_estimate(weights),
@@ -251,6 +260,8 @@ pub(crate) enum MessageKind {
     DeployTransfer,
     /// Blocks for finality signatures being transferred directly (via requests and other means).
     BlockTransfer,
+    /// Tries transferred, usually as part of chain syncing.
+    TrieTransfer,
     /// Any other kind of payload (or missing classification).
     Other,
 }
@@ -264,6 +275,7 @@ impl Display for MessageKind {
             MessageKind::AddressGossip => f.write_str("address_gossip"),
             MessageKind::DeployTransfer => f.write_str("deploy_transfer"),
             MessageKind::BlockTransfer => f.write_str("block_transfer"),
+            MessageKind::TrieTransfer => f.write_str("trie_transfer"),
             MessageKind::Other => f.write_str("other"),
         }
     }
@@ -280,22 +292,44 @@ pub(crate) trait Payload:
     fn classify(&self) -> MessageKind;
 
     /// The penalty for resource usage of a message to be applied when processed as incoming.
-    fn incoming_resource_estimate(&self, _weights: &PayloadWeights) -> u32 {
-        0
+    fn incoming_resource_estimate(&self, _weights: &EstimatorWeights) -> u32;
+
+    /// Determines if the payload should be considered low priority.
+    fn is_low_priority(&self) -> bool {
+        false
     }
 }
 
+/// Network message conversion support.
+pub(crate) trait FromIncoming<P> {
+    /// Creates a new value from a received payload.
+    fn from_incoming(sender: NodeId, payload: P) -> Self;
+}
 /// A generic configuration for payload weights.
 ///
 /// Implementors of `Payload` are free to interpret this as they see fit.
 ///
 /// The default implementation sets all weights to zero.
 #[derive(DataSize, Debug, Default, Clone, Deserialize, Serialize)]
-pub struct PayloadWeights {
+pub struct EstimatorWeights {
     /// Weight to attach to consensus traffic.
     pub consensus: u32,
+    /// Weight to attach to gossiper traffic.
+    pub gossip: u32,
+    /// Weight to attach to finality signatures traffic.
+    pub finality_signatures: u32,
     /// Weight to attach to deploy requests.
     pub deploy_requests: u32,
+    /// Weight to attach to deploy responses.
+    pub deploy_responses: u32,
+    /// Weight to attach to block requests.
+    pub block_requests: u32,
+    /// Weight to attach to block responses.
+    pub block_responses: u32,
+    /// Weight to attach to trie requests.
+    pub trie_requests: u32,
+    /// Weight to attach to trie responses.
+    pub trie_responses: u32,
 }
 
 #[cfg(test)]

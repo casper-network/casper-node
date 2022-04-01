@@ -38,12 +38,12 @@ use crate::{
     effect::{
         announcements::RpcServerAnnouncement,
         requests::{
-            ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, LinearChainRequest,
-            MetricsRequest, NetworkInfoRequest, RpcRequest, StorageRequest,
+            ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, MetricsRequest,
+            NetworkInfoRequest, RpcRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects, Responder,
     },
-    types::StatusFeed,
+    types::{NodeState, StatusFeed},
     utils::{self, ListeningError},
     NodeRng,
 };
@@ -58,7 +58,6 @@ pub(crate) trait ReactorEventT:
     + From<ChainspecLoaderRequest>
     + From<ContractRuntimeRequest>
     + From<ConsensusRequest>
-    + From<LinearChainRequest>
     + From<MetricsRequest>
     + From<NetworkInfoRequest>
     + From<StorageRequest>
@@ -73,7 +72,6 @@ impl<REv> ReactorEventT for REv where
         + From<ChainspecLoaderRequest>
         + From<ContractRuntimeRequest>
         + From<ConsensusRequest>
-        + From<LinearChainRequest>
         + From<MetricsRequest>
         + From<NetworkInfoRequest>
         + From<StorageRequest>
@@ -86,6 +84,8 @@ impl<REv> ReactorEventT for REv where
 pub(crate) struct RpcServer {
     /// The instant at which the node has started.
     node_startup_instant: Instant,
+    /// The current state of the node.
+    node_state: NodeState,
 }
 
 impl RpcServer {
@@ -94,6 +94,7 @@ impl RpcServer {
         effect_builder: EffectBuilder<REv>,
         api_version: ProtocolVersion,
         node_startup_instant: Instant,
+        node_state: NodeState,
     ) -> Result<Self, ListeningError>
     where
         REv: ReactorEventT,
@@ -108,7 +109,12 @@ impl RpcServer {
 
         Ok(RpcServer {
             node_startup_instant,
+            node_state,
         })
+    }
+
+    fn node_state(&self) -> NodeState {
+        self.node_state
     }
 }
 
@@ -182,9 +188,10 @@ where
                 .ignore(),
             Event::RpcRequest(RpcRequest::GetBlock {
                 maybe_id: Some(BlockIdentifier::Hash(hash)),
+                only_from_available_block_range,
                 responder,
             }) => effect_builder
-                .get_block_with_metadata_from_storage(hash)
+                .get_block_with_metadata_from_storage(hash, only_from_available_block_range)
                 .event(move |result| Event::GetBlockResult {
                     maybe_id: Some(BlockIdentifier::Hash(hash)),
                     result: Box::new(result),
@@ -192,9 +199,13 @@ where
                 }),
             Event::RpcRequest(RpcRequest::GetBlock {
                 maybe_id: Some(BlockIdentifier::Height(height)),
+                only_from_available_block_range,
                 responder,
             }) => effect_builder
-                .get_block_at_height_with_metadata_from_storage(height)
+                .get_block_at_height_with_metadata_from_storage(
+                    height,
+                    only_from_available_block_range,
+                )
                 .event(move |result| Event::GetBlockResult {
                     maybe_id: Some(BlockIdentifier::Height(height)),
                     result: Box::new(result),
@@ -202,6 +213,8 @@ where
                 }),
             Event::RpcRequest(RpcRequest::GetBlock {
                 maybe_id: None,
+                only_from_available_block_range: _, /* Requesting for higest block cannot be
+                                                     * restricted by block availability index */
                 responder,
             }) => effect_builder
                 .get_highest_block_with_metadata_from_storage()
@@ -268,6 +281,7 @@ where
                 }),
             Event::RpcRequest(RpcRequest::GetStatus { responder }) => {
                 let node_uptime = self.node_startup_instant.elapsed();
+                let node_state = self.node_state();
                 async move {
                     let (last_added_block, peers, chainspec_info, consensus_status) = join!(
                         effect_builder.get_highest_block_from_storage(),
@@ -281,11 +295,22 @@ where
                         chainspec_info,
                         consensus_status,
                         node_uptime,
+                        node_state,
                     );
                     responder.respond(status_feed).await;
                 }
                 .ignore()
             }
+            Event::RpcRequest(RpcRequest::GetAvailableBlockRange { responder }) => async move {
+                responder
+                    .respond(
+                        effect_builder
+                            .get_available_block_range_from_storage()
+                            .await,
+                    )
+                    .await
+            }
+            .ignore(),
             Event::GetBlockResult {
                 maybe_id: _,
                 result,
@@ -333,28 +358,16 @@ mod tests {
 
     #[test]
     fn schema() {
-        // The expected schema depends on the hashing algorithm selected by the `casper-mainnet`
-        // feature.
+        // To generate the contents to replace the input JSON file, run the test
+        // and print the `actual_schema_string` by uncommenting the `println!`
+        // towards the end of the test.
         //
-        // To generate the contents to replace the input JSON files, run the test with and without
-        // the feature enabled and print the `actual_schema_string` by uncommenting the `println!`
-        // towards the end of the test
         // ```
-        // cargo t --features=casper-mainnet components::rpc_server::tests::schema -- --nocapture
-        // cargo t --no-default-features components::rpc_server::tests::schema -- --nocapture
+        // cargo t components::rpc_server::tests::schema -- --nocapture
         // ```
-        //
-        // Note: Please review the diff of the input files to avoid any breaking changes.
 
-        #[cfg(feature = "casper-mainnet")]
         let schema_path = format!(
-            "{}/../resources/test/rpc_schema_hashing_V1.json",
-            env!("CARGO_MANIFEST_DIR")
-        );
-
-        #[cfg(not(feature = "casper-mainnet"))]
-        let schema_path = format!(
-            "{}/../resources/test/rpc_schema_hashing_V2.json",
+            "{}/../resources/test/rpc_schema_hashing.json",
             env!("CARGO_MANIFEST_DIR")
         );
 

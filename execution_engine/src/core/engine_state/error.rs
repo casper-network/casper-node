@@ -127,6 +127,12 @@ impl From<bytesrepr::Error> for Error {
     }
 }
 
+impl From<lmdb::Error> for Error {
+    fn from(error: lmdb::Error) -> Self {
+        Error::Storage(storage::error::Error::Lmdb(error))
+    }
+}
+
 impl From<mint::Error> for Error {
     fn from(error: mint::Error) -> Self {
         Error::Mint(format!("{}", error))

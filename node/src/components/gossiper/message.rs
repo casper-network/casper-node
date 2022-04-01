@@ -6,7 +6,7 @@ use super::Item;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(bound = "for<'a> T: Deserialize<'a>")]
-pub enum Message<T: Item> {
+pub(crate) enum Message<T: Item> {
     /// Gossiped out to random peers to notify them of an item we hold.
     Gossip(T::Id),
     /// Response to a `Gossip` message.  If `is_already_held` is false, the recipient should treat

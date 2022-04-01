@@ -59,7 +59,8 @@
 //! some point. Failing to do so will result in a resource leak.
 
 pub(crate) mod announcements;
-pub(crate) mod console;
+pub(crate) mod diagnostics_port;
+pub(crate) mod incoming;
 pub(crate) mod requests;
 
 use std::{
@@ -78,24 +79,21 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use smallvec::{smallvec, SmallVec};
 use tokio::{sync::Semaphore, time};
-#[cfg(not(feature = "fast-sync"))]
-use tracing::warn;
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 use casper_execution_engine::{
     core::engine_state::{
-        self,
-        era_validators::GetEraValidatorsError,
-        genesis::GenesisSuccess,
-        upgrade::{UpgradeConfig, UpgradeSuccess},
-        BalanceRequest, BalanceResult, GetBidsRequest, GetBidsResult, QueryRequest, QueryResult,
+        self, era_validators::GetEraValidatorsError, genesis::GenesisSuccess, BalanceRequest,
+        BalanceResult, GetBidsRequest, GetBidsResult, QueryRequest, QueryResult, UpgradeConfig,
+        UpgradeSuccess,
     },
-    storage::trie::Trie,
+    shared::execution_journal::ExecutionJournal,
+    storage::trie::{TrieOrChunk, TrieOrChunkId},
 };
 use casper_hashing::Digest;
 use casper_types::{
     account::Account, system::auction::EraValidators, Contract, ContractPackage, EraId,
-    ExecutionResult, Key, ProtocolVersion, PublicKey, StoredValue, Transfer, URef, U512,
+    ExecutionEffect, ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer, URef, U512,
 };
 
 use crate::{
@@ -103,36 +101,39 @@ use crate::{
         block_validator::ValidatingBlock,
         chainspec_loader::{CurrentRunInfo, NextUpgrade},
         consensus::{BlockContext, ClContext, EraDump, ValidatorChange},
-        contract_runtime::EraValidatorsRequest,
+        contract_runtime::{
+            BlockAndExecutionEffects, BlockExecutionError, EraValidatorsRequest, ExecutionPreState,
+        },
         deploy_acceptor,
         fetcher::FetchResult,
-        small_network::GossipedAddress,
+        small_network::FromIncoming,
     },
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        Block, BlockByHeight, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Chainspec,
-        ChainspecInfo, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalitySignature,
-        FinalizedBlock, Item, NodeId, TimeDiff, Timestamp,
+        AvailableBlockRange, Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload,
+        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
+        DeployHash, DeployHeader, DeployMetadata, FinalitySignature, FinalizedBlock, Item, NodeId,
+        TimeDiff, Timestamp,
     },
     utils::{SharedFlag, Source},
 };
 use announcements::{
-    ChainspecLoaderAnnouncement, ConsensusAnnouncement, ControlAnnouncement,
-    DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
+    BlockProposerAnnouncement, BlocklistAnnouncement, ChainspecLoaderAnnouncement,
+    ConsensusAnnouncement, ContractRuntimeAnnouncement, ControlAnnouncement,
+    DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
     RpcServerAnnouncement,
 };
+use casper_types::bytesrepr::Bytes;
 use requests::{
     BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
     ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
-    NetworkRequest, StateStoreRequest, StorageRequest,
+    NetworkRequest, StorageRequest,
 };
 
 use self::{
-    announcements::{BlockProposerAnnouncement, BlocklistAnnouncement},
-    console::DumpConsensusStateRequest,
-};
-use crate::components::contract_runtime::{
-    BlockAndExecutionEffects, BlockExecutionError, ExecutionPreState,
+    announcements::QueueDumpFormat,
+    diagnostics_port::DumpConsensusStateRequest,
+    requests::{BeginGossipRequest, StateStoreRequest},
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -432,14 +433,6 @@ impl<REv> EffectBuilder<REv> {
         EffectBuilder { event_queue }
     }
 
-    /// Schedules a regular event.
-    pub(crate) async fn schedule_regular<E>(self, event: E)
-    where
-        REv: From<E>,
-    {
-        self.event_queue.schedule(event, QueueKind::Regular).await
-    }
-
     /// Extract the event queue handle out of the effect builder.
     #[cfg(test)]
     pub(crate) fn into_inner(self) -> EventQueueHandle<REv> {
@@ -614,7 +607,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets connected network peers.
+    /// Gets a map of the current network peers to their socket addresses.
     pub(crate) async fn network_peers(self) -> BTreeMap<NodeId, String>
     where
         REv: From<NetworkInfoRequest>,
@@ -651,43 +644,17 @@ impl<REv> EffectBuilder<REv> {
             .await;
     }
 
-    /// Announces that a network message has been received.
-    pub(crate) async fn announce_message_received<P>(self, sender: NodeId, payload: P)
+    /// Announces an incoming network message.
+    pub(crate) async fn announce_incoming<P>(self, sender: NodeId, payload: P)
     where
-        REv: From<NetworkAnnouncement<P>>,
+        REv: FromIncoming<P>,
     {
         self.event_queue
             .schedule(
-                NetworkAnnouncement::MessageReceived { sender, payload },
+                <REv as FromIncoming<P>>::from_incoming(sender, payload),
                 QueueKind::NetworkIncoming,
             )
-            .await;
-    }
-
-    /// Announces that we should gossip our own public listening address.
-    pub(crate) async fn announce_gossip_our_address<P>(self, our_address: GossipedAddress)
-    where
-        REv: From<NetworkAnnouncement<P>>,
-    {
-        self.event_queue
-            .schedule(
-                NetworkAnnouncement::GossipOurAddress(our_address),
-                QueueKind::Regular,
-            )
-            .await;
-    }
-
-    /// Announces that a new peer has connected.
-    pub(crate) async fn announce_new_peer<P>(self, peer_id: NodeId)
-    where
-        REv: From<NetworkAnnouncement<P>>,
-    {
-        self.event_queue
-            .schedule(
-                NetworkAnnouncement::NewPeer(peer_id),
-                QueueKind::NetworkIncoming,
-            )
-            .await;
+            .await
     }
 
     /// Announces that a gossiper has received a new item, where the item's ID is the complete item.
@@ -768,7 +735,7 @@ impl<REv> EffectBuilder<REv> {
         )
     }
 
-    /// Announce upgrade activation point read.
+    /// Announces upgrade activation point read.
     pub(crate) async fn announce_upgrade_activation_point_read(self, next_upgrade: NextUpgrade)
     where
         REv: From<ChainspecLoaderAnnouncement>,
@@ -779,6 +746,80 @@ impl<REv> EffectBuilder<REv> {
                 QueueKind::Regular,
             )
             .await
+    }
+
+    /// Announces a committed Step success.
+    pub(crate) async fn announce_commit_step_success(
+        self,
+        era_id: EraId,
+        execution_journal: ExecutionJournal,
+    ) where
+        REv: From<ContractRuntimeAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                ContractRuntimeAnnouncement::CommitStepSuccess {
+                    era_id,
+                    execution_effect: ExecutionEffect::from(&execution_journal),
+                },
+                QueueKind::Regular,
+            )
+            .await
+    }
+
+    /// Announces a new block has been created.
+    pub(crate) async fn announce_new_linear_chain_block(
+        self,
+        block: Box<Block>,
+        execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
+    ) where
+        REv: From<ContractRuntimeAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                ContractRuntimeAnnouncement::LinearChainBlock {
+                    block,
+                    execution_results,
+                },
+                QueueKind::Regular,
+            )
+            .await
+    }
+
+    /// Announces validators for upcoming era.
+    pub(crate) async fn announce_upcoming_era_validators(
+        self,
+        era_that_is_ending: EraId,
+        upcoming_era_validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
+    ) where
+        REv: From<ContractRuntimeAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                ContractRuntimeAnnouncement::UpcomingEraValidators {
+                    era_that_is_ending,
+                    upcoming_era_validators,
+                },
+                QueueKind::Regular,
+            )
+            .await
+    }
+
+    /// Begins gossiping an item.
+    pub(crate) async fn begin_gossip<T>(self, item_id: T::Id, source: Source)
+    where
+        T: Item,
+        REv: From<BeginGossipRequest<T>>,
+    {
+        self.make_request(
+            |responder| BeginGossipRequest {
+                item_id,
+                source,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
     }
 
     /// Puts the given block into the linear block store.
@@ -809,10 +850,10 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested block header from the linear block store.
-    #[allow(unused)]
     pub(crate) async fn get_block_header_from_storage(
         self,
         block_hash: BlockHash,
+        only_from_available_block_range: bool,
     ) -> Option<BlockHeader>
     where
         REv: From<StorageRequest>,
@@ -820,6 +861,22 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| StorageRequest::GetBlockHeader {
                 block_hash,
+                only_from_available_block_range,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Checks if a block header exists in storage
+    pub(crate) async fn block_header_exists(self, block_height: u64) -> bool
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::CheckBlockHeaderExistence {
+                block_height,
                 responder,
             },
             QueueKind::Regular,
@@ -838,6 +895,21 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| StorageRequest::GetBlockSignatures {
                 block_hash,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Puts a block header to storage.
+    pub(crate) async fn put_block_header_to_storage(self, block_header: Box<BlockHeader>) -> bool
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::PutBlockHeader {
+                block_header,
                 responder,
             },
             QueueKind::Regular,
@@ -878,21 +950,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Requests the block header at the given height.
-    pub(crate) async fn get_block_header_at_height_from_storage(
-        self,
-        height: u64,
-    ) -> Option<BlockHeader>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetBlockHeaderAtHeight { height, responder },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
     /// Requests the header of the block containing the given deploy.
     pub(crate) async fn get_block_header_for_deploy_from_storage(
         self,
@@ -911,18 +968,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Requests the block at the given height.
-    pub(crate) async fn get_block_at_height_from_storage(self, height: u64) -> Option<Block>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetBlockAtHeight { height, responder },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
     /// Requests the highest block.
     pub(crate) async fn get_highest_block_from_storage(self) -> Option<Block>
     where
@@ -930,6 +975,18 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::GetHighestBlock { responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Requests the highest block header.
+    pub(crate) async fn get_highest_block_header_from_storage(self) -> Option<BlockHeader>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetHighestBlockHeader { responder },
             QueueKind::Regular,
         )
         .await
@@ -950,30 +1007,58 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Requests the key block header for the given era ID, ie. the header of the switch block at
-    /// the era before (if one exists).
-    pub(crate) async fn get_key_block_header_for_era_id_from_storage(
-        self,
-        era_id: EraId,
-    ) -> Option<BlockHeader>
+    /// Updates the lowest available block height in storage.
+    pub(crate) async fn update_lowest_available_block_height_in_storage(self, height: u64)
     where
         REv: From<StorageRequest>,
     {
-        let era_before = era_id.checked_sub(1)?;
-        self.get_switch_block_header_at_era_id_from_storage(era_before)
-            .await
+        self.make_request(
+            |responder| StorageRequest::UpdateLowestAvailableBlockHeight { height, responder },
+            QueueKind::Regular,
+        )
+        .await
     }
 
-    /// Get a trie by its hash key.
+    /// Requests the height range of fully available blocks (not just block headers).
+    pub(crate) async fn get_available_block_range_from_storage(self) -> AvailableBlockRange
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetAvailableBlockRange { responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Get a trie or chunk by its ID.
     pub(crate) async fn get_trie(
         self,
-        trie_key: Digest,
-    ) -> Result<Option<Trie<Key, StoredValue>>, engine_state::Error>
+        trie_or_chunk_id: TrieOrChunkId,
+    ) -> Result<Option<TrieOrChunk>, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
             |responder| ContractRuntimeRequest::GetTrie {
+                trie_or_chunk_id,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Get a trie by its hash key.
+    pub(crate) async fn get_trie_full(
+        self,
+        trie_key: Digest,
+    ) -> Result<Option<Bytes>, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::GetTrieFull {
                 trie_key,
                 responder,
             },
@@ -983,16 +1068,36 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Puts a trie into the trie store and asynchronously returns any missing descendant trie keys.
-    #[allow(unused)]
     pub(crate) async fn put_trie_and_find_missing_descendant_trie_keys(
         self,
-        trie: Box<Trie<Key, StoredValue>>,
+        trie_bytes: Bytes,
     ) -> Result<Vec<Digest>, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
-            |responder| ContractRuntimeRequest::PutTrie { trie, responder },
+            |responder| ContractRuntimeRequest::PutTrie {
+                trie_bytes,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Asynchronously returns any missing descendant trie keys given an ancestor.
+    pub(crate) async fn find_missing_descendant_trie_keys(
+        self,
+        trie_key: Digest,
+    ) -> Result<Vec<Digest>, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::FindMissingDescendantTrieKeys {
+                trie_key,
+                responder,
+            },
             QueueKind::Regular,
         )
         .await
@@ -1066,16 +1171,54 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested block and its associated metadata.
+    /// Gets the requested block and its finality signatures.
     pub(crate) async fn get_block_at_height_with_metadata_from_storage(
         self,
         block_height: u64,
-    ) -> Option<(Block, BlockSignatures)>
+        only_from_available_block_range: bool,
+    ) -> Option<BlockWithMetadata>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
             |responder| StorageRequest::GetBlockAndMetadataByHeight {
+                block_height,
+                only_from_available_block_range,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets a block and sufficient finality signatures from storage.
+    pub(crate) async fn get_block_and_sufficient_finality_signatures_by_height_from_storage(
+        self,
+        block_height: u64,
+    ) -> Option<BlockWithMetadata>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockAndSufficientFinalitySignaturesByHeight {
+                block_height,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested block and its associated metadata.
+    pub(crate) async fn get_block_header_and_sufficient_finality_signatures_by_height_from_storage(
+        self,
+        block_height: u64,
+    ) -> Option<BlockHeaderWithMetadata>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockHeaderAndSufficientFinalitySignaturesByHeight {
                 block_height,
                 responder,
             },
@@ -1088,13 +1231,15 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_block_with_metadata_from_storage(
         self,
         block_hash: BlockHash,
-    ) -> Option<(Block, BlockSignatures)>
+        only_from_available_block_range: bool,
+    ) -> Option<BlockWithMetadata>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
             |responder| StorageRequest::GetBlockAndMetadataByHash {
                 block_hash,
+                only_from_available_block_range,
                 responder,
             },
             QueueKind::Regular,
@@ -1102,10 +1247,10 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Get the highest block with its associated metadata.
+    /// Gets the highest block with its associated metadata.
     pub(crate) async fn get_highest_block_with_metadata_from_storage(
         self,
-    ) -> Option<(Block, BlockSignatures)>
+    ) -> Option<BlockWithMetadata>
     where
         REv: From<StorageRequest>,
     {
@@ -1116,58 +1261,15 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested deploy using the `DeployFetcher`.
-    pub(crate) async fn fetch_deploy(
-        self,
-        deploy_hash: DeployHash,
-        peer: NodeId,
-    ) -> Option<FetchResult<Deploy>>
+    /// Fetches an item from a fetcher.
+    pub(crate) async fn fetch<T>(self, id: T::Id, peer: NodeId) -> FetchResult<T>
     where
-        REv: From<FetcherRequest<Deploy>>,
+        REv: From<FetcherRequest<T>>,
+        T: Item + 'static,
     {
         self.make_request(
-            |responder| FetcherRequest::Fetch {
-                id: deploy_hash,
-                peer,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Gets the requested block using the `BlockFetcher`
-    pub(crate) async fn fetch_block(
-        self,
-        block_hash: BlockHash,
-        peer: NodeId,
-    ) -> Option<FetchResult<Block>>
-    where
-        REv: From<FetcherRequest<Block>>,
-    {
-        self.make_request(
-            |responder| FetcherRequest::Fetch {
-                id: block_hash,
-                peer,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Requests a linear chain block at `block_height`.
-    pub(crate) async fn fetch_block_by_height(
-        self,
-        block_height: u64,
-        peer: NodeId,
-    ) -> Option<FetchResult<BlockByHeight>>
-    where
-        REv: From<FetcherRequest<BlockByHeight>>,
-    {
-        self.make_request(
-            |responder| FetcherRequest::Fetch {
-                id: block_height,
+            |responder| FetcherRequest {
+                id,
                 peer,
                 responder,
             },
@@ -1365,6 +1467,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn commit_genesis(
         self,
         chainspec: Arc<Chainspec>,
+        chainspec_raw_bytes: Arc<ChainspecRawBytes>,
     ) -> Result<GenesisSuccess, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
@@ -1372,6 +1475,7 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| ContractRuntimeRequest::CommitGenesis {
                 chainspec,
+                chainspec_raw_bytes,
                 responder,
             },
             QueueKind::Regular,
@@ -1418,16 +1522,16 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Retrieves finalized deploys from blocks that were created more recently than the TTL.
-    pub(crate) async fn get_finalized_deploys(
-        self,
-        ttl: TimeDiff,
-    ) -> Vec<(DeployHash, DeployHeader)>
+    /// Retrieves finalized blocks with timestamps no older than the maximum deploy TTL.
+    ///
+    /// These blocks contain all deploy and transfer hashes that are known to be finalized but
+    /// may not have expired yet.
+    pub(crate) async fn get_finalized_blocks(self, ttl: TimeDiff) -> Vec<Block>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            move |responder| StorageRequest::GetFinalizedDeploys { ttl, responder },
+            move |responder| StorageRequest::GetFinalizedBlocks { ttl, responder },
             QueueKind::Regular,
         )
         .await
@@ -1637,11 +1741,9 @@ impl<REv> EffectBuilder<REv> {
     /// Takes emergency restarts into account based on the information from the chainspec loader.
     pub(crate) async fn get_era_validators(self, era_id: EraId) -> Option<BTreeMap<PublicKey, U512>>
     where
-        REv: From<ContractRuntimeRequest> + From<StorageRequest> + From<ChainspecLoaderRequest>,
+        REv: From<StorageRequest> + From<ChainspecLoaderRequest>,
     {
         let CurrentRunInfo {
-            protocol_version,
-            initial_state_root_hash,
             last_emergency_restart,
             ..
         } = self.get_current_run_info().await;
@@ -1650,62 +1752,13 @@ impl<REv> EffectBuilder<REv> {
             // we don't support getting the validators from before the last emergency restart
             return None;
         }
-        if era_id == cutoff_era_id {
-            // in the activation era, we read the validators from the global state; we use the
-            // global state hash of the first block in the era, if it exists - if we can't get it,
-            // we use the initial_state_root_hash passed from the chainspec loader
-            let root_hash = if era_id.is_genesis() {
-                // genesis era - use block at height 0
-                self.get_block_header_at_height_from_storage(0)
-                    .await
-                    .map(|hdr| *hdr.state_root_hash())
-                    .unwrap_or(initial_state_root_hash)
-            } else {
-                // non-genesis - calculate the height based on the key block
-                let maybe_key_block_header = self
-                    .get_key_block_header_for_era_id_from_storage(era_id)
-                    .await;
-                // this has to be a match because `Option::and_then` can't deal with async closures
-                match maybe_key_block_header {
-                    None => None,
-                    Some(kb_hdr) => {
-                        self.get_block_header_at_height_from_storage(kb_hdr.height() + 1)
-                            .await
-                    }
-                }
-                // default to the initial_state_root_hash if there was no key block or no block
-                // above the key block for the era
-                .map_or(initial_state_root_hash, |hdr| *hdr.state_root_hash())
-            };
-            let req = EraValidatorsRequest::new(root_hash, protocol_version);
-            self.get_era_validators_from_contract_runtime(req)
-                .await
-                .ok()
-                .and_then(|era_validators| era_validators.get(&era_id).cloned())
-        } else {
-            // in other eras, we just use the validators from the key block
-            let key_block_result = self
-                .get_key_block_header_for_era_id_from_storage(era_id)
-                .await
-                .and_then(|kb_hdr| kb_hdr.next_era_validator_weights().cloned());
-            if key_block_result.is_some() {
-                // if the key block read was successful, just return it
-                key_block_result
-            } else {
-                // if there was no key block, we might be looking at a future era - in such a case,
-                // read the state root hash from the highest block and check with the contract
-                // runtime
-                let highest_block = self.get_highest_block_from_storage().await?;
-                let req = EraValidatorsRequest::new(
-                    *highest_block.header().state_root_hash(),
-                    protocol_version,
-                );
-                self.get_era_validators_from_contract_runtime(req)
-                    .await
-                    .ok()
-                    .and_then(|era_validators| era_validators.get(&era_id).cloned())
-            }
-        }
+        // Era 0 contains no blocks other than the genesis immediate switch block which can be used
+        // to get the validators for era 0.  For any other era `n`, we need the switch block from
+        // era `n-1` to get the validators for `n`.
+        let era_before = era_id.saturating_sub(1);
+        self.get_switch_block_header_at_era_id_from_storage(era_before)
+            .await
+            .and_then(BlockHeader::maybe_take_next_era_validator_weights)
     }
 
     /// Checks whether the given validator is bonded in the given era.
@@ -1777,39 +1830,9 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Collects the key blocks for the eras identified by provided era IDs. Returns
-    /// `Some(HashMap(era_id → block_header))` if all the blocks have been read correctly, and
-    /// `None` if at least one was missing. The header for EraId `n` is from the key block for that
-    /// era, that is, the switch block of era `n-1`, ie. it contains the data necessary for
-    /// initialization of era `n`.
-    pub(crate) async fn collect_key_block_headers<I: IntoIterator<Item = EraId>>(
-        self,
-        era_ids: I,
-    ) -> Option<HashMap<EraId, BlockHeader>>
-    where
-        REv: From<StorageRequest>,
-    {
-        futures::future::join_all(
-            era_ids
-                .into_iter()
-                // we would get None for era 0 and that would make it seem like the entire
-                // function failed
-                .filter(|era_id| !era_id.is_genesis())
-                .map(|era_id| {
-                    self.get_key_block_header_for_era_id_from_storage(era_id)
-                        .map(move |maybe_header| {
-                            maybe_header.map(|block_header| (era_id, block_header))
-                        })
-                }),
-        )
-        .await
-        .into_iter()
-        .collect()
-    }
-
     /// Dump consensus state for a specific era, using the supplied function to serialize the
     /// output.
-    pub(crate) async fn console_dump_consensus_state(
+    pub(crate) async fn diagnostics_port_dump_consensus_state(
         self,
         era_id: Option<EraId>,
         serialize: fn(&EraDump<'_>) -> Result<Vec<u8>, Cow<'static, str>>,
@@ -1824,6 +1847,34 @@ impl<REv> EffectBuilder<REv> {
                 responder,
             },
             QueueKind::Control,
+        )
+        .await
+    }
+
+    /// Dump the event queue contents to the diagnostics port, using the given serializer.
+    pub(crate) async fn diagnostics_port_dump_queue(self, dump_format: QueueDumpFormat)
+    where
+        REv: From<ControlAnnouncement>,
+    {
+        self.make_request(
+            |responder| ControlAnnouncement::QueueDumpRequest {
+                dump_format,
+                finished: responder,
+            },
+            QueueKind::Control,
+        )
+        .await
+    }
+
+    /// Get the bytes for the chainspec file and genesis_accounts
+    /// and global_state bytes if the files are present.
+    pub(crate) async fn get_chainspec_raw_bytes(self) -> Arc<ChainspecRawBytes>
+    where
+        REv: From<ChainspecLoaderRequest> + Send,
+    {
+        self.make_request(
+            ChainspecLoaderRequest::GetChainspecRawBytes,
+            QueueKind::Regular,
         )
         .await
     }

@@ -3,6 +3,7 @@
 use std::{collections::HashMap, mem};
 
 use datasize::DataSize;
+use once_cell::sync::OnceCell;
 use rand::{
     rngs::StdRng,
     seq::{IteratorRandom, SliceRandom},
@@ -80,6 +81,13 @@ where
 
         base_size + scale_sample(map.len(), sampled)
     }
+}
+
+pub(crate) fn once_cell<T>(cell: &OnceCell<T>) -> usize
+where
+    T: DataSize,
+{
+    cell.get().map_or(0, |value| value.estimate_heap_size())
 }
 
 #[cfg(test)]
