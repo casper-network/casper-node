@@ -15,11 +15,13 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Added
 * Added `WasmTestBuilder::get_execution_journals` method for returning execution journals for all test runs.
+* Added support to load values from a given Chainspec.
+* Added static and constants that represent Casper-mainnet chainspec values
 
 ### Changed
 * `WasmTestBuilder::get_transforms` is deprecated in favor of `WasmTestBuilder::get_execution_journals`.
 * `deploy_hash` field is now defaulted to a random value rather than zeros in `DeployItemBuilder`.
-
+* Deprecated the `DEFAULT_GENESIS_REQUEST` in favor of `PRODUCTION_GENESIS_REQUEST`.
 
 ## 2.0.3 - 2021-12-06
 

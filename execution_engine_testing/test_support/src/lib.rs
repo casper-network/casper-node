@@ -141,17 +141,22 @@ pub static DEFAULT_GENESIS_CONFIG: Lazy<GenesisConfig> = Lazy::new(|| {
         DEFAULT_CHAIN_NAME.to_string(),
         DEFAULT_GENESIS_TIMESTAMP_MILLIS,
         *DEFAULT_PROTOCOL_VERSION,
+        #[allow(deprecated)]
         DEFAULT_EXEC_CONFIG.clone(),
     )
 });
 /// Default [`ChainspecRegistry`].
 pub static DEFAULT_CHAINSPEC_REGISTRY: Lazy<ChainspecRegistry> =
     Lazy::new(|| ChainspecRegistry::new_with_genesis(&[1, 2, 3], &[4, 5, 6]));
+// This static constant has been deprecated in favor of the Production counterpart
+// which uses costs tables and values which reflect values used by the Casper main-net.
+#[deprecated]
 /// Default [`RunGenesisRequest`].
 pub static DEFAULT_RUN_GENESIS_REQUEST: Lazy<RunGenesisRequest> = Lazy::new(|| {
     RunGenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
         *DEFAULT_PROTOCOL_VERSION,
+        #[allow(deprecated)]
         DEFAULT_EXEC_CONFIG.clone(),
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     )

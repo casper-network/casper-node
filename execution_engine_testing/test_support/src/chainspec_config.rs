@@ -25,7 +25,7 @@ pub const CHAINSPEC_NAME: &str = "chainspec.toml";
 /// Path to the production chainspec used in the Casper mainnet.
 pub static PRODUCTION_PATH: Lazy<PathBuf> = Lazy::new(|| {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../resources/production/")
+        .join("resources/")
         .join(CHAINSPEC_NAME)
 });
 
