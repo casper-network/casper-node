@@ -185,6 +185,10 @@ impl ExecutionResult {
         &*EXECUTION_RESULT
     }
 
+    fn tag_byte(&self) -> Option<u8> {
+        self.tag().to_u8()
+    }
+
     fn tag(&self) -> ExecutionResultTag {
         match self {
             ExecutionResult::Failure {
@@ -253,7 +257,9 @@ impl Distribution<ExecutionResult> for Standard {
 impl ToBytes for ExecutionResult {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
-        let tag_byte = self.tag().to_u8().ok_or(bytesrepr::Error::Formatting)?;
+        let tag_byte = self
+            .tag_byte()
+            .ok_or_else(|| bytesrepr::Error::Formatting)?;
         buffer.push(tag_byte);
         match self {
             ExecutionResult::Failure {
@@ -437,6 +443,9 @@ pub enum OpKind {
 }
 
 impl OpKind {
+    fn tag_byte(&self) -> Option<u8> {
+        self.tag().to_u8()
+    }
     fn tag(&self) -> OpTag {
         match self {
             OpKind::Read => OpTag::Read,
@@ -449,7 +458,9 @@ impl OpKind {
 
 impl ToBytes for OpKind {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let tag_bytes = self.tag().to_u8().ok_or(bytesrepr::Error::Formatting)?;
+        let tag_bytes = self
+            .tag_byte()
+            .ok_or_else(|| bytesrepr::Error::Formatting)?;
         tag_bytes.to_bytes()
     }
 
@@ -549,6 +560,9 @@ pub enum Transform {
 }
 
 impl Transform {
+    fn tag_byte(&self) -> Option<u8> {
+        self.tag().to_u8()
+    }
     fn tag(&self) -> TransformTag {
         match self {
             Transform::Identity => TransformTag::Identity,
@@ -576,7 +590,9 @@ impl Transform {
 impl ToBytes for Transform {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
-        let tag_bytes = self.tag().to_u8().ok_or(bytesrepr::Error::Formatting)?;
+        let tag_bytes = self
+            .tag_byte()
+            .ok_or_else(|| bytesrepr::Error::Formatting)?;
         buffer.insert(0, tag_bytes);
         match self {
             Transform::Identity => {}
