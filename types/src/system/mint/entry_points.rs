@@ -10,7 +10,7 @@ use crate::{
     CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Parameter,
 };
 
-/// Returns entry points for a `Mint` system contract.
+/// Returns entry points for a mint system contract.
 pub fn mint_entry_points() -> EntryPoints {
     let mut entry_points = EntryPoints::new();
 

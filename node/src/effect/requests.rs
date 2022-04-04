@@ -48,10 +48,10 @@ use crate::{
     effect::Responder,
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
-        Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload, BlockSignatures,
-        BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy, DeployHash,
-        DeployMetadata, DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedBlock, Item,
-        NodeId, StatusFeed, TimeDiff,
+        AvailableBlockRange, Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload,
+        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
+        DeployHash, DeployMetadata, DeployWithFinalizedApprovals, FinalizedApprovals,
+        FinalizedBlock, Item, NodeId, StatusFeed, TimeDiff,
     },
     utils::{DisplayIter, Source},
 };
@@ -283,6 +283,9 @@ pub(crate) enum StorageRequest {
     GetBlockHeader {
         /// Hash of block to get header of.
         block_hash: BlockHash,
+        /// Flag indicating whether storage should check the block availability before trying to
+        /// retrieve it.
+        only_from_available_block_range: bool,
         /// Responder to call with the result.  Returns `None` is the block header doesn't exist in
         /// local storage.
         responder: Responder<Option<BlockHeader>>,
@@ -367,6 +370,9 @@ pub(crate) enum StorageRequest {
     GetBlockAndMetadataByHash {
         /// The hash of the block.
         block_hash: BlockHash,
+        /// Flag indicating whether storage should check the block availability before trying to
+        /// retrieve it.
+        only_from_available_block_range: bool,
         /// The responder to call with the results.
         responder: Responder<Option<BlockWithMetadata>>,
     },
@@ -374,6 +380,9 @@ pub(crate) enum StorageRequest {
     GetBlockAndMetadataByHeight {
         /// The height of the block.
         block_height: BlockHeight,
+        /// Flag indicating whether storage should check the block availability before trying to
+        /// retrieve it.
+        only_from_available_block_range: bool,
         /// The responder to call with the results.
         responder: Responder<Option<BlockWithMetadata>>,
     },
@@ -405,11 +414,22 @@ pub(crate) enum StorageRequest {
         /// stored.
         responder: Responder<bool>,
     },
-    /// Retrieve the lowest height from which we have an unbroken chain of stored blocks (not just
-    /// headers) ending in the highest stored block.
-    GetLowestContiguousBlockHeight {
+    /// Update the lowest available block height in storage.
+    // Note - this is a request rather than an announcement as the chain synchronizer needs to
+    // ensure the request has been completed before it can exit, i.e. it awaits the response.
+    // Otherwise, the joiner reactor might exit before handling the announcement and it would go
+    // un-actioned.
+    UpdateLowestAvailableBlockHeight {
+        /// The new height.
+        height: u64,
+        /// Responder to call when complete.
+        responder: Responder<()>,
+    },
+    /// Retrieve the height range of fully available blocks (not just block headers). Returns
+    /// `[u64::MAX, u64::MAX]` when there are no sequences.
+    GetAvailableBlockRange {
         /// Responder to call with the result.
-        responder: Responder<u64>,
+        responder: Responder<AvailableBlockRange>,
     },
     /// Store a set of finalized approvals for a specific deploy.
     StoreFinalizedApprovals {
@@ -509,8 +529,15 @@ impl Display for StorageRequest {
                     block_height
                 )
             }
-            StorageRequest::GetLowestContiguousBlockHeight { .. } => {
-                write!(formatter, "get lowest contiguous block height",)
+            StorageRequest::UpdateLowestAvailableBlockHeight { height, .. } => {
+                write!(
+                    formatter,
+                    "update lowest available block height to {}",
+                    height
+                )
+            }
+            StorageRequest::GetAvailableBlockRange { .. } => {
+                write!(formatter, "get available block range",)
             }
             StorageRequest::StoreFinalizedApprovals { deploy_hash, .. } => {
                 write!(formatter, "finalized approvals for deploy {}", deploy_hash)
@@ -625,6 +652,9 @@ pub(crate) enum RpcRequest {
     GetBlock {
         /// The identifier (can either be a hash or the height) of the block to be retrieved.
         maybe_id: Option<BlockIdentifier>,
+        /// Flag indicating whether storage should check the block availability before trying to
+        /// retrieve it.
+        only_from_available_block_range: bool,
         /// Responder to call with the result.
         responder: Responder<Option<BlockWithMetadata>>,
     },
@@ -691,10 +721,10 @@ pub(crate) enum RpcRequest {
         /// Responder to call with the result.
         responder: Responder<StatusFeed>,
     },
-    /// Return the lowest contiguous block height.
-    GetLowestContiguousBlockHeight {
+    /// Return the height range of fully available blocks.
+    GetAvailableBlockRange {
         /// Responder to call with the result.
-        responder: Responder<u64>,
+        responder: Responder<AvailableBlockRange>,
     },
 }
 
@@ -753,8 +783,8 @@ impl Display for RpcRequest {
             ),
             RpcRequest::GetPeers { .. } => write!(formatter, "get peers"),
             RpcRequest::GetStatus { .. } => write!(formatter, "get status"),
-            RpcRequest::GetLowestContiguousBlockHeight { .. } => {
-                write!(formatter, "get lowest contiguous block height")
+            RpcRequest::GetAvailableBlockRange { .. } => {
+                write!(formatter, "get available block range")
             }
         }
     }
