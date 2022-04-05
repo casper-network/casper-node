@@ -2,13 +2,12 @@ use std::{collections::BTreeMap, iter, sync::Arc, time::Duration};
 
 use anyhow::bail;
 use either::Either;
-use log::info;
 use num::Zero;
 use num_rational::Ratio;
 use rand::Rng;
 use tempfile::TempDir;
 use tokio::time;
-use tracing::error;
+use tracing::{error, info};
 
 use casper_execution_engine::core::engine_state::GetBidsRequest;
 use casper_types::{
@@ -20,7 +19,9 @@ use crate::{
     components::{chainspec_loader::NextUpgrade, gossiper, small_network, storage},
     crypto::AsymmetricKeyExt,
     effect::{
-        requests::{ContractRuntimeRequest, NetworkRequest},
+        requests::{
+            BlockPayloadRequest, BlockProposerRequest, ContractRuntimeRequest, NetworkRequest,
+        },
         EffectExt,
     },
     protocol::Message,
@@ -34,9 +35,9 @@ use crate::{
     },
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
-        ActivationPoint, BlockHeader, Chainspec, ChainspecRawBytes, ExitCode, Timestamp,
+        ActivationPoint, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, ExitCode, Timestamp,
     },
-    utils::{External, Loadable, WithDir, RESOURCES_PATH},
+    utils::{External, Loadable, Source, WithDir, RESOURCES_PATH},
     NodeRng,
 };
 
@@ -155,6 +156,8 @@ impl TestChain {
         }
         self.storages.push(temp_dir);
         cfg.storage = storage_cfg;
+
+        cfg.block_proposer.deploy_delay = "5sec".parse().unwrap();
 
         cfg
     }
@@ -298,11 +301,19 @@ async fn run_participating_network() {
         .expect("network initialization failed");
 
     // Wait for all nodes to agree on one era.
-    net.settle_on(&mut rng, is_in_era(EraId::from(1)), Duration::from_secs(90))
-        .await;
+    net.settle_on(
+        &mut rng,
+        is_in_era(EraId::from(1)),
+        Duration::from_secs(300),
+    )
+    .await;
 
-    net.settle_on(&mut rng, is_in_era(EraId::from(2)), Duration::from_secs(60))
-        .await;
+    net.settle_on(
+        &mut rng,
+        is_in_era(EraId::from(2)),
+        Duration::from_secs(300),
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -319,13 +330,13 @@ async fn run_equivocator_network() {
         .collect();
     let mut stakes: BTreeMap<PublicKey, U512> = keys
         .iter()
-        .map(|secret_key| (PublicKey::from(&*secret_key.clone()), U512::from(100)))
+        .map(|secret_key| (PublicKey::from(&*secret_key.clone()), U512::from(100u64)))
         .collect();
-    stakes.insert(PublicKey::from(&*alice_sk), U512::from(1));
+    stakes.insert(PublicKey::from(&*alice_sk), U512::from(1u64));
     keys.push(alice_sk.clone());
     keys.push(alice_sk);
 
-    // We configure the era to take five rounds, and delay all messages to and from one of Alice's
+    // We configure the era to take ten rounds, and delay all messages to and from one of Alice's
     // nodes until three rounds after the first message. That should guarantee that the two nodes
     // equivocate.
     let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
@@ -496,5 +507,240 @@ async fn dont_upgrade_without_switch_block() {
             Some(ReactorExit::ProcessShouldExit(ExitCode::Success)),
             runner.participating().maybe_exit()
         );
+    }
+}
+
+#[tokio::test]
+async fn should_store_finalized_approvals() {
+    testing::init_logging();
+
+    let mut rng = crate::new_rng();
+
+    // Set up a network with two validators.
+    let alice_sk = Arc::new(SecretKey::random(&mut rng));
+    let alice_pk = PublicKey::from(&*alice_sk);
+    let bob_sk = Arc::new(SecretKey::random(&mut rng));
+    let charlie_sk = Arc::new(SecretKey::random(&mut rng)); // just for ordering testing purposes
+    let keys: Vec<Arc<SecretKey>> = vec![alice_sk.clone(), bob_sk.clone()];
+    // only Alice will be proposing blocks
+    let stakes: BTreeMap<PublicKey, U512> =
+        iter::once((alice_pk.clone(), U512::from(100))).collect();
+
+    // Eras have exactly two blocks each, and there is one block per second.
+    let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
+    chain.chainspec_mut().core_config.minimum_era_height = 2;
+    chain.chainspec_mut().core_config.era_duration = 0.into();
+    chain.chainspec_mut().highway_config.minimum_round_exponent = 10;
+
+    let mut net = chain
+        .create_initialized_network(&mut rng)
+        .await
+        .expect("network initialization failed");
+
+    // Wait for all nodes to proceed to era 1.
+    net.settle_on(&mut rng, is_in_era(EraId::from(1)), Duration::from_secs(90))
+        .await;
+
+    // Submit a deploy.
+    let mut deploy_alice_bob = Deploy::random_valid_native_transfer_without_deps(&mut rng);
+    let mut deploy_alice_bob_charlie = deploy_alice_bob.clone();
+    let mut deploy_bob_alice = deploy_alice_bob.clone();
+
+    deploy_alice_bob.sign(&*alice_sk);
+    deploy_alice_bob.sign(&*bob_sk);
+
+    deploy_alice_bob_charlie.sign(&*alice_sk);
+    deploy_alice_bob_charlie.sign(&*bob_sk);
+    deploy_alice_bob_charlie.sign(&*charlie_sk);
+
+    deploy_bob_alice.sign(&*bob_sk);
+    deploy_bob_alice.sign(&*alice_sk);
+
+    // We will be testing the correct sequence of approvals against the deploy signed by Bob and
+    // Alice.
+    // The deploy signed by Alice and Bob should give the same ordering of approvals.
+    let expected_approvals: Vec<_> = deploy_bob_alice.approvals().iter().cloned().collect();
+
+    // We'll give the deploy signed by Alice, Bob and Charlie to Bob, so these will be his original
+    // approvals. Save these for checks later.
+    let bobs_original_approvals: Vec<_> = deploy_alice_bob_charlie
+        .approvals()
+        .iter()
+        .cloned()
+        .collect();
+    assert_ne!(bobs_original_approvals, expected_approvals);
+
+    let deploy_hash = *deploy_alice_bob.deploy_or_transfer_hash().deploy_hash();
+
+    for runner in net.runners_mut() {
+        if runner.participating().consensus().public_key() == &alice_pk {
+            // Alice will propose the deploy signed by Alice and Bob.
+            runner
+                .process_injected_effects(|effect_builder| {
+                    effect_builder
+                        .put_deploy_to_storage(Box::new(deploy_alice_bob.clone()))
+                        .ignore()
+                })
+                .await;
+            runner
+                .process_injected_effects(|effect_builder| {
+                    effect_builder
+                        .announce_new_deploy_accepted(
+                            Box::new(deploy_alice_bob.clone()),
+                            Source::Client,
+                        )
+                        .ignore()
+                })
+                .await;
+        } else {
+            // Bob will receive the deploy signed by Alice, Bob and Charlie.
+            runner
+                .process_injected_effects(|effect_builder| {
+                    effect_builder
+                        .put_deploy_to_storage(Box::new(deploy_alice_bob_charlie.clone()))
+                        .ignore()
+                })
+                .await;
+            runner
+                .process_injected_effects(|effect_builder| {
+                    effect_builder
+                        .announce_new_deploy_accepted(
+                            Box::new(deploy_alice_bob_charlie.clone()),
+                            Source::Client,
+                        )
+                        .ignore()
+                })
+                .await;
+        }
+    }
+
+    // Run until the deploy gets executed.
+    let timeout = Duration::from_secs(90);
+    net.settle_on(
+        &mut rng,
+        |nodes| {
+            nodes.values().all(|runner| {
+                runner
+                    .participating()
+                    .storage()
+                    .get_deploy_metadata_by_hash(&deploy_hash)
+                    .is_some()
+            })
+        },
+        timeout,
+    )
+    .await;
+
+    // Check if the approvals agree.
+    for runner in net.nodes().values() {
+        let maybe_dwa = runner
+            .participating()
+            .storage()
+            .get_deploy_with_finalized_approvals_by_hash(&deploy_hash);
+        let maybe_finalized_approvals = maybe_dwa
+            .as_ref()
+            .and_then(|dwa| dwa.finalized_approvals())
+            .map(|fa| fa.as_ref().iter().cloned().collect());
+        let maybe_original_approvals = maybe_dwa
+            .as_ref()
+            .map(|dwa| dwa.original_approvals().iter().cloned().collect());
+        if runner.participating().consensus().public_key() != &alice_pk {
+            // Bob should have finalized approvals, and his original approvals should be different.
+            assert_eq!(
+                maybe_finalized_approvals.as_ref(),
+                Some(&expected_approvals)
+            );
+            assert_eq!(
+                maybe_original_approvals.as_ref(),
+                Some(&bobs_original_approvals)
+            );
+        } else {
+            // Alice should only have the correct approvals as the original ones, and no finalized
+            // approvals (as they wouldn't be stored, because they would be the same as the
+            // original ones).
+            assert_eq!(maybe_finalized_approvals.as_ref(), None);
+            assert_eq!(maybe_original_approvals.as_ref(), Some(&expected_approvals));
+        }
+    }
+}
+
+#[tokio::test]
+async fn empty_block_validation_regression() {
+    testing::init_logging();
+
+    let mut rng = crate::new_rng();
+
+    let size: usize = 4;
+    let keys: Vec<Arc<SecretKey>> = (0..size)
+        .map(|_| Arc::new(SecretKey::random(&mut rng)))
+        .collect();
+    let stakes: BTreeMap<PublicKey, U512> = keys
+        .iter()
+        .map(|secret_key| (PublicKey::from(&*secret_key.clone()), U512::from(100u64)))
+        .collect();
+
+    // We make the first validator always accuse everyone else.
+    let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
+    chain.chainspec_mut().highway_config.minimum_round_exponent = 10; // 1 second
+    chain.chainspec_mut().highway_config.maximum_round_exponent = 10; // 1 second
+    chain.chainspec_mut().core_config.minimum_era_height = 15;
+    let mut net = chain
+        .create_initialized_network(&mut rng)
+        .await
+        .expect("network initialization failed");
+    let malicious_validator = stakes.keys().next().unwrap().clone();
+    info!("Malicious validator: {:?}", malicious_validator);
+    let everyone_else: Vec<_> = stakes
+        .keys()
+        .filter(|pub_key| **pub_key != malicious_validator)
+        .cloned()
+        .collect();
+    let malicious_runner = net
+        .runners_mut()
+        .find(|runner| runner.participating().consensus().public_key() == &malicious_validator)
+        .unwrap();
+    malicious_runner
+        .reactor_mut()
+        .inner_mut()
+        .set_filter(move |event| match event {
+            ParticipatingEvent::BlockProposerRequest(
+                BlockProposerRequest::RequestBlockPayload(BlockPayloadRequest {
+                    context,
+                    next_finalized,
+                    mut accusations,
+                    random_bit,
+                    responder,
+                }),
+            ) => {
+                info!("Accusing everyone else!");
+                accusations = everyone_else.clone();
+                Either::Right(ParticipatingEvent::BlockProposerRequest(
+                    BlockProposerRequest::RequestBlockPayload(BlockPayloadRequest {
+                        context,
+                        next_finalized,
+                        accusations,
+                        random_bit,
+                        responder,
+                    }),
+                ))
+            }
+            event => Either::Right(event),
+        });
+
+    let timeout = Duration::from_secs(300);
+    info!("Waiting for the first era to end.");
+    net.settle_on(&mut rng, is_in_era(EraId::new(1)), timeout)
+        .await;
+    let switch_blocks = SwitchBlocks::collect(net.nodes(), 1);
+
+    // Nobody actually double-signed. The accusations should have had no effect.
+    assert_eq!(switch_blocks.equivocators(0), []);
+    // If the malicious validator was the first proposer, all their Highway units might be invalid,
+    // because they all refer to the invalid proposal, so they might get flagged as inactive. No
+    // other validators should be considered inactive.
+    match switch_blocks.inactive_validators(0) {
+        [] => {}
+        [inactive_validator] if malicious_validator == *inactive_validator => {}
+        inactive => panic!("unexpected inactive validators: {:?}", inactive),
     }
 }

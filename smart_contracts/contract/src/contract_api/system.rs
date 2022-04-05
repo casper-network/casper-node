@@ -74,19 +74,18 @@ pub fn get_auction() -> ContractHash {
 /// Creates a new empty purse and returns its [`URef`].
 pub fn create_purse() -> URef {
     let purse_non_null_ptr = contract_api::alloc_bytes(UREF_SERIALIZED_LENGTH);
-    unsafe {
-        let ret = ext_ffi::casper_create_purse(purse_non_null_ptr.as_ptr(), UREF_SERIALIZED_LENGTH);
-        if ret == 0 {
-            let bytes = Vec::from_raw_parts(
-                purse_non_null_ptr.as_ptr(),
-                UREF_SERIALIZED_LENGTH,
-                UREF_SERIALIZED_LENGTH,
-            );
-            bytesrepr::deserialize(bytes).unwrap_or_revert()
-        } else {
-            runtime::revert(ApiError::PurseNotCreated)
-        }
-    }
+    let ret = unsafe {
+        ext_ffi::casper_create_purse(purse_non_null_ptr.as_ptr(), UREF_SERIALIZED_LENGTH)
+    };
+    api_error::result_from(ret).unwrap_or_revert();
+    let bytes = unsafe {
+        Vec::from_raw_parts(
+            purse_non_null_ptr.as_ptr(),
+            UREF_SERIALIZED_LENGTH,
+            UREF_SERIALIZED_LENGTH,
+        )
+    };
+    bytesrepr::deserialize(bytes).unwrap_or_revert()
 }
 
 /// Returns the balance in motes of the given purse.

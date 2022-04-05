@@ -620,7 +620,8 @@
                 "items": {
                   "$ref": "#/components/schemas/Approval"
                 },
-                "type": "array"
+                "type": "array",
+                "uniqueItems": true
               },
               "hash": {
                 "$ref": "#/components/schemas/DeployHash"
@@ -1897,7 +1898,7 @@
             "type": "object"
           },
           "NamedArg": {
-            "description": "Named arguments to a contract",
+            "description": "Named arguments to a contract.",
             "items": [
               {
                 "type": "string"
@@ -2833,7 +2834,7 @@
           "url": "https://raw.githubusercontent.com/CasperLabs/casper-node/master/LICENSE"
         },
         "title": "Client API of Casper Node",
-        "version": "1.4.3"
+        "version": "1.4.5"
       },
       "methods": [
         {
@@ -2846,7 +2847,7 @@
                   "value": {
                     "approvals": [
                       {
-                        "signature": "012dbf03817a51794a8e19e0724884075e6d1fbec326b766ecfa6658b41f81290da85e23b24e88b1c8d9761185c961daee1adab0649912a6477bcd2e69bd91bd08",
+                        "signature": "014c1a89f92e29dd74fc648f741137d9caf4edba97c5f9799ce0c9aa6b0c9b58db368c64098603dbecef645774c05dff057cb1f91f2cf390bbacce78aa6f084007",
                         "signer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c"
                       }
                     ],
@@ -2898,7 +2899,7 @@
               "result": {
                 "name": "account_put_deploy_example_result",
                 "value": {
-                  "api_version": "1.4.3",
+                  "api_version": "1.4.5",
                   "deploy_hash": "5c9b3b099c1378aa8e4a5f07f59ff1fcdc69a83179427c7e67ae0377d94d93fa"
                 }
               }
@@ -2947,16 +2948,20 @@
                 {
                   "name": "deploy_hash",
                   "value": "5c9b3b099c1378aa8e4a5f07f59ff1fcdc69a83179427c7e67ae0377d94d93fa"
+                },
+                {
+                  "name": "finalized_approvals",
+                  "value": true
                 }
               ],
               "result": {
                 "name": "info_get_deploy_example_result",
                 "value": {
-                  "api_version": "1.4.3",
+                  "api_version": "1.4.5",
                   "deploy": {
                     "approvals": [
                       {
-                        "signature": "012dbf03817a51794a8e19e0724884075e6d1fbec326b766ecfa6658b41f81290da85e23b24e88b1c8d9761185c961daee1adab0649912a6477bcd2e69bd91bd08",
+                        "signature": "014c1a89f92e29dd74fc648f741137d9caf4edba97c5f9799ce0c9aa6b0c9b58db368c64098603dbecef645774c05dff057cb1f91f2cf390bbacce78aa6f084007",
                         "signer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c"
                       }
                     ],
@@ -3054,6 +3059,15 @@
                 "$ref": "#/components/schemas/DeployHash",
                 "description": "The deploy hash."
               }
+            },
+            {
+              "name": "finalized_approvals",
+              "required": false,
+              "schema": {
+                "default": false,
+                "description": "Whether to return the deploy with the finalized approvals substituted. If `false` or omitted, returns the deploy with the approvals that were originally received by the node.",
+                "type": "boolean"
+              }
             }
           ],
           "result": {
@@ -3122,7 +3136,7 @@
                     "main_purse": "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007",
                     "named_keys": []
                   },
-                  "api_version": "1.4.3",
+                  "api_version": "1.4.5",
                   "merkle_proof": "01000000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625016ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625000000003529cde5c621f857f75f3810611eb4af3f998caaa9d4a3413cf799f99c67db0307010000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a7253614761462501010102000000006e06000000000074769d28aac597a36a03a932d4b43e4f10bf0403ee5c41dd035102553f5773631200b9e173e8f05361b681513c14e25e3138639eb03232581db7557c9e8dbbc83ce94500226a9a7fe4f2b7b88d5103a4fc7400f02bf89c860c9ccdd56951a2afe9be0e0267006d820fb5676eb2960e15722f7725f3f8f41030078f8b2e44bf0dc03f71b176d6e800dc5ae9805068c5be6da1a90b2528ee85db0609cc0fb4bd60bbd559f497a98b67f500e1e3e846592f4918234647fca39830b7e1e6ad6f5b7a99b39af823d82ba1873d000003000000010186ff500f287e9b53f823ae1582b1fa429dfede28015125fd233a31ca04d5012002015cc42669a55467a1fdf49750772bfc1aed59b9b085558eb81510e9b015a7c83b0301e3cf4a34b1db6bfa58808b686cb8fe21ebe0c1bcbcee522649d2b135fe510fe3"
                 }
               }
@@ -3205,7 +3219,7 @@
               "result": {
                 "name": "state_get_dictionary_item_example_result",
                 "value": {
-                  "api_version": "1.4.3",
+                  "api_version": "1.4.5",
                   "dictionary_key": "dictionary-67518854aa916c97d4e53df8570c8217ccc259da2721b692102d76acd0ee8d1f",
                   "merkle_proof": "01000000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625016ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625000000003529cde5c621f857f75f3810611eb4af3f998caaa9d4a3413cf799f99c67db0307010000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a7253614761462501010102000000006e06000000000074769d28aac597a36a03a932d4b43e4f10bf0403ee5c41dd035102553f5773631200b9e173e8f05361b681513c14e25e3138639eb03232581db7557c9e8dbbc83ce94500226a9a7fe4f2b7b88d5103a4fc7400f02bf89c860c9ccdd56951a2afe9be0e0267006d820fb5676eb2960e15722f7725f3f8f41030078f8b2e44bf0dc03f71b176d6e800dc5ae9805068c5be6da1a90b2528ee85db0609cc0fb4bd60bbd559f497a98b67f500e1e3e846592f4918234647fca39830b7e1e6ad6f5b7a99b39af823d82ba1873d000003000000010186ff500f287e9b53f823ae1582b1fa429dfede28015125fd233a31ca04d5012002015cc42669a55467a1fdf49750772bfc1aed59b9b085558eb81510e9b015a7c83b0301e3cf4a34b1db6bfa58808b686cb8fe21ebe0c1bcbcee522649d2b135fe510fe3",
                   "stored_value": {
@@ -3295,7 +3309,7 @@
               "result": {
                 "name": "query_global_state_example_result",
                 "value": {
-                  "api_version": "1.4.3",
+                  "api_version": "1.4.5",
                   "block_header": {
                     "accumulated_seed": "ac979f51525cfd979b14aa7dc0737c5154eabe0db9280eceaa8dc8d2905b20d5",
                     "body_hash": "cd502c5393a3c8b66d6979ad7857507c9baf5a8ba16ba99c28378d3a970fff42",
@@ -3438,7 +3452,7 @@
               "result": {
                 "name": "info_get_peers_example_result",
                 "value": {
-                  "api_version": "1.4.3",
+                  "api_version": "1.4.5",
                   "peers": [
                     {
                       "address": "127.0.0.1:54321",
@@ -3483,7 +3497,7 @@
               "result": {
                 "name": "info_get_status_example_result",
                 "value": {
-                  "api_version": "1.4.3",
+                  "api_version": "1.4.5",
                   "build_version": "1.0.0-xxxxxxxxx@DEBUG",
                   "chainspec_name": "casper-example",
                   "last_added_block_info": {
@@ -3617,7 +3631,7 @@
               "result": {
                 "name": "info_get_validator_changes_example_result",
                 "value": {
-                  "api_version": "1.4.3",
+                  "api_version": "1.4.5",
                   "changes": [
                     {
                       "public_key": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
@@ -3670,7 +3684,7 @@
               "result": {
                 "name": "info_get_chainspec_example_result",
                 "value": {
-                  "api_version": "1.4.3",
+                  "api_version": "1.4.5",
                   "chainspec_bytes": {
                     "chainspec_bytes": "2a2a",
                     "maybe_genesis_accounts_bytes": null,
@@ -3720,7 +3734,7 @@
               "result": {
                 "name": "chain_get_block_example_result",
                 "value": {
-                  "api_version": "1.4.3",
+                  "api_version": "1.4.5",
                   "block": {
                     "body": {
                       "deploy_hashes": [],
@@ -3838,7 +3852,7 @@
               "result": {
                 "name": "chain_get_block_transfers_example_result",
                 "value": {
-                  "api_version": "1.4.3",
+                  "api_version": "1.4.5",
                   "block_hash": "13c2d7a68ecdd4b74bf4393c88915c836c863fc4bf11d7f2bd930a1bbccacdcb",
                   "transfers": [
                     {
@@ -3922,7 +3936,7 @@
               "result": {
                 "name": "chain_get_state_root_hash_example_result",
                 "value": {
-                  "api_version": "1.4.3",
+                  "api_version": "1.4.5",
                   "state_root_hash": "0808080808080808080808080808080808080808080808080808080808080808"
                 }
               }
@@ -3992,7 +4006,7 @@
               "result": {
                 "name": "state_get_item_example_result",
                 "value": {
-                  "api_version": "1.4.3",
+                  "api_version": "1.4.5",
                   "merkle_proof": "01000000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625016ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625000000003529cde5c621f857f75f3810611eb4af3f998caaa9d4a3413cf799f99c67db0307010000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a7253614761462501010102000000006e06000000000074769d28aac597a36a03a932d4b43e4f10bf0403ee5c41dd035102553f5773631200b9e173e8f05361b681513c14e25e3138639eb03232581db7557c9e8dbbc83ce94500226a9a7fe4f2b7b88d5103a4fc7400f02bf89c860c9ccdd56951a2afe9be0e0267006d820fb5676eb2960e15722f7725f3f8f41030078f8b2e44bf0dc03f71b176d6e800dc5ae9805068c5be6da1a90b2528ee85db0609cc0fb4bd60bbd559f497a98b67f500e1e3e846592f4918234647fca39830b7e1e6ad6f5b7a99b39af823d82ba1873d000003000000010186ff500f287e9b53f823ae1582b1fa429dfede28015125fd233a31ca04d5012002015cc42669a55467a1fdf49750772bfc1aed59b9b085558eb81510e9b015a7c83b0301e3cf4a34b1db6bfa58808b686cb8fe21ebe0c1bcbcee522649d2b135fe510fe3",
                   "stored_value": {
                     "CLValue": {
@@ -4082,7 +4096,7 @@
               "result": {
                 "name": "state_get_balance_example_result",
                 "value": {
-                  "api_version": "1.4.3",
+                  "api_version": "1.4.5",
                   "balance_value": "123456",
                   "merkle_proof": "01000000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625016ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625000000003529cde5c621f857f75f3810611eb4af3f998caaa9d4a3413cf799f99c67db0307010000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a7253614761462501010102000000006e06000000000074769d28aac597a36a03a932d4b43e4f10bf0403ee5c41dd035102553f5773631200b9e173e8f05361b681513c14e25e3138639eb03232581db7557c9e8dbbc83ce94500226a9a7fe4f2b7b88d5103a4fc7400f02bf89c860c9ccdd56951a2afe9be0e0267006d820fb5676eb2960e15722f7725f3f8f41030078f8b2e44bf0dc03f71b176d6e800dc5ae9805068c5be6da1a90b2528ee85db0609cc0fb4bd60bbd559f497a98b67f500e1e3e846592f4918234647fca39830b7e1e6ad6f5b7a99b39af823d82ba1873d000003000000010186ff500f287e9b53f823ae1582b1fa429dfede28015125fd233a31ca04d5012002015cc42669a55467a1fdf49750772bfc1aed59b9b085558eb81510e9b015a7c83b0301e3cf4a34b1db6bfa58808b686cb8fe21ebe0c1bcbcee522649d2b135fe510fe3"
                 }
@@ -4152,7 +4166,7 @@
               "result": {
                 "name": "chain_get_era_info_by_switch_block_example_result",
                 "value": {
-                  "api_version": "1.4.3",
+                  "api_version": "1.4.5",
                   "era_summary": {
                     "block_hash": "13c2d7a68ecdd4b74bf4393c88915c836c863fc4bf11d7f2bd930a1bbccacdcb",
                     "era_id": 42,
@@ -4238,7 +4252,7 @@
               "result": {
                 "name": "state_get_auction_info_example_result",
                 "value": {
-                  "api_version": "1.4.3",
+                  "api_version": "1.4.5",
                   "auction_state": {
                     "bids": [
                       {

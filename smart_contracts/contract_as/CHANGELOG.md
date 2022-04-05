@@ -14,6 +14,14 @@ All notable changes to this project will be documented in this file.  The format
 ## [Unreleased]
 
 
+
+## 1.4.4
+
+### Added
+* Add `URef::withAccessRights` helper function.
+
+
+
 ## [1.4.0] - 2021-10-04
 
 ### Added

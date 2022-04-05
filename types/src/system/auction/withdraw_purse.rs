@@ -68,7 +68,7 @@ impl WithdrawPurse {
 
     /// Returns public key of unbonder.
     ///
-    /// For withdrawal requests that originated from validator's public key through [`withdraw_bid`
+    /// For withdrawal requests that originated from validator's public key through `withdraw_bid`
     /// entrypoint this is equal to [`WithdrawPurse::validator_public_key`] and
     /// [`WithdrawPurse::is_validator`] is `true`.
     pub fn unbonder_public_key(&self) -> &PublicKey {

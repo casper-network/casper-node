@@ -7,7 +7,7 @@ extern crate alloc;
 use alloc::{collections::BTreeSet, string::ToString, vec::Vec};
 
 use casper_contract::{
-    contract_api::{runtime, storage},
+    contract_api::{account, runtime, storage, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
@@ -15,7 +15,9 @@ use casper_types::{
         EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys,
         CONTRACT_INITIAL_VERSION,
     },
-    runtime_args, CLType, ContractPackageHash, Key, Parameter, RuntimeArgs, URef,
+    runtime_args,
+    system::{handle_payment, standard_payment},
+    CLType, CLTyped, ContractPackageHash, Key, Parameter, RuntimeArgs, URef, U512,
 };
 
 const PACKAGE_HASH_KEY: &str = "package_hash_key";
@@ -28,6 +30,7 @@ const RESTRICTED_CONTRACT_CALLER_AS_SESSION: &str = "restricted_contract_caller_
 const UNCALLABLE_SESSION: &str = "uncallable_session";
 const UNCALLABLE_CONTRACT: &str = "uncallable_contract";
 const CALL_RESTRICTED_ENTRY_POINTS: &str = "call_restricted_entry_points";
+const RESTRICTED_STANDARD_PAYMENT: &str = "restricted_standard_payment";
 const ARG_PACKAGE_HASH: &str = "package_hash";
 
 #[no_mangle]
@@ -77,6 +80,23 @@ pub extern "C" fn uncallable_session() {}
 
 #[no_mangle]
 pub extern "C" fn uncallable_contract() {}
+
+fn get_payment_purse() -> URef {
+    runtime::call_contract(
+        system::get_handle_payment(),
+        handle_payment::METHOD_GET_PAYMENT_PURSE,
+        RuntimeArgs::default(),
+    )
+}
+
+#[no_mangle]
+pub extern "C" fn restricted_standard_payment() {
+    let amount: U512 = runtime::get_named_arg(standard_payment::ARG_AMOUNT);
+
+    let payment_purse = get_payment_purse();
+    system::transfer_from_purse_to_purse(account::get_main_purse(), payment_purse, amount, None)
+        .unwrap_or_revert();
+}
 
 #[no_mangle]
 pub extern "C" fn call_restricted_entry_points() {
@@ -204,6 +224,18 @@ fn create_entry_points_1() -> EntryPoints {
         EntryPointType::Session,
     );
     entry_points.add_entry_point(call_restricted_entry_points);
+
+    let restricted_standard_payment = EntryPoint::new(
+        RESTRICTED_STANDARD_PAYMENT.to_string(),
+        vec![Parameter::new(
+            standard_payment::ARG_AMOUNT,
+            U512::cl_type(),
+        )],
+        CLType::Unit,
+        EntryPointAccess::groups(&["Group 1"]),
+        EntryPointType::Session,
+    );
+    entry_points.add_entry_point(restricted_standard_payment);
 
     entry_points
 }

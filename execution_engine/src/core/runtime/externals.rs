@@ -9,8 +9,8 @@ use casper_types::{
     contracts::{ContractPackageStatus, EntryPoints, NamedKeys},
     crypto,
     system::auction::EraInfo,
-    ContractHash, ContractPackageHash, ContractVersion, EraId, Gas, Group, Key, StoredValue, URef,
-    U512,
+    ApiError, ContractHash, ContractPackageHash, ContractVersion, EraId, Gas, Group, Key,
+    StoredValue, URef, U512, UREF_SERIALIZED_LENGTH,
 };
 
 use super::{args::Args, Error, Runtime};
@@ -276,17 +276,24 @@ where
                 // args(0) = pointer to array for return value
                 // args(1) = length of array for return value
                 let (dest_ptr, dest_size) = Args::parse(args)?;
+
                 self.charge_host_function_call(
                     &host_function_costs.create_purse,
                     [dest_ptr, dest_size],
                 )?;
-                let purse = self.create_purse()?;
-                let purse_bytes = purse.into_bytes().map_err(Error::BytesRepr)?;
-                assert_eq!(dest_size, purse_bytes.len() as u32);
-                self.memory
-                    .set(dest_ptr, &purse_bytes)
-                    .map_err(|e| Error::Interpreter(e.into()))?;
-                Ok(Some(RuntimeValue::I32(0)))
+
+                let result = if (dest_size as usize) < UREF_SERIALIZED_LENGTH {
+                    Err(ApiError::PurseNotCreated)
+                } else {
+                    let purse = self.create_purse()?;
+                    let purse_bytes = purse.into_bytes().map_err(Error::BytesRepr)?;
+                    self.try_get_memory()?
+                        .set(dest_ptr, &purse_bytes)
+                        .map_err(|e| Error::Interpreter(e.into()))?;
+                    Ok(())
+                };
+
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(result))))
             }
 
             FunctionIndex::TransferToAccountIndex => {
@@ -328,7 +335,7 @@ where
                     Ok(transferred_to) => {
                         let result_value: u32 = transferred_to as u32;
                         let result_value_bytes = result_value.to_le_bytes();
-                        self.memory
+                        self.try_get_memory()?
                             .set(result_ptr, &result_value_bytes)
                             .map_err(|error| Error::Interpreter(error.into()))?;
                         Ok(())
@@ -398,7 +405,7 @@ where
                     Ok(transferred_to) => {
                         let result_value: u32 = transferred_to as u32;
                         let result_value_bytes = result_value.to_le_bytes();
-                        self.memory
+                        self.try_get_memory()?
                             .set(result_ptr, &result_value_bytes)
                             .map_err(|error| Error::Interpreter(error.into()))?;
                         Ok(())
@@ -881,7 +888,7 @@ where
                     let err_value = u32::from(api_error::ApiError::BufferTooSmall) as i32;
                     return Ok(Some(RuntimeValue::I32(err_value)));
                 }
-                self.memory
+                self.try_get_memory()?
                     .set(out_ptr, &digest)
                     .map_err(|error| Error::Interpreter(error.into()))?;
                 Ok(Some(RuntimeValue::I32(0)))

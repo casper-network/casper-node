@@ -266,11 +266,24 @@ where
                 purse_uref,
                 responder,
             }) => self.handle_get_balance(effect_builder, state_root_hash, purse_uref, responder),
-            Event::RpcRequest(RpcRequest::GetDeploy { hash, responder }) => effect_builder
+            Event::RpcRequest(RpcRequest::GetDeploy {
+                hash,
+                responder,
+                finalized_approvals,
+            }) => effect_builder
                 .get_deploy_and_metadata_from_storage(hash)
                 .event(move |result| Event::GetDeployResult {
                     hash,
-                    result: Box::new(result),
+                    result: Box::new(result.map(|(deploy_with_finalized_approvals, metadata)| {
+                        if finalized_approvals {
+                            (deploy_with_finalized_approvals.into_naive(), metadata)
+                        } else {
+                            (
+                                deploy_with_finalized_approvals.discard_finalized_approvals(),
+                                metadata,
+                            )
+                        }
+                    })),
                     main_responder: responder,
                 }),
             Event::RpcRequest(RpcRequest::GetPeers { responder }) => effect_builder

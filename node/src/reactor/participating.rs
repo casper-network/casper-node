@@ -20,7 +20,7 @@ use derive_more::From;
 use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::Serialize;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
@@ -654,7 +654,7 @@ impl reactor::Reactor for Reactor {
             NodeState::Participating,
         )?;
 
-        let deploy_acceptor = DeployAcceptor::new(&*chainspec_loader.chainspec(), registry)?;
+        let deploy_acceptor = DeployAcceptor::new(chainspec_loader.chainspec(), registry)?;
         let deploy_fetcher = Fetcher::new(
             "deploy",
             config.fetcher,
@@ -718,7 +718,7 @@ impl reactor::Reactor for Reactor {
         contract_runtime.set_initial_state(ExecutionPreState::from_block_header(
             &latest_block_header,
             chainspec.protocol_config.verifiable_chunked_hash_activation,
-        ));
+        ))?;
 
         let block_validator = BlockValidator::new(Arc::clone(chainspec));
         let linear_chain = linear_chain::LinearChainComponent::new(
@@ -931,6 +931,7 @@ impl reactor::Reactor for Reactor {
 
                 let event = block_proposer::Event::BufferDeploy {
                     hash: deploy.deploy_or_transfer_hash(),
+                    approvals: deploy.approvals().clone(),
                     deploy_info: Box::new(deploy_info),
                 };
                 let mut effects = self.dispatch_event(
@@ -1191,6 +1192,13 @@ impl reactor::Reactor for Reactor {
                             source: Source::Peer(sender),
                             maybe_responder: None,
                         })
+                    }
+                    NetResponse::FinalizedApprovals(_) => {
+                        debug!(
+                            "cannot handle get response for finalized approvals from {}",
+                            sender
+                        );
+                        return Effects::new();
                     }
                     NetResponse::Block(_) => {
                         error!(

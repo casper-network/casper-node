@@ -116,8 +116,14 @@ pub fn execute_finalized_block(
                 finalized_block.era_id().successor(),
             )?;
             state_root_hash = post_state_hash;
+
+            // In this flow we execute using a recent state root hash where the system contract
+            // registry is guaranteed to exist.
+            let system_contract_registry = None;
+
             let upcoming_era_validators = engine_state.get_era_validators(
                 CorrelationId::new(),
+                system_contract_registry,
                 GetEraValidatorsRequest::new(state_root_hash, protocol_version),
             )?;
             Some(StepEffectAndUpcomingEraValidators {

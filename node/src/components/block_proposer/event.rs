@@ -1,4 +1,7 @@
-use std::fmt::{self, Formatter};
+use std::{
+    collections::BTreeSet,
+    fmt::{self, Formatter},
+};
 
 use datasize::DataSize;
 use derive_more::From;
@@ -10,7 +13,7 @@ use casper_types::Motes;
 use super::{BlockHeight, CachedState};
 use crate::{
     effect::requests::BlockProposerRequest,
-    types::{Block, DeployHeader, DeployOrTransferHash, FinalizedBlock},
+    types::{Approval, Block, DeployHeader, DeployOrTransferHash, FinalizedBlock},
 };
 
 /// Information about a deploy.
@@ -40,6 +43,7 @@ pub(crate) enum Event {
     /// and buffered here.
     BufferDeploy {
         hash: DeployOrTransferHash,
+        approvals: BTreeSet<Approval>,
         deploy_info: Box<DeployInfo>,
     },
     /// The block proposer has been asked to prune stale deploys.
