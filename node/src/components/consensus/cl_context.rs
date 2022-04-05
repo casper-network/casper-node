@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use datasize::DataSize;
+use serde::{Deserialize, Serialize};
 use tracing::info;
 
 use casper_hashing::Digest;
@@ -50,7 +51,7 @@ impl ConsensusValueT for Arc<BlockPayload> {
 }
 
 /// The collection of types used for cryptography, IDs and blocks in the CasperLabs node.
-#[derive(Clone, DataSize, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, DataSize, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub struct ClContext;
 
 impl Context for ClContext {

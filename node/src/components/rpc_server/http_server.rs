@@ -77,6 +77,7 @@ pub(super) async fn run<REv: ReactorEventT>(
     let rpc_get_rpcs = rpcs::docs::ListRpcs::create_filter(effect_builder, api_version);
     let rpc_get_dictionary_item =
         rpcs::state::GetDictionaryItem::create_filter(effect_builder, api_version);
+    let rpc_get_chainspec = rpcs::info::GetChainspec::create_filter(effect_builder, api_version);
 
     // Catch requests where the method is not one we handle.
     let unknown_method = warp::path(RPC_API_PATH)
@@ -109,6 +110,7 @@ pub(super) async fn run<REv: ReactorEventT>(
         .or(rpc_get_rpcs)
         .or(rpc_get_dictionary_item)
         .or(rpc_get_trie)
+        .or(rpc_get_chainspec)
         .or(rpc_query_global_state)
         .or(unknown_method)
         .or(parse_failure);
@@ -117,7 +119,8 @@ pub(super) async fn run<REv: ReactorEventT>(
     // https://github.com/seanmonstar/warp/pull/513 moves forward.
     let service_routes_gzip = warp::header::exact("accept-encoding", "gzip")
         .and(service_routes.clone())
-        .with(warp::compression::gzip());
+        .with(warp::compression::gzip())
+        .with(warp::cors().allow_any_origin());
 
     // TODO - we can't catch cases where we should return `warp_json_rpc::Error::INVALID_REQUEST`
     //        (i.e. where the request is JSON, but not valid JSON-RPC).  This will require an

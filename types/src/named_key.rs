@@ -3,6 +3,8 @@
 
 use alloc::{string::String, vec::Vec};
 
+#[cfg(feature = "datasize")]
+use datasize::DataSize;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -11,6 +13,7 @@ use crate::bytesrepr::{self, FromBytes, ToBytes};
 
 /// A named key.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Default, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct NamedKey {

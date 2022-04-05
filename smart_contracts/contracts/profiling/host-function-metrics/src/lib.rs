@@ -125,8 +125,9 @@ fn small_function() {
 #[no_mangle]
 pub extern "C" fn call() {
     let seed: u64 = runtime::get_named_arg(ARG_SEED);
-    let (random_bytes, source_account, destination_account): (Vec<u8>, AccountHash, AccountHash) =
+    let (random_bytes, source_account, destination_account): (Bytes, AccountHash, AccountHash) =
         runtime::get_named_arg(ARG_OTHERS);
+    let random_bytes: Vec<u8> = random_bytes.into();
 
     // ========== storage, execution and upgrading of contracts ====================================
 
@@ -148,14 +149,13 @@ pub extern "C" fn call() {
     let (contract_hash, _contract_version) =
         store_function(entry_point_name, Some(named_keys.clone()));
     // Store large function with 10 named keys, then execute it.
-    runtime::call_contract::<NamedKeys>(contract_hash, entry_point_name, runtime_args);
+    runtime::call_contract::<NamedKeys>(contract_hash, entry_point_name, runtime_args.clone());
 
     // Small function
     let small_function_name =
         "s".repeat(rng.gen_range(MIN_FUNCTION_NAME_LENGTH..=MAX_FUNCTION_NAME_LENGTH));
 
     let entry_point_name = &small_function_name;
-    let runtime_args = runtime_args! {};
 
     // Store small function with no named keys, then execute it.
     let (contract_hash, _contract_version) =

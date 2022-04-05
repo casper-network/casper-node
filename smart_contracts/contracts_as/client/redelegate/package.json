@@ -1,0 +1,9 @@
+{
+  "scripts": {
+    "asbuild:optimized": "asc --lib ../../.. assembly/index.ts -b ../../../../target_as/redelegate.wasm   --optimize --use abort=",
+    "asbuild": "npm run asbuild:optimized"
+  },
+  "devDependencies": {
+    "assemblyscript": "^0.8.1"
+  }
+}

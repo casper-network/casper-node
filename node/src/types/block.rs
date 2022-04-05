@@ -30,7 +30,6 @@ use casper_types::{
     EraId, ProtocolVersion, PublicKey, SecretKey, Signature, U512,
 };
 
-use super::{Item, Tag, Timestamp};
 use crate::{
     components::consensus,
     crypto::{self, AsymmetricKeyExt},
@@ -44,6 +43,11 @@ use crate::{
 };
 #[cfg(test)]
 use crate::{crypto::generate_ed25519_keypair, testing::TestRng};
+
+use super::{Item, Tag, Timestamp};
+use crate::types::error::{
+    BlockHeaderWithMetadataValidationError, BlockWithMetadataValidationError,
+};
 
 static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
     let secret_key_1 = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
@@ -127,6 +131,7 @@ static BLOCK: Lazy<Block> = Lazy::new(|| {
     let finalized_block = FinalizedBlock::doc_example().clone();
     let parent_seed = Digest::from([9u8; Digest::LENGTH]);
     let protocol_version = ProtocolVersion::V1_0_0;
+    let verifiable_chunked_hash_activation = EraId::new(17_u64);
 
     let secret_key = SecretKey::doc_example();
     let public_key = PublicKey::from(secret_key);
@@ -156,6 +161,7 @@ static BLOCK: Lazy<Block> = Lazy::new(|| {
         finalized_block,
         next_era_validator_weights,
         protocol_version,
+        verifiable_chunked_hash_activation,
     )
     .expect("could not construct block")
 });
@@ -176,7 +182,12 @@ static JSON_BLOCK_HEADER: Lazy<JsonBlockHeader> = Lazy::new(|| {
     JsonBlockHeader::from(block_header)
 });
 
-/// Error returned from constructing or validating a `Block`.
+// This should be clearly specified because the `verifiable_chunked_hash_activation`
+// parameter used in various tests strongly rely on this value.
+#[cfg(test)]
+const MAX_ERA_FOR_RANDOM_BLOCK: u64 = 6;
+
+/// Error returned from constructing a `Block`.
 #[derive(Debug, Error)]
 pub enum Error {
     /// Error while encoding to JSON.
@@ -412,10 +423,10 @@ pub struct FinalizedBlock {
     transfer_hashes: Vec<DeployHash>,
     timestamp: Timestamp,
     random_bit: bool,
-    era_report: Option<EraReport>,
+    era_report: Box<Option<EraReport>>,
     era_id: EraId,
     height: u64,
-    proposer: PublicKey,
+    proposer: Box<PublicKey>,
 }
 
 impl FinalizedBlock {
@@ -432,10 +443,10 @@ impl FinalizedBlock {
             transfer_hashes: block_payload.transfer_hashes().cloned().collect(),
             timestamp,
             random_bit: block_payload.random_bit,
-            era_report,
+            era_report: Box::new(era_report),
             era_id,
             height,
-            proposer,
+            proposer: Box::new(proposer),
         }
     }
 
@@ -447,7 +458,7 @@ impl FinalizedBlock {
     /// Returns slashing and reward information if this is a switch block, i.e. the last block of
     /// its era.
     pub(crate) fn era_report(&self) -> Option<&EraReport> {
-        self.era_report.as_ref()
+        (*self.era_report).as_ref()
     }
 
     /// Returns the ID of the era this block belongs to.
@@ -460,7 +471,7 @@ impl FinalizedBlock {
         self.height
     }
 
-    pub(crate) fn proposer(&self) -> PublicKey {
+    pub(crate) fn proposer(&self) -> Box<PublicKey> {
         self.proposer.clone()
     }
 
@@ -563,10 +574,10 @@ impl From<Block> for FinalizedBlock {
             transfer_hashes: block.body.transfer_hashes,
             timestamp: block.header.timestamp,
             random_bit: block.header.random_bit,
-            era_report: block.header.era_end.map(|era_end| era_end.era_report),
+            era_report: Box::new(block.header.era_end.map(|era_end| era_end.era_report)),
             era_id: block.header.era_id,
             height: block.header.height,
-            proposer: block.body.proposer,
+            proposer: Box::new(block.body.proposer),
         }
     }
 }
@@ -584,7 +595,7 @@ impl Display for FinalizedBlock {
             self.random_bit,
             self.timestamp,
         )?;
-        if let Some(ee) = &self.era_report {
+        if let Some(ee) = *self.era_report.clone() {
             write!(formatter, ", era_end: {}", ee)?;
         }
         Ok(())
@@ -670,28 +681,31 @@ impl FromBytes for BlockHash {
 /// A struct to contain information related to the end of an era and validator weights for the
 /// following era.
 pub struct EraEnd {
-    /// The era end information.
+    /// Equivocation and reward information to be included in the terminal finalized block.
     era_report: EraReport,
-    /// The validator weights for the next era.
+    /// The validators for the upcoming era and their respective weights.
     next_era_validator_weights: BTreeMap<PublicKey, U512>,
 }
 
 impl EraEnd {
-    pub fn new(
-        era_report: EraReport,
-        next_era_validator_weights: BTreeMap<PublicKey, U512>,
-    ) -> Self {
+    fn new(era_report: EraReport, next_era_validator_weights: BTreeMap<PublicKey, U512>) -> Self {
         EraEnd {
             era_report,
             next_era_validator_weights,
         }
     }
 
+    /// Equivocation and reward information to be included in the terminal finalized block.
     pub fn era_report(&self) -> &EraReport {
         &self.era_report
     }
 
-    pub fn hash(&self) -> Digest {
+    /// The validators for the upcoming era and their respective weights.
+    pub fn next_era_validator_weights(&self) -> &BTreeMap<PublicKey, U512> {
+        &self.next_era_validator_weights
+    }
+
+    pub(crate) fn hash(&self) -> Digest {
         // Pattern match here leverages compiler to ensure every field is accounted for
         let EraEnd {
             next_era_validator_weights,
@@ -700,7 +714,7 @@ impl EraEnd {
         // Sort next era validator weights by descending weight. Assuming the top validators are
         // online, a client can get away with just a few (plus a Merkle proof of the rest)
         // to check finality signatures.
-        let descending_validator_weight_hashed_pairs: Vec<Digest> = next_era_validator_weights
+        let descending_validator_weight_hashed_pairs = next_era_validator_weights
             .iter()
             .sorted_by_key(|(_, weight)| Reverse(**weight))
             .map(|(validator_id, weight)| {
@@ -708,10 +722,9 @@ impl EraEnd {
                     Digest::hash(validator_id.to_bytes().expect("Could not hash validator"));
                 let weight_hash = Digest::hash(weight.to_bytes().expect("Could not hash weight"));
                 Digest::hash_pair(&validator_hash, &weight_hash)
-            })
-            .collect();
+            });
         let hashed_next_era_validator_weights =
-            Digest::hash_vec_merkle_tree(descending_validator_weight_hashed_pairs);
+            Digest::hash_merkle_tree(descending_validator_weight_hashed_pairs);
         let hashed_era_report: Digest = era_report.hash();
         Digest::hash_slice_rfold(&[hashed_next_era_validator_weights, hashed_era_report])
     }
@@ -772,8 +785,15 @@ pub struct BlockHeader {
 impl BlockHeader {
     /// The [`HashingAlgorithmVersion`] used for the header (as well as for its corresponding block
     /// body).
-    pub fn hashing_algorithm_version(&self) -> HashingAlgorithmVersion {
-        HashingAlgorithmVersion::from_protocol_version(&self.protocol_version)
+    pub fn hashing_algorithm_version(
+        &self,
+        verifiable_chunked_hash_activation: EraId,
+    ) -> HashingAlgorithmVersion {
+        if self.era_id < verifiable_chunked_hash_activation {
+            HashingAlgorithmVersion::V1
+        } else {
+            HashingAlgorithmVersion::V2
+        }
     }
 
     /// The parent block's hash.
@@ -801,12 +821,9 @@ impl BlockHeader {
         self.accumulated_seed
     }
 
-    /// Returns reward and slashing information if this is the era's last block.
-    pub fn era_end(&self) -> Option<&EraReport> {
-        match &self.era_end {
-            Some(data) => Some(data.era_report()),
-            None => None,
-        }
+    /// Returns the `EraEnd` of a block if it is a switch block.
+    pub fn era_end(&self) -> Option<&EraEnd> {
+        self.era_end.as_ref()
     }
 
     /// The timestamp from when the block was proposed.
@@ -849,7 +866,7 @@ impl BlockHeader {
     pub fn next_era_validator_weights(&self) -> Option<&BTreeMap<PublicKey, U512>> {
         match &self.era_end {
             Some(era_end) => {
-                let validator_weights = &era_end.next_era_validator_weights;
+                let validator_weights = era_end.next_era_validator_weights();
                 Some(validator_weights)
             }
             None => None,
@@ -864,10 +881,11 @@ impl BlockHeader {
     }
 
     /// Hash of the block header.
-    pub fn hash(&self) -> BlockHash {
-        match HashingAlgorithmVersion::from_protocol_version(&self.protocol_version) {
-            HashingAlgorithmVersion::V1 => self.hash_v1(),
-            HashingAlgorithmVersion::V2 => self.hash_v2(),
+    pub fn hash(&self, verifiable_chunked_hash_activation: EraId) -> BlockHash {
+        if self.era_id() < verifiable_chunked_hash_activation {
+            self.hash_v1()
+        } else {
+            self.hash_v2()
         }
     }
 
@@ -1029,6 +1047,28 @@ impl Display for BlockHeaderWithMetadata {
     }
 }
 
+impl Item for BlockHeaderWithMetadata {
+    type Id = u64;
+    type ValidationError = BlockHeaderWithMetadataValidationError;
+    const TAG: Tag = Tag::BlockHeaderAndFinalitySignaturesByHeight;
+    const ID_IS_COMPLETE_ITEM: bool = false;
+
+    fn validate(
+        &self,
+        verifiable_chunked_hash_activation: EraId,
+    ) -> Result<(), Self::ValidationError> {
+        validate_block_header_and_signature_hash(
+            &self.block_header,
+            &self.block_signatures,
+            verifiable_chunked_hash_activation,
+        )
+    }
+
+    fn id(&self, _verifiable_chunked_hash_activation: EraId) -> Self::Id {
+        self.block_header.height()
+    }
+}
+
 /// A node in a Merkle linked-list used for hashing data structures.
 #[derive(Debug, Clone)]
 pub struct MerkleLinkedListNode<T> {
@@ -1121,9 +1161,9 @@ impl<'a, T> MerkleBlockBodyPart<'a, T> {
 /// ```
 #[derive(Debug, Clone)]
 pub struct MerkleBlockBody<'a> {
-    /// Merklized list of the deploy hashes from the block body.
+    /// Merklized `BlockBody::deploy_hashes`.
     pub deploy_hashes: MerkleBlockBodyPart<'a, Vec<DeployHash>>,
-    /// Merklized list of the transfer hashes from the block body.
+    /// Merklized `BlockBody::transfer_hashes`.
     pub transfer_hashes: MerkleBlockBodyPart<'a, Vec<DeployHash>>,
     /// Merklized [`BlockBody::proposer`].
     pub proposer: MerkleBlockBodyPart<'a, PublicKey>,
@@ -1227,15 +1267,13 @@ impl BlockBody {
 
         let transfer_hashes = MerkleBlockBodyPart::new(
             transfer_hashes,
-            Digest::hash_vec_merkle_tree(
-                transfer_hashes.iter().cloned().map(Digest::from).collect(),
-            ),
+            Digest::hash_merkle_tree(transfer_hashes.iter().cloned().map(Digest::from)),
             proposer.merkle_linked_list_node_hash,
         );
 
         let deploy_hashes = MerkleBlockBodyPart::new(
             deploy_hashes,
-            Digest::hash_vec_merkle_tree(deploy_hashes.iter().cloned().map(Digest::from).collect()),
+            Digest::hash_merkle_tree(deploy_hashes.iter().cloned().map(Digest::from)),
             transfer_hashes.merkle_linked_list_node_hash,
         );
 
@@ -1366,7 +1404,7 @@ pub struct Block {
 }
 
 /// The hashing algorithm used for the header and the body of a block
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, DataSize, Hash)]
 pub enum HashingAlgorithmVersion {
     /// Version 1
     V1,
@@ -1374,30 +1412,16 @@ pub enum HashingAlgorithmVersion {
     V2,
 }
 
-impl HashingAlgorithmVersion {
-    #[cfg(feature = "casper-mainnet")]
-    pub(crate) const HASH_V2_PROTOCOL_VERSION: ProtocolVersion =
-        // TODO: restore that to the actual switchover version when fast sync is merged
-        ProtocolVersion::from_parts(9001, 0, 0);
-
-    #[cfg(not(feature = "casper-mainnet"))]
-    pub(crate) const HASH_V2_PROTOCOL_VERSION: ProtocolVersion =
-        ProtocolVersion::from_parts(0, 0, 0);
-
-    fn from_protocol_version(protocol_version: &ProtocolVersion) -> Self {
-        if *protocol_version < Self::HASH_V2_PROTOCOL_VERSION {
-            HashingAlgorithmVersion::V1
-        } else {
-            HashingAlgorithmVersion::V2
-        }
-    }
-}
-
 impl Block {
-    fn hash_block_body(protocol_version: &ProtocolVersion, block_body: &BlockBody) -> Digest {
-        match HashingAlgorithmVersion::from_protocol_version(protocol_version) {
-            HashingAlgorithmVersion::V1 => block_body.hash_v1(),
-            HashingAlgorithmVersion::V2 => block_body.hash_v2(),
+    fn hash_block_body(
+        block_era_id: EraId,
+        block_body: &BlockBody,
+        verifiable_chunked_hash_activation: EraId,
+    ) -> Digest {
+        if block_era_id < verifiable_chunked_hash_activation {
+            block_body.hash_v1()
+        } else {
+            block_body.hash_v2()
         }
     }
 
@@ -1408,16 +1432,21 @@ impl Block {
         finalized_block: FinalizedBlock,
         next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
         protocol_version: ProtocolVersion,
+        verifiable_chunked_hash_activation: EraId,
     ) -> Result<Self, BlockCreationError> {
         let body = BlockBody::new(
-            finalized_block.proposer.clone(),
+            *finalized_block.proposer,
             finalized_block.deploy_hashes,
             finalized_block.transfer_hashes,
         );
 
-        let body_hash = Self::hash_block_body(&protocol_version, &body);
+        let body_hash = Self::hash_block_body(
+            finalized_block.era_id,
+            &body,
+            verifiable_chunked_hash_activation,
+        );
 
-        let era_end = match (finalized_block.era_report, next_era_validator_weights) {
+        let era_end = match (*finalized_block.era_report, next_era_validator_weights) {
             (None, None) => None,
             (Some(era_report), Some(next_era_validator_weights)) => {
                 Some(EraEnd::new(era_report, next_era_validator_weights))
@@ -1446,7 +1475,7 @@ impl Block {
         };
 
         Ok(Block {
-            hash: header.hash(),
+            hash: header.hash(verifiable_chunked_hash_activation),
             header,
             body,
         })
@@ -1455,19 +1484,21 @@ impl Block {
     pub(crate) fn new_from_header_and_body(
         header: BlockHeader,
         body: BlockBody,
+        verifiable_chunked_hash_activation: EraId,
     ) -> Result<Self, BlockValidationError> {
-        let hash = header.hash();
+        let hash = header.hash(verifiable_chunked_hash_activation);
         let block = Block { hash, header, body };
-        block.verify()?;
+        block.verify(verifiable_chunked_hash_activation)?;
         Ok(block)
-    }
-
-    pub(crate) fn header(&self) -> &BlockHeader {
-        &self.header
     }
 
     pub(crate) fn body(&self) -> &BlockBody {
         &self.body
+    }
+
+    /// Returns the reference to the header.
+    pub fn header(&self) -> &BlockHeader {
+        &self.header
     }
 
     /// Returns the header, consuming the block.
@@ -1520,8 +1551,11 @@ impl Block {
     }
 
     /// Check the integrity of a block by hashing its body and header
-    pub fn verify(&self) -> Result<(), BlockValidationError> {
-        let actual_block_header_hash = self.header().hash();
+    pub fn verify(
+        &self,
+        verifiable_chunked_hash_activation: EraId,
+    ) -> Result<(), BlockValidationError> {
+        let actual_block_header_hash = self.header().hash(verifiable_chunked_hash_activation);
         if *self.hash() != actual_block_header_hash {
             return Err(BlockValidationError::UnexpectedBlockHash {
                 block: Box::new(self.to_owned()),
@@ -1529,8 +1563,11 @@ impl Block {
             });
         }
 
-        let actual_block_body_hash =
-            Self::hash_block_body(&self.header.protocol_version, &self.body);
+        let actual_block_body_hash = Self::hash_block_body(
+            self.header().era_id,
+            &self.body,
+            verifiable_chunked_hash_activation,
+        );
         if self.header.body_hash != actual_block_body_hash {
             return Err(BlockValidationError::UnexpectedBodyHash {
                 block: Box::new(self.to_owned()),
@@ -1543,16 +1580,42 @@ impl Block {
 
     /// Overrides the height of a block.
     #[cfg(test)]
-    pub fn set_height(&mut self, height: u64) -> &mut Self {
+    pub fn set_height(
+        &mut self,
+        height: u64,
+        verifiable_chunked_hash_activation: EraId,
+    ) -> &mut Self {
         self.header.height = height;
-        self.hash = self.header.hash();
+        self.hash = self.header.hash(verifiable_chunked_hash_activation);
         self
     }
 
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
-        let era = rng.gen_range(1..6);
+        let era = rng.gen_range(0..MAX_ERA_FOR_RANDOM_BLOCK);
+        let height = era * 10 + rng.gen_range(0..10);
+        let is_switch = rng.gen_bool(0.1);
+        let verifiable_chunked_hash_activation = EraId::from(rng.gen::<u64>());
+
+        Block::random_with_specifics(
+            rng,
+            EraId::from(era),
+            height,
+            ProtocolVersion::V1_0_0,
+            is_switch,
+            verifiable_chunked_hash_activation,
+        )
+    }
+
+    /// Generates a random instance using a `TestRng` with the specified
+    /// `verifiable_chunked_hash_activation`
+    #[cfg(test)]
+    pub fn random_with_verifiable_chunked_hash_activation(
+        rng: &mut TestRng,
+        verifiable_chunked_hash_activation: EraId,
+    ) -> Self {
+        let era = rng.gen_range(0..MAX_ERA_FOR_RANDOM_BLOCK);
         let height = era * 10 + rng.gen_range(0..10);
         let is_switch = rng.gen_bool(0.1);
 
@@ -1562,6 +1625,39 @@ impl Block {
             height,
             ProtocolVersion::V1_0_0,
             is_switch,
+            verifiable_chunked_hash_activation,
+        )
+    }
+
+    /// Generates random instance that is guaranteed to be using
+    /// the legacy hashing scheme. Apart from the Block itself
+    /// it also returns the EraId used as verifiable_chunked_hash_activation.
+    #[cfg(test)]
+    pub fn random_v1(rng: &mut TestRng) -> (Self, EraId) {
+        let verifiable_chunked_hash_activation = EraId::from(MAX_ERA_FOR_RANDOM_BLOCK + 1);
+
+        (
+            Self::random_with_verifiable_chunked_hash_activation(
+                rng,
+                verifiable_chunked_hash_activation,
+            ),
+            verifiable_chunked_hash_activation,
+        )
+    }
+
+    /// Generates random instance that is guaranteed to be using
+    /// the merkle tree hashing scheme. Apart from the Block itself
+    /// it also returns the EraId used as verifiable_chunked_hash_activation.
+    #[cfg(test)]
+    pub fn random_v2(rng: &mut TestRng) -> (Self, EraId) {
+        let verifiable_chunked_hash_activation = EraId::from(0);
+
+        (
+            Self::random_with_verifiable_chunked_hash_activation(
+                rng,
+                verifiable_chunked_hash_activation,
+            ),
+            verifiable_chunked_hash_activation,
         )
     }
 
@@ -1573,14 +1669,15 @@ impl Block {
         height: u64,
         protocol_version: ProtocolVersion,
         is_switch: bool,
+        verifiable_chunked_hash_activation: EraId,
     ) -> Self {
         let parent_hash = BlockHash::new(rng.gen::<[u8; Digest::LENGTH]>().into());
         let state_root_hash = rng.gen::<[u8; Digest::LENGTH]>().into();
         let finalized_block = FinalizedBlock::random_with_specifics(rng, era_id, height, is_switch);
         let parent_seed = rng.gen::<[u8; Digest::LENGTH]>().into();
         let next_era_validator_weights = finalized_block
+            .clone()
             .era_report
-            .as_ref()
             .map(|_| BTreeMap::<PublicKey, U512>::default());
 
         Block::new(
@@ -1590,6 +1687,7 @@ impl Block {
             finalized_block,
             next_era_validator_weights,
             protocol_version,
+            verifiable_chunked_hash_activation,
         )
         .expect("Could not create random block with specifics")
     }
@@ -1652,62 +1750,88 @@ impl FromBytes for Block {
 
 impl Item for Block {
     type Id = BlockHash;
+    type ValidationError = BlockValidationError;
 
     const TAG: Tag = Tag::Block;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    fn id(&self) -> Self::Id {
+    fn validate(
+        &self,
+        verifiable_chunked_hash_activation: EraId,
+    ) -> Result<(), Self::ValidationError> {
+        self.verify(verifiable_chunked_hash_activation)
+    }
+
+    fn id(&self, _verifiable_chunked_hash_activation: EraId) -> Self::Id {
         *self.hash()
     }
 }
 
 /// A wrapper around `Block` for the purposes of fetching blocks by height in linear chain.
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum BlockByHeight {
-    Absent(u64),
-    Block(Box<Block>),
+pub struct BlockWithMetadata {
+    pub block: Block,
+    pub finality_signatures: BlockSignatures,
 }
 
-impl From<Block> for BlockByHeight {
-    fn from(block: Block) -> Self {
-        BlockByHeight::new(block)
-    }
-}
-
-impl BlockByHeight {
-    /// Creates a new `BlockByHeight`
-    pub fn new(block: Block) -> Self {
-        BlockByHeight::Block(Box::new(block))
-    }
-
-    pub fn height(&self) -> u64 {
-        match self {
-            BlockByHeight::Absent(height) => *height,
-            BlockByHeight::Block(block) => block.height(),
-        }
-    }
-}
-
-impl Display for BlockByHeight {
+impl Display for BlockWithMetadata {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            BlockByHeight::Absent(height) => write!(f, "Block at height {} was absent.", height),
-            BlockByHeight::Block(block) => {
-                let hash: BlockHash = block.header().hash();
-                write!(f, "Block at {} with hash {} found.", block.height(), hash)
-            }
-        }
+        write!(
+            f,
+            "Block at {} with hash {} with {} finality signatures.",
+            self.block.height(),
+            self.block.hash(),
+            self.finality_signatures.proofs.len()
+        )
     }
 }
 
-impl Item for BlockByHeight {
-    type Id = u64;
+fn validate_block_header_and_signature_hash(
+    block_header: &BlockHeader,
+    finality_signatures: &BlockSignatures,
+    verifiable_chunked_hash_activation: EraId,
+) -> Result<(), BlockHeaderWithMetadataValidationError> {
+    if block_header.hash(verifiable_chunked_hash_activation) != finality_signatures.block_hash {
+        return Err(
+            BlockHeaderWithMetadataValidationError::FinalitySignaturesHaveUnexpectedBlockHash {
+                expected_block_hash: block_header.hash(verifiable_chunked_hash_activation),
+                finality_signatures_block_hash: finality_signatures.block_hash,
+            },
+        );
+    }
+    if block_header.era_id != finality_signatures.era_id {
+        return Err(
+            BlockHeaderWithMetadataValidationError::FinalitySignaturesHaveUnexpectedEraId {
+                expected_era_id: block_header.era_id,
+                finality_signatures_era_id: finality_signatures.era_id,
+            },
+        );
+    }
+    Ok(())
+}
 
-    const TAG: Tag = Tag::BlockByHeight;
+impl Item for BlockWithMetadata {
+    type Id = u64;
+    type ValidationError = BlockWithMetadataValidationError;
+
+    const TAG: Tag = Tag::BlockAndMetadataByHeight;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    fn id(&self) -> Self::Id {
-        self.height()
+    fn validate(
+        &self,
+        verifiable_chunked_hash_activation: EraId,
+    ) -> Result<(), Self::ValidationError> {
+        self.block.verify(verifiable_chunked_hash_activation)?;
+        validate_block_header_and_signature_hash(
+            self.block.header(),
+            &self.finality_signatures,
+            verifiable_chunked_hash_activation,
+        )?;
+        Ok(())
+    }
+
+    fn id(&self, _verifiable_chunked_hash_activation: EraId) -> Self::Id {
+        self.block.height()
     }
 }
 
@@ -2125,52 +2249,70 @@ mod tests {
         let mut rng = TestRng::from_seed([1u8; 16]);
         let loop_iterations = 50;
         for _ in 0..loop_iterations {
-            Block::random(&mut rng)
-                .verify()
-                .expect("block hash should check");
+            let (random_v1_block, verifiable_chunked_hash_activation) = Block::random_v1(&mut rng);
+            random_v1_block
+                .verify(verifiable_chunked_hash_activation)
+                .expect("v1 (legacy) block hash should check");
+            let (random_v2_block, verifiable_chunked_hash_activation) = Block::random_v2(&mut rng);
+            random_v2_block
+                .verify(verifiable_chunked_hash_activation)
+                .expect("v2 (merkle based) block hash should check");
         }
     }
 
     #[test]
     fn block_check_bad_body_hash_sad_path() {
         let mut rng = TestRng::from_seed([2u8; 16]);
-        let mut block = Block::random(&mut rng);
 
-        let bogus_block_body_hash = Digest::hash(&[0xde, 0xad, 0xbe, 0xef]);
-        block.header.body_hash = bogus_block_body_hash;
-        block.hash = block.header.hash();
-        let bogus_block_hash = block.hash;
+        let blocks = vec![Block::random_v1(&mut rng), Block::random_v2(&mut rng)];
 
-        // No Eq trait for BlockValidationError, so pattern match
-        match block.verify() {
-            Err(BlockValidationError::UnexpectedBodyHash {
-                block,
-                actual_block_body_hash,
-            }) if block.hash == bogus_block_hash
-                && block.header.body_hash == bogus_block_body_hash
-                && block.body.hash(block.header.hashing_algorithm_version())
-                    == actual_block_body_hash => {}
-            unexpected => panic!("Bad check response: {:?}", unexpected),
-        }
+        blocks
+            .into_iter()
+            .for_each(|(mut random_block, verifiable_chunked_hash_activation)| {
+                let bogus_block_body_hash = Digest::hash(&[0xde, 0xad, 0xbe, 0xef]);
+                random_block.header.body_hash = bogus_block_body_hash;
+                random_block.hash = random_block.header.hash(verifiable_chunked_hash_activation);
+                let bogus_block_hash = random_block.hash;
+
+                match random_block.verify(verifiable_chunked_hash_activation) {
+                    Err(BlockValidationError::UnexpectedBodyHash {
+                        block,
+                        actual_block_body_hash,
+                    }) if block.hash == bogus_block_hash
+                        && block.header.body_hash == bogus_block_body_hash
+                        && block.body.hash(
+                            block
+                                .header
+                                .hashing_algorithm_version(verifiable_chunked_hash_activation),
+                        ) == actual_block_body_hash => {}
+                    unexpected => panic!("Bad check response: {:?}", unexpected),
+                }
+            });
     }
 
     #[test]
     fn block_check_bad_block_hash_sad_path() {
         let mut rng = TestRng::from_seed([3u8; 16]);
-        let mut block = Block::random(&mut rng);
 
-        let bogus_block_hash: BlockHash = Digest::hash(&[0xde, 0xad, 0xbe, 0xef]).into();
-        block.hash = bogus_block_hash;
+        let blocks = vec![Block::random_v1(&mut rng), Block::random_v2(&mut rng)];
 
-        // No Eq trait for BlockValidationError, so pattern match
-        match block.verify() {
-            Err(BlockValidationError::UnexpectedBlockHash {
-                block,
-                actual_block_header_hash,
-            }) if block.hash == bogus_block_hash
-                && block.header.hash() == actual_block_header_hash => {}
-            unexpected => panic!("Bad check response: {:?}", unexpected),
-        }
+        blocks
+            .into_iter()
+            .for_each(|(mut random_block, verifiable_chunked_hash_activation)| {
+                let bogus_block_hash: BlockHash = Digest::hash(&[0xde, 0xad, 0xbe, 0xef]).into();
+                random_block.hash = bogus_block_hash;
+
+                // No Eq trait for BlockValidationError, so pattern match
+                match random_block.verify(verifiable_chunked_hash_activation) {
+                    Err(BlockValidationError::UnexpectedBlockHash {
+                        block,
+                        actual_block_header_hash,
+                    }) if block.hash == bogus_block_hash
+                        && block.header.hash(verifiable_chunked_hash_activation)
+                            == actual_block_header_hash => {}
+                    unexpected => panic!("Bad check response: {:?}", unexpected),
+                }
+            });
     }
 
     #[test]
@@ -2200,13 +2342,20 @@ mod tests {
         let mut rng = TestRng::new();
         let era_id = rng.gen_range(0..10).into();
         let height = rng.gen_range(0..100);
+        let protocol_version = ProtocolVersion::from_parts(1, 5, 0);
+
+        // We set the merkle tree hash activation to the very beginning of the
+        // chain to make sure all blocks are using the Merkle hashing schema
+        let verifiable_chunked_hash_activation = EraId::from(0);
+
         let is_switch = rng.gen();
         let block = Block::random_with_specifics(
             &mut rng,
             era_id,
             height,
-            HashingAlgorithmVersion::HASH_V2_PROTOCOL_VERSION,
+            protocol_version,
             is_switch,
+            verifiable_chunked_hash_activation,
         );
 
         let merkle_block_body = block.body().merklize();

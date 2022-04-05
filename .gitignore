@@ -139,6 +139,7 @@ cmake-build-debug/
 
 # vscode
 .vscode/
+.dccache
 
 # NCTL transient assets
 /utils/nctl/assets
@@ -147,8 +148,15 @@ cmake-build-debug/
 /utils/nctl/dumps
 /utils/nctl/tmp
 
-# client c headers
-client/headers/**
+# utils data dirs
+/utils/**/chain-download
+/utils/**/lmdb-data
 
 # OS X
 .DS_Store
+
+# Notes
+notes
+
+# sw* files in vim
+.*.sw*

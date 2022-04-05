@@ -1,237 +1,242 @@
 ---
-# Quick checks to make before spending time on test and package.clone:
-# on failure -> failed-pre-checks pipeline
-# on success --> cargo-test (parallel) ---> [ test-package-success | test-package-failure ]
-#            \-> package  (parallel) ----/
-kind: pipeline
-type: docker
-name: pre-checks
-
-# Steps perform as fast serially, due to file thrashing.
-steps:
-
-    # TODO: re-enable once we figure out publishing
-    # - name: markdown-link-check
-    #   image: casperlabs/node-build-u1804
-    #   commands:
-    #     - "./ci/markdown_link_check.sh"
-
-  - name: cargo-fmt
-    image: casperlabs/node-build-u1804
-    commands:
-      - make setup-rs
-      - make check-format
-
-  - name: cargo-clippy
-    image: casperlabs/node-build-u1804
-    commands:
-      - make setup-rs
-      - make lint
-
-  - name: cargo-doc
-    image: casperlabs/node-build-u1804
-    commands:
-      - make setup-rs
-      - make doc
-
-  - name: cargo-audit
-    image: casperlabs/node-build-u1804
-    commands:
-      - make setup-audit
-      - cargo generate-lockfile
-      - make audit
-
-trigger:
-  branch:
-    - master
-    - trying
-    - staging
-    - dev
-    - "release-*"
-    - "feat-*"
-  event:
-    exclude:
-      - tag
-
----
-# Failure state from pre-checks pipeline
-kind: pipeline
-type: docker
-name: failed-pre-checks
-
-clone:
-  disable: true
-
-steps:
-  - name: notify
-    image: plugins/slack
-    settings:
-      webhook:
-        from_secret: slack_webhook
-      template:
-        - |
-          casper-node build status: *{{ uppercasefirst build.status }}*
-          Author: {{ build.author }}
-          Drone Build: <{{ build.link }}|#{{ build.number }}>
-          Commit Link: <https://github.com/{{repo.owner}}/{{repo.name}}/commit/{{build.commit}}|{{ truncate build.commit 10 }}>
-trigger:
-  status:
-    - failure
-  branch:
-    - master
-    - trying
-    - staging
-    - dev
-    - "release-*"
-    - "feat-*"
-  event:
-    exclude:
-      - tag
-
-depends_on:
-  - pre-checks
-
----
-# Testing pipeline, runs in parallel with package pipeline
 kind: pipeline
 type: docker
 name: cargo-test
 
-steps:
-- name: updater-dry-run
-  image: casperlabs/node-build-u1804
-  commands:
-  - cargo run --package=casper-updater -- --root-dir=. --dry-run
+environment:
+  RUSTC_WRAPPER: '/root/.cargo/bin/cachepot'
+  CACHEPOT_BUCKET: 'drone-sccache'
+  CACHEPOT_S3_KEY_PREFIX: ci
+  CACHEPOT_REGION: 'us-east-2'
+  CARGO_INCREMENTAL: '0'
 
-- name: cargo-test
+__buildenv: &buildenv
   image: casperlabs/node-build-u1804
+  volumes:
+  - name: rustup
+    path: "/root/.rustup"
+  - name: cargo
+    path: "/root/.cargo"
+  - name: drone
+    path: "/drone"
+  environment:
+    AWS_ACCESS_KEY_ID:
+      from_secret: cachepot_aws_ak
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: cachepot_aws_sk
+
+steps:
+- name: setup
+  <<: *buildenv
   commands:
   - make setup
+
+# The below is duplicated for pull and push
+# due to environment bug with caching.
+- name: cargo-test-pr
+  <<: *buildenv
+  environment:
+    SCCACHE_S3_PUBLIC: true
+  commands:
   - make test CARGO_FLAGS=--release
   - make test-contracts CARGO_FLAGS=--release
+  - cachepot --show-stats
+  when:
+    event:
+    - pull_request
 
-- name: client-ffi-tests-and-examples
-  image: casperlabs/node-build-u1804
+- name: cargo-test-push
+  <<: *buildenv
   commands:
-  - make setup-rs
-  - cmake -Hclient/examples/ffi -Btarget/build -DCMAKE_BUILD_TYPE=Debug
-  - cmake --build target/build
-  - ./target/build/ffi-tests
-  - ./target/build/get-auction-info
-  - ./target/build/put-deploy
+  - make test CARGO_FLAGS=--release
+  - make test-contracts CARGO_FLAGS=--release
+  - cachepot --show-stats
+  when:
+    event:
+    - push
 
-depends_on:
-  - pre-checks
-
-trigger:
-  branch:
-    - master
-    - trying
-    - staging
+- name: notify
+  image: plugins/slack
+  settings:
+    webhook:
+      from_secret: slack_webhook
+    template:
+    - |
+      Cargo-Test Pipeline Status: *{{ uppercasefirst build.status }}*
+      Drone Build: <{{ build.link }}|#{{ build.number }}>
+      Commit Link: <https://github.com/{{repo.owner}}/{{repo.name}}/commit/{{build.commit}}|{{ truncate build.commit 10 }}>
+  when:
+    event:
+    - push
+    status:
+    - failure
+    branch:
     - dev
     - "release-*"
     - "feat-*"
+
+volumes:
+- name: rustup
+  temp: {}
+- name: cargo
+  temp: {}
+- name: drone
+  temp: {}
+
+trigger:
+  branch:
+  - trying
+  - staging
+  - dev
+  - "release-*"
+  - "feat-*"
   event:
+    include:
+    - pull_request
+    - push
     exclude:
-      - tag
+    - tag
+    - cron
 
 ---
-# Packaging pipeline, runs in parallel with cargo-test pipeline
 kind: pipeline
 type: docker
-name: package
+name: nctl-testing
+
+environment:
+  RUSTC_WRAPPER: '/root/.cargo/bin/cachepot'
+  CACHEPOT_BUCKET: 'drone-sccache'
+  CACHEPOT_S3_KEY_PREFIX: ci
+  CACHEPOT_REGION: 'us-east-2'
+  CARGO_INCREMENTAL: '0'
+
+__buildenv: &buildenv
+  image: casperlabs/node-build-u1804
+  volumes:
+  - name: rustup
+    path: "/root/.rustup"
+  - name: cargo
+    path: "/root/.cargo"
+  - name: drone
+    path: "/drone"
+  environment:
+    AWS_ACCESS_KEY_ID:
+      from_secret: cachepot_aws_ak
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: cachepot_aws_sk
 
 steps:
-- name: build-rpm
-  image: casperlabs/rpm-package
+- name: setup
+  <<: *buildenv
   commands:
-    - make rpm
+  - make setup
 
-- name: put-drone-s3-cache-rpm
-  image: plugins/s3-sync:latest
-  settings:
-    bucket:
-      from_secret: put-drone-s3-bucket
-    access_key:
-      from_secret: put-drone-aws-ak
-    secret_key:
-      from_secret: put-drone-aws-sk
-    region: us-east-2
-    source: target/release/rpmbuild/RPMS/x86_64/
-    target: "/drone_temp/${DRONE_BUILD_NUMBER}_${DRONE_REPO_OWNER}_${DRONE_REPO_NAME}/rpm/"
-  when:
-    branch:
-      - master
-      - dev
-      - "release-*"
-      - "feat-*"
-    event:
-      - push
-
-- name: build-deb-update-revision
-  image: casperlabs/node-build-u1804
+- name: nctl-compile
+  <<: *buildenv
   commands:
-    - "./update-rev.sh"
+  - bash -i ./ci/nctl_compile.sh
 
-- name: build-deb
-  image: casperlabs/node-build-u1804
-  commands:
-    - make deb
-
-- name: test-deb
-  image: ubuntu:bionic
-  commands:
-    - "apt update"
-    - "$(pwd)/ci/test_deb_install.sh $(pwd) casper-client"
-
-- name: put-drone-s3-cache-deb
-  image: plugins/s3-sync:latest
-  settings:
-    bucket:
-      from_secret: put-drone-s3-bucket
-    access_key:
-      from_secret: put-drone-aws-ak
-    secret_key:
-      from_secret: put-drone-aws-sk
-    region: us-east-2
-    source: target/debian/
-    target: "/drone_temp/${DRONE_BUILD_NUMBER}_${DRONE_REPO_OWNER}_${DRONE_REPO_NAME}/debian/"
-  when:
-    branch:
-      - master
-      - dev
-      - "release-*"
-      - "feat-*"
-    event:
-      - push
-
-- name: build-wasm-package-push-to-s3
-  image: casperlabs/s3cmd-build:latest
-  commands:
-    - "./build_wasm_package.sh"
+- name: nctl-upgrade-test
+  <<: *buildenv
   environment:
     AWS_ACCESS_KEY_ID:
       from_secret: put-drone-aws-ak
     AWS_SECRET_ACCESS_KEY:
       from_secret: put-drone-aws-sk
-  when:
-    branch:
-    - master
-    - dev
-    - "release-*"
-    - "feat-*"
-    event:
+  commands:
+  - bash -i ./ci/nctl_upgrade.sh
+
+volumes:
+- name: rustup
+  temp: {}
+- name: cargo
+  temp: {}
+- name: drone
+  temp: {}
+
+trigger:
+  branch:
+  - trying
+  - staging
+  event:
+    include:
     - push
+    exclude:
+    - pull_request
+    - tag
+    - cron
+
+---
+kind: pipeline
+type: docker
+name: package
+
+environment:
+  RUSTC_WRAPPER: '/root/.cargo/bin/cachepot'
+  CACHEPOT_BUCKET: 'drone-sccache'
+  CACHEPOT_S3_KEY_PREFIX: ci
+  CACHEPOT_REGION: 'us-east-2'
+  CARGO_INCREMENTAL: '0'
+
+__buildenv: &buildenv
+  image: casperlabs/node-build-u1804
+  volumes:
+  - name: rustup
+    path: "/root/.rustup"
+  - name: cargo
+    path: "/root/.cargo"
+  - name: drone
+    path: "/drone"
+  - name: nctl-temp-dir
+    path: "/tmp/nctl_upgrade_stage"
+  environment:
+    AWS_ACCESS_KEY_ID:
+      from_secret: cachepot_aws_ak
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: cachepot_aws_sk
+
+__buildenv_upload: &buildenv_upload
+  image: casperlabs/node-build-u1804
+  volumes:
+  - name: rustup
+    path: "/root/.rustup"
+  - name: cargo
+    path: "/root/.cargo"
+  - name: drone
+    path: "/drone"
+  - name: nctl-temp-dir
+    path: "/tmp/nctl_upgrade_stage"
+  environment:
+    AWS_ACCESS_KEY_ID:
+      from_secret: put-drone-aws-ak
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: put-drone-aws-sk
+
+steps:
+- name: setup
+  <<: *buildenv
+  commands:
+  - make setup
+
+- name: build-client-contracts
+  <<: *buildenv
+  commands:
+  - make build-client-contracts
+
+- name: stest-wasm-package-push-to-s3
+  image: casperlabs/s3cmd-build:latest
+  environment:
+    AWS_ACCESS_KEY_ID:
+      from_secret: put-drone-aws-ak
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: put-drone-aws-sk
+  commands:
+  - "./build_wasm_package.sh"
 
 - name: build-upgrade-package
-  image: casperlabs/node-build-u1804
+  <<: *buildenv
   commands:
-    - "./ci/build_update_package.sh"
-
-- name: dry-run-publish
-  image: casperlabs/node-build-u1804
-  commands:
-    - "cd types && cargo publish --dry-run"
+  - "./ci/build_update_package.sh"
 
 - name: upload-to-s3-genesis
   image: plugins/s3
@@ -245,44 +250,17 @@ steps:
     source: "target/upgrade_build/**/*"
     strip_prefix: 'target/upgrade_build/'
     target: "/drone/${DRONE_COMMIT}/"
-  when:
-    branch:
-      - master
-      - dev
-      - "release-*"
-      - "feat-*"
-    event:
-      - push
 
-- name: nctl-upgrade-assets-stage-rc
-  image: casperlabs/node-build-u1804
+- name: nctl-s3-build
+  <<: *buildenv_upload
   commands:
-    - "./ci/nctl_upgrade_stage.sh"
-  volumes:
-  - name: nctl-temp-dir
-    path: /tmp/nctl_upgrade_stage
+  - "aws s3 rm s3://nctl.casperlabs.io/${DRONE_BRANCH} --recursive"
+  - "./ci/nctl_upgrade_stage.sh"
   when:
     branch:
-      - "release-*"
-    event:
-      - push
+    - "release-*"
 
-- name: nctl-bucket-pr-clear
-  image: casperlabs/node-build-u1804
-  environment:
-    AWS_ACCESS_KEY_ID:
-      from_secret: put-drone-aws-ak
-    AWS_SECRET_ACCESS_KEY:
-      from_secret: put-drone-aws-sk
-  commands:
-    - "aws s3 rm s3://nctl.casperlabs.io/${DRONE_BRANCH} --recursive"
-  when:
-    branch:
-      - "release-*"
-    event:
-      - push
-
-- name: nctl-bucket-upload-rc
+- name: nctl-bucket-upload
   image: plugins/s3-sync:latest
   settings:
     bucket: 'nctl.casperlabs.io'
@@ -298,170 +276,7 @@ steps:
     path: /tmp/nctl_upgrade_stage
   when:
     branch:
-      - "release-*"
-    event:
-      - push
-
-- name: nctl-upgrade-test
-  image: casperlabs/node-build-u1804
-  environment:
-    AWS_ACCESS_KEY_ID:
-      from_secret: put-drone-aws-ak
-    AWS_SECRET_ACCESS_KEY:
-      from_secret: put-drone-aws-sk
-  commands:
-    - "python3 -m pip install supervisor toml"
-    - "apt update && apt install lsof -y"
-    - "bash -i ./ci/nctl_upgrade.sh"
-  when:
-    branch:
-      - trying
-      - staging
-
-depends_on:
-  - pre-checks
-
-trigger:
-  branch:
-    - master
-    - trying
-    - staging
-    - dev
     - "release-*"
-    - "feat-*"
-  event:
-    exclude:
-      - tag
-
-volumes:
-- name: nctl-temp-dir
-  temp: {}
-
----
-# Run on success of cargo-test and package pipelines.
-kind: pipeline
-type: docker
-name: test-package-success
-
-steps:
-  # Retrieving packages built and put in s3 from package pipeline.
-- name: get-and-del-drone-s3-cache
-  image: casperlabs/s3cmd-build:latest
-  commands:
-    - s3cmd sync "s3://$AWS_BUCKET/drone_temp/${DRONE_BUILD_NUMBER}_${DRONE_REPO_OWNER}_${DRONE_REPO_NAME}/debian/" "./target/debian/"
-    - s3cmd del --recursive "s3://$AWS_BUCKET/drone_temp/${DRONE_BUILD_NUMBER}_${DRONE_REPO_OWNER}_${DRONE_REPO_NAME}/"
-  environment:
-    AWS_ACCESS_KEY_ID:
-      from_secret: put-drone-aws-ak
-    AWS_SECRET_ACCESS_KEY:
-      from_secret: put-drone-aws-sk
-    AWS_DEFAULT_REGION: "us-east-2"
-    AWS_BUCKET:
-      from_secret: put-drone-s3-bucket
-  when:
-    branch:
-      - master
-      - dev
-      - "release-*"
-      - "feat-*"
-    event:
-      - push
-
-- name: publish-repo-test
-  image: casperlabs/aptly:latest
-  failure: ignore
-  environment:
-    AWS_SECRET_ACCESS_KEY:
-      from_secret: APTLY_SECRET_KEY
-    AWS_ACCESS_KEY_ID:
-      from_secret: APTLY_KEY_ID
-  settings:
-    repo_name:
-      from_secret: APTLY_REPO_NAME
-    region:
-      from_secret: APTLY_REGION
-    gpg_key:
-      from_secret: APTLY_GPG_KEY
-    gpg_pass:
-      from_secret: APTLY_GPG_PASS
-    distribution_id:
-      from_secret: APTLY_DISTRIBUTION_ID
-    acl: 'public-read'
-    prefix: 'releases'
-    deb_path: './target/debian'
-    deb_name: '*.deb'
-  when:
-    branch:
-      - master
-      - dev
-      - "release-*"
-      - "feat-*"
-    event:
-      - push
-
-depends_on:
-  - cargo-test
-  - package
-
-trigger:
-  branch:
-    - master
-    - trying
-    - staging
-    - dev
-    - "release-*"
-    - "feat-*"
-  event:
-    exclude:
-      - tag
-
----
-# Runs on failure of cargo-test or package pipelines.
-kind: pipeline
-type: docker
-name: test-package-failure
-
-clone:
-  disable: true
-
-steps:
-- name: del-s3-cache
-  image: casperlabs/s3cmd-build:latest
-  commands:
-    - s3cmd del --recursive "s3://$AWS_BUCKET/drone_temp/${DRONE_BUILD_NUMBER}_${DRONE_REPO_OWNER}_${DRONE_REPO_NAME}/"
-  environment:
-    AWS_ACCESS_KEY_ID:
-      from_secret: put-drone-aws-ak
-    AWS_SECRET_ACCESS_KEY:
-      from_secret: put-drone-aws-sk
-    AWS_DEFAULT_REGION: "us-east-2"
-    AWS_BUCKET:
-      from_secret: put-drone-s3-bucket
-  when:
-    branch:
-      - master
-      - dev
-      - "release-*"
-      - "feat-*"
-    event:
-      - push
-
-# Build failed so remove the update_package candidate
-#- name: del-upgrade_package-s3
-#  image: casperlabs/s3cmd-build:latest
-#  commands:
-#    - ./ci/upgrade_package_s3_storage.sh del
-#  environment:
-#    CL_VAULT_TOKEN:
-#      from_secret: vault_token
-#    CL_VAULT_HOST:
-#      from_secret: vault_host
-#  when:
-#    branch:
-#      - master
-#      - "release-*"
-#    event:
-#      - push
 
 - name: notify
   image: plugins/slack
@@ -469,79 +284,93 @@ steps:
     webhook:
       from_secret: slack_webhook
     template:
-      - |
-        casper-node build status: *{{ uppercasefirst build.status }}*
-        Author: {{ build.author }}
-        Drone Build: <{{ build.link }}|#{{ build.number }}>
-        Commit Link: <https://github.com/{{repo.owner}}/{{repo.name}}/commit/{{build.commit}}|{{ truncate build.commit 10 }}>
+    - |
+      Package Pipeline Status: *{{ uppercasefirst build.status }}*
+      Drone Build: <{{ build.link }}|#{{ build.number }}>
+      Commit Link: <https://github.com/{{repo.owner}}/{{repo.name}}/commit/{{build.commit}}|{{ truncate build.commit 10 }}>
+  when:
+    status:
+    - failure
+
+volumes:
+- name: rustup
+  temp: {}
+- name: cargo
+  temp: {}
+- name: drone
+  temp: {}
+- name: nctl-temp-dir
+  temp: {}
 
 trigger:
-  status:
-    - failure
   branch:
-    - master
-    - trying
-    - staging
-    - dev
-    - "release-*"
-    - "feat-*"
+  - dev
+  - "release-*"
+  - "feat-*"
   event:
+    include:
+    - push
     exclude:
-      - tag
+    - pull_request
+    - tag
+    - cron
 
-depends_on:
-  - cargo-test
-  - package
-
-# TAGGING PIPELINES
-# release-by-tag
-#      | (failure)
-# failed-tag
 ---
-# act on release - when the tag is created
 kind: pipeline
 type: docker
 name: release-by-tag
 
-steps:
-- name: build-rpm
-  image: casperlabs/rpm-package
-  commands:
-    - make rpm
+environment:
+  RUSTC_WRAPPER: '/root/.cargo/bin/cachepot'
+  CACHEPOT_BUCKET: 'drone-sccache'
+  CACHEPOT_S3_KEY_PREFIX: ci
+  CACHEPOT_REGION: 'us-east-2'
+  CARGO_INCREMENTAL: '0'
 
-- name: build-deb
+__buildenv: &buildenv
   image: casperlabs/node-build-u1804
-  commands:
-    - make deb
-
-- name: publish-repo-prod
-  image: casperlabs/aptly:latest
-  failure: ignore
+  volumes:
+  - name: rustup
+    path: "/root/.rustup"
+  - name: cargo
+    path: "/root/.cargo"
+  - name: drone
+    path: "/drone"
+  - name: nctl-temp-dir
+    path: "/tmp/nctl_upgrade_stage"
   environment:
-    AWS_SECRET_ACCESS_KEY:
-      from_secret: aptly_prod_secret_key
     AWS_ACCESS_KEY_ID:
-      from_secret: aptly_prod_key_id
-  settings:
-    repo_name:
-      from_secret: aptly_prod_repo
-    region:
-      from_secret: aptly_prod_region
-    gpg_key:
-      from_secret: aptly_prod_gpg_key
-    gpg_pass:
-      from_secret: aptly_prod_gpg_pass
-    distribution_id:
-      from_secret: aptly_prod_dist_id
-    acl: 'public-read'
-    prefix: 'releases'
-    deb_path: './target/debian'
-    deb_name: '*.deb'
+      from_secret: cachepot_aws_ak
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: cachepot_aws_sk
+
+__buildenv_upload: &buildenv_upload
+  image: casperlabs/node-build-u1804
+  volumes:
+  - name: rustup
+    path: "/root/.rustup"
+  - name: cargo
+    path: "/root/.cargo"
+  - name: drone
+    path: "/drone"
+  - name: nctl-temp-dir
+    path: "/tmp/nctl_upgrade_stage"
+  environment:
+    AWS_ACCESS_KEY_ID:
+      from_secret: put-drone-aws-ak
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: put-drone-aws-sk
+
+steps:
+- name: setup
+  <<: *buildenv
+  commands:
+  - make setup
 
 - name: build-upgrade-package
-  image: casperlabs/node-build-u1804
+  <<: *buildenv
   commands:
-    - "./ci/build_update_package.sh"
+  - "./ci/build_update_package.sh"
 
 #- name: publish-github-pre-release
 #  image: plugins/github-release
@@ -590,23 +419,11 @@ steps:
     access:
     - "public"
 
-- name: nctl-upgrade-assets-stage
-  image: casperlabs/node-build-u1804
+- name: nctl-s3-build
+  <<: *buildenv_upload
   commands:
-    - "./ci/nctl_upgrade_stage.sh"
-  volumes:
-  - name: nctl-temp-dir
-    path: /tmp/nctl_upgrade_stage
-
-- name: nctl-bucket-tag-clear
-  image: casperlabs/node-build-u1804
-  environment:
-    AWS_ACCESS_KEY_ID:
-      from_secret: put-drone-aws-ak
-    AWS_SECRET_ACCESS_KEY:
-      from_secret: put-drone-aws-sk
-  commands:
-    - "aws s3 rm s3://nctl.casperlabs.io/${DRONE_TAG} --recursive"
+  - "aws s3 rm s3://nctl.casperlabs.io/${DRONE_TAG} --recursive"
+  - "./ci/nctl_upgrade_stage.sh"
 
 - name: nctl-bucket-upload
   image: plugins/s3-sync:latest
@@ -623,15 +440,36 @@ steps:
   - name: nctl-temp-dir
     path: /tmp/nctl_upgrade_stage
 
-- name: update-default-branch
-  image: casperlabs/node-build-u1804
+- name: publish-crates
+  <<: *buildenv
   environment:
-    GITHUB_TOKEN:
-      from_secret: github_token_def_branch
+    CARGO_TOKEN:
+      from_secret: crates_io_token
   commands:
-    - "./ci/change_default_branch.py"
+  - "./ci/publish_to_crates_io.sh"
+
+- name: notify
+  image: plugins/slack
+  settings:
+    webhook:
+      from_secret: slack_webhook
+    template:
+    - |
+      Casper-Node Release Status: *{{ uppercasefirst build.status }}*
+      Drone Build: <{{ build.link }}|#{{ build.number }}>
+      Commit Link: <https://github.com/{{repo.owner}}/{{repo.name}}/commit/{{build.commit}}|{{ truncate build.commit 10 }}>
+  when:
+    status:
+    - failure
+    - success
 
 volumes:
+- name: rustup
+  temp: {}
+- name: cargo
+  temp: {}
+- name: drone
+  temp: {}
 - name: nctl-temp-dir
   temp: {}
 
@@ -642,49 +480,50 @@ trigger:
 ---
 kind: pipeline
 type: docker
-name: failed-tag
+name: nightly-testing
 
-clone:
-  disable: true
+environment:
+  RUSTC_WRAPPER: '/root/.cargo/bin/cachepot'
+  CACHEPOT_BUCKET: 'drone-sccache'
+  CACHEPOT_S3_KEY_PREFIX: ci
+  CACHEPOT_REGION: 'us-east-2'
+  CARGO_INCREMENTAL: '0'
 
-steps:
-- name: notify
-  image: plugins/slack
-  settings:
-    webhook:
-      from_secret: slack_webhook
-    template:
-    - |
-      casper-node build status: *{{ uppercasefirst build.status }}*
-      Author: {{ build.author }}
-      Drone Build: <{{ build.link }}|#{{ build.number }}>
-      Commit Link: <https://github.com/{{repo.owner}}/{{repo.name}}/commit/{{build.commit}}|{{ truncate build.commit 10 }}>
-trigger:
-  status:
-  - failure
-  ref:
-    - refs/tags/v*
-
-depends_on:
-- release-by-tag
-
----
-kind: pipeline
-type: docker
-name: nightly-tests-cron
-
-steps:
-- name: nctl-nighly-script
+__buildenv: &buildenv
   image: casperlabs/node-build-u1804
+  volumes:
+  - name: rustup
+    path: "/root/.rustup"
+  - name: cargo
+    path: "/root/.cargo"
+  - name: drone
+    path: "/drone"
+  environment:
+    AWS_ACCESS_KEY_ID:
+      from_secret: cachepot_aws_ak
+    AWS_SECRET_ACCESS_KEY:
+      from_secret: cachepot_aws_sk
+
+steps:
+- name: setup
+  <<: *buildenv
+  commands:
+  - make setup
+
+- name: nctl-compile
+  <<: *buildenv
+  commands:
+  - bash -i ./ci/nctl_compile.sh
+
+- name: nctl-nightly-tests
+  <<: *buildenv
   environment:
     AWS_ACCESS_KEY_ID:
       from_secret: put-drone-aws-ak
     AWS_SECRET_ACCESS_KEY:
       from_secret: put-drone-aws-sk
   commands:
-  - "python3 -m pip install supervisor toml"
-  - "apt update && apt install lsof -y"
-  - "bash -i ci/nightly-test.sh"
+  - bash -i ./ci/nightly-test.sh
 
 - name: notify
   image: plugins/slack
@@ -701,8 +540,14 @@ steps:
     status:
     - failure
     - success
-  depends_on:
-  - nctl-nighly-script
+
+volumes:
+- name: rustup
+  temp: {}
+- name: cargo
+  temp: {}
+- name: drone
+  temp: {}
 
 trigger:
-  cron: [ nightly-tests-cron ]
+  cron: [ nightly-tests-cron, feat-fast-sync ]

@@ -2,13 +2,12 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_STORED_VALUE_SIZE, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_RUN_GENESIS_REQUEST,
+    DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     core::{
         engine_state::{
-            engine_config::{DEFAULT_MAX_DELEGATOR_SIZE_LIMIT, DEFAULT_MINIMUM_DELEGATION_AMOUNT},
+            engine_config::{DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING},
             EngineConfig, Error, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
         },
         execution::Error as ExecError,
@@ -119,9 +118,8 @@ fn should_observe_stack_height_limit() {
             DEFAULT_MAX_QUERY_DEPTH,
             DEFAULT_MAX_ASSOCIATED_KEYS,
             DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-            DEFAULT_MAX_STORED_VALUE_SIZE,
-            DEFAULT_MAX_DELEGATOR_SIZE_LIMIT,
             DEFAULT_MINIMUM_DELEGATION_AMOUNT,
+            DEFAULT_STRICT_ARGUMENT_CHECKING,
             WasmConfig::new(
                 DEFAULT_WASM_MAX_MEMORY,
                 NEW_WASM_STACK_HEIGHT,

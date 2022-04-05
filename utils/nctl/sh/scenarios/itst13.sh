@@ -63,11 +63,10 @@ function main() {
     # 15. Assert that restarted validator is producing blocks.
     assert_node_proposed '5' '300'
     # 16. Run Health Checks
-    # ... errors=ignore: ticket sre issue 72
     # ... restarts=1: due to node being stopped and started
     # ... ejections=1: node is expected to be ejected in test
     source "$NCTL"/sh/scenarios/common/health_checks.sh \
-            errors='ignore' \
+            errors=0 \
             equivocators=0 \
             doppels=0 \
             crashes=0 \

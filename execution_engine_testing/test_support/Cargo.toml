@@ -8,7 +8,7 @@ documentation = "https://docs.rs/casper-engine-test-support"
 readme = "README.md"
 homepage = "https://casperlabs.io"
 repository = "https://github.com/CasperLabs/casper-node/tree/master/execution_engine_testing/test_support"
-license-file = "../../LICENSE"
+license = "Apache-2.0"
 
 [dependencies]
 casper-execution-engine = { version = "1.5.0", path = "../../execution_engine", features = ["test-support"] }

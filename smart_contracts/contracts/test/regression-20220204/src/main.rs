@@ -150,8 +150,7 @@ pub extern "C" fn nontrivial_arg_as_contract() {
     let non_trivial_arg: NonTrivialArg = runtime::get_named_arg(ARG_PURSE);
     let source_purse: URef = non_trivial_arg
         .into_values()
-        .map(Key::into_uref)
-        .flatten()
+        .filter_map(Key::into_uref)
         .next()
         .unwrap();
 

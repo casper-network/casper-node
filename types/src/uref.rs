@@ -113,11 +113,13 @@ impl URef {
     }
 
     /// Returns a new [`URef`] with the same address and updated access rights.
+    #[must_use]
     pub fn with_access_rights(self, access_rights: AccessRights) -> Self {
         URef(self.0, access_rights)
     }
 
     /// Removes the access rights from this [`URef`].
+    #[must_use]
     pub fn remove_access_rights(self) -> Self {
         URef(self.0, AccessRights::NONE)
     }
@@ -129,28 +131,33 @@ impl URef {
     }
 
     /// Returns a new [`URef`] with the same address and [`AccessRights::READ`] permission.
+    #[must_use]
     pub fn into_read(self) -> URef {
         URef(self.0, AccessRights::READ)
     }
 
     /// Returns a new [`URef`] with the same address and [`AccessRights::WRITE`] permission.
+    #[must_use]
     pub fn into_write(self) -> URef {
         URef(self.0, AccessRights::WRITE)
     }
 
     /// Returns a new [`URef`] with the same address and [`AccessRights::ADD`] permission.
+    #[must_use]
     pub fn into_add(self) -> URef {
         URef(self.0, AccessRights::ADD)
     }
 
     /// Returns a new [`URef`] with the same address and [`AccessRights::READ_ADD_WRITE`]
     /// permission.
+    #[must_use]
     pub fn into_read_add_write(self) -> URef {
         URef(self.0, AccessRights::READ_ADD_WRITE)
     }
 
     /// Returns a new [`URef`] with the same address and [`AccessRights::READ_WRITE`]
     /// permission.
+    #[must_use]
     pub fn into_read_write(self) -> URef {
         URef(self.0, AccessRights::READ_WRITE)
     }
@@ -247,6 +254,12 @@ impl bytesrepr::ToBytes for URef {
 
     fn serialized_length(&self) -> usize {
         UREF_SERIALIZED_LENGTH
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), self::Error> {
+        writer.extend_from_slice(&self.0);
+        self.1.write_bytes(writer)?;
+        Ok(())
     }
 }
 

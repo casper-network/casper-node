@@ -46,35 +46,31 @@ impl ValidationState {
     }
 }
 
-pub struct Era<I> {
+pub struct Era {
     /// The consensus protocol instance.
-    pub(crate) consensus: Box<dyn ConsensusProtocol<I, ClContext>>,
+    pub(crate) consensus: Box<dyn ConsensusProtocol<ClContext>>,
     /// The scheduled starting time of this era.
     pub(crate) start_time: Timestamp,
     /// The height of this era's first block.
     pub(crate) start_height: u64,
     /// Pending blocks, waiting for validation and dependencies.
-    validation_states: HashMap<ProposedBlock<ClContext>, ValidationState>,
+    pub(crate) validation_states: HashMap<ProposedBlock<ClContext>, ValidationState>,
     /// Validators banned in this and the next BONDED_ERAS eras, because they were faulty in the
     /// previous switch block.
-    pub(crate) new_faulty: Vec<PublicKey>,
-    /// Validators that have been faulty in any of the recent BONDED_ERAS switch blocks. This
-    /// includes `new_faulty`.
     pub(crate) faulty: HashSet<PublicKey>,
     /// Validators that are excluded from proposing new blocks.
     pub(crate) cannot_propose: HashSet<PublicKey>,
     /// Accusations collected in this era so far.
-    accusations: HashSet<PublicKey>,
+    pub(crate) accusations: HashSet<PublicKey>,
     /// The validator weights.
-    validators: BTreeMap<PublicKey, U512>,
+    pub(crate) validators: BTreeMap<PublicKey, U512>,
 }
 
-impl<I> Era<I> {
+impl Era {
     pub(crate) fn new(
-        consensus: Box<dyn ConsensusProtocol<I, ClContext>>,
+        consensus: Box<dyn ConsensusProtocol<ClContext>>,
         start_time: Timestamp,
         start_height: u64,
-        new_faulty: Vec<PublicKey>,
         faulty: HashSet<PublicKey>,
         cannot_propose: HashSet<PublicKey>,
         validators: BTreeMap<PublicKey, U512>,
@@ -84,7 +80,6 @@ impl<I> Era<I> {
             start_time,
             start_height,
             validation_states: HashMap::new(),
-            new_faulty,
             faulty,
             cannot_propose,
             accusations: HashSet::new(),
@@ -167,10 +162,7 @@ impl<I> Era<I> {
     }
 }
 
-impl<I> DataSize for Era<I>
-where
-    I: DataSize + 'static,
-{
+impl DataSize for Era {
     const IS_DYNAMIC: bool = true;
 
     const STATIC_HEAP_SIZE: usize = 0;
@@ -183,7 +175,6 @@ where
             start_time,
             start_height,
             validation_states,
-            new_faulty,
             faulty,
             cannot_propose,
             accusations,
@@ -196,7 +187,7 @@ where
         let consensus_heap_size = {
             let any_ref = consensus.as_any();
 
-            if let Some(highway) = any_ref.downcast_ref::<HighwayProtocol<I, ClContext>>() {
+            if let Some(highway) = any_ref.downcast_ref::<HighwayProtocol<ClContext>>() {
                 if *CASPER_ENABLE_DETAILED_CONSENSUS_METRICS {
                     let detailed = (*highway).estimate_detailed_heap_size();
                     match serde_json::to_string(&detailed) {
@@ -210,7 +201,7 @@ where
             } else {
                 warn!(
                     "could not downcast consensus protocol to \
-                    HighwayProtocol<I, ClContext> to determine heap allocation size"
+                    HighwayProtocol<ClContext> to determine heap allocation size"
                 );
                 0
             }
@@ -220,7 +211,6 @@ where
             .saturating_add(start_time.estimate_heap_size())
             .saturating_add(start_height.estimate_heap_size())
             .saturating_add(validation_states.estimate_heap_size())
-            .saturating_add(new_faulty.estimate_heap_size())
             .saturating_add(faulty.estimate_heap_size())
             .saturating_add(cannot_propose.estimate_heap_size())
             .saturating_add(accusations.estimate_heap_size())

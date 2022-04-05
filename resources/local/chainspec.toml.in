@@ -14,6 +14,8 @@ hard_reset = false
 activation_point = '${TIMESTAMP}'
 # Optional era ID in which the last emergency restart happened.
 #last_emergency_restart = 0
+# The era ID starting at which the new Merkle tree-based hashing scheme is applied.
+verifiable_chunked_hash_activation = 2
 
 [network]
 # Human readable name for convenience; the genesis_hash is the true identifier.  The name influences the genesis hash by
@@ -51,10 +53,10 @@ round_seigniorage_rate = [15_959, 6_204_824_582_392]
 max_associated_keys = 100
 # Maximum height of contract runtime call stack.
 max_runtime_call_stack_height = 12
-# Maximum serialized size of values stored in global state.
-max_stored_value_size = 8_388_608
 # Minimum allowed delegation amount in motes
 minimum_delegation_amount = 500_000_000_000
+# Enables strict arguments checking when calling a contract; i.e. that all non-optional args are provided and of the correct `CLType`.
+strict_argument_checking = false
 
 [highway]
 # A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.
@@ -152,7 +154,7 @@ add_associated_key = { cost = 9_000, arguments = [0, 0, 0] }
 add_contract_version = { cost = 200, arguments = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] }
 blake2b = { cost = 200, arguments = [0, 0, 0, 0] }
 call_contract = { cost = 4_500, arguments = [0, 0, 0, 0, 0, 420, 0] }
-call_versioned_contract = { cost = 200, arguments = [0, 0, 0, 0, 0, 0, 0, 0, 0] }
+call_versioned_contract = { cost = 4_500, arguments = [0, 0, 0, 0, 0, 0, 0, 420, 0] }
 create_contract_package_at_hash = { cost = 200, arguments = [0, 0] }
 create_contract_user_group = { cost = 200, arguments = [0, 0, 0, 0, 0, 0, 0, 0] }
 create_purse = { cost = 2_500_000_000, arguments = [0, 0] }

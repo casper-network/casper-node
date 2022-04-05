@@ -9,7 +9,7 @@ use std::{
 use inflector::cases::snakecase::to_snake_case;
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Ident, Path, Type};
+use syn::{Ident, Path, PathArguments, Type};
 
 use crate::util::to_ident;
 
@@ -25,12 +25,22 @@ impl Debug for RustType {
 
 impl RustType {
     /// Creates a new `RustType` from a path.
-    pub fn new(path: Path) -> Self {
+    pub(crate) fn new(path: Path) -> Self {
         RustType(path)
     }
 
+    /// The final type argument, used for disambiguation.
+    fn final_type_arg_ident(&self) -> PathArguments {
+        self.0
+            .segments
+            .last()
+            .expect("type has no last part?")
+            .arguments
+            .clone()
+    }
+
     /// Returns the types identifier without type arguments, e.g. `SmallNet`.
-    pub fn ident(&self) -> Ident {
+    pub(crate) fn ident(&self) -> Ident {
         self.0
             .segments
             .last()
@@ -39,27 +49,45 @@ impl RustType {
             .clone()
     }
 
-    /// Returns the type without the path, but with type arguments, e.g. `SmallNet<NodeId>`.
-    pub fn ty(&self) -> TokenStream {
-        let ident = self.ident();
-        let args = &self
+    /// Returns the type's identifier with type arguments concatenated into a single camel case
+    /// identifier, e.g. `GossipIncomingDeploy`.
+    pub(crate) fn stringified_ident(&self) -> Ident {
+        let base = self
             .0
             .segments
             .last()
             .expect("type has no last part?")
-            .arguments;
+            .ident
+            .clone();
+
+        // This is a slightly ugly hack to get a string out of the type.
+        let final_arg = self.final_type_arg_ident();
+        let args: String = quote!(#final_arg)
+            .to_string()
+            .chars()
+            .filter(|c| c.is_alphabetic())
+            .collect();
+
+        Ident::new(&format!("{}{}", base, args), base.span())
+    }
+
+    /// Returns the type without the path, but with type arguments, e.g. `SmallNet<NodeId>`.
+    pub(crate) fn ty(&self) -> TokenStream {
+        let ident = self.ident();
+        let args = self.final_type_arg_ident();
+
         quote!(#ident #args)
     }
 
     /// Returns the full type as it was given in the macro call.
-    pub fn as_given(&self) -> &Path {
+    pub(crate) fn as_given(&self) -> &Path {
         &self.0
     }
 
     /// Returns the module name that canonically would contain the type, e.g. `small_net`.
     ///
     /// Based on the identifier only, i.e. will discard any actual path.
-    pub fn module_ident(&self) -> Ident {
+    pub(crate) fn module_ident(&self) -> Ident {
         to_ident(&to_snake_case(&self.ident().to_string()))
     }
 }

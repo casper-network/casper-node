@@ -9,13 +9,11 @@ use std::{
     time::Duration,
 };
 
-use assert_json_diff::assert_json_eq;
 use futures::{join, StreamExt};
 use http::StatusCode;
 use pretty_assertions::assert_eq;
 use reqwest::Response;
 use schemars::schema_for;
-use serde_json::Value;
 use tempfile::TempDir;
 use tokio::{
     sync::{Barrier, Notify},
@@ -25,7 +23,10 @@ use tokio::{
 use tracing::debug;
 
 use super::*;
-use crate::{logging, testing::TestRng};
+use crate::{
+    logging,
+    testing::{assert_schema, TestRng},
+};
 use sse_server::{
     DeployAccepted, Id, QUERY_FIELD, SSE_API_DEPLOYS_PATH as DEPLOYS_PATH,
     SSE_API_MAIN_PATH as MAIN_PATH, SSE_API_ROOT_PATH as ROOT_PATH,
@@ -769,6 +770,20 @@ async fn server_exit_should_gracefully_shut_down_stream() {
     assert!(received_events1.len() < fixture.all_filtered_events(MAIN_PATH).0.len());
     assert!(received_events2.len() < fixture.all_filtered_events(DEPLOYS_PATH).0.len());
     assert!(received_events3.len() < fixture.all_filtered_events(SIGS_PATH).0.len());
+
+    // Ensure all clients received a `Shutdown` event as the final one.
+    assert_eq!(
+        received_events1.last().unwrap().data,
+        serde_json::to_string(&SseData::Shutdown).unwrap()
+    );
+    assert_eq!(
+        received_events2.last().unwrap().data,
+        serde_json::to_string(&SseData::Shutdown).unwrap()
+    );
+    assert_eq!(
+        received_events3.last().unwrap().data,
+        serde_json::to_string(&SseData::Shutdown).unwrap()
+    );
 }
 
 /// Checks that clients which don't consume the events in a timely manner are forcibly disconnected
@@ -979,9 +994,10 @@ async fn should_persist_event_ids(path: &str) {
     assert!(first_run_final_id > 0);
 
     {
-        // Start a new server with a client barrier set for just before event ID 100.
+        // Start a new server with a client barrier set for just before event ID 100 + 1 (the extra
+        // event being the `Shutdown`).
         let mut server_behavior = ServerBehavior::new();
-        let barrier = server_behavior.add_client_sync_before_event(EVENT_COUNT);
+        let barrier = server_behavior.add_client_sync_before_event(EVENT_COUNT + 1);
         let server_address = fixture.run_server(server_behavior).await;
 
         // Check the test fixture has set the server's first event ID to at least
@@ -990,7 +1006,7 @@ async fn should_persist_event_ids(path: &str) {
 
         // Consume the events and assert their IDs are all >= `first_run_final_id`.
         let url = url(server_address, path, None);
-        let (expected_events, final_id) = fixture.filtered_events(path, EVENT_COUNT);
+        let (expected_events, final_id) = fixture.filtered_events(path, EVENT_COUNT + 1);
         let received_events = subscribe(&url, barrier, final_id, "client 2")
             .await
             .unwrap();
@@ -1163,15 +1179,13 @@ async fn should_limit_concurrent_subscribers() {
 /// versions of the events emitted by the SSE server by comparing the contents of
 /// `resources/test/sse_data_schema.json` across different versions of the codebase.
 #[test]
-fn schema() {
+fn schema_test() {
+    // To generate the contents to replace the input JSON files, run the test
+    // and print the `actual_schema`  by uncommenting the `println!`
+    // towards the end of the test.
     let schema_path = format!(
         "{}/../resources/test/sse_data_schema.json",
         env!("CARGO_MANIFEST_DIR")
     );
-    let expected_schema = fs::read_to_string(schema_path).unwrap();
-    let schema = schema_for!(SseData);
-    let actual_schema = serde_json::to_string_pretty(&schema).unwrap();
-    let actual_schema: Value = serde_json::from_str(&actual_schema).unwrap();
-    let expected_schema: Value = serde_json::from_str(expected_schema.trim()).unwrap();
-    assert_json_eq!(actual_schema, expected_schema);
+    assert_schema(schema_path, schema_for!(SseData));
 }

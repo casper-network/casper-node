@@ -2,8 +2,8 @@
 
 use std::{
     collections::{hash_map::Entry, HashMap},
-    fmt::{Debug, Display},
-    hash::Hash,
+    fmt::Debug,
+    mem,
     time::Duration,
 };
 
@@ -19,22 +19,31 @@ use crate::{
     effect::{EffectBuilder, Effects},
     reactor::{Finalize, Reactor, Runner},
     testing::TestRng,
+    tls::KeyFingerprint,
+    types::NodeId,
     NodeRng,
 };
 
 /// Type alias for set of nodes inside a network.
 ///
 /// Provided as a convenience for writing condition functions for `settle_on` and friends.
-pub(crate) type Nodes<R> =
-    HashMap<<R as NetworkedReactor>::NodeId, Runner<ConditionCheckReactor<R>>>;
+pub(crate) type Nodes<R> = HashMap<NodeId, Runner<ConditionCheckReactor<R>>>;
 
 /// A reactor with networking functionality.
+///
+/// Test reactors implementing this SHOULD implement at least the `node_id` function if they have
+/// proper networking functionality.
 pub(crate) trait NetworkedReactor: Sized {
-    /// The node ID on the networking level.
-    type NodeId: Eq + Hash + Clone + Display + Debug;
-
     /// Returns the node ID assigned to this specific reactor instance.
-    fn node_id(&self) -> Self::NodeId;
+    ///
+    /// The default implementation generates a pseudo-id base on its memory address.
+    fn node_id(&self) -> NodeId {
+        #[allow(trivial_casts)]
+        let addr = self as *const _ as usize;
+        let mut raw: [u8; KeyFingerprint::LENGTH] = [0; KeyFingerprint::LENGTH];
+        raw[0..(mem::size_of::<usize>())].copy_from_slice(&addr.to_be_bytes());
+        NodeId::from(KeyFingerprint::from(raw))
+    }
 }
 
 /// Time interval for which to poll an observed testing network when no events have occurred.
@@ -48,7 +57,7 @@ const POLL_INTERVAL: Duration = Duration::from_millis(10);
 #[derive(Debug, Default)]
 pub(crate) struct Network<R: Reactor + NetworkedReactor> {
     /// Current network.
-    nodes: HashMap<<R as NetworkedReactor>::NodeId, Runner<ConditionCheckReactor<R>>>,
+    nodes: HashMap<NodeId, Runner<ConditionCheckReactor<R>>>,
 }
 
 impl<R> Network<R>
@@ -68,12 +77,12 @@ where
     pub(crate) async fn add_node(
         &mut self,
         rng: &mut TestRng,
-    ) -> Result<(R::NodeId, &mut Runner<ConditionCheckReactor<R>>), R::Error> {
+    ) -> Result<(NodeId, &mut Runner<ConditionCheckReactor<R>>), R::Error> {
         self.add_node_with_config(Default::default(), rng).await
     }
 
     /// Adds `count` new nodes to the network, and returns their IDs.
-    pub(crate) async fn add_nodes(&mut self, rng: &mut TestRng, count: usize) -> Vec<R::NodeId> {
+    pub(crate) async fn add_nodes(&mut self, rng: &mut TestRng, count: usize) -> Vec<NodeId> {
         let mut node_ids = vec![];
         for _ in 0..count {
             let (node_id, _runner) = self.add_node(rng).await.unwrap();
@@ -105,12 +114,12 @@ where
         &mut self,
         cfg: R::Config,
         rng: &mut NodeRng,
-    ) -> Result<(R::NodeId, &mut Runner<ConditionCheckReactor<R>>), R::Error> {
+    ) -> Result<(NodeId, &mut Runner<ConditionCheckReactor<R>>), R::Error> {
         let runner: Runner<ConditionCheckReactor<R>> = Runner::new(cfg, rng).await?;
 
         let node_id = runner.reactor().node_id();
 
-        let node_ref = match self.nodes.entry(node_id.clone()) {
+        let node_ref = match self.nodes.entry(node_id) {
             Entry::Occupied(_) => {
                 // This happens in the event of the extremely unlikely hash collision, or if the
                 // node ID was set manually.
@@ -125,13 +134,13 @@ where
     /// Removes a node from the network.
     pub(crate) fn remove_node(
         &mut self,
-        node_id: &R::NodeId,
+        node_id: &NodeId,
     ) -> Option<Runner<ConditionCheckReactor<R>>> {
         self.nodes.remove(node_id)
     }
 
     /// Crank the specified runner once, returning the number of events processed.
-    pub(crate) async fn crank(&mut self, node_id: &R::NodeId, rng: &mut TestRng) -> usize {
+    pub(crate) async fn crank(&mut self, node_id: &NodeId, rng: &mut TestRng) -> usize {
         let runner = self.nodes.get_mut(node_id).expect("should find node");
 
         let node_id = runner.reactor().node_id();
@@ -152,7 +161,7 @@ where
     /// Returns `true` if `condition` has been met within the specified timeout.
     pub(crate) async fn crank_until<F>(
         &mut self,
-        node_id: &R::NodeId,
+        node_id: &NodeId,
         rng: &mut TestRng,
         condition: F,
         within: Duration,
@@ -170,7 +179,7 @@ where
             .unwrap()
     }
 
-    async fn crank_and_check_indefinitely(&mut self, node_id: &R::NodeId, rng: &mut TestRng) {
+    async fn crank_and_check_indefinitely(&mut self, node_id: &NodeId, rng: &mut TestRng) {
         loop {
             if self.crank(node_id, rng).await == 0 {
                 Instant::advance_time(POLL_INTERVAL.as_millis() as u64);
@@ -284,7 +293,7 @@ where
     }
 
     /// Returns the internal map of nodes.
-    pub(crate) fn nodes(&self) -> &HashMap<R::NodeId, Runner<ConditionCheckReactor<R>>> {
+    pub(crate) fn nodes(&self) -> &HashMap<NodeId, Runner<ConditionCheckReactor<R>>> {
         &self.nodes
     }
 
@@ -307,7 +316,7 @@ where
     /// an `EffectBuilder`.
     pub(crate) async fn process_injected_effect_on<F>(
         &mut self,
-        node_id: &R::NodeId,
+        node_id: &NodeId,
         create_effects: F,
     ) where
         F: FnOnce(EffectBuilder<R::Event>) -> Effects<R::Event>,
@@ -325,7 +334,6 @@ impl<R> Finalize for Network<R>
 where
     R: Finalize + NetworkedReactor + Reactor + Send + 'static,
     R::Event: Serialize + Send + Sync,
-    R::NodeId: Send,
     R::Error: From<prometheus::Error>,
 {
     fn finalize(self) -> BoxFuture<'static, ()> {

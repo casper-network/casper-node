@@ -31,7 +31,7 @@ use crate::{
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
     storage::global_state::{
         in_memory::{InMemoryGlobalState, InMemoryGlobalStateView},
-        StateProvider,
+        CommitProvider, StateProvider,
     },
 };
 
@@ -339,7 +339,6 @@ fn contract_key_not_writeable() {
 
 #[test]
 fn contract_key_addable_valid() {
-    const MAX_VALUE_SIZE: u32 = 8 * 1024 * 1024;
     // Contract key is addable if it is a "base" key - current context of the execution.
     let account_hash = AccountHash::new([0u8; 32]);
     let (account_key, account) = new_account(account_hash, NamedKeys::new());
@@ -358,9 +357,7 @@ fn contract_key_addable_valid() {
         account_key,
         account.clone(),
     )));
-    let _ = tracking_copy
-        .borrow_mut()
-        .write(contract_key, contract, MAX_VALUE_SIZE);
+    let _ = tracking_copy.borrow_mut().write(contract_key, contract);
 
     let default_system_registry = {
         let mut registry = SystemContractRegistry::new();
@@ -371,11 +368,9 @@ fn contract_key_addable_valid() {
         StoredValue::CLValue(CLValue::from_t(registry).unwrap())
     };
 
-    let _ = tracking_copy.borrow_mut().write(
-        Key::SystemContractRegistry,
-        default_system_registry,
-        MAX_VALUE_SIZE,
-    );
+    let _ = tracking_copy
+        .borrow_mut()
+        .write(Key::SystemContractRegistry, default_system_registry);
 
     let uref_as_key = create_uref_as_key(&mut address_generator, AccessRights::WRITE);
     let uref_name = "NewURef".to_owned();
@@ -433,7 +428,6 @@ fn contract_key_addable_valid() {
 
 #[test]
 fn contract_key_addable_invalid() {
-    const MAX_VALUE_SIZE: u32 = 8 * 1024 * 1024;
     let account_hash = AccountHash::new([0u8; 32]);
     let (account_key, account) = new_account(account_hash, NamedKeys::new());
     let authorization_keys = BTreeSet::from_iter(vec![account_hash]);
@@ -452,9 +446,7 @@ fn contract_key_addable_invalid() {
         account.clone(),
     )));
 
-    let _ = tracking_copy
-        .borrow_mut()
-        .write(contract_key, contract, MAX_VALUE_SIZE);
+    let _ = tracking_copy.borrow_mut().write(contract_key, contract);
 
     let uref_as_key = create_uref_as_key(&mut address_generator, AccessRights::WRITE);
     let uref_name = "NewURef".to_owned();

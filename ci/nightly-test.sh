@@ -6,20 +6,15 @@ SCENARIOS_DIR="$DRONE_ROOT_DIR/utils/nctl/sh/scenarios"
 SCENARIOS_CHAINSPEC_DIR="$SCENARIOS_DIR/chainspecs"
 SCENARIOS_ACCOUNTS_DIR="$SCENARIOS_DIR/accounts_toml"
 SCENARIOS_CONFIGS_DIR="$SCENARIOS_DIR/configs"
-LAUNCHER_DIR="$DRONE_ROOT_DIR/.."
 
-# NCTL requires casper-node-launcher
-if [ ! -d "$LAUNCHER_DIR/casper-node-launcher" ]; then
-    pushd "$LAUNCHER_DIR"
-    git clone https://github.com/CasperLabs/casper-node-launcher.git
-fi
+NCTL_CLIENT_BRANCH="${DRONE_BRANCH:='dev'}"
 
 # Activate Environment
 pushd "$DRONE_ROOT_DIR"
 source "$(pwd)"/utils/nctl/activate
 
-# Build, Setup, and Start NCTL
-nctl-compile
+# Call compile wrapper for client, launcher, and nctl-compile
+bash -i "$DRONE_ROOT_DIR/ci/nctl_compile.sh"
 
 function start_run_teardown() {
     local RUN_CMD=$1
@@ -54,8 +49,8 @@ function start_run_teardown() {
 
     # Start nctl network
     nctl-start
-    echo "Sleeping 90 to allow network startup"
-    sleep 90
+    echo "Sleeping 10s to allow network startup"
+    sleep 10
 
     # Run passed in test
     pushd "$SCENARIOS_DIR"
@@ -69,6 +64,17 @@ function start_run_teardown() {
     sleep 1
 }
 
+function run_nightly_upgrade_test() {
+    # setup only needed the first time
+    bash -i ./ci/nctl_upgrade.sh test_id=4
+    bash -i ./ci/nctl_upgrade.sh test_id=5 skip_setup=true
+    bash -i ./ci/nctl_upgrade.sh test_id=6 skip_setup=true
+    bash -i ./ci/nctl_upgrade.sh test_id=7 skip_setup=true
+    bash -i ./ci/nctl_upgrade.sh test_id=8 skip_setup=true
+    bash -i ./ci/nctl_upgrade.sh test_id=9 skip_setup=true
+    bash -i ./ci/nctl_upgrade.sh test_id=10 skip_setup=true
+}
+
 start_run_teardown "itst01.sh"
 start_run_teardown "itst02.sh"
 start_run_teardown "itst06.sh"
@@ -79,7 +85,10 @@ start_run_teardown "itst14.sh"
 start_run_teardown "bond_its.sh"
 start_run_teardown "emergency_upgrade_test.sh"
 start_run_teardown "emergency_upgrade_test_balances.sh"
-start_run_teardown "sync_test.sh node=6 timeout=500"
+start_run_teardown "sync_test.sh timeout=500"
 start_run_teardown "gov96.sh"
 # Keep this test last
 start_run_teardown "sync_upgrade_test.sh node=6 era=5 timeout=500"
+
+# Run nightly upgrade tests
+run_nightly_upgrade_test

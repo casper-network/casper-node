@@ -14,7 +14,7 @@ use casper_types::bytesrepr::ToBytes;
 
 use crate::{
     components::consensus::{traits::Context, ActionId, TimerId},
-    types::{TimeDiff, Timestamp},
+    types::{NodeId, TimeDiff, Timestamp},
     NodeRng,
 };
 
@@ -136,13 +136,9 @@ impl<VID> EraReport<VID> {
         where
             VID: ToBytes,
         {
-            let hashes = slice_of_validators
-                .iter()
-                .map(|validator| {
-                    Digest::hash(validator.to_bytes().expect("Could not serialize validator"))
-                })
-                .collect();
-            Digest::hash_vec_merkle_tree(hashes)
+            Digest::hash_merkle_tree(slice_of_validators.iter().map(|validator| {
+                Digest::hash(validator.to_bytes().expect("Could not serialize validator"))
+            }))
         }
 
         // Pattern match here leverages compiler to ensure every field is accounted for
@@ -192,15 +188,15 @@ pub(crate) struct FinalizedBlock<C: Context> {
     pub(crate) proposer: C::ValidatorId,
 }
 
-pub(crate) type ProtocolOutcomes<I, C> = Vec<ProtocolOutcome<I, C>>;
+pub(crate) type ProtocolOutcomes<C> = Vec<ProtocolOutcome<C>>;
 
 // TODO: get rid of anyhow::Error; use variant and derive Clone and PartialEq. This is for testing.
 #[derive(Debug)]
-pub(crate) enum ProtocolOutcome<I, C: Context> {
+pub(crate) enum ProtocolOutcome<C: Context> {
     CreatedGossipMessage(Vec<u8>),
-    CreatedTargetedMessage(Vec<u8>, I),
+    CreatedTargetedMessage(Vec<u8>, NodeId),
     CreatedMessageToRandomPeer(Vec<u8>),
-    InvalidIncomingMessage(Vec<u8>, I, Error),
+    InvalidIncomingMessage(Vec<u8>, NodeId, Error),
     ScheduleTimer(Timestamp, TimerId),
     QueueAction(ActionId),
     /// Request deploys for a new block, providing the necessary context.
@@ -214,13 +210,13 @@ pub(crate) enum ProtocolOutcome<I, C: Context> {
     /// that it has the expected structure, or that deploys that are mentioned by hash actually
     /// exist, and then call `ConsensusProtocol::resolve_validity`.
     ValidateConsensusValue {
-        sender: I,
+        sender: NodeId,
         proposed_block: ProposedBlock<C>,
     },
     /// New direct evidence was added against the given validator.
     NewEvidence(C::ValidatorId),
     /// Send evidence about the validator from an earlier era to the peer.
-    SendEvidence(I, C::ValidatorId),
+    SendEvidence(NodeId, C::ValidatorId),
     /// We've detected an equivocation our own node has made.
     WeAreFaulty,
     /// We've received a unit from a doppelganger.
@@ -231,11 +227,11 @@ pub(crate) enum ProtocolOutcome<I, C: Context> {
     /// No progress has been made recently.
     StandstillAlert,
     /// We want to disconnect from a sender of invalid data.
-    Disconnect(I),
+    Disconnect(NodeId),
 }
 
 /// An API for a single instance of the consensus.
-pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
+pub(crate) trait ConsensusProtocol<C: Context>: Send {
     /// Upcasts consensus protocol into `dyn Any`.
     ///
     /// Typically called on a boxed trait object for downcasting afterwards.
@@ -245,26 +241,22 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
     fn handle_message(
         &mut self,
         rng: &mut NodeRng,
-        sender: I,
+        sender: NodeId,
         msg: Vec<u8>,
         now: Timestamp,
-    ) -> ProtocolOutcomes<I, C>;
+    ) -> ProtocolOutcomes<C>;
 
     /// Current instance of consensus protocol is latest era.
-    fn handle_is_current(&self, now: Timestamp) -> ProtocolOutcomes<I, C>;
+    fn handle_is_current(&self, now: Timestamp) -> ProtocolOutcomes<C>;
 
     /// Triggers consensus' timer.
-    fn handle_timer(&mut self, timestamp: Timestamp, timer_id: TimerId) -> ProtocolOutcomes<I, C>;
+    fn handle_timer(&mut self, timestamp: Timestamp, timer_id: TimerId) -> ProtocolOutcomes<C>;
 
     /// Triggers a queued action.
-    fn handle_action(&mut self, action_id: ActionId, now: Timestamp) -> ProtocolOutcomes<I, C>;
+    fn handle_action(&mut self, action_id: ActionId, now: Timestamp) -> ProtocolOutcomes<C>;
 
     /// Proposes a new value for consensus.
-    fn propose(
-        &mut self,
-        proposed_block: ProposedBlock<C>,
-        now: Timestamp,
-    ) -> ProtocolOutcomes<I, C>;
+    fn propose(&mut self, proposed_block: ProposedBlock<C>, now: Timestamp) -> ProtocolOutcomes<C>;
 
     /// Marks the `value` as valid or invalid, based on validation requested via
     /// `ProtocolOutcome::ValidateConsensusvalue`.
@@ -273,7 +265,7 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
         proposed_block: ProposedBlock<C>,
         valid: bool,
         now: Timestamp,
-    ) -> ProtocolOutcomes<I, C>;
+    ) -> ProtocolOutcomes<C>;
 
     /// Turns this instance into an active validator, that participates in the consensus protocol.
     fn activate_validator(
@@ -282,7 +274,7 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
         secret: C::ValidatorSecret,
         timestamp: Timestamp,
         unit_hash_file: Option<PathBuf>,
-    ) -> ProtocolOutcomes<I, C>;
+    ) -> ProtocolOutcomes<C>;
 
     /// Turns this instance into a passive observer, that does not create any new vertices.
     fn deactivate_validator(&mut self);
@@ -297,7 +289,7 @@ pub(crate) trait ConsensusProtocol<I, C: Context>: Send {
     fn mark_faulty(&mut self, vid: &C::ValidatorId);
 
     /// Sends evidence for a faulty of validator `vid` to the `sender` of the request.
-    fn request_evidence(&self, sender: I, vid: &C::ValidatorId) -> ProtocolOutcomes<I, C>;
+    fn request_evidence(&self, sender: NodeId, vid: &C::ValidatorId) -> ProtocolOutcomes<C>;
 
     /// Sets the pause status: While paused we don't create consensus messages other than pings.
     fn set_paused(&mut self, paused: bool);

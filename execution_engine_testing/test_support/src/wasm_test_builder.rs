@@ -12,11 +12,10 @@ use std::{
 use lmdb::DatabaseFlags;
 use log::LevelFilter;
 
-use bytesrepr::FromBytes;
 use casper_execution_engine::{
     core::{
-        engine_state,
         engine_state::{
+            self,
             era_validators::GetEraValidatorsRequest,
             execute_request::ExecuteRequest,
             execution_result::ExecutionResult,
@@ -30,6 +29,7 @@ use casper_execution_engine::{
     },
     shared::{
         additive_map::AdditiveMap,
+        execution_journal::ExecutionJournal,
         logging::{self, Settings, Style},
         newtypes::CorrelationId,
         transform::Transform,
@@ -37,7 +37,8 @@ use casper_execution_engine::{
     },
     storage::{
         global_state::{
-            in_memory::InMemoryGlobalState, lmdb::LmdbGlobalState, StateProvider, StateReader,
+            in_memory::InMemoryGlobalState, lmdb::LmdbGlobalState, scratch::ScratchGlobalState,
+            CommitProvider, StateProvider, StateReader,
         },
         transaction_source::lmdb::LmdbEnvironment,
         trie::{merkle_proof::TrieMerkleProof, Trie},
@@ -47,11 +48,13 @@ use casper_execution_engine::{
 use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
-    bytesrepr, runtime_args,
+    bytesrepr::{self, FromBytes},
+    runtime_args,
     system::{
         auction::{
-            Bids, EraValidators, UnbondingPurses, ValidatorWeights, ARG_ERA_END_TIMESTAMP_MILLIS,
-            ARG_EVICTED_VALIDATORS, AUCTION_DELAY_KEY, ERA_ID_KEY, METHOD_RUN_AUCTION,
+            Bids, EraValidators, UnbondingPurses, ValidatorWeights, WithdrawPurses,
+            ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS, AUCTION_DELAY_KEY, ERA_ID_KEY,
+            METHOD_RUN_AUCTION,
         },
         mint::TOTAL_SUPPLY_KEY,
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
@@ -88,15 +91,19 @@ pub struct WasmTestBuilder<S> {
     /// [`ExecutionResult`] is wrapped in [`Rc`] to work around a missing [`Clone`] implementation
     exec_results: Vec<Vec<Rc<ExecutionResult>>>,
     upgrade_results: Vec<Result<UpgradeSuccess, engine_state::Error>>,
+    /// Genesis hash.
     genesis_hash: Option<Digest>,
+    /// Post state hash.
     post_state_hash: Option<Digest>,
     /// Cached transform maps after subsequent successful runs i.e. `transforms[0]` is for first
     /// exec call etc.
-    transforms: Vec<AdditiveMap<Key, Transform>>,
+    transforms: Vec<ExecutionJournal>,
     /// Cached genesis transforms
     genesis_account: Option<Account>,
     /// Genesis transforms
     genesis_transforms: Option<AdditiveMap<Key, Transform>>,
+    /// Scratch global state used for in-memory execution and commit optimization.
+    scratch_engine_state: Option<EngineState<ScratchGlobalState>>,
     /// System contract registry
     system_contract_registry: Option<SystemContractRegistry>,
 }
@@ -125,6 +132,7 @@ impl Default for InMemoryWasmTestBuilder {
             transforms: Vec::new(),
             genesis_account: None,
             genesis_transforms: None,
+            scratch_engine_state: None,
             system_contract_registry: None,
         }
     }
@@ -143,6 +151,7 @@ impl<S> Clone for WasmTestBuilder<S> {
             transforms: self.transforms.clone(),
             genesis_account: self.genesis_account.clone(),
             genesis_transforms: self.genesis_transforms.clone(),
+            scratch_engine_state: None,
             system_contract_registry: self.system_contract_registry.clone(),
         }
     }
@@ -202,6 +211,7 @@ impl LmdbWasmTestBuilder {
             transforms: Vec::new(),
             genesis_account: None,
             genesis_transforms: None,
+            scratch_engine_state: None,
             system_contract_registry: None,
         }
     }
@@ -263,6 +273,7 @@ impl LmdbWasmTestBuilder {
             transforms: Vec::new(),
             genesis_account: None,
             genesis_transforms: None,
+            scratch_engine_state: None,
             system_contract_registry: None,
         }
     }
@@ -281,11 +292,65 @@ impl LmdbWasmTestBuilder {
         path.push(GLOBAL_STATE_DIR);
         path
     }
+
+    /// Execute and commit transforms from an ExecuteRequest into a scratch global state.
+    /// You MUST call scratch_flush to flush these changes to LmdbGlobalState.
+    pub fn scratch_exec_and_commit(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
+        if self.scratch_engine_state.is_none() {
+            self.scratch_engine_state = Some(self.engine_state.get_scratch_engine_state());
+        }
+
+        let cached_state = self
+            .scratch_engine_state
+            .as_ref()
+            .expect("scratch state should exist");
+
+        // Scratch still requires that one deploy be executed and committed at a time.
+        let exec_request = {
+            let hash = self.post_state_hash.expect("expected post_state_hash");
+            exec_request.parent_state_hash = hash;
+            exec_request
+        };
+
+        let mut exec_results = Vec::new();
+        // First execute the request against our scratch global state.
+        let maybe_exec_results = cached_state.run_execute(CorrelationId::new(), exec_request);
+        for execution_result in maybe_exec_results.unwrap() {
+            let journal = execution_result.execution_journal().clone();
+            let transforms: AdditiveMap<Key, Transform> = journal.clone().into();
+            let _post_state_hash = cached_state
+                .apply_effect(
+                    CorrelationId::new(),
+                    self.post_state_hash.expect("requires a post_state_hash"),
+                    transforms,
+                )
+                .expect("should commit");
+
+            // Save transforms and execution results for WasmTestBuilder.
+            self.transforms.push(journal);
+            exec_results.push(Rc::new(execution_result))
+        }
+        self.exec_results.push(exec_results);
+        self
+    }
+
+    /// Commit scratch to global state, and reset the scratch cache.
+    pub fn write_scratch_to_lmdb(&mut self) -> &mut Self {
+        let prestate_hash = self.post_state_hash.expect("Should have genesis hash");
+        if let Some(scratch) = self.scratch_engine_state.take() {
+            self.post_state_hash = Some(
+                self.engine_state
+                    .write_scratch_to_lmdb(prestate_hash, scratch.into_inner())
+                    .unwrap(),
+            );
+        }
+        self
+    }
 }
 
 impl<S> WasmTestBuilder<S>
 where
-    S: StateProvider,
+    S: StateProvider + CommitProvider,
     engine_state::Error: From<S::Error>,
     S::Error: Into<execution::Error>,
 {
@@ -303,6 +368,7 @@ where
                 run_genesis_request.genesis_config_hash(),
                 run_genesis_request.protocol_version(),
                 run_genesis_request.ee_config(),
+                run_genesis_request.chainspec_registry().clone(),
             )
             .expect("Unable to get genesis response");
 
@@ -437,7 +503,7 @@ where
         self.transforms.extend(
             execution_results
                 .iter()
-                .map(|res| res.execution_journal().clone().into()),
+                .map(|res| res.execution_journal().clone()),
         );
         self.exec_results.push(
             maybe_exec_results
@@ -455,7 +521,7 @@ where
 
         let effects = self.transforms.last().cloned().unwrap_or_default();
 
-        self.commit_transforms(prestate_hash, effects)
+        self.commit_transforms(prestate_hash, effects.into())
     }
 
     /// Runs a commit request, expects a successful response, and
@@ -548,8 +614,7 @@ where
     pub fn expect_success(&mut self) -> &mut Self {
         // Check first result, as only first result is interesting for a simple test
         let exec_results = self
-            .exec_results
-            .last()
+            .get_last_exec_results()
             .expect("Expected to be called after run()");
         let exec_result = exec_results
             .get(0)
@@ -558,7 +623,7 @@ where
         if exec_result.is_failure() {
             panic!(
                 "Expected successful execution result, but instead got: {:#?}",
-                exec_results,
+                exec_result,
             );
         }
         self
@@ -568,8 +633,7 @@ where
     pub fn expect_failure(&mut self) -> &mut Self {
         // Check first result, as only first result is interesting for a simple test
         let exec_results = self
-            .exec_results
-            .last()
+            .get_last_exec_results()
             .expect("Expected to be called after run()");
         let exec_result = exec_results
             .get(0)
@@ -578,7 +642,7 @@ where
         if exec_result.is_success() {
             panic!(
                 "Expected failed execution result, but instead got: {:?}",
-                exec_results,
+                exec_result,
             );
         }
 
@@ -587,31 +651,38 @@ where
 
     /// Returns `true` if the las exec had an error, otherwise returns false.
     pub fn is_error(&self) -> bool {
-        let exec_results = self
-            .exec_results
-            .last()
-            .expect("Expected to be called after run()");
-        let exec_result = exec_results
+        self.get_last_exec_results()
+            .expect("Expected to be called after run()")
             .get(0)
-            .expect("Unable to get first execution result");
-        exec_result.is_failure()
+            .expect("Unable to get first execution result")
+            .is_failure()
     }
 
     /// Returns an `Option<engine_state::Error>` if the last exec had an error.
     pub fn get_error(&self) -> Option<engine_state::Error> {
-        let exec_results = &self.get_exec_results();
-
-        let exec_result = exec_results
-            .last()
+        self.get_last_exec_results()
             .expect("Expected to be called after run()")
             .get(0)
-            .expect("Unable to get first deploy result");
-
-        exec_result.as_error().cloned()
+            .expect("Unable to get first deploy result")
+            .as_error()
+            .cloned()
     }
 
     /// Gets the transform map that's cached between runs
+    #[deprecated(
+        since = "2.1.0",
+        note = "Use `get_execution_journals` that returns transforms in the order they were created."
+    )]
     pub fn get_transforms(&self) -> Vec<AdditiveMap<Key, Transform>> {
+        self.transforms
+            .clone()
+            .into_iter()
+            .map(|journal| journal.into_iter().collect())
+            .collect()
+    }
+
+    /// Gets `ExecutionJournal`s of all passed runs.
+    pub fn get_execution_journals(&self) -> Vec<ExecutionJournal> {
         self.transforms.clone()
     }
 
@@ -680,14 +751,18 @@ where
         &self.engine_state
     }
 
-    /// Returns the results of all execs.
-    pub fn get_exec_results(&self) -> &Vec<Vec<Rc<ExecutionResult>>> {
-        &self.exec_results
+    /// Returns the last results execs.
+    pub fn get_last_exec_results(&self) -> Option<Vec<Rc<ExecutionResult>>> {
+        let exec_results = self.exec_results.last()?;
+
+        Some(exec_results.iter().map(Rc::clone).collect())
     }
 
     /// Returns the results of a specific exec.
-    pub fn get_exec_result(&self, index: usize) -> Option<&Vec<Rc<ExecutionResult>>> {
-        self.exec_results.get(index)
+    pub fn get_exec_result(&self, index: usize) -> Option<Vec<Rc<ExecutionResult>>> {
+        let exec_results = self.exec_results.get(index)?;
+
+        Some(exec_results.iter().map(Rc::clone).collect())
     }
 
     /// Returns a count of exec results.
@@ -859,8 +934,7 @@ where
     /// Returns the `Gas` cost of the last exec.
     pub fn last_exec_gas_cost(&self) -> Gas {
         let exec_results = self
-            .exec_results
-            .last()
+            .get_last_exec_results()
             .expect("Expected to be called after run()");
         let exec_result = exec_results.get(0).expect("should have result");
         exec_result.cost()
@@ -925,7 +999,38 @@ where
     }
 
     /// Gets [`UnbondingPurses`].
-    pub fn get_withdraws(&mut self) -> UnbondingPurses {
+    pub fn get_unbonds(&mut self) -> UnbondingPurses {
+        let correlation_id = CorrelationId::new();
+        let state_root_hash = self.get_post_state_hash();
+
+        let tracking_copy = self
+            .engine_state
+            .tracking_copy(state_root_hash)
+            .unwrap()
+            .unwrap();
+
+        let reader = tracking_copy.reader();
+
+        let unbond_keys = reader
+            .keys_with_prefix(correlation_id, &[KeyTag::Unbond as u8])
+            .unwrap_or_default();
+
+        let mut ret = BTreeMap::new();
+
+        for key in unbond_keys.into_iter() {
+            let read_result = reader.read(correlation_id, &key);
+            if let (Key::Unbond(account_hash), Ok(Some(StoredValue::Unbonding(unbonding_purses)))) =
+                (key, read_result)
+            {
+                ret.insert(account_hash, unbonding_purses);
+            }
+        }
+
+        ret
+    }
+
+    /// Gets [`WithdrawPurses`].
+    pub fn get_withdraws(&mut self) -> WithdrawPurses {
         let correlation_id = CorrelationId::new();
         let state_root_hash = self.get_post_state_hash();
 
@@ -945,12 +1050,10 @@ where
 
         for key in withdraws_keys.into_iter() {
             let read_result = reader.read(correlation_id, &key);
-            if let (
-                Key::Withdraw(account_hash),
-                Ok(Some(StoredValue::Withdraw(unbonding_purses))),
-            ) = (key, read_result)
+            if let (Key::Withdraw(account_hash), Ok(Some(StoredValue::Withdraw(withdraw_purses)))) =
+                (key, read_result)
             {
-                ret.insert(account_hash, unbonding_purses);
+                ret.insert(account_hash, withdraw_purses);
             }
         }
 
@@ -1057,7 +1160,8 @@ where
     /// Returns a trie by hash.
     pub fn get_trie(&mut self, state_hash: Digest) -> Option<Trie<Key, StoredValue>> {
         self.engine_state
-            .get_trie(CorrelationId::default(), state_hash)
+            .get_trie_full(CorrelationId::default(), state_hash)
             .unwrap()
+            .map(|bytes| bytesrepr::deserialize(bytes.into()).unwrap())
     }
 }

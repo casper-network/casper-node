@@ -147,6 +147,12 @@ impl ToBytes for ContractWasmHash {
     fn serialized_length(&self) -> usize {
         self.0.serialized_length()
     }
+
+    #[inline(always)]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        self.0.write_bytes(writer)?;
+        Ok(())
+    }
 }
 
 impl FromBytes for ContractWasmHash {
@@ -227,6 +233,7 @@ impl JsonSchema for ContractWasmHash {
 
 /// A container for contract's WASM bytes.
 #[derive(PartialEq, Eq, Clone, Serialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ContractWasm {
     bytes: Bytes,
 }
@@ -271,6 +278,11 @@ impl ToBytes for ContractWasm {
 
     fn serialized_length(&self) -> usize {
         self.bytes.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        (&self.bytes).write_bytes(writer)?;
+        Ok(())
     }
 }
 

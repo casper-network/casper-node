@@ -220,3 +220,9 @@ export declare function casper_blake2b(
     out_ptr: usize,
     out_size: usize,
 ): i32;
+/** @hidden */
+@external("env", "casper_load_authorization_keys")
+export declare function load_authorization_keys(
+    total_keys_ptr: usize,
+    result_size_ptr: usize,
+): i32;

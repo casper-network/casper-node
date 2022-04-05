@@ -91,7 +91,7 @@ impl CLValue {
         let expected = T::cl_type();
 
         if self.cl_type == expected {
-            Ok(bytesrepr::deserialize(self.bytes.into())?)
+            Ok(bytesrepr::deserialize_from_slice(&self.bytes)?)
         } else {
             Err(CLValueError::Type(CLTypeMismatch {
                 expected,
@@ -153,6 +153,12 @@ impl ToBytes for CLValue {
 
     fn serialized_length(&self) -> usize {
         self.bytes.serialized_length() + self.cl_type.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        (&self.bytes).write_bytes(writer)?;
+        self.cl_type.append_bytes(writer)?;
+        Ok(())
     }
 }
 

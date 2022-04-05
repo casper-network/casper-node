@@ -52,13 +52,12 @@ function main() {
     do_await_full_synchronization "$NEW_NODE_ID"
     # 12. Run Closing Health Checks
     # ... restarts=6: due to nodes being stopped and started
-    # ... errors=ignore: ticket sre issue 78
     source "$NCTL"/sh/scenarios/common/health_checks.sh \
-            errors='ignore' \
+            errors=0 \
             equivocators=0 \
             doppels=0 \
             crashes=0 \
-            restarts=6 \
+            restarts=5 \
             ejections=0
 
     log "------------------------------------------------------------"

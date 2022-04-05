@@ -20,6 +20,9 @@ function _upgrade_node() {
 
     local PATH_TO_NET
     local PATH_TO_NODE
+    local CHUNKED_HASH_ACTIVATION
+
+    CHUNKED_HASH_ACTIVATION="$ACTIVATE_ERA"
 
     PATH_TO_NET=$(get_path_to_net)
 
@@ -35,6 +38,7 @@ function _upgrade_node() {
         "cfg=toml.load('$PATH_TO_CHAINSPEC_FILE');"
         "cfg['protocol']['version']='$PROTOCOL_VERSION'.replace('_', '.');"
         "cfg['protocol']['activation_point']=$ACTIVATE_ERA;"
+        "cfg['protocol']['verifiable_chunked_hash_activation']=$CHUNKED_HASH_ACTIVATION;"
         "toml.dump(cfg, open('$PATH_TO_UPGRADED_CHAINSPEC_FILE', 'w'));"
     )
     python3 -c "${SCRIPT[*]}"

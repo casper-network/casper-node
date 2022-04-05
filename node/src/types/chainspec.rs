@@ -3,6 +3,7 @@
 
 mod accounts_config;
 mod activation_point;
+mod chainspec_raw_bytes;
 mod core_config;
 mod deploy_config;
 mod error;
@@ -24,7 +25,7 @@ use casper_execution_engine::{
     core::engine_state::genesis::ExecConfig,
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
-use casper_hashing::Digest;
+use casper_hashing::{ChunkWithProof, Digest};
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     ProtocolVersion,
@@ -34,16 +35,17 @@ use casper_types::{
 pub(crate) use self::accounts_config::{AccountConfig, ValidatorConfig};
 pub use self::error::Error;
 pub(crate) use self::{
-    accounts_config::AccountsConfig, activation_point::ActivationPoint, core_config::CoreConfig,
-    deploy_config::DeployConfig, global_state_update::GlobalStateUpdate,
-    highway_config::HighwayConfig, network_config::NetworkConfig, protocol_config::ProtocolConfig,
+    accounts_config::AccountsConfig, activation_point::ActivationPoint,
+    chainspec_raw_bytes::ChainspecRawBytes, core_config::CoreConfig, deploy_config::DeployConfig,
+    global_state_update::GlobalStateUpdate, highway_config::HighwayConfig,
+    network_config::NetworkConfig, protocol_config::ProtocolConfig,
 };
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::utils::Loadable;
 
 /// The name of the chainspec file on disk.
-pub const CHAINSPEC_NAME: &str = "chainspec.toml";
+pub const CHAINSPEC_FILENAME: &str = "chainspec.toml";
 
 /// A collection of configuration settings describing the state of the system at genesis and after
 /// upgrades to basic system functionality occurring after genesis.
@@ -68,6 +70,16 @@ pub struct Chainspec {
 impl Chainspec {
     /// Returns `false` and logs errors if the values set in the config don't make sense.
     pub(crate) fn is_valid(&self) -> bool {
+        if (self.network_config.maximum_net_message_size as usize)
+            < ChunkWithProof::CHUNK_SIZE_BYTES * 3
+        {
+            warn!(
+                "config value [network][maximum_net_message_size] should be set to at least
+            CHUNK_SIZE_BYTES * 3 ({})",
+                ChunkWithProof::CHUNK_SIZE_BYTES * 3
+            );
+        }
+
         let min_era_ms = 1u64 << self.highway_config.minimum_round_exponent;
         // If the era duration is set to zero, we will treat it as explicitly stating that eras
         // should be defined by height only.
@@ -88,11 +100,6 @@ impl Chainspec {
             vec![]
         });
         Digest::hash(&serialized_chainspec)
-    }
-
-    /// Returns true if this chainspec has an activation_point specifying era ID 0.
-    pub(crate) fn is_genesis(&self) -> bool {
-        self.protocol_config.activation_point.is_genesis()
     }
 
     /// Returns the protocol version of the chainspec.
@@ -171,11 +178,11 @@ impl FromBytes for Chainspec {
     }
 }
 
-impl Loadable for Chainspec {
+impl Loadable for (Chainspec, ChainspecRawBytes) {
     type Error = Error;
 
     fn from_path<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error> {
-        parse_toml::parse_toml(path.as_ref().join(CHAINSPEC_NAME))
+        parse_toml::parse_toml(path.as_ref().join(CHAINSPEC_FILENAME))
     }
 }
 
@@ -376,9 +383,9 @@ mod tests {
     #[ignore = "We probably need to reconsider our approach here"]
     #[test]
     fn check_bundled_spec() {
-        let chainspec = Chainspec::from_resources("test/valid/0_9_0");
+        let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("test/valid/0_9_0");
         check_spec(chainspec, true);
-        let chainspec = Chainspec::from_resources("test/valid/1_0_0");
+        let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("test/valid/1_0_0");
         check_spec(chainspec, false);
     }
 
@@ -408,8 +415,9 @@ mod tests {
         // Different accounts.toml file content
         assert_ne!(accounts, accounts_unordered);
 
-        let chainspec = Chainspec::from_resources(PATH);
-        let chainspec_unordered = Chainspec::from_resources(PATH_UNORDERED);
+        let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources(PATH);
+        let (chainspec_unordered, _) =
+            <(Chainspec, ChainspecRawBytes)>::from_resources(PATH_UNORDERED);
 
         // Deserializes into equal objects
         assert_eq!(chainspec, chainspec_unordered);

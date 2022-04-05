@@ -5,15 +5,20 @@ use alloc::{
     vec::Vec,
 };
 
+use core::convert::TryInto;
+#[cfg(feature = "datasize")]
+use datasize::DataSize;
+
 use serde::{Deserialize, Serialize};
 
 use crate::{
     account::{AccountHash, AddKeyFailure, RemoveKeyFailure, UpdateKeyFailure, Weight},
-    bytesrepr::{Error, FromBytes, ToBytes},
+    bytesrepr::{self, Error, FromBytes, ToBytes},
 };
 
 /// A mapping that represents the association of a [`Weight`] with an [`AccountHash`].
 #[derive(Default, PartialOrd, Ord, PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct AssociatedKeys(BTreeMap<AccountHash, Weight>);
 
 impl AssociatedKeys {
@@ -129,6 +134,20 @@ impl ToBytes for AssociatedKeys {
 
     fn serialized_length(&self) -> usize {
         self.0.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        let length_32: u32 = self
+            .0
+            .len()
+            .try_into()
+            .map_err(|_| Error::NotRepresentable)?;
+        writer.extend_from_slice(&length_32.to_le_bytes());
+        for (key, weight) in self.0.iter() {
+            key.write_bytes(writer)?;
+            weight.write_bytes(writer)?;
+        }
+        Ok(())
     }
 }
 

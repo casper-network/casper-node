@@ -3,6 +3,8 @@
 
 use alloc::vec::Vec;
 
+#[cfg(feature = "datasize")]
+use datasize::DataSize;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -15,6 +17,7 @@ use crate::{
 
 /// Information relating to the given Deploy.
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct DeployInfo {
@@ -73,11 +76,11 @@ impl FromBytes for DeployInfo {
 impl ToBytes for DeployInfo {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-        result.append(&mut self.deploy_hash.to_bytes()?);
-        result.append(&mut self.transfers.to_bytes()?);
-        result.append(&mut self.from.to_bytes()?);
-        result.append(&mut self.source.to_bytes()?);
-        result.append(&mut self.gas.to_bytes()?);
+        (&self.deploy_hash).write_bytes(&mut result)?;
+        self.transfers.write_bytes(&mut result)?;
+        (&self.from).write_bytes(&mut result)?;
+        (&self.source).write_bytes(&mut result)?;
+        self.gas.write_bytes(&mut result)?;
         Ok(result)
     }
 
@@ -87,6 +90,15 @@ impl ToBytes for DeployInfo {
             + self.from.serialized_length()
             + self.source.serialized_length()
             + self.gas.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        (&self.deploy_hash).write_bytes(writer)?;
+        self.transfers.write_bytes(writer)?;
+        (&self.from).write_bytes(writer)?;
+        (&self.source).write_bytes(writer)?;
+        self.gas.write_bytes(writer)?;
+        Ok(())
     }
 }
 

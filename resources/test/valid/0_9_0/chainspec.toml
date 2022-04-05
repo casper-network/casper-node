@@ -2,6 +2,7 @@
 version = '0.9.0'
 hard_reset = false
 activation_point = '2020-09-18T18:45:00Z'
+verifiable_chunked_hash_activation = 0
 
 [network]
 name = 'test-chain'
@@ -17,8 +18,8 @@ round_seigniorage_rate = [6_414, 623_437_335_209]
 unbonding_delay = 14
 max_associated_keys = 100
 max_runtime_call_stack_height = 12
-max_stored_value_size = 8_388_608
 minimum_delegation_amount = 500_000_000_000
+strict_argument_checking = false
 
 [highway]
 finality_threshold_fraction = [2, 25]

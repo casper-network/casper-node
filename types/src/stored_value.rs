@@ -7,6 +7,8 @@ use alloc::{
 };
 use core::{convert::TryFrom, fmt::Debug};
 
+#[cfg(feature = "datasize")]
+use datasize::DataSize;
 use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
 use serde_bytes::ByteBuf;
 
@@ -14,7 +16,7 @@ use crate::{
     account::Account,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::ContractPackage,
-    system::auction::{Bid, EraInfo, UnbondingPurse},
+    system::auction::{Bid, EraInfo, UnbondingPurse, WithdrawPurse},
     CLValue, Contract, ContractWasm, DeployInfo, Transfer,
 };
 pub use type_mismatch::TypeMismatch;
@@ -32,10 +34,12 @@ enum Tag {
     EraInfo = 7,
     Bid = 8,
     Withdraw = 9,
+    Unbonding = 10,
 }
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Eq, PartialEq, Clone, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 /// StoredValue represents all possible variants of values stored in Global State.
 pub enum StoredValue {
     /// Variant that stores [`CLValue`].
@@ -56,8 +60,10 @@ pub enum StoredValue {
     EraInfo(EraInfo),
     /// Variant that stores [`Bid`].
     Bid(Box<Bid>),
+    /// Variant that stores withdraw information.
+    Withdraw(Vec<WithdrawPurse>),
     /// Variant that stores unbonding information.
-    Withdraw(Vec<UnbondingPurse>),
+    Unbonding(Vec<UnbondingPurse>),
 }
 
 impl StoredValue {
@@ -125,10 +131,18 @@ impl StoredValue {
         }
     }
 
-    /// Returns a wrapped list of [`UnbondingPurse`]s if this is a `Withdraw` variant.
-    pub fn as_withdraw(&self) -> Option<&Vec<UnbondingPurse>> {
+    /// Returns a wrapped list of [`WithdrawPurse`]s if this is a `Withdraw` variant.
+    pub fn as_withdraw(&self) -> Option<&Vec<WithdrawPurse>> {
         match self {
-            StoredValue::Withdraw(unbonding_purses) => Some(unbonding_purses),
+            StoredValue::Withdraw(withdraw_purses) => Some(withdraw_purses),
+            _ => None,
+        }
+    }
+
+    /// Returns a wrapped list of [`UnbondingPurse`]s if this is a `Unbonding` variant.
+    pub fn as_unbonding(&self) -> Option<&Vec<UnbondingPurse>> {
+        match self {
+            StoredValue::Unbonding(unbonding_purses) => Some(unbonding_purses),
             _ => None,
         }
     }
@@ -148,6 +162,23 @@ impl StoredValue {
             StoredValue::EraInfo(_) => "EraInfo".to_string(),
             StoredValue::Bid(_) => "Bid".to_string(),
             StoredValue::Withdraw(_) => "Withdraw".to_string(),
+            StoredValue::Unbonding(_) => "Unbonding".to_string(),
+        }
+    }
+
+    fn tag(&self) -> Tag {
+        match self {
+            StoredValue::CLValue(_) => Tag::CLValue,
+            StoredValue::Account(_) => Tag::Account,
+            StoredValue::ContractWasm(_) => Tag::ContractWasm,
+            StoredValue::Contract(_) => Tag::Contract,
+            StoredValue::ContractPackage(_) => Tag::ContractPackage,
+            StoredValue::Transfer(_) => Tag::Transfer,
+            StoredValue::DeployInfo(_) => Tag::DeployInfo,
+            StoredValue::EraInfo(_) => Tag::EraInfo,
+            StoredValue::Bid(_) => Tag::Bid,
+            StoredValue::Withdraw(_) => Tag::Withdraw,
+            StoredValue::Unbonding(_) => Tag::Unbonding,
         }
     }
 }
@@ -306,8 +337,9 @@ impl ToBytes for StoredValue {
             StoredValue::DeployInfo(deploy_info) => (Tag::DeployInfo, deploy_info.to_bytes()?),
             StoredValue::EraInfo(era_info) => (Tag::EraInfo, era_info.to_bytes()?),
             StoredValue::Bid(bid) => (Tag::Bid, bid.to_bytes()?),
-            StoredValue::Withdraw(unbonding_purses) => {
-                (Tag::Withdraw, unbonding_purses.to_bytes()?)
+            StoredValue::Withdraw(withdraw_purses) => (Tag::Withdraw, withdraw_purses.to_bytes()?),
+            StoredValue::Unbonding(unbonding_purses) => {
+                (Tag::Unbonding, unbonding_purses.to_bytes()?)
             }
         };
         result.push(tag as u8);
@@ -329,8 +361,29 @@ impl ToBytes for StoredValue {
                 StoredValue::DeployInfo(deploy_info) => deploy_info.serialized_length(),
                 StoredValue::EraInfo(era_info) => era_info.serialized_length(),
                 StoredValue::Bid(bid) => bid.serialized_length(),
-                StoredValue::Withdraw(unbonding_purses) => unbonding_purses.serialized_length(),
+                StoredValue::Withdraw(withdraw_purses) => withdraw_purses.serialized_length(),
+                StoredValue::Unbonding(unbonding_purses) => unbonding_purses.serialized_length(),
             }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        writer.push(self.tag() as u8);
+        match self {
+            StoredValue::CLValue(cl_value) => cl_value.write_bytes(writer)?,
+            StoredValue::Account(account) => account.write_bytes(writer)?,
+            StoredValue::ContractWasm(contract_wasm) => contract_wasm.write_bytes(writer)?,
+            StoredValue::Contract(contract_header) => contract_header.write_bytes(writer)?,
+            StoredValue::ContractPackage(contract_package) => {
+                contract_package.write_bytes(writer)?
+            }
+            StoredValue::Transfer(transfer) => transfer.write_bytes(writer)?,
+            StoredValue::DeployInfo(deploy_info) => deploy_info.write_bytes(writer)?,
+            StoredValue::EraInfo(era_info) => era_info.write_bytes(writer)?,
+            StoredValue::Bid(bid) => bid.write_bytes(writer)?,
+            StoredValue::Withdraw(unbonding_purses) => unbonding_purses.write_bytes(writer)?,
+            StoredValue::Unbonding(unbonding_purses) => unbonding_purses.write_bytes(writer)?,
+        };
+        Ok(())
     }
 }
 
@@ -363,8 +416,13 @@ impl FromBytes for StoredValue {
             tag if tag == Tag::Bid as u8 => Bid::from_bytes(remainder)
                 .map(|(bid, remainder)| (StoredValue::Bid(Box::new(bid)), remainder)),
             tag if tag == Tag::Withdraw as u8 => {
+                Vec::<WithdrawPurse>::from_bytes(remainder).map(|(withdraw_purses, remainder)| {
+                    (StoredValue::Withdraw(withdraw_purses), remainder)
+                })
+            }
+            tag if tag == Tag::Unbonding as u8 => {
                 Vec::<UnbondingPurse>::from_bytes(remainder).map(|(unbonding_purses, remainder)| {
-                    (StoredValue::Withdraw(unbonding_purses), remainder)
+                    (StoredValue::Unbonding(unbonding_purses), remainder)
                 })
             }
             _ => Err(bytesrepr::Error::Formatting),

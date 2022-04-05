@@ -20,8 +20,7 @@ use once_cell::sync::Lazy;
 
 use casper_execution_engine::{
     core::engine_state::{
-        genesis::{ExecConfig, GenesisAccount, GenesisConfig},
-        run_genesis_request::RunGenesisRequest,
+        ChainspecRegistry, ExecConfig, GenesisAccount, GenesisConfig, RunGenesisRequest,
     },
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
@@ -59,8 +58,6 @@ pub const DEFAULT_CHAIN_NAME: &str = "casper-execution-engine-testing";
 pub const DEFAULT_GENESIS_TIMESTAMP_MILLIS: u64 = 0;
 /// Default maximum number of associated keys.
 pub const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
-/// Default max serialized size of `StoredValue`s.
-pub const DEFAULT_MAX_STORED_VALUE_SIZE: u32 = 8 * 1024 * 1024;
 /// Default block time.
 pub const DEFAULT_BLOCK_TIME: u64 = 0;
 /// Default gas price.
@@ -144,12 +141,16 @@ pub static DEFAULT_GENESIS_CONFIG: Lazy<GenesisConfig> = Lazy::new(|| {
         DEFAULT_EXEC_CONFIG.clone(),
     )
 });
+/// Default [`ChainspecRegistry`].
+pub static DEFAULT_CHAINSPEC_REGISTRY: Lazy<ChainspecRegistry> =
+    Lazy::new(|| ChainspecRegistry::new_with_genesis(&[1, 2, 3], &[4, 5, 6]));
 /// Default [`RunGenesisRequest`].
 pub static DEFAULT_RUN_GENESIS_REQUEST: Lazy<RunGenesisRequest> = Lazy::new(|| {
     RunGenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
         *DEFAULT_PROTOCOL_VERSION,
         DEFAULT_EXEC_CONFIG.clone(),
+        DEFAULT_CHAINSPEC_REGISTRY.clone(),
     )
 });
 /// System address.

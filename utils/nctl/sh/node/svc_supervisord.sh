@@ -11,19 +11,21 @@ function do_node_start()
     local NODE_ID=${1}
     local TRUSTED_HASH=${2}
 
-    local NODE_PROTOCOL_VERSION
     local PATH_TO_NODE_CONFIG
+    local CONFIG_TOML_ARRAY
     local PROCESS_NAME
 
-    NODE_PROTOCOL_VERSION=$(get_node_protocol_version_from_fs "$NODE_ID" "_")
-    PATH_TO_NODE_CONFIG="$(get_path_to_node_config "$NODE_ID")/$NODE_PROTOCOL_VERSION/config.toml"
+    PATH_TO_NODE_CONFIG="$(get_path_to_node_config $NODE_ID)"
+    CONFIG_TOML_ARRAY=($(find "$PATH_TO_NODE_CONFIG" -name 'config.toml'))
 
     if [ ! -e "$(get_path_net_supervisord_sock)" ]; then
         _do_supervisord_start
     fi
 
     if [ -n "$TRUSTED_HASH" ]; then
-        _update_node_config_on_start "$PATH_TO_NODE_CONFIG" "$TRUSTED_HASH"
+        for i in ${CONFIG_TOML_ARRAY[@]}; do
+            _update_node_config_on_start "$i" "$TRUSTED_HASH"
+        done
     fi
 
     PROCESS_NAME=$(get_process_name_of_node_in_group "$NODE_ID")
@@ -106,7 +108,7 @@ function do_node_stop_all()
 {
     if [ -e "$(get_path_net_supervisord_sock)" ]; then
         log "... stopping supervisord"
-        supervisorctl -c "$(get_path_net_supervisord_cfg)" shutdown > /dev/null 2>&1
+        supervisorctl -c "$(get_path_net_supervisord_cfg)" shutdown > /dev/null 2>&1 || true
         sleep 2.0
     fi
 }

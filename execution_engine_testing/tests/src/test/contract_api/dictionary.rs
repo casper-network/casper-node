@@ -1,8 +1,8 @@
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, ARG_AMOUNT,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
-    DEFAULT_GENESIS_CONFIG, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_PAYMENT,
-    DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG, DEFAULT_GENESIS_CONFIG_HASH,
+    DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::core::{
     engine_state::{run_genesis_request::RunGenesisRequest, Error as EngineError, GenesisAccount},
@@ -210,8 +210,7 @@ fn should_not_write_with_read_access_rights() {
     builder.exec(call_request).commit();
 
     let exec_results = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have results");
     assert_eq!(exec_results.len(), 1);
     let error = exec_results[0].as_error().expect("should have error");
@@ -265,9 +264,9 @@ fn should_not_read_with_write_access_rights() {
     builder.exec(call_request).commit();
 
     let exec_results = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have results");
+
     assert_eq!(exec_results.len(), 1);
     let error = exec_results[0].as_error().expect("should have error");
     assert!(
@@ -351,8 +350,7 @@ fn should_not_write_with_forged_uref() {
     builder.exec(call_request).commit();
 
     let exec_results = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have results");
     assert_eq!(exec_results.len(), 1);
     let error = exec_results[0].as_error().expect("should have error");
@@ -392,8 +390,7 @@ fn should_fail_put_with_invalid_dictionary_item_key() {
 
     builder.exec(call_request).commit();
     let exec_results = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have results");
     assert_eq!(exec_results.len(), 1);
     let error = exec_results[0].as_error().expect("should have error");
@@ -432,8 +429,7 @@ fn should_fail_get_with_invalid_dictionary_item_key() {
 
     builder.exec(call_request).commit();
     let exec_results = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have results");
     assert_eq!(exec_results.len(), 1);
     let error = exec_results[0].as_error().expect("should have error");
@@ -476,8 +472,7 @@ fn dictionary_put_should_fail_with_large_item_key() {
     builder.exec(fund_request).commit().expect_success();
     builder.exec(install_contract_request).commit();
     let exec_results = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have results");
     assert_eq!(exec_results.len(), 1);
     let error = exec_results[0].as_error().expect("should have error");
@@ -520,8 +515,7 @@ fn dictionary_get_should_fail_with_large_item_key() {
     builder.exec(fund_request).commit().expect_success();
     builder.exec(install_contract_request).commit();
     let exec_results = builder
-        .get_exec_results()
-        .last()
+        .get_last_exec_results()
         .expect("should have results");
     assert_eq!(exec_results.len(), 1);
     let error = exec_results[0].as_error().expect("should have error");
@@ -550,6 +544,7 @@ fn should_query_dictionary_items_with_test_builder() {
         *DEFAULT_GENESIS_CONFIG_HASH,
         genesis_config.protocol_version(),
         genesis_config.take_ee_config(),
+        DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
 
     let dictionary_code = PathBuf::from(DICTIONARY_WASM);
@@ -558,6 +553,7 @@ fn should_query_dictionary_items_with_test_builder() {
         .with_session_code(dictionary_code, RuntimeArgs::new())
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .with_deploy_hash([42; 32])
         .build();
 
     let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();

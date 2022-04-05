@@ -12,8 +12,9 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
-use casper_hashing::Digest;
+use casper_hashing::{ChunkWithProof, Digest};
 use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+use datasize::DataSize;
 
 #[cfg(test)]
 pub mod gens;
@@ -75,14 +76,20 @@ impl Pointer {
 impl ToBytes for Pointer {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
-        ret.push(self.tag());
-        ret.extend_from_slice(self.hash().as_ref());
+        self.write_bytes(&mut ret)?;
         Ok(ret)
     }
 
     #[inline(always)]
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH + Digest::LENGTH
+    }
+
+    #[inline]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        writer.push(self.tag());
+        writer.extend_from_slice(self.hash().as_ref());
+        Ok(())
     }
 }
 
@@ -235,6 +242,13 @@ impl ToBytes for PointerBlock {
     fn serialized_length(&self) -> usize {
         self.0.iter().map(ToBytes::serialized_length).sum()
     }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        for pointer in self.0.iter() {
+            pointer.write_bytes(writer)?;
+        }
+        Ok(())
+    }
 }
 
 impl FromBytes for PointerBlock {
@@ -333,6 +347,107 @@ impl ::std::fmt::Debug for PointerBlock {
     }
 }
 
+/// Represents a Merkle Tree or a chunk of data with attached proof.
+/// Chunk with attached proof is used when the requested
+/// trie is larger than [ChunkWithProof::CHUNK_SIZE_BYTES].
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum TrieOrChunk {
+    /// Represents a Merkle Trie.
+    Trie(Bytes),
+    /// Represents a chunk of data with attached proof.
+    ChunkWithProof(ChunkWithProof),
+}
+
+impl Display for TrieOrChunk {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            TrieOrChunk::Trie(trie) => f.debug_tuple("Trie").field(trie).finish(),
+            TrieOrChunk::ChunkWithProof(chunk) => f
+                .debug_struct("ChunkWithProof")
+                .field("index", &chunk.proof().index())
+                .field("hash", &chunk.proof().root_hash())
+                .finish(),
+        }
+    }
+}
+
+impl TrieOrChunk {
+    fn tag(&self) -> u8 {
+        match self {
+            TrieOrChunk::Trie(_) => 0,
+            TrieOrChunk::ChunkWithProof(_) => 1,
+        }
+    }
+}
+
+impl ToBytes for TrieOrChunk {
+    fn write_bytes(&self, buf: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        buf.push(self.tag());
+
+        match self {
+            TrieOrChunk::Trie(trie) => {
+                buf.append(&mut trie.to_bytes()?);
+            }
+            TrieOrChunk::ChunkWithProof(chunk) => {
+                buf.append(&mut chunk.to_bytes()?);
+            }
+        }
+
+        Ok(())
+    }
+
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut ret = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut ret)?;
+        Ok(ret)
+    }
+
+    fn serialized_length(&self) -> usize {
+        U8_SERIALIZED_LENGTH
+            + match self {
+                TrieOrChunk::Trie(trie) => trie.serialized_length(),
+                TrieOrChunk::ChunkWithProof(chunk) => chunk.serialized_length(),
+            }
+    }
+}
+
+impl FromBytes for TrieOrChunk {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, rem) = u8::from_bytes(bytes)?;
+        match tag {
+            0 => {
+                let (trie_bytes, rem) = Bytes::from_bytes(rem)?;
+                Ok((TrieOrChunk::Trie(trie_bytes), rem))
+            }
+            1 => {
+                let (chunk, rem) = ChunkWithProof::from_bytes(rem)?;
+                Ok((TrieOrChunk::ChunkWithProof(chunk), rem))
+            }
+            _ => Err(bytesrepr::Error::Formatting),
+        }
+    }
+}
+
+/// Represents the ID of a `TrieOrChunk` - containing the index and the root hash.
+/// The root hash is the hash of the trie node as a whole.
+/// The index is the index of a chunk if the node's size is too large and requires chunking. For
+/// small nodes, it's always 0.
+#[derive(DataSize, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct TrieOrChunkId(pub u64, pub Digest);
+
+impl TrieOrChunkId {
+    /// Returns the trie key part of the ID.
+    pub fn digest(&self) -> &Digest {
+        &self.1
+    }
+}
+
+impl Display for TrieOrChunkId {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "({}, {})", self.0, self.1)
+    }
+}
+
 /// Represents a Merkle Trie.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Trie<K, V> {
@@ -404,6 +519,15 @@ impl<K, V> Trie<K, V> {
         }
     }
 
+    /// Returns the hash of this Trie.
+    pub fn trie_hash(&self) -> Result<Digest, bytesrepr::Error>
+    where
+        Self: ToBytes,
+    {
+        self.to_bytes()
+            .map(|bytes| hash_bytes_into_chunks_if_necessary(&bytes))
+    }
+
     /// Returns a pointer block, if possible.
     pub fn as_pointer_block(&self) -> Option<&PointerBlock> {
         if let Self::Node { pointer_block } = self {
@@ -414,6 +538,19 @@ impl<K, V> Trie<K, V> {
     }
 }
 
+/// Hash bytes into chunks if necessary.
+pub(crate) fn hash_bytes_into_chunks_if_necessary(bytes: &[u8]) -> Digest {
+    if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
+        Digest::hash(bytes)
+    } else {
+        Digest::hash_merkle_tree(
+            bytes
+                .chunks(ChunkWithProof::CHUNK_SIZE_BYTES)
+                .map(Digest::hash),
+        )
+    }
+}
+
 impl<K, V> ToBytes for Trie<K, V>
 where
     K: ToBytes,
@@ -421,21 +558,7 @@ where
 {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::allocate_buffer(self)?;
-        ret.push(self.tag());
-
-        match self {
-            Trie::Leaf { key, value } => {
-                ret.append(&mut key.to_bytes()?);
-                ret.append(&mut value.to_bytes()?);
-            }
-            Trie::Node { pointer_block } => {
-                ret.append(&mut pointer_block.to_bytes()?);
-            }
-            Trie::Extension { affix, pointer } => {
-                ret.append(&mut affix.to_bytes()?);
-                ret.append(&mut pointer.to_bytes()?);
-            }
-        }
+        self.write_bytes(&mut ret)?;
         Ok(ret)
     }
 
@@ -448,6 +571,22 @@ where
                     affix.serialized_length() + pointer.serialized_length()
                 }
             }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        writer.push(self.tag());
+        match self {
+            Trie::Leaf { key, value } => {
+                key.write_bytes(writer)?;
+                value.write_bytes(writer)?;
+            }
+            Trie::Node { pointer_block } => pointer_block.write_bytes(writer)?,
+            Trie::Extension { affix, pointer } => {
+                affix.write_bytes(writer)?;
+                pointer.write_bytes(writer)?;
+            }
+        }
+        Ok(())
     }
 }
 

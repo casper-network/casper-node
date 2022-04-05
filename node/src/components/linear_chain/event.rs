@@ -4,18 +4,14 @@ use std::{
 };
 
 use casper_types::ExecutionResult;
-use derive_more::From;
 
 use crate::{
-    effect::requests::LinearChainRequest,
-    types::{Block, BlockSignatures, DeployHash, FinalitySignature},
+    effect::incoming::FinalitySignatureIncoming,
+    types::{ActivationPoint, Block, BlockSignatures, DeployHash, FinalitySignature},
 };
 
-#[derive(Debug, From)]
-pub(crate) enum Event<I> {
-    /// A linear chain request issued by another node in the network.
-    #[from]
-    Request(LinearChainRequest<I>),
+#[derive(Debug)]
+pub(crate) enum Event {
     /// New linear chain block has been produced.
     NewLinearChainBlock {
         /// The block.
@@ -35,12 +31,21 @@ pub(crate) enum Event<I> {
     GetStoredFinalitySignaturesResult(Box<FinalitySignature>, Option<Box<BlockSignatures>>),
     /// Result of testing if creator of the finality signature is bonded validator.
     IsBonded(Option<Box<BlockSignatures>>, Box<FinalitySignature>, bool),
+    /// We stored the last block before the next upgrade, with a complete set of signatures.
+    Upgrade,
+    /// Got the result of checking for an upgrade activation point.
+    GotUpgradeActivationPoint(ActivationPoint),
 }
 
-impl<I: Display> Display for Event<I> {
+impl From<FinalitySignatureIncoming> for Event {
+    fn from(incoming: FinalitySignatureIncoming) -> Self {
+        Event::FinalitySignatureReceived(incoming.message, true)
+    }
+}
+
+impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::Request(req) => write!(f, "linear chain request: {}", req),
             Event::NewLinearChainBlock { block, .. } => {
                 write!(f, "linear chain new block: {}", block.hash())
             }
@@ -65,6 +70,12 @@ impl<I: Display> Display for Event<I> {
                     fs.era_id, fs.public_key, is_bonded
                 )
             }
+            Event::Upgrade => write!(f, "linear chain: shut down for upgrade"),
+            Event::GotUpgradeActivationPoint(activation_point) => write!(
+                f,
+                "linear chain got upgrade activation point {}",
+                activation_point
+            ),
         }
     }
 }

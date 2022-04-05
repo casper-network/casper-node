@@ -1,11 +1,20 @@
 use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
 
-use std::{collections::BTreeMap, iter};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    iter,
+};
 
 use casper_types::{
-    account::AccountHash,
+    account::{Account, AccountHash, ActionThresholds, AssociatedKeys, Weight},
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    AccessRights, CLTyped, CLValue, Key, URef, U128, U256, U512,
+    contracts::{ContractPackageStatus, NamedKeys},
+    system::auction::{Bid, Delegator, EraInfo, SeigniorageAllocation},
+    AccessRights, CLType, CLTyped, CLValue, Contract, ContractHash, ContractPackage,
+    ContractPackageHash, ContractVersionKey, ContractWasmHash, DeployHash, DeployInfo, EntryPoint,
+    EntryPointAccess, EntryPointType, EntryPoints, Group, Key, Parameter, ProtocolVersion,
+    PublicKey, SecretKey, Transfer, TransferAddr, URef, KEY_HASH_LENGTH, TRANSFER_ADDR_LENGTH,
+    U128, U256, U512, UREF_ADDR_LENGTH,
 };
 
 static KB: usize = 1024;
@@ -305,7 +314,7 @@ fn serialize_cl_value<T: CLTyped + ToBytes>(raw_value: T) -> Vec<u8> {
 fn benchmark_deserialization<T: CLTyped + ToBytes + FromBytes>(b: &mut Bencher, raw_value: T) {
     let serialized_value = serialize_cl_value(raw_value);
     b.iter(|| {
-        let cl_value: CLValue = bytesrepr::deserialize(serialized_value.clone()).unwrap();
+        let cl_value: CLValue = bytesrepr::deserialize_from_slice(&serialized_value).unwrap();
         let _raw_value: T = cl_value.into_t().unwrap();
     });
 }
@@ -437,6 +446,291 @@ fn deserialize_u512(b: &mut Bencher) {
     b.iter(|| U512::from_bytes(black_box(&num_u512_bytes)))
 }
 
+fn sample_account(associated_keys_len: u8, named_keys_len: u8) -> Account {
+    let account_hash = AccountHash::default();
+    let named_keys: NamedKeys = sample_named_keys(named_keys_len);
+    let main_purse = URef::default();
+    let associated_keys = {
+        let mut tmp = AssociatedKeys::new(AccountHash::default(), Weight::new(1));
+        (1..associated_keys_len).for_each(|i| {
+            tmp.add_key(
+                AccountHash::new([i; casper_types::account::ACCOUNT_HASH_LENGTH]),
+                Weight::new(1),
+            )
+            .unwrap()
+        });
+        tmp
+    };
+    let action_thresholds = ActionThresholds::default();
+    Account::new(
+        account_hash,
+        named_keys,
+        main_purse,
+        associated_keys,
+        action_thresholds,
+    )
+}
+
+fn serialize_account(b: &mut Bencher) {
+    let account = sample_account(10, 10);
+    b.iter(|| ToBytes::to_bytes(black_box(&account)));
+}
+
+fn deserialize_account(b: &mut Bencher) {
+    let account = sample_account(10, 10);
+    let account_bytes = Account::to_bytes(&account).unwrap();
+    b.iter(|| Account::from_bytes(black_box(&account_bytes)).unwrap());
+}
+
+fn serialize_contract(b: &mut Bencher) {
+    let contract = sample_contract(10, 10);
+    b.iter(|| ToBytes::to_bytes(black_box(&contract)));
+}
+
+fn deserialize_contract(b: &mut Bencher) {
+    let contract = sample_contract(10, 10);
+    let contract_bytes = Contract::to_bytes(&contract).unwrap();
+    b.iter(|| Contract::from_bytes(black_box(&contract_bytes)).unwrap());
+}
+
+fn sample_named_keys(len: u8) -> BTreeMap<String, Key> {
+    (0..len)
+        .map(|i| {
+            (
+                format!("named-key-{}", i),
+                Key::Account(AccountHash::default()),
+            )
+        })
+        .collect()
+}
+
+fn sample_contract(named_keys_len: u8, entry_points_len: u8) -> Contract {
+    let named_keys: NamedKeys = sample_named_keys(named_keys_len);
+
+    let entry_points = {
+        let mut tmp = EntryPoints::default();
+        (1..entry_points_len).for_each(|i| {
+            let args = vec![
+                Parameter::new("first", CLType::U32),
+                Parameter::new("Foo", CLType::U32),
+            ];
+            let entry_point = EntryPoint::new(
+                format!("test-{}", i),
+                args,
+                casper_types::CLType::U512,
+                EntryPointAccess::groups(&["Group 2"]),
+                EntryPointType::Contract,
+            );
+            tmp.add_entry_point(entry_point);
+        });
+        tmp
+    };
+
+    casper_types::contracts::Contract::new(
+        ContractPackageHash::default(),
+        ContractWasmHash::default(),
+        named_keys,
+        entry_points,
+        ProtocolVersion::default(),
+    )
+}
+
+fn contract_version_key_fn(i: u8) -> ContractVersionKey {
+    ContractVersionKey::new(i as u32, i as u32)
+}
+
+fn contract_hash_fn(i: u8) -> ContractHash {
+    ContractHash::new([i; KEY_HASH_LENGTH])
+}
+
+fn sample_map<K: Ord, V, FK, FV>(key_fn: FK, value_fn: FV, count: u8) -> BTreeMap<K, V>
+where
+    FK: Fn(u8) -> K,
+    FV: Fn(u8) -> V,
+{
+    (0..count)
+        .map(|i| {
+            let key = key_fn(i);
+            let value = value_fn(i);
+            (key, value)
+        })
+        .collect()
+}
+
+fn sample_set<K: Ord, F>(fun: F, count: u8) -> BTreeSet<K>
+where
+    F: Fn(u8) -> K,
+{
+    (0..count).map(fun).collect()
+}
+
+fn sample_group(i: u8) -> Group {
+    Group::new(format!("group-{}", i))
+}
+
+fn sample_uref(i: u8) -> URef {
+    URef::new([i; UREF_ADDR_LENGTH], AccessRights::all())
+}
+
+fn sample_contract_package(
+    contract_versions_len: u8,
+    disabled_versions_len: u8,
+    groups_len: u8,
+) -> ContractPackage {
+    let access_key = URef::default();
+    let versions = sample_map(
+        contract_version_key_fn,
+        contract_hash_fn,
+        contract_versions_len,
+    );
+    let disabled_versions = sample_set(contract_version_key_fn, disabled_versions_len);
+    let groups = sample_map(sample_group, |_| sample_set(sample_uref, 3), groups_len);
+
+    ContractPackage::new(
+        access_key,
+        versions,
+        disabled_versions,
+        groups,
+        ContractPackageStatus::Locked,
+    )
+}
+
+fn serialize_contract_package(b: &mut Bencher) {
+    let contract = sample_contract_package(5, 1, 5);
+    b.iter(|| ContractPackage::to_bytes(black_box(&contract)));
+}
+
+fn deserialize_contract_package(b: &mut Bencher) {
+    let contract_package = sample_contract_package(5, 1, 5);
+    let contract_bytes = ContractPackage::to_bytes(&contract_package).unwrap();
+    b.iter(|| ContractPackage::from_bytes(black_box(&contract_bytes)).unwrap());
+}
+
+fn u32_to_pk(i: u32) -> PublicKey {
+    let mut sk_bytes = [0u8; 32];
+    U256::from(i).to_big_endian(&mut sk_bytes);
+    let sk = SecretKey::ed25519_from_bytes(sk_bytes).unwrap();
+    PublicKey::from(&sk)
+}
+
+fn sample_delegators(delegators_len: u32) -> Vec<Delegator> {
+    (0..delegators_len)
+        .map(|i| {
+            let delegator_pk = u32_to_pk(i);
+            let staked_amount = U512::from_dec_str("123123123123123").unwrap();
+            let bonding_purse = URef::default();
+            let validator_pk = u32_to_pk(i);
+            Delegator::unlocked(delegator_pk, staked_amount, bonding_purse, validator_pk)
+        })
+        .collect()
+}
+
+fn sample_bid(delegators_len: u32) -> Bid {
+    let validator_public_key = PublicKey::System;
+    let bonding_purse = URef::default();
+    let staked_amount = U512::from_dec_str("123123123123123").unwrap();
+    let delegation_rate = 10u8;
+    let mut bid = Bid::unlocked(
+        validator_public_key,
+        bonding_purse,
+        staked_amount,
+        delegation_rate,
+    );
+    let new_delegators = sample_delegators(delegators_len);
+
+    let curr_delegators = bid.delegators_mut();
+    for delegator in new_delegators.into_iter() {
+        assert!(curr_delegators
+            .insert(delegator.delegator_public_key().clone(), delegator)
+            .is_none());
+    }
+    bid
+}
+
+fn serialize_bid(delegators_len: u32, b: &mut Bencher) {
+    let bid = sample_bid(delegators_len);
+    b.iter(|| Bid::to_bytes(black_box(&bid)));
+}
+
+fn deserialize_bid(delegators_len: u32, b: &mut Bencher) {
+    let bid = sample_bid(delegators_len);
+    let bid_bytes = Bid::to_bytes(&bid).unwrap();
+    b.iter(|| Bid::from_bytes(black_box(&bid_bytes)));
+}
+
+fn sample_transfer() -> Transfer {
+    Transfer::new(
+        DeployHash::default(),
+        AccountHash::default(),
+        None,
+        URef::default(),
+        URef::default(),
+        U512::MAX,
+        U512::from_dec_str("123123123123").unwrap(),
+        Some(1u64),
+    )
+}
+
+fn serialize_transfer(b: &mut Bencher) {
+    let transfer = sample_transfer();
+    b.iter(|| Transfer::to_bytes(&transfer));
+}
+
+fn deserialize_transfer(b: &mut Bencher) {
+    let transfer = sample_transfer();
+    let transfer_bytes = transfer.to_bytes().unwrap();
+    b.iter(|| Transfer::from_bytes(&transfer_bytes));
+}
+
+fn sample_deploy_info(transfer_len: u16) -> DeployInfo {
+    let transfers = (0..transfer_len)
+        .map(|i| {
+            let mut tmp = [0u8; TRANSFER_ADDR_LENGTH];
+            U256::from(i).to_little_endian(&mut tmp);
+            TransferAddr::new(tmp)
+        })
+        .collect::<Vec<_>>();
+    DeployInfo::new(
+        DeployHash::default(),
+        &transfers,
+        AccountHash::default(),
+        URef::default(),
+        U512::MAX,
+    )
+}
+
+fn serialize_deploy_info(b: &mut Bencher) {
+    let deploy_info = sample_deploy_info(1000);
+    b.iter(|| DeployInfo::to_bytes(&deploy_info));
+}
+
+fn deserialize_deploy_info(b: &mut Bencher) {
+    let deploy_info = sample_deploy_info(1000);
+    let deploy_bytes = deploy_info.to_bytes().unwrap();
+    b.iter(|| DeployInfo::from_bytes(&deploy_bytes));
+}
+
+fn sample_era_info(delegators_len: u32) -> EraInfo {
+    let mut base = EraInfo::new();
+    let delegations = (0..delegators_len).map(|i| {
+        let pk = u32_to_pk(i);
+        SeigniorageAllocation::delegator(pk.clone(), pk, U512::MAX)
+    });
+    base.seigniorage_allocations_mut().extend(delegations);
+    base
+}
+
+fn serialize_era_info(delegators_len: u32, b: &mut Bencher) {
+    let era_info = sample_era_info(delegators_len);
+    b.iter(|| EraInfo::to_bytes(&era_info));
+}
+
+fn deserialize_era_info(delegators_len: u32, b: &mut Bencher) {
+    let era_info = sample_era_info(delegators_len);
+    let era_info_bytes = era_info.to_bytes().unwrap();
+    b.iter(|| EraInfo::from_bytes(&era_info_bytes));
+}
+
 fn bytesrepr_bench(c: &mut Criterion) {
     c.bench_function("serialize_vector_of_i32s", serialize_vector_of_i32s);
     c.bench_function("deserialize_vector_of_i32s", deserialize_vector_of_i32s);
@@ -557,6 +851,43 @@ fn bytesrepr_bench(c: &mut Criterion) {
     c.bench_function("deserialize_u256", deserialize_u256);
     c.bench_function("serialize_u512", serialize_u512);
     c.bench_function("deserialize_u512", deserialize_u512);
+    c.bench_function("bytesrepr::serialize_account", serialize_account);
+    c.bench_function("bytesrepr::deserialize_account", deserialize_account);
+    c.bench_function("bytesrepr::serialize_contract", serialize_contract);
+    c.bench_function("bytesrepr::deserialize_contract", deserialize_contract);
+    c.bench_function(
+        "bytesrepr::serialize_contract_package",
+        serialize_contract_package,
+    );
+    c.bench_function(
+        "bytesrepr::deserialize_contract_package",
+        deserialize_contract_package,
+    );
+    c.bench_function("bytesrepr::serialize_bid_small", |b| serialize_bid(10, b));
+    c.bench_function("bytesrepr::serialize_bid_medium", |b| serialize_bid(100, b));
+    c.bench_function("bytesrepr::serialize_bid_big", |b| serialize_bid(1000, b));
+    c.bench_function("bytesrepr::deserialize_bid_small", |b| {
+        deserialize_bid(10, b)
+    });
+    c.bench_function("bytesrepr::deserialize_bid_medium", |b| {
+        deserialize_bid(100, b)
+    });
+    c.bench_function("bytesrepr::deserialize_bid_big", |b| {
+        deserialize_bid(1000, b)
+    });
+    c.bench_function("bytesrepr::serialize_transfer", serialize_transfer);
+    c.bench_function("bytesrepr::deserialize_transfer", deserialize_transfer);
+    c.bench_function("bytesrepr::serialize_deploy_info", serialize_deploy_info);
+    c.bench_function(
+        "bytesrepr::deserialize_deploy_info",
+        deserialize_deploy_info,
+    );
+    c.bench_function("bytesrepr::serialize_era_info", |b| {
+        serialize_era_info(500, b)
+    });
+    c.bench_function("bytesrepr::deserialize_era_info", |b| {
+        deserialize_era_info(500, b)
+    });
 }
 
 criterion_group!(benches, bytesrepr_bench);

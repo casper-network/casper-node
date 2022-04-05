@@ -221,3 +221,14 @@ function get_state_root_hash()
         | jq '.result.state_root_hash' \
         | sed -e 's/^"//' -e 's/"$//'
 }
+
+#######################################
+# Returns the number of connected peers.
+#######################################
+function get_node_connected_peer_count()
+{
+    local NODE_ID=${1}
+
+    echo $(curl -s "$(get_node_address_rest $NODE_ID)/status" | jq '.peers' | jq length)
+}
+

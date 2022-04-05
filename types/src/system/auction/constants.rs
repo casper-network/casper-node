@@ -1,4 +1,4 @@
-use crate::system::auction::EraId;
+use crate::EraId;
 
 use super::DelegationRate;
 
@@ -32,6 +32,8 @@ pub const ARG_VALIDATOR_PURSE: &str = "validator_purse";
 pub const ARG_VALIDATOR_KEYS: &str = "validator_keys";
 /// Named constant for `validator_public_keys`.
 pub const ARG_VALIDATOR_PUBLIC_KEYS: &str = "validator_public_keys";
+/// Named constant for `new_validator`.
+pub const ARG_NEW_VALIDATOR: &str = "new_validator";
 /// Named constant for `era_id`.
 pub const ARG_ERA_ID: &str = "era_id";
 /// Named constant for `reward_factors`.
@@ -67,6 +69,8 @@ pub const METHOD_WITHDRAW_BID: &str = "withdraw_bid";
 pub const METHOD_DELEGATE: &str = "delegate";
 /// Named constant for method `undelegate`.
 pub const METHOD_UNDELEGATE: &str = "undelegate";
+/// Named constant for method `redelegate`.
+pub const METHOD_REDELEGATE: &str = "redelegate";
 /// Named constant for method `run_auction`.
 pub const METHOD_RUN_AUCTION: &str = "run_auction";
 /// Named constant for method `slash`.

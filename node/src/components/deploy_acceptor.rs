@@ -1,4 +1,3 @@
-mod config;
 mod event;
 mod metrics;
 mod tests;
@@ -33,16 +32,14 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     types::{
-        chainspec::DeployConfig, Block, Chainspec, Deploy, DeployConfigurationFailure, NodeId,
+        chainspec::DeployConfig, BlockHeader, Chainspec, Deploy, DeployConfigurationFailure,
         Timestamp,
     },
     utils::Source,
     NodeRng,
 };
 
-pub(crate) use config::Config;
-pub(crate) use event::Event;
-use event::EventMetadata;
+pub(crate) use event::{Event, EventMetadata};
 
 const ARG_TARGET: &str = "target";
 
@@ -125,7 +122,7 @@ pub(crate) enum DeployParameterFailure {
 /// A helper trait constraining `DeployAcceptor` compatible reactor events.
 pub(crate) trait ReactorEventT:
     From<Event>
-    + From<DeployAcceptorAnnouncement<NodeId>>
+    + From<DeployAcceptorAnnouncement>
     + From<StorageRequest>
     + From<ContractRuntimeRequest>
     + Send
@@ -134,7 +131,7 @@ pub(crate) trait ReactorEventT:
 
 impl<REv> ReactorEventT for REv where
     REv: From<Event>
-        + From<DeployAcceptorAnnouncement<NodeId>>
+        + From<DeployAcceptorAnnouncement>
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
         + Send
@@ -151,14 +148,12 @@ pub struct DeployAcceptor {
     chain_name: String,
     protocol_version: ProtocolVersion,
     deploy_config: DeployConfig,
-    verify_accounts: bool,
     max_associated_keys: u32,
     metrics: metrics::Metrics,
 }
 
 impl DeployAcceptor {
     pub(crate) fn new(
-        config: Config,
         chainspec: &Chainspec,
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
@@ -167,7 +162,6 @@ impl DeployAcceptor {
             protocol_version: chainspec.protocol_version(),
             deploy_config: chainspec.deploy_config,
             max_associated_keys: chainspec.core_config.max_associated_keys,
-            verify_accounts: config.verify_accounts(),
             metrics: metrics::Metrics::new(registry)?,
         })
     }
@@ -180,7 +174,7 @@ impl DeployAcceptor {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         deploy: Box<Deploy>,
-        source: Source<NodeId>,
+        source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     ) -> Effects<Event> {
         let verification_start_timestamp = Timestamp::now();
@@ -202,7 +196,7 @@ impl DeployAcceptor {
         }
 
         // We only perform expiry checks on deploys received from the client.
-        if source.from_client() {
+        if source.is_client() {
             let current_node_timestamp = Timestamp::now();
             if deploy.header().expired(current_node_timestamp) {
                 let time_of_expiry = deploy.header().expires();
@@ -219,29 +213,20 @@ impl DeployAcceptor {
             }
         }
 
-        if self.verify_accounts {
-            effect_builder
-                .get_highest_block_from_storage()
-                .event(move |maybe_block| Event::GetBlockResult {
-                    event_metadata: EventMetadata::new(deploy, source, maybe_responder),
-                    maybe_block: Box::new(maybe_block),
-                    verification_start_timestamp,
-                })
-        } else {
-            effect_builder
-                .immediately()
-                .event(move |_| Event::VerifyDeployCryptographicValidity {
-                    event_metadata: EventMetadata::new(deploy, source, maybe_responder),
-                    verification_start_timestamp,
-                })
-        }
+        effect_builder
+            .get_highest_block_header_from_storage()
+            .event(move |maybe_block_header| Event::GetBlockHeaderResult {
+                event_metadata: EventMetadata::new(deploy, source, maybe_responder),
+                maybe_block_header: Box::new(maybe_block_header),
+                verification_start_timestamp,
+            })
     }
 
     fn handle_get_block_result<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         event_metadata: EventMetadata,
-        maybe_block: Option<Block>,
+        maybe_block: Option<BlockHeader>,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
         let mut effects = Effects::new();
@@ -261,7 +246,7 @@ impl DeployAcceptor {
         let account_hash = event_metadata.deploy.header().account().to_account_hash();
         let account_key = account_hash.into();
 
-        if event_metadata.source.from_client() {
+        if event_metadata.source.is_client() {
             effect_builder
                 .get_account_from_global_state(prestate_hash, account_key)
                 .event(move |maybe_account| Event::GetAccountResult {
@@ -361,7 +346,7 @@ impl DeployAcceptor {
         account_hash: AccountHash,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
-        if !event_metadata.source.from_client() {
+        if !event_metadata.source.is_client() {
             // This would only happen due to programmer error and should crash the node.
             // Balance checks for deploys received by from a peer will cause the network
             // to stall.
@@ -805,7 +790,7 @@ impl DeployAcceptor {
     fn validate_deploy_cryptography<REv: ReactorEventT>(
         &self,
         effect_builder: EffectBuilder<REv>,
-        mut event_metadata: EventMetadata,
+        event_metadata: EventMetadata,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
         if let Err(deploy_configuration_failure) = event_metadata.deploy.is_valid() {
@@ -874,14 +859,14 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
                 source,
                 maybe_responder: responder,
             } => self.accept(effect_builder, deploy, source, responder),
-            Event::GetBlockResult {
+            Event::GetBlockHeaderResult {
                 event_metadata,
-                maybe_block,
+                maybe_block_header,
                 verification_start_timestamp,
             } => self.handle_get_block_result(
                 effect_builder,
                 event_metadata,
-                *maybe_block,
+                *maybe_block_header,
                 verification_start_timestamp,
             ),
             Event::GetAccountResult {
@@ -951,14 +936,6 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
                 contract_package_hash,
                 maybe_package_version,
                 maybe_contract_package,
-                verification_start_timestamp,
-            ),
-            Event::VerifyDeployCryptographicValidity {
-                event_metadata,
-                verification_start_timestamp,
-            } => self.validate_deploy_cryptography(
-                effect_builder,
-                event_metadata,
                 verification_start_timestamp,
             ),
             Event::PutToStorageResult {

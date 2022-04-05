@@ -47,7 +47,7 @@ function log_step() {
 
 function do_await_genesis_era_to_complete() {
     log_step "awaiting genesis era to complete"
-    while [ "$(get_chain_era)" != "1" ]; do
+    while [ "$(get_chain_era)" -lt "1" ]; do
         sleep 1.0
     done
 }
@@ -110,6 +110,8 @@ function check_network_sync() {
         WAIT_TIME_SEC=$((WAIT_TIME_SEC + 1))
         if [ "$WAIT_TIME_SEC" = "$SYNC_TIMEOUT_SEC" ]; then
             log "ERROR: Failed to confirm network sync"
+            nctl-status
+            nctl-view-chain-height
             exit 1
         fi
         sleep 1
@@ -320,6 +322,10 @@ function assert_no_proposal_walkback() {
     local JSON_OUT
     local PROPOSER
 
+    # normalize hashes
+    WALKBACK_HASH=$(echo $WALKBACK_HASH |  tr '[:upper:]' '[:lower:]')
+    CHECK_HASH=$(echo $CHECK_HASH | tr '[:upper:]' '[:lower:]')
+
     log_step "Checking proposers: Walking back to hash $WALKBACK_HASH..."
 
     while [ "$CHECK_HASH" != "$WALKBACK_HASH" ]; do
@@ -334,9 +340,13 @@ function assert_no_proposal_walkback() {
             log "BLOCK HASH $CHECK_HASH: PROPOSER=$PROPOSER, NODE_KEY_HEX=$PUBLIC_KEY_HEX"
             unset CHECK_HASH
             CHECK_HASH=$(echo $JSON_OUT | jq -r '.result.block.header.parent_hash')
+            # normalize
+            CHECK_HASH=$(echo $CHECK_HASH | tr '[:upper:]' '[:lower:]')
             log "Checking next hash: $CHECK_HASH"
         fi
     done
+    log "Walkback Completed!"
+    log "CHECK_HASH: $CHECK_HASH = WALKBACK_HASH: $WALKBACK_HASH"
     log "Node $NODE_ID didn't propose! [expected]"
 }
 

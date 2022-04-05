@@ -1,10 +1,10 @@
 [![LOGO](https://raw.githubusercontent.com/casper-network/casper-node/master/images/casper-association-logo-primary.svg)](https://casper.network/)
 
-Casper is the blockchain platform purpose-built to scale opportunity for everyone. Building toward blockchain’s next frontier, 
-Casper is designed for real-world applications without sacrificing usability, cost, decentralization, or security. It removes 
-the barriers that prevent mainstream blockchain adoption by making blockchain friendly to use, open to the world, and 
-future-proof to support innovations today and tomorrow. Guided by open-source principles and built from the ground up to 
-empower individuals, the team seeks to provide an equitable foundation made for long-lasting impact. Read more about our 
+Casper is the blockchain platform purpose-built to scale opportunity for everyone. Building toward blockchain’s next frontier,
+Casper is designed for real-world applications without sacrificing usability, cost, decentralization, or security. It removes
+the barriers that prevent mainstream blockchain adoption by making blockchain friendly to use, open to the world, and
+future-proof to support innovations today and tomorrow. Guided by open-source principles and built from the ground up to
+empower individuals, the team seeks to provide an equitable foundation made for long-lasting impact. Read more about our
 mission at: https://casper.network/network/casper-association
 
 ## Current Development Status
@@ -31,7 +31,7 @@ The Casper MainNet is live.
 
 # casper-node
 
-This is the core application for the Casper blockchain. 
+This is the core application for the Casper blockchain.
 
 ## Running a validator node from Source
 
@@ -107,19 +107,13 @@ casper-node validator /etc/casper-node/config.toml
 
 Note how the semicolon is used to separate configuration overrides here.
 
-### Development environment variables
+### Other environment variables
 
 To set the threshold at which a warn-level log message is generated for a long-running reactor event, use the env var
 `CL_EVENT_MAX_MICROSECS`.  For example, to set the threshold to 1 millisecond:
 
 ```
 CL_EVENT_MAX_MICROSECS=1000
-```
-
-To set the threshold at which a queue dump will occur, use the env var `CL_MEM_DUMP_THRESHOLD_MB`. When the process reaches this level of memory allocation a dump will occur, but this will only occur once. Queue dumps can be found in `/tmp` once they are complete. For example, to set the threshold to 16000 megabytes:
-
-```
-CL_MEM_DUMP_THRESHOLD_MB=16000
 ```
 
 
@@ -134,7 +128,7 @@ RUST_LOG=info cargo run --release -- validator resources/local/config.toml
 
 If the environment variable is unset, it is equivalent to setting `RUST_LOG=error`.
 
-#### Log message format
+### Log message format
 
 A typical log message will look like:
 
@@ -149,7 +143,7 @@ This is comprised of the following parts:
 * filename and line number of the source of the message
 * message
 
-#### Filtering log messages
+### Filtering log messages
 
 `RUST_LOG` can be set to enable varying levels for different modules.  Simply set it to a comma-separated list of
 `module-path=level`, where the module path is as shown above in the typical log message, with the end truncated to suit.
@@ -161,19 +155,39 @@ modules in `components`, and `warn` level for the remaining codebase:
 RUST_LOG=casper_node::components::small=trace,casper_node::comp=info,warn
 ```
 
+### Logging network messages and tracing events
+
+Special logging targets exist in `net_in` and `net_out` which can be used to log every single network message leaving or
+entering a node when set to trace level:
+
+```
+RUST_LOG=net_in::TRACE,net_out::TRACE
+```
+
+All messages in these logs are also assigned a unique ID that is different even if the same message is sent to multiple
+nodes. The receiving node will log them using the same ID as the sender, thus enabling the tracing of a message across
+multiple nodes provided all logs are available.
+
+Another helpful logging feature is ancestor logging. If the target `dispatch` is set to at least debug level, events
+being dispatched will be logged as well. Any event has an id (`ev`) and may have an ancestor (`a`), which is the previous
+event whose effects caused the resulting event to be scheduled. As an example, if an incoming network message gets
+asssigned an ID of `ev=123`, the first round of subsequent events will show `a=123` as their ancestor in the logs.
+
 ## Debugging
 
 Some additional debug functionality is available, mainly allowed for inspections of the internal event queue.
 
 ### Event queue dump
 
-The event queue can be dumped by sending a `SIGUSR1` to the running node process, e.g. if the node's process ID was `$NODE_PID`:
+The event queue can be dumped by sending a `SIGUSR1` or `SIGUSR2` to the running node process, e.g. if the node's process ID was `$NODE_PID`:
 
 ```console
 kill -USR1 $NODE_PID
 ```
 
-This will create a `queue_dump.json` in the working directory of the node. A tool like [jq](https://stedolan.github.io/jq/) can then be used to format and display it:
+`USR1` will cause a debug/text representation to be dumped, `USR2` a JSON formatted version, which is likely much larger.
+
+Both variants will create a dump file in the working directory of the node. A tool like [jq](https://stedolan.github.io/jq/) can then be used to format and display the JSON representation:
 
 ```console
 $ jq < queue_dump.json
@@ -187,7 +201,7 @@ $ jq < queue_dump.json
 }
 ```
 
-#### jq Examples
+### jq Examples
 
 Dump the type of events:
 
@@ -201,15 +215,99 @@ Count number of events in each queue:
 jq 'map_values(map(keys[0]))' queue_dump.json
 ```
 
+### Diagnostics port
+
+If the configuration option `diagnostics_port.enabled` is set to `true`, a unix socket named `debug.socket` by default can be found next to the configuration while the node is running.
+
+#### Interactive use
+
+The `debug.socket` can be connected to by tools like `socat` for interactive use:
+
+```sh
+socat - unix:/path/to/debug.socket
+```
+
+Entering `help` will show available commands. The `set` command allows configuring the current connection, see `set --help`.
+
+#### Example: Collecting a consensus dump
+
+After connecting using `socat` (see above), we set the output format to JSON:
+
+```
+set --output=json
+```
+
+A confirmation will acknowledge the settings change (unless `--quiet=true` is set):
+
+```
+{
+  "Success": {
+    "msg": "session unchanged"
+  }
+}
+```
+
+We can now call `dump-consensus` to get the _latest_ era serialized in JSON format:
+
+```
+dump-consensus
+{
+  "Success": {
+    "msg": "dumping consensus state"
+  }
+}
+{"id":8,"start_time":"2022-03-01T14:54:42.176Z","start_height":88,"new_faulty" ...
+```
+
+An era other than the latest can be dumped by specifying as a parameter, _e.g._ `dump-consensus 3` will dump the third era. See `dump-consensus --help` for details.
+
+#### Example: Dumping the event queue
+
+With the connection set to JSON output (see previous example), we can also dump the event queues:
+
+```
+dump-queues
+{
+  "Success": {
+    "msg": "dumping queues"
+  }
+}
+{"queues":{"Regular":[],"Api":[],"Network":[],"Control":[],"NetworkIncoming":[]
+}}{"queues":{"Api":[],"Regular":[],"Control":[],"NetworkIncoming":[],"Network":
+[]}}{"queues":{"Network":[],"Control":[],"Api":[],"NetworkIncoming":[],"Regular
+":[]}}
+```
+
+Empty output will be produced on a node that is working without external pressure, as the queues will be empty most of the time.
+
+
+#### Non-interactive use
+
+The diagnostics port can also be scripted by sending a newline-terminated list of commands through `socat`. For example, the following sequence of commands will collect a consensus dump without the success-indicating header:
+
+```
+set -o json -q true
+dump-consensus
+```
+
+For ad-hoc dumps, this can be shortened and piped into `socat`:
+
+```sh
+echo -e 'set -o json -q true\ndump-consensus' | socat - unix-client:debug.socket > consensus-dump.json
+```
+
+This results in the latest era being dumped into `consensus-dump.json`.
+
+
 ## Running a client
 
-See [the client README](client/README.md).
+See [the client README](https://github.com/casper-ecosystem/casper-client-rs#readme).
 
 ## Running a local network
 
 See [the nctl utility README](utils/nctl/README.md).
 
-## Running on a existing network
+## Running on an existing network
 
-To support upgrades with a network, the casper-node is installed using scripts distributed with the 
+To support upgrades with a network, the casper-node is installed using scripts distributed with the
 [casper-node-launcher](https://github.com/casper-network/casper-node-launcher).

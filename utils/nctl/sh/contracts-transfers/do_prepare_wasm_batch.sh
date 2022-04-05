@@ -15,7 +15,6 @@ function main()
     local BATCH_COUNT=${2}
     local BATCH_SIZE=${3}
     local CHAIN_NAME
-    local GAS_PRICE
     local GAS_PAYMENT
     local PATH_TO_CLIENT
     local CP1_SECRET_KEY
@@ -26,7 +25,6 @@ function main()
     local PATH_TO_OUTPUT_SIGNED
 
     CHAIN_NAME=$(get_chain_name)
-    GAS_PRICE=${GAS_PRICE:-$NCTL_DEFAULT_GAS_PRICE}
     GAS_PAYMENT=${GAS_PAYMENT:-$NCTL_DEFAULT_GAS_PAYMENT}
     PATH_TO_CLIENT=$(get_path_to_client)
     PATH_TO_CONTRACT=$(get_path_to_contract "transfers/transfer_to_account_u512.wasm")
@@ -59,7 +57,6 @@ function main()
                 $PATH_TO_CLIENT make-deploy \
                     --output "$PATH_TO_OUTPUT_UNSIGNED" \
                     --chain-name "$CHAIN_NAME" \
-                    --gas-price "$GAS_PRICE" \
                     --payment-amount "$GAS_PAYMENT" \
                     --ttl "1day" \
                     --secret-key "$CP1_SECRET_KEY" \

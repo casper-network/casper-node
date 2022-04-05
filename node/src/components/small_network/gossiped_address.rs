@@ -1,8 +1,10 @@
 use std::{
+    convert::Infallible,
     fmt::{self, Display, Formatter},
     net::SocketAddr,
 };
 
+use casper_types::EraId;
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
@@ -28,10 +30,18 @@ impl Display for GossipedAddress {
 
 impl Item for GossipedAddress {
     type Id = GossipedAddress;
+    type ValidationError = Infallible;
     const TAG: Tag = Tag::GossipedAddress;
     const ID_IS_COMPLETE_ITEM: bool = true;
 
-    fn id(&self) -> Self::Id {
+    fn validate(
+        &self,
+        _verifiable_chunked_hash_activation: EraId,
+    ) -> Result<(), Self::ValidationError> {
+        Ok(())
+    }
+
+    fn id(&self, _verifiable_chunked_hash_activation: EraId) -> Self::Id {
         *self
     }
 }

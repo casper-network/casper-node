@@ -1,9 +1,7 @@
 [workspace]
 members = [
     "ci/casper_updater",
-    "client",
     "execution_engine",
-    "execution_engine_testing/cargo_casper",
     "execution_engine_testing/test_support",
     "execution_engine_testing/tests",
     "hashing",
@@ -19,9 +17,7 @@ members = [
 
 default-members = [
     "ci/casper_updater",
-    "client",
     "execution_engine",
-    "execution_engine_testing/cargo_casper",
     "execution_engine_testing/test_support",
     "execution_engine_testing/tests",
     "hashing",
@@ -32,6 +28,8 @@ default-members = [
     "utils/retrieve-state",
     "utils/validation",
 ]
+
+exclude = ["utils/nctl/remotes/casper-client-rs"]
 
 # Include debug symbols in the release build of `casper-engine-tests` so that `simple-transfer` will yield useful
 # perf data.

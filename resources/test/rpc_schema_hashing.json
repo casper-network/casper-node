@@ -1,0 +1,4401 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "OpenRpcSchema",
+  "examples": [
+    {
+      "components": {
+        "schemas": {
+          "Account": {
+            "additionalProperties": false,
+            "description": "Structure representing a user's account, stored in global state.",
+            "properties": {
+              "account_hash": {
+                "$ref": "#/components/schemas/AccountHash"
+              },
+              "action_thresholds": {
+                "$ref": "#/components/schemas/ActionThresholds"
+              },
+              "associated_keys": {
+                "items": {
+                  "$ref": "#/components/schemas/AssociatedKey"
+                },
+                "type": "array"
+              },
+              "main_purse": {
+                "$ref": "#/components/schemas/URef"
+              },
+              "named_keys": {
+                "items": {
+                  "$ref": "#/components/schemas/NamedKey"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "account_hash",
+              "action_thresholds",
+              "associated_keys",
+              "main_purse",
+              "named_keys"
+            ],
+            "type": "object"
+          },
+          "AccountHash": {
+            "description": "Hex-encoded account hash.",
+            "type": "string"
+          },
+          "ActionThresholds": {
+            "additionalProperties": false,
+            "description": "Thresholds that have to be met when executing an action of a certain type.",
+            "properties": {
+              "deployment": {
+                "format": "uint8",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "key_management": {
+                "format": "uint8",
+                "minimum": 0.0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "deployment",
+              "key_management"
+            ],
+            "type": "object"
+          },
+          "ActivationPoint": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EraId"
+              },
+              {
+                "$ref": "#/components/schemas/Timestamp"
+              }
+            ],
+            "description": "The first era to which the associated protocol version applies."
+          },
+          "Approval": {
+            "additionalProperties": false,
+            "description": "A struct containing a signature and the public key of the signer.",
+            "properties": {
+              "signature": {
+                "$ref": "#/components/schemas/Signature"
+              },
+              "signer": {
+                "$ref": "#/components/schemas/PublicKey"
+              }
+            },
+            "required": [
+              "signature",
+              "signer"
+            ],
+            "type": "object"
+          },
+          "AssociatedKey": {
+            "additionalProperties": false,
+            "properties": {
+              "account_hash": {
+                "$ref": "#/components/schemas/AccountHash"
+              },
+              "weight": {
+                "format": "uint8",
+                "minimum": 0.0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "account_hash",
+              "weight"
+            ],
+            "type": "object"
+          },
+          "AuctionState": {
+            "additionalProperties": false,
+            "description": "Data structure summarizing auction contract data.",
+            "properties": {
+              "bids": {
+                "description": "All bids contained within a vector.",
+                "items": {
+                  "$ref": "#/components/schemas/JsonBids"
+                },
+                "type": "array"
+              },
+              "block_height": {
+                "description": "Block height.",
+                "format": "uint64",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "era_validators": {
+                "description": "Era validators.",
+                "items": {
+                  "$ref": "#/components/schemas/JsonEraValidators"
+                },
+                "type": "array"
+              },
+              "state_root_hash": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Digest"
+                  }
+                ],
+                "description": "Global state hash."
+              }
+            },
+            "required": [
+              "bids",
+              "block_height",
+              "era_validators",
+              "state_root_hash"
+            ],
+            "type": "object"
+          },
+          "Bid": {
+            "additionalProperties": false,
+            "description": "An entry in the validator map.",
+            "properties": {
+              "bonding_purse": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/URef"
+                  }
+                ],
+                "description": "The purse that was used for bonding."
+              },
+              "delegation_rate": {
+                "description": "Delegation rate",
+                "format": "uint8",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "delegators": {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/Delegator"
+                },
+                "description": "This validator's delegators, indexed by their public keys",
+                "type": "object"
+              },
+              "inactive": {
+                "description": "`true` if validator has been \"evicted\"",
+                "type": "boolean"
+              },
+              "staked_amount": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/U512"
+                  }
+                ],
+                "description": "The amount of tokens staked by a validator (not including delegators)."
+              },
+              "validator_public_key": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  }
+                ],
+                "description": "Validator public key"
+              },
+              "vesting_schedule": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/VestingSchedule"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Vesting schedule for a genesis validator. `None` if non-genesis validator."
+              }
+            },
+            "required": [
+              "bonding_purse",
+              "delegation_rate",
+              "delegators",
+              "inactive",
+              "staked_amount",
+              "validator_public_key"
+            ],
+            "type": "object"
+          },
+          "BlockHash": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Digest"
+              }
+            ],
+            "description": "A cryptographic hash identifying a [`Block`](struct.Block.html)."
+          },
+          "BlockIdentifier": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "description": "Identify and retrieve the block with its hash.",
+                "properties": {
+                  "Hash": {
+                    "$ref": "#/components/schemas/BlockHash"
+                  }
+                },
+                "required": [
+                  "Hash"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Identify and retrieve the block with its height.",
+                "properties": {
+                  "Height": {
+                    "format": "uint64",
+                    "minimum": 0.0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "Height"
+                ],
+                "type": "object"
+              }
+            ],
+            "description": "Identifier for possible ways to retrieve a block."
+          },
+          "CLType": {
+            "anyOf": [
+              {
+                "enum": [
+                  "Bool",
+                  "I32",
+                  "I64",
+                  "U8",
+                  "U32",
+                  "U64",
+                  "U128",
+                  "U256",
+                  "U512",
+                  "Unit",
+                  "String",
+                  "Key",
+                  "URef",
+                  "PublicKey",
+                  "Any"
+                ],
+                "type": "string"
+              },
+              {
+                "additionalProperties": false,
+                "description": "`Option` of a `CLType`.",
+                "properties": {
+                  "Option": {
+                    "$ref": "#/components/schemas/CLType"
+                  }
+                },
+                "required": [
+                  "Option"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Variable-length list of a single `CLType` (comparable to a `Vec`).",
+                "properties": {
+                  "List": {
+                    "$ref": "#/components/schemas/CLType"
+                  }
+                },
+                "required": [
+                  "List"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Fixed-length list of a single `CLType` (comparable to a Rust array).",
+                "properties": {
+                  "ByteArray": {
+                    "format": "uint32",
+                    "minimum": 0.0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "ByteArray"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "`Result` with `Ok` and `Err` variants of `CLType`s.",
+                "properties": {
+                  "Result": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "err": {
+                        "$ref": "#/components/schemas/CLType"
+                      },
+                      "ok": {
+                        "$ref": "#/components/schemas/CLType"
+                      }
+                    },
+                    "required": [
+                      "err",
+                      "ok"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "Result"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Map with keys of a single `CLType` and values of a single `CLType`.",
+                "properties": {
+                  "Map": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "key": {
+                        "$ref": "#/components/schemas/CLType"
+                      },
+                      "value": {
+                        "$ref": "#/components/schemas/CLType"
+                      }
+                    },
+                    "required": [
+                      "key",
+                      "value"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "Map"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "1-ary tuple of a `CLType`.",
+                "properties": {
+                  "Tuple1": {
+                    "items": {
+                      "$ref": "#/components/schemas/CLType"
+                    },
+                    "maxItems": 1,
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "Tuple1"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "2-ary tuple of `CLType`s.",
+                "properties": {
+                  "Tuple2": {
+                    "items": {
+                      "$ref": "#/components/schemas/CLType"
+                    },
+                    "maxItems": 2,
+                    "minItems": 2,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "Tuple2"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "3-ary tuple of `CLType`s.",
+                "properties": {
+                  "Tuple3": {
+                    "items": {
+                      "$ref": "#/components/schemas/CLType"
+                    },
+                    "maxItems": 3,
+                    "minItems": 3,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "Tuple3"
+                ],
+                "type": "object"
+              }
+            ],
+            "description": "Casper types, i.e. types which can be stored and manipulated by smart contracts.\n\nProvides a description of the underlying data type of a [`CLValue`](crate::CLValue)."
+          },
+          "CLValue": {
+            "additionalProperties": false,
+            "description": "A Casper value, i.e. a value which can be stored and manipulated by smart contracts.\n\nIt holds the underlying data as a type-erased, serialized `Vec<u8>` and also holds the CLType of the underlying data as a separate member.\n\nThe `parsed` field, representing the original value, is a convenience only available when a CLValue is encoded to JSON, and can always be set to null if preferred.",
+            "properties": {
+              "bytes": {
+                "type": "string"
+              },
+              "cl_type": {
+                "$ref": "#/components/schemas/CLType"
+              },
+              "parsed": true
+            },
+            "required": [
+              "bytes",
+              "cl_type"
+            ],
+            "type": "object"
+          },
+          "ChainspecRawBytes": {
+            "description": "The raw bytes of the chainspec.toml, genesis accounts.toml, and global_state.toml files.",
+            "properties": {
+              "chainspec_bytes": {
+                "description": "Hex-encoded raw bytes of the current chainspec.toml file.",
+                "type": "string"
+              },
+              "maybe_genesis_accounts_bytes": {
+                "description": "Hex-encoded raw bytes of the current genesis accounts.toml file.",
+                "type": "string"
+              },
+              "maybe_global_state_bytes": {
+                "description": "Hex-encoded raw bytes of the current global_state.toml file.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "chainspec_bytes",
+              "maybe_genesis_accounts_bytes",
+              "maybe_global_state_bytes"
+            ],
+            "type": "object"
+          },
+          "Contract": {
+            "additionalProperties": false,
+            "description": "A contract struct that can be serialized as  JSON object.",
+            "properties": {
+              "contract_package_hash": {
+                "$ref": "#/components/schemas/ContractPackageHash"
+              },
+              "contract_wasm_hash": {
+                "$ref": "#/components/schemas/ContractWasmHash"
+              },
+              "entry_points": {
+                "items": {
+                  "$ref": "#/components/schemas/EntryPoint"
+                },
+                "type": "array"
+              },
+              "named_keys": {
+                "items": {
+                  "$ref": "#/components/schemas/NamedKey"
+                },
+                "type": "array"
+              },
+              "protocol_version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "contract_package_hash",
+              "contract_wasm_hash",
+              "entry_points",
+              "named_keys",
+              "protocol_version"
+            ],
+            "type": "object"
+          },
+          "ContractHash": {
+            "description": "The hash address of the contract",
+            "type": "string"
+          },
+          "ContractPackage": {
+            "additionalProperties": false,
+            "description": "Contract definition, metadata, and security container.",
+            "properties": {
+              "access_key": {
+                "$ref": "#/components/schemas/URef"
+              },
+              "disabled_versions": {
+                "items": {
+                  "$ref": "#/components/schemas/DisabledVersion"
+                },
+                "type": "array"
+              },
+              "groups": {
+                "items": {
+                  "$ref": "#/components/schemas/Groups"
+                },
+                "type": "array"
+              },
+              "versions": {
+                "items": {
+                  "$ref": "#/components/schemas/ContractVersion"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "access_key",
+              "disabled_versions",
+              "groups",
+              "versions"
+            ],
+            "type": "object"
+          },
+          "ContractPackageHash": {
+            "description": "The hash address of the contract package",
+            "type": "string"
+          },
+          "ContractVersion": {
+            "properties": {
+              "contract_hash": {
+                "$ref": "#/components/schemas/ContractHash"
+              },
+              "contract_version": {
+                "format": "uint32",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "protocol_version_major": {
+                "format": "uint32",
+                "minimum": 0.0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "contract_hash",
+              "contract_version",
+              "protocol_version_major"
+            ],
+            "type": "object"
+          },
+          "ContractWasmHash": {
+            "description": "The hash address of the contract wasm",
+            "type": "string"
+          },
+          "Delegator": {
+            "additionalProperties": false,
+            "description": "Represents a party delegating their stake to a validator (or \"delegatee\")",
+            "properties": {
+              "bonding_purse": {
+                "$ref": "#/components/schemas/URef"
+              },
+              "delegator_public_key": {
+                "$ref": "#/components/schemas/PublicKey"
+              },
+              "staked_amount": {
+                "$ref": "#/components/schemas/U512"
+              },
+              "validator_public_key": {
+                "$ref": "#/components/schemas/PublicKey"
+              },
+              "vesting_schedule": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/VestingSchedule"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "bonding_purse",
+              "delegator_public_key",
+              "staked_amount",
+              "validator_public_key"
+            ],
+            "type": "object"
+          },
+          "Deploy": {
+            "additionalProperties": false,
+            "description": "A deploy; an item containing a smart contract along with the requester's signature(s).",
+            "properties": {
+              "approvals": {
+                "items": {
+                  "$ref": "#/components/schemas/Approval"
+                },
+                "type": "array",
+                "uniqueItems": true
+              },
+              "hash": {
+                "$ref": "#/components/schemas/DeployHash"
+              },
+              "header": {
+                "$ref": "#/components/schemas/DeployHeader"
+              },
+              "payment": {
+                "$ref": "#/components/schemas/ExecutableDeployItem"
+              },
+              "session": {
+                "$ref": "#/components/schemas/ExecutableDeployItem"
+              }
+            },
+            "required": [
+              "approvals",
+              "hash",
+              "header",
+              "payment",
+              "session"
+            ],
+            "type": "object"
+          },
+          "DeployHash": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Digest"
+              }
+            ],
+            "description": "Hex-encoded deploy hash."
+          },
+          "DeployHeader": {
+            "additionalProperties": false,
+            "description": "The header portion of a [`Deploy`](struct.Deploy.html).",
+            "properties": {
+              "account": {
+                "$ref": "#/components/schemas/PublicKey"
+              },
+              "body_hash": {
+                "$ref": "#/components/schemas/Digest"
+              },
+              "chain_name": {
+                "type": "string"
+              },
+              "dependencies": {
+                "items": {
+                  "$ref": "#/components/schemas/DeployHash"
+                },
+                "type": "array"
+              },
+              "gas_price": {
+                "format": "uint64",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "timestamp": {
+                "$ref": "#/components/schemas/Timestamp"
+              },
+              "ttl": {
+                "$ref": "#/components/schemas/TimeDiff"
+              }
+            },
+            "required": [
+              "account",
+              "body_hash",
+              "chain_name",
+              "dependencies",
+              "gas_price",
+              "timestamp",
+              "ttl"
+            ],
+            "type": "object"
+          },
+          "DeployInfo": {
+            "additionalProperties": false,
+            "description": "Information relating to the given Deploy.",
+            "properties": {
+              "deploy_hash": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/DeployHash"
+                  }
+                ],
+                "description": "The relevant Deploy."
+              },
+              "from": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/AccountHash"
+                  }
+                ],
+                "description": "Account identifier of the creator of the Deploy."
+              },
+              "gas": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/U512"
+                  }
+                ],
+                "description": "Gas cost of executing the Deploy."
+              },
+              "source": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/URef"
+                  }
+                ],
+                "description": "Source purse used for payment of the Deploy."
+              },
+              "transfers": {
+                "description": "Transfers performed by the Deploy.",
+                "items": {
+                  "$ref": "#/components/schemas/TransferAddr"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "deploy_hash",
+              "from",
+              "gas",
+              "source",
+              "transfers"
+            ],
+            "type": "object"
+          },
+          "DictionaryIdentifier": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "description": "Lookup a dictionary item via an Account's named keys.",
+                "properties": {
+                  "AccountNamedKey": {
+                    "properties": {
+                      "dictionary_item_key": {
+                        "description": "The dictionary item key formatted as a string.",
+                        "type": "string"
+                      },
+                      "dictionary_name": {
+                        "description": "The named key under which the dictionary seed URef is stored.",
+                        "type": "string"
+                      },
+                      "key": {
+                        "description": "The account key as a formatted string whose named keys contains dictionary_name.",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "dictionary_item_key",
+                      "dictionary_name",
+                      "key"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "AccountNamedKey"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Lookup a dictionary item via a Contract's named keys.",
+                "properties": {
+                  "ContractNamedKey": {
+                    "properties": {
+                      "dictionary_item_key": {
+                        "description": "The dictionary item key formatted as a string.",
+                        "type": "string"
+                      },
+                      "dictionary_name": {
+                        "description": "The named key under which the dictionary seed URef is stored.",
+                        "type": "string"
+                      },
+                      "key": {
+                        "description": "The contract key as a formatted string whose named keys contains dictionary_name.",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "dictionary_item_key",
+                      "dictionary_name",
+                      "key"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "ContractNamedKey"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Lookup a dictionary item via its seed URef.",
+                "properties": {
+                  "URef": {
+                    "properties": {
+                      "dictionary_item_key": {
+                        "description": "The dictionary item key formatted as a string.",
+                        "type": "string"
+                      },
+                      "seed_uref": {
+                        "description": "The dictionary's seed URef.",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "dictionary_item_key",
+                      "seed_uref"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "URef"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Lookup a dictionary item via its unique key.",
+                "properties": {
+                  "Dictionary": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "Dictionary"
+                ],
+                "type": "object"
+              }
+            ],
+            "description": "Options for dictionary item lookups."
+          },
+          "Digest": {
+            "description": "Hex-encoded hash digest.",
+            "type": "string"
+          },
+          "DisabledVersion": {
+            "properties": {
+              "contract_version": {
+                "format": "uint32",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "protocol_version_major": {
+                "format": "uint32",
+                "minimum": 0.0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "contract_version",
+              "protocol_version_major"
+            ],
+            "type": "object"
+          },
+          "EntryPoint": {
+            "description": "Type signature of a method. Order of arguments matter since can be referenced by index as well as name.",
+            "properties": {
+              "access": {
+                "$ref": "#/components/schemas/EntryPointAccess"
+              },
+              "args": {
+                "items": {
+                  "$ref": "#/components/schemas/Parameter"
+                },
+                "type": "array"
+              },
+              "entry_point_type": {
+                "$ref": "#/components/schemas/EntryPointType"
+              },
+              "name": {
+                "type": "string"
+              },
+              "ret": {
+                "$ref": "#/components/schemas/CLType"
+              }
+            },
+            "required": [
+              "access",
+              "args",
+              "entry_point_type",
+              "name",
+              "ret"
+            ],
+            "type": "object"
+          },
+          "EntryPointAccess": {
+            "anyOf": [
+              {
+                "enum": [
+                  "Public"
+                ],
+                "type": "string"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Only users from the listed groups may call this method. Note: if the list is empty then this method is not callable from outside the contract.",
+                "properties": {
+                  "Groups": {
+                    "items": {
+                      "$ref": "#/components/schemas/Group"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "Groups"
+                ],
+                "type": "object"
+              }
+            ],
+            "description": "Enum describing the possible access control options for a contract entry point (method)."
+          },
+          "EntryPointType": {
+            "description": "Context of method execution",
+            "enum": [
+              "Session",
+              "Contract"
+            ],
+            "type": "string"
+          },
+          "EraId": {
+            "description": "Era ID newtype.",
+            "format": "uint64",
+            "minimum": 0.0,
+            "type": "integer"
+          },
+          "EraInfo": {
+            "additionalProperties": false,
+            "description": "Auction metadata.  Intended to be recorded at each era.",
+            "properties": {
+              "seigniorage_allocations": {
+                "items": {
+                  "$ref": "#/components/schemas/SeigniorageAllocation"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "seigniorage_allocations"
+            ],
+            "type": "object"
+          },
+          "EraSummary": {
+            "additionalProperties": false,
+            "description": "The summary of an era",
+            "properties": {
+              "block_hash": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/BlockHash"
+                  }
+                ],
+                "description": "The block hash"
+              },
+              "era_id": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/EraId"
+                  }
+                ],
+                "description": "The era id"
+              },
+              "merkle_proof": {
+                "description": "The merkle proof",
+                "type": "string"
+              },
+              "state_root_hash": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Digest"
+                  }
+                ],
+                "description": "Hex-encoded hash of the state root"
+              },
+              "stored_value": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/StoredValue"
+                  }
+                ],
+                "description": "The StoredValue containing era information"
+              }
+            },
+            "required": [
+              "block_hash",
+              "era_id",
+              "merkle_proof",
+              "state_root_hash",
+              "stored_value"
+            ],
+            "type": "object"
+          },
+          "ExecutableDeployItem": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "description": "Executable specified as raw bytes that represent WASM code and an instance of [`RuntimeArgs`].",
+                "properties": {
+                  "ModuleBytes": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "args": {
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/RuntimeArgs"
+                          }
+                        ],
+                        "description": "Runtime arguments."
+                      },
+                      "module_bytes": {
+                        "description": "Hex-encoded raw Wasm bytes.",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "args",
+                      "module_bytes"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "ModuleBytes"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Stored contract referenced by its [`ContractHash`], entry point and an instance of [`RuntimeArgs`].",
+                "properties": {
+                  "StoredContractByHash": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "args": {
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/RuntimeArgs"
+                          }
+                        ],
+                        "description": "Runtime arguments."
+                      },
+                      "entry_point": {
+                        "description": "Name of an entry point.",
+                        "type": "string"
+                      },
+                      "hash": {
+                        "description": "Hex-encoded hash.",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "args",
+                      "entry_point",
+                      "hash"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "StoredContractByHash"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Stored contract referenced by a named key existing in the signer's account context, entry point and an instance of [`RuntimeArgs`].",
+                "properties": {
+                  "StoredContractByName": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "args": {
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/RuntimeArgs"
+                          }
+                        ],
+                        "description": "Runtime arguments."
+                      },
+                      "entry_point": {
+                        "description": "Name of an entry point.",
+                        "type": "string"
+                      },
+                      "name": {
+                        "description": "Named key.",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "args",
+                      "entry_point",
+                      "name"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "StoredContractByName"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Stored versioned contract referenced by its [`ContractPackageHash`], entry point and an instance of [`RuntimeArgs`].",
+                "properties": {
+                  "StoredVersionedContractByHash": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "args": {
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/RuntimeArgs"
+                          }
+                        ],
+                        "description": "Runtime arguments."
+                      },
+                      "entry_point": {
+                        "description": "Entry point name.",
+                        "type": "string"
+                      },
+                      "hash": {
+                        "description": "Hex-encoded hash.",
+                        "type": "string"
+                      },
+                      "version": {
+                        "description": "An optional version of the contract to call. It will default to the highest enabled version if no value is specified.",
+                        "format": "uint32",
+                        "minimum": 0.0,
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "args",
+                      "entry_point",
+                      "hash"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "StoredVersionedContractByHash"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Stored versioned contract referenced by a named key existing in the signer's account context, entry point and an instance of [`RuntimeArgs`].",
+                "properties": {
+                  "StoredVersionedContractByName": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "args": {
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/RuntimeArgs"
+                          }
+                        ],
+                        "description": "Runtime arguments."
+                      },
+                      "entry_point": {
+                        "description": "Entry point name.",
+                        "type": "string"
+                      },
+                      "name": {
+                        "description": "Named key.",
+                        "type": "string"
+                      },
+                      "version": {
+                        "description": "An optional version of the contract to call. It will default to the highest enabled version if no value is specified.",
+                        "format": "uint32",
+                        "minimum": 0.0,
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "args",
+                      "entry_point",
+                      "name"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "StoredVersionedContractByName"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "A native transfer which does not contain or reference a WASM code.",
+                "properties": {
+                  "Transfer": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "args": {
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/RuntimeArgs"
+                          }
+                        ],
+                        "description": "Runtime arguments."
+                      }
+                    },
+                    "required": [
+                      "args"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "Transfer"
+                ],
+                "type": "object"
+              }
+            ],
+            "description": "Represents possible variants of an executable deploy."
+          },
+          "ExecutionEffect": {
+            "additionalProperties": false,
+            "description": "The journal of execution transforms from a single deploy.",
+            "properties": {
+              "operations": {
+                "description": "The resulting operations.",
+                "items": {
+                  "$ref": "#/components/schemas/Operation"
+                },
+                "type": "array"
+              },
+              "transforms": {
+                "description": "The journal of execution transforms.",
+                "items": {
+                  "$ref": "#/components/schemas/TransformEntry"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "operations",
+              "transforms"
+            ],
+            "type": "object"
+          },
+          "ExecutionResult": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "description": "The result of a failed execution.",
+                "properties": {
+                  "Failure": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "cost": {
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/U512"
+                          }
+                        ],
+                        "description": "The cost of executing the deploy."
+                      },
+                      "effect": {
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/ExecutionEffect"
+                          }
+                        ],
+                        "description": "The effect of executing the deploy."
+                      },
+                      "error_message": {
+                        "description": "The error message associated with executing the deploy.",
+                        "type": "string"
+                      },
+                      "transfers": {
+                        "description": "A record of Transfers performed while executing the deploy.",
+                        "items": {
+                          "$ref": "#/components/schemas/TransferAddr"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "cost",
+                      "effect",
+                      "error_message",
+                      "transfers"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "Failure"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "The result of a successful execution.",
+                "properties": {
+                  "Success": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "cost": {
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/U512"
+                          }
+                        ],
+                        "description": "The cost of executing the deploy."
+                      },
+                      "effect": {
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/ExecutionEffect"
+                          }
+                        ],
+                        "description": "The effect of executing the deploy."
+                      },
+                      "transfers": {
+                        "description": "A record of Transfers performed while executing the deploy.",
+                        "items": {
+                          "$ref": "#/components/schemas/TransferAddr"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "cost",
+                      "effect",
+                      "transfers"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "Success"
+                ],
+                "type": "object"
+              }
+            ],
+            "description": "The result of executing a single deploy."
+          },
+          "GlobalStateIdentifier": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "description": "Query using a block hash.",
+                "properties": {
+                  "BlockHash": {
+                    "$ref": "#/components/schemas/BlockHash"
+                  }
+                },
+                "required": [
+                  "BlockHash"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Query using the state root hash.",
+                "properties": {
+                  "StateRootHash": {
+                    "$ref": "#/components/schemas/Digest"
+                  }
+                },
+                "required": [
+                  "StateRootHash"
+                ],
+                "type": "object"
+              }
+            ],
+            "description": "Identifier for possible ways to query Global State"
+          },
+          "Group": {
+            "description": "A (labelled) \"user group\". Each method of a versioned contract may be associated with one or more user groups which are allowed to call it.",
+            "type": "string"
+          },
+          "Groups": {
+            "properties": {
+              "group": {
+                "type": "string"
+              },
+              "keys": {
+                "items": {
+                  "$ref": "#/components/schemas/URef"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "group",
+              "keys"
+            ],
+            "type": "object"
+          },
+          "JsonBid": {
+            "additionalProperties": false,
+            "description": "An entry in a founding validator map representing a bid.",
+            "properties": {
+              "bonding_purse": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/URef"
+                  }
+                ],
+                "description": "The purse that was used for bonding."
+              },
+              "delegation_rate": {
+                "description": "The delegation rate.",
+                "format": "uint8",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "delegators": {
+                "description": "The delegators.",
+                "items": {
+                  "$ref": "#/components/schemas/JsonDelegator"
+                },
+                "type": "array"
+              },
+              "inactive": {
+                "description": "Is this an inactive validator.",
+                "type": "boolean"
+              },
+              "staked_amount": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/U512"
+                  }
+                ],
+                "description": "The amount of tokens staked by a validator (not including delegators)."
+              }
+            },
+            "required": [
+              "bonding_purse",
+              "delegation_rate",
+              "delegators",
+              "inactive",
+              "staked_amount"
+            ],
+            "type": "object"
+          },
+          "JsonBids": {
+            "additionalProperties": false,
+            "description": "A Json representation of a single bid.",
+            "properties": {
+              "bid": {
+                "$ref": "#/components/schemas/JsonBid"
+              },
+              "public_key": {
+                "$ref": "#/components/schemas/PublicKey"
+              }
+            },
+            "required": [
+              "bid",
+              "public_key"
+            ],
+            "type": "object"
+          },
+          "JsonBlock": {
+            "additionalProperties": false,
+            "description": "A JSON-friendly representation of `Block`.",
+            "properties": {
+              "body": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/JsonBlockBody"
+                  }
+                ],
+                "description": "JSON-friendly block body."
+              },
+              "hash": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/BlockHash"
+                  }
+                ],
+                "description": "`BlockHash`"
+              },
+              "header": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/JsonBlockHeader"
+                  }
+                ],
+                "description": "JSON-friendly block header."
+              },
+              "proofs": {
+                "description": "JSON-friendly list of proofs for this block.",
+                "items": {
+                  "$ref": "#/components/schemas/JsonProof"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "body",
+              "hash",
+              "header",
+              "proofs"
+            ],
+            "type": "object"
+          },
+          "JsonBlockBody": {
+            "additionalProperties": false,
+            "description": "A JSON-friendly representation of `Body`",
+            "properties": {
+              "deploy_hashes": {
+                "items": {
+                  "$ref": "#/components/schemas/DeployHash"
+                },
+                "type": "array"
+              },
+              "proposer": {
+                "$ref": "#/components/schemas/PublicKey"
+              },
+              "transfer_hashes": {
+                "items": {
+                  "$ref": "#/components/schemas/DeployHash"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "deploy_hashes",
+              "proposer",
+              "transfer_hashes"
+            ],
+            "type": "object"
+          },
+          "JsonBlockHeader": {
+            "additionalProperties": false,
+            "description": "JSON representation of a block header.",
+            "properties": {
+              "accumulated_seed": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Digest"
+                  }
+                ],
+                "description": "Accumulated seed."
+              },
+              "body_hash": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Digest"
+                  }
+                ],
+                "description": "The body hash."
+              },
+              "era_end": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/JsonEraEnd"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The era end."
+              },
+              "era_id": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/EraId"
+                  }
+                ],
+                "description": "The block era id."
+              },
+              "height": {
+                "description": "The block height.",
+                "format": "uint64",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "parent_hash": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/BlockHash"
+                  }
+                ],
+                "description": "The parent hash."
+              },
+              "protocol_version": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/ProtocolVersion"
+                  }
+                ],
+                "description": "The protocol version."
+              },
+              "random_bit": {
+                "description": "Randomness bit.",
+                "type": "boolean"
+              },
+              "state_root_hash": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Digest"
+                  }
+                ],
+                "description": "The state root hash."
+              },
+              "timestamp": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Timestamp"
+                  }
+                ],
+                "description": "The block timestamp."
+              }
+            },
+            "required": [
+              "accumulated_seed",
+              "body_hash",
+              "era_id",
+              "height",
+              "parent_hash",
+              "protocol_version",
+              "random_bit",
+              "state_root_hash",
+              "timestamp"
+            ],
+            "type": "object"
+          },
+          "JsonDelegator": {
+            "additionalProperties": false,
+            "description": "A delegator associated with the given validator.",
+            "properties": {
+              "bonding_purse": {
+                "$ref": "#/components/schemas/URef"
+              },
+              "delegatee": {
+                "$ref": "#/components/schemas/PublicKey"
+              },
+              "public_key": {
+                "$ref": "#/components/schemas/PublicKey"
+              },
+              "staked_amount": {
+                "$ref": "#/components/schemas/U512"
+              }
+            },
+            "required": [
+              "bonding_purse",
+              "delegatee",
+              "public_key",
+              "staked_amount"
+            ],
+            "type": "object"
+          },
+          "JsonEraEnd": {
+            "additionalProperties": false,
+            "properties": {
+              "era_report": {
+                "$ref": "#/components/schemas/JsonEraReport"
+              },
+              "next_era_validator_weights": {
+                "items": {
+                  "$ref": "#/components/schemas/ValidatorWeight"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "era_report",
+              "next_era_validator_weights"
+            ],
+            "type": "object"
+          },
+          "JsonEraReport": {
+            "additionalProperties": false,
+            "description": "Equivocation and reward information to be included in the terminal block.",
+            "properties": {
+              "equivocators": {
+                "items": {
+                  "$ref": "#/components/schemas/PublicKey"
+                },
+                "type": "array"
+              },
+              "inactive_validators": {
+                "items": {
+                  "$ref": "#/components/schemas/PublicKey"
+                },
+                "type": "array"
+              },
+              "rewards": {
+                "items": {
+                  "$ref": "#/components/schemas/Reward"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "equivocators",
+              "inactive_validators",
+              "rewards"
+            ],
+            "type": "object"
+          },
+          "JsonEraValidators": {
+            "additionalProperties": false,
+            "description": "The validators for the given era.",
+            "properties": {
+              "era_id": {
+                "$ref": "#/components/schemas/EraId"
+              },
+              "validator_weights": {
+                "items": {
+                  "$ref": "#/components/schemas/JsonValidatorWeights"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "era_id",
+              "validator_weights"
+            ],
+            "type": "object"
+          },
+          "JsonExecutionResult": {
+            "additionalProperties": false,
+            "description": "The execution result of a single deploy.",
+            "properties": {
+              "block_hash": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/BlockHash"
+                  }
+                ],
+                "description": "The block hash."
+              },
+              "result": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/ExecutionResult"
+                  }
+                ],
+                "description": "Execution result."
+              }
+            },
+            "required": [
+              "block_hash",
+              "result"
+            ],
+            "type": "object"
+          },
+          "JsonProof": {
+            "additionalProperties": false,
+            "description": "A JSON-friendly representation of a proof, i.e. a block's finality signature.",
+            "properties": {
+              "public_key": {
+                "$ref": "#/components/schemas/PublicKey"
+              },
+              "signature": {
+                "$ref": "#/components/schemas/Signature"
+              }
+            },
+            "required": [
+              "public_key",
+              "signature"
+            ],
+            "type": "object"
+          },
+          "JsonValidatorChanges": {
+            "additionalProperties": false,
+            "description": "The changes in a validator's status.",
+            "properties": {
+              "public_key": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  }
+                ],
+                "description": "The public key of the validator."
+              },
+              "status_changes": {
+                "description": "The set of changes to the validator's status.",
+                "items": {
+                  "$ref": "#/components/schemas/JsonValidatorStatusChange"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "public_key",
+              "status_changes"
+            ],
+            "type": "object"
+          },
+          "JsonValidatorStatusChange": {
+            "additionalProperties": false,
+            "description": "A single change to a validator's status in the given era.",
+            "properties": {
+              "era_id": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/EraId"
+                  }
+                ],
+                "description": "The era in which the change occurred."
+              },
+              "validator_change": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/ValidatorChange"
+                  }
+                ],
+                "description": "The change in validator status."
+              }
+            },
+            "required": [
+              "era_id",
+              "validator_change"
+            ],
+            "type": "object"
+          },
+          "JsonValidatorWeights": {
+            "additionalProperties": false,
+            "description": "A validator's weight.",
+            "properties": {
+              "public_key": {
+                "$ref": "#/components/schemas/PublicKey"
+              },
+              "weight": {
+                "$ref": "#/components/schemas/U512"
+              }
+            },
+            "required": [
+              "public_key",
+              "weight"
+            ],
+            "type": "object"
+          },
+          "MinimalBlockInfo": {
+            "additionalProperties": false,
+            "description": "Minimal info of a `Block`.",
+            "properties": {
+              "creator": {
+                "$ref": "#/components/schemas/PublicKey"
+              },
+              "era_id": {
+                "$ref": "#/components/schemas/EraId"
+              },
+              "hash": {
+                "$ref": "#/components/schemas/BlockHash"
+              },
+              "height": {
+                "format": "uint64",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "state_root_hash": {
+                "$ref": "#/components/schemas/Digest"
+              },
+              "timestamp": {
+                "$ref": "#/components/schemas/Timestamp"
+              }
+            },
+            "required": [
+              "creator",
+              "era_id",
+              "hash",
+              "height",
+              "state_root_hash",
+              "timestamp"
+            ],
+            "type": "object"
+          },
+          "NamedArg": {
+            "description": "Named arguments to a contract.",
+            "items": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/components/schemas/CLValue"
+              }
+            ],
+            "maxItems": 2,
+            "minItems": 2,
+            "type": "array"
+          },
+          "NamedKey": {
+            "additionalProperties": false,
+            "description": "A named key.",
+            "properties": {
+              "key": {
+                "description": "The value of the entry: a casper `Key` type.",
+                "type": "string"
+              },
+              "name": {
+                "description": "The name of the entry.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "key",
+              "name"
+            ],
+            "type": "object"
+          },
+          "NextUpgrade": {
+            "description": "Information about the next protocol upgrade.",
+            "properties": {
+              "activation_point": {
+                "$ref": "#/components/schemas/ActivationPoint"
+              },
+              "protocol_version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "activation_point",
+              "protocol_version"
+            ],
+            "type": "object"
+          },
+          "NodeState": {
+            "description": "The various possible states of operation for the node.",
+            "enum": [
+              "FastSyncing",
+              "SyncingToGenesis",
+              "Participating"
+            ],
+            "type": "string"
+          },
+          "OpKind": {
+            "description": "The type of operation performed while executing a deploy.",
+            "enum": [
+              "Read",
+              "Write",
+              "Add",
+              "NoOp"
+            ],
+            "type": "string"
+          },
+          "Operation": {
+            "additionalProperties": false,
+            "description": "An operation performed while executing a deploy.",
+            "properties": {
+              "key": {
+                "description": "The formatted string of the `Key`.",
+                "type": "string"
+              },
+              "kind": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/OpKind"
+                  }
+                ],
+                "description": "The type of operation."
+              }
+            },
+            "required": [
+              "key",
+              "kind"
+            ],
+            "type": "object"
+          },
+          "Parameter": {
+            "description": "Parameter to a method",
+            "properties": {
+              "cl_type": {
+                "$ref": "#/components/schemas/CLType"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "cl_type",
+              "name"
+            ],
+            "type": "object"
+          },
+          "PeerEntry": {
+            "additionalProperties": false,
+            "description": "Node peer entry.",
+            "properties": {
+              "address": {
+                "description": "Node address.",
+                "type": "string"
+              },
+              "node_id": {
+                "description": "Node id.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "address",
+              "node_id"
+            ],
+            "type": "object"
+          },
+          "PeersMap": {
+            "description": "Map of peer IDs to network addresses.",
+            "items": {
+              "$ref": "#/components/schemas/PeerEntry"
+            },
+            "type": "array"
+          },
+          "ProtocolVersion": {
+            "description": "Casper Platform protocol version",
+            "type": "string"
+          },
+          "PublicKey": {
+            "description": "Hex-encoded cryptographic public key, including the algorithm tag prefix.",
+            "type": "string"
+          },
+          "Reward": {
+            "additionalProperties": false,
+            "properties": {
+              "amount": {
+                "format": "uint64",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "validator": {
+                "$ref": "#/components/schemas/PublicKey"
+              }
+            },
+            "required": [
+              "amount",
+              "validator"
+            ],
+            "type": "object"
+          },
+          "RuntimeArgs": {
+            "description": "Represents a collection of arguments passed to a smart contract.",
+            "items": {
+              "$ref": "#/components/schemas/NamedArg"
+            },
+            "type": "array"
+          },
+          "SeigniorageAllocation": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "description": "Info about a seigniorage allocation for a validator",
+                "properties": {
+                  "Validator": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "amount": {
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/U512"
+                          }
+                        ],
+                        "description": "Allocated amount"
+                      },
+                      "validator_public_key": {
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/PublicKey"
+                          }
+                        ],
+                        "description": "Validator's public key"
+                      }
+                    },
+                    "required": [
+                      "amount",
+                      "validator_public_key"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "Validator"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Info about a seigniorage allocation for a delegator",
+                "properties": {
+                  "Delegator": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "amount": {
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/U512"
+                          }
+                        ],
+                        "description": "Allocated amount"
+                      },
+                      "delegator_public_key": {
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/PublicKey"
+                          }
+                        ],
+                        "description": "Delegator's public key"
+                      },
+                      "validator_public_key": {
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/PublicKey"
+                          }
+                        ],
+                        "description": "Validator's public key"
+                      }
+                    },
+                    "required": [
+                      "amount",
+                      "delegator_public_key",
+                      "validator_public_key"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "Delegator"
+                ],
+                "type": "object"
+              }
+            ],
+            "description": "Information about a seigniorage allocation"
+          },
+          "Signature": {
+            "description": "Hex-encoded cryptographic signature, including the algorithm tag prefix.",
+            "type": "string"
+          },
+          "StoredValue": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "description": "A CasperLabs value.",
+                "properties": {
+                  "CLValue": {
+                    "$ref": "#/components/schemas/CLValue"
+                  }
+                },
+                "required": [
+                  "CLValue"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "An account.",
+                "properties": {
+                  "Account": {
+                    "$ref": "#/components/schemas/Account"
+                  }
+                },
+                "required": [
+                  "Account"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "A contract's Wasm",
+                "properties": {
+                  "ContractWasm": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "ContractWasm"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Methods and type signatures supported by a contract.",
+                "properties": {
+                  "Contract": {
+                    "$ref": "#/components/schemas/Contract"
+                  }
+                },
+                "required": [
+                  "Contract"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "A contract definition, metadata, and security container.",
+                "properties": {
+                  "ContractPackage": {
+                    "$ref": "#/components/schemas/ContractPackage"
+                  }
+                },
+                "required": [
+                  "ContractPackage"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "A record of a transfer",
+                "properties": {
+                  "Transfer": {
+                    "$ref": "#/components/schemas/Transfer"
+                  }
+                },
+                "required": [
+                  "Transfer"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "A record of a deploy",
+                "properties": {
+                  "DeployInfo": {
+                    "$ref": "#/components/schemas/DeployInfo"
+                  }
+                },
+                "required": [
+                  "DeployInfo"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Auction metadata",
+                "properties": {
+                  "EraInfo": {
+                    "$ref": "#/components/schemas/EraInfo"
+                  }
+                },
+                "required": [
+                  "EraInfo"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "A bid",
+                "properties": {
+                  "Bid": {
+                    "$ref": "#/components/schemas/Bid"
+                  }
+                },
+                "required": [
+                  "Bid"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "A withdraw",
+                "properties": {
+                  "Withdraw": {
+                    "items": {
+                      "$ref": "#/components/schemas/WithdrawPurse"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "Withdraw"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "A collection of unbonding purses",
+                "properties": {
+                  "Unbonding": {
+                    "items": {
+                      "$ref": "#/components/schemas/UnbondingPurse"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "Unbonding"
+                ],
+                "type": "object"
+              }
+            ],
+            "description": "Representation of a value stored in global state.\n\n`Account`, `Contract` and `ContractPackage` have their own `json_compatibility` representations (see their docs for further info)."
+          },
+          "TimeDiff": {
+            "description": "Human-readable duration.",
+            "format": "uint64",
+            "minimum": 0.0,
+            "type": "integer"
+          },
+          "Timestamp": {
+            "description": "Timestamp formatted as per RFC 3339",
+            "format": "uint64",
+            "minimum": 0.0,
+            "type": "integer"
+          },
+          "Transfer": {
+            "additionalProperties": false,
+            "description": "Represents a transfer from one purse to another",
+            "properties": {
+              "amount": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/U512"
+                  }
+                ],
+                "description": "Transfer amount"
+              },
+              "deploy_hash": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/DeployHash"
+                  }
+                ],
+                "description": "Deploy that created the transfer"
+              },
+              "from": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/AccountHash"
+                  }
+                ],
+                "description": "Account from which transfer was executed"
+              },
+              "gas": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/U512"
+                  }
+                ],
+                "description": "Gas"
+              },
+              "id": {
+                "description": "User-defined id",
+                "format": "uint64",
+                "minimum": 0.0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "source": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/URef"
+                  }
+                ],
+                "description": "Source purse"
+              },
+              "target": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/URef"
+                  }
+                ],
+                "description": "Target purse"
+              },
+              "to": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/AccountHash"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Account to which funds are transferred"
+              }
+            },
+            "required": [
+              "amount",
+              "deploy_hash",
+              "from",
+              "gas",
+              "source",
+              "target"
+            ],
+            "type": "object"
+          },
+          "TransferAddr": {
+            "description": "Hex-encoded transfer address.",
+            "type": "string"
+          },
+          "Transform": {
+            "anyOf": [
+              {
+                "enum": [
+                  "Identity",
+                  "WriteContractWasm",
+                  "WriteContract",
+                  "WriteContractPackage"
+                ],
+                "type": "string"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Writes the given CLValue to global state.",
+                "properties": {
+                  "WriteCLValue": {
+                    "$ref": "#/components/schemas/CLValue"
+                  }
+                },
+                "required": [
+                  "WriteCLValue"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Writes the given Account to global state.",
+                "properties": {
+                  "WriteAccount": {
+                    "$ref": "#/components/schemas/AccountHash"
+                  }
+                },
+                "required": [
+                  "WriteAccount"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Writes the given DeployInfo to global state.",
+                "properties": {
+                  "WriteDeployInfo": {
+                    "$ref": "#/components/schemas/DeployInfo"
+                  }
+                },
+                "required": [
+                  "WriteDeployInfo"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Writes the given EraInfo to global state.",
+                "properties": {
+                  "WriteEraInfo": {
+                    "$ref": "#/components/schemas/EraInfo"
+                  }
+                },
+                "required": [
+                  "WriteEraInfo"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Writes the given Transfer to global state.",
+                "properties": {
+                  "WriteTransfer": {
+                    "$ref": "#/components/schemas/Transfer"
+                  }
+                },
+                "required": [
+                  "WriteTransfer"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Writes the given Bid to global state.",
+                "properties": {
+                  "WriteBid": {
+                    "$ref": "#/components/schemas/Bid"
+                  }
+                },
+                "required": [
+                  "WriteBid"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Writes the given Withdraw to global state.",
+                "properties": {
+                  "WriteWithdraw": {
+                    "items": {
+                      "$ref": "#/components/schemas/UnbondingPurse"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "WriteWithdraw"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Adds the given `i32`.",
+                "properties": {
+                  "AddInt32": {
+                    "format": "int32",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "AddInt32"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Adds the given `u64`.",
+                "properties": {
+                  "AddUInt64": {
+                    "format": "uint64",
+                    "minimum": 0.0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "AddUInt64"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Adds the given `U128`.",
+                "properties": {
+                  "AddUInt128": {
+                    "$ref": "#/components/schemas/U128"
+                  }
+                },
+                "required": [
+                  "AddUInt128"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Adds the given `U256`.",
+                "properties": {
+                  "AddUInt256": {
+                    "$ref": "#/components/schemas/U256"
+                  }
+                },
+                "required": [
+                  "AddUInt256"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Adds the given `U512`.",
+                "properties": {
+                  "AddUInt512": {
+                    "$ref": "#/components/schemas/U512"
+                  }
+                },
+                "required": [
+                  "AddUInt512"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "Adds the given collection of named keys.",
+                "properties": {
+                  "AddKeys": {
+                    "items": {
+                      "$ref": "#/components/schemas/NamedKey"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "AddKeys"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "A failed transformation, containing an error message.",
+                "properties": {
+                  "Failure": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "Failure"
+                ],
+                "type": "object"
+              }
+            ],
+            "description": "The actual transformation performed while executing a deploy."
+          },
+          "TransformEntry": {
+            "additionalProperties": false,
+            "description": "A transformation performed while executing a deploy.",
+            "properties": {
+              "key": {
+                "description": "The formatted string of the `Key`.",
+                "type": "string"
+              },
+              "transform": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Transform"
+                  }
+                ],
+                "description": "The transformation."
+              }
+            },
+            "required": [
+              "key",
+              "transform"
+            ],
+            "type": "object"
+          },
+          "U128": {
+            "description": "Decimal representation of a 128-bit integer.",
+            "type": "string"
+          },
+          "U256": {
+            "description": "Decimal representation of a 256-bit integer.",
+            "type": "string"
+          },
+          "U512": {
+            "description": "Decimal representation of a 512-bit integer.",
+            "type": "string"
+          },
+          "URef": {
+            "description": "Hex-encoded, formatted URef.",
+            "type": "string"
+          },
+          "UnbondingPurse": {
+            "additionalProperties": false,
+            "description": "Unbonding purse.",
+            "properties": {
+              "amount": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/U512"
+                  }
+                ],
+                "description": "Unbonding Amount."
+              },
+              "bonding_purse": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/URef"
+                  }
+                ],
+                "description": "Bonding Purse"
+              },
+              "era_of_creation": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/EraId"
+                  }
+                ],
+                "description": "Era in which this unbonding request was created."
+              },
+              "new_validator": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The validator public key to re-delegate to."
+              },
+              "unbonder_public_key": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  }
+                ],
+                "description": "Unbonders public key."
+              },
+              "validator_public_key": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  }
+                ],
+                "description": "Validators public key."
+              }
+            },
+            "required": [
+              "amount",
+              "bonding_purse",
+              "era_of_creation",
+              "unbonder_public_key",
+              "validator_public_key"
+            ],
+            "type": "object"
+          },
+          "ValidatorChange": {
+            "description": "A change to a validator's status between two eras.",
+            "enum": [
+              "Added",
+              "Removed",
+              "Banned",
+              "CannotPropose",
+              "SeenAsFaulty"
+            ],
+            "type": "string"
+          },
+          "ValidatorWeight": {
+            "additionalProperties": false,
+            "properties": {
+              "validator": {
+                "$ref": "#/components/schemas/PublicKey"
+              },
+              "weight": {
+                "$ref": "#/components/schemas/U512"
+              }
+            },
+            "required": [
+              "validator",
+              "weight"
+            ],
+            "type": "object"
+          },
+          "VestingSchedule": {
+            "additionalProperties": false,
+            "properties": {
+              "initial_release_timestamp_millis": {
+                "format": "uint64",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "locked_amounts": {
+                "items": {
+                  "$ref": "#/components/schemas/U512"
+                },
+                "maxItems": 14,
+                "minItems": 14,
+                "type": [
+                  "array",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "initial_release_timestamp_millis"
+            ],
+            "type": "object"
+          },
+          "WithdrawPurse": {
+            "additionalProperties": false,
+            "description": "A withdraw purse, a legacy structure.",
+            "properties": {
+              "amount": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/U512"
+                  }
+                ],
+                "description": "Unbonding Amount."
+              },
+              "bonding_purse": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/URef"
+                  }
+                ],
+                "description": "Bonding Purse"
+              },
+              "era_of_creation": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/EraId"
+                  }
+                ],
+                "description": "Era in which this unbonding request was created."
+              },
+              "unbonder_public_key": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  }
+                ],
+                "description": "Unbonders public key."
+              },
+              "validator_public_key": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  }
+                ],
+                "description": "Validators public key."
+              }
+            },
+            "required": [
+              "amount",
+              "bonding_purse",
+              "era_of_creation",
+              "unbonder_public_key",
+              "validator_public_key"
+            ],
+            "type": "object"
+          }
+        }
+      },
+      "info": {
+        "contact": {
+          "name": "CasperLabs",
+          "url": "https://casperlabs.io"
+        },
+        "description": "This describes the JSON-RPC 2.0 API of a node on the Casper network.",
+        "license": {
+          "name": "CasperLabs Open Source License Version 1.0",
+          "url": "https://raw.githubusercontent.com/CasperLabs/casper-node/master/LICENSE"
+        },
+        "title": "Client API of Casper Node",
+        "version": "1.4.5"
+      },
+      "methods": [
+        {
+          "examples": [
+            {
+              "name": "account_put_deploy_example",
+              "params": [
+                {
+                  "name": "deploy",
+                  "value": {
+                    "approvals": [
+                      {
+                        "signature": "014c1a89f92e29dd74fc648f741137d9caf4edba97c5f9799ce0c9aa6b0c9b58db368c64098603dbecef645774c05dff057cb1f91f2cf390bbacce78aa6f084007",
+                        "signer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c"
+                      }
+                    ],
+                    "hash": "5c9b3b099c1378aa8e4a5f07f59ff1fcdc69a83179427c7e67ae0377d94d93fa",
+                    "header": {
+                      "account": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
+                      "body_hash": "d53cf72d17278fd47d399013ca389c50d589352f1a12593c0b8e01872a641b50",
+                      "chain_name": "casper-example",
+                      "dependencies": [
+                        "0101010101010101010101010101010101010101010101010101010101010101"
+                      ],
+                      "gas_price": 1,
+                      "timestamp": "2020-11-17T00:39:24.072Z",
+                      "ttl": "1h"
+                    },
+                    "payment": {
+                      "StoredContractByName": {
+                        "args": [
+                          [
+                            "amount",
+                            {
+                              "bytes": "e8030000",
+                              "cl_type": "I32",
+                              "parsed": 1000
+                            }
+                          ]
+                        ],
+                        "entry_point": "example-entry-point",
+                        "name": "casper-example"
+                      }
+                    },
+                    "session": {
+                      "Transfer": {
+                        "args": [
+                          [
+                            "amount",
+                            {
+                              "bytes": "e8030000",
+                              "cl_type": "I32",
+                              "parsed": 1000
+                            }
+                          ]
+                        ]
+                      }
+                    }
+                  }
+                }
+              ],
+              "result": {
+                "name": "account_put_deploy_example_result",
+                "value": {
+                  "api_version": "1.4.5",
+                  "deploy_hash": "5c9b3b099c1378aa8e4a5f07f59ff1fcdc69a83179427c7e67ae0377d94d93fa"
+                }
+              }
+            }
+          ],
+          "name": "account_put_deploy",
+          "params": [
+            {
+              "name": "deploy",
+              "required": true,
+              "schema": {
+                "$ref": "#/components/schemas/Deploy",
+                "description": "The `Deploy`."
+              }
+            }
+          ],
+          "result": {
+            "name": "account_put_deploy_result",
+            "schema": {
+              "additionalProperties": false,
+              "description": "Result for \"account_put_deploy\" RPC response.",
+              "properties": {
+                "api_version": {
+                  "description": "The RPC API version.",
+                  "type": "string"
+                },
+                "deploy_hash": {
+                  "$ref": "#/components/schemas/DeployHash",
+                  "description": "The deploy hash."
+                }
+              },
+              "required": [
+                "api_version",
+                "deploy_hash"
+              ],
+              "type": "object"
+            }
+          },
+          "summary": "receives a Deploy to be executed by the network"
+        },
+        {
+          "examples": [
+            {
+              "name": "info_get_deploy_example",
+              "params": [
+                {
+                  "name": "deploy_hash",
+                  "value": "5c9b3b099c1378aa8e4a5f07f59ff1fcdc69a83179427c7e67ae0377d94d93fa"
+                },
+                {
+                  "name": "finalized_approvals",
+                  "value": true
+                }
+              ],
+              "result": {
+                "name": "info_get_deploy_example_result",
+                "value": {
+                  "api_version": "1.4.5",
+                  "deploy": {
+                    "approvals": [
+                      {
+                        "signature": "014c1a89f92e29dd74fc648f741137d9caf4edba97c5f9799ce0c9aa6b0c9b58db368c64098603dbecef645774c05dff057cb1f91f2cf390bbacce78aa6f084007",
+                        "signer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c"
+                      }
+                    ],
+                    "hash": "5c9b3b099c1378aa8e4a5f07f59ff1fcdc69a83179427c7e67ae0377d94d93fa",
+                    "header": {
+                      "account": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
+                      "body_hash": "d53cf72d17278fd47d399013ca389c50d589352f1a12593c0b8e01872a641b50",
+                      "chain_name": "casper-example",
+                      "dependencies": [
+                        "0101010101010101010101010101010101010101010101010101010101010101"
+                      ],
+                      "gas_price": 1,
+                      "timestamp": "2020-11-17T00:39:24.072Z",
+                      "ttl": "1h"
+                    },
+                    "payment": {
+                      "StoredContractByName": {
+                        "args": [
+                          [
+                            "amount",
+                            {
+                              "bytes": "e8030000",
+                              "cl_type": "I32",
+                              "parsed": 1000
+                            }
+                          ]
+                        ],
+                        "entry_point": "example-entry-point",
+                        "name": "casper-example"
+                      }
+                    },
+                    "session": {
+                      "Transfer": {
+                        "args": [
+                          [
+                            "amount",
+                            {
+                              "bytes": "e8030000",
+                              "cl_type": "I32",
+                              "parsed": 1000
+                            }
+                          ]
+                        ]
+                      }
+                    }
+                  },
+                  "execution_results": [
+                    {
+                      "block_hash": "13c2d7a68ecdd4b74bf4393c88915c836c863fc4bf11d7f2bd930a1bbccacdcb",
+                      "result": {
+                        "Success": {
+                          "cost": "123456",
+                          "effect": {
+                            "operations": [
+                              {
+                                "key": "account-hash-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb",
+                                "kind": "Write"
+                              },
+                              {
+                                "key": "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1",
+                                "kind": "Read"
+                              }
+                            ],
+                            "transforms": [
+                              {
+                                "key": "uref-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb-007",
+                                "transform": {
+                                  "AddUInt64": 8
+                                }
+                              },
+                              {
+                                "key": "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1",
+                                "transform": "Identity"
+                              }
+                            ]
+                          },
+                          "transfers": [
+                            "transfer-5959595959595959595959595959595959595959595959595959595959595959",
+                            "transfer-8282828282828282828282828282828282828282828282828282828282828282"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "name": "info_get_deploy",
+          "params": [
+            {
+              "name": "deploy_hash",
+              "required": true,
+              "schema": {
+                "$ref": "#/components/schemas/DeployHash",
+                "description": "The deploy hash."
+              }
+            },
+            {
+              "name": "finalized_approvals",
+              "required": false,
+              "schema": {
+                "default": false,
+                "description": "Whether to return the deploy with the finalized approvals substituted. If `false` or omitted, returns the deploy with the approvals that were originally received by the node.",
+                "type": "boolean"
+              }
+            }
+          ],
+          "result": {
+            "name": "info_get_deploy_result",
+            "schema": {
+              "additionalProperties": false,
+              "description": "Result for \"info_get_deploy\" RPC response.",
+              "properties": {
+                "api_version": {
+                  "description": "The RPC API version.",
+                  "type": "string"
+                },
+                "deploy": {
+                  "$ref": "#/components/schemas/Deploy",
+                  "description": "The deploy."
+                },
+                "execution_results": {
+                  "description": "The map of block hash to execution result.",
+                  "items": {
+                    "$ref": "#/components/schemas/JsonExecutionResult"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "api_version",
+                "deploy",
+                "execution_results"
+              ],
+              "type": "object"
+            }
+          },
+          "summary": "returns a Deploy from the network"
+        },
+        {
+          "examples": [
+            {
+              "name": "state_get_account_info_example",
+              "params": [
+                {
+                  "name": "block_identifier",
+                  "value": {
+                    "Hash": "13c2d7a68ecdd4b74bf4393c88915c836c863fc4bf11d7f2bd930a1bbccacdcb"
+                  }
+                },
+                {
+                  "name": "public_key",
+                  "value": "013b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29"
+                }
+              ],
+              "result": {
+                "name": "state_get_account_info_example_result",
+                "value": {
+                  "account": {
+                    "account_hash": "account-hash-e94daaff79c2ab8d9c31d9c3058d7d0a0dd31204a5638dc1451fa67b2e3fb88c",
+                    "action_thresholds": {
+                      "deployment": 1,
+                      "key_management": 1
+                    },
+                    "associated_keys": [
+                      {
+                        "account_hash": "account-hash-e94daaff79c2ab8d9c31d9c3058d7d0a0dd31204a5638dc1451fa67b2e3fb88c",
+                        "weight": 1
+                      }
+                    ],
+                    "main_purse": "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007",
+                    "named_keys": []
+                  },
+                  "api_version": "1.4.5",
+                  "merkle_proof": "01000000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625016ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625000000003529cde5c621f857f75f3810611eb4af3f998caaa9d4a3413cf799f99c67db0307010000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a7253614761462501010102000000006e06000000000074769d28aac597a36a03a932d4b43e4f10bf0403ee5c41dd035102553f5773631200b9e173e8f05361b681513c14e25e3138639eb03232581db7557c9e8dbbc83ce94500226a9a7fe4f2b7b88d5103a4fc7400f02bf89c860c9ccdd56951a2afe9be0e0267006d820fb5676eb2960e15722f7725f3f8f41030078f8b2e44bf0dc03f71b176d6e800dc5ae9805068c5be6da1a90b2528ee85db0609cc0fb4bd60bbd559f497a98b67f500e1e3e846592f4918234647fca39830b7e1e6ad6f5b7a99b39af823d82ba1873d000003000000010186ff500f287e9b53f823ae1582b1fa429dfede28015125fd233a31ca04d5012002015cc42669a55467a1fdf49750772bfc1aed59b9b085558eb81510e9b015a7c83b0301e3cf4a34b1db6bfa58808b686cb8fe21ebe0c1bcbcee522649d2b135fe510fe3"
+                }
+              }
+            }
+          ],
+          "name": "state_get_account_info",
+          "params": [
+            {
+              "name": "public_key",
+              "required": true,
+              "schema": {
+                "$ref": "#/components/schemas/PublicKey",
+                "description": "The public key of the Account."
+              }
+            },
+            {
+              "name": "block_identifier",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/BlockIdentifier"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The block identifier."
+              }
+            }
+          ],
+          "result": {
+            "name": "state_get_account_info_result",
+            "schema": {
+              "additionalProperties": false,
+              "description": "Result for \"state_get_account_info\" RPC response.",
+              "properties": {
+                "account": {
+                  "$ref": "#/components/schemas/Account",
+                  "description": "The account."
+                },
+                "api_version": {
+                  "description": "The RPC API version.",
+                  "type": "string"
+                },
+                "merkle_proof": {
+                  "description": "The merkle proof.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "account",
+                "api_version",
+                "merkle_proof"
+              ],
+              "type": "object"
+            }
+          },
+          "summary": "returns an Account from the network"
+        },
+        {
+          "examples": [
+            {
+              "name": "state_get_dictionary_item_example",
+              "params": [
+                {
+                  "name": "dictionary_identifier",
+                  "value": {
+                    "URef": {
+                      "dictionary_item_key": "a_unique_entry_identifier",
+                      "seed_uref": "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007"
+                    }
+                  }
+                },
+                {
+                  "name": "state_root_hash",
+                  "value": "0808080808080808080808080808080808080808080808080808080808080808"
+                }
+              ],
+              "result": {
+                "name": "state_get_dictionary_item_example_result",
+                "value": {
+                  "api_version": "1.4.5",
+                  "dictionary_key": "dictionary-67518854aa916c97d4e53df8570c8217ccc259da2721b692102d76acd0ee8d1f",
+                  "merkle_proof": "01000000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625016ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625000000003529cde5c621f857f75f3810611eb4af3f998caaa9d4a3413cf799f99c67db0307010000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a7253614761462501010102000000006e06000000000074769d28aac597a36a03a932d4b43e4f10bf0403ee5c41dd035102553f5773631200b9e173e8f05361b681513c14e25e3138639eb03232581db7557c9e8dbbc83ce94500226a9a7fe4f2b7b88d5103a4fc7400f02bf89c860c9ccdd56951a2afe9be0e0267006d820fb5676eb2960e15722f7725f3f8f41030078f8b2e44bf0dc03f71b176d6e800dc5ae9805068c5be6da1a90b2528ee85db0609cc0fb4bd60bbd559f497a98b67f500e1e3e846592f4918234647fca39830b7e1e6ad6f5b7a99b39af823d82ba1873d000003000000010186ff500f287e9b53f823ae1582b1fa429dfede28015125fd233a31ca04d5012002015cc42669a55467a1fdf49750772bfc1aed59b9b085558eb81510e9b015a7c83b0301e3cf4a34b1db6bfa58808b686cb8fe21ebe0c1bcbcee522649d2b135fe510fe3",
+                  "stored_value": {
+                    "CLValue": {
+                      "bytes": "0100000000000000",
+                      "cl_type": "U64",
+                      "parsed": 1
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "name": "state_get_dictionary_item",
+          "params": [
+            {
+              "name": "state_root_hash",
+              "required": true,
+              "schema": {
+                "$ref": "#/components/schemas/Digest",
+                "description": "Hash of the state root"
+              }
+            },
+            {
+              "name": "dictionary_identifier",
+              "required": true,
+              "schema": {
+                "$ref": "#/components/schemas/DictionaryIdentifier",
+                "description": "The Dictionary query identifier."
+              }
+            }
+          ],
+          "result": {
+            "name": "state_get_dictionary_item_result",
+            "schema": {
+              "additionalProperties": false,
+              "description": "Result for \"state_get_dictionary_item\" RPC response.",
+              "properties": {
+                "api_version": {
+                  "description": "The RPC API version.",
+                  "type": "string"
+                },
+                "dictionary_key": {
+                  "description": "The key under which the value is stored.",
+                  "type": "string"
+                },
+                "merkle_proof": {
+                  "description": "The merkle proof.",
+                  "type": "string"
+                },
+                "stored_value": {
+                  "$ref": "#/components/schemas/StoredValue",
+                  "description": "The stored value."
+                }
+              },
+              "required": [
+                "api_version",
+                "dictionary_key",
+                "merkle_proof",
+                "stored_value"
+              ],
+              "type": "object"
+            }
+          },
+          "summary": "returns an item from a Dictionary"
+        },
+        {
+          "examples": [
+            {
+              "name": "query_global_state_example",
+              "params": [
+                {
+                  "name": "key",
+                  "value": "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1"
+                },
+                {
+                  "name": "path",
+                  "value": []
+                },
+                {
+                  "name": "state_identifier",
+                  "value": {
+                    "BlockHash": "13c2d7a68ecdd4b74bf4393c88915c836c863fc4bf11d7f2bd930a1bbccacdcb"
+                  }
+                }
+              ],
+              "result": {
+                "name": "query_global_state_example_result",
+                "value": {
+                  "api_version": "1.4.5",
+                  "block_header": {
+                    "accumulated_seed": "ac979f51525cfd979b14aa7dc0737c5154eabe0db9280eceaa8dc8d2905b20d5",
+                    "body_hash": "cd502c5393a3c8b66d6979ad7857507c9baf5a8ba16ba99c28378d3a970fff42",
+                    "era_end": {
+                      "era_report": {
+                        "equivocators": [
+                          "013b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29"
+                        ],
+                        "inactive_validators": [
+                          "018139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394"
+                        ],
+                        "rewards": [
+                          {
+                            "amount": 1000,
+                            "validator": "018a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"
+                          }
+                        ]
+                      },
+                      "next_era_validator_weights": [
+                        {
+                          "validator": "016e7a1cdd29b0b78fd13af4c5598feff4ef2a97166e3ca6f2e4fbfccd80505bf1",
+                          "weight": "456"
+                        },
+                        {
+                          "validator": "018a875fff1eb38451577acd5afee405456568dd7c89e090863a0557bc7af49f17",
+                          "weight": "789"
+                        },
+                        {
+                          "validator": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
+                          "weight": "123"
+                        }
+                      ]
+                    },
+                    "era_id": 1,
+                    "height": 10,
+                    "parent_hash": "0707070707070707070707070707070707070707070707070707070707070707",
+                    "protocol_version": "1.0.0",
+                    "random_bit": true,
+                    "state_root_hash": "0808080808080808080808080808080808080808080808080808080808080808",
+                    "timestamp": "2020-11-17T00:39:24.072Z"
+                  },
+                  "merkle_proof": "01000000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625016ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625000000003529cde5c621f857f75f3810611eb4af3f998caaa9d4a3413cf799f99c67db0307010000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a7253614761462501010102000000006e06000000000074769d28aac597a36a03a932d4b43e4f10bf0403ee5c41dd035102553f5773631200b9e173e8f05361b681513c14e25e3138639eb03232581db7557c9e8dbbc83ce94500226a9a7fe4f2b7b88d5103a4fc7400f02bf89c860c9ccdd56951a2afe9be0e0267006d820fb5676eb2960e15722f7725f3f8f41030078f8b2e44bf0dc03f71b176d6e800dc5ae9805068c5be6da1a90b2528ee85db0609cc0fb4bd60bbd559f497a98b67f500e1e3e846592f4918234647fca39830b7e1e6ad6f5b7a99b39af823d82ba1873d000003000000010186ff500f287e9b53f823ae1582b1fa429dfede28015125fd233a31ca04d5012002015cc42669a55467a1fdf49750772bfc1aed59b9b085558eb81510e9b015a7c83b0301e3cf4a34b1db6bfa58808b686cb8fe21ebe0c1bcbcee522649d2b135fe510fe3",
+                  "stored_value": {
+                    "Account": {
+                      "account_hash": "account-hash-e94daaff79c2ab8d9c31d9c3058d7d0a0dd31204a5638dc1451fa67b2e3fb88c",
+                      "action_thresholds": {
+                        "deployment": 1,
+                        "key_management": 1
+                      },
+                      "associated_keys": [
+                        {
+                          "account_hash": "account-hash-e94daaff79c2ab8d9c31d9c3058d7d0a0dd31204a5638dc1451fa67b2e3fb88c",
+                          "weight": 1
+                        }
+                      ],
+                      "main_purse": "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007",
+                      "named_keys": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "name": "query_global_state",
+          "params": [
+            {
+              "name": "state_identifier",
+              "required": true,
+              "schema": {
+                "$ref": "#/components/schemas/GlobalStateIdentifier",
+                "description": "The identifier used for the query."
+              }
+            },
+            {
+              "name": "key",
+              "required": true,
+              "schema": {
+                "description": "`casper_types::Key` as formatted string.",
+                "type": "string"
+              }
+            },
+            {
+              "name": "path",
+              "required": false,
+              "schema": {
+                "default": [],
+                "description": "The path components starting from the key as base.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            }
+          ],
+          "result": {
+            "name": "query_global_state_result",
+            "schema": {
+              "additionalProperties": false,
+              "description": "Result for \"query_global_state\" RPC response.",
+              "properties": {
+                "api_version": {
+                  "description": "The RPC API version.",
+                  "type": "string"
+                },
+                "block_header": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/JsonBlockHeader"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The block header if a Block hash was provided."
+                },
+                "merkle_proof": {
+                  "description": "The merkle proof.",
+                  "type": "string"
+                },
+                "stored_value": {
+                  "$ref": "#/components/schemas/StoredValue",
+                  "description": "The stored value."
+                }
+              },
+              "required": [
+                "api_version",
+                "merkle_proof",
+                "stored_value"
+              ],
+              "type": "object"
+            }
+          },
+          "summary": "a query to global state using either a Block hash or state root hash"
+        },
+        {
+          "examples": [
+            {
+              "name": "info_get_peers_example",
+              "params": [],
+              "result": {
+                "name": "info_get_peers_example_result",
+                "value": {
+                  "api_version": "1.4.5",
+                  "peers": [
+                    {
+                      "address": "127.0.0.1:54321",
+                      "node_id": "tls:0101..0101"
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "name": "info_get_peers",
+          "params": [],
+          "result": {
+            "name": "info_get_peers_result",
+            "schema": {
+              "additionalProperties": false,
+              "description": "Result for \"info_get_peers\" RPC response.",
+              "properties": {
+                "api_version": {
+                  "description": "The RPC API version.",
+                  "type": "string"
+                },
+                "peers": {
+                  "$ref": "#/components/schemas/PeersMap",
+                  "description": "The node ID and network address of each connected peer."
+                }
+              },
+              "required": [
+                "api_version",
+                "peers"
+              ],
+              "type": "object"
+            }
+          },
+          "summary": "returns a list of peers connected to the node"
+        },
+        {
+          "examples": [
+            {
+              "name": "info_get_status_example",
+              "params": [],
+              "result": {
+                "name": "info_get_status_example_result",
+                "value": {
+                  "api_version": "1.4.5",
+                  "build_version": "1.0.0-xxxxxxxxx@DEBUG",
+                  "chainspec_name": "casper-example",
+                  "last_added_block_info": {
+                    "creator": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
+                    "era_id": 1,
+                    "hash": "13c2d7a68ecdd4b74bf4393c88915c836c863fc4bf11d7f2bd930a1bbccacdcb",
+                    "height": 10,
+                    "state_root_hash": "0808080808080808080808080808080808080808080808080808080808080808",
+                    "timestamp": "2020-11-17T00:39:24.072Z"
+                  },
+                  "next_upgrade": {
+                    "activation_point": 42,
+                    "protocol_version": "2.0.1"
+                  },
+                  "node_state": "Participating",
+                  "our_public_signing_key": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
+                  "peers": [
+                    {
+                      "address": "127.0.0.1:54321",
+                      "node_id": "tls:0101..0101"
+                    }
+                  ],
+                  "round_length": "1m 5s 536ms",
+                  "starting_state_root_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+                  "uptime": "13s"
+                }
+              }
+            }
+          ],
+          "name": "info_get_status",
+          "params": [],
+          "result": {
+            "name": "info_get_status_result",
+            "schema": {
+              "additionalProperties": false,
+              "description": "Result for \"info_get_status\" RPC response.",
+              "properties": {
+                "api_version": {
+                  "description": "The RPC API version.",
+                  "type": "string"
+                },
+                "build_version": {
+                  "description": "The compiled node version.",
+                  "type": "string"
+                },
+                "chainspec_name": {
+                  "description": "The chainspec name.",
+                  "type": "string"
+                },
+                "last_added_block_info": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MinimalBlockInfo"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The minimal info of the last block from the linear chain."
+                },
+                "next_upgrade": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/NextUpgrade"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Information about the next scheduled upgrade."
+                },
+                "node_state": {
+                  "$ref": "#/components/schemas/NodeState",
+                  "description": "The current state of node."
+                },
+                "our_public_signing_key": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/PublicKey"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Our public signing key."
+                },
+                "peers": {
+                  "$ref": "#/components/schemas/PeersMap",
+                  "description": "The node ID and network address of each connected peer."
+                },
+                "round_length": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TimeDiff"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The next round length if this node is a validator."
+                },
+                "starting_state_root_hash": {
+                  "$ref": "#/components/schemas/Digest",
+                  "deprecated": true,
+                  "description": "The state root hash used at the start of the current session."
+                },
+                "uptime": {
+                  "$ref": "#/components/schemas/TimeDiff",
+                  "description": "Time that passed since the node has started."
+                }
+              },
+              "required": [
+                "api_version",
+                "build_version",
+                "chainspec_name",
+                "node_state",
+                "peers",
+                "starting_state_root_hash",
+                "uptime"
+              ],
+              "type": "object"
+            }
+          },
+          "summary": "returns the current status of the node"
+        },
+        {
+          "examples": [
+            {
+              "name": "info_get_validator_changes_example",
+              "params": [],
+              "result": {
+                "name": "info_get_validator_changes_example_result",
+                "value": {
+                  "api_version": "1.4.5",
+                  "changes": [
+                    {
+                      "public_key": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
+                      "status_changes": [
+                        {
+                          "era_id": 1,
+                          "validator_change": "Added"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "name": "info_get_validator_changes",
+          "params": [],
+          "result": {
+            "name": "info_get_validator_changes_result",
+            "schema": {
+              "additionalProperties": false,
+              "description": "Result for the \"info_get_validator_changes\" RPC.",
+              "properties": {
+                "api_version": {
+                  "description": "The RPC API version.",
+                  "type": "string"
+                },
+                "changes": {
+                  "description": "The validators' status changes.",
+                  "items": {
+                    "$ref": "#/components/schemas/JsonValidatorChanges"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "api_version",
+                "changes"
+              ],
+              "type": "object"
+            }
+          },
+          "summary": "returns status changes of active validators"
+        },
+        {
+          "examples": [
+            {
+              "name": "info_get_chainspec_example",
+              "params": [],
+              "result": {
+                "name": "info_get_chainspec_example_result",
+                "value": {
+                  "api_version": "1.4.5",
+                  "chainspec_bytes": {
+                    "chainspec_bytes": "2a2a",
+                    "maybe_genesis_accounts_bytes": null,
+                    "maybe_global_state_bytes": null
+                  }
+                }
+              }
+            }
+          ],
+          "name": "info_get_chainspec",
+          "params": [],
+          "result": {
+            "name": "info_get_chainspec_result",
+            "schema": {
+              "description": "Result for the \"info_get_chainspec\" RPC.",
+              "properties": {
+                "api_version": {
+                  "description": "The RPC API version.",
+                  "type": "string"
+                },
+                "chainspec_bytes": {
+                  "$ref": "#/components/schemas/ChainspecRawBytes",
+                  "description": "The chainspec file bytes."
+                }
+              },
+              "required": [
+                "api_version",
+                "chainspec_bytes"
+              ],
+              "type": "object"
+            }
+          },
+          "summary": "returns the raw bytes of the chainspec.toml, genesis accounts.toml, and global_state.toml files"
+        },
+        {
+          "examples": [
+            {
+              "name": "chain_get_block_example",
+              "params": [
+                {
+                  "name": "block_identifier",
+                  "value": {
+                    "Hash": "13c2d7a68ecdd4b74bf4393c88915c836c863fc4bf11d7f2bd930a1bbccacdcb"
+                  }
+                }
+              ],
+              "result": {
+                "name": "chain_get_block_example_result",
+                "value": {
+                  "api_version": "1.4.5",
+                  "block": {
+                    "body": {
+                      "deploy_hashes": [],
+                      "proposer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
+                      "transfer_hashes": [
+                        "5c9b3b099c1378aa8e4a5f07f59ff1fcdc69a83179427c7e67ae0377d94d93fa"
+                      ]
+                    },
+                    "hash": "13c2d7a68ecdd4b74bf4393c88915c836c863fc4bf11d7f2bd930a1bbccacdcb",
+                    "header": {
+                      "accumulated_seed": "ac979f51525cfd979b14aa7dc0737c5154eabe0db9280eceaa8dc8d2905b20d5",
+                      "body_hash": "cd502c5393a3c8b66d6979ad7857507c9baf5a8ba16ba99c28378d3a970fff42",
+                      "era_end": {
+                        "era_report": {
+                          "equivocators": [
+                            "013b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29"
+                          ],
+                          "inactive_validators": [
+                            "018139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394"
+                          ],
+                          "rewards": [
+                            {
+                              "amount": 1000,
+                              "validator": "018a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"
+                            }
+                          ]
+                        },
+                        "next_era_validator_weights": [
+                          {
+                            "validator": "016e7a1cdd29b0b78fd13af4c5598feff4ef2a97166e3ca6f2e4fbfccd80505bf1",
+                            "weight": "456"
+                          },
+                          {
+                            "validator": "018a875fff1eb38451577acd5afee405456568dd7c89e090863a0557bc7af49f17",
+                            "weight": "789"
+                          },
+                          {
+                            "validator": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
+                            "weight": "123"
+                          }
+                        ]
+                      },
+                      "era_id": 1,
+                      "height": 10,
+                      "parent_hash": "0707070707070707070707070707070707070707070707070707070707070707",
+                      "protocol_version": "1.0.0",
+                      "random_bit": true,
+                      "state_root_hash": "0808080808080808080808080808080808080808080808080808080808080808",
+                      "timestamp": "2020-11-17T00:39:24.072Z"
+                    },
+                    "proofs": [
+                      {
+                        "public_key": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
+                        "signature": "016291a7b2689e2edcc6e79030be50edd02f9bd7d809921ae2654012f808c7b9a0f125bc32d6aa610cbd012395a9832ccfaa9262023339f1db71ca073a13bb9707"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ],
+          "name": "chain_get_block",
+          "params": [
+            {
+              "name": "block_identifier",
+              "required": false,
+              "schema": {
+                "$ref": "#/components/schemas/BlockIdentifier",
+                "description": "The block identifier."
+              }
+            }
+          ],
+          "result": {
+            "name": "chain_get_block_result",
+            "schema": {
+              "additionalProperties": false,
+              "description": "Result for \"chain_get_block\" RPC response.",
+              "properties": {
+                "api_version": {
+                  "description": "The RPC API version.",
+                  "type": "string"
+                },
+                "block": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/JsonBlock"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The block, if found."
+                }
+              },
+              "required": [
+                "api_version"
+              ],
+              "type": "object"
+            }
+          },
+          "summary": "returns a Block from the network"
+        },
+        {
+          "examples": [
+            {
+              "name": "chain_get_block_transfers_example",
+              "params": [
+                {
+                  "name": "block_identifier",
+                  "value": {
+                    "Hash": "13c2d7a68ecdd4b74bf4393c88915c836c863fc4bf11d7f2bd930a1bbccacdcb"
+                  }
+                }
+              ],
+              "result": {
+                "name": "chain_get_block_transfers_example_result",
+                "value": {
+                  "api_version": "1.4.5",
+                  "block_hash": "13c2d7a68ecdd4b74bf4393c88915c836c863fc4bf11d7f2bd930a1bbccacdcb",
+                  "transfers": [
+                    {
+                      "amount": "0",
+                      "deploy_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+                      "from": "account-hash-0000000000000000000000000000000000000000000000000000000000000000",
+                      "gas": "0",
+                      "id": null,
+                      "source": "uref-0000000000000000000000000000000000000000000000000000000000000000-000",
+                      "target": "uref-0000000000000000000000000000000000000000000000000000000000000000-000",
+                      "to": null
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "name": "chain_get_block_transfers",
+          "params": [
+            {
+              "name": "block_identifier",
+              "required": false,
+              "schema": {
+                "$ref": "#/components/schemas/BlockIdentifier",
+                "description": "The block hash."
+              }
+            }
+          ],
+          "result": {
+            "name": "chain_get_block_transfers_result",
+            "schema": {
+              "additionalProperties": false,
+              "description": "Result for \"chain_get_block_transfers\" RPC response.",
+              "properties": {
+                "api_version": {
+                  "description": "The RPC API version.",
+                  "type": "string"
+                },
+                "block_hash": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BlockHash"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The block hash, if found."
+                },
+                "transfers": {
+                  "description": "The block's transfers, if found.",
+                  "items": {
+                    "$ref": "#/components/schemas/Transfer"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "api_version"
+              ],
+              "type": "object"
+            }
+          },
+          "summary": "returns all transfers for a Block from the network"
+        },
+        {
+          "examples": [
+            {
+              "name": "chain_get_state_root_hash_example",
+              "params": [
+                {
+                  "name": "block_identifier",
+                  "value": {
+                    "Height": 10
+                  }
+                }
+              ],
+              "result": {
+                "name": "chain_get_state_root_hash_example_result",
+                "value": {
+                  "api_version": "1.4.5",
+                  "state_root_hash": "0808080808080808080808080808080808080808080808080808080808080808"
+                }
+              }
+            }
+          ],
+          "name": "chain_get_state_root_hash",
+          "params": [
+            {
+              "name": "block_identifier",
+              "required": false,
+              "schema": {
+                "$ref": "#/components/schemas/BlockIdentifier",
+                "description": "The block hash."
+              }
+            }
+          ],
+          "result": {
+            "name": "chain_get_state_root_hash_result",
+            "schema": {
+              "additionalProperties": false,
+              "description": "Result for \"chain_get_state_root_hash\" RPC response.",
+              "properties": {
+                "api_version": {
+                  "description": "The RPC API version.",
+                  "type": "string"
+                },
+                "state_root_hash": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Digest"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Hex-encoded hash of the state root."
+                }
+              },
+              "required": [
+                "api_version"
+              ],
+              "type": "object"
+            }
+          },
+          "summary": "returns a state root hash at a given Block"
+        },
+        {
+          "examples": [
+            {
+              "name": "state_get_item_example",
+              "params": [
+                {
+                  "name": "key",
+                  "value": "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1"
+                },
+                {
+                  "name": "path",
+                  "value": [
+                    "inner"
+                  ]
+                },
+                {
+                  "name": "state_root_hash",
+                  "value": "0808080808080808080808080808080808080808080808080808080808080808"
+                }
+              ],
+              "result": {
+                "name": "state_get_item_example_result",
+                "value": {
+                  "api_version": "1.4.5",
+                  "merkle_proof": "01000000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625016ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625000000003529cde5c621f857f75f3810611eb4af3f998caaa9d4a3413cf799f99c67db0307010000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a7253614761462501010102000000006e06000000000074769d28aac597a36a03a932d4b43e4f10bf0403ee5c41dd035102553f5773631200b9e173e8f05361b681513c14e25e3138639eb03232581db7557c9e8dbbc83ce94500226a9a7fe4f2b7b88d5103a4fc7400f02bf89c860c9ccdd56951a2afe9be0e0267006d820fb5676eb2960e15722f7725f3f8f41030078f8b2e44bf0dc03f71b176d6e800dc5ae9805068c5be6da1a90b2528ee85db0609cc0fb4bd60bbd559f497a98b67f500e1e3e846592f4918234647fca39830b7e1e6ad6f5b7a99b39af823d82ba1873d000003000000010186ff500f287e9b53f823ae1582b1fa429dfede28015125fd233a31ca04d5012002015cc42669a55467a1fdf49750772bfc1aed59b9b085558eb81510e9b015a7c83b0301e3cf4a34b1db6bfa58808b686cb8fe21ebe0c1bcbcee522649d2b135fe510fe3",
+                  "stored_value": {
+                    "CLValue": {
+                      "bytes": "0100000000000000",
+                      "cl_type": "U64",
+                      "parsed": 1
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "name": "state_get_item",
+          "params": [
+            {
+              "name": "state_root_hash",
+              "required": true,
+              "schema": {
+                "$ref": "#/components/schemas/Digest",
+                "description": "Hash of the state root."
+              }
+            },
+            {
+              "name": "key",
+              "required": true,
+              "schema": {
+                "description": "`casper_types::Key` as formatted string.",
+                "type": "string"
+              }
+            },
+            {
+              "name": "path",
+              "required": false,
+              "schema": {
+                "default": [],
+                "description": "The path components starting from the key as base.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            }
+          ],
+          "result": {
+            "name": "state_get_item_result",
+            "schema": {
+              "additionalProperties": false,
+              "description": "Result for \"state_get_item\" RPC response.",
+              "properties": {
+                "api_version": {
+                  "description": "The RPC API version.",
+                  "type": "string"
+                },
+                "merkle_proof": {
+                  "description": "The merkle proof.",
+                  "type": "string"
+                },
+                "stored_value": {
+                  "$ref": "#/components/schemas/StoredValue",
+                  "description": "The stored value."
+                }
+              },
+              "required": [
+                "api_version",
+                "merkle_proof",
+                "stored_value"
+              ],
+              "type": "object"
+            }
+          },
+          "summary": "returns a stored value from the network. This RPC is deprecated, use `query_global_state` instead."
+        },
+        {
+          "examples": [
+            {
+              "name": "state_get_balance_example",
+              "params": [
+                {
+                  "name": "purse_uref",
+                  "value": "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007"
+                },
+                {
+                  "name": "state_root_hash",
+                  "value": "0808080808080808080808080808080808080808080808080808080808080808"
+                }
+              ],
+              "result": {
+                "name": "state_get_balance_example_result",
+                "value": {
+                  "api_version": "1.4.5",
+                  "balance_value": "123456",
+                  "merkle_proof": "01000000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625016ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625000000003529cde5c621f857f75f3810611eb4af3f998caaa9d4a3413cf799f99c67db0307010000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a7253614761462501010102000000006e06000000000074769d28aac597a36a03a932d4b43e4f10bf0403ee5c41dd035102553f5773631200b9e173e8f05361b681513c14e25e3138639eb03232581db7557c9e8dbbc83ce94500226a9a7fe4f2b7b88d5103a4fc7400f02bf89c860c9ccdd56951a2afe9be0e0267006d820fb5676eb2960e15722f7725f3f8f41030078f8b2e44bf0dc03f71b176d6e800dc5ae9805068c5be6da1a90b2528ee85db0609cc0fb4bd60bbd559f497a98b67f500e1e3e846592f4918234647fca39830b7e1e6ad6f5b7a99b39af823d82ba1873d000003000000010186ff500f287e9b53f823ae1582b1fa429dfede28015125fd233a31ca04d5012002015cc42669a55467a1fdf49750772bfc1aed59b9b085558eb81510e9b015a7c83b0301e3cf4a34b1db6bfa58808b686cb8fe21ebe0c1bcbcee522649d2b135fe510fe3"
+                }
+              }
+            }
+          ],
+          "name": "state_get_balance",
+          "params": [
+            {
+              "name": "state_root_hash",
+              "required": true,
+              "schema": {
+                "$ref": "#/components/schemas/Digest",
+                "description": "The hash of state root."
+              }
+            },
+            {
+              "name": "purse_uref",
+              "required": true,
+              "schema": {
+                "description": "Formatted URef.",
+                "type": "string"
+              }
+            }
+          ],
+          "result": {
+            "name": "state_get_balance_result",
+            "schema": {
+              "additionalProperties": false,
+              "description": "Result for \"state_get_balance\" RPC response.",
+              "properties": {
+                "api_version": {
+                  "description": "The RPC API version.",
+                  "type": "string"
+                },
+                "balance_value": {
+                  "$ref": "#/components/schemas/U512",
+                  "description": "The balance value."
+                },
+                "merkle_proof": {
+                  "description": "The merkle proof.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "api_version",
+                "balance_value",
+                "merkle_proof"
+              ],
+              "type": "object"
+            }
+          },
+          "summary": "returns a purse's balance from the network"
+        },
+        {
+          "examples": [
+            {
+              "name": "chain_get_era_info_by_switch_block_example",
+              "params": [
+                {
+                  "name": "block_identifier",
+                  "value": {
+                    "Hash": "13c2d7a68ecdd4b74bf4393c88915c836c863fc4bf11d7f2bd930a1bbccacdcb"
+                  }
+                }
+              ],
+              "result": {
+                "name": "chain_get_era_info_by_switch_block_example_result",
+                "value": {
+                  "api_version": "1.4.5",
+                  "era_summary": {
+                    "block_hash": "13c2d7a68ecdd4b74bf4393c88915c836c863fc4bf11d7f2bd930a1bbccacdcb",
+                    "era_id": 42,
+                    "merkle_proof": "01000000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625016ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625000000003529cde5c621f857f75f3810611eb4af3f998caaa9d4a3413cf799f99c67db0307010000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a7253614761462501010102000000006e06000000000074769d28aac597a36a03a932d4b43e4f10bf0403ee5c41dd035102553f5773631200b9e173e8f05361b681513c14e25e3138639eb03232581db7557c9e8dbbc83ce94500226a9a7fe4f2b7b88d5103a4fc7400f02bf89c860c9ccdd56951a2afe9be0e0267006d820fb5676eb2960e15722f7725f3f8f41030078f8b2e44bf0dc03f71b176d6e800dc5ae9805068c5be6da1a90b2528ee85db0609cc0fb4bd60bbd559f497a98b67f500e1e3e846592f4918234647fca39830b7e1e6ad6f5b7a99b39af823d82ba1873d000003000000010186ff500f287e9b53f823ae1582b1fa429dfede28015125fd233a31ca04d5012002015cc42669a55467a1fdf49750772bfc1aed59b9b085558eb81510e9b015a7c83b0301e3cf4a34b1db6bfa58808b686cb8fe21ebe0c1bcbcee522649d2b135fe510fe3",
+                    "state_root_hash": "0808080808080808080808080808080808080808080808080808080808080808",
+                    "stored_value": {
+                      "EraInfo": {
+                        "seigniorage_allocations": [
+                          {
+                            "Delegator": {
+                              "amount": "1000",
+                              "delegator_public_key": "01e1b46a25baa8a5c28beb3c9cfb79b572effa04076f00befa57eb70b016153f18",
+                              "validator_public_key": "012a1732addc639ea43a89e25d3ad912e40232156dcaa4b9edfc709f43d2fb0876"
+                            }
+                          },
+                          {
+                            "Validator": {
+                              "amount": "2000",
+                              "validator_public_key": "012a1732addc639ea43a89e25d3ad912e40232156dcaa4b9edfc709f43d2fb0876"
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "name": "chain_get_era_info_by_switch_block",
+          "params": [
+            {
+              "name": "block_identifier",
+              "required": false,
+              "schema": {
+                "$ref": "#/components/schemas/BlockIdentifier",
+                "description": "The block identifier."
+              }
+            }
+          ],
+          "result": {
+            "name": "chain_get_era_info_by_switch_block_result",
+            "schema": {
+              "additionalProperties": false,
+              "description": "Result for \"chain_get_era_info\" RPC response.",
+              "properties": {
+                "api_version": {
+                  "description": "The RPC API version.",
+                  "type": "string"
+                },
+                "era_summary": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/EraSummary"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The era summary."
+                }
+              },
+              "required": [
+                "api_version"
+              ],
+              "type": "object"
+            }
+          },
+          "summary": "returns an EraInfo from the network"
+        },
+        {
+          "examples": [
+            {
+              "name": "state_get_auction_info_example",
+              "params": [
+                {
+                  "name": "block_identifier",
+                  "value": {
+                    "Hash": "13c2d7a68ecdd4b74bf4393c88915c836c863fc4bf11d7f2bd930a1bbccacdcb"
+                  }
+                }
+              ],
+              "result": {
+                "name": "state_get_auction_info_example_result",
+                "value": {
+                  "api_version": "1.4.5",
+                  "auction_state": {
+                    "bids": [
+                      {
+                        "bid": {
+                          "bonding_purse": "uref-fafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafa-007",
+                          "delegation_rate": 0,
+                          "delegators": [],
+                          "inactive": false,
+                          "staked_amount": "10"
+                        },
+                        "public_key": "01197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61"
+                      }
+                    ],
+                    "block_height": 10,
+                    "era_validators": [
+                      {
+                        "era_id": 10,
+                        "validator_weights": [
+                          {
+                            "public_key": "01197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61",
+                            "weight": "10"
+                          }
+                        ]
+                      }
+                    ],
+                    "state_root_hash": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"
+                  }
+                }
+              }
+            }
+          ],
+          "name": "state_get_auction_info",
+          "params": [
+            {
+              "name": "block_identifier",
+              "required": false,
+              "schema": {
+                "$ref": "#/components/schemas/BlockIdentifier",
+                "description": "The block identifier."
+              }
+            }
+          ],
+          "result": {
+            "name": "state_get_auction_info_result",
+            "schema": {
+              "additionalProperties": false,
+              "description": "Result for \"state_get_auction_info\" RPC response.",
+              "properties": {
+                "api_version": {
+                  "description": "The RPC API version.",
+                  "type": "string"
+                },
+                "auction_state": {
+                  "$ref": "#/components/schemas/AuctionState",
+                  "description": "The auction state."
+                }
+              },
+              "required": [
+                "api_version",
+                "auction_state"
+              ],
+              "type": "object"
+            }
+          },
+          "summary": "returns the bids and validators as of either a specific block (by height or hash), or the most recently added block"
+        }
+      ],
+      "openrpc": "1.0.0-rc1",
+      "servers": [
+        {
+          "name": "any Casper Network node",
+          "url": "http://IP:PORT/rpc/"
+        }
+      ]
+    }
+  ],
+  "type": "object",
+  "properties": {
+    "openrpc": {
+      "type": "string"
+    },
+    "info": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "contact": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            }
+          }
+        },
+        "license": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "servers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "methods": {
+      "type": "array",
+      "items": true
+    },
+    "components": {
+      "type": "object",
+      "properties": {
+        "schemas": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    }
+  }
+}

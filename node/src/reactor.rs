@@ -37,7 +37,7 @@ use std::{
     collections::HashMap,
     env,
     fmt::{Debug, Display},
-    fs::File,
+    io::Write,
     mem,
     num::NonZeroU64,
     str::FromStr,
@@ -45,8 +45,8 @@ use std::{
 };
 
 use datasize::DataSize;
+use erased_serde::Serialize as ErasedSerialize;
 use futures::{future::BoxFuture, FutureExt};
-use jemalloc_ctl::{epoch as jemalloc_epoch, stats::allocated as jemalloc_allocated};
 use once_cell::sync::Lazy;
 use prometheus::{self, Histogram, HistogramOpts, IntCounter, IntGauge, Registry};
 use quanta::{Clock, IntoNanoseconds};
@@ -56,34 +56,27 @@ use tokio::time::{Duration, Instant};
 use tracing::{debug, debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
 
-#[cfg(target_os = "linux")]
+use casper_types::EraId;
 use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
 
 use crate::{
-    effect::{announcements::ControlAnnouncement, Effect, EffectBuilder, Effects},
-    types::{ExitCode, Timestamp},
+    components::fetcher,
+    effect::{
+        announcements::{BlocklistAnnouncement, ControlAnnouncement, QueueDumpFormat},
+        Effect, EffectBuilder, EffectExt, Effects,
+    },
+    types::{ExitCode, Item, NodeId},
     unregister_metric,
     utils::{self, SharedFlag, WeightedRoundRobin},
-    NodeRng, QUEUE_DUMP_REQUESTED, TERMINATION_REQUESTED,
+    NodeRng, TERMINATION_REQUESTED,
 };
 #[cfg(test)]
-use crate::{reactor::initializer::Reactor as InitializerReactor, types::Chainspec};
+use crate::{
+    reactor::initializer::Reactor as InitializerReactor,
+    types::{Chainspec, ChainspecRawBytes},
+};
 pub(crate) use queue_kind::QueueKind;
-
-/// Optional upper threshold for total RAM allocated in mB before dumping queues to disk.
-const MEM_DUMP_THRESHOLD_MB_ENV_VAR: &str = "CL_MEM_DUMP_THRESHOLD_MB";
-static MEM_DUMP_THRESHOLD_MB: Lazy<Option<u64>> = Lazy::new(|| {
-    env::var(MEM_DUMP_THRESHOLD_MB_ENV_VAR)
-        .map(|threshold_str| {
-            u64::from_str(&threshold_str).unwrap_or_else(|error| {
-                panic!(
-                    "can't parse env var {}={} as a u64: {}",
-                    MEM_DUMP_THRESHOLD_MB_ENV_VAR, threshold_str, error
-                )
-            })
-        })
-        .ok()
-});
+use stats_alloc::{Stats, INSTRUMENTED_SYSTEM};
 
 /// Default threshold for when an event is considered slow.  Can be overridden by setting the env
 /// var `CL_EVENT_MAX_MICROSECS=<MICROSECONDS>`.
@@ -104,11 +97,9 @@ static DISPATCH_EVENT_THRESHOLD: Lazy<Duration> = Lazy::new(|| {
         .unwrap_or_else(|_| DEFAULT_DISPATCH_EVENT_THRESHOLD)
 });
 
-#[cfg(target_os = "linux")]
 /// The desired limit for open files.
 const TARGET_OPEN_FILES_LIMIT: Limit = 64_000;
 
-#[cfg(target_os = "linux")]
 /// Adjusts the maximum number of open file handles upwards towards the hard limit.
 fn adjust_open_files_limit() {
     // Ensure we have reasonable ulimits.
@@ -144,12 +135,6 @@ fn adjust_open_files_limit() {
             }
         }
     }
-}
-
-#[cfg(not(target_os = "linux"))]
-/// File handle limit adjustment shim.
-fn adjust_open_files_limit() {
-    info!("not on linux, not adjusting open files limit");
 }
 
 /// The value returned by a reactor on completion of the `run()` loop.
@@ -312,6 +297,11 @@ pub(crate) trait ReactorEvent: Send + Debug + From<ControlAnnouncement> + 'stati
     /// is indeed a control announcement variant.
     fn as_control(&self) -> Option<&ControlAnnouncement>;
 
+    /// Converts the event into a control announcement without copying.
+    ///
+    /// Note that this function must return `Some` if and only `as_control` returns `Some`.
+    fn try_into_control(self) -> Option<ControlAnnouncement>;
+
     /// Returns a cheap but human-readable description of the event.
     fn description(&self) -> &'static str {
         "anonymous event"
@@ -374,9 +364,6 @@ where
     /// An accurate, possible TSC-supporting clock.
     clock: Clock,
 
-    /// Last queue dump timestamp
-    last_queue_dump: Option<Timestamp>,
-
     /// Flag indicating the reactor is being shut down.
     is_shutting_down: SharedFlag,
 }
@@ -388,7 +375,7 @@ struct RunnerMetrics {
     events: IntCounter,
     /// Histogram of how long it took to dispatch an event.
     event_dispatch_duration: Histogram,
-    /// Total allocated RAM in bytes, as reported by jemalloc.
+    /// Total allocated RAM in bytes, as reported by stats_alloc.
     allocated_ram_bytes: IntGauge,
     /// Total consumed RAM in bytes, as reported by sys-info.
     consumed_ram_bytes: IntGauge,
@@ -517,7 +504,6 @@ where
             event_metrics_min_delay: Duration::from_secs(30),
             event_metrics_threshold: 1000,
             clock: Clock::new(),
-            last_queue_dump: None,
             is_shutting_down,
         })
     }
@@ -554,27 +540,7 @@ where
                 self.metrics.allocated_ram_bytes.set(allocated as i64);
                 self.metrics.consumed_ram_bytes.set(consumed as i64);
                 self.metrics.total_ram_bytes.set(total as i64);
-                if let Some(threshold_mb) = *MEM_DUMP_THRESHOLD_MB {
-                    let threshold_bytes = threshold_mb * 1024 * 1024;
-                    if allocated >= threshold_bytes && self.last_queue_dump.is_none() {
-                        info!(
-                            %allocated,
-                            %total,
-                            %threshold_bytes,
-                            "node has allocated enough memory to trigger queue dump"
-                        );
-                        self.dump_queues().await;
-                    }
-                }
             }
-        }
-
-        // Dump event queue if requested, stopping the world.
-        if QUEUE_DUMP_REQUESTED.load(Ordering::SeqCst) {
-            debug!("dumping event queue as requested");
-            self.dump_queues().await;
-            // Indicate we are done with the dump.
-            QUEUE_DUMP_REQUESTED.store(false, Ordering::SeqCst);
         }
 
         let ((ancestor, event), queue) = self.scheduler.pop().await;
@@ -592,12 +558,69 @@ where
         // Dispatch the event, then execute the resulting effect.
         let start = self.clock.start();
 
-        let (effects, keep_going) = if let Some(ctrl_ann) = event.as_control() {
+        let (effects, keep_going) = if event.as_control().is_some() {
             // We've received a control event, which will _not_ be handled by the reactor.
-            match ctrl_ann {
-                ControlAnnouncement::FatalError { file, line, msg } => {
+            match event.try_into_control() {
+                None => {
+                    // If `as_control().is_some()` is true, but `try_into_control` fails, the trait
+                    // is implemented incorrectly.
+                    error!(
+                        "event::as_control succeeded, but try_into_control failed. this is a bug"
+                    );
+
+                    // We ignore the event.
+                    (Default::default(), true)
+                }
+                Some(ControlAnnouncement::FatalError { file, line, msg }) => {
                     error!(%file, %line, %msg, "fatal error via control announcement");
                     (Default::default(), false)
+                }
+                Some(ControlAnnouncement::QueueDumpRequest {
+                    dump_format,
+                    finished,
+                }) => {
+                    match dump_format {
+                        QueueDumpFormat::Serde(mut ser) => {
+                            self.scheduler
+                                .dump(move |queue_dump| {
+                                    if let Err(err) =
+                                        queue_dump.erased_serialize(&mut ser.as_serializer())
+                                    {
+                                        warn!(%err, "queue dump failed to serialize");
+                                    }
+                                })
+                                .await;
+                        }
+                        QueueDumpFormat::Debug(ref file) => {
+                            match file.try_clone() {
+                                Ok(mut local_file) => {
+                                    self.scheduler
+                                        .dump(move |queue_dump| {
+                                            write!(&mut local_file, "{:?}", queue_dump)
+                                                .and_then(|_| local_file.flush())
+                                                .map_err(|err| {
+                                                    warn!(
+                                                        ?err,
+                                                        "failed to write/flush queue dump using debug format"
+                                                    )
+                                                })
+                                                .ok();
+                                        })
+                                        .await;
+                                }
+                                Err(err) => warn!(
+                                    %err,
+                                    "could not create clone of temporary file for queue debug dump"
+                                ),
+                            };
+                        }
+                    }
+
+                    // Notify requestor that we finished writing the queue dump.
+                    finished.respond(()).await;
+
+                    // Do nothing on queue dump otherwise.
+                    (Default::default(), true)
                 }
             }
         } else {
@@ -642,73 +665,24 @@ where
             }
         };
 
-        // mem_info gives us kB
+        // mem_info gives us kilobytes
         let total = mem_info.total * 1024;
-        let consumed = total - (mem_info.free * 1024);
+        let consumed = total - (mem_info.avail * 1024);
 
-        // whereas jemalloc_ctl gives us the numbers in bytes
-        match jemalloc_epoch::mib() {
-            Ok(mib) => {
-                // jemalloc_ctl requires you to advance the epoch to update its stats
-                if let Err(advance_error) = mib.advance() {
-                    warn!(%advance_error, "unable to advance jemalloc epoch");
-                }
-            }
-            Err(error) => {
-                warn!(%error, "unable to get epoch::mib from jemalloc");
-                return None;
-            }
-        }
-        let allocated = match jemalloc_allocated::mib() {
-            Ok(allocated_mib) => match allocated_mib.read() {
-                Ok(value) => value as u64,
-                Err(error) => {
-                    warn!(%error, "unable to read allocated mib using jemalloc");
-                    return None;
-                }
-            },
-            Err(error) => {
-                warn!(%error, "unable to get allocated mib using jemalloc");
-                return None;
-            }
-        };
+        let Stats {
+            allocations: _,
+            deallocations: _,
+            reallocations: _,
+            bytes_allocated,
+            bytes_deallocated,
+            bytes_reallocated: _,
+        } = INSTRUMENTED_SYSTEM.stats();
 
         Some(AllocatedMem {
-            allocated,
+            allocated: bytes_allocated.saturating_sub(bytes_deallocated) as u64,
             consumed,
             total,
         })
-    }
-
-    /// Handles dumping queue contents to files in /tmp.
-    async fn dump_queues(&mut self) {
-        let timestamp = Timestamp::now();
-        self.last_queue_dump = Some(timestamp);
-        let output_fn = format!("/tmp/queue_dump-{}.json", timestamp);
-        let mut serializer = serde_json::Serializer::pretty(match File::create(&output_fn) {
-            Ok(file) => file,
-            Err(error) => {
-                warn!(%error, "could not create output file ({}) for queue snapshot", output_fn);
-                return;
-            }
-        });
-
-        if let Err(error) = self.scheduler.snapshot(&mut serializer).await {
-            warn!(%error, "could not serialize snapshot to {}", output_fn);
-            return;
-        }
-
-        let debug_dump_filename = format!("/tmp/queue_dump_debug-{}.txt", timestamp);
-        let mut file = match File::create(&debug_dump_filename) {
-            Ok(file) => file,
-            Err(error) => {
-                warn!(%error, "could not create debug output file ({}) for queue snapshot", debug_dump_filename);
-                return;
-            }
-        };
-        if let Err(error) = self.scheduler.debug_dump(&mut file).await {
-            warn!(%error, "could not serialize debug snapshot to {}", debug_dump_filename);
-        }
     }
 
     /// Runs the reactor until `maybe_exit()` returns `Some` or we get interrupted by a termination
@@ -738,6 +712,11 @@ where
                                     ControlAnnouncement::FatalError { file, line, msg } => {
                                         warn!(%file, line=*line, %msg, "exiting due to fatal error scheduled before reactor completion");
                                         return ReactorExit::ProcessShouldExit(ExitCode::Abort);
+                                    }
+                                    ControlAnnouncement::QueueDumpRequest { .. } => {
+                                        // Queue dumps are not handled when shutting down. TODO:
+                                        // Maybe return an error instead, something like "reactor is
+                                        // shutting down"?
                                     }
                                 }
                             } else {
@@ -841,14 +820,20 @@ impl Runner<InitializerReactor> {
     pub(crate) async fn new_with_chainspec(
         cfg: <InitializerReactor as Reactor>::Config,
         chainspec: Arc<Chainspec>,
+        chainspec_raw_bytes: Arc<ChainspecRawBytes>,
     ) -> Result<Self, <InitializerReactor as Reactor>::Error> {
         let registry = Registry::new();
         let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
 
         let is_shutting_down = SharedFlag::new();
         let event_queue = EventQueueHandle::new(scheduler, is_shutting_down);
-        let (reactor, initial_effects) =
-            InitializerReactor::new_with_chainspec(cfg, &registry, event_queue, chainspec)?;
+        let (reactor, initial_effects) = InitializerReactor::new_with_chainspec(
+            cfg,
+            &registry,
+            event_queue,
+            chainspec,
+            chainspec_raw_bytes,
+        )?;
 
         // Run all effects from component instantiation.
         let span = debug_span!("process initial effects");
@@ -873,7 +858,6 @@ impl Runner<InitializerReactor> {
             event_metrics_min_delay,
             event_metrics_threshold: 1000,
             clock: Clock::new(),
-            last_queue_dump: None,
             is_shutting_down,
         })
     }
@@ -927,4 +911,38 @@ where
         .into_iter()
         .map(move |effect| wrap_effect(wrap.clone(), effect))
         .collect()
+}
+
+pub(crate) fn handle_fetch_response<R, T>(
+    reactor: &mut R,
+    effect_builder: EffectBuilder<<R as Reactor>::Event>,
+    rng: &mut NodeRng,
+    sender: NodeId,
+    serialized_item: &[u8],
+    verifiable_chunked_hash_activation: EraId,
+) -> Effects<<R as Reactor>::Event>
+where
+    T: Item,
+    R: Reactor,
+    <R as Reactor>::Event: From<fetcher::Event<T>> + From<BlocklistAnnouncement>,
+{
+    match fetcher::Event::<T>::from_get_response_serialized_item(
+        sender,
+        serialized_item,
+        verifiable_chunked_hash_activation,
+    ) {
+        Some(fetcher_event) => {
+            Reactor::dispatch_event(reactor, effect_builder, rng, fetcher_event.into())
+        }
+        None => {
+            info!(
+                "{} sent us a {:?} item we couldn't parse, banning peer",
+                sender,
+                T::TAG
+            );
+            effect_builder
+                .announce_disconnect_from_peer(sender)
+                .ignore()
+        }
+    }
 }

@@ -1,4 +1,6 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
+
+use datasize::DataSize;
 
 use casper_execution_engine::{
     core::engine_state::GetEraValidatorsRequest, shared::execution_journal::ExecutionJournal,
@@ -82,7 +84,7 @@ impl From<EraValidatorsRequest> for GetEraValidatorsRequest {
 }
 
 /// Effects from running step and the next era validators that are gathered when an era ends.
-#[derive(Debug)]
+#[derive(Debug, DataSize)]
 pub struct StepEffectAndUpcomingEraValidators {
     /// Validator sets for all upcoming eras that have already been determined.
     pub upcoming_era_validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
@@ -92,12 +94,25 @@ pub struct StepEffectAndUpcomingEraValidators {
 
 /// A [`Block`] that was the result of execution in the `ContractRuntime` along with any execution
 /// effects it may have.
-#[derive(Debug)]
+#[derive(Debug, DataSize)]
 pub struct BlockAndExecutionEffects {
     /// The [`Block`] the contract runtime executed.
-    pub block: Block,
+    pub block: Box<Block>,
     /// The results from executing the deploys in the block.
-    pub execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
+    pub execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
     /// The [`ExecutionJournal`] and the upcoming validator sets determined by the `step`
     pub maybe_step_effect_and_upcoming_era_validators: Option<StepEffectAndUpcomingEraValidators>,
+}
+
+impl BlockAndExecutionEffects {
+    /// Gets the block.
+    pub fn block(&self) -> &Block {
+        &self.block
+    }
+}
+
+impl From<BlockAndExecutionEffects> for Block {
+    fn from(block_and_execution_effects: BlockAndExecutionEffects) -> Self {
+        *block_and_execution_effects.block
+    }
 }

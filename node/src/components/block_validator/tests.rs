@@ -9,30 +9,28 @@ use derive_more::From;
 use itertools::Itertools;
 
 use crate::{
-    components::{consensus::BlockContext, fetcher::FetchResult},
+    components::{consensus::BlockContext, fetcher::FetcherError},
     crypto::AsymmetricKeyExt,
     reactor::{EventQueueHandle, QueueKind, Scheduler},
     testing::TestRng,
-    types::{BlockPayload, DeployWithApprovals, TimeDiff},
+    types::{BlockPayload, ChainspecRawBytes, DeployWithApprovals, TimeDiff},
     utils::{self, Loadable},
 };
 
 use super::*;
 
-type NodeId = &'static str;
-
 #[derive(Debug, From)]
 enum ReactorEvent {
     #[from]
-    BlockValidator(Event<NodeId>),
+    BlockValidator(Event),
     #[from]
-    Fetcher(FetcherRequest<NodeId, Deploy>),
+    Fetcher(FetcherRequest<Deploy>),
     #[from]
     Storage(StorageRequest),
 }
 
-impl From<BlockValidationRequest<NodeId>> for ReactorEvent {
-    fn from(req: BlockValidationRequest<NodeId>) -> ReactorEvent {
+impl From<BlockValidationRequest> for ReactorEvent {
+    fn from(req: BlockValidationRequest) -> ReactorEvent {
         ReactorEvent::BlockValidator(req.into())
     }
 }
@@ -48,7 +46,7 @@ impl MockReactor {
         }
     }
 
-    async fn expect_block_validator_event(&self) -> Event<NodeId> {
+    async fn expect_block_validator_event(&self) -> Event {
         let ((_ancestor, reactor_event), _) = self.scheduler.pop().await;
         if let ReactorEvent::BlockValidator(event) = reactor_event {
             event
@@ -62,18 +60,25 @@ impl MockReactor {
         T: Into<Option<Deploy>>,
     {
         let ((_ancestor, reactor_event), _) = self.scheduler.pop().await;
-        if let ReactorEvent::Fetcher(FetcherRequest::Fetch {
+        if let ReactorEvent::Fetcher(FetcherRequest {
             id,
             peer,
             responder,
         }) = reactor_event
         {
             match deploy.into() {
-                None => responder.respond(None).await,
+                None => {
+                    responder
+                        .respond(Err(FetcherError::Absent { id, peer }))
+                        .await
+                }
                 Some(deploy) => {
                     assert_eq!(id, *deploy.id());
-                    let response = FetchResult::FromPeer(Box::new(deploy), peer);
-                    responder.respond(Some(response)).await;
+                    let response = FetchedData::FromPeer {
+                        item: Box::new(deploy),
+                        peer,
+                    };
+                    responder.respond(Ok(response)).await;
                 }
             }
         } else {
@@ -168,13 +173,14 @@ async fn validate_block(
     // Create the reactor and component.
     let reactor = MockReactor::new();
     let effect_builder = EffectBuilder::new(EventQueueHandle::without_shutdown(reactor.scheduler));
-    let chainspec = Arc::new(Chainspec::from_resources("local"));
-    let mut block_validator = BlockValidator::<NodeId>::new(chainspec);
+    let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
+    let mut block_validator = BlockValidator::new(Arc::new(chainspec));
 
     // Pass the block to the component. This future will eventually resolve to the result, i.e.
     // whether the block is valid or not.
+    let bob_node_id = NodeId::random(rng);
     let validation_result =
-        tokio::spawn(effect_builder.validate_block("Bob", proposed_block.clone()));
+        tokio::spawn(effect_builder.validate_block(bob_node_id, proposed_block.clone()));
     let event = reactor.expect_block_validator_event().await;
     let effects = block_validator.handle_event(effect_builder, rng, event);
 

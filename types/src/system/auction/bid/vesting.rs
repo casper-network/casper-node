@@ -4,6 +4,8 @@
 use alloc::vec::Vec;
 use core::mem::MaybeUninit;
 
+#[cfg(feature = "datasize")]
+use datasize::DataSize;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -26,6 +28,7 @@ pub const VESTING_SCHEDULE_LENGTH_MILLIS: u64 =
 const LOCKED_AMOUNTS_LENGTH: usize = (VESTING_SCHEDULE_LENGTH_DAYS / DAYS_IN_WEEK) + 1;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct VestingSchedule {
@@ -149,6 +152,12 @@ impl ToBytes for VestingSchedule {
         self.initial_release_timestamp_millis.serialized_length()
             + self.locked_amounts.serialized_length()
     }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        (&self.initial_release_timestamp_millis).write_bytes(writer)?;
+        self.locked_amounts().write_bytes(writer)?;
+        Ok(())
+    }
 }
 
 impl FromBytes for VestingSchedule {
@@ -220,6 +229,7 @@ mod tests {
         vesting_schedule.initialize(U512::from(STAKE));
 
         let mut timestamp = RELEASE_TIMESTAMP;
+
         assert_eq!(
             vesting_schedule.locked_amount(timestamp),
             Some(U512::from(130))

@@ -1,6 +1,9 @@
 //! A network message type used for communication between nodes
 
-use std::fmt::{self, Display, Formatter};
+use std::{
+    fmt::{self, Display, Formatter},
+    sync::Arc,
+};
 
 use derive_more::From;
 use fmt::Debug;
@@ -9,10 +12,17 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     components::{
-        consensus, gossiper,
-        small_network::{GossipedAddress, MessageKind, Payload, PayloadWeights},
+        consensus,
+        fetcher::FetchedOrNotFound,
+        gossiper,
+        small_network::{EstimatorWeights, FromIncoming, GossipedAddress, MessageKind, Payload},
     },
-    types::{Deploy, FinalitySignature, Item, SharedObject, Tag},
+    effect::incoming::{
+        ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming, NetRequest,
+        NetRequestIncoming, NetResponse, NetResponseIncoming, TrieRequest, TrieRequestIncoming,
+        TrieResponse, TrieResponseIncoming,
+    },
+    types::{Deploy, FinalitySignature, Item, NodeId, Tag},
 };
 
 /// Reactor message.
@@ -39,7 +49,7 @@ pub(crate) enum Message {
         /// The type tag of the contained item.
         tag: Tag,
         /// The serialized item.
-        serialized_item: SharedObject<Vec<u8>>,
+        serialized_item: Arc<[u8]>,
     },
     /// Finality signature.
     #[from]
@@ -56,33 +66,61 @@ impl Payload for Message {
             Message::GetRequest { tag, .. } | Message::GetResponse { tag, .. } => {
                 match tag {
                     Tag::Deploy => MessageKind::DeployTransfer,
+                    Tag::FinalizedApprovals => MessageKind::FinalizedApprovalsTransfer,
                     Tag::Block => MessageKind::BlockTransfer,
                     // This is a weird message, which we should not encounter here?
                     Tag::GossipedAddress => MessageKind::Other,
-                    Tag::BlockByHeight => MessageKind::BlockTransfer,
+                    Tag::BlockAndMetadataByHeight => MessageKind::BlockTransfer,
                     Tag::BlockHeaderByHash => MessageKind::BlockTransfer,
                     Tag::BlockHeaderAndFinalitySignaturesByHeight => MessageKind::BlockTransfer,
+                    Tag::TrieOrChunk => MessageKind::TrieTransfer,
                 }
             }
             Message::FinalitySignature(_) => MessageKind::Consensus,
         }
     }
 
+    fn is_low_priority(&self) -> bool {
+        // We only deprioritize requested trie nodes, as they are the most commonly requested item
+        // during fast sync.
+        match self {
+            Message::Consensus(_) => false,
+            Message::DeployGossiper(_) => false,
+            Message::AddressGossiper(_) => false,
+            Message::GetRequest { tag, .. } if *tag == Tag::TrieOrChunk => true,
+            Message::GetRequest { .. } => false,
+            Message::GetResponse { .. } => false,
+            Message::FinalitySignature(_) => false,
+        }
+    }
+
     #[inline]
-    fn incoming_resource_estimate(&self, weights: &PayloadWeights) -> u32 {
+    fn incoming_resource_estimate(&self, weights: &EstimatorWeights) -> u32 {
         match self {
             Message::Consensus(_) => weights.consensus,
-            Message::DeployGossiper(_) => 0,
-            Message::AddressGossiper(_) => 0,
-            Message::GetRequest { tag, .. } | Message::GetResponse { tag, .. } => match tag {
+            Message::DeployGossiper(_) => weights.gossip,
+            Message::AddressGossiper(_) => weights.gossip,
+            Message::GetRequest { tag, .. } => match tag {
                 Tag::Deploy => weights.deploy_requests,
-                Tag::Block => 0,
-                Tag::GossipedAddress => 0,
-                Tag::BlockByHeight => 0,
-                Tag::BlockHeaderByHash => 0,
-                Tag::BlockHeaderAndFinalitySignaturesByHeight => 0,
+                Tag::FinalizedApprovals => weights.finalized_approvals_requests,
+                Tag::Block => weights.block_requests,
+                Tag::GossipedAddress => weights.gossip,
+                Tag::BlockAndMetadataByHeight => weights.block_requests,
+                Tag::BlockHeaderByHash => weights.block_requests,
+                Tag::BlockHeaderAndFinalitySignaturesByHeight => weights.block_requests,
+                Tag::TrieOrChunk => weights.trie_requests,
             },
-            Message::FinalitySignature(_) => 0,
+            Message::GetResponse { tag, .. } => match tag {
+                Tag::Deploy => weights.deploy_responses,
+                Tag::FinalizedApprovals => weights.finalized_approvals_responses,
+                Tag::Block => weights.block_responses,
+                Tag::GossipedAddress => weights.gossip,
+                Tag::BlockAndMetadataByHeight => weights.block_responses,
+                Tag::BlockHeaderByHash => weights.block_responses,
+                Tag::BlockHeaderAndFinalitySignaturesByHeight => weights.block_responses,
+                Tag::TrieOrChunk => weights.trie_responses,
+            },
+            Message::FinalitySignature(_) => weights.finality_signatures,
         }
     }
 }
@@ -95,18 +133,22 @@ impl Message {
         })
     }
 
-    pub(crate) fn new_get_response<T: Item>(item: &T) -> Result<Self, bincode::Error> {
+    pub(crate) fn new_get_response<T>(
+        item: &FetchedOrNotFound<T, T::Id>,
+    ) -> Result<Self, bincode::Error>
+    where
+        T: Item,
+    {
         Ok(Message::GetResponse {
             tag: T::TAG,
-            serialized_item: SharedObject::owned(bincode::serialize(item)?),
+            serialized_item: item.to_serialized()?.into(),
         })
     }
 
-    pub(crate) fn new_get_response_raw_unchecked<T: Item>(
-        serialized_item: SharedObject<Vec<u8>>,
-    ) -> Self {
+    /// Creates a new get response from already serialized data.
+    pub(crate) fn new_get_response_from_serialized(tag: Tag, serialized_item: Arc<[u8]>) -> Self {
         Message::GetResponse {
-            tag: T::TAG,
+            tag,
             serialized_item,
         }
     }
@@ -155,6 +197,116 @@ impl Display for Message {
             } => write!(f, "GetResponse({}-{:10})", tag, HexFmt(serialized_item)),
             Message::FinalitySignature(fs) => {
                 write!(f, "FinalitySignature::({})", fs)
+            }
+        }
+    }
+}
+
+impl<REv> FromIncoming<Message> for REv
+where
+    REv: From<ConsensusMessageIncoming>
+        + From<GossiperIncoming<Deploy>>
+        + From<GossiperIncoming<GossipedAddress>>
+        + From<NetRequestIncoming>
+        + From<NetResponseIncoming>
+        + From<TrieRequestIncoming>
+        + From<TrieResponseIncoming>
+        + From<FinalitySignatureIncoming>,
+{
+    fn from_incoming(sender: NodeId, payload: Message) -> Self {
+        match payload {
+            Message::Consensus(message) => ConsensusMessageIncoming { sender, message }.into(),
+            Message::DeployGossiper(message) => GossiperIncoming { sender, message }.into(),
+            Message::AddressGossiper(message) => GossiperIncoming { sender, message }.into(),
+            Message::GetRequest { tag, serialized_id } => match tag {
+                Tag::Deploy => NetRequestIncoming {
+                    sender,
+                    message: NetRequest::Deploy(serialized_id),
+                }
+                .into(),
+                Tag::FinalizedApprovals => NetRequestIncoming {
+                    sender,
+                    message: NetRequest::FinalizedApprovals(serialized_id),
+                }
+                .into(),
+                Tag::Block => NetRequestIncoming {
+                    sender,
+                    message: NetRequest::Block(serialized_id),
+                }
+                .into(),
+                Tag::GossipedAddress => NetRequestIncoming {
+                    sender,
+                    message: NetRequest::GossipedAddress(serialized_id),
+                }
+                .into(),
+                Tag::BlockAndMetadataByHeight => NetRequestIncoming {
+                    sender,
+                    message: NetRequest::BlockAndMetadataByHeight(serialized_id),
+                }
+                .into(),
+                Tag::BlockHeaderByHash => NetRequestIncoming {
+                    sender,
+                    message: NetRequest::BlockHeaderByHash(serialized_id),
+                }
+                .into(),
+                Tag::BlockHeaderAndFinalitySignaturesByHeight => NetRequestIncoming {
+                    sender,
+                    message: NetRequest::BlockHeaderAndFinalitySignaturesByHeight(serialized_id),
+                }
+                .into(),
+                Tag::TrieOrChunk => TrieRequestIncoming {
+                    sender,
+                    message: TrieRequest(serialized_id),
+                }
+                .into(),
+            },
+            Message::GetResponse {
+                tag,
+                serialized_item,
+            } => match tag {
+                Tag::Deploy => NetResponseIncoming {
+                    sender,
+                    message: NetResponse::Deploy(serialized_item),
+                }
+                .into(),
+                Tag::FinalizedApprovals => NetResponseIncoming {
+                    sender,
+                    message: NetResponse::FinalizedApprovals(serialized_item),
+                }
+                .into(),
+                Tag::Block => NetResponseIncoming {
+                    sender,
+                    message: NetResponse::Block(serialized_item),
+                }
+                .into(),
+                Tag::GossipedAddress => NetResponseIncoming {
+                    sender,
+                    message: NetResponse::GossipedAddress(serialized_item),
+                }
+                .into(),
+                Tag::BlockAndMetadataByHeight => NetResponseIncoming {
+                    sender,
+                    message: NetResponse::BlockAndMetadataByHeight(serialized_item),
+                }
+                .into(),
+                Tag::BlockHeaderByHash => NetResponseIncoming {
+                    sender,
+                    message: NetResponse::BlockHeaderByHash(serialized_item),
+                }
+                .into(),
+                Tag::BlockHeaderAndFinalitySignaturesByHeight => NetResponseIncoming {
+                    sender,
+                    message: NetResponse::BlockHeaderAndFinalitySignaturesByHeight(serialized_item),
+                }
+                .into(),
+                Tag::TrieOrChunk => TrieResponseIncoming {
+                    sender,
+                    message: TrieResponse(serialized_item.to_vec()),
+                }
+                .into(),
+            },
+            Message::FinalitySignature(message) => {
+                FinalitySignatureIncoming { sender, message }.into()
             }
         }
     }

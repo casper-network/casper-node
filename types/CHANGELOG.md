@@ -13,6 +13,16 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+### Added
+* Add new `bytesrepr::Error::NotRepresentable` error variant that represents values that are not representable by the serialization format.
+* Add new `Key::ChainspecRegistry` key variant under which the `ChainspecRegistry` is written.
+* Add a new type `WithdrawPurses` which is meant to represent `UnbondingPurses` as they exist in current live networks.
+
+### Changed
+* Extend `UnbondingPurses` to take a new field `new_validator` which represents the validator to whom tokens will be re-delegated.
+* Increase `DICTIONARY_ITEM_KEY_MAX_LENGTH` to 128.
+* Fixed some integer casts.
+
 
 
 ## 1.5.0
@@ -39,7 +49,7 @@ All notable changes to this project will be documented in this file.  The format
 * Add function to `auction::MintProvider` trait to support minting into an existing purse.
 
 ### Changed
-* Change checksummed hex implementation to use 32 byte rather than 64 byte blake2b digests. 
+* Change checksummed hex implementation to use 32 byte rather than 64 byte blake2b digests.
 
 
 

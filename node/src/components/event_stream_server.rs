@@ -36,6 +36,7 @@ use tokio::sync::{
     oneshot,
 };
 use tracing::{info, warn};
+use warp::Filter;
 
 use casper_types::ProtocolVersion;
 
@@ -111,14 +112,15 @@ impl EventStreamServer {
 
         let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
 
-        let (listening_address, server_with_shutdown) = warp::serve(sse_filter)
-            .try_bind_with_graceful_shutdown(required_address, async {
-                shutdown_receiver.await.ok();
-            })
-            .map_err(|error| ListeningError::Listen {
-                address: required_address,
-                error: Box::new(error),
-            })?;
+        let (listening_address, server_with_shutdown) =
+            warp::serve(sse_filter.with(warp::cors().allow_any_origin()))
+                .try_bind_with_graceful_shutdown(required_address, async {
+                    shutdown_receiver.await.ok();
+                })
+                .map_err(|error| ListeningError::Listen {
+                    address: required_address,
+                    error: Box::new(error),
+                })?;
         info!(address=%listening_address, "started event stream server");
 
         tokio::spawn(http_server::run(
@@ -143,6 +145,12 @@ impl EventStreamServer {
         let event_index = self.event_indexer.next_index();
         let _ = self.sse_data_sender.send((event_index, sse_data));
         Effects::new()
+    }
+}
+
+impl Drop for EventStreamServer {
+    fn drop(&mut self) {
+        let _ = self.broadcast(SseData::Shutdown);
     }
 }
 

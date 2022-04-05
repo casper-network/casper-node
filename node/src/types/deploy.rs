@@ -3,16 +3,18 @@
 
 use std::{
     array::TryFromSliceError,
+    cmp,
     collections::{BTreeSet, HashMap},
     error::Error as StdError,
     fmt::{self, Debug, Display, Formatter},
+    hash,
 };
 
 use datasize::DataSize;
 use derive_more::Display;
 use itertools::Itertools;
 use num_traits::Zero;
-use once_cell::sync::Lazy;
+use once_cell::sync::{Lazy, OnceCell};
 #[cfg(test)]
 use rand::{Rng, RngCore};
 use schemars::JsonSchema;
@@ -32,15 +34,19 @@ use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     runtime_args,
     system::standard_payment::ARG_AMOUNT,
-    ExecutionResult, Motes, PublicKey, RuntimeArgs, SecretKey, Signature, U512,
+    EraId, ExecutionResult, Motes, PublicKey, RuntimeArgs, SecretKey, Signature, U512,
 };
 
 use super::{BlockHash, Item, Tag, TimeDiff, Timestamp};
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{
-    components::block_proposer::DeployInfo, crypto, crypto::AsymmetricKeyExt,
-    rpcs::docs::DocExample, types::chainspec::DeployConfig, utils::DisplayIter,
+    components::block_proposer::DeployInfo,
+    crypto,
+    crypto::AsymmetricKeyExt,
+    rpcs::docs::DocExample,
+    types::chainspec::DeployConfig,
+    utils::{ds, DisplayIter},
 };
 
 static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
@@ -82,7 +88,7 @@ static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
         payment,
         session,
         approvals,
-        is_valid: None,
+        is_valid: OnceCell::new(),
     }
 });
 
@@ -280,6 +286,18 @@ impl DeployHash {
     }
 }
 
+impl From<DeployHash> for casper_types::DeployHash {
+    fn from(deploy_hash: DeployHash) -> casper_types::DeployHash {
+        casper_types::DeployHash::new(deploy_hash.inner().value())
+    }
+}
+
+impl From<casper_types::DeployHash> for DeployHash {
+    fn from(deploy_hash: casper_types::DeployHash) -> DeployHash {
+        DeployHash::new(deploy_hash.value().into())
+    }
+}
+
 impl From<DeployHash> for Digest {
     fn from(deploy_hash: DeployHash) -> Self {
         deploy_hash.0
@@ -403,7 +421,7 @@ impl DeployHeader {
 
     /// Has this deploy expired?
     pub fn expired(&self, current_instant: Timestamp) -> bool {
-        let lifespan = self.timestamp + self.ttl;
+        let lifespan = self.timestamp.saturating_add(self.ttl);
         lifespan < current_instant
     }
 
@@ -435,12 +453,10 @@ impl DeployHeader {
         let num_deps_valid = self.dependencies().len() <= deploy_config.max_dependencies as usize;
         ttl_valid && timestamp_valid && not_expired && num_deps_valid
     }
-}
 
-impl DeployHeader {
     /// Returns the timestamp of when the deploy expires, i.e. `self.timestamp + self.ttl`.
     pub fn expires(&self) -> Timestamp {
-        self.timestamp + self.ttl
+        self.timestamp.saturating_add(self.ttl)
     }
 }
 
@@ -603,13 +619,18 @@ impl DeployWithApprovals {
 }
 
 /// A set of approvals that has been agreed upon by consensus to approve of a specific deploy.
-#[derive(DataSize, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(DataSize, Debug, Deserialize, Eq, PartialEq, Serialize, Clone)]
 pub struct FinalizedApprovals(BTreeSet<Approval>);
 
 impl FinalizedApprovals {
     /// Creates a new instance of `FinalizedApprovals`.
     pub fn new(approvals: BTreeSet<Approval>) -> Self {
         Self(approvals)
+    }
+
+    /// Return the inner set of approvals.
+    pub fn into_inner(self) -> BTreeSet<Approval> {
+        self.0
     }
 }
 
@@ -620,10 +641,73 @@ impl AsRef<BTreeSet<Approval>> for FinalizedApprovals {
     }
 }
 
+/// A set of finalized approvals together with data identifying the deploy.
+#[derive(DataSize, Debug, Deserialize, Eq, PartialEq, Serialize, Clone)]
+pub struct FinalizedApprovalsWithId {
+    id: DeployHash,
+    approvals: FinalizedApprovals,
+}
+
+impl FinalizedApprovalsWithId {
+    /// Creates a new instance of `FinalizedApprovalsWithId`.
+    pub fn new(id: DeployHash, approvals: FinalizedApprovals) -> Self {
+        Self { id, approvals }
+    }
+
+    /// Return the inner set of approvals.
+    pub fn into_inner(self) -> BTreeSet<Approval> {
+        self.approvals.into_inner()
+    }
+}
+
+/// Error type containing the error message passed from `crypto::verify`
+#[derive(Debug, Error)]
+#[error("invalid approval from {signer}: {error}")]
+pub struct FinalizedApprovalsVerificationError {
+    signer: PublicKey,
+    error: String,
+}
+
+impl Item for FinalizedApprovalsWithId {
+    type Id = DeployHash;
+    type ValidationError = FinalizedApprovalsVerificationError;
+
+    const TAG: Tag = Tag::FinalizedApprovals;
+    const ID_IS_COMPLETE_ITEM: bool = false;
+
+    fn validate(
+        &self,
+        _verifiable_chunked_hash_activation: EraId,
+    ) -> Result<(), Self::ValidationError> {
+        for approval in &self.approvals.0 {
+            crypto::verify(&self.id, approval.signature(), approval.signer()).map_err(|err| {
+                FinalizedApprovalsVerificationError {
+                    signer: approval.signer().clone(),
+                    error: format!("{}", err),
+                }
+            })?;
+        }
+        Ok(())
+    }
+
+    fn id(&self, _verifiable_chunked_hash_activation: EraId) -> Self::Id {
+        self.id
+    }
+}
+
+impl Display for FinalizedApprovalsWithId {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        write!(
+            formatter,
+            "finalized approvals for {}: {}",
+            self.id,
+            DisplayIter::new(self.approvals.0.iter())
+        )
+    }
+}
+
 /// A deploy; an item containing a smart contract along with the requester's signature(s).
-#[derive(
-    Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, JsonSchema,
-)]
+#[derive(Clone, DataSize, Eq, Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Deploy {
     hash: DeployHash,
@@ -632,7 +716,71 @@ pub struct Deploy {
     session: ExecutableDeployItem,
     approvals: BTreeSet<Approval>,
     #[serde(skip)]
-    is_valid: Option<Result<(), DeployConfigurationFailure>>,
+    #[data_size(with = ds::once_cell)]
+    is_valid: OnceCell<Result<(), DeployConfigurationFailure>>,
+}
+
+impl hash::Hash for Deploy {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
+        // Destructure to make sure we don't accidentally omit fields.
+        let Deploy {
+            hash,
+            header,
+            payment,
+            session,
+            approvals,
+            is_valid: _,
+        } = self;
+        hash.hash(state);
+        header.hash(state);
+        payment.hash(state);
+        session.hash(state);
+        approvals.hash(state);
+    }
+}
+
+impl PartialEq for Deploy {
+    fn eq(&self, other: &Deploy) -> bool {
+        // Destructure to make sure we don't accidentally omit fields.
+        let Deploy {
+            hash,
+            header,
+            payment,
+            session,
+            approvals,
+            is_valid: _,
+        } = self;
+        *hash == other.hash
+            && *header == other.header
+            && *payment == other.payment
+            && *session == other.session
+            && *approvals == other.approvals
+    }
+}
+
+impl Ord for Deploy {
+    fn cmp(&self, other: &Deploy) -> cmp::Ordering {
+        // Destructure to make sure we don't accidentally omit fields.
+        let Deploy {
+            hash,
+            header,
+            payment,
+            session,
+            approvals,
+            is_valid: _,
+        } = self;
+        hash.cmp(&other.hash)
+            .then_with(|| header.cmp(&other.header))
+            .then_with(|| payment.cmp(&other.payment))
+            .then_with(|| session.cmp(&other.session))
+            .then_with(|| approvals.cmp(&other.approvals))
+    }
+}
+
+impl PartialOrd for Deploy {
+    fn partial_cmp(&self, other: &Deploy) -> Option<cmp::Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl Deploy {
@@ -674,7 +822,7 @@ impl Deploy {
             payment,
             session,
             approvals: BTreeSet::new(),
-            is_valid: None,
+            is_valid: OnceCell::new(),
         };
 
         deploy.sign(secret_key);
@@ -715,6 +863,11 @@ impl Deploy {
     /// Returns the `Approval`s for this deploy.
     pub fn approvals(&self) -> &BTreeSet<Approval> {
         &self.approvals
+    }
+
+    /// Replaces the set of approvals attached to this deploy.
+    pub fn replace_approvals(&mut self, approvals: BTreeSet<Approval>) {
+        self.approvals = approvals;
     }
 
     /// Returns the hash of this deploy wrapped in `DeployOrTransferHash`.
@@ -774,15 +927,8 @@ impl Deploy {
     ///   * the body hash is correct (should be the hash of the body), and
     ///   * approvals are non empty, and
     ///   * all approvals are valid signatures of the deploy hash
-    pub fn is_valid(&mut self) -> Result<(), DeployConfigurationFailure> {
-        match self.is_valid.as_ref() {
-            None => {
-                let validity = validate_deploy(self);
-                self.is_valid = Some(validity.clone());
-                validity
-            }
-            Some(validity) => validity.clone(),
-        }
+    pub fn is_valid(&self) -> Result<(), DeployConfigurationFailure> {
+        self.is_valid.get_or_init(|| validate_deploy(self)).clone()
     }
 
     /// Returns true if and only if:
@@ -1409,11 +1555,20 @@ fn validate_deploy(deploy: &Deploy) -> Result<(), DeployConfigurationFailure> {
 
 impl Item for Deploy {
     type Id = DeployHash;
+    type ValidationError = DeployConfigurationFailure;
 
     const TAG: Tag = Tag::Deploy;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
-    fn id(&self) -> Self::Id {
+    fn validate(
+        &self,
+        _verifiable_chunked_hash_activation: EraId,
+    ) -> Result<(), Self::ValidationError> {
+        // TODO: Validate approvals later, and only if the approvers are actually authorized!
+        validate_deploy(self)
+    }
+
+    fn id(&self, _verifiable_chunked_hash_activation: EraId) -> Self::Id {
         *self.id()
     }
 }
@@ -1496,7 +1651,7 @@ impl FromBytes for Deploy {
             payment,
             session,
             approvals,
-            is_valid: None,
+            is_valid: OnceCell::new(),
         };
         Ok((maybe_valid_deploy, remainder))
     }
@@ -1581,15 +1736,23 @@ mod tests {
     #[test]
     fn is_valid() {
         let mut rng = crate::new_rng();
-        let mut deploy = create_deploy(&mut rng, DeployConfig::default().max_ttl, 0, "net-1");
-        assert_eq!(deploy.is_valid, None, "is valid should initially be None");
+        let deploy = create_deploy(&mut rng, DeployConfig::default().max_ttl, 0, "net-1");
+        assert_eq!(
+            deploy.is_valid.get(),
+            None,
+            "is valid should initially be None"
+        );
         deploy.is_valid().expect("should be valid");
-        assert_eq!(deploy.is_valid, Some(Ok(())), "is valid should be true");
+        assert_eq!(
+            deploy.is_valid.get(),
+            Some(&Ok(())),
+            "is valid should be true"
+        );
     }
 
-    fn check_is_not_valid(mut invalid_deploy: Deploy, expected_error: DeployConfigurationFailure) {
+    fn check_is_not_valid(invalid_deploy: Deploy, expected_error: DeployConfigurationFailure) {
         assert!(
-            invalid_deploy.is_valid.is_none(),
+            invalid_deploy.is_valid.get().is_none(),
             "is valid should initially be None"
         );
         let actual_error = invalid_deploy.is_valid().unwrap_err();
@@ -1617,8 +1780,8 @@ mod tests {
 
         // The actual error should have been lazily initialized correctly.
         assert_eq!(
-            invalid_deploy.is_valid,
-            Some(Err(actual_error)),
+            invalid_deploy.is_valid.get(),
+            Some(&Err(actual_error)),
             "is valid should now be Some"
         );
     }
@@ -1725,7 +1888,7 @@ mod tests {
             Err(expected_error)
         );
         assert!(
-            deploy.is_valid.is_none(),
+            deploy.is_valid.get().is_none(),
             "deploy should not have run expensive `is_valid` call"
         );
     }
@@ -1755,7 +1918,7 @@ mod tests {
             Err(expected_error)
         );
         assert!(
-            deploy.is_valid.is_none(),
+            deploy.is_valid.get().is_none(),
             "deploy should not have run expensive `is_valid` call"
         );
     }
@@ -1785,7 +1948,7 @@ mod tests {
             Err(expected_error)
         );
         assert!(
-            deploy.is_valid.is_none(),
+            deploy.is_valid.get().is_none(),
             "deploy should not have run expensive `is_valid` call"
         );
     }
@@ -1824,7 +1987,7 @@ mod tests {
             Err(DeployConfigurationFailure::MissingPaymentAmount)
         );
         assert!(
-            deploy.is_valid.is_none(),
+            deploy.is_valid.get().is_none(),
             "deploy should not have run expensive `is_valid` call"
         );
     }
@@ -1865,7 +2028,7 @@ mod tests {
             Err(DeployConfigurationFailure::FailedToParsePaymentAmount)
         );
         assert!(
-            deploy.is_valid.is_none(),
+            deploy.is_valid.get().is_none(),
             "deploy should not have run expensive `is_valid` call"
         );
     }
@@ -1912,7 +2075,7 @@ mod tests {
             Err(expected_error)
         );
         assert!(
-            deploy.is_valid.is_none(),
+            deploy.is_valid.get().is_none(),
             "deploy should not have run expensive `is_valid` call"
         );
     }

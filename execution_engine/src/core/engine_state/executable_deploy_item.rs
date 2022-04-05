@@ -27,7 +27,6 @@ use casper_types::{
     ProtocolVersion, RuntimeArgs, StoredValue, U512,
 };
 
-use super::error;
 use crate::{
     core::{
         engine_state::{Error, ExecError, MAX_PAYMENT_AMOUNT},
@@ -803,12 +802,12 @@ impl ExecutionKind {
 
         match executable_deploy_item {
             ExecutableDeployItem::Transfer { .. } => {
-                Err(error::Error::InvalidDeployItemVariant("Transfer".into()))
+                Err(Error::InvalidDeployItemVariant("Transfer".into()))
             }
             ExecutableDeployItem::ModuleBytes { module_bytes, .. }
                 if module_bytes.is_empty() && is_payment_phase =>
             {
-                Err(error::Error::InvalidDeployItemVariant(
+                Err(Error::InvalidDeployItemVariant(
                     "Empty module bytes for custom payment".into(),
                 ))
             }
@@ -822,7 +821,7 @@ impl ExecutionKind {
                 name, entry_point, ..
             } => {
                 let contract_key = named_keys.get(&name).cloned().ok_or_else(|| {
-                    error::Error::Exec(execution::Error::NamedKeyNotFound(name.to_string()))
+                    Error::Exec(execution::Error::NamedKeyNotFound(name.to_string()))
                 })?;
 
                 contract_hash =
@@ -841,7 +840,7 @@ impl ExecutionKind {
                         .get(&name)
                         .cloned()
                         .ok_or_else(|| {
-                            error::Error::Exec(execution::Error::NamedKeyNotFound(name.to_string()))
+                            Error::Exec(execution::Error::NamedKeyNotFound(name.to_string()))
                         })?
                         .into_hash()
                         .ok_or(Error::InvalidKeyVariant)?
@@ -857,21 +856,21 @@ impl ExecutionKind {
 
                 let contract_version_key = maybe_version_key
                     .or_else(|| contract_package.current_contract_version())
-                    .ok_or(error::Error::Exec(
-                        execution::Error::NoActiveContractVersions(contract_package_hash),
-                    ))?;
+                    .ok_or(Error::Exec(execution::Error::NoActiveContractVersions(
+                        contract_package_hash,
+                    )))?;
 
                 if !contract_package.is_version_enabled(contract_version_key) {
-                    return Err(error::Error::Exec(
-                        execution::Error::InvalidContractVersion(contract_version_key),
-                    ));
+                    return Err(Error::Exec(execution::Error::InvalidContractVersion(
+                        contract_version_key,
+                    )));
                 }
 
                 let looked_up_contract_hash: ContractHash = contract_package
                     .lookup_contract_hash(contract_version_key)
-                    .ok_or(error::Error::Exec(
-                        execution::Error::InvalidContractVersion(contract_version_key),
-                    ))?
+                    .ok_or(Error::Exec(execution::Error::InvalidContractVersion(
+                        contract_version_key,
+                    )))?
                     .to_owned();
 
                 Ok(ExecutionKind::new_contract(
@@ -894,21 +893,21 @@ impl ExecutionKind {
 
                 let contract_version_key = maybe_version_key
                     .or_else(|| contract_package.current_contract_version())
-                    .ok_or(error::Error::Exec(
-                        execution::Error::NoActiveContractVersions(contract_package_hash),
-                    ))?;
+                    .ok_or(Error::Exec(execution::Error::NoActiveContractVersions(
+                        contract_package_hash,
+                    )))?;
 
                 if !contract_package.is_version_enabled(contract_version_key) {
-                    return Err(error::Error::Exec(
-                        execution::Error::InvalidContractVersion(contract_version_key),
-                    ));
+                    return Err(Error::Exec(execution::Error::InvalidContractVersion(
+                        contract_version_key,
+                    )));
                 }
 
                 let looked_up_contract_hash = *contract_package
                     .lookup_contract_hash(contract_version_key)
-                    .ok_or(error::Error::Exec(
-                        execution::Error::InvalidContractVersion(contract_version_key),
-                    ))?;
+                    .ok_or(Error::Exec(execution::Error::InvalidContractVersion(
+                        contract_version_key,
+                    )))?;
 
                 Ok(ExecutionKind::new_contract(
                     looked_up_contract_hash,

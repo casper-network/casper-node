@@ -11,6 +11,10 @@ export NCTL="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 NCTL_CASPER_HOME="$( cd "$( dirname "${NCTL[0]}" )" && pwd )"
 export NCTL_CASPER_HOME="$( cd "$( dirname "${NCTL_CASPER_HOME[0]}" )" && pwd )"
 
+# Set casper-client root.
+NCTL_CASPER_CLIENT_ROOT=${NCTL_CASPER_CLIENT_ROOT:-$( cd "$( dirname "${NCTL_CASPER_HOME[0]}" )" && pwd )}
+export NCTL_CASPER_CLIENT_HOME="$NCTL_CASPER_CLIENT_ROOT"/casper-client-rs
+
 # Set casper-node-launcher root.
 NCTL_CASPER_NODE_LAUNCHER_ROOT=${NCTL_CASPER_NODE_LAUNCHER_ROOT:-$( cd "$( dirname "${NCTL_CASPER_HOME[0]}" )" && pwd )}
 export NCTL_CASPER_NODE_LAUNCHER_HOME="$NCTL_CASPER_NODE_LAUNCHER_ROOT"/casper-node-launcher
@@ -151,3 +155,10 @@ alias nctl-kv-storage-set-key='source $NCTL/sh/contracts-kv/set_key.sh'
 alias nctl-exec-upgrade-scenario-1='source $NCTL/sh/scenarios-upgrades/upgrade_scenario_01.sh'
 alias nctl-exec-upgrade-scenario-2='source $NCTL/sh/scenarios-upgrades/upgrade_scenario_02.sh'
 alias nctl-exec-upgrade-scenario-3='source $NCTL/sh/scenarios-upgrades/upgrade_scenario_03.sh'
+alias nctl-exec-upgrade-scenario-4='source $NCTL/sh/scenarios-upgrades/upgrade_scenario_04.sh'
+alias nctl-exec-upgrade-scenario-5='source $NCTL/sh/scenarios-upgrades/upgrade_scenario_05.sh'
+alias nctl-exec-upgrade-scenario-6='source $NCTL/sh/scenarios-upgrades/upgrade_scenario_06.sh'
+alias nctl-exec-upgrade-scenario-7='source $NCTL/sh/scenarios-upgrades/upgrade_scenario_07.sh'
+alias nctl-exec-upgrade-scenario-8='source $NCTL/sh/scenarios-upgrades/upgrade_scenario_08.sh'
+alias nctl-exec-upgrade-scenario-9='source $NCTL/sh/scenarios-upgrades/upgrade_scenario_09.sh'
+alias nctl-exec-upgrade-scenario-10='source $NCTL/sh/scenarios-upgrades/upgrade_scenario_10.sh'

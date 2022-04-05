@@ -8,15 +8,17 @@ mod consensus_protocol;
 mod era_supervisor;
 #[macro_use]
 mod highway_core;
+pub(crate) mod error;
 mod metrics;
 mod protocols;
 #[cfg(test)]
 mod tests;
 mod traits;
+mod utils;
 mod validator_change;
 
 use std::{
-    collections::{BTreeMap, HashMap},
+    borrow::Cow,
     convert::Infallible,
     fmt::{self, Debug, Display, Formatter},
     sync::Arc,
@@ -27,34 +29,35 @@ use datasize::DataSize;
 use derive_more::From;
 use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
-use tracing::error;
+use tracing::info;
 
-use casper_types::{EraId, PublicKey, U512};
+use casper_types::{EraId, PublicKey};
 
 use crate::{
     components::Component,
     effect::{
         announcements::{BlocklistAnnouncement, ConsensusAnnouncement},
+        diagnostics_port::DumpConsensusStateRequest,
+        incoming::ConsensusMessageIncoming,
         requests::{
             BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
-            ContractRuntimeRequest, LinearChainRequest, NetworkInfoRequest, NetworkRequest,
-            StorageRequest,
+            ContractRuntimeRequest, NetworkInfoRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
-    fatal,
     protocol::Message,
     reactor::ReactorEvent,
-    types::{ActivationPoint, BlockHash, BlockHeader, BlockPayload, Timestamp},
+    types::{ActivationPoint, BlockHash, BlockHeader, BlockPayload, NodeId, Timestamp},
     NodeRng,
 };
 
 pub(crate) use cl_context::ClContext;
-pub(crate) use config::Config;
+pub(crate) use config::{ChainspecConsensusExt, Config};
 pub(crate) use consensus_protocol::{BlockContext, EraReport, ProposedBlock};
-pub(crate) use era_supervisor::EraSupervisor;
+pub(crate) use era_supervisor::{debug::EraDump, EraSupervisor};
 pub(crate) use protocols::highway::HighwayProtocol;
-use traits::NodeIdT;
+
+pub(crate) use utils::check_sufficient_finality_signatures;
 pub(crate) use validator_change::ValidatorChange;
 
 #[derive(DataSize, Clone, Serialize, Deserialize)]
@@ -84,18 +87,19 @@ pub struct NewBlockPayload {
 }
 
 #[derive(DataSize, Debug, From)]
-pub struct ResolveValidity<I> {
+pub struct ResolveValidity {
     era_id: EraId,
-    sender: I,
+    sender: NodeId,
     proposed_block: ProposedBlock<ClContext>,
     valid: bool,
 }
 
 /// Consensus component event.
 #[derive(DataSize, Debug, From)]
-pub(crate) enum Event<I> {
+pub(crate) enum Event {
+    #[from]
     /// An incoming network message.
-    MessageReceived { sender: I, msg: ConsensusMessage },
+    Incoming(ConsensusMessageIncoming),
     /// A scheduled event to be handled by a specified era.
     Timer {
         era_id: EraId,
@@ -109,33 +113,28 @@ pub(crate) enum Event<I> {
     #[from]
     ConsensusRequest(ConsensusRequest),
     /// A new block has been added to the linear chain.
-    BlockAdded(Box<BlockHeader>),
+    BlockAdded {
+        header: Box<BlockHeader>,
+        header_hash: BlockHash,
+    },
     /// The proto-block has been validated.
-    ResolveValidity(ResolveValidity<I>),
+    ResolveValidity(ResolveValidity),
     /// Deactivate the era with the given ID, unless the number of faulty validators increases.
     DeactivateEra {
         era_id: EraId,
         faulty_num: usize,
         delay: Duration,
     },
-    /// Event raised when a new era should be created: once we get the set of validators, the
-    /// booking block hash and the seed from the key block.
+    /// Event raised when a new era should be created because a new switch block is available.
     CreateNewEra {
-        /// The header of the switch block, i.e. the last block before the new era.
-        switch_block_header: Box<BlockHeader>,
-        /// `Ok(block_hash)` if the booking block was found, `Err(era_id)` if not
-        booking_block_hash: Result<BlockHash, EraId>,
-    },
-    /// Event raised upon initialization, when a number of eras have to be instantiated at once.
-    InitializeEras {
-        key_blocks: HashMap<EraId, BlockHeader>,
-        booking_blocks: HashMap<EraId, BlockHash>,
-        /// This is empty except if the activation era still needs to be instantiated: Its
-        /// validator set is read from the global state, not from a key block.
-        validators: BTreeMap<PublicKey, U512>,
+        /// The most recent switch block headers
+        switch_blocks: Vec<BlockHeader>,
     },
     /// Got the result of checking for an upgrade activation point.
     GotUpgradeActivationPoint(ActivationPoint),
+    /// Dump state for debugging purposes.
+    #[from]
+    DumpState(DumpConsensusStateRequest),
 }
 
 impl Debug for ConsensusMessage {
@@ -168,10 +167,12 @@ impl Display for ConsensusMessage {
     }
 }
 
-impl<I: Debug> Display for Event<I> {
+impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::MessageReceived { sender, msg } => write!(f, "msg from {:?}: {}", sender, msg),
+            Event::Incoming(ConsensusMessageIncoming { sender, message }) => {
+                write!(f, "msg from {:?}: {}", sender, message)
+            }
             Event::Timer {
                 era_id,
                 timestamp,
@@ -198,10 +199,13 @@ impl<I: Debug> Display for Event<I> {
                 "A request for consensus component hash been received: {:?}",
                 request
             ),
-            Event::BlockAdded(block_header) => write!(
+            Event::BlockAdded {
+                header: _,
+                header_hash,
+            } => write!(
                 f,
                 "A block has been added to the linear chain: {}",
-                block_header.hash(),
+                header_hash,
             ),
             Event::ResolveValidity(ResolveValidity {
                 era_id,
@@ -223,64 +227,59 @@ impl<I: Debug> Display for Event<I> {
                 "Deactivate old {} unless additional faults are observed; faults so far: {}",
                 era_id, faulty_num
             ),
-            Event::CreateNewEra {
-                booking_block_hash,
-                switch_block_header,
-            } => write!(
+            Event::CreateNewEra { switch_blocks } => write!(
                 f,
-                "New era should be created; booking block hash: {:?}, switch block: {:?}",
-                booking_block_hash, switch_block_header
+                "New era should be created; switch blocks: {:?}",
+                switch_blocks
             ),
-            Event::InitializeEras { .. } => write!(f, "Starting eras should be initialized"),
             Event::GotUpgradeActivationPoint(activation_point) => {
                 write!(f, "new upgrade activation point: {:?}", activation_point)
             }
+            Event::DumpState(req) => Display::fmt(req, f),
         }
     }
 }
 
 /// A helper trait whose bounds represent the requirements for a reactor event that `EraSupervisor`
 /// can work with.
-pub(crate) trait ReactorEventT<I>:
+pub(crate) trait ReactorEventT:
     ReactorEvent
-    + From<Event<I>>
+    + From<Event>
     + Send
-    + From<NetworkRequest<I, Message>>
-    + From<NetworkInfoRequest<I>>
+    + From<NetworkRequest<Message>>
+    + From<NetworkInfoRequest>
     + From<BlockProposerRequest>
     + From<ConsensusAnnouncement>
-    + From<BlockValidationRequest<I>>
+    + From<BlockValidationRequest>
     + From<StorageRequest>
     + From<ContractRuntimeRequest>
     + From<ChainspecLoaderRequest>
-    + From<LinearChainRequest<I>>
-    + From<BlocklistAnnouncement<I>>
+    + From<BlocklistAnnouncement>
+    + From<BlocklistAnnouncement>
 {
 }
 
-impl<REv, I> ReactorEventT<I> for REv where
+impl<REv> ReactorEventT for REv where
     REv: ReactorEvent
-        + From<Event<I>>
+        + From<Event>
         + Send
-        + From<NetworkRequest<I, Message>>
-        + From<NetworkInfoRequest<I>>
+        + From<NetworkRequest<Message>>
+        + From<NetworkInfoRequest>
         + From<BlockProposerRequest>
         + From<ConsensusAnnouncement>
-        + From<BlockValidationRequest<I>>
+        + From<BlockValidationRequest>
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
         + From<ChainspecLoaderRequest>
-        + From<LinearChainRequest<I>>
-        + From<BlocklistAnnouncement<I>>
+        + From<BlocklistAnnouncement>
 {
 }
 
-impl<I, REv> Component<REv> for EraSupervisor<I>
+impl<REv> Component<REv> for EraSupervisor
 where
-    I: NodeIdT,
-    REv: ReactorEventT<I>,
+    REv: ReactorEventT,
 {
-    type Event = Event<I>;
+    type Event = Event;
     type ConstructionError = Infallible;
 
     fn handle_event(
@@ -289,62 +288,66 @@ where
         rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        let mut handling_es = self.handling_wrapper(effect_builder, rng);
         match event {
             Event::Timer {
                 era_id,
                 timestamp,
                 timer_id,
-            } => handling_es.handle_timer(era_id, timestamp, timer_id),
-            Event::Action { era_id, action_id } => handling_es.handle_action(era_id, action_id),
-            Event::MessageReceived { sender, msg } => handling_es.handle_message(sender, msg),
-            Event::NewBlockPayload(new_block_payload) => {
-                handling_es.handle_new_block_payload(new_block_payload)
+            } => self.handle_timer(effect_builder, rng, era_id, timestamp, timer_id),
+            Event::Action { era_id, action_id } => {
+                self.handle_action(effect_builder, rng, era_id, action_id)
             }
-            Event::BlockAdded(block_header) => handling_es.handle_block_added(*block_header),
+            Event::Incoming(ConsensusMessageIncoming { sender, message }) => {
+                self.handle_message(effect_builder, rng, sender, message)
+            }
+            Event::NewBlockPayload(new_block_payload) => {
+                self.handle_new_block_payload(effect_builder, rng, new_block_payload)
+            }
+            Event::BlockAdded {
+                header,
+                header_hash: _,
+            } => self.handle_block_added(effect_builder, *header),
             Event::ResolveValidity(resolve_validity) => {
-                handling_es.resolve_validity(resolve_validity)
+                self.resolve_validity(effect_builder, rng, resolve_validity)
             }
             Event::DeactivateEra {
                 era_id,
                 faulty_num,
                 delay,
-            } => handling_es.handle_deactivate_era(era_id, faulty_num, delay),
-            Event::CreateNewEra {
-                switch_block_header,
-                booking_block_hash,
-            } => {
-                let booking_block_hash = match booking_block_hash {
-                    Ok(hash) => hash,
-                    Err(era_id) => {
-                        error!(
-                            "could not find the booking block in era {}, for era {}",
-                            era_id,
-                            switch_block_header.era_id().successor()
-                        );
-                        return fatal!(
-                            handling_es.effect_builder,
-                            "couldn't get the booking block hash"
-                        )
-                        .ignore();
-                    }
-                };
-                handling_es.handle_create_new_era(*switch_block_header, booking_block_hash)
+            } => self.handle_deactivate_era(effect_builder, era_id, faulty_num, delay),
+            Event::CreateNewEra { switch_blocks } => {
+                self.create_new_era_effects(effect_builder, rng, &switch_blocks)
             }
-            Event::InitializeEras {
-                key_blocks,
-                booking_blocks,
-                validators,
-            } => handling_es.handle_initialize_eras(key_blocks, booking_blocks, validators),
             Event::GotUpgradeActivationPoint(activation_point) => {
-                handling_es.got_upgrade_activation_point(activation_point)
+                self.got_upgrade_activation_point(activation_point)
             }
-            Event::ConsensusRequest(ConsensusRequest::Status(responder)) => {
-                handling_es.status(responder)
-            }
+            Event::ConsensusRequest(ConsensusRequest::Status(responder)) => self.status(responder),
             Event::ConsensusRequest(ConsensusRequest::ValidatorChanges(responder)) => {
                 let validator_changes = self.get_validator_changes();
                 responder.respond(validator_changes).ignore()
+            }
+            Event::DumpState(req @ DumpConsensusStateRequest { era_id, .. }) => {
+                let requested_era = era_id.unwrap_or_else(|| self.current_era());
+
+                // We emit some log message to get some performance information and give the
+                // operator a chance to find out why their node is busy.
+                info!(era_id=%requested_era.value(), was_latest=era_id.is_none(), "dumping era via diagnostics port");
+
+                let era_dump_result = self
+                    .open_eras()
+                    .get(&requested_era)
+                    .ok_or_else(|| {
+                        Cow::Owned(format!(
+                            "could not dump consensus, {} not found",
+                            requested_era
+                        ))
+                    })
+                    .and_then(|era| EraDump::dump_era(era, requested_era));
+
+                match era_dump_result {
+                    Ok(dump) => req.answer(Ok(&dump)).ignore(),
+                    Err(err) => req.answer(Err(err)).ignore(),
+                }
             }
         }
     }
