@@ -3,12 +3,14 @@ use std::fmt::{self, Display, Formatter};
 use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey};
 use itertools::Itertools;
 
-use crate::types::{Block, BlockHash, DeployHash, DeployHeader, FinalitySignature, Timestamp};
+use crate::types::{
+    Block, BlockHash, Deploy, DeployHash, DeployHeader, FinalitySignature, Timestamp,
+};
 
 #[derive(Debug)]
 pub enum Event {
     BlockAdded(Box<Block>),
-    DeployAccepted(DeployHash),
+    DeployAccepted(Box<Deploy>),
     DeployProcessed {
         deploy_hash: DeployHash,
         deploy_header: Box<DeployHeader>,
