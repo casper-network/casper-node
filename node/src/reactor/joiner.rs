@@ -31,8 +31,8 @@ use crate::{
         deploy_acceptor::{self, DeployAcceptor},
         diagnostics_port::{self, DiagnosticsPort},
         event_stream_server,
-        event_stream_server::{DeployGetter, EventStreamServer},
-        fetcher::{self, FetchedOrNotFound, Fetcher, FetcherBuilder},
+        event_stream_server::EventStreamServer,
+        fetcher::{self, Fetcher, FetcherBuilder, FetchedOrNotFound},
         gossiper::{self, Gossiper},
         metrics::Metrics,
         rest_server::{self, RestServer},
@@ -607,7 +607,6 @@ impl reactor::Reactor for Reactor {
             config.event_stream_server.clone(),
             storage.root_path().to_path_buf(),
             *protocol_version,
-            DeployGetter::new(effect_builder),
         )?;
 
         let fetcher_builder =
@@ -696,7 +695,7 @@ impl reactor::Reactor for Reactor {
                     return Effects::new();
                 };
 
-                let event = event_stream_server::Event::DeployAccepted(*deploy.id());
+                let event = event_stream_server::Event::DeployAccepted(deploy.clone());
                 let mut effects =
                     self.dispatch_event(effect_builder, rng, JoinerEvent::EventStreamServer(event));
 
