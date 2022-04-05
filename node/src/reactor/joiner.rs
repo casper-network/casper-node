@@ -32,7 +32,7 @@ use crate::{
         diagnostics_port::{self, DiagnosticsPort},
         event_stream_server,
         event_stream_server::EventStreamServer,
-        fetcher::{self, Fetcher, FetcherBuilder, FetchedOrNotFound},
+        fetcher::{self, FetchedOrNotFound, Fetcher, FetcherBuilder},
         gossiper::{self, Gossiper},
         metrics::Metrics,
         rest_server::{self, RestServer},
