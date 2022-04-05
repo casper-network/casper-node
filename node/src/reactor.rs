@@ -9,7 +9,7 @@
 //!    any component that processes an event mutable, exclusive access to its state.
 //! 3. Once the (synchronous) event processing has completed, the component returns an effect.
 //! 4. The reactor spawns a task that executes these effects and eventually schedules another event.
-//! 5. meanwhile go to 1.
+//! 5. go to 1.
 //!
 //! # Reactors
 //!

@@ -151,7 +151,7 @@ impl Display for BlockProposerDeploySets {
 /// Returns keys of the drained elements.
 ///
 /// To be replaced with `HashMap::drain_filter` when stabilized.
-/// [https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.drain_filter]
+/// <https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.drain_filter>
 fn hashmap_drain_filter_in_place<K, V, F>(hash_map: &mut HashMap<K, V>, pred: F) -> Vec<K>
 where
     K: Eq + Hash + Copy,

@@ -58,7 +58,7 @@ pub(crate) use sse_server::SseData;
 
 /// This is used to define the number of events to buffer in the tokio broadcast channel to help
 /// slower clients to try to avoid missing events (See
-/// https://docs.rs/tokio/1.4.0/tokio/sync/broadcast/index.html#lagging for further details).  The
+/// <https://docs.rs/tokio/1.4.0/tokio/sync/broadcast/index.html#lagging> for further details).  The
 /// resulting broadcast channel size is `ADDITIONAL_PERCENT_FOR_BROADCAST_CHANNEL_SIZE` percent
 /// greater than `config.event_stream_buffer_length`.
 ///
