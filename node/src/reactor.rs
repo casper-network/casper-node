@@ -11,6 +11,8 @@
 //! 4. The reactor spawns a task that executes these effects and eventually schedules another event.
 //! 5. go to 1.
 //!
+//! For instructions on how to create effects, see the [`effect`](super::effect) module.
+//!
 //! # Reactors
 //!
 //! There is no single reactor, but rather a reactor for each application type, since it defines

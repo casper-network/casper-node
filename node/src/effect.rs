@@ -32,31 +32,32 @@
 //!
 //! ## Arbitrary effects
 //!
-//! While it is technically possible to turn any future into an effect, it is advisable to only use
-//! the effects explicitly listed in this module through traits to create them. Post-processing on
-//! effects to turn them into events should also be kept brief.
+//! While it is technically possible to turn any future into an effect, it is in general advisable
+//! to only use the methods on [`EffectBuilder`] or short, anonymous futures to create effects.
 //!
 //! ## Announcements and effects
 //!
-//! Some effects can be further classified into either announcements or requests, although these
-//! properties are not reflected in the type system.
+//! Events are usually classified into either announcements or requests, although these properties
+//! are not reflected in the type system.
 //!
-//! **Announcements** are effects emitted by components that are essentially "fire-and-forget"; the
-//! component will never expect an answer for these and does not rely on them being handled. It is
-//! also conceivable that they are being cloned and dispatched to multiple components by the
-//! reactor.
+//! **Announcements** are events that are essentially "fire-and-forget"; the component that created
+//! the effect resulting in the creation of the announcement will never expect an "answer".
+//! Announcements are often dispatched to multiple components by the reactor; since that usually
+//! involves a [`clone`](`Clone::clone`), they should be kept light.
 //!
 //! A good example is the arrival of a new deploy passed in by a client. Depending on the setup it
 //! may be stored, buffered or, in certain testing setups, just discarded. None of this is a concern
-//! of the component that talks to the client and deserializes the incoming deploy though, which
-//! considers the deploy no longer its concern after it has returned an announcement effect.
+//! of the component that talks to the client and deserializes the incoming deploy though, instead
+//! it simply returns an effect that produces an announcement.
 //!
-//! **Requests** are complex effects that are used when a component needs something from
-//! outside of itself (typically to be provided by another component); a request requires an
-//! eventual response.
+//! **Requests** are complex events that are used when a component needs something from other
+//! components. Typically, an effect (which uses [`EffectBuilder::make_request`] in its
+//! implementation) is called resulting in the actual request being scheduled and handled. In
+//! contrast to announcements, requests must always be handled by exactly one component.
 //!
-//! A request **must** have a `Responder` field, which a handler of a request **must** call at
-//! some point. Failing to do so will result in a resource leak.
+//! Every request has a [`Responder`]-typed field, which a handler of a request calls to produce
+//! another effect that will send the return value to the original requesting component. Failing to
+//! call the [`Responder::respond`] function will result in a runtime warning.
 
 pub(crate) mod announcements;
 pub(crate) mod diagnostics_port;
