@@ -27,7 +27,7 @@ use crate::{
         contract_runtime::{ContractRuntime, ContractRuntimeAnnouncement},
         deploy_acceptor::{self, DeployAcceptor},
         event_stream_server,
-        event_stream_server::{DeployGetter, EventStreamServer},
+        event_stream_server::EventStreamServer,
         fetcher::{self, Fetcher},
         gossiper::{self, Gossiper},
         linear_chain,
@@ -461,7 +461,6 @@ impl reactor::Reactor for Reactor {
             config.event_stream_server.clone(),
             storage.root_path().to_path_buf(),
             *protocol_version,
-            DeployGetter::new(effect_builder),
         )?;
 
         let block_validator = BlockValidator::new(Arc::clone(chainspec_loader.chainspec()));
@@ -670,7 +669,7 @@ impl reactor::Reactor for Reactor {
             JoinerEvent::DeployAcceptorAnnouncement(
                 DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
             ) => {
-                let event = event_stream_server::Event::DeployAccepted(*deploy.id());
+                let event = event_stream_server::Event::DeployAccepted(deploy.clone());
                 let mut effects =
                     self.dispatch_event(effect_builder, rng, JoinerEvent::EventStreamServer(event));
 

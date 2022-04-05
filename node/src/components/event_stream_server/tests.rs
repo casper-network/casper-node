@@ -191,7 +191,6 @@ struct TestFixture {
     storage_dir: TempDir,
     protocol_version: ProtocolVersion,
     events: Vec<SseData>,
-    deploy_getter: DeployGetter,
     first_event_id: Id,
     server_join_handle: Option<JoinHandle<()>>,
     server_stopper: ServerStopper,
@@ -225,13 +224,10 @@ impl TestFixture {
             })
             .collect();
 
-        let deploy_getter = DeployGetter::with_deploys(deploys);
-
         TestFixture {
             storage_dir,
             protocol_version,
             events,
-            deploy_getter,
             first_event_id: 0,
             server_join_handle: None,
             server_stopper: ServerStopper::new(),
@@ -272,7 +268,6 @@ impl TestFixture {
             config,
             self.storage_dir.path().to_path_buf(),
             self.protocol_version,
-            self.deploy_getter.clone(),
         )
         .unwrap();
 
@@ -353,12 +348,10 @@ impl TestFixture {
             }
 
             let data = match event {
-                SseData::DeployAccepted {
-                    deploy: deploy_hash,
-                } => {
-                    let deploy_accepted = self.deploy_getter.get_test_deploy(*deploy_hash).unwrap();
-                    serde_json::to_string(&DeployAccepted { deploy_accepted }).unwrap()
-                }
+                SseData::DeployAccepted { deploy } => serde_json::to_string(&DeployAccepted {
+                    deploy_accepted: deploy.clone(),
+                })
+                .unwrap(),
                 _ => serde_json::to_string(event).unwrap(),
             };
 
