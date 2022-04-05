@@ -31,7 +31,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Changed
 * Detection of a crash no longer triggers DB integrity checks to run on node start; the checks can be triggered manually instead.
-* `SIGUSR1` now only dumps the queue in the debug text format.
+* `SIGUSR1`/`SIGUSR2` queue dumps have been removed in favor of the diagnostics port.
 * Incoming connections from peers are rejected if they are exceeding the default incoming connections per peer limit of 3.
 * Nodes no longer connect to nodes that do not speak the same protocol version by default.
 * Chain automatically creates a switch block immediately after genesis or an upgrade.
