@@ -2,29 +2,30 @@
 //!
 //! Any long running instance of the node application uses an event-dispatch pattern: Events are
 //! generated and stored on an event queue, then processed one-by-one. This process happens inside
-//! the reactor*, which also exclusively holds the state of the application besides pending events:
+//! the reactor, which also exclusively holds the state of the application besides pending events:
 //!
-//! 1. The reactor pops an event off the event queue (called a [`Scheduler`](type.Scheduler.html)).
-//! 2. The event is dispatched by the reactor. Since the reactor holds mutable state, it can grant
-//!    any component that processes an event mutable, exclusive access to its state.
-//! 3. Once the (synchronous) event processing has completed, the component returns an effect.
-//! 4. The reactor spawns a task that executes these effects and eventually schedules another event.
+//! 1. The reactor pops a reactor event off the event queue (called a
+//!    [`Scheduler`](type.Scheduler.html)).
+//! 2. The event is dispatched by the reactor via [`Reactor::dispatch_event`]. Since the reactor
+//!    holds mutable state, it can grant any component that processes an event mutable, exclusive
+//!    access to its state.
+//! 3. Once the [(synchronous)](`crate::component::Component::handle_even`) event processing has
+//!    completed, the component returns an [`effect`](crate::effect).
+//! 4. The reactor spawns a task that executes these effects and possibly schedules more events.
 //! 5. go to 1.
 //!
-//! For instructions on how to create effects, see the [`effect`](super::effect) module.
+//! For descriptions of events and instructions on how to create effects, see the
+//! [`effect`](super::effect) module.
 //!
 //! # Reactors
 //!
 //! There is no single reactor, but rather a reactor for each application type, since it defines
 //! which components are used and how they are wired up. The reactor defines the state by being a
-//! `struct` of components, their initialization through the
-//! [`Reactor::new()`](trait.Reactor.html#tymethod.new) and a method
-//! [`Reactor::dispatch_event()`](trait.Reactor.html#tymethod.dispatch_event) to dispatch events to
-//! components.
+//! `struct` of components, their initialization through [`Reactor::new`] and event dispatching to
+//! components via [`Reactor::dispatch_event`].
 //!
-//! With all these set up, a reactor can be executed using a [`Runner`](struct.Runner.html), either
-//! in a step-wise manner using [`crank`](struct.Runner.html#method.crank) or indefinitely using
-//! [`run`](struct.Runner.html#method.crank).
+//! With all these set up, a reactor can be executed using a [`Runner`], either in a step-wise
+//! manner using [`Runner::crank`] or indefinitely using [`Runner::run`].
 
 mod event_queue_metrics;
 pub(crate) mod initializer;
