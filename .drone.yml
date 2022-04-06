@@ -381,7 +381,7 @@ steps:
     - sha256
     - md5
     files:
-    - "./target/upgrade_build/*.gz"
+    - "./target/upgrade_build/*/*.gz"
     prerelease:
     - true
 
