@@ -15,12 +15,6 @@ use log::LevelFilter;
 use casper_execution_engine::{
     core::{
         engine_state::{
-<<<<<<< HEAD
-            self, BalanceResult, EngineConfig, EngineState, ExecuteRequest, ExecutionResult,
-            GenesisSuccess, GetBidsRequest, GetEraValidatorsRequest, QueryRequest, QueryResult,
-            RewardItem, RunGenesisRequest, StepError, StepRequest, StepSuccess,
-            SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
-=======
             self,
             era_validators::GetEraValidatorsRequest,
             execute_request::ExecuteRequest,
@@ -28,9 +22,8 @@ use casper_execution_engine::{
             run_genesis_request::RunGenesisRequest,
             step::{StepRequest, StepSuccess},
             BalanceResult, EngineConfig, EngineState, Error, GenesisSuccess, GetBidsRequest,
-            QueryRequest, QueryResult, StepError, SystemContractRegistry, UpgradeConfig,
-            UpgradeSuccess,
->>>>>>> upstream/dev
+            QueryRequest, QueryResult, RewardItem, StepError, SystemContractRegistry,
+            UpgradeConfig, UpgradeSuccess,
         },
         execution,
     },
@@ -1165,7 +1158,6 @@ where
         self
     }
 
-<<<<<<< HEAD
     /// Advances eras by num_eras
     pub fn advance_eras_by(
         &mut self,
@@ -1197,16 +1189,16 @@ where
         self.advance_eras_by(DEFAULT_AUCTION_DELAY + 1, reward_items);
     }
 
-    /// Advances by a single era.
+    /// Advancess by a single era.
     pub fn advance_era(&mut self, reward_items: impl IntoIterator<Item = RewardItem>) {
         self.advance_eras_by(1, reward_items);
-=======
+    }
+
     /// Returns a trie by hash.
     pub fn get_trie(&mut self, state_hash: Digest) -> Option<Trie<Key, StoredValue>> {
         self.engine_state
             .get_trie_full(CorrelationId::default(), state_hash)
             .unwrap()
             .map(|bytes| bytesrepr::deserialize(bytes.into()).unwrap())
->>>>>>> upstream/dev
     }
 }
