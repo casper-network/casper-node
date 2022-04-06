@@ -17,7 +17,7 @@ use super::{
     ARG_TIME_INTERVAL, ENTRY_POINT_AUTHORIZE_TO, ENTRY_POINT_FAUCET, ENTRY_POINT_SET_VARIABLES,
     FAUCET_CALL_DEFAULT_PAYMENT, FAUCET_CONTRACT_NAMED_KEY, FAUCET_FUND_AMOUNT, FAUCET_ID,
     FAUCET_INSTALLER_SESSION, FAUCET_PURSE_NAMED_KEY, INSTALLER_ACCOUNT, INSTALLER_FUND_AMOUNT,
-    TWO_HOURS_AS_MILLIS,
+    REMAINING_REQUESTS_NAMED_KEY, TWO_HOURS_AS_MILLIS,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -269,17 +269,17 @@ impl FaucetFundRequestBuilder {
         Self::default()
     }
 
-    pub fn as_installer_account(mut self, installer_account: AccountHash) -> Self {
+    pub fn with_installer_account(mut self, installer_account: AccountHash) -> Self {
         self.caller_account = FaucetCallerAccount::Installer(installer_account);
         self
     }
 
-    pub fn as_authorized_account(mut self, authorized_account: AccountHash) -> Self {
+    pub fn with_authorized_account(mut self, authorized_account: AccountHash) -> Self {
         self.caller_account = FaucetCallerAccount::Authorized(authorized_account);
         self
     }
 
-    pub fn as_user_account(mut self, user_account: AccountHash) -> Self {
+    pub fn with_user_account(mut self, user_account: AccountHash) -> Self {
         self.caller_account = FaucetCallerAccount::User(user_account);
         self
     }
@@ -496,6 +496,16 @@ impl FaucetDeployHelper {
     pub fn query_faucet_purse_balance(&self, builder: &InMemoryWasmTestBuilder) -> U512 {
         let faucet_purse = self.query_faucet_purse(&builder);
         builder.get_purse_balance(faucet_purse)
+    }
+
+    pub fn query_remaining_requests(&self, builder: &mut InMemoryWasmTestBuilder) -> U512 {
+        query_stored_value(
+            builder,
+            self.faucet_contract_hash
+                .expect("faucet contract hash must be set")
+                .into(),
+            vec![REMAINING_REQUESTS_NAMED_KEY.to_string()],
+        )
     }
 
     pub fn faucet_purse_fund_amount(&self) -> U512 {
