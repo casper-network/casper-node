@@ -108,7 +108,7 @@ pub(crate) trait Component<REv> {
     /// Processes an event, outputting zero or more effects.
     ///
     /// This function must not ever perform any blocking or CPU intensive work, as it is expected
-    /// to return very quickly.
+    /// to return very quickly -- it will usually be called from an `async` function context.
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
