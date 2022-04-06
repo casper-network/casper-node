@@ -1,15 +1,46 @@
 //! Effects subsystem.
 //!
 //! Effects describe things that the creator of the effect intends to happen, producing a value upon
-//! completion. They are, in fact, futures.
+//! completion (they actually are boxed futures).
 //!
 //! A pinned, boxed future returning an event is called an effect and typed as an `Effect<Ev>`,
-//! where `Ev` is the event's type. Generally, `Ev` is an Event enum defined at the top level of
-//! each component in the `crate::components` module.
+//! where `Ev` is the event's type, as every effect must have its return value either wrapped in an
+//! event through [`EffectExt::event`](crate::effect::EffectExt::event) or ignored using
+//! [`EffectExt::ignore`](crate::effect::EffectExt::ignore). As an example, the
+//! [`handle_event`](crate::components::Component::handle_event) function of a component always
+//! returns `Effect<Self::Event>`.
 //!
-//! ## Using effects
+//! # A primer on events
 //!
-//! To create an effect, an `EffectBuilder` will be passed in from the relevant reactor. For
+//! There are three distinct groups of events found around the node:
+//!
+//! * (unbound) events: These events are not associated with a particular reactor or component and
+//!   represent information or requests by themselves. An example is the
+//!   [`BlocklistAnnouncement`](`crate::effect::BlocklistAnnouncement`), it can be emitted through
+//!   an effect by different components and contains the ID of a peer that should be shunned. It is
+//!   not associated with a particular reactor or component though.
+//!
+//!   While the node is running, these unbound events cannot exist on their own, instead they are
+//!   typically converted into a concrete reactor event by the effect builder as soon as they are
+//!   created.
+//!
+//! * reactor events: A running reactor has a single event type that encompasses all possible
+//!   unbound events that can occur during its operation and all component events of components it
+//!   is made of. Usually they are implemented as one large `enum` with only newtype-variants.
+//!
+//! * component events: Every component defines its own set of events, typically for internal use.
+//!   If the component is able to process unbound events like announcements or requests, it will
+//!   have a `From` implementation that allows converting them into a suitable component event.
+//!
+//!   Component events are also created from the return values of effects: While effects do not
+//!   return events themselves when called, their return values are turned first into component
+//!   events through the [`event`](crate::effect::EffectExt) method. In a second step, inside the
+//!   reactors routing code, [`wrap_effect`](crate::reactor::wrap_effect) will then convert from
+//!   component to reactor event.
+//!
+//! # Using effects
+//!
+//! To create an effect, an `EffectBuilder` will be passed in by the calling reactor runner. For
 //! example, given an effect builder `effect_builder`, we can create a `set_timeout` future and turn
 //! it into an effect:
 //!
@@ -17,6 +48,7 @@
 //! use std::time::Duration;
 //! use casper_node::effect::EffectExt;
 //!
+//! // Note: This is our "component" event.
 //! enum Event {
 //!     ThreeSecondsElapsed(Duration)
 //! }
@@ -30,12 +62,12 @@
 //! `Event::ThreeSecondsElapsed`. Note that effects do nothing on their own, they need to be passed
 //! to a [`reactor`](../reactor/index.html) to be executed.
 //!
-//! ## Arbitrary effects
+//! # Arbitrary effects
 //!
 //! While it is technically possible to turn any future into an effect, it is in general advisable
 //! to only use the methods on [`EffectBuilder`] or short, anonymous futures to create effects.
 //!
-//! ## Announcements and effects
+//! # Announcements and requests
 //!
 //! Events are usually classified into either announcements or requests, although these properties
 //! are not reflected in the type system.
@@ -409,8 +441,11 @@ where
 
 /// A builder for [`Effect`](type.Effect.html)s.
 ///
-/// Provides methods allowing the creation of effects which need to be scheduled
-/// on the reactor's event queue, without giving direct access to this queue.
+/// Provides methods allowing the creation of effects which need to be scheduled on the reactor's
+/// event queue, without giving direct access to this queue.
+///
+/// The `REv` type parameter indicates which reactor event effects created by this builder will
+/// produce as side-effects.
 #[derive(Debug)]
 pub(crate) struct EffectBuilder<REv: 'static> {
     /// A handle to the referenced event queue.
