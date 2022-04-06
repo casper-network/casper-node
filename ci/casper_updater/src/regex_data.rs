@@ -38,11 +38,6 @@ pub mod types {
                 replacement,
             ),
             DependentFile::new(
-                "execution_engine_testing/cargo_casper/src/common.rs",
-                Regex::new(r#"(?m)("casper-types",\s*)"(?:[^"]+)"#).unwrap(),
-                replacement,
-            ),
-            DependentFile::new(
                 "execution_engine_testing/test_support/Cargo.toml",
                 Regex::new(r#"(?m)(^casper-types = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
                 replacement,
@@ -225,11 +220,6 @@ pub mod smart_contracts_contract {
     pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
         vec![
             DependentFile::new(
-                "execution_engine_testing/cargo_casper/src/common.rs",
-                Regex::new(r#"(?m)("casper-contract",\s*)"(?:[^"]+)"#).unwrap(),
-                replacement,
-            ),
-            DependentFile::new(
                 "smart_contracts/contract/Cargo.toml",
                 MANIFEST_VERSION_REGEX.clone(),
                 replacement,
@@ -271,11 +261,6 @@ pub mod execution_engine_testing_test_support {
     pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
         vec![
                 DependentFile::new(
-                    "execution_engine_testing/cargo_casper/src/common.rs",
-                    Regex::new(r#"(?m)("casper-engine-test-support",\s*)"(?:[^"]+)"#).unwrap(),
-                    cargo_casper_src_test_package_rs_replacement,
-                ),
-                DependentFile::new(
                     "execution_engine_testing/test_support/Cargo.toml",
                     MANIFEST_VERSION_REGEX.clone(),
                     replacement,
@@ -286,22 +271,6 @@ pub mod execution_engine_testing_test_support {
                     replacement_with_slash,
                 ),
             ]
-    });
-
-    fn cargo_casper_src_test_package_rs_replacement(updated_version: &str) -> String {
-        format!(r#"$1"{}"#, updated_version)
-    }
-}
-
-pub mod execution_engine_testing_cargo_casper {
-    use super::*;
-
-    pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
-        vec![DependentFile::new(
-            "execution_engine_testing/cargo_casper/Cargo.toml",
-            MANIFEST_VERSION_REGEX.clone(),
-            replacement,
-        )]
     });
 }
 
