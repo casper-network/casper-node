@@ -31,7 +31,7 @@ CONFIG_DIR="$ROOT_DIR/resources/local"
 TEMP_STAGE_DIR='/tmp/nctl_upgrade_stage'
 
 # FILES
-BIN_ARRAY=(casper-node casper-client)
+BIN_ARRAY=(casper-node)
 
 WASM_ARRAY=(add_bid.wasm \
             delegate.wasm \
@@ -48,7 +48,6 @@ fi
 
 # Ensure files are built
 cd "$ROOT_DIR"
-cargo build --release --package casper-client
 cargo build --release --package casper-node
 make build-contract-rs/activate-bid
 make build-contract-rs/add-bid
