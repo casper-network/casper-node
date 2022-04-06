@@ -10,7 +10,7 @@
     )),
     no_std
 )]
-#![doc(html_root_url = "https://docs.rs/casper-types/1.4.5")]
+#![doc(html_root_url = "https://docs.rs/casper-types/1.5.0")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
     html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
@@ -54,7 +54,9 @@ mod transfer_result;
 mod uint;
 mod uref;
 
-pub use access_rights::{AccessRights, ACCESS_RIGHTS_SERIALIZED_LENGTH};
+pub use access_rights::{
+    AccessRights, ContextAccessRights, GrantedAccess, ACCESS_RIGHTS_SERIALIZED_LENGTH,
+};
 #[doc(inline)]
 pub use api_error::ApiError;
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
@@ -93,7 +95,9 @@ pub use transfer::{
     TRANSFER_ADDR_LENGTH,
 };
 pub use transfer_result::{TransferResult, TransferredTo};
-pub use uref::{FromStrError as URefFromStrError, URef, UREF_ADDR_LENGTH, UREF_SERIALIZED_LENGTH};
+pub use uref::{
+    FromStrError as URefFromStrError, URef, URefAddr, UREF_ADDR_LENGTH, UREF_SERIALIZED_LENGTH,
+};
 
 pub use crate::{
     era_id::EraId,

@@ -35,7 +35,6 @@
 //! The storage component itself is panic free and in general reports three classes of errors:
 //! Corruption, temporary resource exhaustion and potential bugs.
 
-mod disjoint_sequences;
 mod lmdb_ext;
 mod object_pool;
 #[cfg(test)]
@@ -44,7 +43,7 @@ mod tests;
 #[cfg(test)]
 use std::collections::BTreeSet;
 use std::{
-    collections::{btree_map, BTreeMap, HashMap, HashSet},
+    collections::{btree_map::Entry, BTreeMap, HashSet},
     convert::TryFrom,
     fmt::{self, Display, Formatter},
     fs, io, mem,
@@ -60,6 +59,7 @@ use lmdb::{
 };
 use num_rational::Ratio;
 use serde::{Deserialize, Serialize};
+use smallvec::SmallVec;
 use static_assertions::const_assert;
 #[cfg(test)]
 use tempfile::TempDir;
@@ -74,7 +74,6 @@ use casper_types::{
 
 // The reactor! macro needs this in the fetcher tests
 pub(crate) use crate::effect::requests::StorageRequest;
-
 use crate::{
     components::{
         consensus, consensus::error::FinalitySignatureError, fetcher::FetchedOrNotFound, Component,
@@ -89,20 +88,23 @@ use crate::{
     protocol::Message,
     reactor::ReactorEvent,
     types::{
-        error::BlockValidationError, Block, BlockBody, BlockHash, BlockHeader,
+        error::BlockValidationError, AvailableBlockRange, Block, BlockBody, BlockHash, BlockHeader,
         BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, Deploy, DeployHash,
-        DeployMetadata, HashingAlgorithmVersion, Item, MerkleBlockBody, MerkleBlockBodyPart,
-        MerkleLinkedListNode, NodeId, TimeDiff,
+        DeployMetadata, DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedApprovalsWithId,
+        HashingAlgorithmVersion, Item, MerkleBlockBody, MerkleBlockBodyPart, MerkleLinkedListNode,
+        NodeId, TimeDiff,
     },
     utils::{display_error, WithDir},
     NodeRng,
 };
-use disjoint_sequences::DisjointSequences;
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
 use object_pool::ObjectPool;
 
 /// Filename for the LMDB database created by the Storage component.
 const STORAGE_DB_FILENAME: &str = "storage.lmdb";
+/// The key in the state store DB under which the storage component's
+/// `lowest_available_block_height` field is persisted.
+const KEY_LOWEST_AVAILABLE_BLOCK_HEIGHT: &str = "lowest_available_block_height";
 
 /// We can set this very low, as there is only a single reader/writer accessing the component at any
 /// one time.
@@ -120,7 +122,7 @@ const DEFAULT_MAX_DEPLOY_METADATA_STORE_SIZE: usize = 300 * GIB;
 /// Default max state store size.
 const DEFAULT_MAX_STATE_STORE_SIZE: usize = 10 * GIB;
 /// Maximum number of allowed dbs.
-const MAX_DB_COUNT: u32 = 11;
+const MAX_DB_COUNT: u32 = 12;
 
 /// OS-specific lmdb flags.
 #[cfg(not(target_os = "macos"))]
@@ -141,8 +143,6 @@ const STORAGE_FILES: [&str; 5] = [
     "storage.lmdb-lock",
     "sse_index",
 ];
-
-type MissingBodiesIndex = HashMap<Digest, Vec<u64>>;
 
 /// A fatal storage component error.
 ///
@@ -293,6 +293,15 @@ pub enum FatalStorageError {
     /// Failed to serialize an item that was found in local storage.
     #[error("failed to serialized stored item")]
     StoredItemSerializationFailure(#[source] bincode::Error),
+    /// We tried to store finalized approvals for a nonexistent deploy.
+    #[error(
+        "Tried to store FinalizedApprovals for a nonexistent deploy. \
+        Deploy hash: {deploy_hash:?}"
+    )]
+    UnexpectedFinalizedApprovals {
+        /// The missing deploy hash.
+        deploy_hash: DeployHash,
+    },
 }
 
 // We wholesale wrap lmdb errors and treat them as internal errors here.
@@ -359,14 +368,16 @@ pub struct Storage {
     /// The state storage database.
     #[data_size(skip)]
     state_store_db: Database,
+    /// The finalized approvals database.
+    #[data_size(skip)]
+    finalized_approvals_db: Database,
     /// A map of block height to block ID.
     block_height_index: BTreeMap<u64, BlockHash>,
-    /// A set of disjoint sequences of block heights of blocks which are fully stored (not just the
-    /// headers).
-    disjoint_block_height_sequences: DisjointSequences,
-    /// For a given block body hash, stores a vector of block heights representing blocks for which
-    /// we don't have the block body stored.
-    missing_block_bodies: MissingBodiesIndex,
+    /// The height of the highest block from which this node has an unbroken sequence of full
+    /// blocks stored (and the corresponding global state).
+    lowest_available_block_height: u64,
+    /// Highest block available when storage is constructed.
+    highest_block_at_startup: u64,
     /// A map of era ID to switch block ID.
     switch_block_era_id_index: BTreeMap<EraId, BlockHash>,
     /// A map of deploy hashes to hashes of blocks containing them.
@@ -520,6 +531,8 @@ impl Storage {
         let deploy_metadata_db = env.create_db(Some("deploy_metadata"), DatabaseFlags::empty())?;
         let transfer_db = env.create_db(Some("transfer"), DatabaseFlags::empty())?;
         let state_store_db = env.create_db(Some("state_store"), DatabaseFlags::empty())?;
+        let finalized_approvals_db =
+            env.create_db(Some("finalized_approvals"), DatabaseFlags::empty())?;
         let block_body_v1_db = env.create_db(Some("block_body"), DatabaseFlags::empty())?;
         let block_body_v2_db = env.create_db(Some("block_body_merkle"), DatabaseFlags::empty())?;
         let deploy_hashes_db = env.create_db(Some("deploy_hashes"), DatabaseFlags::empty())?;
@@ -536,8 +549,6 @@ impl Storage {
 
         let mut deleted_block_hashes = HashSet::new();
         let mut deleted_block_body_hashes_v1 = HashSet::new();
-        let mut full_block_heights = Vec::with_capacity(1_000_000);
-        let mut missing_block_bodies = MissingBodiesIndex::new();
         // Note: `iter_start` has an undocumented panic if called on an empty database. We rely on
         //       the iterator being at the start when created.
         for (_, raw_val) in cursor.iter() {
@@ -590,20 +601,28 @@ impl Storage {
                     block_header.hash(verifiable_chunked_hash_activation),
                     &block_body,
                 )?;
-
-                full_block_heights.push(block_header.height());
-            } else {
-                missing_block_bodies
-                    .entry(*block_header.body_hash())
-                    .or_default()
-                    .push(block_header.height());
             }
         }
         info!("block store reindexing complete");
         drop(cursor);
         block_txn.commit()?;
 
-        let disjoint_block_height_sequences = DisjointSequences::from(full_block_heights);
+        let mut lowest_available_block_height = {
+            let mut txn = env.begin_ro_txn()?;
+            txn.get_value_bytesrepr(state_store_db, &KEY_LOWEST_AVAILABLE_BLOCK_HEIGHT)?
+                .unwrap_or_default()
+        };
+        let highest_block_at_startup = block_height_index
+            .keys()
+            .last()
+            .copied()
+            .unwrap_or_default();
+        if let Err(error) =
+            AvailableBlockRange::new(lowest_available_block_height, highest_block_at_startup)
+        {
+            error!(%error);
+            lowest_available_block_height = highest_block_at_startup;
+        }
 
         let deleted_block_hashes_raw = deleted_block_hashes.iter().map(BlockHash::as_ref).collect();
 
@@ -633,8 +652,10 @@ impl Storage {
             deploy_metadata_db,
             transfer_db,
             state_store_db,
+            finalized_approvals_db,
             block_height_index,
-            disjoint_block_height_sequences,
+            lowest_available_block_height,
+            highest_block_at_startup,
             switch_block_era_id_index,
             deploy_hash_index,
             enable_mem_deduplication: config.enable_mem_deduplication,
@@ -642,7 +663,6 @@ impl Storage {
             finality_threshold_fraction,
             last_emergency_restart,
             verifiable_chunked_hash_activation,
-            missing_block_bodies,
         })
     }
 
@@ -726,6 +746,31 @@ impl Storage {
             NetRequest::Deploy(ref serialized_id) => {
                 let id = decode_item_id::<Deploy>(serialized_id)?;
                 let opt_item = self.get_deploy(id).map_err(FatalStorageError::from)?;
+
+                Ok(self.update_pool_and_send(
+                    effect_builder,
+                    incoming.sender,
+                    serialized_id,
+                    id,
+                    opt_item,
+                )?)
+            }
+            NetRequest::FinalizedApprovals(ref serialized_id) => {
+                let id = decode_item_id::<FinalizedApprovalsWithId>(serialized_id)?;
+                let opt_item = self
+                    .env
+                    .begin_ro_txn()
+                    .map_err(Into::into)
+                    .and_then(|mut tx| {
+                        self.get_deploy_with_finalized_approvals(&mut tx, &id)
+                            .map_err(FatalStorageError::from)
+                    })?
+                    .map(|deploy| {
+                        FinalizedApprovalsWithId::new(
+                            id,
+                            FinalizedApprovals::new(deploy.into_naive().approvals().clone()),
+                        )
+                    });
 
                 Ok(self.update_pool_and_send(
                     effect_builder,
@@ -842,9 +887,14 @@ impl Storage {
             }
             StorageRequest::GetBlockHeader {
                 block_hash,
+                only_from_available_block_range,
                 responder,
             } => responder
-                .respond(self.get_single_block_header(&mut self.env.begin_ro_txn()?, &block_hash)?)
+                .respond(self.get_single_block_header_restricted(
+                    &mut self.env.begin_ro_txn()?,
+                    &block_hash,
+                    only_from_available_block_range,
+                )?)
                 .ignore(),
             StorageRequest::CheckBlockHeaderExistence {
                 block_height,
@@ -865,7 +915,10 @@ impl Storage {
                 deploy_hashes,
                 responder,
             } => responder
-                .respond(self.get_deploys(&mut self.env.begin_ro_txn()?, deploy_hashes.as_slice())?)
+                .respond(self.get_deploys_with_finalized_approvals(
+                    &mut self.env.begin_ro_txn()?,
+                    deploy_hashes.as_slice(),
+                )?)
                 .ignore(),
             StorageRequest::PutExecutionResults {
                 block_hash,
@@ -932,22 +985,27 @@ impl Storage {
             } => {
                 let mut txn = self.env.begin_ro_txn()?;
 
-                // A missing deploy causes an early `None` return.
-                let deploy: Deploy =
-                    if let Some(deploy) = txn.get_value(self.deploy_db, &deploy_hash)? {
+                let deploy = {
+                    let opt_deploy =
+                        self.get_deploy_with_finalized_approvals(&mut txn, &deploy_hash)?;
+
+                    if let Some(deploy) = opt_deploy {
                         deploy
                     } else {
                         return Ok(responder.respond(None).ignore());
-                    };
+                    }
+                };
 
                 // Missing metadata is filled using a default.
                 let metadata = self
                     .get_deploy_metadata(&mut txn, &deploy_hash)?
                     .unwrap_or_default();
+
                 responder.respond(Some((deploy, metadata))).ignore()
             }
             StorageRequest::GetBlockAndMetadataByHash {
                 block_hash,
+                only_from_available_block_range,
                 responder,
             } => {
                 let mut txn = self.env.begin_ro_txn()?;
@@ -958,6 +1016,11 @@ impl Storage {
                     } else {
                         return Ok(responder.respond(None).ignore());
                     };
+
+                if !self.should_return_block(block.height(), only_from_available_block_range) {
+                    return Ok(responder.respond(None).ignore());
+                }
+
                 // Check that the hash of the block retrieved is correct.
                 if block_hash != *block.hash() {
                     error!(
@@ -995,8 +1058,13 @@ impl Storage {
                 .ignore(),
             StorageRequest::GetBlockAndMetadataByHeight {
                 block_height,
+                only_from_available_block_range,
                 responder,
             } => {
+                if !self.should_return_block(block_height, only_from_available_block_range) {
+                    return Ok(responder.respond(None).ignore());
+                }
+
                 let mut txn = self.env.begin_ro_txn()?;
 
                 let block: Block =
@@ -1114,56 +1182,24 @@ impl Storage {
                     self.verifiable_chunked_hash_activation,
                 )?;
 
-                if self.has_corresponding_body(&mut txn, &block_header)? {
-                    self.disjoint_block_height_sequences
-                        .insert(block_header.height());
-                } else {
-                    self.missing_block_bodies
-                        .entry(*block_header.body_hash())
-                        .or_default()
-                        .push(block_header.height());
-                }
-
                 txn.commit()?;
                 responder.respond(true).ignore()
             }
-            StorageRequest::GetLowestContiguousBlockHeight { responder } => {
-                let result = self
-                    .disjoint_block_height_sequences
-                    .highest_sequence_low_value()
-                    .unwrap_or_else(|| {
-                        error!("storage disjoint sequences of block heights should not be empty");
-                        u64::MAX
-                    });
-                responder.respond(result).ignore()
+            StorageRequest::UpdateLowestAvailableBlockHeight { height, responder } => {
+                self.update_lowest_available_block_height(height)?;
+                responder.respond(()).ignore()
             }
+            StorageRequest::GetAvailableBlockRange { responder } => {
+                responder.respond(self.get_available_block_range()).ignore()
+            }
+            StorageRequest::StoreFinalizedApprovals {
+                ref deploy_hash,
+                ref finalized_approvals,
+                responder,
+            } => responder
+                .respond(self.store_finalized_approvals(deploy_hash, finalized_approvals)?)
+                .ignore(),
         })
-    }
-
-    /// Returns `true` if there is a block body for the given block header available in storage.
-    fn has_corresponding_body<Tx: Transaction>(
-        &self,
-        txn: &mut Tx,
-        block_header: &BlockHeader,
-    ) -> Result<bool, FatalStorageError> {
-        // TODO[RC]: Possible optimization: Can we check if a body exists w/o retrieving it?
-        let maybe_block_body = self.get_body_for_block_header(txn, block_header)?;
-        Ok(maybe_block_body.is_some())
-    }
-
-    /// Updates the disjoint height sequences after the full block has been
-    /// put to storage. It adds the height of the written block and also
-    /// adds heights of blocks that share the same body.
-    fn update_disjoint_height_sequences(&mut self, block_header: &BlockHeader) {
-        self.disjoint_block_height_sequences
-            .insert(block_header.height());
-
-        if let Some(block_bodies_to_add) =
-            self.missing_block_bodies.remove(block_header.body_hash())
-        {
-            self.disjoint_block_height_sequences
-                .extend(block_bodies_to_add);
-        }
     }
 
     /// Put a single deploy into storage.
@@ -1233,11 +1269,7 @@ impl Storage {
             block.header().hash(self.verifiable_chunked_hash_activation),
             block.body(),
         )?;
-
         txn.commit()?;
-
-        self.update_disjoint_height_sequences(block.header());
-
         Ok(true)
     }
 
@@ -1418,7 +1450,29 @@ impl Storage {
         self.get_blocks_while(&mut txn, ttl_not_expired)
     }
 
-    /// Retrieves a single block header in a separate transaction from storage.
+    /// Retrieves a single block header in a given transaction from storage
+    /// respecting the possible restriction on whether the block
+    /// should be present in the available blocks index.
+    fn get_single_block_header_restricted<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        block_hash: &BlockHash,
+        only_from_available_block_range: bool,
+    ) -> Result<Option<BlockHeader>, FatalStorageError> {
+        let block_header: BlockHeader = match tx.get_value(self.block_header_db, &block_hash)? {
+            Some(block_header) => block_header,
+            None => return Ok(None),
+        };
+
+        if !self.should_return_block(block_header.height(), only_from_available_block_range) {
+            return Ok(None);
+        }
+
+        self.validate_block_header_hash(&block_header, block_hash)?;
+        Ok(Some(block_header))
+    }
+
+    /// Retrieves a single block header in a given transaction from storage.
     fn get_single_block_header<Tx: Transaction>(
         &self,
         tx: &mut Tx,
@@ -1428,15 +1482,25 @@ impl Storage {
             Some(block_header) => block_header,
             None => return Ok(None),
         };
+        self.validate_block_header_hash(&block_header, block_hash)?;
+        Ok(Some(block_header))
+    }
+
+    /// Validates the block header hash against the expected block hash.
+    fn validate_block_header_hash(
+        &self,
+        block_header: &BlockHeader,
+        block_hash: &BlockHash,
+    ) -> Result<(), FatalStorageError> {
         let found_block_header_hash = block_header.hash(self.verifiable_chunked_hash_activation);
         if found_block_header_hash != *block_hash {
             return Err(FatalStorageError::BlockHeaderNotStoredUnderItsHash {
                 queried_block_hash_bytes: block_hash.as_ref().to_vec(),
                 found_block_header_hash,
-                block_header: Box::new(block_header),
+                block_header: Box::new(block_header.clone()),
             });
         };
-        Ok(Some(block_header))
+        Ok(())
     }
 
     /// Checks whether a block at the given height exists in the block height index (and, since the
@@ -1592,16 +1656,35 @@ impl Storage {
         tx.get_value(self.block_body_v1_db, block_body_hash)
     }
 
-    /// Retrieves a set of deploys from storage.
-    fn get_deploys<Tx: Transaction>(
+    /// Retrieves a set of deploys from storage, along with their potential finalized approvals.
+    fn get_deploys_with_finalized_approvals<Tx: Transaction>(
         &self,
         tx: &mut Tx,
         deploy_hashes: &[DeployHash],
-    ) -> Result<Vec<Option<Deploy>>, LmdbExtError> {
+    ) -> Result<SmallVec<[Option<DeployWithFinalizedApprovals>; 1]>, LmdbExtError> {
         deploy_hashes
             .iter()
-            .map(|deploy_hash| tx.get_value(self.deploy_db, deploy_hash))
+            .map(|deploy_hash| self.get_deploy_with_finalized_approvals(tx, deploy_hash))
             .collect()
+    }
+
+    /// Retrieves a single deploy along with its finalized approvals from storage
+    fn get_deploy_with_finalized_approvals<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        deploy_hash: &DeployHash,
+    ) -> Result<Option<DeployWithFinalizedApprovals>, LmdbExtError> {
+        let maybe_original_deploy = tx.get_value(self.deploy_db, deploy_hash)?;
+        if let Some(deploy) = maybe_original_deploy {
+            let maybe_finalized_approvals =
+                tx.get_value(self.finalized_approvals_db, deploy_hash)?;
+            Ok(Some(DeployWithFinalizedApprovals::new(
+                deploy,
+                maybe_finalized_approvals,
+            )))
+        } else {
+            Ok(None)
+        }
     }
 
     /// Retrieves deploy metadata associated with deploy.
@@ -1665,6 +1748,31 @@ impl Storage {
             debug!(?block_header, "Missing block body for header");
             Ok(None)
         }
+    }
+
+    /// Stores a set of finalized approvals.
+    pub fn store_finalized_approvals(
+        &self,
+        deploy_hash: &DeployHash,
+        finalized_approvals: &FinalizedApprovals,
+    ) -> Result<(), FatalStorageError> {
+        let maybe_original_deploy = self.read_deploy_by_hash(*deploy_hash)?;
+        let original_deploy =
+            maybe_original_deploy.ok_or(FatalStorageError::UnexpectedFinalizedApprovals {
+                deploy_hash: *deploy_hash,
+            })?;
+        // Only store the finalized approvals if they are different from the original ones.
+        if original_deploy.approvals() != finalized_approvals.as_ref() {
+            let mut txn = self.env.begin_rw_txn()?;
+            let _ = txn.put_value(
+                self.finalized_approvals_db,
+                deploy_hash,
+                finalized_approvals,
+                true,
+            )?;
+            txn.commit()?;
+        }
+        Ok(())
     }
 
     /// Retrieves single block header by height by looking it up in the index and returning it;
@@ -1796,6 +1904,87 @@ impl Storage {
         let message = Message::new_get_response_from_serialized(<T as Item>::TAG, shared);
         Ok(effect_builder.send_message(sender, message).ignore())
     }
+
+    /// Returns `true` if the storage should attempt to return a block. Depending on the
+    /// `only_from_available_block_range` flag it should be unconditional or restricted by the
+    /// available block range.
+    fn should_return_block(
+        &self,
+        block_height: u64,
+        only_from_available_block_range: bool,
+    ) -> bool {
+        if only_from_available_block_range {
+            self.get_available_block_range().contains(block_height)
+        } else {
+            true
+        }
+    }
+
+    fn get_available_block_range(&self) -> AvailableBlockRange {
+        let high = self
+            .block_height_index
+            .keys()
+            .last()
+            .copied()
+            .unwrap_or_default();
+        let low = self.lowest_available_block_height;
+        match AvailableBlockRange::new(low, high) {
+            Ok(range) => range,
+            Err(error) => {
+                error!(%error);
+                AvailableBlockRange::default()
+            }
+        }
+    }
+
+    fn update_lowest_available_block_height(
+        &mut self,
+        new_height: u64,
+    ) -> Result<(), FatalStorageError> {
+        // We should update the value if
+        // * it wasn't already stored, or
+        // * the new value is lower than the available range at startup, or
+        // * the new value is 2 or more higher than (after pruning due to hard-reset) the available
+        //   range at startup, as that would mean there's a gap of at least one block with
+        //   unavailable global state.
+        let should_update = {
+            let mut txn = self.env.begin_ro_txn()?;
+            match txn.get_value_bytesrepr::<_, u64>(
+                self.state_store_db,
+                &KEY_LOWEST_AVAILABLE_BLOCK_HEIGHT,
+            )? {
+                Some(height) => {
+                    new_height < height || new_height > self.highest_block_at_startup + 1
+                }
+                None => true,
+            }
+        };
+
+        if !should_update {
+            return Ok(());
+        }
+
+        if self.block_height_index.contains_key(&new_height) {
+            let mut txn = self.env.begin_rw_txn()?;
+            txn.put_value_bytesrepr::<_, u64>(
+                self.state_store_db,
+                &KEY_LOWEST_AVAILABLE_BLOCK_HEIGHT,
+                &new_height,
+                true,
+            )?;
+            txn.commit()?;
+            self.lowest_available_block_height = new_height;
+        } else {
+            error!(
+                %new_height,
+                "failed to update lowest_available_block_height as not in height index"
+            );
+            // We don't need to return a fatal error here as an invalid
+            // `lowest_available_block_height` is not a critical error.
+        }
+
+        Ok(())
+    }
 }
 
 /// Decodes an item's ID, typically from an incoming request.
@@ -1828,10 +2017,10 @@ fn insert_to_block_header_indices(
 
     if block_header.is_switch_block() {
         match switch_block_era_id_index.entry(block_header.era_id()) {
-            btree_map::Entry::Vacant(entry) => {
+            Entry::Vacant(entry) => {
                 let _ = entry.insert(block_hash);
             }
-            btree_map::Entry::Occupied(entry) => {
+            Entry::Occupied(entry) => {
                 if *entry.get() != block_hash {
                     return Err(FatalStorageError::DuplicateEraIdIndex {
                         era_id: block_header.era_id(),
@@ -2019,6 +2208,40 @@ impl Storage {
             .expect("could not create RO transaction");
         txn.get_value(self.deploy_db, &deploy_hash)
             .expect("could not retrieve value from storage")
+    }
+
+    /// Directly returns a deploy metadata from internal store.
+    ///
+    /// # Panics
+    ///
+    /// Panics if an IO error occurs.
+    pub(crate) fn get_deploy_metadata_by_hash(
+        &self,
+        deploy_hash: &DeployHash,
+    ) -> Option<DeployMetadata> {
+        let mut txn = self
+            .env
+            .begin_ro_txn()
+            .expect("could not create RO transaction");
+        self.get_deploy_metadata(&mut txn, deploy_hash)
+            .expect("could not retrieve deploy metadata from storage")
+    }
+
+    /// Directly returns a deploy with finalized approvals from internal store.
+    ///
+    /// # Panics
+    ///
+    /// Panics if an IO error occurs.
+    pub(crate) fn get_deploy_with_finalized_approvals_by_hash(
+        &self,
+        deploy_hash: &DeployHash,
+    ) -> Option<DeployWithFinalizedApprovals> {
+        let mut txn = self
+            .env
+            .begin_ro_txn()
+            .expect("could not create RO transaction");
+        self.get_deploy_with_finalized_approvals(&mut txn, deploy_hash)
+            .expect("could not retrieve a deploy with finalized approvals from storage")
     }
 
     /// Reads all known deploy hashes from the internal store.

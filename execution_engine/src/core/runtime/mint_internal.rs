@@ -1,15 +1,19 @@
 use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
-    system::{
-        mint::{Error, Mint, RuntimeProvider, StorageProvider, SystemProvider},
-        CallStackElement,
-    },
+    system::{mint::Error, CallStackElement},
     CLTyped, CLValue, Key, Phase, StoredValue, URef, U512,
 };
 
 use super::Runtime;
-use crate::{core::execution, storage::global_state::StateReader};
+use crate::{
+    core::execution,
+    storage::global_state::StateReader,
+    system::mint::{
+        runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
+        system_provider::SystemProvider, Mint,
+    },
+};
 
 impl From<execution::Error> for Option<Error> {
     fn from(exec_error: execution::Error) -> Self {
@@ -48,6 +52,20 @@ where
 
     fn get_key(&self, name: &str) -> Option<Key> {
         self.context.named_keys_get(name).cloned()
+    }
+
+    fn get_approved_spending_limit(&self) -> U512 {
+        self.context.remaining_spending_limit()
+    }
+
+    fn sub_approved_spending_limit(&mut self, transferred: U512) {
+        // We're ignoring the result here since we always check first
+        // if there is still enough spending limit left.
+        self.context.subtract_amount_spent(transferred);
+    }
+
+    fn get_main_purse(&self) -> URef {
+        self.context.account().main_purse()
     }
 }
 

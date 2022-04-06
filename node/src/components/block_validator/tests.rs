@@ -13,7 +13,7 @@ use crate::{
     crypto::AsymmetricKeyExt,
     reactor::{EventQueueHandle, QueueKind, Scheduler},
     testing::TestRng,
-    types::{BlockPayload, ChainspecRawBytes, TimeDiff},
+    types::{BlockPayload, ChainspecRawBytes, DeployWithApprovals, TimeDiff},
     utils::{self, Loadable},
 };
 
@@ -89,13 +89,13 @@ impl MockReactor {
 
 fn new_proposed_block(
     timestamp: Timestamp,
-    deploy_hashes: Vec<DeployHash>,
-    transfer_hashes: Vec<DeployHash>,
+    deploys: Vec<DeployWithApprovals>,
+    transfers: Vec<DeployWithApprovals>,
 ) -> ProposedBlock<ClContext> {
     // Accusations and ancestors are empty, and the random bit is always true:
     // These values are not checked by the block validator.
     let block_context = BlockContext::new(timestamp, vec![]);
-    let block_payload = BlockPayload::new(deploy_hashes, transfer_hashes, vec![], true);
+    let block_payload = BlockPayload::new(deploys, transfers, vec![], true);
     ProposedBlock::new(Arc::new(block_payload), block_context)
 }
 
@@ -160,9 +160,15 @@ async fn validate_block(
     transfers: Vec<Deploy>,
 ) -> bool {
     // Assemble the block to be validated.
-    let deploy_hashes = deploys.iter().map(|deploy| *deploy.id()).collect_vec();
-    let transfer_hashes = transfers.iter().map(|deploy| *deploy.id()).collect_vec();
-    let proposed_block = new_proposed_block(timestamp, deploy_hashes, transfer_hashes);
+    let deploys_for_block = deploys
+        .iter()
+        .map(|deploy| DeployWithApprovals::new(*deploy.id(), deploy.approvals().clone()))
+        .collect_vec();
+    let transfers_for_block = transfers
+        .iter()
+        .map(|deploy| DeployWithApprovals::new(*deploy.id(), deploy.approvals().clone()))
+        .collect_vec();
+    let proposed_block = new_proposed_block(timestamp, deploys_for_block, transfers_for_block);
 
     // Create the reactor and component.
     let reactor = MockReactor::new();

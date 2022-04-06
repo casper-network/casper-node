@@ -89,6 +89,13 @@ export class URef {
     }
 
     /**
+     * Returns new [[URef]] with modified access rights.
+     */
+      public withAccessRights(newAccessRights: AccessRights): URef {
+        return new URef(this.bytes, newAccessRights);
+    }
+
+    /**
      * Validates uref against named keys.
      */
     public isValid(): boolean{

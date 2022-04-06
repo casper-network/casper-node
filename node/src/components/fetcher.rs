@@ -23,7 +23,8 @@ use crate::{
     protocol::Message,
     types::{
         Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockWithMetadata, Deploy,
-        DeployHash, Item, NodeId,
+        DeployHash, DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedApprovalsWithId,
+        Item, NodeId,
     },
     utils::Source,
     FetcherConfig, NodeRng,
@@ -305,7 +306,54 @@ impl ItemFetcher<Deploy> for Fetcher<Deploy> {
             .event(move |mut results| Event::GetFromStorageResult {
                 id,
                 peer,
-                maybe_item: Box::new(results.pop().expect("can only contain one result")),
+                maybe_item: Box::new(
+                    results
+                        .pop()
+                        .expect("can only contain one result")
+                        .map(DeployWithFinalizedApprovals::into_naive),
+                ),
+            })
+    }
+}
+
+impl ItemFetcher<FinalizedApprovalsWithId> for Fetcher<FinalizedApprovalsWithId> {
+    const SAFE_TO_RESPOND_TO_ALL: bool = true;
+
+    fn responders(
+        &mut self,
+    ) -> &mut HashMap<DeployHash, HashMap<NodeId, Vec<FetchResponder<FinalizedApprovalsWithId>>>>
+    {
+        &mut self.responders
+    }
+
+    fn metrics(&mut self) -> &Metrics {
+        &self.metrics
+    }
+
+    fn peer_timeout(&self) -> Duration {
+        self.get_from_peer_timeout
+    }
+
+    /// Gets the finalized approvals for a deploy from the storage component.
+    fn get_from_storage<REv: ReactorEventT<FinalizedApprovalsWithId>>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        id: DeployHash,
+        peer: NodeId,
+    ) -> Effects<Event<FinalizedApprovalsWithId>> {
+        effect_builder
+            .get_deploys_from_storage(vec![id])
+            .event(move |mut results| Event::GetFromStorageResult {
+                id,
+                peer,
+                maybe_item: Box::new(results.pop().expect("can only contain one result").map(
+                    |deploy| {
+                        FinalizedApprovalsWithId::new(
+                            id,
+                            FinalizedApprovals::new(deploy.into_naive().approvals().clone()),
+                        )
+                    },
+                )),
             })
     }
 }
@@ -473,8 +521,11 @@ impl ItemFetcher<BlockHeader> for Fetcher<BlockHeader> {
         id: BlockHash,
         peer: NodeId,
     ) -> Effects<Event<BlockHeader>> {
+        // Requests from fetcher are not restricted by the block availability index.
+        let only_from_available_block_range = false;
+
         effect_builder
-            .get_block_header_from_storage(id)
+            .get_block_header_from_storage(id, only_from_available_block_range)
             .event(move |maybe_block_header| Event::GetFromStorageResult {
                 id,
                 peer,

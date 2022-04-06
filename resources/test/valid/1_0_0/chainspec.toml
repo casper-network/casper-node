@@ -19,6 +19,8 @@ round_seigniorage_rate = [6_414, 623_437_335_209]
 unbonding_delay = 14
 max_associated_keys = 100
 max_runtime_call_stack_height = 12
+minimum_delegation_amount = 500_000_000_000
+strict_argument_checking = false
 
 [highway]
 finality_threshold_fraction = [2, 25]

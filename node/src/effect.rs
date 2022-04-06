@@ -92,8 +92,8 @@ use casper_execution_engine::{
 };
 use casper_hashing::Digest;
 use casper_types::{
-    account::Account, system::auction::EraValidators, Contract, ContractPackage, EraId,
-    ExecutionEffect, ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer, URef, U512,
+    account::Account, bytesrepr::Bytes, system::auction::EraValidators, Contract, ContractPackage,
+    EraId, ExecutionEffect, ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer, URef, U512,
 };
 
 use crate::{
@@ -110,10 +110,10 @@ use crate::{
     },
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload, BlockSignatures,
-        BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy, DeployHash,
-        DeployHeader, DeployMetadata, FinalitySignature, FinalizedBlock, Item, NodeId, TimeDiff,
-        Timestamp,
+        AvailableBlockRange, Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload,
+        BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
+        DeployHash, DeployHeader, DeployMetadata, DeployWithFinalizedApprovals, FinalitySignature,
+        FinalizedApprovals, FinalizedBlock, Item, NodeId, TimeDiff, Timestamp,
     },
     utils::{SharedFlag, Source},
 };
@@ -123,7 +123,6 @@ use announcements::{
     DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
     RpcServerAnnouncement,
 };
-use casper_types::bytesrepr::Bytes;
 use requests::{
     BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
     ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
@@ -853,6 +852,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_block_header_from_storage(
         self,
         block_hash: BlockHash,
+        only_from_available_block_range: bool,
     ) -> Option<BlockHeader>
     where
         REv: From<StorageRequest>,
@@ -860,6 +860,7 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| StorageRequest::GetBlockHeader {
                 block_hash,
+                only_from_available_block_range,
                 responder,
             },
             QueueKind::Regular,
@@ -1005,28 +1006,25 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Requests the key block header for the given era ID, ie. the header of the switch block at
-    /// the era before (if one exists).
-    pub(crate) async fn get_key_block_header_for_era_id_from_storage(
-        self,
-        era_id: EraId,
-    ) -> Option<BlockHeader>
-    where
-        REv: From<StorageRequest>,
-    {
-        let era_before = era_id.checked_sub(1)?;
-        self.get_switch_block_header_at_era_id_from_storage(era_before)
-            .await
-    }
-
-    /// Requests the lowest height from which we have an unbroken chain of stored blocks (not just
-    /// headers) ending in the highest stored block.
-    pub(crate) async fn get_lowest_contiguous_block_height_from_storage(self) -> u64
+    /// Updates the lowest available block height in storage.
+    pub(crate) async fn update_lowest_available_block_height_in_storage(self, height: u64)
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetLowestContiguousBlockHeight { responder },
+            |responder| StorageRequest::UpdateLowestAvailableBlockHeight { height, responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Requests the height range of fully available blocks (not just block headers).
+    pub(crate) async fn get_available_block_range_from_storage(self) -> AvailableBlockRange
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetAvailableBlockRange { responder },
             QueueKind::Regular,
         )
         .await
@@ -1117,10 +1115,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested deploys from the deploy store.
+    ///
+    /// Returns the "original" deploys, which are the first received by the node, along with a
+    /// potentially different set of approvals used during execution of the recorded block.
     pub(crate) async fn get_deploys_from_storage(
         self,
         deploy_hashes: Vec<DeployHash>,
-    ) -> Vec<Option<Deploy>>
+    ) -> SmallVec<[Option<DeployWithFinalizedApprovals>; 1]>
     where
         REv: From<StorageRequest>,
     {
@@ -1158,7 +1159,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_deploy_and_metadata_from_storage(
         self,
         deploy_hash: DeployHash,
-    ) -> Option<(Deploy, DeployMetadata)>
+    ) -> Option<(DeployWithFinalizedApprovals, DeployMetadata)>
     where
         REv: From<StorageRequest>,
     {
@@ -1176,6 +1177,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_block_at_height_with_metadata_from_storage(
         self,
         block_height: u64,
+        only_from_available_block_range: bool,
     ) -> Option<BlockWithMetadata>
     where
         REv: From<StorageRequest>,
@@ -1183,6 +1185,7 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| StorageRequest::GetBlockAndMetadataByHeight {
                 block_height,
+                only_from_available_block_range,
                 responder,
             },
             QueueKind::Regular,
@@ -1230,6 +1233,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_block_with_metadata_from_storage(
         self,
         block_hash: BlockHash,
+        only_from_available_block_range: bool,
     ) -> Option<BlockWithMetadata>
     where
         REv: From<StorageRequest>,
@@ -1237,6 +1241,7 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| StorageRequest::GetBlockAndMetadataByHash {
                 block_hash,
+                only_from_available_block_range,
                 responder,
             },
             QueueKind::Regular,
@@ -1749,7 +1754,11 @@ impl<REv> EffectBuilder<REv> {
             // we don't support getting the validators from before the last emergency restart
             return None;
         }
-        self.get_key_block_header_for_era_id_from_storage(era_id)
+        // Era 0 contains no blocks other than the genesis immediate switch block which can be used
+        // to get the validators for era 0.  For any other era `n`, we need the switch block from
+        // era `n-1` to get the validators for `n`.
+        let era_before = era_id.saturating_sub(1);
+        self.get_switch_block_header_at_era_id_from_storage(era_before)
             .await
             .and_then(BlockHeader::maybe_take_next_era_validator_weights)
     }
@@ -1867,6 +1876,27 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             ChainspecLoaderRequest::GetChainspecRawBytes,
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Stores a set of given finalized approvals in storage.
+    ///
+    /// Any previously stored finalized approvals for the given hash are quietly overwritten
+    pub(crate) async fn store_finalized_approvals(
+        self,
+        deploy_hash: DeployHash,
+        finalized_approvals: FinalizedApprovals,
+    ) where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::StoreFinalizedApprovals {
+                deploy_hash,
+                finalized_approvals,
+                responder,
+            },
             QueueKind::Regular,
         )
         .await

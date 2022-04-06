@@ -3,10 +3,11 @@ import * as CL from "../../../../contract_as/assembly";
 import { Error, ErrorCode } from "../../../../contract_as/assembly/error";
 import { Key } from "../../../../contract_as/assembly/key";
 import { URef } from "../../../../contract_as/assembly/uref";
-import { fromBytesString, fromBytesU64, Result, fromBytesArray } from "../../../../contract_as/assembly/bytesrepr";
+import { fromBytesString, fromBytesU32, fromBytesU64, Result, fromBytesArray } from "../../../../contract_as/assembly/bytesrepr";
 import { CLValue, CLType, CLTypeTag } from "../../../../contract_as/assembly/clvalue";
 import { Pair } from "../../../../contract_as/assembly/pair";
 import { RuntimeArgs } from "../../../../contract_as/assembly/runtime_args";
+import { get_named_arg } from "../../../../contract_as/assembly/externals";
 
 const PACKAGE_HASH_KEY = "package_hash_key";
 const PACKAGE_ACCESS_KEY = "package_access_key";
@@ -95,11 +96,22 @@ export function remove_group_urefs(): void {
     return;
   }
   let groupName: String = fromBytesString(CL.getNamedArg(GROUP_NAME_ARG)).unwrap();
-  let urefsBytes = CL.getNamedArg(UREFS_ARG);
-  let decode = function (bytes: Uint8Array): Result<URef> {
-    return URef.fromBytes(bytes);
-  };
-  let urefs: Array<URef> = fromBytesArray<URef>(urefsBytes, decode).unwrap();
+
+  let ordinals = fromBytesArray(CL.getNamedArg(GROUP_NAME_ARG), fromBytesU64);
+
+  let contractPackageBytes = packageHashKey.read();
+  if (contractPackageBytes === null) {
+    Error.fromErrorCode(ErrorCode.GetKey).revert();
+    return;
+  }
+
+  // Finds last uref in the groups in the contract package bytes.
+  // ContractPackage serialization structure is defined in `types/src/contracts.rs`
+  let urefBytes = contractPackageBytes.slice(contractPackageBytes.length - 1 - 33, contractPackageBytes.length - 1);
+  let uref = URef.fromBytes(urefBytes).unwrap();
+
+  let urefs = new Array<URef>();
+  urefs.push(uref);
 
   CL.removeContractUserGroupURefs(
     <Uint8Array>packageHashKey.hash,

@@ -12,7 +12,7 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
     path::PathBuf,
     sync::Arc,
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use datasize::DataSize;
@@ -20,7 +20,7 @@ use derive_more::From;
 use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::Serialize;
-use tracing::error;
+use tracing::{debug, error, info};
 
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
@@ -69,13 +69,15 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle, ReactorExit},
-    types::{Deploy, DeployHash, ExitCode, NodeState},
+    types::{Deploy, DeployHash, ExitCode, FinalitySignature, NodeState},
     utils::{Source, WithDir},
     NodeRng,
 };
 pub(crate) use config::Config;
 pub(crate) use error::Error;
 use memory_metrics::MemoryMetrics;
+
+const DELAY_FOR_SIGNING_IMMEDIATE_SWITCH_BLOCK: Duration = Duration::from_secs(10);
 
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
@@ -535,8 +537,11 @@ impl reactor::Reactor for Reactor {
             node_startup_instant,
         } = config;
 
+        let (our_secret_key, our_public_key) = config.consensus.load_keys(&root)?;
+
         let effect_builder = EffectBuilder::new(event_queue);
         let mut effects = Effects::new();
+        info!(?joining_outcome, "handling joining outcome");
         let latest_block_header = match joining_outcome {
             JoiningOutcome::ShouldExitForUpgrade => {
                 error!("invalid joining outcome to transition to participating reactor");
@@ -552,6 +557,7 @@ impl reactor::Reactor for Reactor {
                         execution_results,
                         maybe_step_effect_and_upcoming_era_validators,
                     },
+                validators_to_sign_immediate_switch_block,
             } => {
                 // The outcome of joining in this case caused a new switch block to be created, so
                 // we need to emit the effects which would have been created by that execution, but
@@ -563,10 +569,10 @@ impl reactor::Reactor for Reactor {
                         .ignore(),
                 );
 
+                let current_era_id = block.header().era_id();
                 if let Some(step_effect_and_upcoming_era_validators) =
                     maybe_step_effect_and_upcoming_era_validators
                 {
-                    let current_era_id = block.header().era_id();
                     effects.extend(
                         effect_builder
                             .announce_commit_step_success(
@@ -584,6 +590,32 @@ impl reactor::Reactor for Reactor {
                             .ignore(),
                     );
                 }
+
+                // We're responsible for signing the new block if we're in the provided list.
+                if validators_to_sign_immediate_switch_block.contains(&our_public_key) {
+                    let signature = FinalitySignature::new(
+                        *block.hash(),
+                        current_era_id,
+                        &our_secret_key,
+                        our_public_key.clone(),
+                    );
+                    effects.extend(
+                        async move {
+                            effect_builder
+                                .announce_created_finality_signature(signature.clone())
+                                .await;
+                            // Allow a short period for peers to establish connections.  This delay
+                            // can be removed once we move to a single reactor model.
+                            effect_builder
+                                .set_timeout(DELAY_FOR_SIGNING_IMMEDIATE_SWITCH_BLOCK)
+                                .await;
+                            let message = Message::FinalitySignature(Box::new(signature));
+                            effect_builder.broadcast_message(message).await
+                        }
+                        .ignore(),
+                    );
+                }
+
                 block.header().clone()
             }
         };
@@ -622,7 +654,7 @@ impl reactor::Reactor for Reactor {
             NodeState::Participating,
         )?;
 
-        let deploy_acceptor = DeployAcceptor::new(&*chainspec_loader.chainspec(), registry)?;
+        let deploy_acceptor = DeployAcceptor::new(chainspec_loader.chainspec(), registry)?;
         let deploy_fetcher = Fetcher::new(
             "deploy",
             config.fetcher,
@@ -666,7 +698,9 @@ impl reactor::Reactor for Reactor {
         let (consensus, init_consensus_effects) = EraSupervisor::new(
             latest_block_header.next_block_era_id(),
             storage.root_path(),
-            WithDir::new(root, config.consensus),
+            our_secret_key,
+            our_public_key,
+            config.consensus,
             effect_builder,
             chainspec.clone(),
             &latest_block_header,
@@ -684,7 +718,7 @@ impl reactor::Reactor for Reactor {
         contract_runtime.set_initial_state(ExecutionPreState::from_block_header(
             &latest_block_header,
             chainspec.protocol_config.verifiable_chunked_hash_activation,
-        ));
+        ))?;
 
         let block_validator = BlockValidator::new(Arc::clone(chainspec));
         let linear_chain = linear_chain::LinearChainComponent::new(
@@ -705,8 +739,6 @@ impl reactor::Reactor for Reactor {
             ParticipatingEvent::ChainspecLoader,
             chainspec_loader.start_checking_for_upgrades(effect_builder),
         ));
-
-        event_stream_server.set_participating_effect_builder(effect_builder);
 
         Ok((
             Reactor {
@@ -897,6 +929,7 @@ impl reactor::Reactor for Reactor {
 
                 let event = block_proposer::Event::BufferDeploy {
                     hash: deploy.deploy_or_transfer_hash(),
+                    approvals: deploy.approvals().clone(),
                     deploy_info: Box::new(deploy_info),
                 };
                 let mut effects = self.dispatch_event(
@@ -915,7 +948,7 @@ impl reactor::Reactor for Reactor {
                     ParticipatingEvent::DeployGossiper(event),
                 ));
 
-                let event = event_stream_server::Event::DeployAccepted(*deploy.id());
+                let event = event_stream_server::Event::DeployAccepted(deploy.clone());
                 effects.extend(self.dispatch_event(
                     effect_builder,
                     rng,
@@ -1157,6 +1190,13 @@ impl reactor::Reactor for Reactor {
                             source: Source::Peer(sender),
                             maybe_responder: None,
                         })
+                    }
+                    NetResponse::FinalizedApprovals(_) => {
+                        debug!(
+                            "cannot handle get response for finalized approvals from {}",
+                            sender
+                        );
+                        return Effects::new();
                     }
                     NetResponse::Block(_) => {
                         error!(

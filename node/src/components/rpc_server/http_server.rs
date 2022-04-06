@@ -1,7 +1,7 @@
 use std::{convert::Infallible, time::Duration};
 
 use futures::future;
-use http::{Response, StatusCode};
+use http::{header::CONTENT_TYPE, Method, Response, StatusCode};
 use hyper::{
     server::{conn::AddrIncoming, Builder},
     Body,
@@ -113,7 +113,13 @@ pub(super) async fn run<REv: ReactorEventT>(
         .or(rpc_get_chainspec)
         .or(rpc_query_global_state)
         .or(unknown_method)
-        .or(parse_failure);
+        .or(parse_failure)
+        .with(
+            warp::cors()
+                .allow_any_origin()
+                .allow_header(CONTENT_TYPE)
+                .allow_method(Method::POST),
+        );
 
     // Supports content negotiation for gzip responses. This is an interim fix until
     // https://github.com/seanmonstar/warp/pull/513 moves forward.

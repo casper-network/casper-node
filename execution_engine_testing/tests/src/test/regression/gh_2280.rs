@@ -7,7 +7,9 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     core::engine_state::{
-        EngineConfig, UpgradeConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+        engine_config::{DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING},
+        EngineConfig, UpgradeConfig, DEFAULT_MAX_QUERY_DEPTH,
+        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
     },
     shared::{
         host_function_costs::{Cost, HostFunction, HostFunctionCosts},
@@ -22,8 +24,8 @@ use casper_execution_engine::{
     },
 };
 use casper_types::{
-    account::AccountHash, runtime_args, ContractHash, EraId, Gas, Key, Motes, ProtocolVersion,
-    PublicKey, RuntimeArgs, SecretKey, U512,
+    account::AccountHash, runtime_args, system::mint, ContractHash, EraId, Gas, Key, Motes,
+    ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const TRANSFER_TO_ACCOUNT_CONTRACT: &str = "transfer_to_account.wasm";
@@ -677,6 +679,7 @@ fn setup() -> (InMemoryWasmTestBuilder, TestContext) {
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
     let session_args = runtime_args! {
+        mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
         ARG_FAUCET_FUNDS => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
     };
     let install_request = ExecuteRequestBuilder::standard(
@@ -714,6 +717,8 @@ fn make_engine_config(new_mint_costs: MintCosts, new_wasm_config: WasmConfig) ->
         DEFAULT_MAX_QUERY_DEPTH,
         DEFAULT_MAX_ASSOCIATED_KEYS,
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+        DEFAULT_MINIMUM_DELEGATION_AMOUNT,
+        DEFAULT_STRICT_ARGUMENT_CHECKING,
         new_wasm_config,
         new_system_config,
     )
