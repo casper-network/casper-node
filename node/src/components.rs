@@ -43,7 +43,7 @@
 //! by restricting the `impl Component<REv>` by `where REv: From<Baz>`. The concrete requirement
 //! will usually be dictated by a restriction on a method on an
 //! [`EffectBuilder`](crate::events::EffectBuilder).
-//!
+
 pub(crate) mod block_proposer;
 pub(crate) mod block_validator;
 pub(crate) mod chain_synchronizer;
