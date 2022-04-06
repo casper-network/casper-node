@@ -252,7 +252,7 @@ fn should_fund_new_account() {
     let new_account_fund_amount = U512::from(5_000_000_000u64);
     let fund_new_account_request = helper
         .new_faucet_fund_request_builder()
-        .as_installer_account(helper.installer_account())
+        .with_installer_account(helper.installer_account())
         .with_arg_target(new_account)
         .with_arg_fund_amount(new_account_fund_amount)
         .build();
@@ -327,7 +327,7 @@ fn should_fund_existing_account() {
         .exec(
             helper
                 .new_faucet_fund_request_builder()
-                .as_user_account(user_account)
+                .with_user_account(user_account)
                 .build(),
         )
         .expect_success()
@@ -344,6 +344,57 @@ fn should_fund_existing_account() {
         user_purse_balance_after,
         user_purse_balance_before + one_distribution - FAUCET_CALL_DEFAULT_PAYMENT
     );
+}
+
+#[ignore]
+#[test]
+fn should_not_fund_once_exhausted2() {
+    let user_account = AccountHash::new([2u8; 32]);
+    let five_cspr = U512::from(5_000_000_000u64);
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST).commit();
+
+    let mut helper = FaucetDeployHelper::new()
+        .with_faucet_purse_fund_amount(five_cspr)
+        .with_faucet_available_amount(Some(five_cspr))
+        .with_faucet_distributions_per_interval(Some(4))
+        .with_faucet_time_interval(Some(10_000u64));
+
+    builder
+        .exec(helper.fund_installer_request())
+        .expect_success()
+        .commit();
+
+    builder
+        .exec(helper.faucet_install_request())
+        .expect_success()
+        .commit();
+
+    helper.query_and_set_faucet_contract_hash(&mut builder);
+
+    builder
+        .exec(helper.faucet_config_request())
+        .expect_success()
+        .commit();
+
+    let installer_account = helper.installer_account();
+    // fund the user so they can call the faucet.
+    let fund_user_request = helper
+        .new_faucet_fund_request_builder()
+        .with_installer_account(installer_account)
+        .with_arg_fund_amount(U512::from(3_000_000_000u64))
+        .with_arg_target(user_account)
+        .build();
+
+    builder.exec(fund_user_request).expect_success().commit();
+
+    let user_purse_balance_after_funding =
+        builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
+
+    let remaining_requests = helper.query_remaining_requests(&mut builder);
+
+    assert_eq!(remaining_requests, 4u64.into());
 }
 
 #[ignore]
