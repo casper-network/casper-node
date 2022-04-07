@@ -396,7 +396,10 @@ impl ChainSynchronizer {
                 .cloned()
                 .collect(),
             None => {
-                error!("upgrade/genesis block is not a switch block");
+                error!(
+                    ?maybe_upgrade_block_header,
+                    "upgrade/genesis block is not a switch block"
+                );
                 return fatal!(
                     effect_builder,
                     "upgrade/genesis block is not a switch block"

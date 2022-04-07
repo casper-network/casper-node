@@ -170,6 +170,15 @@ pub enum FatalStorageError {
     /// Failed to serialize an item that was found in local storage.
     #[error("failed to serialized stored item")]
     StoredItemSerializationFailure(#[source] bincode::Error),
+    /// We tried to store finalized approvals for a nonexistent deploy.
+    #[error(
+        "Tried to store FinalizedApprovals for a nonexistent deploy. \
+            Deploy hash: {deploy_hash:?}"
+    )]
+    UnexpectedFinalizedApprovals {
+        /// The missing deploy hash.
+        deploy_hash: DeployHash,
+    },
     /// Locking the indices lock failed due to lock poisoning.
     ///
     /// A thread holding the lock has crashed.

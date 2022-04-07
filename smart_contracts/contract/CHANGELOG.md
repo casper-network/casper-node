@@ -22,6 +22,14 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+
+## 1.4.4
+
+### Changed
+* Minor refactor of `system::create_purse()`.
+
+
+
 ## [1.4.0] - 2021-10-04
 
 ### Added

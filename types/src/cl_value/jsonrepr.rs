@@ -5,21 +5,33 @@ use serde_json::{json, Value};
 
 use crate::{
     bytesrepr::{self, FromBytes, OPTION_NONE_TAG, OPTION_SOME_TAG, RESULT_ERR_TAG, RESULT_OK_TAG},
+    cl_type::CL_TYPE_RECURSION_DEPTH,
     CLType, CLValue, Key, PublicKey, URef, U128, U256, U512,
 };
 
 /// Returns a best-effort attempt to convert the `CLValue` into a meaningful JSON value.
 pub fn cl_value_to_json(cl_value: &CLValue) -> Option<Value> {
-    to_json(cl_value.cl_type(), cl_value.inner_bytes()).and_then(|(json_value, remainder)| {
-        if remainder.is_empty() {
-            Some(json_value)
-        } else {
-            None
-        }
-    })
+    depth_limited_to_json(0, cl_value.cl_type(), cl_value.inner_bytes()).and_then(
+        |(json_value, remainder)| {
+            if remainder.is_empty() {
+                Some(json_value)
+            } else {
+                None
+            }
+        },
+    )
 }
 
-fn to_json<'a>(cl_type: &CLType, bytes: &'a [u8]) -> Option<(Value, &'a [u8])> {
+fn depth_limited_to_json<'a>(
+    depth: u8,
+    cl_type: &CLType,
+    bytes: &'a [u8],
+) -> Option<(Value, &'a [u8])> {
+    if depth >= CL_TYPE_RECURSION_DEPTH {
+        return None;
+    }
+    let depth = depth + 1;
+
     match cl_type {
         CLType::Bool => simple_type_to_json::<bool>(bytes),
         CLType::I32 => simple_type_to_json::<i32>(bytes),
@@ -39,7 +51,7 @@ fn to_json<'a>(cl_type: &CLType, bytes: &'a [u8]) -> Option<(Value, &'a [u8])> {
             let (variant, remainder) = u8::from_bytes(bytes).ok()?;
             match variant {
                 OPTION_NONE_TAG => Some((Value::Null, remainder)),
-                OPTION_SOME_TAG => Some(to_json(inner_cl_type, remainder)?),
+                OPTION_SOME_TAG => Some(depth_limited_to_json(depth, inner_cl_type, remainder)?),
                 _ => None,
             }
         }
@@ -47,7 +59,7 @@ fn to_json<'a>(cl_type: &CLType, bytes: &'a [u8]) -> Option<(Value, &'a [u8])> {
             let (count, mut stream) = u32::from_bytes(bytes).ok()?;
             let mut result: Vec<Value> = Vec::new();
             for _ in 0..count {
-                let (value, remainder) = to_json(inner_cl_type, stream)?;
+                let (value, remainder) = depth_limited_to_json(depth, inner_cl_type, stream)?;
                 result.push(value);
                 stream = remainder;
             }
@@ -62,11 +74,11 @@ fn to_json<'a>(cl_type: &CLType, bytes: &'a [u8]) -> Option<(Value, &'a [u8])> {
             let (variant, remainder) = u8::from_bytes(bytes).ok()?;
             match variant {
                 RESULT_ERR_TAG => {
-                    let (value, remainder) = to_json(err, remainder)?;
+                    let (value, remainder) = depth_limited_to_json(depth, err, remainder)?;
                     Some((json!({ "Err": value }), remainder))
                 }
                 RESULT_OK_TAG => {
-                    let (value, remainder) = to_json(ok, remainder)?;
+                    let (value, remainder) = depth_limited_to_json(depth, ok, remainder)?;
                     Some((json!({ "Ok": value }), remainder))
                 }
                 _ => None,
@@ -76,26 +88,26 @@ fn to_json<'a>(cl_type: &CLType, bytes: &'a [u8]) -> Option<(Value, &'a [u8])> {
             let (num_keys, mut stream) = u32::from_bytes(bytes).unwrap();
             let mut result: Vec<Value> = Vec::new();
             for _ in 0..num_keys {
-                let (k, remainder) = to_json(key, stream)?;
-                let (v, remainder) = to_json(value, remainder)?;
+                let (k, remainder) = depth_limited_to_json(depth, key, stream)?;
+                let (v, remainder) = depth_limited_to_json(depth, value, remainder)?;
                 result.push(json!({"key": k, "value": v}));
                 stream = remainder;
             }
             Some((json!(result), stream))
         }
         CLType::Tuple1(arr) => {
-            let (t1, remainder) = to_json(&arr[0], bytes)?;
+            let (t1, remainder) = depth_limited_to_json(depth, &arr[0], bytes)?;
             Some((json!([t1]), remainder))
         }
         CLType::Tuple2(arr) => {
-            let (t1, remainder) = to_json(&arr[0], bytes)?;
-            let (t2, remainder) = to_json(&arr[1], remainder)?;
+            let (t1, remainder) = depth_limited_to_json(depth, &arr[0], bytes)?;
+            let (t2, remainder) = depth_limited_to_json(depth, &arr[1], remainder)?;
             Some((json!([t1, t2]), remainder))
         }
         CLType::Tuple3(arr) => {
-            let (t1, remainder) = to_json(&arr[0], bytes)?;
-            let (t2, remainder) = to_json(&arr[1], remainder)?;
-            let (t3, remainder) = to_json(&arr[2], remainder)?;
+            let (t1, remainder) = depth_limited_to_json(depth, &arr[0], bytes)?;
+            let (t2, remainder) = depth_limited_to_json(depth, &arr[1], remainder)?;
+            let (t3, remainder) = depth_limited_to_json(depth, &arr[2], remainder)?;
             Some((json!([t1, t2, t3]), remainder))
         }
         CLType::Any => None,
@@ -228,5 +240,33 @@ mod tests {
         test_value((v1.clone(),));
         test_value((v1.clone(), v2.clone()));
         test_value((v1, v2, v3));
+    }
+
+    #[test]
+    fn json_encoding_nested_tuple_1_value_should_not_stack_overflow() {
+        // Returns a CLType corresponding to (((...(cl_type,),...),),) nested in tuples to
+        // `depth_limit`.
+        fn wrap_in_tuple1(cl_type: CLType, current_depth: usize, depth_limit: usize) -> CLType {
+            if current_depth == depth_limit {
+                return cl_type;
+            }
+            wrap_in_tuple1(
+                CLType::Tuple1([Box::new(cl_type)]),
+                current_depth + 1,
+                depth_limit,
+            )
+        }
+
+        for depth_limit in &[1, CL_TYPE_RECURSION_DEPTH as usize] {
+            let cl_type = wrap_in_tuple1(CLType::Unit, 1, *depth_limit);
+            let cl_value = CLValue::from_components(cl_type, vec![]);
+            assert!(cl_value_to_json(&cl_value).is_some());
+        }
+
+        for depth_limit in &[CL_TYPE_RECURSION_DEPTH as usize + 1, 1000] {
+            let cl_type = wrap_in_tuple1(CLType::Unit, 1, *depth_limit);
+            let cl_value = CLValue::from_components(cl_type, vec![]);
+            assert!(cl_value_to_json(&cl_value).is_none());
+        }
     }
 }

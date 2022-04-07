@@ -21,7 +21,6 @@
 //! <https://github.com/CasperLabs/ceps/blob/master/text/0009-client-api.md#rpcs>
 
 mod config;
-mod deploy_getter;
 mod event;
 mod event_indexer;
 mod http_server;
@@ -29,7 +28,7 @@ mod sse_server;
 #[cfg(test)]
 mod tests;
 
-use std::{convert::Infallible, fmt::Debug, net::SocketAddr, path::PathBuf};
+use std::{convert::Infallible, fmt::Debug, net::SocketAddr, path::PathBuf, sync::Arc};
 
 use datasize::DataSize;
 use tokio::sync::{
@@ -44,13 +43,11 @@ use casper_types::ProtocolVersion;
 use super::Component;
 use crate::{
     effect::{EffectBuilder, Effects},
-    reactor::participating::ParticipatingEvent as ParticipatingReactorEvent,
     types::JsonBlock,
     utils::{self, ListeningError},
     NodeRng,
 };
 pub use config::Config;
-pub(crate) use deploy_getter::DeployGetter;
 pub(crate) use event::Event;
 use event_indexer::{EventIndex, EventIndexer};
 use sse_server::ChannelsAndFilter;
@@ -80,7 +77,6 @@ pub(crate) struct EventStreamServer {
     sse_data_sender: UnboundedSender<(EventIndex, SseData)>,
     event_indexer: EventIndexer,
     listening_address: SocketAddr,
-    deploy_getter: DeployGetter,
 }
 
 impl EventStreamServer {
@@ -88,7 +84,6 @@ impl EventStreamServer {
         config: Config,
         storage_path: PathBuf,
         api_version: ProtocolVersion,
-        deploy_getter: DeployGetter,
     ) -> Result<Self, ListeningError> {
         let required_address = utils::resolve_address(&config.address).map_err(|error| {
             warn!(
@@ -113,7 +108,6 @@ impl EventStreamServer {
         } = ChannelsAndFilter::new(
             broadcast_channel_size as usize,
             config.max_concurrent_subscribers,
-            deploy_getter.clone(),
         );
 
         let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
@@ -143,16 +137,7 @@ impl EventStreamServer {
             sse_data_sender,
             event_indexer,
             listening_address,
-            deploy_getter,
         })
-    }
-
-    pub(crate) fn set_participating_effect_builder(
-        &self,
-        effect_builder: EffectBuilder<ParticipatingReactorEvent>,
-    ) {
-        self.deploy_getter
-            .set_participating_effect_builder(effect_builder);
     }
 
     /// Broadcasts the SSE data to all clients connected to the event stream.
@@ -187,7 +172,9 @@ where
                 block_hash: *block.hash(),
                 block: Box::new(JsonBlock::new(*block, None)),
             }),
-            Event::DeployAccepted(deploy) => self.broadcast(SseData::DeployAccepted { deploy }),
+            Event::DeployAccepted(deploy) => self.broadcast(SseData::DeployAccepted {
+                deploy: Arc::new(*deploy),
+            }),
             Event::DeployProcessed {
                 deploy_hash,
                 deploy_header,

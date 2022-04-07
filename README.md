@@ -177,44 +177,6 @@ asssigned an ID of `ev=123`, the first round of subsequent events will show `a=1
 
 Some additional debug functionality is available, mainly allowed for inspections of the internal event queue.
 
-### Event queue dump
-
-The event queue can be dumped by sending a `SIGUSR1` or `SIGUSR2` to the running node process, e.g. if the node's process ID was `$NODE_PID`:
-
-```console
-kill -USR1 $NODE_PID
-```
-
-`USR1` will cause a debug/text representation to be dumped, `USR2` a JSON formatted version, which is likely much larger.
-
-Both variants will create a dump file in the working directory of the node. A tool like [jq](https://stedolan.github.io/jq/) can then be used to format and display the JSON representation:
-
-```console
-$ jq < queue_dump.json
-{
-  "NetworkIncoming": [],
-  "Network": [],
-  "Regular": [
-    "AddressGossiper"
-  ],
-  "Api": []
-}
-```
-
-### jq Examples
-
-Dump the type of events:
-
-```console
-jq 'map_values( map(keys[0] | {"type": ., weight: 1})| group_by(.type) | map ([.[0].type,(.|length)]) | map({(.[0]): .[1]}) )' queue_dump.json
-```
-
-Count number of events in each queue:
-
-```console
-jq 'map_values(map(keys[0]))' queue_dump.json
-```
-
 ### Diagnostics port
 
 If the configuration option `diagnostics_port.enabled` is set to `true`, a unix socket named `debug.socket` by default can be found next to the configuration while the node is running.

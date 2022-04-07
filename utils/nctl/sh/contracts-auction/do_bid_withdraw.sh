@@ -15,7 +15,6 @@ function main()
     local AMOUNT=${2}
     local QUIET=${3:-"FALSE"}
     local CHAIN_NAME
-    local GAS_PRICE
     local GAS_PAYMENT
     local NODE_ADDRESS
     local PATH_TO_CLIENT
@@ -25,7 +24,6 @@ function main()
     local BIDDER_MAIN_PURSE_UREF
 
     CHAIN_NAME=$(get_chain_name)
-    GAS_PRICE=${GAS_PRICE:-$NCTL_DEFAULT_GAS_PRICE}
     GAS_PAYMENT=${GAS_PAYMENT:-$NCTL_DEFAULT_GAS_PAYMENT}
     NODE_ADDRESS=$(get_node_address_rpc)
     PATH_TO_CLIENT=$(get_path_to_client)
@@ -50,7 +48,6 @@ function main()
     DEPLOY_HASH=$(
         $PATH_TO_CLIENT put-deploy \
             --chain-name "$CHAIN_NAME" \
-            --gas-price "$GAS_PRICE" \
             --node-address "$NODE_ADDRESS" \
             --payment-amount "$GAS_PAYMENT" \
             --ttl "1day" \

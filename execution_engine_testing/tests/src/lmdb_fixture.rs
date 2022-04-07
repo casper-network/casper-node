@@ -14,6 +14,8 @@ use casper_execution_engine::core::engine_state::{
 };
 use casper_hashing::Digest;
 use casper_types::ProtocolVersion;
+#[cfg(test)]
+use casper_types::{AccessRights, Key, URef};
 
 pub const RELEASE_1_2_0: &str = "release_1_2_0";
 pub const RELEASE_1_3_1: &str = "release_1_3_1";
@@ -23,6 +25,10 @@ pub const RELEASE_1_4_4: &str = "release_1_4_4";
 const STATE_JSON_FILE: &str = "state.json";
 const FIXTURES_DIRECTORY: &str = "fixtures";
 const GENESIS_PROTOCOL_VERSION_FIELD: &str = "protocol_version";
+/// This is a special place in the global state where fixture contains a registry.
+#[cfg(test)]
+pub(crate) const CONTRACT_REGISTRY_SPECIAL_ADDRESS: Key =
+    Key::URef(URef::new([0u8; 32], AccessRights::all()));
 
 fn path_to_lmdb_fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join(FIXTURES_DIRECTORY)

@@ -3,17 +3,17 @@ pub(crate) mod providers;
 
 use std::collections::BTreeMap;
 
+use num_rational::Ratio;
+use num_traits::{CheckedMul, CheckedSub};
+
 use casper_types::{
     account::AccountHash,
     system::auction::{
         Bid, DelegationRate, EraInfo, EraValidators, Error, SeigniorageRecipients,
         ValidatorWeights, BLOCK_REWARD, DELEGATION_RATE_DENOMINATOR,
     },
-    EraId, PublicKey, U512,
+    ApiError, EraId, PublicKey, U512,
 };
-
-use num_rational::Ratio;
-use num_traits::{CheckedMul, CheckedSub};
 
 use self::providers::{AccountProvider, MintProvider, RuntimeProvider, StorageProvider};
 
@@ -25,18 +25,7 @@ pub trait Auction:
     /// configured auction_delay.
     fn get_era_validators(&mut self) -> Result<EraValidators, Error> {
         let snapshot = detail::get_seigniorage_recipients_snapshot(self)?;
-        let era_validators = snapshot
-            .into_iter()
-            .map(|(era_id, recipients)| {
-                let validator_weights = recipients
-                    .into_iter()
-                    .filter_map(|(public_key, bid)| {
-                        bid.total_stake().map(|stake| (public_key, stake))
-                    })
-                    .collect::<ValidatorWeights>();
-                (era_id, validator_weights)
-            })
-            .collect::<BTreeMap<EraId, ValidatorWeights>>();
+        let era_validators = detail::era_validators_from_snapshot(snapshot);
         Ok(era_validators)
     }
 
@@ -74,19 +63,19 @@ pub trait Auction:
         public_key: PublicKey,
         delegation_rate: DelegationRate,
         amount: U512,
-    ) -> Result<U512, Error> {
+    ) -> Result<U512, ApiError> {
         let provided_account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
 
         if amount.is_zero() {
-            return Err(Error::BondTooSmall);
+            return Err(Error::BondTooSmall.into());
         }
 
         if delegation_rate > DELEGATION_RATE_DENOMINATOR {
-            return Err(Error::DelegationRateTooLarge);
+            return Err(Error::DelegationRateTooLarge.into());
         }
 
         if !self.is_allowed_session_caller(&provided_account_hash) {
-            return Err(Error::InvalidContext);
+            return Err(Error::InvalidContext.into());
         }
 
         let source = self.get_main_purse()?;
@@ -106,8 +95,13 @@ pub trait Auction:
                     amount,
                     None,
                 )
-                .map_err(|_| Error::TransferToBidPurse)?
-                .map_err(|_| Error::TransferToBidPurse)?;
+                .map_err(|_| ApiError::from(Error::TransferToBidPurse))?
+                .map_err(|mint_error| {
+                    // Propagate mint contract's error that occured during execution of transfer
+                    // entrypoint. This will improve UX in case of (for example)
+                    // unapproved spending limit error.
+                    ApiError::from(mint_error)
+                })?;
                 let updated_amount = bid
                     .with_delegation_rate(delegation_rate)
                     .increase_stake(amount)?;
@@ -124,7 +118,12 @@ pub trait Auction:
                     None,
                 )
                 .map_err(|_| Error::TransferToBidPurse)?
-                .map_err(|_| Error::TransferToBidPurse)?;
+                .map_err(|mint_error| {
+                    // Propagate mint contract's error that occured during execution of transfer
+                    // entrypoint. This will improve UX in case of (for example)
+                    // unapproved spending limit error.
+                    ApiError::from(mint_error)
+                })?;
                 let bid = Bid::unlocked(public_key, bonding_purse, amount, delegation_rate);
                 self.write_bid(account_hash, bid)?;
                 amount
@@ -208,22 +207,32 @@ pub trait Auction:
         delegator_public_key: PublicKey,
         validator_public_key: PublicKey,
         amount: U512,
-    ) -> Result<U512, Error> {
+        minimum_delegation_amount: u64,
+    ) -> Result<U512, ApiError> {
         let provided_account_hash =
             AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
 
         if amount.is_zero() {
-            return Err(Error::BondTooSmall);
+            return Err(Error::BondTooSmall.into());
         }
 
         if !self.is_allowed_session_caller(&provided_account_hash) {
-            return Err(Error::InvalidContext);
+            return Err(Error::InvalidContext.into());
         }
 
         let source = self.get_main_purse()?;
 
+        let validator_account_hash = AccountHash::from(&validator_public_key);
+
+        let bid = detail::read_bid_for_validator(self, validator_account_hash)?;
+
+        if amount < U512::from(minimum_delegation_amount) {
+            return Err(Error::DelegationAmountTooSmall.into());
+        }
+
         detail::handle_delegation(
             self,
+            bid,
             delegator_public_key,
             validator_public_key,
             source,
@@ -301,12 +310,17 @@ pub trait Auction:
         validator_public_key: PublicKey,
         amount: U512,
         new_validator: PublicKey,
+        minimum_delegation_amount: u64,
     ) -> Result<U512, Error> {
         let provided_account_hash =
             AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
 
         if !self.is_allowed_session_caller(&provided_account_hash) {
             return Err(Error::InvalidContext);
+        }
+
+        if amount < U512::from(minimum_delegation_amount) {
+            return Err(Error::DelegationAmountTooSmall);
         }
 
         let validator_account_hash = AccountHash::from(&validator_public_key);
@@ -394,9 +408,9 @@ pub trait Auction:
         &mut self,
         era_end_timestamp_millis: u64,
         evicted_validators: Vec<PublicKey>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ApiError> {
         if self.get_caller() != PublicKey::System.to_account_hash() {
-            return Err(Error::InvalidCaller);
+            return Err(Error::InvalidCaller.into());
         }
 
         let validator_slots = detail::get_validator_slots(self)?;
@@ -480,7 +494,7 @@ pub trait Auction:
             for era_validator in winners.keys() {
                 let seigniorage_recipient = match bids.get(era_validator) {
                     Some(bid) => bid.into(),
-                    None => return Err(Error::BidNotFound),
+                    None => return Err(Error::BidNotFound.into()),
                 };
                 recipients.insert(era_validator.clone(), seigniorage_recipient);
             }

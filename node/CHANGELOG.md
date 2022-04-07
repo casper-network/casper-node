@@ -21,22 +21,24 @@ All notable changes to this project will be documented in this file.  The format
 * Add `SIGUSR2` signal handling to dump the queue in JSON format (see "Changed" section for `SIGUSR1`).
 * A diagnostic port can now be enabled via the `[diagnostics_port]` section in the configuration file. See the `README.md` for details.
 * Add capabilities for known nodes to slow down the reconnection process of outdated legacy nodes still out on the internet.
+* Add `strict_argument_checking` to the chainspec to enable strict args checking when executing a contract; i.e. that all non-optional args are provided and of the correct `CLType`.
 * Add `verifiable_chunked_hash_activation` to the chainspec to specify the first era in which the new Merkle tree-based hashing scheme is used.
 * In addition to `consensus` and `deploy_requests`, the following values can now be controlled via the `[network.estimator_weights]` section in config: `gossip`, `finality_signatures`, `deploy_responses`, `block_requests`, `block_responses`, `trie_requests` and `trie_responses`.
 * Nodes will now also gossip deploys onwards while joining.
 * Add run-mode field to the `/status` endpoint and the `info_get_status` JSON-RPC.
 * Add new REST `/chainspec` and JSON-RPC `info_get_chainspec` endpoints that return the raw bytes of the `chainspec.toml`, `accounts.toml` and `global_state.toml` files as read at node startup.
+* Add a new parameter to `info_get_deploys` JSON-RPC, `finalized_approvals` - controlling whether the approvals returned with the deploy should be the ones originally received by the node, or overridden by the approvals that were finalized along with the deploy.
 
 ### Changed
 * Detection of a crash no longer triggers DB integrity checks to run on node start; the checks can be triggered manually instead.
-* `SIGUSR1` now only dumps the queue in the debug text format.
+* `SIGUSR1`/`SIGUSR2` queue dumps have been removed in favor of the diagnostics port.
 * Incoming connections from peers are rejected if they are exceeding the default incoming connections per peer limit of 3.
 * Nodes no longer connect to nodes that do not speak the same protocol version by default.
 * Chain automatically creates a switch block immediately after genesis or an upgrade.
 * Connection handshake timeouts can now be configured via the `handshake_timeout` variable (they were hardcoded at 20 seconds before).
 * `Key::SystemContractRegistry` is now readable and can be queried via the RPC.
 * Requests for data from a peer are now de-prioritized over networking messages necessary for consensus and chain advancement.
-* JSON-RPC responses which fail to provide requested data will now also include an indication of that node's available block range, i.e. the block heights for which it holds all global state. For nodes running with `[node.sync_to_genesis]` set to true, the range will be the full blockchain, otherwise the range will start at a block near the tip of the chain when the node started running.
+* JSON-RPC responses which fail to provide requested data will now also include an indication of that node's available block range, i.e. the block heights for which it holds all global state. For nodes running with `[node.sync_to_genesis]` set to true, the range will be the full blockchain, otherwise the range will start at a block near the tip of the chain when the node started running.  See [#2789](https://github.com/casper-network/casper-node/pull/2789) for an example of the new error response.
 * OpenSSL has been bumped to version 1.1.1.n, if compiling with vendored OpenSSL to address [CVE-2022-0778](https://www.openssl.org/news/secadv/20220315.txt).
 * Switch blocks immediately after genesis or an upgrade are now signed.
 * Added CORS behavior to allow any route on the JSON-RPC, REST and SSE servers.
@@ -50,6 +52,34 @@ All notable changes to this project will be documented in this file.  The format
 * The `casper-mainnet` feature flag has been removed.
 * Integrity check has been removed.
 * Remove `verify_accounts` option from `config.toml`, meaning deploys received from clients always undergo account balance checks to assess suitability for execution or not.
+* Remove a temporary chainspec setting `max_stored_value_size` to limit the size of individual values stored in global state.
+
+### Security
+* OpenSSL has been bumped to version 1.1.1.n, if compiling with vendored OpenSSL to address [CVE-2022-0778](https://www.openssl.org/news/secadv/20220315.txt).
+
+
+
+## 1.4.5
+
+### Added
+* Add a temporary chainspec setting `max_stored_value_size` to limit the size of individual values stored in global state.
+* Add a chainspec setting `minimum_delegation_amount` to limit the minimal amount of motes that can be delegated by a first time delegator.
+* Add a chainspec setting `block_max_approval_count` to limit the maximum number of approvals across all deploys in a single block.
+* Add a `finalized_approvals` field to the GetDeploy RPC, which if `true` causes the response to include finalized approvals substituted for the originally-received ones.
+
+### Fixed
+* Include deploy approvals in block payloads upon which consensus operates.
+* Fixes a bug where historical auction data was unavailable via `get-auction-info` RPC.
+
+
+
+## 1.4.4 - 2021-12-29
+
+### Added
+* Add `contract_runtime_latest_commit_step` gauge metric indicating the execution duration of the latest `commit_step` call.
+
+### Changed
+* No longer checksum-hex encode various types.
 
 
 

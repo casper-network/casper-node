@@ -23,6 +23,9 @@ pub(crate) enum ConfigError {
     /// Error initializing metrics.
     #[error("failed to initialize metrics for contract runtime: {0}")]
     Prometheus(#[from] prometheus::Error),
+    /// Error initializing execution engine.
+    #[error("failed to initialize execution engine: {0}")]
+    EngineState(#[from] EngineStateError),
 }
 
 /// An error during block execution.

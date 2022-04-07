@@ -48,6 +48,7 @@ const ARG_SEED: &str = "seed";
 const ARG_OTHERS: &str = "others";
 const EXPECTED_REVERT_VALUE: u16 = 9;
 const SEED_VALUE: u64 = 821_577_831_833_715_345;
+const TRANSFER_FROM_MAIN_PURSE_AMOUNT: u64 = 2_000_000_u64;
 
 #[ignore]
 #[test]
@@ -101,6 +102,7 @@ fn host_function_metrics_has_acceptable_gas_cost() {
                 runtime_args! {
                     ARG_SEED => seed,
                     ARG_OTHERS => (Bytes::from(random_bytes), ACCOUNT0_ADDR, ACCOUNT1_ADDR),
+                    ARG_AMOUNT => TRANSFER_FROM_MAIN_PURSE_AMOUNT,
                 },
             )
             .with_empty_payment_bytes(
