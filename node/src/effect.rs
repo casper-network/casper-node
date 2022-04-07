@@ -16,9 +16,9 @@
 //!
 //! * (unbound) events: These events are not associated with a particular reactor or component and
 //!   represent information or requests by themselves. An example is the
-//!   [`BlocklistAnnouncement`](`crate::effect::BlocklistAnnouncement`), it can be emitted through
-//!   an effect by different components and contains the ID of a peer that should be shunned. It is
-//!   not associated with a particular reactor or component though.
+//!   [`BlocklistAnnouncement`](`crate::effect::announcements::BlocklistAnnouncement`), it can be
+//!   emitted through an effect by different components and contains the ID of a peer that should be
+//!   shunned. It is not associated with a particular reactor or component though.
 //!
 //!   While the node is running, these unbound events cannot exist on their own, instead they are
 //!   typically converted into a concrete reactor event by the effect builder as soon as they are
@@ -35,8 +35,7 @@
 //!   Component events are also created from the return values of effects: While effects do not
 //!   return events themselves when called, their return values are turned first into component
 //!   events through the [`event`](crate::effect::EffectExt) method. In a second step, inside the
-//!   reactors routing code, [`wrap_effect`](crate::reactor::wrap_effect) will then convert from
-//!   component to reactor event.
+//!   reactors routing code, `wrap_effect` will then convert from component to reactor event.
 //!
 //! # Using effects
 //!

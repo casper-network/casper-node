@@ -28,7 +28,7 @@
 //! # Component events and reactor events
 //!
 //! It is easy to confuse the components own associated event ([`Component::Event`]) and the
-//! so-called "reactor event", often written `REv` (see [`effects`](crate::effects) for details on
+//! so-called "reactor event", often written `REv` (see [`effects`](crate::effect) for details on
 //! the distinctions).
 //!
 //! A component's own event defines what sort of events it produces purely for internal use, and
@@ -42,7 +42,7 @@
 //! reactor provides a set of capabilities** by requiring `From`-implementations on the `REv`, e.g.
 //! by restricting the `impl Component<REv>` by `where REv: From<Baz>`. The concrete requirement
 //! will usually be dictated by a restriction on a method on an
-//! [`EffectBuilder`](crate::events::EffectBuilder).
+//! [`EffectBuilder`](crate::effect::EffectBuilder).
 
 pub(crate) mod block_proposer;
 pub(crate) mod block_validator;

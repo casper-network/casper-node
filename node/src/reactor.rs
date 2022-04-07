@@ -9,7 +9,7 @@
 //! 2. The event is dispatched by the reactor via [`Reactor::dispatch_event`]. Since the reactor
 //!    holds mutable state, it can grant any component that processes an event mutable, exclusive
 //!    access to its state.
-//! 3. Once the [(synchronous)](`crate::component::Component::handle_even`) event processing has
+//! 3. Once the [(synchronous)](`crate::components::Component::handle_event`) event processing has
 //!    completed, the component returns an [`effect`](crate::effect).
 //! 4. The reactor spawns a task that executes these effects and possibly schedules more events.
 //! 5. go to 1.
