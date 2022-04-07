@@ -13,27 +13,33 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     bytesrepr::{self, Error, FromBytes, ToBytes},
-    CLTyped, CLValue, CLValueError,
+    CLType, CLTyped, CLValue, CLValueError, U512,
 };
-
-/// Named arguments to a contract
+/// Named arguments to a contract.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct NamedArg(String, CLValue);
 
 impl NamedArg {
-    /// ctor
+    /// Returns a new `NamedArg`.
     pub fn new(name: String, value: CLValue) -> Self {
         NamedArg(name, value)
     }
-    /// returns `name`
+
+    /// Returns the name of the named arg.
     pub fn name(&self) -> &str {
         &self.0
     }
-    /// returns `value`
+
+    /// Returns the value of the named arg.
     pub fn cl_value(&self) -> &CLValue {
         &self.1
+    }
+
+    /// Returns a mutable reference to the value of the named arg.
+    pub fn cl_value_mut(&mut self) -> &mut CLValue {
+        &mut self.1
     }
 }
 
@@ -103,17 +109,17 @@ impl RuntimeArgs {
         })
     }
 
-    /// Get length of the collection.
+    /// Gets the length of the collection.
     pub fn len(&self) -> usize {
         self.0.len()
     }
 
-    /// Check if collection of arguments is empty.
+    /// Returns `true` if the collection of arguments is empty.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 
-    /// Insert new named argument into the collection.
+    /// Inserts a new named argument into the collection.
     pub fn insert<K, V>(&mut self, key: K, value: V) -> Result<(), CLValueError>
     where
         K: Into<String>,
@@ -124,7 +130,7 @@ impl RuntimeArgs {
         Ok(())
     }
 
-    /// Insert new named argument into the collection.
+    /// Inserts a new named argument into the collection.
     pub fn insert_cl_value<K>(&mut self, key: K, cl_value: CLValue)
     where
         K: Into<String>,
@@ -132,14 +138,37 @@ impl RuntimeArgs {
         self.0.push(NamedArg(key.into(), cl_value));
     }
 
-    /// Returns values held regardless of the variant.
+    /// Returns all the values of the named args.
     pub fn to_values(&self) -> Vec<&CLValue> {
         self.0.iter().map(|NamedArg(_name, value)| value).collect()
     }
 
-    /// Returns iterator over all arguments in insertion order.
+    /// Returns an iterator of references over all arguments in insertion order.
     pub fn named_args(&self) -> impl Iterator<Item = &NamedArg> {
         self.0.iter()
+    }
+
+    /// Returns an iterator of mutable references over all arguments in insertion order.
+    pub fn named_args_mut(&mut self) -> impl Iterator<Item = &mut NamedArg> {
+        self.0.iter_mut()
+    }
+
+    /// Returns the numeric value of `name` arg from the runtime arguments or defaults to
+    /// 0 if that arg doesn't exist or is not an integer type.
+    ///
+    /// Supported [`CLType`]s for numeric conversions are U64, and U512.
+    ///
+    /// Returns an error if parsing the arg fails.
+    pub fn try_get_number(&self, name: &str) -> Result<U512, CLValueError> {
+        let amount_arg = match self.get(name) {
+            None => return Ok(U512::zero()),
+            Some(arg) => arg,
+        };
+        match amount_arg.cl_type() {
+            CLType::U512 => amount_arg.clone().into_t::<U512>(),
+            CLType::U64 => amount_arg.clone().into_t::<u64>().map(U512::from),
+            _ => Ok(U512::zero()),
+        }
     }
 }
 
@@ -214,6 +243,8 @@ macro_rules! runtime_args {
 mod tests {
     use super::*;
 
+    const ARG_AMOUNT: &str = "amount";
+
     #[test]
     fn test_runtime_args() {
         let arg1 = CLValue::from_t(1).unwrap();
@@ -286,5 +317,52 @@ mod tests {
             "bar" => 456,
         };
         assert!(matches!(res, Ok(args) if expected == args));
+    }
+
+    #[test]
+    fn try_get_number_should_work() {
+        let mut args = RuntimeArgs::new();
+        args.insert(ARG_AMOUNT, 0u64).expect("is ok");
+        assert_eq!(args.try_get_number(ARG_AMOUNT).unwrap(), U512::zero());
+
+        let mut args = RuntimeArgs::new();
+        args.insert(ARG_AMOUNT, U512::zero()).expect("is ok");
+        assert_eq!(args.try_get_number(ARG_AMOUNT).unwrap(), U512::zero());
+
+        let args = RuntimeArgs::new();
+        assert_eq!(args.try_get_number(ARG_AMOUNT).unwrap(), U512::zero());
+
+        let hundred = 100u64;
+
+        let mut args = RuntimeArgs::new();
+        let input = U512::from(hundred);
+        args.insert(ARG_AMOUNT, input).expect("is ok");
+        assert_eq!(args.try_get_number(ARG_AMOUNT).unwrap(), input);
+
+        let mut args = RuntimeArgs::new();
+        args.insert(ARG_AMOUNT, hundred).expect("is ok");
+        assert_eq!(
+            args.try_get_number(ARG_AMOUNT).unwrap(),
+            U512::from(hundred)
+        );
+    }
+
+    #[test]
+    fn try_get_number_should_return_zero_for_non_numeric_type() {
+        let mut args = RuntimeArgs::new();
+        args.insert(ARG_AMOUNT, "Non-numeric-string").unwrap();
+        assert_eq!(
+            args.try_get_number(ARG_AMOUNT).expect("should get amount"),
+            U512::zero()
+        );
+    }
+
+    #[test]
+    fn try_get_number_should_return_zero_if_amount_is_missing() {
+        let args = RuntimeArgs::new();
+        assert_eq!(
+            args.try_get_number(ARG_AMOUNT).expect("should get amount"),
+            U512::zero()
+        );
     }
 }

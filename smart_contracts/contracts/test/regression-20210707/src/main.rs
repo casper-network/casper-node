@@ -7,11 +7,12 @@ extern crate alloc;
 use alloc::string::ToString;
 
 use casper_contract::{
-    contract_api::{runtime, storage, system},
+    contract_api::{account, runtime, storage, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
     account::AccountHash,
+    contracts::NamedKeys,
     runtime_args,
     system::{handle_payment, mint},
     AccessRights, CLType, CLTyped, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
@@ -28,7 +29,6 @@ const ARG_SOURCE: &str = "source";
 const ARG_RECIPIENT: &str = "recipient";
 const ARG_AMOUNT: &str = "amount";
 const ARG_TARGET: &str = "target";
-const ARG_REFUND_PURSE: &str = "refund_purse";
 
 const METHOD_SEND_TO_ACCOUNT: &str = "send_to_account";
 const METHOD_SEND_TO_PURSE: &str = "send_to_purse";
@@ -57,7 +57,10 @@ pub fn set_refund_purse(refund_purse: URef) {
 
 #[no_mangle]
 pub extern "C" fn send_to_account() {
-    let source: URef = runtime::get_named_arg(ARG_SOURCE);
+    let source = runtime::get_key("purse")
+        .unwrap_or_revert()
+        .into_uref()
+        .unwrap_or_revert();
     let recipient: AccountHash = runtime::get_named_arg(ARG_RECIPIENT);
     let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
 
@@ -66,7 +69,10 @@ pub extern "C" fn send_to_account() {
 
 #[no_mangle]
 pub extern "C" fn send_to_purse() {
-    let source: URef = runtime::get_named_arg(ARG_SOURCE);
+    let source = runtime::get_key("purse")
+        .unwrap_or_revert()
+        .into_uref()
+        .unwrap_or_revert();
     let target: URef = runtime::get_named_arg(ARG_TARGET);
     let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
 
@@ -76,7 +82,11 @@ pub extern "C" fn send_to_purse() {
 #[no_mangle]
 pub extern "C" fn hardcoded_purse_src() {
     let source = HARDCODED_UREF;
-    let target = runtime::get_named_arg(ARG_TARGET);
+    let target = runtime::get_key("purse")
+        .unwrap_or_revert()
+        .into_uref()
+        .unwrap_or_revert();
+
     let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
 
     system::transfer_from_purse_to_purse(source, target, amount, None).unwrap();
@@ -85,7 +95,10 @@ pub extern "C" fn hardcoded_purse_src() {
 #[no_mangle]
 pub extern "C" fn stored_payment() {
     // Refund purse
-    let refund_purse: URef = runtime::get_named_arg(ARG_REFUND_PURSE);
+    let refund_purse: URef = runtime::get_key("purse")
+        .unwrap_or_revert()
+        .into_uref()
+        .unwrap_or_revert();
     // Who will be charged
     let source: URef = runtime::get_named_arg(ARG_SOURCE);
     // How much to pay for execution
@@ -104,7 +117,10 @@ pub extern "C" fn stored_payment() {
 #[no_mangle]
 pub extern "C" fn hardcoded_payment() {
     // Refund purse
-    let refund_purse: URef = runtime::get_named_arg(ARG_REFUND_PURSE);
+    let refund_purse: URef = runtime::get_key("purse")
+        .unwrap_or_revert()
+        .into_uref()
+        .unwrap_or_revert();
     // Who will be charged
     let source: URef = HARDCODED_UREF;
     // How much to pay for execution
@@ -159,7 +175,6 @@ pub extern "C" fn call() {
     let stored_payment = EntryPoint::new(
         METHOD_STORED_PAYMENT,
         vec![
-            Parameter::new(ARG_REFUND_PURSE, URef::cl_type()),
             Parameter::new(ARG_SOURCE, URef::cl_type()),
             Parameter::new(ARG_AMOUNT, CLType::U512),
         ],
@@ -169,10 +184,7 @@ pub extern "C" fn call() {
     );
     let hardcoded_payment = EntryPoint::new(
         METHOD_HARDCODED_PAYMENT,
-        vec![
-            Parameter::new(ARG_REFUND_PURSE, URef::cl_type()),
-            Parameter::new(ARG_AMOUNT, CLType::U512),
-        ],
+        vec![Parameter::new(ARG_AMOUNT, CLType::U512)],
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Contract,
@@ -184,9 +196,21 @@ pub extern "C" fn call() {
     entry_points.add_entry_point(stored_payment);
     entry_points.add_entry_point(hardcoded_payment);
 
+    let amount: U512 = runtime::get_named_arg("amount");
+
+    let named_keys = {
+        let purse = system::create_purse();
+        system::transfer_from_purse_to_purse(account::get_main_purse(), purse, amount, None)
+            .unwrap_or_revert();
+
+        let mut named_keys = NamedKeys::new();
+        named_keys.insert("purse".to_string(), purse.into());
+        named_keys
+    };
+
     let (contract_hash, _version) = storage::new_contract(
         entry_points,
-        None,
+        Some(named_keys),
         Some(PACKAGE_HASH_NAME.to_string()),
         Some(ACCESS_UREF_NAME.to_string()),
     );

@@ -32,7 +32,7 @@ where
     R: StateReader<Key, StoredValue>,
     R::Error: Into<execution::Error>,
 {
-    fn get_main_purse(&self) -> Result<URef, ApiError> {
+    fn get_main_purse(&mut self) -> Result<URef, ApiError> {
         self.context.get_main_purse().map_err(|exec_error| {
             <Option<ApiError>>::from(exec_error).unwrap_or(ApiError::InvalidPurse)
         })
