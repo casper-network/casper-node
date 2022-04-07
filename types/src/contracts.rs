@@ -37,7 +37,8 @@ pub const MAX_GROUPS: u8 = 10;
 pub const MAX_TOTAL_UREFS: usize = 100;
 
 const CONTRACT_STRING_PREFIX: &str = "contract-";
-const PACKAGE_STRING_PREFIX: &str = "contract-package-wasm";
+const PACKAGE_STRING_PREFIX: &str = "contract-package";
+const PACKAGE_STRING_PREFIX_LEGACY: &str = "contract-package-wasm";
 
 /// Set of errors which may happen when working with contract headers.
 #[derive(Debug, PartialEq)]
@@ -511,9 +512,15 @@ impl ContractPackageHash {
     /// Parses a string formatted as per `Self::to_formatted_string()` into a
     /// `ContractPackageHash`.
     pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
-        let remainder = input
-            .strip_prefix(PACKAGE_STRING_PREFIX)
-            .ok_or(FromStrError::InvalidPrefix)?;
+        // let remainder = input
+        //     .strip_prefix(PACKAGE_STRING_PREFIX)
+        //     .ok_or(FromStrError::InvalidPrefix)?;
+        let remainder = match input.strip_prefix(PACKAGE_STRING_PREFIX) {
+            Some(remainder) => remainder,
+            None => input
+                .strip_prefix(PACKAGE_STRING_PREFIX_LEGACY)
+                .ok_or(FromStrError::InvalidPrefix)?,
+        };
         let bytes = HashAddr::try_from(checksummed_hex::decode(remainder)?.as_ref())?;
         Ok(ContractPackageHash(bytes))
     }
