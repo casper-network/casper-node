@@ -19,8 +19,8 @@
 //! # Error and halting states
 //!
 //! Components in general are expected to be able to handle every input (that is every
-//! [`Component::Event`]) in every state. Unexpected inputs should usually be logged and discard, if
-//! possible, and the component is expected to recover from error states by itself.
+//! [`Component::Event`]) in every state. Unexpected inputs should usually be logged and discarded,
+//! if possible, and the component is expected to recover from error states by itself.
 //!
 //! When a recovery is not possible, the [`fatal!`](crate::fatal!) macro should be used to produce
 //! an effect that will shut down the system.
