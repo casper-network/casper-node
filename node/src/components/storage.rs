@@ -201,6 +201,7 @@ pub struct StorageInner {
     /// An in-memory pool of already loaded serialized items.
     ///
     /// Keyed by serialized item ID, contains the serialized item.
+    // Note: `DataSize` is skipped here to avoid incurring locking overhead.
     #[data_size(skip)]
     serialized_item_pool: RwLock<ObjectPool<Box<[u8]>>>,
     /// The fraction of validators, by weight, that have to sign a block to prove its finality.
