@@ -205,6 +205,7 @@ pub struct StorageInner {
     /// An in-memory pool of already loaded serialized items.
     ///
     /// Keyed by serialized item ID, contains the serialized item.
+    // Note: `DataSize` is skipped here to avoid incurring locking overhead.
     #[data_size(skip)]
     serialized_item_pool: RwLock<ObjectPool<Box<[u8]>>>,
     /// The fraction of validators, by weight, that have to sign a block to prove its finality.
@@ -401,6 +402,15 @@ impl Storage {
         self.storage.get_highest_block(&mut tx, &indices)
     }
 
+    /// Directly returns a deploy from internal store.
+    pub fn read_deploy_by_hash(
+        &self,
+        deploy_hash: DeployHash,
+    ) -> Result<Option<Deploy>, FatalStorageError> {
+        let mut txn = self.storage.env.begin_ro_txn()?;
+        Ok(txn.get_value(self.storage.deploy_db, &deploy_hash)?)
+    }
+
     /// Put a single deploy into storage.
     #[inline]
     pub fn put_deploy(&self, deploy: &Deploy) -> Result<bool, FatalStorageError> {
@@ -411,14 +421,6 @@ impl Storage {
     #[inline]
     pub fn write_block(&self, block: &Block) -> Result<bool, FatalStorageError> {
         self.storage.write_block(block)
-    }
-
-    /// Directly returns a deploy from internal store.
-    pub fn read_deploy_by_hash(
-        &self,
-        deploy_hash: DeployHash,
-    ) -> Result<Option<Deploy>, FatalStorageError> {
-        self.storage.read_deploy_by_hash(deploy_hash)
     }
 }
 
@@ -1702,6 +1704,32 @@ impl StorageInner {
         }
     }
 
+    /// Stores a set of finalized approvals.
+    pub fn store_finalized_approvals(
+        &self,
+        deploy_hash: &DeployHash,
+        finalized_approvals: &FinalizedApprovals,
+    ) -> Result<(), FatalStorageError> {
+        let mut txn = self.env.begin_rw_txn()?;
+        let maybe_original_deploy: Option<Deploy> = txn.get_value(self.deploy_db, &deploy_hash)?;
+        let original_deploy =
+            maybe_original_deploy.ok_or(FatalStorageError::UnexpectedFinalizedApprovals {
+                deploy_hash: *deploy_hash,
+            })?;
+
+        // Only store the finalized approvals if they are different from the original ones.
+        if original_deploy.approvals() != finalized_approvals.as_ref() {
+            let _ = txn.put_value(
+                self.finalized_approvals_db,
+                deploy_hash,
+                finalized_approvals,
+                true,
+            )?;
+            txn.commit()?;
+        }
+        Ok(())
+    }
+
     /// Retrieves single block header by height by looking it up in the index and returning it;
     /// returns `None` if they are less than the fault tolerance threshold, or if the block is from
     /// before the most recent emergency upgrade.
@@ -1915,40 +1943,6 @@ impl StorageInner {
             // `lowest_available_block_height` is not a critical error.
         }
 
-        Ok(())
-    }
-
-    /// Directly returns a deploy from internal store.
-    pub fn read_deploy_by_hash(
-        &self,
-        deploy_hash: DeployHash,
-    ) -> Result<Option<Deploy>, FatalStorageError> {
-        let mut txn = self.env.begin_ro_txn()?;
-        Ok(txn.get_value(self.deploy_db, &deploy_hash)?)
-    }
-
-    /// Stores a set of finalized approvals.
-    pub fn store_finalized_approvals(
-        &self,
-        deploy_hash: &DeployHash,
-        finalized_approvals: &FinalizedApprovals,
-    ) -> Result<(), FatalStorageError> {
-        let maybe_original_deploy = self.read_deploy_by_hash(*deploy_hash)?;
-        let original_deploy =
-            maybe_original_deploy.ok_or(FatalStorageError::UnexpectedFinalizedApprovals {
-                deploy_hash: *deploy_hash,
-            })?;
-        // Only store the finalized approvals if they are different from the original ones.
-        if original_deploy.approvals() != finalized_approvals.as_ref() {
-            let mut txn = self.env.begin_rw_txn()?;
-            let _ = txn.put_value(
-                self.finalized_approvals_db,
-                deploy_hash,
-                finalized_approvals,
-                true,
-            )?;
-            txn.commit()?;
-        }
         Ok(())
     }
 }
