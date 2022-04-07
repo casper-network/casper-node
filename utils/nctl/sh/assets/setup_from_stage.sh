@@ -57,7 +57,7 @@ function _main()
     setup_asset_directories "$COUNT_NODES" "$COUNT_USERS" "$PROTOCOL_VERSION_FS"
     setup_asset_binaries "$PROTOCOL_VERSION_FS" \
                          "$COUNT_NODES" \
-                         "$PATH_TO_STAGED_ASSETS/casper-client" \
+                         "$NCTL_CASPER_CLIENT_HOME/target/$NCTL_COMPILE_TARGET/casper-client" \
                          "$PATH_TO_STAGED_ASSETS/casper-node" \
                          "$PATH_TO_STAGED_ASSETS/casper-node-launcher" \
                          "$PATH_TO_STAGED_ASSETS"
