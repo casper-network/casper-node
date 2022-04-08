@@ -28,18 +28,61 @@ pub struct RocksDb {
     db: Arc<DBWithThreadMode<MultiThreaded>>,
 }
 
+/// Represents the state of a migration of a state root from lmdb to rocksdb.
+pub enum RootMigration {
+    /// Has the migration been left incomplete
+    NotMigrated,
+    /// Has the migration been not yet been started or completed
+    Incomplete,
+    /// Has the migration been completed
+    Complete,
+}
+
+impl RootMigration {
+    /// Has the migration been left incomplete
+    pub fn is_incomplete(&self) -> bool {
+        matches!(self, RootMigration::Incomplete)
+    }
+    /// Has the migration been not yet been started or completed
+    pub fn is_not_migrated(&self) -> bool {
+        matches!(self, RootMigration::NotMigrated)
+    }
+    /// Has the migration been completed
+    pub fn is_complete(&self) -> bool {
+        matches!(self, RootMigration::Complete)
+    }
+}
+
 impl RocksDb {
     /// Check if a state root has been marked as migrated from lmdb to rocksdb.
-    pub(crate) fn is_state_root_migrated(&self, state_root: &[u8]) -> Result<bool, error::Error> {
+    pub(crate) fn get_root_migration_state(
+        &self,
+        state_root: &[u8],
+    ) -> Result<RootMigration, error::Error> {
         let lmdb_migration_column = self.lmdb_tries_migrated_column()?;
-        Ok(self
-            .db
-            .get_cf(&lmdb_migration_column, state_root)?
-            .is_some())
+        let migration_state = self.db.get_cf(&lmdb_migration_column, state_root)?;
+        Ok(match migration_state {
+            Some(state) if state.is_empty() => RootMigration::Complete,
+            Some(state) if state.get(0) == Some(&1u8) => RootMigration::Incomplete,
+            _ => RootMigration::NotMigrated,
+        })
     }
 
-    /// Marks a state root as migrated from lmdb to rocksdb.
-    pub(crate) fn mark_state_root_migrated(&self, state_root: &[u8]) -> Result<(), error::Error> {
+    /// Marks a state root as started migration from lmdb to rocksdb.
+    pub(crate) fn mark_state_root_migration_incomplete(
+        &self,
+        state_root: &[u8],
+    ) -> Result<(), error::Error> {
+        let lmdb_migration_column = self.lmdb_tries_migrated_column()?;
+        self.db.put_cf(&lmdb_migration_column, state_root, &[1u8])?;
+        Ok(())
+    }
+
+    /// Marks a state root as fully migrated from lmdb to rocksdb.
+    pub(crate) fn mark_state_root_migration_completed(
+        &self,
+        state_root: &[u8],
+    ) -> Result<(), error::Error> {
         let lmdb_migration_column = self.lmdb_tries_migrated_column()?;
         self.db.put_cf(&lmdb_migration_column, state_root, &[])?;
         Ok(())

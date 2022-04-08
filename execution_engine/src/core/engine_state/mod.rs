@@ -135,22 +135,34 @@ impl EngineState<DbGlobalState> {
         limit_rate: bool,
     ) -> Result<bool, storage::error::db::Error> {
         let state_root_bytes = &state_root.value();
-        if !self
+
+        let root_migration_state = self
             .state
             .rocksdb_store
             .rocksdb
-            .is_state_root_migrated(state_root_bytes)?
-        {
-            self.state
-                .migrate_state_root_to_rocksdb(state_root, limit_rate)?;
+            .get_root_migration_state(state_root_bytes)?;
+
+        if !root_migration_state.is_complete() {
+            // was there a previous migration that had been interrupted?
+            let force = root_migration_state.is_incomplete();
+
+            // mark that we're starting the migration
             self.state
                 .rocksdb_store
                 .rocksdb
-                .mark_state_root_migrated(state_root_bytes)?;
-            Ok(true)
-        } else {
-            Ok(false)
+                .mark_state_root_migration_incomplete(state_root_bytes)?;
+
+            // perform migration
+            self.state
+                .migrate_state_root_to_rocksdb(state_root, limit_rate, force)?;
+
+            self.state
+                .rocksdb_store
+                .rocksdb
+                .mark_state_root_migration_completed(state_root_bytes)?;
+            return Ok(true);
         }
+        Ok(false)
     }
 
     /// Flushes the LMDB environment to disk when manual sync is enabled in the config.toml.

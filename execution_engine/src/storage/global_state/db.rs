@@ -65,13 +65,13 @@ pub struct DbGlobalStateView {
 impl DbGlobalState {
     /// Migrate data at the given state roots (if they exist) from lmdb to rocksdb.
     /// This function uses std::thread::sleep, is otherwise intensive and so needs to be called with
-    /// tokio::task::spawn_blocking.
-    ///
-    /// TODO(dwerner): optionally add multithreading here. Measure time of this method first.
+    /// tokio::task::spawn_blocking. `force=true` will cause us to always traverse recursively when
+    /// searching for missing descendants.
     pub(crate) fn migrate_state_root_to_rocksdb(
         &self,
         state_root: Digest,
         limit_rate: bool,
+        force: bool,
     ) -> Result<(), error::Error> {
         let mut missing_trie_keys = vec![state_root];
         let start_time = Instant::now();
@@ -126,12 +126,13 @@ impl DbGlobalState {
 
                     handle.write(rocksdb.clone(), &key_bytes, &value_bytes)?;
 
-                    find_missing_descendants(
+                    memoized_find_missing_descendants(
                         value_bytes,
                         handle,
                         rocksdb,
                         &mut missing_trie_keys,
                         &mut time_searching_for_trie_keys,
+                        force,
                     )?;
                 }
                 None => {
@@ -223,12 +224,13 @@ impl DbGlobalState {
     }
 }
 
-fn find_missing_descendants(
+fn memoized_find_missing_descendants(
     value_bytes: Bytes,
     handle: RocksDb,
     rocksdb: RocksDb,
     missing_trie_keys: &mut Vec<Digest>,
     time_in_missing_trie_keys: &mut Duration,
+    force: bool,
 ) -> Result<(), error::Error> {
     // A first bytes of `0` indicates a leaf. We short-circuit the function here to speed things up.
     if let Some(0u8) = value_bytes.get(0) {
@@ -244,26 +246,35 @@ fn find_missing_descendants(
         }
         Trie::Node { pointer_block } => {
             for (_index, ptr) in pointer_block.as_indexed_pointers() {
-                let ptr = match ptr {
-                    Pointer::LeafPointer(pointer) | Pointer::NodePointer(pointer) => pointer,
-                };
-                let existing = handle.read(rocksdb.clone(), &ptr.to_bytes()?)?;
-                if existing.is_none() {
-                    missing_trie_keys.push(ptr);
-                }
+                find_missing_trie_keys(ptr, force, missing_trie_keys, &handle, &rocksdb)?;
             }
         }
         Trie::Extension { affix: _, pointer } => {
-            let ptr = match pointer {
-                Pointer::LeafPointer(pointer) | Pointer::NodePointer(pointer) => pointer,
-            };
-            let existing = handle.read(rocksdb, &ptr.to_bytes()?)?;
-            if existing.is_none() {
-                missing_trie_keys.push(ptr);
-            }
+            find_missing_trie_keys(pointer, force, missing_trie_keys, &handle, &rocksdb)?;
         }
     }
     *time_in_missing_trie_keys += start_trie_keys.elapsed();
+    Ok(())
+}
+
+fn find_missing_trie_keys(
+    ptr: Pointer,
+    force: bool,
+    missing_trie_keys: &mut Vec<Digest>,
+    handle: &RocksDb,
+    rocksdb: &RocksDb,
+) -> Result<(), error::Error> {
+    let ptr = match ptr {
+        Pointer::LeafPointer(pointer) | Pointer::NodePointer(pointer) => pointer,
+    };
+    if force {
+        missing_trie_keys.push(ptr);
+    } else {
+        let existing = handle.read(rocksdb.clone(), &ptr.to_bytes()?)?;
+        if existing.is_none() {
+            missing_trie_keys.push(ptr);
+        }
+    }
     Ok(())
 }
 
