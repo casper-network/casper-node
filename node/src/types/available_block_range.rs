@@ -45,6 +45,16 @@ impl AvailableBlockRange {
     pub fn contains(&self, height: u64) -> bool {
         height >= self.low && height <= self.high
     }
+
+    /// Returns the low value.
+    pub fn low(&self) -> u64 {
+        self.low
+    }
+
+    /// Returns the high value.
+    pub fn high(&self) -> u64 {
+        self.high
+    }
 }
 
 impl Default for AvailableBlockRange {

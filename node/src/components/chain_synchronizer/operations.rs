@@ -839,6 +839,10 @@ async fn sync_deploys_and_transfers_and_state(
 ///    b. Fetches the deploys for that block (parallelized tasks).
 ///    c. Fetches the tries under that block's state root hash (parallelized tasks).
 ///
+/// Note that during step 3, if we have an existing available block range in storage, that range is
+/// skipped, as it represents a range of contiguous blocks for which we already have the deploys and
+/// global state stored locally.
+///
 /// Returns the block header with our current version and the last trusted key block information for
 /// validation.
 async fn sync_to_genesis(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, BlockHeader), Error> {
@@ -894,8 +898,33 @@ async fn fetch_forward(
 async fn fetch_to_genesis(trusted_block: &Block, ctx: &ChainSyncContext<'_>) -> Result<(), Error> {
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fetch_to_genesis_duration_seconds);
 
+    let locally_available_block_range = ctx
+        .effect_builder
+        .get_available_block_range_from_storage()
+        .await;
+
     let mut walkback_block = trusted_block.clone();
     loop {
+        // The available range from storage indicates a range of blocks for which we already have
+        // all the corresponding deploys and global state stored locally.  Skip fetching for such a
+        // range.
+        if locally_available_block_range.contains(walkback_block.height()) {
+            let maybe_lowest_available_block = ctx
+                .effect_builder
+                .get_lowest_available_block_from_storage()
+                .await;
+            if let Some(lowest_available_block) = maybe_lowest_available_block {
+                if lowest_available_block.height() == 0 {
+                    break;
+                }
+                walkback_block = *fetch_and_store_block_by_hash(
+                    *lowest_available_block.header().parent_hash(),
+                    ctx,
+                )
+                .await?;
+            }
+        }
+
         sync_deploys_and_transfers_and_state(&walkback_block, ctx).await?;
         ctx.effect_builder
             .update_lowest_available_block_height_in_storage(walkback_block.height())

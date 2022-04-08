@@ -1263,6 +1263,18 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Gets the lowest block from the available range in storage.
+    pub(crate) async fn get_lowest_available_block_from_storage(self) -> Option<Block>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetLowestAvailableBlock { responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Fetches an item from a fetcher.
     pub(crate) async fn fetch<T>(self, id: T::Id, peer: NodeId) -> FetchResult<T>
     where

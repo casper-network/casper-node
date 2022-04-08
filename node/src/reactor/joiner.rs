@@ -1056,7 +1056,7 @@ impl Reactor {
                 {
                     Ok(FetchedOrNotFound::Fetched(deploy)) => Box::new(deploy),
                     Ok(FetchedOrNotFound::NotFound(deploy_hash)) => {
-                        error!(
+                        warn!(
                             "peer did not have deploy with hash {}: {}",
                             sender, deploy_hash
                         );
