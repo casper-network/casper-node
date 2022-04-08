@@ -560,7 +560,6 @@ dependencies = [
  "num_cpus",
  "once_cell",
  "openssl",
- "parking_lot",
  "pem",
  "pin-project",
  "pnet",

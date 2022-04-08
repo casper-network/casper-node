@@ -76,6 +76,31 @@ impl Display for ResolveAddressErrorKind {
     }
 }
 
+/// Backport of `Result::flatten`, see <https://github.com/rust-lang/rust/issues/70142>.
+pub trait FlattenResult {
+    /// The output of the flattening operation.
+    type Output;
+
+    /// Flattens one level.
+    ///
+    /// This function is named `flatten_result` instead of `flatten` to avoid name collisions once
+    /// `Result::flatten` stabilizes.
+    fn flatten_result(self) -> Self::Output;
+}
+
+impl<T, E> FlattenResult for Result<Result<T, E>, E> {
+    type Output = Result<T, E>;
+
+    #[inline]
+    fn flatten_result(self) -> Self::Output {
+        match self {
+            Ok(Ok(v)) => Ok(v),
+            Ok(Err(e)) => Err(e),
+            Err(e) => Err(e),
+        }
+    }
+}
+
 /// Parses a network address from a string, with DNS resolution.
 pub(crate) fn resolve_address(address: &str) -> Result<SocketAddr, ResolveAddressError> {
     address

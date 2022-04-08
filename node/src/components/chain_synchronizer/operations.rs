@@ -1059,8 +1059,8 @@ async fn handle_upgrade(ctx: &ChainSyncContext<'_>) -> Result<bool, Error> {
 }
 
 async fn retry_execution_with_approvals_from_peer(
-    deploys: &mut Vec<Deploy>,
-    transfers: &mut Vec<Deploy>,
+    deploys: &mut [Deploy],
+    transfers: &mut [Deploy],
     peer: NodeId,
     block: &Block,
     execution_pre_state: &ExecutionPreState,
@@ -1076,8 +1076,8 @@ async fn retry_execution_with_approvals_from_peer(
             block.protocol_version(),
             execution_pre_state.clone(),
             FinalizedBlock::from(block.clone()),
-            deploys.clone(),
-            transfers.clone(),
+            deploys.to_vec(),
+            transfers.to_vec(),
         )
         .await?)
 }
