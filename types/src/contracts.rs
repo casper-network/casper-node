@@ -512,15 +512,17 @@ impl ContractPackageHash {
     /// Parses a string formatted as per `Self::to_formatted_string()` into a
     /// `ContractPackageHash`.
     pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
-        // let remainder = input
-        //     .strip_prefix(PACKAGE_STRING_PREFIX)
-        //     .ok_or(FromStrError::InvalidPrefix)?;
-        let remainder = match input.strip_prefix(PACKAGE_STRING_PREFIX) {
-            Some(remainder) => remainder,
-            None => input
-                .strip_prefix(PACKAGE_STRING_PREFIX_LEGACY)
-                .ok_or(FromStrError::InvalidPrefix)?,
+        let remainder: &str = {
+            if input.starts_with(PACKAGE_STRING_PREFIX_LEGACY) {
+                input.strip_prefix(PACKAGE_STRING_PREFIX_LEGACY)
+            } else if input.starts_with(PACKAGE_STRING_PREFIX) {
+                input.strip_prefix(PACKAGE_STRING_PREFIX)
+            } else {
+                return Err(FromStrError::InvalidPrefix);
+            }
+            .ok_or(FromStrError::InvalidPrefix)?
         };
+
         let bytes = HashAddr::try_from(checksummed_hex::decode(remainder)?.as_ref())?;
         Ok(ContractPackageHash(bytes))
     }
@@ -1735,6 +1737,23 @@ mod tests {
         let invalid_hex =
             "contract-000000000000000000000000000000000000000000000000000000000000000g";
         assert!(ContractHash::from_formatted_str(invalid_hex).is_err());
+    }
+
+    #[test]
+    fn should_accept_legacy_and_new_package_prefix() {
+        let contract_hash = ContractPackageHash([3; 32]);
+        let legacy_encoded = PACKAGE_STRING_PREFIX_LEGACY.to_string() + &contract_hash.to_string();
+        let decoded_from_legacy = ContractPackageHash::from_formatted_str(&legacy_encoded)
+            .expect("should accept legacy prefixed string");
+
+        let encoded = contract_hash.to_formatted_string();
+        let decoded =
+            ContractPackageHash::from_formatted_str(&encoded).expect("should accept new prefix");
+
+        assert_eq!(
+            decoded_from_legacy, decoded,
+            "decoded_from_legacy should equal decoded"
+        );
     }
 
     #[test]
