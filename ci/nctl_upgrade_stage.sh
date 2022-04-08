@@ -11,7 +11,7 @@ function clean_up() {
 
     if [ "$EXIT_CODE" = '0' ] && [ ! -z ${DRONE} ]; then
         # Running in CI so don't cleanup stage dir
-        echo "Script completed succesfully!"
+        echo "Script completed successfully!"
         return
     fi
 
