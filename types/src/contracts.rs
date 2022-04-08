@@ -1740,7 +1740,7 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_legacy_and_new_package_prefix() {
+    fn from_formatted_str_should_accept_legacy_and_new_package_prefix() {
         let contract_hash = ContractPackageHash([3; 32]);
         let legacy_encoded = PACKAGE_STRING_PREFIX_LEGACY.to_string() + &contract_hash.to_string();
         let decoded_from_legacy = ContractPackageHash::from_formatted_str(&legacy_encoded)
