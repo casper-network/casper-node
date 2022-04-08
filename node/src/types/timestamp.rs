@@ -31,7 +31,7 @@ static TIMESTAMP_EXAMPLE: Lazy<Timestamp> = Lazy::new(|| {
 
 /// A timestamp type, representing a concrete moment in time.
 #[derive(
-    DataSize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Shr, Shl, JsonSchema,
+    borsh::BorshSerialize,  DataSize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Shr, Shl, JsonSchema,
 )]
 #[serde(deny_unknown_fields)]
 #[schemars(with = "String", description = "Timestamp formatted as per RFC 3339")]
@@ -199,6 +199,7 @@ impl From<u64> for Timestamp {
 
 /// A time difference between two timestamps.
 #[derive(
+    borsh::BorshSerialize, 
     Debug,
     Default,
     Clone,

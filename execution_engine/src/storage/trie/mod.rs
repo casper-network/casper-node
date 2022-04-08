@@ -31,7 +31,7 @@ pub(crate) const RADIX: usize = 256;
 pub type Parents<K, V> = Vec<(u8, Trie<K, V>)>;
 
 /// Represents a pointer to the next object in a Merkle Trie
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(borsh::BorshSerialize, Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Pointer {
     /// Leaf pointer.
     LeafPointer(Digest),
@@ -117,7 +117,7 @@ pub type PointerBlockValue = Option<Pointer>;
 pub type PointerBlockArray = [PointerBlockValue; RADIX];
 
 /// Represents the underlying structure of a node in a Merkle Trie
-#[derive(Copy, Clone)]
+#[derive(borsh::BorshSerialize, Copy, Clone)]
 pub struct PointerBlock(PointerBlockArray);
 
 impl Serialize for PointerBlock {
@@ -449,7 +449,7 @@ impl Display for TrieOrChunkId {
 }
 
 /// Represents a Merkle Trie.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(borsh::BorshSerialize, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Trie<K, V> {
     /// Trie leaf.
     Leaf {

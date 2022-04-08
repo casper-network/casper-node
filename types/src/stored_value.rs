@@ -320,6 +320,58 @@ impl TryFrom<StoredValue> for EraInfo {
     }
 }
 
+impl borsh::BorshSerialize for StoredValue {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        match self {
+            StoredValue::CLValue(cl_value) => {
+                writer.write(&[Tag::CLValue as u8])?;
+                borsh::BorshSerialize::serialize(cl_value, writer)?;
+            }
+            StoredValue::Account(account) => {
+                writer.write(&[Tag::Account as u8])?;
+                borsh::BorshSerialize::serialize(account, writer)?;
+            }
+            StoredValue::ContractWasm(contract_wasm) => {
+                writer.write(&[Tag::ContractWasm as u8])?;
+                borsh::BorshSerialize::serialize(contract_wasm, writer)?;
+            }
+            StoredValue::Contract(contract_header) => {
+                writer.write(&[Tag::Contract as u8])?;
+                borsh::BorshSerialize::serialize(contract_header, writer)?;
+            }
+            StoredValue::ContractPackage(contract_package) => {
+                writer.write(&[Tag::ContractPackage as u8])?;
+                borsh::BorshSerialize::serialize(contract_package, writer)?;
+            }
+            StoredValue::Transfer(transfer) => {
+                writer.write(&[Tag::Transfer as u8])?;
+                borsh::BorshSerialize::serialize(transfer, writer)?;
+            }
+            StoredValue::DeployInfo(deploy_info) => {
+                writer.write(&[Tag::DeployInfo as u8])?;
+                borsh::BorshSerialize::serialize(deploy_info, writer)?;
+            }
+            StoredValue::EraInfo(era_info) => {
+                writer.write(&[Tag::EraInfo as u8])?;
+                borsh::BorshSerialize::serialize(era_info, writer)?;
+            }
+            StoredValue::Bid(bid) => {
+                writer.write(&[Tag::Bid as u8])?;
+                borsh::BorshSerialize::serialize(bid, writer)?;
+            }
+            StoredValue::Withdraw(withdraw_purses) => {
+                writer.write(&[Tag::Withdraw as u8])?;
+                borsh::BorshSerialize::serialize(withdraw_purses, writer)?;
+            }
+            StoredValue::Unbonding(unbonding_purses) => {
+                writer.write(&[Tag::Unbonding as u8])?;
+                borsh::BorshSerialize::serialize(unbonding_purses, writer)?;
+            }
+        }
+        Ok(())
+    }
+}
+
 impl ToBytes for StoredValue {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;

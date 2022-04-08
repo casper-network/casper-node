@@ -7,7 +7,7 @@ use crate::{
 };
 
 /// The seigniorage recipient details.
-#[derive(Default, PartialEq, Clone, Debug)]
+#[derive(borsh::BorshSerialize, Default, PartialEq, Clone, Debug)]
 pub struct SeigniorageRecipient {
     /// Validator stake (not including delegators)
     stake: U512,

@@ -32,7 +32,9 @@ pub(super) const TRANSFER_ADDR_FORMATTED_STRING_PREFIX: &str = "transfer-";
 
 /// A newtype wrapping a <code>[u8; [DEPLOY_HASH_LENGTH]]</code> which is the raw bytes of the
 /// deploy hash.
-#[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Debug)]
+#[derive(
+    borsh::BorshSerialize, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Debug,
+)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct DeployHash([u8; DEPLOY_HASH_LENGTH]);
 
@@ -120,7 +122,19 @@ impl Distribution<DeployHash> for Standard {
 }
 
 /// Represents a transfer from one purse to another
-#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize, Default)]
+#[derive(
+    borsh::BorshSerialize,
+    Debug,
+    Copy,
+    Clone,
+    Ord,
+    PartialOrd,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Default,
+)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
@@ -270,7 +284,7 @@ impl Display for FromStrError {
 
 /// A newtype wrapping a <code>[u8; [TRANSFER_ADDR_LENGTH]]</code> which is the raw bytes of the
 /// transfer address.
-#[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(borsh::BorshSerialize, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct TransferAddr([u8; TRANSFER_ADDR_LENGTH]);
 

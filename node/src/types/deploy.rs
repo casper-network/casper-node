@@ -249,6 +249,7 @@ impl From<TryFromSliceError> for Error {
 
 /// The cryptographic hash of a [`Deploy`](struct.Deploy.html).
 #[derive(
+    borsh::BorshSerialize,
     Copy,
     Clone,
     DataSize,
@@ -390,7 +391,18 @@ impl From<DeployOrTransferHash> for DeployHash {
 
 /// The header portion of a [`Deploy`](struct.Deploy.html).
 #[derive(
-    Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, JsonSchema,
+    borsh::BorshSerialize,
+    Clone,
+    DataSize,
+    Ord,
+    PartialOrd,
+    Eq,
+    PartialEq,
+    Hash,
+    Serialize,
+    Deserialize,
+    Debug,
+    JsonSchema,
 )]
 #[serde(deny_unknown_fields)]
 pub struct DeployHeader {
@@ -524,7 +536,18 @@ impl Display for DeployHeader {
 
 /// A struct containing a signature and the public key of the signer.
 #[derive(
-    Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, JsonSchema,
+    borsh::BorshSerialize,
+    Clone,
+    DataSize,
+    Ord,
+    PartialOrd,
+    Eq,
+    PartialEq,
+    Hash,
+    Serialize,
+    Deserialize,
+    Debug,
+    JsonSchema,
 )]
 #[serde(deny_unknown_fields)]
 pub struct Approval {
@@ -1616,6 +1639,18 @@ pub struct DeployMetadata {
     /// The block hashes of blocks containing the related deploy, along with the results of
     /// executing the related deploy in the context of one or more blocks.
     pub execution_results: HashMap<BlockHash, ExecutionResult>,
+}
+
+// Can't derive b/c of the skipped field.
+impl borsh::BorshSerialize for Deploy {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> futures_io::Result<()> {
+        borsh::BorshSerialize::serialize(&self.header, writer)?;
+        borsh::BorshSerialize::serialize(&self.hash, writer)?;
+        borsh::BorshSerialize::serialize(&self.payment, writer)?;
+        borsh::BorshSerialize::serialize(&self.session, writer)?;
+        borsh::BorshSerialize::serialize(&self.approvals, writer)?;
+        Ok(())
+    }
 }
 
 impl ToBytes for Deploy {

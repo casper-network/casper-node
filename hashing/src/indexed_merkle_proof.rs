@@ -12,7 +12,9 @@ use crate::{
     Digest,
 };
 
-#[derive(DataSize, PartialEq, Eq, Debug, Clone, JsonSchema, Serialize, Deserialize)]
+#[derive(
+    borsh::BorshSerialize, DataSize, PartialEq, Eq, Debug, Clone, JsonSchema, Serialize, Deserialize,
+)]
 #[serde(deny_unknown_fields)]
 pub struct IndexedMerkleProof {
     index: u64,

@@ -11,7 +11,9 @@ use crate::{
 };
 
 /// Represents a chunk of data with attached proof.
-#[derive(DataSize, PartialEq, Eq, Debug, Clone, JsonSchema, Serialize, Deserialize)]
+#[derive(
+    borsh::BorshSerialize, DataSize, PartialEq, Eq, Debug, Clone, JsonSchema, Serialize, Deserialize,
+)]
 #[serde(deny_unknown_fields)]
 pub struct ChunkWithProof {
     proof: IndexedMerkleProof,

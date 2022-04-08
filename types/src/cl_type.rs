@@ -211,6 +211,90 @@ impl CLType {
     }
 }
 
+impl borsh::BorshSerialize for CLType {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        match self {
+            CLType::Bool => {
+                writer.write(&[CL_TYPE_TAG_BOOL])?;
+            }
+            CLType::I32 => {
+                writer.write(&[CL_TYPE_TAG_I32])?;
+            }
+            CLType::I64 => {
+                writer.write(&[CL_TYPE_TAG_I64])?;
+            }
+            CLType::U8 => {
+                writer.write(&[CL_TYPE_TAG_U8])?;
+            }
+            CLType::U32 => {
+                writer.write(&[CL_TYPE_TAG_U32])?;
+            }
+            CLType::U64 => {
+                writer.write(&[CL_TYPE_TAG_U64])?;
+            }
+            CLType::U128 => {
+                writer.write(&[CL_TYPE_TAG_U128])?;
+            }
+            CLType::U256 => {
+                writer.write(&[CL_TYPE_TAG_U256])?;
+            }
+            CLType::U512 => {
+                writer.write(&[CL_TYPE_TAG_U512])?;
+            }
+            CLType::Unit => {
+                writer.write(&[CL_TYPE_TAG_UNIT])?;
+            }
+            CLType::String => {
+                writer.write(&[CL_TYPE_TAG_STRING])?;
+            }
+            CLType::Key => {
+                writer.write(&[CL_TYPE_TAG_KEY])?;
+            }
+            CLType::URef => {
+                writer.write(&[CL_TYPE_TAG_UREF])?;
+            }
+            CLType::PublicKey => {
+                writer.write(&[CL_TYPE_TAG_PUBLIC_KEY])?;
+            }
+            CLType::Option(cl_type) => {
+                writer.write(&[CL_TYPE_TAG_OPTION])?;
+                borsh::BorshSerialize::serialize(cl_type, writer)?;
+            }
+            CLType::List(cl_type) => {
+                writer.write(&[CL_TYPE_TAG_LIST])?;
+                borsh::BorshSerialize::serialize(cl_type, writer)?;
+            }
+            CLType::ByteArray(len) => {
+                writer.write(&[CL_TYPE_TAG_BYTE_ARRAY])?;
+                borsh::BorshSerialize::serialize(len, writer)?;
+            }
+            CLType::Result { ok, err } => {
+                writer.write(&[CL_TYPE_TAG_RESULT])?;
+                borsh::BorshSerialize::serialize(ok, writer)?;
+                borsh::BorshSerialize::serialize(err, writer)?;
+            }
+            CLType::Map { key, value } => {
+                writer.write(&[CL_TYPE_TAG_MAP])?;
+                borsh::BorshSerialize::serialize(key, writer)?;
+                borsh::BorshSerialize::serialize(value, writer)?;
+            }
+            CLType::Tuple1(cl_type_array) => {
+                borsh_serialize_cl_tuple_type(CL_TYPE_TAG_TUPLE1, cl_type_array, writer)?
+            }
+            CLType::Tuple2(cl_type_array) => {
+                borsh_serialize_cl_tuple_type(CL_TYPE_TAG_TUPLE2, cl_type_array, writer)?
+            }
+            CLType::Tuple3(cl_type_array) => {
+                borsh_serialize_cl_tuple_type(CL_TYPE_TAG_TUPLE3, cl_type_array, writer)?
+            }
+            CLType::Any => {
+                writer.write(&[CL_TYPE_TAG_ANY])?;
+            }
+        };
+        Ok(())
+    }
+}
+
 impl FromBytes for CLType {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         depth_limited_from_bytes(0, bytes)
@@ -302,6 +386,18 @@ fn depth_limited_from_bytes(depth: u8, bytes: &[u8]) -> Result<(CLType, &[u8]), 
         CL_TYPE_TAG_ANY => Ok((CLType::Any, remainder)),
         _ => Err(bytesrepr::Error::Formatting),
     }
+}
+
+fn borsh_serialize_cl_tuple_type<'a, W: std::io::Write, T: IntoIterator<Item = &'a Box<CLType>>>(
+    tag: u8,
+    cl_type_array: T,
+    stream: &mut W,
+) -> std::io::Result<()> {
+    stream.write(&[tag])?;
+    for cl_type in cl_type_array {
+        borsh::BorshSerialize::serialize(cl_type, stream)?;
+    }
+    Ok(())
 }
 
 fn serialize_cl_tuple_type<'a, T: IntoIterator<Item = &'a Box<CLType>>>(

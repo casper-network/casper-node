@@ -18,7 +18,7 @@ use crate::{
 };
 
 /// A struct representing a number of `Motes`.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+#[derive(borsh::BorshSerialize, Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct Motes(U512);
 

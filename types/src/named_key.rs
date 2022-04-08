@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::bytesrepr::{self, FromBytes, ToBytes};
 
 /// A named key.
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Default, Debug)]
+#[derive(borsh::BorshSerialize, Clone, Eq, PartialEq, Serialize, Deserialize, Default, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]

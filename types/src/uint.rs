@@ -182,6 +182,20 @@ macro_rules! impl_traits_for_uint {
             }
         }
 
+        impl borsh::BorshSerialize for $type {
+            fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+                let mut buf = [0u8; $total_bytes];
+                self.to_little_endian(&mut buf);
+                let mut non_zero_bytes: Vec<u8> =
+                    buf.iter().rev().skip_while(|b| **b == 0).cloned().collect();
+                let num_bytes = non_zero_bytes.len() as u8;
+                non_zero_bytes.push(num_bytes);
+                non_zero_bytes.reverse();
+                writer.write(&non_zero_bytes)?;
+                Ok(())
+            }
+        }
+
         impl FromBytes for $type {
             fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
                 let (num_bytes, rem): (u8, &[u8]) = FromBytes::from_bytes(bytes)?;

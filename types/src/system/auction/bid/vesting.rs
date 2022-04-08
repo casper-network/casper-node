@@ -27,7 +27,9 @@ pub const VESTING_SCHEDULE_LENGTH_MILLIS: u64 =
 /// 91 days / 7 days in a week = 13 weeks
 const LOCKED_AMOUNTS_LENGTH: usize = (VESTING_SCHEDULE_LENGTH_DAYS / DAYS_IN_WEEK) + 1;
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    borsh::BorshSerialize, Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize,
+)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]

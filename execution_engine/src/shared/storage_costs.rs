@@ -12,7 +12,7 @@ use casper_types::{
 pub const DEFAULT_GAS_PER_BYTE_COST: u32 = 625_000;
 
 /// Represents a cost table for storage costs.
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
+#[derive(borsh::BorshSerialize, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct StorageCosts {
     /// Gas charged per byte stored in the global state.
     gas_per_byte: u32,

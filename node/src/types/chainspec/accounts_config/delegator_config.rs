@@ -14,7 +14,18 @@ use casper_types::{SecretKey, U512};
 #[cfg(test)]
 use crate::testing::TestRng;
 
-#[derive(PartialEq, Ord, PartialOrd, Eq, Serialize, Deserialize, DataSize, Debug, Clone)]
+#[derive(
+    borsh::BorshSerialize,
+    PartialEq,
+    Ord,
+    PartialOrd,
+    Eq,
+    Serialize,
+    Deserialize,
+    DataSize,
+    Debug,
+    Clone,
+)]
 pub struct DelegatorConfig {
     pub(super) validator_public_key: PublicKey,
     delegator_public_key: PublicKey,

@@ -49,7 +49,19 @@ pub enum Error {
 }
 
 /// The output of the hash function.
-#[derive(Copy, Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Default, JsonSchema)]
+#[derive(
+    borsh::BorshSerialize,
+    Copy,
+    Clone,
+    DataSize,
+    Ord,
+    PartialOrd,
+    Eq,
+    PartialEq,
+    Hash,
+    Default,
+    JsonSchema,
+)]
 #[serde(deny_unknown_fields)]
 #[schemars(with = "String", description = "Hex-encoded hash digest.")]
 pub struct Digest(#[schemars(skip, with = "String")] [u8; Digest::LENGTH]);

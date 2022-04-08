@@ -39,6 +39,15 @@ impl NetworkConfig {
     }
 }
 
+impl borsh::BorshSerialize for NetworkConfig {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> futures_io::Result<()> {
+        borsh::BorshSerialize::serialize(&self.name, writer)?;
+        borsh::BorshSerialize::serialize(&self.accounts_config, writer)?;
+        borsh::BorshSerialize::serialize(&self.maximum_net_message_size, writer)?;
+        Ok(())
+    }
+}
+
 impl ToBytes for NetworkConfig {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;

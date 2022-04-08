@@ -199,7 +199,9 @@ impl Display for FromStrError {
 
 /// A (labelled) "user group". Each method of a versioned contract may be
 /// associated with one or more user groups which are allowed to call it.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    borsh::BorshSerialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize,
+)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Group(String);
@@ -253,7 +255,7 @@ pub const CONTRACT_INITIAL_VERSION: ContractVersion = 1;
 pub type ProtocolVersionMajor = u32;
 
 /// Major element of `ProtocolVersion` combined with `ContractVersion`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(borsh::BorshSerialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ContractVersionKey(ProtocolVersionMajor, ContractVersion);
 
@@ -331,7 +333,7 @@ pub type DisabledVersions = BTreeSet<ContractVersionKey>;
 pub type Groups = BTreeMap<Group, BTreeSet<URef>>;
 
 /// A newtype wrapping a `HashAddr` which references a [`Contract`] in the global state.
-#[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(borsh::BorshSerialize, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ContractHash(HashAddr);
 
@@ -483,7 +485,7 @@ impl JsonSchema for ContractHash {
 }
 
 /// A newtype wrapping a `HashAddr` which references a [`ContractPackage`] in the global state.
-#[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(borsh::BorshSerialize, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ContractPackageHash(HashAddr);
 
@@ -658,6 +660,20 @@ impl Default for ContractPackageStatus {
     }
 }
 
+impl borsh::BorshSerialize for ContractPackageStatus {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        match self {
+            ContractPackageStatus::Unlocked => {
+                borsh::BorshSerialize::serialize(&false, writer)?;
+            }
+            ContractPackageStatus::Locked => {
+                borsh::BorshSerialize::serialize(&true, writer)?;
+            }
+        }
+        Ok(())
+    }
+}
+
 impl ToBytes for ContractPackageStatus {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
@@ -693,7 +709,7 @@ impl FromBytes for ContractPackageStatus {
 }
 
 /// Contract definition, metadata, and security container.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+#[derive(borsh::BorshSerialize, Debug, Clone, PartialEq, Eq, Default, Serialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ContractPackage {
     /// Key used to add or disable versions
@@ -937,7 +953,7 @@ impl FromBytes for ContractPackage {
 pub type EntryPointsMap = BTreeMap<String, EntryPoint>;
 
 /// Collection of named entry points
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(borsh::BorshSerialize, Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct EntryPoints(EntryPointsMap);
 
@@ -1027,7 +1043,7 @@ impl From<Vec<EntryPoint>> for EntryPoints {
 pub type NamedKeys = BTreeMap<String, Key>;
 
 /// Methods and type signatures supported by a contract.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(borsh::BorshSerialize, Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct Contract {
     contract_package_hash: ContractPackageHash,
@@ -1218,7 +1234,7 @@ impl Default for Contract {
 
 /// Context of method execution
 #[repr(u8)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(borsh::BorshSerialize, Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum EntryPointType {
@@ -1268,7 +1284,7 @@ pub type Parameters = Vec<Parameter>;
 
 /// Type signature of a method. Order of arguments matter since can be
 /// referenced by index as well as name.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(borsh::BorshSerialize, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct EntryPoint {
@@ -1432,6 +1448,21 @@ impl EntryPointAccess {
     }
 }
 
+impl borsh::BorshSerialize for EntryPointAccess {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        match self {
+            EntryPointAccess::Public => {
+                writer.write(&[ENTRYPOINTACCESS_PUBLIC_TAG])?;
+            }
+            EntryPointAccess::Groups(groups) => {
+                writer.write(&[ENTRYPOINTACCESS_GROUPS_TAG])?;
+                borsh::BorshSerialize::serialize(&groups, writer)?;
+            }
+        }
+        Ok(())
+    }
+}
+
 impl ToBytes for EntryPointAccess {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
@@ -1486,7 +1517,7 @@ impl FromBytes for EntryPointAccess {
 }
 
 /// Parameter to a method
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(borsh::BorshSerialize, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Parameter {

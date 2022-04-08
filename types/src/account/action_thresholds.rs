@@ -12,7 +12,7 @@ use crate::{
 };
 
 /// Thresholds that have to be met when executing an action of a certain type.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(borsh::BorshSerialize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ActionThresholds {
     /// Threshold for deploy execution.

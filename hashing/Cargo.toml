@@ -21,6 +21,7 @@ once_cell = "1"
 schemars = { version = "=0.8.5", features = ["preserve_order"] }
 serde = "1.0.130"
 thiserror = "1.0.29"
+borsh = { git = "https://github.com/mpapierski/borsh-rs", branch = "fixes" }
 
 [dev-dependencies]
 bincode = "1.3.1"

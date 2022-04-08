@@ -109,6 +109,18 @@ impl ProtocolConfig {
     }
 }
 
+impl borsh::BorshSerialize for ProtocolConfig {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> futures_io::Result<()> {
+        borsh::BorshSerialize::serialize(&self.version.to_string(), writer)?;
+        borsh::BorshSerialize::serialize(&self.hard_reset, writer)?;
+        borsh::BorshSerialize::serialize(&self.activation_point, writer)?;
+        borsh::BorshSerialize::serialize(&self.global_state_update, writer)?;
+        borsh::BorshSerialize::serialize(&self.last_emergency_restart, writer)?;
+        borsh::BorshSerialize::serialize(&self.verifiable_chunked_hash_activation, writer)?;
+        Ok(())
+    }
+}
+
 impl ToBytes for ProtocolConfig {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;

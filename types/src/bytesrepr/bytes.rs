@@ -22,7 +22,7 @@ use super::{Error, FromBytes, ToBytes};
 use crate::{checksummed_hex, CLType, CLTyped};
 
 /// A newtype wrapper for bytes that has efficient serialization routines.
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug, Default, Hash)]
+#[derive(borsh::BorshSerialize, Clone, Ord, PartialOrd, Eq, PartialEq, Debug, Default, Hash)]
 pub struct Bytes(Vec<u8>);
 
 impl Bytes {

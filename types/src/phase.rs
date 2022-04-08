@@ -15,7 +15,7 @@ use crate::{
 pub const PHASE_SERIALIZED_LENGTH: usize = 1;
 
 /// The phase in which a given contract is executing.
-#[derive(Debug, PartialEq, Eq, Clone, Copy, FromPrimitive, ToPrimitive)]
+#[derive(borsh::BorshSerialize, Debug, PartialEq, Eq, Clone, Copy, FromPrimitive, ToPrimitive)]
 #[repr(u8)]
 pub enum Phase {
     /// Set while committing the genesis or upgrade configurations.

@@ -9,6 +9,7 @@ use alloc::{
     vec,
     vec::Vec,
 };
+use borsh::BorshSerialize;
 #[cfg(debug_assertions)]
 use core::any;
 use core::{
@@ -1299,29 +1300,35 @@ pub(crate) fn vec_u8_serialized_length(vec: &Vec<u8>) -> usize {
 /// Returns `true` if a we can serialize and then deserialize a value
 pub fn test_serialization_roundtrip<T>(t: &T)
 where
-    T: alloc::fmt::Debug + ToBytes + FromBytes + PartialEq,
+    T: alloc::fmt::Debug + ToBytes + FromBytes + PartialEq + BorshSerialize,
 {
-    let serialized = ToBytes::to_bytes(t).expect("Unable to serialize data");
+    let borsh_serialized =
+        BorshSerialize::try_to_vec(&t).expect("unable to serialize data with borsh");
+    let bytrespr_serialized = ToBytes::to_bytes(t).expect("Unable to serialize data");
     assert_eq!(
-        serialized.len(),
+        borsh_serialized, bytrespr_serialized,
+        "serialized data are not equivalent"
+    );
+    assert_eq!(
+        bytrespr_serialized.len(),
         t.serialized_length(),
         "\nLength of serialized data: {},\nserialized_length() yielded: {},\nserialized data: {:?}, t is {:?}",
-        serialized.len(),
+        bytrespr_serialized.len(),
         t.serialized_length(),
-        serialized,
+        bytrespr_serialized,
         t
     );
     let mut written_bytes = vec![];
     t.write_bytes(&mut written_bytes)
         .expect("Unable to serialize data via write_bytes");
-    assert_eq!(serialized, written_bytes);
+    assert_eq!(bytrespr_serialized, written_bytes);
 
     let deserialized_from_slice =
-        deserialize_from_slice(&serialized).expect("Unable to deserialize data");
+        deserialize_from_slice(&bytrespr_serialized).expect("Unable to deserialize data");
     // assert!(*t == deserialized);
     assert_eq!(*t, deserialized_from_slice);
 
-    let deserialized = deserialize::<T>(serialized).expect("Unable to deserialize data");
+    let deserialized = deserialize::<T>(bytrespr_serialized).expect("Unable to deserialize data");
     assert_eq!(*t, deserialized);
 }
 #[cfg(test)]
@@ -1521,7 +1528,7 @@ mod proptests {
         }
 
         #[test]
-        fn test_tuple1(t in (any::<u8>(),)) {
+        fn test_tuple1(t in (any::<u8>())) {
             bytesrepr::test_serialization_roundtrip(&t);
         }
 

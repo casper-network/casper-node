@@ -11,7 +11,7 @@ use casper_types::{
 };
 
 /// The system contract registry.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug, DataSize)]
+#[derive(borsh::BorshSerialize, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug, DataSize)]
 pub struct SystemContractRegistry(BTreeMap<String, ContractHash>);
 
 impl SystemContractRegistry {

@@ -113,6 +113,13 @@ impl ToBytes for ChainspecRegistry {
     }
 }
 
+impl borsh::BorshSerialize for ChainspecRegistry {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        borsh::BorshSerialize::serialize(&self.as_map(), writer)?;
+        Ok(())
+    }
+}
+
 impl FromBytes for ChainspecRegistry {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (map, remainder) = BytesreprChainspecRegistry::from_bytes(bytes)?;

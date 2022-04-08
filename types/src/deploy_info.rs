@@ -16,7 +16,9 @@ use crate::{
 };
 
 /// Information relating to the given Deploy.
-#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(
+    borsh::BorshSerialize, Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize,
+)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]

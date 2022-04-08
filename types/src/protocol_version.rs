@@ -13,7 +13,9 @@ use crate::{
 };
 
 /// A newtype wrapping a [`SemVer`] which represents a Casper Platform protocol version.
-#[derive(Copy, Clone, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    borsh::BorshSerialize, Copy, Clone, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord,
+)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ProtocolVersion(SemVer);
 

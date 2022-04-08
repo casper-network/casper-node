@@ -160,3 +160,5 @@ notes
 
 # sw* files in vim
 .*.sw*
+
+.lh

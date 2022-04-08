@@ -19,7 +19,7 @@ use casper_types::{
 use crate::testing::TestRng;
 use crate::types::TimeDiff;
 
-#[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(borsh::BorshSerialize, Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct DeployConfig {

@@ -23,6 +23,7 @@ bitflags! {
     /// [`URef`](crate::URef).
     #[allow(clippy::derive_hash_xor_eq)]
     #[cfg_attr(feature = "datasize", derive(DataSize))]
+    #[derive(borsh::BorshSerialize)]
     pub struct AccessRights: u8 {
         /// No permissions
         const NONE = 0;

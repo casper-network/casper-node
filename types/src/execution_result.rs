@@ -150,7 +150,7 @@ static EXECUTION_RESULT: Lazy<ExecutionResult> = Lazy::new(|| {
 });
 
 /// The result of executing a single deploy.
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
+#[derive(borsh::BorshSerialize, Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
@@ -340,7 +340,7 @@ impl FromBytes for ExecutionResult {
 }
 
 /// The journal of execution transforms from a single deploy.
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Default, Debug)]
+#[derive(borsh::BorshSerialize, Clone, Eq, PartialEq, Serialize, Deserialize, Default, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
@@ -387,7 +387,7 @@ impl FromBytes for ExecutionEffect {
 }
 
 /// An operation performed while executing a deploy.
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
+#[derive(borsh::BorshSerialize, Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
@@ -421,7 +421,7 @@ impl FromBytes for Operation {
 }
 
 /// The type of operation performed while executing a deploy.
-#[derive(Clone, Copy, Eq, PartialEq, Serialize, Deserialize, Debug)]
+#[derive(borsh::BorshSerialize, Clone, Copy, Eq, PartialEq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
@@ -471,7 +471,7 @@ impl FromBytes for OpKind {
 }
 
 /// A transformation performed while executing a deploy.
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
+#[derive(borsh::BorshSerialize, Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
@@ -505,7 +505,7 @@ impl FromBytes for TransformEntry {
 }
 
 /// The actual transformation performed while executing a deploy.
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
+#[derive(borsh::BorshSerialize, Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]

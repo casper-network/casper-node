@@ -104,7 +104,17 @@ impl ContractPackageIdentifier {
 
 /// Represents possible variants of an executable deploy.
 #[derive(
-    Clone, DataSize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+    borsh::BorshSerialize,
+    Clone,
+    DataSize,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    JsonSchema,
 )]
 #[serde(deny_unknown_fields)]
 pub enum ExecutableDeployItem {

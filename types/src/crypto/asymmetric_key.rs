@@ -383,6 +383,25 @@ impl ToBytes for PublicKey {
     }
 }
 
+impl borsh::BorshSerialize for PublicKey {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        match self {
+            PublicKey::System => {
+                writer.write(&[SYSTEM_TAG])?;
+            }
+            PublicKey::Ed25519(public_key) => {
+                writer.write(&[ED25519_TAG])?;
+                writer.write(public_key.as_bytes())?;
+            }
+            PublicKey::Secp256k1(public_key) => {
+                writer.write(&[SECP256K1_TAG])?;
+                writer.write(&public_key.to_bytes())?;
+            }
+        }
+        Ok(())
+    }
+}
+
 impl FromBytes for PublicKey {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
@@ -586,6 +605,25 @@ impl Tagged<u8> for Signature {
             Signature::Ed25519(_) => ED25519_TAG,
             Signature::Secp256k1(_) => SECP256K1_TAG,
         }
+    }
+}
+
+impl borsh::BorshSerialize for Signature {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        match self {
+            Signature::System => {
+                writer.write(&[SYSTEM_TAG])?;
+            }
+            Signature::Ed25519(signature) => {
+                writer.write(&[ED25519_TAG])?;
+                writer.write(&signature.to_bytes())?;
+            }
+            Signature::Secp256k1(signature) => {
+                writer.write(&[SECP256K1_TAG])?;
+                writer.write(signature.as_ref())?;
+            }
+        }
+        Ok(())
     }
 }
 

@@ -33,7 +33,7 @@ where
     Ok(vec)
 }
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, DataSize, Debug, Clone)]
+#[derive(borsh::BorshSerialize, PartialEq, Eq, Serialize, Deserialize, DataSize, Debug, Clone)]
 pub struct AccountsConfig {
     #[serde(deserialize_with = "sorted_vec_deserializer")]
     accounts: Vec<AccountConfig>,

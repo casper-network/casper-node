@@ -48,7 +48,7 @@ impl GlobalStateUpdateConfig {
 
 /// Type storing the information about modifications to be applied to the global state.
 /// It stores the serialized `StoredValue`s corresponding to keys to be modified.
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, DataSize, Debug)]
+#[derive(borsh::BorshSerialize, Clone, PartialEq, Eq, Serialize, Deserialize, DataSize, Debug)]
 pub struct GlobalStateUpdate(pub(crate) BTreeMap<Key, Bytes>);
 
 impl ToBytes for GlobalStateUpdate {

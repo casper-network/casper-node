@@ -65,7 +65,7 @@ make_array_newtype_arb!(Similar, u8, SIMILAR_LENGTH, similar_arb);
 make_array_newtype_arb!(Fancy, u8, FANCY_LENGTH, fancy_arb);
 make_array_newtype_arb!(Long, u8, LONG_LENGTH, long_arb);
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(borsh::BorshSerialize, Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PublicKey {
     Basic(Basic),
     Similar(Similar),
@@ -142,7 +142,7 @@ fn public_key_arb() -> impl Strategy<Value = PublicKey> {
     ]
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(borsh::BorshSerialize, Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum TestKey {
     Account(PublicKey),
     Hash([u8; KEY_HASH_LENGTH]),

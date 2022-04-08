@@ -110,6 +110,13 @@ macro_rules! make_array_newtype {
             }
         }
 
+        impl borsh::BorshSerialize for $name {
+            fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+                writer.write(&self.0)?;
+                Ok(())
+            }
+        }
+
         #[allow(unused_qualifications)]
         impl bytesrepr::FromBytes for $name {
             fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {

@@ -34,7 +34,7 @@ use crate::{
 };
 
 /// Represents an Account in the global state.
-#[derive(PartialEq, Eq, Clone, Debug, Serialize)]
+#[derive(borsh::BorshSerialize, PartialEq, Eq, Clone, Debug, Serialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct Account {
     account_hash: AccountHash,

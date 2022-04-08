@@ -22,7 +22,18 @@ const ERA_ID_TAG: u8 = 0;
 const GENESIS_TAG: u8 = 1;
 
 /// The first era to which the associated protocol version applies.
-#[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
+#[derive(
+    borsh::BorshSerialize,
+    Copy,
+    Clone,
+    DataSize,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    Debug,
+    JsonSchema,
+)]
 #[serde(untagged)]
 pub enum ActivationPoint {
     EraId(EraId),

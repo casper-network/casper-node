@@ -20,7 +20,7 @@ use crate::{
 pub use vesting::{VestingSchedule, VESTING_SCHEDULE_LENGTH_MILLIS};
 
 /// An entry in the validator map.
-#[derive(PartialEq, Eq, Debug, Serialize, Deserialize, Clone)]
+#[derive(borsh::BorshSerialize, PartialEq, Eq, Debug, Serialize, Deserialize, Clone)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]

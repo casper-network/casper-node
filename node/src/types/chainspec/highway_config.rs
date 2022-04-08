@@ -82,6 +82,29 @@ impl HighwayConfig {
     }
 }
 
+// Implemented manually b/c there's no BorshSerialize for Ratio
+impl borsh::BorshSerialize for HighwayConfig {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> futures_io::Result<()> {
+        borsh::BorshSerialize::serialize(
+            &(
+                self.finality_threshold_fraction.numer(),
+                self.finality_threshold_fraction.denom(),
+            ),
+            writer,
+        )?;
+        borsh::BorshSerialize::serialize(&self.minimum_round_exponent, writer)?;
+        borsh::BorshSerialize::serialize(&self.maximum_round_exponent, writer)?;
+        borsh::BorshSerialize::serialize(
+            &(
+                self.reduced_reward_multiplier.numer(),
+                self.reduced_reward_multiplier.denom(),
+            ),
+            writer,
+        )?;
+        Ok(())
+    }
+}
+
 impl ToBytes for HighwayConfig {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;

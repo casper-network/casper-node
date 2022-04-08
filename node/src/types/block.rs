@@ -394,6 +394,15 @@ impl ToBytes for EraReport {
     }
 }
 
+impl borsh::BorshSerialize for EraReport {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> futures_io::Result<()> {
+        borsh::BorshSerialize::serialize(&self.equivocators, writer)?;
+        borsh::BorshSerialize::serialize(&self.rewards, writer)?;
+        borsh::BorshSerialize::serialize(&self.inactive_validators, writer)?;
+        Ok(())
+    }
+}
+
 impl FromBytes for EraReport {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (equivocators, remainder) = Vec::<PublicKey>::from_bytes(bytes)?;
@@ -604,6 +613,7 @@ impl Display for FinalizedBlock {
 
 /// A cryptographic hash identifying a [`Block`](struct.Block.html).
 #[derive(
+    borsh::BorshSerialize,
     Copy,
     Clone,
     DataSize,
@@ -677,7 +687,19 @@ impl FromBytes for BlockHash {
     }
 }
 
-#[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+#[derive(
+    borsh::BorshSerialize,
+    Clone,
+    DataSize,
+    Ord,
+    PartialOrd,
+    Eq,
+    PartialEq,
+    Hash,
+    Serialize,
+    Deserialize,
+    Debug,
+)]
 /// A struct to contain information related to the end of an era and validator weights for the
 /// following era.
 pub struct EraEnd {
@@ -768,7 +790,19 @@ impl DocExample for EraEnd {
 }
 
 /// The header portion of a [`Block`](struct.Block.html).
-#[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+#[derive(
+    borsh::BorshSerialize,
+    Clone,
+    DataSize,
+    Ord,
+    PartialOrd,
+    Eq,
+    PartialEq,
+    Hash,
+    Serialize,
+    Deserialize,
+    Debug,
+)]
 pub struct BlockHeader {
     parent_hash: BlockHash,
     state_root_hash: Digest,
@@ -1203,7 +1237,19 @@ impl<'a> MerkleBlockBody<'a> {
 }
 
 /// The body portion of a block.
-#[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+#[derive(
+    borsh::BorshSerialize,
+    Clone,
+    DataSize,
+    Ord,
+    PartialOrd,
+    Eq,
+    PartialEq,
+    Hash,
+    Serialize,
+    Deserialize,
+    Debug,
+)]
 pub struct BlockBody {
     proposer: PublicKey,
     deploy_hashes: Vec<DeployHash>,
@@ -1396,7 +1442,19 @@ impl Display for BlockSignatures {
 
 /// A proto-block after execution, with the resulting post-state-hash.  This is the core component
 /// of the Casper linear blockchain.
-#[derive(DataSize, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+    borsh::BorshSerialize,
+    DataSize,
+    Clone,
+    Debug,
+    PartialOrd,
+    Ord,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    Deserialize,
+)]
 pub struct Block {
     hash: BlockHash,
     header: BlockHeader,

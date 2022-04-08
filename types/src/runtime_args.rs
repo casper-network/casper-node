@@ -16,7 +16,18 @@ use crate::{
     CLType, CLTyped, CLValue, CLValueError, U512,
 };
 /// Named arguments to a contract.
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Serialize, Deserialize, Debug)]
+#[derive(
+    borsh::BorshSerialize,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Clone,
+    Serialize,
+    Deserialize,
+    Debug,
+)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct NamedArg(String, CLValue);
@@ -71,7 +82,19 @@ impl FromBytes for NamedArg {
 }
 
 /// Represents a collection of arguments passed to a smart contract.
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Serialize, Deserialize, Debug, Default)]
+#[derive(
+    borsh::BorshSerialize,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Clone,
+    Serialize,
+    Deserialize,
+    Debug,
+    Default,
+)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct RuntimeArgs(Vec<NamedArg>);

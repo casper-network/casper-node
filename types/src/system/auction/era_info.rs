@@ -18,7 +18,9 @@ const SEIGNIORAGE_ALLOCATION_VALIDATOR_TAG: u8 = 0;
 const SEIGNIORAGE_ALLOCATION_DELEGATOR_TAG: u8 = 1;
 
 /// Information about a seigniorage allocation
-#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(
+    borsh::BorshSerialize, Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize,
+)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
@@ -166,7 +168,18 @@ impl CLTyped for SeigniorageAllocation {
 }
 
 /// Auction metadata.  Intended to be recorded at each era.
-#[derive(Debug, Default, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(
+    borsh::BorshSerialize,
+    Debug,
+    Default,
+    Clone,
+    Ord,
+    PartialOrd,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]

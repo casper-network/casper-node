@@ -68,6 +68,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f26201604c87b1e01bd3d98f8d5d9a8fcbb815e8cedb41ffccbeb4bf593a35fe"
 
 [[package]]
+name = "ahash"
+version = "0.7.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fcb51a0695d8f838b1ee009b3fbf66bda078cd64590202a864a8f3e8c4315c47"
+dependencies = [
+ "getrandom",
+ "once_cell",
+ "version_check",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "0.7.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -286,6 +297,47 @@ dependencies = [
 ]
 
 [[package]]
+name = "borsh"
+version = "0.0.0"
+source = "git+https://github.com/mpapierski/borsh-rs?branch=fixes#91b52f893ba6fe90e8352df372fd82431db8fb40"
+dependencies = [
+ "borsh-derive",
+ "hashbrown",
+]
+
+[[package]]
+name = "borsh-derive"
+version = "0.0.0"
+source = "git+https://github.com/mpapierski/borsh-rs?branch=fixes#91b52f893ba6fe90e8352df372fd82431db8fb40"
+dependencies = [
+ "borsh-derive-internal",
+ "borsh-schema-derive-internal",
+ "proc-macro-crate",
+ "proc-macro2",
+ "syn",
+]
+
+[[package]]
+name = "borsh-derive-internal"
+version = "0.0.0"
+source = "git+https://github.com/mpapierski/borsh-rs?branch=fixes#91b52f893ba6fe90e8352df372fd82431db8fb40"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "borsh-schema-derive-internal"
+version = "0.0.0"
+source = "git+https://github.com/mpapierski/borsh-rs?branch=fixes#91b52f893ba6fe90e8352df372fd82431db8fb40"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "brotli"
 version = "3.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -415,6 +467,7 @@ dependencies = [
  "assert_matches",
  "base16",
  "bincode",
+ "borsh",
  "casper-hashing",
  "casper-types",
  "chrono",
@@ -458,6 +511,7 @@ dependencies = [
  "base16",
  "bincode",
  "blake2",
+ "borsh",
  "casper-types",
  "criterion",
  "datasize",
@@ -487,6 +541,7 @@ dependencies = [
  "base16",
  "base64",
  "bincode",
+ "borsh",
  "bytes",
  "casper-execution-engine",
  "casper-hashing",
@@ -593,6 +648,7 @@ dependencies = [
  "bincode",
  "bitflags",
  "blake2",
+ "borsh",
  "criterion",
  "datasize",
  "ed25519-dalek",
@@ -2046,6 +2102,9 @@ name = "hashbrown"
 version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab5ef0d4909ef3724cc8cce6ccc8572c5c817592e9285f5464f8e86f8bd3726e"
+dependencies = [
+ "ahash",
+]
 
 [[package]]
 name = "headers"
@@ -3161,6 +3220,15 @@ dependencies = [
  "ctor",
  "diff",
  "output_vt100",
+]
+
+[[package]]
+name = "proc-macro-crate"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d6ea3c4595b96363c13943497db34af4460fb474a95c43f4446ad341b8c9785"
+dependencies = [
+ "toml",
 ]
 
 [[package]]

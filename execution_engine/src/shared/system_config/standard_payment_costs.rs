@@ -8,7 +8,9 @@ use serde::{Deserialize, Serialize};
 const DEFAULT_PAY_COST: u32 = 10_000;
 
 /// Description of the costs of calling standard payment entry points.
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
+#[derive(
+    borsh::BorshSerialize, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize,
+)]
 pub struct StandardPaymentCosts {
     /// Cost of calling the `pay` entry point.
     pub pay: u32,

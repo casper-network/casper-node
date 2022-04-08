@@ -73,6 +73,29 @@ impl CoreConfig {
     }
 }
 
+impl borsh::BorshSerialize for CoreConfig {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> futures_io::Result<()> {
+        borsh::BorshSerialize::serialize(&self.era_duration, writer)?;
+        borsh::BorshSerialize::serialize(&self.minimum_era_height, writer)?;
+        borsh::BorshSerialize::serialize(&self.validator_slots, writer)?;
+        borsh::BorshSerialize::serialize(&self.auction_delay, writer)?;
+        borsh::BorshSerialize::serialize(&self.locked_funds_period, writer)?;
+        borsh::BorshSerialize::serialize(&self.unbonding_delay, writer)?;
+        borsh::BorshSerialize::serialize(
+            &(
+                self.round_seigniorage_rate.numer(),
+                self.round_seigniorage_rate.denom(),
+            ),
+            writer,
+        )?;
+        borsh::BorshSerialize::serialize(&self.max_associated_keys, writer)?;
+        borsh::BorshSerialize::serialize(&self.max_runtime_call_stack_height, writer)?;
+        borsh::BorshSerialize::serialize(&self.minimum_delegation_amount, writer)?;
+        borsh::BorshSerialize::serialize(&self.strict_argument_checking, writer)?;
+        Ok(())
+    }
+}
+
 impl ToBytes for CoreConfig {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;

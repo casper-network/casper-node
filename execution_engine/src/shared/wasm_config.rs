@@ -18,7 +18,7 @@ pub const DEFAULT_MAX_STACK_HEIGHT: u32 = 188;
 ///
 /// This structure contains various Wasm execution configuration options, such as memory limits,
 /// stack limits and costs.
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
+#[derive(borsh::BorshSerialize, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct WasmConfig {
     /// Maximum amount of heap memory (represented in 64kB pages) each contract can use.
     pub max_memory: u32,

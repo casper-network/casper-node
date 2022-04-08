@@ -83,7 +83,7 @@ impl Display for FromStrError {
 
 /// A newtype wrapping a `HashAddr` which is the raw bytes of
 /// the ContractWasmHash
-#[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(borsh::BorshSerialize, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ContractWasmHash(HashAddr);
 
@@ -232,7 +232,7 @@ impl JsonSchema for ContractWasmHash {
 }
 
 /// A container for contract's WASM bytes.
-#[derive(PartialEq, Eq, Clone, Serialize)]
+#[derive(borsh::BorshSerialize, PartialEq, Eq, Clone, Serialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ContractWasm {
     bytes: Bytes,

@@ -178,6 +178,19 @@ where
     }
 }
 
+impl<T> borsh::BorshSerialize for HostFunction<T>
+where
+    T: AsRef<[Cost]>,
+{
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        borsh::BorshSerialize::serialize(&self.cost, writer)?;
+        for value in self.arguments.as_ref().iter() {
+            borsh::BorshSerialize::serialize(value, writer)?;
+        }
+        Ok(())
+    }
+}
+
 impl<T> FromBytes for HostFunction<T>
 where
     T: Default + AsMut<[Cost]>,
@@ -196,7 +209,9 @@ where
 }
 
 /// Definition of a host function cost table.
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
+#[derive(
+    borsh::BorshSerialize, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize,
+)]
 pub struct HostFunctionCosts {
     /// Cost of calling the `read_value` host function.
     pub read_value: HostFunction<[Cost; 3]>,

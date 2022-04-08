@@ -92,7 +92,7 @@ impl Display for FromStrError {
 /// the [`AccessRights`] of the reference.
 ///
 /// A `URef` can be used to index entities such as [`CLValue`](crate::CLValue)s, or smart contracts.
-#[derive(Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[derive(borsh::BorshSerialize, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Default)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct URef(URefAddr, AccessRights);
 

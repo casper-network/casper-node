@@ -162,6 +162,13 @@ impl ToBytes for CLValue {
     }
 }
 
+impl borsh::BorshSerialize for CLValue {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        borsh::BorshSerialize::serialize(&self.bytes, writer)?;
+        borsh::BorshSerialize::serialize(&self.cl_type, writer)
+    }
+}
+
 impl FromBytes for CLValue {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (bytes, remainder) = FromBytes::from_bytes(bytes)?;
