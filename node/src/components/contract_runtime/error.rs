@@ -5,7 +5,7 @@ use thiserror::Error;
 
 use casper_execution_engine::{
     core::engine_state::{Error as EngineStateError, StepError},
-    storage::error::lmdb::Error as StorageLmdbError,
+    storage::error::db::Error as StorageError,
 };
 
 use crate::{
@@ -17,9 +17,9 @@ use casper_execution_engine::core::engine_state::GetEraValidatorsError;
 /// An error returned from mis-configuring the contract runtime component.
 #[derive(Debug, Error)]
 pub(crate) enum ConfigError {
-    /// Error initializing the LMDB environment.
-    #[error("failed to initialize LMDB environment for contract runtime: {0}")]
-    Lmdb(#[from] StorageLmdbError),
+    /// Error initializing the storage environment.
+    #[error("failed to initialize storage environment for contract runtime: {0}")]
+    Lmdb(#[from] StorageError),
     /// Error initializing metrics.
     #[error("failed to initialize metrics for contract runtime: {0}")]
     Prometheus(#[from] prometheus::Error),
@@ -67,10 +67,10 @@ pub enum BlockExecutionError {
     BlockCreation(#[from] BlockCreationError),
     /// An error that occurred while interacting with lmdb.
     #[error(transparent)]
-    Lmdb(
+    Storage(
         #[from]
         #[serde(skip_serializing)]
-        lmdb::Error,
+        StorageError,
     ),
     /// An error that occurred while getting era validators.
     #[error(transparent)]

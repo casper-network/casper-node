@@ -20,14 +20,14 @@ use crate::{
     storage::{
         error::{self, in_memory},
         transaction_source::{
-            in_memory::InMemoryEnvironment, lmdb::LmdbEnvironment, Readable, Transaction,
+            db::LmdbEnvironment, in_memory::InMemoryEnvironment, Readable, Transaction,
             TransactionSource,
         },
         trie::{merkle_proof::TrieMerkleProof, Pointer, Trie},
         trie_store::{
             self,
+            db::LmdbTrieStore,
             in_memory::InMemoryTrieStore,
-            lmdb::LmdbTrieStore,
             operations::{self, read, read_with_proof, write, ReadResult, WriteResult},
             TrieStore,
         },
@@ -523,7 +523,7 @@ impl LmdbTestContext {
     {
         let _temp_dir = tempdir()?;
         let environment = LmdbEnvironment::new(
-            &_temp_dir.path(),
+            _temp_dir.path(),
             DEFAULT_TEST_MAX_DB_SIZE,
             DEFAULT_TEST_MAX_READERS,
             true,

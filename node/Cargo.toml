@@ -62,8 +62,9 @@ proptest = { version = "1.0.0", optional = true }
 quanta = "0.7.2"
 rand = "0.8.3"
 rand_chacha = "0.3.0"
-regex = "1"
+regex = "1.5.5"
 rmp-serde = "0.14.4"
+rocksdb = { version = "0.18", default-features = false, features = ["zstd"]}
 schemars = { version = "=0.8.5", features = ["preserve_order", "impl_json_schema"] }
 serde = { version = "1", features = ["derive", "rc"] }
 serde-big-array = "0.3.0"

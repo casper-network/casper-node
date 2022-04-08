@@ -44,7 +44,7 @@ use casper_types::{
     EraId, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U256, U512,
 };
 
-use crate::lmdb_fixture;
+use crate::db_fixture;
 
 const ARG_TARGET: &str = "target";
 
@@ -3294,12 +3294,12 @@ fn should_delegate_and_redelegate() {
 #[ignore]
 #[test]
 fn should_upgrade_unbonding_purses_from_rel_1_4_2() {
-    // The `lmdb_fixture::RELEASE_1_4_2` has a single withdraw key
+    // The `db_fixture::RELEASE_1_4_2` has a single withdraw key
     // present in the unbonding queue at the upgrade point
-    let (mut builder, lmdb_fixture_state, _temp_dir) =
-        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_4_2);
+    let (mut builder, db_fixture_state, _temp_dir) =
+        db_fixture::builder_from_global_state_fixture(db_fixture::RELEASE_1_4_2);
 
-    let previous_protocol_version = lmdb_fixture_state.genesis_protocol_version();
+    let previous_protocol_version = db_fixture_state.genesis_protocol_version();
 
     let new_protocol_version = ProtocolVersion::from_parts(
         previous_protocol_version.value().major,
@@ -3547,17 +3547,17 @@ fn should_handle_redelegation_to_inactive_validator() {
 #[ignore]
 #[test]
 fn should_continue_auction_state_from_release_1_4_x() {
-    // The `lmdb_fixture::RELEASE_1_4_3` has three withdraw keys
+    // The `db_fixture::RELEASE_1_4_3` has three withdraw keys
     // in the unbonding queue which will each be processed
     // in the three eras after the upgrade.
-    let (mut builder, lmdb_fixture_state, _temp_dir) =
-        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_4_3);
+    let (mut builder, db_fixture_state, _temp_dir) =
+        db_fixture::builder_from_global_state_fixture(db_fixture::RELEASE_1_4_3);
 
     let withdraw_purses: WithdrawPurses = builder.get_withdraws();
 
     assert_eq!(withdraw_purses.len(), 1);
 
-    let previous_protocol_version = lmdb_fixture_state.genesis_protocol_version();
+    let previous_protocol_version = db_fixture_state.genesis_protocol_version();
 
     let new_protocol_version = ProtocolVersion::from_parts(
         previous_protocol_version.value().major,
@@ -3811,14 +3811,14 @@ fn should_continue_auction_state_from_release_1_4_x() {
 #[ignore]
 #[test]
 fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
-    let (mut builder, lmdb_fixture_state, _temp_dir) =
-        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_4_3);
+    let (mut builder, db_fixture_state, _temp_dir) =
+        db_fixture::builder_from_global_state_fixture(db_fixture::RELEASE_1_4_3);
 
     let withdraw_purses: WithdrawPurses = builder.get_withdraws();
 
     assert_eq!(withdraw_purses.len(), 1);
 
-    let previous_protocol_version = lmdb_fixture_state.genesis_protocol_version();
+    let previous_protocol_version = db_fixture_state.genesis_protocol_version();
 
     let new_protocol_version = ProtocolVersion::from_parts(
         previous_protocol_version.value().major,

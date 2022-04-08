@@ -3,7 +3,7 @@ use rand::Rng;
 use tempfile::TempDir;
 
 use casper_engine_test_support::{
-    InMemoryWasmTestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_EXEC_CONFIG,
+    DbWasmTestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_EXEC_CONFIG,
     DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::engine_state::{
@@ -12,7 +12,7 @@ use casper_execution_engine::core::engine_state::{
 use casper_hashing::Digest;
 use casper_types::{EraId, Key, ProtocolVersion};
 
-use crate::lmdb_fixture;
+use crate::db_fixture;
 
 const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 
@@ -98,10 +98,10 @@ fn should_upgrade_chainspec_registry(cfg: TestConfig) {
 
     let mut builder = if cfg.from_v1_4_4 {
         let (builder, _lmdb_fixture_state, _temp_dir) =
-            lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_4_4);
+            db_fixture::builder_from_global_state_fixture(db_fixture::RELEASE_1_4_4);
         builder
     } else {
-        let mut builder = LmdbWasmTestBuilder::new(data_dir.path());
+        let mut builder = DbWasmTestBuilder::new(data_dir.path());
         builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
         builder
     };

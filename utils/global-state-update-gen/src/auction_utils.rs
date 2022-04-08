@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use casper_engine_test_support::LmdbWasmTestBuilder;
+use casper_engine_test_support::DbWasmTestBuilder;
 use casper_types::{
     system::auction::{
         Bid, SeigniorageRecipient, SeigniorageRecipientsSnapshot,
@@ -12,7 +12,7 @@ use casper_types::{
 use crate::utils::ValidatorsDiff;
 
 /// Reads the `SeigniorageRecipientsSnapshot` stored in the global state.
-pub fn read_snapshot(builder: &LmdbWasmTestBuilder) -> (Key, SeigniorageRecipientsSnapshot) {
+pub fn read_snapshot(builder: &DbWasmTestBuilder) -> (Key, SeigniorageRecipientsSnapshot) {
     // Find the hash of the auction contract.
     let auction_contract_hash = builder.get_system_auction_hash();
 
@@ -61,7 +61,7 @@ pub fn gen_snapshot(
 /// Returns the set of public keys that have bids larger than the smallest bid among the new
 /// validators.
 pub fn find_large_bids(
-    builder: &mut LmdbWasmTestBuilder,
+    builder: &mut DbWasmTestBuilder,
     new_snapshot: &SeigniorageRecipientsSnapshot,
 ) -> BTreeSet<PublicKey> {
     let seigniorage_recipients = new_snapshot.values().next().unwrap();
@@ -86,7 +86,7 @@ pub fn find_large_bids(
 /// - remove all the bids that are larger than the smallest bid among the new validators
 /// (necessary, because such bidders would outbid the validators decided by the social consensus).
 pub fn generate_entries_removing_bids(
-    builder: &mut LmdbWasmTestBuilder,
+    builder: &mut DbWasmTestBuilder,
     validators_diff: &ValidatorsDiff,
     new_snapshot: &SeigniorageRecipientsSnapshot,
 ) -> BTreeMap<Key, StoredValue> {
@@ -131,7 +131,7 @@ pub fn generate_entries_removing_bids(
 /// Generates the writes to the global state that will remove the pending withdraws of all the old
 /// validators that will cease to be validators.
 pub fn generate_entries_removing_withdraws(
-    builder: &mut LmdbWasmTestBuilder,
+    builder: &mut DbWasmTestBuilder,
     validators_diff: &ValidatorsDiff,
 ) -> BTreeMap<Key, StoredValue> {
     let withdraws = builder.get_unbonds();

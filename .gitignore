@@ -151,6 +151,7 @@ cmake-build-debug/
 # utils data dirs
 /utils/**/chain-download
 /utils/**/lmdb-data
+/utils/**/rocksdb-data
 
 # OS X
 .DS_Store

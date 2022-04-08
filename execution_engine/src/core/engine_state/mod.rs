@@ -23,6 +23,7 @@ use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet},
     convert::TryFrom,
+    path::PathBuf,
     rc::Rc,
 };
 
@@ -85,8 +86,9 @@ use crate::{
     },
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
     storage::{
+        self,
         global_state::{
-            lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
+            db::DbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
         },
         trie::{TrieOrChunk, TrieOrChunkId},
     },
@@ -124,13 +126,44 @@ impl EngineState<ScratchGlobalState> {
     }
 }
 
-impl EngineState<LmdbGlobalState> {
+impl EngineState<DbGlobalState> {
+    /// Migrate the given state roots from lmdb to rocksdb data store.
+    /// Returns Ok(true) if the migration was needed.
+    pub fn migrate_state_root_to_rocksdb_if_needed(
+        &self,
+        state_root: Digest,
+        limit_rate: bool,
+    ) -> Result<bool, storage::error::db::Error> {
+        let state_root_bytes = &state_root.value();
+        if !self
+            .state
+            .rocksdb_store
+            .rocksdb
+            .is_state_root_migrated(state_root_bytes)?
+        {
+            self.state
+                .migrate_state_root_to_rocksdb(state_root, limit_rate)?;
+            self.state
+                .rocksdb_store
+                .rocksdb
+                .mark_state_root_migrated(state_root_bytes)?;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
     /// Flushes the LMDB environment to disk when manual sync is enabled in the config.toml.
-    pub fn flush_environment(&self) -> Result<(), lmdb::Error> {
-        if self.state.environment.is_manual_sync_enabled() {
-            self.state.environment.sync()?
+    pub fn flush_environment(&self) -> Result<(), storage::error::Error> {
+        if self.state.lmdb_environment.is_manual_sync_enabled() {
+            self.state.lmdb_environment.sync()?;
         }
         Ok(())
+    }
+
+    /// Gets path to rocksdb data files.
+    pub fn data_path(&self) -> PathBuf {
+        self.state.rocksdb_store.path()
     }
 
     /// Provide a local cached-only version of engine-state.
@@ -141,8 +174,8 @@ impl EngineState<LmdbGlobalState> {
         }
     }
 
-    /// Writes state cached in an EngineState<ScratchEngineState> to LMDB.
-    pub fn write_scratch_to_lmdb(
+    /// Writes state cached in an EngineState<ScratchEngineState> to backing DB.
+    pub fn write_scratch_to_db(
         &self,
         state_root_hash: Digest,
         scratch_global_state: ScratchGlobalState,
@@ -1707,7 +1740,9 @@ where
     where
         Error: From<S::Error>,
     {
-        Ok(self.state.get_trie(correlation_id, trie_or_chunk_id)?)
+        Ok(self
+            .state
+            .get_trie_or_chunk(correlation_id, trie_or_chunk_id)?)
     }
 
     /// Gets a trie object for given state root hash.

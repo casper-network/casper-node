@@ -1,2 +1,3 @@
 **/block-*.json
 **/data.lmdb*
+**/rocksdb-data*

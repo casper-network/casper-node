@@ -31,10 +31,11 @@ use casper_execution_engine::{
     },
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::{
-        global_state::lmdb::LmdbGlobalState,
-        transaction_source::lmdb::LmdbEnvironment,
+        global_state::db::DbGlobalState,
+        transaction_source::db::LmdbEnvironment,
         trie::{TrieOrChunk, TrieOrChunkId},
-        trie_store::lmdb::LmdbTrieStore,
+        trie_store::db::LmdbTrieStore,
+        ROCKS_DB_DATA_DIR,
     },
 };
 use casper_hashing::Digest;
@@ -176,7 +177,7 @@ impl Display for Event {
 #[derive(DataSize)]
 pub(crate) struct ContractRuntime {
     execution_pre_state: Arc<Mutex<ExecutionPreState>>,
-    engine_state: Arc<EngineState<LmdbGlobalState>>,
+    engine_state: Arc<EngineState<DbGlobalState>>,
     metrics: Arc<Metrics>,
     protocol_version: ProtocolVersion,
     verifiable_chunked_hash_activation: EraId,
@@ -582,7 +583,8 @@ impl ContractRuntime {
             DatabaseFlags::empty(),
         )?);
 
-        let global_state = LmdbGlobalState::empty(environment, trie_store)?;
+        let global_state =
+            DbGlobalState::empty(environment, trie_store, storage_dir.join(ROCKS_DB_DATA_DIR))?;
         let engine_config = EngineConfig::new(
             contract_runtime_config.max_query_depth(),
             max_associated_keys,
@@ -612,7 +614,6 @@ impl ContractRuntime {
         self.verifiable_chunked_hash_activation
     }
 
-    /// Commits a genesis request.
     fn commit_genesis(
         &self,
         chainspec: &Chainspec,
@@ -713,7 +714,7 @@ impl ContractRuntime {
 
     #[allow(clippy::too_many_arguments)]
     async fn execute_finalized_block_or_requeue<REv>(
-        engine_state: Arc<EngineState<LmdbGlobalState>>,
+        engine_state: Arc<EngineState<DbGlobalState>>,
         metrics: Arc<Metrics>,
         exec_queue: ExecQueue,
         execution_pre_state: Arc<Mutex<ExecutionPreState>>,
@@ -804,7 +805,7 @@ impl ContractRuntime {
     }
 
     fn do_get_trie(
-        engine_state: &EngineState<LmdbGlobalState>,
+        engine_state: &EngineState<DbGlobalState>,
         metrics: &Metrics,
         trie_or_chunk_id: TrieOrChunkId,
     ) -> Result<Option<TrieOrChunk>, engine_state::Error> {
@@ -816,7 +817,7 @@ impl ContractRuntime {
     }
 
     fn get_trie_full(
-        engine_state: &EngineState<LmdbGlobalState>,
+        engine_state: &EngineState<DbGlobalState>,
         metrics: &Metrics,
         trie_key: Digest,
     ) -> Result<Option<Bytes>, engine_state::Error> {
@@ -827,9 +828,8 @@ impl ContractRuntime {
         result
     }
 
-    /// Returns the engine state, for testing only.
-    #[cfg(test)]
-    pub(crate) fn engine_state(&self) -> &Arc<EngineState<LmdbGlobalState>> {
+    /// Returns the engine state.
+    pub(crate) fn engine_state(&self) -> &Arc<EngineState<DbGlobalState>> {
         &self.engine_state
     }
 }

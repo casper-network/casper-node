@@ -16,14 +16,12 @@ use casper_node::{
 };
 
 use retrieve_state::{address_to_url, storage::create_storage};
-use tracing::info;
+use tracing::{error, info};
 
 use casper_types::EraId;
 
 const DOWNLOAD_TRIES: &str = "download-tries";
 const DOWNLOAD_BLOCKS: &str = "download-blocks";
-const CONVERT_BLOCK_FILES: &str = "convert-block-files";
-const DEFAULT_PEER_MAILBOX_SIZE: usize = 1;
 
 #[derive(Debug, StructOpt)]
 struct Opts {
@@ -55,7 +53,7 @@ struct Opts {
         short = "a",
         long,
         default_value,
-        possible_values = &[DOWNLOAD_TRIES, DOWNLOAD_BLOCKS, CONVERT_BLOCK_FILES],
+        possible_values = &[DOWNLOAD_TRIES, DOWNLOAD_BLOCKS],
         about = "Specify the mode of operation for this tool."
     )]
     action: Action,
@@ -74,6 +72,13 @@ struct Opts {
         about = "Specify the path to the folder containing the trie LMDB data files."
     )]
     lmdb_path: PathBuf,
+
+    #[structopt(
+        long,
+        default_value = retrieve_state::ROCKSDB_PATH,
+        about = "Specify the path to the folder containing the trie rocksdb data files."
+    )]
+    rocksdb_path: PathBuf,
 
     #[structopt(
         long,
@@ -103,11 +108,8 @@ struct Opts {
     )]
     max_workers: usize,
 
-    #[structopt(
-        long,
-        about = "Use channels-based download-tries method, defaults to false (work_queue)."
-    )]
-    use_download_trie_channels: bool,
+    #[structopt(long, about = "Download all tries since genesis.")]
+    download_to_genesis: bool,
 }
 
 #[derive(Debug)]
@@ -162,8 +164,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let initial_server_address = SocketAddr::V4(SocketAddrV4::new(opts.server_ip, port));
     let url = address_to_url(initial_server_address);
 
-    // TODO: Consider reading the proper `chainspec` in the `retrieve-state` tool.
-    let verifiable_chunked_hash_activation = EraId::from(0u64);
+    let verifiable_chunked_hash_activation = EraId::from(u64::MAX);
 
     let maybe_highest_block = opts.highest_block;
     let maybe_download_block = opts
@@ -174,6 +175,9 @@ async fn main() -> Result<(), anyhow::Error> {
 
     match opts.action {
         Action::DownloadBlocks => {
+            if opts.download_to_genesis {
+                error!("invalid option: --start-at-genesis for action");
+            }
             let client = ClientBuilder::new()
                 .gzip(!opts.disable_gzip)
                 .build()
@@ -233,7 +237,7 @@ async fn main() -> Result<(), anyhow::Error> {
             // also use the server we provided initially that peers were gathered from.
             peers_list.push(initial_server_address);
 
-            let highest_block: JsonBlock =
+            let mut block: JsonBlock =
                 retrieve_state::get_block(&client, &url, maybe_download_block)
                     .await?
                     .block
@@ -241,38 +245,51 @@ async fn main() -> Result<(), anyhow::Error> {
 
             info!(
                 "retrieving global state at height {}...",
-                highest_block.header.height
+                block.header.height
             );
             let lmdb_path = env::current_dir()?.join(opts.lmdb_path);
+            let rocksdb_path = env::current_dir()?.join(opts.rocksdb_path);
             let (engine_state, _environment) = retrieve_state::storage::create_execution_engine(
                 lmdb_path,
+                rocksdb_path,
                 opts.max_db_size
                     .unwrap_or(retrieve_state::DEFAULT_MAX_DB_SIZE),
                 !opts.disable_manual_sync,
             )
             .expect("unable to create execution engine");
-            if !opts.use_download_trie_channels {
+
+            'download_tries: loop {
+                info!("Downloading tries at height {}", block.header.height);
                 retrieve_state::download_trie_work_queue(
                     &client,
                     &peers_list,
-                    engine_state,
-                    highest_block.header.state_root_hash,
+                    engine_state.clone(),
+                    vec![block.header.state_root_hash],
                     opts.max_workers,
                 )
                 .await
                 .expect("should download trie");
-            } else {
-                retrieve_state::download_trie_channels(
-                    &client,
-                    &peers_list,
-                    engine_state,
-                    highest_block.header.state_root_hash,
-                    DEFAULT_PEER_MAILBOX_SIZE,
-                )
-                .await
-                .expect("should download trie");
+                info!(
+                    "Finished downloading global state at height {}",
+                    block.header.height
+                );
+                if opts.download_to_genesis && block.header.height > 0 {
+                    block = retrieve_state::get_block(
+                        &client,
+                        &url,
+                        Some(GetBlockParams {
+                            block_identifier: BlockIdentifier::Height(
+                                block.header.height.saturating_sub(1),
+                            ),
+                        }),
+                    )
+                    .await?
+                    .block
+                    .expect("unable to download highest block");
+                } else {
+                    break 'download_tries;
+                }
             }
-            info!("Finished downloading global state.");
         }
     }
     Ok(())

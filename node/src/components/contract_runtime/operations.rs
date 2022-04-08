@@ -10,7 +10,7 @@ use casper_execution_engine::{
         StepRequest, StepSuccess,
     },
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
-    storage::global_state::lmdb::LmdbGlobalState,
+    storage::global_state::db::DbGlobalState,
 };
 use casper_hashing::Digest;
 use casper_types::{DeployHash, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, U512};
@@ -33,7 +33,7 @@ use casper_execution_engine::{
 /// Executes a finalized block.
 #[allow(clippy::too_many_arguments)]
 pub fn execute_finalized_block(
-    engine_state: &EngineState<LmdbGlobalState>,
+    engine_state: &EngineState<DbGlobalState>,
     metrics: Option<Arc<Metrics>>,
     protocol_version: ProtocolVersion,
     execution_pre_state: ExecutionPreState,
@@ -137,7 +137,7 @@ pub fn execute_finalized_block(
     // Finally, the new state-root-hash from the cumulative changes to global state is returned when
     // they are written to LMDB.
     state_root_hash =
-        engine_state.write_scratch_to_lmdb(state_root_hash, scratch_state.into_inner())?;
+        engine_state.write_scratch_to_db(state_root_hash, scratch_state.into_inner())?;
 
     // Flush once, after all deploys have been executed.
     engine_state.flush_environment()?;
@@ -268,7 +268,7 @@ where
 }
 
 fn commit_step(
-    engine_state: &EngineState<LmdbGlobalState>,
+    engine_state: &EngineState<DbGlobalState>,
     maybe_metrics: Option<Arc<Metrics>>,
     protocol_version: ProtocolVersion,
     pre_state_root_hash: Digest,

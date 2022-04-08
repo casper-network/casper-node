@@ -15,6 +15,10 @@ use std::{
     time::{Duration, Instant},
 };
 
+use casper_execution_engine::{
+    core::engine_state::EngineState, storage::global_state::db::DbGlobalState,
+};
+use casper_hashing::Digest;
 use datasize::DataSize;
 use derive_more::From;
 use prometheus::Registry;
@@ -720,6 +724,39 @@ impl reactor::Reactor for Reactor {
             chainspec.protocol_config.verifiable_chunked_hash_activation,
         ))?;
 
+        // Kick off migration of data from lmdb to rocksdb in a background task.
+        {
+            let engine_state = Arc::clone(contract_runtime.engine_state());
+
+            let mut state_roots = Vec::new();
+            for height in (0..=latest_block_header.height()).rev() {
+                let block_header = match storage.read_block_by_height(height) {
+                    Ok(Some(block)) => block.header().clone(),
+                    Ok(None) => {
+                        error!(
+                            "unable to retrieve block at height {} for migration to rocksdb",
+                            height,
+                        );
+                        continue;
+                    }
+                    Err(err) => {
+                        error!(
+                            "unable to retrieve parent block at height {} for migration to rocksdb {:?}",
+                            height, err,
+                        );
+                        continue;
+                    }
+                };
+                state_roots.push(*block_header.state_root_hash());
+            }
+
+            let background_migration = tokio::task::spawn_blocking(move || {
+                migrate_lmdb_data_to_rocksdb(engine_state, state_roots, true)
+            });
+
+            effects.extend(background_migration.ignore());
+        }
+
         let block_validator = BlockValidator::new(Arc::clone(chainspec));
         let linear_chain = linear_chain::LinearChainComponent::new(
             registry,
@@ -1276,6 +1313,40 @@ impl reactor::Reactor for Reactor {
             .stop_for_upgrade()
             .then(|| ReactorExit::ProcessShouldExit(ExitCode::Success))
     }
+}
+
+/// Migrate data from lmdb to rocksdb.
+pub fn migrate_lmdb_data_to_rocksdb(
+    engine_state: Arc<EngineState<DbGlobalState>>,
+    state_roots: Vec<Digest>,
+    limit_rate: bool,
+) {
+    let mut total_state_roots_migrated = 0;
+    for state_root_hash in state_roots {
+        let start = Instant::now();
+        match engine_state.migrate_state_root_to_rocksdb_if_needed(state_root_hash, limit_rate) {
+            Ok(true) => {
+                info!(
+                    %state_root_hash,
+                    time_migration_took_millis = %start.elapsed().as_millis(),
+                    "successfully migrated state root from lmdb to rocksdb",
+                );
+                total_state_roots_migrated += 1;
+            }
+            Ok(false) => info!(
+                %state_root_hash,
+                "state root already migrated",
+            ),
+            Err(err) => {
+                error!(?err, "error migrating state root");
+            }
+        }
+    }
+
+    info!(
+        %total_state_roots_migrated,
+        "Migration from lmdb to rocksdb completed.",
+    );
 }
 
 #[cfg(test)]
