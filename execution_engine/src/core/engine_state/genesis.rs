@@ -75,7 +75,9 @@ enum GenesisAccountTag {
 }
 
 /// Represents details about genesis account's validator status.
-#[derive(borsh::BorshSerialize, DataSize, Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    borsh::BorshSerialize, DataSize, Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize,
+)]
 pub struct GenesisValidator {
     /// Stake of a genesis validator.
     bonded_amount: Motes,

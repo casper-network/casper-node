@@ -16,7 +16,19 @@ use casper_types::{
 #[cfg(test)]
 use crate::testing::TestRng;
 
-#[derive(borsh::BorshSerialize, PartialEq, Eq, Ord, PartialOrd, Serialize, Deserialize, DataSize, Debug, Copy, Clone)]
+#[derive(
+    borsh::BorshSerialize,
+    PartialEq,
+    Eq,
+    Ord,
+    PartialOrd,
+    Serialize,
+    Deserialize,
+    DataSize,
+    Debug,
+    Copy,
+    Clone,
+)]
 pub struct ValidatorConfig {
     bonded_amount: Motes,
     #[serde(default = "DelegationRate::zero")]

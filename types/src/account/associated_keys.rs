@@ -17,7 +17,18 @@ use crate::{
 };
 
 /// A mapping that represents the association of a [`Weight`] with an [`AccountHash`].
-#[derive(borsh::BorshSerialize,Default, PartialOrd, Ord, PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
+#[derive(
+    borsh::BorshSerialize,
+    Default,
+    PartialOrd,
+    Ord,
+    PartialEq,
+    Eq,
+    Clone,
+    Debug,
+    Serialize,
+    Deserialize,
+)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct AssociatedKeys(BTreeMap<AccountHash, Weight>);
 

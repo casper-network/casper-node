@@ -32,7 +32,9 @@ pub const DEFAULT_READ_ERA_ID_COST: u32 = 10_000;
 pub const DEFAULT_ACTIVATE_BID_COST: u32 = 10_000;
 
 /// Description of the costs of calling auction entrypoints.
-#[derive(borsh::BorshSerialize, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
+#[derive(
+    borsh::BorshSerialize, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize,
+)]
 pub struct AuctionCosts {
     /// Cost of calling the `get_era_validators` entry point.
     pub get_era_validators: u32,

@@ -18,7 +18,9 @@ pub const DEFAULT_TRANSFER_COST: u32 = 10_000;
 pub const DEFAULT_READ_BASE_ROUND_REWARD_COST: u32 = 10_000;
 
 /// Description of the costs of calling mint entry points.
-#[derive(borsh::BorshSerialize, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
+#[derive(
+    borsh::BorshSerialize, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize,
+)]
 pub struct MintCosts {
     /// Cost of calling the `mint` entry point.
     pub mint: u32,

@@ -14,7 +14,9 @@ pub const DEFAULT_GET_REFUND_PURSE_COST: u32 = 10_000;
 pub const DEFAULT_FINALIZE_PAYMENT_COST: u32 = 10_000;
 
 /// Description of the costs of calling `handle_payment` entrypoints.
-#[derive(borsh::BorshSerialize, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
+#[derive(
+    borsh::BorshSerialize, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize,
+)]
 pub struct HandlePaymentCosts {
     /// Cost of calling the `get_payment_purse` entry point.
     pub get_payment_purse: u32,
