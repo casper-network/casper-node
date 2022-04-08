@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 
 # Script used to group everything needed for nctl upgrade remotes.
-#
-# Expects a copy of https://github.com/casper-ecosystem/casper-client-rs repo to exist in the same folder as the one
-# containing this casper-node repo.
 
 set -e
 
@@ -30,14 +27,12 @@ function clean_up() {
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." >/dev/null 2>&1 && pwd)"
 NODE_ROOT_DIR="$ROOT_DIR/casper-node"
 NODE_BINARY="$NODE_ROOT_DIR/target/release/casper-node"
-CLIENT_ROOT_DIR="$ROOT_DIR/casper-client-rs"
-CLIENT_BINARY="$CLIENT_ROOT_DIR/target/release/casper-client"
 WASM_BUILD_DIR="$NODE_ROOT_DIR/target/wasm32-unknown-unknown/release"
 CONFIG_DIR="$NODE_ROOT_DIR/resources/local"
 TEMP_STAGE_DIR='/tmp/nctl_upgrade_stage'
 
 # FILES
-BIN_ARRAY=("$NODE_BINARY" "$CLIENT_BINARY")
+BIN_ARRAY=("$NODE_BINARY")
 
 WASM_ARRAY=(add_bid.wasm \
             delegate.wasm \
@@ -53,8 +48,6 @@ if [ ! -d "$TEMP_STAGE_DIR" ]; then
 fi
 
 # Ensure files are built
-cd "$CLIENT_ROOT_DIR"
-cargo build --release
 cd "$NODE_ROOT_DIR"
 cargo build --release --package casper-node
 make build-contract-rs/activate-bid

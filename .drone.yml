@@ -247,7 +247,7 @@ steps:
       from_secret: drone_genesis_key_id
     secret_key:
       from_secret: drone_genesis_secret
-    source: "target/upgrade_build/**/bin.tar.gz"
+    source: "target/upgrade_build/**/*"
     strip_prefix: 'target/upgrade_build/'
     target: "/drone/${DRONE_COMMIT}/"
 
@@ -381,7 +381,7 @@ steps:
     - sha256
     - md5
     files:
-    - "./target/upgrade_build/*/*.gz"
+    - "./target/upgrade_build/*/bin.tar.gz"
     prerelease:
     - true
 
