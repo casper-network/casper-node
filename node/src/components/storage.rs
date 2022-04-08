@@ -422,6 +422,19 @@ impl Storage {
     pub fn write_block(&self, block: &Block) -> Result<bool, FatalStorageError> {
         self.storage.write_block(block)
     }
+
+    /// Retrieves the highest block header from the storage, if one exists.
+    pub(crate) fn read_highest_block_header(
+        &self,
+    ) -> Result<Option<BlockHeader>, FatalStorageError> {
+        let indices = self.storage.indices.read()?;
+
+        let highest_block_hash = match indices.block_height_index.iter().last() {
+            Some((_, highest_block_hash)) => highest_block_hash,
+            None => return Ok(None),
+        };
+        self.storage.read_block_header_by_hash(highest_block_hash)
+    }
 }
 
 impl StorageInner {
@@ -2315,17 +2328,6 @@ impl Storage {
     ) -> Result<Option<BlockHeaderWithMetadata>, FatalStorageError> {
         self.storage
             .read_block_header_and_sufficient_finality_signatures_by_height(height)
-    }
-
-    /// Retrieves the highest block header from the storage, if one exists.
-    pub fn read_highest_block_header(&self) -> Result<Option<BlockHeader>, FatalStorageError> {
-        let indices = self.storage.indices.read()?;
-
-        let highest_block_hash = match indices.block_height_index.iter().last() {
-            Some((_, highest_block_hash)) => highest_block_hash,
-            None => return Ok(None),
-        };
-        self.storage.read_block_header_by_hash(highest_block_hash)
     }
 }
 
