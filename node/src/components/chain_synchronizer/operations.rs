@@ -915,6 +915,9 @@ async fn fetch_to_genesis(trusted_block: &Block, ctx: &ChainSyncContext<'_>) -> 
                 .await;
             if let Some(lowest_available_block) = maybe_lowest_available_block {
                 if lowest_available_block.height() == 0 {
+                    ctx.effect_builder
+                        .update_lowest_available_block_height_in_storage(0)
+                        .await;
                     break;
                 }
                 walkback_block = *fetch_and_store_block_by_hash(
