@@ -1,9 +1,7 @@
 [workspace]
 members = [
     "ci/casper_updater",
-    "client",
     "execution_engine",
-    "execution_engine_testing/cargo_casper",
     "execution_engine_testing/test_support",
     "execution_engine_testing/tests",
     "hashing",
@@ -14,14 +12,11 @@ members = [
     "utils/dry-run-deploys",
     "utils/global-state-update-gen",
     "utils/retrieve-state",
-    "utils/validation",
 ]
 
 default-members = [
     "ci/casper_updater",
-    "client",
     "execution_engine",
-    "execution_engine_testing/cargo_casper",
     "execution_engine_testing/test_support",
     "execution_engine_testing/tests",
     "hashing",
@@ -30,7 +25,6 @@ default-members = [
     "utils/dry-run-deploys",
     "utils/global-state-update-gen",
     "utils/retrieve-state",
-    "utils/validation",
 ]
 
 # Include debug symbols in the release build of `casper-engine-tests` so that `simple-transfer` will yield useful
