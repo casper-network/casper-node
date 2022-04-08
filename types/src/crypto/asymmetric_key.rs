@@ -384,7 +384,10 @@ impl ToBytes for PublicKey {
 }
 
 impl borsh::BorshSerialize for PublicKey {
-    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+    fn serialize<W: borsh::maybestd::io::Write>(
+        &self,
+        writer: &mut W,
+    ) -> borsh::maybestd::io::Result<()> {
         match self {
             PublicKey::System => {
                 writer.write(&[SYSTEM_TAG])?;
@@ -609,7 +612,10 @@ impl Tagged<u8> for Signature {
 }
 
 impl borsh::BorshSerialize for Signature {
-    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+    fn serialize<W: borsh::maybestd::io::Write>(
+        &self,
+        writer: &mut W,
+    ) -> borsh::maybestd::io::Result<()> {
         match self {
             Signature::System => {
                 writer.write(&[SYSTEM_TAG])?;

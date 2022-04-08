@@ -212,7 +212,10 @@ impl CLType {
 }
 
 impl borsh::BorshSerialize for CLType {
-    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+    fn serialize<W: borsh::maybestd::io::Write>(
+        &self,
+        writer: &mut W,
+    ) -> borsh::maybestd::io::Result<()> {
         match self {
             CLType::Bool => {
                 writer.write(&[CL_TYPE_TAG_BOOL])?;
@@ -388,11 +391,15 @@ fn depth_limited_from_bytes(depth: u8, bytes: &[u8]) -> Result<(CLType, &[u8]), 
     }
 }
 
-fn borsh_serialize_cl_tuple_type<'a, W: std::io::Write, T: IntoIterator<Item = &'a Box<CLType>>>(
+fn borsh_serialize_cl_tuple_type<
+    'a,
+    W: borsh::maybestd::io::Write,
+    T: IntoIterator<Item = &'a Box<CLType>>,
+>(
     tag: u8,
     cl_type_array: T,
     stream: &mut W,
-) -> std::io::Result<()> {
+) -> borsh::maybestd::io::Result<()> {
     stream.write(&[tag])?;
     for cl_type in cl_type_array {
         borsh::BorshSerialize::serialize(cl_type, stream)?;

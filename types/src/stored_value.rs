@@ -321,7 +321,10 @@ impl TryFrom<StoredValue> for EraInfo {
 }
 
 impl borsh::BorshSerialize for StoredValue {
-    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+    fn serialize<W: borsh::maybestd::io::Write>(
+        &self,
+        writer: &mut W,
+    ) -> borsh::maybestd::io::Result<()> {
         match self {
             StoredValue::CLValue(cl_value) => {
                 writer.write(&[Tag::CLValue as u8])?;

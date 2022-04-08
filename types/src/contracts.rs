@@ -661,7 +661,10 @@ impl Default for ContractPackageStatus {
 }
 
 impl borsh::BorshSerialize for ContractPackageStatus {
-    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+    fn serialize<W: borsh::maybestd::io::Write>(
+        &self,
+        writer: &mut W,
+    ) -> borsh::maybestd::io::Result<()> {
         match self {
             ContractPackageStatus::Unlocked => {
                 borsh::BorshSerialize::serialize(&false, writer)?;
@@ -1449,7 +1452,10 @@ impl EntryPointAccess {
 }
 
 impl borsh::BorshSerialize for EntryPointAccess {
-    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+    fn serialize<W: borsh::maybestd::io::Write>(
+        &self,
+        writer: &mut W,
+    ) -> borsh::maybestd::io::Result<()> {
         match self {
             EntryPointAccess::Public => {
                 writer.write(&[ENTRYPOINTACCESS_PUBLIC_TAG])?;

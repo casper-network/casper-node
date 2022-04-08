@@ -163,7 +163,10 @@ impl ToBytes for CLValue {
 }
 
 impl borsh::BorshSerialize for CLValue {
-    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+    fn serialize<W: borsh::maybestd::io::Write>(
+        &self,
+        writer: &mut W,
+    ) -> borsh::maybestd::io::Result<()> {
         borsh::BorshSerialize::serialize(&self.bytes, writer)?;
         borsh::BorshSerialize::serialize(&self.cl_type, writer)
     }

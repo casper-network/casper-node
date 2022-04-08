@@ -183,7 +183,10 @@ macro_rules! impl_traits_for_uint {
         }
 
         impl borsh::BorshSerialize for $type {
-            fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+            fn serialize<W: borsh::maybestd::io::Write>(
+                &self,
+                writer: &mut W,
+            ) -> borsh::maybestd::io::Result<()> {
                 let mut buf = [0u8; $total_bytes];
                 self.to_little_endian(&mut buf);
                 let mut non_zero_bytes: Vec<u8> =
