@@ -96,7 +96,7 @@ uuid = { version = "0.8.1", features = ["serde", "v4"] }
 warp = { version = "0.3.0", features = ["compression"] }
 warp-json-rpc = "0.3.0"
 wheelbuf = "0.2.0"
-borsh = { git = "https://github.com/mpapierski/borsh-rs", branch = "fixes" }
+borsh = { git = "https://github.com/mpapierski/borsh-rs",  rev = "91b52f893ba6fe90e8352df372fd82431db8fb40" }
 
 [build-dependencies]
 vergen = "3"

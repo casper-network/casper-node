@@ -299,7 +299,7 @@ dependencies = [
 [[package]]
 name = "borsh"
 version = "0.0.0"
-source = "git+https://github.com/mpapierski/borsh-rs?branch=fixes#91b52f893ba6fe90e8352df372fd82431db8fb40"
+source = "git+https://github.com/mpapierski/borsh-rs?rev=91b52f893ba6fe90e8352df372fd82431db8fb40#91b52f893ba6fe90e8352df372fd82431db8fb40"
 dependencies = [
  "borsh-derive",
  "hashbrown",
@@ -308,7 +308,7 @@ dependencies = [
 [[package]]
 name = "borsh-derive"
 version = "0.0.0"
-source = "git+https://github.com/mpapierski/borsh-rs?branch=fixes#91b52f893ba6fe90e8352df372fd82431db8fb40"
+source = "git+https://github.com/mpapierski/borsh-rs?rev=91b52f893ba6fe90e8352df372fd82431db8fb40#91b52f893ba6fe90e8352df372fd82431db8fb40"
 dependencies = [
  "borsh-derive-internal",
  "borsh-schema-derive-internal",
@@ -320,7 +320,7 @@ dependencies = [
 [[package]]
 name = "borsh-derive-internal"
 version = "0.0.0"
-source = "git+https://github.com/mpapierski/borsh-rs?branch=fixes#91b52f893ba6fe90e8352df372fd82431db8fb40"
+source = "git+https://github.com/mpapierski/borsh-rs?rev=91b52f893ba6fe90e8352df372fd82431db8fb40#91b52f893ba6fe90e8352df372fd82431db8fb40"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -330,7 +330,7 @@ dependencies = [
 [[package]]
 name = "borsh-schema-derive-internal"
 version = "0.0.0"
-source = "git+https://github.com/mpapierski/borsh-rs?branch=fixes#91b52f893ba6fe90e8352df372fd82431db8fb40"
+source = "git+https://github.com/mpapierski/borsh-rs?rev=91b52f893ba6fe90e8352df372fd82431db8fb40#91b52f893ba6fe90e8352df372fd82431db8fb40"
 dependencies = [
  "proc-macro2",
  "quote",
