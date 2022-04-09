@@ -8,7 +8,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::error;
 
-/// An unbroken, inclusive range of blocks.
+/// An error returned by attempting to construct an [`AvailableBlockRange`] where the low value
+/// exceeds the high.
 #[derive(
     Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, Error,
 )]

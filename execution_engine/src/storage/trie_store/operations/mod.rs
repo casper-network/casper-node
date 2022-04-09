@@ -254,31 +254,25 @@ where
         if !visited.insert(trie_key) {
             continue;
         }
-        let maybe_retrieved_trie_bytes = store.get_raw(txn, &trie_key)?;
-        // Optimization: Don't look for descendants of leaves.
-        match maybe_retrieved_trie_bytes.and_then(|bytes| bytes.get(0)) {
-            // if this is a leaf don't parse (ie, the first byte is 0), just continue
-            Some(&Trie::<K, V>::LEAF_TAG) => continue,
-            // Either no entry under trie key or data is empty.  If data is empty then the trie is
-            // corrupted. Either way treat as missing.
+
+        let retrieved_trie_bytes = match store.get_raw(txn, &trie_key)? {
+            Some(bytes) => bytes,
             None => {
+                // No entry under this trie key.
                 missing_descendants.push(trie_key);
                 continue;
             }
-            _ => (),
+        };
+
+        // Optimization: Don't deserialize leaves as they have no descendants.
+        if let Some(&Trie::<K, V>::LEAF_TAG) = retrieved_trie_bytes.first() {
+            continue;
         }
 
         // Parse the trie, handling errors gracefully.
-        let retrieved_trie: Trie<K, V> = match maybe_retrieved_trie_bytes
-            .map(bytesrepr::deserialize_from_slice)
-            .transpose()
-        {
-            Ok(Some(retrieved_trie)) => retrieved_trie,
-            Ok(None) => {
-                missing_descendants.push(trie_key);
-                continue;
-            }
-            // Couldn't parse; treat as missing and continue
+        let retrieved_trie = match bytesrepr::deserialize_from_slice(retrieved_trie_bytes) {
+            Ok(retrieved_trie) => retrieved_trie,
+            // Couldn't parse; treat as missing and continue.
             Err(err) => {
                 error!(?err, "unable to parse trie");
                 missing_descendants.push(trie_key);
@@ -288,7 +282,7 @@ where
 
         match retrieved_trie {
             // Should be unreachable due to checking the first byte as a shortcut above.
-            Trie::Leaf { .. } => {
+            Trie::<K, V>::Leaf { .. } => {
                 error!("did not expect to see a trie leaf in `missing_trie_keys` after shortcut");
             }
             // If we hit a pointer block, queue up all of the nodes it points to
