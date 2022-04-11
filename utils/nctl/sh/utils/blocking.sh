@@ -76,10 +76,14 @@ function await_n_blocks()
 function await_until_era_n()
 {
     local ERA=${1}
+    local EMIT_LOG=${2:-false}
 
     while [ "$(get_chain_era)" -lt "$ERA" ];
     do
-        sleep 10.0
+        if [ "$EMIT_LOG" = true ]; then
+            log "waiting for future era = $ERA ... sleeping 2 seconds"
+        fi
+        sleep 2.0
     done
 }
 
