@@ -431,6 +431,11 @@ pub(crate) enum StorageRequest {
         /// Responder to call with the result.
         responder: Responder<AvailableBlockRange>,
     },
+    /// Get the lowest block of the available range.
+    GetLowestAvailableBlock {
+        /// Responder to call with the block if it exists.
+        responder: Responder<Option<Block>>,
+    },
     /// Store a set of finalized approvals for a specific deploy.
     StoreFinalizedApprovals {
         /// The deploy hash to store the finalized approvals for.
@@ -538,6 +543,9 @@ impl Display for StorageRequest {
             }
             StorageRequest::GetAvailableBlockRange { .. } => {
                 write!(formatter, "get available block range",)
+            }
+            StorageRequest::GetLowestAvailableBlock { .. } => {
+                write!(formatter, "get lowest available block",)
             }
             StorageRequest::StoreFinalizedApprovals { deploy_hash, .. } => {
                 write!(formatter, "finalized approvals for deploy {}", deploy_hash)

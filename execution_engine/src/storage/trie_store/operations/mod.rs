@@ -8,6 +8,8 @@ use std::{
     mem,
 };
 
+use tracing::error;
+
 use casper_hashing::Digest;
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
@@ -252,16 +254,39 @@ where
         if !visited.insert(trie_key) {
             continue;
         }
-        let maybe_retrieved_trie: Option<Trie<K, V>> = store.get(txn, &trie_key)?;
-        match maybe_retrieved_trie {
-            // If we can't find the trie_key; it is missing and we'll return it
+
+        let retrieved_trie_bytes = match store.get_raw(txn, &trie_key)? {
+            Some(bytes) => bytes,
             None => {
+                // No entry under this trie key.
                 missing_descendants.push(trie_key);
+                continue;
             }
-            // If we could retrieve the node and it is a leaf, the search can move on
-            Some(Trie::Leaf { .. }) => (),
+        };
+
+        // Optimization: Don't deserialize leaves as they have no descendants.
+        if let Some(&Trie::<K, V>::LEAF_TAG) = retrieved_trie_bytes.first() {
+            continue;
+        }
+
+        // Parse the trie, handling errors gracefully.
+        let retrieved_trie = match bytesrepr::deserialize_from_slice(retrieved_trie_bytes) {
+            Ok(retrieved_trie) => retrieved_trie,
+            // Couldn't parse; treat as missing and continue.
+            Err(err) => {
+                error!(?err, "unable to parse trie");
+                missing_descendants.push(trie_key);
+                continue;
+            }
+        };
+
+        match retrieved_trie {
+            // Should be unreachable due to checking the first byte as a shortcut above.
+            Trie::<K, V>::Leaf { .. } => {
+                error!("did not expect to see a trie leaf in `missing_trie_keys` after shortcut");
+            }
             // If we hit a pointer block, queue up all of the nodes it points to
-            Some(Trie::Node { pointer_block }) => {
+            Trie::Node { pointer_block } => {
                 for (_, pointer) in pointer_block.as_indexed_pointers() {
                     match pointer {
                         Pointer::LeafPointer(descendant_leaf_trie_key) => {
@@ -274,7 +299,7 @@ where
                 }
             }
             // If we hit an extension block, add its pointer to the queue
-            Some(Trie::Extension { pointer, .. }) => trie_keys_to_visit.push(pointer.into_hash()),
+            Trie::Extension { pointer, .. } => trie_keys_to_visit.push(pointer.into_hash()),
         }
     }
     Ok(missing_descendants)

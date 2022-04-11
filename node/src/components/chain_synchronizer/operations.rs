@@ -622,10 +622,14 @@ async fn sync_trie_store(state_root_hash: Digest, ctx: &ChainSyncContext<'_>) ->
 ///
 /// Performs the following:
 ///
-///  1. Fetches the most recent block header.
-///  2. Fetches deploys for replay detection and historical switch block info.
-///  3. The historical switch block info is needed by the [`EraSupervisor`].
-///  4. Fetches global state for the current block header.
+///  1. Fetches block headers back towards genesis until we get to a switch block.
+///  2. Starting at the trusted block, fetches block headers by iterating forwards towards tip until
+///     getting to one from the current era or failing to get a higher one from any peer.
+///  3. Starting at that most recent block, iterates backwards towards genesis, fetching
+///     `deploy_max_ttl`'s worth of blocks (for deploy replay protection).
+///  4. Starting at the most recent block, again iterates backwards, fetching enough block headers
+///     to allow consensus to be initialized.
+///  5. Fetches the tries under the most recent block's state root hash (parallelized tasks).
 ///
 /// Returns the most recent block header along with the last trusted key block information for
 /// validation.
@@ -823,10 +827,21 @@ async fn sync_deploys_and_transfers_and_state(
 ///
 /// Performs the following:
 ///
-///  1. Fetches blocks all the way back to genesis.
-///  2. Fetches global state for each block starting from genesis onwards.
-///  3. Fetches all deploys and finality signatures.
-///  4. Stops after fetching a block with the current version and its global state.
+///  1. Fetches block headers back towards genesis until we get to a switch block.
+///  2. Fetches the full trusted block.
+///  3. Starting at the trusted block and iterating one block at a time all the way back to genesis:
+///    a. Fetches the deploys for that block (parallelized tasks).
+///    b. Fetches the tries under that block's state root hash (parallelized tasks).
+///    c. Fetches the next block.
+///  4. Starting at the trusted block and iterating forwards towards tip until we get to a block at
+///     the same protocol version as we're currently running:
+///    a. Fetches the block.
+///    b. Fetches the deploys for that block (parallelized tasks).
+///    c. Fetches the tries under that block's state root hash (parallelized tasks).
+///
+/// Note that during step 3, if we have an existing available block range in storage, that range is
+/// skipped, as it represents a range of contiguous blocks for which we already have the deploys and
+/// global state stored locally.
 ///
 /// Returns the block header with our current version and the last trusted key block information for
 /// validation.
@@ -843,10 +858,6 @@ async fn sync_to_genesis(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, Bl
 
     // Sync forward until we are at the current version.
     let most_recent_block = fetch_forward(trusted_block, &mut trusted_key_block_info, ctx).await?;
-
-    ctx.effect_builder
-        .update_lowest_available_block_height_in_storage(0)
-        .await;
 
     Ok((trusted_key_block_info, most_recent_block.take_header()))
 }
@@ -887,9 +898,40 @@ async fn fetch_forward(
 async fn fetch_to_genesis(trusted_block: &Block, ctx: &ChainSyncContext<'_>) -> Result<(), Error> {
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fetch_to_genesis_duration_seconds);
 
+    let locally_available_block_range = ctx
+        .effect_builder
+        .get_available_block_range_from_storage()
+        .await;
+
     let mut walkback_block = trusted_block.clone();
     loop {
+        // The available range from storage indicates a range of blocks for which we already have
+        // all the corresponding deploys and global state stored locally.  Skip fetching for such a
+        // range.
+        if locally_available_block_range.contains(walkback_block.height()) {
+            let maybe_lowest_available_block = ctx
+                .effect_builder
+                .get_lowest_available_block_from_storage()
+                .await;
+            if let Some(lowest_available_block) = maybe_lowest_available_block {
+                if lowest_available_block.height() == 0 {
+                    ctx.effect_builder
+                        .update_lowest_available_block_height_in_storage(0)
+                        .await;
+                    break;
+                }
+                walkback_block = *fetch_and_store_block_by_hash(
+                    *lowest_available_block.header().parent_hash(),
+                    ctx,
+                )
+                .await?;
+            }
+        }
+
         sync_deploys_and_transfers_and_state(&walkback_block, ctx).await?;
+        ctx.effect_builder
+            .update_lowest_available_block_height_in_storage(walkback_block.height())
+            .await;
         if walkback_block.height() == 0 {
             break;
         } else {
@@ -909,7 +951,6 @@ pub(super) async fn run_chain_sync_task(
 ) -> Result<BlockHeader, Error> {
     let _metric = ScopeTimer::new(&metrics.chain_sync_total_duration_seconds);
 
-    // Fetch the trusted header
     let trusted_block_header = fetch_and_store_initial_trusted_block_header(
         effect_builder,
         &config,
@@ -937,6 +978,8 @@ pub(super) async fn run_chain_sync_task(
         fast_sync(&chain_sync_context).await?
     };
 
+    // Iterate forwards, fetching each full block and deploys but executing each block to generate
+    // global state. Stop once we get to a block in the current era.
     let most_recent_block_header = execute_blocks(
         &most_recent_block_header,
         &trusted_key_block_info,
