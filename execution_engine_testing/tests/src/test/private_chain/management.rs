@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, iter::FromIterator};
+use std::collections::BTreeSet;
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_AUCTION_DELAY,
@@ -21,13 +21,15 @@ use casper_types::{
     account::{AccountHash, ActionThresholds, Weight},
     contracts::DEFAULT_ENTRY_POINT_NAME,
     runtime_args,
-    system::mint::ADMINISTRATIVE_ACCOUNTS_KEY,
-    ApiError, CLValue, RuntimeArgs, StoredValue,
+    system::mint::{self, ADMINISTRATIVE_ACCOUNTS_KEY},
+    ApiError, CLValue, RuntimeArgs, StoredValue, U512,
 };
 use parity_wasm::{
     builder,
     elements::{Instruction, Instructions},
 };
+
+use crate::test::private_chain::ACCOUNT_2_ADDR;
 
 use super::{
     ACCOUNT_1_ADDR, DEFAULT_ADMIN_ACCOUNT_ADDR, DEFAULT_PRIVATE_CHAIN_GENESIS,
@@ -38,6 +40,7 @@ const ACCOUNT_MANAGEMENT_CONTRACT: &str = "account_management.wasm";
 const ADD_ASSOCIATED_KEY_CONTRACT: &str = "add_associated_key.wasm";
 const SET_ACTION_THRESHOLDS_CONTRACT: &str = "set_action_thresholds.wasm";
 const UPDATE_ASSOCIATED_KEY_CONTRACT: &str = "update_associated_key.wasm";
+const TRANSFER_TO_ACCOUNT_CONTRACT: &&str = &"transfer_to_account.wasm";
 const CONTRACT_HASH_NAME: &str = "contract_hash";
 const DISABLE_ACCOUNT_ENTRYPOINT: &str = "disable_account";
 const ENABLE_ACCOUNT_ENTRYPOINT: &str = "enable_account";
@@ -48,6 +51,11 @@ const ARG_WEIGHT: &str = "weight";
 
 const ARG_KEY_MANAGEMENT_THRESHOLD: &str = "key_management_threshold";
 const ARG_DEPLOY_THRESHOLD: &str = "deploy_threshold";
+
+const EXPECTED_PRIVATE_CHAIN_THRESHOLDS: ActionThresholds = ActionThresholds {
+    deployment: Weight::new(1),
+    key_management: Weight::MAX,
+};
 
 /// Creates minimal session code that does only one "nop" opcode
 pub fn do_minimum_bytes() -> Vec<u8> {
@@ -191,10 +199,7 @@ fn genesis_accounts_should_not_update_key_weight() {
         .expect("should have account 1");
     assert_eq!(
         account_1.action_thresholds(),
-        &ActionThresholds {
-            deployment: Weight::new(1),
-            key_management: Weight::MAX,
-        }
+        &EXPECTED_PRIVATE_CHAIN_THRESHOLDS,
     );
 
     let exec_request_1 = {
@@ -340,26 +345,11 @@ fn genesis_accounts_should_have_special_associated_key() {
         .expect("should have special account");
     assert_eq!(administrator_account_weight, &Weight::MAX);
 
-    let mint_contract = builder
-        .get_contract(builder.get_mint_contract_hash())
-        .expect("should create mint");
+    let administrative_accounts = read_administrative_accounts(&builder);
 
-    let administrative_accounts: Vec<AccountHash> = {
-        let administrative_accounts_key = mint_contract
-            .named_keys()
-            .get(ADMINISTRATIVE_ACCOUNTS_KEY)
-            .expect("special accounts should exist");
-        let administrative_accounts_stored: StoredValue = builder
-            .query(None, *administrative_accounts_key, &[])
-            .expect("should query special accounts");
-        let administrative_accounts_cl_value: CLValue =
-            administrative_accounts_stored.into_clvalue().unwrap();
-        administrative_accounts_cl_value.into_t().unwrap()
-    };
-
-    assert_eq!(
-        BTreeSet::from_iter(administrative_accounts),
-        BTreeSet::from_iter([*DEFAULT_ADMIN_ACCOUNT_ADDR])
+    assert!(
+        itertools::equal(administrative_accounts, [*DEFAULT_ADMIN_ACCOUNT_ADDR]),
+        "administrators should be populated with single account"
     );
 
     let administrator_account = builder
@@ -470,6 +460,89 @@ fn administrator_account_should_disable_any_account() {
     );
 }
 
+#[ignore]
+#[test]
+fn native_transfer_should_create_new_restricted_private_account() {
+    let mut builder = setup();
+
+    // Account 1 can deploy after genesis
+    let transfer_args = runtime_args! {
+        mint::ARG_TARGET => *ACCOUNT_2_ADDR,
+        mint::ARG_AMOUNT => U512::one(),
+        mint::ARG_ID => Some(1u64),
+    };
+    let transfer_request =
+        ExecuteRequestBuilder::transfer(*DEFAULT_ADMIN_ACCOUNT_ADDR, transfer_args).build();
+
+    let administrative_accounts = read_administrative_accounts(&builder);
+
+    builder.exec(transfer_request).expect_success().commit();
+
+    let account_2 = builder
+        .get_account(*ACCOUNT_2_ADDR)
+        .expect("should have account 1 after genesis");
+
+    assert!(
+        itertools::equal(
+            account_2
+                .associated_keys()
+                .keys()
+                .filter(|account_hash| *account_hash != &*ACCOUNT_2_ADDR), // skip identity key
+            administrative_accounts.iter(),
+        ),
+        "newly created account should have administrator accounts set"
+    );
+
+    assert_eq!(
+        account_2.action_thresholds(),
+        &EXPECTED_PRIVATE_CHAIN_THRESHOLDS,
+        "newly created account should have expected thresholds"
+    );
+}
+
+#[ignore]
+#[test]
+fn wasm_transfer_should_create_new_restricted_private_account() {
+    let mut builder = setup();
+
+    // Account 1 can deploy after genesis
+    let transfer_args = runtime_args! {
+        mint::ARG_TARGET => *ACCOUNT_2_ADDR,
+        mint::ARG_AMOUNT => 1u64,
+    };
+    let transfer_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ADMIN_ACCOUNT_ADDR,
+        TRANSFER_TO_ACCOUNT_CONTRACT,
+        transfer_args,
+    )
+    .build();
+
+    let administrative_accounts = read_administrative_accounts(&builder);
+
+    builder.exec(transfer_request).expect_success().commit();
+
+    let account_2 = builder
+        .get_account(*ACCOUNT_2_ADDR)
+        .expect("should have account 1 after genesis");
+
+    assert!(
+        itertools::equal(
+            account_2
+                .associated_keys()
+                .keys()
+                .filter(|account_hash| *account_hash != &*ACCOUNT_2_ADDR), // skip identity key
+            administrative_accounts.iter(),
+        ),
+        "newly created account should have administrator accounts set"
+    );
+
+    assert_eq!(
+        account_2.action_thresholds(),
+        &EXPECTED_PRIVATE_CHAIN_THRESHOLDS,
+        "newly created account should have expected thresholds"
+    );
+}
+
 fn setup() -> InMemoryWasmTestBuilder {
     let engine_config = EngineConfigBuilder::default()
         .with_chain_kind(ChainKind::Private)
@@ -488,4 +561,24 @@ fn setup() -> InMemoryWasmTestBuilder {
     builder.exec(exec_request).expect_success().commit();
 
     builder
+}
+
+fn read_administrative_accounts(builder: &InMemoryWasmTestBuilder) -> BTreeSet<AccountHash> {
+    let mint_contract_hash = builder.get_mint_contract_hash();
+    let mint_contract = builder
+        .get_contract(mint_contract_hash)
+        .expect("should create mint");
+    let administrative_accounts_key = mint_contract
+        .named_keys()
+        .get(ADMINISTRATIVE_ACCOUNTS_KEY)
+        .expect("special accounts should exist");
+    let administrative_accounts_stored: StoredValue = builder
+        .query(None, *administrative_accounts_key, &[])
+        .expect("should query special accounts");
+    let administrative_accounts_cl_value: CLValue = administrative_accounts_stored
+        .into_clvalue()
+        .expect("should have clvalue");
+    administrative_accounts_cl_value
+        .into_t()
+        .expect("should have a list of account hashes")
 }

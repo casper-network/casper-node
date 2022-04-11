@@ -21,7 +21,7 @@ use tracing::error;
 
 use casper_hashing::Digest;
 use casper_types::{
-    account::{Account, AccountHash, AddKeyFailure, Weight},
+    account::{Account, AccountHash, AddKeyFailure},
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::{ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys},
     runtime_args,
@@ -57,7 +57,10 @@ use crate::{
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
     shared::{
-        chain_kind::ChainKind, newtypes::CorrelationId, system_config::SystemConfig,
+        account::{self, AccountKind, SYSTEM_ACCOUNT_ADDRESS, VIRTUAL_SYSTEM_ACCOUNT},
+        chain_kind::ChainKind,
+        newtypes::CorrelationId,
+        system_config::SystemConfig,
         wasm_config::WasmConfig,
     },
     storage::global_state::StateProvider,
@@ -880,12 +883,9 @@ where
             Rc::new(RefCell::new(generator))
         };
 
-        let system_account_addr = PublicKey::System.to_account_hash();
+        let system_account_addr = *SYSTEM_ACCOUNT_ADDRESS;
 
-        let virtual_system_account = {
-            let purse = URef::new(Default::default(), AccessRights::READ_ADD_WRITE);
-            Account::create(system_account_addr, NamedKeys::default(), purse)
-        };
+        let virtual_system_account = VIRTUAL_SYSTEM_ACCOUNT.clone();
 
         let key = Key::Account(system_account_addr);
         let value = StoredValue::Account(virtual_system_account.clone());
@@ -1330,8 +1330,11 @@ where
             return Err(GenesisError::DuplicatedAdministratorEntry);
         }
 
-        let administrative_accounts: BTreeSet<&AdministratorAccount> =
-            self.exec_config.administrative_accounts().collect();
+        let administrative_accounts: BTreeSet<AccountHash> = self
+            .exec_config
+            .administrative_accounts()
+            .map(|admin| admin.public_key.to_account_hash())
+            .collect();
 
         for account in accounts.iter() {
             let account_hash = account.account_hash();
@@ -1341,28 +1344,17 @@ where
             )?;
 
             let key = Key::Account(account_hash);
-            let account = {
-                let mut account = if self.is_private_chain() {
-                    Account::create_private_chain(account_hash, main_purse)
-                } else {
-                    Account::create(account_hash, NamedKeys::default(), main_purse)
-                };
 
-                for AdministratorAccount { public_key, .. } in administrative_accounts.iter() {
-                    let special_account_hash = public_key.to_account_hash();
-                    match account.add_associated_key(special_account_hash, Weight::MAX) {
-                        Ok(()) => {}
-                        Err(AddKeyFailure::DuplicateKey)
-                            if special_account_hash == account_hash =>
-                        {
-                            // We're creating a special account itself and associated key already
-                            // exists for it.
-                        }
-                        Err(error) => return Err(error.into()),
-                    }
-                }
+            let account_kind = match self.exec_config.chain_kind {
+                ChainKind::Public => AccountKind::Public,
+                ChainKind::Private => AccountKind::Private {
+                    administrative_accounts: administrative_accounts.clone(),
+                },
+            };
 
-                account
+            let account = match account::create_account(account_kind, account_hash, main_purse) {
+                Ok(value) => value,
+                Err(value) => return Err(value.into()),
             };
             let stored_value = StoredValue::Account(account);
 

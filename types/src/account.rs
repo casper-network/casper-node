@@ -79,23 +79,6 @@ impl Account {
         )
     }
 
-    /// An [`Account`] constructor with presets for a private chain.
-    pub fn create_private_chain(account: AccountHash, main_purse: URef) -> Self {
-        let named_keys = NamedKeys::new();
-        let associated_keys = AssociatedKeys::new(account, Weight::new(1));
-        let action_thresholds = ActionThresholds {
-            deployment: Weight::new(1),
-            key_management: Weight::MAX,
-        };
-        Account::new(
-            account,
-            named_keys,
-            main_purse,
-            associated_keys,
-            action_thresholds,
-        )
-    }
-
     /// Appends named keys to an account's named_keys field.
     pub fn named_keys_append(&mut self, keys: &mut NamedKeys) {
         self.named_keys.append(keys);

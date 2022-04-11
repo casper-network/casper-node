@@ -29,6 +29,11 @@ impl AssociatedKeys {
         AssociatedKeys(bt)
     }
 
+    /// Constructs a new [`AssociatedKeys`] with an identity key and default weight.
+    pub fn identity(key: AccountHash) -> AssociatedKeys {
+        AssociatedKeys::new(key, Weight::new(1))
+    }
+
     /// Adds multiple associated keys to the container.
     pub fn extend_from_slice(&mut self, associated_keys: &[(AccountHash, Weight)]) {
         self.0.extend(associated_keys.iter().cloned());
@@ -85,6 +90,11 @@ impl AssociatedKeys {
         self.0.iter()
     }
 
+    /// Returns an iterator over the account hashes.
+    pub fn keys(&self) -> impl Iterator<Item = &AccountHash> {
+        self.0.keys()
+    }
+
     /// Returns the count of the associated keys.
     pub fn len(&self) -> usize {
         self.0.len()
@@ -129,6 +139,12 @@ impl AssociatedKeys {
 impl From<BTreeMap<AccountHash, Weight>> for AssociatedKeys {
     fn from(associated_keys: BTreeMap<AccountHash, Weight>) -> Self {
         Self(associated_keys)
+    }
+}
+
+impl From<AssociatedKeys> for BTreeMap<AccountHash, Weight> {
+    fn from(associated_keys: AssociatedKeys) -> Self {
+        associated_keys.0
     }
 }
 

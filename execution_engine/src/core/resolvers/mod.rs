@@ -24,7 +24,7 @@ pub(crate) fn create_module_resolver(
     if protocol_version >= ProtocolVersion::V1_0_0 {
         return Ok(v1_resolver::RuntimeModuleImportResolver::new(
             engine_config.wasm_config().max_memory,
-            engine_config.chain_kind(),
+            *engine_config.chain_kind(),
         ));
     }
     Err(ResolverError::UnknownProtocolVersion(protocol_version))

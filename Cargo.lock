@@ -401,6 +401,7 @@ dependencies = [
  "get-call-stack-recursive-subcall",
  "gh-1470-regression",
  "gh-1470-regression-call",
+ "itertools",
  "log",
  "num-rational 0.4.0",
  "num-traits",

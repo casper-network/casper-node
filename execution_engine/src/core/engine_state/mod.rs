@@ -36,7 +36,6 @@ use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::{Bytes, ToBytes},
-    contracts::NamedKeys,
     system::{
         auction::{
             EraValidators, UnbondingPurse, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS,
@@ -85,7 +84,11 @@ use crate::{
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
     shared::{
-        additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform,
+        account::{self, AccountKind, SYSTEM_ACCOUNT_ADDRESS, VIRTUAL_SYSTEM_ACCOUNT},
+        additive_map::AdditiveMap,
+        chain_kind::ChainKind,
+        newtypes::CorrelationId,
+        transform::Transform,
         wasm_prep::Preprocessor,
     },
     storage::{
@@ -874,9 +877,9 @@ where
         match runtime_args_builder.transfer_target_mode(correlation_id, Rc::clone(&tracking_copy)) {
             Ok(mode) => match mode {
                 TransferTargetMode::Unknown | TransferTargetMode::PurseExists(_) => { /* noop */ }
-                TransferTargetMode::CreateAccount(public_key) => {
+                TransferTargetMode::CreateAccount(account_hash) => {
                     let create_purse_stack = {
-                        let system = CallStackElement::session(PublicKey::System.to_account_hash());
+                        let system = CallStackElement::session(*SYSTEM_ACCOUNT_ADDRESS);
                         let mint = CallStackElement::stored_contract(
                             mint_contract.contract_package_hash(),
                             *mint_contract_hash,
@@ -908,13 +911,82 @@ where
                         );
                     match maybe_uref {
                         Some(main_purse) => {
-                            let new_account =
-                                Account::create(public_key, NamedKeys::default(), main_purse);
+                            let account_kind: AccountKind = match self.config.chain_kind() {
+                                ChainKind::Public => AccountKind::Public,
+                                ChainKind::Private => {
+                                    match mint_contract
+                                        .named_keys()
+                                        .get(mint::ADMINISTRATIVE_ACCOUNTS_KEY)
+                                    {
+                                        Some(key) => {
+                                            let cl_value = match tracking_copy
+                                                .borrow_mut()
+                                                .read(correlation_id, key)
+                                            {
+                                                Ok(Some(StoredValue::CLValue(cl_value))) => {
+                                                    cl_value
+                                                }
+                                                Ok(Some(_stored_value)) => {
+                                                    return Ok(make_charged_execution_failure(
+                                                        Error::FailedToGetAdminAccounts,
+                                                    ));
+                                                }
+                                                Ok(None) => {
+                                                    return Ok(make_charged_execution_failure(
+                                                        Error::FailedToGetAdminAccounts,
+                                                    ));
+                                                }
+                                                Err(_error) => {
+                                                    return Ok(make_charged_execution_failure(
+                                                        Error::FailedToGetAdminAccounts,
+                                                    ));
+                                                }
+                                            };
+
+                                            let administrative_accounts = match cl_value
+                                                .into_t()
+                                                .map_err(execution::Error::from)
+                                            {
+                                                Ok(administrative_accounts) => {
+                                                    administrative_accounts
+                                                }
+                                                Err(error) => {
+                                                    return Ok(make_charged_execution_failure(
+                                                        error.into(),
+                                                    ))
+                                                }
+                                            };
+
+                                            AccountKind::Private {
+                                                administrative_accounts,
+                                            }
+                                        }
+                                        None => {
+                                            return Ok(make_charged_execution_failure(
+                                                Error::FailedToGetAdminAccounts,
+                                            ))
+                                        }
+                                    }
+                                }
+                            };
+
+                            let new_account = match account::create_account(
+                                account_kind,
+                                account_hash,
+                                main_purse,
+                            )
+                            .map_err(Error::reverter)
+                            {
+                                Ok(account) => account,
+                                Err(error) => return Ok(make_charged_execution_failure(error)),
+                            };
+
                             mint_extra_keys.push(Key::from(main_purse));
                             // write new account
-                            tracking_copy
-                                .borrow_mut()
-                                .write(Key::Account(public_key), StoredValue::Account(new_account))
+                            tracking_copy.borrow_mut().write(
+                                Key::Account(account_hash),
+                                StoredValue::Account(new_account),
+                            )
                         }
                         None => {
                             // This case implies that the execution_result is a failure variant as
@@ -979,7 +1051,7 @@ where
             }
 
             let get_payment_purse_stack = {
-                let system = CallStackElement::session(PublicKey::System.to_account_hash());
+                let system = CallStackElement::session(*SYSTEM_ACCOUNT_ADDRESS);
                 let handle_payment = CallStackElement::stored_contract(
                     handle_payment_contract.contract_package_hash(),
                     *handle_payment_contract_hash,
@@ -1035,7 +1107,7 @@ where
             };
 
             let transfer_to_payment_purse_stack = {
-                let system = CallStackElement::session(PublicKey::System.to_account_hash());
+                let system = CallStackElement::session(*SYSTEM_ACCOUNT_ADDRESS);
                 let mint = CallStackElement::stored_contract(
                     mint_contract.contract_package_hash(),
                     *mint_contract_hash,
@@ -1195,7 +1267,7 @@ where
             };
 
             let system_account = Account::new(
-                PublicKey::System.to_account_hash(),
+                *SYSTEM_ACCOUNT_ADDRESS,
                 Default::default(),
                 URef::new(Default::default(), AccessRights::READ_ADD_WRITE),
                 Default::default(),
@@ -1206,7 +1278,7 @@ where
             let finalization_tc = Rc::new(RefCell::new(tc.fork()));
 
             let finalize_payment_stack = {
-                let system = CallStackElement::session(PublicKey::System.to_account_hash());
+                let system = CallStackElement::session(*SYSTEM_ACCOUNT_ADDRESS);
                 let handle_payment = CallStackElement::stored_contract(
                     handle_payment_contract.contract_package_hash(),
                     *handle_payment_contract_hash,
@@ -1404,7 +1476,7 @@ where
         // Finalization is executed by system account (currently genesis account)
         // payment_code_spec_5: system executes finalization
         let system_account = Account::new(
-            PublicKey::System.to_account_hash(),
+            *SYSTEM_ACCOUNT_ADDRESS,
             Default::default(),
             URef::new(Default::default(), AccessRights::READ_ADD_WRITE),
             Default::default(),
@@ -1973,15 +2045,8 @@ where
         let mut named_keys = auction_contract.named_keys().to_owned();
         let base_key = Key::from(*auction_contract_hash);
         let gas_limit = Gas::new(U512::from(std::u64::MAX));
-        let virtual_system_account = {
-            let purse = URef::new(Default::default(), AccessRights::READ_ADD_WRITE);
-            Account::create(
-                PublicKey::System.to_account_hash(),
-                NamedKeys::default(),
-                purse,
-            )
-        };
-        let authorization_keys = BTreeSet::from_iter(vec![PublicKey::System.to_account_hash()]);
+        let virtual_system_account = VIRTUAL_SYSTEM_ACCOUNT.clone();
+        let authorization_keys = BTreeSet::from_iter(vec![*SYSTEM_ACCOUNT_ADDRESS]);
         let blocktime = BlockTime::default();
         let deploy_hash = {
             // seeds address generator w/ protocol version
@@ -1995,7 +2060,7 @@ where
         };
 
         let get_era_validators_stack = {
-            let system = CallStackElement::session(PublicKey::System.to_account_hash());
+            let system = CallStackElement::session(*SYSTEM_ACCOUNT_ADDRESS);
             let auction = CallStackElement::stored_contract(
                 auction_contract.contract_package_hash(),
                 *auction_contract_hash,
@@ -2112,15 +2177,10 @@ where
             }
         };
 
-        let system_account_addr = PublicKey::System.to_account_hash();
-
-        let virtual_system_account = {
-            let purse = URef::new(Default::default(), AccessRights::READ_ADD_WRITE);
-            Account::create(system_account_addr, NamedKeys::default(), purse)
-        };
+        let virtual_system_account = VIRTUAL_SYSTEM_ACCOUNT.clone();
         let authorization_keys = {
             let mut ret = BTreeSet::new();
-            ret.insert(system_account_addr);
+            ret.insert(*SYSTEM_ACCOUNT_ADDRESS);
             ret
         };
         let mut named_keys = auction_contract.named_keys().to_owned();
@@ -2151,7 +2211,7 @@ where
         })?;
 
         let distribute_rewards_stack = {
-            let system = CallStackElement::session(PublicKey::System.to_account_hash());
+            let system = CallStackElement::session(*SYSTEM_ACCOUNT_ADDRESS);
             let auction = CallStackElement::stored_contract(
                 auction_contract.contract_package_hash(),
                 *auction_contract_hash,
@@ -2196,7 +2256,7 @@ where
             };
 
             let slash_stack = {
-                let system = CallStackElement::session(PublicKey::System.to_account_hash());
+                let system = CallStackElement::session(*SYSTEM_ACCOUNT_ADDRESS);
                 let auction = CallStackElement::stored_contract(
                     auction_contract.contract_package_hash(),
                     *auction_contract_hash,
@@ -2249,7 +2309,7 @@ where
         })?;
 
         let run_auction_stack = {
-            let system = CallStackElement::session(PublicKey::System.to_account_hash());
+            let system = CallStackElement::session(*SYSTEM_ACCOUNT_ADDRESS);
             let auction = CallStackElement::stored_contract(
                 auction_contract.contract_package_hash(),
                 *auction_contract_hash,

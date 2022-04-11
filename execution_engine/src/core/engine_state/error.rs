@@ -97,6 +97,9 @@ pub enum Error {
     /// Failed to retrieve the current EraId from the auction state.
     #[error("Failed to retrieve the era_id from the auction state")]
     FailedToRetrieveEraId,
+    /// Failed to retrieve list of administrative accounts on a private chain.
+    #[error("Failed to retrieve administrative accounts on private chain")]
+    FailedToGetAdminAccounts,
 }
 
 impl Error {

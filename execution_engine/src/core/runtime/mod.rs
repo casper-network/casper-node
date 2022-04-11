@@ -21,7 +21,7 @@ use tracing::error;
 use wasmi::{ImportsBuilder, MemoryRef, ModuleInstance, ModuleRef, Trap, TrapKind};
 
 use casper_types::{
-    account::{Account, AccountHash, ActionType, Weight},
+    account::{AccountHash, ActionType, Weight},
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::{
         self, Contract, ContractPackage, ContractPackageStatus, ContractVersion, ContractVersions,
@@ -48,7 +48,11 @@ use crate::{
         tracking_copy::TrackingCopyExt,
         Address,
     },
-    shared::host_function_costs::{Cost, HostFunction},
+    shared::{
+        account::{self, AccountKind},
+        chain_kind::ChainKind,
+        host_function_costs::{Cost, HostFunction},
+    },
     storage::global_state::StateReader,
     system::{
         auction::Auction, handle_payment::HandlePayment, mint::Mint,
@@ -3110,7 +3114,13 @@ where
             id,
         )? {
             Ok(()) => {
-                let account = Account::create(target, NamedKeys::default(), target_purse);
+                let account_kind = match self.config.chain_kind() {
+                    ChainKind::Public => AccountKind::Public,
+                    ChainKind::Private => AccountKind::Private {
+                        administrative_accounts: self.read_administrative_accounts()?,
+                    },
+                };
+                let account = account::create_account(account_kind, target, target_purse)?;
                 self.context.write_account(target_key, account)?;
                 Ok(Ok(TransferredTo::NewAccount))
             }
@@ -3786,48 +3796,45 @@ where
         Ok(Ok(()))
     }
 
-    /// Calls the "is_special_account" method on the mint contract at the given mint.
+    /// Reads administrative accounts stored under mint's named key.
     ///
-    /// This method is valid only if the chain is running in private mode.
-    fn is_administrative_account(&mut self, account_hash: &AccountHash) -> Result<bool, Error> {
+    /// This method returns error if the chain is not private.
+    fn read_administrative_accounts(&mut self) -> Result<BTreeSet<AccountHash>, Error> {
         if self.config.chain_kind().is_public() {
             // This is only valid for private chains.
             return Err(Error::InvalidChainKind);
         }
 
-        let administrative_accounts: BTreeSet<AccountHash> = {
-            let mint = self.get_mint_contract()?;
-            let mint_contract: Contract = self.context.read_gs_typed(&Key::from(mint))?;
+        let mint = self.get_mint_contract()?;
+        let mint_contract: Contract = self.context.read_gs_typed(&Key::from(mint))?;
 
-            let administrative_accounts_name = mint::ADMINISTRATIVE_ACCOUNTS_KEY;
-            let administrative_accounts_key =
-                match mint_contract.named_keys().get(administrative_accounts_name) {
-                    Some(key @ Key::URef(_)) => key,
-                    Some(key) => {
-                        // Genesis writes a URef entry if at least one administrative account is
-                        // defined.
-                        return Err(Error::KeyIsNotAURef(*key));
-                    }
-                    None => {
-                        // Lack of administrative accounts in the mint contract indicates private
-                        // chain
-                        return Err(Error::NamedKeyNotFound(
-                            administrative_accounts_name.to_string(),
-                        ));
-                    }
-                };
-
-            match self.context.read_gs_direct(administrative_accounts_key)? {
-                Some(StoredValue::CLValue(cl_value)) => cl_value.into_t()?,
-                Some(_) => return Err(Error::UnexpectedStoredValueVariant),
-                None => {
-                    // Lack of value under a URef means we definetely dont have administrative
-                    // accounts in this chain.
-                    return Ok(false);
+        let administrative_accounts_name = mint::ADMINISTRATIVE_ACCOUNTS_KEY;
+        let administrative_accounts_key =
+            match mint_contract.named_keys().get(administrative_accounts_name) {
+                Some(key @ Key::URef(_)) => key,
+                Some(key) => {
+                    // Genesis writes a URef entry if at least one administrative account is
+                    // defined.
+                    return Err(Error::KeyIsNotAURef(*key));
                 }
+                None => {
+                    // Lack of administrative accounts in the mint contract indicates private
+                    // chain
+                    return Err(Error::NamedKeyNotFound(
+                        administrative_accounts_name.to_string(),
+                    ));
+                }
+            };
+
+        match self.context.read_gs_direct(administrative_accounts_key)? {
+            Some(StoredValue::CLValue(cl_value)) => Ok(cl_value.into_t()?),
+            Some(_) => Err(Error::UnexpectedStoredValueVariant),
+            None => {
+                // CLValue has to exist under this Key after successful private chain's genesis
+                // operation.
+                Err(Error::UnexpectedStoredValueVariant)
             }
-        };
-        Ok(administrative_accounts.contains(account_hash))
+        }
     }
 
     pub(crate) fn control_management(
@@ -3840,7 +3847,10 @@ where
             return Ok(Err(ApiError::PermissionDenied));
         }
 
-        if !self.is_administrative_account(&self.context.account().account_hash())? {
+        if !self
+            .read_administrative_accounts()?
+            .contains(&self.context.account().account_hash())
+        {
             // Only special accounts can use this host function.
             return Ok(Err(ApiError::PermissionDenied));
         }

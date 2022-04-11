@@ -60,8 +60,8 @@ impl EngineConfig {
 
     /// Get the engine config's chain kind.
     #[must_use]
-    pub fn chain_kind(&self) -> ChainKind {
-        self.chain_kind
+    pub fn chain_kind(&self) -> &ChainKind {
+        &self.chain_kind
     }
 }
 

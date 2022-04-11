@@ -30,6 +30,12 @@ static ACCOUNT_1_PUBLIC_KEY: Lazy<PublicKey> =
     Lazy::new(|| PublicKey::from(&*ACCOUNT_1_SECRET_KEY));
 static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| ACCOUNT_1_PUBLIC_KEY.to_account_hash());
 
+static ACCOUNT_2_SECRET_KEY: Lazy<SecretKey> =
+    Lazy::new(|| SecretKey::secp256k1_from_bytes([241; 32]).unwrap());
+static ACCOUNT_2_PUBLIC_KEY: Lazy<PublicKey> =
+    Lazy::new(|| PublicKey::from(&*ACCOUNT_2_SECRET_KEY));
+static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| ACCOUNT_2_PUBLIC_KEY.to_account_hash());
+
 const SPECIAL_ACCOUNT_INITIAL_BALANCE: U512 =
     U512([100_000_000_000_000_000u64, 0, 0, 0, 0, 0, 0, 0]);
 
