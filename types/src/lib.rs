@@ -26,6 +26,7 @@ pub mod account;
 pub mod api_error;
 mod block_time;
 pub mod bytesrepr;
+mod capnp;
 pub mod checksummed_hex;
 mod cl_type;
 mod cl_value;
