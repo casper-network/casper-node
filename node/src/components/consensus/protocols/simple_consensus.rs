@@ -777,7 +777,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     }
 
     /// The main entry point for non-synchronization messages. This function mostly authenticates
-    /// and authorizes the message, passing it to [`handle_content`] if it passes snuff for the
+    /// and authorizes the message, passing it to [`add_content`] if it passes snuff for the
     /// main protocol logic.
     #[allow(clippy::too_many_arguments)]
     fn handle_signed_message(
@@ -843,11 +843,24 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             return err_msg("invalid signature");
         }
 
+        let mut outcomes = vec![];
+
+        if let Some((content2, signature2)) = self.detect_fault(round_id, validator_idx, &content) {
+            outcomes.extend(self.handle_fault(
+                round_id,
+                validator_idx,
+                content.clone(),
+                signature,
+                content2,
+                signature2,
+            ));
+        }
+
         match content {
             Content::Proposal(proposal) => {
                 if proposal.timestamp > now + self.config.pending_vertex_timeout {
                     trace!("received a proposal with a timestamp far in the future; dropping");
-                    return vec![];
+                    return outcomes;
                 }
                 if proposal.timestamp > now {
                     trace!("received a proposal with a timestamp slightly in the future");
@@ -858,13 +871,17 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 }
 
                 if validator_idx != self.leader(round_id) {
-                    return err_msg("wrong leader");
+                    outcomes.extend(err_msg("wrong leader"));
+                    return outcomes;
                 }
                 if proposal
                     .maybe_parent_round_id
                     .map_or(false, |parent_round_id| parent_round_id >= round_id)
                 {
-                    return err_msg("invalid proposal: parent is not from an earlier round");
+                    outcomes.extend(err_msg(
+                        "invalid proposal: parent is not from an earlier round",
+                    ));
+                    return outcomes;
                 }
 
                 let ancestor_values = if let Some(parent_round_id) = proposal.maybe_parent_round_id
@@ -878,18 +895,28 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                             .entry(proposal)
                             .or_insert_with(HashSet::new)
                             .insert((round_id, sender, signature));
-                        return vec![];
+                        return outcomes;
                     }
                 } else {
                     vec![]
                 };
 
-                self.validate_proposal(round_id, proposal, ancestor_values, sender, signature)
+                outcomes.extend(self.validate_proposal(
+                    round_id,
+                    proposal,
+                    ancestor_values,
+                    sender,
+                    signature,
+                    true,
+                ));
             }
             content @ Content::Echo(_) | content @ Content::Vote(_) => {
-                self.handle_content(round_id, content, validator_idx, signature)
+                if self.add_content(round_id, content, validator_idx, signature) {
+                    outcomes.extend(self.update(round_id));
+                }
             }
         }
+        outcomes
     }
 
     /// Updates the round's outcome and returns `true` if there is a new quorum of echos for the
@@ -995,32 +1022,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         }
     }
 
-    /// The entrypoint for handling the authenticated insides of a message, performing the
-    /// main logic of the protocol.
-    fn handle_content(
-        &mut self,
-        round_id: RoundId,
-        content: Content<C>,
-        validator_idx: ValidatorIndex,
-        signature: C::Signature,
-    ) -> ProtocolOutcomes<C> {
-        let mut outcomes = vec![];
-        if let Some((content2, signature2)) = self.detect_fault(round_id, validator_idx, &content) {
-            outcomes.extend(self.handle_fault(
-                round_id,
-                validator_idx,
-                content.clone(),
-                signature,
-                content2,
-                signature2,
-            ));
-        }
-        if self.add_content(round_id, content, validator_idx, signature) {
-            outcomes.extend(self.update(round_id));
-        }
-        outcomes
-    }
-
     /// Updates the state and sends appropriate messages after a signature has been added to a
     /// round.
     fn update(&mut self, mut round_id: RoundId) -> ProtocolOutcomes<C> {
@@ -1050,13 +1051,13 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                         .expect("missing ancestors of accepted proposal");
                     for (proposal, rounds_and_senders) in proposals {
                         for (proposal_round_id, sender, signature) in rounds_and_senders {
-                            // TODO: Don't call update recursively!
                             outcomes.extend(self.validate_proposal(
                                 proposal_round_id,
                                 proposal.clone(),
                                 ancestor_values.clone(),
                                 sender,
                                 signature,
+                                false,
                             ));
                         }
                     }
@@ -1150,7 +1151,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     }
 
     /// Sends a proposal to the `BlockValidator` component for validation. If no validation is
-    /// needed, immediately calls `handle_content`.
+    /// needed, immediately calls `add_content`.
     fn validate_proposal(
         &mut self,
         round_id: RoundId,
@@ -1158,6 +1159,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         ancestor_values: Vec<C::ConsensusValue>,
         sender: NodeId,
         signature: C::Signature,
+        update: bool,
     ) -> ProtocolOutcomes<C> {
         if let Some((_, parent_proposal)) = proposal
             .maybe_parent_round_id
@@ -1201,12 +1203,12 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 validator_idx,
                 "proposal does not need validation",
             );
-            self.handle_content(
-                round_id,
-                Content::Proposal(proposal),
-                validator_idx,
-                signature,
-            )
+            let content = Content::Proposal(proposal);
+            if self.add_content(round_id, content, validator_idx, signature) && update {
+                self.update(round_id)
+            } else {
+                vec![]
+            }
         }
     }
 
@@ -1743,12 +1745,11 @@ where
             let mut outcomes = vec![];
             for (round_id, maybe_parent_round_id, _sender, signature) in rounds_and_node_ids {
                 let proposal = Proposal::with_block(&proposed_block, maybe_parent_round_id);
-                outcomes.extend(self.handle_content(
-                    round_id,
-                    Content::Proposal(proposal),
-                    self.leader(round_id),
-                    signature,
-                ));
+                let content = Content::Proposal(proposal);
+                let validator_idx = self.leader(round_id);
+                if self.add_content(round_id, content, validator_idx, signature) {
+                    outcomes.extend(self.update(round_id));
+                }
             }
             outcomes
         } else {
