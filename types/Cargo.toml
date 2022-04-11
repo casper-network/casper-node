@@ -10,11 +10,15 @@ homepage = "https://casperlabs.io"
 repository = "https://github.com/CasperLabs/casper-node/tree/master/types"
 license = "Apache-2.0"
 
+[build-dependencies]
+capnpc = "0.14.5"
+
 [dependencies]
 base16 = { version = "0.2.1", default-features = false, features = ["alloc"] }
 base64 = { version = "0.13.0", default-features = false }
 bitflags = "1"
 blake2 = { version = "0.9.0", default-features = false }
+capnp = "0.14.6"
 datasize = { version = "0.2.4", optional = true }
 ed25519-dalek = { version = "1.0.0", default-features = false, features = ["rand", "u64_backend"] }
 hex = { version = "0.4.2", default-features = false, features = ["alloc"] }

@@ -347,6 +347,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c4872d67bab6358e59559027aa3b9157c53d9358c51423c17554809a8858e0f8"
 
 [[package]]
+name = "capnp"
+version = "0.14.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "21d5d7da973146f1720672faa44f1523cc8f923636190ca1a931c7bc8834de68"
+
+[[package]]
+name = "capnpc"
+version = "0.14.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c7ed9b80f792ac01a8b328ccbc509c2bd756fb5dec18af0163e7963dde23c0b5"
+dependencies = [
+ "capnp",
+]
+
+[[package]]
 name = "casper-contract"
 version = "1.4.4"
 dependencies = [
@@ -593,6 +608,8 @@ dependencies = [
  "bincode",
  "bitflags",
  "blake2",
+ "capnp",
+ "capnpc",
  "criterion",
  "datasize",
  "ed25519-dalek",
