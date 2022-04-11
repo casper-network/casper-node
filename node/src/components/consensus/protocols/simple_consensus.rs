@@ -1332,13 +1332,13 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     fn is_quorum(&self, vidxs: impl Iterator<Item = ValidatorIndex>) -> bool {
         let mut sum = self.faulty_weight();
         let quorum_threshold = self.quorum_threshold();
-        if sum >= quorum_threshold {
+        if sum > quorum_threshold {
             return true;
         }
         for vidx in vidxs {
             if !self.faults.contains_key(&vidx) {
                 sum += self.weights[vidx];
-                if sum >= quorum_threshold {
+                if sum > quorum_threshold {
                     return true;
                 }
             }
