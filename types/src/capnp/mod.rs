@@ -1,10 +1,14 @@
 use alloc::vec::Vec;
 
+mod public_key;
 mod test;
 
+// TODO[RC]: Add From<capnp::Error> to avoid spamming `map_err()` and prevent losing information
+// about original error.
 #[derive(Debug)]
 pub enum Error {
     UnableToSerialize,
+    UnableToDeserialize,
 }
 
 pub trait ToCapnpBytes {

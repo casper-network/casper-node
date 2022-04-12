@@ -30,10 +30,10 @@ impl FromCapnpBytes for Test {
     fn try_from_capnp_bytes(bytes: &[u8]) -> Result<Self, Error> {
         let deserialized =
             capnp::serialize::read_message(bytes, capnp::message::ReaderOptions::new())
-                .expect("unable to deserialize struct");
+                .map_err(|_| Error::UnableToDeserialize)?;
         let reader = deserialized
             .get_root::<test_capnp::test::Reader>()
-            .expect("unable to get struct reader");
+            .map_err(|_| Error::UnableToDeserialize)?;
         Ok(Self {
             id: reader.get_id(),
         })

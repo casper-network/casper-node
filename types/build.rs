@@ -10,9 +10,14 @@ fn main() {
 
     for entry in entries {
         match &entry {
-            Ok(entry) => {
-                compiler.file(entry.path());
-            }
+            Ok(entry) => match entry.path().extension() {
+                Some(extension) => {
+                    if extension == "capnp" {
+                        compiler.file(entry.path());
+                    }
+                }
+                None => (),
+            },
             Err(err) => panic!("error accessing 'capnp' schema: {:?} {}", entry, err),
         }
     }
