@@ -411,21 +411,22 @@ impl ContractRuntime {
             }
             ContractRuntimeRequest::PutTrie {
                 trie_bytes,
-                responder: _,
+                responder,
             } => {
                 trace!(?trie_bytes, "put_trie request");
                 let engine_state = Arc::clone(&self.engine_state);
-                let _ = Arc::clone(&self.metrics);
+                let metrics = Arc::clone(&self.metrics);
                 async move {
                     let correlation_id = CorrelationId::new();
-                    let _ = Instant::now();
-                    let _ = engine_state
+                    let start = Instant::now();
+                    let result = engine_state
                         .lock()
                         .unwrap()
                         .put_trie_and_find_missing_descendant_trie_keys(
                             correlation_id,
                             &*trie_bytes,
                         );
+                    let _ = engine_state.lock().unwrap().flush_environment();
                     // PERF: this *could* be called only periodically.
                     // if let Err(lmdb_error) = engine_state.lock().unwrap().flush_environment() {
                     //     fatal!(
@@ -435,9 +436,9 @@ impl ContractRuntime {
                     //     )
                     //     .await;
                     // } else {
-                    //     metrics.put_trie.observe(start.elapsed().as_secs_f64());
-                    //     trace!(?result, "put_trie response");
-                    //     responder.respond(result).await
+                    metrics.put_trie.observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "put_trie response");
+                    responder.respond(result).await
                     // }
                 }
                 .ignore()
