@@ -110,6 +110,26 @@ fn leader_prng(upper: u64, seed: u64) -> u64 {
         .saturating_add(1)
 }
 
+/// Returns a seed that with the given weights results in the desired leader sequence.
+#[cfg(test)]
+pub(crate) fn find_seed(
+    seq: &[ValidatorIndex],
+    weights: &ValidatorMap<Weight>,
+    leaders: &ValidatorMap<bool>,
+) -> u64 {
+    for seed in 0..1000 {
+        let ls = LeaderSequence::new(seed, weights, leaders.clone());
+        if seq
+            .iter()
+            .enumerate()
+            .all(|(slot, &v_idx)| ls.leader(slot as u64) == v_idx)
+        {
+            return seed;
+        }
+    }
+    panic!("No suitable seed for leader sequence found");
+}
+
 #[test]
 fn test_leader_prng() {
     use rand::RngCore;
