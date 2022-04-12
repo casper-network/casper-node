@@ -1,4 +1,8 @@
-use std::{collections::HashMap, ops::Deref, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    ops::Deref,
+    sync::Arc,
+};
 
 use casper_hashing::{ChunkWithProof, Digest};
 use casper_types::{bytesrepr::Bytes, Key, StoredValue};
@@ -35,6 +39,7 @@ pub struct LmdbGlobalState {
     // TODO: make this a lazy-static
     /// Empty root hash used for a new trie.
     pub(crate) empty_root_hash: Digest,
+    digests_without_missing_descendants: HashSet<Digest>,
 }
 
 /// Represents a "view" of global state at a particular root hash.
@@ -75,6 +80,7 @@ impl LmdbGlobalState {
             environment,
             trie_store,
             empty_root_hash,
+            digests_without_missing_descendants: HashSet::new(),
         }
     }
 
@@ -276,21 +282,36 @@ impl StateProvider for LmdbGlobalState {
     }
 
     /// Finds all of the keys of missing descendant `Trie<K,V>` values.
+    #[allow(clippy::needless_collect)]
     fn missing_trie_keys(
-        &self,
+        &mut self,
         correlation_id: CorrelationId,
         trie_keys: Vec<Digest>,
     ) -> Result<Vec<Digest>, Self::Error> {
-        let txn = self.environment.create_read_txn()?;
-        let missing_descendants =
-            missing_trie_keys::<Key, StoredValue, lmdb::RoTransaction, LmdbTrieStore, Self::Error>(
-                correlation_id,
-                &txn,
-                self.trie_store.deref(),
-                trie_keys,
-            )?;
-        txn.commit()?;
-        Ok(missing_descendants)
+        let trie_keys_filtered: Vec<_> = trie_keys
+            .iter()
+            .filter(|digest| !self.digests_without_missing_descendants.contains(digest))
+            .collect();
+
+        if trie_keys_filtered.is_empty() {
+            Ok(vec![])
+        } else {
+            let txn = self.environment.create_read_txn()?;
+            let missing_descendants =
+                missing_trie_keys::<
+                    Key,
+                    StoredValue,
+                    lmdb::RoTransaction,
+                    LmdbTrieStore,
+                    Self::Error,
+                >(correlation_id, &txn, self.trie_store.deref(), trie_keys)?;
+            if missing_descendants.is_empty() {
+                self.digests_without_missing_descendants
+                    .extend(&missing_descendants);
+            }
+            txn.commit()?;
+            Ok(missing_descendants)
+        }
     }
 }
 

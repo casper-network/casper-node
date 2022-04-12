@@ -176,7 +176,7 @@ impl Display for Event {
 #[derive(DataSize)]
 pub(crate) struct ContractRuntime {
     execution_pre_state: Arc<Mutex<ExecutionPreState>>,
-    engine_state: Arc<EngineState<LmdbGlobalState>>,
+    engine_state: Arc<Mutex<EngineState<LmdbGlobalState>>>,
     metrics: Arc<Metrics>,
     protocol_version: ProtocolVersion,
     verifiable_chunked_hash_activation: EraId,
@@ -289,7 +289,10 @@ impl ContractRuntime {
                 async move {
                     let correlation_id = CorrelationId::new();
                     let start = Instant::now();
-                    let result = engine_state.run_query(correlation_id, query_request);
+                    let result = engine_state
+                        .lock()
+                        .unwrap()
+                        .run_query(correlation_id, query_request);
                     metrics.run_query.observe(start.elapsed().as_secs_f64());
                     trace!(?result, "query result");
                     responder.respond(result).await
@@ -306,7 +309,7 @@ impl ContractRuntime {
                 async move {
                     let correlation_id = CorrelationId::new();
                     let start = Instant::now();
-                    let result = engine_state.get_purse_balance(
+                    let result = engine_state.lock().unwrap().get_purse_balance(
                         correlation_id,
                         balance_request.state_hash(),
                         balance_request.purse_uref(),
@@ -332,7 +335,7 @@ impl ContractRuntime {
                 async move {
                     let correlation_id = CorrelationId::new();
                     let start = Instant::now();
-                    let era_validators = engine_state.get_era_validators(
+                    let era_validators = engine_state.lock().unwrap().get_era_validators(
                         correlation_id,
                         system_contract_registry,
                         request,
@@ -360,7 +363,7 @@ impl ContractRuntime {
                 async move {
                     let correlation_id = CorrelationId::new();
                     let start = Instant::now();
-                    let era_validators = engine_state.get_era_validators(
+                    let era_validators = engine_state.lock().unwrap().get_era_validators(
                         correlation_id,
                         system_contract_registry,
                         request.into(),
@@ -381,7 +384,11 @@ impl ContractRuntime {
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
                 async move {
-                    let result = Self::do_get_trie(&engine_state, &metrics, trie_or_chunk_id);
+                    let result = Self::do_get_trie(
+                        &engine_state.lock().unwrap(),
+                        &metrics,
+                        trie_or_chunk_id,
+                    );
                     trace!(?result, "get_trie response");
                     responder.respond(result).await
                 }
@@ -395,7 +402,8 @@ impl ContractRuntime {
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
                 async move {
-                    let result = Self::get_trie_full(&engine_state, &metrics, trie_key);
+                    let result =
+                        Self::get_trie_full(&engine_state.lock().unwrap(), &metrics, trie_key);
                     trace!(?result, "get_trie_full response");
                     responder.respond(result).await
                 }
@@ -403,31 +411,34 @@ impl ContractRuntime {
             }
             ContractRuntimeRequest::PutTrie {
                 trie_bytes,
-                responder,
+                responder: _,
             } => {
                 trace!(?trie_bytes, "put_trie request");
                 let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
+                let _ = Arc::clone(&self.metrics);
                 async move {
                     let correlation_id = CorrelationId::new();
-                    let start = Instant::now();
-                    let result = engine_state.put_trie_and_find_missing_descendant_trie_keys(
-                        correlation_id,
-                        &*trie_bytes,
-                    );
+                    let _ = Instant::now();
+                    let _ = engine_state
+                        .lock()
+                        .unwrap()
+                        .put_trie_and_find_missing_descendant_trie_keys(
+                            correlation_id,
+                            &*trie_bytes,
+                        );
                     // PERF: this *could* be called only periodically.
-                    if let Err(lmdb_error) = engine_state.flush_environment() {
-                        fatal!(
-                            effect_builder,
-                            "error flushing lmdb environment {:?}",
-                            lmdb_error
-                        )
-                        .await;
-                    } else {
-                        metrics.put_trie.observe(start.elapsed().as_secs_f64());
-                        trace!(?result, "put_trie response");
-                        responder.respond(result).await
-                    }
+                    // if let Err(lmdb_error) = engine_state.lock().unwrap().flush_environment() {
+                    //     fatal!(
+                    //         effect_builder,
+                    //         "error flushing lmdb environment {:?}",
+                    //         lmdb_error
+                    //     )
+                    //     .await;
+                    // } else {
+                    //     metrics.put_trie.observe(start.elapsed().as_secs_f64());
+                    //     trace!(?result, "put_trie response");
+                    //     responder.respond(result).await
+                    // }
                 }
                 .ignore()
             }
@@ -452,7 +463,7 @@ impl ContractRuntime {
                 async move {
                     let result = run_intensive_task(move || {
                         execute_finalized_block(
-                            engine_state.as_ref(),
+                            &engine_state.lock().unwrap(),
                             Some(metrics),
                             protocol_version,
                             execution_pre_state,
@@ -516,7 +527,10 @@ impl ContractRuntime {
                 async move {
                     let correlation_id = CorrelationId::new();
                     let start = Instant::now();
-                    let result = engine_state.get_bids(correlation_id, get_bids_request);
+                    let result = engine_state
+                        .lock()
+                        .unwrap()
+                        .get_bids(correlation_id, get_bids_request);
                     metrics.get_bids.observe(start.elapsed().as_secs_f64());
                     trace!(?result, "get bids result");
                     responder.respond(result).await
@@ -533,7 +547,10 @@ impl ContractRuntime {
                 async move {
                     let correlation_id = CorrelationId::new();
                     let start = Instant::now();
-                    let result = engine_state.missing_trie_keys(correlation_id, vec![trie_key]);
+                    let result = engine_state
+                        .lock()
+                        .unwrap()
+                        .missing_trie_keys(correlation_id, vec![trie_key]);
                     metrics
                         .missing_trie_keys
                         .observe(start.elapsed().as_secs_f64());
@@ -593,7 +610,7 @@ impl ContractRuntime {
             system_config,
         );
 
-        let engine_state = Arc::new(EngineState::new(global_state, engine_config));
+        let engine_state = Arc::new(Mutex::new(EngineState::new(global_state, engine_config)));
 
         let metrics = Arc::new(Metrics::new(registry)?);
 
@@ -636,14 +653,14 @@ impl ContractRuntime {
                 })?,
         );
 
-        let result = self.engine_state.commit_genesis(
+        let result = self.engine_state.lock().unwrap().commit_genesis(
             correlation_id,
             genesis_config_hash,
             protocol_version,
             &ee_config,
             chainspec_registry,
         );
-        self.engine_state.flush_environment()?;
+        self.engine_state.lock().unwrap().flush_environment()?;
         result
     }
 
@@ -655,8 +672,10 @@ impl ContractRuntime {
         let start = Instant::now();
         let result = self
             .engine_state
+            .lock()
+            .unwrap()
             .commit_upgrade(CorrelationId::new(), upgrade_config);
-        self.engine_state.flush_environment()?;
+        self.engine_state.lock().unwrap().flush_environment()?;
         self.metrics
             .commit_upgrade
             .observe(start.elapsed().as_secs_f64());
@@ -674,6 +693,8 @@ impl ContractRuntime {
         let start = Instant::now();
         let result = self
             .engine_state
+            .lock()
+            .unwrap()
             .missing_trie_keys(correlation_id, trie_keys);
         self.metrics
             .missing_trie_keys
@@ -697,6 +718,8 @@ impl ContractRuntime {
 
         match self
             .engine_state
+            .lock()
+            .unwrap()
             .get_system_contract_registry(CorrelationId::default(), state_root_hash)
         {
             Ok(system_contract_registry) => {
@@ -713,7 +736,7 @@ impl ContractRuntime {
 
     #[allow(clippy::too_many_arguments)]
     async fn execute_finalized_block_or_requeue<REv>(
-        engine_state: Arc<EngineState<LmdbGlobalState>>,
+        engine_state: Arc<Mutex<EngineState<LmdbGlobalState>>>,
         metrics: Arc<Metrics>,
         exec_queue: ExecQueue,
         execution_pre_state: Arc<Mutex<ExecutionPreState>>,
@@ -736,7 +759,7 @@ impl ContractRuntime {
             maybe_step_effect_and_upcoming_era_validators,
         } = match run_intensive_task(move || {
             execute_finalized_block(
-                engine_state.as_ref(),
+                &engine_state.lock().unwrap(),
                 Some(metrics),
                 protocol_version,
                 current_execution_pre_state,
@@ -799,7 +822,7 @@ impl ContractRuntime {
         trace!(?serialized_id, "get_trie");
 
         let id: TrieOrChunkId = bincode::deserialize(serialized_id)?;
-        let maybe_trie = Self::do_get_trie(&self.engine_state, &self.metrics, id)?;
+        let maybe_trie = Self::do_get_trie(&self.engine_state.lock().unwrap(), &self.metrics, id)?;
         Ok(FetchedOrNotFound::from_opt(id, maybe_trie))
     }
 
@@ -829,7 +852,7 @@ impl ContractRuntime {
 
     /// Returns the engine state, for testing only.
     #[cfg(test)]
-    pub(crate) fn engine_state(&self) -> &Arc<EngineState<LmdbGlobalState>> {
+    pub(crate) fn engine_state(&self) -> &Arc<Mutex<EngineState<LmdbGlobalState>>> {
         &self.engine_state
     }
 }

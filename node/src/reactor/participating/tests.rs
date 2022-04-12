@@ -279,6 +279,8 @@ impl SwitchBlocks {
         let runner = nodes.values().next().expect("missing node");
         let engine_state = runner.participating().contract_runtime().engine_state();
         let bids_result = engine_state
+            .lock()
+            .unwrap()
             .get_bids(correlation_id, request)
             .expect("get_bids failed");
         bids_result.into_success().expect("no bids returned")

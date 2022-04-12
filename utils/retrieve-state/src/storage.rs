@@ -89,11 +89,18 @@ pub fn load_execution_engine(
 }
 
 /// Creates a new execution engine.
+#[allow(clippy::type_complexity)]
 pub fn create_execution_engine(
     ee_lmdb_path: impl AsRef<Path>,
     default_max_db_size: usize,
     manual_sync_enabled: bool,
-) -> Result<(Arc<EngineState<LmdbGlobalState>>, Arc<LmdbEnvironment>), anyhow::Error> {
+) -> Result<
+    (
+        Arc<std::sync::Mutex<EngineState<LmdbGlobalState>>>,
+        Arc<LmdbEnvironment>,
+    ),
+    anyhow::Error,
+> {
     if !ee_lmdb_path.as_ref().exists() {
         info!(
             "creating new lmdb data dir {}",
@@ -114,7 +121,10 @@ pub fn create_execution_engine(
     let global_state = LmdbGlobalState::empty(Arc::clone(&lmdb_environment), lmdb_trie_store)?;
 
     Ok((
-        Arc::new(EngineState::new(global_state, EngineConfig::default())),
+        Arc::new(std::sync::Mutex::new(EngineState::new(
+            global_state,
+            EngineConfig::default(),
+        ))),
         lmdb_environment,
     ))
 }

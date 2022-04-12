@@ -120,7 +120,7 @@ pub trait StateProvider {
 
     /// Finds all of the missing or corrupt keys of which are descendants of `trie_key`.
     fn missing_trie_keys(
-        &self,
+        &mut self,
         correlation_id: CorrelationId,
         trie_keys: Vec<Digest>,
     ) -> Result<Vec<Digest>, Self::Error>;

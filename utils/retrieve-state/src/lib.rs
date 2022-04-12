@@ -390,7 +390,7 @@ pub enum PeerMsg {
 pub async fn download_trie_channels(
     client: &Client,
     peers: &[SocketAddr],
-    engine_state: Arc<EngineState<LmdbGlobalState>>,
+    engine_state: Arc<std::sync::Mutex<EngineState<LmdbGlobalState>>>,
     state_root_hash: Digest,
     peer_mailbox_size: usize,
 ) -> Result<(), anyhow::Error> {
@@ -463,6 +463,8 @@ pub async fn download_trie_channels(
                 }) => {
                     let mut missing_trie_descendants = tokio::task::block_in_place(|| {
                         engine_state
+                            .lock()
+                            .unwrap()
                             .put_trie_and_find_missing_descendant_trie_keys(
                                 CorrelationId::new(),
                                 &trie_bytes,
@@ -552,8 +554,10 @@ pub async fn download_trie_channels(
         // Finishing state, we downloaded all the intermediate tries we found, as well as the state
         // root we started with.
         if tries_downloaded == total_tries_count + 1 {
-            let missing =
-                engine_state.missing_trie_keys(CorrelationId::new(), vec![state_root_hash])?;
+            let missing = engine_state
+                .lock()
+                .unwrap()
+                .missing_trie_keys(CorrelationId::new(), vec![state_root_hash])?;
 
             if missing.is_empty() {
                 info!("state root has no missing descendants.");
@@ -707,7 +711,7 @@ fn spawn_peer(
 pub async fn download_trie_work_queue(
     client: &Client,
     peers: &[SocketAddr],
-    engine_state: Arc<EngineState<LmdbGlobalState>>,
+    engine_state: Arc<std::sync::Mutex<EngineState<LmdbGlobalState>>>,
     state_root_hash: Digest,
     peer_mailbox_size: usize,
 ) -> Result<(), anyhow::Error> {
@@ -765,7 +769,7 @@ async fn check_peers_for_get_trie_endpoint(
 
 // worker pool related
 async fn sync_trie_store(
-    engine_state: Arc<EngineState<LmdbGlobalState>>,
+    engine_state: Arc<std::sync::Mutex<EngineState<LmdbGlobalState>>>,
     state_root_hash: Digest,
     client: Client,
     peers: &[SocketAddr],
@@ -794,7 +798,7 @@ async fn sync_trie_store(
                 worker_id,
                 err_tx.clone(),
                 queue.clone(),
-                engine_state.clone(),
+                Arc::clone(&engine_state),
                 client.clone(),
                 *address,
                 Arc::clone(&bps_counter),
@@ -815,7 +819,7 @@ async fn sync_trie_store_worker(
     worker_id: usize,
     err_tx: mpsc::Sender<anyhow::Error>,
     queue: Arc<WorkQueue<Digest>>,
-    engine_state: Arc<EngineState<LmdbGlobalState>>,
+    engine_state: Arc<std::sync::Mutex<EngineState<LmdbGlobalState>>>,
     client: Client,
     address: SocketAddr,
     bps_counter: Arc<Mutex<(Instant, usize)>>,
@@ -837,7 +841,7 @@ async fn sync_trie_store_worker(
         }
         trace!(worker_id, trie_key = %job.inner(), "worker downloading trie");
         match fetch_and_store_trie(
-            engine_state.clone(),
+            Arc::clone(&engine_state),
             &client,
             address,
             *job.inner(),
@@ -877,7 +881,7 @@ async fn sync_trie_store_worker(
 
 // fetch a trie, store it, and if we didn't get any bytes then return None
 async fn fetch_and_store_trie(
-    engine_state: Arc<EngineState<LmdbGlobalState>>,
+    engine_state: Arc<std::sync::Mutex<EngineState<LmdbGlobalState>>>,
     client: &Client,
     address: SocketAddr,
     trie_key: Digest,
@@ -901,6 +905,8 @@ async fn fetch_and_store_trie(
             // similar to how the contract-runtime does related operations, spawn in a blocking task
             tokio::task::spawn_blocking(move || {
                 engine_state
+                    .lock()
+                    .unwrap()
                     .put_trie_and_find_missing_descendant_trie_keys(CorrelationId::new(), &bytes)
             })
             .await??

@@ -331,7 +331,7 @@ impl StateProvider for ScratchGlobalState {
 
     /// Finds all of the keys of missing descendant `Trie<K,V>` values
     fn missing_trie_keys(
-        &self,
+        &mut self,
         correlation_id: CorrelationId,
         trie_keys: Vec<Digest>,
     ) -> Result<Vec<Digest>, Self::Error> {

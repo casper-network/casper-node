@@ -1724,7 +1724,7 @@ where
 
     /// Puts a trie and finds missing descendant trie keys.
     pub fn put_trie_and_find_missing_descendant_trie_keys(
-        &self,
+        &mut self,
         correlation_id: CorrelationId,
         trie_bytes: &[u8],
     ) -> Result<Vec<Digest>, Error>
@@ -1740,7 +1740,7 @@ where
 
     /// Performs a lookup for a list of missing root hashes.
     pub fn missing_trie_keys(
-        &self,
+        &mut self,
         correlation_id: CorrelationId,
         trie_keys: Vec<Digest>,
     ) -> Result<Vec<Digest>, Error>
