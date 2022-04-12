@@ -71,6 +71,7 @@ function _step_01()
 
     source "$NCTL/sh/assets/setup_from_stage.sh" \
             stage="$STAGE_ID" \
+            chainspec_path="$NCTL/sh/scenarios/chainspecs/upgrade_scenario_3.chainspec.toml.in" \
             accounts_path="$NCTL/sh/scenarios/accounts_toml/upgrade_scenario_3.accounts.toml"
     source "$NCTL/sh/node/start.sh" node=all
 }
