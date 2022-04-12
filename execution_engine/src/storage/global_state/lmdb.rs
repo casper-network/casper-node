@@ -299,18 +299,21 @@ impl StateProvider for LmdbGlobalState {
             Ok(vec![])
         } else {
             let txn = self.environment.create_read_txn()?;
-            let missing_descendants =
-                missing_trie_keys::<
-                    Key,
-                    StoredValue,
-                    lmdb::RoTransaction,
-                    LmdbTrieStore,
-                    Self::Error,
-                >(correlation_id, &txn, self.trie_store.deref(), trie_keys)?;
+            let missing_descendants = missing_trie_keys::<
+                Key,
+                StoredValue,
+                lmdb::RoTransaction,
+                LmdbTrieStore,
+                Self::Error,
+            >(
+                correlation_id,
+                &txn,
+                self.trie_store.deref(),
+                trie_keys.clone(),
+            )?;
             txn.commit()?;
             if missing_descendants.is_empty() {
-                self.digests_without_missing_descendants
-                    .extend(&missing_descendants);
+                self.digests_without_missing_descendants.extend(&trie_keys);
             }
             Ok(missing_descendants)
         }
