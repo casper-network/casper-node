@@ -174,6 +174,7 @@ fn should_adjust_total_supply() {
         .build();
 
     builder.step(step_request).unwrap();
+
     let maybe_post_state_hash = Some(builder.get_post_state_hash());
 
     // should check total supply after step

@@ -17,6 +17,7 @@ All notable changes to this project will be documented in this file.  The format
 * Added `WasmTestBuilder::get_execution_journals` method for returning execution journals for all test runs.
 * Added support to load values from a given Chainspec.
 * Added static and constants that represent Casper-mainnet chainspec values. These values will change as new ProtocolVersions are added. The current values reflect ones used in the 1.5.0 ProtocolVersion.
+* Added `WasmTestBuilder::advance_era`, `WasmTestBuilder::advance_eras_by`, and `WasmTestBuilder::advance_eras_by_default_auction_delay` to advance chain and run auction contract in test environment.
 
 ### Changed
 * `WasmTestBuilder::get_transforms` is deprecated in favor of `WasmTestBuilder::get_execution_journals`.
@@ -24,6 +25,8 @@ All notable changes to this project will be documented in this file.  The format
 * Deprecated the `DEFAULT_GENESIS_REQUEST` in favor of `PRODUCTION_GENESIS_REQUEST`.
 
 
+<<<<<<< HEAD
+=======
 ## 2.1.0
 
 ### Added
@@ -31,6 +34,7 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+>>>>>>> upstream/dev
 ## 2.0.3 - 2021-12-06
 
 ### Added

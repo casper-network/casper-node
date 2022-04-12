@@ -5,9 +5,9 @@ use num_traits::{CheckedMul, CheckedSub};
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-    DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION,
+    DEFAULT_ROUND_SEIGNIORAGE_RATE, MINIMUM_ACCOUNT_CREATION_BALANCE,
     PRODUCTION_ROUND_SEIGNIORAGE_RATE, PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR,
     TIMESTAMP_MILLIS_INCREMENT,
 };
@@ -4397,15 +4397,8 @@ fn should_not_restake_after_full_unbond() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // advance past the initial auction delay due to special condition of post-genesis behavior.
-    for _ in 0..4 {
-        let step_request = StepRequestBuilder::new()
-            .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
-            .with_next_era_id(builder.get_era() + 1)
-            .build();
 
-        builder.step(step_request).expect("should step");
-    }
+    builder.advance_eras_by_default_auction_delay(vec![]);
 
     let validator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -4469,17 +4462,7 @@ fn should_not_restake_after_full_unbond() {
         .expect_success()
         .commit();
 
-    // advance the era.
-    let mut next_era = builder.get_era() + 1;
-
-    // first step after funding, adding bid and delegating.
-    let step_request = StepRequestBuilder::new()
-        .with_parent_state_hash(builder.get_post_state_hash())
-        .with_protocol_version(ProtocolVersion::V1_0_0)
-        .with_next_era_id(next_era)
-        .build();
-
-    builder.step(step_request).expect("should step");
+    builder.advance_era(vec![]);
 
     let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
 
@@ -4489,15 +4472,7 @@ fn should_not_restake_after_full_unbond() {
         U512::from(DELEGATOR_1_STAKE)
     );
 
-    next_era += 1;
-
-    let step_request = StepRequestBuilder::new()
-        .with_parent_state_hash(builder.get_post_state_hash())
-        .with_protocol_version(ProtocolVersion::V1_0_0)
-        .with_next_era_id(next_era)
-        .build();
-
-    builder.step(step_request).expect("should step");
+    builder.advance_era(vec![]);
 
     // undelegate in the era right after we delegated.
     undelegate(
@@ -4526,25 +4501,11 @@ fn should_not_restake_after_full_unbond() {
     );
 
     // step until validator receives rewards.
-    for _ in 0..2 {
-        let step_request = StepRequestBuilder::new()
-            .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
-            .with_next_era_id(builder.get_era() + 1)
-            .build();
-
-        builder.step(step_request).expect("should step");
-    }
+    builder.advance_eras_by(2, vec![]);
 
     // validator receives rewards after this step.
-    let step_request = StepRequestBuilder::new()
-        .with_parent_state_hash(builder.get_post_state_hash())
-        .with_protocol_version(ProtocolVersion::V1_0_0)
-        .with_reward_item(RewardItem::new(VALIDATOR_1.clone(), BLOCK_REWARD))
-        .with_next_era_id(builder.get_era() + 1)
-        .build();
 
-    builder.step(step_request).expect("should step");
+    builder.advance_era(vec![RewardItem::new(VALIDATOR_1.clone(), BLOCK_REWARD)]);
 
     // Delegator should not remain delegated even though they were eligible for rewards in the
     // second era.
@@ -4567,16 +4528,7 @@ fn delegator_full_unbond_during_first_reward_era() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // advance past the initial auction delay due to special condition of post-genesis behavior.
-    let auction_delay = builder.get_auction_delay();
-    for _ in 0..auction_delay {
-        let step_request = StepRequestBuilder::new()
-            .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
-            .with_next_era_id(builder.get_era() + 1)
-            .build();
-
-        builder.step(step_request).expect("should step");
-    }
+    builder.advance_eras_by_default_auction_delay(vec![]);
 
     let validator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -4641,13 +4593,7 @@ fn delegator_full_unbond_during_first_reward_era() {
         .commit();
 
     // first step after funding, adding bid and delegating.
-    let step_request = StepRequestBuilder::new()
-        .with_parent_state_hash(builder.get_post_state_hash())
-        .with_protocol_version(ProtocolVersion::V1_0_0)
-        .with_next_era_id(builder.get_era() + 1)
-        .build();
-
-    builder.step(step_request).expect("should step");
+    builder.advance_era(vec![]);
 
     let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone())
         .expect("should be delegator");
@@ -4658,16 +4604,8 @@ fn delegator_full_unbond_during_first_reward_era() {
     );
 
     // step until validator receives rewards.
-    let auction_delay = builder.get_auction_delay();
-    for _ in 0..auction_delay {
-        let step_request = StepRequestBuilder::new()
-            .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
-            .with_next_era_id(builder.get_era() + 1)
-            .build();
+    builder.advance_eras_by(3, vec![]);
 
-        builder.step(step_request).expect("should step");
-    }
     // assert that the validator should indeed receive rewards and that
     // the delegator is scheduled to receive rewards this era.
 
@@ -4714,14 +4652,7 @@ fn delegator_full_unbond_during_first_reward_era() {
     );
 
     // validator receives rewards after this step.
-    let step_request = StepRequestBuilder::new()
-        .with_parent_state_hash(builder.get_post_state_hash())
-        .with_protocol_version(ProtocolVersion::V1_0_0)
-        .with_reward_item(RewardItem::new(VALIDATOR_1.clone(), BLOCK_REWARD))
-        .with_next_era_id(builder.get_era() + 1)
-        .build();
-
-    builder.step(step_request).expect("should step");
+    builder.advance_era(vec![RewardItem::new(VALIDATOR_1.clone(), BLOCK_REWARD)]);
 
     // Delegator should not remain delegated even though they were eligible for rewards in the
     // second era.

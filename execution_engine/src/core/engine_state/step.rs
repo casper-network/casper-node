@@ -13,7 +13,7 @@ use crate::{
 };
 
 /// The definition of a slash item.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SlashItem {
     /// The public key of the validator that will be slashed.
     pub validator_id: PublicKey,
@@ -27,7 +27,7 @@ impl SlashItem {
 }
 
 /// The definition of a reward item.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RewardItem {
     /// The public key of the validator that will be rewarded.
     pub validator_id: PublicKey,
@@ -46,7 +46,7 @@ impl RewardItem {
 }
 
 /// The definition of an evict item.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EvictItem {
     /// The public key of the validator that will be evicted.
     pub validator_id: PublicKey,
