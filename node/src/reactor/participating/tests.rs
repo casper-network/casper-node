@@ -313,6 +313,9 @@ async fn run_equivocator_network() {
 
     let alice_sk = Arc::new(SecretKey::random(&mut rng));
     let alice_pk = PublicKey::from(&*alice_sk);
+    let bob_sk = Arc::new(SecretKey::random(&mut rng));
+    let bob_pk = PublicKey::from(&*bob_sk);
+
     let size: usize = 2;
     let mut keys: Vec<Arc<SecretKey>> = (1..size)
         .map(|_| Arc::new(SecretKey::random(&mut rng)))
@@ -322,6 +325,9 @@ async fn run_equivocator_network() {
         .map(|secret_key| (PublicKey::from(&*secret_key.clone()), U512::from(100)))
         .collect();
     stakes.insert(PublicKey::from(&*alice_sk), U512::from(1));
+    stakes.insert(PublicKey::from(&*bob_sk), U512::from(1));
+
+    // Here's where things go wrong: Bob doesn't run a node at all, and Alice runs two!
     keys.push(alice_sk.clone());
     keys.push(alice_sk);
 
@@ -371,27 +377,27 @@ async fn run_equivocator_network() {
 
     // Since this setup sometimes fails to produce an equivocation we return early here.
     // TODO: Remove this once https://github.com/casper-network/casper-node/issues/1859 is fixed.
-    if switch_blocks.equivocators(0).is_empty() {
+    if switch_blocks.equivocators(1).is_empty() {
         error!("Failed to equivocate in the first era.");
         return;
     }
 
     // Era 0 consists only of the genesis block.
-    // In era 1, Alice equivocates. Since eviction takes place with a delay of one
-    // (`auction_delay`) era, she is still included in the next era's validator set.
+    // In era 1, Alice equivocates and Bob is inactive. Since eviction takes place with a delay of
+    // one (`auction_delay`) era, she is still included in the next era's validator set.
     assert_eq!(switch_blocks.equivocators(1), [alice_pk.clone()]);
-    assert_eq!(switch_blocks.inactive_validators(1), []);
+    assert_eq!(switch_blocks.inactive_validators(1), [bob_pk.clone()]);
     assert!(bids[1][&alice_pk].inactive());
     assert!(switch_blocks.next_era_validators(1).contains_key(&alice_pk));
 
     // In era 2 Alice is banned. Banned validators count neither as faulty nor inactive, even
     // though they cannot participate. In the next era, she will be evicted.
     assert_eq!(switch_blocks.equivocators(2), []);
-    assert_eq!(switch_blocks.inactive_validators(2), []);
+    assert_eq!(switch_blocks.inactive_validators(2), [bob_pk.clone()]);
     assert!(bids[2][&alice_pk].inactive());
     assert!(!switch_blocks.next_era_validators(2).contains_key(&alice_pk));
 
-    // In era 3 she is not a validator anymore and her bid remains deactivated.
+    // In era 3 they are not a validator anymore and their bids remains deactivated.
     assert_eq!(switch_blocks.equivocators(3), []);
     assert_eq!(switch_blocks.inactive_validators(3), []);
     assert!(bids[3][&alice_pk].inactive());
