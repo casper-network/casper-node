@@ -86,12 +86,7 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
 
     let bond_amount = U512::from(BOND_AMOUNT);
     // This amount should be enough to make first time add_bid call.
-    let add_bid_cost = builder
-        .get_engine_state()
-        .config()
-        .system_config()
-        .auction_costs()
-        .add_bid;
+    let add_bid_cost = builder.get_auction_costs().add_bid;
     let add_bid_payment_amount = U512::from(add_bid_cost);
 
     let add_bid_request = {
@@ -126,12 +121,7 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
         Gas::from(add_bid_cost),
     );
 
-    let delegate_cost = builder
-        .get_engine_state()
-        .config()
-        .system_config()
-        .auction_costs()
-        .delegate;
+    let delegate_cost = builder.get_auction_costs().delegate;
     let delegate_payment_amount = U512::from(delegate_cost);
     let delegate_amount = U512::from(DELEGATE_AMOUNT);
 
@@ -169,12 +159,7 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
         Gas::from(delegate_cost),
     );
 
-    let undelegate_cost = builder
-        .get_engine_state()
-        .config()
-        .system_config()
-        .auction_costs()
-        .undelegate;
+    let undelegate_cost = builder.get_auction_costs().undelegate;
     let undelegate_payment_amount = U512::from(undelegate_cost);
     let undelegate_amount = delegate_amount;
 
@@ -214,12 +199,7 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
 
     let unbond_amount = bond_amount;
     // This amount should be enough to make first time add_bid call.
-    let withdraw_bid_cost = builder
-        .get_engine_state()
-        .config()
-        .system_config()
-        .auction_costs()
-        .withdraw_bid;
+    let withdraw_bid_cost = builder.get_auction_costs().withdraw_bid;
     let withdraw_bid_payment_amount = U512::from(withdraw_bid_cost);
 
     let withdraw_bid_request = {

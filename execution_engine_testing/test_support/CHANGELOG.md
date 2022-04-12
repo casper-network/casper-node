@@ -16,7 +16,7 @@ All notable changes to this project will be documented in this file.  The format
 ### Added
 * Added `WasmTestBuilder::get_execution_journals` method for returning execution journals for all test runs.
 * Added support to load values from a given Chainspec.
-* Added static and constants that represent Casper-mainnet chainspec values
+* Added static and constants that represent Casper-mainnet chainspec values. These values will change as new ProtocolVersions are added. The current values reflect ones used in the 1.5.0 ProtocolVersion.
 
 ### Changed
 * `WasmTestBuilder::get_transforms` is deprecated in favor of `WasmTestBuilder::get_execution_journals`.

@@ -14,6 +14,9 @@ use log::LevelFilter;
 use num_rational::Ratio;
 use num_traits::CheckedMul;
 
+use casper_execution_engine::shared::system_config::auction_costs::AuctionCosts;
+use casper_execution_engine::shared::system_config::handle_payment_costs::HandlePaymentCosts;
+use casper_execution_engine::shared::system_config::mint_costs::MintCosts;
 use casper_execution_engine::{
     core::{
         engine_state::{
@@ -1277,5 +1280,24 @@ where
             .get_trie_full(CorrelationId::default(), state_hash)
             .unwrap()
             .map(|bytes| bytesrepr::deserialize(bytes.into()).unwrap())
+    }
+
+    /// Returns the costs related to interacting with the auction system contract.
+    pub fn get_auction_costs(&self) -> AuctionCosts {
+        *self.engine_state.config().system_config().auction_costs()
+    }
+
+    /// Returns the costs related to interacting with the mint system contract.
+    pub fn get_mint_costs(&self) -> MintCosts {
+        *self.engine_state.config().system_config().mint_costs()
+    }
+
+    /// Returns the costs related to interacting with the handle payment system contract.
+    pub fn get_handle_payment_costs(&self) -> HandlePaymentCosts {
+        *self
+            .engine_state
+            .config()
+            .system_config()
+            .handle_payment_costs()
     }
 }
