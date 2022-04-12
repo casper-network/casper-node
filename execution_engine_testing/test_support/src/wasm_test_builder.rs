@@ -14,9 +14,6 @@ use log::LevelFilter;
 use num_rational::Ratio;
 use num_traits::CheckedMul;
 
-use casper_execution_engine::shared::system_config::auction_costs::AuctionCosts;
-use casper_execution_engine::shared::system_config::handle_payment_costs::HandlePaymentCosts;
-use casper_execution_engine::shared::system_config::mint_costs::MintCosts;
 use casper_execution_engine::{
     core::{
         engine_state::{
@@ -37,6 +34,10 @@ use casper_execution_engine::{
         execution_journal::ExecutionJournal,
         logging::{self, Settings, Style},
         newtypes::CorrelationId,
+        system_config::{
+            auction_costs::AuctionCosts, handle_payment_costs::HandlePaymentCosts,
+            mint_costs::MintCosts,
+        },
         transform::Transform,
         utils::OS_PAGE_SIZE,
     },
@@ -71,7 +72,7 @@ use casper_types::{
 
 use crate::{
     chainspec_config::{ChainspecConfig, PRODUCTION_PATH},
-    utils, ExecuteRequestBuilder, StepRequestBuilder, DEFAULT_AUCTION_DELAY, DEFAULT_PROPOSER_ADDR,
+    utils, ExecuteRequestBuilder, StepRequestBuilder, DEFAULT_PROPOSER_ADDR,
     DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
 };
 
@@ -1303,7 +1304,8 @@ where
         &mut self,
         reward_items: impl IntoIterator<Item = RewardItem>,
     ) {
-        self.advance_eras_by(DEFAULT_AUCTION_DELAY + 1, reward_items);
+        let auction_delay = self.get_auction_delay();
+        self.advance_eras_by(auction_delay + 1, reward_items);
     }
 
     /// Advancess by a single era.
