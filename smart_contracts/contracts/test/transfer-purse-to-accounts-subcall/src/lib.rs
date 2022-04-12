@@ -5,7 +5,7 @@ extern crate alloc;
 use alloc::collections::BTreeMap;
 
 use casper_contract::{
-    contract_api::{runtime, system},
+    contract_api::{account, runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, URef, U512};
@@ -17,7 +17,7 @@ const ARG_TARGETS: &str = "targets";
 const HASH_KEY_NAME: &str = "transfer_purse_to_accounts_hash";
 
 pub fn delegate() {
-    let source: URef = runtime::get_named_arg(ARG_SOURCE);
+    let source: URef = account::get_main_purse();
     let targets: BTreeMap<AccountHash, (U512, Option<u64>)> = runtime::get_named_arg(ARG_TARGETS);
 
     for (target, (amount, id)) in &targets {

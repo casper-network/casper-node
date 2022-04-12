@@ -10,12 +10,11 @@ use casper_types::{
         UnbondingPurse, UnbondingPurses, AUCTION_DELAY_KEY, ERA_END_TIMESTAMP_MILLIS_KEY,
         ERA_ID_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
     },
-    CLTyped, EraId, Key, KeyTag, PublicKey, URef, U512,
+    ApiError, CLTyped, EraId, Key, KeyTag, PublicKey, URef, U512,
 };
 
 use super::{
-    providers::{MintProvider, RuntimeProvider, StorageProvider},
-    Auction,
+    Auction, Bid, EraValidators, MintProvider, RuntimeProvider, StorageProvider, ValidatorWeights,
 };
 
 fn read_from<P, T>(provider: &mut P, name: &str) -> Result<T, Error>
@@ -36,8 +35,7 @@ where
 {
     let key = provider.named_keys_get(name).ok_or(Error::MissingKey)?;
     let uref = key.into_uref().ok_or(Error::InvalidKeyVariant)?;
-    provider.write(uref, value)?;
-    Ok(())
+    provider.write(uref, value)
 }
 
 pub fn get_bids<P>(provider: &mut P) -> Result<Bids, Error>
@@ -191,9 +189,11 @@ where
 /// a specific era is reached.
 ///
 /// This function can be called by the system only.
-pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(provider: &mut P) -> Result<(), Error> {
+pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(
+    provider: &mut P,
+) -> Result<(), ApiError> {
     if provider.get_caller() != PublicKey::System.to_account_hash() {
-        return Err(Error::InvalidCaller);
+        return Err(Error::InvalidCaller.into());
     }
 
     // Update `unbonding_purses` data
@@ -215,8 +215,13 @@ pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(provider: &mut P) -> 
                         match provider.read_bid(&new_validator.to_account_hash()) {
                             Ok(Some(new_validator_bid)) => {
                                 if !new_validator_bid.staked_amount().is_zero() {
+                                    let bid = read_bid_for_validator(
+                                        provider,
+                                        new_validator.clone().to_account_hash(),
+                                    )?;
                                     handle_delegation(
                                         provider,
+                                        bid,
                                         unbonding_purse.unbonder_public_key().clone(),
                                         new_validator.clone(),
                                         *unbonding_purse.bonding_purse(),
@@ -225,22 +230,22 @@ pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(provider: &mut P) -> 
                                     .map(|_| ())?
                                 } else {
                                     // Move funds from bid purse to unbonding purse
-                                    provider
-                                        .unbond(unbonding_purse)
-                                        .map_err(|_| Error::TransferToUnbondingPurse)?
+                                    provider.unbond(unbonding_purse).map_err(|_| {
+                                        ApiError::from(Error::TransferToUnbondingPurse)
+                                    })?
                                 }
                             }
                             // Move funds from bid purse to unbonding purse
                             Ok(None) | Err(_) => provider
                                 .unbond(unbonding_purse)
-                                .map_err(|_| Error::TransferToUnbondingPurse)?,
+                                .map_err(|_| ApiError::from(Error::TransferToUnbondingPurse))?,
                         }
                     }
                     None => {
                         // Move funds from bid purse to unbonding purse
                         provider
                             .unbond(unbonding_purse)
-                            .map_err(|_| Error::TransferToUnbondingPurse)?
+                            .map_err(|_| ApiError::from(Error::TransferToUnbondingPurse))?
                     }
                 };
             } else {
@@ -370,23 +375,16 @@ where
 
 pub(crate) fn handle_delegation<P>(
     provider: &mut P,
+    mut bid: Bid,
     delegator_public_key: PublicKey,
     validator_public_key: PublicKey,
     source: URef,
     amount: U512,
-) -> Result<U512, Error>
+) -> Result<U512, ApiError>
 where
     P: StorageProvider + MintProvider,
 {
     let validator_account_hash = AccountHash::from(&validator_public_key);
-
-    let mut bid = match provider.read_bid(&validator_account_hash)? {
-        Some(bid) => bid,
-        None => {
-            // Return early if target validator is not in `bids`
-            return Err(Error::ValidatorNotFound);
-        }
-    };
 
     let delegators = bid.delegators_mut();
 
@@ -401,14 +399,17 @@ where
                     None,
                 )
                 .map_err(|_| Error::TransferToDelegatorPurse)?
-                .map_err(|_| Error::TransferToDelegatorPurse)?;
+                .map_err(|mint_error| {
+                    // Propagate mint contract's error that occured during execution of transfer
+                    // entrypoint. This will improve UX in case of (for example)
+                    // unapproved spending limit error.
+                    ApiError::from(mint_error)
+                })?;
             delegator.increase_stake(amount)?;
             *delegator.staked_amount()
         }
         None => {
-            let bonding_purse = provider
-                .create_purse()
-                .map_err(|_| Error::CreatePurseFailed)?;
+            let bonding_purse = provider.create_purse()?;
             provider
                 .mint_transfer_direct(
                     Some(PublicKey::System.to_account_hash()),
@@ -418,7 +419,12 @@ where
                     None,
                 )
                 .map_err(|_| Error::TransferToDelegatorPurse)?
-                .map_err(|_| Error::TransferToDelegatorPurse)?;
+                .map_err(|mint_error| {
+                    // Propagate mint contract's error that occured during execution of transfer
+                    // entrypoint. This will improve UX in case of (for example)
+                    // unapproved spending limit error.
+                    ApiError::from(mint_error)
+                })?;
             let delegator = Delegator::unlocked(
                 delegator_public_key.clone(),
                 amount,
@@ -433,4 +439,39 @@ where
     provider.write_bid(validator_account_hash, bid)?;
 
     Ok(new_delegation_amount)
+}
+
+pub(crate) fn read_bid_for_validator<P>(
+    provider: &mut P,
+    validator_account_hash: AccountHash,
+) -> Result<Bid, ApiError>
+where
+    P: StorageProvider,
+{
+    let bid = match provider.read_bid(&validator_account_hash)? {
+        Some(bid) => bid,
+        None => {
+            return Err(Error::ValidatorNotFound.into());
+        }
+    };
+    Ok(bid)
+}
+
+/// Returns the era validators from a snapshot.
+///
+/// This is `pub` as it is used not just in the relevant auction entry point, but also by the
+/// engine state while directly querying for the era validators.
+pub(crate) fn era_validators_from_snapshot(
+    snapshot: SeigniorageRecipientsSnapshot,
+) -> EraValidators {
+    snapshot
+        .into_iter()
+        .map(|(era_id, recipients)| {
+            let validator_weights = recipients
+                .into_iter()
+                .filter_map(|(public_key, bid)| bid.total_stake().map(|stake| (public_key, stake)))
+                .collect::<ValidatorWeights>();
+            (era_id, validator_weights)
+        })
+        .collect()
 }

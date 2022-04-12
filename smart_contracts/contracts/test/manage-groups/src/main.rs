@@ -11,15 +11,18 @@ use alloc::{
     vec::Vec,
 };
 
-use core::{convert::TryInto, iter::FromIterator};
+use core::{convert::TryInto, iter::FromIterator, mem::MaybeUninit};
 
 use casper_contract::{
-    contract_api::{runtime, storage},
+    contract_api::{self, runtime, storage},
+    ext_ffi,
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
+    api_error,
+    bytesrepr::{self, ToBytes},
     contracts::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
-    CLType, ContractPackageHash, Key, Parameter, URef,
+    ApiError, CLType, ContractPackage, ContractPackageHash, Group, Key, Parameter, URef,
 };
 
 const PACKAGE_HASH_KEY: &str = "package_hash_key";
@@ -32,6 +35,7 @@ const GROUP_NAME_ARG: &str = "group_name";
 const UREFS_ARG: &str = "urefs";
 const TOTAL_NEW_UREFS_ARG: &str = "total_new_urefs";
 const TOTAL_EXISTING_UREFS_ARG: &str = "total_existing_urefs";
+const UREF_INDICES_ARG: &str = "uref_indices";
 
 #[no_mangle]
 pub extern "C" fn create_group() {
@@ -44,7 +48,7 @@ pub extern "C" fn create_group() {
     let total_existing_urefs: u64 = runtime::get_named_arg(TOTAL_EXISTING_UREFS_ARG);
     let existing_urefs: Vec<URef> = (0..total_existing_urefs).map(storage::new_uref).collect();
 
-    let _new_uref = storage::create_contract_user_group(
+    storage::create_contract_user_group(
         package_hash_key,
         &group_name,
         total_urefs as u8,
@@ -79,9 +83,56 @@ pub extern "C" fn extend_group_urefs() {
     }
 }
 
+fn read_host_buffer_into(dest: &mut [u8]) -> Result<usize, ApiError> {
+    let mut bytes_written = MaybeUninit::uninit();
+    let ret = unsafe {
+        ext_ffi::casper_read_host_buffer(dest.as_mut_ptr(), dest.len(), bytes_written.as_mut_ptr())
+    };
+    // NOTE: When rewriting below expression as `result_from(ret).map(|_| unsafe { ... })`, and the
+    // caller ignores the return value, execution of the contract becomes unstable and ultimately
+    // leads to `Unreachable` error.
+    api_error::result_from(ret)?;
+    Ok(unsafe { bytes_written.assume_init() })
+}
+
+fn read_contract_package(
+    package_hash: ContractPackageHash,
+) -> Result<Option<ContractPackage>, ApiError> {
+    let key = Key::from(package_hash);
+    let (key_ptr, key_size, _bytes) = {
+        let bytes = key.into_bytes().unwrap_or_revert();
+        let ptr = bytes.as_ptr();
+        let size = bytes.len();
+        (ptr, size, bytes)
+    };
+
+    let value_size = {
+        let mut value_size = MaybeUninit::uninit();
+        let ret = unsafe { ext_ffi::casper_read_value(key_ptr, key_size, value_size.as_mut_ptr()) };
+        match api_error::result_from(ret) {
+            Ok(_) => unsafe { value_size.assume_init() },
+            Err(ApiError::ValueNotFound) => return Ok(None),
+            Err(e) => runtime::revert(e),
+        }
+    };
+
+    let value_bytes = {
+        let mut dest: Vec<u8> = if value_size == 0 {
+            Vec::new()
+        } else {
+            let bytes_non_null_ptr = contract_api::alloc_bytes(value_size);
+            unsafe { Vec::from_raw_parts(bytes_non_null_ptr.as_ptr(), value_size, value_size) }
+        };
+        read_host_buffer_into(&mut dest)?;
+        dest
+    };
+
+    Ok(Some(bytesrepr::deserialize(value_bytes)?))
+}
+
 #[no_mangle]
 pub extern "C" fn remove_group_urefs() {
-    let package_hash_key: ContractPackageHash = runtime::get_key(PACKAGE_HASH_KEY)
+    let package_hash: ContractPackageHash = runtime::get_key(PACKAGE_HASH_KEY)
         .and_then(Key::into_hash)
         .unwrap_or_revert()
         .into();
@@ -90,13 +141,31 @@ pub extern "C" fn remove_group_urefs() {
         .try_into()
         .unwrap();
     let group_name: String = runtime::get_named_arg(GROUP_NAME_ARG);
-    let urefs: Vec<URef> = runtime::get_named_arg(UREFS_ARG);
-    storage::remove_contract_user_group_urefs(
-        package_hash_key,
-        &group_name,
-        BTreeSet::from_iter(urefs),
-    )
-    .unwrap_or_revert();
+    let ordinals: Vec<u64> = runtime::get_named_arg(UREF_INDICES_ARG);
+
+    let contract_package: ContractPackage = read_contract_package(package_hash)
+        .unwrap_or_revert()
+        .unwrap_or_revert();
+
+    let group_urefs = contract_package
+        .groups()
+        .get(&Group::new("Group 1"))
+        .unwrap_or_revert();
+    let group_urefs_vec = Vec::from_iter(group_urefs);
+
+    let mut urefs_to_remove = BTreeSet::new();
+    for ordinal in ordinals {
+        urefs_to_remove.insert(
+            group_urefs_vec
+                .get(ordinal as usize)
+                .cloned()
+                .cloned()
+                .unwrap_or_revert(),
+        );
+    }
+
+    storage::remove_contract_user_group_urefs(package_hash, &group_name, urefs_to_remove)
+        .unwrap_or_revert();
 }
 
 /// Restricted uref comes from creating a group and will be assigned to a smart contract

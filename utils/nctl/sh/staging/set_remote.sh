@@ -18,7 +18,6 @@ _BASE_URL="http://nctl.casperlabs.io.s3-website.us-east-2.amazonaws.com"
 # Set of remote files.
 _REMOTE_FILES=(
     "add_bid.wasm"
-    "casper-client"
     "casper-node"
     "chainspec.toml.in"
     "config.toml"
@@ -52,7 +51,6 @@ function _main()
             curl -O "$_BASE_URL/v$PROTOCOL_VERSION/$REMOTE_FILE" > /dev/null 2>&1
         fi
     done
-    chmod +x ./casper-client
     chmod +x ./casper-node
     if [ "${#PROTOCOL_VERSION}" = '3' ]; then
         RC_VERSION=$(./casper-node --version | awk '{ print $2 }' |  awk -F'-' '{ print $1 }')

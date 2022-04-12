@@ -8,7 +8,8 @@ use casper_engine_test_support::{
     TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::core::engine_state::{
-    genesis::GenesisValidator, GenesisAccount, RewardItem,
+    engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, genesis::GenesisValidator, GenesisAccount,
+    RewardItem,
 };
 use casper_types::{
     account::AccountHash,
@@ -31,7 +32,7 @@ static DELEGATOR_1: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*DELEGATOR_1
 static DELEGATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*DELEGATOR_1));
 
 const VALIDATOR_STAKE: u64 = 1_000_000_000;
-const DELEGATE_AMOUNT: u64 = 1_234_567;
+const DELEGATE_AMOUNT: u64 = 1_234_567 + DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 
 #[ignore]
 #[test]

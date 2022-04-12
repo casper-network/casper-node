@@ -348,7 +348,7 @@ checksum = "c4872d67bab6358e59559027aa3b9157c53d9358c51423c17554809a8858e0f8"
 
 [[package]]
 name = "casper-contract"
-version = "1.4.3"
+version = "1.4.4"
 dependencies = [
  "casper-types",
  "hex_fmt",
@@ -358,7 +358,7 @@ dependencies = [
 
 [[package]]
 name = "casper-engine-test-support"
-version = "2.0.3"
+version = "2.1.0"
 dependencies = [
  "casper-execution-engine",
  "casper-hashing",
@@ -402,6 +402,7 @@ dependencies = [
  "once_cell",
  "parity-wasm",
  "rand 0.8.4",
+ "regex",
  "serde",
  "serde_json",
  "tempfile",
@@ -411,7 +412,7 @@ dependencies = [
 
 [[package]]
 name = "casper-execution-engine"
-version = "1.4.3"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -454,7 +455,7 @@ dependencies = [
 
 [[package]]
 name = "casper-hashing"
-version = "1.4.2"
+version = "1.4.3"
 dependencies = [
  "assert_matches",
  "base16",
@@ -479,7 +480,7 @@ dependencies = [
 
 [[package]]
 name = "casper-node"
-version = "1.4.3"
+version = "1.4.5"
 dependencies = [
  "ansi_term",
  "anyhow",
@@ -526,7 +527,6 @@ dependencies = [
  "num_cpus",
  "once_cell",
  "openssl",
- "parking_lot",
  "pem",
  "pin-project",
  "pnet",
@@ -578,7 +578,7 @@ dependencies = [
 
 [[package]]
 name = "casper-node-macros"
-version = "1.4.2"
+version = "1.4.3"
 dependencies = [
  "Inflector",
  "indexmap",
@@ -589,7 +589,7 @@ dependencies = [
 
 [[package]]
 name = "casper-types"
-version = "1.4.5"
+version = "1.5.0"
 dependencies = [
  "base16",
  "base64",
@@ -638,7 +638,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base16",
- "casper-execution-engine",
  "casper-types",
  "clap 3.0.12",
  "derive_more",
@@ -2650,6 +2649,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "named-keys-stored"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "named-keys-stored-call"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "named-purse-payment"
 version = "0.1.0"
 dependencies = [
@@ -2673,6 +2688,13 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "tempfile",
+]
+
+[[package]]
+name = "new-named-uref"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
 ]
 
 [[package]]
@@ -3513,7 +3535,111 @@ dependencies = [
 ]
 
 [[package]]
+name = "regression-20220204"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "regression-20220204-call"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "regression-20220204-nontrivial"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "regression-20220207"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "regression-20220208"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "regression-20220211"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "regression-20220211-call"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "regression-20220222"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "regression-add-bid"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "regression-delegate"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "regression-payment"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "regression-transfer"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "regression_20211110"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "regression_20220119"
 version = "0.1.0"
 dependencies = [
  "casper-contract",
@@ -4549,6 +4675,14 @@ dependencies = [
 
 [[package]]
 name = "transfer-to-existing-account"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "transfer-to-named-purse"
 version = "0.1.0"
 dependencies = [
  "casper-contract",

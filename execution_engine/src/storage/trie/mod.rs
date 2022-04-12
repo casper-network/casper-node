@@ -527,6 +527,15 @@ impl<K, V> Trie<K, V> {
         self.to_bytes()
             .map(|bytes| hash_bytes_into_chunks_if_necessary(&bytes))
     }
+
+    /// Returns a pointer block, if possible.
+    pub fn as_pointer_block(&self) -> Option<&PointerBlock> {
+        if let Self::Node { pointer_block } = self {
+            Some(pointer_block.as_ref())
+        } else {
+            None
+        }
+    }
 }
 
 /// Hash bytes into chunks if necessary.

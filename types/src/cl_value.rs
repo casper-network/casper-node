@@ -20,6 +20,7 @@ mod jsonrepr;
 
 /// Error while converting a [`CLValue`] into a given type.
 #[derive(PartialEq, Eq, Clone, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct CLTypeMismatch {
     /// The [`CLType`] into which the `CLValue` was being converted.
     pub expected: CLType,
@@ -40,6 +41,7 @@ impl Display for CLTypeMismatch {
 
 /// Error relating to [`CLValue`] operations.
 #[derive(PartialEq, Eq, Clone, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub enum CLValueError {
     /// An error while serializing or deserializing the underlying data.
     Serialization(bytesrepr::Error),

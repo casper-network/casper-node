@@ -138,7 +138,7 @@ fn tracking_copy_write() {
     let two = StoredValue::CLValue(CLValue::from_t(2_i32).unwrap());
 
     // writing should work
-    tc.write(k, one.clone());
+    let _ = tc.write(k, one.clone());
     // write does not need to query the DB
     let db_value = counter.get();
     assert_eq!(db_value, 0);
@@ -149,7 +149,7 @@ fn tracking_copy_write() {
     );
 
     // writing again should update the values
-    tc.write(k, two.clone());
+    let _ = tc.write(k, two.clone());
     let db_value = counter.get();
     assert_eq!(db_value, 0);
     assert_eq!(
@@ -257,7 +257,7 @@ fn tracking_copy_rw() {
     // reading then writing should update the op
     let value = StoredValue::CLValue(CLValue::from_t(3_i32).unwrap());
     let _ = tc.read(correlation_id, &k);
-    tc.write(k, value.clone());
+    let _ = tc.write(k, value.clone());
     assert_eq!(
         tc.journal,
         ExecutionJournal::new(vec![(k, Transform::Identity), (k, Transform::Write(value))])
@@ -294,7 +294,7 @@ fn tracking_copy_aw() {
     let value = StoredValue::CLValue(CLValue::from_t(3_i32).unwrap());
     let write_value = StoredValue::CLValue(CLValue::from_t(7_i32).unwrap());
     let _ = tc.add(correlation_id, k, value);
-    tc.write(k, write_value.clone());
+    let _ = tc.write(k, write_value.clone());
     assert_eq!(
         tc.journal,
         ExecutionJournal::new(vec![
@@ -931,7 +931,7 @@ fn get_keys_should_return_keys_in_the_uref_keyspace() {
     let cl_value = CLValue::from_t(U512::from(2)).expect("should convert");
     let uref_3_value = StoredValue::CLValue(cl_value);
     let uref_3_key = Key::URef(URef::new([10; 32], AccessRights::READ_ADD_WRITE));
-    tracking_copy.write(uref_3_key, uref_3_value);
+    let _ = tracking_copy.write(uref_3_key, uref_3_value);
 
     let key_set = tracking_copy
         .get_keys(correlation_id, &KeyTag::URef)
@@ -967,7 +967,7 @@ fn get_keys_should_handle_reads_from_empty_trie() {
     let cl_value = CLValue::from_t(U512::zero()).expect("should convert");
     let uref_1_value = StoredValue::CLValue(cl_value);
     let uref_1_key = Key::URef(URef::new([8; 32], AccessRights::READ_ADD_WRITE));
-    tracking_copy.write(uref_1_key, uref_1_value);
+    let _ = tracking_copy.write(uref_1_key, uref_1_value);
 
     let key_set = tracking_copy
         .get_keys(correlation_id, &KeyTag::URef)
@@ -980,7 +980,7 @@ fn get_keys_should_handle_reads_from_empty_trie() {
     let cl_value = CLValue::from_t(U512::one()).expect("should convert");
     let uref_2_value = StoredValue::CLValue(cl_value);
     let uref_2_key = Key::URef(URef::new([9; 32], AccessRights::READ_ADD_WRITE));
-    tracking_copy.write(uref_2_key, uref_2_value);
+    let _ = tracking_copy.write(uref_2_key, uref_2_value);
 
     let key_set = tracking_copy
         .get_keys(correlation_id, &KeyTag::URef)
@@ -999,7 +999,7 @@ fn get_keys_should_handle_reads_from_empty_trie() {
         fake_purse,
     ));
     let account_key = Key::Account(account_hash);
-    tracking_copy.write(account_key, account_value);
+    let _ = tracking_copy.write(account_key, account_value);
 
     assert_eq!(key_set.len(), 2);
     assert!(key_set.contains(&uref_1_key.normalize()));
@@ -1010,7 +1010,7 @@ fn get_keys_should_handle_reads_from_empty_trie() {
     let cl_value = CLValue::from_t(U512::from(2)).expect("should convert");
     let uref_3_value = StoredValue::CLValue(cl_value);
     let uref_3_key = Key::URef(URef::new([10; 32], AccessRights::READ_ADD_WRITE));
-    tracking_copy.write(uref_3_key, uref_3_value);
+    let _ = tracking_copy.write(uref_3_key, uref_3_value);
 
     let key_set = tracking_copy
         .get_keys(correlation_id, &KeyTag::URef)

@@ -3,11 +3,9 @@ mod address_generator;
 mod error;
 #[macro_use]
 mod executor;
-#[cfg(test)]
-mod tests;
 
-pub use self::{
-    address_generator::{AddressGenerator, AddressGeneratorBuilder},
-    error::Error,
+pub use self::error::Error;
+pub(crate) use self::{
+    address_generator::AddressGenerator,
     executor::{DirectSystemContractCall, Executor},
 };

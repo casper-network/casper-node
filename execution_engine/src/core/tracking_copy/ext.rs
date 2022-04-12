@@ -1,7 +1,5 @@
 use std::convert::TryInto;
 
-use parity_wasm::elements::Module;
-
 use casper_types::{
     account::{Account, AccountHash},
     CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,
@@ -10,7 +8,7 @@ use casper_types::{
 
 use crate::{
     core::{engine_state::SystemContractRegistry, execution, tracking_copy::TrackingCopy},
-    shared::{newtypes::CorrelationId, wasm, wasm_prep::Preprocessor},
+    shared::newtypes::CorrelationId,
     storage::{global_state::StateReader, trie::merkle_proof::TrieMerkleProof},
 };
 
@@ -80,8 +78,6 @@ pub trait TrackingCopyExt<R> {
         correlation_id: CorrelationId,
         contract_package_hash: ContractPackageHash,
     ) -> Result<ContractPackage, Self::Error>;
-
-    fn get_system_module(&mut self, preprocessor: &Preprocessor) -> Result<Module, Self::Error>;
 
     fn get_system_contracts(
         &mut self,
@@ -240,10 +236,6 @@ where
             )),
             None => Err(execution::Error::KeyNotFound(key)),
         }
-    }
-
-    fn get_system_module(&mut self, preprocessor: &Preprocessor) -> Result<Module, Self::Error> {
-        Ok(wasm::do_nothing_module(preprocessor)?)
     }
 
     fn get_system_contracts(
