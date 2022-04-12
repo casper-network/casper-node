@@ -22,8 +22,8 @@ use casper_execution_engine::{
             run_genesis_request::RunGenesisRequest,
             step::{StepRequest, StepSuccess},
             BalanceResult, EngineConfig, EngineState, Error, GenesisSuccess, GetBidsRequest,
-            QueryRequest, QueryResult, StepError, SystemContractRegistry, UpgradeConfig,
-            UpgradeSuccess,
+            QueryRequest, QueryResult, RewardItem, StepError, SystemContractRegistry,
+            UpgradeConfig, UpgradeSuccess,
         },
         execution,
     },
@@ -60,12 +60,13 @@ use casper_types::{
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,
-    DeployHash, DeployInfo, EraId, Gas, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue, Transfer,
-    TransferAddr, URef, U512,
+    DeployHash, DeployInfo, EraId, Gas, Key, KeyTag, ProtocolVersion, PublicKey, RuntimeArgs,
+    StoredValue, Transfer, TransferAddr, URef, U512,
 };
 
 use crate::{
-    utils, ExecuteRequestBuilder, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
+    utils, ExecuteRequestBuilder, StepRequestBuilder, DEFAULT_AUCTION_DELAY, DEFAULT_PROPOSER_ADDR,
+    DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
 };
 
 /// LMDB initial map size is calculated based on DEFAULT_LMDB_PAGES and systems page size.
@@ -1155,6 +1156,42 @@ where
         self.upgrade_results = Vec::new();
         self.transforms = Vec::new();
         self
+    }
+
+    /// Advances eras by num_eras
+    pub fn advance_eras_by(
+        &mut self,
+        num_eras: u64,
+        reward_items: impl IntoIterator<Item = RewardItem>,
+    ) {
+        let step_request_builder = StepRequestBuilder::new()
+            .with_protocol_version(ProtocolVersion::V1_0_0)
+            .with_reward_items(reward_items)
+            .with_run_auction(true);
+
+        for _ in 0..num_eras {
+            let step_request = step_request_builder
+                .clone()
+                .with_parent_state_hash(self.get_post_state_hash())
+                .with_next_era_id(self.get_era().successor())
+                .build();
+
+            self.step(step_request)
+                .expect("failed to execute step request");
+        }
+    }
+
+    /// Advances eras by configured amount
+    pub fn advance_eras_by_default_auction_delay(
+        &mut self,
+        reward_items: impl IntoIterator<Item = RewardItem>,
+    ) {
+        self.advance_eras_by(DEFAULT_AUCTION_DELAY + 1, reward_items);
+    }
+
+    /// Advancess by a single era.
+    pub fn advance_era(&mut self, reward_items: impl IntoIterator<Item = RewardItem>) {
+        self.advance_eras_by(1, reward_items);
     }
 
     /// Returns a trie by hash.
