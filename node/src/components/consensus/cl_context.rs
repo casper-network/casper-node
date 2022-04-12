@@ -26,6 +26,11 @@ impl Keypair {
             public_key,
         }
     }
+
+    #[cfg(test)]
+    pub(crate) fn public_key(&self) -> &PublicKey {
+        &self.public_key
+    }
 }
 
 impl From<Arc<SecretKey>> for Keypair {
