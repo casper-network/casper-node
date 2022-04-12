@@ -1177,6 +1177,16 @@ impl StorageInner {
             StorageRequest::GetAvailableBlockRange { responder } => responder
                 .respond(self.get_available_block_range()?)
                 .ignore(),
+            StorageRequest::GetLowestAvailableBlock { responder } => {
+                let mut txn = self.env.begin_ro_txn()?;
+                let indices = &*self.indices.read()?;
+                let maybe_lowest_block = self.get_block_by_height(
+                    &mut txn,
+                    indices,
+                    indices.lowest_available_block_height,
+                )?;
+                responder.respond(maybe_lowest_block).ignore()
+            }
             StorageRequest::StoreFinalizedApprovals {
                 ref deploy_hash,
                 ref finalized_approvals,

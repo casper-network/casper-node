@@ -3,12 +3,12 @@ kind: pipeline
 type: docker
 name: cargo-test
 
-environment:
-  RUSTC_WRAPPER: '/root/.cargo/bin/cachepot'
-  CACHEPOT_BUCKET: 'drone-sccache'
-  CACHEPOT_S3_KEY_PREFIX: ci
-  CACHEPOT_REGION: 'us-east-2'
-  CARGO_INCREMENTAL: '0'
+#environment:
+#  RUSTC_WRAPPER: '/root/.cargo/bin/cachepot'
+#  CACHEPOT_BUCKET: 'drone-sccache'
+#  CACHEPOT_S3_KEY_PREFIX: ci
+#  CACHEPOT_REGION: 'us-east-2'
+#  CARGO_INCREMENTAL: '0'
 
 __buildenv: &buildenv
   image: casperlabs/node-build-u1804
@@ -19,11 +19,11 @@ __buildenv: &buildenv
     path: "/root/.cargo"
   - name: drone
     path: "/drone"
-  environment:
-    AWS_ACCESS_KEY_ID:
-      from_secret: cachepot_aws_ak
-    AWS_SECRET_ACCESS_KEY:
-      from_secret: cachepot_aws_sk
+#  environment:
+#    AWS_ACCESS_KEY_ID:
+#      from_secret: cachepot_aws_ak
+#    AWS_SECRET_ACCESS_KEY:
+#      from_secret: cachepot_aws_sk
 
 steps:
 - name: setup
@@ -40,7 +40,7 @@ steps:
   commands:
   - make test CARGO_FLAGS=--release
   - make test-contracts CARGO_FLAGS=--release
-  - cachepot --show-stats
+#  - cachepot --show-stats
   when:
     event:
     - pull_request
@@ -50,7 +50,7 @@ steps:
   commands:
   - make test CARGO_FLAGS=--release
   - make test-contracts CARGO_FLAGS=--release
-  - cachepot --show-stats
+#  - cachepot --show-stats
   when:
     event:
     - push
@@ -103,12 +103,12 @@ kind: pipeline
 type: docker
 name: nctl-testing
 
-environment:
-  RUSTC_WRAPPER: '/root/.cargo/bin/cachepot'
-  CACHEPOT_BUCKET: 'drone-sccache'
-  CACHEPOT_S3_KEY_PREFIX: ci
-  CACHEPOT_REGION: 'us-east-2'
-  CARGO_INCREMENTAL: '0'
+#environment:
+#  RUSTC_WRAPPER: '/root/.cargo/bin/cachepot'
+#  CACHEPOT_BUCKET: 'drone-sccache'
+#  CACHEPOT_S3_KEY_PREFIX: ci
+#  CACHEPOT_REGION: 'us-east-2'
+#  CARGO_INCREMENTAL: '0'
 
 __buildenv: &buildenv
   image: casperlabs/node-build-u1804
@@ -119,11 +119,11 @@ __buildenv: &buildenv
     path: "/root/.cargo"
   - name: drone
     path: "/drone"
-  environment:
-    AWS_ACCESS_KEY_ID:
-      from_secret: cachepot_aws_ak
-    AWS_SECRET_ACCESS_KEY:
-      from_secret: cachepot_aws_sk
+#  environment:
+#    AWS_ACCESS_KEY_ID:
+#      from_secret: cachepot_aws_ak
+#    AWS_SECRET_ACCESS_KEY:
+#      from_secret: cachepot_aws_sk
 
 steps:
 - name: setup
@@ -171,12 +171,12 @@ kind: pipeline
 type: docker
 name: package
 
-environment:
-  RUSTC_WRAPPER: '/root/.cargo/bin/cachepot'
-  CACHEPOT_BUCKET: 'drone-sccache'
-  CACHEPOT_S3_KEY_PREFIX: ci
-  CACHEPOT_REGION: 'us-east-2'
-  CARGO_INCREMENTAL: '0'
+#environment:
+#  RUSTC_WRAPPER: '/root/.cargo/bin/cachepot'
+#  CACHEPOT_BUCKET: 'drone-sccache'
+#  CACHEPOT_S3_KEY_PREFIX: ci
+#  CACHEPOT_REGION: 'us-east-2'
+#  CARGO_INCREMENTAL: '0'
 
 __buildenv: &buildenv
   image: casperlabs/node-build-u1804
@@ -189,11 +189,11 @@ __buildenv: &buildenv
     path: "/drone"
   - name: nctl-temp-dir
     path: "/tmp/nctl_upgrade_stage"
-  environment:
-    AWS_ACCESS_KEY_ID:
-      from_secret: cachepot_aws_ak
-    AWS_SECRET_ACCESS_KEY:
-      from_secret: cachepot_aws_sk
+#  environment:
+#    AWS_ACCESS_KEY_ID:
+#      from_secret: cachepot_aws_ak
+#    AWS_SECRET_ACCESS_KEY:
+#      from_secret: cachepot_aws_sk
 
 __buildenv_upload: &buildenv_upload
   image: casperlabs/node-build-u1804
@@ -320,12 +320,12 @@ kind: pipeline
 type: docker
 name: release-by-tag
 
-environment:
-  RUSTC_WRAPPER: '/root/.cargo/bin/cachepot'
-  CACHEPOT_BUCKET: 'drone-sccache'
-  CACHEPOT_S3_KEY_PREFIX: ci
-  CACHEPOT_REGION: 'us-east-2'
-  CARGO_INCREMENTAL: '0'
+#environment:
+#  RUSTC_WRAPPER: '/root/.cargo/bin/cachepot'
+#  CACHEPOT_BUCKET: 'drone-sccache'
+#  CACHEPOT_S3_KEY_PREFIX: ci
+#  CACHEPOT_REGION: 'us-east-2'
+#  CARGO_INCREMENTAL: '0'
 
 __buildenv: &buildenv
   image: casperlabs/node-build-u1804
@@ -338,11 +338,11 @@ __buildenv: &buildenv
     path: "/drone"
   - name: nctl-temp-dir
     path: "/tmp/nctl_upgrade_stage"
-  environment:
-    AWS_ACCESS_KEY_ID:
-      from_secret: cachepot_aws_ak
-    AWS_SECRET_ACCESS_KEY:
-      from_secret: cachepot_aws_sk
+#  environment:
+#    AWS_ACCESS_KEY_ID:
+#      from_secret: cachepot_aws_ak
+#    AWS_SECRET_ACCESS_KEY:
+#      from_secret: cachepot_aws_sk
 
 __buildenv_upload: &buildenv_upload
   image: casperlabs/node-build-u1804
@@ -372,36 +372,18 @@ steps:
   commands:
   - "./ci/build_update_package.sh"
 
-#- name: publish-github-pre-release
-#  image: plugins/github-release
-#  settings:
-#    api_key:
-#      from_secret: github_token
-#    checksum:
-#    - sha256
-#    - md5
-#    files:
-#    - "./target/debian/*.deb"
-#    - "./target/release/rpmbuild/RPMS/x86_64/*.rpm"
-#    - "./target/upgrade_build/*.gz"
-#    prerelease:
-#    - true
-#  when:
-#    ref:
-#    - refs/tags/v*
-
-- name: publish-crate
-  image: casperlabs/node-build-u1804
-  commands:
-    - "./ci/publish_to_crates_io.sh"
-  environment:
-    CARGO_TOKEN:
-      from_secret: crates_io_token
-
-- name: as-setup
-  image: casperlabs/node-build-u1804
-  commands:
-    - "make setup-as"
+- name: publish-github-pre-release
+  image: plugins/github-release
+  settings:
+    api_key:
+      from_secret: github_token
+    checksum:
+    - sha256
+    - md5
+    files:
+    - "./target/upgrade_build/*/bin.tar.gz"
+    prerelease:
+    - true
 
 - name: as-contract-publish
   image: plugins/npm
@@ -482,12 +464,12 @@ kind: pipeline
 type: docker
 name: nightly-testing
 
-environment:
-  RUSTC_WRAPPER: '/root/.cargo/bin/cachepot'
-  CACHEPOT_BUCKET: 'drone-sccache'
-  CACHEPOT_S3_KEY_PREFIX: ci
-  CACHEPOT_REGION: 'us-east-2'
-  CARGO_INCREMENTAL: '0'
+#environment:
+#  RUSTC_WRAPPER: '/root/.cargo/bin/cachepot'
+#  CACHEPOT_BUCKET: 'drone-sccache'
+#  CACHEPOT_S3_KEY_PREFIX: ci
+#  CACHEPOT_REGION: 'us-east-2'
+#  CARGO_INCREMENTAL: '0'
 
 __buildenv: &buildenv
   image: casperlabs/node-build-u1804
@@ -498,11 +480,11 @@ __buildenv: &buildenv
     path: "/root/.cargo"
   - name: drone
     path: "/drone"
-  environment:
-    AWS_ACCESS_KEY_ID:
-      from_secret: cachepot_aws_ak
-    AWS_SECRET_ACCESS_KEY:
-      from_secret: cachepot_aws_sk
+#  environment:
+#    AWS_ACCESS_KEY_ID:
+#      from_secret: cachepot_aws_ak
+#    AWS_SECRET_ACCESS_KEY:
+#      from_secret: cachepot_aws_sk
 
 steps:
 - name: setup

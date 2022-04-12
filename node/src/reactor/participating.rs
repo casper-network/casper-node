@@ -24,7 +24,7 @@ use derive_more::From;
 use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::Serialize;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
@@ -1210,7 +1210,7 @@ impl reactor::Reactor for Reactor {
                         {
                             Ok(FetchedOrNotFound::Fetched(deploy)) => Box::new(deploy),
                             Ok(FetchedOrNotFound::NotFound(deploy_hash)) => {
-                                error!(
+                                warn!(
                                     "peer did not have deploy with hash {}: {}",
                                     sender, deploy_hash
                                 );
