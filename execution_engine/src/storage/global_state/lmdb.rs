@@ -283,13 +283,12 @@ impl StateProvider for LmdbGlobalState {
     }
 
     /// Finds all of the keys of missing descendant `Trie<K,V>` values.
-    #[allow(clippy::needless_collect)]
     fn missing_trie_keys(
         &self,
         correlation_id: CorrelationId,
         trie_keys: Vec<Digest>,
     ) -> Result<Vec<Digest>, Self::Error> {
-        let trie_keys_filtered: Vec<_> = trie_keys
+        if trie_keys
             .iter()
             .filter(|digest| {
                 !self
@@ -298,9 +297,9 @@ impl StateProvider for LmdbGlobalState {
                     .unwrap()
                     .contains(digest)
             })
-            .collect();
-
-        if trie_keys_filtered.is_empty() {
+            .count()
+            == 0
+        {
             info!("no need to call missing_trie_keys");
             Ok(vec![])
         } else {
