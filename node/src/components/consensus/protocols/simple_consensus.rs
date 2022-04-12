@@ -4,7 +4,7 @@ mod tests;
 use std::{
     any::Any,
     cmp::Reverse,
-    collections::{btree_map, BTreeMap, HashMap, HashSet},
+    collections::{btree_map, BTreeMap, BTreeSet, HashMap, HashSet},
     fmt::Debug,
     iter,
     path::PathBuf,
@@ -174,7 +174,7 @@ where
         HashMap<RoundId, HashMap<Proposal<C>, HashSet<(RoundId, NodeId, C::Signature)>>>,
     /// Incoming blocks we can't add yet because we are waiting for validation.
     proposals_waiting_for_validation:
-        HashMap<ProposedBlock<C>, HashSet<(RoundId, Option<RoundId>, NodeId, C::Signature)>>,
+        HashMap<ProposedBlock<C>, HashSet<(RoundId, Proposal<C>, NodeId, C::Signature)>>,
     /// If we requested a new block from the block proposer component this contains the proposal's
     /// round ID and the parent's round ID, if there is a parent.
     pending_proposal: Option<(BlockContext<C>, RoundId, Option<RoundId>)>,
@@ -190,6 +190,9 @@ where
     config: super::highway::config::Config,
     /// The validator's voting weights.
     weights: ValidatorMap<Weight>,
+    /// This is `true` for every validator we have received a signature from or we know to be
+    /// faulty.
+    active: ValidatorMap<bool>,
     /// The lowest round ID of a block that could still be finalized in the future.
     first_non_finalized_round_id: RoundId,
     /// The lowest non-skippable round without an accepted value.
@@ -217,6 +220,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     ) -> SimpleConsensus<C> {
         let validators = protocols::common::validators::<C>(faulty, inactive, validator_stakes);
         let weights = protocols::common::validator_weights::<C>(&validators);
+        let mut active: ValidatorMap<bool> = weights.iter().map(|_| false).collect();
         let ftt = protocols::common::ftt::<C>(
             chainspec.highway_config.finality_threshold_fraction,
             &validators,
@@ -238,6 +242,10 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             .map(|idx| (idx, Fault::Banned))
             .collect();
         let leader_sequence = LeaderSequence::new(seed, &weights, can_propose);
+
+        for idx in faults.keys() {
+            active[*idx] = true;
+        }
 
         info!(
             %proposal_timeout,
@@ -267,6 +275,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             current_timeout: Timestamp::from(u64::MAX),
             evidence_only: false,
             faults,
+            active,
             config: config.highway.clone(),
             params,
             instance_id,
@@ -598,6 +607,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             error!("invalid validator index");
             return vec![];
         };
+        info!(index = validator_idx.0, id = %validator_id, "validator double-signed");
         if let Some(Fault::Direct(_, _)) = self.faults.get(&validator_idx) {
             return vec![]; // Validator is already known to be faulty.
         }
@@ -622,6 +632,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             ProtocolOutcome::NewEvidence(validator_id),
         ];
         self.faults.insert(validator_idx, Fault::Direct(msg0, msg1));
+        self.active[validator_idx] = true;
         self.progress_detected = true;
         if self.faulty_weight() > self.ftt {
             outcomes.push(ProtocolOutcome::FttExceeded);
@@ -886,6 +897,24 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                     return outcomes;
                 }
 
+                if (proposal.maybe_parent_round_id.is_none() || proposal.maybe_block.is_none())
+                    != proposal.inactive.is_none()
+                {
+                    outcomes.extend(err_msg(
+                        "invalid proposal: inactive must be present in all except the first and \
+                        dummy proposals",
+                    ));
+                    return outcomes;
+                }
+                if let Some(inactive) = &proposal.inactive {
+                    if inactive.iter().any(|idx| !self.weights.has(*idx)) {
+                        outcomes.extend(err_msg(
+                            "invalid proposal: invalid inactive validator index",
+                        ));
+                        return outcomes;
+                    }
+                }
+
                 let ancestor_values = if let Some(parent_round_id) = proposal.maybe_parent_round_id
                 {
                     if let Some(ancestor_values) = self.ancestor_values(parent_round_id) {
@@ -963,6 +992,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                     .insert_proposal(proposal, signature)
                 {
                     self.progress_detected = true;
+                    self.active[validator_idx] = true;
                     return true;
                 }
             }
@@ -973,6 +1003,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                         .insert_echo(hash, validator_idx, signature)
                 {
                     self.progress_detected = true;
+                    self.active[validator_idx] = true;
                     return self.check_new_echo_quorum(round_id, hash);
                 }
             }
@@ -983,6 +1014,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                         .insert_vote(vote, validator_idx, signature)
                 {
                     self.progress_detected = true;
+                    self.active[validator_idx] = true;
                     return self.check_new_vote_quorum(round_id, vote);
                 }
             }
@@ -1172,6 +1204,14 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 info!("rejecting proposal with timestamp earlier than the parent");
                 return vec![];
             }
+            if let (Some(inactive), Some(parent_inactive)) =
+                (&proposal.inactive, &parent_proposal.inactive)
+            {
+                if !inactive.is_subset(parent_inactive) {
+                    info!("rejecting proposal with more inactive validators than parent");
+                    return vec![];
+                }
+            }
         }
         let validator_idx = self.leader(round_id);
         if let Some(block) = proposal
@@ -1186,7 +1226,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 .proposals_waiting_for_validation
                 .entry(proposed_block.clone())
                 .or_default()
-                .insert((round_id, proposal.maybe_parent_round_id, sender, signature))
+                .insert((round_id, proposal, sender, signature))
             {
                 vec![ProtocolOutcome::ValidateConsensusValue {
                     sender,
@@ -1244,16 +1284,23 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             .id(self.leader(round_id))
             .expect("validator not found")
             .clone();
-        let terminal_block_data = self
-            .accepted_switch_block(round_id)
-            .then(|| TerminalBlockData {
+        let terminal_block_data = self.accepted_switch_block(round_id).then(|| {
+            let inactive_validators = proposal
+                .inactive
+                .iter()
+                .flatten()
+                .filter_map(|idx| self.validators.id(*idx))
+                .cloned()
+                .collect();
+            TerminalBlockData {
                 rewards: self
                     .validators
                     .iter()
                     .map(|v| (v.id().clone(), v.weight().0))
                     .collect(), // TODO
-                inactive_validators: Default::default(), // TODO
-            });
+                inactive_validators,
+            }
+        });
         let finalized_block = FinalizedBlock {
             value,
             timestamp: proposal.timestamp,
@@ -1447,6 +1494,9 @@ where
     timestamp: Timestamp,
     maybe_block: Option<C::ConsensusValue>,
     maybe_parent_round_id: Option<RoundId>,
+    /// The set of validators that appear to be inactive in this era.
+    /// This is `None` in round 0 and in dummy blocks.
+    inactive: Option<BTreeSet<ValidatorIndex>>,
 }
 
 impl<C: Context> Proposal<C> {
@@ -1455,17 +1505,20 @@ impl<C: Context> Proposal<C> {
             timestamp,
             maybe_block: None,
             maybe_parent_round_id: Some(parent_round_id),
+            inactive: None,
         }
     }
 
     fn with_block(
         proposed_block: &ProposedBlock<C>,
         maybe_parent_round_id: Option<RoundId>,
+        inactive: impl Iterator<Item = ValidatorIndex>,
     ) -> Self {
         Proposal {
             maybe_block: Some(proposed_block.value().clone()),
             timestamp: proposed_block.context().timestamp(),
             maybe_parent_round_id,
+            inactive: maybe_parent_round_id.map(|_| inactive.collect()),
         }
     }
 
@@ -1720,8 +1773,15 @@ where
                     Some((block_context, proposal_round_id, maybe_parent_round_id));
                 return vec![];
             }
-            let content =
-                Content::Proposal(Proposal::with_block(&proposed_block, maybe_parent_round_id));
+            let inactive = self
+                .weights
+                .keys()
+                .filter(|idx| !self.active[*idx] && !self.faults.contains_key(idx));
+            let content = Content::Proposal(Proposal::with_block(
+                &proposed_block,
+                maybe_parent_round_id,
+                inactive,
+            ));
             let mut outcomes = self.create_message(proposal_round_id, content);
             outcomes.extend(self.update(proposal_round_id));
             outcomes
@@ -1744,8 +1804,8 @@ where
             .flatten();
         if valid {
             let mut outcomes = vec![];
-            for (round_id, maybe_parent_round_id, _sender, signature) in rounds_and_node_ids {
-                let proposal = Proposal::with_block(&proposed_block, maybe_parent_round_id);
+            for (round_id, proposal, _sender, signature) in rounds_and_node_ids {
+                info!(?proposal, "handling valid proposal");
                 let content = Content::Proposal(proposal);
                 let validator_idx = self.leader(round_id);
                 if self.add_content(round_id, content, validator_idx, signature) {

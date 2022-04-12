@@ -235,6 +235,7 @@ fn simple_consensus() {
         timestamp,
         maybe_block: Some(new_payload(false)),
         maybe_parent_round_id: None,
+        inactive: None,
     };
     let hash0 = proposal0.hash();
 
@@ -242,6 +243,7 @@ fn simple_consensus() {
         timestamp,
         maybe_block: Some(new_payload(true)),
         maybe_parent_round_id: None,
+        inactive: None,
     };
     let hash1 = proposal1.hash();
 
@@ -249,6 +251,7 @@ fn simple_consensus() {
         timestamp: timestamp + sc_c.params.min_round_length(),
         maybe_block: Some(new_payload(true)),
         maybe_parent_round_id: Some(1),
+        inactive: None,
     };
     let hash2 = proposal2.hash();
 
@@ -333,6 +336,7 @@ fn simple_consensus_faults() {
         timestamp,
         maybe_block: Some(new_payload(true)),
         maybe_parent_round_id: None,
+        inactive: None,
     };
     let hash1 = proposal1.hash();
 
@@ -340,6 +344,7 @@ fn simple_consensus_faults() {
         timestamp,
         maybe_block: Some(new_payload(true)),
         maybe_parent_round_id: Some(1),
+        inactive: None,
     };
     let hash2 = proposal2.hash();
 
