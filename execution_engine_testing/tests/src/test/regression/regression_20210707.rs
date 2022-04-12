@@ -128,9 +128,9 @@ fn should_transfer_funds_from_contract_to_new_account() {
 #[ignore]
 #[test]
 fn should_transfer_funds_from_contract_to_existing_account() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let store_request = setup_regression_contract();
 

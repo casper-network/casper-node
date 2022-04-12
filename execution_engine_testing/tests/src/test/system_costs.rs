@@ -665,7 +665,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
 fn mint_transfer_has_expected_costs() {
     let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let transfer_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,

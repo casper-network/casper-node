@@ -141,8 +141,8 @@ fn should_exec_non_stored_code() {
 fn should_fail_if_calling_non_existent_entry_point() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // first, store payment contract with entry point named "pay"
     let exec_request = ExecuteRequestBuilder::standard(
@@ -291,8 +291,8 @@ fn should_not_transfer_above_balance_using_stored_payment_code_by_hash() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
 
     // genesis
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // store payment
     let (default_account, hash) = store_payment_to_account_context(&mut builder);
@@ -347,8 +347,8 @@ fn should_empty_account_using_stored_payment_code_by_hash() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
 
     // genesis
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // store payment
     let proposer_reward_starting_balance_alpha = builder.get_proposer_purse_balance();

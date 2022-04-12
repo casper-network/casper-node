@@ -189,6 +189,8 @@ impl InMemoryWasmTestBuilder {
             DEFAULT_MAX_QUERY_DEPTH,
             chainspec_config.core_config.max_associated_keys,
             chainspec_config.core_config.max_runtime_call_stack_height,
+            chainspec_config.core_config.minimum_delegation_amount,
+            chainspec_config.core_config.strict_argument_checking,
             chainspec_config.wasm_config,
             chainspec_config.system_costs_config,
         );
@@ -259,6 +261,8 @@ impl LmdbWasmTestBuilder {
             DEFAULT_MAX_QUERY_DEPTH,
             chainspec_config.core_config.max_associated_keys,
             chainspec_config.core_config.max_runtime_call_stack_height,
+            chainspec_config.core_config.minimum_delegation_amount,
+            chainspec_config.core_config.strict_argument_checking,
             chainspec_config.wasm_config,
             chainspec_config.system_costs_config,
         );

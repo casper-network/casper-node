@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{engine_state, execution};
 use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
@@ -10,8 +10,8 @@ const ALICE_ADDR: AccountHash = AccountHash::new([42; 32]);
 #[ignore]
 #[test]
 fn regression_20220222_escalate() {
-    let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let transfer_request = ExecuteRequestBuilder::transfer(
         *DEFAULT_ACCOUNT_ADDR,

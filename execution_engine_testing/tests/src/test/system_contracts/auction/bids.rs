@@ -4111,9 +4111,9 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
 #[ignore]
 #[test]
 fn should_enforce_minimum_delegation_amount() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let transfer_to_validator_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -4154,7 +4154,7 @@ fn should_enforce_minimum_delegation_amount() {
 
     builder.exec(add_bid_request_1).expect_success().commit();
 
-    for _ in 0..=DEFAULT_AUCTION_DELAY {
+    for _ in 0..=builder.get_auction_delay() {
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
             .with_protocol_version(ProtocolVersion::V1_0_0)
@@ -4192,9 +4192,9 @@ fn should_enforce_minimum_delegation_amount() {
 #[ignore]
 #[test]
 fn should_allow_delegations_with_minimal_floor_amount() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let transfer_to_validator_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -4249,7 +4249,7 @@ fn should_allow_delegations_with_minimal_floor_amount() {
 
     builder.exec(add_bid_request_1).expect_success().commit();
 
-    for _ in 0..=DEFAULT_AUCTION_DELAY {
+    for _ in 0..=builder.get_auction_delay() {
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
             .with_protocol_version(ProtocolVersion::V1_0_0)

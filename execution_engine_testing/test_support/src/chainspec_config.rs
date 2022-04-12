@@ -64,6 +64,10 @@ pub struct CoreConfig {
     pub(crate) max_associated_keys: u32,
     /// Maximum height of contract runtime call stack.
     pub(crate) max_runtime_call_stack_height: u32,
+    /// The minimum bound of motes that can be delegated to a validator.
+    pub(crate) minimum_delegation_amount: u64,
+    /// Enables strict arguments checking when calling a contract.
+    pub(crate) strict_argument_checking: bool,
 }
 
 /// This struct can be parsed from a TOML-encoded chainspec file.  It means that as the
