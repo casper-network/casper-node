@@ -6,9 +6,10 @@ use std::{
     collections::{HashSet, VecDeque},
     convert::TryInto,
     mem,
+    time::Instant,
 };
 
-use tracing::error;
+use tracing::{error, info};
 
 use casper_hashing::Digest;
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
@@ -325,6 +326,7 @@ where
     S::Error: From<T::Error>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
+    let start = Instant::now();
     let mut visited = HashSet::new();
 
     while let Some(trie_key) = trie_keys_to_visit.pop() {
@@ -377,6 +379,8 @@ where
             Trie::Extension { pointer, .. } => trie_keys_to_visit.push(pointer.into_hash()),
         }
     }
+    let elapsed = start.elapsed().as_millis();
+    info!("descendant_trie_keys took {} ms", elapsed);
     Ok(visited)
 }
 
