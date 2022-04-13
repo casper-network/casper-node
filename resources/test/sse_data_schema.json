@@ -552,7 +552,8 @@
           "type": "array",
           "items": {
             "$ref": "#/definitions/Approval"
-          }
+          },
+          "uniqueItems": true
         }
       },
       "additionalProperties": false
@@ -843,7 +844,7 @@
       }
     },
     "NamedArg": {
-      "description": "Named arguments to a contract",
+      "description": "Named arguments to a contract.",
       "type": "array",
       "items": [
         {

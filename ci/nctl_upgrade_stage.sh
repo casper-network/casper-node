@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 
 # Script used to group everything needed for nctl upgrade remotes.
-#
-# Expects a copy of https://github.com/casper-ecosystem/casper-client-rs repo to exist in the same folder as the one
-# containing this casper-node repo.
 
 set -e
 
@@ -27,17 +24,14 @@ function clean_up() {
 }
 
 # DIRECTORIES
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." >/dev/null 2>&1 && pwd)"
-NODE_ROOT_DIR="$ROOT_DIR/casper-node"
-NODE_BINARY="$NODE_ROOT_DIR/target/release/casper-node"
-CLIENT_ROOT_DIR="$ROOT_DIR/casper-client-rs"
-CLIENT_BINARY="$CLIENT_ROOT_DIR/target/release/casper-client"
-WASM_BUILD_DIR="$NODE_ROOT_DIR/target/wasm32-unknown-unknown/release"
-CONFIG_DIR="$NODE_ROOT_DIR/resources/local"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)"
+BIN_BUILD_DIR="$ROOT_DIR/target/release"
+WASM_BUILD_DIR="$ROOT_DIR/target/wasm32-unknown-unknown/release"
+CONFIG_DIR="$ROOT_DIR/resources/local"
 TEMP_STAGE_DIR='/tmp/nctl_upgrade_stage'
 
 # FILES
-BIN_ARRAY=("$NODE_BINARY" "$CLIENT_BINARY")
+BIN_ARRAY=(casper-node)
 
 WASM_ARRAY=(add_bid.wasm \
             delegate.wasm \
@@ -53,9 +47,7 @@ if [ ! -d "$TEMP_STAGE_DIR" ]; then
 fi
 
 # Ensure files are built
-cd "$CLIENT_ROOT_DIR"
-cargo build --release
-cd "$NODE_ROOT_DIR"
+cd "$ROOT_DIR"
 cargo build --release --package casper-node
 make build-contract-rs/activate-bid
 make build-contract-rs/add-bid
@@ -67,11 +59,11 @@ make build-contract-rs/withdraw-bid
 
 # Copy binaries to staging dir
 for i in "${BIN_ARRAY[@]}"; do
-    if [ -f "$i" ]; then
-        echo "Copying $i to $TEMP_STAGE_DIR"
-        cp "$i" "$TEMP_STAGE_DIR"
+    if [ -f "$BIN_BUILD_DIR/$i" ]; then
+        echo "Copying $BIN_BUILD_DIR/$i to $TEMP_STAGE_DIR"
+        cp "$BIN_BUILD_DIR/$i" "$TEMP_STAGE_DIR"
     else
-        echo "ERROR: $i not found!"
+        echo "ERROR: $BIN_BUILD_DIR/$i not found!"
         exit 1
     fi
     echo ""

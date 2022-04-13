@@ -4,12 +4,14 @@ use num_rational::Ratio;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-    DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_RUN_GENESIS_REQUEST,
-    MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION,
+    DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
-use casper_execution_engine::core::engine_state::step::RewardItem;
+use casper_execution_engine::core::engine_state::{
+    engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, step::RewardItem,
+};
 use casper_types::{
     self,
     account::AccountHash,
@@ -151,9 +153,9 @@ fn get_delegator_staked_amount(
 #[ignore]
 #[test]
 fn should_distribute_delegation_rate_zero() {
-    const VALIDATOR_1_STAKE: u64 = 1_000_000;
-    const DELEGATOR_1_STAKE: u64 = 1_000_000;
-    const DELEGATOR_2_STAKE: u64 = 1_000_000;
+    const VALIDATOR_1_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
+    const DELEGATOR_1_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
+    const DELEGATOR_2_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 
@@ -389,9 +391,9 @@ fn should_distribute_delegation_rate_zero() {
 #[ignore]
 #[test]
 fn should_withdraw_bids_after_distribute() {
-    const VALIDATOR_1_STAKE: u64 = 1_000_000;
-    const DELEGATOR_1_STAKE: u64 = 1_000_000;
-    const DELEGATOR_2_STAKE: u64 = 1_000_000;
+    const VALIDATOR_1_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
+    const DELEGATOR_1_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
+    const DELEGATOR_2_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 
@@ -663,9 +665,9 @@ fn should_withdraw_bids_after_distribute() {
 #[ignore]
 #[test]
 fn should_distribute_rewards_after_restaking_delegated_funds() {
-    const VALIDATOR_1_STAKE: u64 = 1_000_000;
-    const DELEGATOR_1_STAKE: u64 = 1_000_000;
-    const DELEGATOR_2_STAKE: u64 = 1_000_000;
+    const VALIDATOR_1_STAKE: u64 = 1_000_000_000_000;
+    const DELEGATOR_1_STAKE: u64 = 1_000_000_000_000;
+    const DELEGATOR_2_STAKE: u64 = 1_000_000_000_000;
 
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 
@@ -981,7 +983,6 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
 
     // Withdraw delegator rewards
     let delegator_1_rewards = delegator_1_updated_stake_1 + delegator_1_updated_stake_2;
-    assert!(delegator_1_rewards > U512::from(DELEGATOR_1_STAKE));
     undelegate(
         &mut builder,
         *DELEGATOR_1_ADDR,
@@ -998,7 +999,6 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
     );
 
     let delegator_2_rewards = delegator_2_updated_stake_1 + delegator_2_updated_stake_2;
-    assert!(delegator_2_rewards > U512::from(DELEGATOR_2_STAKE));
     undelegate(
         &mut builder,
         *DELEGATOR_2_ADDR,
@@ -1016,7 +1016,6 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
 
     // Withdraw validator rewards
     let validator_1_rewards = validator_1_updated_stake_1 + validator_1_updated_stake_2;
-    assert!(validator_1_rewards > U512::from(VALIDATOR_1_STAKE));
     withdraw_bid(
         &mut builder,
         *VALIDATOR_1_ADDR,
@@ -1427,9 +1426,9 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
 #[ignore]
 #[test]
 fn should_distribute_delegation_rate_half() {
-    const VALIDATOR_1_STAKE: u64 = 1_000_000;
-    const DELEGATOR_1_STAKE: u64 = 1_000_000;
-    const DELEGATOR_2_STAKE: u64 = 1_000_000;
+    const VALIDATOR_1_STAKE: u64 = 1_000_000_000_000;
+    const DELEGATOR_1_STAKE: u64 = 1_000_000_000_000;
+    const DELEGATOR_2_STAKE: u64 = 1_000_000_000_000;
 
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = DELEGATION_RATE_DENOMINATOR / 2;
 
@@ -1631,9 +1630,9 @@ fn should_distribute_delegation_rate_half() {
 #[ignore]
 #[test]
 fn should_distribute_delegation_rate_full() {
-    const VALIDATOR_1_STAKE: u64 = 1_000_000;
-    const DELEGATOR_1_STAKE: u64 = 1_000_000;
-    const DELEGATOR_2_STAKE: u64 = 1_000_000;
+    const VALIDATOR_1_STAKE: u64 = 1_000_000_000_000;
+    const DELEGATOR_1_STAKE: u64 = 1_000_000_000_000;
+    const DELEGATOR_2_STAKE: u64 = 1_000_000_000_000;
 
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = DELEGATION_RATE_DENOMINATOR;
 
@@ -1826,9 +1825,9 @@ fn should_distribute_delegation_rate_full() {
 #[ignore]
 #[test]
 fn should_distribute_uneven_delegation_rate_zero() {
-    const VALIDATOR_1_STAKE: u64 = 1_000_000;
-    const DELEGATOR_1_STAKE: u64 = 3_000_000;
-    const DELEGATOR_2_STAKE: u64 = 4_000_000;
+    const VALIDATOR_1_STAKE: u64 = 200_000_000_000;
+    const DELEGATOR_1_STAKE: u64 = 600_000_000_000;
+    const DELEGATOR_2_STAKE: u64 = 800_000_000_000;
 
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 
@@ -2669,9 +2668,9 @@ fn should_distribute_with_multiple_validators_and_delegators() {
     const VALIDATOR_2_REWARD_FACTOR: u64 = 300000000000;
     const VALIDATOR_3_REWARD_FACTOR: u64 = 500000000000;
 
-    const DELEGATOR_1_STAKE: u64 = 3_000_000;
-    const DELEGATOR_2_STAKE: u64 = 4_000_000;
-    const DELEGATOR_3_STAKE: u64 = 1_000_000;
+    const DELEGATOR_1_STAKE: u64 = 6_000_000_000_000;
+    const DELEGATOR_2_STAKE: u64 = 8_000_000_000_000;
+    const DELEGATOR_3_STAKE: u64 = 2_000_000_000_000;
 
     let remainder = U512::one();
 
@@ -2980,9 +2979,9 @@ fn should_distribute_with_multiple_validators_and_delegators() {
 #[ignore]
 #[test]
 fn should_distribute_with_multiple_validators_and_shared_delegator() {
-    const VALIDATOR_1_STAKE: u64 = 1_000_000;
-    const VALIDATOR_2_STAKE: u64 = 1_000_000;
-    const VALIDATOR_3_STAKE: u64 = 1_000_000;
+    const VALIDATOR_1_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
+    const VALIDATOR_2_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
+    const VALIDATOR_3_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 
     const DELEGATION_RATE: DelegationRate = DELEGATION_RATE_DENOMINATOR / 2;
 
@@ -2990,7 +2989,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     const VALIDATOR_2_REWARD_FACTOR: u64 = 333333333333;
     const VALIDATOR_3_REWARD_FACTOR: u64 = 333333333333;
 
-    const DELEGATOR_1_STAKE: u64 = 1_000_000;
+    const DELEGATOR_1_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 
     let validator_1_portion = Ratio::new(U512::from(1), U512::from(4));
     let validator_2_portion = Ratio::new(U512::from(1), U512::from(4));
@@ -3347,9 +3346,9 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
 #[ignore]
 #[test]
 fn should_increase_total_supply_after_distribute() {
-    const VALIDATOR_1_STAKE: u64 = 1_000_000;
-    const VALIDATOR_2_STAKE: u64 = 1_000_000;
-    const VALIDATOR_3_STAKE: u64 = 1_000_000;
+    const VALIDATOR_1_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
+    const VALIDATOR_2_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
+    const VALIDATOR_3_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 
     const DELEGATION_RATE: DelegationRate = DELEGATION_RATE_DENOMINATOR / 2;
 
@@ -3357,7 +3356,7 @@ fn should_increase_total_supply_after_distribute() {
     const VALIDATOR_2_REWARD_FACTOR: u64 = 333333333333;
     const VALIDATOR_3_REWARD_FACTOR: u64 = 333333333333;
 
-    const DELEGATOR_1_STAKE: u64 = 1_000_000;
+    const DELEGATOR_1_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 
     let system_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -3576,13 +3575,13 @@ fn should_increase_total_supply_after_distribute() {
 #[ignore]
 #[test]
 fn should_not_create_purses_during_distribute() {
-    const VALIDATOR_1_STAKE: u64 = 1_000_000;
+    const VALIDATOR_1_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 
     const DELEGATION_RATE: DelegationRate = DELEGATION_RATE_DENOMINATOR / 2;
 
     const VALIDATOR_1_REWARD_FACTOR: u64 = 333333333334;
 
-    const DELEGATOR_1_STAKE: u64 = 1_000_000;
+    const DELEGATOR_1_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 
     let system_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -3762,9 +3761,9 @@ fn should_not_create_purses_during_distribute() {
 #[ignore]
 #[test]
 fn should_distribute_delegation_rate_full_after_upgrading() {
-    const VALIDATOR_1_STAKE: u64 = 1_000_000;
-    const DELEGATOR_1_STAKE: u64 = 1_000_000;
-    const DELEGATOR_2_STAKE: u64 = 1_000_000;
+    const VALIDATOR_1_STAKE: u64 = 1_000_000_000_000;
+    const DELEGATOR_1_STAKE: u64 = 1_000_000_000_000;
+    const DELEGATOR_2_STAKE: u64 = 1_000_000_000_000;
 
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = DELEGATION_RATE_DENOMINATOR;
 
@@ -4035,7 +4034,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
 #[ignore]
 #[test]
 fn should_not_restake_after_full_unbond() {
-    const DELEGATOR_1_STAKE: u64 = 1_000_000;
+    const DELEGATOR_1_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
     const VALIDATOR_1_STAKE: u64 = 1_000_000;
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 
@@ -4043,15 +4042,8 @@ fn should_not_restake_after_full_unbond() {
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     // advance past the initial auction delay due to special condition of post-genesis behavior.
-    for _ in 0..4 {
-        let step_request = StepRequestBuilder::new()
-            .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
-            .with_next_era_id(builder.get_era() + 1)
-            .build();
 
-        builder.step(step_request).expect("should step");
-    }
+    builder.advance_eras_by_default_auction_delay(vec![]);
 
     let validator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -4115,17 +4107,7 @@ fn should_not_restake_after_full_unbond() {
         .expect_success()
         .commit();
 
-    // advance the era.
-    let mut next_era = builder.get_era() + 1;
-
-    // first step after funding, adding bid and delegating.
-    let step_request = StepRequestBuilder::new()
-        .with_parent_state_hash(builder.get_post_state_hash())
-        .with_protocol_version(ProtocolVersion::V1_0_0)
-        .with_next_era_id(next_era)
-        .build();
-
-    builder.step(step_request).expect("should step");
+    builder.advance_era(vec![]);
 
     let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
 
@@ -4135,15 +4117,7 @@ fn should_not_restake_after_full_unbond() {
         U512::from(DELEGATOR_1_STAKE)
     );
 
-    next_era += 1;
-
-    let step_request = StepRequestBuilder::new()
-        .with_parent_state_hash(builder.get_post_state_hash())
-        .with_protocol_version(ProtocolVersion::V1_0_0)
-        .with_next_era_id(next_era)
-        .build();
-
-    builder.step(step_request).expect("should step");
+    builder.advance_era(vec![]);
 
     // undelegate in the era right after we delegated.
     undelegate(
@@ -4172,25 +4146,11 @@ fn should_not_restake_after_full_unbond() {
     );
 
     // step until validator receives rewards.
-    for _ in 0..2 {
-        let step_request = StepRequestBuilder::new()
-            .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
-            .with_next_era_id(builder.get_era() + 1)
-            .build();
-
-        builder.step(step_request).expect("should step");
-    }
+    builder.advance_eras_by(2, vec![]);
 
     // validator receives rewards after this step.
-    let step_request = StepRequestBuilder::new()
-        .with_parent_state_hash(builder.get_post_state_hash())
-        .with_protocol_version(ProtocolVersion::V1_0_0)
-        .with_reward_item(RewardItem::new(VALIDATOR_1.clone(), BLOCK_REWARD))
-        .with_next_era_id(builder.get_era() + 1)
-        .build();
 
-    builder.step(step_request).expect("should step");
+    builder.advance_era(vec![RewardItem::new(VALIDATOR_1.clone(), BLOCK_REWARD)]);
 
     // Delegator should not remain delegated even though they were eligible for rewards in the
     // second era.
@@ -4205,7 +4165,7 @@ fn should_not_restake_after_full_unbond() {
 #[ignore]
 #[test]
 fn delegator_full_unbond_during_first_reward_era() {
-    const DELEGATOR_1_STAKE: u64 = 1_000_000;
+    const DELEGATOR_1_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
     const VALIDATOR_1_STAKE: u64 = 1_000_000;
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 
@@ -4213,15 +4173,7 @@ fn delegator_full_unbond_during_first_reward_era() {
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     // advance past the initial auction delay due to special condition of post-genesis behavior.
-    for _ in 0..4 {
-        let step_request = StepRequestBuilder::new()
-            .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
-            .with_next_era_id(builder.get_era() + 1)
-            .build();
-
-        builder.step(step_request).expect("should step");
-    }
+    builder.advance_eras_by_default_auction_delay(vec![]);
 
     let validator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -4286,13 +4238,7 @@ fn delegator_full_unbond_during_first_reward_era() {
         .commit();
 
     // first step after funding, adding bid and delegating.
-    let step_request = StepRequestBuilder::new()
-        .with_parent_state_hash(builder.get_post_state_hash())
-        .with_protocol_version(ProtocolVersion::V1_0_0)
-        .with_next_era_id(builder.get_era() + 1)
-        .build();
-
-    builder.step(step_request).expect("should step");
+    builder.advance_era(vec![]);
 
     let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone())
         .expect("should be delegator");
@@ -4303,16 +4249,8 @@ fn delegator_full_unbond_during_first_reward_era() {
     );
 
     // step until validator receives rewards.
-    for _ in 0..3 {
-        // auction delay is 3.
-        let step_request = StepRequestBuilder::new()
-            .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
-            .with_next_era_id(builder.get_era() + 1)
-            .build();
+    builder.advance_eras_by(3, vec![]);
 
-        builder.step(step_request).expect("should step");
-    }
     // assert that the validator should indeed receive rewards and that
     // the delegator is scheduled to receive rewards this era.
 
@@ -4359,14 +4297,7 @@ fn delegator_full_unbond_during_first_reward_era() {
     );
 
     // validator receives rewards after this step.
-    let step_request = StepRequestBuilder::new()
-        .with_parent_state_hash(builder.get_post_state_hash())
-        .with_protocol_version(ProtocolVersion::V1_0_0)
-        .with_reward_item(RewardItem::new(VALIDATOR_1.clone(), BLOCK_REWARD))
-        .with_next_era_id(builder.get_era() + 1)
-        .build();
-
-    builder.step(step_request).expect("should step");
+    builder.advance_era(vec![RewardItem::new(VALIDATOR_1.clone(), BLOCK_REWARD)]);
 
     // Delegator should not remain delegated even though they were eligible for rewards in the
     // second era.

@@ -20,7 +20,6 @@ pub(super) struct MemoryMetrics {
     mem_block_fetcher: IntGauge,
     /// Estimated heap memory usage of deploy fetcher component.
     mem_deploy_fetcher: IntGauge,
-
     /// Histogram detailing how long it took to estimate memory usage.
     mem_estimator_runtime_s: Histogram,
     registry: Registry,

@@ -1,14 +1,15 @@
 use casper_types::{
-    system::{
-        handle_payment, mint,
-        standard_payment::{AccountProvider, HandlePaymentProvider, MintProvider, StandardPayment},
-    },
+    system::{handle_payment, mint},
     ApiError, Key, RuntimeArgs, StoredValue, URef, U512,
 };
 
 use crate::{
     core::{execution, runtime::Runtime},
     storage::global_state::StateReader,
+    system::standard_payment::{
+        account_provider::AccountProvider, handle_payment_provider::HandlePaymentProvider,
+        mint_provider::MintProvider, StandardPayment,
+    },
 };
 
 pub(crate) const METHOD_GET_PAYMENT_PURSE: &str = "get_payment_purse";
@@ -31,7 +32,7 @@ where
     R: StateReader<Key, StoredValue>,
     R::Error: Into<execution::Error>,
 {
-    fn get_main_purse(&self) -> Result<URef, ApiError> {
+    fn get_main_purse(&mut self) -> Result<URef, ApiError> {
         self.context.get_main_purse().map_err(|exec_error| {
             <Option<ApiError>>::from(exec_error).unwrap_or(ApiError::InvalidPurse)
         })

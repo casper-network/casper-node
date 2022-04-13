@@ -199,6 +199,8 @@ block_requests = 1
 block_responses = 0
 trie_requests = 1
 trie_responses = 0
+finalized_approvals_requests = 1
+finalized_approvals_responses = 0
 
 
 # ==================================================
@@ -309,6 +311,11 @@ enable_mem_deduplication = true
 # Sets the frequency how often the memory pool cache is swept for free references.
 # For example, setting this value to 5 means that every 5th time something is put in the pool the cache is swept.
 mem_pool_prune_interval = 4096
+
+# Parallel storage request execution.
+#
+# Controls the maximum number of threads that are spawned to access storage in parallel.
+max_sync_tasks = 32
 
 
 # ===================================

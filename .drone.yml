@@ -31,8 +31,8 @@ steps:
   commands:
   - make setup
 
-# The below is duplicated for pull and push 
-# due to environment bug with caching. 
+# The below is duplicated for pull and push
+# due to environment bug with caching.
 - name: cargo-test-pr
   <<: *buildenv
   environment:
@@ -171,13 +171,6 @@ kind: pipeline
 type: docker
 name: package
 
-environment:
-  RUSTC_WRAPPER: '/root/.cargo/bin/cachepot'
-  CACHEPOT_BUCKET: 'drone-sccache'
-  CACHEPOT_S3_KEY_PREFIX: ci
-  CACHEPOT_REGION: 'us-east-2'
-  CARGO_INCREMENTAL: '0'
-
 __buildenv: &buildenv
   image: casperlabs/node-build-u1804
   volumes:
@@ -189,11 +182,6 @@ __buildenv: &buildenv
     path: "/drone"
   - name: nctl-temp-dir
     path: "/tmp/nctl_upgrade_stage"
-  environment:
-    AWS_ACCESS_KEY_ID:
-      from_secret: cachepot_aws_ak
-    AWS_SECRET_ACCESS_KEY:
-      from_secret: cachepot_aws_sk
 
 __buildenv_upload: &buildenv_upload
   image: casperlabs/node-build-u1804
@@ -320,13 +308,6 @@ kind: pipeline
 type: docker
 name: release-by-tag
 
-environment:
-  RUSTC_WRAPPER: '/root/.cargo/bin/cachepot'
-  CACHEPOT_BUCKET: 'drone-sccache'
-  CACHEPOT_S3_KEY_PREFIX: ci
-  CACHEPOT_REGION: 'us-east-2'
-  CARGO_INCREMENTAL: '0'
-
 __buildenv: &buildenv
   image: casperlabs/node-build-u1804
   volumes:
@@ -338,11 +319,6 @@ __buildenv: &buildenv
     path: "/drone"
   - name: nctl-temp-dir
     path: "/tmp/nctl_upgrade_stage"
-  environment:
-    AWS_ACCESS_KEY_ID:
-      from_secret: cachepot_aws_ak
-    AWS_SECRET_ACCESS_KEY:
-      from_secret: cachepot_aws_sk
 
 __buildenv_upload: &buildenv_upload
   image: casperlabs/node-build-u1804
@@ -381,7 +357,7 @@ steps:
     - sha256
     - md5
     files:
-    - "./target/upgrade_build/*.gz"
+    - "./target/upgrade_build/*/bin.tar.gz"
     prerelease:
     - true
 
@@ -429,14 +405,6 @@ steps:
       from_secret: crates_io_token
   commands:
   - "./ci/publish_to_crates_io.sh"
-
-- name: update-default-branch
-  image: casperlabs/node-build-u1804
-  environment:
-    GITHUB_TOKEN:
-      from_secret: github_token_def_branch
-  commands:
-    - "./ci/change_default_branch.py"
 
 - name: notify
   image: plugins/slack

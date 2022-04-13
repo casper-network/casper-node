@@ -236,6 +236,7 @@ fn step_and_run_auction(builder: &mut LmdbWasmTestBuilder, validator_keys: &[Pub
     let mut step_request_builder = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0);
+
     for validator in validator_keys {
         step_request_builder =
             step_request_builder.with_reward_item(RewardItem::new(validator.clone(), 1));

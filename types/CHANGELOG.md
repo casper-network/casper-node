@@ -20,10 +20,27 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Changed
 * Extend `UnbondingPurses` to take a new field `new_validator` which represents the validator to whom tokens will be re-delegated.
-* Disable checksummed-hex encoding, but leave checksummed-hex decoding in place.
 * Increase `DICTIONARY_ITEM_KEY_MAX_LENGTH` to 128.
 * Fixed some integer casts.
-* Extended `UnbondingPurses` to take a new field `new_validator` which represents the validator to whom tokens will be re-delegated.
+
+
+
+## 1.5.0
+
+### Added
+* Provide types and functionality to support improved access control inside execution engine.
+* Provide `CLTyped` impl for `ContractPackage` to allow it to be passed into contracts.
+
+### Fixed
+* Limit parsing of CLTyped objects to a maximum of 50 types deep.
+
+
+
+## 1.4.6 - 2021-12-29
+
+### Changed
+* Disable checksummed-hex encoding, but leave checksummed-hex decoding in place.
+
 
 
 ## 1.4.5 - 2021-12-06
