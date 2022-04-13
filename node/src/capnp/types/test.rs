@@ -1,10 +1,8 @@
-use alloc::vec::Vec;
-
-use super::{Error, FromCapnpBytes, ToCapnpBytes};
+use crate::capnp::{Error, FromCapnpBytes, ToCapnpBytes};
 
 #[allow(dead_code)]
 mod test_capnp {
-    include!(concat!(env!("OUT_DIR"), "/schemas/capnp/test_capnp.rs"));
+    include!(concat!(env!("OUT_DIR"), "/src/capnp/schemas/test_capnp.rs"));
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -42,7 +40,7 @@ impl FromCapnpBytes for Test {
 
 #[cfg(test)]
 mod tests {
-    use crate::capnp::{test::Test, FromCapnpBytes, ToCapnpBytes};
+    use crate::capnp::{types::test::Test, FromCapnpBytes, ToCapnpBytes};
 
     #[test]
     fn test_capnp() {

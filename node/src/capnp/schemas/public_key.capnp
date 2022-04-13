@@ -1,7 +1,7 @@
 @0x82282564c76d4c41;
 
 using Rust = import "rust.capnp";
-$Rust.parentModule("capnp::public_key");
+$Rust.parentModule("capnp::types::public_key");
 
 # Ed25519 Public Keys have 32 bytes
 struct Ed25519PublicKey {

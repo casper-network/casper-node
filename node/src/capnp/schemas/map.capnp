@@ -1,5 +1,8 @@
 @0x93f3291d9df65ce2;
 
+using Rust = import "rust.capnp";
+$Rust.parentModule("capnp::types::era_report");
+
 struct Map(Key, Value) {
   entries @0 :List(Entry);
   struct Entry {
