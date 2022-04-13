@@ -907,7 +907,10 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                     return outcomes;
                 }
                 if let Some(inactive) = &proposal.inactive {
-                    if inactive.iter().any(|idx| !self.weights.has(*idx)) {
+                    if inactive
+                        .iter()
+                        .any(|idx| *idx == validator_idx || !self.weights.has(*idx))
+                    {
                         outcomes.extend(err_msg(
                             "invalid proposal: invalid inactive validator index",
                         ));
@@ -1837,6 +1840,7 @@ where
         // internet restarting, we'd need to store all our own messages.
         if let Some(our_idx) = self.validators.get_index(&our_id) {
             self.active_validator = Some((our_idx, secret));
+            self.active[our_idx] = true;
             return vec![ProtocolOutcome::ScheduleTimer(
                 now.max(self.params.start_timestamp()),
                 TIMER_ID_UPDATE,
