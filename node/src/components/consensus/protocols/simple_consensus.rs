@@ -1147,6 +1147,15 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         } else {
             return vec![]; // We don't have a proposal with a quorum of echos
         };
+        if let Some(inactive) = &proposal.inactive {
+            for idx in self.weights.keys() {
+                if !inactive.contains(&idx) && !self.active[idx] {
+                    // The proposal claims validator idx is active but we haven't seen anything from
+                    // them yet.
+                    return vec![];
+                }
+            }
+        }
         let (first_skipped_round_id, rel_height) =
             if let Some(parent_round_id) = proposal.maybe_parent_round_id {
                 if let Some(parent_height) = self
