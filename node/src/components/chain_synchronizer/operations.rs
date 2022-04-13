@@ -600,8 +600,8 @@ async fn sync_trie_store_worker(
 
 /// Synchronizes the trie store under a given state root hash.
 async fn sync_trie_store(state_root_hash: Digest, ctx: &ChainSyncContext<'_>) -> Result<(), Error> {
-    info!(?state_root_hash, "syncing trie store",);
-    let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_sync_trie_store_duration_seconds);
+    info!(?state_root_hash, "syncing trie store");
+    let start_instant = Timestamp::now();
 
     // Flag set by a worker when it encounters an error.
     let abort = Arc::new(AtomicBool::new(false));
@@ -615,6 +615,8 @@ async fn sync_trie_store(state_root_hash: Digest, ctx: &ChainSyncContext<'_>) ->
         result?; // Return the error if a download failed.
     }
 
+    ctx.metrics
+        .observe_sync_trie_store_duration_seconds(start_instant);
     Ok(())
 }
 
@@ -928,7 +930,8 @@ async fn fetch_to_genesis(trusted_block: &Block, ctx: &ChainSyncContext<'_>) -> 
             }
         }
 
-        info!("syncing block height {}", walkback_block.height());
+        let walkback_block_height = walkback_block.height();
+        info!(%walkback_block_height, "syncing block height");
         sync_deploys_and_transfers_and_state(&walkback_block, ctx).await?;
         ctx.effect_builder
             .update_lowest_available_block_height_in_storage(walkback_block.height())

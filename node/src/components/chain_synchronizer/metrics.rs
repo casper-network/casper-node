@@ -1,5 +1,13 @@
 use datasize::DataSize;
-use prometheus::{self, IntGauge, Registry};
+use prometheus::{self, Histogram, IntGauge, Registry};
+
+use crate::{types::Timestamp, utils};
+
+// Bucket parameters for the `chain_sync_sync_trie_store_duration_seconds` metric.
+// The last bucket is expected to catch processes taking up to 9+ hours (32768 secs).
+const SYNC_TRIE_STORE_BUCKET_START: f64 = 1.0;
+const SYNC_TRIE_STORE_BUCKET_FACTOR: f64 = 2.0;
+const SYNC_TRIE_STORE_BUCKET_COUNT: usize = 15;
 
 /// Metrics for the block proposer.
 #[derive(DataSize, Debug, Clone)]
@@ -47,7 +55,7 @@ pub(super) struct Metrics {
     pub(super) chain_sync_fetch_and_store_initial_trusted_block_header_duration_seconds: IntGauge,
     /// Time in seconds of syncing trie store (global state download) during chain sync.
     #[data_size(skip)]
-    pub(super) chain_sync_sync_trie_store_duration_seconds: IntGauge,
+    pub(super) chain_sync_sync_trie_store_duration_seconds: Histogram,
     /// Registry stored to allow deregistration later.
     #[data_size(skip)]
     registry: Registry,
@@ -109,9 +117,11 @@ impl Metrics {
                 "chain_sync_fetch_and_store_initial_trusted_block_header_duration_seconds",
                 "time in seconds of fetching the initial trusted block header during chain sync",
             )?;
-        let chain_sync_sync_trie_store_duration_seconds = IntGauge::new(
-            "chain_sync_sync_trie_store_duration_seconds",
-            "time in seconds of syncing trie store (global state download) during chain sync",
+
+        let buckets = prometheus::exponential_buckets(
+            SYNC_TRIE_STORE_BUCKET_START,
+            SYNC_TRIE_STORE_BUCKET_FACTOR,
+            SYNC_TRIE_STORE_BUCKET_COUNT,
         )?;
 
         registry.register(Box::new(chain_sync_total_duration_seconds.clone()))?;
@@ -142,9 +152,6 @@ impl Metrics {
             chain_sync_era_supervisor_init_duration_seconds.clone(),
         ))?;
         registry.register(Box::new(chain_sync_execute_blocks_duration_seconds.clone()))?;
-        registry.register(Box::new(
-            chain_sync_sync_trie_store_duration_seconds.clone(),
-        ))?;
 
         Ok(Metrics {
             chain_sync_total_duration_seconds,
@@ -160,9 +167,19 @@ impl Metrics {
             chain_sync_era_supervisor_init_duration_seconds,
             chain_sync_execute_blocks_duration_seconds,
             chain_sync_fetch_and_store_initial_trusted_block_header_duration_seconds,
-            chain_sync_sync_trie_store_duration_seconds,
+            chain_sync_sync_trie_store_duration_seconds: utils::register_histogram_metric(
+                registry,
+                "chain_sync_sync_trie_store_duration_seconds",
+                "time in seconds of syncing trie store during chain sync",
+                buckets,
+            )?,
             registry: registry.clone(),
         })
+    }
+
+    pub(super) fn observe_sync_trie_store_duration_seconds(&self, start: Timestamp) {
+        self.chain_sync_sync_trie_store_duration_seconds
+            .observe(start.elapsed().millis() as f64 / 1000.0);
     }
 }
 
