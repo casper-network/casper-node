@@ -305,6 +305,75 @@ where
     Ok(missing_descendants)
 }
 
+/// Returns a collection of all descendant trie keys.
+pub fn descendant_trie_keys<K, V, T, S, E>(
+    txn: &T,
+    store: &S,
+    mut trie_keys_to_visit: Vec<Digest>,
+) -> Result<HashSet<Digest>, E>
+where
+    K: ToBytes + FromBytes + Eq + std::fmt::Debug,
+    V: ToBytes + FromBytes + std::fmt::Debug,
+    T: Readable<Handle = S::Handle>,
+    S: TrieStore<K, V>,
+    S::Error: From<T::Error>,
+    E: From<S::Error> + From<bytesrepr::Error>,
+{
+    let mut visited = HashSet::new();
+
+    while let Some(trie_key) = trie_keys_to_visit.pop() {
+        if !visited.insert(trie_key) {
+            continue;
+        }
+
+        let retrieved_trie_bytes = match store.get_raw(txn, &trie_key)? {
+            Some(bytes) => bytes,
+            None => {
+                // No entry under this trie key.
+                continue;
+            }
+        };
+
+        // Optimization: Don't deserialize leaves as they have no descendants.
+        if let Some(&Trie::<K, V>::LEAF_TAG) = retrieved_trie_bytes.first() {
+            continue;
+        }
+
+        // Parse the trie, handling errors gracefully.
+        let retrieved_trie = match bytesrepr::deserialize_from_slice(retrieved_trie_bytes) {
+            Ok(retrieved_trie) => retrieved_trie,
+            // Couldn't parse; treat as missing and continue.
+            Err(err) => {
+                error!(?err, "unable to parse trie");
+                continue;
+            }
+        };
+
+        match retrieved_trie {
+            // Should be unreachable due to checking the first byte as a shortcut above.
+            Trie::<K, V>::Leaf { .. } => {
+                error!("did not expect to see a trie leaf in `missing_trie_keys` after shortcut");
+            }
+            // If we hit a pointer block, queue up all of the nodes it points to
+            Trie::Node { pointer_block } => {
+                for (_, pointer) in pointer_block.as_indexed_pointers() {
+                    match pointer {
+                        Pointer::LeafPointer(descendant_leaf_trie_key) => {
+                            trie_keys_to_visit.push(descendant_leaf_trie_key)
+                        }
+                        Pointer::NodePointer(descendant_node_trie_key) => {
+                            trie_keys_to_visit.push(descendant_node_trie_key)
+                        }
+                    }
+                }
+            }
+            // If we hit an extension block, add its pointer to the queue
+            Trie::Extension { pointer, .. } => trie_keys_to_visit.push(pointer.into_hash()),
+        }
+    }
+    Ok(visited)
+}
+
 struct TrieScan<K, V> {
     tip: Trie<K, V>,
     parents: Parents<K, V>,
