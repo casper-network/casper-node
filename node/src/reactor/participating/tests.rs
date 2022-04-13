@@ -375,13 +375,6 @@ async fn run_equivocator_network() {
         .map(|era_number| switch_blocks.bids(net.nodes(), era_number))
         .collect();
 
-    // Since this setup sometimes fails to produce an equivocation we return early here.
-    // TODO: Remove this once https://github.com/casper-network/casper-node/issues/1859 is fixed.
-    if switch_blocks.equivocators(1).is_empty() {
-        error!("Failed to equivocate in the first era.");
-        return;
-    }
-
     // Era 0 consists only of the genesis block.
     // In era 1, Alice equivocates and Bob is inactive. Since eviction takes place with a delay of
     // one (`auction_delay`) era, she is still included in the next era's validator set.
