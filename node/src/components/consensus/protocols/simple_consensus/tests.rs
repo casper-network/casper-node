@@ -247,7 +247,7 @@ fn simple_consensus() {
     let hash1 = proposal1.hash();
 
     let proposal2 = Proposal {
-        timestamp,
+        timestamp: timestamp + sc_c.params.min_round_length(),
         maybe_block: Some(new_payload(true)),
         maybe_parent_round_id: Some(1),
     };
