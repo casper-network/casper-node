@@ -1061,7 +1061,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         }
         let now = Timestamp::now();
         while round_id <= self.current_round {
-            self.round_mut(round_id); // Create the round if it doesn't exist.
+            self.create_round(round_id);
             if let Some(hash) = self.rounds[&round_id].proposals.keys().next().copied() {
                 outcomes.extend(self.create_message(round_id, Content::Echo(hash)));
             }
@@ -1343,10 +1343,11 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     /// current round.
     fn suitable_parent_round(&self, now: Timestamp) -> Option<Option<RoundId>> {
         let min_round_len = self.params.min_round_length();
+        // We iterate through the rounds before the current one, in reverse order.
         for round_id in (0..self.current_round).rev() {
             if let Some((_, parent)) = self.accepted_proposal(round_id) {
-                // All rounds after this one are skippable. If the accepted proposal's timestamp is
-                // old enough it can be used as a parent.
+                // All rounds higher than this one are skippable. If the accepted proposal's
+                // timestamp is old enough it can be used as a parent.
                 if now >= parent.timestamp.saturating_add(min_round_len) {
                     return Some(Some(round_id));
                 }
@@ -1453,6 +1454,11 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             btree_map::Entry::Occupied(entry) => entry.into_mut(),
             btree_map::Entry::Vacant(entry) => entry.insert(Round::new(self.weights.len())),
         }
+    }
+
+    /// Creates a round if it doesn't exist yet.
+    fn create_round(&mut self, round_id: RoundId) {
+        self.round_mut(round_id); // This creates a round as a side effect.
     }
 }
 
