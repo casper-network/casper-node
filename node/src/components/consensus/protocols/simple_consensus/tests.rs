@@ -151,6 +151,7 @@ fn expect_finalized(
             }
         }
     }
+    assert_eq!(None, proposals_iter.next(), "missing finalized proposal");
 }
 
 /// Checks that `outcomes` contains no `FinalizedBlock` or `CreatedGossipMessage`.
@@ -251,7 +252,7 @@ fn simple_consensus() {
         timestamp: timestamp + sc_c.params.min_round_length(),
         maybe_block: Some(new_payload(true)),
         maybe_parent_round_id: Some(1),
-        inactive: None,
+        inactive: Some(Default::default()),
     };
     let hash2 = proposal2.hash();
 
@@ -341,10 +342,10 @@ fn simple_consensus_faults() {
     let hash1 = proposal1.hash();
 
     let proposal2 = Proposal {
-        timestamp,
+        timestamp: timestamp + sc.params.min_round_length(),
         maybe_block: Some(new_payload(true)),
         maybe_parent_round_id: Some(1),
-        inactive: None,
+        inactive: Some(iter::once(carol_idx).collect()),
     };
     let hash2 = proposal2.hash();
 

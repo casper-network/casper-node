@@ -6,7 +6,7 @@ use num_rational::Ratio;
 use rand::Rng;
 use tempfile::TempDir;
 use tokio::time;
-use tracing::{error, info};
+use tracing::info;
 
 use casper_execution_engine::core::engine_state::GetBidsRequest;
 use casper_types::{
