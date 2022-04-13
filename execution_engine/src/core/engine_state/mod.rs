@@ -82,7 +82,9 @@ use crate::{
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
     storage::{
         self,
-        global_state::{db::DbGlobalState, StateProvider},
+        global_state::{
+            db::DbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
+        },
         trie::Trie,
     },
 };
@@ -109,6 +111,13 @@ pub const WASMLESS_TRANSFER_FIXED_GAS_PRICE: u64 = 1;
 pub struct EngineState<S> {
     config: EngineConfig,
     state: S,
+}
+
+impl EngineState<ScratchGlobalState> {
+    /// Returns the inner state
+    pub fn into_inner(self) -> ScratchGlobalState {
+        self.state
+    }
 }
 
 impl EngineState<DbGlobalState> {
@@ -145,11 +154,31 @@ impl EngineState<DbGlobalState> {
     pub fn data_path(&self) -> PathBuf {
         self.state.rocksdb_store.path()
     }
+
+    /// Provide a local cached-only version of engine-state.
+    pub fn get_scratch_engine_state(&self) -> EngineState<ScratchGlobalState> {
+        EngineState {
+            config: self.config,
+            state: self.state.create_scratch(),
+        }
+    }
+
+    /// Writes state cached in an EngineState<ScratchEngineState> to backing DB.
+    pub fn write_scratch_to_db(
+        &self,
+        state_root_hash: Digest,
+        scratch_global_state: ScratchGlobalState,
+    ) -> Result<Digest, Error> {
+        let stored_values = scratch_global_state.into_inner();
+        self.state
+            .put_stored_values(CorrelationId::new(), state_root_hash, stored_values)
+            .map_err(Into::into)
+    }
 }
 
 impl<S> EngineState<S>
 where
-    S: StateProvider,
+    S: StateProvider + CommitProvider,
     S::Error: Into<execution::Error>,
 {
     /// Creates new engine state.
@@ -1638,13 +1667,10 @@ where
         correlation_id: CorrelationId,
         pre_state_hash: Digest,
         effects: AdditiveMap<Key, Transform>,
-    ) -> Result<Digest, Error>
-    where
-        Error: From<S::Error>,
-    {
+    ) -> Result<Digest, Error> {
         self.state
             .commit(correlation_id, pre_state_hash, effects)
-            .map_err(Error::from)
+            .map_err(|err| Error::Exec(err.into()))
     }
 
     /// Gets a trie object for given state root hash.
@@ -1656,9 +1682,7 @@ where
     where
         Error: From<S::Error>,
     {
-        self.state
-            .get_trie(correlation_id, &trie_key)
-            .map_err(Error::from)
+        Ok(self.state.get_trie(correlation_id, &trie_key)?)
     }
 
     /// Puts a trie and finds missing descendant trie keys.

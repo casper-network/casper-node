@@ -5,6 +5,8 @@ pub mod in_memory;
 
 /// Lmdb implementation of global state.
 pub mod db;
+/// Implementation of global state with cache.
+pub mod scratch;
 
 use std::{collections::HashMap, hash::BuildHasher};
 
@@ -72,6 +74,18 @@ pub enum CommitError {
     TransformError(transform::Error),
 }
 
+/// Provides `commit` method.
+pub trait CommitProvider: StateProvider {
+    /// Applies changes and returns a new post state hash.
+    /// block_hash is used for computing a deterministic and unique keys.
+    fn commit(
+        &self,
+        correlation_id: CorrelationId,
+        state_hash: Digest,
+        effects: AdditiveMap<Key, Transform>,
+    ) -> Result<Digest, Self::Error>;
+}
+
 /// A trait expressing operations over the trie.
 pub trait StateProvider {
     /// Associated error type for `StateProvider`.
@@ -82,15 +96,6 @@ pub trait StateProvider {
 
     /// Checkouts to the post state of a specific block.
     fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, Self::Error>;
-
-    /// Applies changes and returns a new post state hash.
-    /// block_hash is used for computing a deterministic and unique keys.
-    fn commit(
-        &self,
-        correlation_id: CorrelationId,
-        state_hash: Digest,
-        effects: AdditiveMap<Key, Transform>,
-    ) -> Result<Digest, Self::Error>;
 
     /// Returns an empty root hash.
     fn empty_root(&self) -> Digest;

@@ -12,8 +12,7 @@ use crate::{
         runtime::stack,
     },
     shared::wasm_prep,
-    storage,
-    storage::global_state::CommitError,
+    storage::{self, error::db::DbError, global_state::CommitError},
 };
 
 /// Engine state errors.
@@ -109,6 +108,12 @@ impl From<execution::Error> for Error {
 impl From<bytesrepr::Error> for Error {
     fn from(error: bytesrepr::Error) -> Self {
         Error::Bytesrepr(format!("{}", error))
+    }
+}
+
+impl From<lmdb::Error> for Error {
+    fn from(error: lmdb::Error) -> Self {
+        Error::Storage(storage::error::Error::Db(DbError::Lmdb(error)))
     }
 }
 

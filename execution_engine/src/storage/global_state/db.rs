@@ -35,6 +35,8 @@ use crate::{
     },
 };
 
+use super::{scratch::ScratchGlobalState, CommitProvider};
+
 /// Global state implemented against LMDB as a backing data store.
 #[derive(Clone)]
 pub struct DbGlobalState {
@@ -192,6 +194,11 @@ impl DbGlobalState {
         }
     }
 
+    /// Creates an in-memory cache for changes written.
+    pub fn create_scratch(&self) -> ScratchGlobalState {
+        ScratchGlobalState::new(self.clone())
+    }
+
     /// Write stored values to LMDB.
     pub fn put_stored_values(
         &self,
@@ -319,6 +326,24 @@ impl StateReader<Key, StoredValue> for DbGlobalStateView {
     }
 }
 
+impl CommitProvider for DbGlobalState {
+    fn commit(
+        &self,
+        correlation_id: CorrelationId,
+        prestate_hash: Digest,
+        effects: AdditiveMap<Key, Transform>,
+    ) -> Result<Digest, Self::Error> {
+        commit::<RocksDbStore, RocksDbStore, _, Self::Error>(
+            &self.rocksdb_store,
+            &self.rocksdb_store,
+            correlation_id,
+            prestate_hash,
+            effects,
+        )
+        .map_err(Into::into)
+    }
+}
+
 impl StateProvider for DbGlobalState {
     type Error = error::Error;
 
@@ -334,22 +359,6 @@ impl StateProvider for DbGlobalState {
         });
         txn.commit()?;
         Ok(maybe_state)
-    }
-
-    fn commit(
-        &self,
-        correlation_id: CorrelationId,
-        prestate_hash: Digest,
-        effects: AdditiveMap<Key, Transform>,
-    ) -> Result<Digest, Self::Error> {
-        commit::<RocksDbStore, RocksDbStore, _, Self::Error>(
-            &self.rocksdb_store,
-            &self.rocksdb_store,
-            correlation_id,
-            prestate_hash,
-            effects,
-        )
-        .map_err(Into::into)
     }
 
     fn empty_root(&self) -> Digest {

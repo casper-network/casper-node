@@ -37,7 +37,8 @@ use casper_execution_engine::{
     },
     storage::{
         global_state::{
-            db::DbGlobalState, in_memory::InMemoryGlobalState, StateProvider, StateReader,
+            db::DbGlobalState, in_memory::InMemoryGlobalState, scratch::ScratchGlobalState,
+            CommitProvider, StateProvider, StateReader,
         },
         transaction_source::db::LmdbEnvironment,
         trie::{merkle_proof::TrieMerkleProof, Trie},
@@ -97,6 +98,8 @@ pub struct WasmTestBuilder<S> {
     genesis_account: Option<Account>,
     /// Genesis transforms
     genesis_transforms: Option<AdditiveMap<Key, Transform>>,
+    /// Scratch global state used for in-memory execution and commit optimization.
+    scratch_engine_state: Option<EngineState<ScratchGlobalState>>,
     /// System contract registry
     system_contract_registry: Option<SystemContractRegistry>,
     /// Global state dir, for implementations that define one.
@@ -129,6 +132,7 @@ impl Default for InMemoryWasmTestBuilder {
             genesis_transforms: None,
             system_contract_registry: None,
             global_state_dir: None,
+            scratch_engine_state: None,
         }
     }
 }
@@ -146,6 +150,7 @@ impl<S> Clone for WasmTestBuilder<S> {
             transforms: self.transforms.clone(),
             genesis_account: self.genesis_account.clone(),
             genesis_transforms: self.genesis_transforms.clone(),
+            scratch_engine_state: None,
             system_contract_registry: self.system_contract_registry.clone(),
             global_state_dir: self.global_state_dir.clone(),
         }
@@ -214,6 +219,7 @@ impl LmdbWasmTestBuilder {
             genesis_transforms: None,
             system_contract_registry: None,
             global_state_dir: Some(global_state_dir),
+            scratch_engine_state: None,
         }
     }
 
@@ -283,8 +289,9 @@ impl LmdbWasmTestBuilder {
             transforms: Vec::new(),
             genesis_account: None,
             genesis_transforms: None,
-            system_contract_registry: None,
+            scratch_engine_state: None,
             global_state_dir: Some(global_state_dir.as_ref().to_path_buf()),
+            system_contract_registry: None,
         }
     }
 
@@ -302,11 +309,64 @@ impl LmdbWasmTestBuilder {
         path.push(GLOBAL_STATE_DIR);
         path
     }
+    /// Execute and commit transforms from an ExecuteRequest into a scratch global state.
+    /// You MUST call write_scratch_to_db to flush these changes to DbGlobalState.
+    pub fn scratch_exec_and_commit(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
+        if self.scratch_engine_state.is_none() {
+            self.scratch_engine_state = Some(self.engine_state.get_scratch_engine_state());
+        }
+
+        let cached_state = self
+            .scratch_engine_state
+            .as_ref()
+            .expect("scratch state should exist");
+
+        // Scratch still requires that one deploy be executed and committed at a time.
+        let exec_request = {
+            let hash = self.post_state_hash.expect("expected post_state_hash");
+            exec_request.parent_state_hash = hash;
+            exec_request
+        };
+
+        let mut exec_results = Vec::new();
+        // First execute the request against our scratch global state.
+        let maybe_exec_results = cached_state.run_execute(CorrelationId::new(), exec_request);
+        for execution_result in maybe_exec_results.unwrap() {
+            let journal = execution_result.execution_journal().clone();
+            let transforms: AdditiveMap<Key, Transform> = journal.clone().into();
+            let _post_state_hash = cached_state
+                .apply_effect(
+                    CorrelationId::new(),
+                    self.post_state_hash.expect("requires a post_state_hash"),
+                    transforms,
+                )
+                .expect("should commit");
+
+            // Save transforms and execution results for WasmTestBuilder.
+            self.transforms.push(journal.into());
+            exec_results.push(Rc::new(execution_result))
+        }
+        self.exec_results.push(exec_results);
+        self
+    }
+
+    /// Commit scratch to global state, and reset the scratch cache.
+    pub fn write_scratch_to_db(&mut self) -> &mut Self {
+        let prestate_hash = self.post_state_hash.expect("Should have genesis hash");
+        if let Some(scratch) = self.scratch_engine_state.take() {
+            self.post_state_hash = Some(
+                self.engine_state
+                    .write_scratch_to_db(prestate_hash, scratch.into_inner())
+                    .unwrap(),
+            );
+        }
+        self
+    }
 }
 
 impl<S> WasmTestBuilder<S>
 where
-    S: StateProvider,
+    S: StateProvider + CommitProvider,
     engine_state::Error: From<S::Error>,
     S::Error: Into<execution::Error>,
 {
