@@ -23,7 +23,7 @@ bytes = "1.0.1"
 casper-execution-engine = { version = "1.5.0", path = "../execution_engine" }
 casper-node-macros = { version = "1.4.3", path = "../node_macros" }
 casper-hashing = { version = "1.4.3", path = "../hashing" }
-casper-types = { version = "1.5.0", path = "../types", features = ["datasize", "gens", "json-schema"] }
+casper-types = { version = "1.5.0", path = "../types", features = ["datasize", "gens", "json-schema", "crypto_std"] }
 chrono = "0.4.10"
 datasize = { version = "0.2.10", features = ["detailed", "fake_clock-types", "futures-types", "smallvec-types"] }
 derive_more = "0.99.7"
@@ -102,6 +102,7 @@ vergen = "3"
 
 [dev-dependencies]
 assert-json-diff = "2.0.1"
+casper-types = { version = "1.4.5", path = "../types", features = ["datasize", "gens", "json-schema", "crypto_std", "testing"] }
 fake_instant = "0.4.0"
 pnet = "0.28.0"
 pretty_assertions = "0.7.2"

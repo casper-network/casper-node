@@ -120,7 +120,8 @@ mod tests {
     use std::iter;
 
     use super::*;
-    use crate::{crypto::AsymmetricKeyExt, testing::TestRng};
+
+    use casper_types::testing::TestRng;
 
     fn preset_validators(rng: &mut TestRng) -> HashSet<PublicKey> {
         iter::repeat_with(|| PublicKey::random(rng))

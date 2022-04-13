@@ -9,6 +9,7 @@ use std::{
     sync::Arc,
 };
 
+use casper_types::crypto;
 use datasize::DataSize;
 #[cfg(test)]
 use once_cell::sync::Lazy;
@@ -19,10 +20,12 @@ use openssl::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use casper_types::SecretKey;
+use casper_types::{
+    file_utils::{read_file, ReadFileError},
+    SecretKey,
+};
 
-use super::{read_file, ReadFileError};
-use crate::{crypto, crypto::AsymmetricKeyExt, tls};
+use crate::tls;
 
 /// Path to bundled resources.
 #[cfg(test)]
@@ -147,10 +150,10 @@ impl Loadable for PKey<Private> {
 }
 
 impl Loadable for Arc<SecretKey> {
-    type Error = crypto::Error;
+    type Error = crypto::ErrorExt;
 
     fn from_path<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error> {
-        Ok(Arc::new(AsymmetricKeyExt::from_file(path)?))
+        Ok(Arc::new(SecretKey::from_file(path)?))
     }
 }
 

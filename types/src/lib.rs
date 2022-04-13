@@ -5,7 +5,9 @@
         feature = "json-schema",
         feature = "datasize",
         feature = "gens",
+        feature = "crypto_std",
         feature = "std",
+        feature = "testing",
         test,
     )),
     no_std
@@ -35,6 +37,8 @@ pub mod crypto;
 mod deploy_info;
 mod era_id;
 mod execution_result;
+#[cfg(any(feature = "crypto_std", test))]
+pub mod file_utils;
 mod gas;
 #[cfg(any(feature = "gens", test))]
 pub mod gens;
@@ -49,6 +53,8 @@ mod semver;
 mod stored_value;
 pub mod system;
 mod tagged;
+#[cfg(any(feature = "testing", test))]
+pub mod testing;
 mod transfer;
 mod transfer_result;
 mod uint;
