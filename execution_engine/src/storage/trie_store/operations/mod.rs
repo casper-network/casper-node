@@ -258,7 +258,7 @@ where
         }
 
         if known_complete.contains(&trie_key) {
-            // Skip because we know there are no missing descendents.
+            // Skip because we know there are no missing descendants.
             continue;
         }
 

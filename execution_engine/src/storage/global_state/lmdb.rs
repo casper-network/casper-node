@@ -289,18 +289,17 @@ impl StateProvider for LmdbGlobalState {
         correlation_id: CorrelationId,
         trie_keys: Vec<Digest>,
     ) -> Result<Vec<Digest>, Self::Error> {
-        if trie_keys
-            .iter()
-            .filter(|digest| {
-                !self
-                    .digests_without_missing_descendants
-                    .read()
-                    .unwrap()
-                    .contains(digest)
-            })
-            .count()
-            == 0
-        {
+        let trie_count = {
+            let digests_without_missing_descendants = self
+                .digests_without_missing_descendants
+                .read()
+                .expect("digest cache read lock");
+            trie_keys
+                .iter()
+                .filter(|digest| !digests_without_missing_descendants.contains(digest))
+                .count()
+        };
+        if trie_count == 0 {
             info!("no need to call missing_trie_keys");
             Ok(vec![])
         } else {
@@ -316,13 +315,16 @@ impl StateProvider for LmdbGlobalState {
                 &txn,
                 self.trie_store.deref(),
                 trie_keys.clone(),
-                &self.digests_without_missing_descendants.write().unwrap(),
+                &self
+                    .digests_without_missing_descendants
+                    .write()
+                    .expect("digest cache write lock"),
             )?;
             if missing_descendants.is_empty() {
                 // There were no missing descendants on `trie_keys`, let's add them *and all of
-                // their descendents* to the cache.
+                // their descendants* to the cache.
 
-                let mut all_descendents: HashSet<Digest> =
+                let mut all_descendants: HashSet<Digest> =
                     descendant_trie_keys::<
                         Key,
                         StoredValue,
@@ -330,12 +332,12 @@ impl StateProvider for LmdbGlobalState {
                         LmdbTrieStore,
                         Self::Error,
                     >(&txn, self.trie_store.deref(), trie_keys.clone())?;
-                all_descendents.extend(trie_keys);
+                all_descendants.extend(trie_keys);
 
                 self.digests_without_missing_descendants
                     .write()
-                    .unwrap()
-                    .extend(all_descendents.into_iter());
+                    .expect("digest cache write lock")
+                    .extend(all_descendants.into_iter());
             }
             txn.commit()?;
 
