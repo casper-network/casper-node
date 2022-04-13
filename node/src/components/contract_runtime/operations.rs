@@ -106,7 +106,7 @@ pub fn execute_finalized_block(
                 post_state_hash,
                 execution_journal: step_execution_journal,
             } = commit_step(
-                engine_state,
+                &scratch_state,
                 metrics.clone(),
                 protocol_version,
                 state_root_hash,
@@ -271,15 +271,19 @@ where
     result
 }
 
-fn commit_step(
-    engine_state: &EngineState<DbGlobalState>,
+fn commit_step<S>(
+    engine_state: &EngineState<S>,
     maybe_metrics: Option<Arc<Metrics>>,
     protocol_version: ProtocolVersion,
     pre_state_root_hash: Digest,
     era_report: &EraReport<PublicKey>,
     era_end_timestamp_millis: u64,
     next_era_id: EraId,
-) -> Result<StepSuccess, StepError> {
+) -> Result<StepSuccess, StepError>
+where
+    S: StateProvider + CommitProvider,
+    S::Error: Into<execution::Error>,
+{
     // Extract the rewards and the inactive validators if this is a switch block
     let EraReport {
         equivocators,
