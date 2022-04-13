@@ -1,8 +1,4 @@
-use alloc::vec::Vec;
-
-mod era_report;
-mod public_key;
-mod test;
+mod types;
 
 // TODO[RC]: Add From<capnp::Error> to avoid spamming `map_err()` and prevent losing information
 // about original error.
@@ -10,6 +6,7 @@ mod test;
 pub enum Error {
     UnableToSerialize,
     UnableToDeserialize,
+    TooManyItems,
 }
 
 pub trait ToCapnpBytes {

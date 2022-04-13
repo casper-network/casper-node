@@ -1,14 +1,12 @@
-use alloc::vec::Vec;
+use casper_types::{AsymmetricType, PublicKey};
 
-use crate::{AsymmetricType, PublicKey};
-
-use super::{Error, FromCapnpBytes, ToCapnpBytes};
+use crate::capnp::{Error, FromCapnpBytes, ToCapnpBytes};
 
 #[allow(dead_code)]
-mod public_key_capnp {
+pub(super) mod public_key_capnp {
     include!(concat!(
         env!("OUT_DIR"),
-        "/schemas/capnp/public_key_capnp.rs"
+        "/src/capnp/schemas/public_key_capnp.rs"
     ));
 }
 
@@ -207,10 +205,9 @@ impl FromCapnpBytes for PublicKey {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        capnp::{FromCapnpBytes, ToCapnpBytes},
-        PublicKey, SecretKey,
-    };
+    use casper_types::{PublicKey, SecretKey};
+
+    use crate::capnp::{FromCapnpBytes, ToCapnpBytes};
 
     fn random_bytes(len: usize) -> Vec<u8> {
         let mut buf = vec![0; len];
