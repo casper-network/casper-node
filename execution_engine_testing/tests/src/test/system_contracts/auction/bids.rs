@@ -5,9 +5,9 @@ use num_traits::{One, Zero};
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder, DEFAULT_ACCOUNTS,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_AUCTION_DELAY,
-    DEFAULT_EXEC_CONFIG, DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_AUCTION_DELAY, DEFAULT_EXEC_CONFIG,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
     DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY, MINIMUM_ACCOUNT_CREATION_BALANCE,
     SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
@@ -21,7 +21,7 @@ use casper_execution_engine::{
                 DEFAULT_STRICT_ARGUMENT_CHECKING,
             },
             genesis::{GenesisAccount, GenesisValidator},
-            EngineConfig, Error, RewardItem,
+            EngineConfig, RewardItem,
         },
         execution,
     },
@@ -36,13 +36,12 @@ use casper_types::{
     system::{
         self,
         auction::{
-            self, Bids, Bids, DelegationRate, DelegationRate, EraValidators, EraValidators,
-            Error as AuctionError, UnbondingPurses, UnbondingPurses, ValidatorWeights,
-            ValidatorWeights, WithdrawPurses, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
-            ARG_NEW_VALIDATOR, ARG_PUBLIC_KEY, ARG_VALIDATOR, ERA_ID_KEY, INITIAL_ERA_ID,
+            self, Bids, DelegationRate, EraValidators, UnbondingPurses, ValidatorWeights,
+            ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_NEW_VALIDATOR, ARG_PUBLIC_KEY,
+            ARG_VALIDATOR, ERA_ID_KEY, INITIAL_ERA_ID,
         },
     },
-    EraId, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U256, U512,
+    EraId, Motes, PublicKey, RuntimeArgs, SecretKey, U256, U512,
 };
 
 const ARG_TARGET: &str = "target";
