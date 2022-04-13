@@ -324,15 +324,15 @@ impl StateProvider for LmdbGlobalState {
                 // There were no missing descendants on `trie_keys`, let's add them *and all of
                 // their descendants* to the cache.
 
-                let mut all_descendants: HashSet<Digest> =
-                    descendant_trie_keys::<
-                        Key,
-                        StoredValue,
-                        lmdb::RoTransaction,
-                        LmdbTrieStore,
-                        Self::Error,
-                    >(&txn, self.trie_store.deref(), trie_keys.clone())?;
-                all_descendants.extend(trie_keys);
+                let mut all_descendants: HashSet<Digest> = HashSet::new();
+                all_descendants.extend(&trie_keys);
+                all_descendants.extend(descendant_trie_keys::<
+                    Key,
+                    StoredValue,
+                    lmdb::RoTransaction,
+                    LmdbTrieStore,
+                    Self::Error,
+                >(&txn, self.trie_store.deref(), trie_keys)?);
 
                 self.digests_without_missing_descendants
                     .write()
