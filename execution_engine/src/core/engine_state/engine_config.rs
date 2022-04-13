@@ -32,7 +32,7 @@ pub struct EngineConfig {
     wasm_config: WasmConfig,
     system_config: SystemConfig,
     /// A private network specifies a list of administrative accounts.
-    administrative_accounts: Option<Vec<AdministratorAccount>>,
+    administrative_accounts: Vec<AdministratorAccount>,
     /// Auction entrypoints such as "add_bid" or "delegate" are disabled if this flag is set to
     /// `true`.
     allow_auction_bids: bool,
@@ -48,7 +48,7 @@ impl Default for EngineConfig {
             strict_argument_checking: DEFAULT_STRICT_ARGUMENT_CHECKING,
             wasm_config: WasmConfig::default(),
             system_config: SystemConfig::default(),
-            administrative_accounts: None,
+            administrative_accounts: Vec::default(),
             allow_auction_bids: DEFAULT_ALLOW_AUCTION_BIDS,
         }
     }
@@ -87,18 +87,14 @@ impl EngineConfig {
 
     /// Get the engine config's administrative accounts.
     #[must_use]
-    pub fn administrative_accounts(&self) -> &Option<Vec<AdministratorAccount>> {
+    pub fn administrative_accounts(&self) -> &Vec<AdministratorAccount> {
         &self.administrative_accounts
     }
 
     /// Checks if chain is configured in private mode.
     #[must_use]
     pub fn is_private_chain(&self) -> bool {
-        match self.administrative_accounts() {
-            None => false,
-            Some(admin_accounts) if admin_accounts.is_empty() => false,
-            Some(_admin_accounts) => true,
-        }
+        !self.administrative_accounts().is_empty()
     }
 
     /// Get the engine config's allow auction bids.
@@ -188,14 +184,12 @@ impl EngineConfigBuilder {
         mut self,
         administrator_accounts: Vec<AdministratorAccount>,
     ) -> Self {
-        // self.chain_kind = Some(chain_kind);
         self.administrative_accounts = Some(administrator_accounts);
         self
     }
 
     /// Sets new disable auction bids flag.
     pub fn with_allow_auction_bids(mut self, allow_auction_bids: bool) -> Self {
-        // self.chain_kind = Some(chain_kind);
         self.allow_auction_bids = Some(allow_auction_bids);
         self
     }
@@ -217,7 +211,7 @@ impl EngineConfigBuilder {
             .unwrap_or(DEFAULT_STRICT_ARGUMENT_CHECKING);
         let wasm_config = self.wasm_config.unwrap_or_default();
         let system_config = self.system_config.unwrap_or_default();
-        let administrative_accounts = self.administrative_accounts;
+        let administrative_accounts = self.administrative_accounts.unwrap_or_default();
         let allow_auction_bids = self.allow_auction_bids.unwrap_or(true);
         EngineConfig {
             max_query_depth,

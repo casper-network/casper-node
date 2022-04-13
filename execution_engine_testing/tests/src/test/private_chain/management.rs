@@ -100,14 +100,12 @@ pub fn do_minimum_bytes() -> Vec<u8> {
 #[ignore]
 #[test]
 fn private_chain_genesis_should_have_admin_accounts() {
-    assert!(
-        matches!(
-            setup()
-                .get_engine_state()
-                .config()
-                .administrative_accounts(),
-            Some(_)
-        ),
+    assert_eq!(
+        setup()
+            .get_engine_state()
+            .config()
+            .administrative_accounts(),
+        &*PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS,
         "private chain genesis has administrator accounts defined"
     );
 }
@@ -118,14 +116,12 @@ fn public_chain_genesis_should_not_have_admin_accounts() {
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
-    assert!(
-        matches!(
-            builder
-                .get_engine_state()
-                .config()
-                .administrative_accounts(),
-            None
-        ),
+    assert_eq!(
+        builder
+            .get_engine_state()
+            .config()
+            .administrative_accounts(),
+        &Vec::new(),
         "private chain genesis has administrator accounts defined"
     );
 }
@@ -393,7 +389,6 @@ fn get_administrator_account_hashes(builder: &InMemoryWasmTestBuilder) -> BTreeS
         .config()
         .administrative_accounts()
         .clone()
-        .unwrap_or_default()
         .into_iter()
         .map(|admin| admin.public_key().to_account_hash())
         .collect()

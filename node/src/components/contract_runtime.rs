@@ -25,9 +25,11 @@ use tracing::{debug, error, info, trace};
 
 use casper_execution_engine::{
     core::engine_state::{
-        self, engine_config::EngineConfigBuilder, genesis::GenesisError, ChainspecRegistry,
-        EngineState, GenesisSuccess, GetEraValidatorsError, GetEraValidatorsRequest,
-        SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
+        self,
+        engine_config::EngineConfigBuilder,
+        genesis::{AdministratorAccount, GenesisError},
+        ChainspecRegistry, EngineState, GenesisSuccess, GetEraValidatorsError,
+        GetEraValidatorsRequest, SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
     },
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::{
@@ -561,6 +563,7 @@ impl ContractRuntime {
         strict_argument_checking: bool,
         registry: &Registry,
         verifiable_chunked_hash_activation: EraId,
+        administrative_accounts: Vec<AdministratorAccount>,
         allow_auction_bids: bool,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
@@ -594,6 +597,7 @@ impl ContractRuntime {
             .with_system_config(system_config)
             .with_minimum_delegation_amount(minimum_delegation_amount)
             .with_strict_argument_checking(strict_argument_checking)
+            .with_administrative_accounts(administrative_accounts)
             .with_allow_auction_bids(allow_auction_bids)
             .build();
 

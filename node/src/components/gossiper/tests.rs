@@ -248,6 +248,7 @@ impl reactor::Reactor for Reactor {
             DEFAULT_STRICT_ARGUMENT_CHECKING,
             registry,
             verifiable_chunked_hash_activation.into(),
+            Vec::default(),
             DEFAULT_ALLOW_AUCTION_BIDS,
         )
         .unwrap();

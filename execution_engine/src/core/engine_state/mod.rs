@@ -761,18 +761,8 @@ where
                         );
                     match maybe_uref {
                         Some(main_purse) => {
-                            let admin_accounts = self
-                                .config
-                                .administrative_accounts()
-                                .clone()
-                                .unwrap_or_default();
+                            let admin_accounts = self.config.administrative_accounts().clone();
                             let account_kind = AccountConfig::from(admin_accounts);
-                            match self.config.administrative_accounts() {
-                                None => AccountConfig::Normal,
-                                Some(administrative_accounts) => AccountConfig::Restricted {
-                                    administrative_accounts: administrative_accounts.clone(),
-                                },
-                            };
 
                             let new_account = match account::create_account(
                                 account_kind,

@@ -28,7 +28,8 @@ impl NetworkConfig {
         let name = rng.gen::<char>().to_string();
         let accounts = vec![rng.gen(), rng.gen(), rng.gen(), rng.gen(), rng.gen()];
         let delegators = vec![rng.gen(), rng.gen(), rng.gen(), rng.gen(), rng.gen()];
-        let accounts_config = AccountsConfig::new(accounts, delegators);
+        let administrators = vec![];
+        let accounts_config = AccountsConfig::new(accounts, delegators, administrators);
         let maximum_net_message_size = 4 + rng.gen_range(0..4);
 
         NetworkConfig {
