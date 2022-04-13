@@ -25,7 +25,8 @@ use crate::{
         trie_store::{
             lmdb::LmdbTrieStore,
             operations::{
-                keys_with_prefix, missing_trie_keys, put_trie, read, read_with_proof, ReadResult,
+                descendant_trie_keys, keys_with_prefix, missing_trie_keys, put_trie, read,
+                read_with_proof, ReadResult,
             },
         },
     },
@@ -315,14 +316,29 @@ impl StateProvider for LmdbGlobalState {
                 &txn,
                 self.trie_store.deref(),
                 trie_keys.clone(),
+                &self.digests_without_missing_descendants.write().unwrap(),
             )?;
-            txn.commit()?;
             if missing_descendants.is_empty() {
+                // There were no missing descendants on `trie_keys`, let's add them *and all of
+                // their descendents* to the cache.
+
+                let mut all_descendents: HashSet<Digest> =
+                    descendant_trie_keys::<
+                        Key,
+                        StoredValue,
+                        lmdb::RoTransaction,
+                        LmdbTrieStore,
+                        Self::Error,
+                    >(&txn, self.trie_store.deref(), trie_keys.clone())?;
+                all_descendents.extend(trie_keys);
+
                 self.digests_without_missing_descendants
                     .write()
                     .unwrap()
-                    .extend(&trie_keys);
+                    .extend(all_descendents.into_iter());
             }
+            txn.commit()?;
+
             Ok(missing_descendants)
         }
     }
