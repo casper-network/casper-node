@@ -239,6 +239,7 @@ pub fn missing_trie_keys<K, V, T, S, E>(
     txn: &T,
     store: &S,
     mut trie_keys_to_visit: Vec<Digest>,
+    known_complete: &HashSet<Digest>,
 ) -> Result<Vec<Digest>, E>
 where
     K: ToBytes + FromBytes + Eq + std::fmt::Debug,
@@ -252,6 +253,11 @@ where
     let mut visited = HashSet::new();
     while let Some(trie_key) = trie_keys_to_visit.pop() {
         if !visited.insert(trie_key) {
+            continue;
+        }
+
+        if known_complete.contains(&trie_key) {
+            // Skip because we know there are no missing descendents.
             continue;
         }
 

@@ -342,6 +342,7 @@ impl StateProvider for ScratchGlobalState {
                 &txn,
                 self.trie_store.deref(),
                 trie_keys,
+                &Default::default(),
             )?;
         txn.commit()?;
         Ok(missing_descendants)
