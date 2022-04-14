@@ -1,3 +1,58 @@
+//! # A simple consensus protocol.
+//!
+//! This protocol requires that at most _f_ out of _n > 3 f_ validators (by weight) are faulty. It
+//! also assumes that there is an upper bound for the network delay: how long a message sent by a
+//! correct validator can take before it is delivered.
+//!
+//! Under these conditions all correct nodes will reach agreement on a chain of _finalized_ blocks.
+//!
+//! A _quorum_ is a set of validators whose total weight is greater than _(n + f) / 2_. Thus any two
+//! quorums always have a correct validator in common. Since _(n + f) / 2 < n - f_, the correct
+//! validators constitute a quorum.
+//!
+//!
+//! ## How it Works
+//!
+//! In every round the designated leader can sign a `Proposal` message to suggest a block. The
+//! proposal also points to an earlier round in which the parent block was proposed.
+//!
+//! Each validator then signs an `Echo` message with the proposal's hash. Correct validators only
+//! sign one `Echo` per round, so at most one proposal can get `Echo`s signed by a quorum. If there
+//! is a quorum and some other conditions are met (see below), the proposal is _accepted_. The next
+//! round's leader can now make a proposal that uses this one as a parent.
+//!
+//! Each validator that observes the proposal to be accepted in time signs a `Vote(true)` message.
+//! If they time out waiting they sign `Vote(false)` instead. If a quorum signs `true`, the round is
+//! _committed_ and the proposal and all its ancestors are finalized. If a quorum signs `false`, the
+//! round is _skippable_: The next round's leader can now make a proposal with a parent from an
+//! earlier round. Correct validators only sign either `true` or `false`, so a round can be either
+//! committed or skippable but not both.
+//!
+//! If there is no accepted proposal all correct validators will eventually vote `false`, so the
+//! round becomes skippable. This is what makes the protocol _live_: The next leader will eventually
+//! be allowed to make a proposal, because either there is an accepted proposal that can be the
+//! parent, or the round will eventually be skippable and an earlier round's proposal can be used as
+//! a parent. If the timeout is long enough correct proposers' blocks will usually get finalized.
+//!
+//! For a proposal to be _accepted_, the parent proposal needs to also be accepted, and all rounds
+//! between the parent and the current round must be skippable. This is what makes the protocol
+//! _safe_: If two rounds are committed, their proposals must be ancestors of each other,
+//! because they are not skippable. Thus no two conflicting blocks can become finalized.
+//!
+//! Of course there is also a first block: Whenever _all_ earlier rounds are skippable (in
+//! particular in the first round) the leader may propose a block with no parent.
+//!
+//!
+//! ## Syncing the State
+//!
+//! Every new signed message is optimistically sent directly to all peers. We want to guarantee that
+//! it is eventually seen by all validators, even if they are not fully connected. This is
+//! achieved via a pull-based randomized gossip mechanism:
+//!
+//! A `SyncState` message containing information about a random part of the local protocol state is
+//! periodically sent to a random peer. The peer compares that to its local state, and responds with
+//! all signed messages that it has and the other is missing.
+
 #[cfg(test)]
 mod tests;
 
