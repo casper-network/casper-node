@@ -184,7 +184,6 @@ impl DeployAcceptor {
             self.max_associated_keys,
         );
         // checks chainspec values
-        // DOES NOT check cryptographic security
         if let Err(error) = acceptable_result {
             debug!(%deploy, %error, "deploy is incorrectly configured");
             return self.handle_invalid_deploy_result(
