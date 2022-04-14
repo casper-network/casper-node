@@ -19,8 +19,8 @@ use casper_execution_engine::{
     storage::trie::merkle_proof::TrieMerkleProof,
 };
 use casper_hashing::Digest;
-use casper_types::account::AccountHash;
 use casper_types::{
+    account::AccountHash,
     bytesrepr::{Bytes, ToBytes},
     CLValue, Key, ProtocolVersion, PublicKey, SecretKey, StoredValue as DomainStoredValue, URef,
     U512,
@@ -120,6 +120,14 @@ static GET_TRIE_PARAMS: Lazy<GetTrieParams> = Lazy::new(|| GetTrieParams {
 static GET_TRIE_RESULT: Lazy<GetTrieResult> = Lazy::new(|| GetTrieResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     maybe_trie_bytes: None,
+});
+static QUERY_BALANCE_PARAMS: Lazy<QueryBalanceParams> = Lazy::new(|| QueryBalanceParams {
+    state_identifier: GlobalStateIdentifier::BlockHash(*Block::doc_example().hash()),
+    balance_identifier: BalanceIdentifier::MainPurseUnderAccountHash(AccountHash::new([9u8; 32])),
+});
+static QUERY_BALANCE_RESULT: Lazy<QueryBalanceResult> = Lazy::new(|| QueryBalanceResult {
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    balance_value: U512::from(123_456),
 });
 
 /// Params for "state_get_item" RPC request.
@@ -927,18 +935,22 @@ pub enum BalanceIdentifier {
     PurseUref(URef),
 }
 
+/// Params for "query_balance" RPC request.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 pub struct QueryBalanceParams {
+    /// The state identifier used for the query.
     pub state_identifier: GlobalStateIdentifier,
+    /// The identifier to obtain the purse corresponding to balance query.
     pub balance_identifier: BalanceIdentifier,
 }
 
 impl DocExample for QueryBalanceParams {
     fn doc_example() -> &'static Self {
-        todo!()
+        &*QUERY_BALANCE_PARAMS
     }
 }
 
+/// Result for "query_balance" RPC response.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 pub struct QueryBalanceResult {
     /// The RPC API version.
@@ -950,10 +962,11 @@ pub struct QueryBalanceResult {
 
 impl DocExample for QueryBalanceResult {
     fn doc_example() -> &'static Self {
-        todo!()
+        &*QUERY_BALANCE_RESULT
     }
 }
 
+/// "query_balance" RPC.
 pub struct QueryBalance {}
 
 impl RpcWithParams for QueryBalance {
