@@ -858,8 +858,12 @@ async fn sync_to_genesis(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, Bl
 
     fetch_to_genesis(&trusted_block, ctx).await?;
 
+    info!("finished synchronization to genesis");
+
     // Sync forward until we are at the current version.
     let most_recent_block = fetch_forward(trusted_block, &mut trusted_key_block_info, ctx).await?;
+
+    info!("finished fetching forward");
 
     Ok((trusted_key_block_info, most_recent_block.take_header()))
 }
