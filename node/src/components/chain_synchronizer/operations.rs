@@ -68,7 +68,7 @@ impl<'a> Drop for ScopeTimer<'a> {
 struct ChainSyncContext<'a> {
     effect_builder: &'a EffectBuilder<JoinerEvent>,
     config: &'a Config,
-    trusted_block_header: &'a BlockHeader,
+    trusted_block_header: Option<&'a BlockHeader>,
     metrics: &'a Metrics,
     /// A list of peers which should be asked for data in the near future.
     bad_peer_list: RwLock<Vec<NodeId>>,
@@ -78,20 +78,47 @@ impl<'a> ChainSyncContext<'a> {
     fn new(
         effect_builder: &'a EffectBuilder<JoinerEvent>,
         config: &'a Config,
-        trusted_block_header: &'a BlockHeader,
         metrics: &'a Metrics,
     ) -> Self {
         Self {
             effect_builder,
             config,
-            trusted_block_header,
+            trusted_block_header: None,
             metrics,
             bad_peer_list: RwLock::new(Vec::new()),
         }
     }
 
-    fn trusted_hash(&self) -> BlockHash {
+    /// Initializes the trusted block header.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if set more than once.
+    fn set_trusted_block_header(&mut self, header: &'a BlockHeader) {
+        if self.trusted_block_header.is_some() {
+            panic!("cannot set trusted block header twice");
+        }
+
+        self.trusted_block_header = Some(header);
+    }
+
+    /// Returns the trusted block header.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if not initialized properly using `set_trusted_block_header` before being called.
+    fn trusted_block_header(&self) -> &BlockHeader {
         self.trusted_block_header
+            .expect("trusted block header not initialized")
+    }
+
+    /// Returns the trusted block hash.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if not initialized properly using `set_trusted_block_header` before being called.
+    fn trusted_hash(&self) -> BlockHash {
+        self.trusted_block_header()
             .hash(self.config.verifiable_chunked_hash_activation())
     }
 
@@ -689,16 +716,16 @@ async fn get_trusted_key_block_info(ctx: &ChainSyncContext<'_>) -> Result<KeyBlo
     );
 
     // If the trusted block's version is newer than ours we return an error
-    if ctx.trusted_block_header.protocol_version() > ctx.config.protocol_version() {
+    if ctx.trusted_block_header().protocol_version() > ctx.config.protocol_version() {
         return Err(Error::RetrievedBlockHeaderFromFutureVersion {
             current_version: ctx.config.protocol_version(),
-            block_header_with_future_version: Box::new(ctx.trusted_block_header.clone()),
+            block_header_with_future_version: Box::new(ctx.trusted_block_header().clone()),
         });
     }
 
     // Fetch each parent hash one by one until we have the switch block info
     // This will crash if we try to get the parent hash of genesis, which is the default [0u8; 32]
-    let mut current_header_to_walk_back_from = ctx.trusted_block_header.clone();
+    let mut current_header_to_walk_back_from = ctx.trusted_block_header().clone();
     loop {
         // Check that we are not restarting right after an emergency restart, which is too early
         match ctx.config.last_emergency_restart() {
@@ -706,7 +733,7 @@ async fn get_trusted_key_block_info(ctx: &ChainSyncContext<'_>) -> Result<KeyBlo
                 if last_emergency_restart > current_header_to_walk_back_from.era_id() =>
             {
                 return Err(Error::TrustedHeaderEraTooEarly {
-                    trusted_header: Box::new(ctx.trusted_block_header.clone()),
+                    trusted_header: Box::new(ctx.trusted_block_header().clone()),
                     maybe_last_emergency_restart_era_id: ctx.config.last_emergency_restart(),
                 })
             }
@@ -717,13 +744,13 @@ async fn get_trusted_key_block_info(ctx: &ChainSyncContext<'_>) -> Result<KeyBlo
             &current_header_to_walk_back_from,
             ctx.config.verifiable_chunked_hash_activation(),
         ) {
-            check_block_version(ctx.trusted_block_header, ctx.config.protocol_version())?;
+            check_block_version(ctx.trusted_block_header(), ctx.config.protocol_version())?;
             break Ok(key_block_info);
         }
 
         if current_header_to_walk_back_from.height() == 0 {
             break Err(Error::HitGenesisBlockTryingToGetTrustedEraValidators {
-                trusted_header: ctx.trusted_block_header.clone(),
+                trusted_header: ctx.trusted_block_header().clone(),
             });
         }
 
@@ -742,7 +769,7 @@ async fn fetch_block_headers_up_to_the_most_recent_one(
 ) -> Result<(BlockHeader, KeyBlockInfo), Error> {
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fetch_block_headers_duration_seconds);
 
-    let mut most_recent_block_header = ctx.trusted_block_header.clone();
+    let mut most_recent_block_header = ctx.trusted_block_header().clone();
     let mut most_recent_key_block_info = trusted_key_block_info.clone();
     loop {
         let maybe_fetched_block = fetch_and_store_next::<BlockHeaderWithMetadata>(
@@ -964,13 +991,13 @@ pub(super) async fn run_chain_sync_task(
 ) -> Result<BlockHeader, Error> {
     let _metric = ScopeTimer::new(&metrics.chain_sync_total_duration_seconds);
 
-    let chain_sync_context = ChainSyncContext::new(&effect_builder, &config, todo!(), &metrics);
+    let mut chain_sync_context = ChainSyncContext::new(&effect_builder, &config, &metrics);
 
     let trusted_block_header =
         fetch_and_store_initial_trusted_block_header(&chain_sync_context, &metrics, trusted_hash)
             .await?;
 
-    // TODO: Update trusted block header.
+    chain_sync_context.set_trusted_block_header(&trusted_block_header);
 
     verify_trusted_block_header(&chain_sync_context)?;
 
@@ -1021,10 +1048,10 @@ async fn fetch_and_store_initial_trusted_block_header(
 }
 
 fn verify_trusted_block_header(ctx: &ChainSyncContext<'_>) -> Result<(), Error> {
-    if ctx.trusted_block_header.protocol_version() > ctx.config.protocol_version() {
+    if ctx.trusted_block_header().protocol_version() > ctx.config.protocol_version() {
         return Err(Error::RetrievedBlockHeaderFromFutureVersion {
             current_version: ctx.config.protocol_version(),
-            block_header_with_future_version: Box::new(ctx.trusted_block_header.clone()),
+            block_header_with_future_version: Box::new(ctx.trusted_block_header().clone()),
         });
     }
 
@@ -1033,7 +1060,7 @@ fn verify_trusted_block_header(ctx: &ChainSyncContext<'_>) -> Result<(), Error> 
         ctx.config.era_duration(),
     );
 
-    if ctx.trusted_block_header.timestamp()
+    if ctx.trusted_block_header().timestamp()
         + era_duration
             * ctx
                 .config
@@ -1059,20 +1086,20 @@ async fn handle_emergency_restart(ctx: &ChainSyncContext<'_>) -> Result<bool, Er
         // After an emergency restart, the old validators cannot be trusted anymore. So the last
         // block before the restart or a later block must be given by the trusted hash. That way we
         // never have to use the untrusted validators' finality signatures.
-        if ctx.trusted_block_header.next_block_era_id() < last_emergency_restart_era {
+        if ctx.trusted_block_header().next_block_era_id() < last_emergency_restart_era {
             return Err(Error::TryingToJoinBeforeLastEmergencyRestartEra {
                 last_emergency_restart_era,
                 trusted_hash: ctx.trusted_hash(),
-                trusted_block_header: Box::new(ctx.trusted_block_header.clone()),
+                trusted_block_header: Box::new(ctx.trusted_block_header().clone()),
             });
         }
         // If the trusted hash specifies the last block before the emergency restart, we have to
         // compute the immediate switch block ourselves, since there's no other way to verify that
         // block. We just sync the trie there and return, so the upgrade can be applied.
-        if ctx.trusted_block_header.is_switch_block()
-            && ctx.trusted_block_header.next_block_era_id() == last_emergency_restart_era
+        if ctx.trusted_block_header().is_switch_block()
+            && ctx.trusted_block_header().next_block_era_id() == last_emergency_restart_era
         {
-            sync_trie_store(*ctx.trusted_block_header.state_root_hash(), ctx).await?;
+            sync_trie_store(*ctx.trusted_block_header().state_root_hash(), ctx).await?;
             return Ok(true);
         }
     }
@@ -1088,20 +1115,20 @@ async fn handle_upgrade(ctx: &ChainSyncContext<'_>) -> Result<bool, Error> {
     // 2. Get the trusted era validators from the last switch block
     // 3. Try to get the next block by height; if there is `None` then switch to the participating
     //    reactor.
-    if ctx.trusted_block_header.is_switch_block()
-        && ctx.trusted_block_header.next_block_era_id() == ctx.config.activation_point()
+    if ctx.trusted_block_header().is_switch_block()
+        && ctx.trusted_block_header().next_block_era_id() == ctx.config.activation_point()
     {
         let trusted_key_block_info = get_trusted_key_block_info(ctx).await?;
 
         let fetch_and_store_next_result = fetch_and_store_next::<BlockHeaderWithMetadata>(
-            ctx.trusted_block_header,
+            ctx.trusted_block_header(),
             &trusted_key_block_info,
             ctx,
         )
         .await?;
 
         if fetch_and_store_next_result.is_none() {
-            sync_trie_store(*ctx.trusted_block_header.state_root_hash(), ctx).await?;
+            sync_trie_store(*ctx.trusted_block_header().state_root_hash(), ctx).await?;
             return Ok(true);
         }
     }
