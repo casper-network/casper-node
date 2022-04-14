@@ -98,24 +98,22 @@ const TRIE_CHUNK_FETCH_FAN_OUT: usize = 10;
 
 /// Fetches an item. Keeps retrying to fetch until it is successful. Not suited to fetching a block
 /// header or block by height, which require verification with finality signatures.
-async fn fetch_retry_forever<T>(
-    effect_builder: EffectBuilder<JoinerEvent>,
-    config: &Config,
-    id: T::Id,
-) -> FetchResult<T>
+async fn fetch_retry_forever<T>(ctx: &ChainSyncContext<'_>, id: T::Id) -> FetchResult<T>
 where
     T: Item + 'static,
     JoinerEvent: From<FetcherRequest<T>>,
 {
     loop {
-        for peer in effect_builder.get_fully_connected_peers().await {
+        let new_peer_list = ctx.effect_builder.get_fully_connected_peers().await;
+
+        for peer in new_peer_list {
             trace!(
                 "attempting to fetch {:?} with id {:?} from {:?}",
                 T::TAG,
                 id,
                 peer
             );
-            match effect_builder.fetch::<T>(id, peer).await {
+            match ctx.effect_builder.fetch::<T>(id, peer).await {
                 Ok(fetched_data @ FetchedData::FromStorage { .. }) => {
                     trace!(
                         "did not get {:?} with id {:?} from {:?}, got from storage instead",
@@ -148,7 +146,7 @@ where
                 Err(error @ FetcherError::CouldNotConstructGetRequest { .. }) => return Err(error),
             }
         }
-        tokio::time::sleep(config.retry_interval()).await
+        tokio::time::sleep(ctx.config.retry_interval()).await
     }
 }
 
@@ -161,13 +159,7 @@ async fn fetch_trie_retry_forever(
     id: Digest,
     ctx: &ChainSyncContext<'_>,
 ) -> Result<TrieAlreadyPresentOrDownloaded, FetchTrieError> {
-    let trie_or_chunk = match fetch_retry_forever::<TrieOrChunk>(
-        *ctx.effect_builder,
-        ctx.config,
-        TrieOrChunkId(0, id),
-    )
-    .await?
-    {
+    let trie_or_chunk = match fetch_retry_forever::<TrieOrChunk>(ctx, TrieOrChunkId(0, id)).await? {
         FetchedData::FromStorage { .. } => {
             return Ok(TrieAlreadyPresentOrDownloaded::AlreadyPresent)
         }
@@ -193,13 +185,7 @@ async fn fetch_trie_retry_forever(
     // Build a map of the chunks.
     let chunk_map_result = futures::stream::iter(1..count)
         .map(|index| async move {
-            match fetch_retry_forever::<TrieOrChunk>(
-                *ctx.effect_builder,
-                ctx.config,
-                TrieOrChunkId(index, id),
-            )
-            .await?
-            {
+            match fetch_retry_forever::<TrieOrChunk>(ctx, TrieOrChunkId(index, id)).await? {
                 FetchedData::FromStorage { .. } => {
                     Err(FetchTrieError::TrieBeingFetchByChunksSomehowFetchedFromStorage)
                 }
@@ -245,8 +231,7 @@ async fn fetch_trie_retry_forever(
 
 /// Fetches and stores a block header from the network.
 async fn fetch_and_store_block_header(
-    effect_builder: EffectBuilder<JoinerEvent>,
-    config: &Config,
+    ctx: &ChainSyncContext<'_>,
     block_hash: BlockHash,
 ) -> Result<Box<BlockHeader>, Error> {
     // Only genesis should have this as previous hash, so no block should ever have it...
@@ -255,14 +240,13 @@ async fn fetch_and_store_block_header(
             bogus_block_hash: block_hash,
         });
     }
-    let fetched_block_header =
-        fetch_retry_forever::<BlockHeader>(effect_builder, config, block_hash).await?;
+    let fetched_block_header = fetch_retry_forever::<BlockHeader>(ctx, block_hash).await?;
     match fetched_block_header {
         FetchedData::FromStorage { item: block_header } => Ok(block_header),
         FetchedData::FromPeer {
             item: block_header, ..
         } => {
-            effect_builder
+            ctx.effect_builder
                 .put_block_header_to_storage(block_header.clone())
                 .await;
             Ok(block_header)
@@ -275,9 +259,7 @@ async fn fetch_and_store_deploy(
     deploy_or_transfer_hash: DeployHash,
     ctx: &ChainSyncContext<'_>,
 ) -> Result<Box<Deploy>, FetcherError<Deploy>> {
-    let fetched_deploy =
-        fetch_retry_forever::<Deploy>(*ctx.effect_builder, ctx.config, deploy_or_transfer_hash)
-            .await?;
+    let fetched_deploy = fetch_retry_forever::<Deploy>(ctx, deploy_or_transfer_hash).await?;
     Ok(match fetched_deploy {
         FetchedData::FromStorage { item: deploy } => deploy,
         FetchedData::FromPeer { item: deploy, .. } => {
@@ -559,8 +541,7 @@ async fn fetch_and_store_block_by_hash(
     block_hash: BlockHash,
     ctx: &ChainSyncContext<'_>,
 ) -> Result<Box<Block>, FetcherError<Block>> {
-    let fetched_block =
-        fetch_retry_forever::<Block>(*ctx.effect_builder, ctx.config, block_hash).await?;
+    let fetched_block = fetch_retry_forever::<Block>(ctx, block_hash).await?;
     match fetched_block {
         FetchedData::FromStorage { item: block, .. } => Ok(block),
         FetchedData::FromPeer { item: block, .. } => {
@@ -707,12 +688,9 @@ async fn get_trusted_key_block_info(ctx: &ChainSyncContext<'_>) -> Result<KeyBlo
             });
         }
 
-        current_header_to_walk_back_from = *fetch_and_store_block_header(
-            *ctx.effect_builder,
-            ctx.config,
-            *current_header_to_walk_back_from.parent_hash(),
-        )
-        .await?;
+        current_header_to_walk_back_from =
+            *fetch_and_store_block_header(ctx, *current_header_to_walk_back_from.parent_hash())
+                .await?;
     }
 }
 
@@ -800,12 +778,8 @@ async fn fetch_block_headers_needed_for_era_supervisor_initialization(
         ctx.config.earliest_switch_block_needed(earliest_open_era);
     let mut current_walk_back_header = most_recent_block_header.clone();
     while current_walk_back_header.era_id() > earliest_era_needed_by_era_supervisor {
-        current_walk_back_header = *fetch_and_store_block_header(
-            *ctx.effect_builder,
-            ctx.config,
-            *current_walk_back_header.parent_hash(),
-        )
-        .await?;
+        current_walk_back_header =
+            *fetch_and_store_block_header(ctx, *current_walk_back_header.parent_hash()).await?;
     }
     Ok(())
 }
@@ -951,16 +925,13 @@ pub(super) async fn run_chain_sync_task(
 ) -> Result<BlockHeader, Error> {
     let _metric = ScopeTimer::new(&metrics.chain_sync_total_duration_seconds);
 
-    let trusted_block_header = fetch_and_store_initial_trusted_block_header(
-        effect_builder,
-        &config,
-        &metrics,
-        trusted_hash,
-    )
-    .await?;
+    let chain_sync_context = ChainSyncContext::new(&effect_builder, &config, todo!(), &metrics);
 
-    let chain_sync_context =
-        ChainSyncContext::new(&effect_builder, &config, &trusted_block_header, &metrics);
+    let trusted_block_header =
+        fetch_and_store_initial_trusted_block_header(&chain_sync_context, &metrics, trusted_hash)
+            .await?;
+
+    // TODO: Update trusted block header.
 
     verify_trusted_block_header(&chain_sync_context)?;
 
@@ -999,16 +970,14 @@ pub(super) async fn run_chain_sync_task(
 }
 
 async fn fetch_and_store_initial_trusted_block_header(
-    effect_builder: EffectBuilder<JoinerEvent>,
-    config: &Config,
+    ctx: &ChainSyncContext<'_>,
     metrics: &Metrics,
     trusted_hash: BlockHash,
 ) -> Result<Box<BlockHeader>, Error> {
     let _metric = ScopeTimer::new(
         &metrics.chain_sync_fetch_and_store_initial_trusted_block_header_duration_seconds,
     );
-    let trusted_block_header =
-        fetch_and_store_block_header(effect_builder, config, trusted_hash).await?;
+    let trusted_block_header = fetch_and_store_block_header(ctx, trusted_hash).await?;
     Ok(trusted_block_header)
 }
 
