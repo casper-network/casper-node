@@ -184,7 +184,10 @@ impl<'a> ChainSyncContext<'a> {
 
         let bad_peer_list = mem::take::<VecDeque<NodeId>>(&mut bad_peer_list);
         if !bad_peer_list.is_empty() {
-            warn!(?bad_peer_list, "redeemed all bad peers")
+            warn!(
+                bad_peer_count = bad_peer_list.len(),
+                "redeemed all bad peers"
+            )
         }
     }
 }
