@@ -876,8 +876,12 @@ impl RpcWithParamsExt for QueryGlobalState {
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             let (state_root_hash, maybe_block_header) =
-                match get_state_root_hash(effect_builder, params.state_identifier, Self::METHOD)
-                    .await
+                match get_state_root_hash_and_optional_header(
+                    effect_builder,
+                    params.state_identifier,
+                    Self::METHOD,
+                )
+                .await
                 {
                     Ok((state_root_hash, maybe_block_header)) => {
                         (state_root_hash, maybe_block_header)
@@ -983,13 +987,16 @@ impl RpcWithParamsExt for QueryBalance {
         api_version: ProtocolVersion,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
-            let (state_root_hash, _) =
-                match get_state_root_hash(effect_builder, params.state_identifier, Self::METHOD)
-                    .await
-                {
-                    Ok(state_root_hash) => state_root_hash,
-                    Err(error) => return Ok(response_builder.error(error)?),
-                };
+            let (state_root_hash, _) = match get_state_root_hash_and_optional_header(
+                effect_builder,
+                params.state_identifier,
+                Self::METHOD,
+            )
+            .await
+            {
+                Ok(state_root_hash) => state_root_hash,
+                Err(error) => return Ok(response_builder.error(error)?),
+            };
 
             let purse_uref = match params.balance_identifier {
                 BalanceIdentifier::MainPurseUnderPublicKey(account_public_key) => {
@@ -1213,7 +1220,7 @@ async fn get_account<REv: ReactorEventT>(
     }
 }
 
-pub(super) async fn get_state_root_hash<REv: ReactorEventT>(
+pub(super) async fn get_state_root_hash_and_optional_header<REv: ReactorEventT>(
     effect_builder: EffectBuilder<REv>,
     state_identifier: GlobalStateIdentifier,
     method_name: &'static str,

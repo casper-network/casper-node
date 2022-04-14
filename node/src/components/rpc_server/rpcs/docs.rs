@@ -23,12 +23,13 @@ use super::{
     chain::{GetBlock, GetBlockTransfers, GetEraInfoBySwitchBlock, GetStateRootHash},
     info::{GetChainspec, GetDeploy, GetPeers, GetStatus, GetValidatorChanges},
     state::{
-        GetAccountInfo, GetAuctionInfo, GetBalance, GetDictionaryItem, GetItem, QueryGlobalState,
+        GetAccountInfo, GetAuctionInfo, GetBalance, GetDictionaryItem, GetItem, QueryBalance,
+        QueryGlobalState,
     },
     Error, ReactorEventT, RpcWithOptionalParams, RpcWithParams, RpcWithoutParams,
     RpcWithoutParamsExt,
 };
-use crate::{effect::EffectBuilder, rpcs::state::QueryBalance};
+use crate::effect::EffectBuilder;
 
 pub(crate) const DOCS_EXAMPLE_PROTOCOL_VERSION: ProtocolVersion =
     ProtocolVersion::from_parts(1, 4, 5);
