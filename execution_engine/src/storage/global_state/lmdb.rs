@@ -317,8 +317,8 @@ impl StateProvider for LmdbGlobalState {
                 trie_keys.clone(),
                 &self
                     .digests_without_missing_descendants
-                    .write()
-                    .expect("digest cache write lock"),
+                    .read()
+                    .expect("digest cache read lock"),
             )?;
             if missing_descendants.is_empty() {
                 // There were no missing descendants on `trie_keys`, let's add them *and all of
@@ -332,7 +332,15 @@ impl StateProvider for LmdbGlobalState {
                     lmdb::RoTransaction,
                     LmdbTrieStore,
                     Self::Error,
-                >(&txn, self.trie_store.deref(), trie_keys)?);
+                >(
+                    &txn,
+                    self.trie_store.deref(),
+                    trie_keys,
+                    &self
+                        .digests_without_missing_descendants
+                        .read()
+                        .expect("digest cache read lock"),
+                )?);
 
                 self.digests_without_missing_descendants
                     .write()
