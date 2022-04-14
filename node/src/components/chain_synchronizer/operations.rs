@@ -167,9 +167,9 @@ impl<'a> ChainSyncContext<'a> {
 
         // Note: Like `filter_bad_peers`, this may need to be migrated to use sets instead.
         if bad_peer_list.contains(&peer) {
-            bad_peer_list.push_back(peer);
             info!(%peer, "peer already marked as bad for syncing");
         } else {
+            bad_peer_list.push_back(peer);
             info!(%peer, "marked peer as bad for syncing");
         }
     }
