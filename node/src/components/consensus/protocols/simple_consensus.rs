@@ -197,6 +197,8 @@ where
     active: ValidatorMap<bool>,
     /// The lowest round ID of a block that could still be finalized in the future.
     first_non_finalized_round_id: RoundId,
+    /// The lowest round that needs to be considered in `upgrade`.
+    maybe_dirty_round_id: Option<RoundId>,
     /// The lowest non-skippable round without an accepted value.
     current_round: RoundId,
     /// The timeout for the current round.
@@ -272,6 +274,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             proposals_waiting_for_validation: HashMap::new(),
             rounds: BTreeMap::new(),
             first_non_finalized_round_id: 0,
+            maybe_dirty_round_id: None,
             current_round: 0,
             current_timeout: Timestamp::from(u64::MAX),
             evidence_only: false,
@@ -679,7 +682,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         }
 
         // Recompute quorums; if any new quorums are found, call `update`.
-        let mut first_affected_round_id = None;
         for round_id in
             self.first_non_finalized_round_id..=self.rounds.keys().last().copied().unwrap_or(0)
         {
@@ -692,18 +694,16 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                     .into_iter()
                     .any(|hash| self.check_new_echo_quorum(round_id, hash))
                 {
-                    first_affected_round_id.get_or_insert(round_id);
+                    self.mark_dirty(round_id);
                 }
             }
             if self.check_new_vote_quorum(round_id, true)
                 || self.check_new_vote_quorum(round_id, false)
             {
-                first_affected_round_id.get_or_insert(round_id);
+                self.mark_dirty(round_id);
             }
         }
-        if let Some(round_id) = first_affected_round_id {
-            outcomes.extend(self.update(round_id));
-        }
+        outcomes.extend(self.update());
         outcomes
     }
 
@@ -969,15 +969,13 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                     ancestor_values,
                     sender,
                     signature,
-                    true,
                 ));
             }
             content @ Content::Echo(_) | content @ Content::Vote(_) => {
-                if self.add_content(round_id, content, validator_idx, signature) {
-                    outcomes.extend(self.update(round_id));
-                }
+                self.add_content(round_id, content, validator_idx, signature);
             }
         }
+        outcomes.extend(self.update());
         outcomes
     }
 
@@ -1008,14 +1006,14 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     }
 
     /// Adds a signed message content to the state, but does not call `update` and does not detect
-    /// faults. Returns whether the content was a new proposal or completed a quorum.
+    /// faults.
     fn add_content(
         &mut self,
         round_id: RoundId,
         content: Content<C>,
         validator_idx: ValidatorIndex,
         signature: C::Signature,
-    ) -> bool {
+    ) {
         match content {
             Content::Proposal(proposal) => {
                 if self
@@ -1023,7 +1021,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                     .insert_proposal(proposal, signature)
                 {
                     self.register_activity(validator_idx);
-                    return true;
+                    self.mark_dirty(round_id);
                 }
             }
             Content::Echo(hash) => {
@@ -1033,7 +1031,9 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                         .insert_echo(hash, validator_idx, signature)
                 {
                     self.register_activity(validator_idx);
-                    return self.check_new_echo_quorum(round_id, hash);
+                    if self.check_new_echo_quorum(round_id, hash) {
+                        self.mark_dirty(round_id);
+                    }
                 }
             }
             Content::Vote(vote) => {
@@ -1043,17 +1043,23 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                         .insert_vote(vote, validator_idx, signature)
                 {
                     self.register_activity(validator_idx);
-                    return self.check_new_vote_quorum(round_id, vote);
+                    if self.check_new_vote_quorum(round_id, vote) {
+                        self.mark_dirty(round_id);
+                    }
                 }
             }
         }
-        false
     }
 
     /// Update the state after a new siganture from a validator was received.
     fn register_activity(&mut self, validator_idx: ValidatorIndex) {
         self.progress_detected = true;
-        self.active[validator_idx] = true;
+        if !self.active[validator_idx] {
+            self.active[validator_idx] = true;
+            // If a validator is seen for the first time a proposal in any round that doesn't
+            // consider them inactive could become accepted now.
+            self.mark_dirty(self.first_non_finalized_round_id);
+        }
     }
 
     /// If there is a signature for conflicting content, returns the content and signature.
@@ -1092,13 +1098,13 @@ impl<C: Context + 'static> SimpleConsensus<C> {
 
     /// Updates the state and sends appropriate messages after a signature has been added to a
     /// round.
-    fn update(&mut self, mut round_id: RoundId) -> ProtocolOutcomes<C> {
+    fn update(&mut self) -> ProtocolOutcomes<C> {
         let mut outcomes = vec![];
-        if self.finalized_switch_block() {
-            return outcomes; // This era has endedd.
+        if self.maybe_dirty_round_id.is_none() || self.finalized_switch_block() {
+            return outcomes; // This era has ended or all rounds are up to date.
         }
         let now = Timestamp::now();
-        while round_id <= self.current_round {
+        while let Some(round_id) = self.maybe_dirty_round_id {
             self.create_round(round_id);
             if let Some(hash) = self.rounds[&round_id].proposals.keys().next().copied() {
                 outcomes.extend(self.create_message(round_id, Content::Echo(hash)));
@@ -1125,7 +1131,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                                 ancestor_values.clone(),
                                 sender,
                                 signature,
-                                false,
                             ));
                         }
                     }
@@ -1152,10 +1157,9 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                     }
                 }
             }
-            round_id = match round_id.checked_add(1) {
-                Some(r_id) => r_id,
-                None => return outcomes,
-            };
+            self.maybe_dirty_round_id = round_id
+                .checked_add(1)
+                .filter(|r_id| *r_id <= self.current_round);
         }
         outcomes
     }
@@ -1236,7 +1240,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         ancestor_values: Vec<C::ConsensusValue>,
         sender: NodeId,
         signature: C::Signature,
-        update: bool,
     ) -> ProtocolOutcomes<C> {
         if let Some((_, parent_proposal)) = proposal
             .maybe_parent_round_id
@@ -1289,11 +1292,8 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 "proposal does not need validation",
             );
             let content = Content::Proposal(proposal);
-            if self.add_content(round_id, content, validator_idx, signature) && update {
-                self.update(round_id)
-            } else {
-                vec![]
-            }
+            self.add_content(round_id, content, validator_idx, signature);
+            vec![]
         }
     }
 
@@ -1382,7 +1382,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 {
                     let content = Content::Proposal(Proposal::dummy(now, parent_round_id));
                     let mut outcomes = self.create_message(self.current_round, content);
-                    outcomes.extend(self.update(self.current_round));
+                    outcomes.extend(self.update());
                     return outcomes;
                 }
                 let ancestor_values = self
@@ -1521,6 +1521,17 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     /// Creates a round if it doesn't exist yet.
     fn create_round(&mut self, round_id: RoundId) {
         self.round_mut(round_id); // This creates a round as a side effect.
+    }
+
+    /// Marks a round as dirty so that the next `upgrade` call will reevaluate it.
+    fn mark_dirty(&mut self, round_id: RoundId) {
+        if round_id <= self.current_round
+            && self
+                .maybe_dirty_round_id
+                .map_or(true, |r_id| r_id > round_id)
+        {
+            self.maybe_dirty_round_id = Some(round_id);
+        }
     }
 }
 
@@ -1768,7 +1779,10 @@ where
     fn handle_timer(&mut self, now: Timestamp, timer_id: TimerId) -> ProtocolOutcomes<C> {
         match timer_id {
             TIMER_ID_SYNC_PEER => self.handle_sync_peer_timer(now),
-            TIMER_ID_UPDATE => self.update(self.current_round),
+            TIMER_ID_UPDATE => {
+                self.mark_dirty(self.current_round);
+                self.update()
+            }
             TIMER_ID_LOG_PARTICIPATION => {
                 self.log_participation();
                 match self.config.log_participation_interval {
@@ -1833,7 +1847,7 @@ where
                 inactive,
             ));
             let mut outcomes = self.create_message(proposal_round_id, content);
-            outcomes.extend(self.update(proposal_round_id));
+            outcomes.extend(self.update());
             outcomes
         } else {
             error!("unexpected call to propose");
@@ -1858,9 +1872,8 @@ where
                 info!(?proposal, "handling valid proposal");
                 let content = Content::Proposal(proposal);
                 let validator_idx = self.leader(round_id);
-                if self.add_content(round_id, content, validator_idx, signature) {
-                    outcomes.extend(self.update(round_id));
-                }
+                self.add_content(round_id, content, validator_idx, signature);
+                outcomes.extend(self.update());
             }
             outcomes
         } else {
