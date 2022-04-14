@@ -1,9 +1,10 @@
 use std::{
     cmp,
-    collections::BTreeMap,
+    collections::{BTreeMap, VecDeque},
+    mem,
     sync::{
-        atomic::{self, AtomicBool},
-        Arc,
+        atomic::{self, AtomicBool, AtomicI64, Ordering},
+        Arc, RwLock,
     },
 };
 
@@ -68,28 +69,126 @@ impl<'a> Drop for ScopeTimer<'a> {
 struct ChainSyncContext<'a> {
     effect_builder: &'a EffectBuilder<JoinerEvent>,
     config: &'a Config,
-    trusted_block_header: &'a BlockHeader,
+    trusted_block_header: Option<&'a BlockHeader>,
     metrics: &'a Metrics,
+    /// A list of peers which should be asked for data in the near future.
+    bad_peer_list: RwLock<VecDeque<NodeId>>,
+    /// Number of times peer lists have been filtered.
+    filter_count: AtomicI64,
 }
 
 impl<'a> ChainSyncContext<'a> {
     fn new(
         effect_builder: &'a EffectBuilder<JoinerEvent>,
         config: &'a Config,
-        trusted_block_header: &'a BlockHeader,
         metrics: &'a Metrics,
     ) -> Self {
         Self {
             effect_builder,
             config,
-            trusted_block_header,
+            trusted_block_header: None,
             metrics,
+            bad_peer_list: RwLock::new(VecDeque::new()),
+            filter_count: AtomicI64::new(0),
         }
     }
 
-    fn trusted_hash(&self) -> BlockHash {
+    /// Initializes the trusted block header.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if set more than once.
+    fn set_trusted_block_header(&mut self, header: &'a BlockHeader) {
+        if self.trusted_block_header.is_some() {
+            panic!("cannot set trusted block header twice");
+        }
+
+        self.trusted_block_header = Some(header);
+    }
+
+    /// Returns the trusted block header.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if not initialized properly using `set_trusted_block_header` before being called.
+    fn trusted_block_header(&self) -> &BlockHeader {
         self.trusted_block_header
+            .expect("trusted block header not initialized")
+    }
+
+    /// Returns the trusted block hash.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if not initialized properly using `set_trusted_block_header` before being called.
+    fn trusted_hash(&self) -> BlockHash {
+        self.trusted_block_header()
             .hash(self.config.verifiable_chunked_hash_activation())
+    }
+
+    /// Removes known bad peers from a given peer list.
+    ///
+    /// Automatically redeems the oldest bad peer after `redemption_interval` filterings.
+    fn filter_bad_peers(&self, peers: &mut Vec<NodeId>) {
+        {
+            let bad_peer_list = self
+                .bad_peer_list
+                .read()
+                .expect("bad peer list lock poisoned");
+            // Note: This is currently quadratic in the amount of peers (e.g. in a network with 400
+            // out of 401 bad peers, this would result in 160k comparisons), but we estimate that
+            // this is fine given the expected low number of bad peers for now. If this proves a
+            // problem, proper sets should be used instead.
+            //
+            // Using a vec is currently convenient because it allows for FIFO-ordered redemption.
+            peers.retain(|p| !bad_peer_list.contains(p));
+        }
+
+        let redemption_interval = self.config.redemption_interval as i64;
+        if redemption_interval != 0
+            && self.filter_count.fetch_add(1, Ordering::Relaxed) > redemption_interval
+        {
+            self.filter_count
+                .fetch_sub(redemption_interval, Ordering::Relaxed);
+
+            // Redeem the oldest bad node.
+            self.bad_peer_list
+                .write()
+                .expect("bad peer list lock poisoned")
+                .pop_front();
+        }
+    }
+
+    /// Marks a peer as bad.
+    fn mark_bad_peer(&self, peer: NodeId) {
+        let mut bad_peer_list = self
+            .bad_peer_list
+            .write()
+            .expect("bad peer list lock poisoned");
+
+        // Note: Like `filter_bad_peers`, this may need to be migrated to use sets instead.
+        if bad_peer_list.contains(&peer) {
+            info!(%peer, "peer already marked as bad for syncing");
+        } else {
+            bad_peer_list.push_back(peer);
+            info!(%peer, "marked peer as bad for syncing");
+        }
+    }
+
+    /// Clears the list of bad peers.
+    fn redeem_all(&self) {
+        let mut bad_peer_list = self
+            .bad_peer_list
+            .write()
+            .expect("bad peer list lock poisoned");
+
+        let bad_peer_list = mem::take::<VecDeque<NodeId>>(&mut bad_peer_list);
+        if !bad_peer_list.is_empty() {
+            warn!(
+                bad_peer_count = bad_peer_list.len(),
+                "redeemed all bad peers"
+            )
+        }
     }
 }
 
@@ -98,24 +197,23 @@ const TRIE_CHUNK_FETCH_FAN_OUT: usize = 10;
 
 /// Fetches an item. Keeps retrying to fetch until it is successful. Not suited to fetching a block
 /// header or block by height, which require verification with finality signatures.
-async fn fetch_retry_forever<T>(
-    effect_builder: EffectBuilder<JoinerEvent>,
-    config: &Config,
-    id: T::Id,
-) -> FetchResult<T>
+async fn fetch_retry_forever<T>(ctx: &ChainSyncContext<'_>, id: T::Id) -> FetchResult<T>
 where
     T: Item + 'static,
     JoinerEvent: From<FetcherRequest<T>>,
 {
     loop {
-        for peer in effect_builder.get_fully_connected_peers().await {
+        let mut new_peer_list = ctx.effect_builder.get_fully_connected_peers().await;
+        ctx.filter_bad_peers(&mut new_peer_list);
+
+        for peer in new_peer_list {
             trace!(
                 "attempting to fetch {:?} with id {:?} from {:?}",
                 T::TAG,
                 id,
                 peer
             );
-            match effect_builder.fetch::<T>(id, peer).await {
+            match ctx.effect_builder.fetch::<T>(id, peer).await {
                 Ok(fetched_data @ FetchedData::FromStorage { .. }) => {
                     trace!(
                         "did not get {:?} with id {:?} from {:?}, got from storage instead",
@@ -135,7 +233,8 @@ where
                         tag = ?T::TAG,
                         ?peer,
                         "chain sync could not fetch; trying next peer",
-                    )
+                    );
+                    ctx.mark_bad_peer(peer);
                 }
                 Err(FetcherError::TimedOut { .. }) => {
                     warn!(
@@ -144,11 +243,12 @@ where
                         ?peer,
                         "peer timed out",
                     );
+                    ctx.mark_bad_peer(peer);
                 }
                 Err(error @ FetcherError::CouldNotConstructGetRequest { .. }) => return Err(error),
             }
         }
-        tokio::time::sleep(config.retry_interval()).await
+        tokio::time::sleep(ctx.config.retry_interval()).await
     }
 }
 
@@ -161,13 +261,7 @@ async fn fetch_trie_retry_forever(
     id: Digest,
     ctx: &ChainSyncContext<'_>,
 ) -> Result<TrieAlreadyPresentOrDownloaded, FetchTrieError> {
-    let trie_or_chunk = match fetch_retry_forever::<TrieOrChunk>(
-        *ctx.effect_builder,
-        ctx.config,
-        TrieOrChunkId(0, id),
-    )
-    .await?
-    {
+    let trie_or_chunk = match fetch_retry_forever::<TrieOrChunk>(ctx, TrieOrChunkId(0, id)).await? {
         FetchedData::FromStorage { .. } => {
             return Ok(TrieAlreadyPresentOrDownloaded::AlreadyPresent)
         }
@@ -193,13 +287,7 @@ async fn fetch_trie_retry_forever(
     // Build a map of the chunks.
     let chunk_map_result = futures::stream::iter(1..count)
         .map(|index| async move {
-            match fetch_retry_forever::<TrieOrChunk>(
-                *ctx.effect_builder,
-                ctx.config,
-                TrieOrChunkId(index, id),
-            )
-            .await?
-            {
+            match fetch_retry_forever::<TrieOrChunk>(ctx, TrieOrChunkId(index, id)).await? {
                 FetchedData::FromStorage { .. } => {
                     Err(FetchTrieError::TrieBeingFetchByChunksSomehowFetchedFromStorage)
                 }
@@ -245,8 +333,7 @@ async fn fetch_trie_retry_forever(
 
 /// Fetches and stores a block header from the network.
 async fn fetch_and_store_block_header(
-    effect_builder: EffectBuilder<JoinerEvent>,
-    config: &Config,
+    ctx: &ChainSyncContext<'_>,
     block_hash: BlockHash,
 ) -> Result<Box<BlockHeader>, Error> {
     // Only genesis should have this as previous hash, so no block should ever have it...
@@ -255,14 +342,13 @@ async fn fetch_and_store_block_header(
             bogus_block_hash: block_hash,
         });
     }
-    let fetched_block_header =
-        fetch_retry_forever::<BlockHeader>(effect_builder, config, block_hash).await?;
+    let fetched_block_header = fetch_retry_forever::<BlockHeader>(ctx, block_hash).await?;
     match fetched_block_header {
         FetchedData::FromStorage { item: block_header } => Ok(block_header),
         FetchedData::FromPeer {
             item: block_header, ..
         } => {
-            effect_builder
+            ctx.effect_builder
                 .put_block_header_to_storage(block_header.clone())
                 .await;
             Ok(block_header)
@@ -275,9 +361,7 @@ async fn fetch_and_store_deploy(
     deploy_or_transfer_hash: DeployHash,
     ctx: &ChainSyncContext<'_>,
 ) -> Result<Box<Deploy>, FetcherError<Deploy>> {
-    let fetched_deploy =
-        fetch_retry_forever::<Deploy>(*ctx.effect_builder, ctx.config, deploy_or_transfer_hash)
-            .await?;
+    let fetched_deploy = fetch_retry_forever::<Deploy>(ctx, deploy_or_transfer_hash).await?;
     Ok(match fetched_deploy {
         FetchedData::FromStorage { item: deploy } => deploy,
         FetchedData::FromPeer { item: deploy, .. } => {
@@ -432,6 +516,9 @@ where
         if !peers.is_empty() {
             break;
         }
+
+        // We have no peers left, might as well redeem all the bad ones.
+        ctx.redeem_all();
         tokio::time::sleep(ctx.config.retry_interval()).await;
     }
 
@@ -559,8 +646,7 @@ async fn fetch_and_store_block_by_hash(
     block_hash: BlockHash,
     ctx: &ChainSyncContext<'_>,
 ) -> Result<Box<Block>, FetcherError<Block>> {
-    let fetched_block =
-        fetch_retry_forever::<Block>(*ctx.effect_builder, ctx.config, block_hash).await?;
+    let fetched_block = fetch_retry_forever::<Block>(ctx, block_hash).await?;
     match fetched_block {
         FetchedData::FromStorage { item: block, .. } => Ok(block),
         FetchedData::FromPeer { item: block, .. } => {
@@ -671,16 +757,16 @@ async fn get_trusted_key_block_info(ctx: &ChainSyncContext<'_>) -> Result<KeyBlo
     );
 
     // If the trusted block's version is newer than ours we return an error
-    if ctx.trusted_block_header.protocol_version() > ctx.config.protocol_version() {
+    if ctx.trusted_block_header().protocol_version() > ctx.config.protocol_version() {
         return Err(Error::RetrievedBlockHeaderFromFutureVersion {
             current_version: ctx.config.protocol_version(),
-            block_header_with_future_version: Box::new(ctx.trusted_block_header.clone()),
+            block_header_with_future_version: Box::new(ctx.trusted_block_header().clone()),
         });
     }
 
     // Fetch each parent hash one by one until we have the switch block info
     // This will crash if we try to get the parent hash of genesis, which is the default [0u8; 32]
-    let mut current_header_to_walk_back_from = ctx.trusted_block_header.clone();
+    let mut current_header_to_walk_back_from = ctx.trusted_block_header().clone();
     loop {
         // Check that we are not restarting right after an emergency restart, which is too early
         match ctx.config.last_emergency_restart() {
@@ -688,7 +774,7 @@ async fn get_trusted_key_block_info(ctx: &ChainSyncContext<'_>) -> Result<KeyBlo
                 if last_emergency_restart > current_header_to_walk_back_from.era_id() =>
             {
                 return Err(Error::TrustedHeaderEraTooEarly {
-                    trusted_header: Box::new(ctx.trusted_block_header.clone()),
+                    trusted_header: Box::new(ctx.trusted_block_header().clone()),
                     maybe_last_emergency_restart_era_id: ctx.config.last_emergency_restart(),
                 })
             }
@@ -699,22 +785,19 @@ async fn get_trusted_key_block_info(ctx: &ChainSyncContext<'_>) -> Result<KeyBlo
             &current_header_to_walk_back_from,
             ctx.config.verifiable_chunked_hash_activation(),
         ) {
-            check_block_version(ctx.trusted_block_header, ctx.config.protocol_version())?;
+            check_block_version(ctx.trusted_block_header(), ctx.config.protocol_version())?;
             break Ok(key_block_info);
         }
 
         if current_header_to_walk_back_from.height() == 0 {
             break Err(Error::HitGenesisBlockTryingToGetTrustedEraValidators {
-                trusted_header: ctx.trusted_block_header.clone(),
+                trusted_header: ctx.trusted_block_header().clone(),
             });
         }
 
-        current_header_to_walk_back_from = *fetch_and_store_block_header(
-            *ctx.effect_builder,
-            ctx.config,
-            *current_header_to_walk_back_from.parent_hash(),
-        )
-        .await?;
+        current_header_to_walk_back_from =
+            *fetch_and_store_block_header(ctx, *current_header_to_walk_back_from.parent_hash())
+                .await?;
     }
 }
 
@@ -727,7 +810,7 @@ async fn fetch_block_headers_up_to_the_most_recent_one(
 ) -> Result<(BlockHeader, KeyBlockInfo), Error> {
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fetch_block_headers_duration_seconds);
 
-    let mut most_recent_block_header = ctx.trusted_block_header.clone();
+    let mut most_recent_block_header = ctx.trusted_block_header().clone();
     let mut most_recent_key_block_info = trusted_key_block_info.clone();
     loop {
         let maybe_fetched_block = fetch_and_store_next::<BlockHeaderWithMetadata>(
@@ -802,12 +885,8 @@ async fn fetch_block_headers_needed_for_era_supervisor_initialization(
         ctx.config.earliest_switch_block_needed(earliest_open_era);
     let mut current_walk_back_header = most_recent_block_header.clone();
     while current_walk_back_header.era_id() > earliest_era_needed_by_era_supervisor {
-        current_walk_back_header = *fetch_and_store_block_header(
-            *ctx.effect_builder,
-            ctx.config,
-            *current_walk_back_header.parent_hash(),
-        )
-        .await?;
+        current_walk_back_header =
+            *fetch_and_store_block_header(ctx, *current_walk_back_header.parent_hash()).await?;
     }
     Ok(())
 }
@@ -955,16 +1034,13 @@ pub(super) async fn run_chain_sync_task(
 ) -> Result<BlockHeader, Error> {
     let _metric = ScopeTimer::new(&metrics.chain_sync_total_duration_seconds);
 
-    let trusted_block_header = fetch_and_store_initial_trusted_block_header(
-        effect_builder,
-        &config,
-        &metrics,
-        trusted_hash,
-    )
-    .await?;
+    let mut chain_sync_context = ChainSyncContext::new(&effect_builder, &config, &metrics);
 
-    let chain_sync_context =
-        ChainSyncContext::new(&effect_builder, &config, &trusted_block_header, &metrics);
+    let trusted_block_header =
+        fetch_and_store_initial_trusted_block_header(&chain_sync_context, &metrics, trusted_hash)
+            .await?;
+
+    chain_sync_context.set_trusted_block_header(&trusted_block_header);
 
     verify_trusted_block_header(&chain_sync_context)?;
 
@@ -1003,24 +1079,22 @@ pub(super) async fn run_chain_sync_task(
 }
 
 async fn fetch_and_store_initial_trusted_block_header(
-    effect_builder: EffectBuilder<JoinerEvent>,
-    config: &Config,
+    ctx: &ChainSyncContext<'_>,
     metrics: &Metrics,
     trusted_hash: BlockHash,
 ) -> Result<Box<BlockHeader>, Error> {
     let _metric = ScopeTimer::new(
         &metrics.chain_sync_fetch_and_store_initial_trusted_block_header_duration_seconds,
     );
-    let trusted_block_header =
-        fetch_and_store_block_header(effect_builder, config, trusted_hash).await?;
+    let trusted_block_header = fetch_and_store_block_header(ctx, trusted_hash).await?;
     Ok(trusted_block_header)
 }
 
 fn verify_trusted_block_header(ctx: &ChainSyncContext<'_>) -> Result<(), Error> {
-    if ctx.trusted_block_header.protocol_version() > ctx.config.protocol_version() {
+    if ctx.trusted_block_header().protocol_version() > ctx.config.protocol_version() {
         return Err(Error::RetrievedBlockHeaderFromFutureVersion {
             current_version: ctx.config.protocol_version(),
-            block_header_with_future_version: Box::new(ctx.trusted_block_header.clone()),
+            block_header_with_future_version: Box::new(ctx.trusted_block_header().clone()),
         });
     }
 
@@ -1029,7 +1103,7 @@ fn verify_trusted_block_header(ctx: &ChainSyncContext<'_>) -> Result<(), Error> 
         ctx.config.era_duration(),
     );
 
-    if ctx.trusted_block_header.timestamp()
+    if ctx.trusted_block_header().timestamp()
         + era_duration
             * ctx
                 .config
@@ -1055,20 +1129,20 @@ async fn handle_emergency_restart(ctx: &ChainSyncContext<'_>) -> Result<bool, Er
         // After an emergency restart, the old validators cannot be trusted anymore. So the last
         // block before the restart or a later block must be given by the trusted hash. That way we
         // never have to use the untrusted validators' finality signatures.
-        if ctx.trusted_block_header.next_block_era_id() < last_emergency_restart_era {
+        if ctx.trusted_block_header().next_block_era_id() < last_emergency_restart_era {
             return Err(Error::TryingToJoinBeforeLastEmergencyRestartEra {
                 last_emergency_restart_era,
                 trusted_hash: ctx.trusted_hash(),
-                trusted_block_header: Box::new(ctx.trusted_block_header.clone()),
+                trusted_block_header: Box::new(ctx.trusted_block_header().clone()),
             });
         }
         // If the trusted hash specifies the last block before the emergency restart, we have to
         // compute the immediate switch block ourselves, since there's no other way to verify that
         // block. We just sync the trie there and return, so the upgrade can be applied.
-        if ctx.trusted_block_header.is_switch_block()
-            && ctx.trusted_block_header.next_block_era_id() == last_emergency_restart_era
+        if ctx.trusted_block_header().is_switch_block()
+            && ctx.trusted_block_header().next_block_era_id() == last_emergency_restart_era
         {
-            sync_trie_store(*ctx.trusted_block_header.state_root_hash(), ctx).await?;
+            sync_trie_store(*ctx.trusted_block_header().state_root_hash(), ctx).await?;
             return Ok(true);
         }
     }
@@ -1084,20 +1158,20 @@ async fn handle_upgrade(ctx: &ChainSyncContext<'_>) -> Result<bool, Error> {
     // 2. Get the trusted era validators from the last switch block
     // 3. Try to get the next block by height; if there is `None` then switch to the participating
     //    reactor.
-    if ctx.trusted_block_header.is_switch_block()
-        && ctx.trusted_block_header.next_block_era_id() == ctx.config.activation_point()
+    if ctx.trusted_block_header().is_switch_block()
+        && ctx.trusted_block_header().next_block_era_id() == ctx.config.activation_point()
     {
         let trusted_key_block_info = get_trusted_key_block_info(ctx).await?;
 
         let fetch_and_store_next_result = fetch_and_store_next::<BlockHeaderWithMetadata>(
-            ctx.trusted_block_header,
+            ctx.trusted_block_header(),
             &trusted_key_block_info,
             ctx,
         )
         .await?;
 
         if fetch_and_store_next_result.is_none() {
-            sync_trie_store(*ctx.trusted_block_header.state_root_hash(), ctx).await?;
+            sync_trie_store(*ctx.trusted_block_header().state_root_hash(), ctx).await?;
             return Ok(true);
         }
     }

@@ -7,6 +7,7 @@ use crate::types::{BlockHash, TimeDiff};
 const DEFAULT_MAX_PARALLEL_DEPLOY_FETCHES: u32 = 20;
 /// Maximum number of tries to fetch in parallel, by default.
 const DEFAULT_MAX_PARALLEL_TRIE_FETCHES: u32 = 20;
+const DEFAULT_PEER_REDEMPTION_INTERVAL: u32 = 10_000;
 const DEFAULT_RETRY_INTERVAL: &str = "100ms";
 
 /// Node fast-sync configuration.
@@ -26,6 +27,9 @@ pub struct NodeConfig {
     /// The duration for which to pause between retry attempts while synchronising during joining.
     pub retry_interval: TimeDiff,
 
+    /// How many items to fetch before redeeming a random peer.
+    pub sync_peer_redemption_interval: u32,
+
     /// Whether to run in sync-to-genesis mode which captures all data (blocks, deploys
     /// and global state) back to genesis.
     pub sync_to_genesis: bool,
@@ -38,6 +42,7 @@ impl Default for NodeConfig {
             max_parallel_deploy_fetches: DEFAULT_MAX_PARALLEL_DEPLOY_FETCHES,
             max_parallel_trie_fetches: DEFAULT_MAX_PARALLEL_TRIE_FETCHES,
             retry_interval: DEFAULT_RETRY_INTERVAL.parse().unwrap(),
+            sync_peer_redemption_interval: DEFAULT_PEER_REDEMPTION_INTERVAL,
             sync_to_genesis: false,
         }
     }
