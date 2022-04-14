@@ -144,7 +144,9 @@ impl<'a> ChainSyncContext<'a> {
         }
 
         let redemption_interval = self.config.redemption_interval as i64;
-        if self.filter_count.fetch_add(1, Ordering::Relaxed) > redemption_interval {
+        if redemption_interval != 0
+            && self.filter_count.fetch_add(1, Ordering::Relaxed) > redemption_interval
+        {
             self.filter_count
                 .fetch_sub(redemption_interval, Ordering::Relaxed);
 
