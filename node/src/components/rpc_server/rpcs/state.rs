@@ -19,6 +19,7 @@ use casper_execution_engine::{
     storage::trie::merkle_proof::TrieMerkleProof,
 };
 use casper_hashing::Digest;
+use casper_types::account::AccountHash;
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
     CLValue, Key, ProtocolVersion, PublicKey, SecretKey, StoredValue as DomainStoredValue, URef,
@@ -803,6 +804,8 @@ impl RpcWithParamsExt for GetDictionaryItem {
 pub enum GlobalStateIdentifier {
     /// Query using a block hash.
     BlockHash(BlockHash),
+    /// Query using a block height.
+    BlockHeight(u64),
     /// Query using the state root hash.
     StateRootHash(Digest),
 }
@@ -864,32 +867,15 @@ impl RpcWithParamsExt for QueryGlobalState {
         api_version: ProtocolVersion,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
-            let (state_root_hash, maybe_block_header) = match params.state_identifier {
-                GlobalStateIdentifier::BlockHash(block_hash) => {
-                    // This RPC request is restricted by the block availability index.
-                    let only_from_available_block_range = true;
-
-                    match effect_builder
-                        .get_block_header_from_storage(block_hash, only_from_available_block_range)
-                        .await
-                    {
-                        Some(header) => {
-                            let json_block_header = JsonBlockHeader::from(header.clone());
-                            (*header.state_root_hash(), Some(json_block_header))
-                        }
-                        None => {
-                            let error_msg =
-                                "query_global_state failed to retrieve specified block header"
-                                    .to_string();
-                            return Ok(response_builder.error(warp_json_rpc::Error::custom(
-                                ErrorCode::NoSuchBlock as i64,
-                                error_msg,
-                            ))?);
-                        }
+            let (state_root_hash, maybe_block_header) =
+                match get_state_root_hash(effect_builder, params.state_identifier, Self::METHOD)
+                    .await
+                {
+                    Ok((state_root_hash, maybe_block_header)) => {
+                        (state_root_hash, maybe_block_header)
                     }
-                }
-                GlobalStateIdentifier::StateRootHash(state_root_hash) => (state_root_hash, None),
-            };
+                    Err(error) => return Ok(response_builder.error(error)?),
+                };
 
             let base_key = match Key::from_formatted_str(&params.key)
                 .map_err(|error| format!("failed to parse key: {}", error))
@@ -924,6 +910,133 @@ impl RpcWithParamsExt for QueryGlobalState {
                 }
                 Err(error) => Ok(response_builder.error(error)?),
             }
+        }
+        .boxed()
+    }
+}
+
+/// Identifier for the main purse of a given account.
+#[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "snake_case")]
+pub enum BalanceIdentifier {
+    /// Query for the main_purse balance corresponding to this `PublicKey`.
+    MainPurseUnderPublicKey(PublicKey),
+    /// Query for the main_purse balance corresponding to this `AccountHash`.
+    MainPurseUnderAccountHash(AccountHash),
+    /// Query for purse balance underneath this `URef`.
+    PurseUref(URef),
+}
+
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+pub struct QueryBalanceParams {
+    pub state_identifier: GlobalStateIdentifier,
+    pub balance_identifier: BalanceIdentifier,
+}
+
+impl DocExample for QueryBalanceParams {
+    fn doc_example() -> &'static Self {
+        todo!()
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+pub struct QueryBalanceResult {
+    /// The RPC API version.
+    #[schemars(with = "String")]
+    pub api_version: ProtocolVersion,
+    /// The balance value.
+    pub balance_value: U512,
+}
+
+impl DocExample for QueryBalanceResult {
+    fn doc_example() -> &'static Self {
+        todo!()
+    }
+}
+
+pub struct QueryBalance {}
+
+impl RpcWithParams for QueryBalance {
+    const METHOD: &'static str = "query_balance";
+    type RequestParams = QueryBalanceParams;
+    type ResponseResult = QueryBalanceResult;
+}
+
+impl RpcWithParamsExt for QueryBalance {
+    fn handle_request<REv: ReactorEventT>(
+        effect_builder: EffectBuilder<REv>,
+        response_builder: Builder,
+        params: Self::RequestParams,
+        api_version: ProtocolVersion,
+    ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
+        async move {
+            let (state_root_hash, _) =
+                match get_state_root_hash(effect_builder, params.state_identifier, Self::METHOD)
+                    .await
+                {
+                    Ok(state_root_hash) => state_root_hash,
+                    Err(error) => return Ok(response_builder.error(error)?),
+                };
+
+            let purse_uref = match params.balance_identifier {
+                BalanceIdentifier::MainPurseUnderPublicKey(account_public_key) => {
+                    match get_account(
+                        effect_builder,
+                        state_root_hash,
+                        account_public_key.to_account_hash(),
+                    )
+                    .await
+                    {
+                        Ok(account) => account.main_purse(),
+                        Err(error) => return Ok(response_builder.error(error)?),
+                    }
+                }
+                BalanceIdentifier::MainPurseUnderAccountHash(account_hash) => {
+                    match get_account(effect_builder, state_root_hash, account_hash).await {
+                        Ok(account) => account.main_purse(),
+                        Err(error) => return Ok(response_builder.error(error)?),
+                    }
+                }
+                BalanceIdentifier::PurseUref(purse_uref) => purse_uref,
+            };
+
+            // Get the balance.
+            let balance_result = effect_builder
+                .make_request(
+                    |responder| RpcRequest::GetBalance {
+                        state_root_hash,
+                        purse_uref,
+                        responder,
+                    },
+                    QueueKind::Api,
+                )
+                .await;
+
+            let balance_value = match balance_result {
+                Ok(BalanceResult::Success { motes, .. }) => motes,
+                Ok(balance_result) => {
+                    let error_msg = format!("get-balance failed: {:?}", balance_result);
+                    info!("{}", error_msg);
+                    return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                        ErrorCode::GetBalanceFailed as i64,
+                        error_msg,
+                    ))?);
+                }
+                Err(error) => {
+                    let error_msg = format!("get-balance failed to execute: {}", error);
+                    info!("{}", error_msg);
+                    return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                        ErrorCode::GetBalanceFailedToExecute as i64,
+                        error_msg,
+                    ))?);
+                }
+            };
+
+            let result = Self::ResponseResult {
+                api_version,
+                balance_value,
+            };
+            Ok(response_builder.success(result)?)
         }
         .boxed()
     }
@@ -1059,5 +1172,85 @@ pub(super) async fn run_query<REv: ReactorEventT>(
                 format!("state query failed to execute: {:?}", error),
             ))
         }
+    }
+}
+
+async fn get_account<REv: ReactorEventT>(
+    effect_builder: EffectBuilder<REv>,
+    state_root_hash: Digest,
+    account_hash: AccountHash,
+) -> Result<JsonAccount, warp_json_rpc::Error> {
+    let (stored_value, _) = common::run_query_and_encode(
+        effect_builder,
+        state_root_hash,
+        Key::Account(account_hash),
+        vec![],
+    )
+    .await?;
+
+    if let StoredValue::Account(account) = stored_value {
+        Ok(account)
+    } else {
+        let error_msg = "failed to get specified account".to_string();
+        info!(?stored_value, "{}", error_msg);
+        Err(warp_json_rpc::Error::custom(
+            ErrorCode::NoSuchAccount as i64,
+            error_msg,
+        ))
+    }
+}
+
+pub(super) async fn get_state_root_hash<REv: ReactorEventT>(
+    effect_builder: EffectBuilder<REv>,
+    state_identifier: GlobalStateIdentifier,
+    method_name: &'static str,
+) -> Result<(Digest, Option<JsonBlockHeader>), warp_json_rpc::Error> {
+    // This RPC request is restricted by the block availability index.
+    let only_from_available_block_range = true;
+    match state_identifier {
+        GlobalStateIdentifier::BlockHash(block_hash) => {
+            match effect_builder
+                .get_block_header_from_storage(block_hash, only_from_available_block_range)
+                .await
+            {
+                None => {
+                    let error_msg =
+                        format!("{} failed to retrieve specified block header", method_name);
+                    Err(warp_json_rpc::Error::custom(
+                        ErrorCode::NoSuchBlock as i64,
+                        error_msg,
+                    ))
+                }
+                Some(block_header) => {
+                    let json_block_header = JsonBlockHeader::from(block_header.clone());
+                    Ok((*block_header.state_root_hash(), Some(json_block_header)))
+                }
+            }
+        }
+        GlobalStateIdentifier::BlockHeight(block_height) => {
+            match effect_builder
+                .get_block_header_at_height_from_storage(
+                    block_height,
+                    only_from_available_block_range,
+                )
+                .await
+            {
+                None => {
+                    let error_msg = format!(
+                        "{} failed to retrieve block header at height {}",
+                        method_name, block_height
+                    );
+                    Err(warp_json_rpc::Error::custom(
+                        ErrorCode::NoSuchBlock as i64,
+                        error_msg,
+                    ))
+                }
+                Some(block_header) => {
+                    let json_block_header = JsonBlockHeader::from(block_header.clone());
+                    Ok((*block_header.state_root_hash(), Some(json_block_header)))
+                }
+            }
+        }
+        GlobalStateIdentifier::StateRootHash(state_root_hash) => Ok((state_root_hash, None)),
     }
 }
