@@ -1,8 +1,9 @@
 use std::{
     cmp,
-    collections::BTreeMap,
+    collections::{BTreeMap, VecDeque},
+    mem,
     sync::{
-        atomic::{self, AtomicBool},
+        atomic::{self, AtomicBool, AtomicI64, Ordering},
         Arc, RwLock,
     },
 };
@@ -71,7 +72,8 @@ struct ChainSyncContext<'a> {
     trusted_block_header: Option<&'a BlockHeader>,
     metrics: &'a Metrics,
     /// A list of peers which should be asked for data in the near future.
-    bad_peer_list: RwLock<Vec<NodeId>>,
+    bad_peer_list: RwLock<VecDeque<NodeId>>,
+    filter_count: AtomicI64,
 }
 
 impl<'a> ChainSyncContext<'a> {
@@ -85,7 +87,8 @@ impl<'a> ChainSyncContext<'a> {
             config,
             trusted_block_header: None,
             metrics,
-            bad_peer_list: RwLock::new(Vec::new()),
+            bad_peer_list: RwLock::new(VecDeque::new()),
+            filter_count: AtomicI64::new(0),
         }
     }
 
@@ -123,20 +126,34 @@ impl<'a> ChainSyncContext<'a> {
     }
 
     /// Removes known bad peers from a given peer list.
+    ///
+    /// Automatically redeems the oldest bad peer after `redemption_interval` filterings.
     fn filter_bad_peers(&self, peers: &mut Vec<NodeId>) {
-        let bad_peer_list = self
-            .bad_peer_list
-            .read()
-            .expect("bad peer list lock poisoned");
-        // Note: This is currently quadratic in the amount of peers (e.g. in a network with 400 out
-        // of 401 bad peers, this would result in 160k comparisons), but we estimate that this is
-        // fine given the expected low number of bad peers for now. If this proves a problem, proper
-        // sets should be used instead.
-        //
-        // Using a vec is currently convenient because it allows for FIFO-ordered redemption.
-        peers.retain(|p| !bad_peer_list.contains(p));
+        {
+            let bad_peer_list = self
+                .bad_peer_list
+                .read()
+                .expect("bad peer list lock poisoned");
+            // Note: This is currently quadratic in the amount of peers (e.g. in a network with 400
+            // out of 401 bad peers, this would result in 160k comparisons), but we estimate that
+            // this is fine given the expected low number of bad peers for now. If this proves a
+            // problem, proper sets should be used instead.
+            //
+            // Using a vec is currently convenient because it allows for FIFO-ordered redemption.
+            peers.retain(|p| !bad_peer_list.contains(p));
+        }
 
-        // TODO: Redeem peers every `nth` filtering.
+        let redemption_interval = self.config.redemption_interval as i64;
+        if self.filter_count.fetch_add(1, Ordering::Relaxed) > redemption_interval {
+            self.filter_count
+                .fetch_sub(redemption_interval, Ordering::Relaxed);
+
+            // Redeem the oldest bad node.
+            self.bad_peer_list
+                .write()
+                .expect("bad peer list lock poisoned")
+                .pop_front();
+        }
     }
 
     /// Marks a peer as bad.
@@ -148,10 +165,23 @@ impl<'a> ChainSyncContext<'a> {
 
         // Note: Like `filter_bad_peers`, this may need to be migrated to use sets instead.
         if bad_peer_list.contains(&peer) {
-            bad_peer_list.push(peer);
+            bad_peer_list.push_back(peer);
             info!(%peer, "peer already marked as bad for syncing");
         } else {
             info!(%peer, "marked peer as bad for syncing");
+        }
+    }
+
+    /// Clears the list of bad peers.
+    fn redeem_all(&self) {
+        let mut bad_peer_list = self
+            .bad_peer_list
+            .write()
+            .expect("bad peer list lock poisoned");
+
+        let bad_peer_list = mem::take::<VecDeque<NodeId>>(&mut bad_peer_list);
+        if !bad_peer_list.is_empty() {
+            warn!(?bad_peer_list, "ran out of peers, redeemed all bad peers")
         }
     }
 }
@@ -480,6 +510,9 @@ where
         if !peers.is_empty() {
             break;
         }
+
+        // We have no peers left, might as well redeem all the bad ones.
+        ctx.redeem_all();
         tokio::time::sleep(ctx.config.retry_interval()).await;
     }
 
