@@ -73,6 +73,7 @@ struct ChainSyncContext<'a> {
     metrics: &'a Metrics,
     /// A list of peers which should be asked for data in the near future.
     bad_peer_list: RwLock<VecDeque<NodeId>>,
+    /// Number of times peer lists have been filtered.
     filter_count: AtomicI64,
 }
 
