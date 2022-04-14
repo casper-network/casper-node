@@ -52,7 +52,7 @@ impl Config {
             retry_interval: Duration::from_millis(node_config.retry_interval.millis()),
             sync_to_genesis: node_config.sync_to_genesis,
             max_retries_while_not_connected,
-            redemption_interval: 10_000,
+            redemption_interval: node_config.sync_peer_redemption_interval,
         }
     }
 
