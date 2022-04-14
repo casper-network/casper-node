@@ -56,6 +56,9 @@ pub(super) struct Metrics {
     /// Time in seconds of syncing trie store (global state download) during chain sync.
     #[data_size(skip)]
     pub(super) chain_sync_sync_trie_store_duration_seconds: Histogram,
+    /// Integer representing a height of a block that we've successfuly downloaded.
+    #[data_size(skip)]
+    pub(super) chain_sync_block_height_synced: IntGauge,
     /// Registry stored to allow deregistration later.
     #[data_size(skip)]
     registry: Registry,
@@ -118,6 +121,11 @@ impl Metrics {
                 "time in seconds of fetching the initial trusted block header during chain sync",
             )?;
 
+        let chain_sync_block_height_synced = IntGauge::new(
+                "chain_sync_block_height_synced",
+                "height of a block we've synchronized. May go decrease during syncing to Genesis and then increase when catching up."
+            )?;
+
         let buckets = prometheus::exponential_buckets(
             SYNC_TRIE_STORE_BUCKET_START,
             SYNC_TRIE_STORE_BUCKET_FACTOR,
@@ -151,6 +159,7 @@ impl Metrics {
         registry.register(Box::new(
             chain_sync_era_supervisor_init_duration_seconds.clone(),
         ))?;
+        registry.register(Box::new(chain_sync_block_height_synced.clone()))?;
         registry.register(Box::new(chain_sync_execute_blocks_duration_seconds.clone()))?;
 
         Ok(Metrics {
@@ -173,6 +182,7 @@ impl Metrics {
                 "time in seconds of syncing trie store during chain sync",
                 buckets,
             )?,
+            chain_sync_block_height_synced,
             registry: registry.clone(),
         })
     }
