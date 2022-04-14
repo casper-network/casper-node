@@ -14,8 +14,14 @@ use crate::{
 
 /// Returns the map of rewards to be paid out when the block `bhash` gets finalized.
 ///
+/// If `should_compute_rewards` argument is set to `false` then all rewards will be set to zero.
+///
 /// This is the sum of all rewards for finalization of ancestors of `bhash`, as seen from `bhash`.
-pub(crate) fn compute_rewards<C: Context>(state: &State<C>, bhash: &C::Hash) -> ValidatorMap<u64> {
+pub(crate) fn compute_rewards<C: Context>(
+    state: &State<C>,
+    bhash: &C::Hash,
+    should_compute_rewards: bool,
+) -> ValidatorMap<u64> {
     // The unit that introduced the payout block.
     let payout_unit = state.unit(bhash);
     // The panorama of the payout block: Rewards must only use this panorama, since it defines
@@ -24,14 +30,18 @@ pub(crate) fn compute_rewards<C: Context>(state: &State<C>, bhash: &C::Hash) -> 
     let mut rewards = ValidatorMap::from(vec![0u64; panorama.len()]);
     for proposal_hash in state.ancestor_hashes(bhash) {
         for (vidx, r) in compute_rewards_for(state, panorama, proposal_hash).enumerate() {
-            match rewards[vidx].checked_add(*r) {
-                Some(sum) => rewards[vidx] = sum,
-                // Rewards should not overflow. We use one trillion for a block reward, so the full
-                // rewards for 18 million blocks fit into a u64.
-                None => panic!(
-                    "rewards for {:?}, {} + {}, overflow u64",
-                    vidx, rewards[vidx], r
-                ),
+            if should_compute_rewards {
+                match rewards[vidx].checked_add(*r) {
+                    Some(sum) => rewards[vidx] = sum,
+                    // Rewards should not overflow. We use one trillion for a block reward, so the
+                    // full rewards for 18 million blocks fit into a u64.
+                    None => panic!(
+                        "rewards for {:?}, {} + {}, overflow u64",
+                        vidx, rewards[vidx], r
+                    ),
+                }
+            } else {
+                rewards[vidx] = 0;
             }
         }
     }
@@ -155,7 +165,9 @@ fn round_participation<'a, C: Context>(
 mod tests {
     use super::*;
     use crate::components::consensus::highway_core::{
-        highway_testing::{TEST_BLOCK_REWARD, TEST_ENDORSEMENT_EVIDENCE_LIMIT},
+        highway_testing::{
+            TEST_BLOCK_REWARD, TEST_COMPUTE_REWARDS, TEST_ENDORSEMENT_EVIDENCE_LIMIT,
+        },
         state::{tests::*, Params},
         validators::ValidatorMap,
     };
@@ -212,6 +224,7 @@ mod tests {
             Timestamp::zero(),
             Timestamp::from(u64::MAX),
             TEST_ENDORSEMENT_EVIDENCE_LIMIT,
+            true,
         );
         let weights = &[Weight(ALICE_W), Weight(BOB_W), Weight(CAROL_W)];
         let mut state = State::new(weights, params, vec![], vec![]);
@@ -276,7 +289,10 @@ mod tests {
             rewards0[BOB] + rewards8[BOB],
             rewards0[CAROL] + rewards8[CAROL],
         ]);
-        assert_eq!(expected, compute_rewards(&state, &ap16));
+        assert_eq!(
+            expected,
+            compute_rewards(&state, &ap16, TEST_COMPUTE_REWARDS)
+        );
 
         // Her next block can also see round 16.
         let expected = ValidatorMap::from(vec![
@@ -288,7 +304,10 @@ mod tests {
         assert_eq!(rewards0, compute_rewards_for(&state, pan, &bp0));
         assert_eq!(rewards8, compute_rewards_for(&state, pan, &bp8));
         assert_eq!(rewards16, compute_rewards_for(&state, pan, &ap16));
-        assert_eq!(expected, compute_rewards(&state, &ap_last));
+        assert_eq!(
+            expected,
+            compute_rewards(&state, &ap_last, TEST_COMPUTE_REWARDS)
+        );
 
         // However, Carol also equivocated in round 16. And Bob saw her!
         let _cw16e = add_unit!(state, CAROL, 26, 4u8, None; ap16, bc16, cc16)?;
@@ -326,7 +345,10 @@ mod tests {
         assert_eq!(rewards0f, compute_rewards_for(&state, pan, &bp0));
         assert_eq!(rewards8f, compute_rewards_for(&state, pan, &bp8));
         assert_eq!(rewards16f, compute_rewards_for(&state, pan, &ap16));
-        assert_eq!(expected, compute_rewards(&state, &bp_last));
+        assert_eq!(
+            expected,
+            compute_rewards(&state, &bp_last, TEST_COMPUTE_REWARDS)
+        );
 
         Ok(())
     }

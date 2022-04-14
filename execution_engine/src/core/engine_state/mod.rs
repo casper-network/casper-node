@@ -1822,16 +1822,7 @@ where
             DeployHash::new(Digest::hash(&bytes).value())
         };
 
-        let reward_factors = match step_request.reward_factors() {
-            Ok(reward_factors) => reward_factors,
-            Err(error) => {
-                error!(
-                    "failed to deserialize reward factors: {}",
-                    error.to_string()
-                );
-                return Err(StepError::BytesRepr(error));
-            }
-        };
+        let reward_factors = step_request.reward_factors();
 
         let reward_args = RuntimeArgs::try_new(|args| {
             args.insert(ARG_REWARD_FACTORS, reward_factors)?;

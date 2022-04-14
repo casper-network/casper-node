@@ -179,8 +179,10 @@ impl<C: Context> FinalityDetector<C> {
         let to_id = |vidx: ValidatorIndex| highway.validators().id(vidx).unwrap().clone();
         let state = highway.state();
 
-        // Compute the rewards, and replace each validator index with the validator ID.
-        let rewards = rewards::compute_rewards(state, bhash);
+        // Compute the rewards (if applicable), and replace each validator index with the validator
+        // ID.
+        let should_compute_rewards = state.params().compute_rewards();
+        let rewards = rewards::compute_rewards(state, bhash, should_compute_rewards);
         let rewards_iter = rewards.enumerate();
         let rewards = rewards_iter.map(|(vidx, r)| (to_id(vidx), *r)).collect();
 

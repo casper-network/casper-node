@@ -43,6 +43,9 @@ pub const DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS: u64 = 90 * 24 * 60 * 60 * 1000;
 /// Default number of eras that need to pass to be able to withdraw unbonded funds.
 pub const DEFAULT_UNBONDING_DELAY: u64 = 14;
 
+const DEFAULT_ROUND_SEIGNIORAGE_RATE_NUMER: u64 = 6414;
+const DEFAULT_ROUND_SEIGNIORAGE_RATE_DENOM: u64 = 623437335209;
+
 /// Default round seigniorage rate represented as a fractional number.
 ///
 /// Annual issuance: 2%
@@ -50,7 +53,16 @@ pub const DEFAULT_UNBONDING_DELAY: u64 = 14;
 /// Ticks per year: 31536000000
 ///
 /// (1+0.02)^((2^14)/31536000000)-1 is expressed as a fraction below.
-pub const DEFAULT_ROUND_SEIGNIORAGE_RATE: Ratio<u64> = Ratio::new_raw(6414, 623437335209);
+pub const DEFAULT_ROUND_SEIGNIORAGE_RATE: Ratio<u64> = Ratio::new_raw(
+    DEFAULT_ROUND_SEIGNIORAGE_RATE_NUMER,
+    DEFAULT_ROUND_SEIGNIORAGE_RATE_DENOM,
+);
+
+/// Default round seigniorage rate represented as a fraction of U512.
+pub const DEFAULT_ROUND_SEIGNIORAGE_RATE_U512: Ratio<U512> = Ratio::new_raw(
+    U512([DEFAULT_ROUND_SEIGNIORAGE_RATE_NUMER, 0, 0, 0, 0, 0, 0, 0]),
+    U512([DEFAULT_ROUND_SEIGNIORAGE_RATE_DENOM, 0, 0, 0, 0, 0, 0, 0]),
+);
 
 /// Default chain name.
 pub const DEFAULT_CHAIN_NAME: &str = "casper-execution-engine-testing";
@@ -154,3 +166,20 @@ pub static DEFAULT_RUN_GENESIS_REQUEST: Lazy<RunGenesisRequest> = Lazy::new(|| {
 });
 /// System address.
 pub static SYSTEM_ADDR: Lazy<AccountHash> = Lazy::new(|| PublicKey::System.to_account_hash());
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_have_seigniorage_ratio_u512_const() {
+        let (numer_u512, denom_u512) = DEFAULT_ROUND_SEIGNIORAGE_RATE_U512.into();
+        assert_eq!(
+            (numer_u512, denom_u512),
+            (
+                U512::from(DEFAULT_ROUND_SEIGNIORAGE_RATE_NUMER),
+                U512::from(DEFAULT_ROUND_SEIGNIORAGE_RATE_DENOM)
+            )
+        );
+    }
+}

@@ -23,6 +23,8 @@ pub(crate) struct HighwayConfig {
     /// quorum, i.e. no finality.
     #[data_size(skip)]
     pub(crate) reduced_reward_multiplier: Ratio<u64>,
+    /// If set to true (default) then consensus
+    pub(crate) compute_rewards: bool,
 }
 
 impl HighwayConfig {
@@ -72,12 +74,14 @@ impl HighwayConfig {
         let minimum_round_exponent = rng.gen_range(0..16);
         let maximum_round_exponent = rng.gen_range(16..22);
         let reduced_reward_multiplier = Ratio::new(rng.gen_range(0..10), 10);
+        let compute_rewards = rng.gen();
 
         HighwayConfig {
             finality_threshold_fraction,
             minimum_round_exponent,
             maximum_round_exponent,
             reduced_reward_multiplier,
+            compute_rewards,
         }
     }
 }
@@ -89,6 +93,7 @@ impl ToBytes for HighwayConfig {
         buffer.extend(self.minimum_round_exponent.to_bytes()?);
         buffer.extend(self.maximum_round_exponent.to_bytes()?);
         buffer.extend(self.reduced_reward_multiplier.to_bytes()?);
+        buffer.extend(self.compute_rewards.to_bytes()?);
         Ok(buffer)
     }
 
@@ -97,6 +102,7 @@ impl ToBytes for HighwayConfig {
             + self.minimum_round_exponent.serialized_length()
             + self.maximum_round_exponent.serialized_length()
             + self.reduced_reward_multiplier.serialized_length()
+            + self.compute_rewards.serialized_length()
     }
 }
 
@@ -106,11 +112,13 @@ impl FromBytes for HighwayConfig {
         let (minimum_round_exponent, remainder) = u8::from_bytes(remainder)?;
         let (maximum_round_exponent, remainder) = u8::from_bytes(remainder)?;
         let (reduced_reward_multiplier, remainder) = Ratio::<u64>::from_bytes(remainder)?;
+        let (compute_rewards, remainder) = bool::from_bytes(remainder)?;
         let config = HighwayConfig {
             finality_threshold_fraction,
             minimum_round_exponent,
             maximum_round_exponent,
             reduced_reward_multiplier,
+            compute_rewards,
         };
         Ok((config, remainder))
     }

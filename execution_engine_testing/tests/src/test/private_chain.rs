@@ -1,13 +1,18 @@
 pub mod management;
+mod restricted_auction;
+
+use std::collections::BTreeMap;
 
 use casper_engine_test_support::{
-    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY,
-    DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
-    DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_INITIAL_BALANCE,
+    DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+    DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE,
+    DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY, DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
 };
 use casper_execution_engine::core::engine_state::{
+    engine_config::EngineConfigBuilder,
     genesis::{AdministratorAccount, GenesisValidator},
     ExecConfig, GenesisAccount, RunGenesisRequest,
 };
@@ -15,8 +20,9 @@ use once_cell::sync::Lazy;
 
 use casper_types::{
     account::{AccountHash, Weight},
-    system::auction::DELEGATION_RATE_DENOMINATOR,
-    Motes, PublicKey, SecretKey, U512,
+    runtime_args,
+    system::{auction::DELEGATION_RATE_DENOMINATOR, mint},
+    Motes, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 static VALIDATOR_1_SECRET_KEY: Lazy<SecretKey> =
@@ -56,6 +62,8 @@ static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| ACCOUNT_2_PUBLIC_KEY.to_
 
 const ADMIN_ACCOUNT_INITIAL_BALANCE: U512 = U512([100_000_000_000_000_000u64, 0, 0, 0, 0, 0, 0, 0]);
 
+const ACCOUNT_MANAGEMENT_CONTRACT: &str = "account_management.wasm";
+
 static PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS: Lazy<Vec<AdministratorAccount>> = Lazy::new(|| {
     let default_admin = AdministratorAccount::new(
         DEFAULT_ADMIN_ACCOUNT_PUBLIC_KEY.clone(),
@@ -69,6 +77,18 @@ static PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS: Lazy<Vec<AdministratorAccount>> = L
     );
     vec![default_admin, admin_1]
 });
+
+static PRIVATE_CHAIN_GENESIS_VALIDATORS: Lazy<BTreeMap<PublicKey, GenesisValidator>> =
+    Lazy::new(|| {
+        let public_key = VALIDATOR_1_PUBLIC_KEY.clone();
+        let genesis_validator_1 = GenesisValidator::new(
+            Motes::new(DEFAULT_VALIDATOR_BONDED_AMOUNT),
+            DELEGATION_RATE_DENOMINATOR,
+        );
+        let mut genesis_validators = BTreeMap::new();
+        genesis_validators.insert(public_key, genesis_validator_1);
+        genesis_validators
+    });
 
 static PRIVATE_CHAIN_DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
     let mut default_accounts = Vec::new();
@@ -89,16 +109,14 @@ static PRIVATE_CHAIN_DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| 
 
     // Set up genesis validators
     {
-        let validator_1 = GenesisValidator::new(
-            Motes::new(DEFAULT_VALIDATOR_BONDED_AMOUNT),
-            DELEGATION_RATE_DENOMINATOR,
-        );
+        let public_key = VALIDATOR_1_PUBLIC_KEY.clone();
+        let genesis_validator = PRIVATE_CHAIN_GENESIS_VALIDATORS[&public_key];
         default_accounts.push(GenesisAccount::Account {
-            public_key: VALIDATOR_1_PUBLIC_KEY.clone(),
+            public_key,
             // Genesis validators for a private network doesn't have balances, but they are part of
             // fixed set of validators
             balance: Motes::new(U512::zero()),
-            validator: Some(validator_1),
+            validator: Some(genesis_validator),
         });
     }
 
@@ -131,3 +149,34 @@ static DEFAULT_PRIVATE_CHAIN_GENESIS: Lazy<RunGenesisRequest> = Lazy::new(|| {
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     )
 });
+
+fn private_chain_setup() -> InMemoryWasmTestBuilder {
+    let engine_config = EngineConfigBuilder::default()
+        .with_administrative_accounts(PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS.clone())
+        .with_allow_auction_bids(false)
+        .build();
+
+    let mut builder = InMemoryWasmTestBuilder::new_with_config(engine_config);
+    builder.run_genesis(&DEFAULT_PRIVATE_CHAIN_GENESIS);
+
+    let exec_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ADMIN_ACCOUNT_ADDR,
+        ACCOUNT_MANAGEMENT_CONTRACT,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    let transfer_args_1 = runtime_args! {
+        mint::ARG_TARGET => *SYSTEM_ADDR,
+        mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
+        mint::ARG_ID => <Option<u64>>::None,
+    };
+
+    let fund_system_request =
+        ExecuteRequestBuilder::transfer(*DEFAULT_ADMIN_ACCOUNT_ADDR, transfer_args_1).build();
+
+    builder.exec(exec_request).expect_success().commit();
+    builder.exec(fund_system_request).expect_success().commit();
+
+    builder
+}

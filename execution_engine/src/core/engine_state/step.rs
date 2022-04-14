@@ -118,12 +118,12 @@ impl StepRequest {
     }
 
     /// Returns all reward factors.
-    pub fn reward_factors(&self) -> Result<BTreeMap<PublicKey, u64>, bytesrepr::Error> {
+    pub fn reward_factors(&self) -> BTreeMap<PublicKey, u64> {
         let mut ret = BTreeMap::new();
         for reward_item in &self.reward_items {
             ret.insert(reward_item.validator_id.clone(), reward_item.value);
         }
-        Ok(ret)
+        ret
     }
 }
 

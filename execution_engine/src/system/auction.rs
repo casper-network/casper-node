@@ -9,8 +9,8 @@ use num_traits::{CheckedMul, CheckedSub};
 use casper_types::{
     account::AccountHash,
     system::auction::{
-        Bid, DelegationRate, EraInfo, EraValidators, Error, SeigniorageRecipients,
-        ValidatorWeights, BLOCK_REWARD, DELEGATION_RATE_DENOMINATOR,
+        Bid, DelegationRate, EraInfo, EraValidators, Error, SeigniorageAllocation,
+        SeigniorageRecipients, ValidatorWeights, BLOCK_REWARD, DELEGATION_RATE_DENOMINATOR,
     },
     ApiError, EraId, PublicKey, U512,
 };
@@ -542,6 +542,16 @@ pub trait Auction:
         let seigniorage_allocations = era_info.seigniorage_allocations_mut();
 
         for (public_key, reward_factor) in reward_factors {
+            if reward_factor == 0 {
+                // Consensus can be configured to always provide 0 in rewards for each validator.
+                // If that's the case we know we're running as a private chain and we don't need to
+                // compute anything and distribute tokens.
+                // So we will just short circuit here and add a seigniorage allocation with 0
+                // because consensus needs this data (but doesn't care about the stakes)
+                let allocation = SeigniorageAllocation::validator(public_key.clone(), U512::zero());
+                seigniorage_allocations.push(allocation);
+                continue;
+            }
             let recipient = seigniorage_recipients
                 .get(&public_key)
                 .ok_or(Error::ValidatorNotFound)?;

@@ -31,17 +31,15 @@ use parity_wasm::{
 };
 
 use crate::test::private_chain::{
-    ACCOUNT_2_ADDR, ADMIN_1_ACCOUNT_ADDR, ADMIN_1_ACCOUNT_WEIGHT, DEFAULT_ADMIN_ACCOUNT_WEIGHT,
-    VALIDATOR_1_PUBLIC_KEY,
+    ACCOUNT_2_ADDR, ACCOUNT_MANAGEMENT_CONTRACT, ADMIN_1_ACCOUNT_ADDR, ADMIN_1_ACCOUNT_WEIGHT,
+    DEFAULT_ADMIN_ACCOUNT_WEIGHT, VALIDATOR_1_PUBLIC_KEY,
 };
 
 use super::{
     ACCOUNT_1_ADDR, ACCOUNT_1_PUBLIC_KEY, DEFAULT_ADMIN_ACCOUNT_ADDR,
-    DEFAULT_PRIVATE_CHAIN_GENESIS, PRIVATE_CHAIN_DEFAULT_ACCOUNTS,
-    PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS,
+    PRIVATE_CHAIN_DEFAULT_ACCOUNTS, PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS,
 };
 
-const ACCOUNT_MANAGEMENT_CONTRACT: &str = "account_management.wasm";
 const ADD_ASSOCIATED_KEY_CONTRACT: &str = "add_associated_key.wasm";
 const SET_ACTION_THRESHOLDS_CONTRACT: &str = "set_action_thresholds.wasm";
 const UPDATE_ASSOCIATED_KEY_CONTRACT: &str = "update_associated_key.wasm";
@@ -71,8 +69,8 @@ const TEST_PAYMENT_STORED_HASH_NAME: &str = "test_payment_hash";
 const PAY_ENTRYPOINT: &str = "pay";
 
 const EXPECTED_PRIVATE_CHAIN_THRESHOLDS: ActionThresholds = ActionThresholds {
-    deployment: Weight::new(1),
-    key_management: Weight::MAX,
+    deployment: Weight::new(1),  // 0 >= 0
+    key_management: Weight::MAX, // 0 >= 1
 };
 
 /// Creates minimal session code that does only one "nop" opcode
@@ -101,7 +99,7 @@ pub fn do_minimum_bytes() -> Vec<u8> {
 #[test]
 fn private_chain_genesis_should_have_admin_accounts() {
     assert_eq!(
-        setup()
+        super::private_chain_setup()
             .get_engine_state()
             .config()
             .administrative_accounts(),
@@ -198,7 +196,7 @@ fn should_not_resolve_private_chain_host_functions_on_public_chain() {
 #[ignore]
 #[test]
 fn genesis_accounts_should_not_update_key_weight() {
-    let mut builder = setup();
+    let mut builder = super::private_chain_setup();
 
     let account_1 = builder
         .get_account(*ACCOUNT_1_ADDR)
@@ -252,7 +250,7 @@ fn genesis_accounts_should_not_update_key_weight() {
 #[ignore]
 #[test]
 fn genesis_accounts_should_not_modify_action_thresholds() {
-    let mut builder = setup();
+    let mut builder = super::private_chain_setup();
 
     let account_1 = builder
         .get_account(*ACCOUNT_1_ADDR)
@@ -295,7 +293,7 @@ fn genesis_accounts_should_not_modify_action_thresholds() {
 fn genesis_accounts_should_not_manage_their_own_keys() {
     let secondary_account_hash = AccountHash::new([55; 32]);
 
-    let mut builder = setup();
+    let mut builder = super::private_chain_setup();
 
     let account_1 = builder
         .get_account(*ACCOUNT_1_ADDR)
@@ -333,7 +331,7 @@ fn genesis_accounts_should_not_manage_their_own_keys() {
 #[ignore]
 #[test]
 fn genesis_accounts_should_have_special_associated_key() {
-    let builder = setup();
+    let builder = super::private_chain_setup();
 
     let account_1 = builder
         .get_account(*ACCOUNT_1_ADDR)
@@ -397,7 +395,7 @@ fn get_administrator_account_hashes(builder: &InMemoryWasmTestBuilder) -> BTreeS
 #[ignore]
 #[test]
 fn administrator_account_should_disable_any_account() {
-    let mut builder = setup();
+    let mut builder = super::private_chain_setup();
 
     let account_1_genesis = builder
         .get_account(*ACCOUNT_1_ADDR)
@@ -489,7 +487,7 @@ fn administrator_account_should_disable_any_account() {
 #[ignore]
 #[test]
 fn native_transfer_should_create_new_restricted_private_account() {
-    let mut builder = setup();
+    let mut builder = super::private_chain_setup();
 
     // Account 1 can deploy after genesis
     let transfer_args = runtime_args! {
@@ -529,7 +527,7 @@ fn native_transfer_should_create_new_restricted_private_account() {
 #[ignore]
 #[test]
 fn wasm_transfer_should_create_new_restricted_private_account() {
-    let mut builder = setup();
+    let mut builder = super::private_chain_setup();
 
     // Account 1 can deploy after genesis
     let transfer_args = runtime_args! {
@@ -572,7 +570,7 @@ fn wasm_transfer_should_create_new_restricted_private_account() {
 #[ignore]
 #[test]
 fn administrator_account_should_disable_any_contract_used_as_session() {
-    let mut builder = setup();
+    let mut builder = super::private_chain_setup();
 
     let store_contract_request = ExecuteRequestBuilder::standard(
         *ACCOUNT_1_ADDR,
@@ -785,7 +783,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
 #[ignore]
 #[test]
 fn administrator_account_should_disable_any_contract_used_as_payment() {
-    let mut builder = setup();
+    let mut builder = super::private_chain_setup();
 
     let store_contract_request = ExecuteRequestBuilder::standard(
         *ACCOUNT_1_ADDR,
@@ -1029,7 +1027,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
 #[ignore]
 #[test]
 fn should_not_allow_add_bid_on_private_chain() {
-    let mut builder = setup();
+    let mut builder = super::private_chain_setup();
 
     let delegation_rate: DelegationRate = 4;
     let session_args = runtime_args! {
@@ -1055,7 +1053,7 @@ fn should_not_allow_add_bid_on_private_chain() {
 #[ignore]
 #[test]
 fn should_not_allow_delegate_on_private_chain() {
-    let mut builder = setup();
+    let mut builder = super::private_chain_setup();
 
     let session_args = runtime_args! {
         auction::ARG_DELEGATOR => ACCOUNT_1_PUBLIC_KEY.clone(),
@@ -1081,27 +1079,6 @@ fn should_not_allow_delegate_on_private_chain() {
     );
     // Redelegation would not work since delegate, and add_bid are disabled on private chains
     // therefore there is nothing to test.
-}
-
-fn setup() -> InMemoryWasmTestBuilder {
-    let engine_config = EngineConfigBuilder::default()
-        .with_administrative_accounts(PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS.clone())
-        .with_allow_auction_bids(false)
-        .build();
-
-    let mut builder = InMemoryWasmTestBuilder::new_with_config(engine_config);
-    builder.run_genesis(&DEFAULT_PRIVATE_CHAIN_GENESIS);
-
-    let exec_request = ExecuteRequestBuilder::standard(
-        *DEFAULT_ADMIN_ACCOUNT_ADDR,
-        ACCOUNT_MANAGEMENT_CONTRACT,
-        RuntimeArgs::default(),
-    )
-    .build();
-
-    builder.exec(exec_request).expect_success().commit();
-
-    builder
 }
 
 fn make_call_contract_session_request(

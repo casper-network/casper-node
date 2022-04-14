@@ -103,6 +103,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         era_start_time: Timestamp,
         seed: u64,
         now: Timestamp,
+        compute_rewards: bool,
     ) -> (Box<dyn ConsensusProtocol<C>>, ProtocolOutcomes<C>) {
         let validators_count = validator_stakes.len();
         let sum_stakes: U512 = validator_stakes.iter().map(|(_, stake)| *stake).sum();
@@ -187,6 +188,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
             era_start_time,
             era_start_time + chainspec.core_config.era_duration,
             endorsement_evidence_limit,
+            compute_rewards,
         );
 
         let outcomes = Self::initialize_timers(now, era_start_time, &config.highway);

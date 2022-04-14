@@ -16,6 +16,7 @@ pub(crate) struct Params {
     start_timestamp: Timestamp,
     end_timestamp: Timestamp,
     endorsement_evidence_limit: u64,
+    compute_rewards: bool,
 }
 
 impl Params {
@@ -49,6 +50,7 @@ impl Params {
         start_timestamp: Timestamp,
         end_timestamp: Timestamp,
         endorsement_evidence_limit: u64,
+        compute_rewards: bool,
     ) -> Params {
         assert!(
             reduced_block_reward <= block_reward,
@@ -65,6 +67,7 @@ impl Params {
             start_timestamp,
             end_timestamp,
             endorsement_evidence_limit,
+            compute_rewards,
         }
     }
 
@@ -131,6 +134,12 @@ impl Params {
     /// than this, you get away with it and are not marked faulty.
     pub(crate) fn endorsement_evidence_limit(&self) -> u64 {
         self.endorsement_evidence_limit
+    }
+
+    /// Get the params's compute rewards.
+    #[must_use]
+    pub(crate) fn compute_rewards(&self) -> bool {
+        self.compute_rewards
     }
 }
 
