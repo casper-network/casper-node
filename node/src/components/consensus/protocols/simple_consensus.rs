@@ -994,8 +994,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                     .round_mut(round_id)
                     .insert_proposal(proposal, signature)
                 {
-                    self.progress_detected = true;
-                    self.active[validator_idx] = true;
+                    self.register_activity(validator_idx);
                     return true;
                 }
             }
@@ -1005,8 +1004,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                         .round_mut(round_id)
                         .insert_echo(hash, validator_idx, signature)
                 {
-                    self.progress_detected = true;
-                    self.active[validator_idx] = true;
+                    self.register_activity(validator_idx);
                     return self.check_new_echo_quorum(round_id, hash);
                 }
             }
@@ -1016,13 +1014,18 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                         .round_mut(round_id)
                         .insert_vote(vote, validator_idx, signature)
                 {
-                    self.progress_detected = true;
-                    self.active[validator_idx] = true;
+                    self.register_activity(validator_idx);
                     return self.check_new_vote_quorum(round_id, vote);
                 }
             }
         }
         false
+    }
+
+    /// Update the state after a new siganture from a validator was received.
+    fn register_activity(&mut self, validator_idx: ValidatorIndex) {
+        self.progress_detected = true;
+        self.active[validator_idx] = true;
     }
 
     /// If there is a signature for conflicting content, returns the content and signature.
