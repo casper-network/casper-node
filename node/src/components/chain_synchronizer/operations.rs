@@ -3,7 +3,7 @@ use std::{
     collections::BTreeMap,
     sync::{
         atomic::{self, AtomicBool},
-        Arc,
+        Arc, RwLock,
     },
 };
 
@@ -70,6 +70,8 @@ struct ChainSyncContext<'a> {
     config: &'a Config,
     trusted_block_header: &'a BlockHeader,
     metrics: &'a Metrics,
+    /// A list of peers which should be asked for data in the near future.
+    bad_peer_list: RwLock<Vec<NodeId>>,
 }
 
 impl<'a> ChainSyncContext<'a> {
@@ -84,12 +86,46 @@ impl<'a> ChainSyncContext<'a> {
             config,
             trusted_block_header,
             metrics,
+            bad_peer_list: RwLock::new(Vec::new()),
         }
     }
 
     fn trusted_hash(&self) -> BlockHash {
         self.trusted_block_header
             .hash(self.config.verifiable_chunked_hash_activation())
+    }
+
+    /// Removes known bad peers from a given peer list.
+    fn filter_bad_peers(&self, peers: &mut Vec<NodeId>) {
+        let bad_peer_list = self
+            .bad_peer_list
+            .read()
+            .expect("bad peer list lock poisoned");
+        // Note: This is currently quadratic in the amount of peers (e.g. in a network with 400 out
+        // of 401 bad peers, this would result in 160k comparisons), but we estimate that this is
+        // fine given the expected low number of bad peers for now. If this proves a problem, proper
+        // sets should be used instead.
+        //
+        // Using a vec is currently convenient because it allows for FIFO-ordered redemption.
+        peers.retain(|p| !bad_peer_list.contains(p));
+
+        // TODO: Redeem peers every `nth` filtering.
+    }
+
+    /// Marks a peer as bad.
+    fn mark_bad_peer(&self, peer: NodeId) {
+        let mut bad_peer_list = self
+            .bad_peer_list
+            .write()
+            .expect("bad peer list lock poisoned");
+
+        // Note: Like `filter_bad_peers`, this may need to be migrated to use sets instead.
+        if bad_peer_list.contains(&peer) {
+            bad_peer_list.push(peer);
+            info!(%peer, "peer already marked as bad for syncing");
+        } else {
+            info!(%peer, "marked peer as bad for syncing");
+        }
     }
 }
 
@@ -104,7 +140,8 @@ where
     JoinerEvent: From<FetcherRequest<T>>,
 {
     loop {
-        let new_peer_list = ctx.effect_builder.get_fully_connected_peers().await;
+        let mut new_peer_list = ctx.effect_builder.get_fully_connected_peers().await;
+        ctx.filter_bad_peers(&mut new_peer_list);
 
         for peer in new_peer_list {
             trace!(
@@ -133,7 +170,8 @@ where
                         tag = ?T::TAG,
                         ?peer,
                         "chain sync could not fetch; trying next peer",
-                    )
+                    );
+                    ctx.mark_bad_peer(peer);
                 }
                 Err(FetcherError::TimedOut { .. }) => {
                     warn!(
@@ -142,6 +180,7 @@ where
                         ?peer,
                         "peer timed out",
                     );
+                    ctx.mark_bad_peer(peer);
                 }
                 Err(error @ FetcherError::CouldNotConstructGetRequest { .. }) => return Err(error),
             }
