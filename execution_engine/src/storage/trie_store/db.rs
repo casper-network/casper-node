@@ -196,7 +196,17 @@ impl Store<Digest, Trie<Key, StoredValue>> for ScratchTrieStore {
             None => {
                 let raw = self.get_raw(txn, digest)?;
                 match raw {
-                    Some(bytes) => Ok(Some(bytesrepr::deserialize(bytes.into())?)),
+                    Some(bytes) => {
+                        let value: Trie<Key, StoredValue> = bytesrepr::deserialize(bytes.into())?;
+                        {
+                            let store =
+                                &mut *self.store.cache.lock().map_err(|_| error::Error::Poison)?;
+                            if !store.contains_key(digest) {
+                                store.insert(*digest, (false, value.clone()));
+                            }
+                        }
+                        Ok(Some(value))
+                    }
                     None => Ok(None),
                 }
             }
