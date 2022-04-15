@@ -118,24 +118,7 @@ impl<S> WasmTestBuilder<S> {
 
 impl Default for InMemoryWasmTestBuilder {
     fn default() -> Self {
-        Self::initialize_logging();
-        let engine_config = EngineConfig::default();
-
-        let global_state = InMemoryGlobalState::empty().expect("should create global state");
-        let engine_state = EngineState::new(global_state, engine_config);
-
-        WasmTestBuilder {
-            engine_state: Rc::new(engine_state),
-            exec_results: Vec::new(),
-            upgrade_results: Vec::new(),
-            genesis_hash: None,
-            post_state_hash: None,
-            transforms: Vec::new(),
-            genesis_account: None,
-            genesis_transforms: None,
-            scratch_engine_state: None,
-            system_contract_registry: None,
-        }
+        Self::new_with_config(EngineConfig::default())
     }
 }
 
@@ -169,10 +152,24 @@ impl InMemoryWasmTestBuilder {
         let engine_state = EngineState::new(global_state, engine_config);
         WasmTestBuilder {
             engine_state: Rc::new(engine_state),
-            genesis_hash: maybe_post_state_hash,
+            exec_results: Vec::new(),
+            upgrade_results: Vec::new(),
+            genesis_hash: None,
             post_state_hash: maybe_post_state_hash,
-            ..Default::default()
+            transforms: Vec::new(),
+            genesis_account: None,
+            genesis_transforms: None,
+            scratch_engine_state: None,
+            system_contract_registry: None,
         }
+    }
+
+    /// Returns an empty [`InMemoryWasmTestBuilder`].
+    pub fn new_with_config(engine_config: EngineConfig) -> Self {
+        Self::initialize_logging();
+        let global_state = InMemoryGlobalState::empty().expect("should create global state");
+        let root_hash = global_state.empty_root_hash();
+        Self::new(global_state, engine_config, Some(root_hash))
     }
 }
 
@@ -541,11 +538,15 @@ where
     }
 
     /// Upgrades the execution engine.
+    ///
+    /// If `engine_config` is set to None, then it is defaulted to the current one.
     pub fn upgrade_with_upgrade_request(
         &mut self,
-        engine_config: EngineConfig,
+        engine_config: Option<EngineConfig>,
         upgrade_config: &mut UpgradeConfig,
     ) -> &mut Self {
+        let engine_config = engine_config.unwrap_or_else(|| self.engine_state.config().clone());
+
         let pre_state_hash = self.post_state_hash.expect("should have state hash");
         upgrade_config.with_pre_state_hash(pre_state_hash);
 

@@ -178,7 +178,7 @@ where
         let protocol_version = self.protocol_version;
         let correlation_id = self.correlation_id;
         let phase = self.phase;
-        let engine_config = self.engine_config;
+        let engine_config = self.engine_config.clone();
         let transfers = self.transfers.clone();
         let remaining_spending_limit = self.remaining_spending_limit();
 

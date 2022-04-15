@@ -137,7 +137,7 @@ fn new_runtime_context<'a>(
         ProtocolVersion::V1_0_0,
         CorrelationId::new(),
         Phase::Session,
-        *TEST_ENGINE_CONFIG,
+        TEST_ENGINE_CONFIG.clone(),
         Vec::default(),
         U512::MAX,
     )

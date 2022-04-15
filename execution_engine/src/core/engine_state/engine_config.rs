@@ -2,6 +2,8 @@
 //! `EngineState` instance.
 use crate::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
 
+use super::genesis::AdministratorAccount;
+
 /// Default value for a maximum query depth configuration option.
 pub const DEFAULT_MAX_QUERY_DEPTH: u64 = 5;
 /// Default value for maximum associated keys configuration option.
@@ -14,7 +16,7 @@ pub const DEFAULT_MINIMUM_DELEGATION_AMOUNT: u64 = 500 * 1_000_000_000;
 pub const DEFAULT_STRICT_ARGUMENT_CHECKING: bool = false;
 
 /// The runtime configuration of the execution engine
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub struct EngineConfig {
     /// Max query depth of the engine.
     pub(crate) max_query_depth: u64,
@@ -28,6 +30,8 @@ pub struct EngineConfig {
     strict_argument_checking: bool,
     wasm_config: WasmConfig,
     system_config: SystemConfig,
+    /// A private network specifies a list of administrative accounts.
+    administrative_accounts: Option<Vec<AdministratorAccount>>,
 }
 
 impl Default for EngineConfig {
@@ -40,6 +44,7 @@ impl Default for EngineConfig {
             strict_argument_checking: DEFAULT_STRICT_ARGUMENT_CHECKING,
             wasm_config: WasmConfig::default(),
             system_config: SystemConfig::default(),
+            administrative_accounts: None,
         }
     }
 }
@@ -74,6 +79,22 @@ impl EngineConfig {
     pub fn strict_argument_checking(&self) -> bool {
         self.strict_argument_checking
     }
+
+    /// Get the engine config's administrative accounts.
+    #[must_use]
+    pub fn administrative_accounts(&self) -> &Option<Vec<AdministratorAccount>> {
+        &self.administrative_accounts
+    }
+
+    /// Checks  if
+    #[must_use]
+    pub fn is_private_chain(&self) -> bool {
+        match self.administrative_accounts() {
+            None => false,
+            Some(admin_accounts) if admin_accounts.is_empty() => false,
+            Some(_admin_accounts) => true,
+        }
+    }
 }
 
 /// This is a builder pattern applied to the [`EngineConfig`] structure to shield any changes to the
@@ -89,6 +110,7 @@ pub struct EngineConfigBuilder {
     system_config: Option<SystemConfig>,
     minimum_delegation_amount: Option<u64>,
     strict_argument_checking: Option<bool>,
+    administrative_accounts: Option<Vec<AdministratorAccount>>,
 }
 
 impl EngineConfigBuilder {
@@ -149,6 +171,16 @@ impl EngineConfigBuilder {
         self
     }
 
+    /// Sets new chain kind.
+    pub fn with_administrative_accounts(
+        mut self,
+        administrator_accounts: Vec<AdministratorAccount>,
+    ) -> Self {
+        // self.chain_kind = Some(chain_kind);
+        self.administrative_accounts = Some(administrator_accounts);
+        self
+    }
+
     /// Build a new [`EngineConfig`] object.
     pub fn build(self) -> EngineConfig {
         let max_query_depth = self.max_query_depth.unwrap_or(DEFAULT_MAX_QUERY_DEPTH);
@@ -166,6 +198,7 @@ impl EngineConfigBuilder {
             .unwrap_or(DEFAULT_STRICT_ARGUMENT_CHECKING);
         let wasm_config = self.wasm_config.unwrap_or_default();
         let system_config = self.system_config.unwrap_or_default();
+        let administrative_accounts = self.administrative_accounts;
         EngineConfig {
             max_query_depth,
             max_associated_keys,
@@ -174,6 +207,7 @@ impl EngineConfigBuilder {
             strict_argument_checking,
             wasm_config,
             system_config,
+            administrative_accounts,
         }
     }
 }

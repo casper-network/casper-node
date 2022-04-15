@@ -12,13 +12,15 @@ use super::{
 pub(crate) struct RuntimeModuleImportResolver {
     memory: RefCell<Option<MemoryRef>>,
     max_memory: u32,
+    is_private_chain: bool,
 }
 
 impl RuntimeModuleImportResolver {
-    pub(crate) fn new(max_memory: u32) -> Self {
+    pub(crate) fn new(max_memory: u32, is_private_chain: bool) -> Self {
         Self {
             memory: RefCell::new(None),
             max_memory,
+            is_private_chain,
         }
     }
 }
@@ -232,6 +234,10 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
             "casper_load_authorization_keys" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 2][..], Some(ValueType::I32)),
                 FunctionIndex::LoadAuthorizationKeys.into(),
+            ),
+            "casper_control_management" if self.is_private_chain => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 3][..], Some(ValueType::I32)),
+                FunctionIndex::ControlManagementFuncIndex.into(),
             ),
             _ => {
                 return Err(InterpreterError::Function(format!(

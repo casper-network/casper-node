@@ -69,7 +69,7 @@ fn test_upgrade(major_bump: u32, minor_bump: u32, patch_bump: u32) {
             .build()
     };
     builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+        .upgrade_with_upgrade_request(None, &mut upgrade_request)
         .expect_upgrade_success();
     let new_contract = builder
         .get_contract(mint_contract_hash)

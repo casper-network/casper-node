@@ -1015,7 +1015,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
+    builder.upgrade_with_upgrade_request(Some(new_engine_config), &mut upgrade_request);
 
     let default_account_balance_before = builder.get_purse_balance(default_account.main_purse());
 

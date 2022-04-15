@@ -1011,6 +1011,15 @@ where
                 let ret = self.load_authorization_keys(len_ptr, result_size_ptr)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
+            FunctionIndex::ControlManagementFuncIndex => {
+                // args(0) = key_ptr
+                // args(1) = key_size
+                // args(2) = action type
+                let (key_ptr, key_size, operation_type) = Args::parse(args)?;
+                let key: Key = self.t_from_mem(key_ptr, key_size)?;
+                let value = self.control_management(key, operation_type)?;
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(value))))
+            }
         }
     }
 }

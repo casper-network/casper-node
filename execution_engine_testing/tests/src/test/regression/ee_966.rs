@@ -276,7 +276,7 @@ fn should_run_ee_966_regression_when_growing_mem_after_upgrade() {
         .with_wasm_config(*DOUBLED_WASM_MEMORY_LIMIT)
         .build();
 
-    builder.upgrade_with_upgrade_request(engine_config, &mut upgrade_request);
+    builder.upgrade_with_upgrade_request(Some(engine_config), &mut upgrade_request);
 
     //
     // Now this request is working as the maximum memory limit is doubled.

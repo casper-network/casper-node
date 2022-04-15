@@ -69,6 +69,7 @@ impl Account {
     /// [`ActionThresholds`].
     pub fn create(account: AccountHash, named_keys: NamedKeys, main_purse: URef) -> Self {
         let associated_keys = AssociatedKeys::new(account, Weight::new(1));
+
         let action_thresholds: ActionThresholds = Default::default();
         Account::new(
             account,

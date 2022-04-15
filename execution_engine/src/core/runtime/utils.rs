@@ -8,12 +8,10 @@ use casper_types::{
     RuntimeArgs, URef, URefAddr, U128, U256, U512,
 };
 
-use crate::{
-    core::{
-        execution::Error,
-        resolvers::{self, memory_resolver::MemoryResolver},
-    },
-    shared::wasm_config::WasmConfig,
+use crate::core::{
+    engine_state::EngineConfig,
+    execution::Error,
+    resolvers::{self, memory_resolver::MemoryResolver},
 };
 
 /// Creates an WASM module instance and a memory instance.
@@ -28,10 +26,10 @@ use crate::{
 pub(super) fn instance_and_memory(
     parity_module: Module,
     protocol_version: ProtocolVersion,
-    wasm_config: &WasmConfig,
+    engine_config: &EngineConfig,
 ) -> Result<(ModuleRef, MemoryRef), Error> {
     let module = wasmi::Module::from_parity_wasm_module(parity_module)?;
-    let resolver = resolvers::create_module_resolver(protocol_version, wasm_config)?;
+    let resolver = resolvers::create_module_resolver(protocol_version, engine_config)?;
     let mut imports = ImportsBuilder::new();
     imports.push_resolver("env", &resolver);
     let not_started_module = ModuleInstance::new(&module, &imports)?;

@@ -5,7 +5,9 @@ use proptest::prelude::*;
 
 use casper_hashing::Digest;
 use casper_types::{
-    account::{Account, AccountHash, AssociatedKeys, Weight, ACCOUNT_HASH_LENGTH},
+    account::{
+        Account, AccountHash, ActionThresholds, AssociatedKeys, Weight, ACCOUNT_HASH_LENGTH,
+    },
     contracts::NamedKeys,
     gens::*,
     AccessRights, CLValue, Contract, EntryPoints, HashAddr, Key, KeyTag, ProtocolVersion,
@@ -615,8 +617,14 @@ fn validate_query_proof_should_work() {
         tmp.insert(contract_name.clone(), contract_key);
         tmp
     };
-    let main_account_value =
-        StoredValue::Account(Account::create(account_hash, named_keys, fake_purse));
+    let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
+    let main_account_value = StoredValue::Account(Account::new(
+        account_hash,
+        named_keys,
+        fake_purse,
+        associated_keys,
+        ActionThresholds::default(),
+    ));
     let main_account_key = Key::Account(account_hash);
 
     // random value for proof injection attack

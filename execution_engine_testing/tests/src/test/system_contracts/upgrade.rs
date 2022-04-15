@@ -90,7 +90,7 @@ fn should_upgrade_only_protocol_version() {
     };
 
     builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+        .upgrade_with_upgrade_request(None, &mut upgrade_request)
         .expect_upgrade_success();
 
     let upgraded_engine_config = builder.get_engine_state().config();
@@ -128,7 +128,7 @@ fn should_allow_only_wasm_costs_patch_version() {
         .build();
 
     builder
-        .upgrade_with_upgrade_request(engine_config, &mut upgrade_request)
+        .upgrade_with_upgrade_request(Some(engine_config), &mut upgrade_request)
         .expect_upgrade_success();
 
     let upgraded_engine_config = builder.get_engine_state().config();
@@ -166,7 +166,7 @@ fn should_allow_only_wasm_costs_minor_version() {
         .build();
 
     builder
-        .upgrade_with_upgrade_request(engine_config, &mut upgrade_request)
+        .upgrade_with_upgrade_request(Some(engine_config), &mut upgrade_request)
         .expect_upgrade_success();
 
     let upgraded_engine_config = builder.get_engine_state().config();
@@ -196,7 +196,7 @@ fn should_not_downgrade() {
     };
 
     builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+        .upgrade_with_upgrade_request(None, &mut upgrade_request)
         .expect_upgrade_success();
 
     let upgraded_engine_config = builder.get_engine_state().config();
@@ -215,8 +215,7 @@ fn should_not_downgrade() {
             .build()
     };
 
-    builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut downgrade_request);
+    builder.upgrade_with_upgrade_request(None, &mut downgrade_request);
 
     let maybe_upgrade_result = builder.get_upgrade_result(1).expect("should have response");
 
@@ -247,8 +246,7 @@ fn should_not_skip_major_versions() {
             .build()
     };
 
-    builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request);
+    builder.upgrade_with_upgrade_request(None, &mut upgrade_request);
 
     let maybe_upgrade_result = builder.get_upgrade_result(0).expect("should have response");
 
@@ -276,8 +274,7 @@ fn should_allow_skip_minor_versions() {
             .build()
     };
 
-    builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request);
+    builder.upgrade_with_upgrade_request(None, &mut upgrade_request);
 
     let maybe_upgrade_result = builder.get_upgrade_result(0).expect("should have response");
 
@@ -321,7 +318,7 @@ fn should_upgrade_only_validator_slots() {
     };
 
     builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+        .upgrade_with_upgrade_request(None, &mut upgrade_request)
         .expect_upgrade_success();
 
     let after_validator_slots: u32 = builder
@@ -376,7 +373,7 @@ fn should_upgrade_only_auction_delay() {
     };
 
     builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+        .upgrade_with_upgrade_request(None, &mut upgrade_request)
         .expect_upgrade_success();
 
     let after_auction_delay: u64 = builder
@@ -431,7 +428,7 @@ fn should_upgrade_only_locked_funds_period() {
     };
 
     builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+        .upgrade_with_upgrade_request(None, &mut upgrade_request)
         .expect_upgrade_success();
 
     let after_locked_funds_period_millis: u64 = builder
@@ -486,7 +483,7 @@ fn should_upgrade_only_round_seigniorage_rate() {
     };
 
     builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+        .upgrade_with_upgrade_request(None, &mut upgrade_request)
         .expect_upgrade_success();
 
     let after_round_seigniorage_rate: Ratio<U512> = builder
@@ -548,7 +545,7 @@ fn should_upgrade_only_unbonding_delay() {
     };
 
     builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+        .upgrade_with_upgrade_request(None, &mut upgrade_request)
         .expect_upgrade_success();
 
     let after_unbonding_delay: u64 = builder
@@ -612,7 +609,7 @@ fn should_apply_global_state_upgrade() {
     };
 
     builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+        .upgrade_with_upgrade_request(None, &mut upgrade_request)
         .expect_upgrade_success();
 
     let after_unbonding_delay: u64 = builder
@@ -656,7 +653,7 @@ fn should_increase_max_associated_keys_after_upgrade() {
     };
 
     builder
-        .upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request)
+        .upgrade_with_upgrade_request(Some(new_engine_config.clone()), &mut upgrade_request)
         .expect_upgrade_success();
 
     for n in (0..DEFAULT_MAX_ASSOCIATED_KEYS).map(U256::from) {

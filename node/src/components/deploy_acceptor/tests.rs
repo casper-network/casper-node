@@ -22,6 +22,7 @@ use casper_execution_engine::{
 };
 use casper_types::{
     account::{Account, ActionThresholds, AssociatedKeys, Weight},
+    contracts::NamedKeys,
     CLValue, StoredValue, URef, U512,
 };
 
@@ -369,9 +370,11 @@ impl TestScenario {
 fn create_account(account_hash: AccountHash, test_scenario: TestScenario) -> Account {
     match test_scenario {
         TestScenario::FromPeerAccountWithInvalidAssociatedKeys
-        | TestScenario::FromClientAccountWithInvalidAssociatedKeys => {
-            Account::create(AccountHash::default(), BTreeMap::new(), URef::default())
-        }
+        | TestScenario::FromClientAccountWithInvalidAssociatedKeys => Account::create(
+            AccountHash::default(),
+            NamedKeys::default(),
+            URef::default(),
+        ),
         TestScenario::FromPeerAccountWithInsufficientWeight
         | TestScenario::FromClientAccountWithInsufficientWeight => {
             let invalid_action_threshold =
@@ -385,7 +388,7 @@ fn create_account(account_hash: AccountHash, test_scenario: TestScenario) -> Acc
                 invalid_action_threshold,
             )
         }
-        _ => Account::create(account_hash, BTreeMap::new(), URef::default()),
+        _ => Account::create(account_hash, NamedKeys::default(), URef::default()),
     }
 }
 

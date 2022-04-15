@@ -151,7 +151,7 @@ fn gh_2280_transfer_should_always_cost_the_same_gas() {
 
     let new_engine_config = make_engine_config(new_mint_costs, new_wasm_config);
 
-    builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
+    builder.upgrade_with_upgrade_request(Some(new_engine_config), &mut upgrade_request);
 
     let fund_request_3 = {
         let deploy_hash: [u8; 32] = [77; 32];
@@ -266,7 +266,7 @@ fn gh_2280_create_purse_should_always_cost_the_same_gas() {
 
     let new_engine_config = make_engine_config(new_mint_costs, new_wasm_config);
 
-    builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
+    builder.upgrade_with_upgrade_request(Some(new_engine_config), &mut upgrade_request);
 
     let fund_request_3 = {
         let deploy_hash: [u8; 32] = [77; 32];
@@ -385,7 +385,7 @@ fn gh_2280_transfer_purse_to_account_should_always_cost_the_same_gas() {
 
     let new_engine_config = make_engine_config(new_mint_costs, new_wasm_config);
 
-    builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
+    builder.upgrade_with_upgrade_request(Some(new_engine_config), &mut upgrade_request);
 
     let fund_request_3 = {
         let deploy_hash: [u8; 32] = [77; 32];
@@ -508,7 +508,7 @@ fn gh_2280_stored_transfer_to_account_should_always_cost_the_same_gas() {
 
     let new_engine_config = make_engine_config(new_mint_costs, new_wasm_config);
 
-    builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
+    builder.upgrade_with_upgrade_request(Some(new_engine_config), &mut upgrade_request);
 
     let fund_request_3 = {
         let deploy_hash: [u8; 32] = [77; 32];
@@ -627,7 +627,7 @@ fn gh_2280_stored_faucet_call_should_cost_the_same() {
 
     let new_engine_config = make_engine_config(new_mint_costs, new_wasm_config);
 
-    builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
+    builder.upgrade_with_upgrade_request(Some(new_engine_config), &mut upgrade_request);
 
     let fund_request_3 = {
         let deploy_hash: [u8; 32] = [77; 32];

@@ -181,6 +181,33 @@ impl StoredValue {
             StoredValue::Unbonding(_) => Tag::Unbonding,
         }
     }
+
+    /// Consumes self and returns inner [`CLValue`].
+    pub fn into_clvalue(self) -> Option<CLValue> {
+        if let Self::CLValue(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
+    /// Consumes self and returns inner [`Contract`].
+    pub fn into_contract(self) -> Result<Contract, Self> {
+        if let Self::Contract(v) = self {
+            Ok(v)
+        } else {
+            Err(self)
+        }
+    }
+
+    /// Consumes self and returns inner [`ContractPackage`].
+    pub fn into_contract_package(self) -> Result<ContractPackage, Self> {
+        if let Self::ContractPackage(v) = self {
+            Ok(v)
+        } else {
+            Err(self)
+        }
+    }
 }
 
 impl From<CLValue> for StoredValue {

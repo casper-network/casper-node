@@ -35,7 +35,6 @@ use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::{Bytes, ToBytes},
-    contracts::NamedKeys,
     system::{
         auction::{
             EraValidators, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS,
@@ -83,7 +82,12 @@ use crate::{
         runtime::RuntimeStack,
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
-    shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
+    shared::{
+        account::{self, AccountConfig, SYSTEM_ACCOUNT_ADDRESS, VIRTUAL_SYSTEM_ACCOUNT},
+        additive_map::AdditiveMap,
+        newtypes::CorrelationId,
+        transform::Transform,
+    },
     storage::{
         global_state::{
             lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
@@ -136,7 +140,7 @@ impl EngineState<LmdbGlobalState> {
     /// Provide a local cached-only version of engine-state.
     pub fn get_scratch_engine_state(&self) -> EngineState<ScratchGlobalState> {
         EngineState {
-            config: self.config,
+            config: self.config.clone(),
             state: self.state.create_scratch(),
         }
     }
@@ -490,7 +494,7 @@ where
         correlation_id: CorrelationId,
         mut exec_request: ExecuteRequest,
     ) -> Result<ExecutionResults, Error> {
-        let executor = Executor::new(*self.config());
+        let executor = Executor::new(self.config().clone());
 
         let deploys = exec_request.take_deploys();
         let mut results = ExecutionResults::with_capacity(deploys.len());
@@ -736,7 +740,7 @@ where
         match runtime_args_builder.transfer_target_mode(correlation_id, Rc::clone(&tracking_copy)) {
             Ok(mode) => match mode {
                 TransferTargetMode::Unknown | TransferTargetMode::PurseExists(_) => { /* noop */ }
-                TransferTargetMode::CreateAccount(public_key) => {
+                TransferTargetMode::CreateAccount(account_hash) => {
                     let create_purse_stack = self.get_new_system_call_stack();
                     let (maybe_uref, execution_result): (Option<URef>, ExecutionResult) = executor
                         .call_system_contract(
@@ -757,12 +761,34 @@ where
                         );
                     match maybe_uref {
                         Some(main_purse) => {
-                            let new_account =
-                                Account::create(public_key, Default::default(), main_purse);
+                            let admin_accounts = self
+                                .config
+                                .administrative_accounts()
+                                .clone()
+                                .unwrap_or_default();
+                            let account_kind = AccountConfig::from(admin_accounts);
+                            match self.config.administrative_accounts() {
+                                None => AccountConfig::Normal,
+                                Some(administrative_accounts) => AccountConfig::Restricted {
+                                    administrative_accounts: administrative_accounts.clone(),
+                                },
+                            };
+
+                            let new_account = match account::create_account(
+                                account_kind,
+                                account_hash,
+                                main_purse,
+                            )
+                            .map_err(Error::reverter)
+                            {
+                                Ok(account) => account,
+                                Err(error) => return Ok(make_charged_execution_failure(error)),
+                            };
                             // write new account
-                            let _ = tracking_copy
-                                .borrow_mut()
-                                .write(Key::Account(public_key), StoredValue::Account(new_account));
+                            let _ = tracking_copy.borrow_mut().write(
+                                Key::Account(account_hash),
+                                StoredValue::Account(new_account),
+                            );
                         }
                         None => {
                             // This case implies that the execution_result is a failure variant as
@@ -1007,7 +1033,7 @@ where
             };
 
             let system_account = Account::new(
-                PublicKey::System.to_account_hash(),
+                *SYSTEM_ACCOUNT_ADDRESS,
                 Default::default(),
                 URef::new(Default::default(), AccessRights::READ_ADD_WRITE),
                 Default::default(),
@@ -1187,7 +1213,7 @@ where
         // Finalization is executed by system account (currently genesis account)
         // payment_code_spec_5: system executes finalization
         let system_account = Account::new(
-            PublicKey::System.to_account_hash(),
+            *SYSTEM_ACCOUNT_ADDRESS,
             Default::default(),
             URef::new(Default::default(), AccessRights::READ_ADD_WRITE),
             Default::default(),
@@ -1789,18 +1815,12 @@ where
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
         };
 
-        let executor = Executor::new(*self.config());
+        let executor = Executor::new(self.config().clone());
 
-        let system_account_addr = PublicKey::System.to_account_hash();
-
-        let virtual_system_account = {
-            let named_keys = NamedKeys::new();
-            let purse = URef::new(Default::default(), AccessRights::READ_ADD_WRITE);
-            Account::create(system_account_addr, named_keys, purse)
-        };
+        let virtual_system_account = VIRTUAL_SYSTEM_ACCOUNT.clone();
         let authorization_keys = {
             let mut ret = BTreeSet::new();
-            ret.insert(system_account_addr);
+            ret.insert(*SYSTEM_ACCOUNT_ADDRESS);
             ret
         };
 

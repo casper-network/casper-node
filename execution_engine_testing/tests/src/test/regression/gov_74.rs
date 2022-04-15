@@ -121,7 +121,7 @@ fn should_observe_stack_height_limit() {
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
             .build();
 
-        builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
+        builder.upgrade_with_upgrade_request(Some(new_engine_config), &mut upgrade_request);
     }
 
     // This runs out of the interpreter stack limit.

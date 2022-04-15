@@ -214,7 +214,7 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
+    builder.upgrade_with_upgrade_request(Some(new_engine_config), &mut upgrade_request);
 
     let system_contract_hashes_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -509,7 +509,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
+    builder.upgrade_with_upgrade_request(Some(new_engine_config), &mut upgrade_request);
 
     let system_contract_hashes_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -946,7 +946,7 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
+    builder.upgrade_with_upgrade_request(Some(new_engine_config), &mut upgrade_request);
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)

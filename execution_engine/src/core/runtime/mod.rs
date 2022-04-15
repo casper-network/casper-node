@@ -21,7 +21,7 @@ use tracing::error;
 use wasmi::{MemoryRef, Trap, TrapKind};
 
 use casper_types::{
-    account::{Account, AccountHash, ActionType, Weight},
+    account::{AccountHash, ActionType, Weight},
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contracts::{
         self, Contract, ContractPackage, ContractPackageStatus, ContractVersion, ContractVersions,
@@ -49,6 +49,7 @@ use crate::{
         tracking_copy::TrackingCopyExt,
     },
     shared::{
+        account::{self, AccountConfig},
         host_function_costs::{Cost, HostFunction},
         wasm_prep::{self, PreprocessingError},
     },
@@ -99,7 +100,7 @@ where
     ) -> Self {
         Self::check_preconditions(&stack);
         Runtime {
-            config: self.config,
+            config: self.config.clone(),
             memory: Some(memory),
             module: Some(module),
             host_buffer: None,
@@ -117,7 +118,7 @@ where
     ) -> Self {
         Self::check_preconditions(&stack);
         Runtime {
-            config: self.config,
+            config: self.config.clone(),
             memory: None,
             module: None,
             host_buffer: None,
@@ -1016,10 +1017,10 @@ where
         stack: RuntimeStack,
     ) -> Result<CLValue, Error> {
         let protocol_version = self.context.protocol_version();
-        let wasm_config = self.config.wasm_config();
-        let module = wasm_prep::preprocess(*wasm_config, module_bytes)?;
+        let engine_config = self.config.clone();
+        let module = wasm_prep::preprocess(*engine_config.wasm_config(), module_bytes)?;
         let (instance, memory) =
-            utils::instance_and_memory(module.clone(), protocol_version, wasm_config)?;
+            utils::instance_and_memory(module.clone(), protocol_version, &engine_config)?;
         self.memory = Some(memory);
         self.module = Some(module);
         self.stack = Some(stack);
@@ -1206,6 +1207,25 @@ where
         // if not public, restricted to user group access
         self.validate_group_membership(&contract_package, entry_point.access())?;
 
+        if self.config.is_private_chain() {
+            // Private chains are verifying if a contract is disabled
+            let res = contract_package.is_contract_disabled(&contract_hash);
+            match res {
+                Some(false) => {
+                    // Contract exists and is enabled.s
+                }
+                Some(true) => {
+                    // Contract is disabled through administrative operation.
+                    return Err(Error::DisabledContract(contract_hash));
+                }
+                None => {
+                    // This variant should not occur as we alraedy validated the contract before
+                    // calling `call_contract_checked`.
+                    return Err(Error::InvalidContract(contract_hash));
+                }
+            }
+        }
+
         if self.config.strict_argument_checking() {
             let entry_point_args_lookup: BTreeMap<&str, &Parameter> = entry_point
                 .args()
@@ -1353,11 +1373,8 @@ where
             context_args,
         );
         let protocol_version = self.context.protocol_version();
-        let (instance, memory) = utils::instance_and_memory(
-            module.clone(),
-            protocol_version,
-            self.config.wasm_config(),
-        )?;
+        let (instance, memory) =
+            utils::instance_and_memory(module.clone(), protocol_version, &self.config)?;
         let runtime = &mut Runtime::new_invocation_runtime(self, context, module, memory, stack);
 
         let result = instance.invoke_export(entry_point.name(), &[], runtime);
@@ -1761,7 +1778,7 @@ where
             return Err(Error::LockedContract(contract_package_hash));
         }
 
-        if let Err(err) = contract_package.disable_contract_version(contract_hash) {
+        if let Err(err) = contract_package.disable_contract_version(&contract_hash) {
             return Ok(Err(err.into()));
         }
 
@@ -2178,7 +2195,17 @@ where
 
         match result? {
             Ok(()) => {
-                let account = Account::create(target, Default::default(), target_purse);
+                // None, and Some(_) with empty container is considered equal for the purpose of
+                // listing admin keys.
+                let admin_accounts = self
+                    .config
+                    .administrative_accounts()
+                    .clone()
+                    .unwrap_or_default();
+
+                let account_kind = AccountConfig::from(admin_accounts);
+
+                let account = account::create_account(account_kind, target, target_purse)?;
                 self.context.write_account(target_key, account)?;
                 Ok(Ok(TransferredTo::NewAccount))
             }
@@ -2885,6 +2912,80 @@ where
         let length_bytes = length.to_le_bytes();
         if let Err(error) = self.try_get_memory()?.set(result_size_ptr, &length_bytes) {
             return Err(Error::Interpreter(error.into()).into());
+        }
+
+        Ok(Ok(()))
+    }
+
+    pub(crate) fn control_management(
+        &mut self,
+        key: Key,
+        enable: bool,
+    ) -> Result<Result<(), ApiError>, Error> {
+        // Iterates over the administrator accounts elements
+
+        if !self.config.is_private_chain() {
+            // This host function should resolve only if the chain specifies at least one
+            // administrator account and therefore operates as a private chain.
+            return Ok(Err(ApiError::PermissionDenied));
+        }
+
+        match key {
+            account_key @ Key::Account(_) => {
+                match self.context.read_gs_direct(&account_key)? {
+                    Some(StoredValue::Account(mut account)) => {
+                        let deployment_threshold = if enable {
+                            // Enable
+                            Weight::new(1)
+                        } else {
+                            // Disable
+                            Weight::MAX
+                        };
+
+                        account
+                            .set_action_threshold(ActionType::Deployment, deployment_threshold)?;
+
+                        self.context.write_account(account_key, account)?;
+                    }
+                    Some(_) => {
+                        // Key::Account is only expected to contain only stored values of Account
+                        // type.
+                        return Err(Error::UnexpectedStoredValueVariant);
+                    }
+                    None => return Ok(Err(ApiError::InvalidArgument)),
+                }
+            }
+            contract_key @ Key::Hash(contract_hash_bytes) => {
+                let contract_hash = ContractHash::new(contract_hash_bytes);
+
+                let contract = match self.context.read_gs_direct(&contract_key)? {
+                    Some(StoredValue::Contract(contract)) => contract,
+                    Some(_) => return Err(Error::UnexpectedStoredValueVariant),
+                    None => return Ok(Err(ApiError::InvalidArgument)),
+                };
+
+                let contract_package_key = contract.contract_package_hash().into();
+                let mut contract_package =
+                    match self.context.read_gs_direct(&contract_package_key)? {
+                        Some(StoredValue::ContractPackage(contract_package)) => contract_package,
+                        Some(_) => return Err(Error::UnexpectedStoredValueVariant),
+                        None => return Ok(Err(ApiError::InvalidArgument)),
+                    };
+
+                let modify_result = if enable {
+                    contract_package.enable_contract_version(&contract_hash)
+                } else {
+                    contract_package.disable_contract_version(&contract_hash)
+                };
+
+                if let Err(error) = modify_result {
+                    return Ok(Err(ApiError::from(error)));
+                }
+
+                self.context
+                    .metered_write_gs_unsafe(contract_package_key, contract_package)?;
+            }
+            _ => return Ok(Err(ApiError::InvalidArgument)),
         }
 
         Ok(Ok(()))

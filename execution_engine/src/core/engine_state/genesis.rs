@@ -1,7 +1,8 @@
 //! Support for a genesis process.
-use std::{cell::RefCell, collections::BTreeMap, fmt, iter, rc::Rc};
+use std::{borrow::Cow, cell::RefCell, collections::BTreeMap, fmt, iter, rc::Rc};
 
 use datasize::DataSize;
+use itertools::Itertools;
 use num::Zero;
 use num_rational::Ratio;
 use rand::{
@@ -12,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use casper_hashing::Digest;
 use casper_types::{
-    account::{Account, AccountHash},
+    account::{AccountHash, AddKeyFailure},
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::{ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys},
     system::{
@@ -41,7 +42,12 @@ use crate::{
         execution::AddressGenerator,
         tracking_copy::TrackingCopy,
     },
-    shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
+    shared::{
+        account::{self, AccountConfig, SYSTEM_ACCOUNT_ADDRESS, VIRTUAL_SYSTEM_ACCOUNT},
+        newtypes::CorrelationId,
+        system_config::SystemConfig,
+        wasm_config::WasmConfig,
+    },
     storage::global_state::StateProvider,
 };
 
@@ -72,6 +78,7 @@ enum GenesisAccountTag {
     System = 0,
     Account = 1,
     Delegator = 2,
+    Administrator = 3,
 }
 
 /// Represents details about genesis account's validator status.
@@ -137,6 +144,44 @@ impl Distribution<GenesisValidator> for Standard {
     }
 }
 
+/// Representation of a genesis delegator account.
+#[derive(DataSize, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DelegatorAccount {
+    /// Validator's public key that has to refer to other instance of
+    /// [`GenesisAccount::Account`] with a `validator` field set.
+    validator_public_key: PublicKey,
+    /// Public key of the genesis account that will be created as part of this entry.
+    delegator_public_key: PublicKey,
+    /// Starting balance of the account.
+    balance: Motes,
+    /// Delegated amount for given `validator_public_key`.
+    delegated_amount: Motes,
+}
+
+/// Special account in the system used for private chains.
+#[derive(DataSize, Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Serialize, Deserialize)]
+pub struct AdministratorAccount {
+    public_key: PublicKey,
+    balance: Motes,
+}
+
+impl AdministratorAccount {
+    /// Creates new special account.
+    #[must_use]
+    pub fn new(public_key: PublicKey, balance: Motes) -> Self {
+        Self {
+            public_key,
+            balance,
+        }
+    }
+
+    /// Get a reference to the administrator account's public key.
+    #[must_use]
+    pub fn public_key(&self) -> &PublicKey {
+        &self.public_key
+    }
+}
+
 /// This enum represents possible states of a genesis account.
 #[derive(DataSize, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GenesisAccount {
@@ -155,17 +200,17 @@ pub enum GenesisAccount {
     /// The genesis delegator is a special account that will be created as a delegator.
     /// It does not have any stake of its own, but will create a real account in the system
     /// which will delegate to a genesis validator.
-    Delegator {
-        /// Validator's public key that has to refer to other instance of
-        /// [`GenesisAccount::Account`] with a `validator` field set.
-        validator_public_key: PublicKey,
-        /// Public key of the genesis account that will be created as part of this entry.
-        delegator_public_key: PublicKey,
-        /// Starting balance of the account.
-        balance: Motes,
-        /// Delegated amount for given `validator_public_key`.
-        delegated_amount: Motes,
-    },
+    Delegator(DelegatorAccount),
+    /// An administrative account in the genesis process.
+    ///
+    /// This variant is valid only for private chains.
+    Administrator(AdministratorAccount),
+}
+
+impl From<AdministratorAccount> for GenesisAccount {
+    fn from(v: AdministratorAccount) -> Self {
+        Self::Administrator(v)
+    }
 }
 
 impl GenesisAccount {
@@ -194,12 +239,12 @@ impl GenesisAccount {
         balance: Motes,
         delegated_amount: Motes,
     ) -> Self {
-        Self::Delegator {
+        Self::Delegator(DelegatorAccount {
             validator_public_key,
             delegator_public_key,
             balance,
             delegated_amount,
-        }
+        })
     }
 
     /// The public key (if any) associated with the account.
@@ -207,10 +252,13 @@ impl GenesisAccount {
         match self {
             GenesisAccount::System => PublicKey::System,
             GenesisAccount::Account { public_key, .. } => public_key.clone(),
-            GenesisAccount::Delegator {
+            GenesisAccount::Delegator(DelegatorAccount {
                 delegator_public_key,
                 ..
-            } => delegator_public_key.clone(),
+            }) => delegator_public_key.clone(),
+            GenesisAccount::Administrator(AdministratorAccount { public_key, .. }) => {
+                public_key.clone()
+            }
         }
     }
 
@@ -219,10 +267,13 @@ impl GenesisAccount {
         match self {
             GenesisAccount::System => PublicKey::System.to_account_hash(),
             GenesisAccount::Account { public_key, .. } => public_key.to_account_hash(),
-            GenesisAccount::Delegator {
+            GenesisAccount::Delegator(DelegatorAccount {
                 delegator_public_key,
                 ..
-            } => delegator_public_key.to_account_hash(),
+            }) => delegator_public_key.to_account_hash(),
+            GenesisAccount::Administrator(AdministratorAccount { public_key, .. }) => {
+                public_key.to_account_hash()
+            }
         }
     }
 
@@ -231,7 +282,8 @@ impl GenesisAccount {
         match self {
             GenesisAccount::System => Motes::zero(),
             GenesisAccount::Account { balance, .. } => *balance,
-            GenesisAccount::Delegator { balance, .. } => *balance,
+            GenesisAccount::Delegator(DelegatorAccount { balance, .. }) => *balance,
+            GenesisAccount::Administrator(AdministratorAccount { balance, .. }) => *balance,
         }
     }
 
@@ -249,9 +301,17 @@ impl GenesisAccount {
                 validator: Some(genesis_validator),
                 ..
             } => genesis_validator.bonded_amount(),
-            GenesisAccount::Delegator {
+            GenesisAccount::Delegator(DelegatorAccount {
                 delegated_amount, ..
-            } => *delegated_amount,
+            }) => *delegated_amount,
+            GenesisAccount::Administrator(AdministratorAccount {
+                public_key: _,
+                balance: _,
+            }) => {
+                // This is defaulted to zero because administrator accounts are filtered out before
+                // validator set is created at the genesis.
+                Motes::zero()
+            }
         }
     }
 
@@ -269,6 +329,9 @@ impl GenesisAccount {
             | GenesisAccount::Delegator { .. } => {
                 // This value represents a delegation rate in invalid state that system is supposed
                 // to reject if used.
+                DelegationRate::max_value()
+            }
+            GenesisAccount::Administrator(AdministratorAccount { .. }) => {
                 DelegationRate::max_value()
             }
         }
@@ -289,7 +352,8 @@ impl GenesisAccount {
             | GenesisAccount::Account {
                 validator: None, ..
             }
-            | GenesisAccount::Delegator { .. } => false,
+            | GenesisAccount::Delegator { .. }
+            | GenesisAccount::Administrator(AdministratorAccount { .. }) => false,
         }
     }
 
@@ -310,21 +374,28 @@ impl GenesisAccount {
     }
 
     /// Details about the genesis delegator.
-    pub fn as_delegator(&self) -> Option<(&PublicKey, &PublicKey, &Motes, &Motes)> {
+    pub fn as_delegator(&self) -> Option<&DelegatorAccount> {
         match self {
-            GenesisAccount::Delegator {
-                validator_public_key,
-                delegator_public_key,
-                balance,
-                delegated_amount,
-            } => Some((
-                validator_public_key,
-                delegator_public_key,
-                balance,
-                delegated_amount,
-            )),
+            GenesisAccount::Delegator(delegator_account) => Some(delegator_account),
             _ => None,
         }
+    }
+
+    /// Gets the administrator account variant.
+    fn as_administrator_account(&self) -> Option<&AdministratorAccount> {
+        if let Self::Administrator(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
+    /// Returns `true` if the genesis account is [`Administrator`].
+    ///
+    /// [`Administrator`]: GenesisAccount::Administrator
+    #[must_use]
+    pub fn is_administrator(&self) -> bool {
+        matches!(self, Self::Administrator(..))
     }
 }
 
@@ -358,17 +429,25 @@ impl ToBytes for GenesisAccount {
                 buffer.extend(balance.value().to_bytes()?);
                 buffer.extend(validator.to_bytes()?);
             }
-            GenesisAccount::Delegator {
+            GenesisAccount::Delegator(DelegatorAccount {
                 validator_public_key,
                 delegator_public_key,
                 balance,
                 delegated_amount,
-            } => {
+            }) => {
                 buffer.push(GenesisAccountTag::Delegator as u8);
                 buffer.extend(validator_public_key.to_bytes()?);
                 buffer.extend(delegator_public_key.to_bytes()?);
                 buffer.extend(balance.value().to_bytes()?);
                 buffer.extend(delegated_amount.value().to_bytes()?);
+            }
+            GenesisAccount::Administrator(AdministratorAccount {
+                public_key,
+                balance,
+            }) => {
+                buffer.push(GenesisAccountTag::Administrator as u8);
+                buffer.extend(public_key.to_bytes()?);
+                buffer.extend(balance.to_bytes()?);
             }
         }
         Ok(buffer)
@@ -387,18 +466,22 @@ impl ToBytes for GenesisAccount {
                     + validator.serialized_length()
                     + TAG_LENGTH
             }
-            GenesisAccount::Delegator {
+            GenesisAccount::Delegator(DelegatorAccount {
                 validator_public_key,
                 delegator_public_key,
                 balance,
                 delegated_amount,
-            } => {
+            }) => {
                 validator_public_key.serialized_length()
                     + delegator_public_key.serialized_length()
                     + balance.value().serialized_length()
                     + delegated_amount.value().serialized_length()
                     + TAG_LENGTH
             }
+            GenesisAccount::Administrator(AdministratorAccount {
+                public_key,
+                balance,
+            }) => public_key.serialized_length() + balance.serialized_length() + TAG_LENGTH,
         }
     }
 }
@@ -429,6 +512,15 @@ impl FromBytes for GenesisAccount {
                     balance,
                     Motes::new(delegated_amount_value),
                 );
+                Ok((genesis_account, remainder))
+            }
+            tag if tag == GenesisAccountTag::Administrator as u8 => {
+                let (public_key, remainder) = FromBytes::from_bytes(remainder)?;
+                let (balance, remainder) = FromBytes::from_bytes(remainder)?;
+                let genesis_account = GenesisAccount::Administrator(AdministratorAccount {
+                    public_key,
+                    balance,
+                });
                 Ok((genesis_account, remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),
@@ -568,23 +660,26 @@ impl ExecConfig {
 
     /// Returns all bonded genesis validators.
     pub fn get_bonded_validators(&self) -> impl Iterator<Item = &GenesisAccount> {
-        self.accounts
-            .iter()
+        self.accounts()
             .filter(|&genesis_account| genesis_account.is_validator())
     }
 
     /// Returns all bonded genesis delegators.
-    pub fn get_bonded_delegators(
-        &self,
-    ) -> impl Iterator<Item = (&PublicKey, &PublicKey, &Motes, &Motes)> {
-        self.accounts
-            .iter()
+    pub fn get_bonded_delegators(&self) -> impl Iterator<Item = &DelegatorAccount> {
+        self.accounts()
             .filter_map(|genesis_account| genesis_account.as_delegator())
     }
 
     /// Returns all genesis accounts.
-    pub fn accounts(&self) -> &[GenesisAccount] {
-        self.accounts.as_slice()
+    pub(crate) fn accounts(&self) -> impl Iterator<Item = &GenesisAccount> {
+        self.accounts.iter()
+    }
+
+    /// Returns all genesis accounts.
+    pub(crate) fn administrative_accounts(&self) -> impl Iterator<Item = &AdministratorAccount> {
+        self.accounts
+            .iter()
+            .filter_map(GenesisAccount::as_administrator_account)
     }
 
     /// Adds new genesis account to the config.
@@ -723,6 +818,18 @@ pub enum GenesisError {
     },
     /// The chainspec registry is missing a required entry.
     MissingChainspecRegistryEntry,
+    /// Duplicated administrator entry.
+    ///
+    /// This error can occur only on private chains.
+    DuplicatedAdministratorEntry,
+    /// Error adding administrator account.
+    AddAdministratorAccount(AddKeyFailure),
+}
+
+impl From<AddKeyFailure> for GenesisError {
+    fn from(v: AddKeyFailure) -> Self {
+        Self::AddAdministratorAccount(v)
+    }
 }
 
 pub(crate) struct GenesisInstaller<S>
@@ -757,16 +864,12 @@ where
             Rc::new(RefCell::new(generator))
         };
 
-        let system_account_addr = PublicKey::System.to_account_hash();
+        let system_account_addr = *SYSTEM_ACCOUNT_ADDRESS;
 
-        let virtual_system_account = {
-            let named_keys = NamedKeys::new();
-            let purse = URef::new(Default::default(), AccessRights::READ_ADD_WRITE);
-            Account::create(system_account_addr, named_keys, purse)
-        };
+        let virtual_system_account = VIRTUAL_SYSTEM_ACCOUNT.clone();
 
         let key = Key::Account(system_account_addr);
-        let value = { StoredValue::Account(virtual_system_account) };
+        let value = StoredValue::Account(virtual_system_account);
 
         let _ = tracking_copy.borrow_mut().write(key, value);
 
@@ -902,8 +1005,12 @@ where
         let genesis_delegators: Vec<_> = self.exec_config.get_bonded_delegators().collect();
 
         // Make sure all delegators have corresponding genesis validator entries
-        for (validator_public_key, delegator_public_key, _balance, delegated_amount) in
-            genesis_delegators.iter()
+        for DelegatorAccount {
+            validator_public_key,
+            delegator_public_key,
+            balance: _balance,
+            delegated_amount,
+        } in genesis_delegators.iter()
         {
             if delegated_amount.is_zero() {
                 return Err(GenesisError::InvalidDelegatedAmount {
@@ -960,12 +1067,12 @@ where
                     );
 
                     // Set up delegator entries attached to genesis validators
-                    for (
+                    for DelegatorAccount {
                         validator_public_key,
                         delegator_public_key,
-                        _delegator_balance,
-                        &delegator_delegated_amount,
-                    ) in genesis_delegators.iter()
+                        balance: _delegator_balance,
+                        delegated_amount: delegator_delegated_amount,
+                    } in genesis_delegators.iter()
                     {
                         if (*validator_public_key).clone() == public_key.clone() {
                             let purse_uref =
@@ -1152,33 +1259,58 @@ where
         Ok(standard_payment_hash)
     }
 
-    fn create_accounts(&self, total_supply_key: Key) -> Result<(), GenesisError> {
+    fn is_private_chain(&self) -> bool {
+        self.exec_config.administrative_accounts().next().is_some()
+    }
+
+    pub(crate) fn create_accounts<'a>(&'a self, total_supply_key: Key) -> Result<(), GenesisError> {
         let accounts = {
-            let mut ret: Vec<GenesisAccount> = self.exec_config.accounts().to_vec();
+            let mut ret: Vec<Cow<'a, GenesisAccount>> =
+                self.exec_config.accounts().map(Cow::Borrowed).collect();
             let system_account = GenesisAccount::system();
-            ret.push(system_account); // todo load bearing remove or not? probably dont need anymore
+            ret.push(Cow::Owned(system_account));
             ret
         };
 
-        let mut total_supply = U512::zero();
-
-        for account in accounts {
-            let account_hash = account.account_hash();
-            let main_purse = self.create_purse(account.balance().value())?;
-
-            let key = Key::Account(account_hash);
-            let stored_value = StoredValue::Account(Account::create(
-                account_hash,
-                Default::default(),
-                main_purse,
-            ));
-
-            let _ = self.tracking_copy.borrow_mut().write(key, stored_value);
-
-            total_supply += account.balance().value();
+        if self.is_private_chain()
+            && self
+                .exec_config
+                .administrative_accounts()
+                .duplicates_by(|admin| &admin.public_key)
+                .next()
+                .is_some()
+        {
+            // Ensure no duplicate administrator accounts are specified as this might raise errors
+            // during genesis process when administrator accounts are added to associated keys.
+            return Err(GenesisError::DuplicatedAdministratorEntry);
         }
 
-        let _ = self.tracking_copy.borrow_mut().write(
+        let administrative_accounts: Vec<AdministratorAccount> = self
+            .exec_config
+            .administrative_accounts()
+            .cloned()
+            .collect();
+
+        let mut total_supply = U512::zero();
+
+        for account in accounts.iter() {
+            let account_hash = account.account_hash();
+            let main_purse = self.create_purse(account.balance().value())?;
+            total_supply += account.balance().value();
+
+            let key = Key::Account(account_hash);
+
+            let account_kind = AccountConfig::from(administrative_accounts.clone());
+
+            let account = match account::create_account(account_kind, account_hash, main_purse) {
+                Ok(value) => value,
+                Err(value) => return Err(value.into()),
+            };
+            let stored_value = StoredValue::Account(account);
+            self.tracking_copy.borrow_mut().write(key, stored_value);
+        }
+
+        self.tracking_copy.borrow_mut().write(
             total_supply_key,
             StoredValue::CLValue(
                 CLValue::from_t(total_supply)
