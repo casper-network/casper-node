@@ -12,7 +12,10 @@ use casper_execution_engine::core::engine_state::{
 };
 use once_cell::sync::Lazy;
 
-use casper_types::{account::AccountHash, Motes, PublicKey, SecretKey, U512};
+use casper_types::{
+    account::{AccountHash, Weight},
+    Motes, PublicKey, SecretKey, U512,
+};
 
 static DEFAULT_ADMIN_ACCOUNT_SECRET_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::secp256k1_from_bytes([250; 32]).unwrap());
@@ -20,6 +23,15 @@ static DEFAULT_ADMIN_ACCOUNT_PUBLIC_KEY: Lazy<PublicKey> =
     Lazy::new(|| PublicKey::from(&*DEFAULT_ADMIN_ACCOUNT_SECRET_KEY));
 static DEFAULT_ADMIN_ACCOUNT_ADDR: Lazy<AccountHash> =
     Lazy::new(|| DEFAULT_ADMIN_ACCOUNT_PUBLIC_KEY.to_account_hash());
+const DEFAULT_ADMIN_ACCOUNT_WEIGHT: Weight = Weight::MAX;
+
+static ADMIN_1_ACCOUNT_SECRET_KEY: Lazy<SecretKey> =
+    Lazy::new(|| SecretKey::secp256k1_from_bytes([240; 32]).unwrap());
+static ADMIN_1_ACCOUNT_PUBLIC_KEY: Lazy<PublicKey> =
+    Lazy::new(|| PublicKey::from(&*ADMIN_1_ACCOUNT_SECRET_KEY));
+static ADMIN_1_ACCOUNT_ADDR: Lazy<AccountHash> =
+    Lazy::new(|| ADMIN_1_ACCOUNT_PUBLIC_KEY.to_account_hash());
+const ADMIN_1_ACCOUNT_WEIGHT: Weight = Weight::new(254);
 
 static ACCOUNT_1_SECRET_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::secp256k1_from_bytes([251; 32]).unwrap());
@@ -33,15 +45,20 @@ static ACCOUNT_2_PUBLIC_KEY: Lazy<PublicKey> =
     Lazy::new(|| PublicKey::from(&*ACCOUNT_2_SECRET_KEY));
 static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| ACCOUNT_2_PUBLIC_KEY.to_account_hash());
 
-const SPECIAL_ACCOUNT_INITIAL_BALANCE: U512 =
-    U512([100_000_000_000_000_000u64, 0, 0, 0, 0, 0, 0, 0]);
+const ADMIN_ACCOUNT_INITIAL_BALANCE: U512 = U512([100_000_000_000_000_000u64, 0, 0, 0, 0, 0, 0, 0]);
 
 static PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS: Lazy<Vec<AdministratorAccount>> = Lazy::new(|| {
-    let admin_account = AdministratorAccount::new(
+    let default_admin = AdministratorAccount::new(
         DEFAULT_ADMIN_ACCOUNT_PUBLIC_KEY.clone(),
-        Motes::new(SPECIAL_ACCOUNT_INITIAL_BALANCE),
+        Motes::new(ADMIN_ACCOUNT_INITIAL_BALANCE),
+        DEFAULT_ADMIN_ACCOUNT_WEIGHT,
     );
-    vec![admin_account]
+    let admin_1 = AdministratorAccount::new(
+        ADMIN_1_ACCOUNT_PUBLIC_KEY.clone(),
+        Motes::new(ADMIN_ACCOUNT_INITIAL_BALANCE),
+        ADMIN_1_ACCOUNT_WEIGHT,
+    );
+    vec![default_admin, admin_1]
 });
 
 static PRIVATE_CHAIN_DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {

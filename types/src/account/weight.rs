@@ -22,6 +22,9 @@ impl Weight {
     /// Maximum possible weight.
     pub const MAX: Weight = Weight(u8::MAX);
 
+    /// Minimum possible weight.
+    pub const MIN: Weight = Weight(1);
+
     /// Constructs a new `Weight`.
     pub const fn new(weight: u8) -> Weight {
         Weight(weight)

@@ -27,7 +27,9 @@ use parity_wasm::{
     elements::{Instruction, Instructions},
 };
 
-use crate::test::private_chain::ACCOUNT_2_ADDR;
+use crate::test::private_chain::{
+    ACCOUNT_2_ADDR, ADMIN_1_ACCOUNT_ADDR, ADMIN_1_ACCOUNT_WEIGHT, DEFAULT_ADMIN_ACCOUNT_WEIGHT,
+};
 
 use super::{
     ACCOUNT_1_ADDR, DEFAULT_ADMIN_ACCOUNT_ADDR, DEFAULT_PRIVATE_CHAIN_GENESIS,
@@ -342,16 +344,25 @@ fn genesis_accounts_should_have_special_associated_key() {
         .expect("should have identity key");
     assert_eq!(identity_weight, &Weight::new(1));
 
-    let administrator_account_weight = account_1
+    let administrator_key_weight = account_1
         .associated_keys()
         .get(&*DEFAULT_ADMIN_ACCOUNT_ADDR)
         .expect("should have special account");
-    assert_eq!(administrator_account_weight, &Weight::MAX);
+    assert_eq!(administrator_key_weight, &DEFAULT_ADMIN_ACCOUNT_WEIGHT);
+
+    let admin_1_key_weight = account_1
+        .associated_keys()
+        .get(&*ADMIN_1_ACCOUNT_ADDR)
+        .expect("should have special account");
+    assert_eq!(admin_1_key_weight, &ADMIN_1_ACCOUNT_WEIGHT);
 
     let administrative_accounts: BTreeSet<AccountHash> = get_administrator_account_hashes(&builder);
 
     assert!(
-        itertools::equal(administrative_accounts, [*DEFAULT_ADMIN_ACCOUNT_ADDR]),
+        itertools::equal(
+            administrative_accounts,
+            [*DEFAULT_ADMIN_ACCOUNT_ADDR, *ADMIN_1_ACCOUNT_ADDR]
+        ),
         "administrators should be populated with single account"
     );
 
@@ -360,7 +371,7 @@ fn genesis_accounts_should_have_special_associated_key() {
         .expect("should create special account");
     assert_eq!(
         administrator_account.associated_keys().len(),
-        1,
+        PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS.len(),
         "should not have duplicate identity key"
     );
 

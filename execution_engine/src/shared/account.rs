@@ -69,7 +69,8 @@ pub(crate) fn create_account(
 
     for admin_account in administrative_accounts {
         let admin_account_hash = admin_account.public_key().to_account_hash();
-        match associated_keys.add_key(admin_account_hash, Weight::MAX) {
+        let admin_weight = admin_account.weight();
+        match associated_keys.add_key(admin_account_hash, admin_weight) {
             Ok(()) => {}
             Err(AddKeyFailure::DuplicateKey) if account_hash == admin_account_hash => {
                 // We're creating a special account itself and associated key already

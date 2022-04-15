@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use casper_hashing::Digest;
 use casper_types::{
-    account::{AccountHash, AddKeyFailure},
+    account::{AccountHash, AddKeyFailure, Weight},
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::{ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys},
     system::{
@@ -163,15 +163,17 @@ pub struct DelegatorAccount {
 pub struct AdministratorAccount {
     public_key: PublicKey,
     balance: Motes,
+    weight: Weight,
 }
 
 impl AdministratorAccount {
     /// Creates new special account.
     #[must_use]
-    pub fn new(public_key: PublicKey, balance: Motes) -> Self {
+    pub fn new(public_key: PublicKey, balance: Motes, weight: Weight) -> Self {
         Self {
             public_key,
             balance,
+            weight,
         }
     }
 
@@ -179,6 +181,12 @@ impl AdministratorAccount {
     #[must_use]
     pub fn public_key(&self) -> &PublicKey {
         &self.public_key
+    }
+
+    /// Get the administrator account's weight.
+    #[must_use]
+    pub fn weight(&self) -> Weight {
+        self.weight
     }
 }
 
@@ -307,6 +315,7 @@ impl GenesisAccount {
             GenesisAccount::Administrator(AdministratorAccount {
                 public_key: _,
                 balance: _,
+                weight: _,
             }) => {
                 // This is defaulted to zero because administrator accounts are filtered out before
                 // validator set is created at the genesis.
@@ -444,10 +453,12 @@ impl ToBytes for GenesisAccount {
             GenesisAccount::Administrator(AdministratorAccount {
                 public_key,
                 balance,
+                weight,
             }) => {
                 buffer.push(GenesisAccountTag::Administrator as u8);
                 buffer.extend(public_key.to_bytes()?);
                 buffer.extend(balance.to_bytes()?);
+                buffer.extend(weight.to_bytes()?);
             }
         }
         Ok(buffer)
@@ -481,7 +492,13 @@ impl ToBytes for GenesisAccount {
             GenesisAccount::Administrator(AdministratorAccount {
                 public_key,
                 balance,
-            }) => public_key.serialized_length() + balance.serialized_length() + TAG_LENGTH,
+                weight,
+            }) => {
+                public_key.serialized_length()
+                    + balance.serialized_length()
+                    + weight.serialized_length()
+                    + TAG_LENGTH
+            }
         }
     }
 }
@@ -517,9 +534,11 @@ impl FromBytes for GenesisAccount {
             tag if tag == GenesisAccountTag::Administrator as u8 => {
                 let (public_key, remainder) = FromBytes::from_bytes(remainder)?;
                 let (balance, remainder) = FromBytes::from_bytes(remainder)?;
+                let (weight, remainder) = FromBytes::from_bytes(remainder)?;
                 let genesis_account = GenesisAccount::Administrator(AdministratorAccount {
                     public_key,
                     balance,
+                    weight,
                 });
                 Ok((genesis_account, remainder))
             }
