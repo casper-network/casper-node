@@ -1373,6 +1373,8 @@ async fn fetch_and_store_deploys(
     hashes: impl Iterator<Item = &DeployHash>,
     ctx: &ChainSyncContext<'_>,
 ) -> Result<Vec<Deploy>, Error> {
+    let start_instant = Timestamp::now();
+
     let hashes: Vec<_> = hashes.cloned().collect();
     let mut deploys: Vec<Deploy> = Vec::with_capacity(hashes.len());
     let mut stream = futures::stream::iter(hashes)
@@ -1384,6 +1386,8 @@ async fn fetch_and_store_deploys(
         deploys.push(*deploy);
     }
 
+    ctx.metrics
+        .observe_fetch_deploys_duration_seconds(start_instant);
     Ok(deploys)
 }
 
