@@ -395,6 +395,23 @@ impl DbWasmTestBuilder {
         }
         self
     }
+
+    /// run step against scratch global state.
+    pub fn step_with_scratch(&mut self, step_request: StepRequest) -> &mut Self {
+        if self.scratch_engine_state.is_none() {
+            self.scratch_engine_state = Some(self.engine_state.get_scratch_engine_state());
+        }
+
+        let cached_state = self
+            .scratch_engine_state
+            .as_ref()
+            .expect("scratch state should exist");
+
+        cached_state
+            .commit_step(CorrelationId::new(), step_request)
+            .expect("unable to run step request against scratch global state");
+        self
+    }
 }
 
 impl<S> WasmTestBuilder<S>

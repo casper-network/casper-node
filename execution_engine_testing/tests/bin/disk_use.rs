@@ -1,17 +1,32 @@
 use std::{
-    collections::HashMap,
+    collections::HashSet,
+    convert::TryFrom,
     fs::File,
     io::{BufWriter, Write},
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 use tempfile::TempDir;
 
 use casper_engine_test_support::{
     auction::{self},
-    transfer, DbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    transfer, DbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
 };
-use casper_types::U512;
+use casper_execution_engine::{
+    core::{
+        engine_state::{self, EngineState},
+        execution,
+    },
+    shared::newtypes::CorrelationId,
+    storage::{
+        global_state::{CommitProvider, StateProvider},
+        trie::{Pointer, Trie, TrieOrChunk, TrieOrChunkId},
+    },
+};
+use casper_hashing::Digest;
+use casper_types::{bytesrepr, Key, StoredValue, U512};
+
+const TEST_DELEGATOR_INITIAL_ACCOUNT_BALANCE: u64 = 1_000_000 * 1_000_000_000;
 
 // Generate multiple purses as well as transfer requests between them with the specified count.
 pub fn multiple_native_transfers(
@@ -20,12 +35,16 @@ pub fn multiple_native_transfers(
     use_scratch: bool,
     run_auction: bool,
     block_count: usize,
-) -> Vec<(usize, usize, usize, usize)> {
+    delegator_count: usize,
+    mut report_writer: BufWriter<File>,
+) {
     let data_dir = TempDir::new().expect("should create temp dir");
     let mut builder = DbWasmTestBuilder::new(data_dir.as_ref());
-    let delegator_keys = auction::generate_public_keys(100);
+    let delegator_keys = auction::generate_public_keys(delegator_count);
     let validator_keys = auction::generate_public_keys(100);
+    let mut necessary_tries = HashSet::new();
 
+    println!("creating genesis accounts");
     auction::run_genesis_and_create_initial_accounts(
         &mut builder,
         &validator_keys,
@@ -33,12 +52,14 @@ pub fn multiple_native_transfers(
             .iter()
             .map(|pk| pk.to_account_hash())
             .collect::<Vec<_>>(),
-        U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
+        U512::from(TEST_DELEGATOR_INITIAL_ACCOUNT_BALANCE),
     );
     let contract_hash = builder.get_auction_contract_hash();
     let mut next_validator_iter = validator_keys.iter().cycle();
+
+    println!("creating delegators");
     for delegator_public_key in delegator_keys {
-        let delegation_amount = U512::from(42);
+        let delegation_amount = U512::from(2000 * 1_000_000_000u64);
         let delegator_account_hash = delegator_public_key.to_account_hash();
         let next_validator_key = next_validator_iter
             .next()
@@ -56,8 +77,9 @@ pub fn multiple_native_transfers(
         builder.clear_results();
     }
 
-    let purse_amount = U512::one();
+    let purse_amount = U512::from(1_000_000_000);
 
+    println!("creating test purses");
     let purses = transfer::create_test_purses(
         &mut builder,
         *DEFAULT_ACCOUNT_ADDR,
@@ -71,11 +93,30 @@ pub fn multiple_native_transfers(
         &purses,
     );
 
+    println!("getting all keys up to this point");
     let mut total_transfers = 0;
+    {
+        let engine_state = builder.get_engine_state();
+        let rocksdb = engine_state.get_state().rocksdb_state();
 
-    let mut results = Vec::new();
+        let existing_keys = rocksdb
+            .rocksdb
+            .trie_store_iterator()
+            .expect("unable to get iterator")
+            .map(|(key, _)| Digest::try_from(&*key).expect("should be a digest"));
+        necessary_tries.extend(existing_keys);
+    }
+
+    println!("found {} keys so far", necessary_tries.len());
+
+    writeln!(
+        report_writer,
+        "height,rocksdb-size,transfers,time_ms,necessary_tries,total_tries"
+    )
+    .unwrap();
     // simulating a block boundary here.
-    for _ in 0..block_count {
+    for current_block in 0..block_count {
+        println!("executing height {current_block}");
         let start = Instant::now();
         total_transfers += exec_requests.len();
         transfer::transfer_to_account_multiple_native_transfers(
@@ -83,103 +124,117 @@ pub fn multiple_native_transfers(
             &exec_requests,
             use_scratch,
         );
+        let transfer_root = builder.get_post_state_hash();
+        let maybe_auction_root = if run_auction {
+            auction::step_and_run_auction(&mut builder, &validator_keys);
+            Some(builder.get_post_state_hash())
+        } else {
+            None
+        };
         let exec_time = start.elapsed();
-        results.push((
-            builder.lmdb_on_disk_size().unwrap() as usize,
+        find_necessary_tries(
+            builder.get_engine_state(),
+            &mut necessary_tries,
+            transfer_root,
+        );
+
+        if let Some(auction_root) = maybe_auction_root {
+            find_necessary_tries(
+                builder.get_engine_state(),
+                &mut necessary_tries,
+                auction_root,
+            );
+        }
+
+        let engine_state = builder.get_engine_state();
+        let rocksdb = engine_state.get_state().rocksdb_state();
+        let trie_store_iter = rocksdb
+            .rocksdb
+            .trie_store_iterator()
+            .expect("unable to get iterator");
+        let total_tries = trie_store_iter.count();
+
+        writeln!(
+            report_writer,
+            "{},{},{},{},{},{}",
+            current_block,
             builder.rocksdb_on_disk_size().unwrap(),
             total_transfers,
             exec_time.as_millis() as usize,
-        ));
-        println!(
-            "{}, {}, {}, transfer, {}",
-            builder.lmdb_on_disk_size().unwrap(),
-            builder.rocksdb_on_disk_size().unwrap(),
-            total_transfers,
-            exec_time.as_millis(),
-        );
-        let threshold = Duration::from_millis((2500 / 500) * exec_requests.len() as u64);
-        if exec_time >= threshold {
-            println!("{:?}", Instant::now());
+            necessary_tries.len(),
+            total_tries,
+        )
+        .unwrap();
+        report_writer.flush().unwrap();
+    }
+}
+
+// find all necessary tries - hoist to FN
+fn find_necessary_tries<S>(
+    engine_state: &EngineState<S>,
+    necessary_tries: &mut HashSet<Digest>,
+    state_root: Digest,
+) where
+    S: StateProvider + CommitProvider,
+    S::Error: Into<execution::Error>,
+    engine_state::Error: From<S::Error>,
+{
+    let mut queue = Vec::new();
+    queue.push(state_root);
+
+    while let Some(root) = queue.pop() {
+        if necessary_tries.contains(&root) {
+            continue;
+        }
+        necessary_tries.insert(root);
+
+        let trie_or_chunk: TrieOrChunk = engine_state
+            .get_trie(CorrelationId::new(), TrieOrChunkId(0, root))
+            .unwrap()
+            .expect("trie should exist");
+
+        let trie_bytes = match trie_or_chunk {
+            TrieOrChunk::Trie(trie) => trie,
+            TrieOrChunk::ChunkWithProof(_) => continue,
+        };
+
+        if let Some(0) = trie_bytes.get(0) {
+            continue;
+        }
+
+        let trie: Trie<Key, StoredValue> =
+            bytesrepr::deserialize(trie_bytes.inner_bytes().to_owned())
+                .expect("unable to deserialize");
+
+        match trie {
+            Trie::Leaf { .. } => continue,
+            Trie::Node { pointer_block } => queue.extend(pointer_block.as_indexed_pointers().map(
+                |(_idx, ptr)| match ptr {
+                    Pointer::LeafPointer(digest) | Pointer::NodePointer(digest) => digest,
+                },
+            )),
+            Trie::Extension { affix: _, pointer } => match pointer {
+                Pointer::LeafPointer(digest) | Pointer::NodePointer(digest) => queue.push(digest),
+            },
         }
     }
-    if run_auction {
-        let start = Instant::now();
-        auction::step_and_run_auction(&mut builder, &validator_keys);
-        println!(
-            "{}, {}, {}, ran_auction, {}",
-            builder.lmdb_on_disk_size().unwrap(),
-            builder.rocksdb_on_disk_size().unwrap(),
-            total_transfers,
-            start.elapsed().as_millis(),
-        );
-    }
-    results
 }
 
 fn main() {
     let purse_count = 100;
-    let total_transfer_count = 1_000_000;
-    let transfers_per_block = 2500;
+    let total_transfer_count = 100;
+    let transfers_per_block = 1;
     let block_count = total_transfer_count / transfers_per_block;
+    let delegator_count = 20_000;
 
-    let mut results = Vec::new();
-
-    let column_name = format!("rocksdb-{}", transfers_per_block);
-    let mut bytes_report =
-        BufWriter::new(File::create(format!("bytes-report-{}.csv", column_name)).unwrap());
-    let mut time_report =
-        BufWriter::new(File::create(format!("time-report-{}.csv", column_name)).unwrap());
-
-    let rocksdb_results =
-        multiple_native_transfers(transfers_per_block, purse_count, true, false, block_count);
-    let transfer_counts = rocksdb_results
-        .iter()
-        .map(|(_, _, transfers, _)| *transfers)
-        .collect::<Vec<_>>();
-    results.push((column_name, rocksdb_results));
-
-    // add columns for additional reports by pushing onto `results` here.
-
-    let mut byte_size_map = HashMap::new();
-    let mut time_ms_map = HashMap::new();
-
-    for (column, values) in results.iter() {
-        let bytes_values: Vec<usize> = values
-            .iter()
-            .map(|(_, byte_size, _, _)| *byte_size)
-            .collect();
-        byte_size_map.insert(column.clone(), bytes_values);
-        let time_ms_values: Vec<usize> = values.iter().map(|(_, _, _, time_ms)| *time_ms).collect();
-        time_ms_map.insert(column.clone(), time_ms_values);
-    }
-
-    // bytes
-    println!("bytes report");
-    for (column, _) in results.iter() {
-        write!(&mut bytes_report, "{}-bytes,", column).unwrap();
-    }
-    writeln!(&mut bytes_report, "transfers").unwrap();
-
-    for (idx, transfer_count) in transfer_counts.iter().enumerate() {
-        for (column, _) in results.iter() {
-            write!(&mut bytes_report, " {},", byte_size_map[column][idx]).unwrap();
-        }
-        writeln!(&mut bytes_report, " {}", transfer_count).unwrap();
-    }
-
-    println!("time_ms report");
-    //
-    // Time ms
-    for (column, _) in results.iter() {
-        write!(&mut time_report, "{}-time_ms,", column).unwrap();
-    }
-    writeln!(&mut time_report, "transfers").unwrap();
-    for (idx, transfer_count) in transfer_counts.iter().enumerate() {
-        for (column, _) in results.iter() {
-            write!(&mut time_report, " {},", time_ms_map[column][idx]).unwrap();
-        }
-        writeln!(&mut time_report, " {}", transfer_count).unwrap();
-    }
-
-    println!("wrote reports");
+    let report_writer = BufWriter::new(File::create("disk_use_report.csv").unwrap());
+    multiple_native_transfers(
+        transfers_per_block,
+        purse_count,
+        true,
+        true,
+        block_count,
+        delegator_count,
+        report_writer,
+    );
 }

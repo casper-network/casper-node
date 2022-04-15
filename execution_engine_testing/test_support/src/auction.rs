@@ -1,11 +1,10 @@
+use std::time::Instant;
+
 use rand::Rng;
 
-use casper_execution_engine::{
-    core::engine_state::{
-        genesis::GenesisValidator, run_genesis_request::RunGenesisRequest, ChainspecRegistry,
-        ExecConfig, ExecuteRequest, GenesisAccount, RewardItem,
-    },
-    shared::system_config::auction_costs::DEFAULT_DELEGATE_COST,
+use casper_execution_engine::core::engine_state::{
+    genesis::GenesisValidator, run_genesis_request::RunGenesisRequest, ChainspecRegistry,
+    ExecConfig, ExecuteRequest, GenesisAccount, RewardItem,
 };
 use casper_types::{
     account::AccountHash, runtime_args, system::auction, Motes, ProtocolVersion, PublicKey,
@@ -18,7 +17,7 @@ use crate::{
     DEFAULT_AUCTION_DELAY, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
     DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION,
     DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
-    DEFAULT_WASM_CONFIG, MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
+    DEFAULT_WASM_CONFIG, SYSTEM_ADDR,
 };
 
 const ARG_AMOUNT: &str = "amount";
@@ -47,7 +46,7 @@ pub fn run_genesis_and_create_initial_accounts(
     let mut genesis_accounts = vec![
         GenesisAccount::account(
             DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-            Motes::new(U512::MAX), // all the monies
+            Motes::new(U512::from(u128::MAX)),
             None,
         ),
         GenesisAccount::account(
@@ -75,7 +74,7 @@ pub fn run_genesis_and_create_initial_accounts(
         *DEFAULT_ACCOUNT_ADDR,
         runtime_args! {
                 ARG_TARGET => *SYSTEM_ADDR,
-                ARG_AMOUNT => MINIMUM_ACCOUNT_CREATION_BALANCE,
+                ARG_AMOUNT => U512::from(10_000 * 1_000_000_000u64),
                 ARG_ID => ID_NONE,
         },
     )
@@ -83,11 +82,11 @@ pub fn run_genesis_and_create_initial_accounts(
     builder.exec(transfer);
     builder.expect_success().commit();
 
-    for delegator_account in delegator_accounts {
+    for (_i, delegator_account) in delegator_accounts.iter().enumerate() {
         let transfer = ExecuteRequestBuilder::transfer(
             *DEFAULT_ACCOUNT_ADDR,
             runtime_args! {
-                    ARG_TARGET => delegator_account,
+                    ARG_TARGET => *delegator_account,
                     ARG_AMOUNT => delegator_initial_balance,
                     ARG_ID => ID_NONE,
             },
@@ -142,9 +141,7 @@ pub fn create_delegate_request(
     let deploy = DeployItemBuilder::new()
         .with_address(delegator_account_hash)
         .with_stored_session_hash(contract_hash, entry_point, args)
-        .with_empty_payment_bytes(
-            runtime_args! { ARG_AMOUNT => U512::from(DEFAULT_DELEGATE_COST), },
-        )
+        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => U512::from(100_000_000), })
         .with_authorization_keys(&[delegator_account_hash])
         .with_deploy_hash(deploy_hash)
         .build();
@@ -175,5 +172,6 @@ pub fn step_and_run_auction(builder: &mut DbWasmTestBuilder, validator_keys: &[P
     let step_request = step_request_builder
         .with_next_era_id(builder.get_era() + 1)
         .build();
-    builder.step(step_request).expect("should step");
+    builder.step_with_scratch(step_request);
+    builder.write_scratch_to_db();
 }

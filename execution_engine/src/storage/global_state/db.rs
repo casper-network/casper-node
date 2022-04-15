@@ -63,6 +63,11 @@ pub struct DbGlobalStateView {
 }
 
 impl DbGlobalState {
+    /// Get rocksdb state handle.
+    pub fn rocksdb_state(&self) -> &RocksDbStore {
+        &self.rocksdb_store
+    }
+
     /// Migrate data at the given state roots (if they exist) from lmdb to rocksdb.
     /// This function uses std::thread::sleep, is otherwise intensive and so needs to be called with
     /// tokio::task::spawn_blocking. `force=true` will cause us to always traverse recursively when
@@ -206,21 +211,23 @@ impl DbGlobalState {
         ScratchGlobalState::new(self.clone())
     }
 
-    /// Write stored values to RocksDb.
+    /// Write stored values to RocksDb using the ScratchTrieStore
     pub fn put_stored_values(
         &self,
         correlation_id: CorrelationId,
         prestate_hash: Digest,
         stored_values: HashMap<Key, StoredValue>,
     ) -> Result<Digest, error::Error> {
-        put_stored_values::<_, _, error::Error>(
-            &self.rocksdb_store,
-            &self.rocksdb_store,
+        let scratch_trie = self.rocksdb_store.get_scratch_store();
+        let new_state_root = put_stored_values::<_, _, error::Error>(
+            &scratch_trie,
+            &scratch_trie,
             correlation_id,
             prestate_hash,
             stored_values,
-        )
-        .map_err(Into::into)
+        )?;
+        scratch_trie.write_all_tries_to_rocksdb(new_state_root)?;
+        Ok(new_state_root)
     }
 }
 
@@ -264,9 +271,7 @@ fn find_missing_trie_keys(
     handle: &RocksDb,
     rocksdb: &RocksDb,
 ) -> Result<(), error::Error> {
-    let ptr = match ptr {
-        Pointer::LeafPointer(pointer) | Pointer::NodePointer(pointer) => pointer,
-    };
+    let ptr = *ptr.hash();
     if force {
         missing_trie_keys.push(ptr);
     } else {

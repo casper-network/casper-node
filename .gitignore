@@ -161,3 +161,6 @@ notes
 
 # sw* files in vim
 .*.sw*
+
+# reports
+**/disk_use_report*

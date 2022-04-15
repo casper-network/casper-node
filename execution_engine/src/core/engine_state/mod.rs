@@ -127,6 +127,11 @@ impl EngineState<ScratchGlobalState> {
 }
 
 impl EngineState<DbGlobalState> {
+    /// get state
+    pub fn get_state(&self) -> &DbGlobalState {
+        &self.state
+    }
+
     /// Migrate the given state roots from lmdb to rocksdb data store.
     /// Returns Ok(true) if the migration was needed.
     pub fn migrate_state_root_to_rocksdb_if_needed(

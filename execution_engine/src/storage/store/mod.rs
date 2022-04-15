@@ -52,14 +52,14 @@ pub trait Store<K, V> {
 
     /// Puts a `value` into the store at `key` within a transaction, potentially returning an
     /// error of type `Self::Error` if that fails.
-    fn put<T>(&self, txn: &mut T, key: &K, value: &V) -> Result<(), Self::Error>
+    fn put<T>(&self, txn: &mut T, digest: &K, trie: &V) -> Result<(), Self::Error>
     where
         T: Writable<Handle = Self::Handle>,
         K: AsRef<[u8]>,
         V: ToBytes,
         Self::Error: From<T::Error>,
     {
-        self.put_raw(txn, key, &value.to_bytes()?)
+        self.put_raw(txn, digest, &trie.to_bytes()?)
     }
 
     /// Puts a raw `value` into the store at `key` within a transaction, potentially returning an
