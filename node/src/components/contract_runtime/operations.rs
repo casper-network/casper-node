@@ -103,7 +103,7 @@ pub fn execute_finalized_block(
     let maybe_step_effect_and_upcoming_era_validators =
         if let Some(era_report) = finalized_block.era_report() {
             let StepSuccess {
-                post_state_hash,
+                post_state_hash: _,
                 execution_journal: step_execution_journal,
             } = commit_step(
                 &scratch_state,
@@ -114,7 +114,9 @@ pub fn execute_finalized_block(
                 finalized_block.timestamp().millis(),
                 finalized_block.era_id().successor(),
             )?;
-            state_root_hash = post_state_hash;
+
+            state_root_hash =
+                engine_state.write_scratch_to_db(state_root_hash, scratch_state.into_inner())?;
 
             // In this flow we execute using a recent state root hash where the system contract
             // registry is guaranteed to exist.
@@ -130,13 +132,12 @@ pub fn execute_finalized_block(
                 upcoming_era_validators,
             })
         } else {
+            // Finally, the new state-root-hash from the cumulative changes to global state is
+            // returned when they are written to LMDB.
+            state_root_hash =
+                engine_state.write_scratch_to_db(state_root_hash, scratch_state.into_inner())?;
             None
         };
-
-    // Finally, the new state-root-hash from the cumulative changes to global state is returned when
-    // they are written to LMDB.
-    state_root_hash =
-        engine_state.write_scratch_to_db(state_root_hash, scratch_state.into_inner())?;
 
     // Flush once, after all deploys have been executed.
     engine_state.flush_environment()?;
@@ -169,7 +170,6 @@ pub fn execute_finalized_block(
         protocol_version,
     )?;
 
-    // Temporarily patch this into what the older API expected.
     let patched_execution_results = execution_results
         .into_iter()
         .map(|(hash, header, result)| (hash, (header, result)))

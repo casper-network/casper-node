@@ -22,6 +22,9 @@ const ROCKS_DB_WINDOW_BITS: i32 = -14;
 /// Column family name for the v1 trie data store.
 const ROCKS_DB_TRIE_V1_COLUMN_FAMILY: &str = "trie_v1_column";
 
+/// Column family name for tracking progress of data migration.
+const ROCKS_DB_LMDB_MIGRATED_STATE_ROOTS_COLUMN_FAMILY: &str = "lmdb_migrated_state_roots_column";
+
 /// A transaction which can be committed or aborted.
 pub trait Transaction: Sized {
     /// An error which can occur while reading or writing during a transaction,

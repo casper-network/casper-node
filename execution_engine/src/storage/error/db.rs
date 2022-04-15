@@ -8,7 +8,7 @@ use casper_types::bytesrepr;
 
 use crate::storage::{error::in_memory, global_state::CommitError};
 
-/// Error num representing possible errors from database internals.
+/// Error enum representing possible errors from database internals.
 #[derive(Debug, Clone, Error, PartialEq)]
 pub enum DbError {
     /// LMDB error returned from underlying `lmdb` crate.
@@ -27,13 +27,13 @@ pub enum Error {
     #[error(transparent)]
     Db(#[from] DbError),
 
-    /// Error when we cannot create a column family.
+    /// Error when we cannot open a column family.
     #[error("unable to open column family {0}")]
     UnableToOpenColumnFamily(String),
 
-    /// Could not get data under a trie key in lmdb while migrating to rockdb.
+    /// Could not get data under a trie key in lmdb while migrating to rocksdb.
     #[error("corrupt state root {state_root} could not find value under trie key {trie_key}")]
-    CorruptLmdbStateRootDuringMigrationToRocksdb {
+    CorruptLmdbStateRootDuringMigrationToRocksDb {
         /// Trie key that couldn't be found.
         trie_key: Digest,
         /// State root being migrated.

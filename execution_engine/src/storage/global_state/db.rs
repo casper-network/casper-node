@@ -5,7 +5,7 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-use tracing::info;
+use tracing::{info, warn};
 
 use casper_hashing::Digest;
 use casper_types::{
@@ -17,7 +17,10 @@ use crate::{
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
     storage::{
         error,
-        global_state::{commit, put_stored_values, StateProvider, StateReader},
+        global_state::{
+            commit, put_stored_values, scratch::ScratchGlobalState, CommitProvider, StateProvider,
+            StateReader,
+        },
         store::Store,
         transaction_source::{
             db::{LmdbEnvironment, RocksDb, RocksDbStore},
@@ -35,16 +38,13 @@ use crate::{
     },
 };
 
-use super::{scratch::ScratchGlobalState, CommitProvider};
-
-/// Global state implemented against LMDB as a backing data store.
+/// Global state implemented against a database as a backing data store.
 #[derive(Clone)]
 pub struct DbGlobalState {
     /// Environment for LMDB.
     pub(crate) lmdb_environment: Arc<LmdbEnvironment>,
     /// Trie store held within LMDB.
     pub(crate) lmdb_trie_store: Arc<LmdbTrieStore>,
-    // TODO: make this a lazy-static
     /// Empty root hash used for a new trie.
     pub(crate) empty_root_hash: Digest,
     /// Handle to rocksdb.
@@ -52,6 +52,7 @@ pub struct DbGlobalState {
 }
 
 /// Represents a "view" of global state at a particular root hash.
+#[derive(Clone)]
 pub struct DbGlobalStateView {
     /// Root hash of this "view".
     root_hash: Digest,
@@ -62,13 +63,13 @@ pub struct DbGlobalStateView {
 impl DbGlobalState {
     /// Migrate data at the given state roots (if they exist) from lmdb to rocksdb.
     /// This function uses std::thread::sleep, is otherwise intensive and so needs to be called with
-    /// tokio::task::spawn_blocking.
-    ///
-    /// TODO(dwerner): optionally add multithreading here. Measure time of this method first.
+    /// tokio::task::spawn_blocking. `force=true` will cause us to always traverse recursively when
+    /// searching for missing descendants.
     pub(crate) fn migrate_state_root_to_rocksdb(
         &self,
         state_root: Digest,
         limit_rate: bool,
+        force: bool,
     ) -> Result<(), error::Error> {
         let mut missing_trie_keys = vec![state_root];
         let start_time = Instant::now();
@@ -123,16 +124,17 @@ impl DbGlobalState {
 
                     handle.write(rocksdb.clone(), &key_bytes, &value_bytes)?;
 
-                    find_missing_descendants(
+                    memoized_find_missing_descendants(
                         value_bytes,
                         handle,
                         rocksdb,
                         &mut missing_trie_keys,
                         &mut time_searching_for_trie_keys,
+                        force,
                     )?;
                 }
                 None => {
-                    return Err(error::Error::CorruptLmdbStateRootDuringMigrationToRocksdb {
+                    return Err(error::Error::CorruptLmdbStateRootDuringMigrationToRocksDb {
                         trie_key: next_trie_key,
                         state_root,
                     });
@@ -199,60 +201,75 @@ impl DbGlobalState {
         ScratchGlobalState::new(self.clone())
     }
 
-    /// Write stored values to LMDB.
+    /// Write stored values to RocksDb using the ScratchTrieStore
     pub fn put_stored_values(
         &self,
         correlation_id: CorrelationId,
         prestate_hash: Digest,
         stored_values: HashMap<Key, StoredValue>,
     ) -> Result<Digest, error::Error> {
-        put_stored_values::<_, _, error::Error>(
-            &self.rocksdb_store,
-            &self.rocksdb_store,
+        let scratch_trie = self.rocksdb_store.get_scratch_store();
+        let new_state_root = put_stored_values::<_, _, error::Error>(
+            &scratch_trie,
+            &scratch_trie,
             correlation_id,
             prestate_hash,
             stored_values,
-        )
-        .map_err(Into::into)
+        )?;
+        scratch_trie.write_all_tries_to_rocksdb(new_state_root)?;
+        Ok(new_state_root)
     }
 }
 
-fn find_missing_descendants(
+fn memoized_find_missing_descendants(
     value_bytes: Bytes,
     handle: RocksDb,
     rocksdb: RocksDb,
     missing_trie_keys: &mut Vec<Digest>,
     time_in_missing_trie_keys: &mut Duration,
+    force: bool,
 ) -> Result<(), error::Error> {
+    // A first bytes of `0` indicates a leaf. We short-circuit the function here to speed things up.
     if let Some(0u8) = value_bytes.get(0) {
         return Ok(());
     }
     let start_trie_keys = Instant::now();
     let trie: Trie<Key, StoredValue> = bytesrepr::deserialize(value_bytes.into())?;
     match trie {
-        Trie::Leaf { .. } => unreachable!(),
+        Trie::Leaf { .. } => {
+            // If `bytesrepr` is functioning correctly, this should never be reached (see
+            // optimization above), but it is still correct do nothing here.
+            warn!("did not expect to see a trie leaf in `find_missing_descendents` after shortcut");
+        }
         Trie::Node { pointer_block } => {
             for (_index, ptr) in pointer_block.as_indexed_pointers() {
-                let ptr = match ptr {
-                    Pointer::LeafPointer(pointer) | Pointer::NodePointer(pointer) => pointer,
-                };
-                let existing = handle.read(rocksdb.clone(), &ptr.to_bytes()?)?;
-                if existing.is_none() {
-                    missing_trie_keys.push(ptr);
-                }
+                find_missing_trie_keys(ptr, force, missing_trie_keys, &handle, &rocksdb)?;
             }
         }
         Trie::Extension { affix: _, pointer } => {
-            let ptr = match pointer {
-                Pointer::LeafPointer(pointer) | Pointer::NodePointer(pointer) => pointer,
-            };
-            let existing = handle.read(rocksdb, &ptr.to_bytes()?)?;
-            if existing.is_none() {
-                missing_trie_keys.push(ptr);
-            }
+            find_missing_trie_keys(pointer, force, missing_trie_keys, &handle, &rocksdb)?;
         }
     }
     *time_in_missing_trie_keys += start_trie_keys.elapsed();
+    Ok(())
+}
+
+fn find_missing_trie_keys(
+    ptr: Pointer,
+    force: bool,
+    missing_trie_keys: &mut Vec<Digest>,
+    handle: &RocksDb,
+    rocksdb: &RocksDb,
+) -> Result<(), error::Error> {
+    let ptr = *ptr.hash();
+    if force {
+        missing_trie_keys.push(ptr);
+    } else {
+        let existing = handle.read(rocksdb.clone(), &ptr.to_bytes()?)?;
+        if existing.is_none() {
+            missing_trie_keys.push(ptr);
+        }
+    }
     Ok(())
 }
 
@@ -274,7 +291,7 @@ impl StateReader<Key, StoredValue> for DbGlobalStateView {
         )? {
             ReadResult::Found(value) => Some(value),
             ReadResult::NotFound => None,
-            ReadResult::RootNotFound => panic!("DGlobalState has invalid root"),
+            ReadResult::RootNotFound => panic!("DbGlobalState has invalid root"),
         };
         txn.commit()?;
         Ok(ret)
@@ -394,7 +411,7 @@ impl StateProvider for DbGlobalState {
         Ok(trie_hash)
     }
 
-    /// Finds all of the keys of missing descendant `Trie<K,V>` values
+    /// Finds all of the keys of missing descendant `Trie<K,V>` values.
     fn missing_trie_keys(
         &self,
         correlation_id: CorrelationId,
