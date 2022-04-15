@@ -561,6 +561,7 @@ impl ContractRuntime {
         strict_argument_checking: bool,
         registry: &Registry,
         verifiable_chunked_hash_activation: EraId,
+        allow_auction_bids: bool,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
         let execution_pre_state = Arc::new(Mutex::new(ExecutionPreState {
@@ -593,6 +594,7 @@ impl ContractRuntime {
             .with_system_config(system_config)
             .with_minimum_delegation_amount(minimum_delegation_amount)
             .with_strict_argument_checking(strict_argument_checking)
+            .with_allow_auction_bids(allow_auction_bids)
             .build();
 
         let engine_state = Arc::new(EngineState::new(global_state, engine_config));

@@ -36,6 +36,10 @@ pub struct CoreConfig {
     pub(crate) minimum_delegation_amount: u64,
     /// Enables strict arguments checking when calling a contract.
     pub(crate) strict_argument_checking: bool,
+    /// Auction entrypoints such as "add_bid" or "delegate" are disabled if this flag is set to
+    /// `true`. Setting up this option makes sense only for private chains where validator set
+    /// rotation is unnecessary.
+    pub(crate) allow_auction_bids: bool,
 }
 
 #[cfg(test)]
@@ -56,6 +60,7 @@ impl CoreConfig {
         let max_runtime_call_stack_height = rng.gen();
         let minimum_delegation_amount = rng.gen::<u32>() as u64;
         let strict_argument_checking = rng.gen();
+        let allow_auction_bids = rng.gen();
 
         CoreConfig {
             era_duration,
@@ -69,6 +74,7 @@ impl CoreConfig {
             max_runtime_call_stack_height,
             minimum_delegation_amount,
             strict_argument_checking,
+            allow_auction_bids,
         }
     }
 }
@@ -87,6 +93,7 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.max_runtime_call_stack_height.to_bytes()?);
         buffer.extend(self.minimum_delegation_amount.to_bytes()?);
         buffer.extend(self.strict_argument_checking.to_bytes()?);
+        buffer.extend(self.allow_auction_bids.to_bytes()?);
         Ok(buffer)
     }
 
@@ -102,6 +109,7 @@ impl ToBytes for CoreConfig {
             + self.max_runtime_call_stack_height.serialized_length()
             + self.minimum_delegation_amount.serialized_length()
             + self.strict_argument_checking.serialized_length()
+            + self.allow_auction_bids.serialized_length()
     }
 }
 
@@ -114,10 +122,11 @@ impl FromBytes for CoreConfig {
         let (locked_funds_period, remainder) = TimeDiff::from_bytes(remainder)?;
         let (unbonding_delay, remainder) = u64::from_bytes(remainder)?;
         let (round_seigniorage_rate, remainder) = Ratio::<u64>::from_bytes(remainder)?;
-        let (max_associated_keys, remainder) = u32::from_bytes(remainder)?;
-        let (max_runtime_call_stack_height, remainder) = u32::from_bytes(remainder)?;
+        let (max_associated_keys, remainder) = FromBytes::from_bytes(remainder)?;
+        let (max_runtime_call_stack_height, remainder) = FromBytes::from_bytes(remainder)?;
         let (minimum_delegation_amount, remainder) = u64::from_bytes(remainder)?;
         let (strict_argument_checking, remainder) = bool::from_bytes(remainder)?;
+        let (allow_auction_bids, remainder) = FromBytes::from_bytes(remainder)?;
         let config = CoreConfig {
             era_duration,
             minimum_era_height,
@@ -130,6 +139,7 @@ impl FromBytes for CoreConfig {
             max_runtime_call_stack_height,
             minimum_delegation_amount,
             strict_argument_checking,
+            allow_auction_bids,
         };
         Ok((config, remainder))
     }

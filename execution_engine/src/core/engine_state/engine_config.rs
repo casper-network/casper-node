@@ -14,7 +14,8 @@ pub const DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT: u32 = 12;
 pub const DEFAULT_MINIMUM_DELEGATION_AMOUNT: u64 = 500 * 1_000_000_000;
 /// Default value for strict argument checking.
 pub const DEFAULT_STRICT_ARGUMENT_CHECKING: bool = false;
-
+/// Default value for allowing auction bids.
+pub const DEFAULT_ALLOW_AUCTION_BIDS: bool = true;
 /// The runtime configuration of the execution engine
 #[derive(Debug, Clone)]
 pub struct EngineConfig {
@@ -32,6 +33,9 @@ pub struct EngineConfig {
     system_config: SystemConfig,
     /// A private network specifies a list of administrative accounts.
     administrative_accounts: Option<Vec<AdministratorAccount>>,
+    /// Auction entrypoints such as "add_bid" or "delegate" are disabled if this flag is set to
+    /// `true`.
+    allow_auction_bids: bool,
 }
 
 impl Default for EngineConfig {
@@ -45,6 +49,7 @@ impl Default for EngineConfig {
             wasm_config: WasmConfig::default(),
             system_config: SystemConfig::default(),
             administrative_accounts: None,
+            allow_auction_bids: DEFAULT_ALLOW_AUCTION_BIDS,
         }
     }
 }
@@ -86,7 +91,7 @@ impl EngineConfig {
         &self.administrative_accounts
     }
 
-    /// Checks  if
+    /// Checks if chain is configured in private mode.
     #[must_use]
     pub fn is_private_chain(&self) -> bool {
         match self.administrative_accounts() {
@@ -94,6 +99,12 @@ impl EngineConfig {
             Some(admin_accounts) if admin_accounts.is_empty() => false,
             Some(_admin_accounts) => true,
         }
+    }
+
+    /// Get the engine config's allow auction bids.
+    #[must_use]
+    pub fn allow_auction_bids(&self) -> bool {
+        self.allow_auction_bids
     }
 }
 
@@ -111,6 +122,7 @@ pub struct EngineConfigBuilder {
     minimum_delegation_amount: Option<u64>,
     strict_argument_checking: Option<bool>,
     administrative_accounts: Option<Vec<AdministratorAccount>>,
+    allow_auction_bids: Option<bool>,
 }
 
 impl EngineConfigBuilder {
@@ -181,6 +193,13 @@ impl EngineConfigBuilder {
         self
     }
 
+    /// Sets new disable auction bids flag.
+    pub fn with_allow_auction_bids(mut self, allow_auction_bids: bool) -> Self {
+        // self.chain_kind = Some(chain_kind);
+        self.allow_auction_bids = Some(allow_auction_bids);
+        self
+    }
+
     /// Build a new [`EngineConfig`] object.
     pub fn build(self) -> EngineConfig {
         let max_query_depth = self.max_query_depth.unwrap_or(DEFAULT_MAX_QUERY_DEPTH);
@@ -199,6 +218,7 @@ impl EngineConfigBuilder {
         let wasm_config = self.wasm_config.unwrap_or_default();
         let system_config = self.system_config.unwrap_or_default();
         let administrative_accounts = self.administrative_accounts;
+        let allow_auction_bids = self.allow_auction_bids.unwrap_or(true);
         EngineConfig {
             max_query_depth,
             max_associated_keys,
@@ -208,6 +228,7 @@ impl EngineConfigBuilder {
             wasm_config,
             system_config,
             administrative_accounts,
+            allow_auction_bids,
         }
     }
 }

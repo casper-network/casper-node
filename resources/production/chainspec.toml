@@ -62,8 +62,10 @@ max_runtime_call_stack_height = 12
 minimum_delegation_amount = 500_000_000_000
 # Enables strict arguments checking when calling a contract.
 strict_argument_checking = false
-# Chain operation mode
-chain_kind = 'public' # Possible options: public, private
+# Allow auction entrypoints such as delegate, redelegate and add_bid to function properly.
+#
+# Changing this option makes sense only for private chains which dont need auctioning new validator slots.
+allow_auction_bids = true
 
 [highway]
 # A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.

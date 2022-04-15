@@ -307,6 +307,12 @@ pub enum Error {
     /// assert_eq!(46, Error::RuntimeStack as u8);
     /// ```
     RuntimeStack = 46,
+    /// An error that is raised on private chain only when a `disable_auction_bids` flag is set to
+    /// `true`. ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(47, Error::MintError as u8);
+    /// ```
+    AuctionBidsDisabled = 47,
 }
 
 impl Display for Error {
@@ -359,6 +365,7 @@ impl Display for Error {
             Error::GlobalDelegatorCapacityReached => formatter.write_str("The global delegator capacity has been reached"),
             Error::DelegationAmountTooSmall => formatter.write_str("The delegated amount is below the minimum allowed"),
             Error::RuntimeStack => formatter.write_str("Runtime stack error"),
+            Error::AuctionBidsDisabled => formatter.write_str("Auction bids are disabled"),
         }
     }
 }
@@ -437,6 +444,7 @@ impl TryFrom<u8> for Error {
             }
             d if d == Error::DelegationAmountTooSmall as u8 => Ok(Error::DelegationAmountTooSmall),
             d if d == Error::RuntimeStack as u8 => Ok(Error::RuntimeStack),
+            d if d == Error::AuctionBidsDisabled as u8 => Ok(Error::AuctionBidsDisabled),
             _ => Err(TryFromU8ForError(())),
         }
     }

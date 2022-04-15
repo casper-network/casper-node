@@ -136,6 +136,10 @@ where
     fn blake2b<T: AsRef<[u8]>>(&self, data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
         crypto::blake2b(data)
     }
+
+    fn auction_bids_allowed(&self) -> bool {
+        self.config.allow_auction_bids()
+    }
 }
 
 impl<'a, R> MintProvider for Runtime<'a, R>

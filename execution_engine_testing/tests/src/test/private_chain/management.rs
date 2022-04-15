@@ -19,7 +19,10 @@ use casper_types::{
     bytesrepr::ToBytes,
     contracts::DEFAULT_ENTRY_POINT_NAME,
     runtime_args,
-    system::{mint, standard_payment},
+    system::{
+        auction::{self, DelegationRate},
+        mint, standard_payment,
+    },
     ApiError, CLType, CLValue, ContractHash, Key, RuntimeArgs, U512,
 };
 use parity_wasm::{
@@ -29,11 +32,13 @@ use parity_wasm::{
 
 use crate::test::private_chain::{
     ACCOUNT_2_ADDR, ADMIN_1_ACCOUNT_ADDR, ADMIN_1_ACCOUNT_WEIGHT, DEFAULT_ADMIN_ACCOUNT_WEIGHT,
+    VALIDATOR_1_PUBLIC_KEY,
 };
 
 use super::{
-    ACCOUNT_1_ADDR, DEFAULT_ADMIN_ACCOUNT_ADDR, DEFAULT_PRIVATE_CHAIN_GENESIS,
-    PRIVATE_CHAIN_DEFAULT_ACCOUNTS, PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS,
+    ACCOUNT_1_ADDR, ACCOUNT_1_PUBLIC_KEY, DEFAULT_ADMIN_ACCOUNT_ADDR,
+    DEFAULT_PRIVATE_CHAIN_GENESIS, PRIVATE_CHAIN_DEFAULT_ACCOUNTS,
+    PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS,
 };
 
 const ACCOUNT_MANAGEMENT_CONTRACT: &str = "account_management.wasm";
@@ -1026,9 +1031,67 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
     }
 }
 
+#[ignore]
+#[test]
+fn should_not_allow_add_bid_on_private_chain() {
+    let mut builder = setup();
+
+    let delegation_rate: DelegationRate = 4;
+    let session_args = runtime_args! {
+        auction::ARG_PUBLIC_KEY => ACCOUNT_1_PUBLIC_KEY.clone(),
+        auction::ARG_AMOUNT => U512::one(),
+        auction::ARG_DELEGATION_RATE => delegation_rate,
+    };
+
+    let exec_request =
+        ExecuteRequestBuilder::standard(*ACCOUNT_1_ADDR, "add_bid.wasm", session_args).build();
+
+    builder.exec(exec_request).expect_failure().commit();
+
+    let error = builder.get_error().expect("should have error");
+
+    assert!(matches!(
+        error,
+        Error::Exec(execution::Error::Revert(api_error))
+        if api_error == auction::Error::AuctionBidsDisabled.into()
+    ));
+}
+
+#[ignore]
+#[test]
+fn should_not_allow_delegate_on_private_chain() {
+    let mut builder = setup();
+
+    let session_args = runtime_args! {
+        auction::ARG_DELEGATOR => ACCOUNT_1_PUBLIC_KEY.clone(),
+        auction::ARG_VALIDATOR => VALIDATOR_1_PUBLIC_KEY.clone(),
+        auction::ARG_AMOUNT => U512::one(),
+    };
+
+    let exec_request =
+        ExecuteRequestBuilder::standard(*ACCOUNT_1_ADDR, "delegate.wasm", session_args).build();
+
+    builder.exec(exec_request).expect_failure().commit();
+
+    let error = builder.get_error().expect("should have error");
+
+    assert!(
+        matches!(
+            error,
+            Error::Exec(execution::Error::Revert(api_error))
+            if api_error == auction::Error::AuctionBidsDisabled.into()
+        ),
+        "{:?}",
+        error
+    );
+    // Redelegation would not work since delegate, and add_bid are disabled on private chains
+    // therefore there is nothing to test.
+}
+
 fn setup() -> InMemoryWasmTestBuilder {
     let engine_config = EngineConfigBuilder::default()
         .with_administrative_accounts(PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS.clone())
+        .with_allow_auction_bids(false)
         .build();
 
     let mut builder = InMemoryWasmTestBuilder::new_with_config(engine_config);

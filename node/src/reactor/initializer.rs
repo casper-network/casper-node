@@ -230,6 +230,7 @@ impl Reactor {
                 .chainspec()
                 .protocol_config
                 .verifiable_chunked_hash_activation,
+            chainspec_loader.chainspec().core_config.allow_auction_bids,
         )?;
 
         let effects = reactor::wrap_effects(Event::Chainspec, chainspec_effects);

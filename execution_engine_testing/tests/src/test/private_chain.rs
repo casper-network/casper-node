@@ -8,14 +8,23 @@ use casper_engine_test_support::{
     DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
 use casper_execution_engine::core::engine_state::{
-    genesis::AdministratorAccount, ExecConfig, GenesisAccount, RunGenesisRequest,
+    genesis::{AdministratorAccount, GenesisValidator},
+    ExecConfig, GenesisAccount, RunGenesisRequest,
 };
 use once_cell::sync::Lazy;
 
 use casper_types::{
     account::{AccountHash, Weight},
+    system::auction::DELEGATION_RATE_DENOMINATOR,
     Motes, PublicKey, SecretKey, U512,
 };
+
+static VALIDATOR_1_SECRET_KEY: Lazy<SecretKey> =
+    Lazy::new(|| SecretKey::secp256k1_from_bytes([244; 32]).unwrap());
+static VALIDATOR_1_PUBLIC_KEY: Lazy<PublicKey> =
+    Lazy::new(|| PublicKey::from(&*VALIDATOR_1_SECRET_KEY));
+
+const DEFAULT_VALIDATOR_BONDED_AMOUNT: U512 = U512([u64::MAX, 0, 0, 0, 0, 0, 0, 0]);
 
 static DEFAULT_ADMIN_ACCOUNT_SECRET_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::secp256k1_from_bytes([250; 32]).unwrap());
@@ -66,18 +75,32 @@ static PRIVATE_CHAIN_DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| 
 
     let proposer_account = GenesisAccount::account(
         DEFAULT_PROPOSER_PUBLIC_KEY.clone(),
-        // Default proposer account does not have balance as only the special account can hold
-        // tokens on private chains.
         Motes::new(U512::zero()),
         None,
     );
     default_accounts.push(proposer_account);
 
+    // One normal account that starts at genesis
     default_accounts.push(GenesisAccount::account(
         ACCOUNT_1_PUBLIC_KEY.clone(),
         Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE)),
         None,
     ));
+
+    // Set up genesis validators
+    {
+        let validator_1 = GenesisValidator::new(
+            Motes::new(DEFAULT_VALIDATOR_BONDED_AMOUNT),
+            DELEGATION_RATE_DENOMINATOR,
+        );
+        default_accounts.push(GenesisAccount::Account {
+            public_key: VALIDATOR_1_PUBLIC_KEY.clone(),
+            // Genesis validators for a private network doesn't have balances, but they are part of
+            // fixed set of validators
+            balance: Motes::new(U512::zero()),
+            validator: Some(validator_1),
+        });
+    }
 
     let admin_accounts = PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS.clone();
     let genesis_admins = admin_accounts.into_iter().map(GenesisAccount::from);
