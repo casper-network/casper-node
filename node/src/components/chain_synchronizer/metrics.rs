@@ -3,11 +3,12 @@ use prometheus::{self, Histogram, IntGauge, Registry};
 
 use crate::{types::Timestamp, utils};
 
-// Bucket parameters for the `chain_sync_sync_trie_store_duration_seconds` metric.
-// The last bucket is expected to catch processes taking up to 9+ hours (32768 secs).
-const SYNC_TRIE_STORE_BUCKET_START: f64 = 1.0;
-const SYNC_TRIE_STORE_BUCKET_FACTOR: f64 = 2.0;
-const SYNC_TRIE_STORE_BUCKET_COUNT: usize = 15;
+/// Bucket parameters for the `chain_sync_sync_trie_store_duration_seconds` and
+/// `chain_sync_fetch_deploys_duration_seconds` metrics. The last bucket is expected to catch
+/// processes taking up to 9+ hours (32768 secs).
+const SYNC_TRIE_OR_DEPLOY_BUCKET_START: f64 = 1.0;
+const SYNC_TRIE_OR_DEPLOY_BUCKET_FACTOR: f64 = 2.0;
+const SYNC_TRIE_OR_DEPLOY_BUCKET_COUNT: usize = 15;
 
 /// Metrics for the block proposer.
 #[derive(DataSize, Debug, Clone)]
@@ -56,7 +57,10 @@ pub(super) struct Metrics {
     /// Time in seconds of syncing trie store (global state download) during chain sync.
     #[data_size(skip)]
     pub(super) chain_sync_sync_trie_store_duration_seconds: Histogram,
-    /// Integer representing a height of a block that we've successfuly downloaded.
+    /// Time in seconds of fetching deploys during chain sync.
+    #[data_size(skip)]
+    pub(super) chain_sync_fetch_deploys_duration_seconds: Histogram,
+    /// Integer representing a height of a block that we've successfully downloaded.
     #[data_size(skip)]
     pub(super) chain_sync_block_height_synced: IntGauge,
     /// Registry stored to allow deregistration later.
@@ -127,9 +131,9 @@ impl Metrics {
             )?;
 
         let buckets = prometheus::exponential_buckets(
-            SYNC_TRIE_STORE_BUCKET_START,
-            SYNC_TRIE_STORE_BUCKET_FACTOR,
-            SYNC_TRIE_STORE_BUCKET_COUNT,
+            SYNC_TRIE_OR_DEPLOY_BUCKET_START,
+            SYNC_TRIE_OR_DEPLOY_BUCKET_FACTOR,
+            SYNC_TRIE_OR_DEPLOY_BUCKET_COUNT,
         )?;
 
         registry.register(Box::new(chain_sync_total_duration_seconds.clone()))?;
@@ -183,6 +187,12 @@ impl Metrics {
                 registry,
                 "chain_sync_sync_trie_store_duration_seconds",
                 "time in seconds of syncing trie store during chain sync",
+                buckets.clone(),
+            )?,
+            chain_sync_fetch_deploys_duration_seconds: utils::register_histogram_metric(
+                registry,
+                "chain_sync_fetch_deploys_duration_seconds",
+                "time in seconds of fetching deploys during chain sync",
                 buckets,
             )?,
             chain_sync_block_height_synced,
@@ -192,6 +202,11 @@ impl Metrics {
 
     pub(super) fn observe_sync_trie_store_duration_seconds(&self, start: Timestamp) {
         self.chain_sync_sync_trie_store_duration_seconds
+            .observe(start.elapsed().millis() as f64 / 1000.0);
+    }
+
+    pub(super) fn observe_fetch_deploys_duration_seconds(&self, start: Timestamp) {
+        self.chain_sync_fetch_deploys_duration_seconds
             .observe(start.elapsed().millis() as f64 / 1000.0);
     }
 }
