@@ -15,17 +15,12 @@ use casper_execution_engine::{
     core::{
         engine_state::{
             self,
-            engine_config::{
-                DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_QUERY_DEPTH,
-                DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT, DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-                DEFAULT_STRICT_ARGUMENT_CHECKING,
-            },
+            engine_config::{EngineConfigBuilder, DEFAULT_MINIMUM_DELEGATION_AMOUNT},
             genesis::{GenesisAccount, GenesisValidator},
-            EngineConfig, RewardItem,
+            RewardItem,
         },
         execution,
     },
-    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
     storage::global_state::in_memory::InMemoryGlobalState,
 };
 use casper_types::{
@@ -2605,15 +2600,9 @@ fn should_release_vfta_holder_stake() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let custom_engine_config = EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_ASSOCIATED_KEYS,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        NEW_MINIMUM_DELEGATION_AMOUNT,
-        DEFAULT_STRICT_ARGUMENT_CHECKING,
-        WasmConfig::default(),
-        SystemConfig::default(),
-    );
+    let custom_engine_config = EngineConfigBuilder::default()
+        .with_minimum_delegation_amount(NEW_MINIMUM_DELEGATION_AMOUNT)
+        .build();
 
     let global_state = InMemoryGlobalState::empty().expect("should create global state");
 

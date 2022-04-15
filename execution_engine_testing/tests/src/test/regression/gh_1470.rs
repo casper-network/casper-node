@@ -2,18 +2,12 @@ use std::collections::BTreeMap;
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_MAX_ASSOCIATED_KEYS,
-    DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_RUN_GENESIS_REQUEST,
+    MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::{
-    core::{
-        engine_state::{
-            engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, EngineConfig, Error,
-            SystemContractRegistry, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        },
-        execution,
-    },
-    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
+use casper_execution_engine::core::{
+    engine_state::{engine_config::EngineConfigBuilder, Error, SystemContractRegistry},
+    execution,
 };
 use casper_hashing::Digest;
 use casper_types::{
@@ -71,15 +65,9 @@ fn setup() -> InMemoryWasmTestBuilder {
 
     let strict_argument_checking = true;
 
-    let engine_config = EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_ASSOCIATED_KEYS,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-        strict_argument_checking,
-        WasmConfig::default(),
-        SystemConfig::default(),
-    );
+    let engine_config = EngineConfigBuilder::default()
+        .with_strict_argument_checking(strict_argument_checking)
+        .build();
 
     builder
         .upgrade_with_upgrade_request(engine_config, &mut upgrade_request)

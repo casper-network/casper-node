@@ -2,15 +2,11 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
+    MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{
-    core::engine_state::{
-        engine_config::{DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING},
-        EngineConfig, UpgradeConfig, DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-    },
+    core::engine_state::{engine_config::EngineConfigBuilder, EngineConfig, UpgradeConfig},
     shared::{
         host_function_costs::{Cost, HostFunction, HostFunctionCosts},
         opcode_costs::OpcodeCosts,
@@ -713,15 +709,10 @@ fn make_engine_config(new_mint_costs: MintCosts, new_wasm_config: WasmConfig) ->
         HandlePaymentCosts::default(),
         StandardPaymentCosts::default(),
     );
-    EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_ASSOCIATED_KEYS,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-        DEFAULT_STRICT_ARGUMENT_CHECKING,
-        new_wasm_config,
-        new_system_config,
-    )
+    EngineConfigBuilder::default()
+        .with_wasm_config(new_wasm_config)
+        .with_system_config(new_system_config)
+        .build()
 }
 
 fn make_wasm_config(new_host_function_costs: HostFunctionCosts) -> WasmConfig {
