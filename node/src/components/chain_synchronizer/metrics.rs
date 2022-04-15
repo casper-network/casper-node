@@ -161,6 +161,9 @@ impl Metrics {
         ))?;
         registry.register(Box::new(chain_sync_block_height_synced.clone()))?;
         registry.register(Box::new(chain_sync_execute_blocks_duration_seconds.clone()))?;
+        registry.register(Box::new(
+            chain_sync_fetch_and_store_initial_trusted_block_header_duration_seconds.clone(),
+        ))?;
 
         Ok(Metrics {
             chain_sync_total_duration_seconds,
