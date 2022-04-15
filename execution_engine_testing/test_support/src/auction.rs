@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use rand::Rng;
 
 use casper_execution_engine::core::engine_state::{
