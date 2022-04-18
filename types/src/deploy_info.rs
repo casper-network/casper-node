@@ -103,7 +103,7 @@ impl ToBytes for DeployInfo {
 }
 
 /// Generators for a `Deploy`
-#[cfg(any(feature = "gens", test))]
+#[cfg(any(feature = "testing", test))]
 pub(crate) mod gens {
     use alloc::vec::Vec;
 

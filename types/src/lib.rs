@@ -4,8 +4,7 @@
     not(any(
         feature = "json-schema",
         feature = "datasize",
-        feature = "gens",
-        feature = "crypto_std",
+        feature = "crypto-std",
         feature = "std",
         feature = "testing",
         test,
@@ -37,10 +36,10 @@ pub mod crypto;
 mod deploy_info;
 mod era_id;
 mod execution_result;
-#[cfg(any(feature = "crypto_std", test))]
+#[cfg(any(feature = "crypto-std", test))]
 pub mod file_utils;
 mod gas;
-#[cfg(any(feature = "gens", test))]
+#[cfg(any(feature = "testing", test))]
 pub mod gens;
 mod json_pretty_printer;
 mod key;

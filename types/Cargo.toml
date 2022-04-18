@@ -61,10 +61,11 @@ thiserror = "1"
 untrusted = "0.7.1"
 
 [features]
+crypto-std = ["derp", "getrandom", "once_cell", "pem", "thiserror", "untrusted"]
 json-schema = ["once_cell", "schemars"]
-gens = ["proptest"]
-crypto_std = ["derp", "pem", "thiserror", "once_cell", "untrusted", "getrandom"]
-testing = ["rand_pcg"]
+testing = ["proptest", "rand_pcg"]
+# DEPRECATED - use "testing" instead of "gens".
+gens = ["testing"]
 # DEPRECATED - enabling `std` has no effect.
 std = []
 
