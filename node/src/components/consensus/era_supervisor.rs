@@ -35,7 +35,7 @@ use crate::{
             cl_context::{ClContext, Keypair},
             consensus_protocol::{
                 ConsensusProtocol, EraReport, FinalizedBlock as CpFinalizedBlock, ProposedBlock,
-                ProtocolOutcome,
+                ProtocolOutcome, ProtocolOutcomes,
             },
             metrics::Metrics,
             validator_change::{ValidatorChange, ValidatorChanges},
@@ -305,24 +305,27 @@ impl EraSupervisor {
     /// Updates `next_executed_height` based on the given block header, and unpauses consensus if
     /// block execution has caught up with finalization.
     #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
-    fn executed_block(&mut self, block_header: &BlockHeader) {
+    fn executed_block(&mut self, block_header: &BlockHeader) -> ProtocolOutcomes<ClContext> {
         self.next_executed_height = self.next_executed_height.max(block_header.height() + 1);
-        self.update_consensus_pause();
+        self.update_consensus_pause()
     }
 
     /// Pauses or unpauses consensus: Whenever the last executed block is too far behind the last
     /// finalized block, we suspend consensus.
-    fn update_consensus_pause(&mut self) {
+    fn update_consensus_pause(&mut self) -> ProtocolOutcomes<ClContext> {
         let paused = self
             .next_block_height
             .saturating_sub(self.next_executed_height)
             > self.config.highway.max_execution_delay;
         match self.open_eras.get_mut(&self.current_era) {
             Some(era) => era.set_paused(paused),
-            None => error!(
-                era = self.current_era.value(),
-                "current era not initialized"
-            ),
+            None => {
+                error!(
+                    era = self.current_era.value(),
+                    "current era not initialized"
+                );
+                vec![]
+            }
         }
     }
 
@@ -676,12 +679,16 @@ impl EraSupervisor {
     pub(super) fn handle_block_added<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
+        rng: &mut NodeRng,
         block_header: BlockHeader,
     ) -> Effects<Event> {
         let our_pk = self.public_signing_key.clone();
         let our_sk = self.secret_signing_key.clone();
         let era_id = block_header.era_id();
-        self.executed_block(&block_header);
+        let effects_from_possible_unpause = {
+            let protocol_outcomes_from_possible_unpause = self.executed_block(&block_header);
+            self.handle_consensus_outcomes(effect_builder, rng, era_id, protocol_outcomes_from_possible_unpause)
+        };
         let mut effects = if self.is_validator_in(&our_pk, era_id) {
             effect_builder
                 .announce_created_finality_signature(FinalitySignature::new(
@@ -694,6 +701,7 @@ impl EraSupervisor {
         } else {
             Effects::new()
         };
+        effects.extend(effects_from_possible_unpause);
         if era_id < self.current_era {
             trace!(era = era_id.value(), "executed block in old era");
             return effects;
@@ -946,7 +954,11 @@ impl EraSupervisor {
                 self.next_block_height = self.next_block_height.max(finalized_block.height() + 1);
                 // Request execution of the finalized block.
                 effects.extend(execute_finalized_block(effect_builder, finalized_block).ignore());
-                self.update_consensus_pause();
+                let effects_from_possible_unpause = {
+                    let protocol_outcomes_from_possible_unpause = self.update_consensus_pause();
+                    self.handle_consensus_outcomes(effect_builder, rng, era_id, protocol_outcomes_from_possible_unpause)
+                };
+                effects.extend(effects_from_possible_unpause);
                 effects
             }
             ProtocolOutcome::ValidateConsensusValue {

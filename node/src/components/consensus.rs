@@ -308,7 +308,7 @@ where
             Event::BlockAdded {
                 header,
                 header_hash: _,
-            } => self.handle_block_added(effect_builder, *header),
+            } => self.handle_block_added(effect_builder, rng, *header),
             Event::ResolveValidity(resolve_validity) => {
                 self.resolve_validity(effect_builder, rng, resolve_validity)
             }
