@@ -9,6 +9,7 @@ use std::{
     sync::Arc,
 };
 
+use filesize::PathExt;
 use lmdb::DatabaseFlags;
 use log::LevelFilter;
 
@@ -292,6 +293,7 @@ impl LmdbWasmTestBuilder {
             scratch_engine_state: None,
             global_state_dir: Some(global_state_dir.as_ref().to_path_buf()),
             system_contract_registry: None,
+            global_state_dir: Some(global_state_dir.as_ref().to_path_buf()),
         }
     }
 
@@ -309,8 +311,19 @@ impl LmdbWasmTestBuilder {
         path.push(GLOBAL_STATE_DIR);
         path
     }
+
+    /// Returns the file size on disk of the backing lmdb file behind DbGlobalState.
+    pub fn lmdb_on_disk_size(&self) -> Option<u64> {
+        if let Some(path) = self.global_state_dir.as_ref() {
+            let mut path = path.clone();
+            path.push("data.lmdb");
+            return path.as_path().size_on_disk().ok();
+        }
+        None
+    }
+
     /// Execute and commit transforms from an ExecuteRequest into a scratch global state.
-    /// You MUST call write_scratch_to_db to flush these changes to DbGlobalState.
+    /// You MUST call write_scratch_to_lmdb to flush these changes to LmdbGlobalState.
     pub fn scratch_exec_and_commit(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
         if self.scratch_engine_state.is_none() {
             self.scratch_engine_state = Some(self.engine_state.get_scratch_engine_state());
@@ -354,12 +367,29 @@ impl LmdbWasmTestBuilder {
     pub fn write_scratch_to_db(&mut self) -> &mut Self {
         let prestate_hash = self.post_state_hash.expect("Should have genesis hash");
         if let Some(scratch) = self.scratch_engine_state.take() {
-            self.post_state_hash = Some(
-                self.engine_state
-                    .write_scratch_to_db(prestate_hash, scratch.into_inner())
-                    .unwrap(),
-            );
+            let new_state_root = self
+                .engine_state
+                .write_scratch_to_lmdb(prestate_hash, scratch.into_inner())
+                .unwrap();
+            self.post_state_hash = Some(new_state_root);
         }
+        self
+    }
+
+    /// run step against scratch global state.
+    pub fn step_with_scratch(&mut self, step_request: StepRequest) -> &mut Self {
+        if self.scratch_engine_state.is_none() {
+            self.scratch_engine_state = Some(self.engine_state.get_scratch_engine_state());
+        }
+
+        let cached_state = self
+            .scratch_engine_state
+            .as_ref()
+            .expect("scratch state should exist");
+
+        cached_state
+            .commit_step(CorrelationId::new(), step_request)
+            .expect("unable to run step request against scratch global state");
         self
     }
 }

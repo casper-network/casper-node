@@ -152,3 +152,12 @@ client/headers/**
 
 # OS X
 .DS_Store
+
+# Notes
+notes
+
+# sw* files in vim
+.*.sw*
+
+# disk use reports
+**/disk_use_report.csv

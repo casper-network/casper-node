@@ -21,7 +21,6 @@ use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet},
     convert::TryFrom,
-    path::PathBuf,
     rc::Rc,
 };
 
@@ -81,9 +80,8 @@ use crate::{
     },
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
     storage::{
-        self,
         global_state::{
-            db::DbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
+            lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
         },
         trie::Trie,
     },
@@ -120,56 +118,18 @@ impl EngineState<ScratchGlobalState> {
     }
 }
 
-impl EngineState<DbGlobalState> {
-    /// Migrate the given state roots from lmdb to rocksdb data store.
-    /// Returns Ok(true) if the migration was needed.
-    pub fn migrate_state_root_to_rocksdb_if_needed(
-        &self,
-        state_root: Digest,
-        limit_rate: bool,
-    ) -> Result<bool, storage::error::db::Error> {
-        let state_root_bytes = &state_root.value();
-
-        let root_migration_state = self
-            .state
-            .rocksdb_store
-            .rocksdb
-            .get_root_migration_state(state_root_bytes)?;
-
-        if !root_migration_state.is_complete() {
-            // was there a previous migration that had been interrupted?
-            let force = root_migration_state.is_incomplete();
-
-            // mark that we're starting the migration
-            self.state
-                .rocksdb_store
-                .rocksdb
-                .mark_state_root_migration_incomplete(state_root_bytes)?;
-
-            // perform migration
-            self.state
-                .migrate_state_root_to_rocksdb(state_root, limit_rate, force)?;
-
-            self.state
-                .rocksdb_store
-                .rocksdb
-                .mark_state_root_migration_completed(state_root_bytes)?;
-            return Ok(true);
-        }
-        Ok(false)
+impl EngineState<LmdbGlobalState> {
+    /// Gets underlyng LmdbGlobalState
+    pub fn get_state(&self) -> &LmdbGlobalState {
+        &self.state
     }
 
     /// Flushes the LMDB environment to disk when manual sync is enabled in the config.toml.
     pub fn flush_environment(&self) -> Result<(), lmdb::Error> {
-        if self.state.lmdb_environment.is_manual_sync_enabled() {
-            self.state.lmdb_environment.sync()?;
+        if self.state.environment.is_manual_sync_enabled() {
+            self.state.environment.sync()?;
         }
         Ok(())
-    }
-
-    /// Gets path to rocksdb data files.
-    pub fn data_path(&self) -> PathBuf {
-        self.state.rocksdb_store.path()
     }
 
     /// Provide a local cached-only version of engine-state.

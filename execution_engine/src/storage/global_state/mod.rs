@@ -4,7 +4,7 @@
 pub mod in_memory;
 
 /// Db implementation of global state.
-pub mod db;
+pub mod lmdb;
 
 /// Implementation of global state with cache.
 pub mod scratch;
@@ -75,7 +75,7 @@ pub enum CommitError {
     TransformError(transform::Error),
     /// Trie not found while attempting to validate cache write.
     #[error("Trie not found in cache {0}")]
-    TrieNotFoundDuringCacheValidate(Digest),
+    TrieNotFoundInCache(Digest),
 }
 
 /// Provides `commit` method.

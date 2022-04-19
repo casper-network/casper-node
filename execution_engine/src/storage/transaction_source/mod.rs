@@ -1,10 +1,9 @@
 use casper_types::bytesrepr::Bytes;
-use rocksdb::{BlockBasedOptions, Options};
 
-/// DB implementation of transaction source.
-pub mod db;
 /// In-memory implementation of transaction source.
 pub mod in_memory;
+/// DB implementation of transaction source.
+pub mod lmdb;
 
 /// Relative location (to storage) where rocksdb data will be stored.
 pub const ROCKS_DB_DATA_DIR: &str = "rocksdb-data";
@@ -79,40 +78,4 @@ pub trait TransactionSource<'a> {
 
     /// Creates a read-write transaction.
     fn create_read_write_txn(&'a self) -> Result<Self::ReadWriteTransaction, Self::Error>;
-}
-
-/// Default constructor for rocksdb options.
-pub fn rocksdb_defaults() -> Options {
-    let mut factory_opts = BlockBasedOptions::default();
-    factory_opts.set_block_size(ROCKS_DB_BLOCK_SIZE_BYTES);
-
-    let mut db_opts = Options::default();
-    db_opts.set_block_based_table_factory(&factory_opts);
-
-    db_opts.set_compression_type(ROCKS_DB_COMPRESSION_TYPE);
-    db_opts.set_compression_options(
-        ROCKS_DB_WINDOW_BITS,
-        ROCKS_DB_ZSTD_COMPRESSION_LEVEL,
-        ROCKS_DB_ZSTD_STRATEGY,
-        ROCKS_DB_ZSTD_MAX_DICT_BYTES,
-    );
-
-    // seems to lead to a sporadic segfault within rocksdb compaction
-    // const ROCKS_DB_ZSTD_MAX_TRAIN_BYTES: i32 = 1024 * 1024; // 1 MB
-    // db_opts.set_zstd_max_train_bytes(ROCKS_DB_ZSTD_MAX_TRAIN_BYTES);
-
-    db_opts.set_compaction_style(ROCKS_DB_COMPACTION_STYLE);
-    db_opts.set_max_bytes_for_level_base(ROCKS_DB_MAX_LEVEL_FILE_SIZE_BYTES);
-    db_opts.set_max_open_files(ROCKS_DB_MAX_OPEN_FILES);
-
-    db_opts.create_missing_column_families(true);
-    db_opts.create_if_missing(true);
-
-    // recommended to match # of cores on host.
-    db_opts.increase_parallelism(num_cpus::get() as i32);
-
-    db_opts.create_missing_column_families(true);
-    db_opts.create_if_missing(true);
-
-    db_opts
 }

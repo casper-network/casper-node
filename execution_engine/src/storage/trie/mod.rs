@@ -3,7 +3,9 @@
 use std::{
     convert::TryInto,
     fmt::{self, Debug, Display, Formatter},
+    iter::Flatten,
     mem::MaybeUninit,
+    slice,
 };
 
 use serde::{
@@ -413,18 +415,40 @@ impl<K, V> Trie<K, V> {
         }
     }
 
-    /// Get children of this node.
-    pub fn children(&self) -> Option<Vec<Digest>> {
+    /// Returns an iterator over descendants of the trie.
+    pub fn iter_descendants(&self) -> DescendantsIterator {
         match self {
-            // A leaf has no child to extract
-            Trie::Leaf { .. } => None,
-            Trie::Node { pointer_block } => Some(
-                pointer_block
-                    .as_indexed_pointers()
-                    .map(|(_index, ptr)| *ptr.hash())
-                    .collect(),
-            ),
-            Trie::Extension { affix: _, pointer } => Some(vec![*pointer.hash()]),
+            Trie::<K, V>::Leaf { .. } => DescendantsIterator::ZeroOrOne(None),
+            Trie::Node { pointer_block } => DescendantsIterator::PointerBlock {
+                iter: pointer_block.0.iter().flatten(),
+            },
+            Trie::Extension { pointer, .. } => {
+                DescendantsIterator::ZeroOrOne(Some(pointer.into_hash()))
+            }
+        }
+    }
+}
+
+/// An iterator over the descendants of a trie node.
+pub enum DescendantsIterator<'a> {
+    /// A leaf (zero descendants) or extension (one descendant) being iterated.
+    ZeroOrOne(Option<Digest>),
+    /// A pointer block being iterated.
+    PointerBlock {
+        /// An iterator over the non-None entries of the `PointerBlock`.
+        iter: Flatten<slice::Iter<'a, Option<Pointer>>>,
+    },
+}
+
+impl<'a> Iterator for DescendantsIterator<'a> {
+    type Item = Digest;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match *self {
+            DescendantsIterator::ZeroOrOne(ref mut maybe_digest) => maybe_digest.take(),
+            DescendantsIterator::PointerBlock { ref mut iter } => {
+                iter.next().map(|pointer| *pointer.hash())
+            }
         }
     }
 }

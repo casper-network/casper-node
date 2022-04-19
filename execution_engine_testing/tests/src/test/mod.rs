@@ -1,3 +1,4 @@
+mod bulk_update_with_scratch_trie;
 mod check_transfer_success;
 mod contract_api;
 mod contract_context;

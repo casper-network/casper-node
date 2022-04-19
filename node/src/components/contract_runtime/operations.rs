@@ -103,10 +103,10 @@ pub fn execute_finalized_block(
     let maybe_step_effect_and_upcoming_era_validators =
         if let Some(era_report) = finalized_block.era_report() {
             let StepSuccess {
-                post_state_hash: _,
+                post_state_hash: _, // ignore the post-state-hash returned from scratch
                 execution_journal: step_execution_journal,
             } = commit_step(
-                &scratch_state,
+                &scratch_state, // engine_state
                 metrics.clone(),
                 protocol_version,
                 state_root_hash,
