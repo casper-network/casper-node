@@ -14,7 +14,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Added
 * Introduce fast-syncing to join the network, avoiding the need to execute every block to catch up.
-* Add `max_parallel_deploy_fetches` and `max_parallel_trie_fetches` config options to the `[node]` section to control how many requests are made in parallel while syncing.
+* Add `max_parallel_deploy_fetches_per_peer` and `max_parallel_trie_fetches_per_peer` config options to the `[node]` section to control how many requests are made in parallel while syncing.
 * Add `retry_interval` to `[node]` config section to control the delay between retry attempts while syncing.
 * Add `sync_to_genesis` to `[node]` config section, along with syncing to genesis capabilities.
 * Add new event to the main SSE server stream across all endpoints `<IP:PORT>/events/*` which emits a shutdown event when the node shuts down.
