@@ -103,15 +103,21 @@
 //!
 //! tmp_dir.close().unwrap();
 //! ```
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
-use lmdb::{Database, DatabaseFlags};
+use casper_types::{bytesrepr, Key, StoredValue};
+use lmdb::{Database, DatabaseFlags, Transaction};
 
 use casper_hashing::Digest;
 
 use crate::storage::{
     error,
+    global_state::CommitError,
     store::Store,
-    transaction_source::lmdb::LmdbEnvironment,
+    transaction_source::{lmdb::LmdbEnvironment, Readable, TransactionSource, Writable},
     trie::Trie,
     trie_store::{self, TrieStore},
 };
@@ -148,6 +154,11 @@ impl LmdbTrieStore {
             .map(|name| format!("{}-{}", trie_store::NAME, name))
             .unwrap_or_else(|| String::from(trie_store::NAME))
     }
+
+    /// Get a handle to the underlying database.
+    pub fn get_db(&self) -> Database {
+        self.db
+    }
 }
 
 impl<K, V> Store<Digest, Trie<K, V>> for LmdbTrieStore {
@@ -161,3 +172,150 @@ impl<K, V> Store<Digest, Trie<K, V>> for LmdbTrieStore {
 }
 
 impl<K, V> TrieStore<K, V> for LmdbTrieStore {}
+
+pub(crate) type Cache = Arc<Mutex<HashMap<Digest, (bool, Trie<Key, StoredValue>)>>>;
+/// In-memory cached trie store, backed by rocksdb.
+#[derive(Clone)]
+pub struct ScratchCache {
+    pub(crate) cache: Cache,
+    pub(crate) store: Arc<LmdbTrieStore>,
+    pub(crate) env: Arc<LmdbEnvironment>,
+}
+
+/// Cached version of the trie store.
+#[derive(Clone)]
+pub struct ScratchTrieStore {
+    pub(crate) inner: ScratchCache,
+}
+
+impl ScratchTrieStore {
+    /// Creates a new ScratchTrieStore.
+    pub fn new(store: Arc<LmdbTrieStore>, env: Arc<LmdbEnvironment>) -> Self {
+        Self {
+            inner: ScratchCache {
+                store,
+                env,
+                cache: Default::default(),
+            },
+        }
+    }
+
+    /// Writes all dirty (modified) cached tries to underlying db.
+    pub fn write_all_tries_to_db(self, new_state_root: Digest) -> Result<(), error::Error> {
+        let env = self.inner.env;
+        let store = self.inner.store;
+        let cache = &mut *self.inner.cache.lock().map_err(|_| error::Error::Poison)?;
+
+        let mut missing_trie_keys = vec![new_state_root];
+        let mut validated_tries = HashMap::new();
+
+        let mut txn = env.create_read_write_txn()?;
+
+        while let Some(next_trie_key) = missing_trie_keys.pop() {
+            if cache.is_empty() {
+                return Err(error::Error::CommitError(
+                    CommitError::TrieNotFoundDuringCacheValidate(next_trie_key),
+                ));
+            }
+            match cache.remove(&next_trie_key) {
+                Some((false, _)) => continue,
+                None => {
+                    txn.read(store.get_db(), next_trie_key.as_ref())?.ok_or(
+                        error::Error::CommitError(CommitError::TrieNotFoundDuringCacheValidate(
+                            next_trie_key,
+                        )),
+                    )?;
+                }
+                Some((true, trie)) => {
+                    if let Some(children) = trie.children() {
+                        missing_trie_keys.extend(children);
+                    }
+                    validated_tries.insert(next_trie_key, trie);
+                }
+            }
+        }
+
+        // after validating that all the needed tries are present, write everything
+        for (digest, trie) in validated_tries.iter() {
+            store.put(&mut txn, digest, trie)?;
+        }
+
+        // required for lmdb
+        txn.commit()?;
+
+        Ok(())
+    }
+}
+
+impl Store<Digest, Trie<Key, StoredValue>> for ScratchTrieStore {
+    type Error = error::Error;
+
+    type Handle = ScratchCache;
+
+    fn handle(&self) -> Self::Handle {
+        self.inner.clone()
+    }
+
+    /// Puts a `value` into the store at `key` within a transaction, potentially returning an
+    /// error of type `Self::Error` if that fails.
+    fn put<T>(
+        &self,
+        _txn: &mut T,
+        digest: &Digest,
+        trie: &Trie<Key, StoredValue>,
+    ) -> Result<(), Self::Error>
+    where
+        T: Writable<Handle = Self::Handle>,
+        Self::Error: From<T::Error>,
+    {
+        self.inner
+            .cache
+            .lock()
+            .map_err(|_| error::Error::Poison)?
+            .insert(*digest, (true, trie.clone()));
+        Ok(())
+    }
+
+    /// Returns an optional value (may exist or not) as read through a transaction, or an error
+    /// of the associated `Self::Error` variety.
+    fn get<T>(
+        &self,
+        txn: &T,
+        digest: &Digest,
+    ) -> Result<Option<Trie<Key, StoredValue>>, Self::Error>
+    where
+        T: Readable<Handle = Self::Handle>,
+        Self::Error: From<T::Error>,
+    {
+        let maybe_trie = {
+            self.inner
+                .cache
+                .lock()
+                .map_err(|_| error::Error::Poison)?
+                .get(digest)
+                .cloned()
+        };
+        match maybe_trie {
+            Some((_, cached)) => Ok(Some(cached)),
+            None => {
+                let raw = self.get_raw(txn, digest)?;
+                match raw {
+                    Some(bytes) => {
+                        let value: Trie<Key, StoredValue> = bytesrepr::deserialize(bytes.into())?;
+                        {
+                            let store =
+                                &mut *self.inner.cache.lock().map_err(|_| error::Error::Poison)?;
+                            if !store.contains_key(digest) {
+                                store.insert(*digest, (false, value.clone()));
+                            }
+                        }
+                        Ok(Some(value))
+                    }
+                    None => Ok(None),
+                }
+            }
+        }
+    }
+}
+
+impl TrieStore<Key, StoredValue> for ScratchTrieStore {}

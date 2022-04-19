@@ -536,6 +536,21 @@ impl<K, V> Trie<K, V> {
             None
         }
     }
+
+    /// Get children of this node.
+    pub fn children(&self) -> Option<Vec<Digest>> {
+        match self {
+            // A leaf has no child to extract
+            Trie::Leaf { .. } => None,
+            Trie::Node { pointer_block } => Some(
+                pointer_block
+                    .as_indexed_pointers()
+                    .map(|(_index, ptr)| *ptr.hash())
+                    .collect(),
+            ),
+            Trie::Extension { affix: _, pointer } => Some(vec![*pointer.hash()]),
+        }
+    }
 }
 
 /// Hash bytes into chunks if necessary.
