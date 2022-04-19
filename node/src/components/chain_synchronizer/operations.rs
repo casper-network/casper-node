@@ -70,19 +70,19 @@ impl<'a> Drop for ScopeTimer<'a> {
     }
 }
 
-struct ChainSyncContext<'a> {
-    effect_builder: &'a EffectBuilder<JoinerEvent>,
-    config: &'a Config,
-    trusted_block_header: &'a BlockHeader,
-    metrics: &'a Metrics,
+struct ChainSyncContext {
+    effect_builder: EffectBuilder<JoinerEvent>,
+    config: Config,
+    trusted_block_header: Box<BlockHeader>,
+    metrics: Metrics,
 }
 
-impl<'a> ChainSyncContext<'a> {
+impl ChainSyncContext {
     fn new(
-        effect_builder: &'a EffectBuilder<JoinerEvent>,
-        config: &'a Config,
-        trusted_block_header: &'a BlockHeader,
-        metrics: &'a Metrics,
+        effect_builder: EffectBuilder<JoinerEvent>,
+        config: Config,
+        trusted_block_header: Box<BlockHeader>,
+        metrics: Metrics,
     ) -> Self {
         Self {
             effect_builder,
@@ -164,11 +164,11 @@ enum TrieAlreadyPresentOrDownloaded {
 
 async fn fetch_trie_retry_forever(
     id: Digest,
-    ctx: &ChainSyncContext<'_>,
+    ctx: &ChainSyncContext,
 ) -> Result<TrieAlreadyPresentOrDownloaded, FetchTrieError> {
     let trie_or_chunk = match fetch_retry_forever::<TrieOrChunk>(
-        *ctx.effect_builder,
-        ctx.config,
+        ctx.effect_builder,
+        &ctx.config,
         TrieOrChunkId(0, id),
     )
     .await?
@@ -199,8 +199,8 @@ async fn fetch_trie_retry_forever(
     let chunk_map_result = futures::stream::iter(1..count)
         .map(|index| async move {
             match fetch_retry_forever::<TrieOrChunk>(
-                *ctx.effect_builder,
-                ctx.config,
+                ctx.effect_builder,
+                &ctx.config,
                 TrieOrChunkId(index, id),
             )
             .await?
@@ -278,10 +278,10 @@ async fn fetch_and_store_block_header(
 /// Fetches and stores a deploy.
 async fn fetch_and_store_deploy(
     deploy_or_transfer_hash: DeployHash,
-    ctx: &ChainSyncContext<'_>,
+    ctx: &ChainSyncContext,
 ) -> Result<Box<Deploy>, FetcherError<Deploy>> {
     let fetched_deploy =
-        fetch_retry_forever::<Deploy>(*ctx.effect_builder, ctx.config, deploy_or_transfer_hash)
+        fetch_retry_forever::<Deploy>(ctx.effect_builder, &ctx.config, deploy_or_transfer_hash)
             .await?;
     Ok(match fetched_deploy {
         FetchedData::FromStorage { item: deploy } => deploy,
@@ -300,7 +300,7 @@ async fn fetch_and_store_deploy(
 async fn fetch_finalized_approvals(
     deploy_hash: DeployHash,
     peer: NodeId,
-    ctx: &ChainSyncContext<'_>,
+    ctx: &ChainSyncContext,
 ) -> Result<FinalizedApprovalsWithId, FetcherError<FinalizedApprovalsWithId>> {
     let fetched_approvals = ctx
         .effect_builder
@@ -415,7 +415,7 @@ impl BlockOrHeaderWithMetadata for BlockHeaderWithMetadata {
 async fn fetch_and_store_next<I>(
     parent_header: &BlockHeader,
     trusted_key_block_info: &KeyBlockInfo,
-    ctx: &ChainSyncContext<'_>,
+    ctx: &ChainSyncContext,
 ) -> Result<Option<Box<I>>, Error>
 where
     I: BlockOrHeaderWithMetadata,
@@ -492,7 +492,7 @@ where
                 }
 
                 // Store the block or header itself, and the finality signatures.
-                item.store_block_or_header(*ctx.effect_builder).await;
+                item.store_block_or_header(ctx.effect_builder).await;
                 let sigs = item.finality_signatures().clone();
                 ctx.effect_builder.put_signatures_to_storage(sigs).await;
 
@@ -544,7 +544,7 @@ fn check_block_version(
 /// returns any outstanding descendant tries.
 async fn fetch_and_store_trie(
     trie_key: Digest,
-    ctx: &ChainSyncContext<'_>,
+    ctx: &ChainSyncContext,
 ) -> Result<Vec<Digest>, Error> {
     let fetched_trie = fetch_trie_retry_forever(trie_key, ctx).await?;
     match fetched_trie {
@@ -562,10 +562,10 @@ async fn fetch_and_store_trie(
 /// Downloads and stores a block.
 async fn fetch_and_store_block_by_hash(
     block_hash: BlockHash,
-    ctx: &ChainSyncContext<'_>,
+    ctx: &ChainSyncContext,
 ) -> Result<Box<Block>, FetcherError<Block>> {
     let fetched_block =
-        fetch_retry_forever::<Block>(*ctx.effect_builder, ctx.config, block_hash).await?;
+        fetch_retry_forever::<Block>(ctx.effect_builder, &ctx.config, block_hash).await?;
     match fetched_block {
         FetchedData::FromStorage { item: block, .. } => Ok(block),
         FetchedData::FromPeer { item: block, .. } => {
@@ -580,7 +580,7 @@ async fn sync_trie_store_worker(
     worker_id: usize,
     abort: Arc<AtomicBool>,
     queue: Arc<WorkQueue<Digest>>,
-    ctx: &ChainSyncContext<'_>,
+    ctx: &ChainSyncContext,
 ) -> Result<(), Error> {
     while let Some(job) = queue.next_job().await {
         trace!(worker_id, trie_key = %job.inner(), "worker downloading trie");
@@ -604,7 +604,7 @@ async fn sync_trie_store_worker(
 }
 
 /// Synchronizes the trie store under a given state root hash.
-async fn sync_trie_store(state_root_hash: Digest, ctx: &ChainSyncContext<'_>) -> Result<(), Error> {
+async fn sync_trie_store(state_root_hash: Digest, ctx: &ChainSyncContext) -> Result<(), Error> {
     info!(?state_root_hash, "syncing trie store",);
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_sync_trie_store_duration_seconds);
 
@@ -631,8 +631,8 @@ async fn sync_trie_store(state_root_hash: Digest, ctx: &ChainSyncContext<'_>) ->
 /// This function does not check for missing descendants for existing tries, the invariant of there
 /// being no trie nodes with missing descendants is assumed.
 #[async_recursion]
-async fn recursive_trie_download(hash: Digest, ctx: &ChainSyncContext<'_>) -> Result<(), Error> {
-    let fetched_trie = fetch_trie_retry_forever(hash, ctx).await?;
+async fn recursive_trie_download(hash: Digest, ctx: Arc<ChainSyncContext>) -> Result<(), Error> {
+    let fetched_trie = fetch_trie_retry_forever(hash, &ctx).await?;
 
     match fetched_trie {
         TrieAlreadyPresentOrDownloaded::AlreadyPresent => {
@@ -653,7 +653,7 @@ async fn recursive_trie_download(hash: Digest, ctx: &ChainSyncContext<'_>) -> Re
                         // the trie downloads.
                         //
                         // Note: When limiting fanout, ensure no deadlocks occur.
-                        tokio::spawn(recursive_trie_download(digest, ctx))
+                        tokio::spawn(recursive_trie_download(digest, ctx.clone()))
                     })
                     .collect();
 
@@ -695,7 +695,7 @@ async fn recursive_trie_download(hash: Digest, ctx: &ChainSyncContext<'_>) -> Re
 ///
 /// Returns the most recent block header along with the last trusted key block information for
 /// validation.
-async fn fast_sync(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, BlockHeader), Error> {
+async fn fast_sync(ctx: &ChainSyncContext) -> Result<(KeyBlockInfo, BlockHeader), Error> {
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fast_sync_total_duration_seconds);
 
     let trusted_key_block_info = get_trusted_key_block_info(ctx).await?;
@@ -724,7 +724,7 @@ async fn fast_sync(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, BlockHea
 }
 
 /// Gets the trusted key block info for a trusted block header.
-async fn get_trusted_key_block_info(ctx: &ChainSyncContext<'_>) -> Result<KeyBlockInfo, Error> {
+async fn get_trusted_key_block_info(ctx: &ChainSyncContext) -> Result<KeyBlockInfo, Error> {
     let _metric = ScopeTimer::new(
         &ctx.metrics
             .chain_sync_get_trusted_key_block_info_duration_seconds,
@@ -734,7 +734,7 @@ async fn get_trusted_key_block_info(ctx: &ChainSyncContext<'_>) -> Result<KeyBlo
     if ctx.trusted_block_header.protocol_version() > ctx.config.protocol_version() {
         return Err(Error::RetrievedBlockHeaderFromFutureVersion {
             current_version: ctx.config.protocol_version(),
-            block_header_with_future_version: Box::new(ctx.trusted_block_header.clone()),
+            block_header_with_future_version: ctx.trusted_block_header.clone(),
         });
     }
 
@@ -748,7 +748,7 @@ async fn get_trusted_key_block_info(ctx: &ChainSyncContext<'_>) -> Result<KeyBlo
                 if last_emergency_restart > current_header_to_walk_back_from.era_id() =>
             {
                 return Err(Error::TrustedHeaderEraTooEarly {
-                    trusted_header: Box::new(ctx.trusted_block_header.clone()),
+                    trusted_header: ctx.trusted_block_header.clone(),
                     maybe_last_emergency_restart_era_id: ctx.config.last_emergency_restart(),
                 })
             }
@@ -759,19 +759,19 @@ async fn get_trusted_key_block_info(ctx: &ChainSyncContext<'_>) -> Result<KeyBlo
             &current_header_to_walk_back_from,
             ctx.config.verifiable_chunked_hash_activation(),
         ) {
-            check_block_version(ctx.trusted_block_header, ctx.config.protocol_version())?;
+            check_block_version(&ctx.trusted_block_header, ctx.config.protocol_version())?;
             break Ok(key_block_info);
         }
 
         if current_header_to_walk_back_from.height() == 0 {
             break Err(Error::HitGenesisBlockTryingToGetTrustedEraValidators {
-                trusted_header: ctx.trusted_block_header.clone(),
+                trusted_header: *ctx.trusted_block_header.clone(),
             });
         }
 
-        current_header_to_walk_back_from = *fetch_and_store_block_header(
-            *ctx.effect_builder,
-            ctx.config,
+        current_header_to_walk_back_from = fetch_and_store_block_header(
+            ctx.effect_builder,
+            &ctx.config,
             *current_header_to_walk_back_from.parent_hash(),
         )
         .await?;
@@ -783,7 +783,7 @@ async fn get_trusted_key_block_info(ctx: &ChainSyncContext<'_>) -> Result<KeyBlo
 /// the current era.
 async fn fetch_block_headers_up_to_the_most_recent_one(
     trusted_key_block_info: &KeyBlockInfo,
-    ctx: &ChainSyncContext<'_>,
+    ctx: &ChainSyncContext,
 ) -> Result<(BlockHeader, KeyBlockInfo), Error> {
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fetch_block_headers_duration_seconds);
 
@@ -798,7 +798,8 @@ async fn fetch_block_headers_up_to_the_most_recent_one(
         .await?;
 
         if let Some(more_recent_block_header_with_metadata) = maybe_fetched_block {
-            most_recent_block_header = more_recent_block_header_with_metadata.block_header;
+            most_recent_block_header =
+                Box::new(more_recent_block_header_with_metadata.block_header);
 
             // If the new block is a switch block, update the validator weights, etc...
             if let Some(key_block_info) = KeyBlockInfo::maybe_from_block_header(
@@ -816,12 +817,12 @@ async fn fetch_block_headers_up_to_the_most_recent_one(
         if is_current_era(
             &most_recent_block_header,
             &most_recent_key_block_info,
-            ctx.config,
+            &ctx.config,
         ) {
             break;
         }
     }
-    Ok((most_recent_block_header, most_recent_key_block_info))
+    Ok((*most_recent_block_header, most_recent_key_block_info))
 }
 
 /// Fetch and store all blocks that can contain not-yet-expired deploys. These are needed for
@@ -829,7 +830,7 @@ async fn fetch_block_headers_up_to_the_most_recent_one(
 async fn fetch_blocks_for_deploy_replay_protection(
     most_recent_block_header: &BlockHeader,
     most_recent_key_block_info: &KeyBlockInfo,
-    ctx: &ChainSyncContext<'_>,
+    ctx: &ChainSyncContext,
 ) -> Result<(), Error> {
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_replay_protection_duration_seconds);
 
@@ -851,7 +852,7 @@ async fn fetch_blocks_for_deploy_replay_protection(
 /// initialize the most recent eras.
 async fn fetch_block_headers_needed_for_era_supervisor_initialization(
     most_recent_block_header: &BlockHeader,
-    ctx: &ChainSyncContext<'_>,
+    ctx: &ChainSyncContext,
 ) -> Result<(), Error> {
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_era_supervisor_init_duration_seconds);
 
@@ -863,8 +864,8 @@ async fn fetch_block_headers_needed_for_era_supervisor_initialization(
     let mut current_walk_back_header = most_recent_block_header.clone();
     while current_walk_back_header.era_id() > earliest_era_needed_by_era_supervisor {
         current_walk_back_header = *fetch_and_store_block_header(
-            *ctx.effect_builder,
-            ctx.config,
+            ctx.effect_builder,
+            &ctx.config,
             *current_walk_back_header.parent_hash(),
         )
         .await?;
@@ -875,7 +876,7 @@ async fn fetch_block_headers_needed_for_era_supervisor_initialization(
 /// Downloads and saves the deploys and transfers for a block.
 async fn sync_deploys_and_transfers_and_state(
     block: &Block,
-    ctx: &ChainSyncContext<'_>,
+    ctx: &ChainSyncContext,
 ) -> Result<(), Error> {
     fetch_and_store_deploys(
         block.deploy_hashes().iter().chain(block.transfer_hashes()),
@@ -907,7 +908,7 @@ async fn sync_deploys_and_transfers_and_state(
 ///
 /// Returns the block header with our current version and the last trusted key block information for
 /// validation.
-async fn sync_to_genesis(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, BlockHeader), Error> {
+async fn sync_to_genesis(ctx: &ChainSyncContext) -> Result<(KeyBlockInfo, BlockHeader), Error> {
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_to_genesis_total_duration_seconds);
 
     // Get the trusted block info. This will fail if we are trying to join with a trusted hash in
@@ -927,7 +928,7 @@ async fn sync_to_genesis(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, Bl
 async fn fetch_forward(
     trusted_block: Block,
     trusted_key_block_info: &mut KeyBlockInfo,
-    ctx: &ChainSyncContext<'_>,
+    ctx: &ChainSyncContext,
 ) -> Result<Block, Error> {
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fetch_forward_duration_seconds);
 
@@ -957,7 +958,7 @@ async fn fetch_forward(
     Ok(most_recent_block)
 }
 
-async fn fetch_to_genesis(trusted_block: &Block, ctx: &ChainSyncContext<'_>) -> Result<(), Error> {
+async fn fetch_to_genesis(trusted_block: &Block, ctx: &ChainSyncContext) -> Result<(), Error> {
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fetch_to_genesis_duration_seconds);
 
     let locally_available_block_range = ctx
@@ -1011,7 +1012,8 @@ pub(super) async fn run_chain_sync_task(
     metrics: Metrics,
     trusted_hash: BlockHash,
 ) -> Result<BlockHeader, Error> {
-    let _metric = ScopeTimer::new(&metrics.chain_sync_total_duration_seconds);
+    let chain_sync_total_duration_seconds = metrics.chain_sync_total_duration_seconds.clone();
+    let _metric = ScopeTimer::new(&chain_sync_total_duration_seconds);
 
     let trusted_block_header = fetch_and_store_initial_trusted_block_header(
         effect_builder,
@@ -1022,23 +1024,24 @@ pub(super) async fn run_chain_sync_task(
     .await?;
 
     let chain_sync_context =
-        ChainSyncContext::new(&effect_builder, &config, &trusted_block_header, &metrics);
+        ChainSyncContext::new(effect_builder, config, trusted_block_header, metrics);
 
     verify_trusted_block_header(&chain_sync_context)?;
 
     if handle_emergency_restart(&chain_sync_context).await? {
-        return Ok(*trusted_block_header);
+        return Ok(*chain_sync_context.trusted_block_header);
     }
 
     if handle_upgrade(&chain_sync_context).await? {
-        return Ok(*trusted_block_header);
+        return Ok(*chain_sync_context.trusted_block_header);
     }
 
-    let (trusted_key_block_info, most_recent_block_header) = if config.sync_to_genesis() {
-        sync_to_genesis(&chain_sync_context).await?
-    } else {
-        fast_sync(&chain_sync_context).await?
-    };
+    let (trusted_key_block_info, most_recent_block_header) =
+        if chain_sync_context.config.sync_to_genesis() {
+            sync_to_genesis(&chain_sync_context).await?
+        } else {
+            fast_sync(&chain_sync_context).await?
+        };
 
     // Iterate forwards, fetching each full block and deploys but executing each block to generate
     // global state. Stop once we get to a block in the current era.
@@ -1074,11 +1077,11 @@ async fn fetch_and_store_initial_trusted_block_header(
     Ok(trusted_block_header)
 }
 
-fn verify_trusted_block_header(ctx: &ChainSyncContext<'_>) -> Result<(), Error> {
+fn verify_trusted_block_header(ctx: &ChainSyncContext) -> Result<(), Error> {
     if ctx.trusted_block_header.protocol_version() > ctx.config.protocol_version() {
         return Err(Error::RetrievedBlockHeaderFromFutureVersion {
             current_version: ctx.config.protocol_version(),
-            block_header_with_future_version: Box::new(ctx.trusted_block_header.clone()),
+            block_header_with_future_version: ctx.trusted_block_header.clone(),
         });
     }
 
@@ -1105,7 +1108,7 @@ fn verify_trusted_block_header(ctx: &ChainSyncContext<'_>) -> Result<(), Error> 
     Ok(())
 }
 
-async fn handle_emergency_restart(ctx: &ChainSyncContext<'_>) -> Result<bool, Error> {
+async fn handle_emergency_restart(ctx: &ChainSyncContext) -> Result<bool, Error> {
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_emergency_restart_duration_seconds);
 
     let maybe_last_emergency_restart_era_id = ctx.config.last_emergency_restart();
@@ -1117,7 +1120,7 @@ async fn handle_emergency_restart(ctx: &ChainSyncContext<'_>) -> Result<bool, Er
             return Err(Error::TryingToJoinBeforeLastEmergencyRestartEra {
                 last_emergency_restart_era,
                 trusted_hash: ctx.trusted_hash(),
-                trusted_block_header: Box::new(ctx.trusted_block_header.clone()),
+                trusted_block_header: ctx.trusted_block_header.clone(),
             });
         }
         // If the trusted hash specifies the last block before the emergency restart, we have to
@@ -1134,7 +1137,7 @@ async fn handle_emergency_restart(ctx: &ChainSyncContext<'_>) -> Result<bool, Er
     Ok(false)
 }
 
-async fn handle_upgrade(ctx: &ChainSyncContext<'_>) -> Result<bool, Error> {
+async fn handle_upgrade(ctx: &ChainSyncContext) -> Result<bool, Error> {
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_upgrade_duration_seconds);
 
     // If we are at an upgrade:
@@ -1148,7 +1151,7 @@ async fn handle_upgrade(ctx: &ChainSyncContext<'_>) -> Result<bool, Error> {
         let trusted_key_block_info = get_trusted_key_block_info(ctx).await?;
 
         let fetch_and_store_next_result = fetch_and_store_next::<BlockHeaderWithMetadata>(
-            ctx.trusted_block_header,
+            &ctx.trusted_block_header,
             &trusted_key_block_info,
             ctx,
         )
@@ -1169,7 +1172,7 @@ async fn retry_execution_with_approvals_from_peer(
     peer: NodeId,
     block: &Block,
     execution_pre_state: &ExecutionPreState,
-    ctx: &ChainSyncContext<'_>,
+    ctx: &ChainSyncContext,
 ) -> Result<BlockAndExecutionEffects, Error> {
     for deploy in deploys.iter_mut().chain(transfers.iter_mut()) {
         let new_approvals = fetch_finalized_approvals(*deploy.id(), peer, ctx).await?;
@@ -1194,7 +1197,7 @@ const APPROVAL_FETCH_RETRIES: usize = 2;
 async fn execute_blocks(
     most_recent_block_header: &BlockHeader,
     trusted_key_block_info: &KeyBlockInfo,
-    ctx: &ChainSyncContext<'_>,
+    ctx: &ChainSyncContext,
 ) -> Result<BlockHeader, Error> {
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_execute_blocks_duration_seconds);
 
@@ -1225,7 +1228,7 @@ async fn execute_blocks(
                 let in_current_era = is_current_era(
                     &most_recent_block_header,
                     &trusted_key_block_info,
-                    ctx.config,
+                    &ctx.config,
                 );
                 info!(
                     era = most_recent_block_header.era_id().value(),
@@ -1332,7 +1335,7 @@ async fn execute_blocks(
         if is_current_era(
             &most_recent_block_header,
             &trusted_key_block_info,
-            ctx.config,
+            &ctx.config,
         ) {
             info!(
                 era = most_recent_block_header.era_id().value(),
@@ -1348,7 +1351,7 @@ async fn execute_blocks(
 
 async fn fetch_and_store_deploys(
     hashes: impl Iterator<Item = &DeployHash>,
-    ctx: &ChainSyncContext<'_>,
+    ctx: &ChainSyncContext,
 ) -> Result<Vec<Deploy>, Error> {
     let hashes: Vec<_> = hashes.cloned().collect();
     let mut deploys: Vec<Deploy> = Vec::with_capacity(hashes.len());
