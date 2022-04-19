@@ -1,24 +1,35 @@
+use std::{collections::HashSet, convert::TryFrom, io::Write, time::Instant};
+
+use casper_hashing::Digest;
 use rand::Rng;
+use tempfile::TempDir;
 
 use casper_execution_engine::{
-    core::engine_state::{
-        genesis::GenesisValidator, run_genesis_request::RunGenesisRequest, ChainspecRegistry,
-        ExecConfig, ExecuteRequest, GenesisAccount, RewardItem,
+    core::{
+        engine_state::{
+            self, genesis::GenesisValidator, run_genesis_request::RunGenesisRequest,
+            ChainspecRegistry, EngineState, ExecConfig, ExecuteRequest, GenesisAccount, RewardItem,
+        },
+        execution,
     },
-    shared::system_config::auction_costs::DEFAULT_DELEGATE_COST,
+    shared::newtypes::CorrelationId,
+    storage::{
+        global_state::{CommitProvider, StateProvider},
+        trie::{Pointer, Trie, TrieOrChunk, TrieOrChunkId},
+    },
 };
 use casper_types::{
-    account::AccountHash, runtime_args, system::auction, Motes, ProtocolVersion, PublicKey,
-    RuntimeArgs, SecretKey, U512,
+    account::AccountHash, bytesrepr, runtime_args, system::auction, Key, Motes, ProtocolVersion,
+    PublicKey, RuntimeArgs, SecretKey, StoredValue, U512,
 };
 
 use crate::{
-    DbWasmTestBuilder, DeployItemBuilder, ExecuteRequestBuilder, StepRequestBuilder,
+    transfer, DbWasmTestBuilder, DeployItemBuilder, ExecuteRequestBuilder, StepRequestBuilder,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
     DEFAULT_AUCTION_DELAY, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
     DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION,
     DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
-    DEFAULT_WASM_CONFIG, MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
+    DEFAULT_WASM_CONFIG, SYSTEM_ADDR,
 };
 
 const ARG_AMOUNT: &str = "amount";
@@ -36,6 +47,216 @@ const VALIDATOR_BID_AMOUNT: u64 = 100;
 /// Amount of time to step foward between runs of the auction in our tests.
 pub const TIMESTAMP_INCREMENT_MILLIS: u64 = 30_000;
 
+const TEST_DELEGATOR_INITIAL_ACCOUNT_BALANCE: u64 = 1_000_000 * 1_000_000_000;
+
+/// Run a block with transfers and optionally run step.
+#[allow(clippy::too_many_arguments)]
+pub fn run_blocks_with_transfers_and_step(
+    transfer_count: usize,
+    purse_count: usize,
+    use_scratch: bool,
+    run_auction: bool,
+    block_count: usize,
+    delegator_count: usize,
+    validator_count: usize,
+    mut report_writer: impl Write,
+) {
+    let data_dir = TempDir::new().expect("should create temp dir");
+    let mut builder = DbWasmTestBuilder::new(data_dir.as_ref());
+    let delegator_keys = generate_public_keys(delegator_count);
+    let validator_keys = generate_public_keys(validator_count);
+    let mut necessary_tries = HashSet::new();
+
+    run_genesis_and_create_initial_accounts(
+        &mut builder,
+        &validator_keys,
+        delegator_keys
+            .iter()
+            .map(|pk| pk.to_account_hash())
+            .collect::<Vec<_>>(),
+        U512::from(TEST_DELEGATOR_INITIAL_ACCOUNT_BALANCE),
+    );
+    let contract_hash = builder.get_auction_contract_hash();
+    let mut next_validator_iter = validator_keys.iter().cycle();
+
+    for delegator_public_key in delegator_keys {
+        let delegation_amount = U512::from(2000 * 1_000_000_000u64);
+        let delegator_account_hash = delegator_public_key.to_account_hash();
+        let next_validator_key = next_validator_iter
+            .next()
+            .expect("should produce values forever");
+        let delegate = create_delegate_request(
+            delegator_public_key,
+            next_validator_key.clone(),
+            delegation_amount,
+            delegator_account_hash,
+            contract_hash,
+        );
+        builder.exec(delegate);
+        builder.expect_success();
+        builder.commit();
+        builder.clear_results();
+    }
+
+    let purse_amount = U512::from(1_000_000_000u64);
+
+    let purses = transfer::create_test_purses(
+        &mut builder,
+        *DEFAULT_ACCOUNT_ADDR,
+        purse_count as u64,
+        purse_amount,
+    );
+
+    let exec_requests = transfer::create_multiple_native_transfers_to_purses(
+        *DEFAULT_ACCOUNT_ADDR,
+        transfer_count,
+        &purses,
+    );
+
+    let mut total_transfers = 0;
+    {
+        let engine_state = builder.get_engine_state();
+        let rocksdb = engine_state.get_state().get_rocksdb_store();
+
+        let existing_keys = rocksdb
+            .rocksdb()
+            .trie_store_iterator()
+            .expect("unable to get iterator")
+            .map(|(key, _)| Digest::try_from(&*key).expect("should be a digest"));
+        necessary_tries.extend(existing_keys);
+    }
+    writeln!(
+        report_writer,
+        "height,db-size,transfers,time_ms,necessary_tries,total_tries"
+    )
+    .unwrap();
+    // simulating a block boundary here.
+    for current_block in 0..block_count {
+        let start = Instant::now();
+        total_transfers += exec_requests.len();
+
+        transfer::transfer_to_account_multiple_native_transfers(
+            &mut builder,
+            &exec_requests,
+            use_scratch,
+        );
+        let transfer_root = builder.get_post_state_hash();
+        let maybe_auction_root = if run_auction {
+            if use_scratch {
+                step_and_run_auction(&mut builder, &validator_keys);
+            } else {
+                builder.advance_era(
+                    validator_keys
+                        .iter()
+                        .cloned()
+                        .map(|id| RewardItem::new(id, 1)),
+                );
+                builder.commit();
+            }
+            Some(builder.get_post_state_hash())
+        } else {
+            None
+        };
+        let exec_time = start.elapsed();
+        find_necessary_tries(
+            builder.get_engine_state(),
+            &mut necessary_tries,
+            transfer_root,
+        );
+
+        if let Some(auction_root) = maybe_auction_root {
+            find_necessary_tries(
+                builder.get_engine_state(),
+                &mut necessary_tries,
+                auction_root,
+            );
+        }
+
+        let total_tries = {
+            let engine_state = builder.get_engine_state();
+            let rocksdb = engine_state.get_state().get_rocksdb_store();
+            let trie_store_iter = rocksdb
+                .rocksdb()
+                .trie_store_iterator()
+                .expect("unable to get iterator");
+            trie_store_iter.count()
+        };
+
+        if use_scratch {
+            // This assertion is only valid with the scratch trie.
+            assert_eq!(
+                necessary_tries.len(),
+                total_tries,
+                "should not create unnecessary tries"
+            );
+        }
+
+        writeln!(
+            report_writer,
+            "{},{},{},{},{},{}",
+            current_block,
+            builder.lmdb_on_disk_size().unwrap(),
+            total_transfers,
+            exec_time.as_millis() as usize,
+            necessary_tries.len(),
+            total_tries,
+        )
+        .unwrap();
+        report_writer.flush().unwrap();
+    }
+}
+
+// find all necessary tries - hoist to FN
+fn find_necessary_tries<S>(
+    engine_state: &EngineState<S>,
+    necessary_tries: &mut HashSet<Digest>,
+    state_root: Digest,
+) where
+    S: StateProvider + CommitProvider,
+    S::Error: Into<execution::Error>,
+    engine_state::Error: From<S::Error>,
+{
+    let mut queue = Vec::new();
+    queue.push(state_root);
+
+    while let Some(root) = queue.pop() {
+        if necessary_tries.contains(&root) {
+            continue;
+        }
+        necessary_tries.insert(root);
+
+        let trie_or_chunk: TrieOrChunk = engine_state
+            .get_trie(CorrelationId::new(), TrieOrChunkId(0, root))
+            .unwrap()
+            .expect("trie should exist");
+
+        let trie_bytes = match trie_or_chunk {
+            TrieOrChunk::Trie(trie) => trie,
+            TrieOrChunk::ChunkWithProof(_) => continue,
+        };
+
+        if let Some(0) = trie_bytes.get(0) {
+            continue;
+        }
+
+        let trie: Trie<Key, StoredValue> =
+            bytesrepr::deserialize(trie_bytes.inner_bytes().to_owned())
+                .expect("unable to deserialize");
+
+        match trie {
+            Trie::Leaf { .. } => continue,
+            Trie::Node { pointer_block } => queue.extend(pointer_block.as_indexed_pointers().map(
+                |(_idx, ptr)| match ptr {
+                    Pointer::LeafPointer(digest) | Pointer::NodePointer(digest) => digest,
+                },
+            )),
+            Trie::Extension { affix: _, pointer } => match pointer {
+                Pointer::LeafPointer(digest) | Pointer::NodePointer(digest) => queue.push(digest),
+            },
+        }
+    }
+}
+
 /// Runs genesis, creates system, validator and delegator accounts, and funds the system account and
 /// delegator accounts.
 pub fn run_genesis_and_create_initial_accounts(
@@ -47,7 +268,7 @@ pub fn run_genesis_and_create_initial_accounts(
     let mut genesis_accounts = vec![
         GenesisAccount::account(
             DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-            Motes::new(U512::MAX), // all the monies
+            Motes::new(U512::from(u128::MAX)),
             None,
         ),
         GenesisAccount::account(
@@ -75,7 +296,7 @@ pub fn run_genesis_and_create_initial_accounts(
         *DEFAULT_ACCOUNT_ADDR,
         runtime_args! {
                 ARG_TARGET => *SYSTEM_ADDR,
-                ARG_AMOUNT => MINIMUM_ACCOUNT_CREATION_BALANCE,
+                ARG_AMOUNT => U512::from(10_000 * 1_000_000_000u64),
                 ARG_ID => ID_NONE,
         },
     )
@@ -83,11 +304,11 @@ pub fn run_genesis_and_create_initial_accounts(
     builder.exec(transfer);
     builder.expect_success().commit();
 
-    for delegator_account in delegator_accounts {
+    for (_i, delegator_account) in delegator_accounts.iter().enumerate() {
         let transfer = ExecuteRequestBuilder::transfer(
             *DEFAULT_ACCOUNT_ADDR,
             runtime_args! {
-                    ARG_TARGET => delegator_account,
+                    ARG_TARGET => *delegator_account,
                     ARG_AMOUNT => delegator_initial_balance,
                     ARG_ID => ID_NONE,
             },
@@ -142,9 +363,7 @@ pub fn create_delegate_request(
     let deploy = DeployItemBuilder::new()
         .with_address(delegator_account_hash)
         .with_stored_session_hash(contract_hash, entry_point, args)
-        .with_empty_payment_bytes(
-            runtime_args! { ARG_AMOUNT => U512::from(DEFAULT_DELEGATE_COST), },
-        )
+        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => U512::from(100_000_000), })
         .with_authorization_keys(&[delegator_account_hash])
         .with_deploy_hash(deploy_hash)
         .build();
@@ -173,7 +392,8 @@ pub fn step_and_run_auction(builder: &mut DbWasmTestBuilder, validator_keys: &[P
             step_request_builder.with_reward_item(RewardItem::new(validator.clone(), 1));
     }
     let step_request = step_request_builder
-        .with_next_era_id(builder.get_era() + 1)
+        .with_next_era_id(builder.get_era().successor())
         .build();
-    builder.step(step_request).expect("should step");
+    builder.step_with_scratch(step_request);
+    builder.write_scratch_to_db();
 }

@@ -32,7 +32,7 @@ use crate::{
             TrieOrChunk, TrieOrChunkId,
         },
         trie_store::{
-            db::LmdbTrieStore,
+            db::{LmdbTrieStore, ScratchTrieStore},
             operations::{
                 descendant_trie_keys, keys_with_prefix, missing_trie_keys, put_trie, read,
                 read_with_proof, ReadResult,
@@ -65,6 +65,11 @@ pub struct DbGlobalStateView {
 }
 
 impl DbGlobalState {
+    /// Return the rocksdb store.
+    pub fn get_rocksdb_store(&self) -> &RocksDbStore {
+        &self.rocksdb_store
+    }
+
     /// Migrate data at the given state roots (if they exist) from lmdb to rocksdb.
     /// This function uses std::thread::sleep, is otherwise intensive and so needs to be called with
     /// tokio::task::spawn_blocking. `force=true` will cause us to always traverse recursively when
@@ -118,7 +123,7 @@ impl DbGlobalState {
             let mut handle = self.rocksdb_store.rocksdb.clone();
             let rocksdb = self.rocksdb_store.rocksdb.clone();
 
-            match lmdb_txn.read(self.lmdb_trie_store.db, &next_trie_key.to_bytes()?)? {
+            match lmdb_txn.read(self.lmdb_trie_store.get_db(), &next_trie_key.to_bytes()?)? {
                 Some(value_bytes) => {
                     let key_bytes = next_trie_key.to_bytes()?;
                     let read_bytes = key_bytes.len() as u64 + value_bytes.len() as u64;
@@ -217,14 +222,27 @@ impl DbGlobalState {
         prestate_hash: Digest,
         stored_values: HashMap<Key, StoredValue>,
     ) -> Result<Digest, error::Error> {
-        put_stored_values::<_, _, error::Error>(
-            &self.rocksdb_store,
-            &self.rocksdb_store,
+        let scratch_trie = self.get_scratch_store();
+        let new_state_root = put_stored_values::<_, _, error::Error>(
+            &scratch_trie,
+            &scratch_trie,
             correlation_id,
             prestate_hash,
             stored_values,
-        )
-        .map_err(Into::into)
+        )?;
+        scratch_trie.write_root_to_db(new_state_root)?;
+        Ok(new_state_root)
+    }
+
+    /// Gets a scratch trie store.
+    fn get_scratch_store(&self) -> ScratchTrieStore {
+        ScratchTrieStore::new(self.rocksdb_store.clone())
+    }
+
+    /// Get a reference to the lmdb global state's environment.
+    #[must_use]
+    pub fn lmdb_environment(&self) -> &LmdbEnvironment {
+        &self.lmdb_environment
     }
 }
 
@@ -418,6 +436,19 @@ impl StateProvider for DbGlobalState {
         )
     }
 
+    fn get_trie_full(
+        &self,
+        _correlation_id: CorrelationId,
+        trie_key: &Digest,
+    ) -> Result<Option<Bytes>, Self::Error> {
+        let txn = self.rocksdb_store.clone();
+        Store::<Digest, Trie<Digest, StoredValue>>::get_raw(
+            &self.rocksdb_store,
+            &txn.rocksdb,
+            trie_key,
+        )
+    }
+
     fn put_trie(
         &self,
         correlation_id: CorrelationId,
@@ -494,19 +525,6 @@ impl StateProvider for DbGlobalState {
             Ok(missing_descendants)
         }
     }
-
-    fn get_trie_full(
-        &self,
-        _correlation_id: CorrelationId,
-        trie_key: &Digest,
-    ) -> Result<Option<Bytes>, Self::Error> {
-        let txn = self.rocksdb_store.clone();
-        Store::<Digest, Trie<Digest, StoredValue>>::get_raw(
-            &self.rocksdb_store,
-            &txn.rocksdb,
-            trie_key,
-        )
-    }
 }
 
 #[cfg(test)]
@@ -539,6 +557,25 @@ mod tests {
         ]
     }
 
+    // Creates the test pairs that contain data of size
+    // greater than the chunk limit.
+    fn create_test_pairs_with_large_data() -> [TestPair; 2] {
+        let val = CLValue::from_t(
+            String::from_utf8(vec![b'a'; ChunkWithProof::CHUNK_SIZE_BYTES * 5]).unwrap(),
+        )
+        .unwrap();
+        [
+            TestPair {
+                key: Key::Account(AccountHash::new([1_u8; 32])),
+                value: StoredValue::CLValue(val.clone()),
+            },
+            TestPair {
+                key: Key::Account(AccountHash::new([2_u8; 32])),
+                value: StoredValue::CLValue(val),
+            },
+        ]
+    }
+
     fn create_test_pairs_updated() -> [TestPair; 3] {
         [
             TestPair {
@@ -556,7 +593,7 @@ mod tests {
         ]
     }
 
-    fn create_test_state() -> (DbGlobalState, Digest) {
+    fn create_test_state(pairs_creator: fn() -> [TestPair; 2]) -> (DbGlobalState, Digest) {
         let correlation_id = CorrelationId::new();
         let lmdb_temp_dir = tempdir().unwrap();
         let rocksdb_temp_dir = tempdir().unwrap();
@@ -575,7 +612,7 @@ mod tests {
         let engine_state =
             DbGlobalState::empty(environment, trie_store, &rocksdb_temp_dir.path()).unwrap();
         let mut current_root = engine_state.empty_root_hash;
-        for TestPair { key, value } in create_test_pairs() {
+        for TestPair { key, value } in pairs_creator() {
             let mut stored_values = HashMap::new();
             stored_values.insert(key, value);
             current_root = engine_state
@@ -588,7 +625,7 @@ mod tests {
     #[test]
     fn reads_from_a_checkout_return_expected_values() {
         let correlation_id = CorrelationId::new();
-        let (state, root_hash) = create_test_state();
+        let (state, root_hash) = create_test_state(create_test_pairs);
         let checkout = state.checkout(root_hash).unwrap().unwrap();
         for TestPair { key, value } in create_test_pairs().iter().cloned() {
             assert_eq!(Some(value), checkout.read(correlation_id, &key).unwrap());
@@ -597,7 +634,7 @@ mod tests {
 
     #[test]
     fn checkout_fails_if_unknown_hash_is_given() {
-        let (state, _) = create_test_state();
+        let (state, _) = create_test_state(create_test_pairs);
         let fake_hash: Digest = Digest::hash(&[1u8; 32]);
         let result = state.checkout(fake_hash).unwrap();
         assert!(result.is_none());
@@ -608,7 +645,7 @@ mod tests {
         let correlation_id = CorrelationId::new();
         let test_pairs_updated = create_test_pairs_updated();
 
-        let (state, root_hash) = create_test_state();
+        let (state, root_hash) = create_test_state(create_test_pairs);
 
         let effects: AdditiveMap<Key, Transform> = {
             let mut tmp = AdditiveMap::new();
@@ -635,7 +672,7 @@ mod tests {
         let correlation_id = CorrelationId::new();
         let test_pairs_updated = create_test_pairs_updated();
 
-        let (state, root_hash) = create_test_state();
+        let (state, root_hash) = create_test_state(create_test_pairs);
 
         let effects: AdditiveMap<Key, Transform> = {
             let mut tmp = AdditiveMap::new();
@@ -668,5 +705,100 @@ mod tests {
                 .read(correlation_id, &test_pairs_updated[2].key)
                 .unwrap()
         );
+    }
+
+    #[test]
+    fn returns_trie_or_chunk() {
+        let correlation_id = CorrelationId::new();
+        let (state, root_hash) = create_test_state(create_test_pairs_with_large_data);
+
+        // Expect `Trie` with NodePointer when asking with a root hash.
+        let trie = state
+            .get_trie_or_chunk(correlation_id, TrieOrChunkId(0, root_hash))
+            .expect("should get trie correctly")
+            .expect("should be Some()");
+        assert!(matches!(trie, TrieOrChunk::Trie(_)));
+
+        // Expect another `Trie` with two LeafPointers.
+        let trie = state
+            .get_trie_or_chunk(
+                correlation_id,
+                TrieOrChunkId(0, extract_next_hash_from_trie(trie)),
+            )
+            .expect("should get trie correctly")
+            .expect("should be Some()");
+        assert!(matches!(trie, TrieOrChunk::Trie(_)));
+
+        // Now, the next hash will point to the actual leaf, which as we expect
+        // contains large data, so we expect to get `ChunkWithProof`.
+        let hash = extract_next_hash_from_trie(trie);
+        let chunk = match state
+            .get_trie_or_chunk(correlation_id, TrieOrChunkId(0, hash))
+            .expect("should get trie correctly")
+            .expect("should be Some()")
+        {
+            TrieOrChunk::ChunkWithProof(chunk) => chunk,
+            other => panic!("expected ChunkWithProof, got {:?}", other),
+        };
+
+        assert_eq!(chunk.proof().root_hash(), hash);
+
+        // try to read all the chunks
+        let count = chunk.proof().count();
+        let mut chunks = vec![chunk];
+        for i in 1..count {
+            let chunk = match state
+                .get_trie_or_chunk(correlation_id, TrieOrChunkId(i, hash))
+                .expect("should get trie correctly")
+                .expect("should be Some()")
+            {
+                TrieOrChunk::ChunkWithProof(chunk) => chunk,
+                other => panic!("expected ChunkWithProof, got {:?}", other),
+            };
+            chunks.push(chunk);
+        }
+
+        // there should be no chunk with index `count`
+        assert!(matches!(
+            state.get_trie_or_chunk(correlation_id, TrieOrChunkId(count, hash)),
+            Err(error::Error::MerkleConstruction(_))
+        ));
+
+        // all chunks should be valid
+        assert!(chunks.iter().all(|chunk| chunk.verify().is_ok()));
+
+        let data: Vec<u8> = chunks
+            .into_iter()
+            .flat_map(|chunk| chunk.into_chunk())
+            .collect();
+
+        let trie: Trie<Key, StoredValue> =
+            bytesrepr::deserialize(data).expect("trie should deserialize correctly");
+
+        // should be deserialized to a leaf
+        assert!(matches!(trie, Trie::Leaf { .. }));
+    }
+
+    fn extract_next_hash_from_trie(trie_or_chunk: TrieOrChunk) -> Digest {
+        let next_hash = if let TrieOrChunk::Trie(trie_bytes) = trie_or_chunk {
+            if let Trie::Node { pointer_block } =
+                bytesrepr::deserialize::<Trie<Key, StoredValue>>(Vec::<u8>::from(trie_bytes))
+                    .expect("Could not parse trie bytes")
+            {
+                if pointer_block.child_count() == 0 {
+                    panic!("expected children");
+                }
+                let (_, ptr) = pointer_block.as_indexed_pointers().next().unwrap();
+                match ptr {
+                    crate::storage::trie::Pointer::LeafPointer(ptr)
+                    | crate::storage::trie::Pointer::NodePointer(ptr) => ptr,
+                }
+            } else {
+                panic!("expected `Node`");
+            }
+        } else {
+            panic!("expected `Trie`");
+        };
+        next_hash
     }
 }

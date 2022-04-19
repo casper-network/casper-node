@@ -6,7 +6,10 @@ use std::{
 use lmdb::{
     self, Database, Environment, EnvironmentFlags, RoTransaction, RwTransaction, WriteFlags,
 };
-use rocksdb::{BoundColumnFamily, DBWithThreadMode, MultiThreaded, Options};
+use rocksdb::{
+    BoundColumnFamily, DBIteratorWithThreadMode, DBWithThreadMode, IteratorMode, MultiThreaded,
+    Options,
+};
 
 use casper_types::bytesrepr::Bytes;
 
@@ -16,6 +19,7 @@ use crate::storage::{
         Readable, Transaction, TransactionSource, Writable,
         ROCKS_DB_LMDB_MIGRATED_STATE_ROOTS_COLUMN_FAMILY, ROCKS_DB_TRIE_V1_COLUMN_FAMILY,
     },
+    trie_store::db::ScratchTrieStore,
     MAX_DBS,
 };
 
@@ -108,6 +112,61 @@ impl RocksDb {
                 )
             })
     }
+
+    /// Trie store iterator.
+    pub fn trie_store_iterator<'a: 'b, 'b>(
+        &'a self,
+    ) -> Result<DBIteratorWithThreadMode<'b, DBWithThreadMode<MultiThreaded>>, error::Error> {
+        let cf_handle = self.trie_column_family()?;
+        Ok(self.db.iterator_cf(&cf_handle, IteratorMode::Start))
+    }
+}
+
+impl Transaction for ScratchTrieStore {
+    type Error = error::Error;
+    type Handle = ScratchTrieStore;
+    fn commit(self) -> Result<(), Self::Error> {
+        // NO OP as scratch doesn't use transactions.
+        Ok(())
+    }
+}
+
+impl Readable for ScratchTrieStore {
+    fn read(&self, handle: Self::Handle, key: &[u8]) -> Result<Option<Bytes>, Self::Error> {
+        handle
+            .store
+            .rocksdb
+            .db
+            .get(&key)
+            .map(|maybe_bytes| maybe_bytes.map(Bytes::from))
+            .map_err(|e| error::Error::Db(e.into()))
+    }
+}
+
+impl Writable for ScratchTrieStore {
+    fn write(&mut self, handle: Self::Handle, key: &[u8], value: &[u8]) -> Result<(), Self::Error> {
+        handle
+            .store
+            .rocksdb
+            .db
+            .put(&key, &value)
+            .map_err(|e| error::Error::Db(e.into()))?;
+        Ok(())
+    }
+}
+
+impl<'a> TransactionSource<'a> for ScratchTrieStore {
+    type Error = error::Error;
+    type Handle = ScratchTrieStore;
+    type ReadTransaction = ScratchTrieStore;
+    type ReadWriteTransaction = ScratchTrieStore;
+    fn create_read_txn(&'a self) -> Result<Self::ReadTransaction, Self::Error> {
+        Ok(self.clone())
+    }
+
+    fn create_read_write_txn(&'a self) -> Result<Self::ReadWriteTransaction, Self::Error> {
+        Ok(self.clone())
+    }
 }
 
 impl Transaction for RocksDb {
@@ -146,7 +205,7 @@ impl Writable for RocksDb {
 
 /// Environment for rocksdb.
 #[derive(Clone)]
-pub(crate) struct RocksDbStore {
+pub struct RocksDbStore {
     pub(crate) rocksdb: RocksDb,
     pub(crate) path: PathBuf,
 }
@@ -177,6 +236,12 @@ impl RocksDbStore {
     /// Return the path to the backing rocksdb files.
     pub(crate) fn path(&self) -> PathBuf {
         self.path.clone()
+    }
+
+    /// Get a reference to the rocks db store's rocksdb.
+    #[must_use]
+    pub fn rocksdb(&self) -> &RocksDb {
+        &self.rocksdb
     }
 }
 

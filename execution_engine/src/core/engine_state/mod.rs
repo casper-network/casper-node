@@ -165,6 +165,11 @@ impl EngineState<DbGlobalState> {
         Ok(false)
     }
 
+    /// Gets underlyng LmdbGlobalState
+    pub fn get_state(&self) -> &DbGlobalState {
+        &self.state
+    }
+
     /// Flushes the LMDB environment to disk when manual sync is enabled in the config.toml.
     pub fn flush_environment(&self) -> Result<(), storage::error::Error> {
         if self.state.lmdb_environment.is_manual_sync_enabled() {

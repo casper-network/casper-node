@@ -72,7 +72,11 @@ pub fn create_test_purses(
     let exec_request = ExecuteRequestBuilder::standard(
         source,
         CONTRACT_CREATE_PURSES,
-        runtime_args! { ARG_TOTAL_PURSES => total_purses, ARG_SEED_AMOUNT => purse_amount },
+        runtime_args! {
+            ARG_AMOUNT => U512::from(total_purses) * purse_amount,
+            ARG_TOTAL_PURSES => total_purses,
+            ARG_SEED_AMOUNT => purse_amount
+        },
     )
     .build();
 
