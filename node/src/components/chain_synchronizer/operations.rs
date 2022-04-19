@@ -7,6 +7,7 @@ use std::{
     },
 };
 
+use async_recursion::async_recursion;
 use async_trait::async_trait;
 use datasize::DataSize;
 use futures::{
@@ -15,11 +16,11 @@ use futures::{
 };
 use prometheus::IntGauge;
 use quanta::Instant;
-use tracing::{info, trace, warn};
+use tracing::{error, info, trace, warn};
 
-use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
+use casper_execution_engine::storage::trie::{Trie, TrieOrChunk, TrieOrChunkId};
 use casper_hashing::Digest;
-use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion, PublicKey, U512};
+use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion, PublicKey, StoredValue, U512};
 
 use super::{metrics::Metrics, Config};
 use crate::{
@@ -38,6 +39,10 @@ use crate::{
     },
     utils::work_queue::WorkQueue,
 };
+
+/// The kind of trie actually sent across the network.
+// TODO: Does the root hash differ in that it is a nested `Trie<Digest, Trie<Digest, StoredValue>>`?
+type NetTrie = Trie<Digest, StoredValue>;
 
 /// Helper struct that is used to measure a time spent in the scope.
 /// At the construction time, a reference to the gauge is provided. When the binding to `ScopeTimer`
@@ -616,6 +621,63 @@ async fn sync_trie_store(state_root_hash: Digest, ctx: &ChainSyncContext<'_>) ->
     }
 
     Ok(())
+}
+
+/// Downloads a given trie and all of its descendants, then stores them into the trie store.
+///
+/// Ensures that all descendant nodes are downloaded using post-order tree traversal, i.e. child
+/// nodes are recursively downloaded and store first before the parent node is stored.
+///
+/// This function does not check for missing descendants for existing tries, the invariant of there
+/// being no trie nodes with missing descendants is assumed.
+#[async_recursion]
+async fn recursive_trie_download(hash: Digest, ctx: &ChainSyncContext<'_>) -> Result<(), Error> {
+    let fetched_trie = fetch_trie_retry_forever(hash, ctx).await?;
+
+    match fetched_trie {
+        TrieAlreadyPresentOrDownloaded::AlreadyPresent => {
+            // The trie node was already present, meaning all its descendants are also present.
+            // Nothing to do.
+            Ok(())
+        }
+        TrieAlreadyPresentOrDownloaded::Downloaded(trie_bytes) => {
+            let descendent_handles: FuturesUnordered<_> =
+                NetTrie::descendants_from_bytes(&trie_bytes)
+                    .map_err(|err| Error::CorruptTrie {
+                        hash,
+                        error: err.to_string(),
+                    })?
+                    .map(|digest| {
+                        // We spawn a new task here instead of awaiting directly to avoid stack
+                        // overflows with deep tries. Furthermore, this automatically parallelizes
+                        // the trie downloads.
+                        //
+                        // Note: When limiting fanout, ensure no deadlocks occur.
+                        tokio::spawn(recursive_trie_download(digest, ctx))
+                    })
+                    .collect();
+
+            while let Some(result) = descendent_handles.next().await {
+                // Exit early if any of the descendant downloads failed.
+                result.map_err(Error::Join)??;
+            }
+
+            // At this point, we know all descendants are stored, so we store the parent node.
+            let descendants = ctx
+                .effect_builder
+                .put_trie_and_find_missing_descendant_trie_keys(trie_bytes)
+                .await?;
+
+            // Warn if we got an unexpected missing descendent.
+            if !descendants.is_empty() {
+                error!(trie_hash=%hash, "stored trie had missing descendants, even though they were all downloaded. this is a bug or the trie store is corrupted");
+
+                // Note: As an alternative, we can try to recover and download the missing items.
+            }
+
+            Ok(())
+        }
+    }
 }
 
 /// Fetches the current header and fast-syncs to it.

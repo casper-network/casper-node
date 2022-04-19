@@ -97,6 +97,7 @@ uuid = { version = "0.8.1", features = ["serde", "v4"] }
 warp = { version = "0.3.0", features = ["compression"] }
 warp-json-rpc = "0.3.0"
 wheelbuf = "0.2.0"
+async-recursion = "1.0.0"
 
 [build-dependencies]
 vergen = "3"

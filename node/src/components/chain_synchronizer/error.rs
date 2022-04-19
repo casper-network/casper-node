@@ -143,6 +143,16 @@ pub(crate) enum Error {
         #[serde(skip_serializing)]
         FetchTrieError,
     ),
+
+    /// A received trie matched the correct hash, but failed to serialize into a valid trie.
+    #[error("corrupt trie {hash}: {error}")]
+    CorruptTrie {
+        /// The hash of the corrupt trie.
+        hash: Digest,
+        #[serde(skip_serializing)]
+        /// Decoding error description.
+        error: String,
+    },
 }
 
 #[derive(Error, Debug)]
