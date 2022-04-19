@@ -134,7 +134,7 @@ impl ScratchTrieStore {
             }
         }
 
-        // after validating that all the needed tries are present, write everything
+        // after validating that all the needed tries are present write everything
         for (digest, trie) in validated_tries.iter() {
             rocksdb_store.put(&mut txn, digest, trie)?;
         }
