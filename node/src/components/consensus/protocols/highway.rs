@@ -991,8 +991,9 @@ where
     }
 
     /// Sets the pause status: While paused we don't create any new units, just pings.
-    fn set_paused(&mut self, paused: bool) {
+    fn set_paused(&mut self, paused: bool) -> ProtocolOutcomes<C> {
         self.highway.set_paused(paused);
+        vec![]
     }
 
     fn validators_with_evidence(&self) -> Vec<&C::ValidatorId> {

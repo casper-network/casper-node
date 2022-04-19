@@ -258,6 +258,8 @@ where
     current_timeout: Timestamp,
     /// Whether anything was recently added to the protocol state.
     progress_detected: bool,
+    /// Whether or not the protocol is currently paused
+    paused: bool,
 }
 
 impl<C: Context + 'static> SimpleConsensus<C> {
@@ -344,6 +346,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             weights,
             pending_proposal: None,
             progress_detected: false,
+            paused: false,
         }
     }
 
@@ -613,6 +616,9 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             } else {
                 return vec![];
             };
+        if self.paused {
+            return vec![];
+        }
         let already_signed = match &content {
             Content::Proposal(_) => {
                 if self.leader(round_id) != validator_idx {
@@ -1171,17 +1177,15 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 if self.is_skippable_round(round_id) || self.has_accepted_proposal(round_id) {
                     self.current_timeout = Timestamp::from(u64::MAX);
                     self.current_round = self.current_round.saturating_add(1);
-                } else {
-                    if now + self.proposal_timeout < self.current_timeout {
-                        if let Some(maybe_parent_round_id) = self.suitable_parent_round(now) {
-                            self.current_timeout = now + self.proposal_timeout;
-                            outcomes.push(ProtocolOutcome::ScheduleTimer(
-                                self.current_timeout,
-                                TIMER_ID_UPDATE,
-                            ));
-                            outcomes.extend(self.propose_if_leader(maybe_parent_round_id, now));
-                            self.proposal_timeout = self.proposal_timeout * 2u64;
-                        }
+                } else if now + self.proposal_timeout < self.current_timeout {
+                    if let Some(maybe_parent_round_id) = self.suitable_parent_round(now) {
+                        self.current_timeout = now + self.proposal_timeout;
+                        outcomes.push(ProtocolOutcome::ScheduleTimer(
+                            self.current_timeout,
+                            TIMER_ID_UPDATE,
+                        ));
+                        outcomes.extend(self.propose_if_leader(maybe_parent_round_id, now));
+                        self.proposal_timeout = self.proposal_timeout * 2u64;
                     }
                 }
             }
@@ -1970,8 +1974,16 @@ where
         }
     }
 
-    // TODO: Pause mode is also activated if execution lags too far behind consensus.
-    fn set_paused(&mut self, _paused: bool) {}
+    fn set_paused(&mut self, paused: bool) -> ProtocolOutcomes<C> {
+        if self.paused && !paused {
+            self.paused = paused;
+            self.mark_dirty(self.current_round);
+            self.update()
+        } else {
+            self.paused = paused;
+            vec![]
+        }
+    }
 
     fn validators_with_evidence(&self) -> Vec<&C::ValidatorId> {
         self.faults

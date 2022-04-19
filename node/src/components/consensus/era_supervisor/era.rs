@@ -152,11 +152,6 @@ impl Era {
     pub(crate) fn validators(&self) -> &BTreeMap<PublicKey, U512> {
         &self.validators
     }
-
-    /// Sets the pause status: While paused we don't create consensus messages other than pings.
-    pub(crate) fn set_paused(&mut self, paused: bool) {
-        self.consensus.set_paused(paused);
-    }
 }
 
 impl DataSize for Era {

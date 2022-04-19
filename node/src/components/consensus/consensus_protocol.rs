@@ -295,7 +295,7 @@ pub(crate) trait ConsensusProtocol<C: Context>: Send {
     fn request_evidence(&self, sender: NodeId, vid: &C::ValidatorId) -> ProtocolOutcomes<C>;
 
     /// Sets the pause status: While paused we don't create consensus messages other than pings.
-    fn set_paused(&mut self, paused: bool);
+    fn set_paused(&mut self, paused: bool) -> ProtocolOutcomes<C>;
 
     /// Returns the list of all validators that were observed as faulty in this consensus instance.
     fn validators_with_evidence(&self) -> Vec<&C::ValidatorId>;

@@ -297,25 +297,19 @@ impl EraSupervisor {
         (era_id.value()..=era_id.value().saturating_add(num_eras)).map(EraId::from)
     }
 
-    /// Updates `next_executed_height` based on the given block header, and unpauses consensus if
-    /// block execution has caught up with finalization.
-    #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
-    fn executed_block(&mut self, block_header: &BlockHeader) {
-        self.next_executed_height = self.next_executed_height.max(block_header.height() + 1);
-        self.next_block_height = self.next_block_height.max(self.next_executed_height);
-        self.update_consensus_pause();
-    }
-
     /// Pauses or unpauses consensus: Whenever the last executed block is too far behind the last
     /// finalized block, we suspend consensus.
-    fn update_consensus_pause(&mut self) {
+    fn update_consensus_pause<REv: ReactorEventT>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        rng: &mut NodeRng,
+        era_id: EraId,
+    ) -> Effects<Event> {
         let paused = self
             .next_block_height
             .saturating_sub(self.next_executed_height)
             > self.config.highway.max_execution_delay;
-        if let Some(era) = self.open_eras.values_mut().last() {
-            era.set_paused(paused)
-        }
+        self.delegate_to_era(effect_builder, rng, era_id, |sc, _| sc.set_paused(paused))
     }
 
     /// Initializes a new era. The switch blocks must contain the most recent `auction_delay + 1`
@@ -694,13 +688,14 @@ impl EraSupervisor {
     pub(super) fn handle_block_added<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
+        rng: &mut NodeRng,
         block_header: BlockHeader,
     ) -> Effects<Event> {
+        self.next_executed_height = self
+            .next_executed_height
+            .max(block_header.height().saturating_add(1));
         let era_id = block_header.era_id();
-        self.executed_block(&block_header);
-        self.last_progress = Timestamp::now();
-
-        let mut effects = Effects::new();
+        let mut effects = self.update_consensus_pause(effect_builder, rng, era_id);
 
         if self
             .current_era()
@@ -981,7 +976,9 @@ impl EraSupervisor {
                     execute_finalized_block(effect_builder, finalized_approvals, finalized_block)
                         .ignore(),
                 );
-                self.update_consensus_pause();
+                let effects_from_updating_pause =
+                    self.update_consensus_pause(effect_builder, rng, era_id);
+                effects.extend(effects_from_updating_pause);
                 effects
             }
             ProtocolOutcome::ValidateConsensusValue {
