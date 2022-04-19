@@ -264,44 +264,16 @@ where
             }
         };
 
-        // Optimization: Don't deserialize leaves as they have no descendants.
-        if let Some(&Trie::<K, V>::LEAF_TAG) = retrieved_trie_bytes.first() {
-            continue;
-        }
-
-        // Parse the trie, handling errors gracefully.
-        let retrieved_trie = match bytesrepr::deserialize_from_slice(retrieved_trie_bytes) {
-            Ok(retrieved_trie) => retrieved_trie,
-            // Couldn't parse; treat as missing and continue.
+        match Trie::<K, V>::descendants_from_bytes(retrieved_trie_bytes) {
+            Ok(iter) => missing_descendants.extend(iter),
             Err(err) => {
                 error!(?err, "unable to parse trie");
                 missing_descendants.push(trie_key);
                 continue;
             }
-        };
-
-        match retrieved_trie {
-            // Should be unreachable due to checking the first byte as a shortcut above.
-            Trie::<K, V>::Leaf { .. } => {
-                error!("did not expect to see a trie leaf in `missing_trie_keys` after shortcut");
-            }
-            // If we hit a pointer block, queue up all of the nodes it points to
-            Trie::Node { pointer_block } => {
-                for (_, pointer) in pointer_block.as_indexed_pointers() {
-                    match pointer {
-                        Pointer::LeafPointer(descendant_leaf_trie_key) => {
-                            trie_keys_to_visit.push(descendant_leaf_trie_key)
-                        }
-                        Pointer::NodePointer(descendant_node_trie_key) => {
-                            trie_keys_to_visit.push(descendant_node_trie_key)
-                        }
-                    }
-                }
-            }
-            // If we hit an extension block, add its pointer to the queue
-            Trie::Extension { pointer, .. } => trie_keys_to_visit.push(pointer.into_hash()),
         }
     }
+
     Ok(missing_descendants)
 }
 
