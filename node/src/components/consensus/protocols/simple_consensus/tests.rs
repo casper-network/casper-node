@@ -426,3 +426,29 @@ fn test_validator_bit_field() {
         vec![200, 249, 0, 77],
     );
 }
+
+#[test]
+fn test_quorum() {
+    let (weights, validators) = abc_weights(66, 33, 1);
+    let alice_idx = validators.get_index(&*ALICE_PUBLIC_KEY).unwrap();
+    let bob_idx = validators.get_index(&*BOB_PUBLIC_KEY).unwrap();
+    let carol_idx = validators.get_index(&*CAROL_PUBLIC_KEY).unwrap();
+
+    let mut sc = new_test_simple_consensus(weights, vec![], &[]);
+
+    // The threshold is the highest number that's below 2/3 of the weight.
+    assert_eq!(66, sc.quorum_threshold().0);
+
+    // So Alice alone with 66 is not a quorum, but with Carol she has 67.
+    assert!(!sc.is_quorum(vec![].into_iter()));
+    assert!(!sc.is_quorum(vec![alice_idx].into_iter()));
+    assert!(sc.is_quorum(vec![alice_idx, carol_idx].into_iter()));
+    assert!(sc.is_quorum(vec![alice_idx, bob_idx, carol_idx].into_iter()));
+
+    // If Carol is known to be faulty, she counts towards every quorum.
+    sc.mark_faulty(&CAROL_PUBLIC_KEY);
+
+    // So now Alice's vote alone is sufficient.
+    assert!(!sc.is_quorum(vec![].into_iter()));
+    assert!(sc.is_quorum(vec![alice_idx].into_iter()));
+}
