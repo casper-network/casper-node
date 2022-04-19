@@ -1084,24 +1084,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Asynchronously returns any missing descendant trie keys given an ancestor.
-    pub(crate) async fn find_missing_descendant_trie_keys(
-        self,
-        trie_key: Digest,
-    ) -> Result<Vec<Digest>, engine_state::Error>
-    where
-        REv: From<ContractRuntimeRequest>,
-    {
-        self.make_request(
-            |responder| ContractRuntimeRequest::FindMissingDescendantTrieKeys {
-                trie_key,
-                responder,
-            },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
     /// Puts the given deploy into the deploy store.
     pub(crate) async fn put_deploy_to_storage(self, deploy: Box<Deploy>) -> bool
     where

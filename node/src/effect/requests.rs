@@ -929,13 +929,6 @@ pub(crate) enum ContractRuntimeRequest {
         /// trie.
         responder: Responder<Result<Vec<Digest>, engine_state::Error>>,
     },
-    /// Find the missing descendants for a trie key
-    FindMissingDescendantTrieKeys {
-        /// The trie key to find the missing descendants for.
-        trie_key: Digest,
-        /// The responder to call with the result.
-        responder: Responder<Result<Vec<Digest>, engine_state::Error>>,
-    },
     /// Execute a provided protoblock
     ExecuteBlock {
         /// The protocol version of the block to execute.
@@ -1017,9 +1010,6 @@ impl Display for ContractRuntimeRequest {
                 finalized_block, ..
             } => {
                 write!(formatter, "Execute finalized block: {}", finalized_block)
-            }
-            ContractRuntimeRequest::FindMissingDescendantTrieKeys { trie_key, .. } => {
-                write!(formatter, "Find missing descendant trie keys: {}", trie_key)
             }
         }
     }

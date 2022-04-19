@@ -1,11 +1,4 @@
-use std::{
-    cmp,
-    collections::BTreeMap,
-    sync::{
-        atomic::{self, AtomicBool},
-        Arc,
-    },
-};
+use std::{cmp, collections::BTreeMap, sync::Arc};
 
 use async_recursion::async_recursion;
 use async_trait::async_trait;
@@ -37,7 +30,6 @@ use crate::{
         Deploy, DeployHash, FinalizedApprovals, FinalizedApprovalsWithId, FinalizedBlock, Item,
         NodeId, TimeDiff, Timestamp,
     },
-    utils::work_queue::WorkQueue,
 };
 
 /// The kind of trie actually sent across the network.
@@ -540,25 +532,6 @@ fn check_block_version(
     Ok(())
 }
 
-/// Queries all of the peers for a trie, puts the trie found from the network in the trie-store, and
-/// returns any outstanding descendant tries.
-async fn fetch_and_store_trie(
-    trie_key: Digest,
-    ctx: &ChainSyncContext,
-) -> Result<Vec<Digest>, Error> {
-    let fetched_trie = fetch_trie_retry_forever(trie_key, ctx).await?;
-    match fetched_trie {
-        TrieAlreadyPresentOrDownloaded::AlreadyPresent => Ok(ctx
-            .effect_builder
-            .find_missing_descendant_trie_keys(trie_key)
-            .await?),
-        TrieAlreadyPresentOrDownloaded::Downloaded(trie_bytes) => Ok(ctx
-            .effect_builder
-            .put_trie_and_find_missing_descendant_trie_keys(trie_bytes)
-            .await?),
-    }
-}
-
 /// Downloads and stores a block.
 async fn fetch_and_store_block_by_hash(
     block_hash: BlockHash,
@@ -575,50 +548,14 @@ async fn fetch_and_store_block_by_hash(
     }
 }
 
-/// A worker task that takes trie keys from a queue and downloads the trie.
-async fn sync_trie_store_worker(
-    worker_id: usize,
-    abort: Arc<AtomicBool>,
-    queue: Arc<WorkQueue<Digest>>,
-    ctx: &ChainSyncContext,
-) -> Result<(), Error> {
-    while let Some(job) = queue.next_job().await {
-        trace!(worker_id, trie_key = %job.inner(), "worker downloading trie");
-        let child_jobs = fetch_and_store_trie(*job.inner(), ctx)
-            .await
-            .map_err(|err| {
-                abort.store(true, atomic::Ordering::Relaxed);
-                warn!(?err, trie_key = %job.inner(), "failed to download trie");
-                err
-            })?;
-        trace!(?child_jobs, trie_key = %job.inner(), "downloaded trie node");
-        if abort.load(atomic::Ordering::Relaxed) {
-            return Ok(()); // Another task failed and sent an error.
-        }
-        for child_job in child_jobs {
-            queue.push_job(child_job);
-        }
-        drop(job); // Make sure the job gets dropped only when the children are in the queue.
-    }
-    Ok(())
-}
-
 /// Synchronizes the trie store under a given state root hash.
 async fn sync_trie_store(state_root_hash: Digest, ctx: Arc<ChainSyncContext>) -> Result<(), Error> {
     info!(?state_root_hash, "syncing trie store",);
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_sync_trie_store_duration_seconds);
 
-    // Flag set by a worker when it encounters an error.
-    let abort = Arc::new(AtomicBool::new(false));
+    // TODO: Insert lock here to prevent parallel root downloads.
 
-    let queue = Arc::new(WorkQueue::default());
-    queue.push_job(state_root_hash);
-    let mut workers: FuturesUnordered<_> = (0..ctx.config.max_parallel_trie_fetches())
-        .map(|worker_id| sync_trie_store_worker(worker_id, abort.clone(), queue.clone(), ctx))
-        .collect();
-    while let Some(result) = workers.next().await {
-        result?; // Return the error if a download failed.
-    }
+    recursive_trie_download(state_root_hash, ctx.clone()).await?;
 
     Ok(())
 }
