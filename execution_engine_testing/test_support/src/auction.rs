@@ -8,13 +8,12 @@ use std::{
 
 use tempfile::TempDir;
 
-use casper_execution_engine::core::engine_state::{
-    genesis::GenesisValidator, run_genesis_request::RunGenesisRequest, ChainspecRegistry,
-    ExecConfig, ExecuteRequest, GenesisAccount, RewardItem,
-};
 use casper_execution_engine::{
     core::{
-        engine_state::{self, EngineState},
+        engine_state::{
+            self, genesis::GenesisValidator, run_genesis_request::RunGenesisRequest,
+            ChainspecRegistry, EngineState, ExecConfig, ExecuteRequest, GenesisAccount, RewardItem,
+        },
         execution,
     },
     shared::newtypes::CorrelationId,
@@ -25,10 +24,9 @@ use casper_execution_engine::{
 };
 use casper_hashing::Digest;
 use casper_types::{
-    account::AccountHash, runtime_args, system::auction, Motes, ProtocolVersion, PublicKey,
-    RuntimeArgs, SecretKey,
+    account::AccountHash, bytesrepr, runtime_args, system::auction, Key, Motes, ProtocolVersion,
+    PublicKey, RuntimeArgs, SecretKey, StoredValue, U512,
 };
-use casper_types::{bytesrepr, Key, StoredValue, U512};
 
 use rand::Rng;
 

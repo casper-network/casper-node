@@ -7,7 +7,7 @@ fn main() {
     let total_transfer_count = 100;
     let transfers_per_block = 1;
     let block_count = total_transfer_count / transfers_per_block;
-    let delegator_count = 20_000;
+    let delegator_count = 20_0;
     let validator_count = 100;
 
     let report_writer = BufWriter::new(File::create("disk_use_report.csv").unwrap());
