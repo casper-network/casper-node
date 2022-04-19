@@ -696,7 +696,16 @@ async fn sync_trie_store(state_root_hash: Digest, ctx: &ChainSyncContext<'_>) ->
     queue.push_job(state_root_hash);
     let peer_count = cmp::max(
         1,
-        ctx.effect_builder.get_fully_connected_peers().await.len(),
+        ctx.effect_builder
+            .get_fully_connected_peers()
+            .await
+            .len()
+            .saturating_sub(
+                ctx.bad_peer_list
+                    .read()
+                    .expect("bad peer list lock poisoned")
+                    .len(),
+            ),
     );
     let parallel_count = ctx.config.max_parallel_trie_fetches_per_peer() * peer_count;
     let mut workers: FuturesUnordered<_> = (0..parallel_count)
@@ -1384,7 +1393,16 @@ async fn fetch_and_store_deploys(
     let mut deploys: Vec<Deploy> = Vec::with_capacity(hashes.len());
     let peer_count = cmp::max(
         1,
-        ctx.effect_builder.get_fully_connected_peers().await.len(),
+        ctx.effect_builder
+            .get_fully_connected_peers()
+            .await
+            .len()
+            .saturating_sub(
+                ctx.bad_peer_list
+                    .read()
+                    .expect("bad peer list lock poisoned")
+                    .len(),
+            ),
     );
     let parallel_count = ctx.config.max_parallel_deploy_fetches_per_peer() * peer_count;
     let mut stream = futures::stream::iter(hashes)
