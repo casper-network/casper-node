@@ -9,6 +9,7 @@ use futures::{
 };
 use prometheus::IntGauge;
 use quanta::Instant;
+use tokio::sync::Semaphore;
 use tracing::{error, info, trace, warn};
 
 use casper_execution_engine::storage::trie::{Trie, TrieOrChunk, TrieOrChunkId};
@@ -67,6 +68,8 @@ struct ChainSyncContext {
     config: Config,
     trusted_block_header: Box<BlockHeader>,
     metrics: Metrics,
+    /// Semaphore guarding the maximum number of trie downloads running in parallel.
+    trie_downloads: Semaphore,
 }
 
 impl ChainSyncContext {
@@ -76,11 +79,13 @@ impl ChainSyncContext {
         trusted_block_header: Box<BlockHeader>,
         metrics: Metrics,
     ) -> Self {
+        let trie_download_permits = config.max_parallel_trie_fetches();
         Self {
             effect_builder,
             config,
             trusted_block_header,
             metrics,
+            trie_downloads: Semaphore::new(trie_download_permits),
         }
     }
 
@@ -158,6 +163,12 @@ async fn fetch_trie_retry_forever(
     id: Digest,
     ctx: &ChainSyncContext,
 ) -> Result<TrieAlreadyPresentOrDownloaded, FetchTrieError> {
+    // We hold a ticket for the entirety of the duration of this function, including local IO.
+    //
+    // This function will always be able to make progress without requiring another ticket, thus it
+    // is dead-lock free with regards to the `trie_downloads` semaphore.
+    let _ticket = ctx.trie_downloads.acquire().await;
+
     let trie_or_chunk = match fetch_retry_forever::<TrieOrChunk>(
         ctx.effect_builder,
         &ctx.config,
@@ -588,8 +599,6 @@ async fn recursive_trie_download(hash: Digest, ctx: Arc<ChainSyncContext>) -> Re
                         // We spawn a new task here instead of awaiting directly to avoid stack
                         // overflows with deep tries. Furthermore, this automatically parallelizes
                         // the trie downloads.
-                        //
-                        // Note: When limiting fanout, ensure no deadlocks occur.
                         tokio::spawn(recursive_trie_download(digest, ctx.clone()))
                     })
                     .collect();
