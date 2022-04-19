@@ -218,6 +218,8 @@ where
     instance_id: C::InstanceId,
     /// The timeout for the current round's proposal
     proposal_timeout: TimeDiff,
+    /// The base timeout which we reduce back down to upon successful finalization of a block
+    base_proposal_timeout: TimeDiff,
     /// The validators in this instantiation of the protocol
     validators: Validators<C::ValidatorId>,
     /// If we are a validator ourselves, we must know which index we
@@ -291,6 +293,8 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             .map(|sc| sc.proposal_timeout)
             .unwrap_or_else(|| highway_config.min_round_length());
 
+        let base_proposal_timeout = proposal_timeout;
+
         let mut can_propose: ValidatorMap<bool> = weights.iter().map(|_| true).collect();
         for vidx in validators.iter_cannot_propose_idx() {
             can_propose[vidx] = false;
@@ -339,6 +343,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             params,
             instance_id,
             proposal_timeout,
+            base_proposal_timeout,
             validators,
             ftt,
             active_validator: None,
@@ -1170,6 +1175,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 outcomes.extend(self.create_message(round_id, Content::Vote(true)));
 
                 if self.is_committed_round(round_id) {
+                    self.proposal_timeout = self.base_proposal_timeout;
                     outcomes.extend(self.finalize_round(round_id)); // Proposal is finalized!
                 }
 
@@ -1199,7 +1205,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                     self.current_timeout = Timestamp::from(u64::MAX);
                     self.current_round = self.current_round.saturating_add(1);
                 } else {
-                    // TODO: Increase timeout; reset when rounds get committed.
                     if now + self.proposal_timeout < self.current_timeout {
                         if let Some(maybe_parent_round_id) = self.suitable_parent_round(now) {
                             self.current_timeout = now + self.proposal_timeout;
@@ -1208,6 +1213,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                                 TIMER_ID_UPDATE,
                             ));
                             outcomes.extend(self.propose_if_leader(maybe_parent_round_id, now));
+                            self.proposal_timeout = self.proposal_timeout * 2u64;
                         }
                     }
                 }
