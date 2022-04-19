@@ -2,7 +2,7 @@ use super::*;
 
 use std::sync::Arc;
 
-use casper_types::{PublicKey, U512};
+use casper_types::{PublicKey, SecretKey, U512};
 
 use crate::{
     components::consensus::{
@@ -375,4 +375,54 @@ fn simple_consensus_faults() {
     let msg = create_message(&validators, 3, vote(false), &bob_kp);
     let outcomes = sc.handle_message(&mut rng, sender, msg, timestamp);
     expect_finalized(&outcomes, &[(&proposal1, 0), (&proposal2, 1)]);
+}
+
+#[test]
+fn test_validator_bit_field() {
+    fn test_roundtrip(
+        sc: &SimpleConsensus<ClContext>,
+        first: u32,
+        indexes: Vec<u32>,
+        expected: Vec<u32>,
+    ) {
+        let field = sc.validator_bit_field(
+            ValidatorIndex(first),
+            indexes.iter().map(|i| ValidatorIndex(*i)),
+        );
+        let new_indexes: BTreeSet<u32> = sc
+            .iter_validator_bit_field(ValidatorIndex(first), field)
+            .map(|ValidatorIndex(i)| i)
+            .collect();
+        assert_eq!(expected.into_iter().collect::<BTreeSet<u32>>(), new_indexes);
+    }
+
+    let weights100: Vec<(PublicKey, U512)> = (0u8..100)
+        .map(|i| {
+            let sk = SecretKey::ed25519_from_bytes([i; SecretKey::ED25519_LENGTH]).unwrap();
+            (PublicKey::from(&sk), U512::from(100))
+        })
+        .collect();
+
+    let weights250: Vec<(PublicKey, U512)> = (0u8..250)
+        .map(|i| {
+            let sk = SecretKey::ed25519_from_bytes([i; SecretKey::ED25519_LENGTH]).unwrap();
+            (PublicKey::from(&sk), U512::from(100))
+        })
+        .collect();
+
+    let sc100 = new_test_simple_consensus(weights100, vec![], &[]);
+    let sc250 = new_test_simple_consensus(weights250, vec![], &[]);
+
+    test_roundtrip(&sc100, 50, vec![], vec![]);
+    test_roundtrip(&sc250, 50, vec![], vec![]);
+    test_roundtrip(&sc250, 200, vec![], vec![]);
+
+    test_roundtrip(&sc100, 50, vec![0, 1, 49, 50, 99], vec![50, 99, 0, 1, 49]);
+    test_roundtrip(&sc250, 50, vec![0, 49, 50, 177, 178, 249], vec![50, 177]);
+    test_roundtrip(
+        &sc250,
+        200,
+        vec![0, 77, 78, 200, 249],
+        vec![200, 249, 0, 77],
+    );
 }
