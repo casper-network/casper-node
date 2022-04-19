@@ -644,6 +644,9 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             } else {
                 return vec![];
             };
+        if self.paused {
+            return vec![];
+        }
         let already_signed = match &content {
             Content::Proposal(_) => {
                 if self.leader(round_id) != validator_idx {
@@ -1030,9 +1033,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 ));
             }
             content @ Content::Echo(_) | content @ Content::Vote(_) => {
-                if !self.paused {
-                    self.add_content(round_id, content, validator_idx, signature);
-                }
+                self.add_content(round_id, content, validator_idx, signature);
             }
         }
         outcomes.extend(self.update());
@@ -2009,9 +2010,9 @@ where
         }
     }
 
-    // TODO: Pause mode is also activated if execution lags too far behind consensus.
     fn set_paused(&mut self, paused: bool) -> ProtocolOutcomes<C> {
         if self.paused && !paused {
+            self.paused = paused;
             self.mark_dirty(self.current_round);
             self.update()
         } else {
