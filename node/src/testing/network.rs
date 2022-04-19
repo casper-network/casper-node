@@ -7,6 +7,7 @@ use std::{
     time::Duration,
 };
 
+use casper_types::testing::TestRng;
 use fake_instant::FakeClock as Instant;
 use futures::future::{BoxFuture, FutureExt};
 use serde::Serialize;
@@ -18,7 +19,6 @@ use super::ConditionCheckReactor;
 use crate::{
     effect::{EffectBuilder, Effects},
     reactor::{Finalize, Reactor, Runner},
-    testing::TestRng,
     tls::KeyFingerprint,
     types::NodeId,
     NodeRng,

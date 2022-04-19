@@ -14,7 +14,9 @@ use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
 
 use casper_hashing::Digest;
-use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, SecretKey, U512};
+use casper_types::{
+    testing::TestRng, EraId, ExecutionResult, ProtocolVersion, PublicKey, SecretKey, U512,
+};
 
 use super::{
     construct_block_body_to_block_header_reverse_lookup, garbage_collect_block_body_v2_db,
@@ -26,9 +28,8 @@ use crate::{
         consensus::EraReport,
         storage::lmdb_ext::{TransactionExt, WriteTransactionExt},
     },
-    crypto::AsymmetricKeyExt,
     effect::{requests::StorageRequest, Multiple},
-    testing::{ComponentHarness, TestRng, UnitTestEvent},
+    testing::{ComponentHarness, UnitTestEvent},
     types::{
         AvailableBlockRange, Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Deploy,
         DeployHash, DeployMetadata, DeployWithFinalizedApprovals, FinalitySignature,

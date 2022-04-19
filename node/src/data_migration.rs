@@ -6,10 +6,9 @@ use toml::de::Error as TomlDecodeError;
 use tracing::info;
 
 use casper_hashing::Digest;
-use casper_types::{ProtocolVersion, PublicKey, SecretKey, Signature};
+use casper_types::{crypto, ProtocolVersion, PublicKey, SecretKey, Signature};
 
 use crate::{
-    crypto,
     reactor::participating::Config,
     types::{chainspec, Chainspec, ChainspecRawBytes},
     utils::{LoadError, Loadable, WithDir},
@@ -77,7 +76,7 @@ pub(crate) enum Error {
 
     /// Error loading the secret key.
     #[error("error loading secret key: {0}")]
-    LoadSecretKey(LoadError<crypto::Error>),
+    LoadSecretKey(LoadError<crypto::ErrorExt>),
 
     /// Error loading the chainspec.
     #[error("error loading chainspec: {0}")]
@@ -226,7 +225,6 @@ mod tests {
     use rand::Rng;
 
     use super::*;
-    use crate::crypto::AsymmetricKeyExt;
 
     #[test]
     fn should_write_then_read_info() {

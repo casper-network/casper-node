@@ -20,7 +20,6 @@ use crate::{
         chainspec_loader::NextUpgrade,
         rpc_server::rpcs::docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
     },
-    crypto::AsymmetricKeyExt,
     types::{ActivationPoint, Block, BlockHash, NodeId, PeersMap, TimeDiff, Timestamp},
 };
 
