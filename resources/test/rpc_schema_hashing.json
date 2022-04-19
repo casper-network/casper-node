@@ -152,50 +152,6 @@
             ],
             "type": "object"
           },
-          "BalanceIdentifier": {
-            "anyOf": [
-              {
-                "additionalProperties": false,
-                "description": "Query for the main_purse balance corresponding to this `PublicKey`.",
-                "properties": {
-                  "main_purse_under_public_key": {
-                    "$ref": "#/components/schemas/PublicKey"
-                  }
-                },
-                "required": [
-                  "main_purse_under_public_key"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "description": "Query for the main_purse balance corresponding to this `AccountHash`.",
-                "properties": {
-                  "main_purse_under_account_hash": {
-                    "$ref": "#/components/schemas/AccountHash"
-                  }
-                },
-                "required": [
-                  "main_purse_under_account_hash"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "description": "Query for purse balance underneath this `URef`.",
-                "properties": {
-                  "purse_uref": {
-                    "$ref": "#/components/schemas/URef"
-                  }
-                },
-                "required": [
-                  "purse_uref"
-                ],
-                "type": "object"
-              }
-            ],
-            "description": "Identifier for the main purse of a given account."
-          },
           "Bid": {
             "additionalProperties": false,
             "description": "An entry in the validator map.",
@@ -2097,6 +2053,50 @@
             "description": "Hex-encoded cryptographic public key, including the algorithm tag prefix.",
             "type": "string"
           },
+          "PurseIdentifier": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "description": "The main purse of the account identified by this public key.",
+                "properties": {
+                  "main_purse_under_public_key": {
+                    "$ref": "#/components/schemas/PublicKey"
+                  }
+                },
+                "required": [
+                  "main_purse_under_public_key"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "The main purse of the account identified by this account hash.",
+                "properties": {
+                  "main_purse_under_account_hash": {
+                    "$ref": "#/components/schemas/AccountHash"
+                  }
+                },
+                "required": [
+                  "main_purse_under_account_hash"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "The purse identified by this URef.",
+                "properties": {
+                  "purse_uref": {
+                    "$ref": "#/components/schemas/URef"
+                  }
+                },
+                "required": [
+                  "purse_uref"
+                ],
+                "type": "object"
+              }
+            ],
+            "description": "Identifier of a purse."
+          },
           "Reward": {
             "additionalProperties": false,
             "properties": {
@@ -3525,7 +3525,7 @@
                 "name": "query_balance_example_result",
                 "value": {
                   "api_version": "1.4.5",
-                  "balance_value": "123456"
+                  "balance": "123456"
                 }
               }
             }
@@ -3533,19 +3533,26 @@
           "name": "query_balance",
           "params": [
             {
-              "name": "state_identifier",
-              "required": true,
-              "schema": {
-                "$ref": "#/components/schemas/GlobalStateIdentifier",
-                "description": "The state identifier used for the query."
-              }
-            },
-            {
               "name": "balance_identifier",
               "required": true,
               "schema": {
-                "$ref": "#/components/schemas/BalanceIdentifier",
+                "$ref": "#/components/schemas/PurseIdentifier",
                 "description": "The identifier to obtain the purse corresponding to balance query."
+              }
+            },
+            {
+              "name": "state_identifier",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/GlobalStateIdentifier"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The state identifier used for the query."
               }
             }
           ],
@@ -3558,14 +3565,14 @@
                   "description": "The RPC API version.",
                   "type": "string"
                 },
-                "balance_value": {
+                "balance": {
                   "$ref": "#/components/schemas/U512",
-                  "description": "The balance value."
+                  "description": "The balance represented in motes."
                 }
               },
               "required": [
                 "api_version",
-                "balance_value"
+                "balance"
               ],
               "type": "object"
             }

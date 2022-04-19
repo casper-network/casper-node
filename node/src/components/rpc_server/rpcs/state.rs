@@ -122,12 +122,14 @@ static GET_TRIE_RESULT: Lazy<GetTrieResult> = Lazy::new(|| GetTrieResult {
     maybe_trie_bytes: None,
 });
 static QUERY_BALANCE_PARAMS: Lazy<QueryBalanceParams> = Lazy::new(|| QueryBalanceParams {
-    state_identifier: GlobalStateIdentifier::BlockHash(*Block::doc_example().hash()),
-    balance_identifier: BalanceIdentifier::MainPurseUnderAccountHash(AccountHash::new([9u8; 32])),
+    state_identifier: Some(GlobalStateIdentifier::BlockHash(
+        *Block::doc_example().hash(),
+    )),
+    balance_identifier: PurseIdentifier::MainPurseUnderAccountHash(AccountHash::new([9u8; 32])),
 });
 static QUERY_BALANCE_RESULT: Lazy<QueryBalanceResult> = Lazy::new(|| QueryBalanceResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
-    balance_value: U512::from(123_456),
+    balance: U512::from(123_456),
 });
 
 /// Params for "state_get_item" RPC request.
@@ -927,15 +929,15 @@ impl RpcWithParamsExt for QueryGlobalState {
     }
 }
 
-/// Identifier for the main purse of a given account.
+/// Identifier of a purse.
 #[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
 #[serde(deny_unknown_fields, rename_all = "snake_case")]
-pub enum BalanceIdentifier {
-    /// Query for the main_purse balance corresponding to this `PublicKey`.
+pub enum PurseIdentifier {
+    /// The main purse of the account identified by this public key.
     MainPurseUnderPublicKey(PublicKey),
-    /// Query for the main_purse balance corresponding to this `AccountHash`.
+    /// The main purse of the account identified by this account hash.
     MainPurseUnderAccountHash(AccountHash),
-    /// Query for purse balance underneath this `URef`.
+    /// The purse identified by this URef.
     PurseUref(URef),
 }
 
@@ -943,9 +945,9 @@ pub enum BalanceIdentifier {
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 pub struct QueryBalanceParams {
     /// The state identifier used for the query.
-    pub state_identifier: GlobalStateIdentifier,
+    pub state_identifier: Option<GlobalStateIdentifier>,
     /// The identifier to obtain the purse corresponding to balance query.
-    pub balance_identifier: BalanceIdentifier,
+    pub balance_identifier: PurseIdentifier,
 }
 
 impl DocExample for QueryBalanceParams {
@@ -960,8 +962,8 @@ pub struct QueryBalanceResult {
     /// The RPC API version.
     #[schemars(with = "String")]
     pub api_version: ProtocolVersion,
-    /// The balance value.
-    pub balance_value: U512,
+    /// The balance represented in motes.
+    pub balance: U512,
 }
 
 impl DocExample for QueryBalanceResult {
@@ -987,19 +989,33 @@ impl RpcWithParamsExt for QueryBalance {
         api_version: ProtocolVersion,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
-            let (state_root_hash, _) = match get_state_root_hash_and_optional_header(
-                effect_builder,
-                params.state_identifier,
-                Self::METHOD,
-            )
-            .await
-            {
-                Ok(state_root_hash) => state_root_hash,
-                Err(error) => return Ok(response_builder.error(error)?),
+            let state_root_hash = match params.state_identifier {
+                None => match effect_builder.get_highest_block_header_from_storage().await {
+                    None => {
+                        return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                            ErrorCode::NoSuchBlock as i64,
+                            "query-balance failed to retrieve highest block header",
+                        ))?)
+                    }
+                    Some(block_header) => *block_header.state_root_hash(),
+                },
+                Some(state_identifier) => {
+                    let (state_root_hash, _) = match get_state_root_hash_and_optional_header(
+                        effect_builder,
+                        state_identifier,
+                        Self::METHOD,
+                    )
+                    .await
+                    {
+                        Ok(state_root_hash) => state_root_hash,
+                        Err(error) => return Ok(response_builder.error(error)?),
+                    };
+                    state_root_hash
+                }
             };
 
             let purse_uref = match params.balance_identifier {
-                BalanceIdentifier::MainPurseUnderPublicKey(account_public_key) => {
+                PurseIdentifier::MainPurseUnderPublicKey(account_public_key) => {
                     match get_account(
                         effect_builder,
                         state_root_hash,
@@ -1011,13 +1027,13 @@ impl RpcWithParamsExt for QueryBalance {
                         Err(error) => return Ok(response_builder.error(error)?),
                     }
                 }
-                BalanceIdentifier::MainPurseUnderAccountHash(account_hash) => {
+                PurseIdentifier::MainPurseUnderAccountHash(account_hash) => {
                     match get_account(effect_builder, state_root_hash, account_hash).await {
                         Ok(account) => account.main_purse(),
                         Err(error) => return Ok(response_builder.error(error)?),
                     }
                 }
-                BalanceIdentifier::PurseUref(purse_uref) => purse_uref,
+                PurseIdentifier::PurseUref(purse_uref) => purse_uref,
             };
 
             // Get the balance.
@@ -1035,7 +1051,7 @@ impl RpcWithParamsExt for QueryBalance {
             let balance_value = match balance_result {
                 Ok(BalanceResult::Success { motes, .. }) => motes,
                 Ok(balance_result) => {
-                    let error_msg = format!("get-balance failed: {:?}", balance_result);
+                    let error_msg = format!("query-balance failed: {:?}", balance_result);
                     info!("{}", error_msg);
                     return Ok(response_builder.error(warp_json_rpc::Error::custom(
                         ErrorCode::GetBalanceFailed as i64,
@@ -1043,7 +1059,7 @@ impl RpcWithParamsExt for QueryBalance {
                     ))?);
                 }
                 Err(error) => {
-                    let error_msg = format!("get-balance failed to execute: {}", error);
+                    let error_msg = format!("query-balance failed to execute: {}", error);
                     info!("{}", error_msg);
                     return Ok(response_builder.error(warp_json_rpc::Error::custom(
                         ErrorCode::GetBalanceFailedToExecute as i64,
@@ -1054,7 +1070,7 @@ impl RpcWithParamsExt for QueryBalance {
 
             let result = Self::ResponseResult {
                 api_version,
-                balance_value,
+                balance: balance_value,
             };
             Ok(response_builder.success(result)?)
         }

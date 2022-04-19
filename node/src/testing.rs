@@ -389,6 +389,7 @@ pub fn assert_schema(schema_path: String, actual_schema: RootSchema) {
     let expected_schema = fs::read_to_string(&schema_path).unwrap();
     let expected_schema: Value = serde_json::from_str(&expected_schema).unwrap();
     let actual_schema = serde_json::to_string_pretty(&actual_schema).unwrap();
+    println!("{}", actual_schema);
     let mut temp_file = tempfile::Builder::new()
         .suffix(".json")
         .tempfile_in(env!("OUT_DIR"))
