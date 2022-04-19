@@ -543,6 +543,90 @@ impl<K, V> Trie<K, V> {
             None
         }
     }
+
+    /// Returns an iterator over trie hashes from the raw bytes of the trie.
+    ///
+    /// Lazily deserializes the trie if necessary.
+    pub fn descendants_from_bytes(
+        trie_bytes: &[u8],
+    ) -> Result<DescendantsIterator, bytesrepr::Error>
+    where
+        K: FromBytes,
+        V: FromBytes,
+    {
+        // Optimization: Don't deserialize leaves as they have no descendants.
+        if let Some(&Trie::<K, V>::LEAF_TAG) = trie_bytes.first() {
+            return Ok(DescendantsIterator::Empty);
+        }
+
+        // Parse the trie.
+        let trie: Trie<K, V> = bytesrepr::deserialize_from_slice(trie_bytes)?;
+
+        match trie {
+            // Should be unreachable due to checking the first byte as a shortcut above.
+            Trie::<K, V>::Leaf { .. } => Ok(DescendantsIterator::Empty),
+            // We hit a pointer block.
+            Trie::Node { pointer_block } => Ok(DescendantsIterator::PointerBlock {
+                idx: 0,
+                pointer_block,
+            }),
+            // If we hit an extension block, use just the pointer.
+            Trie::Extension { pointer, .. } => Ok(DescendantsIterator::Single(pointer.into_hash())),
+        }
+    }
+}
+
+/// An iterator over the descendants of a trie node.
+pub enum DescendantsIterator {
+    /// The iterator is exhausted or started at a leaf node.
+    Empty,
+    /// A pointer block being iterated.
+    PointerBlock {
+        /// Current position in the pointer block
+        idx: usize,
+        /// Actual heap-allocated pointer block.
+        pointer_block: Box<PointerBlock>,
+    },
+    /// A single hash that has not yet been iterated over.
+    Single(Digest),
+}
+
+impl Iterator for DescendantsIterator {
+    type Item = Digest;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match *self {
+            DescendantsIterator::Empty => None,
+            DescendantsIterator::PointerBlock {
+                ref mut idx,
+                ref pointer_block,
+            } => {
+                // We iterate until we hit the end of the block.
+                while *idx < pointer_block.0.len() {
+                    let cur = *idx;
+                    *idx += 1;
+
+                    match pointer_block.0[cur] {
+                        // An empty slot in the pointer block. Just increment and continue.
+                        None => continue,
+                        Some(ptr) => match ptr {
+                            Pointer::LeafPointer(key) | Pointer::NodePointer(key) => {
+                                return Some(key)
+                            }
+                        },
+                    }
+                }
+
+                // We are done iterating over the block, free allocated memory early.
+                *self = DescendantsIterator::Empty;
+                None
+            }
+            DescendantsIterator::Single(digest) => {
+                *self = DescendantsIterator::Empty;
+                Some(digest)
+            }
+        }
+    }
 }
 
 /// Hash bytes into chunks if necessary.
