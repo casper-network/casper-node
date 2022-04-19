@@ -107,10 +107,10 @@ impl ScratchTrieStore {
         let cache = &mut *self.store.cache.lock().map_err(|_| error::Error::Poison)?;
 
         let mut txn = rocksdb_store.create_read_write_txn()?;
-        let mut missing_trie_keys = vec![new_state_root];
+        let mut new_trie_keys = vec![new_state_root];
         let mut validated_tries = HashMap::new();
 
-        while let Some(next_trie_key) = missing_trie_keys.pop() {
+        while let Some(next_trie_key) = new_trie_keys.pop() {
             if cache.is_empty() {
                 return Err(error::Error::CommitError(
                     CommitError::TrieNotFoundDuringCacheValidate(next_trie_key),
@@ -127,7 +127,7 @@ impl ScratchTrieStore {
                 }
                 Some((true, trie)) => {
                     if let Some(children) = trie.children() {
-                        missing_trie_keys.extend(children);
+                        new_trie_keys.extend(children);
                     }
                     validated_tries.insert(next_trie_key, trie);
                 }
