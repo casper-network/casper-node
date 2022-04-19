@@ -641,7 +641,7 @@ async fn recursive_trie_download(hash: Digest, ctx: Arc<ChainSyncContext>) -> Re
             Ok(())
         }
         TrieAlreadyPresentOrDownloaded::Downloaded(trie_bytes) => {
-            let descendent_handles: FuturesUnordered<_> =
+            let mut descendent_handles: FuturesUnordered<_> =
                 NetTrie::descendants_from_bytes(&trie_bytes)
                     .map_err(|err| Error::CorruptTrie {
                         hash,
