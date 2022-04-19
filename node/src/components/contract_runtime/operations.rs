@@ -104,10 +104,10 @@ pub fn execute_finalized_block(
     let maybe_step_effect_and_upcoming_era_validators =
         if let Some(era_report) = finalized_block.era_report() {
             let StepSuccess {
-                post_state_hash,
+                post_state_hash: _, // ignore the post-state-hash returned from scratch
                 execution_journal: step_execution_journal,
             } = commit_step(
-                engine_state,
+                &scratch_state, // engine_state
                 metrics.clone(),
                 protocol_version,
                 state_root_hash,
@@ -115,7 +115,9 @@ pub fn execute_finalized_block(
                 finalized_block.timestamp().millis(),
                 finalized_block.era_id().successor(),
             )?;
-            state_root_hash = post_state_hash;
+
+            state_root_hash =
+                engine_state.write_scratch_to_lmdb(state_root_hash, scratch_state.into_inner())?;
 
             // In this flow we execute using a recent state root hash where the system contract
             // registry is guaranteed to exist.
@@ -131,13 +133,12 @@ pub fn execute_finalized_block(
                 upcoming_era_validators,
             })
         } else {
+            // Finally, the new state-root-hash from the cumulative changes to global state is
+            // returned when they are written to LMDB.
+            state_root_hash =
+                engine_state.write_scratch_to_lmdb(state_root_hash, scratch_state.into_inner())?;
             None
         };
-
-    // Finally, the new state-root-hash from the cumulative changes to global state is returned when
-    // they are written to LMDB.
-    state_root_hash =
-        engine_state.write_scratch_to_lmdb(state_root_hash, scratch_state.into_inner())?;
 
     // Flush once, after all deploys have been executed.
     engine_state.flush_environment()?;
@@ -267,15 +268,19 @@ where
     result
 }
 
-fn commit_step(
-    engine_state: &EngineState<LmdbGlobalState>,
+fn commit_step<S>(
+    engine_state: &EngineState<S>,
     maybe_metrics: Option<Arc<Metrics>>,
     protocol_version: ProtocolVersion,
     pre_state_root_hash: Digest,
     era_report: &EraReport<PublicKey>,
     era_end_timestamp_millis: u64,
     next_era_id: EraId,
-) -> Result<StepSuccess, StepError> {
+) -> Result<StepSuccess, StepError>
+where
+    S: StateProvider + CommitProvider,
+    S::Error: Into<execution::Error>,
+{
     // Extract the rewards and the inactive validators if this is a switch block
     let EraReport {
         equivocators,
