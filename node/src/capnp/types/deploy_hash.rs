@@ -1,6 +1,8 @@
 use super::{FromCapnpReader, ToCapnpBuilder};
-use crate::capnp::{DeserializeError, FromCapnpBytes, SerializeError, ToCapnpBytes};
-use crate::types::DeployHash;
+use crate::{
+    capnp::{DeserializeError, FromCapnpBytes, SerializeError, ToCapnpBytes},
+    types::DeployHash,
+};
 
 #[allow(dead_code)]
 pub(super) mod deploy_hash_capnp {
@@ -52,8 +54,7 @@ impl FromCapnpBytes for DeployHash {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::super::digest::tests::random_digest;
-    use super::*;
+    use super::{super::digest::tests::random_digest, *};
 
     pub(crate) fn random_deploy_hash() -> DeployHash {
         DeployHash::new(random_digest())

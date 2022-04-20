@@ -69,10 +69,14 @@ impl FromCapnpBytes for Block {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::super::block_body::tests::random_block_body;
-    use super::super::block_header::tests::{random_block_hash, random_block_header};
-    use super::super::era::tests::random_era_end;
-    use super::*;
+    use super::{
+        super::{
+            block_body::tests::random_block_body,
+            block_header::tests::{random_block_hash, random_block_header},
+            era::tests::random_era_end,
+        },
+        *,
+    };
 
     use crate::types::EraEnd;
 

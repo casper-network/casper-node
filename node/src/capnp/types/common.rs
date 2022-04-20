@@ -58,8 +58,7 @@ impl FromCapnpBytes for U512 {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::super::random_bytes;
-    use super::*;
+    use super::{super::random_bytes, *};
 
     pub(crate) fn random_u512() -> U512 {
         let bytes = random_bytes(64);

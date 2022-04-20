@@ -270,10 +270,12 @@ impl FromCapnpBytes for EraEnd {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::super::common::tests::random_u512;
-    use super::super::public_key::tests::random_key_pair;
-    use super::super::{random_byte, random_u64};
-    use super::*;
+    use super::{
+        super::{
+            common::tests::random_u512, public_key::tests::random_key_pair, random_byte, random_u64,
+        },
+        *,
+    };
 
     use casper_types::{PublicKey, U512};
 

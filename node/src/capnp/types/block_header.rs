@@ -210,10 +210,14 @@ impl FromCapnpBytes for BlockHeader {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::super::digest::tests::random_digest;
-    use super::super::era::tests::{random_era_end, random_era_id};
-    use super::super::{random_byte, random_u64};
-    use super::*;
+    use super::{
+        super::{
+            digest::tests::random_digest,
+            era::tests::{random_era_end, random_era_id},
+            random_byte, random_u64,
+        },
+        *,
+    };
 
     use crate::types::EraEnd;
 

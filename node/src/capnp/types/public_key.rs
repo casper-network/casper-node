@@ -41,16 +41,14 @@ impl FromCapnpReader<PublicKey> for public_key_capnp::public_key::Reader<'_> {
             public_key_capnp::public_key::Which::Ed25519(reader) => match reader {
                 Ok(reader) => {
                     let bytes: [u8; PublicKey::ED25519_LENGTH] = get_ed25519(reader);
-                    PublicKey::ed25519_from_bytes(bytes)
-                        .map_err(DeserializeError::from)
+                    PublicKey::ed25519_from_bytes(bytes).map_err(DeserializeError::from)
                 }
                 Err(e) => Err(e.into()),
             },
             public_key_capnp::public_key::Which::Secp256k1(reader) => match reader {
                 Ok(reader) => {
                     let bytes: [u8; PublicKey::SECP256K1_LENGTH] = get_secp256k1(reader);
-                    PublicKey::secp256k1_from_bytes(bytes)
-                        .map_err(DeserializeError::from)
+                    PublicKey::secp256k1_from_bytes(bytes).map_err(DeserializeError::from)
                 }
                 Err(e) => Err(e.into()),
             },

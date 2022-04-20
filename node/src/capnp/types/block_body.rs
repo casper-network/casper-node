@@ -111,10 +111,12 @@ impl FromCapnpBytes for BlockBody {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::super::{
-        deploy_hash::tests::random_deploy_hash, public_key::tests::random_key_pair, random_byte,
+    use super::{
+        super::{
+            deploy_hash::tests::random_deploy_hash, public_key::tests::random_key_pair, random_byte,
+        },
+        *,
     };
-    use super::*;
 
     pub(crate) fn random_block_body() -> BlockBody {
         let (public_key, _) = random_key_pair();

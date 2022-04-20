@@ -118,8 +118,7 @@ impl FromCapnpBytes for Digest {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::super::random_bytes;
-    use super::*;
+    use super::{super::random_bytes, *};
 
     use std::convert::TryFrom;
 
