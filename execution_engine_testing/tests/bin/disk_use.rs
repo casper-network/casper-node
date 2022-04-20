@@ -1,6 +1,6 @@
 use std::{fs::File, io::BufWriter};
 
-use casper_engine_test_support::auction::run_block_with_transfers_and_step;
+use casper_engine_test_support::auction::run_blocks_with_transfers_and_step;
 
 fn main() {
     let purse_count = 100;
@@ -11,7 +11,7 @@ fn main() {
     let validator_count = 100;
 
     let report_writer = BufWriter::new(File::create("disk_use_report.csv").unwrap());
-    run_block_with_transfers_and_step(
+    run_blocks_with_transfers_and_step(
         transfers_per_block,
         purse_count,
         true,

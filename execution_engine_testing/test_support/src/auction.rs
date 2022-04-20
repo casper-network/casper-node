@@ -131,7 +131,7 @@ pub fn run_blocks_with_transfers_and_step(
     }
     writeln!(
         report_writer,
-        "height,rocksdb-size,transfers,time_ms,necessary_tries,total_tries"
+        "height,db-size,transfers,time_ms,necessary_tries,total_tries"
     )
     .unwrap();
     // simulating a block boundary here.
