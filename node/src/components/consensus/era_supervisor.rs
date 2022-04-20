@@ -309,7 +309,9 @@ impl EraSupervisor {
             .next_block_height
             .saturating_sub(self.next_executed_height)
             > self.config.highway.max_execution_delay;
-        self.delegate_to_era(effect_builder, rng, era_id, |sc, _| sc.set_paused(paused))
+        self.delegate_to_era(effect_builder, rng, era_id, |consensus, _| {
+            consensus.set_paused(paused, Timestamp::now())
+        })
     }
 
     /// Initializes a new era. The switch blocks must contain the most recent `auction_delay + 1`
