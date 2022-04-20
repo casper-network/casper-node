@@ -1170,6 +1170,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 outcomes.extend(self.create_message(round_id, Content::Vote(true)));
 
                 if self.is_committed_round(round_id) {
+                    self.proposal_timeout = self.params.min_round_length();
                     outcomes.extend(self.finalize_round(round_id)); // Proposal is finalized!
                 }
 
@@ -1199,7 +1200,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                     self.current_timeout = Timestamp::from(u64::MAX);
                     self.current_round = self.current_round.saturating_add(1);
                 } else {
-                    // TODO: Increase timeout; reset when rounds get committed.
                     if now + self.proposal_timeout < self.current_timeout {
                         if let Some(maybe_parent_round_id) = self.suitable_parent_round(now) {
                             self.current_timeout = now + self.proposal_timeout;
@@ -1208,6 +1208,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                                 TIMER_ID_UPDATE,
                             ));
                             outcomes.extend(self.propose_if_leader(maybe_parent_round_id, now));
+                            self.proposal_timeout = self.proposal_timeout * 2u64;
                         }
                     }
                 }
