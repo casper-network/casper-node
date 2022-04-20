@@ -9,6 +9,8 @@ use std::convert::Infallible;
 
 use tracing::debug;
 
+use casper_types::Timestamp;
+
 pub(crate) use crate::components::deploy_acceptor::{Error, Event};
 use crate::{
     components::{deploy_acceptor::EventMetadata, Component},
@@ -17,7 +19,7 @@ use crate::{
         requests::{ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
-    types::{Deploy, Timestamp},
+    types::Deploy,
     utils::Source,
     NodeRng,
 };

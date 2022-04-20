@@ -19,7 +19,9 @@ use tracing::{info, trace, warn};
 
 use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
 use casper_hashing::Digest;
-use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion, PublicKey, U512};
+use casper_types::{
+    bytesrepr::Bytes, EraId, ProtocolVersion, PublicKey, TimeDiff, Timestamp, U512,
+};
 
 use super::{metrics::Metrics, Config};
 use crate::{
@@ -34,7 +36,7 @@ use crate::{
     types::{
         Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata,
         Deploy, DeployHash, FinalizedApprovals, FinalizedApprovalsWithId, FinalizedBlock, Item,
-        NodeId, TimeDiff, Timestamp,
+        NodeId,
     },
     utils::work_queue::WorkQueue,
 };

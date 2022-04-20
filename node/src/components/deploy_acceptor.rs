@@ -21,7 +21,7 @@ use casper_types::{
     account::{Account, AccountHash},
     system::auction::ARG_AMOUNT,
     Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersion,
-    ContractVersionKey, Key, ProtocolVersion, U512,
+    ContractVersionKey, Key, ProtocolVersion, Timestamp, U512,
 };
 
 use crate::{
@@ -31,10 +31,7 @@ use crate::{
         requests::{ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
-    types::{
-        chainspec::DeployConfig, BlockHeader, Chainspec, Deploy, DeployConfigurationFailure,
-        Timestamp,
-    },
+    types::{chainspec::DeployConfig, BlockHeader, Chainspec, Deploy, DeployConfigurationFailure},
     utils::Source,
     NodeRng,
 };

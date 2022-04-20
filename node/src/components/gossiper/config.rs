@@ -7,7 +7,7 @@ use serde::{
 };
 use tracing::error;
 
-use crate::types::TimeDiff;
+use casper_types::TimeDiff;
 
 #[cfg(test)]
 use super::error::Error;

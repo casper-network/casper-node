@@ -13,14 +13,14 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_hashing::Digest;
-use casper_types::{EraId, ProtocolVersion, PublicKey};
+use casper_types::{EraId, ProtocolVersion, PublicKey, TimeDiff, Timestamp};
 
 use crate::{
     components::{
         chainspec_loader::NextUpgrade,
         rpc_server::rpcs::docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
     },
-    types::{ActivationPoint, Block, BlockHash, NodeId, PeersMap, TimeDiff, Timestamp},
+    types::{ActivationPoint, Block, BlockHash, NodeId, PeersMap},
 };
 
 static CHAINSPEC_INFO: Lazy<ChainspecInfo> = Lazy::new(|| {

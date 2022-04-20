@@ -11,7 +11,7 @@ use prometheus::Registry;
 use tracing::{debug, error, info};
 
 use casper_execution_engine::core::engine_state::{self, genesis::GenesisSuccess, UpgradeSuccess};
-use casper_types::{EraId, PublicKey};
+use casper_types::{EraId, PublicKey, Timestamp};
 
 use self::metrics::Metrics;
 use crate::{
@@ -25,7 +25,7 @@ use crate::{
     reactor::joiner::JoinerEvent,
     types::{
         ActivationPoint, BlockHash, BlockHeader, BlockPayload, Chainspec, FinalizedBlock,
-        NodeConfig, Timestamp,
+        NodeConfig,
     },
     NodeRng, SmallNetworkConfig,
 };

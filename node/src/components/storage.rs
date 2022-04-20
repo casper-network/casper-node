@@ -70,7 +70,7 @@ use tracing::{debug, error, info, warn};
 use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
-    EraId, ExecutionResult, ProtocolVersion, PublicKey, Transfer, Transform,
+    EraId, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Transfer, Transform,
 };
 
 // The reactor! macro needs this in the fetcher tests
@@ -92,7 +92,7 @@ use crate::{
         BlockSignatures, BlockWithMetadata, Deploy, DeployHash, DeployMetadata,
         DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedApprovalsWithId,
         HashingAlgorithmVersion, Item, MerkleBlockBody, MerkleBlockBodyPart, MerkleLinkedListNode,
-        NodeId, TimeDiff,
+        NodeId,
     },
     utils::{display_error, FlattenResult, WithDir},
     NodeRng,
