@@ -1522,6 +1522,10 @@ impl Block {
         Ok(block)
     }
 
+    pub(crate) fn new_unchecked(hash: BlockHash, header: BlockHeader, body: BlockBody) -> Self {
+        Self { hash, header, body }
+    }
+
     pub(crate) fn body(&self) -> &BlockBody {
         &self.body
     }
