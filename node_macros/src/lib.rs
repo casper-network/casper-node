@@ -114,3 +114,42 @@ pub fn make_secp256k1_capnp_functions(_input: TokenStream) -> TokenStream {
 
     output.into()
 }
+
+/// Generates functions to get/set bytes in capnp::U512
+// TODO: Add byte length constant in casper_types::U512 to replace 64usize.
+#[proc_macro]
+pub fn make_u512_capnp_functions(_input: TokenStream) -> TokenStream {
+    let mut output: proc_macro2::TokenStream = Default::default();
+
+    let mut inner_loop_set: proc_macro2::TokenStream = Default::default();
+    for i in 0..64usize {
+        let ident = Ident::new(&format!("set_byte{}", i), Span::call_site());
+        inner_loop_set.extend(quote!(
+            msg.#ident(bytes[#i]);
+        ));
+    }
+
+    output.extend(quote!(
+        fn set_u512(msg: &mut common_capnp::u512::Builder, bytes: &[u8; 64usize]) {
+            #inner_loop_set
+        }
+    ));
+
+    let mut inner_loop_get: proc_macro2::TokenStream = Default::default();
+    for i in 0..64usize {
+        let ident = Ident::new(&format!("get_byte{}", i), Span::call_site());
+        inner_loop_get.extend(quote!(
+            reader.#ident(),
+        ));
+    }
+
+    output.extend(quote!(
+        fn get_u512(reader: &common_capnp::u512::Reader) -> [u8; 64usize] {
+            [
+                #inner_loop_get
+            ]
+        }
+    ));
+
+    output.into()
+}
