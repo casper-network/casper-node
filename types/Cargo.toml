@@ -21,6 +21,7 @@ ed25519-dalek = { version = "1.0.0", default-features = false, features = ["rand
 getrandom = { version = "0.2.0", features = ["rdrand"], optional = true }
 hex = { version = "0.4.2", default-features = false, features = ["alloc"] }
 hex_fmt = "0.3.0"
+humantime = { version = "2", optional = true }
 k256 = { version = "0.7.2", default-features = false, features = ["ecdsa", "sha256", "zeroize"] }
 num = { version = "0.4.0", default-features = false, features = ["alloc"] }
 num-derive = { version = "0.3.0", default-features = false }
@@ -46,6 +47,7 @@ bincode = "1.3.1"
 criterion = "0.3.5"
 derp = "0.0.14"
 getrandom = "0.2.0"
+humantime = "2"
 once_cell = "1.5.2"
 openssl = "0.10.32"
 pem = "0.8.1"
@@ -61,13 +63,11 @@ thiserror = "1"
 untrusted = "0.7.1"
 
 [features]
-crypto-std = ["derp", "getrandom", "once_cell", "pem", "thiserror", "untrusted"]
 json-schema = ["once_cell", "schemars"]
+std = ["derp", "getrandom", "humantime", "once_cell", "pem", "thiserror", "untrusted"]
 testing = ["proptest", "rand_pcg"]
 # DEPRECATED - use "testing" instead of "gens".
 gens = ["testing"]
-# DEPRECATED - enabling `std` has no effect.
-std = []
 
 [[bench]]
 name = "bytesrepr_bench"

@@ -1,6 +1,7 @@
 use super::consensus_des_testing::{Message, ValidatorId};
-use crate::types::Timestamp;
 use std::{cmp::Ordering, collections::BinaryHeap, fmt::Debug};
+
+use casper_types::Timestamp;
 
 pub(crate) trait MessageT: PartialEq + Eq + Ord + Clone + Debug {}
 impl<T> MessageT for T where T: PartialEq + Eq + Ord + Clone + Debug {}

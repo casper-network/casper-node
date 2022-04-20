@@ -125,7 +125,8 @@ use casper_execution_engine::{
 use casper_hashing::Digest;
 use casper_types::{
     account::Account, bytesrepr::Bytes, system::auction::EraValidators, Contract, ContractPackage,
-    EraId, ExecutionEffect, ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer, URef, U512,
+    EraId, ExecutionEffect, ExecutionResult, Key, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
+    Transfer, URef, U512,
 };
 
 use crate::{
@@ -145,7 +146,7 @@ use crate::{
         AvailableBlockRange, Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
         DeployHash, DeployHeader, DeployMetadata, DeployWithFinalizedApprovals, FinalitySignature,
-        FinalizedApprovals, FinalizedBlock, Item, NodeId, TimeDiff, Timestamp,
+        FinalizedApprovals, FinalizedBlock, Item, NodeId,
     },
     utils::{SharedFlag, Source},
 };

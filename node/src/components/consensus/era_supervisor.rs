@@ -27,7 +27,7 @@ use rand::Rng;
 use tracing::{debug, error, info, trace, warn};
 
 use casper_hashing::Digest;
-use casper_types::{AsymmetricType, EraId, PublicKey, SecretKey, U512};
+use casper_types::{AsymmetricType, EraId, PublicKey, SecretKey, TimeDiff, Timestamp, U512};
 
 use crate::{
     components::{
@@ -53,7 +53,6 @@ use crate::{
     types::{
         ActivationPoint, BlockHash, BlockHeader, Chainspec, Deploy, DeployHash,
         DeployOrTransferHash, FinalitySignature, FinalizedApprovals, FinalizedBlock, NodeId,
-        TimeDiff, Timestamp,
     },
     NodeRng,
 };

@@ -9,7 +9,7 @@ use blake2::{
 };
 
 use crate::key::BLAKE2B_DIGEST_LENGTH;
-#[cfg(any(feature = "crypto-std", test))]
+#[cfg(any(feature = "std", test))]
 pub use asymmetric_key::generate_ed25519_keypair;
 #[cfg(any(feature = "testing", test))]
 pub use asymmetric_key::gens;
@@ -18,7 +18,7 @@ pub use asymmetric_key::{
     SYSTEM_ACCOUNT, SYSTEM_TAG,
 };
 pub use error::Error;
-#[cfg(any(feature = "crypto-std", test))]
+#[cfg(any(feature = "std", test))]
 pub use error::ErrorExt;
 
 #[doc(hidden)]
