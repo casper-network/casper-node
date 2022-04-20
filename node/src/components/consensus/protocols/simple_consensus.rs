@@ -260,6 +260,8 @@ where
     current_timeout: Timestamp,
     /// Whether anything was recently added to the protocol state.
     progress_detected: bool,
+    /// Whether or not the protocol is currently paused
+    paused: bool,
 }
 
 impl<C: Context + 'static> SimpleConsensus<C> {
@@ -345,6 +347,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             weights,
             pending_proposal: None,
             progress_detected: false,
+            paused: false,
         }
     }
 
@@ -641,6 +644,9 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             } else {
                 return vec![];
             };
+        if self.paused {
+            return vec![];
+        }
         let already_signed = match &content {
             Content::Proposal(_) => {
                 if self.leader(round_id) != validator_idx {
@@ -2005,8 +2011,16 @@ where
         }
     }
 
-    // TODO: Pause mode is also activated if execution lags too far behind consensus.
-    fn set_paused(&mut self, _paused: bool) {}
+    fn set_paused(&mut self, paused: bool) -> ProtocolOutcomes<C> {
+        if self.paused && !paused {
+            self.paused = paused;
+            self.mark_dirty(self.current_round);
+            self.update()
+        } else {
+            self.paused = paused;
+            vec![]
+        }
+    }
 
     fn validators_with_evidence(&self) -> Vec<&C::ValidatorId> {
         self.faults

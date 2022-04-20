@@ -13,7 +13,7 @@ use casper_types::{PublicKey, U512};
 use crate::{
     components::consensus::{
         cl_context::ClContext,
-        consensus_protocol::{ConsensusProtocol, ProposedBlock},
+        consensus_protocol::{ConsensusProtocol, ProposedBlock, ProtocolOutcomes},
         protocols::highway::HighwayProtocol,
     },
     types::Timestamp,
@@ -157,8 +157,8 @@ impl Era {
     }
 
     /// Sets the pause status: While paused we don't create consensus messages other than pings.
-    pub(crate) fn set_paused(&mut self, paused: bool) {
-        self.consensus.set_paused(paused);
+    pub(crate) fn set_paused(&mut self, paused: bool) -> ProtocolOutcomes<ClContext> {
+        self.consensus.set_paused(paused)
     }
 }
 

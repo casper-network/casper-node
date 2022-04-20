@@ -302,28 +302,19 @@ impl EraSupervisor {
         self.open_eras.get(&era_id).map_or(false, has_validator)
     }
 
-    /// Updates `next_executed_height` based on the given block header, and unpauses consensus if
-    /// block execution has caught up with finalization.
-    #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
-    fn executed_block(&mut self, block_header: &BlockHeader) {
-        self.next_executed_height = self.next_executed_height.max(block_header.height() + 1);
-        self.update_consensus_pause();
-    }
-
     /// Pauses or unpauses consensus: Whenever the last executed block is too far behind the last
     /// finalized block, we suspend consensus.
-    fn update_consensus_pause(&mut self) {
+    fn update_consensus_pause<REv: ReactorEventT>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        rng: &mut NodeRng,
+        era_id: EraId,
+    ) -> Effects<Event> {
         let paused = self
             .next_block_height
             .saturating_sub(self.next_executed_height)
             > self.config.highway.max_execution_delay;
-        match self.open_eras.get_mut(&self.current_era) {
-            Some(era) => era.set_paused(paused),
-            None => error!(
-                era = self.current_era.value(),
-                "current era not initialized"
-            ),
-        }
+        self.delegate_to_era(effect_builder, rng, era_id, |sc, _| sc.set_paused(paused))
     }
 
     /// Initializes a new era. The switch blocks must contain the most recent `auction_delay + 1`
@@ -676,24 +667,27 @@ impl EraSupervisor {
     pub(super) fn handle_block_added<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
+        rng: &mut NodeRng,
         block_header: BlockHeader,
     ) -> Effects<Event> {
+        self.next_executed_height = self.next_executed_height.max(block_header.height() + 1);
         let our_pk = self.public_signing_key.clone();
         let our_sk = self.secret_signing_key.clone();
         let era_id = block_header.era_id();
-        self.executed_block(&block_header);
-        let mut effects = if self.is_validator_in(&our_pk, era_id) {
-            effect_builder
-                .announce_created_finality_signature(FinalitySignature::new(
-                    block_header.hash(self.verifiable_chunked_hash_activation()),
-                    era_id,
-                    &our_sk,
-                    our_pk,
-                ))
-                .ignore()
-        } else {
-            Effects::new()
-        };
+        let mut effects = Effects::new();
+        effects.extend(self.update_consensus_pause(effect_builder, rng, era_id));
+        if self.is_validator_in(&our_pk, era_id) {
+            effects.extend(
+                effect_builder
+                    .announce_created_finality_signature(FinalitySignature::new(
+                        block_header.hash(self.verifiable_chunked_hash_activation()),
+                        era_id,
+                        &our_sk,
+                        our_pk,
+                    ))
+                    .ignore(),
+            );
+        }
         if era_id < self.current_era {
             trace!(era = era_id.value(), "executed block in old era");
             return effects;
@@ -946,7 +940,9 @@ impl EraSupervisor {
                 self.next_block_height = self.next_block_height.max(finalized_block.height() + 1);
                 // Request execution of the finalized block.
                 effects.extend(execute_finalized_block(effect_builder, finalized_block).ignore());
-                self.update_consensus_pause();
+                let effects_from_updating_pause =
+                    self.update_consensus_pause(effect_builder, rng, era_id);
+                effects.extend(effects_from_updating_pause);
                 effects
             }
             ProtocolOutcome::ValidateConsensusValue {
