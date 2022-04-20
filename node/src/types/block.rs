@@ -688,7 +688,10 @@ pub struct EraEnd {
 }
 
 impl EraEnd {
-    fn new(era_report: EraReport, next_era_validator_weights: BTreeMap<PublicKey, U512>) -> Self {
+    pub(crate) fn new(
+        era_report: EraReport,
+        next_era_validator_weights: BTreeMap<PublicKey, U512>,
+    ) -> Self {
         EraEnd {
             era_report,
             next_era_validator_weights,

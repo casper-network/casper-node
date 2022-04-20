@@ -27,7 +27,7 @@ pub use block::{
     Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, FinalitySignature, FinalizedBlock,
     HashingAlgorithmVersion, MerkleBlockBody, MerkleBlockBodyPart, MerkleLinkedListNode,
 };
-pub(crate) use block::{BlockHeaderWithMetadata, BlockPayload, BlockWithMetadata};
+pub(crate) use block::{BlockHeaderWithMetadata, BlockPayload, BlockWithMetadata, EraEnd};
 pub use chainspec::Chainspec;
 pub(crate) use chainspec::{ActivationPoint, ChainspecRawBytes};
 pub use datasize::DataSize;
