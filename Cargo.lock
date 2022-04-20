@@ -520,6 +520,7 @@ dependencies = [
  "fs2",
  "futures",
  "futures-io",
+ "getrandom",
  "hex-buffer-serde 0.3.0",
  "hex_fmt",
  "hostname",

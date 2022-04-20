@@ -101,6 +101,7 @@ capnpc = "0.14.5"
 assert-json-diff = "2.0.1"
 casper-types = { version = "1.4.5", path = "../types", features = ["crypto-std", "datasize", "json-schema", "testing"] }
 fake_instant = "0.4.0"
+getrandom = "0.2.6"
 pnet = "0.28.0"
 pretty_assertions = "0.7.2"
 rand_core = "0.6.2"

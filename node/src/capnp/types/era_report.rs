@@ -7,6 +7,8 @@ use crate::{
     components::consensus::EraReport,
 };
 
+use super::public_key::put_public_key_into_builder;
+
 #[allow(dead_code)]
 mod era_report_capnp {
     include!(concat!(
@@ -37,87 +39,7 @@ impl ToCapnpBytes for EraReport<PublicKey> {
                 .init_inactive_validators(inactive_validators_count);
             for (index, inactive_validator) in self.inactive_validators.iter().enumerate() {
                 let mut validator_builder = inactive_validators.reborrow().get(index as u32);
-                // TODO[RC]: Deduplicate the code for writing PublicKey
-                match inactive_validator {
-                    PublicKey::Ed25519(key) => {
-                        let bytes = key.as_bytes();
-                        let mut msg = validator_builder.init_ed25519();
-                        msg.set_byte0(bytes[0]);
-                        msg.set_byte1(bytes[1]);
-                        msg.set_byte2(bytes[2]);
-                        msg.set_byte3(bytes[3]);
-                        msg.set_byte4(bytes[4]);
-                        msg.set_byte5(bytes[5]);
-                        msg.set_byte6(bytes[6]);
-                        msg.set_byte7(bytes[7]);
-                        msg.set_byte8(bytes[8]);
-                        msg.set_byte9(bytes[9]);
-                        msg.set_byte10(bytes[10]);
-                        msg.set_byte11(bytes[11]);
-                        msg.set_byte12(bytes[12]);
-                        msg.set_byte13(bytes[13]);
-                        msg.set_byte14(bytes[14]);
-                        msg.set_byte15(bytes[15]);
-                        msg.set_byte16(bytes[16]);
-                        msg.set_byte17(bytes[17]);
-                        msg.set_byte18(bytes[18]);
-                        msg.set_byte19(bytes[19]);
-                        msg.set_byte20(bytes[20]);
-                        msg.set_byte21(bytes[20]);
-                        msg.set_byte21(bytes[21]);
-                        msg.set_byte22(bytes[22]);
-                        msg.set_byte23(bytes[23]);
-                        msg.set_byte24(bytes[24]);
-                        msg.set_byte25(bytes[25]);
-                        msg.set_byte26(bytes[26]);
-                        msg.set_byte27(bytes[27]);
-                        msg.set_byte28(bytes[28]);
-                        msg.set_byte29(bytes[29]);
-                        msg.set_byte30(bytes[30]);
-                        msg.set_byte31(bytes[31]);
-                    }
-                    PublicKey::Secp256k1(key) => {
-                        let bytes = key.to_bytes();
-                        let mut msg = validator_builder.init_secp256k1();
-                        msg.set_byte0(bytes[0]);
-                        msg.set_byte1(bytes[1]);
-                        msg.set_byte2(bytes[2]);
-                        msg.set_byte3(bytes[3]);
-                        msg.set_byte4(bytes[4]);
-                        msg.set_byte5(bytes[5]);
-                        msg.set_byte6(bytes[6]);
-                        msg.set_byte7(bytes[7]);
-                        msg.set_byte8(bytes[8]);
-                        msg.set_byte9(bytes[9]);
-                        msg.set_byte10(bytes[10]);
-                        msg.set_byte11(bytes[11]);
-                        msg.set_byte12(bytes[12]);
-                        msg.set_byte13(bytes[13]);
-                        msg.set_byte14(bytes[14]);
-                        msg.set_byte15(bytes[15]);
-                        msg.set_byte16(bytes[16]);
-                        msg.set_byte17(bytes[17]);
-                        msg.set_byte18(bytes[18]);
-                        msg.set_byte19(bytes[19]);
-                        msg.set_byte20(bytes[20]);
-                        msg.set_byte21(bytes[20]);
-                        msg.set_byte21(bytes[21]);
-                        msg.set_byte22(bytes[22]);
-                        msg.set_byte23(bytes[23]);
-                        msg.set_byte24(bytes[24]);
-                        msg.set_byte25(bytes[25]);
-                        msg.set_byte26(bytes[26]);
-                        msg.set_byte27(bytes[27]);
-                        msg.set_byte28(bytes[28]);
-                        msg.set_byte29(bytes[29]);
-                        msg.set_byte30(bytes[30]);
-                        msg.set_byte31(bytes[31]);
-                        msg.set_byte32(bytes[32]);
-                    }
-                    PublicKey::System => {
-                        let _ = validator_builder.set_system(());
-                    }
-                }
+                put_public_key_into_builder(&inactive_validator, &mut validator_builder);
             }
         }
         {
@@ -130,87 +52,7 @@ impl ToCapnpBytes for EraReport<PublicKey> {
             let mut equivocators = root.reborrow().init_equivocators(equivocators_count);
             for (index, equivocator) in self.equivocators.iter().enumerate() {
                 let mut equivocator_builder = equivocators.reborrow().get(index as u32);
-                // TODO[RC]: Deduplicate the code for writing PublicKey
-                match equivocator {
-                    PublicKey::Ed25519(key) => {
-                        let bytes = key.as_bytes();
-                        let mut msg = equivocator_builder.init_ed25519();
-                        msg.set_byte0(bytes[0]);
-                        msg.set_byte1(bytes[1]);
-                        msg.set_byte2(bytes[2]);
-                        msg.set_byte3(bytes[3]);
-                        msg.set_byte4(bytes[4]);
-                        msg.set_byte5(bytes[5]);
-                        msg.set_byte6(bytes[6]);
-                        msg.set_byte7(bytes[7]);
-                        msg.set_byte8(bytes[8]);
-                        msg.set_byte9(bytes[9]);
-                        msg.set_byte10(bytes[10]);
-                        msg.set_byte11(bytes[11]);
-                        msg.set_byte12(bytes[12]);
-                        msg.set_byte13(bytes[13]);
-                        msg.set_byte14(bytes[14]);
-                        msg.set_byte15(bytes[15]);
-                        msg.set_byte16(bytes[16]);
-                        msg.set_byte17(bytes[17]);
-                        msg.set_byte18(bytes[18]);
-                        msg.set_byte19(bytes[19]);
-                        msg.set_byte20(bytes[20]);
-                        msg.set_byte21(bytes[20]);
-                        msg.set_byte21(bytes[21]);
-                        msg.set_byte22(bytes[22]);
-                        msg.set_byte23(bytes[23]);
-                        msg.set_byte24(bytes[24]);
-                        msg.set_byte25(bytes[25]);
-                        msg.set_byte26(bytes[26]);
-                        msg.set_byte27(bytes[27]);
-                        msg.set_byte28(bytes[28]);
-                        msg.set_byte29(bytes[29]);
-                        msg.set_byte30(bytes[30]);
-                        msg.set_byte31(bytes[31]);
-                    }
-                    PublicKey::Secp256k1(key) => {
-                        let bytes = key.to_bytes();
-                        let mut msg = equivocator_builder.init_secp256k1();
-                        msg.set_byte0(bytes[0]);
-                        msg.set_byte1(bytes[1]);
-                        msg.set_byte2(bytes[2]);
-                        msg.set_byte3(bytes[3]);
-                        msg.set_byte4(bytes[4]);
-                        msg.set_byte5(bytes[5]);
-                        msg.set_byte6(bytes[6]);
-                        msg.set_byte7(bytes[7]);
-                        msg.set_byte8(bytes[8]);
-                        msg.set_byte9(bytes[9]);
-                        msg.set_byte10(bytes[10]);
-                        msg.set_byte11(bytes[11]);
-                        msg.set_byte12(bytes[12]);
-                        msg.set_byte13(bytes[13]);
-                        msg.set_byte14(bytes[14]);
-                        msg.set_byte15(bytes[15]);
-                        msg.set_byte16(bytes[16]);
-                        msg.set_byte17(bytes[17]);
-                        msg.set_byte18(bytes[18]);
-                        msg.set_byte19(bytes[19]);
-                        msg.set_byte20(bytes[20]);
-                        msg.set_byte21(bytes[20]);
-                        msg.set_byte21(bytes[21]);
-                        msg.set_byte22(bytes[22]);
-                        msg.set_byte23(bytes[23]);
-                        msg.set_byte24(bytes[24]);
-                        msg.set_byte25(bytes[25]);
-                        msg.set_byte26(bytes[26]);
-                        msg.set_byte27(bytes[27]);
-                        msg.set_byte28(bytes[28]);
-                        msg.set_byte29(bytes[29]);
-                        msg.set_byte30(bytes[30]);
-                        msg.set_byte31(bytes[31]);
-                        msg.set_byte32(bytes[32]);
-                    }
-                    PublicKey::System => {
-                        let _ = equivocator_builder.set_system(());
-                    }
-                }
+                put_public_key_into_builder(&equivocator, &mut equivocator_builder);
             }
         }
 

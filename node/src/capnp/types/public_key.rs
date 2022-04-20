@@ -1,3 +1,4 @@
+use capnp::message::HeapAllocator;
 use casper_types::{AsymmetricType, PublicKey};
 
 use crate::capnp::{Error, FromCapnpBytes, ToCapnpBytes};
@@ -10,92 +11,97 @@ pub(super) mod public_key_capnp {
     ));
 }
 
+pub(crate) fn put_public_key_into_builder(
+    public_key: &PublicKey,
+    builder: &mut public_key_capnp::public_key::Builder<'_>,
+) {
+    match public_key {
+        PublicKey::Ed25519(key) => {
+            let bytes = key.as_bytes();
+            let mut msg = builder.reborrow().init_ed25519();
+            msg.set_byte0(bytes[0]);
+            msg.set_byte1(bytes[1]);
+            msg.set_byte2(bytes[2]);
+            msg.set_byte3(bytes[3]);
+            msg.set_byte4(bytes[4]);
+            msg.set_byte5(bytes[5]);
+            msg.set_byte6(bytes[6]);
+            msg.set_byte7(bytes[7]);
+            msg.set_byte8(bytes[8]);
+            msg.set_byte9(bytes[9]);
+            msg.set_byte10(bytes[10]);
+            msg.set_byte11(bytes[11]);
+            msg.set_byte12(bytes[12]);
+            msg.set_byte13(bytes[13]);
+            msg.set_byte14(bytes[14]);
+            msg.set_byte15(bytes[15]);
+            msg.set_byte16(bytes[16]);
+            msg.set_byte17(bytes[17]);
+            msg.set_byte18(bytes[18]);
+            msg.set_byte19(bytes[19]);
+            msg.set_byte20(bytes[20]);
+            msg.set_byte21(bytes[20]); // TODO[RC]: Fix
+            msg.set_byte21(bytes[21]);
+            msg.set_byte22(bytes[22]);
+            msg.set_byte23(bytes[23]);
+            msg.set_byte24(bytes[24]);
+            msg.set_byte25(bytes[25]);
+            msg.set_byte26(bytes[26]);
+            msg.set_byte27(bytes[27]);
+            msg.set_byte28(bytes[28]);
+            msg.set_byte29(bytes[29]);
+            msg.set_byte30(bytes[30]);
+            msg.set_byte31(bytes[31]);
+        }
+        PublicKey::Secp256k1(key) => {
+            let bytes = key.to_bytes();
+            let mut msg = builder.reborrow().init_secp256k1();
+            msg.set_byte0(bytes[0]);
+            msg.set_byte1(bytes[1]);
+            msg.set_byte2(bytes[2]);
+            msg.set_byte3(bytes[3]);
+            msg.set_byte4(bytes[4]);
+            msg.set_byte5(bytes[5]);
+            msg.set_byte6(bytes[6]);
+            msg.set_byte7(bytes[7]);
+            msg.set_byte8(bytes[8]);
+            msg.set_byte9(bytes[9]);
+            msg.set_byte10(bytes[10]);
+            msg.set_byte11(bytes[11]);
+            msg.set_byte12(bytes[12]);
+            msg.set_byte13(bytes[13]);
+            msg.set_byte14(bytes[14]);
+            msg.set_byte15(bytes[15]);
+            msg.set_byte16(bytes[16]);
+            msg.set_byte17(bytes[17]);
+            msg.set_byte18(bytes[18]);
+            msg.set_byte19(bytes[19]);
+            msg.set_byte20(bytes[20]);
+            msg.set_byte21(bytes[20]);
+            msg.set_byte21(bytes[21]);
+            msg.set_byte22(bytes[22]);
+            msg.set_byte23(bytes[23]);
+            msg.set_byte24(bytes[24]);
+            msg.set_byte25(bytes[25]);
+            msg.set_byte26(bytes[26]);
+            msg.set_byte27(bytes[27]);
+            msg.set_byte28(bytes[28]);
+            msg.set_byte29(bytes[29]);
+            msg.set_byte30(bytes[30]);
+            msg.set_byte31(bytes[31]);
+            msg.set_byte32(bytes[32]);
+        }
+        PublicKey::System => {
+            builder.set_system(());
+        }
+    }
+}
+
 impl ToCapnpBytes for PublicKey {
     fn try_to_capnp_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut builder = capnp::message::Builder::new_default();
-        match self {
-            PublicKey::Ed25519(key) => {
-                let root = builder.init_root::<public_key_capnp::public_key::Builder>();
-                let bytes = key.as_bytes();
-                let mut msg = root.init_ed25519();
-                msg.set_byte0(bytes[0]);
-                msg.set_byte1(bytes[1]);
-                msg.set_byte2(bytes[2]);
-                msg.set_byte3(bytes[3]);
-                msg.set_byte4(bytes[4]);
-                msg.set_byte5(bytes[5]);
-                msg.set_byte6(bytes[6]);
-                msg.set_byte7(bytes[7]);
-                msg.set_byte8(bytes[8]);
-                msg.set_byte9(bytes[9]);
-                msg.set_byte10(bytes[10]);
-                msg.set_byte11(bytes[11]);
-                msg.set_byte12(bytes[12]);
-                msg.set_byte13(bytes[13]);
-                msg.set_byte14(bytes[14]);
-                msg.set_byte15(bytes[15]);
-                msg.set_byte16(bytes[16]);
-                msg.set_byte17(bytes[17]);
-                msg.set_byte18(bytes[18]);
-                msg.set_byte19(bytes[19]);
-                msg.set_byte20(bytes[20]);
-                msg.set_byte21(bytes[20]);
-                msg.set_byte21(bytes[21]);
-                msg.set_byte22(bytes[22]);
-                msg.set_byte23(bytes[23]);
-                msg.set_byte24(bytes[24]);
-                msg.set_byte25(bytes[25]);
-                msg.set_byte26(bytes[26]);
-                msg.set_byte27(bytes[27]);
-                msg.set_byte28(bytes[28]);
-                msg.set_byte29(bytes[29]);
-                msg.set_byte30(bytes[30]);
-                msg.set_byte31(bytes[31]);
-            }
-            PublicKey::Secp256k1(key) => {
-                let root = builder.init_root::<public_key_capnp::public_key::Builder>();
-                let bytes = key.to_bytes();
-                let mut msg = root.init_secp256k1();
-                msg.set_byte0(bytes[0]);
-                msg.set_byte1(bytes[1]);
-                msg.set_byte2(bytes[2]);
-                msg.set_byte3(bytes[3]);
-                msg.set_byte4(bytes[4]);
-                msg.set_byte5(bytes[5]);
-                msg.set_byte6(bytes[6]);
-                msg.set_byte7(bytes[7]);
-                msg.set_byte8(bytes[8]);
-                msg.set_byte9(bytes[9]);
-                msg.set_byte10(bytes[10]);
-                msg.set_byte11(bytes[11]);
-                msg.set_byte12(bytes[12]);
-                msg.set_byte13(bytes[13]);
-                msg.set_byte14(bytes[14]);
-                msg.set_byte15(bytes[15]);
-                msg.set_byte16(bytes[16]);
-                msg.set_byte17(bytes[17]);
-                msg.set_byte18(bytes[18]);
-                msg.set_byte19(bytes[19]);
-                msg.set_byte20(bytes[20]);
-                msg.set_byte21(bytes[20]);
-                msg.set_byte21(bytes[21]);
-                msg.set_byte22(bytes[22]);
-                msg.set_byte23(bytes[23]);
-                msg.set_byte24(bytes[24]);
-                msg.set_byte25(bytes[25]);
-                msg.set_byte26(bytes[26]);
-                msg.set_byte27(bytes[27]);
-                msg.set_byte28(bytes[28]);
-                msg.set_byte29(bytes[29]);
-                msg.set_byte30(bytes[30]);
-                msg.set_byte31(bytes[31]);
-                msg.set_byte32(bytes[32]);
-            }
-            PublicKey::System => {
-                let mut root = builder.init_root::<public_key_capnp::public_key::Builder>();
-                root.set_system(());
-            }
-        }
+        let mut public_key_builder = builder.init_root::<public_key_capnp::public_key::Builder>();
+        put_public_key_into_builder(&self, &mut public_key_builder);
 
         let mut serialized = Vec::new();
         capnp::serialize::write_message(&mut serialized, &builder)
