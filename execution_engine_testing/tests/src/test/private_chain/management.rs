@@ -31,7 +31,7 @@ use parity_wasm::{
 };
 
 use crate::test::private_chain::{
-    ACCOUNT_2_ADDR, ACCOUNT_MANAGEMENT_CONTRACT, ADMIN_1_ACCOUNT_ADDR, ADMIN_1_ACCOUNT_WEIGHT,
+    ACCOUNT_2_ADDR, ADMIN_1_ACCOUNT_ADDR, ADMIN_1_ACCOUNT_WEIGHT, CONTROL_MANAGEMENT_CONTRACT,
     DEFAULT_ADMIN_ACCOUNT_WEIGHT, VALIDATOR_1_PUBLIC_KEY,
 };
 
@@ -177,7 +177,7 @@ fn should_not_resolve_private_chain_host_functions_on_public_chain() {
 
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
-        ACCOUNT_MANAGEMENT_CONTRACT,
+        CONTROL_MANAGEMENT_CONTRACT,
         RuntimeArgs::default(),
     )
     .build();

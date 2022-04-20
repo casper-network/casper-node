@@ -18,7 +18,7 @@ use casper_types::{
     EntryPoints, Key, Parameter,
 };
 
-const HASH_KEY_NAME: &str = "counter_package_hash";
+const HASH_KEY_NAME: &str = "package_hash";
 const ACCESS_KEY_NAME: &str = "access_key";
 const CONTRACT_VERSION_KEY: &str = "contract_version";
 const CONTRACT_HASH_NAME: &str = "contract_hash";

@@ -1,11 +1,11 @@
 [package]
-name = "account-management"
+name = "control-management"
 version = "0.1.0"
 authors = ["Michał Papierski <michal@casperlabs.io>"]
 edition = "2018"
 
 [[bin]]
-name = "account_management"
+name = "control_management"
 path = "src/main.rs"
 bench = false
 doctest = false

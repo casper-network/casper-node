@@ -62,7 +62,7 @@ static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| ACCOUNT_2_PUBLIC_KEY.to_
 
 const ADMIN_ACCOUNT_INITIAL_BALANCE: U512 = U512([100_000_000_000_000_000u64, 0, 0, 0, 0, 0, 0, 0]);
 
-const ACCOUNT_MANAGEMENT_CONTRACT: &str = "account_management.wasm";
+const CONTROL_MANAGEMENT_CONTRACT: &str = "control_management.wasm";
 
 static PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS: Lazy<Vec<AdministratorAccount>> = Lazy::new(|| {
     let default_admin = AdministratorAccount::new(
@@ -161,7 +161,7 @@ fn private_chain_setup() -> InMemoryWasmTestBuilder {
 
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ADMIN_ACCOUNT_ADDR,
-        ACCOUNT_MANAGEMENT_CONTRACT,
+        CONTROL_MANAGEMENT_CONTRACT,
         RuntimeArgs::default(),
     )
     .build();
