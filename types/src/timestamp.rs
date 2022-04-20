@@ -69,12 +69,14 @@ impl Timestamp {
     }
 
     /// Returns the difference between `self` and `other`, or `0` if that would be before the epoch.
+    #[must_use]
     pub fn saturating_sub(self, other: TimeDiff) -> Timestamp {
         Timestamp(self.0.saturating_sub(other.0))
     }
 
     /// Returns the sum of `self` and `other`, or the maximum possible value if that would be
     /// exceeded.
+    #[must_use]
     pub fn saturating_add(self, other: TimeDiff) -> Timestamp {
         Timestamp(self.0.saturating_add(other.0))
     }
@@ -262,6 +264,7 @@ impl TimeDiff {
     }
 
     /// Returns the product, or `TimeDiff(u64::MAX)` if it would overflow.
+    #[must_use]
     pub fn saturating_mul(self, rhs: u64) -> Self {
         TimeDiff(self.0.saturating_mul(rhs))
     }
