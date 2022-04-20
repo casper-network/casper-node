@@ -19,16 +19,16 @@ impl ToCapnpBuilder<PublicKey> for public_key_capnp::public_key::Builder<'_> {
         match public_key {
             PublicKey::Ed25519(key) => {
                 let bytes = key.as_bytes();
-                let mut msg = builder.reborrow().init_ed25519();
+                let mut msg = self.reborrow().init_ed25519();
                 set_ed25519(&mut msg, bytes);
             }
             PublicKey::Secp256k1(key) => {
                 let bytes = key.to_bytes();
-                let mut msg = builder.reborrow().init_secp256k1();
+                let mut msg = self.reborrow().init_secp256k1();
                 set_secp256k1(&mut msg, &bytes);
             }
             PublicKey::System => {
-                builder.set_system(());
+                self.set_system(());
             }
         }
         Ok(())
