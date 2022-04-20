@@ -52,6 +52,8 @@ impl Cache {
         self.cached_values.get(key).map(|(_dirty, value)| value)
     }
 
+    /// Consumes self and returns only written values as values that were only read must be filtered
+    /// out to prevent unecessary writes.
     fn into_dirty_writes(self) -> HashMap<Key, StoredValue> {
         self.cached_values
             .into_iter()
