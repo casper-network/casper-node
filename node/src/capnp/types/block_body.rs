@@ -3,7 +3,7 @@ use crate::types::BlockBody;
 use std::convert::TryInto;
 
 use super::{FromCapnpReader, ToCapnpBuilder};
-use crate::capnp::{Error, FromCapnpBytes, ToCapnpBytes};
+use crate::capnp::{DeserializeError, FromCapnpBytes, SerializeError, ToCapnpBytes};
 
 #[allow(dead_code)]
 pub(super) mod block_body_capnp {
@@ -14,7 +14,7 @@ pub(super) mod block_body_capnp {
 }
 
 impl ToCapnpBuilder<BlockBody> for block_body_capnp::block_body::Builder<'_> {
-    fn try_to_builder(&mut self, block_body: &BlockBody) -> Result<(), Error> {
+    fn try_to_builder(&mut self, block_body: &BlockBody) -> Result<(), SerializeError> {
         {
             let mut proposer_builder = self.reborrow().init_proposer();
             proposer_builder.try_to_builder(block_body.proposer())?;
@@ -25,7 +25,7 @@ impl ToCapnpBuilder<BlockBody> for block_body_capnp::block_body::Builder<'_> {
                 .deploy_hashes()
                 .len()
                 .try_into()
-                .map_err(|_| Error::TooManyItems)?;
+                .map_err(|_| SerializeError::TooManyItems)?;
             let mut list_builder = self.reborrow().init_deploy_hashes(deploy_hashes_count);
             for (index, deploy_hash) in deploy_hashes.iter().enumerate() {
                 let mut msg = list_builder.reborrow().get(index as u32);
@@ -38,7 +38,7 @@ impl ToCapnpBuilder<BlockBody> for block_body_capnp::block_body::Builder<'_> {
                 .transfer_hashes()
                 .len()
                 .try_into()
-                .map_err(|_| Error::TooManyItems)?;
+                .map_err(|_| SerializeError::TooManyItems)?;
             let mut list_builder = self.reborrow().init_transfer_hashes(transfer_hashes_count);
             for (index, deploy_hash) in transfer_hashes.iter().enumerate() {
                 let mut msg = list_builder.reborrow().get(index as u32);
@@ -50,11 +50,9 @@ impl ToCapnpBuilder<BlockBody> for block_body_capnp::block_body::Builder<'_> {
 }
 
 impl FromCapnpReader<BlockBody> for block_body_capnp::block_body::Reader<'_> {
-    fn try_from_reader(&self) -> Result<BlockBody, Error> {
+    fn try_from_reader(&self) -> Result<BlockBody, DeserializeError> {
         let proposer = {
-            let proposer_reader = self
-                .get_proposer()
-                .map_err(|_| Error::UnableToDeserialize)?;
+            let proposer_reader = self.get_proposer().map_err(DeserializeError::from)?;
             proposer_reader.try_from_reader()?
         };
         let mut deploy_hashes = vec![];
@@ -62,7 +60,7 @@ impl FromCapnpReader<BlockBody> for block_body_capnp::block_body::Reader<'_> {
             if self.has_deploy_hashes() {
                 for deploy_hash_reader in self
                     .get_deploy_hashes()
-                    .map_err(|_| Error::UnableToDeserialize)?
+                    .map_err(DeserializeError::from)?
                     .iter()
                 {
                     let deploy_hash = deploy_hash_reader.try_from_reader()?;
@@ -75,7 +73,7 @@ impl FromCapnpReader<BlockBody> for block_body_capnp::block_body::Reader<'_> {
             if self.has_transfer_hashes() {
                 for transfer_hash_reader in self
                     .get_transfer_hashes()
-                    .map_err(|_| Error::UnableToDeserialize)?
+                    .map_err(DeserializeError::from)?
                     .iter()
                 {
                     let deploy_hash = transfer_hash_reader.try_from_reader()?;
@@ -88,26 +86,25 @@ impl FromCapnpReader<BlockBody> for block_body_capnp::block_body::Reader<'_> {
 }
 
 impl ToCapnpBytes for BlockBody {
-    fn try_to_capnp_bytes(&self) -> Result<Vec<u8>, Error> {
+    fn try_to_capnp_bytes(&self) -> Result<Vec<u8>, SerializeError> {
         let mut builder = capnp::message::Builder::new_default();
         let mut msg = builder.init_root::<block_body_capnp::block_body::Builder>();
         msg.try_to_builder(self)?;
         let mut serialized = Vec::new();
-        capnp::serialize::write_message(&mut serialized, &builder)
-            .map_err(|_| Error::UnableToSerialize)?;
+        capnp::serialize::write_message(&mut serialized, &builder).map_err(SerializeError::from)?;
         Ok(serialized)
     }
 }
 
 impl FromCapnpBytes for BlockBody {
-    fn try_from_capnp_bytes(bytes: &[u8]) -> Result<Self, Error> {
+    fn try_from_capnp_bytes(bytes: &[u8]) -> Result<Self, DeserializeError> {
         let deserialized =
             capnp::serialize::read_message(bytes, capnp::message::ReaderOptions::new())
-                .expect("unable to deserialize struct");
+                .map_err(DeserializeError::from)?;
 
         let reader = deserialized
             .get_root::<block_body_capnp::block_body::Reader>()
-            .map_err(|_| Error::UnableToDeserialize)?;
+            .map_err(DeserializeError::from)?;
         reader.try_from_reader()
     }
 }

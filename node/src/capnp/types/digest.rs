@@ -1,5 +1,5 @@
 use super::{FromCapnpReader, ToCapnpBuilder};
-use crate::capnp::{Error, FromCapnpBytes, ToCapnpBytes};
+use crate::capnp::{DeserializeError, FromCapnpBytes, SerializeError, ToCapnpBytes};
 use casper_hashing::Digest;
 
 #[allow(dead_code)]
@@ -11,7 +11,7 @@ pub(super) mod digest_capnp {
 }
 
 impl ToCapnpBuilder<Digest> for digest_capnp::digest::Builder<'_> {
-    fn try_to_builder(&mut self, digest: &Digest) -> Result<(), Error> {
+    fn try_to_builder(&mut self, digest: &Digest) -> Result<(), SerializeError> {
         let bytes = digest.value();
         self.set_byte0(bytes[0]);
         self.set_byte1(bytes[1]);
@@ -51,7 +51,7 @@ impl ToCapnpBuilder<Digest> for digest_capnp::digest::Builder<'_> {
 }
 
 impl FromCapnpReader<Digest> for digest_capnp::digest::Reader<'_> {
-    fn try_from_reader(&self) -> Result<Digest, Error> {
+    fn try_from_reader(&self) -> Result<Digest, DeserializeError> {
         let bytes: [u8; Digest::LENGTH] = [
             self.get_byte0(),
             self.get_byte1(),
@@ -92,27 +92,26 @@ impl FromCapnpReader<Digest> for digest_capnp::digest::Reader<'_> {
 }
 
 impl ToCapnpBytes for Digest {
-    fn try_to_capnp_bytes(&self) -> Result<Vec<u8>, Error> {
+    fn try_to_capnp_bytes(&self) -> Result<Vec<u8>, SerializeError> {
         let mut builder = capnp::message::Builder::new_default();
         let mut msg = builder.init_root::<digest_capnp::digest::Builder>();
         msg.try_to_builder(self)?;
 
         let mut serialized = Vec::new();
-        capnp::serialize::write_message(&mut serialized, &builder)
-            .map_err(|_| Error::UnableToSerialize)?;
+        capnp::serialize::write_message(&mut serialized, &builder).map_err(SerializeError::from)?;
         Ok(serialized)
     }
 }
 
 impl FromCapnpBytes for Digest {
-    fn try_from_capnp_bytes(bytes: &[u8]) -> Result<Self, Error> {
+    fn try_from_capnp_bytes(bytes: &[u8]) -> Result<Self, DeserializeError> {
         let deserialized =
             capnp::serialize::read_message(bytes, capnp::message::ReaderOptions::new())
-                .expect("unable to deserialize struct");
+                .map_err(DeserializeError::from)?;
 
         let reader = deserialized
             .get_root::<digest_capnp::digest::Reader>()
-            .map_err(|_| Error::UnableToDeserialize)?;
+            .map_err(DeserializeError::from)?;
         reader.try_from_reader()
     }
 }
