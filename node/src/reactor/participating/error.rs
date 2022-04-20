@@ -5,11 +5,10 @@ use crate::{
         chain_synchronizer, contract_runtime, contract_runtime::BlockExecutionError,
         diagnostics_port, small_network, storage,
     },
-    crypto::Error as CryptoError,
     utils::{ListeningError, LoadError},
 };
 use casper_execution_engine::core::engine_state;
-use casper_types::bytesrepr;
+use casper_types::{bytesrepr, crypto::ErrorExt as CryptoError};
 
 /// Error type returned by the validator reactor.
 #[derive(Debug, Error)]

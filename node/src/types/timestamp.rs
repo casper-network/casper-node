@@ -18,11 +18,10 @@ use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+#[cfg(test)]
+use casper_types::testing::TestRng;
 
 use crate::rpcs::docs::DocExample;
-
-#[cfg(test)]
-use crate::testing::TestRng;
 
 static TIMESTAMP_EXAMPLE: Lazy<Timestamp> = Lazy::new(|| {
     let example_str: &str = "2020-11-17T00:39:24.072Z";

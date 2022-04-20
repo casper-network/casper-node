@@ -4,6 +4,7 @@
 use std::sync::{Arc, Mutex};
 
 use casper_node_macros::reactor;
+use casper_types::testing::TestRng;
 use futures::FutureExt;
 use tempfile::TempDir;
 use thiserror::Error;
@@ -25,7 +26,7 @@ use crate::{
     testing,
     testing::{
         network::{Network, NetworkedReactor},
-        ConditionCheckReactor, TestRng,
+        ConditionCheckReactor,
     },
     types::{Deploy, DeployHash, NodeId},
     utils::{WithDir, RESOURCES_PATH},

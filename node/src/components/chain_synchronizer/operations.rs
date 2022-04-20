@@ -1303,13 +1303,11 @@ mod tests {
 
     use rand::Rng;
 
-    use casper_types::{EraId, ProtocolVersion, PublicKey, SecretKey};
+    use casper_types::{testing::TestRng, EraId, ProtocolVersion, PublicKey, SecretKey};
 
     use super::*;
     use crate::{
         components::consensus::EraReport,
-        crypto::AsymmetricKeyExt,
-        testing::TestRng,
         types::{Block, BlockPayload, Chainspec, ChainspecRawBytes, FinalizedBlock, NodeConfig},
         utils::Loadable,
         SmallNetworkConfig,
