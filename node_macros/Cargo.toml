@@ -11,6 +11,7 @@ repository = "https://github.com/CasperLabs/casper-node/tree/master/node_macros"
 license = "Apache-2.0"
 
 [dependencies]
+casper-types = { path = "../types" }
 indexmap = "1.6.0"
 Inflector = "0.11.4"
 proc-macro2 = "1.0.21"

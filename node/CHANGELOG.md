@@ -53,6 +53,7 @@ All notable changes to this project will be documented in this file.  The format
 * Integrity check has been removed.
 * Remove `verify_accounts` option from `config.toml`, meaning deploys received from clients always undergo account balance checks to assess suitability for execution or not.
 * Remove a temporary chainspec setting `max_stored_value_size` to limit the size of individual values stored in global state.
+* Remove asymmetric key functionality (move to `casper-types` crate behind a feature named "crypto-std").
 
 ### Security
 * OpenSSL has been bumped to version 1.1.1.n, if compiling with vendored OpenSSL to address [CVE-2022-0778](https://www.openssl.org/news/secadv/20220315.txt).

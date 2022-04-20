@@ -14,7 +14,9 @@ use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
 
 use casper_hashing::Digest;
-use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, SecretKey, U512};
+use casper_types::{
+    testing::TestRng, EraId, ExecutionResult, ProtocolVersion, PublicKey, SecretKey, U512,
+};
 
 use super::{
     construct_block_body_to_block_header_reverse_lookup, garbage_collect_block_body_v2_db,
@@ -26,9 +28,8 @@ use crate::{
         consensus::EraReport,
         storage::lmdb_ext::{TransactionExt, WriteTransactionExt},
     },
-    crypto::AsymmetricKeyExt,
     effect::{requests::StorageRequest, Multiple},
-    testing::{ComponentHarness, TestRng, UnitTestEvent},
+    testing::{ComponentHarness, UnitTestEvent},
     types::{
         AvailableBlockRange, Block, BlockHash, BlockHeader, BlockPayload, BlockSignatures, Deploy,
         DeployHash, DeployMetadata, DeployWithFinalizedApprovals, FinalitySignature,
@@ -1738,11 +1739,30 @@ fn setup_range(low: u64, high: u64) -> ComponentHarness<UnitTestEvent> {
     let mut harness = ComponentHarness::default();
     let verifiable_chunked_hash_activation = EraId::new(u64::MAX);
 
+    let era_id = EraId::new(harness.rng.gen_range(0..100));
+    let block = Block::random_with_specifics(
+        &mut harness.rng,
+        era_id,
+        low,
+        ProtocolVersion::V1_0_0,
+        false,
+        verifiable_chunked_hash_activation,
+    );
+
     let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
-    let (block, _) = random_block_at_height(&mut harness.rng, low, Block::random_v1);
     storage.storage.write_block(&block).unwrap();
-    let (block, _) = random_block_at_height(&mut harness.rng, high, Block::random_v1);
+
+    let is_switch = harness.rng.gen_bool(0.1);
+    let block = Block::random_with_specifics(
+        &mut harness.rng,
+        era_id,
+        high,
+        ProtocolVersion::V1_0_0,
+        is_switch,
+        verifiable_chunked_hash_activation,
+    );
     storage.storage.write_block(&block).unwrap();
+
     storage
         .storage
         .update_lowest_available_block_height(low)

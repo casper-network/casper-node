@@ -4,10 +4,10 @@ use rand::Rng;
 use serde::Serialize;
 
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+#[cfg(test)]
+use casper_types::testing::TestRng;
 
 use super::AccountsConfig;
-#[cfg(test)]
-use crate::testing::TestRng;
 
 #[derive(Clone, DataSize, PartialEq, Eq, Serialize, Debug)]
 pub struct NetworkConfig {

@@ -2,7 +2,7 @@ use casper_types::{AsymmetricType, PublicKey};
 
 use super::{FromCapnpReader, ToCapnpBuilder};
 use crate::capnp::{DeserializeError, FromCapnpBytes, SerializeError, ToCapnpBytes};
-
+use casper_node_macros::{make_ed25519_capnp_functions, make_secp256k1_capnp_functions};
 #[allow(dead_code)]
 pub(super) mod public_key_capnp {
     include!(concat!(
@@ -11,84 +11,24 @@ pub(super) mod public_key_capnp {
     ));
 }
 
+make_ed25519_capnp_functions!();
+make_secp256k1_capnp_functions!();
+
 impl ToCapnpBuilder<PublicKey> for public_key_capnp::public_key::Builder<'_> {
     fn try_to_builder(&mut self, public_key: &PublicKey) -> Result<(), SerializeError> {
         match public_key {
             PublicKey::Ed25519(key) => {
                 let bytes = key.as_bytes();
-                let mut msg = self.reborrow().init_ed25519();
-                msg.set_byte0(bytes[0]);
-                msg.set_byte1(bytes[1]);
-                msg.set_byte2(bytes[2]);
-                msg.set_byte3(bytes[3]);
-                msg.set_byte4(bytes[4]);
-                msg.set_byte5(bytes[5]);
-                msg.set_byte6(bytes[6]);
-                msg.set_byte7(bytes[7]);
-                msg.set_byte8(bytes[8]);
-                msg.set_byte9(bytes[9]);
-                msg.set_byte10(bytes[10]);
-                msg.set_byte11(bytes[11]);
-                msg.set_byte12(bytes[12]);
-                msg.set_byte13(bytes[13]);
-                msg.set_byte14(bytes[14]);
-                msg.set_byte15(bytes[15]);
-                msg.set_byte16(bytes[16]);
-                msg.set_byte17(bytes[17]);
-                msg.set_byte18(bytes[18]);
-                msg.set_byte19(bytes[19]);
-                msg.set_byte20(bytes[20]);
-                msg.set_byte21(bytes[21]);
-                msg.set_byte22(bytes[22]);
-                msg.set_byte23(bytes[23]);
-                msg.set_byte24(bytes[24]);
-                msg.set_byte25(bytes[25]);
-                msg.set_byte26(bytes[26]);
-                msg.set_byte27(bytes[27]);
-                msg.set_byte28(bytes[28]);
-                msg.set_byte29(bytes[29]);
-                msg.set_byte30(bytes[30]);
-                msg.set_byte31(bytes[31]);
+                let mut msg = builder.reborrow().init_ed25519();
+                set_ed25519(&mut msg, bytes);
             }
             PublicKey::Secp256k1(key) => {
                 let bytes = key.to_bytes();
-                let mut msg = self.reborrow().init_secp256k1();
-                msg.set_byte0(bytes[0]);
-                msg.set_byte1(bytes[1]);
-                msg.set_byte2(bytes[2]);
-                msg.set_byte3(bytes[3]);
-                msg.set_byte4(bytes[4]);
-                msg.set_byte5(bytes[5]);
-                msg.set_byte6(bytes[6]);
-                msg.set_byte7(bytes[7]);
-                msg.set_byte8(bytes[8]);
-                msg.set_byte9(bytes[9]);
-                msg.set_byte10(bytes[10]);
-                msg.set_byte11(bytes[11]);
-                msg.set_byte12(bytes[12]);
-                msg.set_byte13(bytes[13]);
-                msg.set_byte14(bytes[14]);
-                msg.set_byte15(bytes[15]);
-                msg.set_byte16(bytes[16]);
-                msg.set_byte17(bytes[17]);
-                msg.set_byte18(bytes[18]);
-                msg.set_byte19(bytes[19]);
-                msg.set_byte20(bytes[20]);
-                msg.set_byte21(bytes[21]);
-                msg.set_byte22(bytes[22]);
-                msg.set_byte23(bytes[23]);
-                msg.set_byte24(bytes[24]);
-                msg.set_byte25(bytes[25]);
-                msg.set_byte26(bytes[26]);
-                msg.set_byte27(bytes[27]);
-                msg.set_byte28(bytes[28]);
-                msg.set_byte29(bytes[29]);
-                msg.set_byte30(bytes[30]);
-                msg.set_byte31(bytes[31]);
-                msg.set_byte32(bytes[32]);
+                let mut msg = builder.reborrow().init_secp256k1();
+                set_secp256k1(&mut msg, &bytes);
             }
             PublicKey::System => {
-                self.set_system(());
+                builder.set_system(());
             }
         }
         Ok(())
@@ -100,83 +40,17 @@ impl FromCapnpReader<PublicKey> for public_key_capnp::public_key::Reader<'_> {
         match self.which().map_err(DeserializeError::from)? {
             public_key_capnp::public_key::Which::Ed25519(reader) => match reader {
                 Ok(reader) => {
-                    let bytes: [u8; PublicKey::ED25519_LENGTH] = [
-                        reader.get_byte0(),
-                        reader.get_byte1(),
-                        reader.get_byte2(),
-                        reader.get_byte3(),
-                        reader.get_byte4(),
-                        reader.get_byte5(),
-                        reader.get_byte6(),
-                        reader.get_byte7(),
-                        reader.get_byte8(),
-                        reader.get_byte9(),
-                        reader.get_byte10(),
-                        reader.get_byte11(),
-                        reader.get_byte12(),
-                        reader.get_byte13(),
-                        reader.get_byte14(),
-                        reader.get_byte15(),
-                        reader.get_byte16(),
-                        reader.get_byte17(),
-                        reader.get_byte18(),
-                        reader.get_byte19(),
-                        reader.get_byte20(),
-                        reader.get_byte21(),
-                        reader.get_byte22(),
-                        reader.get_byte23(),
-                        reader.get_byte24(),
-                        reader.get_byte25(),
-                        reader.get_byte26(),
-                        reader.get_byte27(),
-                        reader.get_byte28(),
-                        reader.get_byte29(),
-                        reader.get_byte30(),
-                        reader.get_byte31(),
-                    ];
-
-                    PublicKey::ed25519_from_bytes(bytes).map_err(DeserializeError::from)
+                    let bytes: [u8; PublicKey::ED25519_LENGTH] = get_ed25519(reader);
+                    PublicKey::ed25519_from_bytes(bytes)
+                        .map_err(DeserializeError::from)
                 }
                 Err(e) => Err(e.into()),
             },
             public_key_capnp::public_key::Which::Secp256k1(reader) => match reader {
                 Ok(reader) => {
-                    let bytes: [u8; PublicKey::SECP256K1_LENGTH] = [
-                        reader.get_byte0(),
-                        reader.get_byte1(),
-                        reader.get_byte2(),
-                        reader.get_byte3(),
-                        reader.get_byte4(),
-                        reader.get_byte5(),
-                        reader.get_byte6(),
-                        reader.get_byte7(),
-                        reader.get_byte8(),
-                        reader.get_byte9(),
-                        reader.get_byte10(),
-                        reader.get_byte11(),
-                        reader.get_byte12(),
-                        reader.get_byte13(),
-                        reader.get_byte14(),
-                        reader.get_byte15(),
-                        reader.get_byte16(),
-                        reader.get_byte17(),
-                        reader.get_byte18(),
-                        reader.get_byte19(),
-                        reader.get_byte20(),
-                        reader.get_byte21(),
-                        reader.get_byte22(),
-                        reader.get_byte23(),
-                        reader.get_byte24(),
-                        reader.get_byte25(),
-                        reader.get_byte26(),
-                        reader.get_byte27(),
-                        reader.get_byte28(),
-                        reader.get_byte29(),
-                        reader.get_byte30(),
-                        reader.get_byte31(),
-                        reader.get_byte32(),
-                    ];
-                    PublicKey::secp256k1_from_bytes(bytes).map_err(DeserializeError::from)
+                    let bytes: [u8; PublicKey::SECP256K1_LENGTH] = get_secp256k1(reader);
+                    PublicKey::secp256k1_from_bytes(bytes)
+                        .map_err(DeserializeError::from)
                 }
                 Err(e) => Err(e.into()),
             },

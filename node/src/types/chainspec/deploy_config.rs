@@ -10,13 +10,13 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
 use casper_execution_engine::core::engine_state::MAX_PAYMENT_AMOUNT;
+#[cfg(test)]
+use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     Motes, U512,
 };
 
-#[cfg(test)]
-use crate::testing::TestRng;
 use crate::types::TimeDiff;
 
 #[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]

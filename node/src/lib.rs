@@ -36,7 +36,6 @@ mod capnp;
 
 // Public API
 pub mod cli;
-pub mod crypto;
 pub mod types;
 pub mod utils;
 pub use components::{
