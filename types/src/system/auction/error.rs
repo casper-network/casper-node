@@ -308,7 +308,8 @@ pub enum Error {
     /// ```
     RuntimeStack = 46,
     /// An error that is raised on private chain only when a `disable_auction_bids` flag is set to
-    /// `true`. ```
+    /// `true`.
+    /// ```
     /// # use casper_types::system::auction::Error;
     /// assert_eq!(47, Error::MintError as u8);
     /// ```
