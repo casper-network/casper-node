@@ -2,6 +2,7 @@ use std::{fs::File, io::BufWriter};
 
 use casper_engine_test_support::auction::run_blocks_with_transfers_and_step;
 
+#[ignore]
 #[test]
 fn should_run_transfers_and_auction_producing_expected_number_of_tries_only() {
     let purse_count = 100;
