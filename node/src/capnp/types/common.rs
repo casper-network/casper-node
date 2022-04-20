@@ -1,7 +1,7 @@
 use casper_types::U512;
 
 use super::{FromCapnpReader, ToCapnpBuilder};
-use crate::capnp::{Error, FromCapnpBytes, ToCapnpBytes};
+use crate::capnp::{DeserializeError, FromCapnpBytes, SerializeError, ToCapnpBytes};
 
 #[allow(dead_code)]
 pub(super) mod common_capnp {
@@ -12,7 +12,7 @@ pub(super) mod common_capnp {
 }
 
 impl ToCapnpBuilder<U512> for common_capnp::u512::Builder<'_> {
-    fn try_to_builder(&mut self, x: &U512) -> Result<(), Error> {
+    fn try_to_builder(&mut self, x: &U512) -> Result<(), SerializeError> {
         let mut le_bytes = [0u8; 64];
         x.to_little_endian(&mut le_bytes[..]);
         self.set_byte0(le_bytes[0]);
@@ -84,7 +84,7 @@ impl ToCapnpBuilder<U512> for common_capnp::u512::Builder<'_> {
 }
 
 impl FromCapnpReader<U512> for common_capnp::u512::Reader<'_> {
-    fn try_from_reader(&self) -> Result<U512, Error> {
+    fn try_from_reader(&self) -> Result<U512, DeserializeError> {
         let mut le_bytes = [0u8; 64];
         le_bytes[0] = self.get_byte0();
         le_bytes[1] = self.get_byte1();
@@ -155,27 +155,26 @@ impl FromCapnpReader<U512> for common_capnp::u512::Reader<'_> {
 }
 
 impl ToCapnpBytes for U512 {
-    fn try_to_capnp_bytes(&self) -> Result<Vec<u8>, Error> {
+    fn try_to_capnp_bytes(&self) -> Result<Vec<u8>, SerializeError> {
         let mut builder = capnp::message::Builder::new_default();
         let mut msg = builder.init_root::<common_capnp::u512::Builder>();
         msg.try_to_builder(self)?;
 
         let mut serialized = Vec::new();
-        capnp::serialize::write_message(&mut serialized, &builder)
-            .map_err(|_| Error::UnableToSerialize)?;
+        capnp::serialize::write_message(&mut serialized, &builder).map_err(SerializeError::from)?;
         Ok(serialized)
     }
 }
 
 impl FromCapnpBytes for U512 {
-    fn try_from_capnp_bytes(bytes: &[u8]) -> Result<Self, Error> {
+    fn try_from_capnp_bytes(bytes: &[u8]) -> Result<Self, DeserializeError> {
         let deserialized =
             capnp::serialize::read_message(bytes, capnp::message::ReaderOptions::new())
-                .expect("unable to deserialize struct");
+                .map_err(DeserializeError::from)?;
 
         let reader = deserialized
             .get_root::<common_capnp::u512::Reader>()
-            .map_err(|_| Error::UnableToDeserialize)?;
+            .map_err(DeserializeError::from)?;
         reader.try_from_reader()
     }
 }

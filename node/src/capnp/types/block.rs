@@ -1,7 +1,7 @@
 use crate::types::Block;
 
 use super::{FromCapnpReader, ToCapnpBuilder};
-use crate::capnp::{Error, FromCapnpBytes, ToCapnpBytes};
+use crate::capnp::{DeserializeError, FromCapnpBytes, SerializeError, ToCapnpBytes};
 
 #[allow(dead_code)]
 pub(super) mod block_capnp {
@@ -12,7 +12,7 @@ pub(super) mod block_capnp {
 }
 
 impl ToCapnpBuilder<Block> for block_capnp::block::Builder<'_> {
-    fn try_to_builder(&mut self, block: &Block) -> Result<(), Error> {
+    fn try_to_builder(&mut self, block: &Block) -> Result<(), SerializeError> {
         {
             let mut hash_builder = self.reborrow().init_hash();
             hash_builder.try_to_builder(block.hash())?;
@@ -30,40 +30,39 @@ impl ToCapnpBuilder<Block> for block_capnp::block::Builder<'_> {
 }
 
 impl FromCapnpReader<Block> for block_capnp::block::Reader<'_> {
-    fn try_from_reader(&self) -> Result<Block, Error> {
-        let hash_reader = self.get_hash().map_err(|_| Error::UnableToDeserialize)?;
+    fn try_from_reader(&self) -> Result<Block, DeserializeError> {
+        let hash_reader = self.get_hash().map_err(DeserializeError::from)?;
         let hash = hash_reader.try_from_reader()?;
 
-        let header_reader = self.get_header().map_err(|_| Error::UnableToDeserialize)?;
+        let header_reader = self.get_header().map_err(DeserializeError::from)?;
         let header = header_reader.try_from_reader()?;
 
-        let body_reader = self.get_body().map_err(|_| Error::UnableToDeserialize)?;
+        let body_reader = self.get_body().map_err(DeserializeError::from)?;
         let body = body_reader.try_from_reader()?;
         Ok(Block::new_unchecked(hash, header, body))
     }
 }
 
 impl ToCapnpBytes for Block {
-    fn try_to_capnp_bytes(&self) -> Result<Vec<u8>, Error> {
+    fn try_to_capnp_bytes(&self) -> Result<Vec<u8>, SerializeError> {
         let mut builder = capnp::message::Builder::new_default();
         let mut msg = builder.init_root::<block_capnp::block::Builder>();
         msg.try_to_builder(self)?;
         let mut serialized = Vec::new();
-        capnp::serialize::write_message(&mut serialized, &builder)
-            .map_err(|_| Error::UnableToSerialize)?;
+        capnp::serialize::write_message(&mut serialized, &builder).map_err(SerializeError::from)?;
         Ok(serialized)
     }
 }
 
 impl FromCapnpBytes for Block {
-    fn try_from_capnp_bytes(bytes: &[u8]) -> Result<Self, Error> {
+    fn try_from_capnp_bytes(bytes: &[u8]) -> Result<Self, DeserializeError> {
         let deserialized =
             capnp::serialize::read_message(bytes, capnp::message::ReaderOptions::new())
-                .expect("unable to deserialize struct");
+                .map_err(DeserializeError::from)?;
 
         let reader = deserialized
             .get_root::<block_capnp::block::Reader>()
-            .map_err(|_| Error::UnableToDeserialize)?;
+            .map_err(DeserializeError::from)?;
         reader.try_from_reader()
     }
 }

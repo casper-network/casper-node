@@ -9,11 +9,11 @@ mod public_key;
 mod test;
 
 pub trait ToCapnpBuilder<T> {
-    fn try_to_builder(&mut self, object: &T) -> Result<(), super::Error>;
+    fn try_to_builder(&mut self, object: &T) -> Result<(), super::SerializeError>;
 }
 
 pub trait FromCapnpReader<T> {
-    fn try_from_reader(&self) -> Result<T, super::Error>;
+    fn try_from_reader(&self) -> Result<T, super::DeserializeError>;
 }
 
 #[cfg(test)]

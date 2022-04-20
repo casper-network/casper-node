@@ -1,4 +1,4 @@
-use crate::capnp::{Error, FromCapnpBytes, ToCapnpBytes};
+use crate::capnp::{DeserializeError, FromCapnpBytes, SerializeError, ToCapnpBytes};
 
 #[allow(dead_code)]
 mod test_capnp {
@@ -11,27 +11,26 @@ struct Test {
 }
 
 impl ToCapnpBytes for Test {
-    fn try_to_capnp_bytes(&self) -> Result<Vec<u8>, Error> {
+    fn try_to_capnp_bytes(&self) -> Result<Vec<u8>, SerializeError> {
         let mut builder = capnp::message::Builder::new_default();
         {
             let mut msg = builder.init_root::<test_capnp::test::Builder>();
             msg.set_id(self.id);
         }
         let mut serialized = Vec::new();
-        capnp::serialize::write_message(&mut serialized, &builder)
-            .map_err(|_| Error::UnableToSerialize)?;
+        capnp::serialize::write_message(&mut serialized, &builder).map_err(SerializeError::from)?;
         Ok(serialized)
     }
 }
 
 impl FromCapnpBytes for Test {
-    fn try_from_capnp_bytes(bytes: &[u8]) -> Result<Self, Error> {
+    fn try_from_capnp_bytes(bytes: &[u8]) -> Result<Self, DeserializeError> {
         let deserialized =
             capnp::serialize::read_message(bytes, capnp::message::ReaderOptions::new())
-                .map_err(|_| Error::UnableToDeserialize)?;
+                .map_err(DeserializeError::from)?;
         let reader = deserialized
             .get_root::<test_capnp::test::Reader>()
-            .map_err(|_| Error::UnableToDeserialize)?;
+            .map_err(DeserializeError::from)?;
         Ok(Self {
             id: reader.get_id(),
         })

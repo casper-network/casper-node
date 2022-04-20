@@ -2,7 +2,7 @@ use crate::types::{BlockHash, BlockHeader, Timestamp};
 use casper_types::ProtocolVersion;
 
 use super::{FromCapnpReader, ToCapnpBuilder};
-use crate::capnp::{Error, FromCapnpBytes, ToCapnpBytes};
+use crate::capnp::{DeserializeError, FromCapnpBytes, SerializeError, ToCapnpBytes};
 
 #[allow(dead_code)]
 pub(super) mod block_header_capnp {
@@ -13,7 +13,7 @@ pub(super) mod block_header_capnp {
 }
 
 impl ToCapnpBuilder<BlockHash> for block_header_capnp::block_hash::Builder<'_> {
-    fn try_to_builder(&mut self, block_hash: &BlockHash) -> Result<(), Error> {
+    fn try_to_builder(&mut self, block_hash: &BlockHash) -> Result<(), SerializeError> {
         let mut digest_builder = self.reborrow().init_hash();
         digest_builder.try_to_builder(block_hash.inner())?;
         Ok(())
@@ -21,40 +21,39 @@ impl ToCapnpBuilder<BlockHash> for block_header_capnp::block_hash::Builder<'_> {
 }
 
 impl FromCapnpReader<BlockHash> for block_header_capnp::block_hash::Reader<'_> {
-    fn try_from_reader(&self) -> Result<BlockHash, Error> {
-        let digest_reader = self.get_hash().map_err(|_| Error::UnableToDeserialize)?;
+    fn try_from_reader(&self) -> Result<BlockHash, DeserializeError> {
+        let digest_reader = self.get_hash().map_err(DeserializeError::from)?;
         let digest = digest_reader.try_from_reader()?;
         Ok(digest.into())
     }
 }
 
 impl ToCapnpBytes for BlockHash {
-    fn try_to_capnp_bytes(&self) -> Result<Vec<u8>, Error> {
+    fn try_to_capnp_bytes(&self) -> Result<Vec<u8>, SerializeError> {
         let mut builder = capnp::message::Builder::new_default();
         let mut msg = builder.init_root::<block_header_capnp::block_hash::Builder>();
         msg.try_to_builder(self)?;
         let mut serialized = Vec::new();
-        capnp::serialize::write_message(&mut serialized, &builder)
-            .map_err(|_| Error::UnableToSerialize)?;
+        capnp::serialize::write_message(&mut serialized, &builder).map_err(SerializeError::from)?;
         Ok(serialized)
     }
 }
 
 impl FromCapnpBytes for BlockHash {
-    fn try_from_capnp_bytes(bytes: &[u8]) -> Result<Self, Error> {
+    fn try_from_capnp_bytes(bytes: &[u8]) -> Result<Self, DeserializeError> {
         let deserialized =
             capnp::serialize::read_message(bytes, capnp::message::ReaderOptions::new())
-                .expect("unable to deserialize struct");
+                .map_err(DeserializeError::from)?;
 
         let reader = deserialized
             .get_root::<block_header_capnp::block_hash::Reader>()
-            .map_err(|_| Error::UnableToDeserialize)?;
+            .map_err(DeserializeError::from)?;
         reader.try_from_reader()
     }
 }
 
 impl ToCapnpBuilder<BlockHeader> for block_header_capnp::block_header::Builder<'_> {
-    fn try_to_builder(&mut self, block_header: &BlockHeader) -> Result<(), Error> {
+    fn try_to_builder(&mut self, block_header: &BlockHeader) -> Result<(), SerializeError> {
         {
             let mut block_hash_builder = self.reborrow().init_parent_hash();
             block_hash_builder.try_to_builder(block_header.parent_hash())?;
@@ -112,63 +111,58 @@ impl ToCapnpBuilder<BlockHeader> for block_header_capnp::block_header::Builder<'
 }
 
 impl FromCapnpReader<BlockHeader> for block_header_capnp::block_header::Reader<'_> {
-    fn try_from_reader(&self) -> Result<BlockHeader, Error> {
+    fn try_from_reader(&self) -> Result<BlockHeader, DeserializeError> {
         let parent_hash = {
-            let parent_hash_reader = self
-                .get_parent_hash()
-                .map_err(|_| Error::UnableToDeserialize)?;
+            let parent_hash_reader = self.get_parent_hash().map_err(DeserializeError::from)?;
             parent_hash_reader.try_from_reader()?
         };
         let state_root_hash = {
-            let state_root_hash_reader = self
-                .get_state_root_hash()
-                .map_err(|_| Error::UnableToDeserialize)?;
+            let state_root_hash_reader =
+                self.get_state_root_hash().map_err(DeserializeError::from)?;
             state_root_hash_reader.try_from_reader()?
         };
         let body_hash = {
-            let body_hash_builder = self
-                .get_body_hash()
-                .map_err(|_| Error::UnableToDeserialize)?;
+            let body_hash_builder = self.get_body_hash().map_err(DeserializeError::from)?;
             body_hash_builder.try_from_reader()?
         };
         let random_bit = self.get_random_bit();
         let accumulated_seed = {
             let accumulated_seed_reader = self
                 .get_accumulated_seed()
-                .map_err(|_| Error::UnableToDeserialize)?;
+                .map_err(DeserializeError::from)?;
             accumulated_seed_reader.try_from_reader()?
         };
         let era_end = {
             match self
                 .get_era_end()
-                .map_err(|_| Error::UnableToDeserialize)?
+                .map_err(DeserializeError::from)?
                 .which()
-                .map_err(|_| Error::UnableToDeserialize)?
+                .map_err(DeserializeError::from)?
             {
                 block_header_capnp::maybe_era_end::Which::SomeEraEnd(reader) => match reader {
                     Ok(reader) => Some(reader.try_from_reader()?),
-                    Err(_) => return Err(Error::UnableToDeserialize),
+                    Err(e) => return Err(e.into()),
                 },
                 block_header_capnp::maybe_era_end::Which::None(_) => None,
             }
         };
         let timestamp: Timestamp = {
             self.get_timestamp()
-                .map_err(|_| Error::UnableToDeserialize)?
+                .map_err(DeserializeError::from)?
                 .get_inner()
                 .into()
         };
         let era_id = {
-            let era_id_reader = self.get_era_id().map_err(|_| Error::UnableToDeserialize)?;
+            let era_id_reader = self.get_era_id().map_err(DeserializeError::from)?;
             era_id_reader.try_from_reader()?
         };
         let height = self.get_height();
         let protocol_version = {
             let semver_reader = self
                 .get_protocol_version()
-                .map_err(|_| Error::UnableToDeserialize)?
+                .map_err(DeserializeError::from)?
                 .get_semver()
-                .map_err(|_| Error::UnableToDeserialize)?;
+                .map_err(DeserializeError::from)?;
             ProtocolVersion::from_parts(
                 semver_reader.get_major(),
                 semver_reader.get_minor(),
@@ -191,26 +185,25 @@ impl FromCapnpReader<BlockHeader> for block_header_capnp::block_header::Reader<'
 }
 
 impl ToCapnpBytes for BlockHeader {
-    fn try_to_capnp_bytes(&self) -> Result<Vec<u8>, Error> {
+    fn try_to_capnp_bytes(&self) -> Result<Vec<u8>, SerializeError> {
         let mut builder = capnp::message::Builder::new_default();
         let mut msg = builder.init_root::<block_header_capnp::block_header::Builder>();
         msg.try_to_builder(self)?;
         let mut serialized = Vec::new();
-        capnp::serialize::write_message(&mut serialized, &builder)
-            .map_err(|_| Error::UnableToSerialize)?;
+        capnp::serialize::write_message(&mut serialized, &builder).map_err(SerializeError::from)?;
         Ok(serialized)
     }
 }
 
 impl FromCapnpBytes for BlockHeader {
-    fn try_from_capnp_bytes(bytes: &[u8]) -> Result<Self, Error> {
+    fn try_from_capnp_bytes(bytes: &[u8]) -> Result<Self, DeserializeError> {
         let deserialized =
             capnp::serialize::read_message(bytes, capnp::message::ReaderOptions::new())
-                .expect("unable to deserialize struct");
+                .map_err(DeserializeError::from)?;
 
         let reader = deserialized
             .get_root::<block_header_capnp::block_header::Reader>()
-            .map_err(|_| Error::UnableToDeserialize)?;
+            .map_err(DeserializeError::from)?;
         reader.try_from_reader()
     }
 }

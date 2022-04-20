@@ -4,7 +4,7 @@ use casper_types::{EraId, PublicKey};
 
 use super::{FromCapnpReader, ToCapnpBuilder};
 use crate::{
-    capnp::{Error, FromCapnpBytes, ToCapnpBytes},
+    capnp::{DeserializeError, FromCapnpBytes, SerializeError, ToCapnpBytes},
     components::consensus::EraReport,
     types::EraEnd,
 };
@@ -15,51 +15,50 @@ pub(super) mod era_capnp {
 }
 
 impl ToCapnpBuilder<EraId> for era_capnp::era_id::Builder<'_> {
-    fn try_to_builder(&mut self, era_id: &EraId) -> Result<(), Error> {
+    fn try_to_builder(&mut self, era_id: &EraId) -> Result<(), SerializeError> {
         self.reborrow().set_id((*era_id).into());
         Ok(())
     }
 }
 
 impl FromCapnpReader<EraId> for era_capnp::era_id::Reader<'_> {
-    fn try_from_reader(&self) -> Result<EraId, Error> {
+    fn try_from_reader(&self) -> Result<EraId, DeserializeError> {
         let id = self.get_id();
         Ok(id.into())
     }
 }
 
 impl ToCapnpBytes for EraId {
-    fn try_to_capnp_bytes(&self) -> Result<Vec<u8>, Error> {
+    fn try_to_capnp_bytes(&self) -> Result<Vec<u8>, SerializeError> {
         let mut builder = capnp::message::Builder::new_default();
         let mut msg = builder.init_root::<era_capnp::era_id::Builder>();
         msg.try_to_builder(self)?;
         let mut serialized = Vec::new();
-        capnp::serialize::write_message(&mut serialized, &builder)
-            .map_err(|_| Error::UnableToSerialize)?;
+        capnp::serialize::write_message(&mut serialized, &builder).map_err(SerializeError::from)?;
         Ok(serialized)
     }
 }
 
 impl FromCapnpBytes for EraId {
-    fn try_from_capnp_bytes(bytes: &[u8]) -> Result<Self, Error> {
+    fn try_from_capnp_bytes(bytes: &[u8]) -> Result<Self, DeserializeError> {
         let deserialized =
             capnp::serialize::read_message(bytes, capnp::message::ReaderOptions::new())
-                .map_err(|_| Error::UnableToDeserialize)?;
+                .map_err(DeserializeError::from)?;
         let reader = deserialized
             .get_root::<era_capnp::era_id::Reader>()
-            .map_err(|_| Error::UnableToDeserialize)?;
+            .map_err(DeserializeError::from)?;
         reader.try_from_reader()
     }
 }
 
 impl ToCapnpBuilder<EraReport<PublicKey>> for era_capnp::era_report::Builder<'_> {
-    fn try_to_builder(&mut self, era_report: &EraReport<PublicKey>) -> Result<(), Error> {
+    fn try_to_builder(&mut self, era_report: &EraReport<PublicKey>) -> Result<(), SerializeError> {
         {
             let equivocators = &era_report.equivocators;
             let equivocators_count: u32 = equivocators
                 .len()
                 .try_into()
-                .map_err(|_| Error::TooManyItems)?;
+                .map_err(|_| SerializeError::TooManyItems)?;
             let mut list_builder = self.reborrow().init_equivocators(equivocators_count);
             for (index, equivocator) in equivocators.iter().enumerate() {
                 let mut msg = list_builder.reborrow().get(index as u32);
@@ -68,7 +67,10 @@ impl ToCapnpBuilder<EraReport<PublicKey>> for era_capnp::era_report::Builder<'_>
         }
         {
             let rewards = &era_report.rewards;
-            let rewards_count: u32 = rewards.len().try_into().map_err(|_| Error::TooManyItems)?;
+            let rewards_count: u32 = rewards
+                .len()
+                .try_into()
+                .map_err(|_| SerializeError::TooManyItems)?;
             let mut map_builder = self.reborrow().init_rewards();
             {
                 let mut entries_builder = map_builder.reborrow().init_entries(rewards_count);
@@ -87,7 +89,7 @@ impl ToCapnpBuilder<EraReport<PublicKey>> for era_capnp::era_report::Builder<'_>
             let inactive_validators_count: u32 = inactive_validators
                 .len()
                 .try_into()
-                .map_err(|_| Error::TooManyItems)?;
+                .map_err(|_| SerializeError::TooManyItems)?;
             let mut list_builder = self
                 .reborrow()
                 .init_inactive_validators(inactive_validators_count);
@@ -101,13 +103,13 @@ impl ToCapnpBuilder<EraReport<PublicKey>> for era_capnp::era_report::Builder<'_>
 }
 
 impl FromCapnpReader<EraReport<PublicKey>> for era_capnp::era_report::Reader<'_> {
-    fn try_from_reader(&self) -> Result<EraReport<PublicKey>, Error> {
+    fn try_from_reader(&self) -> Result<EraReport<PublicKey>, DeserializeError> {
         let mut equivocators = vec![];
         {
             if self.has_equivocators() {
                 for equivocators_reader in self
                     .get_equivocators()
-                    .map_err(|_| Error::UnableToDeserialize)?
+                    .map_err(DeserializeError::from)?
                     .iter()
                 {
                     let equivocator = equivocators_reader.try_from_reader()?;
@@ -118,15 +120,15 @@ impl FromCapnpReader<EraReport<PublicKey>> for era_capnp::era_report::Reader<'_>
         let mut rewards = BTreeMap::new();
         {
             if self.has_rewards() {
-                let entries_reader = self.get_rewards().map_err(|_| Error::UnableToDeserialize)?;
+                let entries_reader = self.get_rewards().map_err(DeserializeError::from)?;
                 for entry_reader in entries_reader
                     .get_entries()
-                    .map_err(|_| Error::UnableToDeserialize)?
+                    .map_err(DeserializeError::from)?
                     .iter()
                 {
                     let key = entry_reader
                         .get_key()
-                        .map_err(|_| Error::UnableToDeserialize)?
+                        .map_err(DeserializeError::from)?
                         .try_from_reader()?;
                     let value = entry_reader.get_value();
                     rewards.insert(key, value);
@@ -138,7 +140,7 @@ impl FromCapnpReader<EraReport<PublicKey>> for era_capnp::era_report::Reader<'_>
             if self.has_inactive_validators() {
                 for inactive_validators_reader in self
                     .get_inactive_validators()
-                    .map_err(|_| Error::UnableToDeserialize)?
+                    .map_err(DeserializeError::from)?
                     .iter()
                 {
                     let inactive_validator = inactive_validators_reader.try_from_reader()?;
@@ -155,31 +157,30 @@ impl FromCapnpReader<EraReport<PublicKey>> for era_capnp::era_report::Reader<'_>
 }
 
 impl ToCapnpBytes for EraReport<PublicKey> {
-    fn try_to_capnp_bytes(&self) -> Result<Vec<u8>, Error> {
+    fn try_to_capnp_bytes(&self) -> Result<Vec<u8>, SerializeError> {
         let mut builder = capnp::message::Builder::new_default();
         let mut msg = builder.init_root::<era_capnp::era_report::Builder>();
         msg.try_to_builder(self)?;
         let mut serialized = Vec::new();
-        capnp::serialize::write_message(&mut serialized, &builder)
-            .map_err(|_| Error::UnableToSerialize)?;
+        capnp::serialize::write_message(&mut serialized, &builder).map_err(SerializeError::from)?;
         Ok(serialized)
     }
 }
 
 impl FromCapnpBytes for EraReport<PublicKey> {
-    fn try_from_capnp_bytes(bytes: &[u8]) -> Result<Self, Error> {
+    fn try_from_capnp_bytes(bytes: &[u8]) -> Result<Self, DeserializeError> {
         let deserialized =
             capnp::serialize::read_message(bytes, capnp::message::ReaderOptions::new())
-                .expect("unable to deserialize struct");
+                .map_err(DeserializeError::from)?;
         let reader = deserialized
             .get_root::<era_capnp::era_report::Reader>()
-            .map_err(|_| Error::UnableToDeserialize)?;
+            .map_err(DeserializeError::from)?;
         reader.try_from_reader()
     }
 }
 
 impl ToCapnpBuilder<EraEnd> for era_capnp::era_end::Builder<'_> {
-    fn try_to_builder(&mut self, era_end: &EraEnd) -> Result<(), Error> {
+    fn try_to_builder(&mut self, era_end: &EraEnd) -> Result<(), SerializeError> {
         {
             let era_report = era_end.era_report();
             let mut era_report_builder = self.reborrow().init_era_report();
@@ -187,7 +188,10 @@ impl ToCapnpBuilder<EraEnd> for era_capnp::era_end::Builder<'_> {
         }
         {
             let weights = era_end.next_era_validator_weights();
-            let weights_count: u32 = weights.len().try_into().map_err(|_| Error::TooManyItems)?;
+            let weights_count: u32 = weights
+                .len()
+                .try_into()
+                .map_err(|_| SerializeError::TooManyItems)?;
             let mut map_builder = self.reborrow().init_next_era_validator_weights();
             {
                 let mut entries_builder = map_builder.reborrow().init_entries(weights_count);
@@ -209,11 +213,9 @@ impl ToCapnpBuilder<EraEnd> for era_capnp::era_end::Builder<'_> {
 }
 
 impl FromCapnpReader<EraEnd> for era_capnp::era_end::Reader<'_> {
-    fn try_from_reader(&self) -> Result<EraEnd, Error> {
+    fn try_from_reader(&self) -> Result<EraEnd, DeserializeError> {
         let era_report = {
-            let era_report_reader = self
-                .get_era_report()
-                .map_err(|_| Error::UnableToDeserialize)?;
+            let era_report_reader = self.get_era_report().map_err(DeserializeError::from)?;
             era_report_reader.try_from_reader()?
         };
         let mut weights = BTreeMap::new();
@@ -221,19 +223,19 @@ impl FromCapnpReader<EraEnd> for era_capnp::era_end::Reader<'_> {
             if self.has_next_era_validator_weights() {
                 let entries_reader = self
                     .get_next_era_validator_weights()
-                    .map_err(|_| Error::UnableToDeserialize)?;
+                    .map_err(DeserializeError::from)?;
                 for entry_reader in entries_reader
                     .get_entries()
-                    .map_err(|_| Error::UnableToDeserialize)?
+                    .map_err(DeserializeError::from)?
                     .iter()
                 {
                     let key = entry_reader
                         .get_key()
-                        .map_err(|_| Error::UnableToDeserialize)?
+                        .map_err(DeserializeError::from)?
                         .try_from_reader()?;
                     let value = entry_reader
                         .get_value()
-                        .map_err(|_| Error::UnableToDeserialize)?
+                        .map_err(DeserializeError::from)?
                         .try_from_reader()?;
                     weights.insert(key, value);
                 }
@@ -244,25 +246,24 @@ impl FromCapnpReader<EraEnd> for era_capnp::era_end::Reader<'_> {
 }
 
 impl ToCapnpBytes for EraEnd {
-    fn try_to_capnp_bytes(&self) -> Result<Vec<u8>, Error> {
+    fn try_to_capnp_bytes(&self) -> Result<Vec<u8>, SerializeError> {
         let mut builder = capnp::message::Builder::new_default();
         let mut msg = builder.init_root::<era_capnp::era_end::Builder>();
         msg.try_to_builder(self)?;
         let mut serialized = Vec::new();
-        capnp::serialize::write_message(&mut serialized, &builder)
-            .map_err(|_| Error::UnableToSerialize)?;
+        capnp::serialize::write_message(&mut serialized, &builder).map_err(SerializeError::from)?;
         Ok(serialized)
     }
 }
 
 impl FromCapnpBytes for EraEnd {
-    fn try_from_capnp_bytes(bytes: &[u8]) -> Result<Self, Error> {
+    fn try_from_capnp_bytes(bytes: &[u8]) -> Result<Self, DeserializeError> {
         let deserialized =
             capnp::serialize::read_message(bytes, capnp::message::ReaderOptions::new())
-                .expect("unable to deserialize struct");
+                .map_err(DeserializeError::from)?;
         let reader = deserialized
             .get_root::<era_capnp::era_end::Reader>()
-            .map_err(|_| Error::UnableToDeserialize)?;
+            .map_err(DeserializeError::from)?;
         reader.try_from_reader()
     }
 }
