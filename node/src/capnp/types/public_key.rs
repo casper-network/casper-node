@@ -1,5 +1,6 @@
 use casper_types::{AsymmetricType, PublicKey};
 
+use super::{FromCapnpReader, ToCapnpBuilder};
 use crate::capnp::{Error, FromCapnpBytes, ToCapnpBytes};
 
 #[allow(dead_code)]
@@ -10,14 +11,12 @@ pub(super) mod public_key_capnp {
     ));
 }
 
-impl ToCapnpBytes for PublicKey {
-    fn try_to_capnp_bytes(&self) -> Result<Vec<u8>, Error> {
-        let mut builder = capnp::message::Builder::new_default();
-        match self {
+impl ToCapnpBuilder<PublicKey> for public_key_capnp::public_key::Builder<'_> {
+    fn try_to_builder(&mut self, public_key: &PublicKey) -> Result<(), Error> {
+        match public_key {
             PublicKey::Ed25519(key) => {
-                let root = builder.init_root::<public_key_capnp::public_key::Builder>();
                 let bytes = key.as_bytes();
-                let mut msg = root.init_ed25519();
+                let mut msg = self.reborrow().init_ed25519();
                 msg.set_byte0(bytes[0]);
                 msg.set_byte1(bytes[1]);
                 msg.set_byte2(bytes[2]);
@@ -53,9 +52,8 @@ impl ToCapnpBytes for PublicKey {
                 msg.set_byte31(bytes[31]);
             }
             PublicKey::Secp256k1(key) => {
-                let root = builder.init_root::<public_key_capnp::public_key::Builder>();
                 let bytes = key.to_bytes();
-                let mut msg = root.init_secp256k1();
+                let mut msg = self.reborrow().init_secp256k1();
                 msg.set_byte0(bytes[0]);
                 msg.set_byte1(bytes[1]);
                 msg.set_byte2(bytes[2]);
@@ -92,28 +90,16 @@ impl ToCapnpBytes for PublicKey {
                 msg.set_byte32(bytes[32]);
             }
             PublicKey::System => {
-                let mut root = builder.init_root::<public_key_capnp::public_key::Builder>();
-                root.set_system(());
+                self.set_system(());
             }
         }
-
-        let mut serialized = Vec::new();
-        capnp::serialize::write_message(&mut serialized, &builder)
-            .map_err(|_| Error::UnableToSerialize)?;
-        Ok(serialized)
+        Ok(())
     }
 }
 
-impl FromCapnpBytes for PublicKey {
-    fn try_from_capnp_bytes(bytes: &[u8]) -> Result<Self, Error> {
-        let deserialized =
-            capnp::serialize::read_message(bytes, capnp::message::ReaderOptions::new())
-                .expect("unable to deserialize struct");
-
-        let reader = deserialized
-            .get_root::<public_key_capnp::public_key::Reader>()
-            .map_err(|_| Error::UnableToDeserialize)?;
-        match reader.which().map_err(|_| Error::UnableToDeserialize)? {
+impl FromCapnpReader<PublicKey> for public_key_capnp::public_key::Reader<'_> {
+    fn try_from_reader(&self) -> Result<PublicKey, Error> {
+        match self.which().map_err(|_| Error::UnableToDeserialize)? {
             public_key_capnp::public_key::Which::Ed25519(reader) => match reader {
                 Ok(reader) => {
                     let bytes: [u8; PublicKey::ED25519_LENGTH] = [
@@ -151,10 +137,9 @@ impl FromCapnpBytes for PublicKey {
                         reader.get_byte31(),
                     ];
 
-                    return Ok(PublicKey::ed25519_from_bytes(bytes)
-                        .map_err(|_| Error::UnableToDeserialize)?);
+                    PublicKey::ed25519_from_bytes(bytes).map_err(|_| Error::UnableToDeserialize)
                 }
-                Err(_) => return Err(Error::UnableToDeserialize),
+                Err(_) => Err(Error::UnableToDeserialize),
             },
             public_key_capnp::public_key::Which::Secp256k1(reader) => match reader {
                 Ok(reader) => {
@@ -193,26 +178,65 @@ impl FromCapnpBytes for PublicKey {
                         reader.get_byte31(),
                         reader.get_byte32(),
                     ];
-                    return Ok(PublicKey::secp256k1_from_bytes(bytes)
-                        .map_err(|_| Error::UnableToDeserialize)?);
+                    PublicKey::secp256k1_from_bytes(bytes).map_err(|_| Error::UnableToDeserialize)
                 }
-                Err(_) => return Err(Error::UnableToDeserialize),
+                Err(_) => Err(Error::UnableToDeserialize),
             },
             public_key_capnp::public_key::Which::System(_) => Ok(PublicKey::System),
         }
     }
 }
 
+impl ToCapnpBytes for PublicKey {
+    fn try_to_capnp_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut builder = capnp::message::Builder::new_default();
+        let mut msg = builder.init_root::<public_key_capnp::public_key::Builder>();
+        msg.try_to_builder(self)?;
+
+        let mut serialized = Vec::new();
+        capnp::serialize::write_message(&mut serialized, &builder)
+            .map_err(|_| Error::UnableToSerialize)?;
+        Ok(serialized)
+    }
+}
+
+impl FromCapnpBytes for PublicKey {
+    fn try_from_capnp_bytes(bytes: &[u8]) -> Result<Self, Error> {
+        let deserialized =
+            capnp::serialize::read_message(bytes, capnp::message::ReaderOptions::new())
+                .expect("unable to deserialize struct");
+
+        let reader = deserialized
+            .get_root::<public_key_capnp::public_key::Reader>()
+            .map_err(|_| Error::UnableToDeserialize)?;
+        reader.try_from_reader()
+    }
+}
+
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use casper_types::{PublicKey, SecretKey};
 
+    use super::super::random_bytes;
     use crate::capnp::{FromCapnpBytes, ToCapnpBytes};
 
-    fn random_bytes(len: usize) -> Vec<u8> {
-        let mut buf = vec![0; len];
-        getrandom::getrandom(&mut buf).expect("should get random");
-        buf
+    pub(crate) fn random_key_pair() -> (PublicKey, SecretKey) {
+        let secret_key = match random_bytes(1)[0] {
+            b if b % 3 == 0 => {
+                let _bytes = random_bytes(PublicKey::ED25519_LENGTH);
+                // TODO[RC]: Can't create from random bytes?
+                SecretKey::ed25519_from_bytes([47; PublicKey::ED25519_LENGTH])
+                    .expect("should create secret key")
+            }
+            b if b % 3 == 1 => {
+                let random_bytes = random_bytes(SecretKey::SECP256K1_LENGTH);
+                SecretKey::secp256k1_from_bytes(random_bytes.as_slice())
+                    .expect("should create secret key")
+            }
+            b if b % 3 == 2 => SecretKey::System,
+            _ => unreachable!(),
+        };
+        ((&secret_key).into(), secret_key)
     }
 
     #[test]
@@ -246,6 +270,17 @@ mod tests {
         let secret_key = SecretKey::System;
 
         let original: PublicKey = (&secret_key).into();
+        let serialized = original.try_to_capnp_bytes().expect("serialization");
+        let deserialized = PublicKey::try_from_capnp_bytes(&serialized).expect("deserialization");
+
+        assert_eq!(original, deserialized);
+    }
+
+    #[test]
+    fn public_key_capnp() {
+        let (public_key, _) = random_key_pair();
+
+        let original = public_key;
         let serialized = original.try_to_capnp_bytes().expect("serialization");
         let deserialized = PublicKey::try_from_capnp_bytes(&serialized).expect("deserialization");
 
