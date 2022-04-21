@@ -125,7 +125,7 @@ static QUERY_BALANCE_PARAMS: Lazy<QueryBalanceParams> = Lazy::new(|| QueryBalanc
     state_identifier: Some(GlobalStateIdentifier::BlockHash(
         *Block::doc_example().hash(),
     )),
-    balance_identifier: PurseIdentifier::MainPurseUnderAccountHash(AccountHash::new([9u8; 32])),
+    purse_identifier: PurseIdentifier::MainPurseUnderAccountHash(AccountHash::new([9u8; 32])),
 });
 static QUERY_BALANCE_RESULT: Lazy<QueryBalanceResult> = Lazy::new(|| QueryBalanceResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
@@ -947,7 +947,7 @@ pub struct QueryBalanceParams {
     /// The state identifier used for the query.
     pub state_identifier: Option<GlobalStateIdentifier>,
     /// The identifier to obtain the purse corresponding to balance query.
-    pub balance_identifier: PurseIdentifier,
+    pub purse_identifier: PurseIdentifier,
 }
 
 impl DocExample for QueryBalanceParams {
@@ -1014,7 +1014,7 @@ impl RpcWithParamsExt for QueryBalance {
                 }
             };
 
-            let purse_uref = match params.balance_identifier {
+            let purse_uref = match params.purse_identifier {
                 PurseIdentifier::MainPurseUnderPublicKey(account_public_key) => {
                     match get_account(
                         effect_builder,
