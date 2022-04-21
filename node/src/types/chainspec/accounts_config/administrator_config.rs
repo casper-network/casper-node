@@ -7,6 +7,10 @@ use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     Motes, PublicKey,
 };
+#[cfg(test)]
+use casper_types::{testing::TestRng, SecretKey};
+#[cfg(test)]
+use rand::Rng;
 
 #[derive(PartialEq, Ord, PartialOrd, Eq, Serialize, Deserialize, DataSize, Debug, Clone)]
 pub struct AdministratorConfig {
@@ -36,6 +40,21 @@ impl AdministratorConfig {
     #[must_use]
     pub fn weight(&self) -> Weight {
         self.weight
+    }
+
+    #[cfg(test)]
+    /// Generates a random instance using a `TestRng`.
+    pub fn random(rng: &mut TestRng) -> Self {
+        let public_key =
+            PublicKey::from(&SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap());
+        let balance = Motes::new(rng.gen());
+        let weight = Weight::new(rng.gen_range(2..=255));
+
+        AdministratorConfig {
+            public_key,
+            balance,
+            weight,
+        }
     }
 }
 

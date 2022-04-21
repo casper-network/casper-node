@@ -42,7 +42,11 @@ pub struct AccountsConfig {
     accounts: Vec<AccountConfig>,
     #[serde(default, deserialize_with = "sorted_vec_deserializer")]
     delegators: Vec<DelegatorConfig>,
-    #[serde(default, deserialize_with = "sorted_vec_deserializer")]
+    #[serde(
+        default,
+        deserialize_with = "sorted_vec_deserializer",
+        skip_serializing_if = "Vec::is_empty"
+    )]
     administrators: Vec<AdministratorConfig>,
 }
 
