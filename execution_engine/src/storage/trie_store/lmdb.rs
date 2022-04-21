@@ -173,8 +173,11 @@ impl<K, V> Store<Digest, Trie<K, V>> for LmdbTrieStore {
 
 impl<K, V> TrieStore<K, V> for LmdbTrieStore {}
 
+/// Cache used by the scratch trie.  The keys represent the hash of the trie being cached.  The
+/// values represent:  1) A boolean, where `false` means the was _not_ written and `true` means it
+/// was 2) A deserialized trie
 pub(crate) type Cache = Arc<Mutex<HashMap<Digest, (bool, Trie<Key, StoredValue>)>>>;
-/// In-memory cached trie store, backed by rocksdb.
+/// In-memory cached trie store, backed by lmdb.
 #[derive(Clone)]
 pub struct ScratchCache {
     pub(crate) cache: Cache,
