@@ -10,7 +10,6 @@ use casper_types::{system::auction::DelegationRate, EraId, Motes, PublicKey, Sec
 
 use crate::{
     components::{gossiper, small_network, storage, storage::Storage},
-    crypto::AsymmetricKeyExt,
     reactor::participating,
     testing::{
         self,

@@ -4,18 +4,16 @@ use std::{
     sync::Arc,
 };
 
-use casper_types::{AsymmetricType, ProtocolVersion, PublicKey, SecretKey, Signature};
+#[cfg(test)]
+use casper_types::testing::TestRng;
+use casper_types::{crypto, AsymmetricType, ProtocolVersion, PublicKey, SecretKey, Signature};
 use datasize::DataSize;
 use serde::{
     de::{DeserializeOwned, Error as SerdeError},
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
-#[cfg(test)]
-use crate::crypto::AsymmetricKeyExt;
-#[cfg(test)]
-use crate::testing::TestRng;
-use crate::{crypto, types::NodeId};
+use crate::types::NodeId;
 
 use super::counting_format::ConnectionId;
 

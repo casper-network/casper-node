@@ -9,14 +9,14 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
+#[cfg(test)]
+use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     EraId, Key, ProtocolVersion, StoredValue,
 };
 
 use super::{ActivationPoint, GlobalStateUpdate};
-#[cfg(test)]
-use crate::testing::TestRng;
 use crate::types::BlockHeader;
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, DataSize, Debug)]

@@ -29,21 +29,17 @@ use casper_execution_engine::core::engine_state::{
 };
 use casper_hashing::Digest;
 #[cfg(test)]
-use casper_types::bytesrepr::Bytes;
+use casper_types::{bytesrepr::Bytes, testing::TestRng};
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    runtime_args,
+    crypto, runtime_args,
     system::standard_payment::ARG_AMOUNT,
     EraId, ExecutionResult, Motes, PublicKey, RuntimeArgs, SecretKey, Signature, U512,
 };
 
 use super::{BlockHash, Item, Tag, TimeDiff, Timestamp};
-#[cfg(test)]
-use crate::testing::TestRng;
 use crate::{
     components::block_proposer::DeployInfo,
-    crypto,
-    crypto::AsymmetricKeyExt,
     rpcs::docs::DocExample,
     types::chainspec::DeployConfig,
     utils::{ds, DisplayIter},
@@ -1665,7 +1661,6 @@ mod tests {
     use casper_types::{bytesrepr::Bytes, CLValue};
 
     use super::*;
-    use crate::crypto::AsymmetricKeyExt;
 
     const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
 
