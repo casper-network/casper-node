@@ -28,6 +28,7 @@ use tokio::{
     sync::{mpsc::UnboundedReceiver, watch},
 };
 use tokio_openssl::SslStream;
+use tokio_serde::{Deserializer, Serializer};
 use tracing::{
     debug, error_span,
     field::{self, Empty},
@@ -42,9 +43,11 @@ use super::{
     full_transport,
     limiter::LimiterHandle,
     message::{ConsensusKeyPair, EstimatorWeights},
-    Event, FullTransport, Message, Metrics, Payload, Transport,
+    message_pack_format::MessagePackFormat,
+    Event, FramedTransport, FullTransport, Message, Metrics, Payload, Transport,
 };
 use crate::{
+    components::small_network::framed_transport,
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert},
     types::{NodeId, TimeDiff},
@@ -116,18 +119,12 @@ where
 
     debug!("Outgoing TLS connection established");
 
-    // Setup connection sink and stream.
+    // Setup connection id and framed transport.
     let connection_id = ConnectionId::from_connection(transport.ssl(), context.our_id, peer_id);
-    let mut full_transport = full_transport::<P>(
-        context.net_metrics.clone(),
-        connection_id,
-        transport,
-        Role::Dialer,
-        context.chain_info.maximum_net_message_size,
-    );
+    let mut framed = framed_transport(transport, context.chain_info.maximum_net_message_size);
 
     // Negotiate the handshake, concluding the incoming connection process.
-    match negotiate_handshake(&context, &mut full_transport, connection_id).await {
+    match negotiate_handshake::<P, _>(&context, &mut framed, connection_id).await {
         Ok((public_addr, peer_consensus_public_key)) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));
@@ -138,7 +135,13 @@ where
                 warn!(%public_addr, %peer_addr, "peer advertises a different public address than what we connected to");
             }
 
-            // Close the receiving end of the transport.
+            // Setup full framed transport, then close down receiving end of the transport.
+            let full_transport = full_transport::<P>(
+                context.net_metrics.clone(),
+                connection_id,
+                framed,
+                Role::Dialer,
+            );
             let (sink, _stream) = full_transport.split();
 
             OutgoingConnection::Established {
@@ -223,25 +226,26 @@ where
 
     debug!("Incoming TLS connection established");
 
-    // Setup connection sink and stream.
+    // Setup connection id and framed transport.
     let connection_id = ConnectionId::from_connection(transport.ssl(), context.our_id, peer_id);
-    let mut transport = full_transport::<P>(
-        context.net_metrics.clone(),
-        connection_id,
-        transport,
-        Role::Listener,
-        context.chain_info.maximum_net_message_size,
-    );
+    let mut framed = framed_transport(transport, context.chain_info.maximum_net_message_size);
 
     // Negotiate the handshake, concluding the incoming connection process.
-    match negotiate_handshake(&context, &mut transport, connection_id).await {
+    match negotiate_handshake::<P, _>(&context, &mut framed, connection_id).await {
         Ok((public_addr, peer_consensus_public_key)) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));
             }
 
-            // Close the receiving end of the transport.
-            let (_sink, stream) = transport.split();
+            // Establish full transport and close the receiving end.
+            let full_transport = full_transport::<P>(
+                context.net_metrics.clone(),
+                connection_id,
+                framed,
+                Role::Listener,
+            );
+
+            let (_sink, stream) = full_transport.split();
 
             IncomingConnection::Established {
                 peer_addr,
@@ -324,36 +328,52 @@ where
 /// Negotiates a handshake between two peers.
 async fn negotiate_handshake<P, REv>(
     context: &NetworkContext<REv>,
-    full_transport: &mut FullTransport<P>,
+    framed: &mut FramedTransport,
     connection_id: ConnectionId,
 ) -> Result<(SocketAddr, Option<PublicKey>), ConnectionError>
 where
     P: Payload,
 {
-    // Send down a handshake and expect one in response.
-    let handshake = context.chain_info.create_handshake(
+    let mut encoder = MessagePackFormat;
+
+    // Manually encode a handshake.
+    let handshake_message = context.chain_info.create_handshake::<P>(
         context.public_addr,
         context.consensus_keys.as_ref(),
         connection_id,
     );
 
+    let serialized_handshake_message = Pin::new(&mut encoder)
+        .serialize(&Arc::new(handshake_message))
+        .map_err(ConnectionError::CouldNotEncodeOurHandshake)?;
+
+    // TODO: Technically, if the handshake grows too large to be buffered, this could deadlock.
+    // Ideally, we would try to complete both futures at the same time, or spawn the sending this.
+
+    // Send down the handshake and expect one in response.
     io_timeout(
         context.handshake_timeout.into(),
-        full_transport.send(Arc::new(handshake)),
+        framed.send(serialized_handshake_message),
     )
     .await
     .map_err(ConnectionError::HandshakeSend)?;
 
-    let remote_handshake = io_opt_timeout(context.handshake_timeout.into(), full_transport.next())
+    // The remote's message should be a handshake, but can technically be any message. We receive,
+    // deserialize and check it.
+    let remote_message_raw = io_opt_timeout(context.handshake_timeout.into(), framed.next())
         .await
         .map_err(ConnectionError::HandshakeRecv)?;
+
+    let remote_message: Message<P> = Pin::new(&mut encoder)
+        .deserialize(&remote_message_raw)
+        .map_err(ConnectionError::InvalidRemoteHandshakeMessage)?;
 
     if let Message::Handshake {
         network_name,
         public_addr,
         protocol_version,
         consensus_certificate,
-    } = remote_handshake
+    } = remote_message
     {
         debug!(%protocol_version, "handshake received");
 

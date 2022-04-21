@@ -553,12 +553,14 @@ where
             | ConnectionError::TlsHandshake(_)
             | ConnectionError::HandshakeSend(_)
             | ConnectionError::HandshakeRecv(_)
-            | ConnectionError::IncompatibleVersion(_) => false,
+            | ConnectionError::IncompatibleVersion(_)
+            | ConnectionError::CouldNotEncodeOurHandshake(_) => false,
 
             // These could be candidates for blocking, but for now we decided not to.
             ConnectionError::NoPeerCertificate
             | ConnectionError::PeerCertificateInvalid(_)
             | ConnectionError::DidNotSendHandshake
+            | ConnectionError::InvalidRemoteHandshakeMessage(_)
             | ConnectionError::InvalidConsensusCertificate(_) => false,
 
             // Definitely something we want to avoid.
@@ -1059,16 +1061,13 @@ pub(crate) type FramedTransport = tokio_util::codec::Framed<Transport, LengthDel
 fn full_transport<P>(
     metrics: Weak<Metrics>,
     connection_id: ConnectionId,
-    stream: Transport,
+    framed: FramedTransport,
     role: Role,
-    maximum_net_message_size: u32,
 ) -> FullTransport<P>
 where
     for<'de> P: Serialize + Deserialize<'de>,
     for<'de> Message<P>: Serialize + Deserialize<'de>,
 {
-    let framed = framed_transport(stream, maximum_net_message_size);
-
     tokio_serde::Framed::new(
         framed,
         CountingFormat::new(metrics, connection_id, role, MessagePackFormat),
@@ -1076,9 +1075,9 @@ where
 }
 
 /// Constructs a framed transport.
-fn framed_transport(stream: Transport, maximum_net_message_size: u32) -> FramedTransport {
+fn framed_transport(transport: Transport, maximum_net_message_size: u32) -> FramedTransport {
     tokio_util::codec::Framed::new(
-        stream,
+        transport,
         LengthDelimitedCodec::builder()
             .max_frame_length(maximum_net_message_size as usize)
             .new_codec(),

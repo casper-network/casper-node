@@ -145,9 +145,23 @@ pub enum ConnectionError {
     /// Peer reported an incompatible version.
     #[error("peer is running incompatible version: {0}")]
     IncompatibleVersion(ProtocolVersion),
-    /// Peer sent a non-handshake message as its first message.
+    /// Peer sent no or a non-handshake message as its first message.
     #[error("peer did not send handshake")]
     DidNotSendHandshake,
+    /// Failed to encode our handshake.
+    #[error("could not encode our handshake")]
+    CouldNotEncodeOurHandshake(
+        #[serde(skip_serializing)]
+        #[source]
+        io::Error,
+    ),
+    /// Could not deserialize the message that is supposed to contain the remotes handshake.
+    #[error("could not decode remote handshake message")]
+    InvalidRemoteHandshakeMessage(
+        #[serde(skip_serializing)]
+        #[source]
+        io::Error,
+    ),
     /// The peer sent a consensus certificate, but it was invalid.
     #[error("invalid consensus certificate")]
     InvalidConsensusCertificate(
