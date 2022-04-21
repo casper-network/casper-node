@@ -210,13 +210,17 @@ impl ScratchTrieStore {
         let store = self.inner.store;
         let cache = &mut *self.inner.cache.lock().map_err(|_| error::Error::Poison)?;
 
-        let trie = cache
+        let (is_root_dirty, root_trie) = cache
             .get(&state_root)
-            .map(|(_, root)| root)
             .ok_or(CommitError::TrieNotFoundInCache(state_root))?;
 
+        // Early exit if there is no work to do.
+        if !is_root_dirty {
+            return Ok(());
+        }
+
         let mut txn = env.create_read_write_txn()?;
-        let mut tries_to_visit = vec![(state_root, trie, trie.iter_descendants())];
+        let mut tries_to_visit = vec![(state_root, root_trie, root_trie.iter_descendants())];
 
         while let Some((digest, current_trie, descendants_iterator)) = tries_to_visit.pop() {
             if let DescendantsIterator::Empty = descendants_iterator {
