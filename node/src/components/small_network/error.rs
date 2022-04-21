@@ -145,7 +145,7 @@ pub enum ConnectionError {
     /// Peer reported an incompatible version.
     #[error("peer is running incompatible version: {0}")]
     IncompatibleVersion(ProtocolVersion),
-    /// Peer sent no or a non-handshake message as its first message.
+    /// Peer did not send any message, or a non-handshake as its first message.
     #[error("peer did not send handshake")]
     DidNotSendHandshake,
     /// Failed to encode our handshake.
@@ -178,7 +178,7 @@ pub enum ConnectionError {
         #[source]
         crypto::Error,
     ),
-    /// Failed to reunited handshake sink/stream.
+    /// Failed to reunite handshake sink/stream.
     ///
     /// This is usually a bug.
     #[error("handshake sink/stream could not be reunited")]
