@@ -1,6 +1,6 @@
 use casper_types::{AsymmetricType, PublicKey};
 
-use casper_node_macros::{make_ed25519_capnp_functions, make_secp256k1_capnp_functions};
+use casper_node_macros::make_capnp_byte_setter_functions;
 
 use crate::capnp::{Error, FromCapnpBytes, ToCapnpBytes};
 
@@ -14,9 +14,9 @@ pub(super) mod public_key_capnp {
 
 // We cannot use the const literals directly
 // const ED25519_PUBLIC_KEY_LENGTH = 32;
-make_ed25519_capnp_functions!(32, "builder_goes_here");
+make_capnp_byte_setter_functions!(32, "ed25519");
 // const SECP256K1_PUBLIC_KEY_LENGTH = 33;
-make_secp256k1_capnp_functions!(33, "builder_goes_here");
+make_capnp_byte_setter_functions!(33, "secp256k1");
 
 pub(crate) fn put_public_key_into_builder(
     public_key: &PublicKey,

@@ -38,8 +38,8 @@ pub fn reactor(input: TokenStream) -> TokenStream {
 
 /// Generates a function to set bytes in the ed25519 public key
 #[proc_macro]
-pub fn make_ed25519_capnp_functions(input: TokenStream) -> TokenStream {
-    let ByteSetterDefinition { length, builder: _ } =
+pub fn make_capnp_byte_setter_functions(input: TokenStream) -> TokenStream {
+    let ByteSetterDefinition { length, builder } =
         parse_macro_input!(input as ByteSetterDefinition);
     let parsed_length: usize = length.base10_parse().expect("expected integer literal");
 
@@ -53,8 +53,12 @@ pub fn make_ed25519_capnp_functions(input: TokenStream) -> TokenStream {
         ));
     }
 
+    let builder_str = format!("public_key_capnp::{}_public_key::Builder", builder.value());
+    let builder_stream: proc_macro2::TokenStream = builder_str.parse().expect("incorrect builder");
+
+    let setter = Ident::new(&format!("set_{}", builder.value()), Span::call_site());
     output.extend(quote!(
-        fn set_ed25519(msg: &mut public_key_capnp::ed25519_public_key::Builder, bytes: &[u8; #length]) {
+        fn #setter(msg: &mut #builder_stream, bytes: &[u8; #length]) {
             #inner_loop_set
         }
     ));
@@ -66,50 +70,13 @@ pub fn make_ed25519_capnp_functions(input: TokenStream) -> TokenStream {
             reader.#ident(),
         ));
     }
+
+    let reader_str = format!("public_key_capnp::{}_public_key::Reader", builder.value());
+    let reader_stream: proc_macro2::TokenStream = reader_str.parse().expect("incorrect builder");
+
+    let getter = Ident::new(&format!("get_{}", builder.value()), Span::call_site());
     output.extend(quote!(
-        fn get_ed25519(reader: public_key_capnp::ed25519_public_key::Reader) -> [u8; #length] {
-            [
-                #inner_loop_get
-            ]
-        }
-    ));
-
-    output.into()
-}
-
-/// Generates a function to set bytes in the SECP256K1 public key
-// TODO[RC]: Deduplicate with `make_ed25519_capnp_functions`
-#[proc_macro]
-pub fn make_secp256k1_capnp_functions(input: TokenStream) -> TokenStream {
-    let ByteSetterDefinition { length, builder: _ } =
-        parse_macro_input!(input as ByteSetterDefinition);
-    let parsed_length: usize = length.base10_parse().expect("expected integer literal");
-
-    let mut output: proc_macro2::TokenStream = Default::default();
-
-    let mut inner_loop_set: proc_macro2::TokenStream = Default::default();
-    for i in 0..parsed_length {
-        let ident = Ident::new(&format!("set_byte{}", i), Span::call_site());
-        inner_loop_set.extend(quote!(
-            msg.#ident(bytes[#i]);
-        ));
-    }
-
-    output.extend(quote!(
-        fn set_secp256k1(msg: &mut public_key_capnp::secp256k1_public_key::Builder, bytes: &[u8; #length]) {
-            #inner_loop_set
-        }
-    ));
-
-    let mut inner_loop_get: proc_macro2::TokenStream = Default::default();
-    for i in 0..parsed_length {
-        let ident = Ident::new(&format!("get_byte{}", i), Span::call_site());
-        inner_loop_get.extend(quote!(
-            reader.#ident(),
-        ));
-    }
-    output.extend(quote!(
-        fn get_secp256k1(reader: public_key_capnp::secp256k1_public_key::Reader) -> [u8; #length] {
+        fn #getter(reader: #reader_stream) -> [u8; #length] {
             [
                 #inner_loop_get
             ]
