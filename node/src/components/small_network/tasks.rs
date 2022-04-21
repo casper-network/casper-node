@@ -39,10 +39,10 @@ use super::{
     counting_format::{ConnectionId, Role},
     error::{ConnectionError, IoError},
     event::{IncomingConnection, OutgoingConnection},
-    framed,
+    full_transport,
     limiter::LimiterHandle,
     message::{ConsensusKeyPair, EstimatorWeights},
-    Event, FramedTransport, Message, Metrics, Payload, Transport,
+    Event, FullTransport, Message, Metrics, Payload, Transport,
 };
 use crate::{
     reactor::{EventQueueHandle, QueueKind},
@@ -118,7 +118,7 @@ where
 
     // Setup connection sink and stream.
     let connection_id = ConnectionId::from_connection(transport.ssl(), context.our_id, peer_id);
-    let mut transport = framed::<P>(
+    let mut full_transport = full_transport::<P>(
         context.net_metrics.clone(),
         connection_id,
         transport,
@@ -127,7 +127,7 @@ where
     );
 
     // Negotiate the handshake, concluding the incoming connection process.
-    match negotiate_handshake(&context, &mut transport, connection_id).await {
+    match negotiate_handshake(&context, &mut full_transport, connection_id).await {
         Ok((public_addr, peer_consensus_public_key)) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));
@@ -139,7 +139,7 @@ where
             }
 
             // Close the receiving end of the transport.
-            let (sink, _stream) = transport.split();
+            let (sink, _stream) = full_transport.split();
 
             OutgoingConnection::Established {
                 peer_addr,
@@ -225,7 +225,7 @@ where
 
     // Setup connection sink and stream.
     let connection_id = ConnectionId::from_connection(transport.ssl(), context.our_id, peer_id);
-    let mut transport = framed::<P>(
+    let mut transport = full_transport::<P>(
         context.net_metrics.clone(),
         connection_id,
         transport,
@@ -321,9 +321,10 @@ where
     }
 }
 
+/// Negotiates a handshake between two peers.
 async fn negotiate_handshake<P, REv>(
     context: &NetworkContext<REv>,
-    transport: &mut FramedTransport<P>,
+    full_transport: &mut FullTransport<P>,
     connection_id: ConnectionId,
 ) -> Result<(SocketAddr, Option<PublicKey>), ConnectionError>
 where
@@ -338,12 +339,12 @@ where
 
     io_timeout(
         context.handshake_timeout.into(),
-        transport.send(Arc::new(handshake)),
+        full_transport.send(Arc::new(handshake)),
     )
     .await
     .map_err(ConnectionError::HandshakeSend)?;
 
-    let remote_handshake = io_opt_timeout(context.handshake_timeout.into(), transport.next())
+    let remote_handshake = io_opt_timeout(context.handshake_timeout.into(), full_transport.next())
         .await
         .map_err(ConnectionError::HandshakeRecv)?;
 
@@ -480,7 +481,7 @@ pub(super) async fn server<P, REv>(
 /// Schedules all received messages until the stream is closed or an error occurs.
 pub(super) async fn message_reader<REv, P>(
     context: Arc<NetworkContext<REv>>,
-    mut stream: SplitStream<FramedTransport<P>>,
+    mut stream: SplitStream<FullTransport<P>>,
     limiter: Box<dyn LimiterHandle>,
     mut shutdown_receiver: watch::Receiver<()>,
     peer_id: NodeId,
@@ -551,7 +552,7 @@ where
 /// Reads from a channel and sends all messages, until the stream is closed or an error occurs.
 pub(super) async fn message_sender<P>(
     mut queue: UnboundedReceiver<Arc<Message<P>>>,
-    mut sink: SplitSink<FramedTransport<P>, Arc<Message<P>>>,
+    mut sink: SplitSink<FullTransport<P>, Arc<Message<P>>>,
     limiter: Box<dyn LimiterHandle>,
     counter: IntGauge,
 ) where

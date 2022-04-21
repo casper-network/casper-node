@@ -1044,35 +1044,44 @@ impl From<&SmallNetworkIdentity> for NodeId {
 type Transport = SslStream<TcpStream>;
 
 /// A framed transport for `Message`s.
-pub(crate) type FramedTransport<P> = tokio_serde::Framed<
-    tokio_util::codec::Framed<Transport, LengthDelimitedCodec>,
+pub(crate) type FullTransport<P> = tokio_serde::Framed<
+    FramedTransport,
     Message<P>,
     Arc<Message<P>>,
     CountingFormat<MessagePackFormat>,
 >;
 
-/// Constructs a new framed transport on a stream.
-fn framed<P>(
+pub(crate) type FramedTransport = tokio_util::codec::Framed<Transport, LengthDelimitedCodec>;
+
+/// Constructs a new full transport on a stream.
+///
+/// A full transport contains the framing as well as the encoding scheme used to send messages.
+fn full_transport<P>(
     metrics: Weak<Metrics>,
     connection_id: ConnectionId,
     stream: Transport,
     role: Role,
     maximum_net_message_size: u32,
-) -> FramedTransport<P>
+) -> FullTransport<P>
 where
     for<'de> P: Serialize + Deserialize<'de>,
     for<'de> Message<P>: Serialize + Deserialize<'de>,
 {
-    let length_delimited = tokio_util::codec::Framed::new(
+    let framed = framed_transport(stream, maximum_net_message_size);
+
+    tokio_serde::Framed::new(
+        framed,
+        CountingFormat::new(metrics, connection_id, role, MessagePackFormat),
+    )
+}
+
+/// Constructs a framed transport.
+fn framed_transport(stream: Transport, maximum_net_message_size: u32) -> FramedTransport {
+    tokio_util::codec::Framed::new(
         stream,
         LengthDelimitedCodec::builder()
             .max_frame_length(maximum_net_message_size as usize)
             .new_codec(),
-    );
-
-    tokio_serde::Framed::new(
-        length_delimited,
-        CountingFormat::new(metrics, connection_id, role, MessagePackFormat),
     )
 }
 
