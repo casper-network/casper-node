@@ -234,7 +234,7 @@ pub(crate) mod tests {
     #[test]
     fn block_hash_capnp() {
         let block_hash = random_block_hash();
-        let original = block_hash.clone();
+        let original = block_hash;
         let serialized = original.try_to_capnp_bytes().expect("serialization");
         let deserialized = BlockHash::try_from_capnp_bytes(&serialized).expect("deserialization");
 
@@ -244,13 +244,13 @@ pub(crate) mod tests {
     #[test]
     fn block_header_capnp() {
         let block_header = random_block_header(None);
-        let original = block_header.clone();
+        let original = block_header;
         let serialized = original.try_to_capnp_bytes().expect("serialization");
         let deserialized = BlockHeader::try_from_capnp_bytes(&serialized).expect("deserialization");
         assert_eq!(original, deserialized);
 
         let block_header = random_block_header(Some(random_era_end()));
-        let original = block_header.clone();
+        let original = block_header;
         let serialized = original.try_to_capnp_bytes().expect("serialization");
         let deserialized = BlockHeader::try_from_capnp_bytes(&serialized).expect("deserialization");
         assert_eq!(original, deserialized);

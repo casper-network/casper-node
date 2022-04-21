@@ -88,13 +88,13 @@ pub(crate) mod tests {
     #[test]
     fn block_capnp() {
         let block = random_block(None);
-        let original = block.clone();
+        let original = block;
         let serialized = original.try_to_capnp_bytes().expect("serialization");
         let deserialized = Block::try_from_capnp_bytes(&serialized).expect("deserialization");
         assert_eq!(original, deserialized);
 
         let block = random_block(Some(random_era_end()));
-        let original = block.clone();
+        let original = block;
         let serialized = original.try_to_capnp_bytes().expect("serialization");
         let deserialized = Block::try_from_capnp_bytes(&serialized).expect("deserialization");
         assert_eq!(original, deserialized);

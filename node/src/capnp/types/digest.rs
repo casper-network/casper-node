@@ -66,7 +66,7 @@ pub(crate) mod tests {
     #[test]
     fn digest_capnp() {
         let digest: Digest = random_digest();
-        let original = digest.clone();
+        let original = digest;
         let serialized = original.try_to_capnp_bytes().expect("serialization");
         let deserialized = Digest::try_from_capnp_bytes(&serialized).expect("deserialization");
 

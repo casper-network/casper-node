@@ -60,7 +60,7 @@ pub(crate) mod tests {
     #[test]
     fn deploy_hash_capnp() {
         let deploy_hash = random_deploy_hash();
-        let original = deploy_hash.clone();
+        let original = deploy_hash;
         let serialized = original.try_to_capnp_bytes().expect("serialization");
         let deserialized = DeployHash::try_from_capnp_bytes(&serialized).expect("deserialization");
 

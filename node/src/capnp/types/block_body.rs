@@ -123,7 +123,7 @@ pub(crate) mod tests {
     #[test]
     fn block_body_capnp() {
         let block_body = random_block_body();
-        let original = block_body.clone();
+        let original = block_body;
         let serialized = original.try_to_capnp_bytes().expect("serialization");
         let deserialized = BlockBody::try_from_capnp_bytes(&serialized).expect("deserialization");
 

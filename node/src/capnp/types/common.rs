@@ -66,8 +66,7 @@ pub(crate) mod tests {
 
     #[test]
     fn u512_capnp() {
-        let x = random_u512();
-        let original = x.clone();
+        let original = random_u512();
         let serialized = original.try_to_capnp_bytes().expect("serialization");
         let deserialized = U512::try_from_capnp_bytes(&serialized).expect("deserialization");
         assert_eq!(original, deserialized);

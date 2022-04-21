@@ -19,8 +19,8 @@ fn main() {
     // Compile capnp schemas
     let mut compiler = ::capnpc::CompilerCommand::new();
 
-    let entries =
-        fs::read_dir(SCHEMAS_DIR).expect(&format!("unable to access schema dir: {}", SCHEMAS_DIR));
+    let entries = fs::read_dir(SCHEMAS_DIR)
+        .unwrap_or_else(|_| panic!("unable to access schema dir: {}", SCHEMAS_DIR));
 
     for entry in entries {
         match &entry {
