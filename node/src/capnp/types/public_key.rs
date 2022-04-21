@@ -41,7 +41,7 @@ impl ToCapnpBuilder<PublicKey> for public_key_capnp::public_key::Builder<'_> {
 
 impl FromCapnpReader<PublicKey> for public_key_capnp::public_key::Reader<'_> {
     fn try_from_reader(&self) -> Result<PublicKey, DeserializeError> {
-        match self.which().map_err(DeserializeError::from)? {
+        match self.which()? {
             public_key_capnp::public_key::Which::Ed25519(reader) => match reader {
                 Ok(reader) => {
                     let bytes: [u8; PublicKey::ED25519_LENGTH] = get_ed25519(reader);
@@ -68,7 +68,7 @@ impl ToCapnpBytes for PublicKey {
         msg.try_to_builder(self)?;
 
         let mut serialized = Vec::new();
-        capnp::serialize::write_message(&mut serialized, &builder).map_err(SerializeError::from)?;
+        capnp::serialize::write_message(&mut serialized, &builder)?;
         Ok(serialized)
     }
 }
@@ -79,9 +79,7 @@ impl FromCapnpBytes for PublicKey {
             capnp::serialize::read_message(bytes, capnp::message::ReaderOptions::new())
                 .expect("unable to deserialize struct");
 
-        let reader = deserialized
-            .get_root::<public_key_capnp::public_key::Reader>()
-            .map_err(DeserializeError::from)?;
+        let reader = deserialized.get_root::<public_key_capnp::public_key::Reader>()?;
         reader.try_from_reader()
     }
 }

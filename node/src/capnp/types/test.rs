@@ -18,7 +18,7 @@ impl ToCapnpBytes for Test {
             msg.set_id(self.id);
         }
         let mut serialized = Vec::new();
-        capnp::serialize::write_message(&mut serialized, &builder).map_err(SerializeError::from)?;
+        capnp::serialize::write_message(&mut serialized, &builder)?;
         Ok(serialized)
     }
 }
@@ -26,11 +26,8 @@ impl ToCapnpBytes for Test {
 impl FromCapnpBytes for Test {
     fn try_from_capnp_bytes(bytes: &[u8]) -> Result<Self, DeserializeError> {
         let deserialized =
-            capnp::serialize::read_message(bytes, capnp::message::ReaderOptions::new())
-                .map_err(DeserializeError::from)?;
-        let reader = deserialized
-            .get_root::<test_capnp::test::Reader>()
-            .map_err(DeserializeError::from)?;
+            capnp::serialize::read_message(bytes, capnp::message::ReaderOptions::new())?;
+        let reader = deserialized.get_root::<test_capnp::test::Reader>()?;
         Ok(Self {
             id: reader.get_id(),
         })

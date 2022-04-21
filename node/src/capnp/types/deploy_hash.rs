@@ -22,7 +22,7 @@ impl ToCapnpBuilder<DeployHash> for deploy_hash_capnp::deploy_hash::Builder<'_> 
 
 impl FromCapnpReader<DeployHash> for deploy_hash_capnp::deploy_hash::Reader<'_> {
     fn try_from_reader(&self) -> Result<DeployHash, DeserializeError> {
-        let digest_reader = self.get_digest().map_err(DeserializeError::from)?;
+        let digest_reader = self.get_digest()?;
         let digest = digest_reader.try_from_reader()?;
         Ok(digest.into())
     }
@@ -34,7 +34,7 @@ impl ToCapnpBytes for DeployHash {
         let mut msg = builder.init_root::<deploy_hash_capnp::deploy_hash::Builder>();
         msg.try_to_builder(self)?;
         let mut serialized = Vec::new();
-        capnp::serialize::write_message(&mut serialized, &builder).map_err(SerializeError::from)?;
+        capnp::serialize::write_message(&mut serialized, &builder)?;
         Ok(serialized)
     }
 }
@@ -42,12 +42,9 @@ impl ToCapnpBytes for DeployHash {
 impl FromCapnpBytes for DeployHash {
     fn try_from_capnp_bytes(bytes: &[u8]) -> Result<Self, DeserializeError> {
         let deserialized =
-            capnp::serialize::read_message(bytes, capnp::message::ReaderOptions::new())
-                .map_err(DeserializeError::from)?;
+            capnp::serialize::read_message(bytes, capnp::message::ReaderOptions::new())?;
 
-        let reader = deserialized
-            .get_root::<deploy_hash_capnp::deploy_hash::Reader>()
-            .map_err(DeserializeError::from)?;
+        let reader = deserialized.get_root::<deploy_hash_capnp::deploy_hash::Reader>()?;
         reader.try_from_reader()
     }
 }

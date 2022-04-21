@@ -37,7 +37,7 @@ impl ToCapnpBytes for Digest {
         msg.try_to_builder(self)?;
 
         let mut serialized = Vec::new();
-        capnp::serialize::write_message(&mut serialized, &builder).map_err(SerializeError::from)?;
+        capnp::serialize::write_message(&mut serialized, &builder)?;
         Ok(serialized)
     }
 }
@@ -45,12 +45,9 @@ impl ToCapnpBytes for Digest {
 impl FromCapnpBytes for Digest {
     fn try_from_capnp_bytes(bytes: &[u8]) -> Result<Self, DeserializeError> {
         let deserialized =
-            capnp::serialize::read_message(bytes, capnp::message::ReaderOptions::new())
-                .map_err(DeserializeError::from)?;
+            capnp::serialize::read_message(bytes, capnp::message::ReaderOptions::new())?;
 
-        let reader = deserialized
-            .get_root::<digest_capnp::digest::Reader>()
-            .map_err(DeserializeError::from)?;
+        let reader = deserialized.get_root::<digest_capnp::digest::Reader>()?;
         reader.try_from_reader()
     }
 }

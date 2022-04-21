@@ -52,17 +52,13 @@ impl ToCapnpBuilder<BlockBody> for block_body_capnp::block_body::Builder<'_> {
 impl FromCapnpReader<BlockBody> for block_body_capnp::block_body::Reader<'_> {
     fn try_from_reader(&self) -> Result<BlockBody, DeserializeError> {
         let proposer = {
-            let proposer_reader = self.get_proposer().map_err(DeserializeError::from)?;
+            let proposer_reader = self.get_proposer()?;
             proposer_reader.try_from_reader()?
         };
         let mut deploy_hashes = vec![];
         {
             if self.has_deploy_hashes() {
-                for deploy_hash_reader in self
-                    .get_deploy_hashes()
-                    .map_err(DeserializeError::from)?
-                    .iter()
-                {
+                for deploy_hash_reader in self.get_deploy_hashes()?.iter() {
                     let deploy_hash = deploy_hash_reader.try_from_reader()?;
                     deploy_hashes.push(deploy_hash);
                 }
@@ -71,11 +67,7 @@ impl FromCapnpReader<BlockBody> for block_body_capnp::block_body::Reader<'_> {
         let mut transfer_hashes = vec![];
         {
             if self.has_transfer_hashes() {
-                for transfer_hash_reader in self
-                    .get_transfer_hashes()
-                    .map_err(DeserializeError::from)?
-                    .iter()
-                {
+                for transfer_hash_reader in self.get_transfer_hashes()?.iter() {
                     let deploy_hash = transfer_hash_reader.try_from_reader()?;
                     transfer_hashes.push(deploy_hash);
                 }
@@ -91,7 +83,7 @@ impl ToCapnpBytes for BlockBody {
         let mut msg = builder.init_root::<block_body_capnp::block_body::Builder>();
         msg.try_to_builder(self)?;
         let mut serialized = Vec::new();
-        capnp::serialize::write_message(&mut serialized, &builder).map_err(SerializeError::from)?;
+        capnp::serialize::write_message(&mut serialized, &builder)?;
         Ok(serialized)
     }
 }
@@ -99,12 +91,9 @@ impl ToCapnpBytes for BlockBody {
 impl FromCapnpBytes for BlockBody {
     fn try_from_capnp_bytes(bytes: &[u8]) -> Result<Self, DeserializeError> {
         let deserialized =
-            capnp::serialize::read_message(bytes, capnp::message::ReaderOptions::new())
-                .map_err(DeserializeError::from)?;
+            capnp::serialize::read_message(bytes, capnp::message::ReaderOptions::new())?;
 
-        let reader = deserialized
-            .get_root::<block_body_capnp::block_body::Reader>()
-            .map_err(DeserializeError::from)?;
+        let reader = deserialized.get_root::<block_body_capnp::block_body::Reader>()?;
         reader.try_from_reader()
     }
 }

@@ -40,7 +40,7 @@ impl ToCapnpBytes for U512 {
         msg.try_to_builder(self)?;
 
         let mut serialized = Vec::new();
-        capnp::serialize::write_message(&mut serialized, &builder).map_err(SerializeError::from)?;
+        capnp::serialize::write_message(&mut serialized, &builder)?;
         Ok(serialized)
     }
 }
@@ -48,12 +48,9 @@ impl ToCapnpBytes for U512 {
 impl FromCapnpBytes for U512 {
     fn try_from_capnp_bytes(bytes: &[u8]) -> Result<Self, DeserializeError> {
         let deserialized =
-            capnp::serialize::read_message(bytes, capnp::message::ReaderOptions::new())
-                .map_err(DeserializeError::from)?;
+            capnp::serialize::read_message(bytes, capnp::message::ReaderOptions::new())?;
 
-        let reader = deserialized
-            .get_root::<common_capnp::u512::Reader>()
-            .map_err(DeserializeError::from)?;
+        let reader = deserialized.get_root::<common_capnp::u512::Reader>()?;
         reader.try_from_reader()
     }
 }

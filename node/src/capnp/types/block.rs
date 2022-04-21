@@ -31,13 +31,13 @@ impl ToCapnpBuilder<Block> for block_capnp::block::Builder<'_> {
 
 impl FromCapnpReader<Block> for block_capnp::block::Reader<'_> {
     fn try_from_reader(&self) -> Result<Block, DeserializeError> {
-        let hash_reader = self.get_hash().map_err(DeserializeError::from)?;
+        let hash_reader = self.get_hash()?;
         let hash = hash_reader.try_from_reader()?;
 
-        let header_reader = self.get_header().map_err(DeserializeError::from)?;
+        let header_reader = self.get_header()?;
         let header = header_reader.try_from_reader()?;
 
-        let body_reader = self.get_body().map_err(DeserializeError::from)?;
+        let body_reader = self.get_body()?;
         let body = body_reader.try_from_reader()?;
         Ok(Block::new_unchecked(hash, header, body))
     }
@@ -49,7 +49,7 @@ impl ToCapnpBytes for Block {
         let mut msg = builder.init_root::<block_capnp::block::Builder>();
         msg.try_to_builder(self)?;
         let mut serialized = Vec::new();
-        capnp::serialize::write_message(&mut serialized, &builder).map_err(SerializeError::from)?;
+        capnp::serialize::write_message(&mut serialized, &builder)?;
         Ok(serialized)
     }
 }
@@ -57,12 +57,9 @@ impl ToCapnpBytes for Block {
 impl FromCapnpBytes for Block {
     fn try_from_capnp_bytes(bytes: &[u8]) -> Result<Self, DeserializeError> {
         let deserialized =
-            capnp::serialize::read_message(bytes, capnp::message::ReaderOptions::new())
-                .map_err(DeserializeError::from)?;
+            capnp::serialize::read_message(bytes, capnp::message::ReaderOptions::new())?;
 
-        let reader = deserialized
-            .get_root::<block_capnp::block::Reader>()
-            .map_err(DeserializeError::from)?;
+        let reader = deserialized.get_root::<block_capnp::block::Reader>()?;
         reader.try_from_reader()
     }
 }
