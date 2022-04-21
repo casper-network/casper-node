@@ -10,10 +10,7 @@ use casper_types::{
     Motes, PublicKey,
 };
 #[cfg(test)]
-use casper_types::{SecretKey, U512};
-
-#[cfg(test)]
-use crate::testing::TestRng;
+use casper_types::{testing::TestRng, SecretKey, U512};
 
 use super::ValidatorConfig;
 

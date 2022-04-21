@@ -9,12 +9,11 @@ use tokio::{sync::AcquireError, task::JoinError};
 use tracing::error;
 
 use casper_hashing::Digest;
-use casper_types::EraId;
+use casper_types::{crypto, EraId};
 
 use super::{lmdb_ext::LmdbExtError, object_pool::ObjectPool, Indices};
 use crate::{
     components::consensus::error::FinalitySignatureError,
-    crypto,
     types::{
         error::BlockValidationError, BlockBody, BlockHash, BlockHeader, DeployHash,
         HashingAlgorithmVersion,

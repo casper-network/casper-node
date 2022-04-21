@@ -13,6 +13,8 @@ use std::{
 };
 
 use bytes::{Bytes, BytesMut};
+#[cfg(test)]
+use casper_types::testing::TestRng;
 use openssl::ssl::SslRef;
 use pin_project::pin_project;
 #[cfg(test)]
@@ -24,8 +26,6 @@ use tracing::{trace, warn};
 use casper_hashing::Digest;
 
 use super::{tls::KeyFingerprint, Message, Metrics, Payload};
-#[cfg(test)]
-use crate::testing::TestRng;
 use crate::{types::NodeId, utils};
 
 /// Lazily-evaluated network message ID generator.
