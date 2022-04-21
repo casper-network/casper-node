@@ -2,7 +2,8 @@ use casper_types::{AsymmetricType, PublicKey};
 
 use super::{FromCapnpReader, ToCapnpBuilder};
 use crate::capnp::{DeserializeError, FromCapnpBytes, SerializeError, ToCapnpBytes};
-use casper_node_macros::{make_ed25519_capnp_functions, make_secp256k1_capnp_functions};
+use casper_node_macros::make_capnp_byte_setter_functions;
+
 #[allow(dead_code)]
 pub(super) mod public_key_capnp {
     include!(concat!(
@@ -11,8 +12,11 @@ pub(super) mod public_key_capnp {
     ));
 }
 
-make_ed25519_capnp_functions!();
-make_secp256k1_capnp_functions!();
+// We cannot use the const literals directly
+// const ED25519_PUBLIC_KEY_LENGTH = 32;
+make_capnp_byte_setter_functions!(32, "ed25519");
+// const SECP256K1_PUBLIC_KEY_LENGTH = 33;
+make_capnp_byte_setter_functions!(33, "secp256k1");
 
 impl ToCapnpBuilder<PublicKey> for public_key_capnp::public_key::Builder<'_> {
     fn try_to_builder(&mut self, public_key: &PublicKey) -> Result<(), SerializeError> {
