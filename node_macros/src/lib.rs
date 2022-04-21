@@ -39,7 +39,7 @@ pub fn reactor(input: TokenStream) -> TokenStream {
 /// Generates a function to set bytes in the ed25519 public key
 #[proc_macro]
 pub fn make_capnp_byte_setter_functions(input: TokenStream) -> TokenStream {
-    let ByteSetterDefinition { length, builder } =
+    let ByteSetterDefinition { length, namespace } =
         parse_macro_input!(input as ByteSetterDefinition);
     let parsed_length: usize = length.base10_parse().expect("expected integer literal");
 
@@ -53,10 +53,13 @@ pub fn make_capnp_byte_setter_functions(input: TokenStream) -> TokenStream {
         ));
     }
 
-    let builder_str = format!("public_key_capnp::{}_public_key::Builder", builder.value());
+    let builder_str = format!(
+        "public_key_capnp::{}_public_key::Builder",
+        namespace.value()
+    );
     let builder_stream: proc_macro2::TokenStream = builder_str.parse().expect("incorrect builder");
 
-    let setter = Ident::new(&format!("set_{}", builder.value()), Span::call_site());
+    let setter = Ident::new(&format!("set_{}", namespace.value()), Span::call_site());
     output.extend(quote!(
         fn #setter(msg: &mut #builder_stream, bytes: &[u8; #length]) {
             #inner_loop_set
@@ -71,10 +74,10 @@ pub fn make_capnp_byte_setter_functions(input: TokenStream) -> TokenStream {
         ));
     }
 
-    let reader_str = format!("public_key_capnp::{}_public_key::Reader", builder.value());
+    let reader_str = format!("public_key_capnp::{}_public_key::Reader", namespace.value());
     let reader_stream: proc_macro2::TokenStream = reader_str.parse().expect("incorrect builder");
 
-    let getter = Ident::new(&format!("get_{}", builder.value()), Span::call_site());
+    let getter = Ident::new(&format!("get_{}", namespace.value()), Span::call_site());
     output.extend(quote!(
         fn #getter(reader: #reader_stream) -> [u8; #length] {
             [

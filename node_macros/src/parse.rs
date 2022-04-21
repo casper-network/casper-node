@@ -538,16 +538,16 @@ impl Parse for Target {
 pub(crate) struct ByteSetterDefinition {
     /// How many byte setters should be generated.
     pub(crate) length: LitInt,
-    /// Which Capnp builder to use.
-    pub(crate) builder: LitStr,
+    /// Which Capnp namespace to use.
+    pub(crate) namespace: LitStr,
 }
 
 impl Parse for ByteSetterDefinition {
     fn parse(input: ParseStream) -> Result<Self> {
         let length: LitInt = input.parse()?;
         let _: Token!(,) = input.parse()?;
-        let builder: LitStr = input.parse()?;
-        Ok(ByteSetterDefinition { length, builder })
+        let namespace: LitStr = input.parse()?;
+        Ok(ByteSetterDefinition { length, namespace })
     }
 }
 
