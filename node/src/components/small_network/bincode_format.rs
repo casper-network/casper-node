@@ -18,6 +18,7 @@ use tokio_serde::{Deserializer, Serializer};
 use super::Message;
 
 /// bincode encoder/decoder for messages.
+#[allow(clippy::type_complexity)]
 pub struct BincodeFormat(
     // Note: This scary looking type is because `bincode` encodes its options at the type level.
     //       The exact shape is determined by `BincodeFormat::default()`.
