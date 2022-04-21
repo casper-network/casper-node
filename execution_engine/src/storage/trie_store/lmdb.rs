@@ -118,7 +118,7 @@ use crate::storage::{
     global_state::CommitError,
     store::Store,
     transaction_source::{lmdb::LmdbEnvironment, Readable, TransactionSource, Writable},
-    trie::Trie,
+    trie::{DescendantsIterator, Trie},
     trie_store::{self, TrieStore},
 };
 
@@ -203,49 +203,44 @@ impl ScratchTrieStore {
         }
     }
 
-    /// Writes only (dirty) tries under the given `state_root` to the underlying db.
+    /// Writes only tries which are both under the given `state_root` and dirty to the underlying db
+    /// while maintaining the invariant that children must be written before parent nodes.
     pub fn write_root_to_db(self, state_root: Digest) -> Result<(), error::Error> {
         let env = self.inner.env;
         let store = self.inner.store;
         let cache = &mut *self.inner.cache.lock().map_err(|_| error::Error::Poison)?;
 
-        let mut missing_trie_keys = vec![state_root];
-        let mut validated_tries = HashMap::new();
+        let trie = cache
+            .get(&state_root)
+            .map(|(_, root)| root)
+            .ok_or_else(|| CommitError::TrieNotFoundInCache(state_root))?;
 
         let mut txn = env.create_read_write_txn()?;
+        let mut tries_to_visit = vec![(state_root, trie, trie.iter_descendants())];
 
-        while let Some(next_trie_key) = missing_trie_keys.pop() {
-            if cache.is_empty() {
-                return Err(error::Error::CommitError(
-                    CommitError::TrieNotFoundDuringCacheValidate(next_trie_key),
-                ));
-            }
-            match cache.remove(&next_trie_key) {
-                Some((false, _)) => continue,
-                None => {
-                    txn.read(store.get_db(), next_trie_key.as_ref())?.ok_or(
-                        error::Error::CommitError(CommitError::TrieNotFoundDuringCacheValidate(
-                            next_trie_key,
-                        )),
-                    )?;
-                }
-                Some((true, trie)) => {
-                    if let Some(children) = trie.children() {
-                        missing_trie_keys.extend(children);
+        while let Some((digest, current_trie, descendants_iterator)) = tries_to_visit.pop() {
+            if let DescendantsIterator::Empty = descendants_iterator {
+                // We can write this node since it has no children, or they were already written.
+                store.put(&mut txn, &digest, current_trie)?;
+            } else {
+                // We had descendants, so we push ourselves back onto the stack, to be written
+                // when we pop.
+                tries_to_visit.push((digest, current_trie, DescendantsIterator::Empty));
+                for descendant in descendants_iterator {
+                    // only if a node is marked as dirty in the cache do we want to visit it's
+                    // descendants
+                    if let Some((true, child_trie)) = cache.get(&descendant) {
+                        tries_to_visit.push((
+                            descendant,
+                            child_trie,
+                            child_trie.iter_descendants(),
+                        ));
                     }
-                    validated_tries.insert(next_trie_key, trie);
                 }
             }
         }
 
-        // after validating that all the needed tries are present, write everything
-        for (digest, trie) in validated_tries.iter() {
-            store.put(&mut txn, digest, trie)?;
-        }
-
-        // required for lmdb
         txn.commit()?;
-
         Ok(())
     }
 }
