@@ -36,11 +36,14 @@ pub fn reactor(input: TokenStream) -> TokenStream {
     output.into()
 }
 
-/// Generates a function to set bytes in the ed25519 public key
+/// Generates functions to get/set bytes in capnp structs with `[u8; _]` representation.
 #[proc_macro]
 pub fn make_capnp_byte_setter_functions(input: TokenStream) -> TokenStream {
-    let ByteSetterDefinition { length, namespace } =
-        parse_macro_input!(input as ByteSetterDefinition);
+    let ByteSetterDefinition {
+        length,
+        capnp_struct,
+        namespace,
+    } = parse_macro_input!(input as ByteSetterDefinition);
     let parsed_length: usize = length.base10_parse().expect("expected integer literal");
 
     let mut output: proc_macro2::TokenStream = Default::default();
@@ -53,13 +56,10 @@ pub fn make_capnp_byte_setter_functions(input: TokenStream) -> TokenStream {
         ));
     }
 
-    let builder_str = format!(
-        "public_key_capnp::{}_public_key::Builder",
-        namespace.value()
-    );
+    let builder_str = format!("{}::Builder", namespace.value());
     let builder_stream: proc_macro2::TokenStream = builder_str.parse().expect("incorrect builder");
 
-    let setter = Ident::new(&format!("set_{}", namespace.value()), Span::call_site());
+    let setter = Ident::new(&format!("set_{}", capnp_struct.value()), Span::call_site());
     output.extend(quote!(
         fn #setter(msg: &mut #builder_stream, bytes: &[u8; #length]) {
             #inner_loop_set
@@ -74,10 +74,10 @@ pub fn make_capnp_byte_setter_functions(input: TokenStream) -> TokenStream {
         ));
     }
 
-    let reader_str = format!("public_key_capnp::{}_public_key::Reader", namespace.value());
+    let reader_str = format!("{}::Reader", namespace.value());
     let reader_stream: proc_macro2::TokenStream = reader_str.parse().expect("incorrect builder");
 
-    let getter = Ident::new(&format!("get_{}", namespace.value()), Span::call_site());
+    let getter = Ident::new(&format!("get_{}", capnp_struct.value()), Span::call_site());
     output.extend(quote!(
         fn #getter(reader: #reader_stream) -> [u8; #length] {
             [

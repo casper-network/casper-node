@@ -687,7 +687,10 @@ pub struct EraEnd {
 }
 
 impl EraEnd {
-    fn new(era_report: EraReport, next_era_validator_weights: BTreeMap<PublicKey, U512>) -> Self {
+    pub(crate) fn new(
+        era_report: EraReport,
+        next_era_validator_weights: BTreeMap<PublicKey, U512>,
+    ) -> Self {
         EraEnd {
             era_report,
             next_era_validator_weights,
@@ -782,6 +785,33 @@ pub struct BlockHeader {
 }
 
 impl BlockHeader {
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn new(
+        parent_hash: BlockHash,
+        state_root_hash: Digest,
+        body_hash: Digest,
+        random_bit: bool,
+        accumulated_seed: Digest,
+        era_end: Option<EraEnd>,
+        timestamp: Timestamp,
+        era_id: EraId,
+        height: u64,
+        protocol_version: ProtocolVersion,
+    ) -> Self {
+        Self {
+            parent_hash,
+            era_id,
+            body_hash,
+            state_root_hash,
+            era_end,
+            height,
+            timestamp,
+            protocol_version,
+            random_bit,
+            accumulated_seed,
+        }
+    }
+
     /// The [`HashingAlgorithmVersion`] used for the header (as well as for its corresponding block
     /// body).
     pub fn hashing_algorithm_version(
@@ -1489,6 +1519,10 @@ impl Block {
         let block = Block { hash, header, body };
         block.verify(verifiable_chunked_hash_activation)?;
         Ok(block)
+    }
+
+    pub(crate) fn new_unchecked(hash: BlockHash, header: BlockHeader, body: BlockBody) -> Self {
+        Self { hash, header, body }
     }
 
     pub(crate) fn body(&self) -> &BlockBody {
