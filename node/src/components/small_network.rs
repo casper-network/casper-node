@@ -73,13 +73,13 @@ use tokio_util::codec::LengthDelimitedCodec;
 use tracing::{debug, error, info, trace, warn, Instrument, Span};
 
 use self::{
+    bincode_format::BincodeFormat,
     chain_info::ChainInfo,
     counting_format::{ConnectionId, CountingFormat, Role},
     error::{ConnectionError, Result},
     event::{IncomingConnection, OutgoingConnection},
     limiter::Limiter,
     message::ConsensusKeyPair,
-    message_pack_format::MessagePackFormat,
     metrics::Metrics,
     outgoing::{DialOutcome, DialRequest, OutgoingConfig, OutgoingManager},
     symmetry::ConnectionSymmetry,
@@ -1051,7 +1051,7 @@ pub(crate) type FullTransport<P> = tokio_serde::Framed<
     FramedTransport,
     Message<P>,
     Arc<Message<P>>,
-    CountingFormat<MessagePackFormat>,
+    CountingFormat<BincodeFormat>,
 >;
 
 pub(crate) type FramedTransport = tokio_util::codec::Framed<Transport, LengthDelimitedCodec>;
@@ -1071,7 +1071,7 @@ where
 {
     tokio_serde::Framed::new(
         framed,
-        CountingFormat::new(metrics, connection_id, role, MessagePackFormat),
+        CountingFormat::new(metrics, connection_id, role, BincodeFormat::default()),
     )
 }
 
