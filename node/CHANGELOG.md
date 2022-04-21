@@ -30,7 +30,7 @@ All notable changes to this project will be documented in this file.  The format
 * Add a new parameter to `info_get_deploys` JSON-RPC, `finalized_approvals` - controlling whether the approvals returned with the deploy should be the ones originally received by the node, or overridden by the approvals that were finalized along with the deploy.
 * Add a new identifier `PurseIdentifier` which is a new parameter to identify URefs for balance related queries.
 * Extended `GlobalStateIdentifier` to include `BlockHeight`.
-* Add a new RPC endpoint `query_balance` which queries for balances underneath a URef identified by a give `PurseIdentifier`
+* Add a new RPC endpoint `query_balance` which queries for balances underneath a URef identified by a given `PurseIdentifier`
 
 ### Changed
 * Detection of a crash no longer triggers DB integrity checks to run on node start; the checks can be triggered manually instead.

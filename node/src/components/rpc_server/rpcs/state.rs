@@ -1050,7 +1050,7 @@ impl RpcWithParamsExt for QueryBalance {
 
             let balance_value = match balance_result {
                 Ok(BalanceResult::Success { motes, .. }) => motes,
-                Ok(balance_result) => {
+                Ok(BalanceResult::RootNotFound) => {
                     let error_msg = format!("query-balance failed: {:?}", balance_result);
                     info!("{}", error_msg);
                     return Ok(response_builder.error(warp_json_rpc::Error::custom(

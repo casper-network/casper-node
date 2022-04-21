@@ -3509,7 +3509,7 @@
               "name": "query_balance_example",
               "params": [
                 {
-                  "name": "balance_identifier",
+                  "name": "purse_identifier",
                   "value": {
                     "main_purse_under_account_hash": "account-hash-0909090909090909090909090909090909090909090909090909090909090909"
                   }
@@ -3533,7 +3533,7 @@
           "name": "query_balance",
           "params": [
             {
-              "name": "balance_identifier",
+              "name": "purse_identifier",
               "required": true,
               "schema": {
                 "$ref": "#/components/schemas/PurseIdentifier",
