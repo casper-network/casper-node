@@ -6,7 +6,6 @@ using import "public_key.capnp".PublicKey;
 using Rust = import "rust.capnp";
 $Rust.parentModule("capnp::types::block_body");
 
-# Some comment TODO
 struct BlockBody {
     proposer @0 :PublicKey;
     deployHashes @1 :List(DeployHash);

@@ -7,7 +7,6 @@ using import "era.capnp".EraId;
 using Rust = import "rust.capnp";
 $Rust.parentModule("capnp::types::block_header");
 
-# Some comment TODO
 struct BlockHeader {
     parentHash @0 :BlockHash;
     stateRootHash @1 :Digest;
