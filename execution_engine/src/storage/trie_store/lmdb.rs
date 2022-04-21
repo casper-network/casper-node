@@ -118,7 +118,7 @@ use crate::storage::{
     global_state::CommitError,
     store::Store,
     transaction_source::{lmdb::LmdbEnvironment, Readable, TransactionSource, Writable},
-    trie::{DescendantsIterator, Trie},
+    trie::Trie,
     trie_store::{self, TrieStore},
 };
 
@@ -222,25 +222,17 @@ impl ScratchTrieStore {
         let mut txn = env.create_read_write_txn()?;
         let mut tries_to_visit = vec![(state_root, root_trie, root_trie.iter_descendants())];
 
-        while let Some((digest, current_trie, descendants_iterator)) = tries_to_visit.pop() {
-            if let DescendantsIterator::Empty = descendants_iterator {
+        while let Some((digest, current_trie, mut descendants_iterator)) = tries_to_visit.pop() {
+            if let Some(descendant) = descendants_iterator.next() {
+                tries_to_visit.push((digest, current_trie, descendants_iterator));
+                // Only if a node is marked as dirty in the cache do we want to visit it's
+                // descendants
+                if let Some((true, child_trie)) = cache.get(&descendant) {
+                    tries_to_visit.push((descendant, child_trie, child_trie.iter_descendants()));
+                }
+            } else {
                 // We can write this node since it has no children, or they were already written.
                 store.put(&mut txn, &digest, current_trie)?;
-            } else {
-                // We had descendants, so we push ourselves back onto the stack, to be written
-                // when we pop.
-                tries_to_visit.push((digest, current_trie, DescendantsIterator::Empty));
-                for descendant in descendants_iterator {
-                    // only if a node is marked as dirty in the cache do we want to visit it's
-                    // descendants
-                    if let Some((true, child_trie)) = cache.get(&descendant) {
-                        tries_to_visit.push((
-                            descendant,
-                            child_trie,
-                            child_trie.iter_descendants(),
-                        ));
-                    }
-                }
             }
         }
 
