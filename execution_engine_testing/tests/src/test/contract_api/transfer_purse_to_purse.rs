@@ -30,7 +30,7 @@ fn should_run_purse_to_purse_transfer() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
@@ -94,7 +94,7 @@ fn should_run_purse_to_purse_transfer_with_error() {
         runtime_args! { ARG_SOURCE => source, ARG_TARGET => target, ARG_AMOUNT => U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE + 1) },
     )
         .build();
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)

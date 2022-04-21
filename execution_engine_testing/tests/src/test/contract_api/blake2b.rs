@@ -37,7 +37,7 @@ fn should_hash() {
     const RUNS: usize = 100;
 
     let mut rng = rand::thread_rng();
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 

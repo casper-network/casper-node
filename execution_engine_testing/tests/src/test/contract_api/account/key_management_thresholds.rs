@@ -23,7 +23,7 @@ fn should_verify_key_management_permission_with_low_weight() {
         runtime_args! { ARG_STAGE => String::from("test-permission-denied") },
     )
     .build();
-    InMemoryWasmTestBuilder::new_with_production_chainspec()
+    InMemoryWasmTestBuilder::default()
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
         .expect_success()
@@ -60,7 +60,7 @@ fn should_verify_key_management_permission_with_sufficient_weight() {
             .build();
         ExecuteRequestBuilder::from_deploy_item(deploy).build()
     };
-    InMemoryWasmTestBuilder::new_with_production_chainspec()
+    InMemoryWasmTestBuilder::default()
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
         .expect_success()

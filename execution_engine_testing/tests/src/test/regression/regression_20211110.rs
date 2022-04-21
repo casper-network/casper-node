@@ -26,7 +26,7 @@ const STARTING_BALANCE: u64 = 100_000_000_000;
 fn regression_20211110() {
     let mut funds: u64 = STARTING_BALANCE;
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let transfer_request = ExecuteRequestBuilder::transfer(

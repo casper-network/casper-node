@@ -30,6 +30,7 @@ pub static PRODUCTION_PATH: Lazy<PathBuf> = Lazy::new(|| {
 });
 
 #[derive(Debug)]
+#[allow(clippy::enum_variant_names)]
 pub enum Error {
     FailedToLoadChainspec {
         /// Path that failed to be read.
@@ -38,17 +39,14 @@ pub enum Error {
         error: io::Error,
     },
     FailedToParseChainspec(toml::de::Error),
-    CouldNotCreateExecConfig,
-    CouldNotParseLockedFundsPeriod,
-    CouldNotCreateGenesisRequest,
+    FailedToCreateExecConfig,
+    FailedToParseLockedFundsPeriod,
+    FailedToCreateGenesisRequest,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
-// Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
-#[serde(deny_unknown_fields)]
 pub struct CoreConfig {
-    pub(crate) era_duration: String,
-    pub(crate) minimum_era_height: u64,
+    /// The number of validator slots in the auction.
     pub(crate) validator_slots: u32,
     /// Number of eras before an auction actually defines the set of validators.
     /// If you bond with a sufficient bid in era N, you will be a validator in era N +
@@ -109,7 +107,7 @@ impl ChainspecConfig {
             toml::from_slice(&bytes).map_err(Error::FailedToParseChainspec)?;
         let locked_funds_period_millis =
             humantime::parse_duration(&*chainspec_config.core_config.locked_funds_period)
-                .map_err(|_| Error::CouldNotCreateGenesisRequest)?
+                .map_err(|_| Error::FailedToCreateGenesisRequest)?
                 .as_millis() as u64;
         let exec_config = ExecConfig::new(
             genesis_accounts,
@@ -149,7 +147,7 @@ impl TryFrom<ChainspecConfig> for ExecConfig {
     fn try_from(chainspec_config: ChainspecConfig) -> Result<Self, Self::Error> {
         let locked_funds_period_millis =
             humantime::parse_duration(&*chainspec_config.core_config.locked_funds_period)
-                .map_err(|_| Error::CouldNotCreateExecConfig)?
+                .map_err(|_| Error::FailedToCreateExecConfig)?
                 .as_millis() as u64;
         Ok(ExecConfig::new(
             DEFAULT_ACCOUNTS.clone(),

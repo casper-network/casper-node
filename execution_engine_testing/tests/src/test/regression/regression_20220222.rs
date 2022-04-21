@@ -10,7 +10,7 @@ const ALICE_ADDR: AccountHash = AccountHash::new([42; 32]);
 #[ignore]
 #[test]
 fn regression_20220222_escalate() {
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let transfer_request = ExecuteRequestBuilder::transfer(

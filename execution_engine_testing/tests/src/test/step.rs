@@ -52,7 +52,7 @@ fn get_named_key(
 }
 
 fn initialize_builder() -> WasmTestBuilder<InMemoryGlobalState> {
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();

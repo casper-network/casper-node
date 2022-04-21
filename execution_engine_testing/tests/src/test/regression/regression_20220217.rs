@@ -239,7 +239,7 @@ fn regression_20220217_should_not_transfer_funds_on_unrelated_purses() {
 }
 
 fn setup() -> InMemoryWasmTestBuilder {
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let fund_account_1_request = ExecuteRequestBuilder::transfer(
@@ -381,7 +381,7 @@ fn regression_20220217_() {
 #[test]
 fn mint_by_hash_transfer_should_fail_because_lack_of_target_uref_access() {
     // TODO create two named purses and verify we can pass source and target known non-main purses
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 

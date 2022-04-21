@@ -80,7 +80,7 @@ fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
         ExecuteRequestBuilder::from_deploy_item(deploy).build()
     };
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&run_genesis_request);
 
     builder.exec(exec_request_1).expect_success().commit();

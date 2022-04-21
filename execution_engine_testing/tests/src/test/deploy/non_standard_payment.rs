@@ -26,7 +26,7 @@ fn should_charge_non_main_purse() {
     let account_1_funding_amount = U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE);
     let account_1_purse_funding_amount = *DEFAULT_PAYMENT;
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     let setup_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,

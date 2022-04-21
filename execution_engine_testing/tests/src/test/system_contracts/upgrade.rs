@@ -82,7 +82,7 @@ fn get_upgraded_wasm_config() -> WasmConfig {
 #[ignore]
 #[test]
 fn should_upgrade_only_protocol_version() {
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -116,7 +116,7 @@ fn should_upgrade_only_protocol_version() {
 #[ignore]
 #[test]
 fn should_allow_only_wasm_costs_patch_version() {
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -160,7 +160,7 @@ fn should_allow_only_wasm_costs_patch_version() {
 #[ignore]
 #[test]
 fn should_allow_only_wasm_costs_minor_version() {
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -204,7 +204,7 @@ fn should_allow_only_wasm_costs_minor_version() {
 #[ignore]
 #[test]
 fn should_not_downgrade() {
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -255,7 +255,7 @@ fn should_not_downgrade() {
 #[ignore]
 #[test]
 fn should_not_skip_major_versions() {
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -283,7 +283,7 @@ fn should_not_skip_major_versions() {
 #[ignore]
 #[test]
 fn should_allow_skip_minor_versions() {
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -312,7 +312,7 @@ fn should_allow_skip_minor_versions() {
 #[ignore]
 #[test]
 fn should_upgrade_only_validator_slots() {
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -367,7 +367,7 @@ fn should_upgrade_only_validator_slots() {
 #[ignore]
 #[test]
 fn should_upgrade_only_auction_delay() {
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -422,7 +422,7 @@ fn should_upgrade_only_auction_delay() {
 #[ignore]
 #[test]
 fn should_upgrade_only_locked_funds_period() {
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -477,7 +477,7 @@ fn should_upgrade_only_locked_funds_period() {
 #[ignore]
 #[test]
 fn should_upgrade_only_round_seigniorage_rate() {
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -539,7 +539,7 @@ fn should_upgrade_only_round_seigniorage_rate() {
 #[ignore]
 #[test]
 fn should_upgrade_only_unbonding_delay() {
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -596,7 +596,7 @@ fn should_upgrade_only_unbonding_delay() {
 #[ignore]
 #[test]
 fn should_apply_global_state_upgrade() {
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -660,7 +660,7 @@ fn should_apply_global_state_upgrade() {
 #[ignore]
 #[test]
 fn should_increase_max_associated_keys_after_upgrade() {
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 

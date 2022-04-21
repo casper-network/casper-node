@@ -45,7 +45,7 @@ static BID_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(1_000_000));
 static DELEGATE_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(500_000));
 
 fn setup() -> InMemoryWasmTestBuilder {
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -73,7 +73,7 @@ fn setup() -> InMemoryWasmTestBuilder {
 
     builder.exec(transfer_request_2).expect_success().commit();
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 

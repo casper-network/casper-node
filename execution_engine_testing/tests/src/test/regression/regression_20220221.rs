@@ -62,7 +62,7 @@ fn regression_20220221_should_distribute_to_many_validators() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let mut upgrade_request = UpgradeRequestBuilder::default()

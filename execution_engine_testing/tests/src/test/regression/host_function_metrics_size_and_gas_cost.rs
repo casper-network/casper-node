@@ -141,7 +141,7 @@ fn host_function_metrics_has_acceptable_gas_cost() {
 }
 
 fn setup() -> InMemoryWasmTestBuilder {
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder
         .run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(create_account_exec_request(ACCOUNT0_ADDR))

@@ -72,7 +72,7 @@ fn should_run_genesis() {
     )
     .expect("must create genesis request");
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&run_genesis_request);
 
@@ -146,7 +146,7 @@ fn should_track_total_token_supply_in_mint() {
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&run_genesis_request);
 

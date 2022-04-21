@@ -59,7 +59,7 @@ fn test_check_transfer_success_with_source_only() {
     // build a request to execute the deploy.
     let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&run_genesis_request).commit();
 
     // we need this to figure out what the transfer fee is.
@@ -122,7 +122,7 @@ fn test_check_transfer_success_with_source_only_errors() {
     let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
 
     // Set up test builder and run genesis.
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&run_genesis_request).commit();
 
     // compare proposer balance before and after the transaction to get the tx fee.
@@ -178,7 +178,7 @@ fn test_check_transfer_success_with_source_and_target() {
 
     let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&run_genesis_request).commit();
 
     // we need this to figure out what the transfer fee is.

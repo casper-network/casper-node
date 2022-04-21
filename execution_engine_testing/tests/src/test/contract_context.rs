@@ -82,7 +82,7 @@ fn should_enforce_intended_execution_contexts() {
 
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -179,7 +179,7 @@ fn should_enforce_intended_execution_context_direct_by_name() {
 
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -224,7 +224,7 @@ fn should_enforce_intended_execution_context_direct_by_hash() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -322,7 +322,7 @@ fn should_not_call_session_from_contract() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 

@@ -39,7 +39,7 @@ fn should_run_ee_550_remove_with_saturated_threshold_regression() {
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
@@ -76,7 +76,7 @@ fn should_run_ee_550_update_with_saturated_threshold_regression() {
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)

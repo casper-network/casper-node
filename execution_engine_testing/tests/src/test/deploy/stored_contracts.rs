@@ -107,7 +107,7 @@ fn should_exec_non_stored_code() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
@@ -141,7 +141,7 @@ fn should_exec_non_stored_code() {
 fn should_fail_if_calling_non_existent_entry_point() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // first, store payment contract with entry point named "pay"
@@ -204,7 +204,7 @@ fn should_exec_stored_code_by_hash() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
 
     // genesis
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // store payment
@@ -291,7 +291,7 @@ fn should_not_transfer_above_balance_using_stored_payment_code_by_hash() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
 
     // genesis
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // store payment
@@ -347,7 +347,7 @@ fn should_empty_account_using_stored_payment_code_by_hash() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
 
     // genesis
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // store payment
@@ -439,7 +439,7 @@ fn should_exec_stored_code_by_named_hash() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
 
     // genesis
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // store payment
@@ -534,7 +534,7 @@ fn should_fail_payment_stored_at_named_key_with_incompatible_major_version() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     builder.exec(exec_request).commit();
@@ -618,7 +618,7 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     builder.exec(exec_request).commit();
@@ -688,7 +688,7 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
 fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // first, store payment contract for v1.0.0
@@ -699,7 +699,7 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     builder.exec(exec_request_1).commit();
@@ -799,7 +799,7 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     builder.exec(exec_request_1).commit();
@@ -878,7 +878,7 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
 fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // first, store payment contract for v1.0.0
@@ -889,7 +889,7 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     builder.exec(exec_request_1).commit();
@@ -980,7 +980,7 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
 fn should_execute_stored_payment_and_session_code_with_new_major_version() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     //

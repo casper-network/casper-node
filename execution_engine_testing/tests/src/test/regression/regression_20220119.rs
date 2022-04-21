@@ -9,7 +9,7 @@ const REGRESSION_20220119_CONTRACT: &str = "regression_20220119.wasm";
 #[ignore]
 #[test]
 fn should_create_purse() {
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let exec_request = ExecuteRequestBuilder::standard(

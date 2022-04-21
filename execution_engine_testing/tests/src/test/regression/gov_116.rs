@@ -99,7 +99,7 @@ static GENESIS_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
 });
 
 fn initialize_builder() -> InMemoryWasmTestBuilder {
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     let run_genesis_request = utils::create_run_genesis_request(GENESIS_ACCOUNTS.clone());
     builder.run_genesis(&run_genesis_request);

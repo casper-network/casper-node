@@ -27,7 +27,7 @@ fn should_run_ee_572_regression() {
 
     // This test runs a contract that's after every call extends the same key with
     // more data
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,

@@ -33,7 +33,7 @@ fn should_run_get_phase_contract() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    InMemoryWasmTestBuilder::new_with_production_chainspec()
+    InMemoryWasmTestBuilder::default()
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
         .commit()

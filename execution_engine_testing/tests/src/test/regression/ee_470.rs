@@ -10,7 +10,7 @@ const CONTRACT_DO_NOTHING: &str = "do_nothing.wasm";
 #[ignore]
 #[test]
 fn regression_test_genesis_hash_mismatch() {
-    let mut builder_base = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder_base = InMemoryWasmTestBuilder::default();
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,

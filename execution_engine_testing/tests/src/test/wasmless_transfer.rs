@@ -653,7 +653,7 @@ fn get_default_account_named_uref(builder: &mut InMemoryWasmTestBuilder, name: &
 }
 
 fn init_wasmless_transform_builder(create_account_2: bool) -> InMemoryWasmTestBuilder {
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     let id: Option<u64> = None;
 
@@ -1010,7 +1010,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
         old_protocol_version.value().patch + 1,
     );
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let default_account = builder

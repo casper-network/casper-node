@@ -22,8 +22,9 @@ All notable changes to this project will be documented in this file.  The format
 ### Changed
 * `WasmTestBuilder::get_transforms` is deprecated in favor of `WasmTestBuilder::get_execution_journals`.
 * `deploy_hash` field is now defaulted to a random value rather than zeros in `DeployItemBuilder`.
-* Deprecated the `DEFAULT_GENESIS_REQUEST` in favor of `PRODUCTION_GENESIS_REQUEST`.
 
+### Deprecated
+* Deprecated the `DEFAULT_GENESIS_REQUEST` in favor of `PRODUCTION_GENESIS_REQUEST`.
 
 <<<<<<< HEAD
 =======

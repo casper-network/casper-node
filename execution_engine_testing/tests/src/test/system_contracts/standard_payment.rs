@@ -39,7 +39,7 @@ fn should_raise_insufficient_payment_when_caller_lacks_minimum_balance() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
@@ -99,7 +99,7 @@ fn should_forward_payment_execution_runtime_error() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -153,7 +153,7 @@ fn should_forward_payment_execution_gas_limit_error() {
     let account_1_account_hash = ACCOUNT_1_ADDR;
     let transferred_amount = U512::from(1);
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -242,7 +242,7 @@ fn should_run_out_of_gas_when_session_code_exceeds_gas_limit() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
@@ -282,7 +282,7 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
@@ -349,7 +349,7 @@ fn should_correctly_charge_when_session_code_fails() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -399,7 +399,7 @@ fn should_correctly_charge_when_session_code_succeeds() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -456,7 +456,7 @@ fn should_finalize_to_rewards_purse() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -479,7 +479,7 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
     let transfer_amount = MINIMUM_ACCOUNT_CREATION_BALANCE;
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     let setup_exec_request = {
         let deploy = DeployItemBuilder::new()

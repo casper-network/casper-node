@@ -38,7 +38,7 @@ fn should_deploy_with_authorized_identity_key() {
     )
     .build();
     // Basic deploy with single key
-    InMemoryWasmTestBuilder::new_with_production_chainspec()
+    InMemoryWasmTestBuilder::default()
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
         .commit()
@@ -70,7 +70,7 @@ fn should_raise_auth_failure_with_invalid_key() {
     };
 
     // Basic deploy with single key
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
@@ -120,7 +120,7 @@ fn should_raise_auth_failure_with_invalid_keys() {
     };
 
     // Basic deploy with single key
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
@@ -180,7 +180,7 @@ fn should_raise_deploy_authorization_failure() {
     )
     .build();
     // Basic deploy with single key
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         // Reusing a test contract that would add new key
@@ -347,7 +347,7 @@ fn should_authorize_deploy_with_multiple_keys() {
     )
     .build();
     // Basic deploy with single key
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         // Reusing a test contract that would add new key
@@ -415,7 +415,7 @@ fn should_not_authorize_deploy_with_duplicated_keys() {
     )
     .build();
     // Basic deploy with single key
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     builder
@@ -501,7 +501,7 @@ fn should_not_authorize_transfer_without_deploy_key_threshold() {
     .build();
 
     // Basic deploy with single key
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)

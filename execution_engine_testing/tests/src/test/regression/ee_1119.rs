@@ -64,7 +64,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
     };
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&run_genesis_request);
 
     let fund_system_exec_request = ExecuteRequestBuilder::standard(

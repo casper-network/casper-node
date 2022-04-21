@@ -147,7 +147,7 @@ static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
 fn initialize_isolated_storage_costs() -> InMemoryWasmTestBuilder {
     // This test runs a contract that's after every call extends the same key with
     // more data
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     //
     // Isolate storage costs without host function costs, and without opcode costs
     //
@@ -395,7 +395,7 @@ fn should_measure_gas_cost_for_storage_usage_write() {
 fn should_measure_unisolated_gas_cost_for_storage_usage_write() {
     let cost_per_byte = U512::from(StorageCosts::default().gas_per_byte());
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let install_exec_request = ExecuteRequestBuilder::standard(
@@ -621,7 +621,7 @@ fn should_measure_gas_cost_for_storage_usage_add() {
 fn should_measure_unisolated_gas_cost_for_storage_usage_add() {
     let cost_per_byte = U512::from(StorageCosts::default().gas_per_byte());
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let install_exec_request = ExecuteRequestBuilder::standard(

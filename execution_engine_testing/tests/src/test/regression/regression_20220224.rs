@@ -11,7 +11,7 @@ const CONTRACT_REVERT: &str = "revert.wasm";
 #[ignore]
 #[test]
 fn should_not_transfer_above_approved_limit_in_payment_code() {
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let exec_request = {

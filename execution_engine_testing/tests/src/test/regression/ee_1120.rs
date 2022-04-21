@@ -84,7 +84,7 @@ fn should_run_ee_1120_slash_delegators() {
     };
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&run_genesis_request);
 
     let transfer_request_1 = ExecuteRequestBuilder::standard(

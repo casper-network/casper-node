@@ -44,7 +44,7 @@ fn should_commit_chainspec_registry_during_genesis() {
         chainspec_registry,
     );
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&run_genesis_request);
 
     let queried_registry = builder
@@ -82,7 +82,7 @@ fn should_fail_to_commit_genesis_when_missing_genesis_accounts_hash() {
         incomplete_chainspec_registry,
     );
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&run_genesis_request);
 }
 

@@ -17,7 +17,7 @@ fn should_run_ee_584_no_errored_session_transforms() {
     )
     .build();
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)

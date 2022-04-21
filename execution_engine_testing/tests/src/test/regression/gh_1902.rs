@@ -28,7 +28,7 @@ static ACCOUNT_1_PUBLIC_KEY: Lazy<PublicKey> =
 static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCOUNT_1_PUBLIC_KEY));
 
 fn setup() -> InMemoryWasmTestBuilder {
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
     let id: Option<u64> = None;
     let transfer_args_1 = runtime_args! {

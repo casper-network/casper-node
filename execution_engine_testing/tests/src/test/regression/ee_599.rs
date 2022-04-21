@@ -35,7 +35,7 @@ fn setup() -> InMemoryWasmTestBuilder {
             .build()
     };
 
-    let mut ctx = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut ctx = InMemoryWasmTestBuilder::default();
     ctx.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
         .expect_success()

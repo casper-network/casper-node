@@ -709,7 +709,7 @@ struct TestContext {
 }
 
 fn setup() -> (InMemoryWasmTestBuilder, TestContext) {
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let session_args = runtime_args! {

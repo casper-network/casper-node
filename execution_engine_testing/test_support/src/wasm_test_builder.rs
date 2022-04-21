@@ -125,24 +125,7 @@ impl<S> WasmTestBuilder<S> {
 
 impl Default for InMemoryWasmTestBuilder {
     fn default() -> Self {
-        Self::initialize_logging();
-        let engine_config = EngineConfig::default();
-
-        let global_state = InMemoryGlobalState::empty().expect("should create global state");
-        let engine_state = EngineState::new(global_state, engine_config);
-
-        WasmTestBuilder {
-            engine_state: Rc::new(engine_state),
-            exec_results: Vec::new(),
-            upgrade_results: Vec::new(),
-            genesis_hash: None,
-            post_state_hash: None,
-            transforms: Vec::new(),
-            genesis_account: None,
-            genesis_transforms: None,
-            scratch_engine_state: None,
-            system_contract_registry: None,
-        }
+        Self::new_with_chainspec(&*PRODUCTION_PATH, None)
     }
 }
 
@@ -175,10 +158,16 @@ impl InMemoryWasmTestBuilder {
         Self::initialize_logging();
         let engine_state = EngineState::new(global_state, engine_config);
         WasmTestBuilder {
+            exec_results: Vec::new(),
+            upgrade_results: Vec::new(),
             engine_state: Rc::new(engine_state),
             genesis_hash: maybe_post_state_hash,
             post_state_hash: maybe_post_state_hash,
-            ..Default::default()
+            transforms: Vec::new(),
+            genesis_account: None,
+            genesis_transforms: None,
+            scratch_engine_state: None,
+            system_contract_registry: None,
         }
     }
 
@@ -205,11 +194,11 @@ impl InMemoryWasmTestBuilder {
         Self::new(global_state, engine_config, post_state_hash)
     }
 
-    /// Returns an [`InMemoryWasmTestBuilder`] instantiated
-    /// using values from the production chainspec.
-    pub fn new_with_production_chainspec() -> Self {
-        Self::new_with_chainspec(&*PRODUCTION_PATH, None)
-    }
+    // /// Returns an [`InMemoryWasmTestBuilder`] instantiated
+    // /// using values from the production chainspec.
+    // pub fn new_with_production_chainspec() -> Self {
+    //     Self::new_with_chainspec(&*PRODUCTION_PATH, None)
+    // }
 }
 
 impl LmdbWasmTestBuilder {
@@ -275,11 +264,11 @@ impl LmdbWasmTestBuilder {
         Self::new_with_config(data_dir, engine_config)
     }
 
-    /// Returns an [`LmdbWasmTestBuilder`] with configuration and values from
-    /// the production chainspec.
-    pub fn new_with_production_chainspec<T: AsRef<OsStr> + ?Sized>(data_dir: &T) -> Self {
-        Self::new_with_chainspec(data_dir, &*PRODUCTION_PATH)
-    }
+    // /// Returns an [`LmdbWasmTestBuilder`] with configuration and values from
+    // /// the production chainspec.
+    // pub fn new_with_production_chainspec<T: AsRef<OsStr> + ?Sized>(data_dir: &T) -> Self {
+    //     Self::new_with_chainspec(data_dir, &*PRODUCTION_PATH)
+    // }
 
     /// Flushes the LMDB environment to disk.
     pub fn flush_environment(&self) {

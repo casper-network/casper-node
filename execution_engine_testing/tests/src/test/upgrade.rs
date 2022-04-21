@@ -36,7 +36,7 @@ const ARG_IS_LOCKED: &str = "is_locked";
 #[ignore]
 #[test]
 fn should_upgrade_do_nothing_to_do_something_version_hash_call() {
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -128,7 +128,7 @@ fn should_upgrade_do_nothing_to_do_something_version_hash_call() {
 #[ignore]
 #[test]
 fn should_upgrade_do_nothing_to_do_something_contract_call() {
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -240,7 +240,7 @@ fn should_upgrade_do_nothing_to_do_something_contract_call() {
 #[ignore]
 #[test]
 fn should_be_able_to_observe_state_transition_across_upgrade() {
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -339,7 +339,7 @@ fn should_be_able_to_observe_state_transition_across_upgrade() {
 #[ignore]
 #[test]
 fn should_support_extending_functionality() {
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -482,7 +482,7 @@ fn should_support_extending_functionality() {
 #[ignore]
 #[test]
 fn should_maintain_named_keys_across_upgrade() {
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -586,7 +586,7 @@ fn should_maintain_named_keys_across_upgrade() {
 #[ignore]
 #[test]
 fn should_fail_upgrade_for_locked_contract() {
-    let mut builder = InMemoryWasmTestBuilder::new_with_production_chainspec();
+    let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 

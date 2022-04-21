@@ -22,7 +22,7 @@ fn should_run_get_payment_purse_contract_default_account() {
         },
     )
     .build();
-    InMemoryWasmTestBuilder::new_with_production_chainspec()
+    InMemoryWasmTestBuilder::default()
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
         .expect_success()
@@ -46,7 +46,7 @@ fn should_run_get_payment_purse_contract_account_1() {
         },
     )
     .build();
-    InMemoryWasmTestBuilder::new_with_production_chainspec()
+    InMemoryWasmTestBuilder::default()
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
         .expect_success()
