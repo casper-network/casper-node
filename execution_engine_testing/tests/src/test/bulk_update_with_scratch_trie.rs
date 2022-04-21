@@ -6,7 +6,7 @@ use casper_engine_test_support::auction::run_blocks_with_transfers_and_step;
 #[test]
 fn should_run_transfers_and_auction_producing_expected_number_of_tries_only() {
     let purse_count = 100;
-    let total_transfer_count = 100;
+    let total_transfer_count = 10;
     let transfers_per_block = 1;
     let block_count = total_transfer_count / transfers_per_block;
     let delegator_count = 100;

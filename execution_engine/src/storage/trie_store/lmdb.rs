@@ -213,7 +213,7 @@ impl ScratchTrieStore {
         let trie = cache
             .get(&state_root)
             .map(|(_, root)| root)
-            .ok_or_else(|| CommitError::TrieNotFoundInCache(state_root))?;
+            .ok_or(CommitError::TrieNotFoundInCache(state_root))?;
 
         let mut txn = env.create_read_write_txn()?;
         let mut tries_to_visit = vec![(state_root, trie, trie.iter_descendants())];
