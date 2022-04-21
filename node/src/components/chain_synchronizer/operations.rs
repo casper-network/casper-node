@@ -661,8 +661,9 @@ async fn fetch_and_store_block_with_deploys_by_hash(
     block_hash: BlockHash,
     ctx: &ChainSyncContext<'_>,
 ) -> Result<Box<BlockAndDeploys>, FetcherError<BlockAndDeploys>> {
+    let start = Timestamp::now();
     let fetched_block = fetch_retry_forever::<BlockAndDeploys>(ctx, block_hash).await?;
-    match fetched_block {
+    let res = match fetched_block {
         FetchedData::FromStorage {
             item: block_and_deploys,
             ..
@@ -676,7 +677,10 @@ async fn fetch_and_store_block_with_deploys_by_hash(
                 .await;
             Ok(block_and_deploys)
         }
-    }
+    };
+    ctx.metrics
+        .observe_fetch_block_and_deploys_duration_seconds(start);
+    res
 }
 
 /// A worker task that takes trie keys from a queue and downloads the trie.
