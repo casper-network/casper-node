@@ -121,11 +121,11 @@ where
 
     // Setup connection id and framed transport.
     let connection_id = ConnectionId::from_connection(transport.ssl(), context.our_id, peer_id);
-    let mut framed = framed_transport(transport, context.chain_info.maximum_net_message_size);
+    let framed = framed_transport(transport, context.chain_info.maximum_net_message_size);
 
     // Negotiate the handshake, concluding the incoming connection process.
-    match negotiate_handshake::<P, _>(&context, &mut framed, connection_id).await {
-        Ok((public_addr, peer_consensus_public_key)) => {
+    match negotiate_handshake::<P, _>(&context, framed, connection_id).await {
+        Ok((framed, public_addr, peer_consensus_public_key)) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));
             }
@@ -228,11 +228,11 @@ where
 
     // Setup connection id and framed transport.
     let connection_id = ConnectionId::from_connection(transport.ssl(), context.our_id, peer_id);
-    let mut framed = framed_transport(transport, context.chain_info.maximum_net_message_size);
+    let framed = framed_transport(transport, context.chain_info.maximum_net_message_size);
 
     // Negotiate the handshake, concluding the incoming connection process.
-    match negotiate_handshake::<P, _>(&context, &mut framed, connection_id).await {
-        Ok((public_addr, peer_consensus_public_key)) => {
+    match negotiate_handshake::<P, _>(&context, framed, connection_id).await {
+        Ok((framed, public_addr, peer_consensus_public_key)) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));
             }
@@ -328,9 +328,9 @@ where
 /// Negotiates a handshake between two peers.
 async fn negotiate_handshake<P, REv>(
     context: &NetworkContext<REv>,
-    framed: &mut FramedTransport,
+    framed: FramedTransport,
     connection_id: ConnectionId,
-) -> Result<(SocketAddr, Option<PublicKey>), ConnectionError>
+) -> Result<(FramedTransport, SocketAddr, Option<PublicKey>), ConnectionError>
 where
     P: Payload,
 {
@@ -347,22 +347,27 @@ where
         .serialize(&Arc::new(handshake_message))
         .map_err(ConnectionError::CouldNotEncodeOurHandshake)?;
 
-    // TODO: Technically, if the handshake grows too large to be buffered, this could deadlock.
-    // Ideally, we would try to complete both futures at the same time, or spawn the sending this.
+    // To ensure we are not dead-locking, we split the framed transport here and send the handshake
+    // in a background task before awaiting one ourselves. This ensures we can make progress
+    // regardless of the size of the outgoing handshake.
+    let (mut sink, mut stream) = framed.split();
 
-    // Send down the handshake and expect one in response.
-    io_timeout(
-        context.handshake_timeout.into(),
-        framed.send(serialized_handshake_message),
-    )
-    .await
-    .map_err(ConnectionError::HandshakeSend)?;
+    let handshake_send = tokio::spawn(io_timeout(context.handshake_timeout.into(), async move {
+        sink.send(serialized_handshake_message).await?;
+        Ok(sink)
+    }));
 
     // The remote's message should be a handshake, but can technically be any message. We receive,
     // deserialize and check it.
-    let remote_message_raw = io_opt_timeout(context.handshake_timeout.into(), framed.next())
+    let remote_message_raw = io_opt_timeout(context.handshake_timeout.into(), stream.next())
         .await
         .map_err(ConnectionError::HandshakeRecv)?;
+
+    // Ensure the handshake was sent correctly.
+    let sink = handshake_send
+        .await
+        .map_err(ConnectionError::HandshakeSenderCrashed)?
+        .map_err(ConnectionError::HandshakeSend)?;
 
     let remote_message: Message<P> = Pin::new(&mut encoder)
         .deserialize(&remote_message_raw)
@@ -416,7 +421,11 @@ where
             })
             .transpose()?;
 
-        Ok((public_addr, peer_consensus_public_key))
+        let framed = sink
+            .reunite(stream)
+            .map_err(|_| ConnectionError::FailedToReuniteHandshakeSinkAndStream)?;
+
+        Ok((framed, public_addr, peer_consensus_public_key))
     } else {
         // Received a non-handshake, this is an error.
         Err(ConnectionError::DidNotSendHandshake)

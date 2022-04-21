@@ -155,6 +155,15 @@ pub enum ConnectionError {
         #[source]
         io::Error,
     ),
+    /// A background sender for our handshake panicked or crashed.
+    ///
+    /// This is usually a bug.
+    #[error("handshake sender crashed")]
+    HandshakeSenderCrashed(
+        #[serde(skip_serializing)]
+        #[source]
+        tokio::task::JoinError,
+    ),
     /// Could not deserialize the message that is supposed to contain the remotes handshake.
     #[error("could not decode remote handshake message")]
     InvalidRemoteHandshakeMessage(
@@ -169,6 +178,11 @@ pub enum ConnectionError {
         #[source]
         crypto::Error,
     ),
+    /// Failed to reunited handshake sink/stream.
+    ///
+    /// This is usually a bug.
+    #[error("handshake sink/stream could not be reunited")]
+    FailedToReuniteHandshakeSinkAndStream,
 }
 
 /// IO operation that can time out or close.

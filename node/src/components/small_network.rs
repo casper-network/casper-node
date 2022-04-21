@@ -554,7 +554,11 @@ where
             | ConnectionError::TlsHandshake(_)
             | ConnectionError::HandshakeSend(_)
             | ConnectionError::HandshakeRecv(_)
-            | ConnectionError::IncompatibleVersion(_)
+            | ConnectionError::IncompatibleVersion(_) => false,
+
+            // These errors are potential bugs on our side.
+            ConnectionError::HandshakeSenderCrashed(_)
+            | ConnectionError::FailedToReuniteHandshakeSinkAndStream
             | ConnectionError::CouldNotEncodeOurHandshake(_) => false,
 
             // These could be candidates for blocking, but for now we decided not to.
