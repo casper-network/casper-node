@@ -12,8 +12,11 @@ pub(super) mod public_key_capnp {
     ));
 }
 
-make_ed25519_capnp_functions!();
-make_secp256k1_capnp_functions!();
+// We cannot use the const literals directly
+// const ED25519_PUBLIC_KEY_LENGTH = 32;
+make_ed25519_capnp_functions!(32, "builder_goes_here");
+// const SECP256K1_PUBLIC_KEY_LENGTH = 33;
+make_secp256k1_capnp_functions!(33, "builder_goes_here");
 
 pub(crate) fn put_public_key_into_builder(
     public_key: &PublicKey,

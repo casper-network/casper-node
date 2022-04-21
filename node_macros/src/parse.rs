@@ -16,7 +16,7 @@ use syn::{
     braced, bracketed, parenthesized,
     parse::{Parse, ParseStream, Result},
     punctuated::Punctuated,
-    Expr, Ident, ItemType, Path, Token, Type,
+    Expr, Ident, ItemType, LitInt, LitStr, Path, Token, Type,
 };
 
 use crate::{rust_type::RustType, util::to_ident};
@@ -530,6 +530,24 @@ impl Parse for Target {
         } else {
             input.parse().map(Target::Dest)
         }
+    }
+}
+
+/// Defines the parameters for the byte-setter functions for `capnp` structs.
+#[derive(Debug)]
+pub(crate) struct ByteSetterDefinition {
+    /// How many byte setters should be generated.
+    pub(crate) length: LitInt,
+    /// Which Capnp builder to use.
+    pub(crate) builder: LitStr,
+}
+
+impl Parse for ByteSetterDefinition {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let length: LitInt = input.parse()?;
+        let _: Token!(,) = input.parse()?;
+        let builder: LitStr = input.parse()?;
+        Ok(ByteSetterDefinition { length, builder })
     }
 }
 

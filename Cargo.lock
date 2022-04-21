@@ -590,7 +590,6 @@ name = "casper-node-macros"
 version = "1.4.3"
 dependencies = [
  "Inflector",
- "casper-types",
  "indexmap",
  "proc-macro2",
  "quote",
