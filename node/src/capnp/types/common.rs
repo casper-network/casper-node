@@ -2,7 +2,7 @@ use casper_types::U512;
 
 use super::{FromCapnpReader, ToCapnpBuilder};
 use crate::capnp::{DeserializeError, FromCapnpBytes, SerializeError, ToCapnpBytes};
-use casper_node_macros::make_u512_capnp_functions;
+use casper_node_macros::make_capnp_byte_setter_functions;
 
 #[allow(dead_code)]
 pub(super) mod common_capnp {
@@ -12,7 +12,9 @@ pub(super) mod common_capnp {
     ));
 }
 
-make_u512_capnp_functions!();
+// We cannot use the const literals directly
+// const U512_LENGTH_BYTES = 64;
+make_capnp_byte_setter_functions!(64, "u512", "common_capnp::u512");
 
 impl ToCapnpBuilder<U512> for common_capnp::u512::Builder<'_> {
     fn try_to_builder(&mut self, x: &U512) -> Result<(), SerializeError> {
@@ -26,7 +28,7 @@ impl ToCapnpBuilder<U512> for common_capnp::u512::Builder<'_> {
 
 impl FromCapnpReader<U512> for common_capnp::u512::Reader<'_> {
     fn try_from_reader(&self) -> Result<U512, DeserializeError> {
-        let le_bytes = get_u512(self);
+        let le_bytes = get_u512(*self);
         Ok(U512::from_little_endian(&le_bytes))
     }
 }

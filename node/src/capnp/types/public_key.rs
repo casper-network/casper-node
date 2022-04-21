@@ -14,9 +14,9 @@ pub(super) mod public_key_capnp {
 
 // We cannot use the const literals directly
 // const ED25519_PUBLIC_KEY_LENGTH = 32;
-make_capnp_byte_setter_functions!(32, "ed25519");
+make_capnp_byte_setter_functions!(32, "ed25519", "public_key_capnp::ed25519_public_key");
 // const SECP256K1_PUBLIC_KEY_LENGTH = 33;
-make_capnp_byte_setter_functions!(33, "secp256k1");
+make_capnp_byte_setter_functions!(33, "secp256k1", "public_key_capnp::secp256k1_public_key");
 
 impl ToCapnpBuilder<PublicKey> for public_key_capnp::public_key::Builder<'_> {
     fn try_to_builder(&mut self, public_key: &PublicKey) -> Result<(), SerializeError> {
