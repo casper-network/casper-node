@@ -509,7 +509,6 @@ dependencies = [
  "hex_fmt",
  "hostname",
  "http",
- "humantime",
  "hyper",
  "itertools",
  "libc",
