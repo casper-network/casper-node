@@ -68,6 +68,8 @@ pub(crate) enum NetRequest {
     GossipedAddress(Vec<u8>),
     /// Request for a block by its height in the linear chain.
     BlockAndMetadataByHeight(Vec<u8>),
+    /// Request for a block and its deploys by hash.
+    BlockAndDeploys(Vec<u8>),
     /// Request for a block header by its hash.
     BlockHeaderByHash(Vec<u8>),
     /// Request for a block header and its finality signatures by its height in the linear chain.
@@ -88,6 +90,7 @@ impl Display for NetRequest {
             NetRequest::BlockHeaderAndFinalitySignaturesByHeight(_) => {
                 f.write_str("request for block header and finality signatures by height")
             }
+            NetRequest::BlockAndDeploys(_) => f.write_str("request for a block and its deploys"),
         }
     }
 }
@@ -107,6 +110,7 @@ impl NetRequest {
             NetRequest::BlockAndMetadataByHeight(ref id) => id,
             NetRequest::BlockHeaderByHash(ref id) => id,
             NetRequest::BlockHeaderAndFinalitySignaturesByHeight(ref id) => id,
+            NetRequest::BlockAndDeploys(ref id) => id,
         };
         let mut unique_id = Vec::with_capacity(id.len() + 1);
         unique_id.push(self.tag() as u8);
@@ -127,6 +131,7 @@ impl NetRequest {
             NetRequest::BlockHeaderAndFinalitySignaturesByHeight(_) => {
                 Tag::BlockHeaderAndFinalitySignaturesByHeight
             }
+            NetRequest::BlockAndDeploys(_) => Tag::BlockAndDeploysByHash,
         }
     }
 }
@@ -160,6 +165,8 @@ pub(crate) enum NetResponse {
     BlockHeaderByHash(Arc<[u8]>),
     /// Response of a block header and its finality signatures by its height in the linear chain.
     BlockHeaderAndFinalitySignaturesByHeight(Arc<[u8]>),
+    /// Response for a block and its deploys.
+    BlockAndDeploys(Arc<[u8]>),
 }
 
 // `NetResponse` uses `Arcs`, so we count all data as 0.
@@ -187,6 +194,7 @@ impl Display for NetResponse {
             NetResponse::BlockHeaderAndFinalitySignaturesByHeight(_) => {
                 f.write_str("response, block header and finality signatures by height")
             }
+            NetResponse::BlockAndDeploys(_) => f.write_str("response, block and deploys"),
         }
     }
 }

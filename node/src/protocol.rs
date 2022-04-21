@@ -74,6 +74,7 @@ impl Payload for Message {
                     Tag::BlockHeaderByHash => MessageKind::BlockTransfer,
                     Tag::BlockHeaderAndFinalitySignaturesByHeight => MessageKind::BlockTransfer,
                     Tag::TrieOrChunk => MessageKind::TrieTransfer,
+                    Tag::BlockAndDeploysByHash => MessageKind::BlockTransfer,
                 }
             }
             Message::FinalitySignature(_) => MessageKind::Consensus,
@@ -109,6 +110,7 @@ impl Payload for Message {
                 Tag::BlockHeaderByHash => weights.block_requests,
                 Tag::BlockHeaderAndFinalitySignaturesByHeight => weights.block_requests,
                 Tag::TrieOrChunk => weights.trie_requests,
+                Tag::BlockAndDeploysByHash => weights.block_requests,
             },
             Message::GetResponse { tag, .. } => match tag {
                 Tag::Deploy => weights.deploy_responses,
@@ -119,6 +121,7 @@ impl Payload for Message {
                 Tag::BlockHeaderByHash => weights.block_responses,
                 Tag::BlockHeaderAndFinalitySignaturesByHeight => weights.block_responses,
                 Tag::TrieOrChunk => weights.trie_responses,
+                Tag::BlockAndDeploysByHash => weights.block_requests,
             },
             Message::FinalitySignature(_) => weights.finality_signatures,
         }
@@ -259,6 +262,11 @@ where
                     message: TrieRequest(serialized_id),
                 }
                 .into(),
+                Tag::BlockAndDeploysByHash => NetRequestIncoming {
+                    sender,
+                    message: NetRequest::BlockAndDeploys(serialized_id),
+                }
+                .into(),
             },
             Message::GetResponse {
                 tag,
@@ -302,6 +310,11 @@ where
                 Tag::TrieOrChunk => TrieResponseIncoming {
                     sender,
                     message: TrieResponse(serialized_item.to_vec()),
+                }
+                .into(),
+                Tag::BlockAndDeploysByHash => NetResponseIncoming {
+                    sender,
+                    message: NetResponse::BlockAndDeploys(serialized_item),
                 }
                 .into(),
             },
