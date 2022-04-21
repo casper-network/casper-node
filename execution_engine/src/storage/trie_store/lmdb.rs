@@ -200,13 +200,13 @@ impl ScratchTrieStore {
         }
     }
 
-    /// Writes all dirty (modified) cached tries to underlying db.
-    pub fn write_all_tries_to_db(self, new_state_root: Digest) -> Result<(), error::Error> {
+    /// Writes only (dirty) tries under the given `state_root` to the underlying db.
+    pub fn write_root_to_db(self, state_root: Digest) -> Result<(), error::Error> {
         let env = self.inner.env;
         let store = self.inner.store;
         let cache = &mut *self.inner.cache.lock().map_err(|_| error::Error::Poison)?;
 
-        let mut missing_trie_keys = vec![new_state_root];
+        let mut missing_trie_keys = vec![state_root];
         let mut validated_tries = HashMap::new();
 
         let mut txn = env.create_read_write_txn()?;

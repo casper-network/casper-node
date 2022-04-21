@@ -102,7 +102,7 @@ impl LmdbGlobalState {
             prestate_hash,
             stored_values,
         )?;
-        scratch_trie.write_all_tries_to_db(new_state_root)?;
+        scratch_trie.write_root_to_db(new_state_root)?;
         Ok(new_state_root)
     }
 

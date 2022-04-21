@@ -2,7 +2,7 @@
 
 A binary that will construct global state and profile the disk use of various operations. It's recommended to run this tool in `--release` mode.
 
-The outcome is a report, `disk_use_report.csv`. This contains time-series data witthe following columns, with one line per block:
+The outcome is a report, `disk_use_report.csv`. This contains time-series data with the following columns, with one line per block:
 
 - `height` - height of the simulated chain.
 - `db-size` - size on disk of the backing trie database. 
