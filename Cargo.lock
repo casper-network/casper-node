@@ -510,6 +510,7 @@ dependencies = [
  "casper-node-macros",
  "casper-types",
  "chrono",
+ "criterion",
  "datasize",
  "derive_more",
  "ed25519-dalek",

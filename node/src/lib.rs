@@ -32,9 +32,8 @@ pub(crate) mod reactor;
 pub(crate) mod testing;
 pub(crate) mod tls;
 
-mod capnp;
-
 // Public API
+pub mod capnp;
 pub mod cli;
 pub mod types;
 pub mod utils;

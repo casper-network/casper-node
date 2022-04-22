@@ -100,6 +100,7 @@ capnpc = "0.14.5"
 [dev-dependencies]
 assert-json-diff = "2.0.1"
 casper-types = { version = "1.4.5", path = "../types", features = ["crypto-std", "datasize", "json-schema", "testing"] }
+criterion = "0.3.5"
 fake_instant = "0.4.0"
 getrandom = "0.2.6"
 pnet = "0.28.0"
@@ -144,3 +145,7 @@ For information on using package, see https://github.com/casper-network/casper-n
 [package.metadata.deb.systemd-units]
 unit-scripts = "../resources/maintainer_scripts/casper_node"
 restart-after-upgrade = false
+
+[[bench]]
+name = "capnproto_bench"
+harness = false
