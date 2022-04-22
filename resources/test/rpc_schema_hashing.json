@@ -3552,7 +3552,7 @@
                     "type": "null"
                   }
                 ],
-                "description": "The state identifier used for the query."
+                "description": "The state identifier used for the query, if none is passed the tip of the chain will be used."
               }
             }
           ],
@@ -3577,7 +3577,7 @@
               "type": "object"
             }
           },
-          "summary": "query for a balance using a balance identifier and a state identifier"
+          "summary": "query for a balance using a purse identifier and a state identifier"
         },
         {
           "examples": [

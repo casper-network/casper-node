@@ -944,7 +944,8 @@ pub enum PurseIdentifier {
 /// Params for "query_balance" RPC request.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 pub struct QueryBalanceParams {
-    /// The state identifier used for the query.
+    /// The state identifier used for the query, if none is passed
+    /// the tip of the chain will be used.
     pub state_identifier: Option<GlobalStateIdentifier>,
     /// The identifier to obtain the purse corresponding to balance query.
     pub purse_identifier: PurseIdentifier,

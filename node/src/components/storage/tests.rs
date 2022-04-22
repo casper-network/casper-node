@@ -148,7 +148,6 @@ fn random_signatures(rng: &mut TestRng, block: &Block) -> BlockSignatures {
     block_signatures
 }
 
-// TODO: This is deprecated (we will never make this request in the actual reactors!)
 /// Requests block header at a specific height from a storage component.
 fn get_block_header_at_height(storage: &mut Storage, height: u64) -> Option<BlockHeader> {
     storage
@@ -172,6 +171,26 @@ fn get_block(
     let response = harness.send_request(storage, move |responder| {
         StorageRequest::GetBlock {
             block_hash,
+            responder,
+        }
+        .into()
+    });
+    assert!(harness.is_idle());
+    response
+}
+
+/// Loads a block header by height from a storage component.
+/// Requesting a block header by height is required currently by the RPC
+/// component.
+fn get_block_header_by_height(
+    harness: &mut ComponentHarness<UnitTestEvent>,
+    storage: &mut Storage,
+    block_height: u64,
+) -> Option<BlockHeader> {
+    let response = harness.send_request(storage, move |responder| {
+        StorageRequest::GetBlockHeaderByHeight {
+            block_height,
+            only_from_available_block_range: false,
             responder,
         }
         .into()
@@ -2029,4 +2048,25 @@ fn should_restrict_returned_blocks() {
         .storage
         .should_return_block(6, true)
         .expect("should return block failed"));
+}
+
+#[test]
+fn should_get_block_header_by_height() {
+    let mut harness = ComponentHarness::default();
+    let mut storage = storage_fixture(&harness, EraId::from(5));
+
+    let (block, _) = Block::random_v1(&mut harness.rng);
+    let expected_header = block.header().clone();
+    let height = block.height();
+
+    // Requesting the block header before it is in storage should return None.
+    assert!(get_block_header_by_height(&mut harness, &mut storage, height).is_none());
+
+    let was_new = put_block(&mut harness, &mut storage, Box::new(block));
+    assert!(was_new);
+
+    // Requesting the block header after it is in storage should return the block header.
+    let maybe_block_header = get_block_header_by_height(&mut harness, &mut storage, height);
+    assert!(maybe_block_header.is_some());
+    assert_eq!(expected_header, maybe_block_header.unwrap());
 }

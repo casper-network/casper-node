@@ -78,7 +78,7 @@ pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
         "a query to global state using either a Block hash or state root hash",
     );
     schema.push_with_params::<QueryBalance>(
-        "query for a balance using a balance identifier and a state identifier",
+        "query for a balance using a purse identifier and a state identifier",
     );
     schema.push_without_params::<GetPeers>("returns a list of peers connected to the node");
     schema.push_without_params::<GetStatus>("returns the current status of the node");
