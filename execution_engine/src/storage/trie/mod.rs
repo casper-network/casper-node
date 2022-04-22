@@ -3,7 +3,9 @@
 use std::{
     convert::TryInto,
     fmt::{self, Debug, Display, Formatter},
+    iter::Flatten,
     mem::MaybeUninit,
+    slice,
 };
 
 use serde::{
@@ -540,67 +542,36 @@ impl<K, V> Trie<K, V> {
     /// Returns an iterator over descendants of the trie.
     pub fn iter_descendants(&self) -> DescendantsIterator {
         match self {
-            // Should be unreachable due to checking the first byte as a shortcut above.
-            Trie::<K, V>::Leaf { .. } => DescendantsIterator::Empty,
-            // We hit a pointer block.
+            Trie::<K, V>::Leaf { .. } => DescendantsIterator::ZeroOrOne(None),
             Trie::Node { pointer_block } => DescendantsIterator::PointerBlock {
-                idx: 0,
-                pointer_block: pointer_block.clone(),
+                iter: pointer_block.0.iter().flatten(),
             },
-            // If we hit an extension block, use just the pointer.
-            Trie::Extension { pointer, .. } => DescendantsIterator::Single(pointer.into_hash()),
+            Trie::Extension { pointer, .. } => {
+                DescendantsIterator::ZeroOrOne(Some(pointer.into_hash()))
+            }
         }
     }
 }
 
 /// An iterator over the descendants of a trie node.
-pub enum DescendantsIterator {
-    /// The iterator is exhausted or started at a leaf node.
-    Empty,
+pub enum DescendantsIterator<'a> {
+    /// A leaf (zero descendants) or extension (one descendant) being iterated.
+    ZeroOrOne(Option<Digest>),
     /// A pointer block being iterated.
     PointerBlock {
-        /// Current position in the pointer block
-        idx: usize,
-        /// Actual heap-allocated pointer block.
-        pointer_block: Box<PointerBlock>,
+        /// An iterator over the non-None entries of the `PointerBlock`.
+        iter: Flatten<slice::Iter<'a, Option<Pointer>>>,
     },
-    /// A single hash that has not yet been iterated over.
-    Single(Digest),
 }
 
-impl Iterator for DescendantsIterator {
+impl<'a> Iterator for DescendantsIterator<'a> {
     type Item = Digest;
 
     fn next(&mut self) -> Option<Self::Item> {
         match *self {
-            DescendantsIterator::Empty => None,
-            DescendantsIterator::PointerBlock {
-                ref mut idx,
-                ref pointer_block,
-            } => {
-                // We iterate until we hit the end of the block.
-                while *idx < pointer_block.0.len() {
-                    let cur = *idx;
-                    *idx += 1;
-
-                    match pointer_block.0[cur] {
-                        // An empty slot in the pointer block. Just increment and continue.
-                        None => continue,
-                        Some(ptr) => match ptr {
-                            Pointer::LeafPointer(key) | Pointer::NodePointer(key) => {
-                                return Some(key)
-                            }
-                        },
-                    }
-                }
-
-                // We are done iterating over the block, free allocated memory early.
-                *self = DescendantsIterator::Empty;
-                None
-            }
-            DescendantsIterator::Single(digest) => {
-                *self = DescendantsIterator::Empty;
-                Some(digest)
+            DescendantsIterator::ZeroOrOne(ref mut maybe_digest) => maybe_digest.take(),
+            DescendantsIterator::PointerBlock { ref mut iter } => {
+                iter.next().map(|pointer| *pointer.hash())
             }
         }
     }
