@@ -28,6 +28,7 @@ use tokio::{
     sync::{mpsc::UnboundedReceiver, watch},
 };
 use tokio_openssl::SslStream;
+use tokio_serde::{Deserializer, Serializer};
 use tracing::{
     debug, error_span,
     field::{self, Empty},
@@ -39,12 +40,14 @@ use super::{
     counting_format::{ConnectionId, Role},
     error::{ConnectionError, IoError},
     event::{IncomingConnection, OutgoingConnection},
-    framed,
+    full_transport,
     limiter::LimiterHandle,
     message::{ConsensusKeyPair, EstimatorWeights},
-    Event, FramedTransport, Message, Metrics, Payload, Transport,
+    message_pack_format::MessagePackFormat,
+    Event, FramedTransport, FullTransport, Message, Metrics, Payload, Transport,
 };
 use crate::{
+    components::small_network::framed_transport,
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert},
     types::{NodeId, TimeDiff},
@@ -116,19 +119,13 @@ where
 
     debug!("Outgoing TLS connection established");
 
-    // Setup connection sink and stream.
+    // Setup connection id and framed transport.
     let connection_id = ConnectionId::from_connection(transport.ssl(), context.our_id, peer_id);
-    let mut transport = framed::<P>(
-        context.net_metrics.clone(),
-        connection_id,
-        transport,
-        Role::Dialer,
-        context.chain_info.maximum_net_message_size,
-    );
+    let framed = framed_transport(transport, context.chain_info.maximum_net_message_size);
 
     // Negotiate the handshake, concluding the incoming connection process.
-    match negotiate_handshake(&context, &mut transport, connection_id).await {
-        Ok((public_addr, peer_consensus_public_key)) => {
+    match negotiate_handshake::<P, _>(&context, framed, connection_id).await {
+        Ok((framed, public_addr, peer_consensus_public_key)) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));
             }
@@ -138,8 +135,14 @@ where
                 warn!(%public_addr, %peer_addr, "peer advertises a different public address than what we connected to");
             }
 
-            // Close the receiving end of the transport.
-            let (sink, _stream) = transport.split();
+            // Setup full framed transport, then close down receiving end of the transport.
+            let full_transport = full_transport::<P>(
+                context.net_metrics.clone(),
+                connection_id,
+                framed,
+                Role::Dialer,
+            );
+            let (sink, _stream) = full_transport.split();
 
             OutgoingConnection::Established {
                 peer_addr,
@@ -223,25 +226,26 @@ where
 
     debug!("Incoming TLS connection established");
 
-    // Setup connection sink and stream.
+    // Setup connection id and framed transport.
     let connection_id = ConnectionId::from_connection(transport.ssl(), context.our_id, peer_id);
-    let mut transport = framed::<P>(
-        context.net_metrics.clone(),
-        connection_id,
-        transport,
-        Role::Listener,
-        context.chain_info.maximum_net_message_size,
-    );
+    let framed = framed_transport(transport, context.chain_info.maximum_net_message_size);
 
     // Negotiate the handshake, concluding the incoming connection process.
-    match negotiate_handshake(&context, &mut transport, connection_id).await {
-        Ok((public_addr, peer_consensus_public_key)) => {
+    match negotiate_handshake::<P, _>(&context, framed, connection_id).await {
+        Ok((framed, public_addr, peer_consensus_public_key)) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));
             }
 
-            // Close the receiving end of the transport.
-            let (_sink, stream) = transport.split();
+            // Establish full transport and close the receiving end.
+            let full_transport = full_transport::<P>(
+                context.net_metrics.clone(),
+                connection_id,
+                framed,
+                Role::Listener,
+            );
+
+            let (_sink, stream) = full_transport.split();
 
             IncomingConnection::Established {
                 peer_addr,
@@ -321,38 +325,60 @@ where
     }
 }
 
+/// Negotiates a handshake between two peers.
 async fn negotiate_handshake<P, REv>(
     context: &NetworkContext<REv>,
-    transport: &mut FramedTransport<P>,
+    framed: FramedTransport,
     connection_id: ConnectionId,
-) -> Result<(SocketAddr, Option<PublicKey>), ConnectionError>
+) -> Result<(FramedTransport, SocketAddr, Option<PublicKey>), ConnectionError>
 where
     P: Payload,
 {
-    // Send down a handshake and expect one in response.
-    let handshake = context.chain_info.create_handshake(
+    let mut encoder = MessagePackFormat;
+
+    // Manually encode a handshake.
+    let handshake_message = context.chain_info.create_handshake::<P>(
         context.public_addr,
         context.consensus_keys.as_ref(),
         connection_id,
     );
 
-    io_timeout(
-        context.handshake_timeout.into(),
-        transport.send(Arc::new(handshake)),
-    )
-    .await
-    .map_err(ConnectionError::HandshakeSend)?;
+    let serialized_handshake_message = Pin::new(&mut encoder)
+        .serialize(&Arc::new(handshake_message))
+        .map_err(ConnectionError::CouldNotEncodeOurHandshake)?;
 
-    let remote_handshake = io_opt_timeout(context.handshake_timeout.into(), transport.next())
+    // To ensure we are not dead-locking, we split the framed transport here and send the handshake
+    // in a background task before awaiting one ourselves. This ensures we can make progress
+    // regardless of the size of the outgoing handshake.
+    let (mut sink, mut stream) = framed.split();
+
+    let handshake_send = tokio::spawn(io_timeout(context.handshake_timeout.into(), async move {
+        sink.send(serialized_handshake_message).await?;
+        Ok(sink)
+    }));
+
+    // The remote's message should be a handshake, but can technically be any message. We receive,
+    // deserialize and check it.
+    let remote_message_raw = io_opt_timeout(context.handshake_timeout.into(), stream.next())
         .await
         .map_err(ConnectionError::HandshakeRecv)?;
+
+    // Ensure the handshake was sent correctly.
+    let sink = handshake_send
+        .await
+        .map_err(ConnectionError::HandshakeSenderCrashed)?
+        .map_err(ConnectionError::HandshakeSend)?;
+
+    let remote_message: Message<P> = Pin::new(&mut encoder)
+        .deserialize(&remote_message_raw)
+        .map_err(ConnectionError::InvalidRemoteHandshakeMessage)?;
 
     if let Message::Handshake {
         network_name,
         public_addr,
         protocol_version,
         consensus_certificate,
-    } = remote_handshake
+    } = remote_message
     {
         debug!(%protocol_version, "handshake received");
 
@@ -395,7 +421,11 @@ where
             })
             .transpose()?;
 
-        Ok((public_addr, peer_consensus_public_key))
+        let framed = sink
+            .reunite(stream)
+            .map_err(|_| ConnectionError::FailedToReuniteHandshakeSinkAndStream)?;
+
+        Ok((framed, public_addr, peer_consensus_public_key))
     } else {
         // Received a non-handshake, this is an error.
         Err(ConnectionError::DidNotSendHandshake)
@@ -480,7 +510,7 @@ pub(super) async fn server<P, REv>(
 /// Schedules all received messages until the stream is closed or an error occurs.
 pub(super) async fn message_reader<REv, P>(
     context: Arc<NetworkContext<REv>>,
-    mut stream: SplitStream<FramedTransport<P>>,
+    mut stream: SplitStream<FullTransport<P>>,
     limiter: Box<dyn LimiterHandle>,
     mut shutdown_receiver: watch::Receiver<()>,
     peer_id: NodeId,
@@ -551,7 +581,7 @@ where
 /// Reads from a channel and sends all messages, until the stream is closed or an error occurs.
 pub(super) async fn message_sender<P>(
     mut queue: UnboundedReceiver<Arc<Message<P>>>,
-    mut sink: SplitSink<FramedTransport<P>, Arc<Message<P>>>,
+    mut sink: SplitSink<FullTransport<P>, Arc<Message<P>>>,
     limiter: Box<dyn LimiterHandle>,
     counter: IntGauge,
 ) where

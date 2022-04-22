@@ -43,6 +43,7 @@ All notable changes to this project will be documented in this file.  The format
 * Switch blocks immediately after genesis or an upgrade are now signed.
 * Added CORS behavior to allow any route on the JSON-RPC, REST and SSE servers.
 * Storage operations are now executed in parallel, the degree of parallelism can be controlled through the `storage.max_sync_tasks` setting.
+* The network message format has been replaced with a more efficient encoding while keeping the initial handshake intact.
 
 ### Deprecated
 * Deprecate the `starting_state_root_hash` field from the REST and JSON-RPC status endpoints.

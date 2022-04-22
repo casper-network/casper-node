@@ -145,9 +145,32 @@ pub enum ConnectionError {
     /// Peer reported an incompatible version.
     #[error("peer is running incompatible version: {0}")]
     IncompatibleVersion(ProtocolVersion),
-    /// Peer sent a non-handshake message as its first message.
+    /// Peer did not send any message, or a non-handshake as its first message.
     #[error("peer did not send handshake")]
     DidNotSendHandshake,
+    /// Failed to encode our handshake.
+    #[error("could not encode our handshake")]
+    CouldNotEncodeOurHandshake(
+        #[serde(skip_serializing)]
+        #[source]
+        io::Error,
+    ),
+    /// A background sender for our handshake panicked or crashed.
+    ///
+    /// This is usually a bug.
+    #[error("handshake sender crashed")]
+    HandshakeSenderCrashed(
+        #[serde(skip_serializing)]
+        #[source]
+        tokio::task::JoinError,
+    ),
+    /// Could not deserialize the message that is supposed to contain the remotes handshake.
+    #[error("could not decode remote handshake message")]
+    InvalidRemoteHandshakeMessage(
+        #[serde(skip_serializing)]
+        #[source]
+        io::Error,
+    ),
     /// The peer sent a consensus certificate, but it was invalid.
     #[error("invalid consensus certificate")]
     InvalidConsensusCertificate(
@@ -155,6 +178,11 @@ pub enum ConnectionError {
         #[source]
         crypto::Error,
     ),
+    /// Failed to reunite handshake sink/stream.
+    ///
+    /// This is usually a bug.
+    #[error("handshake sink/stream could not be reunited")]
+    FailedToReuniteHandshakeSinkAndStream,
 }
 
 /// IO operation that can time out or close.
