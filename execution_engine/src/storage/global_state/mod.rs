@@ -73,6 +73,9 @@ pub enum CommitError {
     /// Transform error.
     #[error(transparent)]
     TransformError(transform::Error),
+    /// Trie not found while attempting to validate cache write.
+    #[error("Trie not found in cache {0}")]
+    TrieNotFoundInCache(Digest),
 }
 
 /// Provides `commit` method.

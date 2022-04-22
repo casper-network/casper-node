@@ -160,3 +160,6 @@ notes
 
 # sw* files in vim
 .*.sw*
+
+# disk use reports
+**/disk_use_report.csv
