@@ -6,21 +6,21 @@ use tempfile::TempDir;
 use casper_execution_engine::{
     core::{
         engine_state::{
-            self, genesis::GenesisValidator, run_genesis_request::RunGenesisRequest,
-            ChainspecRegistry, EngineState, ExecConfig, ExecuteRequest, GenesisAccount, RewardItem,
+            self, genesis::GenesisValidator, run_genesis_request::RunGenesisRequest, EngineState,
+            ExecConfig, ExecuteRequest, GenesisAccount, RewardItem,
         },
         execution,
     },
     shared::newtypes::CorrelationId,
     storage::{
         global_state::{CommitProvider, StateProvider},
-        trie::{Pointer, Trie, TrieOrChunk, TrieOrChunkId},
+        trie::{Pointer, Trie},
     },
 };
 use casper_hashing::Digest;
 use casper_types::{
-    account::AccountHash, bytesrepr, runtime_args, system::auction, Key, Motes, ProtocolVersion,
-    PublicKey, RuntimeArgs, SecretKey, StoredValue, U512,
+    account::AccountHash, runtime_args, system::auction, Motes, ProtocolVersion, PublicKey,
+    RuntimeArgs, SecretKey, U512,
 };
 
 use rand::Rng;
@@ -146,17 +146,7 @@ pub fn run_blocks_with_transfers_and_step(
         );
         let transfer_root = builder.get_post_state_hash();
         let maybe_auction_root = if run_auction {
-            if use_scratch {
-                step_and_run_auction(&mut builder, &validator_keys);
-            } else {
-                builder.advance_era(
-                    validator_keys
-                        .iter()
-                        .cloned()
-                        .map(|id| RewardItem::new(id, 1)),
-                );
-                builder.commit();
-            }
+            step_and_run_auction(&mut builder, &validator_keys);
             Some(builder.get_post_state_hash())
         } else {
             None
@@ -228,23 +218,10 @@ fn find_necessary_tries<S>(
         }
         necessary_tries.insert(root);
 
-        let trie_or_chunk: TrieOrChunk = engine_state
-            .get_trie(CorrelationId::new(), TrieOrChunkId(0, root))
+        let trie = engine_state
+            .get_trie(CorrelationId::new(), root)
             .unwrap()
             .expect("trie should exist");
-
-        let trie_bytes = match trie_or_chunk {
-            TrieOrChunk::Trie(trie) => trie,
-            TrieOrChunk::ChunkWithProof(_) => continue,
-        };
-
-        if let Some(0) = trie_bytes.get(0) {
-            continue;
-        }
-
-        let trie: Trie<Key, StoredValue> =
-            bytesrepr::deserialize(trie_bytes.inner_bytes().to_owned())
-                .expect("unable to deserialize");
 
         match trie {
             Trie::Leaf { .. } => continue,
@@ -343,7 +320,6 @@ fn create_run_genesis_request(
         *DEFAULT_GENESIS_CONFIG_HASH,
         *DEFAULT_PROTOCOL_VERSION,
         exec_config,
-        ChainspecRegistry::new_with_genesis(&[], &[]),
     )
 }
 
@@ -398,5 +374,5 @@ pub fn step_and_run_auction(builder: &mut LmdbWasmTestBuilder, validator_keys: &
         .with_next_era_id(builder.get_era().successor())
         .build();
     builder.step_with_scratch(step_request);
-    builder.write_scratch_to_lmdb();
+    builder.write_scratch_to_db();
 }

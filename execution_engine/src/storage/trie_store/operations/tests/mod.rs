@@ -20,14 +20,14 @@ use crate::{
     storage::{
         error::{self, in_memory},
         transaction_source::{
-            db::LmdbEnvironment, in_memory::InMemoryEnvironment, Readable, Transaction,
+            in_memory::InMemoryEnvironment, lmdb::LmdbEnvironment, Readable, Transaction,
             TransactionSource,
         },
         trie::{merkle_proof::TrieMerkleProof, Pointer, Trie},
         trie_store::{
             self,
-            db::LmdbTrieStore,
             in_memory::InMemoryTrieStore,
+            lmdb::LmdbTrieStore,
             operations::{self, read, read_with_proof, write, ReadResult, WriteResult},
             TrieStore,
         },

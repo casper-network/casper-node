@@ -5,25 +5,6 @@ pub mod in_memory;
 /// DB implementation of transaction source.
 pub mod lmdb;
 
-/// Relative location (to storage) where rocksdb data will be stored.
-pub const ROCKS_DB_DATA_DIR: &str = "rocksdb-data";
-
-const ROCKS_DB_BLOCK_SIZE_BYTES: usize = 256 * 1024;
-const ROCKS_DB_COMPRESSION_TYPE: rocksdb::DBCompressionType = rocksdb::DBCompressionType::Zstd;
-const ROCKS_DB_COMPACTION_STYLE: rocksdb::DBCompactionStyle = rocksdb::DBCompactionStyle::Level;
-const ROCKS_DB_ZSTD_MAX_DICT_BYTES: i32 = 256 * 1024;
-const ROCKS_DB_MAX_LEVEL_FILE_SIZE_BYTES: u64 = 512 * 1024 * 1024;
-const ROCKS_DB_MAX_OPEN_FILES: i32 = 768;
-const ROCKS_DB_ZSTD_COMPRESSION_LEVEL: i32 = 3; // Default compression level
-const ROCKS_DB_ZSTD_STRATEGY: i32 = 4; // 4: Lazy
-const ROCKS_DB_WINDOW_BITS: i32 = -14;
-
-/// Column family name for the v1 trie data store.
-const ROCKS_DB_TRIE_V1_COLUMN_FAMILY: &str = "trie_v1_column";
-
-/// Column family name for tracking progress of data migration.
-const ROCKS_DB_LMDB_MIGRATED_STATE_ROOTS_COLUMN_FAMILY: &str = "lmdb_migrated_state_roots_column";
-
 /// A transaction which can be committed or aborted.
 pub trait Transaction: Sized {
     /// An error which can occur while reading or writing during a transaction,

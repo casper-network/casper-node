@@ -1,6 +1,5 @@
 use std::sync;
 
-use casper_hashing::Digest;
 use lmdb as lmdb_external;
 use thiserror::Error;
 
@@ -14,10 +13,6 @@ pub enum DbError {
     /// LMDB error returned from underlying `lmdb` crate.
     #[error(transparent)]
     Lmdb(#[from] lmdb_external::Error),
-
-    /// RocksDb error returned from underlying `rocksdb` crate.
-    #[error(transparent)]
-    RocksDb(#[from] rocksdb::Error),
 }
 
 /// Error enum representing possible error states in DB interactions.
@@ -30,15 +25,6 @@ pub enum Error {
     /// Error when we cannot open a column family.
     #[error("unable to open column family {0}")]
     UnableToOpenColumnFamily(String),
-
-    /// Could not get data under a trie key in lmdb while migrating to rocksdb.
-    #[error("corrupt state root {state_root} could not find value under trie key {trie_key}")]
-    CorruptLmdbStateRootDuringMigrationToRocksDb {
-        /// Trie key that couldn't be found.
-        trie_key: Digest,
-        /// State root being migrated.
-        state_root: Digest,
-    },
 
     /// (De)serialization error.
     #[error("{0}")]
@@ -54,12 +40,6 @@ pub enum Error {
 }
 
 impl wasmi::HostError for Error {}
-
-impl From<rocksdb::Error> for Error {
-    fn from(error: rocksdb::Error) -> Self {
-        Error::Db(DbError::RocksDb(error))
-    }
-}
 
 impl From<lmdb_external::Error> for Error {
     fn from(error: lmdb_external::Error) -> Self {

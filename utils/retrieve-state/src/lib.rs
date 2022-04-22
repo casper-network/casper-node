@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use casper_execution_engine::{
     core::engine_state::EngineState,
     shared::newtypes::CorrelationId,
-    storage::{global_state::db::DbGlobalState, trie::Trie},
+    storage::{global_state::lmdb::LmdbGlobalState, trie::Trie},
 };
 use casper_hashing::Digest;
 use casper_node::{
@@ -24,7 +24,6 @@ pub mod rpc;
 pub mod storage;
 
 pub const LMDB_PATH: &str = "lmdb-data";
-pub const ROCKSDB_PATH: &str = "rocksdb-data";
 pub const CHAIN_DOWNLOAD_PATH: &str = "chain-download";
 pub const DEFAULT_MAX_DB_SIZE: usize = 483_183_820_800; // 450 gb
 pub const DEFAULT_MAX_READERS: u32 = 512;
@@ -296,7 +295,7 @@ pub fn put_block_with_deploys(
 pub async fn download_trie(
     client: &mut Client,
     url: &str,
-    engine_state: &EngineState<DbGlobalState>,
+    engine_state: &EngineState<LmdbGlobalState>,
     state_root_hash: Digest,
     progress_fn: impl Fn() + Send + Sync,
 ) -> Result<usize, anyhow::Error> {

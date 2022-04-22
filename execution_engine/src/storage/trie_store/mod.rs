@@ -2,8 +2,8 @@
 //!
 //! See the [in_memory](in_memory/index.html#usage) and
 //! [lmdb](lmdb/index.html#usage) modules for usage examples.
-pub mod db;
 pub mod in_memory;
+pub mod lmdb;
 pub(crate) mod operations;
 #[cfg(test)]
 mod tests;

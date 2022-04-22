@@ -44,7 +44,9 @@ fn in_memory_roundtrip_succeeds(inputs: Vec<Trie<Key, StoredValue>>) -> bool {
 }
 
 fn lmdb_roundtrip_succeeds(inputs: Vec<Trie<Key, StoredValue>>) -> bool {
-    use crate::storage::{transaction_source::db::LmdbEnvironment, trie_store::db::LmdbTrieStore};
+    use crate::storage::{
+        transaction_source::lmdb::LmdbEnvironment, trie_store::lmdb::LmdbTrieStore,
+    };
 
     let tmp_dir = tempdir().unwrap();
     let env = LmdbEnvironment::new(

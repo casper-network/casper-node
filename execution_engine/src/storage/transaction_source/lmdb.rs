@@ -6,7 +6,7 @@ use lmdb::{
 };
 
 use crate::storage::{
-    error,
+    error::{self, db::DbError},
     transaction_source::{Readable, Transaction, TransactionSource, Writable},
     trie_store::lmdb::ScratchTrieStore,
     MAX_DBS,
@@ -30,7 +30,7 @@ impl Readable for ScratchTrieStore {
         match lmdb::Transaction::get(&txn, handle.store.get_db(), &key) {
             Ok(bytes) => Ok(Some(Bytes::from(bytes))),
             Err(lmdb::Error::NotFound) => Ok(None),
-            Err(e) => Err(error::Error::Lmdb(e)),
+            Err(e) => Err(error::Error::Db(DbError::Lmdb(e))),
         }
     }
 }
@@ -39,7 +39,7 @@ impl Writable for ScratchTrieStore {
     fn write(&mut self, handle: Self::Handle, key: &[u8], value: &[u8]) -> Result<(), Self::Error> {
         let mut txn = self.env.create_read_write_txn()?;
         txn.put(handle.store.get_db(), &key, &value, WriteFlags::empty())
-            .map_err(error::Error::Lmdb)?;
+            .map_err(|e| error::Error::Db(DbError::Lmdb(e)))?;
         Ok(())
     }
 }

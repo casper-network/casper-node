@@ -10,7 +10,7 @@ use casper_execution_engine::{
         StepRequest, StepSuccess,
     },
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
-    storage::global_state::db::DbGlobalState,
+    storage::global_state::lmdb::LmdbGlobalState,
 };
 use casper_hashing::Digest;
 use casper_types::{DeployHash, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, U512};
@@ -33,7 +33,7 @@ use casper_execution_engine::{
 /// Executes a finalized block.
 #[allow(clippy::too_many_arguments)]
 pub fn execute_finalized_block(
-    engine_state: &EngineState<DbGlobalState>,
+    engine_state: &EngineState<LmdbGlobalState>,
     metrics: Option<Arc<Metrics>>,
     protocol_version: ProtocolVersion,
     execution_pre_state: ExecutionPreState,

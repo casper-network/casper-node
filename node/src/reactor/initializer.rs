@@ -1,9 +1,6 @@
 //! Reactor used to initialize a node.
 
-use std::{
-    fmt::{self, Display, Formatter},
-    sync::Arc,
-};
+use std::fmt::{self, Display, Formatter};
 
 use datasize::DataSize;
 use derive_more::From;
@@ -205,7 +202,7 @@ pub(crate) enum Error {
     #[error("storage error: {0}")]
     Storage(#[from] storage::Error),
 
-    /// Execution engine storage error, can happen during rocksdb migration from lmdb.
+    /// Execution engine storage error.
     #[error(transparent)]
     ExecutionEngineStorage(#[from] casper_execution_engine::storage::error::Error),
 
@@ -299,25 +296,6 @@ impl Reactor {
                 .minimum_delegation_amount,
             registry,
         )?;
-
-        {
-            let engine_state = Arc::clone(contract_runtime.engine_state());
-            // We need to be synchronous here, ensures migration (of just the highest block) is
-            // complete before proceeding.
-            match storage.read_highest_block()? {
-                Some(highest_block) => {
-                    engine_state.migrate_state_root_to_rocksdb_if_needed(
-                        *highest_block.state_root_hash(),
-                        false,
-                    )?;
-                }
-                None => {
-                    info!(
-                        "unable to find highest block header while migrating from lmdb to rocksdb"
-                    );
-                }
-            }
-        }
 
         let effects = reactor::wrap_effects(Event::Chainspec, chainspec_effects);
 

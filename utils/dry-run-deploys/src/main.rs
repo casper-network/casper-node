@@ -22,9 +22,6 @@ struct Opts {
     #[structopt(short, long, required = true, default_value = retrieve_state::LMDB_PATH)]
     lmdb_path: PathBuf,
 
-    #[structopt(long, default_value = retrieve_state::ROCKSDB_PATH)]
-    rocksdb_path: PathBuf,
-
     #[structopt(
         short,
         long,
@@ -50,7 +47,6 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let chain_download_path = normalize_path(&opts.chain_download_path)?;
     let lmdb_path = normalize_path(&opts.lmdb_path)?;
-    let rocksdb_path = normalize_path(&opts.rocksdb_path)?;
 
     // Create a separate lmdb for block/deploy storage at chain_download_path.
     let storage = create_storage(&chain_download_path).expect("should create storage");
@@ -63,7 +59,6 @@ async fn main() -> Result<(), anyhow::Error> {
     let previous_block_header = previous_block.take_header();
     let (engine_state, _env) = storage::load_execution_engine(
         lmdb_path,
-        rocksdb_path,
         retrieve_state::DEFAULT_MAX_DB_SIZE,
         *previous_block_header.state_root_hash(),
         opts.manual_sync_enabled,

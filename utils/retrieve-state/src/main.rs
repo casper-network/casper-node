@@ -69,13 +69,6 @@ struct Opts {
     lmdb_path: PathBuf,
 
     #[structopt(
-        long,
-        default_value = retrieve_state::ROCKSDB_PATH,
-        about = "Specify the path to the folder containing the trie rocksdb data files."
-    )]
-    rocksdb_path: PathBuf,
-
-    #[structopt(
         short,
         long,
         about = "Specify the max size (in bytes) that the underlying LMDB can grow to."
@@ -236,10 +229,8 @@ async fn main() -> Result<(), anyhow::Error> {
                 highest_block.header.height
             );
             let lmdb_path = env::current_dir()?.join(opts.lmdb_path);
-            let rocksdb_path = env::current_dir()?.join(opts.rocksdb_path);
             let (engine_state, _environment) = retrieve_state::storage::create_execution_engine(
                 lmdb_path,
-                rocksdb_path,
                 opts.max_db_size
                     .unwrap_or(retrieve_state::DEFAULT_MAX_DB_SIZE),
                 opts.manual_sync_enabled,

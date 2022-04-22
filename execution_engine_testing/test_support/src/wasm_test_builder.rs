@@ -38,12 +38,12 @@ use casper_execution_engine::{
     },
     storage::{
         global_state::{
-            db::DbGlobalState, in_memory::InMemoryGlobalState, scratch::ScratchGlobalState,
+            in_memory::InMemoryGlobalState, lmdb::LmdbGlobalState, scratch::ScratchGlobalState,
             CommitProvider, StateProvider, StateReader,
         },
-        transaction_source::db::LmdbEnvironment,
+        transaction_source::lmdb::LmdbEnvironment,
         trie::{merkle_proof::TrieMerkleProof, Trie},
-        trie_store::db::LmdbTrieStore,
+        trie_store::lmdb::LmdbTrieStore,
     },
 };
 use casper_hashing::Digest;
@@ -81,7 +81,7 @@ const GLOBAL_STATE_DIR: &str = "global_state";
 /// Wasm test builder where state is held entirely in memory.
 pub type InMemoryWasmTestBuilder = WasmTestBuilder<InMemoryGlobalState>;
 /// Wasm test builder where state is held in LMDB.
-pub type LmdbWasmTestBuilder = WasmTestBuilder<DbGlobalState>;
+pub type LmdbWasmTestBuilder = WasmTestBuilder<LmdbGlobalState>;
 
 /// Builder for simple WASM test
 pub struct WasmTestBuilder<S> {
@@ -200,13 +200,8 @@ impl LmdbWasmTestBuilder {
                 .expect("should create LmdbTrieStore"),
         );
 
-        let global_state = DbGlobalState::empty(
-            environment,
-            trie_store,
-            global_state_dir.join("rocksdb-data"),
-            casper_execution_engine::rocksdb_defaults(),
-        )
-        .expect("should create DbGlobalState");
+        let global_state =
+            LmdbGlobalState::empty(environment, trie_store).expect("should create LmdbGlobalState");
 
         let engine_state = EngineState::new(global_state, engine_config);
         WasmTestBuilder {
@@ -269,18 +264,10 @@ impl LmdbWasmTestBuilder {
         let trie_store =
             Arc::new(LmdbTrieStore::open(&environment, None).expect("should open LmdbTrieStore"));
 
-        let global_state = DbGlobalState::empty(
-            environment,
-            trie_store,
-            global_state_dir.as_ref().join("rocksdb-data"),
-            casper_execution_engine::rocksdb_defaults(),
-        )
-        .expect("should create DbGlobalState");
+        let global_state =
+            LmdbGlobalState::empty(environment, trie_store).expect("should create LmdbGlobalState");
 
         let engine_state = EngineState::new(global_state, engine_config);
-        engine_state
-            .migrate_state_root_to_rocksdb_if_needed(post_state_hash, false)
-            .expect("unable to migrate state root from lmdb to rocksdb");
         WasmTestBuilder {
             engine_state: Rc::new(engine_state),
             exec_results: Vec::new(),
@@ -291,7 +278,6 @@ impl LmdbWasmTestBuilder {
             genesis_account: None,
             genesis_transforms: None,
             scratch_engine_state: None,
-            global_state_dir: Some(global_state_dir.as_ref().to_path_buf()),
             system_contract_registry: None,
             global_state_dir: Some(global_state_dir.as_ref().to_path_buf()),
         }
@@ -312,7 +298,7 @@ impl LmdbWasmTestBuilder {
         path
     }
 
-    /// Returns the file size on disk of the backing lmdb file behind DbGlobalState.
+    /// Returns the file size on disk of the backing lmdb file behind LmdbGlobalState.
     pub fn lmdb_on_disk_size(&self) -> Option<u64> {
         if let Some(path) = self.global_state_dir.as_ref() {
             let mut path = path.clone();
@@ -369,7 +355,7 @@ impl LmdbWasmTestBuilder {
         if let Some(scratch) = self.scratch_engine_state.take() {
             let new_state_root = self
                 .engine_state
-                .write_scratch_to_lmdb(prestate_hash, scratch.into_inner())
+                .write_scratch_to_db(prestate_hash, scratch.into_inner())
                 .unwrap();
             self.post_state_hash = Some(new_state_root);
         }
