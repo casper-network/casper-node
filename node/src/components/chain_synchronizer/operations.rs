@@ -969,7 +969,15 @@ async fn fetch_forward(
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fetch_forward_duration_seconds);
 
     let mut most_recent_block = trusted_block;
-    while most_recent_block.header().protocol_version() < ctx.config.protocol_version() {
+    while most_recent_block.header().protocol_version() < ctx.config.protocol_version()
+        && most_recent_block.header().next_block_era_id()
+            != ctx
+                .config
+                .chainspec()
+                .protocol_config
+                .activation_point
+                .era_id()
+    {
         let maybe_fetched_block_with_metadata = fetch_and_store_next::<BlockWithMetadata>(
             most_recent_block.header(),
             &*trusted_key_block_info,
