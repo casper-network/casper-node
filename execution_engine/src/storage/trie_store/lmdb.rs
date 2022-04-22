@@ -174,41 +174,34 @@ impl<K, V> Store<Digest, Trie<K, V>> for LmdbTrieStore {
 impl<K, V> TrieStore<K, V> for LmdbTrieStore {}
 
 /// Cache used by the scratch trie.  The keys represent the hash of the trie being cached.  The
-/// values represent:  1) A boolean, where `false` means the was _not_ written and `true` means it
-/// was 2) A deserialized trie
+/// values represent:  1) A boolean, where `false` means the trie was _not_ written and `true` means
+/// it was 2) A deserialized trie
 pub(crate) type Cache = Arc<Mutex<HashMap<Digest, (bool, Trie<Key, StoredValue>)>>>;
-/// In-memory cached trie store, backed by lmdb.
-#[derive(Clone)]
-pub struct ScratchCache {
-    pub(crate) cache: Cache,
-    pub(crate) store: Arc<LmdbTrieStore>,
-    pub(crate) env: Arc<LmdbEnvironment>,
-}
 
 /// Cached version of the trie store.
 #[derive(Clone)]
-pub struct ScratchTrieStore {
-    pub(crate) inner: ScratchCache,
+pub(crate) struct ScratchTrieStore {
+    pub(crate) cache: Cache,
+    pub(crate) store: Arc<LmdbTrieStore>,
+    pub(crate) env: Arc<LmdbEnvironment>,
 }
 
 impl ScratchTrieStore {
     /// Creates a new ScratchTrieStore.
     pub fn new(store: Arc<LmdbTrieStore>, env: Arc<LmdbEnvironment>) -> Self {
         Self {
-            inner: ScratchCache {
-                store,
-                env,
-                cache: Default::default(),
-            },
+            store,
+            env,
+            cache: Default::default(),
         }
     }
 
     /// Writes only tries which are both under the given `state_root` and dirty to the underlying db
     /// while maintaining the invariant that children must be written before parent nodes.
     pub fn write_root_to_db(self, state_root: Digest) -> Result<(), error::Error> {
-        let env = self.inner.env;
-        let store = self.inner.store;
-        let cache = &mut *self.inner.cache.lock().map_err(|_| error::Error::Poison)?;
+        let env = self.env;
+        let store = self.store;
+        let cache = &mut *self.cache.lock().map_err(|_| error::Error::Poison)?;
 
         let (is_root_dirty, root_trie) = cache
             .get(&state_root)
@@ -244,10 +237,10 @@ impl ScratchTrieStore {
 impl Store<Digest, Trie<Key, StoredValue>> for ScratchTrieStore {
     type Error = error::Error;
 
-    type Handle = ScratchCache;
+    type Handle = ScratchTrieStore;
 
     fn handle(&self) -> Self::Handle {
-        self.inner.clone()
+        self.clone()
     }
 
     /// Puts a `value` into the store at `key` within a transaction, potentially returning an
@@ -262,8 +255,7 @@ impl Store<Digest, Trie<Key, StoredValue>> for ScratchTrieStore {
         T: Writable<Handle = Self::Handle>,
         Self::Error: From<T::Error>,
     {
-        self.inner
-            .cache
+        self.cache
             .lock()
             .map_err(|_| error::Error::Poison)?
             .insert(*digest, (true, trie.clone()));
@@ -282,8 +274,7 @@ impl Store<Digest, Trie<Key, StoredValue>> for ScratchTrieStore {
         Self::Error: From<T::Error>,
     {
         let maybe_trie = {
-            self.inner
-                .cache
+            self.cache
                 .lock()
                 .map_err(|_| error::Error::Poison)?
                 .get(digest)
@@ -298,7 +289,7 @@ impl Store<Digest, Trie<Key, StoredValue>> for ScratchTrieStore {
                         let value: Trie<Key, StoredValue> = bytesrepr::deserialize(bytes.into())?;
                         {
                             let store =
-                                &mut *self.inner.cache.lock().map_err(|_| error::Error::Poison)?;
+                                &mut *self.cache.lock().map_err(|_| error::Error::Poison)?;
                             if !store.contains_key(digest) {
                                 store.insert(*digest, (false, value.clone()));
                             }
