@@ -703,7 +703,8 @@ impl reactor::Reactor for Reactor {
                 self.small_network.handle_event(effect_builder, rng, event),
             ),
             JoinerEvent::ControlAnnouncement(ctrl_ann) => {
-                unreachable!("unhandled control announcement: {}", ctrl_ann)
+                error!("unhandled control announcement: {}", ctrl_ann);
+                Effects::new()
             }
             JoinerEvent::BlocklistAnnouncement(ann) => {
                 self.dispatch_event(effect_builder, rng, JoinerEvent::SmallNetwork(ann.into()))
@@ -1056,14 +1057,11 @@ impl Reactor {
                 {
                     Ok(FetchedOrNotFound::Fetched(deploy)) => Box::new(deploy),
                     Ok(FetchedOrNotFound::NotFound(deploy_hash)) => {
-                        warn!(
-                            "peer did not have deploy with hash {}: {}",
-                            sender, deploy_hash
-                        );
+                        warn!(?sender, ?deploy_hash, "peer did not have deploy",);
                         return Effects::new();
                     }
                     Err(error) => {
-                        error!("failed to decode deploy from {}: {}", sender, error);
+                        error!(?sender, ?error, "failed to decode deploy");
                         return Effects::new();
                     }
                 };
@@ -1099,8 +1097,8 @@ impl Reactor {
                 // The item trait is used for both fetchers and gossiped things, but this kind of
                 // item is never fetched, only gossiped.
                 warn!(
-                    "Gossiped addresses are never fetched, banning peer: {}",
-                    sender
+                    ?sender,
+                    "gossiped addresses are never fetched, banning peer",
                 );
                 effect_builder
                     .announce_disconnect_from_peer(sender)

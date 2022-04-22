@@ -1,7 +1,7 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::Path,
-    sync::Arc,
+    sync::{Arc, RwLock},
     thread,
     time::{Duration, Instant},
 };
@@ -34,7 +34,8 @@ use crate::{
         trie_store::{
             db::LmdbTrieStore,
             operations::{
-                keys_with_prefix, missing_trie_keys, put_trie, read, read_with_proof, ReadResult,
+                descendant_trie_keys, keys_with_prefix, missing_trie_keys, put_trie, read,
+                read_with_proof, ReadResult,
             },
         },
     },
@@ -51,6 +52,7 @@ pub struct DbGlobalState {
     pub(crate) empty_root_hash: Digest,
     /// Handle to rocksdb.
     pub(crate) rocksdb_store: RocksDbStore,
+    digests_without_missing_descendants: Arc<RwLock<HashSet<Digest>>>,
 }
 
 /// Represents a "view" of global state at a particular root hash.
@@ -179,6 +181,7 @@ impl DbGlobalState {
             lmdb_trie_store: trie_store,
             empty_root_hash,
             rocksdb_store,
+            digests_without_missing_descendants: Default::default(),
         })
     }
 
@@ -198,6 +201,7 @@ impl DbGlobalState {
             lmdb_trie_store: trie_store,
             empty_root_hash,
             rocksdb_store,
+            digests_without_missing_descendants: Default::default(),
         })
     }
 
@@ -437,16 +441,58 @@ impl StateProvider for DbGlobalState {
         correlation_id: CorrelationId,
         trie_keys: Vec<Digest>,
     ) -> Result<Vec<Digest>, Self::Error> {
-        let txn = self.rocksdb_store.create_read_txn()?;
-        let trie_store = self.rocksdb_store.clone();
-        let missing_descendants = missing_trie_keys::<Key, StoredValue, _, _, Self::Error>(
-            correlation_id,
-            &txn,
-            &trie_store,
-            trie_keys,
-        )?;
-        txn.commit()?;
-        Ok(missing_descendants)
+        let trie_count = {
+            let digests_without_missing_descendants = self
+                .digests_without_missing_descendants
+                .read()
+                .expect("digest cache read lock");
+            trie_keys
+                .iter()
+                .filter(|digest| !digests_without_missing_descendants.contains(digest))
+                .count()
+        };
+        if trie_count == 0 {
+            info!("no need to call missing_trie_keys");
+            Ok(vec![])
+        } else {
+            let txn = self.rocksdb_store.create_read_txn()?;
+            let missing_descendants = missing_trie_keys::<Key, StoredValue, _, _, Self::Error>(
+                correlation_id,
+                &txn,
+                &self.rocksdb_store,
+                trie_keys.clone(),
+                &self
+                    .digests_without_missing_descendants
+                    .read()
+                    .expect("digest cache read lock"),
+            )?;
+            if missing_descendants.is_empty() {
+                // There were no missing descendants on `trie_keys`, let's add them *and all of
+                // their descendants* to the cache.
+
+                let mut all_descendants = HashSet::new();
+                all_descendants.extend(&trie_keys);
+                all_descendants.extend(
+                    descendant_trie_keys::<Key, StoredValue, _, _, Self::Error>(
+                        &txn,
+                        &self.rocksdb_store,
+                        trie_keys,
+                        &self
+                            .digests_without_missing_descendants
+                            .read()
+                            .expect("digest cache read lock"),
+                    )?,
+                );
+
+                self.digests_without_missing_descendants
+                    .write()
+                    .expect("digest cache write lock")
+                    .extend(all_descendants.into_iter());
+            }
+            txn.commit()?;
+
+            Ok(missing_descendants)
+        }
     }
 
     fn get_trie_full(
