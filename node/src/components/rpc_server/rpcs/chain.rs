@@ -7,6 +7,7 @@ mod era_summary;
 
 use std::{num::ParseIntError, str};
 
+use casper_execution_engine::core::engine_state;
 use futures::{future::BoxFuture, FutureExt};
 use http::Response;
 use hyper::Body;
@@ -16,17 +17,18 @@ use serde::{Deserialize, Serialize};
 use warp_json_rpc::Builder;
 
 use casper_hashing::Digest;
-use casper_types::{Key, ProtocolVersion, Transfer};
+use casper_types::{ExecutionResult, Key, ProtocolVersion, Transfer};
 
 use super::{
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
     Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithOptionalParams, RpcWithOptionalParamsExt,
+    RpcWithParams, RpcWithParamsExt,
 };
 use crate::{
     effect::EffectBuilder,
     reactor::QueueKind,
     rpcs::common,
-    types::{Block, BlockHash, BlockWithMetadata, JsonBlock},
+    types::{Block, BlockHash, BlockWithMetadata, Deploy, JsonBlock},
 };
 pub use era_summary::EraSummary;
 use era_summary::ERA_SUMMARY;
@@ -63,6 +65,14 @@ static GET_ERA_INFO_PARAMS: Lazy<GetEraInfoParams> = Lazy::new(|| GetEraInfoPara
 static GET_ERA_INFO_RESULT: Lazy<GetEraInfoResult> = Lazy::new(|| GetEraInfoResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     era_summary: Some(ERA_SUMMARY.clone()),
+});
+static EXECUTE_DEPLOY_PARAMS: Lazy<ExecuteDeployParams> = Lazy::new(|| ExecuteDeployParams {
+    block_hash: *Block::doc_example().hash(),
+    deploy: Deploy::doc_example().clone(),
+});
+static EXECUTE_DEPLOY_RESULT: Lazy<ExecuteDeployResult> = Lazy::new(|| ExecuteDeployResult {
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    execution_result: ExecutionResult::example().clone(),
 });
 
 /// Identifier for possible ways to retrieve a block.
@@ -506,4 +516,126 @@ pub(super) async fn get_block_with_metadata<REv: ReactorEventT>(
     .await;
 
     Err(error)
+}
+
+/// Params for "chain_execute_deploy" RPC request.
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ExecuteDeployParams {
+    /// Block hash on top of which to execute the deploy.
+    pub block_hash: BlockHash,
+    /// Deploy to execute.
+    pub deploy: Deploy,
+}
+
+impl DocExample for ExecuteDeployParams {
+    fn doc_example() -> &'static Self {
+        &*EXECUTE_DEPLOY_PARAMS
+    }
+}
+
+/// Result for "chain_execute_deploy" RPC response.
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ExecuteDeployResult {
+    /// The RPC API version.
+    #[schemars(with = "String")]
+    pub api_version: ProtocolVersion,
+    /// Result of the execution.
+    pub execution_result: ExecutionResult,
+}
+
+impl DocExample for ExecuteDeployResult {
+    fn doc_example() -> &'static Self {
+        &*EXECUTE_DEPLOY_RESULT
+    }
+}
+
+/// "chain_execute_deploy" RPC.
+pub struct ExecuteDeploy {}
+
+impl RpcWithParams for ExecuteDeploy {
+    const METHOD: &'static str = "chain_execute_deploy";
+    type RequestParams = ExecuteDeployParams;
+    type ResponseResult = ExecuteDeployResult;
+}
+
+impl RpcWithParamsExt for ExecuteDeploy {
+    fn handle_request<REv: ReactorEventT>(
+        effect_builder: EffectBuilder<REv>,
+        response_builder: Builder,
+        params: Self::RequestParams,
+        api_version: ProtocolVersion,
+    ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
+        async move {
+            let ExecuteDeployParams { block_hash, deploy } = params;
+            let result = effect_builder
+                .make_request(
+                    |responder| RpcRequest::ExecuteDeploy {
+                        block_hash,
+                        deploy: Box::new(deploy),
+                        responder,
+                    },
+                    QueueKind::Api,
+                )
+                .await;
+
+            match result {
+                Ok(None) => Ok(response_builder.error(warp_json_rpc::Error::custom(
+                    ErrorCode::NoSuchBlock as i64,
+                    "block hash not found",
+                ))?),
+                Ok(Some(execution_result)) => {
+                    let result = Self::ResponseResult {
+                        api_version,
+                        execution_result,
+                    };
+                    Ok(response_builder.success(result)?)
+                }
+                Err(error) => {
+                    let error_code = match &error {
+                        engine_state::Error::RootNotFound(_) => ErrorCode::NoSuchStateRoot,
+                        engine_state::Error::WasmPreprocessing(_) => ErrorCode::InvalidDeploy,
+                        engine_state::Error::InvalidDeployItemVariant(_) => {
+                            ErrorCode::InvalidDeploy
+                        }
+                        engine_state::Error::Deploy => ErrorCode::InvalidDeploy,
+                        engine_state::Error::InvalidProtocolVersion(_) => ErrorCode::InvalidDeploy,
+                        engine_state::Error::Authorization => ErrorCode::NoSuchAccount,
+                        engine_state::Error::InsufficientPayment => ErrorCode::NoSuchAccount,
+                        engine_state::Error::Genesis(_) => ErrorCode::InternalError,
+                        engine_state::Error::WasmSerialization(_) => ErrorCode::InternalError,
+                        engine_state::Error::Exec(_) => ErrorCode::InternalError,
+                        engine_state::Error::Storage(_) => ErrorCode::InternalError,
+                        engine_state::Error::GasConversionOverflow => ErrorCode::InternalError,
+                        engine_state::Error::Finalization => ErrorCode::InternalError,
+                        engine_state::Error::Bytesrepr(_) => ErrorCode::InternalError,
+                        engine_state::Error::Mint(_) => ErrorCode::InternalError,
+                        engine_state::Error::InvalidKeyVariant => ErrorCode::InternalError,
+                        engine_state::Error::ProtocolUpgrade(_) => ErrorCode::InternalError,
+                        engine_state::Error::CommitError(_) => ErrorCode::InternalError,
+                        engine_state::Error::MissingSystemContractRegistry => {
+                            ErrorCode::InternalError
+                        }
+                        engine_state::Error::MissingSystemContractHash(_) => {
+                            ErrorCode::InternalError
+                        }
+                        engine_state::Error::RuntimeStackOverflow => ErrorCode::InternalError,
+                        engine_state::Error::FailedToGetWithdrawKeys => ErrorCode::InternalError,
+                        engine_state::Error::FailedToGetStoredWithdraws => ErrorCode::InternalError,
+                        engine_state::Error::FailedToGetWithdrawPurses => ErrorCode::InternalError,
+                        engine_state::Error::FailedToRetrieveUnbondingDelay => {
+                            ErrorCode::InternalError
+                        }
+                        engine_state::Error::FailedToRetrieveEraId => ErrorCode::InternalError,
+                    };
+                    Ok(response_builder.error(warp_json_rpc::Error::custom(
+                        error_code as i64,
+                        format!("deploy execution error: {:?}", &error),
+                    ))?)
+                }
+            }
+        }
+        .boxed()
+    }
 }

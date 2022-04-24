@@ -135,6 +135,7 @@ use crate::{
         consensus::{BlockContext, ClContext, EraDump, ValidatorChange},
         contract_runtime::{
             BlockAndExecutionEffects, BlockExecutionError, EraValidatorsRequest, ExecutionPreState,
+            ExecutionState,
         },
         deploy_acceptor,
         fetcher::FetchResult,
@@ -1643,6 +1644,27 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| ContractRuntimeRequest::Query {
                 query_request,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Requests execution of a single deploy, without commiting its effects.
+    /// Inteded to be used for debugging & discovery purposes.
+    pub(crate) async fn execute_deploy(
+        self,
+        execution_prestate: ExecutionState,
+        deploy: Deploy,
+    ) -> Result<Option<ExecutionResult>, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::ExecuteDeploy {
+                execution_prestate,
+                deploy: Box::new(deploy),
                 responder,
             },
             QueueKind::Regular,

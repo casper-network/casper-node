@@ -50,7 +50,9 @@ use crate::{
     },
     fatal,
     protocol::Message,
-    types::{BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, FinalizedBlock},
+    types::{
+        BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, FinalizedBlock, Timestamp,
+    },
     NodeRng,
 };
 pub(crate) use config::Config;
@@ -58,6 +60,8 @@ pub(crate) use error::{BlockExecutionError, ConfigError};
 use metrics::Metrics;
 pub use operations::execute_finalized_block;
 pub(crate) use types::{BlockAndExecutionEffects, EraValidatorsRequest};
+
+use self::operations::execute_only;
 
 use super::fetcher::FetchedOrNotFound;
 
@@ -96,6 +100,17 @@ where
     tokio::task::spawn_blocking(task)
         .await
         .expect("task panicked")
+}
+
+#[derive(DataSize, Debug, Clone, Serialize)]
+/// Wrapper for execution prestate.
+pub struct ExecutionState {
+    /// State root on top of which to execute deploy.
+    pub state_root_hash: Digest,
+    /// Block time.
+    pub block_time: Timestamp,
+    /// Protocol version used when creating the original block.
+    pub protocol_version: ProtocolVersion,
 }
 
 /// State to use to construct the next block in the blockchain. Includes the state root hash for the
@@ -464,6 +479,21 @@ impl ContractRuntime {
                     })
                     .await;
                     trace!(?result, "execute block response");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            ContractRuntimeRequest::ExecuteDeploy {
+                execution_prestate,
+                deploy,
+                responder,
+            } => {
+                let engine_state = Arc::clone(&self.engine_state);
+                async move {
+                    let result = run_intensive_task(move || {
+                        execute_only(engine_state.as_ref(), execution_prestate, (*deploy).into())
+                    })
+                    .await;
                     responder.respond(result).await
                 }
                 .ignore()

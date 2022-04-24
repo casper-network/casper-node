@@ -45,6 +45,7 @@ use crate::{
         deploy_acceptor::Error,
         fetcher::FetchResult,
     },
+    contract_runtime::ExecutionState,
     effect::Responder,
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
     types::{
@@ -726,6 +727,16 @@ pub(crate) enum RpcRequest {
         /// Responder to call with the result.
         responder: Responder<AvailableBlockRange>,
     },
+    /// Executs a deploy against a specified block, returning the effects.
+    /// Does not commit the effects. This is a "read-only" action.
+    ExecuteDeploy {
+        /// Block hash on top of which we will run the deploy.
+        block_hash: BlockHash,
+        /// Deploy to execute.
+        deploy: Box<Deploy>,
+        /// Responder.
+        responder: Responder<Result<Option<ExecutionResult>, engine_state::Error>>,
+    },
 }
 
 impl Display for RpcRequest {
@@ -744,6 +755,7 @@ impl Display for RpcRequest {
             RpcRequest::GetBlockTransfers { block_hash, .. } => {
                 write!(formatter, "get transfers {}", block_hash)
             }
+            RpcRequest::ExecuteDeploy { .. } => write!(formatter, "execute deploy"),
 
             RpcRequest::QueryGlobalState {
                 state_root_hash,
@@ -946,6 +958,15 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder to call with the result.
         responder: Responder<Result<BlockAndExecutionEffects, BlockExecutionError>>,
     },
+    /// Execute deploys without commiting results
+    ExecuteDeploy {
+        /// Hash of a block on top of which to execute the deploy.
+        execution_prestate: ExecutionState,
+        /// Deploy to execute.
+        deploy: Box<Deploy>,
+        /// Results
+        responder: Responder<Result<Option<ExecutionResult>, engine_state::Error>>,
+    },
 }
 
 impl Display for ContractRuntimeRequest {
@@ -1012,6 +1033,18 @@ impl Display for ContractRuntimeRequest {
             }
             ContractRuntimeRequest::FindMissingDescendantTrieKeys { trie_key, .. } => {
                 write!(formatter, "Find missing descendant trie keys: {}", trie_key)
+            }
+            ContractRuntimeRequest::ExecuteDeploy {
+                execution_prestate,
+                deploy,
+                ..
+            } => {
+                write!(
+                    formatter,
+                    "Execute {} on {}",
+                    deploy.id(),
+                    execution_prestate.state_root_hash
+                )
             }
         }
     }

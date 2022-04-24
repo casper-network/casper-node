@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, sync::Arc, time::Instant};
 
 use itertools::Itertools;
-use tracing::{debug, trace};
+use tracing::{debug, trace, warn};
 
 use casper_execution_engine::{
     core::engine_state::{
@@ -20,7 +20,7 @@ use crate::{
         consensus::EraReport,
         contract_runtime::{
             error::BlockExecutionError, types::StepEffectAndUpcomingEraValidators,
-            BlockAndExecutionEffects, ExecutionPreState, Metrics,
+            BlockAndExecutionEffects, ExecutionPreState, ExecutionState, Metrics,
         },
     },
     types::{Block, Deploy, DeployHeader, FinalizedBlock},
@@ -246,6 +246,51 @@ where
     }
     trace!(?result, "commit result");
     result.map(Digest::from)
+}
+
+/// Execute the transaction without commiting the effects.
+/// Intended to be used for discovery operations on read-only nodes.
+///
+/// Returns effects of the execution.
+pub fn execute_only<S>(
+    engine_state: &EngineState<S>,
+    execution_state: ExecutionState,
+    deploy: DeployItem,
+) -> Result<Option<ExecutionResult>, engine_state::Error>
+where
+    S: StateProvider + CommitProvider,
+    S::Error: Into<execution::Error>,
+{
+    let ExecutionState {
+        state_root_hash,
+        block_time,
+        protocol_version,
+    } = execution_state;
+    let deploy_hash = deploy.deploy_hash;
+    let execute_request = ExecuteRequest::new(
+        state_root_hash,
+        block_time.millis(),
+        vec![deploy],
+        protocol_version,
+        PublicKey::System,
+    );
+    let results = execute(engine_state, None, execute_request);
+    results.map(|mut execution_results| {
+        let len = execution_results.len();
+        if len != 1 {
+            warn!(
+                ?deploy_hash,
+                "got more {} execution results from a single transaction", len
+            );
+            None
+        } else {
+            // We know it must be 1, we could unwrap and then wrap
+            // with `Some(_)` but `pop_front` already returns an `Option`.
+            // We need to transform the `engine_state::ExecutionResult` into
+            // `casper_types::ExecutionResult` as well.
+            execution_results.pop_front().map(Into::into)
+        }
+    })
 }
 
 fn execute<S>(
