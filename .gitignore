@@ -163,3 +163,6 @@ notes
 
 # disk use reports
 **/disk_use_report.csv
+
+# VSCode indexing
+.lh
