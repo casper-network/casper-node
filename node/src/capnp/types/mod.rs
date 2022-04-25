@@ -8,7 +8,6 @@ mod deploy_hash;
 mod digest;
 mod era;
 mod public_key;
-mod test;
 mod weight;
 
 pub trait ToCapnpBuilder<T> {
