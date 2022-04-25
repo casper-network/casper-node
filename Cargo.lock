@@ -1633,6 +1633,7 @@ version = "0.1.0"
 dependencies = [
  "casper-contract",
  "casper-types",
+ "num-rational 0.4.0",
 ]
 
 [[package]]
