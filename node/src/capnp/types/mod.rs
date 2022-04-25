@@ -1,3 +1,4 @@
+mod account_hash;
 mod block;
 mod block_body;
 mod block_header;
