@@ -255,8 +255,8 @@ fn simple_consensus_no_fault() {
     let bob_idx = validators.get_index(&*BOB_PUBLIC_KEY).unwrap();
     let carol_idx = validators.get_index(&*CAROL_PUBLIC_KEY).unwrap();
 
-    // The first round leaders are Bob, Alice, Alice.
-    let leader_seq = &[bob_idx, alice_idx, alice_idx, carol_idx];
+    // The first round leaders are Bob, Alice, Alice, Carol, Carol.
+    let leader_seq = &[bob_idx, alice_idx, alice_idx, carol_idx, carol_idx];
     let mut sc_c = new_test_simple_consensus(weights, vec![], leader_seq);
 
     let alice_kp = Keypair::from(ALICE_SECRET_KEY.clone());
@@ -300,6 +300,15 @@ fn simple_consensus_no_fault() {
         maybe_parent_round_id: Some(2),
         inactive: Some(Default::default()),
     };
+    let hash3 = proposal3.hash();
+
+    let proposal4 = Proposal::<ClContext> {
+        timestamp: timestamp + round_len * 3,
+        maybe_block: None,
+        maybe_parent_round_id: Some(3),
+        inactive: None,
+    };
+    let hash4 = proposal4.hash();
 
     // Alice makes a proposal in round 2 with parent in round 1. Alice and Bob echo it.
     let msg = create_message(&validators, 2, proposal(&proposal2), &alice_kp);
@@ -373,6 +382,29 @@ fn simple_consensus_no_fault() {
     let mut outcomes = sc_c.propose(proposed_block, timestamp);
     let mut gossip = remove_gossip(&validators, &mut outcomes);
     assert!(gossip.remove(&(3, CAROL_PUBLIC_KEY.clone(), proposal(&proposal3))));
+    assert!(gossip.remove(&(3, CAROL_PUBLIC_KEY.clone(), echo(hash3))));
+    assert!(gossip.is_empty(), "unexpected gossip: {:?}", gossip);
+
+    timestamp += round_len;
+
+    // Once Alice echoes Carol's proposal, she can go on to propose in round 4, too.
+    // Since the round height is 3, the 4th proposal does not contain a block.
+    let msg = create_message(&validators, 3, echo(hash3), &alice_kp);
+    let mut outcomes = sc_c.handle_message(&mut rng, sender, msg, timestamp);
+    let mut gossip = remove_gossip(&validators, &mut outcomes);
+    assert!(gossip.remove(&(3, CAROL_PUBLIC_KEY.clone(), vote(true))));
+    assert!(gossip.remove(&(4, CAROL_PUBLIC_KEY.clone(), proposal(&proposal4))));
+    assert!(gossip.remove(&(4, CAROL_PUBLIC_KEY.clone(), echo(hash4))));
+    assert!(gossip.is_empty(), "unexpected gossip: {:?}", gossip);
+
+    // Only when Alice also votes for the switch block is it finalized.
+    assert!(!sc_c.finalized_switch_block());
+    let msg = create_message(&validators, 3, vote(true), &alice_kp);
+    let mut outcomes = sc_c.handle_message(&mut rng, sender, msg, timestamp);
+    let gossip = remove_gossip(&validators, &mut outcomes);
+    assert!(gossip.is_empty(), "unexpected gossip: {:?}", gossip);
+    expect_finalized(&outcomes, &[(&proposal3, 2)]);
+    assert!(sc_c.finalized_switch_block());
 }
 
 /// Tests that a faulty validator counts towards every quorum.
