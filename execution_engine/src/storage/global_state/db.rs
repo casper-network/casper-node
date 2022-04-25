@@ -123,7 +123,8 @@ impl DbGlobalState {
             let mut handle = self.rocksdb_store.rocksdb.clone();
             let rocksdb = self.rocksdb_store.rocksdb.clone();
 
-            match lmdb_txn.read(self.lmdb_trie_store.get_db(), &next_trie_key.to_bytes()?)? {
+            let trie_key_bytes = next_trie_key.to_bytes()?;
+            match lmdb_txn.read(self.lmdb_trie_store.get_db(), &trie_key_bytes)? {
                 Some(value_bytes) => {
                     let key_bytes = next_trie_key.to_bytes()?;
                     let read_bytes = key_bytes.len() as u64 + value_bytes.len() as u64;
@@ -143,10 +144,14 @@ impl DbGlobalState {
                     )?;
                 }
                 None => {
-                    return Err(error::Error::CorruptLmdbStateRootDuringMigrationToRocksDb {
-                        trie_key: next_trie_key,
-                        state_root,
-                    });
+                    // Gracefully handle roots that only exist in rocksdb, unless we're forcing a
+                    // refresh of children (in the case where we have an incomplete root).
+                    if force || handle.read(rocksdb.clone(), &trie_key_bytes)?.is_none() {
+                        return Err(error::Error::CorruptLmdbStateRootDuringMigrationToRocksDb {
+                            trie_key: next_trie_key,
+                            state_root,
+                        });
+                    }
                 }
             }
             lmdb_txn.commit()?;
