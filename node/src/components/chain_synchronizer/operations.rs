@@ -574,7 +574,7 @@ async fn sync_trie_store(state_root_hash: Digest, ctx: Arc<ChainSyncContext>) ->
 /// Downloads a given trie and all of its descendants, then stores them into the trie store.
 ///
 /// Ensures that all descendant nodes are downloaded using post-order tree traversal, i.e. child
-/// nodes are recursively downloaded and store first before the parent node is stored.
+/// nodes are recursively downloaded and stored first before the parent node is stored.
 ///
 /// This function does not check for missing descendants for existing tries, the invariant of there
 /// being no trie nodes with missing descendants is assumed.
@@ -589,7 +589,7 @@ async fn recursive_trie_download(hash: Digest, ctx: Arc<ChainSyncContext>) -> Re
             Ok(())
         }
         TrieAlreadyPresentOrDownloaded::Downloaded(trie_bytes) => {
-            let mut descendent_handles: FuturesUnordered<_> =
+            let mut descendant_handles: FuturesUnordered<_> =
                 NetTrie::descendants_from_bytes(&trie_bytes)
                     .map_err(|err| Error::CorruptTrie {
                         hash,
@@ -603,7 +603,7 @@ async fn recursive_trie_download(hash: Digest, ctx: Arc<ChainSyncContext>) -> Re
                     })
                     .collect();
 
-            while let Some(result) = descendent_handles.next().await {
+            while let Some(result) = descendant_handles.next().await {
                 // Exit early if any of the descendant downloads failed.
                 result.map_err(Error::Join)??;
             }
