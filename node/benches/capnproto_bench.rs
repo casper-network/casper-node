@@ -2,8 +2,7 @@ use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
 
 use casper_types::U512;
 
-use casper_node::capnp::FromCapnpBytes;
-use casper_node::capnp::ToCapnpBytes;
+use casper_node::capnp::{FromCapnpBytes, ToCapnpBytes};
 
 fn capnp_serialize_u512(b: &mut Bencher) {
     let num_u512 = U512::default();
