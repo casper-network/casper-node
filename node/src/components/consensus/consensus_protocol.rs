@@ -252,7 +252,12 @@ pub(crate) trait ConsensusProtocol<C: Context>: Send {
     fn handle_is_current(&self, now: Timestamp) -> ProtocolOutcomes<C>;
 
     /// Triggers consensus' timer.
-    fn handle_timer(&mut self, timestamp: Timestamp, timer_id: TimerId) -> ProtocolOutcomes<C>;
+    fn handle_timer(
+        &mut self,
+        timestamp: Timestamp,
+        timer_id: TimerId,
+        rng: &mut NodeRng,
+    ) -> ProtocolOutcomes<C>;
 
     /// Triggers a queued action.
     fn handle_action(&mut self, action_id: ActionId, now: Timestamp) -> ProtocolOutcomes<C>;

@@ -590,8 +590,8 @@ impl EraSupervisor {
         timestamp: Timestamp,
         timer_id: TimerId,
     ) -> Effects<Event> {
-        self.delegate_to_era(effect_builder, rng, era_id, move |consensus, _| {
-            consensus.handle_timer(timestamp, timer_id)
+        self.delegate_to_era(effect_builder, rng, era_id, move |consensus, rng| {
+            consensus.handle_timer(timestamp, timer_id, rng)
         })
     }
 

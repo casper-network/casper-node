@@ -463,7 +463,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     }
 
     /// Request the latest state from a random peer.
-    fn handle_sync_peer_timer(&self, now: Timestamp) -> ProtocolOutcomes<C> {
+    fn handle_sync_peer_timer(&self, now: Timestamp, rng: &mut NodeRng) -> ProtocolOutcomes<C> {
         if self.evidence_only || self.finalized_switch_block() {
             return vec![]; // Era has ended. No further progress is expected.
         }
@@ -472,7 +472,13 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             "syncing with random peer",
         );
         // Inform a peer about our protocol state and schedule the next request.
-        let payload = self.create_sync_state_message().serialize();
+        let first_validator_idx = ValidatorIndex(rng.gen_range(0..self.weights.len() as u32));
+        let round_id = (self.first_non_finalized_round_id..=self.current_round)
+            .choose(rng)
+            .unwrap_or(self.current_round);
+        let payload = self
+            .create_sync_state_message(first_validator_idx, round_id)
+            .serialize();
         let mut outcomes = vec![ProtocolOutcome::CreatedMessageToRandomPeer(payload)];
         // Periodically sync the state with a random peer.
         // TODO: In this protocol the interval should be shorter than in Highway.
@@ -529,13 +535,12 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         );
     }
 
-    fn create_sync_state_message(&self) -> Message<C> {
-        let mut rng = rand::thread_rng(); // TODO: Pass in.
-        let first_validator_idx = ValidatorIndex(rng.gen_range(0..self.weights.len() as u32));
+    fn create_sync_state_message(
+        &self,
+        first_validator_idx: ValidatorIndex,
+        round_id: RoundId,
+    ) -> Message<C> {
         let faulty = self.validator_bit_field(first_validator_idx, self.faults.keys().cloned());
-        let round_id = (self.first_non_finalized_round_id..=self.current_round)
-            .choose(&mut rng)
-            .unwrap_or(self.current_round);
         let round = match self.round(round_id) {
             Some(round) => round,
             None => {
@@ -1838,9 +1843,14 @@ where
     }
 
     /// Handles the firing of various timers in the protocol.
-    fn handle_timer(&mut self, now: Timestamp, timer_id: TimerId) -> ProtocolOutcomes<C> {
+    fn handle_timer(
+        &mut self,
+        now: Timestamp,
+        timer_id: TimerId,
+        rng: &mut NodeRng,
+    ) -> ProtocolOutcomes<C> {
         match timer_id {
-            TIMER_ID_SYNC_PEER => self.handle_sync_peer_timer(now),
+            TIMER_ID_SYNC_PEER => self.handle_sync_peer_timer(now, rng),
             TIMER_ID_UPDATE => {
                 self.mark_dirty(self.current_round);
                 self.update()
@@ -1863,8 +1873,14 @@ where
     }
 
     fn handle_is_current(&self, now: Timestamp) -> ProtocolOutcomes<C> {
-        // Request latest protocol state of the current era.
-        let mut outcomes = self.handle_sync_peer_timer(now);
+        let mut outcomes = vec![];
+        // TODO: In this protocol the interval should be shorter than in Highway.
+        if let Some(interval) = self.config.request_state_interval {
+            outcomes.push(ProtocolOutcome::ScheduleTimer(
+                now.max(self.params.start_timestamp()) + interval / 100,
+                TIMER_ID_SYNC_PEER,
+            ));
+        }
         if let Some(interval) = self.config.log_participation_interval {
             outcomes.push(ProtocolOutcome::ScheduleTimer(
                 now.max(self.params.start_timestamp()) + interval,
@@ -2001,9 +2017,10 @@ where
     }
 
     fn request_evidence(&self, peer: NodeId, vid: &C::ValidatorId) -> ProtocolOutcomes<C> {
-        if self.validators.get_index(vid).is_some() {
+        if let Some(v_idx) = self.validators.get_index(vid) {
             // Send the peer a sync message, so they will send us evidence we are missing.
-            let payload = self.create_sync_state_message().serialize();
+            let round_id = self.current_round;
+            let payload = self.create_sync_state_message(v_idx, round_id).serialize();
             vec![ProtocolOutcome::CreatedTargetedMessage(payload, peer)]
         } else {
             error!(?vid, "unknown validator ID");
