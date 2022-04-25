@@ -20,6 +20,7 @@ impl From<CapnpError> for SerializeError {
 }
 
 /// Capnproto deserialization error.
+// TODO[RC]: Consider using `#[from]`
 #[derive(Debug)]
 pub enum DeserializeError {
     /// Capnproto serialization error.
@@ -28,6 +29,8 @@ pub enum DeserializeError {
     NotInSchema(capnp::NotInSchema),
     /// Error originating from `casper_types`.
     Types(casper_types::Error),
+    /// Set threshold failure.
+    SetThresholdFailure(casper_types::account::SetThresholdFailure),
 }
 
 impl From<CapnpError> for DeserializeError {
@@ -45,6 +48,12 @@ impl From<casper_types::Error> for DeserializeError {
 impl From<capnp::NotInSchema> for DeserializeError {
     fn from(err: capnp::NotInSchema) -> Self {
         Self::NotInSchema(err)
+    }
+}
+
+impl From<casper_types::account::SetThresholdFailure> for DeserializeError {
+    fn from(err: casper_types::account::SetThresholdFailure) -> Self {
+        Self::SetThresholdFailure(err)
     }
 }
 
