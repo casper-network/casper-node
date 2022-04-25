@@ -2053,7 +2053,7 @@ fn should_restrict_returned_blocks() {
 #[test]
 fn should_get_block_header_by_height() {
     let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&harness, EraId::from(5));
+    let mut storage = storage_fixture(&harness, EraId::from(u64::MAX));
 
     let (block, _) = Block::random_v1(&mut harness.rng);
     let expected_header = block.header().clone();
