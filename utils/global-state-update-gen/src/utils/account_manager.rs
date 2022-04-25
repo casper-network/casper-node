@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{btree_map::Entry, BTreeMap};
 
 use casper_engine_test_support::LmdbWasmTestBuilder;
 use casper_types::{
@@ -29,26 +29,20 @@ impl AccountManager {
         builder: &mut LmdbWasmTestBuilder,
         public_key: &PublicKey,
     ) -> &Account {
-        // unfortunately, `if let Some(account) = self.accounts.get(&public_key)` upsets the borrow
-        // checker, so we have to do it this way
-        if !self.accounts.contains_key(public_key) {
-            let account_hash = public_key.to_account_hash();
-            if let Some(account) = builder.get_account(account_hash) {
-                let _ = self.accounts.insert(public_key.clone(), account);
-                // unwrapping is safe, we just inserted it
-                self.accounts.get(public_key).unwrap()
-            } else {
-                self.create_account(public_key.clone());
-                // create_account inserts the account, so unwrapping is safe
-                self.accounts.get(public_key).unwrap()
+        match self.accounts.entry(public_key.clone()) {
+            Entry::Vacant(vac) => {
+                let account_hash = public_key.to_account_hash();
+                let account = match builder.get_account(account_hash) {
+                    Some(account) => account,
+                    None => Self::create_account(public_key.clone()),
+                };
+                vac.insert(account)
             }
-        } else {
-            // we know it contains the key, unwrapping safe
-            self.accounts.get(public_key).unwrap()
+            Entry::Occupied(occupied) => occupied.into_mut(),
         }
     }
 
-    fn create_account(&mut self, public_key: PublicKey) {
+    fn create_account(public_key: PublicKey) -> Account {
         let mut rng = rand::thread_rng();
         let new_purse = URef::new(rng.gen(), AccessRights::READ_ADD_WRITE);
 
@@ -71,6 +65,7 @@ impl AccountManager {
             &Key::Account(account_hash),
             &StoredValue::Account(account.clone()),
         );
-        let _ = self.accounts.insert(public_key, account);
+
+        account
     }
 }
