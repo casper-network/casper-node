@@ -1,14 +1,7 @@
 #[cfg(test)]
 mod tests;
 
-use std::{
-    cmp,
-    collections::{HashSet, VecDeque},
-    convert::TryInto,
-    mem,
-};
-
-use tracing::error;
+use std::{cmp, collections::VecDeque, convert::TryInto, mem};
 
 use casper_hashing::Digest;
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
@@ -229,52 +222,6 @@ where
             }
         }
     }
-}
-
-/// Given a root hash, find any trie keys that are descendant from it that are referenced but not
-/// present in the database.
-// TODO: We only need to check one trie key at a time
-pub fn missing_trie_keys<K, V, T, S, E>(
-    _correlation_id: CorrelationId,
-    txn: &T,
-    store: &S,
-    mut trie_keys_to_visit: Vec<Digest>,
-) -> Result<Vec<Digest>, E>
-where
-    K: ToBytes + FromBytes + Eq + std::fmt::Debug,
-    V: ToBytes + FromBytes + std::fmt::Debug,
-    T: Readable<Handle = S::Handle>,
-    S: TrieStore<K, V>,
-    S::Error: From<T::Error>,
-    E: From<S::Error> + From<bytesrepr::Error>,
-{
-    let mut missing_descendants = Vec::new();
-    let mut visited = HashSet::new();
-    while let Some(trie_key) = trie_keys_to_visit.pop() {
-        if !visited.insert(trie_key) {
-            continue;
-        }
-
-        let retrieved_trie_bytes = match store.get_raw(txn, &trie_key)? {
-            Some(bytes) => bytes,
-            None => {
-                // No entry under this trie key.
-                missing_descendants.push(trie_key);
-                continue;
-            }
-        };
-
-        match Trie::<K, V>::descendants_from_bytes(retrieved_trie_bytes) {
-            Ok(iter) => missing_descendants.extend(iter),
-            Err(err) => {
-                error!(?err, "unable to parse trie");
-                missing_descendants.push(trie_key);
-                continue;
-            }
-        }
-    }
-
-    Ok(missing_descendants)
 }
 
 struct TrieScan<K, V> {

@@ -10,7 +10,7 @@ use futures::{
 use prometheus::IntGauge;
 use quanta::Instant;
 use tokio::sync::Semaphore;
-use tracing::{error, info, trace, warn};
+use tracing::{info, trace, warn};
 
 use casper_execution_engine::storage::trie::{Trie, TrieOrChunk, TrieOrChunkId};
 use casper_hashing::Digest;
@@ -609,17 +609,7 @@ async fn recursive_trie_download(hash: Digest, ctx: Arc<ChainSyncContext>) -> Re
             }
 
             // At this point, we know all descendants are stored, so we store the parent node.
-            let descendants = ctx
-                .effect_builder
-                .put_trie_and_find_missing_descendant_trie_keys(trie_bytes)
-                .await?;
-
-            // Warn if we got an unexpected missing descendent.
-            if !descendants.is_empty() {
-                error!(trie_hash=%hash, "stored trie had missing descendants, even though they were all downloaded. this is a bug or the trie store is corrupted");
-
-                // Note: As an alternative, we can try to recover and download the missing items.
-            }
+            ctx.effect_builder.put_trie(trie_bytes).await?;
 
             Ok(())
         }

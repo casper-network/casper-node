@@ -1067,10 +1067,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Puts a trie into the trie store and asynchronously returns any missing descendant trie keys.
-    pub(crate) async fn put_trie_and_find_missing_descendant_trie_keys(
-        self,
-        trie_bytes: Bytes,
-    ) -> Result<Vec<Digest>, engine_state::Error>
+    pub(crate) async fn put_trie(self, trie_bytes: Bytes) -> Result<(), engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {

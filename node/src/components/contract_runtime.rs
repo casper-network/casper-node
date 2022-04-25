@@ -411,10 +411,7 @@ impl ContractRuntime {
                 async move {
                     let correlation_id = CorrelationId::new();
                     let start = Instant::now();
-                    let result = engine_state.put_trie_and_find_missing_descendant_trie_keys(
-                        correlation_id,
-                        &*trie_bytes,
-                    );
+                    let result = engine_state.put_trie(correlation_id, &*trie_bytes);
                     // PERF: this *could* be called only periodically.
                     if let Err(lmdb_error) = engine_state.flush_environment() {
                         fatal!(
@@ -653,9 +650,10 @@ impl ContractRuntime {
     ) -> Result<Vec<Digest>, engine_state::Error> {
         let correlation_id = CorrelationId::new();
         let start = Instant::now();
-        let result = self
-            .engine_state
-            .missing_trie_keys(correlation_id, trie_keys);
+        // let result = self
+        //     .engine_state
+        //     .missing_trie_keys(correlation_id, trie_keys);
+        let result = todo!();
         self.metrics
             .missing_trie_keys
             .observe(start.elapsed().as_secs_f64());

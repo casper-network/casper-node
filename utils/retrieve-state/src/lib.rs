@@ -463,10 +463,7 @@ pub async fn download_trie_channels(
                 }) => {
                     let mut missing_trie_descendants = tokio::task::block_in_place(|| {
                         engine_state
-                            .put_trie_and_find_missing_descendant_trie_keys(
-                                CorrelationId::new(),
-                                &trie_bytes,
-                            )
+                            .put_trie(CorrelationId::new(), &trie_bytes)
                             .unwrap()
                     });
 
@@ -899,11 +896,8 @@ async fn fetch_and_store_trie(
             }
 
             // similar to how the contract-runtime does related operations, spawn in a blocking task
-            tokio::task::spawn_blocking(move || {
-                engine_state
-                    .put_trie_and_find_missing_descendant_trie_keys(CorrelationId::new(), &bytes)
-            })
-            .await??
+            tokio::task::spawn_blocking(move || engine_state.put_trie(CorrelationId::new(), &bytes))
+                .await??
         }
         Ok(GetTrieResult {
             maybe_trie_bytes: None,

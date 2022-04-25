@@ -20,9 +20,7 @@ use crate::{
         trie::{merkle_proof::TrieMerkleProof, Trie, TrieOrChunk, TrieOrChunkId},
         trie_store::{
             lmdb::LmdbTrieStore,
-            operations::{
-                keys_with_prefix, missing_trie_keys, put_trie, read, read_with_proof, ReadResult,
-            },
+            operations::{keys_with_prefix, put_trie, read, read_with_proof, ReadResult},
         },
     },
 };
@@ -327,24 +325,6 @@ impl StateProvider for ScratchGlobalState {
         >(correlation_id, &mut txn, &self.trie_store, trie)?;
         txn.commit()?;
         Ok(trie_hash)
-    }
-
-    /// Finds all of the keys of missing descendant `Trie<K,V>` values
-    fn missing_trie_keys(
-        &self,
-        correlation_id: CorrelationId,
-        trie_keys: Vec<Digest>,
-    ) -> Result<Vec<Digest>, Self::Error> {
-        let txn = self.environment.create_read_txn()?;
-        let missing_descendants =
-            missing_trie_keys::<Key, StoredValue, lmdb::RoTransaction, LmdbTrieStore, Self::Error>(
-                correlation_id,
-                &txn,
-                self.trie_store.deref(),
-                trie_keys,
-            )?;
-        txn.commit()?;
-        Ok(missing_descendants)
     }
 }
 

@@ -925,9 +925,8 @@ pub(crate) enum ContractRuntimeRequest {
     PutTrie {
         /// The hash of the value to get from the `TrieStore`
         trie_bytes: Bytes,
-        /// Responder to call with the result. Contains the missing descendants of the inserted
-        /// trie.
-        responder: Responder<Result<Vec<Digest>, engine_state::Error>>,
+        /// Responder to call with the result.
+        responder: Responder<Result<(), engine_state::Error>>,
     },
     /// Execute a provided protoblock
     ExecuteBlock {
