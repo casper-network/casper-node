@@ -149,7 +149,6 @@ pub(crate) enum Error {
     CorruptTrie {
         /// The hash of the corrupt trie.
         hash: Digest,
-        #[serde(skip_serializing)]
         /// Decoding error description.
         error: String,
     },
