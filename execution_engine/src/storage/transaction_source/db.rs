@@ -133,25 +133,17 @@ impl Transaction for ScratchTrieStore {
 
 impl Readable for ScratchTrieStore {
     fn read(&self, handle: Self::Handle, key: &[u8]) -> Result<Option<Bytes>, Self::Error> {
-        handle
-            .store
-            .rocksdb
-            .db
-            .get(&key)
-            .map(|maybe_bytes| maybe_bytes.map(Bytes::from))
-            .map_err(|e| error::Error::Db(e.into()))
+        let store = &handle.store;
+        let txn = store.create_read_txn()?;
+        txn.read(handle.store.rocksdb(), key)
     }
 }
 
 impl Writable for ScratchTrieStore {
     fn write(&mut self, handle: Self::Handle, key: &[u8], value: &[u8]) -> Result<(), Self::Error> {
-        handle
-            .store
-            .rocksdb
-            .db
-            .put(&key, &value)
-            .map_err(|e| error::Error::Db(e.into()))?;
-        Ok(())
+        let store = &handle.store;
+        let mut txn = store.create_read_write_txn()?;
+        txn.write(store.rocksdb(), key, value)
     }
 }
 
@@ -240,8 +232,8 @@ impl RocksDbStore {
 
     /// Get a reference to the rocks db store's rocksdb.
     #[must_use]
-    pub fn rocksdb(&self) -> &RocksDb {
-        &self.rocksdb
+    pub fn rocksdb(&self) -> RocksDb {
+        self.rocksdb.clone()
     }
 }
 

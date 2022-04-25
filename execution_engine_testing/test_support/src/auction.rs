@@ -116,10 +116,9 @@ pub fn run_blocks_with_transfers_and_step(
     let mut total_transfers = 0;
     {
         let engine_state = builder.get_engine_state();
-        let rocksdb = engine_state.get_state().get_rocksdb_store();
+        let rocksdb = engine_state.get_state().get_rocksdb_store().rocksdb();
 
         let existing_keys = rocksdb
-            .rocksdb()
             .trie_store_iterator()
             .expect("unable to get iterator")
             .map(|(key, _)| Digest::try_from(&*key).expect("should be a digest"));
@@ -174,9 +173,8 @@ pub fn run_blocks_with_transfers_and_step(
 
         let total_tries = {
             let engine_state = builder.get_engine_state();
-            let rocksdb = engine_state.get_state().get_rocksdb_store();
+            let rocksdb = engine_state.get_state().get_rocksdb_store().rocksdb();
             let trie_store_iter = rocksdb
-                .rocksdb()
                 .trie_store_iterator()
                 .expect("unable to get iterator");
             trie_store_iter.count()
