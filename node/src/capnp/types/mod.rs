@@ -8,6 +8,7 @@ mod digest;
 mod era;
 mod public_key;
 mod test;
+mod weight;
 
 pub trait ToCapnpBuilder<T> {
     fn try_to_builder(&mut self, object: &T) -> Result<(), super::SerializeError>;
