@@ -423,6 +423,7 @@ fn simple_consensus_faults() {
 
     let alice_kp = Keypair::from(ALICE_SECRET_KEY.clone());
     let bob_kp = Keypair::from(BOB_SECRET_KEY.clone());
+    let carol_kp = Keypair::from(CAROL_SECRET_KEY.clone());
 
     let sender = *ALICE_NODE_ID;
     let timestamp = Timestamp::now();
@@ -468,6 +469,15 @@ fn simple_consensus_faults() {
     let msg = create_message(&validators, 3, vote(false), &bob_kp);
     let outcomes = sc.handle_message(&mut rng, sender, msg, timestamp);
     expect_finalized(&outcomes, &[(&proposal1, 0), (&proposal2, 1)]);
+
+    // Now Carol starts two nodes by mistake, and equivocates. That crosses the FTT.
+    let msg = create_message(&validators, 3, vote(true), &carol_kp);
+    expect_no_gossip_block_finalized(sc.handle_message(&mut rng, sender, msg, timestamp));
+    let msg = create_message(&validators, 3, vote(false), &carol_kp);
+    let outcomes = sc.handle_message(&mut rng, sender, msg, timestamp);
+    assert!(outcomes
+        .iter()
+        .any(|outcome| { matches!(outcome, ProtocolOutcome::FttExceeded) }));
 }
 
 #[test]
