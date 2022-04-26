@@ -1991,6 +1991,7 @@ dependencies = [
  "casper-types",
  "clap 2.34.0",
  "lmdb",
+ "rand 0.8.4",
 ]
 
 [[package]]
