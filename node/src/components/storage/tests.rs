@@ -1738,11 +1738,30 @@ fn setup_range(low: u64, high: u64) -> ComponentHarness<UnitTestEvent> {
     let mut harness = ComponentHarness::default();
     let verifiable_chunked_hash_activation = EraId::new(u64::MAX);
 
+    let era_id = EraId::new(harness.rng.gen_range(0..100));
+    let block = Block::random_with_specifics(
+        &mut harness.rng,
+        era_id,
+        low,
+        ProtocolVersion::V1_0_0,
+        false,
+        verifiable_chunked_hash_activation,
+    );
+
     let storage = storage_fixture(&harness, verifiable_chunked_hash_activation);
-    let (block, _) = random_block_at_height(&mut harness.rng, low, Block::random_v1);
     storage.storage.write_block(&block).unwrap();
-    let (block, _) = random_block_at_height(&mut harness.rng, high, Block::random_v1);
+
+    let is_switch = harness.rng.gen_bool(0.1);
+    let block = Block::random_with_specifics(
+        &mut harness.rng,
+        era_id,
+        high,
+        ProtocolVersion::V1_0_0,
+        is_switch,
+        verifiable_chunked_hash_activation,
+    );
     storage.storage.write_block(&block).unwrap();
+
     storage
         .storage
         .update_lowest_available_block_height(low)
