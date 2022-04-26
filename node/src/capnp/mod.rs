@@ -31,6 +31,8 @@ pub enum DeserializeError {
     Types(casper_types::Error),
     /// Set threshold failure.
     SetThresholdFailure(casper_types::account::SetThresholdFailure),
+    /// Add key failure
+    AddKeyFailure(casper_types::account::AddKeyFailure),
 }
 
 impl From<CapnpError> for DeserializeError {
@@ -54,6 +56,12 @@ impl From<capnp::NotInSchema> for DeserializeError {
 impl From<casper_types::account::SetThresholdFailure> for DeserializeError {
     fn from(err: casper_types::account::SetThresholdFailure) -> Self {
         Self::SetThresholdFailure(err)
+    }
+}
+
+impl From<casper_types::account::AddKeyFailure> for DeserializeError {
+    fn from(err: casper_types::account::AddKeyFailure) -> Self {
+        Self::AddKeyFailure(err)
     }
 }
 

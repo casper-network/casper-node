@@ -1,5 +1,6 @@
 mod account_hash;
 mod action_thresholds;
+mod associated_keys;
 mod block;
 mod block_body;
 mod block_header;
