@@ -385,7 +385,7 @@ fn simple_consensus_no_fault() {
     timestamp += round_len;
 
     // In round 3 Carol is the leader, so she creates a new block to propose.
-    let mut outcomes = sc_c.handle_timer(timestamp, TIMER_ID_UPDATE);
+    let mut outcomes = sc_c.handle_timer(timestamp, TIMER_ID_UPDATE, &mut rng);
     let block_context = remove_create_new_block(&mut outcomes);
     expect_no_gossip_block_finalized(outcomes);
     assert_eq!(block_context.timestamp(), timestamp);
@@ -530,7 +530,7 @@ fn simple_consensus_standstill_alert() {
 
     timestamp += timeout;
 
-    let outcomes = sc_c.handle_timer(timestamp, TIMER_ID_STANDSTILL_ALERT);
+    let outcomes = sc_c.handle_timer(timestamp, TIMER_ID_STANDSTILL_ALERT, &mut rng);
     assert!(!has_standstill_alert(&outcomes));
     expect_timer(&outcomes, timestamp + timeout, TIMER_ID_STANDSTILL_ALERT);
 
@@ -540,7 +540,7 @@ fn simple_consensus_standstill_alert() {
 
     timestamp += timeout;
 
-    let outcomes = sc_c.handle_timer(timestamp, TIMER_ID_STANDSTILL_ALERT);
+    let outcomes = sc_c.handle_timer(timestamp, TIMER_ID_STANDSTILL_ALERT, &mut rng);
     assert!(!has_standstill_alert(&outcomes));
     expect_timer(&outcomes, timestamp + timeout, TIMER_ID_STANDSTILL_ALERT);
 
@@ -550,7 +550,7 @@ fn simple_consensus_standstill_alert() {
 
     timestamp += timeout;
 
-    let outcomes = sc_c.handle_timer(timestamp, TIMER_ID_STANDSTILL_ALERT);
+    let outcomes = sc_c.handle_timer(timestamp, TIMER_ID_STANDSTILL_ALERT, &mut rng);
     assert!(!has_standstill_alert(&outcomes));
     expect_timer(&outcomes, timestamp + timeout, TIMER_ID_STANDSTILL_ALERT);
 
@@ -560,7 +560,7 @@ fn simple_consensus_standstill_alert() {
 
     timestamp += timeout;
 
-    let outcomes = sc_c.handle_timer(timestamp, TIMER_ID_STANDSTILL_ALERT);
+    let outcomes = sc_c.handle_timer(timestamp, TIMER_ID_STANDSTILL_ALERT, &mut rng);
     assert!(has_standstill_alert(&outcomes));
 }
 
