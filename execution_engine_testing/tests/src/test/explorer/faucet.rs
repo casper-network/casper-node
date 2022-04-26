@@ -33,7 +33,7 @@ fn should_install_faucet_contract() {
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST).commit();
 
     let fund_installer_account_request = FundAccountRequestBuilder::new()
-        .with_target_account(*INSTALLER_ACCOUNT)
+        .with_target_account(INSTALLER_ACCOUNT)
         .with_fund_amount(U512::from(INSTALLER_FUND_AMOUNT))
         .build();
 
@@ -50,7 +50,7 @@ fn should_install_faucet_contract() {
         .commit();
 
     let installer_named_keys = builder
-        .get_expected_account(*INSTALLER_ACCOUNT)
+        .get_expected_account(INSTALLER_ACCOUNT)
         .named_keys()
         .clone();
 
@@ -131,7 +131,7 @@ fn should_allow_installer_to_set_variables() {
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST).commit();
 
     let mut helper = FaucetDeployHelper::new()
-        .with_installer_account(*INSTALLER_ACCOUNT)
+        .with_installer_account(INSTALLER_ACCOUNT)
         .with_installer_fund_amount(U512::from(INSTALLER_FUND_AMOUNT))
         .with_faucet_purse_fund_amount(U512::from(FAUCET_FUND_AMOUNT))
         .with_faucet_available_amount(Some(U512::from(FAUCET_FUND_AMOUNT)))
@@ -240,7 +240,7 @@ fn should_fund_new_account() {
         .expect_success()
         .commit();
 
-    helper.query_and_set_faucet_contract_hash(&mut builder);
+    helper.query_and_set_faucet_contract_hash(&builder);
 
     builder
         .exec(helper.faucet_config_request())
@@ -257,7 +257,7 @@ fn should_fund_new_account() {
         .with_arg_fund_amount(new_account_fund_amount)
         .build();
 
-    let faucet_purse_uref = helper.query_faucet_purse(&mut builder);
+    let faucet_purse_uref = helper.query_faucet_purse(&builder);
     let faucet_purse_balance_before = builder.get_purse_balance(faucet_purse_uref);
 
     builder
@@ -313,7 +313,7 @@ fn should_fund_existing_account() {
         .expect_success()
         .commit();
 
-    helper.query_and_set_faucet_contract_hash(&mut builder);
+    helper.query_and_set_faucet_contract_hash(&builder);
 
     builder
         .exec(helper.faucet_config_request())
@@ -371,7 +371,7 @@ fn should_not_fund_once_exhausted2() {
         .expect_success()
         .commit();
 
-    helper.query_and_set_faucet_contract_hash(&mut builder);
+    helper.query_and_set_faucet_contract_hash(&builder);
 
     builder
         .exec(helper.faucet_config_request())
@@ -728,7 +728,7 @@ fn should_allow_funding_by_an_authorized_account() {
         .expect_success()
         .commit();
 
-    helper.query_and_set_faucet_contract_hash(&mut builder);
+    helper.query_and_set_faucet_contract_hash(&builder);
 
     builder
         .exec(helper.faucet_config_request())

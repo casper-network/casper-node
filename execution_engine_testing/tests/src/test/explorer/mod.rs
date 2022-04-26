@@ -2,7 +2,6 @@ mod faucet;
 pub mod faucet_test_helpers;
 
 use casper_types::account::AccountHash;
-use once_cell::sync::Lazy;
 
 // Test constants.
 pub const FAUCET_INSTALLER_SESSION: &str = "faucet_stored.wasm";
@@ -10,7 +9,7 @@ pub const FAUCET_CONTRACT_NAMED_KEY: &str = "faucet";
 pub const INSTALLER_FUND_AMOUNT: u64 = 500_000_000_000_000;
 pub const TWO_HOURS_AS_MILLIS: u64 = 7_200_000;
 pub const FAUCET_ID: u64 = 1337;
-pub const INSTALLER_ACCOUNT: Lazy<AccountHash> = Lazy::new(|| AccountHash::new([1u8; 32]));
+pub const INSTALLER_ACCOUNT: AccountHash = AccountHash::new([1u8; 32]);
 pub const FAUCET_FUND_AMOUNT: u64 = 500_000u64;
 //pub const FAUCET_DISTRIBUTIONS_PER_INTERVAL: u64 = 1;
 pub const FAUCET_TIME_INTERVAL: u64 = 10_000;

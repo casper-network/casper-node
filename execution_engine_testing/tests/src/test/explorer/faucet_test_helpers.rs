@@ -60,7 +60,7 @@ impl FundAccountRequestBuilder {
 impl Default for FundAccountRequestBuilder {
     fn default() -> Self {
         Self {
-            target_account: *INSTALLER_ACCOUNT,
+            target_account: INSTALLER_ACCOUNT,
             fund_amount: U512::from(INSTALLER_FUND_AMOUNT),
             fund_id: None,
         }
@@ -116,7 +116,7 @@ impl FaucetInstallSessionRequestBuilder {
 impl Default for FaucetInstallSessionRequestBuilder {
     fn default() -> Self {
         Self {
-            installer_account: *INSTALLER_ACCOUNT,
+            installer_account: INSTALLER_ACCOUNT,
             faucet_installer_session: FAUCET_INSTALLER_SESSION.to_string(),
             faucet_id: FAUCET_ID,
             faucet_fund_amount: FAUCET_FUND_AMOUNT.into(),
@@ -181,7 +181,7 @@ impl FaucetConfigRequestBuilder {
 impl Default for FaucetConfigRequestBuilder {
     fn default() -> Self {
         Self {
-            installer_account: *INSTALLER_ACCOUNT,
+            installer_account: INSTALLER_ACCOUNT,
             faucet_contract_hash: None,
             available_amount: None,
             time_interval: None,
@@ -234,7 +234,7 @@ impl FaucetAuthorizeAccountRequestBuilder {
 impl Default for FaucetAuthorizeAccountRequestBuilder {
     fn default() -> Self {
         Self {
-            installer_account: *INSTALLER_ACCOUNT,
+            installer_account: INSTALLER_ACCOUNT,
             authorized_account_public_key: None,
             faucet_contract_hash: None,
         }
@@ -252,7 +252,7 @@ impl FaucetCallerAccount {
         match self {
             FaucetCallerAccount::Installer(account_hash)
             | FaucetCallerAccount::Authorized(account_hash)
-            | FaucetCallerAccount::User(account_hash) => account_hash.clone(),
+            | FaucetCallerAccount::User(account_hash) => *account_hash,
         }
     }
 }
@@ -358,7 +358,7 @@ impl Default for FaucetFundRequestBuilder {
             arg_fund_amount: None,
             payment_amount: U512::from(FAUCET_CALL_DEFAULT_PAYMENT),
             faucet_contract_hash: None,
-            caller_account: FaucetCallerAccount::Installer(*INSTALLER_ACCOUNT),
+            caller_account: FaucetCallerAccount::Installer(INSTALLER_ACCOUNT),
             arg_target: None,
             arg_id: None,
             block_time: None,
@@ -394,15 +394,6 @@ pub fn get_faucet_contract_hash(
         .map(ContractHash::new)
         .expect("failed to find faucet contract")
 }
-
-// pub fn get_faucet_key(builder: &InMemoryWasmTestBuilder, installer_account: AccountHash) -> Key {
-//     builder
-//         .get_expected_account(installer_account)
-//         .named_keys()
-//         .get(&format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID))
-//         .cloned()
-//         .expect("failed to find faucet key")
-// }
 
 pub fn get_faucet_contract(
     builder: &InMemoryWasmTestBuilder,
@@ -483,7 +474,7 @@ impl FaucetDeployHelper {
     }
 
     pub fn installer_account(&self) -> AccountHash {
-        self.installer_account.clone()
+        self.installer_account
     }
 
     pub fn with_installer_account(mut self, installer_account: AccountHash) -> Self {
@@ -571,7 +562,7 @@ impl FaucetDeployHelper {
     }
 
     pub fn faucet_contract_hash(&self) -> Option<ContractHash> {
-        self.faucet_contract_hash.clone()
+        self.faucet_contract_hash
     }
 
     pub fn faucet_distributions_per_interval(&self) -> Option<u64> {
@@ -638,7 +629,7 @@ impl Default for FaucetDeployHelper {
     fn default() -> Self {
         Self {
             installer_fund_amount: U512::from(INSTALLER_FUND_AMOUNT),
-            installer_account: *INSTALLER_ACCOUNT,
+            installer_account: INSTALLER_ACCOUNT,
             installer_fund_id: None,
             authorized_user_public_key: None,
             faucet_installer_session: FAUCET_INSTALLER_SESSION.to_string(),
