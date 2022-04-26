@@ -416,7 +416,7 @@ impl<K, V> Trie<K, V> {
     }
 
     /// Returns an iterator over descendants of the trie.
-    pub fn iter_descendants(&self) -> DescendantsIterator {
+    pub fn iter_children(&self) -> DescendantsIterator {
         match self {
             Trie::<K, V>::Leaf { .. } => DescendantsIterator::ZeroOrOne(None),
             Trie::Node { pointer_block } => DescendantsIterator::PointerBlock {
