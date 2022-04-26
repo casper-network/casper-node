@@ -194,13 +194,26 @@ fn expect_no_gossip_block_finalized(outcomes: ProtocolOutcomes<ClContext>) {
 
 /// Checks that the expected timer was requested by the protocol.
 fn expect_timer(outcomes: &ProtocolOutcomes<ClContext>, timestamp: Timestamp, timer_id: TimerId) {
-    assert!(outcomes.iter().any(|outcome| {
-        if let ProtocolOutcome::ScheduleTimer(actual_time, actual_id) = outcome {
-            *actual_time == timestamp && *actual_id == timer_id
-        } else {
-            false
-        }
-    }));
+    assert!(
+        outcomes.iter().any(|outcome| {
+            if let ProtocolOutcome::ScheduleTimer(actual_time, actual_id) = outcome {
+                *actual_time == timestamp && *actual_id == timer_id
+            } else {
+                false
+            }
+        }),
+        "missing timer {} for {:?} from {:?}",
+        timer_id.0,
+        timestamp,
+        outcomes
+    );
+}
+
+/// Returns whether any of the outcomes is a standstill alert.
+fn has_standstill_alert(outcomes: &ProtocolOutcomes<ClContext>) -> bool {
+    outcomes
+        .iter()
+        .any(|outcome| matches!(outcome, ProtocolOutcome::StandstillAlert))
 }
 
 /// Creates a new payload with the given random bit and no deploys or transfers.
@@ -479,6 +492,76 @@ fn simple_consensus_faults() {
     assert!(outcomes
         .iter()
         .any(|outcome| { matches!(outcome, ProtocolOutcome::FttExceeded) }));
+}
+
+/// Tests that the standstill alert is raised if and only if no new messages were received.
+#[test]
+fn simple_consensus_standstill_alert() {
+    let mut rng = crate::new_rng();
+    let (weights, validators) = abc_weights(60, 30, 10);
+    let alice_idx = validators.get_index(&*ALICE_PUBLIC_KEY).unwrap();
+
+    // The first round leader is Alice.
+    let mut sc_c = new_test_simple_consensus(weights, vec![], &[alice_idx]);
+
+    let alice_kp = Keypair::from(ALICE_SECRET_KEY.clone());
+    let carol_kp = Keypair::from(CAROL_SECRET_KEY.clone());
+
+    sc_c.activate_validator(CAROL_PUBLIC_KEY.clone(), carol_kp, Timestamp::now(), None);
+
+    let timeout = sc_c.config.standstill_timeout.expect("standstill timeout");
+    let sender = *ALICE_NODE_ID;
+    let mut timestamp = Timestamp::from(100000);
+
+    let proposal0 = Proposal {
+        timestamp,
+        maybe_block: Some(new_payload(false)),
+        maybe_parent_round_id: None,
+        inactive: None,
+    };
+    let hash0 = proposal0.hash();
+
+    let outcomes = sc_c.handle_is_current(timestamp);
+    expect_timer(&outcomes, timestamp + timeout, TIMER_ID_STANDSTILL_ALERT);
+
+    // We receive a vote by Alice; this counts as progress, so there is no standstill.
+    let msg = create_message(&validators, 2, vote(true), &alice_kp);
+    sc_c.handle_message(&mut rng, sender, msg, timestamp);
+
+    timestamp += timeout;
+
+    let outcomes = sc_c.handle_timer(timestamp, TIMER_ID_STANDSTILL_ALERT);
+    assert!(!has_standstill_alert(&outcomes));
+    expect_timer(&outcomes, timestamp + timeout, TIMER_ID_STANDSTILL_ALERT);
+
+    // An echo also counts as progress.
+    let msg = create_message(&validators, 0, echo(hash0), &alice_kp);
+    sc_c.handle_message(&mut rng, sender, msg, timestamp);
+
+    timestamp += timeout;
+
+    let outcomes = sc_c.handle_timer(timestamp, TIMER_ID_STANDSTILL_ALERT);
+    assert!(!has_standstill_alert(&outcomes));
+    expect_timer(&outcomes, timestamp + timeout, TIMER_ID_STANDSTILL_ALERT);
+
+    // So does a proposal.
+    let msg = create_message(&validators, 0, proposal(&proposal0), &alice_kp);
+    sc_c.handle_message(&mut rng, sender, msg, timestamp);
+
+    timestamp += timeout;
+
+    let outcomes = sc_c.handle_timer(timestamp, TIMER_ID_STANDSTILL_ALERT);
+    assert!(!has_standstill_alert(&outcomes));
+    expect_timer(&outcomes, timestamp + timeout, TIMER_ID_STANDSTILL_ALERT);
+
+    // A message we already have doesn't count as progress, though.
+    let msg = create_message(&validators, 2, vote(true), &alice_kp);
+    expect_no_gossip_block_finalized(sc_c.handle_message(&mut rng, sender, msg, timestamp));
+
+    timestamp += timeout;
+
+    let outcomes = sc_c.handle_timer(timestamp, TIMER_ID_STANDSTILL_ALERT);
+    assert!(has_standstill_alert(&outcomes));
 }
 
 #[test]
