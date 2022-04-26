@@ -13,7 +13,7 @@ use casper_types::{PublicKey, U512};
 use crate::{
     components::consensus::{
         cl_context::ClContext,
-        consensus_protocol::{ConsensusProtocol, ProposedBlock, ProtocolOutcomes},
+        consensus_protocol::{ConsensusProtocol, ProposedBlock},
         protocols::highway::HighwayProtocol,
     },
     types::Timestamp,
@@ -154,11 +154,6 @@ impl Era {
     /// Returns the map of validator weights.
     pub(crate) fn validators(&self) -> &BTreeMap<PublicKey, U512> {
         &self.validators
-    }
-
-    /// Sets the pause status: While paused we don't create consensus messages other than pings.
-    pub(crate) fn set_paused(&mut self, paused: bool) -> ProtocolOutcomes<ClContext> {
-        self.consensus.set_paused(paused)
     }
 }
 
