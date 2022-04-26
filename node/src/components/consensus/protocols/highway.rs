@@ -867,7 +867,12 @@ where
         }
     }
 
-    fn handle_timer(&mut self, now: Timestamp, timer_id: TimerId) -> ProtocolOutcomes<C> {
+    fn handle_timer(
+        &mut self,
+        now: Timestamp,
+        timer_id: TimerId,
+        _rng: &mut NodeRng,
+    ) -> ProtocolOutcomes<C> {
         match timer_id {
             TIMER_ID_ACTIVE_VALIDATOR => {
                 let effects = self.highway.handle_timer(now);
