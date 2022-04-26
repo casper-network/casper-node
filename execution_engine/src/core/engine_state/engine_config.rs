@@ -1,5 +1,7 @@
 //! Support for runtime configuration of the execution engine - as an integral property of the
 //! `EngineState` instance.
+use casper_types::account::AccountHash;
+
 use crate::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
 
 use super::genesis::AdministratorAccount;
@@ -16,6 +18,10 @@ pub const DEFAULT_MINIMUM_DELEGATION_AMOUNT: u64 = 500 * 1_000_000_000;
 pub const DEFAULT_STRICT_ARGUMENT_CHECKING: bool = false;
 /// Default value for allowing auction bids.
 pub const DEFAULT_ALLOW_AUCTION_BIDS: bool = true;
+/// Default value for allowing p2p transfers
+pub const DEFAULT_ALLOW_P2P_TRANSFERS: bool = true;
+
+///
 /// The runtime configuration of the execution engine
 #[derive(Debug, Clone)]
 pub struct EngineConfig {
@@ -36,6 +42,13 @@ pub struct EngineConfig {
     /// Auction entrypoints such as "add_bid" or "delegate" are disabled if this flag is set to
     /// `true`.
     allow_auction_bids: bool,
+    /// Allow p2p transfers between normal accounts.
+    ///
+    /// If set to `true` accounts can transfer tokens between themselves without restrictions (aka
+    /// public chain mode). If set to `false` tokens can be transferred only from normal
+    /// accounts to administrators and administrators to normal accounts but not normal accounts to
+    /// normal accounts (aka private chain mode).
+    allow_p2p_transfers: bool,
 }
 
 impl Default for EngineConfig {
@@ -50,6 +63,7 @@ impl Default for EngineConfig {
             system_config: SystemConfig::default(),
             administrative_accounts: Vec::default(),
             allow_auction_bids: DEFAULT_ALLOW_AUCTION_BIDS,
+            allow_p2p_transfers: DEFAULT_ALLOW_P2P_TRANSFERS,
         }
     }
 }
@@ -102,6 +116,29 @@ impl EngineConfig {
     pub fn allow_auction_bids(&self) -> bool {
         self.allow_auction_bids
     }
+
+    /// Get the engine config's allow p2p transfers.
+    #[must_use]
+    pub fn allow_p2p_transfers(&self) -> bool {
+        self.allow_p2p_transfers
+    }
+
+    /// Checks if an account hash is an administrator.
+    ///
+    /// This method returns a `None` if chain is not configured in a private chain. Otherwise Some
+    /// with a value whether passed account hash is an admin.
+    #[must_use]
+    pub(crate) fn is_account_administrator(&self, account_hash: &AccountHash) -> Option<bool> {
+        let mut admins = self.administrative_accounts().iter().peekable();
+
+        // Ensure it's a private chain and there's at least one administrator configured.
+        admins.peek()?;
+
+        // Find an administrator by its public key.
+        let has_admin_account_hash =
+            admins.any(|admin| &admin.public_key().to_account_hash() == account_hash);
+        Some(has_admin_account_hash)
+    }
 }
 
 /// This is a builder pattern applied to the [`EngineConfig`] structure to shield any changes to the
@@ -119,6 +156,7 @@ pub struct EngineConfigBuilder {
     strict_argument_checking: Option<bool>,
     administrative_accounts: Option<Vec<AdministratorAccount>>,
     allow_auction_bids: Option<bool>,
+    allow_p2p_transfers: Option<bool>,
 }
 
 impl EngineConfigBuilder {
@@ -194,6 +232,12 @@ impl EngineConfigBuilder {
         self
     }
 
+    /// Set the engine config builder's allow p2p transfers.
+    pub fn with_allow_p2p_transfers(mut self, allow_p2p_transfers: bool) -> Self {
+        self.allow_p2p_transfers = Some(allow_p2p_transfers);
+        self
+    }
+
     /// Build a new [`EngineConfig`] object.
     pub fn build(self) -> EngineConfig {
         let max_query_depth = self.max_query_depth.unwrap_or(DEFAULT_MAX_QUERY_DEPTH);
@@ -212,7 +256,12 @@ impl EngineConfigBuilder {
         let wasm_config = self.wasm_config.unwrap_or_default();
         let system_config = self.system_config.unwrap_or_default();
         let administrative_accounts = self.administrative_accounts.unwrap_or_default();
-        let allow_auction_bids = self.allow_auction_bids.unwrap_or(true);
+        let allow_auction_bids = self
+            .allow_auction_bids
+            .unwrap_or(DEFAULT_ALLOW_AUCTION_BIDS);
+        let allow_p2p_transfers = self
+            .allow_p2p_transfers
+            .unwrap_or(DEFAULT_ALLOW_P2P_TRANSFERS);
         EngineConfig {
             max_query_depth,
             max_associated_keys,
@@ -223,6 +272,7 @@ impl EngineConfigBuilder {
             system_config,
             administrative_accounts,
             allow_auction_bids,
+            allow_p2p_transfers,
         }
     }
 }

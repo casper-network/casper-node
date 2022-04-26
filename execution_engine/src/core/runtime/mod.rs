@@ -2250,6 +2250,21 @@ where
     ) -> Result<TransferResult, Error> {
         let _scoped_host_function_flag = self.host_function_flag.enter_host_function_scope();
 
+        if let Some(is_source_admin) = self
+            .config
+            .is_account_administrator(&self.context.get_caller())
+        {
+            let is_target_admin = self
+                .config
+                .is_account_administrator(&target)
+                .expect("is_account_administrator() returns Some(_) on a private chain");
+
+            if !is_source_admin && !is_target_admin {
+                // Transferring from normal account to a purse doesn't work.
+                return Err(Error::DisabledP2PTransfers);
+            }
+        }
+
         let target_key = Key::Account(target);
         // Look up the account at the given public key's address
         match self.context.read_account(&target_key)? {

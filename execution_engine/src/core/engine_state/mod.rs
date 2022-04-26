@@ -604,16 +604,7 @@ where
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
         };
 
-        let base_key = Key::Account(deploy_item.address);
-
-        let account_hash = match base_key.into_account() {
-            Some(account_addr) => account_addr,
-            None => {
-                return Ok(ExecutionResult::precondition_failure(
-                    error::Error::Authorization,
-                ));
-            }
-        };
+        let account_hash = deploy_item.address;
 
         let authorization_keys = deploy_item.authorization_keys;
 
@@ -737,61 +728,99 @@ where
         let mut runtime_args_builder =
             TransferRuntimeArgsBuilder::new(deploy_item.session.args().clone());
 
-        match runtime_args_builder.transfer_target_mode(correlation_id, Rc::clone(&tracking_copy)) {
-            Ok(mode) => match mode {
-                TransferTargetMode::Unknown | TransferTargetMode::PurseExists(_) => { /* noop */ }
-                TransferTargetMode::CreateAccount(account_hash) => {
-                    let create_purse_stack = self.get_new_system_call_stack();
-                    let (maybe_uref, execution_result): (Option<URef>, ExecutionResult) = executor
-                        .call_system_contract(
-                            DirectSystemContractCall::CreatePurse,
-                            RuntimeArgs::new(), // mint create takes no arguments
-                            &account,
-                            authorization_keys.clone(),
-                            blocktime,
-                            deploy_item.deploy_hash,
-                            gas_limit,
-                            protocol_version,
-                            correlation_id,
-                            Rc::clone(&tracking_copy),
-                            Phase::Session,
-                            create_purse_stack,
-                            // We're just creating a purse.
-                            U512::zero(),
-                        );
-                    match maybe_uref {
-                        Some(main_purse) => {
-                            let admin_accounts = self.config.administrative_accounts().clone();
-                            let account_kind = AccountConfig::from(admin_accounts);
+        let transfer_target_mode = match runtime_args_builder
+            .resolve_transfer_target_mode(correlation_id, Rc::clone(&tracking_copy))
+        {
+            Ok(transfer_target_mode) => transfer_target_mode,
+            Err(error) => return Ok(make_charged_execution_failure(error)),
+        };
 
-                            let new_account = match account::create_account(
-                                account_kind,
-                                account_hash,
-                                main_purse,
-                            )
-                            .map_err(Error::reverter)
+        // At this point we know target refers to either a purse on an existing account or an
+        // account which has to be created.
+
+        if let Some(is_source_admin) = self.config.is_account_administrator(&account_hash) {
+            // Under private chain operation mode we need to ensure that source or target has to be
+            // admin.
+            match transfer_target_mode {
+                TransferTargetMode::ExistingAccount {
+                    target_account_hash,
+                    ..
+                }
+                | TransferTargetMode::CreateAccount(target_account_hash) => {
+                    // SAFETY: `is_account_administrator` will always returns `Some(_)` for private
+                    // chains.
+                    let is_target_admin = self
+                        .config
+                        .is_account_administrator(&target_account_hash)
+                        .expect("is_account_administrator() returns Some(_) on a private chain");
+
+                    if !is_source_admin && !is_target_admin {
+                        // Transferring from normal account to a purse doesn't work.
+                        return Ok(make_charged_execution_failure(
+                            execution::Error::DisabledP2PTransfers.into(),
+                        ));
+                    }
+                }
+                TransferTargetMode::PurseExists(_) => {
+                    // We don't know who is the target and we can't simply reverse search
+                    // account/contract that owns it. So we will simply defer purse ownership checks
+                    // before mint's transfer system contract call will happen.
+                    // This will allow native transfers to purses owned by the caller.
+                }
+            }
+        }
+
+        match transfer_target_mode {
+            TransferTargetMode::ExistingAccount { .. } | TransferTargetMode::PurseExists(_) => {
+                // Noop
+            }
+            TransferTargetMode::CreateAccount(account_hash) => {
+                let create_purse_stack = self.get_new_system_call_stack();
+                let (maybe_uref, execution_result): (Option<URef>, ExecutionResult) = executor
+                    .call_system_contract(
+                        DirectSystemContractCall::CreatePurse,
+                        RuntimeArgs::new(), // mint create takes no arguments
+                        &account,
+                        authorization_keys.clone(),
+                        blocktime,
+                        deploy_item.deploy_hash,
+                        gas_limit,
+                        protocol_version,
+                        correlation_id,
+                        Rc::clone(&tracking_copy),
+                        Phase::Session,
+                        create_purse_stack,
+                        // We're just creating a purse.
+                        U512::zero(),
+                    );
+                match maybe_uref {
+                    Some(main_purse) => {
+                        let admin_accounts = self.config.administrative_accounts().clone();
+                        let account_kind = AccountConfig::from(admin_accounts);
+
+                        let new_account =
+                            match account::create_account(account_kind, account_hash, main_purse)
+                                .map_err(Error::reverter)
                             {
                                 Ok(account) => account,
                                 Err(error) => return Ok(make_charged_execution_failure(error)),
                             };
-                            // write new account
-                            let _ = tracking_copy.borrow_mut().write(
-                                Key::Account(account_hash),
-                                StoredValue::Account(new_account),
-                            );
-                        }
-                        None => {
-                            // This case implies that the execution_result is a failure variant as
-                            // implemented inside host_exec().
-                            let error = execution_result
-                                .take_error()
-                                .unwrap_or(Error::InsufficientPayment);
-                            return Ok(make_charged_execution_failure(error));
-                        }
+                        // write new account
+                        let _ = tracking_copy.borrow_mut().write(
+                            Key::Account(account_hash),
+                            StoredValue::Account(new_account),
+                        );
+                    }
+                    None => {
+                        // This case implies that the execution_result is a failure variant as
+                        // implemented inside host_exec().
+                        let error = execution_result
+                            .take_error()
+                            .unwrap_or(Error::InsufficientPayment);
+                        return Ok(make_charged_execution_failure(error));
                     }
                 }
-            },
-            Err(error) => return Ok(make_charged_execution_failure(error)),
+            }
         }
 
         let transfer_args =

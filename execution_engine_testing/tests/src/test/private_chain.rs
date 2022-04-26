@@ -1,4 +1,5 @@
 pub mod management;
+mod p2p_transfers;
 mod restricted_auction;
 
 use std::collections::BTreeMap;
@@ -154,6 +155,7 @@ fn private_chain_setup() -> InMemoryWasmTestBuilder {
     let engine_config = EngineConfigBuilder::default()
         .with_administrative_accounts(PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS.clone())
         .with_allow_auction_bids(false)
+        .with_allow_p2p_transfers(false)
         .build();
 
     let mut builder = InMemoryWasmTestBuilder::new_with_config(engine_config);
