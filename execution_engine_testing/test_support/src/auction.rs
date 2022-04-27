@@ -146,17 +146,8 @@ pub fn run_blocks_with_transfers_and_step(
         );
         let transfer_root = builder.get_post_state_hash();
         let maybe_auction_root = if run_auction {
-            if use_scratch {
-                step_and_run_auction(&mut builder, &validator_keys);
-            } else {
-                builder.advance_era(
-                    validator_keys
-                        .iter()
-                        .cloned()
-                        .map(|id| RewardItem::new(id, 1)),
-                );
-                builder.commit();
-            }
+            step_and_run_auction(&mut builder, &validator_keys);
+            builder.commit();
             Some(builder.get_post_state_hash())
         } else {
             None
