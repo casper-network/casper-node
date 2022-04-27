@@ -13,9 +13,7 @@ use trie_compact::copy_state_root;
 
 #[derive(Debug, StructOpt)]
 struct Opts {
-    #[structopt(
-        about = "path to storage.lmdb"
-        short, long, required = true, default_value = retrieve_state::CHAIN_DOWNLOAD_PATH)]
+    #[structopt(short, long, required = true, default_value = retrieve_state::CHAIN_DOWNLOAD_PATH)]
     storage_path: PathBuf,
 
     #[structopt(short, long, required = true, default_value = retrieve_state::LMDB_PATH)]
