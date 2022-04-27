@@ -21,7 +21,7 @@ use tracing::error;
 use wasmi::{MemoryRef, Trap, TrapKind};
 
 use casper_types::{
-    account::{AccountHash, ActionType, Weight},
+    account::{Account, AccountHash, ActionThresholds, ActionType, Weight},
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contracts::{
         self, Contract, ContractPackage, ContractPackageStatus, ContractVersion, ContractVersions,
@@ -2198,9 +2198,13 @@ where
                 // None, and Some(_) with empty container is considered equal for the purpose of
                 // listing admin keys.
                 let admin_accounts = self.config.administrative_accounts();
-                let account_kind = AccountConfig::from(admin_accounts);
+                let account_config = if admin_accounts.is_empty() {
+                    AccountConfig::Normal
+                } else {
+                    AccountConfig::Restricted
+                };
 
-                let account = account::create_account(account_kind, target, target_purse)?;
+                let account = account::create_account(account_config, target, target_purse)?;
                 self.context.write_account(target_key, account)?;
                 Ok(Ok(TransferredTo::NewAccount))
             }
@@ -2943,7 +2947,7 @@ where
         match key {
             account_key @ Key::Account(_) => {
                 match self.context.read_gs_direct(&account_key)? {
-                    Some(StoredValue::Account(mut account)) => {
+                    Some(StoredValue::Account(account)) => {
                         let deployment_threshold = if enable {
                             // Enable
                             Weight::new(1)
@@ -2952,10 +2956,22 @@ where
                             Weight::MAX
                         };
 
-                        account
-                            .set_action_threshold(ActionType::Deployment, deployment_threshold)?;
+                        let key_management_threshold = account.action_thresholds().key_management();
 
-                        self.context.write_account(account_key, account)?;
+                        let new_action_thresholds = ActionThresholds::new_raw(
+                            deployment_threshold,
+                            *key_management_threshold,
+                        );
+
+                        let new_account = Account::new(
+                            account.account_hash(),
+                            account.named_keys().clone(),
+                            account.main_purse(),
+                            account.associated_keys().clone(),
+                            new_action_thresholds,
+                        );
+
+                        self.context.write_account(account_key, new_account)?;
                     }
                     Some(_) => {
                         // Key::Account is only expected to contain only stored values of Account

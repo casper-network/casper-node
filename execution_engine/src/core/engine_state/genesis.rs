@@ -1355,11 +1355,7 @@ where
             return Err(GenesisError::DuplicatedAdministratorEntry);
         }
 
-        let administrative_accounts: Vec<AdministratorAccount> = self
-            .exec_config
-            .administrative_accounts()
-            .cloned()
-            .collect();
+        let is_private_chain = self.exec_config.administrative_accounts().next().is_some();
 
         let mut total_supply = U512::zero();
 
@@ -1370,9 +1366,13 @@ where
 
             let key = Key::Account(account_hash);
 
-            let account_kind = AccountConfig::from(administrative_accounts.clone());
+            let account_config = if is_private_chain {
+                AccountConfig::Restricted
+            } else {
+                AccountConfig::Normal
+            };
 
-            let account = match account::create_account(account_kind, account_hash, main_purse) {
+            let account = match account::create_account(account_config, account_hash, main_purse) {
                 Ok(value) => value,
                 Err(value) => return Err(value.into()),
             };

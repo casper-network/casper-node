@@ -829,11 +829,14 @@ where
                     );
                 match maybe_uref {
                     Some(main_purse) => {
-                        let admin_accounts = self.config.administrative_accounts();
-                        let account_kind = AccountConfig::from(admin_accounts);
+                        let account_config = if self.config.is_private_chain() {
+                            AccountConfig::Restricted
+                        } else {
+                            AccountConfig::Normal
+                        };
 
                         let new_account =
-                            match account::create_account(account_kind, account_hash, main_purse)
+                            match account::create_account(account_config, account_hash, main_purse)
                                 .map_err(Error::reverter)
                             {
                                 Ok(account) => account,

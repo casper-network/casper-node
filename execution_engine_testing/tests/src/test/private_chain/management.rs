@@ -31,8 +31,7 @@ use parity_wasm::{
 };
 
 use crate::test::private_chain::{
-    ACCOUNT_2_ADDR, ADMIN_1_ACCOUNT_ADDR, ADMIN_1_ACCOUNT_WEIGHT, CONTROL_MANAGEMENT_CONTRACT,
-    DEFAULT_ADMIN_ACCOUNT_WEIGHT, VALIDATOR_1_PUBLIC_KEY,
+    ACCOUNT_2_ADDR, ADMIN_1_ACCOUNT_ADDR, CONTROL_MANAGEMENT_CONTRACT, VALIDATOR_1_PUBLIC_KEY,
 };
 
 use super::{
@@ -345,18 +344,6 @@ fn genesis_accounts_should_have_special_associated_key() {
         .expect("should have identity key");
     assert_eq!(identity_weight, &Weight::new(1));
 
-    let administrator_key_weight = account_1
-        .associated_keys()
-        .get(&*DEFAULT_ADMIN_ACCOUNT_ADDR)
-        .expect("should have special account");
-    assert_eq!(administrator_key_weight, &DEFAULT_ADMIN_ACCOUNT_WEIGHT);
-
-    let admin_1_key_weight = account_1
-        .associated_keys()
-        .get(&*ADMIN_1_ACCOUNT_ADDR)
-        .expect("should have special account");
-    assert_eq!(admin_1_key_weight, &ADMIN_1_ACCOUNT_WEIGHT);
-
     let administrative_accounts: BTreeSet<AccountHash> = get_administrator_account_hashes(&builder);
 
     assert!(
@@ -372,8 +359,9 @@ fn genesis_accounts_should_have_special_associated_key() {
         .expect("should create special account");
     assert_eq!(
         administrator_account.associated_keys().len(),
-        PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS.len(),
-        "should not have duplicate identity key"
+        // PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS.len(),
+        1,
+        "should have identity key only"
     );
 
     let identity_weight = administrator_account
@@ -499,24 +487,11 @@ fn native_transfer_should_create_new_restricted_private_account() {
     let transfer_request =
         ExecuteRequestBuilder::transfer(*DEFAULT_ADMIN_ACCOUNT_ADDR, transfer_args).build();
 
-    let administrative_accounts = get_administrator_account_hashes(&builder);
-
     builder.exec(transfer_request).expect_success().commit();
 
     let account_2 = builder
         .get_account(*ACCOUNT_2_ADDR)
         .expect("should have account 1 after genesis");
-
-    assert!(
-        itertools::equal(
-            account_2
-                .associated_keys()
-                .keys()
-                .filter(|account_hash| *account_hash != &*ACCOUNT_2_ADDR), // skip identity key
-            administrative_accounts.iter(),
-        ),
-        "newly created account should have administrator accounts set"
-    );
 
     assert_eq!(
         account_2.action_thresholds(),
@@ -542,24 +517,11 @@ fn wasm_transfer_should_create_new_restricted_private_account() {
     )
     .build();
 
-    let administrative_accounts = get_administrator_account_hashes(&builder);
-
     builder.exec(transfer_request).expect_success().commit();
 
     let account_2 = builder
         .get_account(*ACCOUNT_2_ADDR)
         .expect("should have account 1 after genesis");
-
-    assert!(
-        itertools::equal(
-            account_2
-                .associated_keys()
-                .keys()
-                .filter(|account_hash| *account_hash != &*ACCOUNT_2_ADDR), // skip identity key
-            administrative_accounts.iter(),
-        ),
-        "newly created account should have administrator accounts set"
-    );
 
     assert_eq!(
         account_2.action_thresholds(),

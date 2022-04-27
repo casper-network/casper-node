@@ -12,8 +12,6 @@ use casper_types::{
 };
 use once_cell::sync::Lazy;
 
-use crate::core::engine_state::genesis::AdministratorAccount;
-
 pub(crate) static SYSTEM_ACCOUNT_ADDRESS: Lazy<AccountHash> =
     Lazy::new(|| PublicKey::System.to_account_hash());
 
@@ -32,53 +30,24 @@ pub(crate) enum AccountConfig {
     /// Normal account settings for a public chain.
     Normal,
     /// Specialized account with extra settings valid only on private chains.
-    Restricted {
-        administrative_accounts: Vec<AdministratorAccount>,
-    },
-}
-
-impl From<Vec<AdministratorAccount>> for AccountConfig {
-    fn from(administrative_accounts: Vec<AdministratorAccount>) -> Self {
-        if administrative_accounts.is_empty() {
-            AccountConfig::Normal
-        } else {
-            AccountConfig::Restricted {
-                administrative_accounts,
-            }
-        }
-    }
+    Restricted,
 }
 
 /// Creates new account specific for a different chain operating modes.
 pub(crate) fn create_account(
-    account_kind: AccountConfig,
+    account_config: AccountConfig,
     account_hash: AccountHash,
     main_purse: URef,
 ) -> Result<Account, AddKeyFailure> {
     // Named keys are always created empty regardless of the operating mode.
     let named_keys = NamedKeys::default();
 
-    let administrative_accounts = match account_kind {
+    match account_config {
         AccountConfig::Normal => return Ok(Account::create(account_hash, named_keys, main_purse)),
-        AccountConfig::Restricted {
-            administrative_accounts,
-        } => administrative_accounts,
-    };
-
-    let mut associated_keys = AssociatedKeys::identity(account_hash);
-
-    for admin_account in administrative_accounts {
-        let admin_account_hash = admin_account.public_key().to_account_hash();
-        let admin_weight = admin_account.weight();
-        match associated_keys.add_key(admin_account_hash, admin_weight) {
-            Ok(()) => {}
-            Err(AddKeyFailure::DuplicateKey) if account_hash == admin_account_hash => {
-                // We're creating a special account itself and associated key already
-                // exists for it.
-            }
-            Err(error) => return Err(error),
-        }
+        AccountConfig::Restricted => {}
     }
+
+    let associated_keys = AssociatedKeys::identity(account_hash);
 
     let account = Account::new(
         account_hash,

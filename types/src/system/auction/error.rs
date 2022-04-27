@@ -311,7 +311,7 @@ pub enum Error {
     /// `true`.
     /// ```
     /// # use casper_types::system::auction::Error;
-    /// assert_eq!(47, Error::MintError as u8);
+    /// assert_eq!(47, Error::AuctionBidsDisabled as u8);
     /// ```
     AuctionBidsDisabled = 47,
 }
