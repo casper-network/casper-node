@@ -3,26 +3,15 @@
 
 extern crate alloc;
 
-use alloc::{string::ToString, vec};
-
 use casper_contract::{
-    contract_api::{account, runtime, storage, system},
+    contract_api::{account, runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
 
-use casper_types::{
-    account::AccountHash,
-    contracts::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys, Parameter},
-    CLType, CLTyped, CLValue, ContractHash, Key, RuntimeArgs, URef, U512,
-};
+use casper_types::{ContractHash, Key, RuntimeArgs, URef, U512};
 
 const GET_PAYMENT_PURSE_NAME: &str = "get_payment_purse";
-const PACKAGE_HASH_KEY_NAME: &str = "contract_own_funds";
 const HASH_KEY_NAME: &str = "contract_own_funds_hash";
-const ACCESS_KEY_NAME: &str = "contract_own_funds_access";
-const ARG_TARGET: &str = "target";
-const CONTRACT_VERSION: &str = "contract_version";
-const PAYMENT_PURSE_KEY: &str = "payment_purse";
 const ARG_AMOUNT: &str = "amount";
 
 fn get_payment_purse() -> URef {

@@ -242,6 +242,7 @@ impl Reactor {
                 .verifiable_chunked_hash_activation,
             administrative_accounts,
             chainspec_loader.chainspec().core_config.allow_auction_bids,
+            chainspec_loader.chainspec().core_config.allow_p2p_transfers,
         )?;
 
         let effects = reactor::wrap_effects(Event::Chainspec, chainspec_effects);

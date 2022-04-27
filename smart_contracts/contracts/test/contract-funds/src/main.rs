@@ -6,14 +6,14 @@ extern crate alloc;
 use alloc::{string::ToString, vec};
 
 use casper_contract::{
-    contract_api::{account, runtime, storage, system},
+    contract_api::{runtime, storage, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
 
 use casper_types::{
     account::AccountHash,
     contracts::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys, Parameter},
-    CLType, CLTyped, CLValue, Key, URef, U512,
+    CLTyped, CLValue, Key, URef,
 };
 
 const GET_PAYMENT_PURSE_NAME: &str = "get_payment_purse";
