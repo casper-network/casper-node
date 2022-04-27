@@ -13,10 +13,9 @@ use casper_execution_engine::{
     },
 };
 use casper_hashing::Digest;
-use casper_types::{bytesrepr::ToBytes, StoredValue};
 use casper_types::{
-    bytesrepr::{self, Bytes},
-    Key,
+    bytesrepr::{self, Bytes, ToBytes},
+    Key, StoredValue,
 };
 
 pub fn copy_state_root(
