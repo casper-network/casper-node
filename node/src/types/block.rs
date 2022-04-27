@@ -1480,7 +1480,8 @@ impl Block {
         &self.hash
     }
 
-    pub(crate) fn state_root_hash(&self) -> &Digest {
+    /// The state root hash for this block.
+    pub fn state_root_hash(&self) -> &Digest {
         self.header.state_root_hash()
     }
 

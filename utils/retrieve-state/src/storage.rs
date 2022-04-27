@@ -134,7 +134,7 @@ pub fn create_storage(chain_download_path: impl AsRef<Path>) -> Result<Storage, 
         None,
         ProtocolVersion::from_parts(0, 0, 0),
         false,
-        "test",
+        "casper",
     )?)
 }
 
