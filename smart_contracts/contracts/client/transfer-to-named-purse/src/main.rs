@@ -35,5 +35,8 @@ pub extern "C" fn call() {
 
     let source_purse = account::get_main_purse();
 
-    system::transfer_from_purse_to_purse(source_purse, purse_uref, amount, None).unwrap_or_revert();
+    if !amount.is_zero() {
+        system::transfer_from_purse_to_purse(source_purse, purse_uref, amount, None)
+            .unwrap_or_revert();
+    }
 }

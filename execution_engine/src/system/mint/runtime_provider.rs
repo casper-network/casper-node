@@ -29,4 +29,14 @@ pub trait RuntimeProvider {
 
     /// Returns main purse of the sender account.
     fn get_main_purse(&self) -> URef;
+
+    /// Returns Some(_) with a flag indicating if execution is started by an admin account. This is
+    /// valid only for private chains.
+    ///
+    /// On public chains this will always return None.
+    fn is_admin(&mut self, account_hash: &AccountHash) -> Option<bool>;
+    /// Checks if chain is operating as a private one (true), or public (false).
+    fn is_private_chain(&mut self) -> bool;
+    /// Checks if we're currently executing a host function.
+    fn is_in_host_function(&mut self) -> bool;
 }

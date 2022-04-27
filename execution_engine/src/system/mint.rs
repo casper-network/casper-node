@@ -14,9 +14,12 @@ use casper_types::{
     Key, Phase, PublicKey, URef, U512,
 };
 
-use crate::system::mint::{
-    runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
-    system_provider::SystemProvider,
+use crate::{
+    shared::account::SYSTEM_ACCOUNT_ADDRESS,
+    system::mint::{
+        runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
+        system_provider::SystemProvider,
+    },
 };
 
 /// Mint trait.
@@ -106,6 +109,37 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         {
             // stored session code is not allowed to call this method in the session phase
             return Err(Error::InvalidContext);
+        }
+
+        if self.get_phase() == Phase::Session {
+            match self.get_immediate_caller().cloned() {
+                Some(CallStackElement::StoredSession { account_hash, .. }) => {
+                    if !self.is_in_host_function() && account_hash != *SYSTEM_ACCOUNT_ADDRESS {
+                        if let Some(is_account_admin) = self.is_admin(&account_hash) {
+                            if !is_account_admin {
+                                return Err(Error::DisabledP2PTransfers);
+                            }
+                        }
+                    }
+                }
+                Some(CallStackElement::Session { account_hash }) => {
+                    if !self.is_in_host_function() && account_hash != *SYSTEM_ACCOUNT_ADDRESS {
+                        if let Some(is_account_admin) = self.is_admin(&account_hash) {
+                            if !is_account_admin {
+                                return Err(Error::DisabledP2PTransfers);
+                            }
+                        }
+                    }
+                }
+                Some(CallStackElement::StoredContract { .. }) => {
+                    // Contract call transfer funds. This is safe assuming only admins can deploy
+                    // contracts and transfer funds.
+                }
+                None => {
+                    // There's always an immediate caller, but we should return something.
+                    return Err(Error::DisabledP2PTransfers);
+                }
+            }
         }
 
         if !source.is_readable() {

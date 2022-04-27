@@ -797,9 +797,13 @@ where
                 }
                 TransferTargetMode::PurseExists(_) => {
                     // We don't know who is the target and we can't simply reverse search
-                    // account/contract that owns it. So we will simply defer purse ownership checks
-                    // before mint's transfer system contract call will happen.
-                    // This will allow native transfers to purses owned by the caller.
+                    // account/contract that owns it. We also can't know if purse is owned exactly
+                    // by one entity in the system.
+                    if !is_source_admin {
+                        return Ok(make_charged_execution_failure(
+                            execution::Error::DisabledP2PTransfers.into(),
+                        ));
+                    }
                 }
             }
         }

@@ -2317,41 +2317,27 @@ where
     }
 
     /// Transfers `amount` of motes from `source` purse to `target` purse.
-    #[allow(clippy::too_many_arguments)]
     fn transfer_from_purse_to_purse(
         &mut self,
-        source_ptr: u32,
-        source_size: u32,
-        target_ptr: u32,
-        target_size: u32,
-        amount_ptr: u32,
-        amount_size: u32,
-        id_ptr: u32,
-        id_size: u32,
+        source: URef,
+        target: URef,
+        amount: U512,
+        id: Option<u64>,
     ) -> Result<Result<(), mint::Error>, Error> {
-        let source: URef = {
-            let bytes = self.bytes_from_mem(source_ptr, source_size as usize)?;
-            bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
-        };
-
-        let target: URef = {
-            let bytes = self.bytes_from_mem(target_ptr, target_size as usize)?;
-            bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
-        };
-
-        let amount: U512 = {
-            let bytes = self.bytes_from_mem(amount_ptr, amount_size as usize)?;
-            bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
-        };
-
-        let id: Option<u64> = {
-            let bytes = self.bytes_from_mem(id_ptr, id_size as usize)?;
-            bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
-        };
-
         self.context.validate_uref(&source)?;
-
         let mint_contract_key = self.get_mint_contract()?;
+
+        if let (Phase::Session, Some(is_caller_admin)) = (
+            self.context.phase(),
+            self.config
+                .is_account_administrator(&self.context.get_caller()),
+        ) {
+            if !is_caller_admin {
+                // On private chain we can't assume a valid purse `target` is created by the caller.
+                // Therefore only admins executing a session code can transfer to purse.
+                return Err(Error::DisabledP2PTransfers);
+            }
+        }
 
         match self.mint_transfer(mint_contract_key, None, source, target, amount, id)? {
             Ok(()) => Ok(Ok(())),

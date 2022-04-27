@@ -67,6 +67,18 @@ where
     fn get_main_purse(&self) -> URef {
         self.context.account().main_purse()
     }
+
+    fn is_admin(&mut self, account_hash: &AccountHash) -> Option<bool> {
+        self.config.is_account_administrator(account_hash)
+    }
+
+    fn is_private_chain(&mut self) -> bool {
+        self.config.is_private_chain()
+    }
+
+    fn is_in_host_function(&mut self) -> bool {
+        self.host_function_flag.is_in_host_function_scope()
+    }
 }
 
 // TODO: update Mint + StorageProvider to better handle errors

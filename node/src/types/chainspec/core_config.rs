@@ -42,7 +42,8 @@ pub struct CoreConfig {
     /// rotation is unnecessary.
     pub(crate) allow_auction_bids: bool,
     /// Administrative accounts are valid option for for a private chain only.
-    pub(crate) administrative_accounts: Option<Vec<AdministratorAccount>>,
+    #[serde(default)]
+    pub(crate) administrative_accounts: Vec<AdministratorAccount>,
 }
 
 #[cfg(test)]

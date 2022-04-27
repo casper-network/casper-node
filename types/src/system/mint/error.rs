@@ -147,6 +147,12 @@ pub enum Error {
     /// assert_eq!(21, Error::UnapprovedSpendingAmount as u8);
     UnapprovedSpendingAmount = 21,
 
+    /// Failed to transfer tokens on a private chain.
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(22, Error::DisabledP2PTransfers as u8);
+    DisabledP2PTransfers = 22,
+
     #[cfg(test)]
     #[doc(hidden)]
     Sentinel,
@@ -199,6 +205,7 @@ impl TryFrom<u8> for Error {
             d if d == Error::GasLimit as u8 => Ok(Error::GasLimit),
             d if d == Error::InvalidContext as u8 => Ok(Error::InvalidContext),
             d if d == Error::UnapprovedSpendingAmount as u8 => Ok(Error::UnapprovedSpendingAmount),
+            d if d == Error::DisabledP2PTransfers as u8 => Ok(Error::DisabledP2PTransfers),
             _ => Err(TryFromU8ForError(())),
         }
     }
@@ -256,6 +263,7 @@ impl Display for Error {
             Error::GasLimit => formatter.write_str("GasLimit"),
             Error::InvalidContext => formatter.write_str("Invalid context"),
             Error::UnapprovedSpendingAmount => formatter.write_str("Unapproved spending amount"),
+            Error::DisabledP2PTransfers => formatter.write_str("Disabled p2p transfers"),
             #[cfg(test)]
             Error::Sentinel => formatter.write_str("Sentinel error"),
         }
