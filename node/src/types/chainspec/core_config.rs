@@ -1,3 +1,4 @@
+use casper_execution_engine::core::engine_state::genesis::AdministratorAccount;
 use datasize::DataSize;
 use num::rational::Ratio;
 #[cfg(test)]
@@ -6,11 +7,11 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 #[cfg(test)]
-use casper_types::testing::TestRng;
+use casper_types::{account::Weight, testing::TestRng, Motes, PublicKey};
 
 use crate::types::TimeDiff;
 
-#[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct CoreConfig {
@@ -40,6 +41,8 @@ pub struct CoreConfig {
     /// `true`. Setting up this option makes sense only for private chains where validator set
     /// rotation is unnecessary.
     pub(crate) allow_auction_bids: bool,
+    /// Administrative accounts are valid option for for a private chain only.
+    pub(crate) administrative_accounts: Option<Vec<AdministratorAccount>>,
 }
 
 #[cfg(test)]
@@ -61,6 +64,21 @@ impl CoreConfig {
         let minimum_delegation_amount = rng.gen::<u32>() as u64;
         let strict_argument_checking = rng.gen();
         let allow_auction_bids = rng.gen();
+        let administrative_accounts = if rng.gen() {
+            Some(
+                (0..rng.gen_range(0..=10u32))
+                    .map(|_| {
+                        AdministratorAccount::new(
+                            PublicKey::random(rng),
+                            Motes::new(rng.gen()),
+                            Weight::new(rng.gen_range(1u8..=255)),
+                        )
+                    })
+                    .collect(),
+            )
+        } else {
+            None
+        };
 
         CoreConfig {
             era_duration,
@@ -75,6 +93,7 @@ impl CoreConfig {
             minimum_delegation_amount,
             strict_argument_checking,
             allow_auction_bids,
+            administrative_accounts,
         }
     }
 }
@@ -82,34 +101,67 @@ impl CoreConfig {
 impl ToBytes for CoreConfig {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
-        buffer.extend(self.era_duration.to_bytes()?);
-        buffer.extend(self.minimum_era_height.to_bytes()?);
-        buffer.extend(self.validator_slots.to_bytes()?);
-        buffer.extend(self.auction_delay.to_bytes()?);
-        buffer.extend(self.locked_funds_period.to_bytes()?);
-        buffer.extend(self.unbonding_delay.to_bytes()?);
-        buffer.extend(self.round_seigniorage_rate.to_bytes()?);
-        buffer.extend(self.max_associated_keys.to_bytes()?);
-        buffer.extend(self.max_runtime_call_stack_height.to_bytes()?);
-        buffer.extend(self.minimum_delegation_amount.to_bytes()?);
-        buffer.extend(self.strict_argument_checking.to_bytes()?);
-        buffer.extend(self.allow_auction_bids.to_bytes()?);
+
+        let CoreConfig {
+            era_duration,
+            minimum_era_height,
+            validator_slots,
+            auction_delay,
+            locked_funds_period,
+            unbonding_delay,
+            round_seigniorage_rate,
+            max_associated_keys,
+            max_runtime_call_stack_height,
+            minimum_delegation_amount,
+            strict_argument_checking,
+            allow_auction_bids,
+            administrative_accounts,
+        } = self;
+        buffer.extend(era_duration.to_bytes()?);
+        buffer.extend(minimum_era_height.to_bytes()?);
+        buffer.extend(validator_slots.to_bytes()?);
+        buffer.extend(auction_delay.to_bytes()?);
+        buffer.extend(locked_funds_period.to_bytes()?);
+        buffer.extend(unbonding_delay.to_bytes()?);
+        buffer.extend(round_seigniorage_rate.to_bytes()?);
+        buffer.extend(max_associated_keys.to_bytes()?);
+        buffer.extend(max_runtime_call_stack_height.to_bytes()?);
+        buffer.extend(minimum_delegation_amount.to_bytes()?);
+        buffer.extend(strict_argument_checking.to_bytes()?);
+        buffer.extend(allow_auction_bids.to_bytes()?);
+        buffer.extend(administrative_accounts.to_bytes()?);
         Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
-        self.era_duration.serialized_length()
-            + self.minimum_era_height.serialized_length()
-            + self.validator_slots.serialized_length()
-            + self.auction_delay.serialized_length()
-            + self.locked_funds_period.serialized_length()
-            + self.unbonding_delay.serialized_length()
-            + self.round_seigniorage_rate.serialized_length()
-            + self.max_associated_keys.serialized_length()
-            + self.max_runtime_call_stack_height.serialized_length()
-            + self.minimum_delegation_amount.serialized_length()
-            + self.strict_argument_checking.serialized_length()
-            + self.allow_auction_bids.serialized_length()
+        let CoreConfig {
+            era_duration,
+            minimum_era_height,
+            validator_slots,
+            auction_delay,
+            locked_funds_period,
+            unbonding_delay,
+            round_seigniorage_rate,
+            max_associated_keys,
+            max_runtime_call_stack_height,
+            minimum_delegation_amount,
+            strict_argument_checking,
+            allow_auction_bids,
+            administrative_accounts,
+        } = self;
+        era_duration.serialized_length()
+            + minimum_era_height.serialized_length()
+            + validator_slots.serialized_length()
+            + auction_delay.serialized_length()
+            + locked_funds_period.serialized_length()
+            + unbonding_delay.serialized_length()
+            + round_seigniorage_rate.serialized_length()
+            + max_associated_keys.serialized_length()
+            + max_runtime_call_stack_height.serialized_length()
+            + minimum_delegation_amount.serialized_length()
+            + strict_argument_checking.serialized_length()
+            + allow_auction_bids.serialized_length()
+            + administrative_accounts.serialized_length()
     }
 }
 
@@ -127,6 +179,7 @@ impl FromBytes for CoreConfig {
         let (minimum_delegation_amount, remainder) = u64::from_bytes(remainder)?;
         let (strict_argument_checking, remainder) = bool::from_bytes(remainder)?;
         let (allow_auction_bids, remainder) = FromBytes::from_bytes(remainder)?;
+        let (administrative_accounts, remainder) = FromBytes::from_bytes(remainder)?;
         let config = CoreConfig {
             era_duration,
             minimum_era_height,
@@ -140,6 +193,7 @@ impl FromBytes for CoreConfig {
             minimum_delegation_amount,
             strict_argument_checking,
             allow_auction_bids,
+            administrative_accounts,
         };
         Ok((config, remainder))
     }

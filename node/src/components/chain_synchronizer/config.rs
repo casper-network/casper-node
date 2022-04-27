@@ -173,6 +173,7 @@ impl Config {
             Some(self.chainspec.core_config.unbonding_delay),
             global_state_update,
             chainspec_registry,
+            self.chainspec.core_config.administrative_accounts.clone(),
         );
         Ok(Box::new(upgrade_config))
     }

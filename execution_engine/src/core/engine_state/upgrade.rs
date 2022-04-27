@@ -20,6 +20,8 @@ use crate::{
     storage::global_state::StateProvider,
 };
 
+use super::genesis::AdministratorAccount;
+
 /// Represents a successfully executed upgrade.
 #[derive(Debug, Clone)]
 pub struct UpgradeSuccess {
@@ -53,6 +55,7 @@ pub struct UpgradeConfig {
     new_unbonding_delay: Option<u64>,
     global_state_update: BTreeMap<Key, StoredValue>,
     chainspec_registry: ChainspecRegistry,
+    administrative_accounts: Option<Vec<AdministratorAccount>>,
 }
 
 impl UpgradeConfig {
@@ -70,6 +73,7 @@ impl UpgradeConfig {
         new_unbonding_delay: Option<u64>,
         global_state_update: BTreeMap<Key, StoredValue>,
         chainspec_registry: ChainspecRegistry,
+        administrative_accounts: Option<Vec<AdministratorAccount>>,
     ) -> Self {
         UpgradeConfig {
             pre_state_hash,
@@ -83,6 +87,7 @@ impl UpgradeConfig {
             new_unbonding_delay,
             global_state_update,
             chainspec_registry,
+            administrative_accounts,
         }
     }
 
@@ -145,6 +150,11 @@ impl UpgradeConfig {
     pub fn with_pre_state_hash(&mut self, pre_state_hash: Digest) {
         self.pre_state_hash = pre_state_hash;
     }
+
+    /// Returns a list of administrator accounts if present.
+    pub fn administrative_accounts(&self) -> &Option<Vec<AdministratorAccount>> {
+        &self.administrative_accounts
+    }
 }
 
 /// Represents outcomes of a failed protocol upgrade.
@@ -168,6 +178,9 @@ pub enum ProtocolUpgradeError {
     /// Failed to create system contract registry.
     #[error("Failed to insert system contract registry")]
     FailedToCreateSystemRegistry,
+    /// Failed to change chain operating mode.
+    #[error("Failed to change chain operating mode")]
+    FailedToChangeChainMode,
 }
 
 impl From<bytesrepr::Error> for ProtocolUpgradeError {

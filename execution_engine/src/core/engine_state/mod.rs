@@ -301,6 +301,40 @@ where
             }
         };
 
+        match (
+            self.config.is_private_chain(),
+            upgrade_config.administrative_accounts(),
+        ) {
+            (true, Some(administrative_accounts)) => {
+                if administrative_accounts.is_empty() {
+                    // Specifying empty vector here would transfer engine state into a public chain.
+                    return Err(Error::ProtocolUpgrade(
+                        ProtocolUpgradeError::FailedToChangeChainMode,
+                    ));
+                }
+                // private -> private = Update admins
+                self.config
+                    .set_administrative_accounts(administrative_accounts.clone());
+            }
+            (false, Some(_)) => {
+                // public -> private
+                error!("Unable to change public chain into a private chain");
+                return Err(Error::ProtocolUpgrade(
+                    ProtocolUpgradeError::FailedToChangeChainMode,
+                ));
+            }
+            (true, None) => {
+                // private -> public
+                error!("Unable to change private chain into a public chain");
+                return Err(Error::ProtocolUpgrade(
+                    ProtocolUpgradeError::FailedToChangeChainMode,
+                ));
+            }
+            (false, None) => {
+                // public -> public Nothing to do
+            }
+        }
+
         let mint_hash = registry.get(MINT).ok_or_else(|| {
             error!("Missing system mint contract hash");
             Error::MissingSystemContractHash(MINT.to_string())
@@ -795,7 +829,7 @@ where
                     );
                 match maybe_uref {
                     Some(main_purse) => {
-                        let admin_accounts = self.config.administrative_accounts().clone();
+                        let admin_accounts = self.config.administrative_accounts();
                         let account_kind = AccountConfig::from(admin_accounts);
 
                         let new_account =

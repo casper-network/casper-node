@@ -50,6 +50,8 @@ use crate::{
     },
     storage::global_state::StateProvider,
 };
+#[cfg(test)]
+use casper_types::testing::TestRng;
 
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
 const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
@@ -187,6 +189,55 @@ impl AdministratorAccount {
     #[must_use]
     pub fn weight(&self) -> Weight {
         self.weight
+    }
+}
+
+#[cfg(test)]
+impl AdministratorAccount {
+    /// Generates a random instance using a `TestRng`.
+    pub fn random(rng: &mut TestRng) -> Self {
+        Self {
+            public_key: PublicKey::random(rng),
+            balance: Motes::new(rng.gen()),
+            weight: Weight::new(rng.gen_range(1..=255)),
+        }
+    }
+}
+
+impl ToBytes for AdministratorAccount {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let AdministratorAccount {
+            public_key,
+            balance,
+            weight,
+        } = self;
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        buffer.extend(public_key.to_bytes()?);
+        buffer.extend(balance.to_bytes()?);
+        buffer.extend(weight.to_bytes()?);
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        let AdministratorAccount {
+            public_key,
+            balance,
+            weight,
+        } = self;
+        public_key.serialized_length() + balance.serialized_length() + weight.serialized_length()
+    }
+}
+impl FromBytes for AdministratorAccount {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (public_key, remainder) = FromBytes::from_bytes(bytes)?;
+        let (balance, remainder) = FromBytes::from_bytes(remainder)?;
+        let (weight, remainder) = FromBytes::from_bytes(remainder)?;
+        let administrator_account = AdministratorAccount {
+            public_key,
+            balance,
+            weight,
+        };
+        Ok((administrator_account, remainder))
     }
 }
 

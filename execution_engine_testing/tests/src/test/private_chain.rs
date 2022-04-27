@@ -1,6 +1,7 @@
 pub mod management;
 mod p2p_transfers;
 mod restricted_auction;
+mod update_admins;
 
 use std::collections::BTreeMap;
 

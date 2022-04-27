@@ -550,12 +550,11 @@ where
         let pre_state_hash = self.post_state_hash.expect("should have state hash");
         upgrade_config.with_pre_state_hash(pre_state_hash);
 
-        let engine_state = Rc::get_mut(&mut self.engine_state).unwrap();
-        engine_state.update_config(engine_config);
+        let engine_state_mut =
+            Rc::get_mut(&mut self.engine_state).expect("should have unique ownership");
+        engine_state_mut.update_config(engine_config);
 
-        let result = self
-            .engine_state
-            .commit_upgrade(CorrelationId::new(), upgrade_config.clone());
+        let result = engine_state_mut.commit_upgrade(CorrelationId::new(), upgrade_config.clone());
 
         if let Ok(UpgradeSuccess {
             post_state_hash,

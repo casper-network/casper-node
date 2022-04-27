@@ -1,5 +1,7 @@
 //! Support for runtime configuration of the execution engine - as an integral property of the
 //! `EngineState` instance.
+use std::sync::{Arc, Mutex};
+
 use casper_types::account::AccountHash;
 
 use crate::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
@@ -38,7 +40,7 @@ pub struct EngineConfig {
     wasm_config: WasmConfig,
     system_config: SystemConfig,
     /// A private network specifies a list of administrative accounts.
-    administrative_accounts: Vec<AdministratorAccount>,
+    administrative_accounts: Arc<Mutex<Vec<AdministratorAccount>>>,
     /// Auction entrypoints such as "add_bid" or "delegate" are disabled if this flag is set to
     /// `true`.
     allow_auction_bids: bool,
@@ -61,7 +63,7 @@ impl Default for EngineConfig {
             strict_argument_checking: DEFAULT_STRICT_ARGUMENT_CHECKING,
             wasm_config: WasmConfig::default(),
             system_config: SystemConfig::default(),
-            administrative_accounts: Vec::default(),
+            administrative_accounts: Default::default(),
             allow_auction_bids: DEFAULT_ALLOW_AUCTION_BIDS,
             allow_p2p_transfers: DEFAULT_ALLOW_P2P_TRANSFERS,
         }
@@ -99,10 +101,10 @@ impl EngineConfig {
         self.strict_argument_checking
     }
 
-    /// Get the engine config's administrative accounts.
+    /// Get the engine config's administrative accouAnts.
     #[must_use]
-    pub fn administrative_accounts(&self) -> &Vec<AdministratorAccount> {
-        &self.administrative_accounts
+    pub fn administrative_accounts(&self) -> Vec<AdministratorAccount> {
+        self.administrative_accounts.lock().unwrap().clone()
     }
 
     /// Checks if chain is configured in private mode.
@@ -129,7 +131,8 @@ impl EngineConfig {
     /// with a value whether passed account hash is an admin.
     #[must_use]
     pub(crate) fn is_account_administrator(&self, account_hash: &AccountHash) -> Option<bool> {
-        let mut admins = self.administrative_accounts().iter().peekable();
+        let borrowed_admins = self.administrative_accounts.lock().unwrap();
+        let mut admins = borrowed_admins.iter().peekable();
 
         // Ensure it's a private chain and there's at least one administrator configured.
         admins.peek()?;
@@ -138,6 +141,12 @@ impl EngineConfig {
         let has_admin_account_hash =
             admins.any(|admin| &admin.public_key().to_account_hash() == account_hash);
         Some(has_admin_account_hash)
+    }
+
+    /// Set engine config's new administrative accounts.
+    pub fn set_administrative_accounts(&self, value: Vec<AdministratorAccount>) {
+        let mut guard = self.administrative_accounts.lock().unwrap();
+        *guard = value;
     }
 }
 
@@ -270,7 +279,7 @@ impl EngineConfigBuilder {
             strict_argument_checking,
             wasm_config,
             system_config,
-            administrative_accounts,
+            administrative_accounts: Arc::new(Mutex::new(administrative_accounts)),
             allow_auction_bids,
             allow_p2p_transfers,
         }

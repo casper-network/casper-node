@@ -2197,7 +2197,7 @@ where
             Ok(()) => {
                 // None, and Some(_) with empty container is considered equal for the purpose of
                 // listing admin keys.
-                let admin_accounts = self.config.administrative_accounts().clone();
+                let admin_accounts = self.config.administrative_accounts();
                 let account_kind = AccountConfig::from(admin_accounts);
 
                 let account = account::create_account(account_kind, target, target_purse)?;

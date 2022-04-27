@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, ops::Deref};
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
@@ -102,7 +102,8 @@ fn private_chain_genesis_should_have_admin_accounts() {
         super::private_chain_setup()
             .get_engine_state()
             .config()
-            .administrative_accounts(),
+            .administrative_accounts()
+            .deref(),
         &*PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS,
         "private chain genesis has administrator accounts defined"
     );
@@ -118,7 +119,8 @@ fn public_chain_genesis_should_not_have_admin_accounts() {
         builder
             .get_engine_state()
             .config()
-            .administrative_accounts(),
+            .administrative_accounts()
+            .deref(),
         &Vec::new(),
         "private chain genesis has administrator accounts defined"
     );
@@ -386,7 +388,6 @@ fn get_administrator_account_hashes(builder: &InMemoryWasmTestBuilder) -> BTreeS
         .get_engine_state()
         .config()
         .administrative_accounts()
-        .clone()
         .into_iter()
         .map(|admin| admin.public_key().to_account_hash())
         .collect()
