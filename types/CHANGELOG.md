@@ -24,6 +24,7 @@ All notable changes to this project will be documented in this file.  The format
 * Extend `UnbondingPurses` to take a new field `new_validator` which represents the validator to whom tokens will be re-delegated.
 * Increase `DICTIONARY_ITEM_KEY_MAX_LENGTH` to 128.
 * Fixed some integer casts.
+* Change prefix of formatted string representation of `ContractPackageHash` from "contract-package-wasm" to "contract-package-". Parsing from the old format is still supported.
 
 ### Deprecated
 * Deprecate "gens" feature (used for providing proptest helpers) in favor of new "testing" feature.

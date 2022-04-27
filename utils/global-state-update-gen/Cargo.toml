@@ -13,3 +13,4 @@ casper-hashing = { path = "../../hashing" }
 casper-types = { path = "../../types" }
 clap = "2.33"
 lmdb = "0.8"
+rand = "0.8"
