@@ -11,12 +11,13 @@ use casper_contract::{
 use casper_types::U512;
 
 const ARG_TOTAL_PURSES: &str = "total_purses";
-const ARG_SEED_AMOUNT: &str = "seed_amount";
+const ARG_AMOUNT: &str = "amount";
 
 #[no_mangle]
 pub extern "C" fn call() {
     let total_purses: u64 = runtime::get_named_arg(ARG_TOTAL_PURSES);
-    let seed_amount: U512 = runtime::get_named_arg(ARG_SEED_AMOUNT);
+    let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
+    let seed_amount = amount / total_purses;
 
     for i in 0..total_purses {
         let new_purse = system::create_purse();
