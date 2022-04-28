@@ -141,6 +141,12 @@ pub enum Error {
     /// Raised when an entry point is called from invalid account context.
     InvalidContext = 20,
 
+    /// Session code tried to transfer more CSPR than user approved.
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(21, Error::UnapprovedSpendingAmount as u8);
+    UnapprovedSpendingAmount = 21,
+
     #[cfg(test)]
     #[doc(hidden)]
     Sentinel,
@@ -192,6 +198,7 @@ impl TryFrom<u8> for Error {
             d if d == Error::ArithmeticOverflow as u8 => Ok(Error::ArithmeticOverflow),
             d if d == Error::GasLimit as u8 => Ok(Error::GasLimit),
             d if d == Error::InvalidContext as u8 => Ok(Error::InvalidContext),
+            d if d == Error::UnapprovedSpendingAmount as u8 => Ok(Error::UnapprovedSpendingAmount),
             _ => Err(TryFromU8ForError(())),
         }
     }
@@ -248,6 +255,7 @@ impl Display for Error {
             Error::ArithmeticOverflow => formatter.write_str("Arithmetic overflow has occurred"),
             Error::GasLimit => formatter.write_str("GasLimit"),
             Error::InvalidContext => formatter.write_str("Invalid context"),
+            Error::UnapprovedSpendingAmount => formatter.write_str("Unapproved spending amount"),
             #[cfg(test)]
             Error::Sentinel => formatter.write_str("Sentinel error"),
         }

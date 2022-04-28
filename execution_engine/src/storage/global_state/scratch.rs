@@ -30,26 +30,35 @@ use crate::{
 type SharedCache = Arc<RwLock<Cache>>;
 
 struct Cache {
-    stored_values: HashMap<Key, StoredValue>,
+    cached_values: HashMap<Key, (bool, StoredValue)>,
 }
 
 impl Cache {
     fn new() -> Self {
         Cache {
-            stored_values: HashMap::new(),
+            cached_values: HashMap::new(),
         }
     }
 
-    fn insert(&mut self, key: Key, value: StoredValue) {
-        self.stored_values.insert(key, value);
+    fn insert_write(&mut self, key: Key, value: StoredValue) {
+        self.cached_values.insert(key, (true, value));
+    }
+
+    fn insert_read(&mut self, key: Key, value: StoredValue) {
+        self.cached_values.entry(key).or_insert((false, value));
     }
 
     fn get(&self, key: &Key) -> Option<&StoredValue> {
-        self.stored_values.get(key)
+        self.cached_values.get(key).map(|(_dirty, value)| value)
     }
 
-    fn into_inner(self) -> HashMap<Key, StoredValue> {
-        self.stored_values
+    /// Consumes self and returns only written values as values that were only read must be filtered
+    /// out to prevent unecessary writes.
+    fn into_dirty_writes(self) -> HashMap<Key, StoredValue> {
+        self.cached_values
+            .into_iter()
+            .filter_map(|(key, (dirty, value))| if dirty { Some((key, value)) } else { None })
+            .collect()
     }
 }
 
@@ -96,7 +105,7 @@ impl ScratchGlobalState {
     /// Consume self and return inner cache.
     pub fn into_inner(self) -> HashMap<Key, StoredValue> {
         let cache = mem::replace(&mut *self.cache.write().unwrap(), Cache::new());
-        cache.into_inner()
+        cache.into_dirty_writes()
     }
 }
 
@@ -120,7 +129,7 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
             key,
         )? {
             ReadResult::Found(value) => {
-                self.cache.write().unwrap().insert(*key, value.clone());
+                self.cache.write().unwrap().insert_read(*key, value.clone());
                 Some(value)
             }
             ReadResult::NotFound => None,
@@ -246,7 +255,7 @@ impl CommitProvider for ScratchGlobalState {
                 },
             };
 
-            self.cache.write().unwrap().insert(key, value);
+            self.cache.write().unwrap().insert_write(key, value);
         }
         Ok(state_hash)
     }
@@ -291,9 +300,9 @@ impl StateProvider for ScratchGlobalState {
             || Ok(None),
             |bytes| {
                 if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
-                    Ok(Some(TrieOrChunk::Trie(bytes.to_owned().into())))
+                    Ok(Some(TrieOrChunk::Trie(bytes)))
                 } else {
-                    let chunk_with_proof = ChunkWithProof::new(bytes, trie_index)?;
+                    let chunk_with_proof = ChunkWithProof::new(&bytes, trie_index)?;
                     Ok(Some(TrieOrChunk::ChunkWithProof(chunk_with_proof)))
                 }
             },
@@ -310,8 +319,7 @@ impl StateProvider for ScratchGlobalState {
     ) -> Result<Option<Bytes>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
         let ret: Option<Bytes> =
-            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?
-                .map(|slice| slice.to_owned().into());
+            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?;
         txn.commit()?;
         Ok(ret)
     }

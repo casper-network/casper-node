@@ -4,16 +4,12 @@ use itertools::Itertools;
 
 use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
 use casper_types::{
-    bytesrepr::Bytes, runtime_args, system::standard_payment::ARG_AMOUNT, EraId, Gas, PublicKey,
-    RuntimeArgs, SecretKey,
+    bytesrepr::Bytes, runtime_args, system::standard_payment::ARG_AMOUNT, testing::TestRng, EraId,
+    Gas, PublicKey, RuntimeArgs, SecretKey,
 };
 
 use super::*;
-use crate::{
-    crypto::AsymmetricKeyExt,
-    testing::TestRng,
-    types::{BlockPayload, Deploy, DeployHash, FinalizedBlock, TimeDiff},
-};
+use crate::types::{BlockPayload, Deploy, DeployHash, FinalizedBlock, TimeDiff};
 
 const DEFAULT_TEST_GAS_PRICE: u64 = 1;
 
@@ -159,18 +155,20 @@ fn should_add_and_take_deploys() {
         vec![],
         true,
     );
-    assert!(block.deploy_hashes().is_empty());
-    assert!(block.transfer_hashes().is_empty());
+    assert!(block.deploys().is_empty());
+    assert!(block.transfers().is_empty());
 
     // add two deploys
     proposer.add_deploy(
         block_time2,
         deploy1.deploy_or_transfer_hash(),
+        BTreeSet::new(),
         deploy1.deploy_info().unwrap(),
     );
     proposer.add_deploy(
         block_time2,
         deploy2.deploy_or_transfer_hash(),
+        BTreeSet::new(),
         deploy2.deploy_info().unwrap(),
     );
 
@@ -182,8 +180,8 @@ fn should_add_and_take_deploys() {
         vec![],
         true,
     );
-    assert!(block.deploy_hashes().is_empty());
-    assert!(block.transfer_hashes().is_empty());
+    assert!(block.deploys().is_empty());
+    assert!(block.transfers().is_empty());
 
     // if we try to create a block with a timestamp that is too late, we shouldn't get any
     // deploys, either
@@ -193,8 +191,8 @@ fn should_add_and_take_deploys() {
         vec![],
         true,
     );
-    assert!(block.deploy_hashes().is_empty());
-    assert!(block.transfer_hashes().is_empty());
+    assert!(block.deploys().is_empty());
+    assert!(block.transfers().is_empty());
 
     // take the deploys out
     let block = proposer.propose_block_payload(
@@ -203,10 +201,10 @@ fn should_add_and_take_deploys() {
         vec![],
         true,
     );
-    assert!(block.transfer_hashes().is_empty());
-    assert_eq!(block.deploy_hashes().len(), 2);
-    assert!(block.deploy_hashes().contains(deploy1.id()));
-    assert!(block.deploy_hashes().contains(deploy2.id()));
+    assert!(block.transfers().is_empty());
+    assert_eq!(block.deploys().len(), 2);
+    assert!(block.deploy_hashes().any(|hash| hash == deploy1.id()));
+    assert!(block.deploy_hashes().any(|hash| hash == deploy2.id()));
 
     // they shouldn't be returned if we include them in the past deploys
     let empty_block = proposer.propose_block_payload(
@@ -215,8 +213,8 @@ fn should_add_and_take_deploys() {
         vec![],
         true,
     );
-    assert!(empty_block.deploy_hashes().is_empty());
-    assert!(empty_block.transfer_hashes().is_empty());
+    assert!(empty_block.deploys().is_empty());
+    assert!(empty_block.transfers().is_empty());
 
     // finalize the block
     let finalized_block =
@@ -227,11 +225,13 @@ fn should_add_and_take_deploys() {
     proposer.add_deploy(
         block_time2,
         deploy3.deploy_or_transfer_hash(),
+        BTreeSet::new(),
         deploy3.deploy_info().unwrap(),
     );
     proposer.add_deploy(
         block_time2,
         deploy4.deploy_or_transfer_hash(),
+        BTreeSet::new(),
         deploy4.deploy_info().unwrap(),
     );
 
@@ -243,10 +243,10 @@ fn should_add_and_take_deploys() {
     );
 
     // since block 1 is now finalized, neither deploy1 nor deploy2 should be among the returned
-    assert!(block.transfer_hashes().is_empty());
-    assert_eq!(block.deploy_hashes().len(), 2);
-    assert!(block.deploy_hashes().contains(deploy3.id()));
-    assert!(block.deploy_hashes().contains(deploy4.id()));
+    assert!(block.transfers().is_empty());
+    assert_eq!(block.deploys().len(), 2);
+    assert!(block.deploy_hashes().any(|hash| hash == deploy3.id()));
+    assert!(block.deploy_hashes().any(|hash| hash == deploy4.id()));
 }
 
 #[test]
@@ -297,26 +297,38 @@ fn should_successfully_prune() {
     proposer.add_deploy(
         creation_time,
         deploy1.deploy_or_transfer_hash(),
+        BTreeSet::new(),
         deploy1.deploy_info().unwrap(),
     );
     proposer.add_deploy(
         creation_time,
         deploy2.deploy_or_transfer_hash(),
+        BTreeSet::new(),
         deploy2.deploy_info().unwrap(),
     );
     proposer.add_deploy(
         creation_time,
         deploy3.deploy_or_transfer_hash(),
+        BTreeSet::new(),
         deploy3.deploy_info().unwrap(),
     );
     proposer.add_deploy(
         creation_time,
         deploy4.deploy_or_transfer_hash(),
+        BTreeSet::new(),
         deploy4.deploy_info().unwrap(),
     );
 
     // pending => finalized
-    let block = BlockPayload::new(vec![*deploy1.id()], vec![], vec![], false);
+    let block = BlockPayload::new(
+        vec![DeployWithApprovals::new(
+            *deploy1.id(),
+            deploy1.approvals().clone(),
+        )],
+        vec![],
+        vec![],
+        false,
+    );
     let finalized_block = FinalizedBlock::new(block, None, test_time, era1, 1, pub_key);
     proposer.handle_finalized_block(&finalized_block);
 
@@ -381,10 +393,19 @@ fn should_keep_track_of_unhandled_deploys() {
     proposer.add_deploy(
         creation_time,
         deploy1.deploy_or_transfer_hash(),
+        BTreeSet::new(),
         deploy1.deploy_info().unwrap(),
     );
     // But we DO mark it as finalized, by it's hash
-    let block = BlockPayload::new(vec![*deploy1.id(), *deploy2.id()], vec![], vec![], false);
+    let block = BlockPayload::new(
+        vec![
+            DeployWithApprovals::new(*deploy1.id(), deploy1.approvals().clone()),
+            DeployWithApprovals::new(*deploy2.id(), deploy2.approvals().clone()),
+        ],
+        vec![],
+        vec![],
+        false,
+    );
     let finalized_block = FinalizedBlock::new(block, None, test_time, era1, 1, pub_key);
     proposer.handle_finalized_block(&finalized_block);
 
@@ -408,6 +429,7 @@ fn should_keep_track_of_unhandled_deploys() {
     proposer.add_deploy(
         creation_time,
         deploy2.deploy_or_transfer_hash(),
+        BTreeSet::new(),
         deploy2.deploy_info().unwrap(),
     );
     assert!(
@@ -606,6 +628,7 @@ fn test_proposer_with(
         proposer.add_deploy(
             creation_time,
             deploy.deploy_or_transfer_hash(),
+            BTreeSet::new(),
             deploy.deploy_info().unwrap(),
         );
     }
@@ -614,6 +637,7 @@ fn test_proposer_with(
         proposer.add_deploy(
             creation_time,
             transfer.deploy_or_transfer_hash(),
+            BTreeSet::new(),
             transfer.deploy_info().unwrap(),
         );
     }
@@ -673,6 +697,7 @@ fn should_return_deploy_dependencies() {
     proposer.add_deploy(
         creation_time,
         deploy2.deploy_or_transfer_hash(),
+        BTreeSet::new(),
         deploy2.deploy_info().unwrap(),
     );
 
@@ -683,13 +708,14 @@ fn should_return_deploy_dependencies() {
         vec![],
         true,
     );
-    assert!(block.deploy_hashes().is_empty());
-    assert!(block.transfer_hashes().is_empty());
+    assert!(block.deploys().is_empty());
+    assert!(block.transfers().is_empty());
 
     // add deploy1
     proposer.add_deploy(
         creation_time,
         deploy1.deploy_or_transfer_hash(),
+        BTreeSet::new(),
         deploy1.deploy_info().unwrap(),
     );
 
@@ -715,9 +741,8 @@ fn should_return_deploy_dependencies() {
         true,
     );
     // `blocks` contains a block that contains deploy1 now, so we should get deploy2
-    let deploys2 = block.deploy_hashes();
-    assert_eq!(deploys2.len(), 1);
-    assert!(deploys2.contains(deploy2.id()));
+    assert_eq!(block.deploys().len(), 1);
+    assert!(block.deploy_hashes().any(|hash| hash == deploy2.id()));
 }
 
 #[test]
@@ -740,6 +765,7 @@ fn should_respect_deploy_delay() {
     proposer.add_deploy(
         100.into(),
         deploy.deploy_or_transfer_hash(),
+        BTreeSet::new(),
         deploy.deploy_info().unwrap(),
     );
     let block = proposer.propose_block_payload(
@@ -748,12 +774,12 @@ fn should_respect_deploy_delay() {
         vec![],
         true,
     );
-    assert!(block.deploy_hashes().is_empty());
+    assert!(block.deploys().is_empty());
     let block = proposer.propose_block_payload(
         deploy_config,
         BlockContext::new(110.into(), vec![]),
         vec![],
         true,
     );
-    assert_eq!(&vec![*deploy.id()], block.deploy_hashes());
+    assert_eq!(vec![deploy.id()], block.deploy_hashes().collect::<Vec<_>>());
 }

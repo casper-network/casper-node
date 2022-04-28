@@ -1,5 +1,7 @@
 use std::fmt::{self, Debug, Display, Formatter};
 
+#[cfg(test)]
+use casper_types::testing::TestRng;
 use datasize::DataSize;
 use hex_fmt::HexFmt;
 use once_cell::sync::Lazy;
@@ -7,8 +9,6 @@ use once_cell::sync::Lazy;
 use rand::Rng;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
-#[cfg(test)]
-use crate::testing::TestRng;
 use crate::{rpcs::docs::DocExample, tls::KeyFingerprint};
 
 /// The network identifier for a node.

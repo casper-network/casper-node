@@ -9,6 +9,9 @@ import { RuntimeArgs } from "../../../../contract_as/assembly/runtime_args";
 import { Option } from "../../../../contract_as/assembly/option";
 import { toBytesU32 } from "../../../../contract_as/assembly/bytesrepr";
 import { arrayToTyped } from "../../../../contract_as/assembly/utils";
+import { U512 } from "../../../../contract_as/assembly/bignum";
+import { transferFromPurseToPurse } from "../../../../contract_as/assembly/purse";
+import { getMainPurse } from "../../../../contract_as/assembly/account";
 
 const CONTRACT_INITIAL_VERSION: u8 = 1;
 const PACKAGE_HASH_KEY = "package_hash_key";
@@ -62,6 +65,43 @@ export function restricted_contract_caller_as_session(): void {
 export function uncallable_session(): void { }
 
 export function uncallable_contract(): void { }
+
+export function restricted_standard_payment(): void {
+  // Performs standard payment operation as a restricted session entrypoint.
+
+  let amountBytes = CL.getNamedArg("amount");
+  if (amountBytes === null) {
+      Error.fromErrorCode(ErrorCode.MissingArgument).revert();
+      return;
+  }
+
+  let amountResult = U512.fromBytes(amountBytes);
+  if (amountResult.hasError()) {
+      Error.fromErrorCode(ErrorCode.InvalidArgument).revert();
+      return;
+  }
+
+  let amount = amountResult.value;
+
+  let handlePayment = CL.getSystemContract(CL.SystemContract.HandlePayment);
+
+  let paymentPurseOutput = CL.callContract(handlePayment, "get_payment_purse", new RuntimeArgs());
+
+  let paymentPurseResult = URef.fromBytes(paymentPurseOutput);
+  if (paymentPurseResult.hasError()) {
+    Error.fromErrorCode(ErrorCode.InvalidPurse).revert();
+    return;
+  }
+  let paymentPurse = paymentPurseResult.value;
+
+  let err = transferFromPurseToPurse(getMainPurse(), paymentPurse, amount);
+    if (err !== null) {
+      err.revert();
+      return;
+    }
+
+
+}
 
 export function call_restricted_entry_points(): void {
   // We're aggressively removing exports that aren't exposed through contract header so test
@@ -187,6 +227,21 @@ function createEntryPoints(): CL.EntryPoints {
     CL.EntryPointType.Session,
   );
   entryPoints.addEntryPoint(uncallable_contract);
+
+  let standardPaymentParams = new Array<Pair<String, CLType>>();
+  standardPaymentParams.push(new Pair("amount", new CLType(CLTypeTag.U512)));
+  let restrictedStandardPayment = new CL.EntryPoint(
+    "restricted_standard_payment",
+    standardPaymentParams,
+    new CLType(CLTypeTag.Unit),
+    // Made public because we've tested deploy level auth into a contract in
+    // RESTRICTED_CONTRACT entrypoint
+    new CL.GroupAccess(["Group 1"]),
+    // NOTE: Public contract authorizes any contract call, because this contract has groups
+    // uref in its named keys
+    CL.EntryPointType.Session,
+  );
+  entryPoints.addEntryPoint(restrictedStandardPayment);
 
   // Directly calls entryPoints that are protected with empty group of lists to verify that even
   // though they're not callable externally, they're still visible in the WASM.

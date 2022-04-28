@@ -271,7 +271,7 @@ impl ExecutionResult {
     ///
     /// Returns `None` if user deposited enough funds in payment purse and the execution result was
     /// a success variant, otherwise a wrapped [`ForcedTransferResult`] that indicates an error
-    /// codition.
+    /// condition.
     pub fn check_forced_transfer(
         &self,
         payment_purse_balance: Motes,

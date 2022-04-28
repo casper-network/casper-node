@@ -6,7 +6,7 @@ use std::iter;
 use std::{
     array::TryFromSliceError,
     cmp::Reverse,
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     error::Error as StdError,
     fmt::{self, Debug, Display, Formatter},
 };
@@ -24,24 +24,24 @@ use thiserror::Error;
 
 use casper_hashing::Digest;
 #[cfg(test)]
-use casper_types::system::auction::BLOCK_REWARD;
+use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    EraId, ProtocolVersion, PublicKey, SecretKey, Signature, U512,
+    crypto, EraId, ProtocolVersion, PublicKey, SecretKey, Signature, U512,
 };
+#[cfg(test)]
+use casper_types::{crypto::generate_ed25519_keypair, system::auction::BLOCK_REWARD};
 
 use crate::{
     components::consensus,
-    crypto::{self, AsymmetricKeyExt},
     rpcs::docs::DocExample,
     types::{
         error::{BlockCreationError, BlockValidationError},
-        Deploy, DeployHash, DeployOrTransferHash, JsonBlock, JsonBlockHeader,
+        Approval, Deploy, DeployHash, DeployOrTransferHash, DeployWithApprovals, JsonBlock,
+        JsonBlockHeader,
     },
     utils::DisplayIter,
 };
-#[cfg(test)]
-use crate::{crypto::generate_ed25519_keypair, testing::TestRng};
 
 use super::{Item, Tag, Timestamp};
 use crate::types::error::{
@@ -96,12 +96,25 @@ static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
     let transfer_hashes = vec![*Deploy::doc_example().id()];
     let random_bit = true;
     let timestamp = *Timestamp::doc_example();
-    let block_payload = BlockPayload::new(vec![], transfer_hashes, vec![], random_bit);
+    let secret_key = SecretKey::doc_example();
+    let public_key = PublicKey::from(secret_key);
+    let block_payload = BlockPayload::new(
+        vec![],
+        transfer_hashes
+            .into_iter()
+            .map(|hash| {
+                let approval = Approval::create(&hash, secret_key);
+                let mut approvals = BTreeSet::new();
+                approvals.insert(approval);
+                DeployWithApprovals::new(hash, approvals)
+            })
+            .collect(),
+        vec![],
+        random_bit,
+    );
     let era_report = Some(EraReport::doc_example().clone());
     let era_id = EraId::from(1);
     let height = 10;
-    let secret_key = SecretKey::doc_example();
-    let public_key = PublicKey::from(secret_key);
     FinalizedBlock::new(
         block_payload,
         era_report,
@@ -207,22 +220,22 @@ impl From<TryFromSliceError> for Error {
     Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, Default,
 )]
 pub struct BlockPayload {
-    deploy_hashes: Vec<DeployHash>,
-    transfer_hashes: Vec<DeployHash>,
+    deploys: Vec<DeployWithApprovals>,
+    transfers: Vec<DeployWithApprovals>,
     accusations: Vec<PublicKey>,
     random_bit: bool,
 }
 
 impl BlockPayload {
     pub(crate) fn new(
-        deploy_hashes: Vec<DeployHash>,
-        transfer_hashes: Vec<DeployHash>,
+        deploys: Vec<DeployWithApprovals>,
+        transfers: Vec<DeployWithApprovals>,
         accusations: Vec<PublicKey>,
         random_bit: bool,
     ) -> Self {
         BlockPayload {
-            deploy_hashes,
-            transfer_hashes,
+            deploys,
+            transfers,
             accusations,
             random_bit,
         }
@@ -233,14 +246,24 @@ impl BlockPayload {
         &self.accusations
     }
 
-    /// The list of deploy hashes included in the block, excluding transfers.
-    pub(crate) fn deploy_hashes(&self) -> &Vec<DeployHash> {
-        &self.deploy_hashes
+    /// The list of deploys included in the block, excluding transfers.
+    pub(crate) fn deploys(&self) -> &Vec<DeployWithApprovals> {
+        &self.deploys
     }
 
-    /// The list of transfer hashes included in the block.
-    pub(crate) fn transfer_hashes(&self) -> &Vec<DeployHash> {
-        &self.transfer_hashes
+    /// The list of transfers included in the block.
+    pub(crate) fn transfers(&self) -> &Vec<DeployWithApprovals> {
+        &self.transfers
+    }
+
+    /// An iterator over deploy hashes included in the block, excluding transfers.
+    pub(crate) fn deploy_hashes(&self) -> impl Iterator<Item = &DeployHash> + Clone {
+        self.deploys.iter().map(|dwa| dwa.deploy_hash())
+    }
+
+    /// An iterator over transfer hashes included in the block.
+    pub(crate) fn transfer_hashes(&self) -> impl Iterator<Item = &DeployHash> + Clone {
+        self.transfers.iter().map(|dwa| dwa.deploy_hash())
     }
 
     /// Returns an iterator over all deploys and transfers.
@@ -248,12 +271,10 @@ impl BlockPayload {
         &self,
     ) -> impl Iterator<Item = DeployOrTransferHash> + '_ {
         self.deploy_hashes()
-            .iter()
             .copied()
             .map(DeployOrTransferHash::Deploy)
             .chain(
                 self.transfer_hashes()
-                    .iter()
                     .copied()
                     .map(DeployOrTransferHash::Transfer),
             )
@@ -265,11 +286,79 @@ impl Display for BlockPayload {
         write!(
             formatter,
             "block payload: deploys {}, transfers {}, accusations {:?}, random bit {}",
-            HexList(&self.deploy_hashes),
-            HexList(&self.transfer_hashes),
+            HexList(self.deploy_hashes()),
+            HexList(self.transfer_hashes()),
             self.accusations,
             self.random_bit,
         )
+    }
+}
+
+#[cfg(test)]
+impl BlockPayload {
+    #[allow(unused)] // TODO: remove when used in tests
+    pub fn random(
+        rng: &mut TestRng,
+        num_deploys: usize,
+        num_transfers: usize,
+        num_approvals: usize,
+        num_accusations: usize,
+    ) -> Self {
+        let mut total_approvals_left = num_approvals;
+        const MAX_APPROVALS_PER_DEPLOY: usize = 100;
+
+        let deploys = (0..num_deploys)
+            .map(|n| {
+                // We need at least one approval, and at least as many so that we are able to split
+                // all the remaining approvals between the remaining deploys while not exceeding
+                // the limit per deploy.
+                let min_approval_count = total_approvals_left
+                    .saturating_sub(
+                        MAX_APPROVALS_PER_DEPLOY * (num_transfers + num_deploys - n - 1),
+                    )
+                    .max(1);
+                // We have to leave at least one approval per deploy for the remaining deploys.
+                let max_approval_count = MAX_APPROVALS_PER_DEPLOY
+                    .min(total_approvals_left - (num_transfers + num_deploys - n - 1));
+                let n_approvals = rng.gen_range(min_approval_count..=max_approval_count);
+                total_approvals_left -= n_approvals;
+                DeployWithApprovals::new(
+                    DeployHash::random(rng),
+                    (0..n_approvals).map(|_| Approval::random(rng)).collect(),
+                )
+            })
+            .collect();
+
+        let transfers = (0..num_transfers)
+            .map(|n| {
+                // We need at least one approval, and at least as many so that we are able to split
+                // all the remaining approvals between the remaining transfers while not exceeding
+                // the limit per deploy.
+                let min_approval_count = total_approvals_left
+                    .saturating_sub(MAX_APPROVALS_PER_DEPLOY * (num_transfers - n - 1))
+                    .max(1);
+                // We have to leave at least one approval per transfer for the remaining transfers.
+                let max_approval_count =
+                    MAX_APPROVALS_PER_DEPLOY.min(total_approvals_left - (num_transfers - n - 1));
+                let n_approvals = rng.gen_range(min_approval_count..=max_approval_count);
+                total_approvals_left -= n_approvals;
+                DeployWithApprovals::new(
+                    DeployHash::random(rng),
+                    (0..n_approvals).map(|_| Approval::random(rng)).collect(),
+                )
+            })
+            .collect();
+
+        let accusations = (0..num_accusations)
+            .map(|_| PublicKey::random(rng))
+            .collect();
+
+        Self {
+            deploys,
+            transfers,
+            accusations,
+            random_bit: rng.gen(),
+        }
     }
 }
 
@@ -349,8 +438,8 @@ impl FinalizedBlock {
         proposer: PublicKey,
     ) -> Self {
         FinalizedBlock {
-            deploy_hashes: block_payload.deploy_hashes,
-            transfer_hashes: block_payload.transfer_hashes,
+            deploy_hashes: block_payload.deploy_hashes().cloned().collect(),
+            transfer_hashes: block_payload.transfer_hashes().cloned().collect(),
             timestamp,
             random_bit: block_payload.random_bit,
             era_report: Box::new(era_report),
@@ -416,14 +505,18 @@ impl FinalizedBlock {
         is_switch: bool,
     ) -> Self {
         let deploy_count = rng.gen_range(0..11);
-        let deploy_hashes =
-            iter::repeat_with(|| DeployHash::new(rng.gen::<[u8; Digest::LENGTH]>().into()))
-                .take(deploy_count)
-                .collect();
+        let deploys = iter::repeat_with(|| {
+            DeployWithApprovals::new(
+                DeployHash::new(rng.gen::<[u8; Digest::LENGTH]>().into()),
+                BTreeSet::new(),
+            )
+        })
+        .take(deploy_count)
+        .collect();
         let random_bit = rng.gen();
         // TODO - make Timestamp deterministic.
         let timestamp = Timestamp::now();
-        let block_payload = BlockPayload::new(deploy_hashes, vec![], vec![], random_bit);
+        let block_payload = BlockPayload::new(deploys, vec![], vec![], random_bit);
 
         let era_report = if is_switch {
             let equivocators_count = rng.gen_range(0..5);
@@ -1274,7 +1367,7 @@ impl BlockSignatures {
     }
 
     /// Verify the signatures contained within.
-    pub(crate) fn verify(&self) -> crypto::Result<()> {
+    pub(crate) fn verify(&self) -> Result<(), crypto::Error> {
         for (public_key, signature) in self.proofs.iter() {
             let signature = FinalitySignature {
                 block_hash: self.block_hash,
@@ -2060,7 +2153,7 @@ impl FinalitySignature {
     }
 
     /// Verifies whether the signature is correct.
-    pub fn verify(&self) -> crypto::Result<()> {
+    pub fn verify(&self) -> Result<(), crypto::Error> {
         // NOTE: This needs to be in sync with the `new` constructor.
         let mut bytes = self.block_hash.inner().into_vec();
         bytes.extend_from_slice(&self.era_id.to_le_bytes());
@@ -2088,9 +2181,7 @@ impl Display for FinalitySignature {
 mod tests {
     use std::rc::Rc;
 
-    use casper_types::bytesrepr;
-
-    use crate::testing::TestRng;
+    use casper_types::{bytesrepr, testing::TestRng};
 
     use super::*;
 

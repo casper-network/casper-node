@@ -1,6 +1,6 @@
 //! A library to support testing of Wasm smart contracts for use on the Casper Platform.
 
-#![doc(html_root_url = "https://docs.rs/casper-engine-test-support/2.0.3")]
+#![doc(html_root_url = "https://docs.rs/casper-engine-test-support/2.1.0")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
     html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
@@ -8,9 +8,13 @@
 )]
 #![warn(missing_docs)]
 mod additive_map_diff;
+/// Utility methods for running the auction in a test or bench context.
+pub mod auction;
 mod deploy_item_builder;
 mod execute_request_builder;
 mod step_request_builder;
+/// Utilities for running transfers in a test or bench context.
+pub mod transfer;
 mod upgrade_request_builder;
 pub mod utils;
 mod wasm_test_builder;

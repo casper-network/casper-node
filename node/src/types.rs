@@ -33,7 +33,8 @@ pub(crate) use chainspec::{ActivationPoint, ChainspecRawBytes};
 pub use datasize::DataSize;
 pub use deploy::{
     Approval, Deploy, DeployConfigurationFailure, DeployHash, DeployHeader, DeployMetadata,
-    DeployOrTransferHash, Error as DeployError, ExcessiveSizeError as ExcessiveSizeDeployError,
+    DeployOrTransferHash, DeployWithApprovals, DeployWithFinalizedApprovals, Error as DeployError,
+    ExcessiveSizeError as ExcessiveSizeDeployError, FinalizedApprovals, FinalizedApprovalsWithId,
 };
 pub use error::BlockValidationError;
 pub use exit_code::ExitCode;
@@ -55,4 +56,4 @@ pub type NodeRng = ChaCha20Rng;
 
 /// The RNG used throughout the node for testing.
 #[cfg(test)]
-pub type NodeRng = crate::testing::TestRng;
+pub type NodeRng = casper_types::testing::TestRng;

@@ -1,15 +1,45 @@
 //! Effects subsystem.
 //!
 //! Effects describe things that the creator of the effect intends to happen, producing a value upon
-//! completion. They are, in fact, futures.
+//! completion (they actually are boxed futures).
 //!
 //! A pinned, boxed future returning an event is called an effect and typed as an `Effect<Ev>`,
-//! where `Ev` is the event's type. Generally, `Ev` is an Event enum defined at the top level of
-//! each component in the `crate::components` module.
+//! where `Ev` is the event's type, as every effect must have its return value either wrapped in an
+//! event through [`EffectExt::event`](crate::effect::EffectExt::event) or ignored using
+//! [`EffectExt::ignore`](crate::effect::EffectExt::ignore). As an example, the
+//! [`handle_event`](crate::components::Component::handle_event) function of a component always
+//! returns `Effect<Self::Event>`.
 //!
-//! ## Using effects
+//! # A primer on events
 //!
-//! To create an effect, an `EffectBuilder` will be passed in from the relevant reactor. For
+//! There are three distinct groups of events found around the node:
+//!
+//! * (unbound) events: These events are not associated with a particular reactor or component and
+//!   represent information or requests by themselves. An example is the
+//!   [`BlocklistAnnouncement`](`crate::effect::announcements::BlocklistAnnouncement`), it can be
+//!   emitted through an effect by different components and contains the ID of a peer that should be
+//!   shunned. It is not associated with a particular reactor or component though.
+//!
+//!   While the node is running, these unbound events cannot exist on their own, instead they are
+//!   typically converted into a concrete reactor event by the effect builder as soon as they are
+//!   created.
+//!
+//! * reactor events: A running reactor has a single event type that encompasses all possible
+//!   unbound events that can occur during its operation and all component events of components it
+//!   is made of. Usually they are implemented as one large `enum` with only newtype-variants.
+//!
+//! * component events: Every component defines its own set of events, typically for internal use.
+//!   If the component is able to process unbound events like announcements or requests, it will
+//!   have a `From` implementation that allows converting them into a suitable component event.
+//!
+//!   Component events are also created from the return values of effects: While effects do not
+//!   return events themselves when called, their return values are turned first into component
+//!   events through the [`event`](crate::effect::EffectExt) method. In a second step, inside the
+//!   reactors routing code, `wrap_effect` will then convert from component to reactor event.
+//!
+//! # Using effects
+//!
+//! To create an effect, an `EffectBuilder` will be passed in by the calling reactor runner. For
 //! example, given an effect builder `effect_builder`, we can create a `set_timeout` future and turn
 //! it into an effect:
 //!
@@ -17,6 +47,7 @@
 //! use std::time::Duration;
 //! use casper_node::effect::EffectExt;
 //!
+//! // Note: This is our "component" event.
 //! enum Event {
 //!     ThreeSecondsElapsed(Duration)
 //! }
@@ -30,33 +61,34 @@
 //! `Event::ThreeSecondsElapsed`. Note that effects do nothing on their own, they need to be passed
 //! to a [`reactor`](../reactor/index.html) to be executed.
 //!
-//! ## Arbitrary effects
+//! # Arbitrary effects
 //!
-//! While it is technically possible to turn any future into an effect, it is advisable to only use
-//! the effects explicitly listed in this module through traits to create them. Post-processing on
-//! effects to turn them into events should also be kept brief.
+//! While it is technically possible to turn any future into an effect, it is in general advisable
+//! to only use the methods on [`EffectBuilder`] or short, anonymous futures to create effects.
 //!
-//! ## Announcements and effects
+//! # Announcements and requests
 //!
-//! Some effects can be further classified into either announcements or requests, although these
-//! properties are not reflected in the type system.
+//! Events are usually classified into either announcements or requests, although these properties
+//! are not reflected in the type system.
 //!
-//! **Announcements** are effects emitted by components that are essentially "fire-and-forget"; the
-//! component will never expect an answer for these and does not rely on them being handled. It is
-//! also conceivable that they are being cloned and dispatched to multiple components by the
-//! reactor.
+//! **Announcements** are events that are essentially "fire-and-forget"; the component that created
+//! the effect resulting in the creation of the announcement will never expect an "answer".
+//! Announcements are often dispatched to multiple components by the reactor; since that usually
+//! involves a [`clone`](`Clone::clone`), they should be kept light.
 //!
 //! A good example is the arrival of a new deploy passed in by a client. Depending on the setup it
 //! may be stored, buffered or, in certain testing setups, just discarded. None of this is a concern
-//! of the component that talks to the client and deserializes the incoming deploy though, which
-//! considers the deploy no longer its concern after it has returned an announcement effect.
+//! of the component that talks to the client and deserializes the incoming deploy though, instead
+//! it simply returns an effect that produces an announcement.
 //!
-//! **Requests** are complex effects that are used when a component needs something from
-//! outside of itself (typically to be provided by another component); a request requires an
-//! eventual response.
+//! **Requests** are complex events that are used when a component needs something from other
+//! components. Typically, an effect (which uses [`EffectBuilder::make_request`] in its
+//! implementation) is called resulting in the actual request being scheduled and handled. In
+//! contrast to announcements, requests must always be handled by exactly one component.
 //!
-//! A request **must** have a `Responder` field, which a handler of a request **must** call at
-//! some point. Failing to do so will result in a resource leak.
+//! Every request has a [`Responder`]-typed field, which a handler of a request calls to produce
+//! another effect that will send the return value to the original requesting component. Failing to
+//! call the [`Responder::respond`] function will result in a runtime warning.
 
 pub(crate) mod announcements;
 pub(crate) mod diagnostics_port;
@@ -92,8 +124,8 @@ use casper_execution_engine::{
 };
 use casper_hashing::Digest;
 use casper_types::{
-    account::Account, system::auction::EraValidators, Contract, ContractPackage, EraId,
-    ExecutionEffect, ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer, URef, U512,
+    account::Account, bytesrepr::Bytes, system::auction::EraValidators, Contract, ContractPackage,
+    EraId, ExecutionEffect, ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer, URef, U512,
 };
 
 use crate::{
@@ -112,8 +144,8 @@ use crate::{
     types::{
         AvailableBlockRange, Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
-        DeployHash, DeployHeader, DeployMetadata, FinalitySignature, FinalizedBlock, Item, NodeId,
-        TimeDiff, Timestamp,
+        DeployHash, DeployHeader, DeployMetadata, DeployWithFinalizedApprovals, FinalitySignature,
+        FinalizedApprovals, FinalizedBlock, Item, NodeId, TimeDiff, Timestamp,
     },
     utils::{SharedFlag, Source},
 };
@@ -123,7 +155,6 @@ use announcements::{
     DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
     RpcServerAnnouncement,
 };
-use casper_types::bytesrepr::Bytes;
 use requests::{
     BlockPayloadRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
     ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
@@ -408,8 +439,11 @@ where
 
 /// A builder for [`Effect`](type.Effect.html)s.
 ///
-/// Provides methods allowing the creation of effects which need to be scheduled
-/// on the reactor's event queue, without giving direct access to this queue.
+/// Provides methods allowing the creation of effects which need to be scheduled on the reactor's
+/// event queue, without giving direct access to this queue.
+///
+/// The `REv` type parameter indicates which reactor event effects created by this builder will
+/// produce as side-effects.
 #[derive(Debug)]
 pub(crate) struct EffectBuilder<REv: 'static> {
     /// A handle to the referenced event queue.
@@ -1116,10 +1150,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested deploys from the deploy store.
+    ///
+    /// Returns the "original" deploys, which are the first received by the node, along with a
+    /// potentially different set of approvals used during execution of the recorded block.
     pub(crate) async fn get_deploys_from_storage(
         self,
         deploy_hashes: Vec<DeployHash>,
-    ) -> Vec<Option<Deploy>>
+    ) -> SmallVec<[Option<DeployWithFinalizedApprovals>; 1]>
     where
         REv: From<StorageRequest>,
     {
@@ -1157,7 +1194,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_deploy_and_metadata_from_storage(
         self,
         deploy_hash: DeployHash,
-    ) -> Option<(Deploy, DeployMetadata)>
+    ) -> Option<(DeployWithFinalizedApprovals, DeployMetadata)>
     where
         REv: From<StorageRequest>,
     {
@@ -1874,6 +1911,27 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             ChainspecLoaderRequest::GetChainspecRawBytes,
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Stores a set of given finalized approvals in storage.
+    ///
+    /// Any previously stored finalized approvals for the given hash are quietly overwritten
+    pub(crate) async fn store_finalized_approvals(
+        self,
+        deploy_hash: DeployHash,
+        finalized_approvals: FinalizedApprovals,
+    ) where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::StoreFinalizedApprovals {
+                deploy_hash,
+                finalized_approvals,
+                responder,
+            },
             QueueKind::Regular,
         )
         .await

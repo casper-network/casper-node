@@ -15,12 +15,24 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Added
 * Added `WasmTestBuilder::get_execution_journals` method for returning execution journals for all test runs.
+* Added `WasmTestBuilder::advance_era`, `WasmTestBuilder::advance_eras_by`, and `WasmTestBuilder::advance_eras_by_default_auction_delay` to advance chain and run auction contract in test environment.
 
 ### Changed
 * `WasmTestBuilder::get_transforms` is deprecated in favor of `WasmTestBuilder::get_execution_journals`.
 * `deploy_hash` field is now defaulted to a random value rather than zeros in `DeployItemBuilder`.
 
 
+
+<<<<<<< HEAD
+=======
+## 2.1.0
+
+### Added
+* Add further helper methods to `WasmTestBuilder`.
+
+
+
+>>>>>>> upstream/dev
 ## 2.0.3 - 2021-12-06
 
 ### Added

@@ -23,7 +23,6 @@ use super::{
 };
 use crate::{
     components::consensus::ValidatorChange,
-    crypto::AsymmetricKeyExt,
     effect::EffectBuilder,
     reactor::QueueKind,
     types::{Block, BlockHash, ChainspecRawBytes, Deploy, DeployHash, GetStatusResult, PeersMap},
@@ -31,6 +30,7 @@ use crate::{
 
 static GET_DEPLOY_PARAMS: Lazy<GetDeployParams> = Lazy::new(|| GetDeployParams {
     deploy_hash: *Deploy::doc_example().id(),
+    finalized_approvals: true,
 });
 static GET_DEPLOY_RESULT: Lazy<GetDeployResult> = Lazy::new(|| GetDeployResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
@@ -64,6 +64,15 @@ static GET_CHAINSPEC_RESULT: Lazy<GetChainspecResult> = Lazy::new(|| GetChainspe
 pub struct GetDeployParams {
     /// The deploy hash.
     pub deploy_hash: DeployHash,
+    /// Whether to return the deploy with the finalized approvals substituted. If `false` or
+    /// omitted, returns the deploy with the approvals that were originally received by the node.
+    #[serde(default = "finalized_approvals_default")]
+    pub finalized_approvals: bool,
+}
+
+/// The default for `GetDeployParams::finalized_approvals`.
+fn finalized_approvals_default() -> bool {
+    false
 }
 
 impl DocExample for GetDeployParams {
@@ -123,6 +132,7 @@ impl RpcWithParamsExt for GetDeploy {
                 .make_request(
                     |responder| RpcRequest::GetDeploy {
                         hash: params.deploy_hash,
+                        finalized_approvals: params.finalized_approvals,
                         responder,
                     },
                     QueueKind::Api,

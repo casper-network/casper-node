@@ -2,7 +2,7 @@ mod store_ext;
 #[cfg(test)]
 pub(crate) mod tests;
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 
 pub use self::store_ext::StoreExt;
 use crate::storage::transaction_source::{Readable, Writable};
@@ -40,7 +40,7 @@ pub trait Store<K, V> {
 
     /// Returns an optional value (may exist or not) as read through a transaction, or an error
     /// of the associated `Self::Error` variety.
-    fn get_raw<'a, T>(&self, txn: &'a T, key: &K) -> Result<Option<&'a [u8]>, Self::Error>
+    fn get_raw<T>(&self, txn: &T, key: &K) -> Result<Option<Bytes>, Self::Error>
     where
         T: Readable<Handle = Self::Handle>,
         K: AsRef<[u8]>,

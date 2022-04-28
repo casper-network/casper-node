@@ -1,9 +1,8 @@
 use std::{io, path::PathBuf};
 
+use casper_types::file_utils::ReadFileError;
 use thiserror::Error;
 use uint::FromDecStrErr;
-
-use crate::utils::ReadFileError;
 
 /// Error returned by the `ChainspecLoader`.
 #[derive(Debug, Error)]
@@ -70,7 +69,7 @@ pub enum ChainspecAccountsLoadError {
 
     /// Error while decoding a chainspec account's key hash from base-64 format.
     #[error("crypto module error: {0}")]
-    Crypto(#[from] crate::crypto::Error),
+    Crypto(#[from] casper_types::crypto::ErrorExt),
 }
 
 /// Error loading global state update file.

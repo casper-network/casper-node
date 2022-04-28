@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use tokio::task;
 use tracing::{debug, error, info, trace, warn};
 
-use casper_types::{EraId, ProtocolVersion};
+use casper_types::{file_utils, EraId, ProtocolVersion};
 
 #[cfg(test)]
 use crate::utils::RESOURCES_PATH;
@@ -42,7 +42,7 @@ use crate::{
         chainspec::{ChainspecRawBytes, Error, ProtocolConfig, CHAINSPEC_FILENAME},
         ActivationPoint, BlockHeader, Chainspec, ChainspecInfo, ExitCode,
     },
-    utils::{self, Loadable},
+    utils::Loadable,
     NodeRng,
 };
 
@@ -446,7 +446,7 @@ struct UpgradePoint {
 impl UpgradePoint {
     /// Parses a chainspec file at the given path as an `UpgradePoint`.
     fn from_chainspec_path<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
-        let bytes = utils::read_file(path.as_ref().join(&CHAINSPEC_FILENAME))
+        let bytes = file_utils::read_file(path.as_ref().join(&CHAINSPEC_FILENAME))
             .map_err(Error::LoadUpgradePoint)?;
         Ok(toml::from_slice(&bytes)?)
     }
@@ -552,11 +552,10 @@ fn next_upgrade(dir: PathBuf, current_version: ProtocolVersion) -> Option<NextUp
 
 #[cfg(test)]
 mod tests {
+    use casper_types::testing::TestRng;
+
     use super::*;
-    use crate::{
-        testing::TestRng,
-        types::{chainspec::CHAINSPEC_FILENAME, Block},
-    };
+    use crate::types::{chainspec::CHAINSPEC_FILENAME, Block};
 
     #[test]
     fn correctly_detects_when_to_exit_for_upgrade() {

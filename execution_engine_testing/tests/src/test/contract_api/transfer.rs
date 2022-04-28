@@ -15,16 +15,18 @@ use casper_types::{
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
-const CONTRACT_TRANSFER_PURSE_TO_PUBLIC_KEY: &str = "transfer_purse_to_public_key.wasm";
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
 const CONTRACT_TRANSFER_TO_PUBLIC_KEY: &str = "transfer_to_public_key.wasm";
+const CONTRACT_TRANSFER_PURSE_TO_PUBLIC_KEY: &str = "transfer_purse_to_public_key.wasm";
+const CONTRACT_TRANSFER_TO_NAMED_PURSE: &str = "transfer_to_named_purse.wasm";
 
 static TRANSFER_1_AMOUNT: Lazy<U512> =
     Lazy::new(|| U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE) + 1000);
 static TRANSFER_2_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(750));
 static TRANSFER_2_AMOUNT_WITH_ADV: Lazy<U512> = Lazy::new(|| *DEFAULT_PAYMENT + *TRANSFER_2_AMOUNT);
 static TRANSFER_TOO_MUCH: Lazy<U512> = Lazy::new(|| U512::from(u64::max_value()));
-static ACCOUNT_1_INITIAL_BALANCE: Lazy<U512> = Lazy::new(|| *DEFAULT_PAYMENT);
+static ACCOUNT_1_INITIAL_BALANCE: Lazy<U512> =
+    Lazy::new(|| U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE));
 
 static ACCOUNT_1_SECRET_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::secp256k1_from_bytes(&[234u8; 32]).unwrap());
@@ -41,6 +43,8 @@ static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| ACCOUNT_2_PUBLIC_KEY.to_
 const ARG_TARGET: &str = "target";
 const ARG_AMOUNT: &str = "amount";
 const ARG_SOURCE_PURSE: &str = "source_purse";
+const ARG_PURSE_NAME: &str = "purse_name";
+const TEST_PURSE: &str = "test_purse";
 
 #[ignore]
 #[test]
@@ -151,29 +155,44 @@ fn should_transfer_to_public_key() {
 #[ignore]
 #[test]
 fn should_transfer_from_purse_to_public_key() {
-    let transfer_amount: U512 = *TRANSFER_1_AMOUNT;
-
     // Run genesis
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
+    // Create a funded a purse, and store it in named keys
+    let exec_request_1 = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_NAMED_PURSE,
+        runtime_args! {
+            ARG_PURSE_NAME => TEST_PURSE,
+            ARG_AMOUNT => *TRANSFER_1_AMOUNT,
+        },
+    )
+    .build();
+
+    builder.exec(exec_request_1).expect_success().commit();
+
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account");
-
     let default_account_purse = default_account.main_purse();
 
     // Check genesis account balance
     let initial_account_balance = builder.get_purse_balance(default_account_purse);
 
-    // Exec transfer contract
+    let test_purse = default_account.named_keys()[TEST_PURSE]
+        .into_uref()
+        .expect("should have test purse");
 
-    let exec_request_1 = ExecuteRequestBuilder::standard(
+    let test_purse_balanace_before = builder.get_purse_balance(test_purse);
+
+    // Exec transfer contract
+    let exec_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_PURSE_TO_PUBLIC_KEY,
         runtime_args! {
-            ARG_SOURCE_PURSE => default_account_purse,
+            ARG_SOURCE_PURSE => test_purse,
             ARG_TARGET => ACCOUNT_1_PUBLIC_KEY.clone(),
             ARG_AMOUNT => *TRANSFER_1_AMOUNT,
         },
@@ -182,7 +201,7 @@ fn should_transfer_from_purse_to_public_key() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder.exec(exec_request_2).expect_success().commit();
 
     // Check genesis account balance
 
@@ -190,9 +209,12 @@ fn should_transfer_from_purse_to_public_key() {
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
+    assert_eq!(modified_balance, initial_account_balance - transaction_fee);
+
+    let test_purse_balanace_after = builder.get_purse_balance(test_purse);
     assert_eq!(
-        modified_balance,
-        initial_account_balance - transaction_fee - transfer_amount
+        test_purse_balanace_after,
+        test_purse_balanace_before - *TRANSFER_1_AMOUNT
     );
 
     let handle_payment = builder.get_handle_payment_contract();
@@ -456,18 +478,26 @@ fn should_transfer_total_amount() {
     )
     .build();
 
+    let transfer_amount_1 = *ACCOUNT_1_INITIAL_BALANCE - *DEFAULT_PAYMENT;
+
     let exec_request_2 = ExecuteRequestBuilder::standard(
         *ACCOUNT_1_ADDR,
         CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
-        runtime_args! { "target" => *ACCOUNT_2_ADDR, "amount" => *ACCOUNT_1_INITIAL_BALANCE },
+        runtime_args! { "target" => *ACCOUNT_2_ADDR, "amount" => transfer_amount_1 },
     )
     .build();
-    builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
-        .exec(exec_request_1)
-        .expect_success()
-        .commit()
-        .exec(exec_request_2)
-        .commit()
-        .expect_success();
+
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    builder.exec(exec_request_1).expect_success().commit();
+
+    builder.exec(exec_request_2).commit().expect_success();
+
+    let account_1 = builder
+        .get_account(*ACCOUNT_1_ADDR)
+        .expect("should have account");
+    let account_1_main_purse = account_1.main_purse();
+    let account_1_balance = builder.get_purse_balance(account_1_main_purse);
+
+    assert_eq!(account_1_balance, U512::zero());
 }
