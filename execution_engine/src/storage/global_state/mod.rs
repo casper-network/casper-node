@@ -3,10 +3,13 @@
 /// In-memory implementation of global state.
 pub mod in_memory;
 
-/// Lmdb implementation of global state.
+/// Db implementation of global state.
 pub mod lmdb;
 
-use std::hash::BuildHasher;
+/// Implementation of global state with cache.
+pub mod scratch;
+
+use std::{collections::HashMap, hash::BuildHasher};
 
 use tracing::error;
 
@@ -70,6 +73,21 @@ pub enum CommitError {
     /// Transform error.
     #[error(transparent)]
     TransformError(transform::Error),
+    /// Trie not found while attempting to validate cache write.
+    #[error("Trie not found in cache {0}")]
+    TrieNotFoundInCache(Digest),
+}
+
+/// Provides `commit` method.
+pub trait CommitProvider: StateProvider {
+    /// Applies changes and returns a new post state hash.
+    /// block_hash is used for computing a deterministic and unique keys.
+    fn commit(
+        &self,
+        correlation_id: CorrelationId,
+        state_hash: Digest,
+        effects: AdditiveMap<Key, Transform>,
+    ) -> Result<Digest, Self::Error>;
 }
 
 /// A trait expressing operations over the trie.
@@ -82,15 +100,6 @@ pub trait StateProvider {
 
     /// Checkouts to the post state of a specific block.
     fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, Self::Error>;
-
-    /// Applies changes and returns a new post state hash.
-    /// block_hash is used for computing a deterministic and unique keys.
-    fn commit(
-        &self,
-        correlation_id: CorrelationId,
-        state_hash: Digest,
-        effects: AdditiveMap<Key, Transform>,
-    ) -> Result<Digest, Self::Error>;
 
     /// Returns an empty root hash.
     fn empty_root(&self) -> Digest;
@@ -115,6 +124,44 @@ pub trait StateProvider {
         correlation_id: CorrelationId,
         trie_keys: Vec<Digest>,
     ) -> Result<Vec<Digest>, Self::Error>;
+}
+
+/// Write multiple key/stored value pairs to the store in a single rw transaction.
+pub fn put_stored_values<'a, R, S, E>(
+    environment: &'a R,
+    store: &S,
+    correlation_id: CorrelationId,
+    prestate_hash: Digest,
+    stored_values: HashMap<Key, StoredValue>,
+) -> Result<Digest, E>
+where
+    R: TransactionSource<'a, Handle = S::Handle>,
+    S: TrieStore<Key, StoredValue>,
+    S::Error: From<R::Error>,
+    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<CommitError>,
+{
+    let mut txn = environment.create_read_write_txn()?;
+    let mut state_root = prestate_hash;
+    let maybe_root: Option<Trie<Key, StoredValue>> = store.get(&txn, &state_root)?;
+    if maybe_root.is_none() {
+        return Err(CommitError::RootNotFound(prestate_hash).into());
+    };
+    for (key, value) in stored_values.iter() {
+        let write_result =
+            write::<_, _, _, _, E>(correlation_id, &mut txn, store, &state_root, key, value)?;
+        match write_result {
+            WriteResult::Written(root_hash) => {
+                state_root = root_hash;
+            }
+            WriteResult::AlreadyExists => (),
+            WriteResult::RootNotFound => {
+                error!(?state_root, ?key, ?value, "Error writing new value");
+                return Err(CommitError::WriteRootNotFound(state_root).into());
+            }
+        }
+    }
+    txn.commit()?;
+    Ok(state_root)
 }
 
 /// Commit `effects` to the store.

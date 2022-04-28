@@ -9,6 +9,7 @@ use std::{
     sync::Arc,
 };
 
+use filesize::PathExt;
 use lmdb::DatabaseFlags;
 use log::LevelFilter;
 
@@ -37,7 +38,8 @@ use casper_execution_engine::{
     },
     storage::{
         global_state::{
-            in_memory::InMemoryGlobalState, lmdb::LmdbGlobalState, StateProvider, StateReader,
+            in_memory::InMemoryGlobalState, lmdb::LmdbGlobalState, scratch::ScratchGlobalState,
+            CommitProvider, StateProvider, StateReader,
         },
         transaction_source::lmdb::LmdbEnvironment,
         trie::{merkle_proof::TrieMerkleProof, Trie},
@@ -97,8 +99,12 @@ pub struct WasmTestBuilder<S> {
     genesis_account: Option<Account>,
     /// Genesis transforms
     genesis_transforms: Option<AdditiveMap<Key, Transform>>,
+    /// Scratch global state used for in-memory execution and commit optimization.
+    scratch_engine_state: Option<EngineState<ScratchGlobalState>>,
     /// System contract registry
     system_contract_registry: Option<SystemContractRegistry>,
+    /// Global state dir, for implementations that define one.
+    global_state_dir: Option<PathBuf>,
 }
 
 impl<S> WasmTestBuilder<S> {
@@ -126,6 +132,8 @@ impl Default for InMemoryWasmTestBuilder {
             genesis_account: None,
             genesis_transforms: None,
             system_contract_registry: None,
+            global_state_dir: None,
+            scratch_engine_state: None,
         }
     }
 }
@@ -143,7 +151,9 @@ impl<S> Clone for WasmTestBuilder<S> {
             transforms: self.transforms.clone(),
             genesis_account: self.genesis_account.clone(),
             genesis_transforms: self.genesis_transforms.clone(),
+            scratch_engine_state: None,
             system_contract_registry: self.system_contract_registry.clone(),
+            global_state_dir: self.global_state_dir.clone(),
         }
     }
 }
@@ -192,6 +202,7 @@ impl LmdbWasmTestBuilder {
 
         let global_state =
             LmdbGlobalState::empty(environment, trie_store).expect("should create LmdbGlobalState");
+
         let engine_state = EngineState::new(global_state, engine_config);
         WasmTestBuilder {
             engine_state: Rc::new(engine_state),
@@ -203,6 +214,8 @@ impl LmdbWasmTestBuilder {
             genesis_account: None,
             genesis_transforms: None,
             system_contract_registry: None,
+            global_state_dir: Some(global_state_dir),
+            scratch_engine_state: None,
         }
     }
 
@@ -253,6 +266,7 @@ impl LmdbWasmTestBuilder {
 
         let global_state =
             LmdbGlobalState::empty(environment, trie_store).expect("should create LmdbGlobalState");
+
         let engine_state = EngineState::new(global_state, engine_config);
         WasmTestBuilder {
             engine_state: Rc::new(engine_state),
@@ -263,7 +277,9 @@ impl LmdbWasmTestBuilder {
             transforms: Vec::new(),
             genesis_account: None,
             genesis_transforms: None,
+            scratch_engine_state: None,
             system_contract_registry: None,
+            global_state_dir: Some(global_state_dir.as_ref().to_path_buf()),
         }
     }
 
@@ -281,11 +297,92 @@ impl LmdbWasmTestBuilder {
         path.push(GLOBAL_STATE_DIR);
         path
     }
+
+    /// Returns the file size on disk of the backing lmdb file behind LmdbGlobalState.
+    pub fn lmdb_on_disk_size(&self) -> Option<u64> {
+        if let Some(path) = self.global_state_dir.as_ref() {
+            let mut path = path.clone();
+            path.push("data.lmdb");
+            return path.as_path().size_on_disk().ok();
+        }
+        None
+    }
+
+    /// Execute and commit transforms from an ExecuteRequest into a scratch global state.
+    /// You MUST call write_scratch_to_lmdb to flush these changes to LmdbGlobalState.
+    pub fn scratch_exec_and_commit(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
+        if self.scratch_engine_state.is_none() {
+            self.scratch_engine_state = Some(self.engine_state.get_scratch_engine_state());
+        }
+
+        let cached_state = self
+            .scratch_engine_state
+            .as_ref()
+            .expect("scratch state should exist");
+
+        // Scratch still requires that one deploy be executed and committed at a time.
+        let exec_request = {
+            let hash = self.post_state_hash.expect("expected post_state_hash");
+            exec_request.parent_state_hash = hash;
+            exec_request
+        };
+
+        let mut exec_results = Vec::new();
+        // First execute the request against our scratch global state.
+        let maybe_exec_results = cached_state.run_execute(CorrelationId::new(), exec_request);
+        for execution_result in maybe_exec_results.unwrap() {
+            let journal = execution_result.execution_journal().clone();
+            let transforms: AdditiveMap<Key, Transform> = journal.clone().into();
+            let _post_state_hash = cached_state
+                .apply_effect(
+                    CorrelationId::new(),
+                    self.post_state_hash.expect("requires a post_state_hash"),
+                    transforms,
+                )
+                .expect("should commit");
+
+            // Save transforms and execution results for WasmTestBuilder.
+            self.transforms.push(journal.into());
+            exec_results.push(Rc::new(execution_result))
+        }
+        self.exec_results.push(exec_results);
+        self
+    }
+
+    /// Commit scratch to global state, and reset the scratch cache.
+    pub fn write_scratch_to_db(&mut self) -> &mut Self {
+        let prestate_hash = self.post_state_hash.expect("Should have genesis hash");
+        if let Some(scratch) = self.scratch_engine_state.take() {
+            let new_state_root = self
+                .engine_state
+                .write_scratch_to_db(prestate_hash, scratch.into_inner())
+                .unwrap();
+            self.post_state_hash = Some(new_state_root);
+        }
+        self
+    }
+
+    /// run step against scratch global state.
+    pub fn step_with_scratch(&mut self, step_request: StepRequest) -> &mut Self {
+        if self.scratch_engine_state.is_none() {
+            self.scratch_engine_state = Some(self.engine_state.get_scratch_engine_state());
+        }
+
+        let cached_state = self
+            .scratch_engine_state
+            .as_ref()
+            .expect("scratch state should exist");
+
+        cached_state
+            .commit_step(CorrelationId::new(), step_request)
+            .expect("unable to run step request against scratch global state");
+        self
+    }
 }
 
 impl<S> WasmTestBuilder<S>
 where
-    S: StateProvider,
+    S: StateProvider + CommitProvider,
     engine_state::Error: From<S::Error>,
     S::Error: Into<execution::Error>,
 {

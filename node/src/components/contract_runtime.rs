@@ -445,6 +445,7 @@ impl ContractRuntime {
         )?);
 
         let global_state = LmdbGlobalState::empty(environment, trie_store)?;
+
         let engine_config = EngineConfig::new(
             contract_runtime_config.max_query_depth(),
             max_associated_keys,
@@ -505,6 +506,7 @@ impl ContractRuntime {
     }
 
     /// Retrieve trie keys for the integrity check.
+    #[allow(dead_code)]
     pub(crate) fn trie_store_check(
         &self,
         trie_keys: Vec<Digest>,

@@ -1,8 +1,4 @@
-use std::{
-    collections::{BTreeMap, HashMap, VecDeque},
-    sync::Arc,
-    time::Instant,
-};
+use std::{collections::BTreeMap, sync::Arc, time::Instant};
 
 use itertools::Itertools;
 use tracing::{debug, trace};
@@ -10,14 +6,14 @@ use tracing::{debug, trace};
 use casper_execution_engine::{
     core::engine_state::{
         self, step::EvictItem, DeployItem, EngineState, ExecuteRequest,
-        ExecutionResult as EngineExecutionResult, ExecutionResults, GetEraValidatorsRequest,
-        RewardItem, StepError, StepRequest, StepSuccess,
+        ExecutionResult as EngineExecutionResult, GetEraValidatorsRequest, RewardItem, StepError,
+        StepRequest, StepSuccess,
     },
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
     storage::global_state::lmdb::LmdbGlobalState,
 };
 use casper_hashing::Digest;
-use casper_types::{EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, U512};
+use casper_types::{DeployHash, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, U512};
 
 use crate::{
     components::{
@@ -27,10 +23,15 @@ use crate::{
             BlockAndExecutionEffects, ExecutionPreState, Metrics,
         },
     },
-    types::{Block, Deploy, DeployHash, DeployHeader, FinalizedBlock},
+    types::{Block, Deploy, DeployHeader, FinalizedBlock},
+};
+use casper_execution_engine::{
+    core::{engine_state::execution_result::ExecutionResults, execution},
+    storage::global_state::{CommitProvider, StateProvider},
 };
 
 /// Executes a finalized block.
+#[allow(clippy::too_many_arguments)]
 pub fn execute_finalized_block(
     engine_state: &EngineState<LmdbGlobalState>,
     metrics: Option<Arc<Metrics>>,
@@ -53,11 +54,15 @@ pub fn execute_finalized_block(
         next_block_height: _,
     } = execution_pre_state;
     let mut state_root_hash = pre_state_root_hash;
-    let mut execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)> =
-        HashMap::new();
+    let mut execution_results: Vec<(_, DeployHeader, ExecutionResult)> =
+        Vec::with_capacity(deploys.len() + transfers.len());
     // Run any deploys that must be executed
     let block_time = finalized_block.timestamp().millis();
     let start = Instant::now();
+
+    // Create a new EngineState that reads from LMDB but only caches changes in memory.
+    let scratch_state = engine_state.get_scratch_engine_state();
+
     for deploy in deploys.into_iter().chain(transfers) {
         let deploy_hash = *deploy.id();
         let deploy_header = deploy.header().clone();
@@ -74,23 +79,20 @@ pub fn execute_finalized_block(
         // mapping between deploy_hash and execution result, and this outer logic is
         // enriching it with the deploy hash. If we were passing multiple deploys per exec
         // the relation between the deploy and the execution results would be lost.
-        let result = execute(engine_state, metrics.clone(), execute_request)?;
+        let result = execute(&scratch_state, metrics.clone(), execute_request)?;
 
         trace!(?deploy_hash, ?result, "deploy execution result");
         // As for now a given state is expected to exist.
         let (state_hash, execution_result) = commit_execution_effects(
-            engine_state,
+            &scratch_state,
             metrics.clone(),
             state_root_hash,
-            deploy_hash,
+            deploy_hash.into(),
             result,
         )?;
-        execution_results.insert(deploy_hash, (deploy_header, execution_result));
+        execution_results.push((deploy_hash, deploy_header, execution_result));
         state_root_hash = state_hash;
     }
-
-    // Flush once, after all deploys have been executed.
-    engine_state.flush_environment()?;
 
     if let Some(metrics) = metrics.as_ref() {
         metrics.exec_block.observe(start.elapsed().as_secs_f64());
@@ -101,10 +103,10 @@ pub fn execute_finalized_block(
     let maybe_step_effect_and_upcoming_era_validators =
         if let Some(era_report) = finalized_block.era_report() {
             let StepSuccess {
-                post_state_hash,
+                post_state_hash: _, // ignore the post-state-hash returned from scratch
                 execution_journal: step_execution_journal,
             } = commit_step(
-                engine_state,
+                &scratch_state, // engine_state
                 metrics.clone(),
                 protocol_version,
                 state_root_hash,
@@ -112,7 +114,9 @@ pub fn execute_finalized_block(
                 finalized_block.timestamp().millis(),
                 finalized_block.era_id().successor(),
             )?;
-            state_root_hash = post_state_hash;
+
+            state_root_hash =
+                engine_state.write_scratch_to_db(state_root_hash, scratch_state.into_inner())?;
 
             // In this flow we execute using a recent state root hash where the system contract
             // registry is guaranteed to exist.
@@ -128,8 +132,15 @@ pub fn execute_finalized_block(
                 upcoming_era_validators,
             })
         } else {
+            // Finally, the new state-root-hash from the cumulative changes to global state is
+            // returned when they are written to LMDB.
+            state_root_hash =
+                engine_state.write_scratch_to_db(state_root_hash, scratch_state.into_inner())?;
             None
         };
+
+    // Flush once, after all deploys have been executed.
+    engine_state.flush_environment()?;
 
     // Update the metric.
     let block_height = finalized_block.height();
@@ -159,21 +170,30 @@ pub fn execute_finalized_block(
         protocol_version,
     )?;
 
+    let patched_execution_results = execution_results
+        .into_iter()
+        .map(|(hash, header, result)| (hash, (header, result)))
+        .collect();
+
     Ok(BlockAndExecutionEffects {
         block,
-        execution_results,
+        execution_results: patched_execution_results,
         maybe_step_effect_and_upcoming_era_validators,
     })
 }
 
 /// Commits the execution effects.
-fn commit_execution_effects(
-    engine_state: &EngineState<LmdbGlobalState>,
+fn commit_execution_effects<S>(
+    engine_state: &EngineState<S>,
     metrics: Option<Arc<Metrics>>,
     state_root_hash: Digest,
     deploy_hash: DeployHash,
     execution_results: ExecutionResults,
-) -> Result<(Digest, ExecutionResult), BlockExecutionError> {
+) -> Result<(Digest, ExecutionResult), BlockExecutionError>
+where
+    S: StateProvider + CommitProvider,
+    S::Error: Into<execution::Error>,
+{
     let ee_execution_result = execution_results
         .into_iter()
         .exactly_one()
@@ -210,12 +230,16 @@ fn commit_execution_effects(
     Ok((new_state_root, json_execution_result))
 }
 
-fn commit_transforms(
-    engine_state: &EngineState<LmdbGlobalState>,
+fn commit_transforms<S>(
+    engine_state: &EngineState<S>,
     metrics: Option<Arc<Metrics>>,
     state_root_hash: Digest,
     effects: AdditiveMap<Key, Transform>,
-) -> Result<Digest, engine_state::Error> {
+) -> Result<Digest, engine_state::Error>
+where
+    S: StateProvider + CommitProvider,
+    S::Error: Into<execution::Error>,
+{
     trace!(?state_root_hash, ?effects, "commit");
     let correlation_id = CorrelationId::new();
     let start = Instant::now();
@@ -227,11 +251,15 @@ fn commit_transforms(
     result.map(Digest::from)
 }
 
-fn execute(
-    engine_state: &EngineState<LmdbGlobalState>,
+fn execute<S>(
+    engine_state: &EngineState<S>,
     metrics: Option<Arc<Metrics>>,
     execute_request: ExecuteRequest,
-) -> Result<VecDeque<EngineExecutionResult>, engine_state::Error> {
+) -> Result<ExecutionResults, engine_state::Error>
+where
+    S: StateProvider + CommitProvider,
+    S::Error: Into<execution::Error>,
+{
     trace!(?execute_request, "execute");
     let correlation_id = CorrelationId::new();
     let start = Instant::now();
@@ -243,15 +271,19 @@ fn execute(
     result
 }
 
-fn commit_step(
-    engine_state: &EngineState<LmdbGlobalState>,
+fn commit_step<S>(
+    engine_state: &EngineState<S>,
     maybe_metrics: Option<Arc<Metrics>>,
     protocol_version: ProtocolVersion,
     pre_state_root_hash: Digest,
     era_report: &EraReport<PublicKey>,
     era_end_timestamp_millis: u64,
     next_era_id: EraId,
-) -> Result<StepSuccess, StepError> {
+) -> Result<StepSuccess, StepError>
+where
+    S: StateProvider + CommitProvider,
+    S::Error: Into<execution::Error>,
+{
     // Extract the rewards and the inactive validators if this is a switch block
     let EraReport {
         equivocators,

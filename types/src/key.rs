@@ -229,6 +229,7 @@ impl Key {
     /// If `self` is of type [`Key::URef`], returns `self` with the
     /// [`AccessRights`](crate::AccessRights) stripped from the wrapped [`URef`], otherwise
     /// returns `self` unmodified.
+    #[must_use]
     pub fn normalize(self) -> Key {
         match self {
             Key::URef(uref) => Key::URef(uref.remove_access_rights()),

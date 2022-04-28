@@ -7,12 +7,24 @@ use casper_types::bytesrepr;
 
 use crate::storage::{error::in_memory, global_state::CommitError};
 
-/// Error enum representing possible error states in LMDB interactions.
-#[derive(Debug, Clone, Error, PartialEq, Eq)]
-pub enum Error {
+/// Error enum representing possible errors from database internals.
+#[derive(Debug, Clone, Error, PartialEq)]
+pub enum DbError {
     /// LMDB error returned from underlying `lmdb` crate.
     #[error(transparent)]
     Lmdb(#[from] lmdb_external::Error),
+}
+
+/// Error enum representing possible error states in DB interactions.
+#[derive(Debug, Clone, Error, PartialEq)]
+pub enum Error {
+    /// Error from the underlying database.
+    #[error(transparent)]
+    Db(#[from] DbError),
+
+    /// Error when we cannot open a column family.
+    #[error("unable to open column family {0}")]
+    UnableToOpenColumnFamily(String),
 
     /// (De)serialization error.
     #[error("{0}")]
@@ -28,6 +40,12 @@ pub enum Error {
 }
 
 impl wasmi::HostError for Error {}
+
+impl From<lmdb_external::Error> for Error {
+    fn from(error: lmdb_external::Error) -> Self {
+        Error::Db(DbError::Lmdb(error))
+    }
+}
 
 impl From<bytesrepr::Error> for Error {
     fn from(error: bytesrepr::Error) -> Self {

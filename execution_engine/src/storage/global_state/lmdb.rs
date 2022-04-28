@@ -1,4 +1,4 @@
-use std::{ops::Deref, sync::Arc};
+use std::{collections::HashMap, ops::Deref, sync::Arc};
 
 use casper_hashing::Digest;
 use casper_types::{Key, StoredValue};
@@ -7,12 +7,15 @@ use crate::{
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
     storage::{
         error,
-        global_state::{commit, StateProvider, StateReader},
+        global_state::{
+            commit, put_stored_values, scratch::ScratchGlobalState, CommitProvider, StateProvider,
+            StateReader,
+        },
         store::Store,
         transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
         trie::{merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie},
         trie_store::{
-            lmdb::LmdbTrieStore,
+            lmdb::{LmdbTrieStore, ScratchTrieStore},
             operations::{
                 keys_with_prefix, missing_trie_keys, put_trie, read, read_with_proof, ReadResult,
             },
@@ -21,6 +24,7 @@ use crate::{
 };
 
 /// Global state implemented against LMDB as a backing data store.
+#[derive(Clone)]
 pub struct LmdbGlobalState {
     /// Environment for LMDB.
     pub(crate) environment: Arc<LmdbEnvironment>,
@@ -70,6 +74,47 @@ impl LmdbGlobalState {
             trie_store,
             empty_root_hash,
         }
+    }
+
+    /// Creates an in-memory cache for changes written.
+    pub fn create_scratch(&self) -> ScratchGlobalState {
+        ScratchGlobalState::new(self.clone())
+    }
+
+    /// Write stored values to LMDB.
+    pub fn put_stored_values(
+        &self,
+        correlation_id: CorrelationId,
+        prestate_hash: Digest,
+        stored_values: HashMap<Key, StoredValue>,
+    ) -> Result<Digest, error::Error> {
+        let scratch_trie = self.get_scratch_store();
+        let new_state_root = put_stored_values::<_, _, error::Error>(
+            &scratch_trie,
+            &scratch_trie,
+            correlation_id,
+            prestate_hash,
+            stored_values,
+        )?;
+        scratch_trie.write_root_to_db(new_state_root)?;
+        Ok(new_state_root)
+    }
+
+    /// Gets a scratch trie store.
+    fn get_scratch_store(&self) -> ScratchTrieStore {
+        ScratchTrieStore::new(Arc::clone(&self.trie_store), Arc::clone(&self.environment))
+    }
+
+    /// Get a reference to the lmdb global state's environment.
+    #[must_use]
+    pub fn environment(&self) -> &LmdbEnvironment {
+        &self.environment
+    }
+
+    /// Get a reference to the lmdb global state's trie store.
+    #[must_use]
+    pub fn trie_store(&self) -> &LmdbTrieStore {
+        &self.trie_store
     }
 }
 
@@ -149,6 +194,24 @@ impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
     }
 }
 
+impl CommitProvider for LmdbGlobalState {
+    fn commit(
+        &self,
+        correlation_id: CorrelationId,
+        prestate_hash: Digest,
+        effects: AdditiveMap<Key, Transform>,
+    ) -> Result<Digest, Self::Error> {
+        commit::<LmdbEnvironment, LmdbTrieStore, _, Self::Error>(
+            &self.environment,
+            &self.trie_store,
+            correlation_id,
+            prestate_hash,
+            effects,
+        )
+        .map_err(Into::into)
+    }
+}
+
 impl StateProvider for LmdbGlobalState {
     type Error = error::Error;
 
@@ -164,22 +227,6 @@ impl StateProvider for LmdbGlobalState {
         });
         txn.commit()?;
         Ok(maybe_state)
-    }
-
-    fn commit(
-        &self,
-        correlation_id: CorrelationId,
-        prestate_hash: Digest,
-        effects: AdditiveMap<Key, Transform>,
-    ) -> Result<Digest, Self::Error> {
-        commit::<LmdbEnvironment, LmdbTrieStore, _, Self::Error>(
-            &self.environment,
-            &self.trie_store,
-            correlation_id,
-            prestate_hash,
-            effects,
-        )
-        .map_err(Into::into)
     }
 
     fn empty_root(&self) -> Digest {
@@ -214,7 +261,7 @@ impl StateProvider for LmdbGlobalState {
         Ok(trie_hash)
     }
 
-    /// Finds all of the keys of missing descendant `Trie<K,V>` values
+    /// Finds all of the keys of missing descendant `Trie<K,V>` values.
     fn missing_trie_keys(
         &self,
         correlation_id: CorrelationId,

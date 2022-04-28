@@ -240,6 +240,7 @@ where
         }
     }
 
+    #[allow(clippy::wrong_self_convention)]
     fn is_valid_uref(&mut self, uref_ptr: u32, uref_size: u32) -> Result<bool, Trap> {
         let bytes = self.bytes_from_mem(uref_ptr, uref_size as usize)?;
         let uref: URef = bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?;

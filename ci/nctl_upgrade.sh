@@ -106,7 +106,7 @@ export NCTL_STAGE_SHORT_NAME="YOUR-SHORT-NAME"
 export NCTL_STAGE_DESCRIPTION="YOUR-DESCRIPTION"
 
 export NCTL_STAGE_TARGETS=(
-    "${RC_VERSION}:remote"
+    "1_4_5:remote"
     "${INCREMENT}:local"
 )
 EOF

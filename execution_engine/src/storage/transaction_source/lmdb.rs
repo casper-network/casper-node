@@ -6,13 +6,57 @@ use lmdb::{
 };
 
 use crate::storage::{
-    error,
+    error::{self, db::DbError},
     transaction_source::{Readable, Transaction, TransactionSource, Writable},
+    trie_store::lmdb::ScratchTrieStore,
     MAX_DBS,
 };
 
 /// Filename for the LMDB database created by the EE.
 const EE_DB_FILENAME: &str = "data.lmdb";
+
+impl Transaction for ScratchTrieStore {
+    type Error = error::Error;
+    type Handle = ScratchTrieStore;
+    fn commit(self) -> Result<(), Self::Error> {
+        // NO OP as scratch doesn't use transactions.
+        Ok(())
+    }
+}
+
+impl Readable for ScratchTrieStore {
+    fn read(&self, handle: Self::Handle, key: &[u8]) -> Result<Option<Bytes>, Self::Error> {
+        let txn = self.env.create_read_txn()?;
+        match lmdb::Transaction::get(&txn, handle.store.get_db(), &key) {
+            Ok(bytes) => Ok(Some(Bytes::from(bytes))),
+            Err(lmdb::Error::NotFound) => Ok(None),
+            Err(e) => Err(error::Error::Db(DbError::Lmdb(e))),
+        }
+    }
+}
+
+impl Writable for ScratchTrieStore {
+    fn write(&mut self, handle: Self::Handle, key: &[u8], value: &[u8]) -> Result<(), Self::Error> {
+        let mut txn = self.env.create_read_write_txn()?;
+        txn.put(handle.store.get_db(), &key, &value, WriteFlags::empty())
+            .map_err(|e| error::Error::Db(DbError::Lmdb(e)))?;
+        Ok(())
+    }
+}
+
+impl<'a> TransactionSource<'a> for ScratchTrieStore {
+    type Error = error::Error;
+    type Handle = ScratchTrieStore;
+    type ReadTransaction = ScratchTrieStore;
+    type ReadWriteTransaction = ScratchTrieStore;
+    fn create_read_txn(&'a self) -> Result<Self::ReadTransaction, Self::Error> {
+        Ok(self.clone())
+    }
+
+    fn create_read_write_txn(&'a self) -> Result<Self::ReadWriteTransaction, Self::Error> {
+        Ok(self.clone())
+    }
+}
 
 impl<'a> Transaction for RoTransaction<'a> {
     type Error = lmdb::Error;

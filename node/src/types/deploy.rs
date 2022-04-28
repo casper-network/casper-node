@@ -280,6 +280,12 @@ impl DeployHash {
     }
 }
 
+impl From<DeployHash> for casper_types::DeployHash {
+    fn from(deploy_hash: DeployHash) -> casper_types::DeployHash {
+        casper_types::DeployHash::new(deploy_hash.inner().value())
+    }
+}
+
 impl From<DeployHash> for Digest {
     fn from(deploy_hash: DeployHash) -> Self {
         deploy_hash.0
