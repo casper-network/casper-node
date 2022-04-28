@@ -772,7 +772,10 @@ where
         // At this point we know target refers to either a purse on an existing account or an
         // account which has to be created.
 
-        if let Some(is_source_admin) = self.config.is_account_administrator(&account_hash) {
+        if let (false, Some(is_source_admin)) = (
+            self.config.allow_p2p_transfers(),
+            self.config.is_account_administrator(&account_hash),
+        ) {
             // Under private chain operation mode we need to ensure that source or target has to be
             // admin.
             match transfer_target_mode {

@@ -68,12 +68,12 @@ where
         self.context.account().main_purse()
     }
 
-    fn is_admin(&mut self, account_hash: &AccountHash) -> Option<bool> {
+    fn is_account_administrator(&mut self, account_hash: &AccountHash) -> Option<bool> {
         self.config.is_account_administrator(account_hash)
     }
 
-    fn is_private_chain(&mut self) -> bool {
-        self.config.is_private_chain()
+    fn can_perform_p2p_transfer(&mut self) -> bool {
+        self.config.allow_p2p_transfers()
     }
 
     fn is_in_host_function(&mut self) -> bool {

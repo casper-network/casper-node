@@ -2254,10 +2254,11 @@ where
     ) -> Result<TransferResult, Error> {
         let _scoped_host_function_flag = self.host_function_flag.enter_host_function_scope();
 
-        if let Some(is_source_admin) = self
-            .config
-            .is_account_administrator(&self.context.get_caller())
-        {
+        if let (false, Some(is_source_admin)) = (
+            self.config.allow_p2p_transfers(),
+            self.config
+                .is_account_administrator(&self.context.get_caller()),
+        ) {
             let is_target_admin = self
                 .config
                 .is_account_administrator(&target)
@@ -2327,8 +2328,8 @@ where
         self.context.validate_uref(&source)?;
         let mint_contract_key = self.get_mint_contract()?;
 
-        if let (Phase::Session, Some(is_caller_admin)) = (
-            self.context.phase(),
+        if let (false, Some(is_caller_admin)) = (
+            self.config.allow_p2p_transfers(),
             self.config
                 .is_account_administrator(&self.context.get_caller()),
         ) {

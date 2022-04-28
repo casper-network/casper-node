@@ -1,8 +1,15 @@
-use casper_engine_test_support::{ExecuteRequestBuilder, MINIMUM_ACCOUNT_CREATION_BALANCE};
+use casper_engine_test_support::{
+    DeployItemBuilder, ExecuteRequestBuilder, DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE,
+};
 use casper_execution_engine::core::{engine_state::Error, execution};
 use casper_types::{
-    account::AccountHash, runtime_args, system::mint, Key, RuntimeArgs, URef, U512,
+    account::AccountHash,
+    runtime_args,
+    system::{mint, standard_payment},
+    Key, RuntimeArgs, URef, U512,
 };
+
+use crate::wasm_utils;
 
 use super::{ACCOUNT_1_ADDR, ACCOUNT_2_ADDR, DEFAULT_ADMIN_ACCOUNT_ADDR};
 
@@ -12,6 +19,9 @@ const TRANSFER_TO_NAMED_PURSE_CONTRACT: &str = "transfer_to_named_purse.wasm";
 const TEST_PURSE: &str = "test";
 const ARG_PURSE_NAME: &str = "purse_name";
 const ARG_AMOUNT: &str = "amount";
+
+const TEST_PAYMENT_STORED_CONTRACT: &str = "test_payment_stored.wasm";
+const TEST_PAYMENT_STORED_HASH_NAME: &str = "test_payment_hash";
 
 #[ignore]
 #[test]
@@ -389,6 +399,59 @@ fn should_disallow_wasm_payment_to_purse() {
     .build();
 
     builder.exec(transfer_request).expect_failure().commit();
+
+    let error = builder.get_error().expect("should have error");
+    assert!(
+        matches!(error, Error::Exec(execution::Error::DisabledP2PTransfers)),
+        "expected DisabledP2PTransfers error, found {:?}",
+        error
+    );
+}
+
+#[ignore]
+#[test]
+fn should_not_allow_payment_to_purse_in_stored_payment() {
+    // This effectively disables any custom payment code
+    let mut builder = super::private_chain_setup();
+
+    let store_contract_request = ExecuteRequestBuilder::standard(
+        *ACCOUNT_1_ADDR,
+        TEST_PAYMENT_STORED_CONTRACT,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    builder
+        .exec(store_contract_request)
+        .expect_success()
+        .commit();
+
+    // Account 1 can deploy after genesis
+    let exec_request_1 = {
+        let sender = *ACCOUNT_1_ADDR;
+        let deploy_hash = [100; 32];
+
+        let payment_args = runtime_args! {
+            standard_payment::ARG_AMOUNT => *DEFAULT_PAYMENT,
+        };
+        let session_args = RuntimeArgs::default();
+
+        const PAY_ENTRYPOINT: &str = "pay";
+        let deploy = DeployItemBuilder::new()
+            .with_address(sender)
+            .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
+            .with_stored_payment_named_key(
+                TEST_PAYMENT_STORED_HASH_NAME,
+                PAY_ENTRYPOINT,
+                payment_args,
+            )
+            .with_authorization_keys(&[sender])
+            .with_deploy_hash(deploy_hash)
+            .build();
+        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    };
+
+    builder.exec(exec_request_1).expect_failure().commit();
 
     let error = builder.get_error().expect("should have error");
     assert!(

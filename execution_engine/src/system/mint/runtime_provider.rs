@@ -34,9 +34,10 @@ pub trait RuntimeProvider {
     /// valid only for private chains.
     ///
     /// On public chains this will always return None.
-    fn is_admin(&mut self, account_hash: &AccountHash) -> Option<bool>;
-    /// Checks if chain is operating as a private one (true), or public (false).
-    fn is_private_chain(&mut self) -> bool;
+    fn is_account_administrator(&mut self, account_hash: &AccountHash) -> Option<bool>;
+    /// Checks if users can perform peer to peer transfers. This option is valid only for private
+    /// chains.
+    fn can_perform_p2p_transfer(&mut self) -> bool;
     /// Checks if we're currently executing a host function.
     fn is_in_host_function(&mut self) -> bool;
 }

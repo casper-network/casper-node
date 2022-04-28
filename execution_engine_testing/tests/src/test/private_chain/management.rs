@@ -17,7 +17,6 @@ use casper_execution_engine::core::{
 use casper_types::{
     account::{AccountHash, ActionThresholds, Weight},
     bytesrepr::ToBytes,
-    contracts::DEFAULT_ENTRY_POINT_NAME,
     runtime_args,
     system::{
         auction::{self, DelegationRate},
@@ -25,13 +24,13 @@ use casper_types::{
     },
     ApiError, CLType, CLValue, ContractHash, Key, RuntimeArgs, U512,
 };
-use parity_wasm::{
-    builder,
-    elements::{Instruction, Instructions},
-};
 
-use crate::test::private_chain::{
-    ACCOUNT_2_ADDR, ADMIN_1_ACCOUNT_ADDR, CONTROL_MANAGEMENT_CONTRACT, VALIDATOR_1_PUBLIC_KEY,
+use crate::{
+    test::private_chain::{
+        ACCOUNT_2_ADDR, ADMIN_1_ACCOUNT_ADDR, CONTROL_MANAGEMENT_CONTRACT,
+        PRIVATE_CHAIN_ALLOW_AUCTION_BIDS, VALIDATOR_1_PUBLIC_KEY,
+    },
+    wasm_utils,
 };
 
 use super::{
@@ -71,28 +70,6 @@ const EXPECTED_PRIVATE_CHAIN_THRESHOLDS: ActionThresholds = ActionThresholds {
     deployment: Weight::new(1),  // 0 >= 0
     key_management: Weight::MAX, // 0 >= 1
 };
-
-/// Creates minimal session code that does only one "nop" opcode
-pub fn do_minimum_bytes() -> Vec<u8> {
-    let module = builder::module()
-        .function()
-        // A signature with 0 params and no return type
-        .signature()
-        .build()
-        .body()
-        .with_instructions(Instructions::new(vec![Instruction::Nop, Instruction::End]))
-        .build()
-        .build()
-        // Export above function
-        .export()
-        .field(DEFAULT_ENTRY_POINT_NAME)
-        .build()
-        // Memory section is mandatory
-        .memory()
-        .build()
-        .build();
-    parity_wasm::serialize(module).expect("should serialize")
-}
 
 #[ignore]
 #[test]
@@ -393,7 +370,7 @@ fn administrator_account_should_disable_any_account() {
     // Account 1 can deploy after genesis
     let exec_request_1 = ExecuteRequestBuilder::module_bytes(
         *ACCOUNT_1_ADDR,
-        do_minimum_bytes(),
+        wasm_utils::do_minimum_bytes(),
         RuntimeArgs::default(),
     )
     .build();
@@ -418,7 +395,7 @@ fn administrator_account_should_disable_any_account() {
     // Account 1 can not deploy after freezing
     let exec_request_2 = ExecuteRequestBuilder::module_bytes(
         *ACCOUNT_1_ADDR,
-        do_minimum_bytes(),
+        wasm_utils::do_minimum_bytes(),
         RuntimeArgs::default(),
     )
     .build();
@@ -458,7 +435,7 @@ fn administrator_account_should_disable_any_account() {
     // Account 1 can deploy after unfreezing
     let exec_request_3 = ExecuteRequestBuilder::module_bytes(
         *ACCOUNT_1_ADDR,
-        do_minimum_bytes(),
+        wasm_utils::do_minimum_bytes(),
         RuntimeArgs::default(),
     )
     .build();
@@ -746,7 +723,8 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
 #[ignore]
 #[test]
 fn administrator_account_should_disable_any_contract_used_as_payment() {
-    let mut builder = super::private_chain_setup();
+    // We'll simulate enabled p2p transfers here to test if stored payment contract is disabled.
+    let mut builder = super::custom_private_chain_setup(PRIVATE_CHAIN_ALLOW_AUCTION_BIDS, true);
 
     let store_contract_request = ExecuteRequestBuilder::standard(
         *ACCOUNT_1_ADDR,
@@ -801,7 +779,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
 
         let deploy = DeployItemBuilder::new()
             .with_address(sender)
-            .with_session_bytes(do_minimum_bytes(), session_args)
+            .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
             .with_stored_payment_named_key(
                 TEST_PAYMENT_STORED_HASH_NAME,
                 PAY_ENTRYPOINT,
@@ -859,7 +837,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
 
             let deploy = DeployItemBuilder::new()
                 .with_address(sender)
-                .with_session_bytes(do_minimum_bytes(), session_args.clone())
+                .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args.clone())
                 .with_stored_payment_named_key(
                     TEST_PAYMENT_STORED_HASH_NAME,
                     PAY_ENTRYPOINT,
@@ -877,7 +855,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
 
             let deploy = DeployItemBuilder::new()
                 .with_address(sender)
-                .with_session_bytes(do_minimum_bytes(), session_args)
+                .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
                 .with_stored_payment_hash(stored_contract_hash, PAY_ENTRYPOINT, payment_args)
                 .with_authorization_keys(&[sender])
                 .with_deploy_hash(deploy_hash)
@@ -951,7 +929,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
 
             let deploy = DeployItemBuilder::new()
                 .with_address(sender)
-                .with_session_bytes(do_minimum_bytes(), session_args)
+                .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
                 .with_stored_payment_named_key(
                     TEST_PAYMENT_STORED_HASH_NAME,
                     PAY_ENTRYPOINT,
@@ -971,7 +949,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
 
             let deploy = DeployItemBuilder::new()
                 .with_address(sender)
-                .with_session_bytes(do_minimum_bytes(), session_args)
+                .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
                 .with_stored_payment_hash(stored_contract_hash, PAY_ENTRYPOINT, payment_args)
                 .with_authorization_keys(&[sender])
                 .with_deploy_hash(deploy_hash)
