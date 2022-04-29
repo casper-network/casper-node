@@ -35,30 +35,10 @@ export function delegate(): void {
     let amount = amountResult.value;
     let message = "";
     const result = transferFromPurseToAccount(<URef>mainPurse, <Uint8Array>destinationAccountAddrArg, amount);
-    if (result.isOk) {
-        const foo = result.ok;
-        switch (result.ok) {
-            case TransferredTo.NewAccount:
-                message = "Ok(NewAccount)";
-                break;
-            case TransferredTo.ExistingAccount:
-                message = "Ok(ExistingAccount)";
-                break;
-        }
-    }
-    
     if (result.isErr) {
-        message = "Err(ApiError::Mint(InsufficientFunds) [65024])";
+        let error = result.err;
+        error.revert();
     }
-    const transferResultKey = Key.create(CLValue.fromString(message));
-    putKey(TRANSFER_RESULT_UREF_NAME, <Key>transferResultKey);
-    const maybeBalance = getPurseBalance(mainPurse);
-    if (maybeBalance === null) {
-        Error.fromUserError(<u16>CustomError.UnableToGetBalance).revert();
-        return;
-    }
-    const key = Key.create(CLValue.fromU512(<U512>maybeBalance));
-    putKey(MAIN_PURSE_FINAL_BALANCE_UREF_NAME, <Key>key);
 }
 
 export function call(): void {

@@ -3,7 +3,6 @@
 use std::{
     collections::{HashMap, HashSet},
     sync::{Arc, RwLock},
-    time::Duration,
 };
 
 use datasize::DataSize;
@@ -14,12 +13,9 @@ use hyper::Body;
 use rand::Rng;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use tokio::{
-    sync::{
-        broadcast::{self, error::RecvError},
-        mpsc,
-    },
-    time,
+use tokio::sync::{
+    broadcast::{self, error::RecvError},
+    mpsc,
 };
 use tokio_stream::wrappers::{
     errors::BroadcastStreamRecvError, BroadcastStream, UnboundedReceiverStream,
@@ -34,14 +30,15 @@ use warp::{
     Filter, Reply,
 };
 
+#[cfg(test)]
+use casper_types::testing::TestRng;
 use casper_types::{EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey};
 
-use super::DeployGetter;
 use crate::types::{
     BlockHash, Deploy, DeployHash, FinalitySignature, JsonBlock, TimeDiff, Timestamp,
 };
 #[cfg(test)]
-use crate::{crypto::AsymmetricKeyExt, testing, testing::TestRng, types::Block};
+use crate::{testing, types::Block};
 
 /// The URL root path.
 pub const SSE_API_ROOT_PATH: &str = "events";
@@ -68,9 +65,6 @@ const DEPLOYS_FILTER: [EventFilter; 1] = [EventFilter::DeployAccepted];
 /// The filter associated with `/events/sigs` path.
 const SIGNATURES_FILTER: [EventFilter; 1] = [EventFilter::FinalitySignature];
 
-/// The max time to wait for getting a deploy before trying a second and final time.
-const GET_DEPLOY_TIMEOUT: Duration = Duration::from_secs(1);
-
 /// The "id" field of the events sent on the event stream to clients.
 pub type Id = u32;
 
@@ -89,7 +83,8 @@ pub enum SseData {
     /// The given deploy has been newly-accepted by this node.
     DeployAccepted {
         #[schemars(with = "Deploy", description = "a deploy")]
-        deploy: DeployHash,
+        // It's an Arc to not create multiple copies of the same deploy for multiple subscribers.
+        deploy: Arc<Deploy>,
     },
     /// The given deploy has been executed, committed and forms part of the given block.
     DeployProcessed {
@@ -162,7 +157,7 @@ impl SseData {
     pub(super) fn random_deploy_accepted(rng: &mut TestRng) -> (Self, Deploy) {
         let deploy = Deploy::random(rng);
         let event = SseData::DeployAccepted {
-            deploy: *deploy.id(),
+            deploy: Arc::new(deploy.clone()),
         };
         (event, deploy)
     }
@@ -223,7 +218,7 @@ impl SseData {
 #[derive(Serialize)]
 #[serde(rename_all = "PascalCase")]
 pub(super) struct DeployAccepted {
-    pub(super) deploy_accepted: Deploy,
+    pub(super) deploy_accepted: Arc<Deploy>,
 }
 
 /// The components of a single SSE.
@@ -283,7 +278,6 @@ pub(super) enum EventFilter {
 async fn filter_map_server_sent_event(
     event: &ServerSentEvent,
     event_filter: &[EventFilter],
-    deploy_getter: DeployGetter,
 ) -> Option<Result<WarpServerSentEvent, RecvError>> {
     if !event.data.should_include(event_filter) {
         return None;
@@ -328,30 +322,15 @@ async fn filter_map_server_sent_event(
             })
             .id(id))),
 
-        &SseData::DeployAccepted {
-            deploy: deploy_hash,
-        } => {
-            // We try twice to get the deploy since there's a chance that the first attempt could be
-            // lost when the joiner reactor's event queue is purged as we transition to the
-            // participating reactor.  This workaround should no longer be required once the reactor
-            // transitions are handled properly.
-            let deploy_accepted =
-                match time::timeout(GET_DEPLOY_TIMEOUT, deploy_getter.get(deploy_hash)).await {
-                    Ok(maybe_deploy) => maybe_deploy?,
-                    Err(_) => {
-                        info!("timed out getting deploy for event stream");
-                        deploy_getter.get(deploy_hash).await?
-                    }
-                };
-
-            Some(Ok(WarpServerSentEvent::default()
-                .json_data(&DeployAccepted { deploy_accepted })
-                .unwrap_or_else(|error| {
-                    warn!(%error, "failed to jsonify sse event");
-                    WarpServerSentEvent::default()
-                })
-                .id(event.id.unwrap().to_string())))
-        }
+        SseData::DeployAccepted { deploy } => Some(Ok(WarpServerSentEvent::default()
+            .json_data(&DeployAccepted {
+                deploy_accepted: deploy.clone(),
+            })
+            .unwrap_or_else(|error| {
+                warn!(%error, "failed to jsonify sse event");
+                WarpServerSentEvent::default()
+            })
+            .id(event.id.unwrap().to_string()))),
     }
 }
 
@@ -428,11 +407,7 @@ pub(super) struct ChannelsAndFilter {
 impl ChannelsAndFilter {
     /// Creates the message-passing channels required to run the event-stream server and the warp
     /// filter for the event-stream server.
-    pub(super) fn new(
-        broadcast_channel_size: usize,
-        max_concurrent_subscribers: u32,
-        deploy_getter: DeployGetter,
-    ) -> Self {
+    pub(super) fn new(broadcast_channel_size: usize, max_concurrent_subscribers: u32) -> Self {
         // Create a channel to broadcast new events to all subscribed clients' streams.
         let (event_broadcaster, _) = broadcast::channel(broadcast_channel_size);
         let cloned_broadcaster = event_broadcaster.clone();
@@ -492,7 +467,6 @@ impl ChannelsAndFilter {
                     initial_events_receiver,
                     ongoing_events_receiver,
                     event_filter,
-                    deploy_getter.clone(),
                 )))
                 .into_response()
             })
@@ -525,7 +499,6 @@ fn stream_to_client(
     initial_events: mpsc::UnboundedReceiver<ServerSentEvent>,
     ongoing_events: broadcast::Receiver<BroadcastChannelMessage>,
     event_filter: &'static [EventFilter],
-    deploy_getter: DeployGetter,
 ) -> impl Stream<Item = Result<WarpServerSentEvent, RecvError>> + 'static {
     // Keep a record of the IDs of the events delivered via the `initial_events` receiver.
     let initial_stream_ids = Arc::new(RwLock::new(HashSet::new()));
@@ -570,16 +543,10 @@ fn stream_to_client(
             Ok(event)
         })
         .chain(ongoing_stream)
-        .filter_map(move |result| {
-            let cloned_deploy_getter = deploy_getter.clone();
-            async move {
-                match result {
-                    Ok(event) => {
-                        filter_map_server_sent_event(&event, event_filter, cloned_deploy_getter)
-                            .await
-                    }
-                    Err(error) => Some(Err(error)),
-                }
+        .filter_map(move |result| async move {
+            match result {
+                Ok(event) => filter_map_server_sent_event(&event, event_filter).await,
+                Err(error) => Some(Err(error)),
             }
         })
 }
@@ -588,33 +555,23 @@ fn stream_to_client(
 mod tests {
     use std::iter;
 
-    use super::*;
-    use crate::{logging, testing::TestRng};
+    use casper_types::testing::TestRng;
 
-    async fn should_filter_out(
-        event: &ServerSentEvent,
-        filter: &'static [EventFilter],
-        deploy_getter: DeployGetter,
-    ) {
+    use super::*;
+    use crate::logging;
+
+    async fn should_filter_out(event: &ServerSentEvent, filter: &'static [EventFilter]) {
         assert!(
-            filter_map_server_sent_event(event, filter, deploy_getter)
-                .await
-                .is_none(),
+            filter_map_server_sent_event(event, filter).await.is_none(),
             "should filter out {:?} with {:?}",
             event,
             filter
         );
     }
 
-    async fn should_not_filter_out(
-        event: &ServerSentEvent,
-        filter: &'static [EventFilter],
-        deploy_getter: DeployGetter,
-    ) {
+    async fn should_not_filter_out(event: &ServerSentEvent, filter: &'static [EventFilter]) {
         assert!(
-            filter_map_server_sent_event(event, filter, deploy_getter)
-                .await
-                .is_some(),
+            filter_map_server_sent_event(event, filter).await.is_some(),
             "should not filter out {:?} with {:?}",
             event,
             filter
@@ -643,7 +600,6 @@ mod tests {
         };
         let mut deploys = HashMap::new();
         let _ = deploys.insert(*deploy.id(), deploy);
-        let getter = DeployGetter::with_deploys(deploys);
         let deploy_processed = ServerSentEvent {
             id: Some(rng.gen()),
             data: SseData::random_deploy_processed(&mut rng),
@@ -670,42 +626,42 @@ mod tests {
         };
 
         // `EventFilter::Main` should only filter out `DeployAccepted`s and `FinalitySignature`s.
-        should_not_filter_out(&api_version, &MAIN_FILTER[..], getter.clone()).await;
-        should_not_filter_out(&block_added, &MAIN_FILTER[..], getter.clone()).await;
-        should_not_filter_out(&deploy_processed, &MAIN_FILTER[..], getter.clone()).await;
-        should_not_filter_out(&deploy_expired, &MAIN_FILTER[..], getter.clone()).await;
-        should_not_filter_out(&fault, &MAIN_FILTER[..], getter.clone()).await;
-        should_not_filter_out(&step, &MAIN_FILTER[..], getter.clone()).await;
-        should_not_filter_out(&shutdown, &MAIN_FILTER, getter.clone()).await;
+        should_not_filter_out(&api_version, &MAIN_FILTER[..]).await;
+        should_not_filter_out(&block_added, &MAIN_FILTER[..]).await;
+        should_not_filter_out(&deploy_processed, &MAIN_FILTER[..]).await;
+        should_not_filter_out(&deploy_expired, &MAIN_FILTER[..]).await;
+        should_not_filter_out(&fault, &MAIN_FILTER[..]).await;
+        should_not_filter_out(&step, &MAIN_FILTER[..]).await;
+        should_not_filter_out(&shutdown, &MAIN_FILTER).await;
 
-        should_filter_out(&deploy_accepted, &MAIN_FILTER[..], getter.clone()).await;
-        should_filter_out(&finality_signature, &MAIN_FILTER[..], getter.clone()).await;
+        should_filter_out(&deploy_accepted, &MAIN_FILTER[..]).await;
+        should_filter_out(&finality_signature, &MAIN_FILTER[..]).await;
 
         // `EventFilter::DeployAccepted` should filter out everything except `ApiVersion`s and
-        // `DeployAccepted`s and `Shutdown`'s.
-        should_not_filter_out(&api_version, &DEPLOYS_FILTER[..], getter.clone()).await;
-        should_not_filter_out(&deploy_accepted, &DEPLOYS_FILTER[..], getter.clone()).await;
-        should_not_filter_out(&shutdown, &DEPLOYS_FILTER[..], getter.clone()).await;
+        // `DeployAccepted`s.
+        should_not_filter_out(&api_version, &DEPLOYS_FILTER[..]).await;
+        should_not_filter_out(&deploy_accepted, &DEPLOYS_FILTER[..]).await;
+        should_not_filter_out(&shutdown, &DEPLOYS_FILTER[..]).await;
 
-        should_filter_out(&block_added, &DEPLOYS_FILTER[..], getter.clone()).await;
-        should_filter_out(&deploy_processed, &DEPLOYS_FILTER[..], getter.clone()).await;
-        should_filter_out(&deploy_expired, &DEPLOYS_FILTER[..], getter.clone()).await;
-        should_filter_out(&fault, &DEPLOYS_FILTER[..], getter.clone()).await;
-        should_filter_out(&finality_signature, &DEPLOYS_FILTER[..], getter.clone()).await;
-        should_filter_out(&step, &DEPLOYS_FILTER[..], getter.clone()).await;
+        should_filter_out(&block_added, &DEPLOYS_FILTER[..]).await;
+        should_filter_out(&deploy_processed, &DEPLOYS_FILTER[..]).await;
+        should_filter_out(&deploy_expired, &DEPLOYS_FILTER[..]).await;
+        should_filter_out(&fault, &DEPLOYS_FILTER[..]).await;
+        should_filter_out(&finality_signature, &DEPLOYS_FILTER[..]).await;
+        should_filter_out(&step, &DEPLOYS_FILTER[..]).await;
 
-        // `EventFilter::Signatures` should filter out everything except `ApiVersion`s,
-        // `FinalitySignature`s and `Shutdown`s.
-        should_not_filter_out(&api_version, &SIGNATURES_FILTER[..], getter.clone()).await;
-        should_not_filter_out(&finality_signature, &SIGNATURES_FILTER[..], getter.clone()).await;
-        should_not_filter_out(&shutdown, &SIGNATURES_FILTER[..], getter.clone()).await;
+        // `EventFilter::Signatures` should filter out everything except `ApiVersion`s and
+        // `FinalitySignature`s.
+        should_not_filter_out(&api_version, &SIGNATURES_FILTER[..]).await;
+        should_not_filter_out(&finality_signature, &SIGNATURES_FILTER[..]).await;
+        should_not_filter_out(&shutdown, &SIGNATURES_FILTER[..]).await;
 
-        should_filter_out(&block_added, &SIGNATURES_FILTER[..], getter.clone()).await;
-        should_filter_out(&deploy_accepted, &SIGNATURES_FILTER[..], getter.clone()).await;
-        should_filter_out(&deploy_processed, &SIGNATURES_FILTER[..], getter.clone()).await;
-        should_filter_out(&deploy_expired, &SIGNATURES_FILTER[..], getter.clone()).await;
-        should_filter_out(&fault, &SIGNATURES_FILTER[..], getter.clone()).await;
-        should_filter_out(&step, &SIGNATURES_FILTER[..], getter).await;
+        should_filter_out(&block_added, &SIGNATURES_FILTER[..]).await;
+        should_filter_out(&deploy_accepted, &SIGNATURES_FILTER[..]).await;
+        should_filter_out(&deploy_processed, &SIGNATURES_FILTER[..]).await;
+        should_filter_out(&deploy_expired, &SIGNATURES_FILTER[..]).await;
+        should_filter_out(&fault, &SIGNATURES_FILTER[..]).await;
+        should_filter_out(&step, &SIGNATURES_FILTER[..]).await;
     }
 
     /// This test checks that events with incorrect IDs (i.e. no types have an ID except for
@@ -730,7 +686,6 @@ mod tests {
         };
         let mut deploys = HashMap::new();
         let _ = deploys.insert(*deploy.id(), deploy);
-        let getter = DeployGetter::with_deploys(deploys);
         let malformed_deploy_processed = ServerSentEvent {
             id: None,
             data: SseData::random_deploy_processed(&mut rng),
@@ -761,15 +716,15 @@ mod tests {
             &DEPLOYS_FILTER[..],
             &SIGNATURES_FILTER[..],
         ] {
-            should_filter_out(&malformed_api_version, filter, getter.clone()).await;
-            should_filter_out(&malformed_block_added, filter, getter.clone()).await;
-            should_filter_out(&malformed_deploy_accepted, filter, getter.clone()).await;
-            should_filter_out(&malformed_deploy_processed, filter, getter.clone()).await;
-            should_filter_out(&malformed_deploy_expired, filter, getter.clone()).await;
-            should_filter_out(&malformed_fault, filter, getter.clone()).await;
-            should_filter_out(&malformed_finality_signature, filter, getter.clone()).await;
-            should_filter_out(&malformed_step, filter, getter.clone()).await;
-            should_filter_out(&malformed_shutdown, filter, getter.clone()).await;
+            should_filter_out(&malformed_api_version, filter).await;
+            should_filter_out(&malformed_block_added, filter).await;
+            should_filter_out(&malformed_deploy_accepted, filter).await;
+            should_filter_out(&malformed_deploy_processed, filter).await;
+            should_filter_out(&malformed_deploy_expired, filter).await;
+            should_filter_out(&malformed_fault, filter).await;
+            should_filter_out(&malformed_finality_signature, filter).await;
+            should_filter_out(&malformed_step, filter).await;
+            should_filter_out(&malformed_shutdown, filter).await;
         }
     }
 
@@ -867,7 +822,6 @@ mod tests {
             let (initial_events_sender, initial_events_receiver) = mpsc::unbounded_channel();
             let (ongoing_events_sender, ongoing_events_receiver) =
                 broadcast::channel(NUM_INITIAL_EVENTS + NUM_ONGOING_EVENTS + 1);
-            let deploy_getter = DeployGetter::with_deploys(deploys.clone());
 
             // Send all the events.
             for event in initial_events.iter().cloned() {
@@ -887,7 +841,6 @@ mod tests {
                 initial_events_receiver,
                 ongoing_events_receiver,
                 get_filter(path_filter).unwrap(),
-                deploy_getter,
             )
             .collect()
             .await;
@@ -912,7 +865,7 @@ mod tests {
 
                 let expected_data_string = match &deduplicated_event.data {
                     SseData::DeployAccepted { deploy } => serde_json::to_string(&DeployAccepted {
-                        deploy_accepted: deploys.get(deploy).unwrap().clone(),
+                        deploy_accepted: deploy.clone(),
                     })
                     .unwrap(),
                     data => serde_json::to_string(&data).unwrap(),

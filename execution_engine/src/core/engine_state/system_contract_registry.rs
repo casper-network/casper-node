@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 
+use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
@@ -10,7 +11,7 @@ use casper_types::{
 };
 
 /// The system contract registry.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug, DataSize)]
 pub struct SystemContractRegistry(BTreeMap<String, ContractHash>);
 
 impl SystemContractRegistry {

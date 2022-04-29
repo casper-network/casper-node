@@ -4,13 +4,14 @@
     not(any(
         feature = "json-schema",
         feature = "datasize",
-        feature = "gens",
+        feature = "crypto-std",
         feature = "std",
+        feature = "testing",
         test,
     )),
     no_std
 )]
-#![doc(html_root_url = "https://docs.rs/casper-types/1.4.5")]
+#![doc(html_root_url = "https://docs.rs/casper-types/1.5.0")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
     html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
@@ -35,8 +36,10 @@ pub mod crypto;
 mod deploy_info;
 mod era_id;
 mod execution_result;
+#[cfg(any(feature = "crypto-std", test))]
+pub mod file_utils;
 mod gas;
-#[cfg(any(feature = "gens", test))]
+#[cfg(any(feature = "testing", test))]
 pub mod gens;
 mod json_pretty_printer;
 mod key;
@@ -49,12 +52,16 @@ mod semver;
 mod stored_value;
 pub mod system;
 mod tagged;
+#[cfg(any(feature = "testing", test))]
+pub mod testing;
 mod transfer;
 mod transfer_result;
 mod uint;
 mod uref;
 
-pub use access_rights::{AccessRights, ACCESS_RIGHTS_SERIALIZED_LENGTH};
+pub use access_rights::{
+    AccessRights, ContextAccessRights, GrantedAccess, ACCESS_RIGHTS_SERIALIZED_LENGTH,
+};
 #[doc(inline)]
 pub use api_error::ApiError;
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
@@ -93,7 +100,9 @@ pub use transfer::{
     TRANSFER_ADDR_LENGTH,
 };
 pub use transfer_result::{TransferResult, TransferredTo};
-pub use uref::{FromStrError as URefFromStrError, URef, UREF_ADDR_LENGTH, UREF_SERIALIZED_LENGTH};
+pub use uref::{
+    FromStrError as URefFromStrError, URef, URefAddr, UREF_ADDR_LENGTH, UREF_SERIALIZED_LENGTH,
+};
 
 pub use crate::{
     era_id::EraId,

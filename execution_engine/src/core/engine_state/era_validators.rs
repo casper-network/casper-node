@@ -20,6 +20,12 @@ pub enum GetEraValidatorsError {
     /// EraValidators missing
     #[error("Era validators missing")]
     EraValidatorsMissing,
+    /// Unexpected query failure.
+    #[error("Unexpected query failure")]
+    UnexpectedQueryFailure,
+    /// CLValue conversion error.
+    #[error("CLValue conversion error")]
+    CLValue,
 }
 
 impl From<RuntimeStackOverflow> for GetEraValidatorsError {

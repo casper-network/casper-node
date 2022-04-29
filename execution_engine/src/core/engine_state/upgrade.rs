@@ -6,8 +6,9 @@ use thiserror::Error;
 
 use casper_hashing::Digest;
 use casper_types::{
-    bytesrepr, system::SystemContractType, Contract, ContractHash, EraId, Key, ProtocolVersion,
-    StoredValue,
+    bytesrepr::{self},
+    system::SystemContractType,
+    Contract, ContractHash, EraId, Key, ProtocolVersion, StoredValue,
 };
 
 use crate::{
@@ -270,6 +271,8 @@ where
 
         let entry_points_unchanged = *contract.entry_points() == entry_points;
         if entry_points_unchanged && !is_major_bump {
+            // We don't need to do anything if entry points are unchanged, or there's no major
+            // version bump.
             return Ok(());
         }
 
@@ -310,7 +313,8 @@ where
             entry_points,
             self.new_protocol_version,
         );
-        self.tracking_copy
+        let _ = self
+            .tracking_copy
             .borrow_mut()
             .write(contract_hash.into(), StoredValue::Contract(new_contract));
 

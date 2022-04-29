@@ -1,6 +1,6 @@
 use std::{collections::BTreeSet, sync::Arc};
 
-use casper_types::{PublicKey, U512};
+use casper_types::{testing::TestRng, PublicKey, U512};
 
 use crate::{
     components::consensus::{
@@ -23,7 +23,6 @@ use crate::{
         },
         traits::Context,
     },
-    testing::TestRng,
     types::{BlockPayload, TimeDiff, Timestamp},
 };
 

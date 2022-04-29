@@ -5,11 +5,10 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 
 use casper_hashing::Digest;
-use casper_types::{PublicKey, SecretKey, Signature};
+use casper_types::{crypto, PublicKey, SecretKey, Signature};
 
 use crate::{
     components::consensus::traits::{ConsensusValueT, Context, ValidatorSecret},
-    crypto,
     types::BlockPayload,
 };
 
@@ -51,7 +50,7 @@ impl ValidatorSecret for Keypair {
 
 impl ConsensusValueT for Arc<BlockPayload> {
     fn needs_validation(&self) -> bool {
-        !self.transfer_hashes().is_empty() || !self.deploy_hashes().is_empty()
+        !self.transfers().is_empty() || !self.deploys().is_empty() || !self.accusations().is_empty()
     }
 }
 

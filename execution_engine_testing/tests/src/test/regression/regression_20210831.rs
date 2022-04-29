@@ -5,7 +5,8 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::core::{
-    engine_state::Error as CoreError, execution::Error as ExecError,
+    engine_state::{engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, Error as CoreError},
+    execution::Error as ExecError,
 };
 use casper_types::{
     account::AccountHash,
@@ -339,7 +340,7 @@ fn regression_20210831_should_fail_to_undelegate_bid() {
         runtime_args! {
             auction::ARG_VALIDATOR => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
             auction::ARG_DELEGATOR => ACCOUNT_1_PUBLIC_KEY.clone(),
-            auction::ARG_AMOUNT => U512::one(),
+            auction::ARG_AMOUNT => U512::from(DEFAULT_MINIMUM_DELEGATION_AMOUNT),
         },
     )
     .build();

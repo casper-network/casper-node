@@ -13,11 +13,9 @@ use std::{
     any,
     cell::RefCell,
     fmt::{self, Debug, Display, Formatter},
-    fs,
-    io::{self, Write},
+    io,
     net::{SocketAddr, ToSocketAddrs},
     ops::{Add, BitXorAssign, Div},
-    os::unix::fs::OpenOptionsExt,
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -72,6 +70,31 @@ impl Display for ResolveAddressErrorKind {
             ResolveAddressErrorKind::NoAddressFound => {
                 write!(f, "no addresses found")
             }
+        }
+    }
+}
+
+/// Backport of `Result::flatten`, see <https://github.com/rust-lang/rust/issues/70142>.
+pub trait FlattenResult {
+    /// The output of the flattening operation.
+    type Output;
+
+    /// Flattens one level.
+    ///
+    /// This function is named `flatten_result` instead of `flatten` to avoid name collisions once
+    /// `Result::flatten` stabilizes.
+    fn flatten_result(self) -> Self::Output;
+}
+
+impl<T, E> FlattenResult for Result<Result<T, E>, E> {
+    type Output = Result<T, E>;
+
+    #[inline]
+    fn flatten_result(self) -> Self::Output {
+        match self {
+            Ok(Ok(v)) => Ok(v),
+            Ok(Err(e)) => Err(e),
+            Err(e) => Err(e),
         }
     }
 }
@@ -200,73 +223,6 @@ where
             write!(f, "DisplayIter:GONE")
         }
     }
-}
-
-/// Error reading a file.
-#[derive(Debug, Error)]
-#[error("could not read '{0}': {error}", .path.display())]
-pub struct ReadFileError {
-    /// Path that failed to be read.
-    path: PathBuf,
-    /// The underlying OS error.
-    #[source]
-    error: io::Error,
-}
-
-/// Error writing a file
-#[derive(Debug, Error)]
-#[error("could not write to '{0}': {error}", .path.display())]
-pub struct WriteFileError {
-    /// Path that failed to be written to.
-    path: PathBuf,
-    /// The underlying OS error.
-    #[source]
-    error: io::Error,
-}
-
-/// Read complete at `path` into memory.
-///
-/// Wraps `fs::read`, but preserves the filename for better error printing.
-pub fn read_file<P: AsRef<Path>>(filename: P) -> Result<Vec<u8>, ReadFileError> {
-    let path = filename.as_ref();
-    fs::read(path).map_err(|error| ReadFileError {
-        path: path.to_owned(),
-        error,
-    })
-}
-
-/// Write data to `path`.
-///
-/// Wraps `fs::write`, but preserves the filename for better error printing.
-pub(crate) fn write_file<P: AsRef<Path>, B: AsRef<[u8]>>(
-    filename: P,
-    data: B,
-) -> Result<(), WriteFileError> {
-    let path = filename.as_ref();
-    fs::write(path, data.as_ref()).map_err(|error| WriteFileError {
-        path: path.to_owned(),
-        error,
-    })
-}
-
-/// Writes data to `path`, ensuring only the owner can read or write it.
-///
-/// Otherwise functions like [`write_file`].
-pub(crate) fn write_private_file<P: AsRef<Path>, B: AsRef<[u8]>>(
-    filename: P,
-    data: B,
-) -> Result<(), WriteFileError> {
-    let path = filename.as_ref();
-    fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .mode(0o600)
-        .open(path)
-        .and_then(|mut file| file.write_all(data.as_ref()))
-        .map_err(|error| WriteFileError {
-            path: path.to_owned(),
-            error,
-        })
 }
 
 /// With-directory context.

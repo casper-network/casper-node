@@ -9,7 +9,7 @@ use casper_types::{
     AsymmetricType, EraId, Key, PublicKey, StoredValue, U512,
 };
 
-use crate::utils::ValidatorsDiff;
+use crate::utils::{AccountManager, ValidatorsDiff};
 
 /// Reads the `SeigniorageRecipientsSnapshot` stored in the global state.
 pub fn read_snapshot(builder: &LmdbWasmTestBuilder) -> (Key, SeigniorageRecipientsSnapshot) {
@@ -93,7 +93,9 @@ pub fn generate_entries_removing_bids(
     let large_bids = find_large_bids(builder, new_snapshot);
     let to_unbid = validators_diff.removed.union(&large_bids);
 
-    validators_diff
+    let mut account_manager = AccountManager::new();
+
+    let mut result: BTreeMap<Key, StoredValue> = validators_diff
         .added
         .iter()
         .map(|pkey| {
@@ -105,7 +107,7 @@ pub fn generate_entries_removing_bids(
                 .unwrap()
                 .stake();
             let account_hash = pkey.to_account_hash();
-            let account = builder.get_account(account_hash).unwrap();
+            let account = account_manager.get_or_create_account(builder, pkey);
             (
                 Key::Bid(account_hash),
                 Bid::unlocked(
@@ -117,15 +119,18 @@ pub fn generate_entries_removing_bids(
                 .into(),
             )
         })
-        .chain(to_unbid.into_iter().map(|pkey| {
-            let account_hash = pkey.to_account_hash();
-            let account = builder.get_account(account_hash).unwrap();
-            (
-                Key::Bid(account_hash),
-                Bid::empty(pkey.clone(), account.main_purse()).into(),
-            )
-        }))
-        .collect()
+        .collect();
+
+    result.extend(to_unbid.into_iter().map(|pkey| {
+        let account_hash = pkey.to_account_hash();
+        let account = account_manager.get_or_create_account(builder, pkey);
+        (
+            Key::Bid(account_hash),
+            Bid::empty(pkey.clone(), account.main_purse()).into(),
+        )
+    }));
+
+    result
 }
 
 /// Generates the writes to the global state that will remove the pending withdraws of all the old

@@ -18,7 +18,7 @@ use crate::{
             TrieOrChunkId,
         },
         trie_store::{
-            lmdb::LmdbTrieStore,
+            lmdb::{LmdbTrieStore, ScratchTrieStore},
             operations::{
                 keys_with_prefix, missing_trie_keys, put_trie, read, read_with_proof, ReadResult,
             },
@@ -94,14 +94,33 @@ impl LmdbGlobalState {
         prestate_hash: Digest,
         stored_values: HashMap<Key, StoredValue>,
     ) -> Result<Digest, error::Error> {
-        put_stored_values::<LmdbEnvironment, LmdbTrieStore, error::Error>(
-            &self.environment,
-            &self.trie_store,
+        let scratch_trie = self.get_scratch_store();
+        let new_state_root = put_stored_values::<_, _, error::Error>(
+            &scratch_trie,
+            &scratch_trie,
             correlation_id,
             prestate_hash,
             stored_values,
-        )
-        .map_err(Into::into)
+        )?;
+        scratch_trie.write_root_to_db(new_state_root)?;
+        Ok(new_state_root)
+    }
+
+    /// Gets a scratch trie store.
+    fn get_scratch_store(&self) -> ScratchTrieStore {
+        ScratchTrieStore::new(Arc::clone(&self.trie_store), Arc::clone(&self.environment))
+    }
+
+    /// Get a reference to the lmdb global state's environment.
+    #[must_use]
+    pub fn environment(&self) -> &LmdbEnvironment {
+        &self.environment
+    }
+
+    /// Get a reference to the lmdb global state's trie store.
+    #[must_use]
+    pub fn trie_store(&self) -> &LmdbTrieStore {
+        &self.trie_store
     }
 }
 
@@ -237,9 +256,9 @@ impl StateProvider for LmdbGlobalState {
             || Ok(None),
             |bytes| {
                 if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
-                    Ok(Some(TrieOrChunk::Trie(bytes.to_owned().into())))
+                    Ok(Some(TrieOrChunk::Trie(bytes)))
                 } else {
-                    let chunk_with_proof = ChunkWithProof::new(bytes, trie_index)?;
+                    let chunk_with_proof = ChunkWithProof::new(&bytes, trie_index)?;
                     Ok(Some(TrieOrChunk::ChunkWithProof(chunk_with_proof)))
                 }
             },
@@ -256,8 +275,7 @@ impl StateProvider for LmdbGlobalState {
     ) -> Result<Option<Bytes>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
         let ret: Option<Bytes> =
-            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?
-                .map(|slice| slice.to_owned().into());
+            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?;
         txn.commit()?;
         Ok(ret)
     }

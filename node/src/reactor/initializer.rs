@@ -8,9 +8,9 @@ use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::Serialize;
 use thiserror::Error;
+use tracing::{error, warn};
 
 use casper_execution_engine::core::engine_state;
-use tracing::{error, warn};
 
 use crate::{
     components::{
@@ -217,6 +217,14 @@ impl Reactor {
                 .chainspec()
                 .core_config
                 .max_runtime_call_stack_height,
+            chainspec_loader
+                .chainspec()
+                .core_config
+                .minimum_delegation_amount,
+            chainspec_loader
+                .chainspec()
+                .core_config
+                .strict_argument_checking,
             registry,
             chainspec_loader
                 .chainspec()
@@ -342,12 +350,14 @@ impl reactor::Reactor for Reactor {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use std::sync::Arc;
+
     use super::*;
+
     use crate::{
         testing::network::NetworkedReactor,
         types::{Chainspec, ChainspecRawBytes, NodeId},
     };
-    use std::sync::Arc;
 
     impl Reactor {
         pub(crate) fn new_with_chainspec(

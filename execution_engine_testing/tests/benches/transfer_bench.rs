@@ -25,7 +25,6 @@ const TARGET_ADDR: AccountHash = AccountHash::new([127; 32]);
 const ARG_AMOUNT: &str = "amount";
 const ARG_ID: &str = "id";
 const ARG_ACCOUNTS: &str = "accounts";
-const ARG_SEED_AMOUNT: &str = "seed_amount";
 const ARG_TOTAL_PURSES: &str = "total_purses";
 const ARG_TARGET: &str = "target";
 const ARG_TARGET_PURSE: &str = "target_purse";
@@ -42,10 +41,11 @@ fn make_deploy_hash(i: u64) -> [u8; 32] {
 }
 
 fn bootstrap(data_dir: &Path, accounts: Vec<AccountHash>, amount: U512) -> LmdbWasmTestBuilder {
+    let seed_amount = amount * accounts.len();
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_CREATE_ACCOUNTS,
-        runtime_args! { ARG_ACCOUNTS => accounts, ARG_SEED_AMOUNT => amount },
+        runtime_args! { ARG_ACCOUNTS => accounts, ARG_AMOUNT => seed_amount },
     )
     .build();
 
@@ -68,10 +68,11 @@ fn create_purses(
     total_purses: u64,
     purse_amount: U512,
 ) -> Vec<URef> {
+    let seed_amount = purse_amount * total_purses;
     let exec_request = ExecuteRequestBuilder::standard(
         source,
         CONTRACT_CREATE_PURSES,
-        runtime_args! { ARG_TOTAL_PURSES => total_purses, ARG_SEED_AMOUNT => purse_amount },
+        runtime_args! { ARG_TOTAL_PURSES => total_purses, ARG_AMOUNT => seed_amount },
     )
     .build();
 

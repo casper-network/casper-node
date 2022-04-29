@@ -28,7 +28,7 @@ use crate::{
     contract_wasm::ContractWasmHash,
     uref,
     uref::URef,
-    CLType, CLTyped, HashAddr, Key, ProtocolVersion, KEY_HASH_LENGTH,
+    CLType, CLTyped, ContextAccessRights, HashAddr, Key, ProtocolVersion, KEY_HASH_LENGTH,
 };
 
 /// Maximum number of distinct user groups.
@@ -37,7 +37,9 @@ pub const MAX_GROUPS: u8 = 10;
 pub const MAX_TOTAL_UREFS: usize = 100;
 
 const CONTRACT_STRING_PREFIX: &str = "contract-";
-const PACKAGE_STRING_PREFIX: &str = "contract-package-wasm";
+const PACKAGE_STRING_PREFIX: &str = "contract-package-";
+// We need to support the legacy prefix of "contract-package-wasm".
+const PACKAGE_STRING_LEGACY_EXTRA_PREFIX: &str = "wasm";
 
 /// Set of errors which may happen when working with contract headers.
 #[derive(Debug, PartialEq)]
@@ -514,7 +516,12 @@ impl ContractPackageHash {
         let remainder = input
             .strip_prefix(PACKAGE_STRING_PREFIX)
             .ok_or(FromStrError::InvalidPrefix)?;
-        let bytes = HashAddr::try_from(checksummed_hex::decode(remainder)?.as_ref())?;
+
+        let hex_addr = remainder
+            .strip_prefix(PACKAGE_STRING_LEGACY_EXTRA_PREFIX)
+            .unwrap_or(remainder);
+
+        let bytes = HashAddr::try_from(checksummed_hex::decode(hex_addr)?.as_ref())?;
         Ok(ContractPackageHash(bytes))
     }
 }
@@ -709,6 +716,12 @@ pub struct ContractPackage {
     groups: Groups,
     /// A flag that determines whether a contract is locked
     lock_status: ContractPackageStatus,
+}
+
+impl CLTyped for ContractPackage {
+    fn cl_type() -> CLType {
+        CLType::Any
+    }
 }
 
 impl ContractPackage {
@@ -1138,6 +1151,15 @@ impl Contract {
     pub fn is_compatible_protocol_version(&self, protocol_version: ProtocolVersion) -> bool {
         self.protocol_version.value().major == protocol_version.value().major
     }
+
+    /// Extracts the access rights from the named keys of the contract.
+    pub fn extract_access_rights(&self, contract_hash: ContractHash) -> ContextAccessRights {
+        let urefs_iter = self
+            .named_keys
+            .values()
+            .filter_map(|key| key.as_uref().copied());
+        ContextAccessRights::new(contract_hash.into(), urefs_iter)
+    }
 }
 
 impl ToBytes for Contract {
@@ -1535,7 +1557,7 @@ impl FromBytes for Parameter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{AccessRights, URef};
+    use crate::{AccessRights, URef, UREF_ADDR_LENGTH};
     use alloc::borrow::ToOwned;
 
     fn make_contract_package() -> ContractPackage {
@@ -1717,26 +1739,79 @@ mod tests {
 
     #[test]
     fn contract_package_hash_from_str() {
-        let contract_hash = ContractPackageHash([3; 32]);
-        let encoded = contract_hash.to_formatted_string();
+        let contract_package_hash = ContractPackageHash([3; 32]);
+        let encoded = contract_package_hash.to_formatted_string();
         let decoded = ContractPackageHash::from_formatted_str(&encoded).unwrap();
-        assert_eq!(contract_hash, decoded);
+        assert_eq!(contract_package_hash, decoded);
 
         let invalid_prefix =
-            "contractpackage-0000000000000000000000000000000000000000000000000000000000000000";
-        assert!(ContractPackageHash::from_formatted_str(invalid_prefix).is_err());
+            "contract-package0000000000000000000000000000000000000000000000000000000000000000";
+        assert!(matches!(
+            ContractPackageHash::from_formatted_str(invalid_prefix).unwrap_err(),
+            FromStrError::InvalidPrefix
+        ));
 
         let short_addr =
             "contract-package-00000000000000000000000000000000000000000000000000000000000000";
-        assert!(ContractPackageHash::from_formatted_str(short_addr).is_err());
+        assert!(matches!(
+            ContractPackageHash::from_formatted_str(short_addr).unwrap_err(),
+            FromStrError::Hash(_)
+        ));
 
         let long_addr =
             "contract-package-000000000000000000000000000000000000000000000000000000000000000000";
-        assert!(ContractPackageHash::from_formatted_str(long_addr).is_err());
+        assert!(matches!(
+            ContractPackageHash::from_formatted_str(long_addr).unwrap_err(),
+            FromStrError::Hash(_)
+        ));
 
         let invalid_hex =
             "contract-package-000000000000000000000000000000000000000000000000000000000000000g";
-        assert!(ContractPackageHash::from_formatted_str(invalid_hex).is_err());
+        assert!(matches!(
+            ContractPackageHash::from_formatted_str(invalid_hex).unwrap_err(),
+            FromStrError::Hex(_)
+        ));
+    }
+
+    #[test]
+    fn contract_package_hash_from_legacy_str() {
+        let contract_package_hash = ContractPackageHash([3; 32]);
+        let hex_addr = contract_package_hash.to_string();
+        let legacy_encoded = format!("contract-package-wasm{}", hex_addr);
+        let decoded_from_legacy = ContractPackageHash::from_formatted_str(&legacy_encoded)
+            .expect("should accept legacy prefixed string");
+        assert_eq!(
+            contract_package_hash, decoded_from_legacy,
+            "decoded_from_legacy should equal decoded"
+        );
+
+        let invalid_prefix =
+            "contract-packagewasm0000000000000000000000000000000000000000000000000000000000000000";
+        assert!(matches!(
+            ContractPackageHash::from_formatted_str(invalid_prefix).unwrap_err(),
+            FromStrError::InvalidPrefix
+        ));
+
+        let short_addr =
+            "contract-package-wasm00000000000000000000000000000000000000000000000000000000000000";
+        assert!(matches!(
+            ContractPackageHash::from_formatted_str(short_addr).unwrap_err(),
+            FromStrError::Hash(_)
+        ));
+
+        let long_addr =
+            "contract-package-wasm000000000000000000000000000000000000000000000000000000000000000000";
+        assert!(matches!(
+            ContractPackageHash::from_formatted_str(long_addr).unwrap_err(),
+            FromStrError::Hash(_)
+        ));
+
+        let invalid_hex =
+            "contract-package-wasm000000000000000000000000000000000000000000000000000000000000000g";
+        assert!(matches!(
+            ContractPackageHash::from_formatted_str(invalid_hex).unwrap_err(),
+            FromStrError::Hex(_)
+        ));
     }
 
     #[test]
@@ -1769,6 +1844,37 @@ mod tests {
         let json_string = serde_json::to_string_pretty(&contract_hash).unwrap();
         let decoded = serde_json::from_str(&json_string).unwrap();
         assert_eq!(contract_hash, decoded)
+    }
+
+    #[test]
+    fn should_extract_access_rights() {
+        let contract_hash = ContractHash([255; 32]);
+        let uref = URef::new([84; UREF_ADDR_LENGTH], AccessRights::READ_ADD);
+        let uref_r = URef::new([42; UREF_ADDR_LENGTH], AccessRights::READ);
+        let uref_a = URef::new([42; UREF_ADDR_LENGTH], AccessRights::ADD);
+        let uref_w = URef::new([42; UREF_ADDR_LENGTH], AccessRights::WRITE);
+        let mut named_keys = NamedKeys::new();
+        named_keys.insert("a".to_string(), Key::URef(uref_r));
+        named_keys.insert("b".to_string(), Key::URef(uref_a));
+        named_keys.insert("c".to_string(), Key::URef(uref_w));
+        named_keys.insert("d".to_string(), Key::URef(uref));
+        let contract = Contract::new(
+            ContractPackageHash::new([254; 32]),
+            ContractWasmHash::new([253; 32]),
+            named_keys,
+            EntryPoints::default(),
+            ProtocolVersion::V1_0_0,
+        );
+        let access_rights = contract.extract_access_rights(contract_hash);
+        let expected_uref = URef::new([42; UREF_ADDR_LENGTH], AccessRights::READ_ADD_WRITE);
+        assert!(
+            access_rights.has_access_rights_to_uref(&uref),
+            "urefs in named keys should be included in access rights"
+        );
+        assert!(
+            access_rights.has_access_rights_to_uref(&expected_uref),
+            "multiple access right bits to the same uref should coalesce"
+        );
     }
 }
 

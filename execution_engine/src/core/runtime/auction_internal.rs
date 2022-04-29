@@ -6,7 +6,7 @@ use casper_types::{
     crypto,
     system::{
         auction::{Bid, EraInfo, Error, UnbondingPurse},
-        mint, MINT,
+        mint,
     },
     CLTyped, CLValue, EraId, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue, URef,
     BLAKE2B_DIGEST_LENGTH, U512,
@@ -180,10 +180,8 @@ where
         amount: U512,
         id: Option<u64>,
     ) -> Result<Result<(), mint::Error>, Error> {
-        // if caller is system proceed
-        // else if caller has access to uref proceed
-        if self.context.get_caller() != PublicKey::System.to_account_hash()
-            && self.context.validate_uref(&source).is_err()
+        if !(self.context.account().main_purse().addr() == source.addr()
+            || self.context.get_caller() == PublicKey::System.to_account_hash())
         {
             return Err(Error::InvalidCaller);
         }
@@ -199,22 +197,18 @@ where
         .map_err(|_| Error::CLValue)?;
 
         let gas_counter = self.gas_counter();
-        let mut stack = self.stack().clone();
-        stack
-            .push(
-                self.get_system_contract_stack_frame(MINT)
-                    .map_err(|_| Error::Storage)?,
-            )
-            .map_err(|_| Error::RuntimeStackOverflow)?;
+
+        self.context
+            .access_rights_extend(&[source, target.into_add()]);
+
+        let mint_contract_hash = self.get_mint_contract().map_err(|exec_error| {
+            <Option<Error>>::from(exec_error).unwrap_or(Error::MissingValue)
+        })?;
+
         let cl_value = self
-            .call_host_mint(
-                self.context.protocol_version(),
-                mint::METHOD_TRANSFER,
-                &args_values,
-                &[],
-                stack,
-            )
+            .call_contract(mint_contract_hash, mint::METHOD_TRANSFER, args_values)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Transfer))?;
+
         self.set_gas_counter(gas_counter);
         cl_value.into_t().map_err(|_| Error::CLValue)
     }
@@ -224,9 +218,7 @@ where
         amount: U512,
         existing_purse: URef,
     ) -> Result<(), Error> {
-        if self.context.get_caller() != PublicKey::System.to_account_hash()
-            && self.context.validate_uref(&existing_purse).is_err()
-        {
+        if self.context.get_caller() != PublicKey::System.to_account_hash() {
             return Err(Error::InvalidCaller);
         }
 
@@ -238,21 +230,16 @@ where
         .map_err(|_| Error::CLValue)?;
 
         let gas_counter = self.gas_counter();
-        let mut stack = self.stack().clone();
-        stack
-            .push(
-                self.get_system_contract_stack_frame(MINT)
-                    .map_err(|_| Error::Storage)?,
-            )
-            .map_err(|_| Error::RuntimeStackOverflow)?;
+
+        let mint_contract_hash = self.get_mint_contract().map_err(|exec_error| {
+            <Option<Error>>::from(exec_error).unwrap_or(Error::MissingValue)
+        })?;
 
         let cl_value = self
-            .call_host_mint(
-                self.context.protocol_version(),
+            .call_contract(
+                mint_contract_hash,
                 mint::METHOD_MINT_INTO_EXISTING_PURSE,
-                &args_values,
-                &[],
-                stack,
+                args_values,
             )
             .map_err(|error| <Option<Error>>::from(error).unwrap_or(Error::MintError))?;
         self.set_gas_counter(gas_counter);

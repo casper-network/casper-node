@@ -10,6 +10,5 @@ pub mod system_config;
 pub mod test_utils;
 pub mod transform;
 pub mod utils;
-pub mod wasm;
 pub mod wasm_config;
 pub mod wasm_prep;

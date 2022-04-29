@@ -15,11 +15,11 @@ The Casper MainNet is live.
 
 ## Specification
 
-- [Platform Specification](https://docs.casperlabs.io/en/latest/implementation/index.html)
+- [Platform Specification](https://docs.casperlabs.io/design/)
 - [Highway Consensus Proofs](https://github.com/CasperLabs/highway/releases/latest)
 
 ## Get Started with Smart Contracts
-- [Writing Smart Contracts](https://docs.casperlabs.io/en/latest/dapp-dev-guide/index.html)
+- [Writing Smart Contracts](https://docs.casperlabs.io/dapp-dev-guide/)
 - [Rust Smart Contract SDK](https://crates.io/crates/cargo-casper)
 - [Rust Smart Contract API Docs](https://docs.rs/casper-contract/latest/casper_contract/contract_api/index.html)
 - [AssemblyScript Smart Contract API](https://www.npmjs.com/package/casper-contract)
@@ -176,44 +176,6 @@ asssigned an ID of `ev=123`, the first round of subsequent events will show `a=1
 ## Debugging
 
 Some additional debug functionality is available, mainly allowed for inspections of the internal event queue.
-
-### Event queue dump
-
-The event queue can be dumped by sending a `SIGUSR1` or `SIGUSR2` to the running node process, e.g. if the node's process ID was `$NODE_PID`:
-
-```console
-kill -USR1 $NODE_PID
-```
-
-`USR1` will cause a debug/text representation to be dumped, `USR2` a JSON formatted version, which is likely much larger.
-
-Both variants will create a dump file in the working directory of the node. A tool like [jq](https://stedolan.github.io/jq/) can then be used to format and display the JSON representation:
-
-```console
-$ jq < queue_dump.json
-{
-  "NetworkIncoming": [],
-  "Network": [],
-  "Regular": [
-    "AddressGossiper"
-  ],
-  "Api": []
-}
-```
-
-### jq Examples
-
-Dump the type of events:
-
-```console
-jq 'map_values( map(keys[0] | {"type": ., weight: 1})| group_by(.type) | map ([.[0].type,(.|length)]) | map({(.[0]): .[1]}) )' queue_dump.json
-```
-
-Count number of events in each queue:
-
-```console
-jq 'map_values(map(keys[0]))' queue_dump.json
-```
 
 ### Diagnostics port
 

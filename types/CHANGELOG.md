@@ -17,13 +17,36 @@ All notable changes to this project will be documented in this file.  The format
 * Add new `bytesrepr::Error::NotRepresentable` error variant that represents values that are not representable by the serialization format.
 * Add new `Key::ChainspecRegistry` key variant under which the `ChainspecRegistry` is written.
 * Add a new type `WithdrawPurses` which is meant to represent `UnbondingPurses` as they exist in current live networks.
+* Extend asymmetric key functionality, available via new feature "crypto-std".
+* Provide test-only functionality, in particular a seedable RNG `TestRng` which outputs its seed on test failure. Available via a new feature "testing".
 
 ### Changed
 * Extend `UnbondingPurses` to take a new field `new_validator` which represents the validator to whom tokens will be re-delegated.
-* Disable checksummed-hex encoding, but leave checksummed-hex decoding in place.
 * Increase `DICTIONARY_ITEM_KEY_MAX_LENGTH` to 128.
 * Fixed some integer casts.
-* Extended `UnbondingPurses` to take a new field `new_validator` which represents the validator to whom tokens will be re-delegated.
+* Change prefix of formatted string representation of `ContractPackageHash` from "contract-package-wasm" to "contract-package-". Parsing from the old format is still supported.
+
+### Deprecated
+* Deprecate "gens" feature (used for providing proptest helpers) in favor of new "testing" feature.
+
+
+
+## 1.5.0
+
+### Added
+* Provide types and functionality to support improved access control inside execution engine.
+* Provide `CLTyped` impl for `ContractPackage` to allow it to be passed into contracts.
+
+### Fixed
+* Limit parsing of CLTyped objects to a maximum of 50 types deep.
+
+
+
+## 1.4.6 - 2021-12-29
+
+### Changed
+* Disable checksummed-hex encoding, but leave checksummed-hex decoding in place.
+
 
 
 ## 1.4.5 - 2021-12-06

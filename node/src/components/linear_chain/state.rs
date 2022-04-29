@@ -451,11 +451,11 @@ mod tests {
 
     use rand::Rng;
 
-    use casper_types::{EraId, PublicKey, SecretKey};
-
-    use crate::{
-        crypto::generate_ed25519_keypair, logging, testing::TestRng, types::FinalizedBlock,
+    use casper_types::{
+        crypto::generate_ed25519_keypair, testing::TestRng, EraId, PublicKey, SecretKey,
     };
+
+    use crate::{logging, types::FinalizedBlock};
 
     use super::*;
 
