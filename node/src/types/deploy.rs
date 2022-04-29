@@ -1817,6 +1817,15 @@ mod tests {
         let deploy = Deploy::random(&mut rng);
         bytesrepr::test_serialization_roundtrip(deploy.header());
         bytesrepr::test_serialization_roundtrip(&deploy);
+
+        let deploy_metadata = DeployMetadata::random(&mut rng);
+        bytesrepr::test_serialization_roundtrip(&deploy_metadata);
+
+        let finalized_approvals = FinalizedApprovals::random(&mut rng);
+        bytesrepr::test_serialization_roundtrip(&finalized_approvals);
+
+        let finalized_approvals_with_id = FinalizedApprovalsWithId::random(&mut rng);
+        bytesrepr::test_serialization_roundtrip(&finalized_approvals_with_id);
     }
 
     fn create_deploy(
