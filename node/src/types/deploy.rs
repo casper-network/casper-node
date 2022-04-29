@@ -687,6 +687,36 @@ impl FinalizedApprovalsWithId {
     pub fn into_inner(self) -> BTreeSet<Approval> {
         self.approvals.into_inner()
     }
+
+    #[cfg(test)]
+    pub fn random(rng: &mut TestRng) -> Self {
+        Self::new(DeployHash::random(rng), FinalizedApprovals::random(rng))
+    }
+}
+
+impl ToBytes for FinalizedApprovalsWithId {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buf = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buf)?;
+        Ok(buf)
+    }
+
+    fn serialized_length(&self) -> usize {
+        ToBytes::serialized_length(&self.id) + ToBytes::serialized_length(&self.approvals)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.id.write_bytes(writer)?;
+        self.approvals.write_bytes(writer)
+    }
+}
+
+impl FromBytes for FinalizedApprovalsWithId {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (id, bytes) = FromBytes::from_bytes(bytes)?;
+        let (approvals, bytes) = FromBytes::from_bytes(bytes)?;
+        Ok((FinalizedApprovalsWithId::new(id, approvals), bytes))
+    }
 }
 
 /// Error type containing the error message passed from `crypto::verify`
