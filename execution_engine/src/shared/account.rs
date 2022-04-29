@@ -26,15 +26,22 @@ const DEFAULT_PRIVATE_CHAIN_ACTION_THRESHOLDS: ActionThresholds = ActionThreshol
     key_management: Weight::MAX,
 };
 
-pub(crate) enum AccountConfig {
+/// Variants of an account in the system.
+pub enum AccountConfig {
     /// Normal account settings for a public chain.
     Normal,
     /// Specialized account with extra settings valid only on private chains.
     Restricted,
 }
 
+impl Default for AccountConfig {
+    fn default() -> Self {
+        Self::Normal
+    }
+}
+
 /// Creates new account specific for a different chain operating modes.
-pub(crate) fn create_account(
+pub fn create_account(
     account_config: AccountConfig,
     account_hash: AccountHash,
     main_purse: URef,

@@ -262,7 +262,8 @@ impl LmdbWasmTestBuilder {
         let global_state =
             LmdbGlobalState::empty(environment, trie_store).expect("should create LmdbGlobalState");
         let engine_state = EngineState::new(global_state, engine_config);
-        WasmTestBuilder {
+
+        let mut builder = WasmTestBuilder {
             engine_state: Rc::new(engine_state),
             exec_results: Vec::new(),
             upgrade_results: Vec::new(),
@@ -273,7 +274,12 @@ impl LmdbWasmTestBuilder {
             genesis_transforms: None,
             scratch_engine_state: None,
             system_contract_registry: None,
-        }
+        };
+
+        let registry = builder.query_system_contract_registry(Some(post_state_hash));
+        builder.system_contract_registry = registry;
+
+        builder
     }
 
     fn create_global_state_dir<T: AsRef<Path>>(global_state_path: T) {
@@ -371,30 +377,31 @@ where
             .expect("Unable to get genesis response");
 
         let transforms = execution_effect.transforms;
-        let empty_path: Vec<String> = vec![];
-
         let genesis_account =
             utils::get_account(&transforms, &system_account).expect("Unable to get system account");
 
-        self.system_contract_registry = match self.query(
-            Some(post_state_hash),
-            Key::SystemContractRegistry,
-            &empty_path,
-        ) {
-            Ok(StoredValue::CLValue(cl_registry)) => {
-                let system_contract_registry =
-                    CLValue::into_t::<SystemContractRegistry>(cl_registry).unwrap();
-                Some(system_contract_registry)
-            }
-            Ok(_) => panic!("Failed to get system registry"),
-            Err(err) => panic!("{}", err),
-        };
+        self.system_contract_registry = self.query_system_contract_registry(Some(post_state_hash));
 
         self.genesis_hash = Some(post_state_hash);
         self.post_state_hash = Some(post_state_hash);
         self.genesis_account = Some(genesis_account);
         self.genesis_transforms = Some(transforms);
         self
+    }
+
+    fn query_system_contract_registry(
+        &mut self,
+        post_state_hash: Option<Digest>,
+    ) -> Option<SystemContractRegistry> {
+        match self.query(post_state_hash, Key::SystemContractRegistry, &[]) {
+            Ok(StoredValue::CLValue(cl_registry)) => {
+                let system_contract_registry =
+                    CLValue::into_t::<SystemContractRegistry>(cl_registry).unwrap();
+                Some(system_contract_registry)
+            }
+            Ok(_) => None,
+            Err(_) => None,
+        }
     }
 
     /// Queries state for a [`StoredValue`].
@@ -562,13 +569,8 @@ where
         }) = result
         {
             self.post_state_hash = Some(post_state_hash);
-
-            if let Ok(StoredValue::CLValue(cl_registry)) =
-                self.query(self.post_state_hash, Key::SystemContractRegistry, &[])
-            {
-                let registry = CLValue::into_t::<SystemContractRegistry>(cl_registry).unwrap();
-                self.system_contract_registry = Some(registry);
-            }
+            self.system_contract_registry =
+                self.query_system_contract_registry(Some(post_state_hash));
         }
 
         self.upgrade_results.push(result);

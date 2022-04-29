@@ -18,10 +18,11 @@ pub(crate) fn generate_validators_update(matches: &ArgMatches<'_>) {
         None => vec![],
         Some(values) => values
             .map(|validator_def| {
-                let mut fields = validator_def.split(',').map(str::to_owned);
+                let mut fields = validator_def.split(',');
                 let field1 = fields.next().unwrap();
                 let field2 = fields.next().unwrap();
-                (field1, field2)
+                let maybe_field3 = fields.next();
+                (field1, field2, maybe_field3)
             })
             .collect(),
     };
