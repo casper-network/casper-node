@@ -559,7 +559,7 @@ impl StorageInner {
 
         indices.lowest_available_block_height = {
             let mut txn = env.begin_ro_txn()?;
-            txn.get_value_bytesrepr(state_store_db, &KEY_LOWEST_AVAILABLE_BLOCK_HEIGHT)?
+            txn.get_value(state_store_db, &KEY_LOWEST_AVAILABLE_BLOCK_HEIGHT)?
                 .unwrap_or_default()
         };
         let highest_block_at_startup = indices
@@ -1135,7 +1135,7 @@ impl StorageInner {
                 if !txn.put_value(
                     self.block_header_db,
                     &block_header.hash(self.verifiable_chunked_hash_activation),
-                    &block_header,
+                    block_header.as_ref(),
                     false,
                 )? {
                     error!(
@@ -1178,7 +1178,7 @@ impl StorageInner {
     /// Put a single deploy into storage.
     pub fn put_deploy(&self, deploy: &Deploy) -> Result<bool, FatalStorageError> {
         let mut txn = self.env.begin_rw_txn()?;
-        let outcome = txn.put_value(self.deploy_db, deploy.id(), &deploy, false)?;
+        let outcome = txn.put_value(self.deploy_db, deploy.id(), deploy, false)?;
         txn.commit()?;
         Ok(outcome)
     }
@@ -1501,7 +1501,7 @@ impl StorageInner {
         // It's possible the value is already present (ie, if it is a block proposer).
         // We put the value and rest hashes in first, since we need that present even if the value
         // is already there.
-        if !tx.put_value_bytesrepr(
+        if !tx.put_value(
             self.block_body_v2_db,
             merklized_block_body_part.merkle_linked_list_node_hash(),
             &merklized_block_body_part.value_and_rest_hashes_pair(),
@@ -1510,7 +1510,7 @@ impl StorageInner {
             return Ok(false);
         };
 
-        if !tx.put_value_bytesrepr(
+        if !tx.put_value(
             part_database,
             merklized_block_body_part.value_hash(),
             merklized_block_body_part.value(),
@@ -1909,10 +1909,9 @@ impl StorageInner {
         //   unavailable global state.
         let should_update = {
             let mut txn = self.env.begin_ro_txn()?;
-            match txn.get_value_bytesrepr::<_, u64>(
-                self.state_store_db,
-                &KEY_LOWEST_AVAILABLE_BLOCK_HEIGHT,
-            )? {
+            match txn
+                .get_value::<_, u64>(self.state_store_db, &KEY_LOWEST_AVAILABLE_BLOCK_HEIGHT)?
+            {
                 Some(height) => {
                     new_height < height || new_height > self.highest_block_at_startup + 1
                 }
@@ -1927,7 +1926,7 @@ impl StorageInner {
         let mut indices = self.indices.write()?;
         if indices.block_height_index.contains_key(&new_height) {
             let mut txn = self.env.begin_rw_txn()?;
-            txn.put_value_bytesrepr::<_, u64>(
+            txn.put_value::<_, u64>(
                 self.state_store_db,
                 &KEY_LOWEST_AVAILABLE_BLOCK_HEIGHT,
                 &new_height,
@@ -1953,6 +1952,10 @@ fn decode_item_id<T>(raw: &[u8]) -> Result<T::Id, GetRequestError>
 where
     T: Item,
 {
+    // Transition to bytesrepr is not complete here as this function is also used in
+    // other parts of the code which we don't want to change right now. In order to
+    // fully migrate from bincode, we would have to use
+    // `bytesrepr::deserialize_from_slice` here.
     bincode::deserialize(raw).map_err(GetRequestError::MalformedIncomingItemId)
 }
 
@@ -2389,11 +2392,11 @@ where
     T: FromBytes,
 {
     let (part_to_value_db, merkle_proof_of_rest): (Digest, Digest) =
-        match tx.get_value_bytesrepr(block_body_v2_db, key_to_block_body_db)? {
+        match tx.get_value(block_body_v2_db, key_to_block_body_db)? {
             Some(slice) => slice,
             None => return Ok(None),
         };
-    let value = match tx.get_value_bytesrepr(part_database, &part_to_value_db)? {
+    let value = match tx.get_value(part_database, &part_to_value_db)? {
         Some(value) => value,
         None => return Ok(None),
     };
@@ -2484,7 +2487,7 @@ fn garbage_collect_block_body_v2_db(
         {
             live_digests[0].insert(current_digest);
             let (key_to_part_db, merkle_proof_of_rest): (Digest, Digest) =
-                match txn.get_value_bytesrepr(*block_body_v2_db, &current_digest)? {
+                match txn.get_value(*block_body_v2_db, &current_digest)? {
                     Some(slice) => slice,
                     None => {
                         return Err(FatalStorageError::CouldNotFindBlockBodyPart {
