@@ -51,7 +51,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use casper_types::{EraId, PublicKey};
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use openssl::{error::ErrorStack as OpenSslErrorStack, pkey};
@@ -72,8 +71,17 @@ use tokio_openssl::SslStream;
 use tokio_util::codec::LengthDelimitedCodec;
 use tracing::{debug, error, info, trace, warn, Instrument, Span};
 
-use self::{
+use casper_types::{EraId, PublicKey};
+
+pub(crate) use self::{
     bincode_format::BincodeFormat,
+    config::Config,
+    error::Error,
+    event::Event,
+    gossiped_address::GossipedAddress,
+    message::{EstimatorWeights, FromIncoming, Message, MessageKind, Payload},
+};
+use self::{
     chain_info::ChainInfo,
     counting_format::{ConnectionId, CountingFormat, Role},
     error::{ConnectionError, Result},
@@ -85,13 +93,7 @@ use self::{
     symmetry::ConnectionSymmetry,
     tasks::NetworkContext,
 };
-pub(crate) use self::{
-    config::Config,
-    error::Error,
-    event::Event,
-    gossiped_address::GossipedAddress,
-    message::{EstimatorWeights, FromIncoming, Message, MessageKind, Payload},
-};
+
 use crate::{
     components::{consensus, Component},
     effect::{
