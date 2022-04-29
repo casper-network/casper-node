@@ -135,6 +135,31 @@ fn remove_gossip(
     result
 }
 
+/// Removes all `CreatedMessageToRandomPeer`s from `outcomes` and returns the deserialized messages.
+fn remove_messages_to_random(
+    outcomes: &mut ProtocolOutcomes<ClContext>,
+) -> Vec<Message<ClContext>> {
+    let mut result = Vec::new();
+    let expected_instance_id = ClContext::hash(INSTANCE_ID_DATA);
+    outcomes.retain(|outcome| {
+        let msg = match outcome {
+            ProtocolOutcome::CreatedMessageToRandomPeer(msg) => {
+                bincode::deserialize::<Message<ClContext>>(msg.as_slice())
+                    .expect("deserialize message")
+            }
+            _ => return true,
+        };
+        if let Message::SyncState { instance_id, .. } = &msg {
+            assert_eq!(*instance_id, expected_instance_id);
+            result.push(msg);
+            false
+        } else {
+            panic!("unexpected message to random peer: {:?}", msg);
+        }
+    });
+    result
+}
+
 /// Expects exactly one `CreateNewBlock` in `outcomes`, removes and returns it.
 fn remove_create_new_block(outcomes: &mut ProtocolOutcomes<ClContext>) -> BlockContext<ClContext> {
     let mut result = None;
@@ -484,6 +509,113 @@ fn simple_consensus_faults() {
     assert!(outcomes
         .iter()
         .any(|outcome| { matches!(outcome, ProtocolOutcome::FttExceeded) }));
+}
+
+/// Tests that a `SyncState` message is periodically sent to a random peer.
+#[test]
+fn simple_consensus_sends_sync_state() {
+    let mut rng = crate::new_rng();
+    let (weights, validators) = abc_weights(50, 40, 10);
+    let alice_idx = validators.get_index(&*ALICE_PUBLIC_KEY).unwrap();
+    let bob_idx = validators.get_index(&*BOB_PUBLIC_KEY).unwrap();
+    let carol_idx = validators.get_index(&*CAROL_PUBLIC_KEY).unwrap();
+
+    // The first round leader is Alice.
+    let mut sc = new_test_simple_consensus(weights, vec![], &[alice_idx]);
+
+    let alice_kp = Keypair::from(ALICE_SECRET_KEY.clone());
+    let bob_kp = Keypair::from(BOB_SECRET_KEY.clone());
+    let carol_kp = Keypair::from(CAROL_SECRET_KEY.clone());
+
+    let timeout = sc
+        .config
+        .request_state_interval
+        .expect("request state timer")
+        / 100;
+    let sender = *ALICE_NODE_ID;
+    let mut timestamp = Timestamp::from(100000);
+
+    let proposal0 = Proposal {
+        timestamp,
+        maybe_block: Some(new_payload(false)),
+        maybe_parent_round_id: None,
+        inactive: None,
+    };
+    let hash0 = proposal0.hash();
+
+    let outcomes = sc.handle_is_current(timestamp);
+    expect_timer(&outcomes, timestamp + timeout, TIMER_ID_SYNC_PEER);
+
+    timestamp += timeout;
+
+    // The protocol state is empty and the SyncState should reflect that.
+    let mut outcomes = sc.handle_timer(timestamp, TIMER_ID_SYNC_PEER, &mut rng);
+    expect_timer(&outcomes, timestamp + timeout, TIMER_ID_SYNC_PEER);
+    let mut msg_iter = remove_messages_to_random(&mut outcomes).into_iter();
+    match (msg_iter.next(), msg_iter.next()) {
+        (
+            Some(Message::SyncState {
+                round_id: 0,
+                proposal_hash: None,
+                proposal: false,
+                first_validator_idx: _,
+                echos: 0,
+                true_votes: 0,
+                false_votes: 0,
+                faulty: 0,
+                instance_id: _,
+            }),
+            None,
+        ) => {}
+        (msg0, msg1) => panic!("unexpected messages: {:?}, {:?}", msg0, msg1),
+    }
+
+    timestamp += timeout;
+
+    // Now we get a proposal and echo from Alice, one false vote from Bob, and Carol double-signs.
+    let msg = create_message(&validators, 0, echo(hash0), &alice_kp);
+    sc.handle_message(&mut rng, sender, msg, timestamp);
+    let msg = create_message(&validators, 0, proposal(&proposal0), &alice_kp);
+    sc.handle_message(&mut rng, sender, msg, timestamp);
+    let msg = create_message(&validators, 0, vote(false), &bob_kp);
+    sc.handle_message(&mut rng, sender, msg, timestamp);
+    let msg = create_message(&validators, 0, vote(true), &carol_kp);
+    sc.handle_message(&mut rng, sender, msg, timestamp);
+    let msg = create_message(&validators, 0, vote(false), &carol_kp);
+    sc.handle_message(&mut rng, sender, msg, timestamp);
+
+    // The next SyncState message must include all the new information.
+    let mut outcomes = sc.handle_timer(timestamp, TIMER_ID_SYNC_PEER, &mut rng);
+    expect_timer(&outcomes, timestamp + timeout, TIMER_ID_SYNC_PEER);
+    let mut msg_iter = remove_messages_to_random(&mut outcomes).into_iter();
+    match (msg_iter.next(), msg_iter.next()) {
+        (
+            Some(Message::SyncState {
+                round_id: 0,
+                proposal_hash: Some(hash),
+                proposal: true,
+                first_validator_idx,
+                echos,
+                true_votes: 0,
+                false_votes,
+                faulty,
+                instance_id: _,
+            }),
+            None,
+        ) => {
+            assert_eq!(hash0, hash);
+            let mut faulty_iter = sc.iter_validator_bit_field(first_validator_idx, faulty);
+            assert_eq!(Some(carol_idx), faulty_iter.next());
+            assert_eq!(None, faulty_iter.next());
+            let mut echos_iter = sc.iter_validator_bit_field(first_validator_idx, echos);
+            assert_eq!(Some(alice_idx), echos_iter.next());
+            assert_eq!(None, echos_iter.next());
+            let mut false_iter = sc.iter_validator_bit_field(first_validator_idx, false_votes);
+            assert_eq!(Some(bob_idx), false_iter.next());
+            assert_eq!(None, false_iter.next());
+        }
+        (msg0, msg1) => panic!("unexpected messages: {:?}, {:?}", msg0, msg1),
+    }
 }
 
 #[test]
