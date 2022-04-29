@@ -2363,6 +2363,27 @@ mod tests {
     }
 
     #[test]
+    fn block_header_with_metadata_bytesrepr_roundtrip() {
+        let mut rng = TestRng::new();
+        let block_header = BlockHeaderWithMetadata::random(&mut rng);
+        bytesrepr::test_serialization_roundtrip(&block_header);
+    }
+
+    #[test]
+    fn block_signatures_bytesrepr_roundtrip() {
+        let mut rng = TestRng::new();
+        let block = BlockSignatures::random(&mut rng);
+        bytesrepr::test_serialization_roundtrip(&block);
+    }
+
+    #[test]
+    fn block_with_metadata_bytesrepr_roundtrip() {
+        let mut rng = TestRng::new();
+        let block = BlockWithMetadata::random(&mut rng);
+        bytesrepr::test_serialization_roundtrip(&block);
+    }
+
+    #[test]
     fn bytesrepr_roundtrip_era_report() {
         let mut rng = TestRng::new();
         let loop_iterations = 50;
