@@ -1040,6 +1040,51 @@ pub struct BlockHeaderWithMetadata {
     pub block_signatures: BlockSignatures,
 }
 
+#[cfg(test)]
+impl BlockHeaderWithMetadata {
+    /// Generates a completely random instance.
+    pub fn random(rng: &mut TestRng) -> Self {
+        let block_header = Block::random(rng).header;
+        let block_signatures = BlockSignatures::random(rng);
+        BlockHeaderWithMetadata {
+            block_header,
+            block_signatures,
+        }
+    }
+}
+
+impl ToBytes for BlockHeaderWithMetadata {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buf = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buf)?;
+        Ok(buf)
+    }
+
+    fn serialized_length(&self) -> usize {
+        ToBytes::serialized_length(&self.block_header)
+            + ToBytes::serialized_length(&self.block_signatures)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.block_header.write_bytes(writer)?;
+        self.block_signatures.write_bytes(writer)
+    }
+}
+
+impl FromBytes for BlockHeaderWithMetadata {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (block_header, bytes) = FromBytes::from_bytes(bytes)?;
+        let (block_signatures, bytes) = FromBytes::from_bytes(bytes)?;
+        Ok((
+            BlockHeaderWithMetadata {
+                block_header,
+                block_signatures,
+            },
+            bytes,
+        ))
+    }
+}
+
 impl Display for BlockHeaderWithMetadata {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{} and {}", self.block_header, self.block_signatures)
