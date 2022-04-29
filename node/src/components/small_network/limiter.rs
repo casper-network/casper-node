@@ -526,4 +526,59 @@ mod tests {
             wait_metric.get()
         );
     }
+
+    /// Regression test for #??? (fill in issue once created)
+    #[tokio::test]
+    async fn throttling_of_non_validators_does_not_affect_validators() {
+        init_logging();
+
+        let mut rng = crate::new_rng();
+
+        let validator_id = PublicKey::random(&mut rng);
+        let limiter = ClassBasedLimiter::new(1_000, new_wait_time_sec());
+
+        let mut active_validators = HashSet::new();
+        active_validators.insert(validator_id.clone());
+        limiter.update_validators(active_validators, HashSet::new());
+
+        let non_validator_handle = limiter.create_handle(NodeId::random(&mut rng), None);
+        let validator_handle = limiter.create_handle(NodeId::random(&mut rng), Some(validator_id));
+
+        // We request a large resource at once using a non-validator handle. At the same time,
+        // validator requests should be still served, even while waiting for the long-delayed
+        // request still blocking.
+        let start = Instant::now();
+        let background_nv_request = tokio::spawn(async move {
+            non_validator_handle.request_allowance(5000).await;
+            non_validator_handle.request_allowance(5000).await;
+
+            Instant::now()
+        });
+
+        // Allow for a little bit of time to pass to ensure the background task is running.
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        validator_handle.request_allowance(10000).await;
+        validator_handle.request_allowance(10000).await;
+
+        let v_finished = Instant::now();
+
+        let nv_finished = background_nv_request
+            .await
+            .expect("failed to join background nv task");
+
+        let nv_completed = nv_finished.duration_since(start);
+        assert!(
+            nv_completed >= Duration::from_millis(4500),
+            "non-validator did not delay sufficiently: {:?}",
+            nv_completed
+        );
+
+        let v_completed = v_finished.duration_since(start);
+        assert!(
+            v_completed <= Duration::from_millis(1500),
+            "validator did not finish quickly enough: {:?}",
+            v_completed
+        );
+    }
 }
