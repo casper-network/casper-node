@@ -138,11 +138,6 @@ steps:
 
 - name: nctl-upgrade-test
   <<: *buildenv
-  environment:
-    AWS_ACCESS_KEY_ID:
-      from_secret: put-drone-aws-ak
-    AWS_SECRET_ACCESS_KEY:
-      from_secret: put-drone-aws-sk
   commands:
   - bash -i ./ci/nctl_upgrade.sh
 
@@ -475,11 +470,6 @@ steps:
 
 - name: nctl-nightly-tests
   <<: *buildenv
-  environment:
-    AWS_ACCESS_KEY_ID:
-      from_secret: put-drone-aws-ak
-    AWS_SECRET_ACCESS_KEY:
-      from_secret: put-drone-aws-sk
   commands:
   - bash -i ./ci/nightly-test.sh
 
