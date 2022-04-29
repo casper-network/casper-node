@@ -143,7 +143,7 @@ impl ClassBasedLimiter {
     /// Creates a new class based limiter.
     ///
     /// Starts the background worker task as well. Any time the limiter caused a delay,
-    /// `wait_time_sec` will be increment.
+    /// `wait_time_sec` will be incremented.
     pub(super) fn new(resources_per_second: u32, wait_time_sec: Counter) -> Self {
         let (sender, receiver) = mpsc::unbounded_channel();
 
@@ -471,11 +471,18 @@ mod tests {
         assert!(diff <= Duration::from_secs(6));
 
         // Ensure metrics recorded the correct number of seconds.
-        println!("wait_metric is {}", wait_metric.get());
-        assert!(wait_metric.get() <= 6.0);
+        assert!(
+            wait_metric.get() <= 6.0,
+            "wait metric is too large: {}",
+            wait_metric.get()
+        );
 
         // Note: The limiting will not apply to all data, so it should be slightly below 5 seconds.
-        assert!(wait_metric.get() >= 4.5);
+        assert!(
+            wait_metric.get() >= 4.5,
+            "wait metric is too small: {}",
+            wait_metric.get()
+        );
     }
 
     #[tokio::test]
@@ -513,7 +520,10 @@ mod tests {
         }
 
         // There should have been no time spent waiting.
-        println!("wait_metric is {}", wait_metric.get());
-        assert!(wait_metric.get() < SHORT_TIME.as_secs_f64());
+        assert!(
+            wait_metric.get() < SHORT_TIME.as_secs_f64(),
+            "wait_metric is too large: {}",
+            wait_metric.get()
+        );
     }
 }
