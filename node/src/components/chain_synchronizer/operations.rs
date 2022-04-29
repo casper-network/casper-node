@@ -949,6 +949,7 @@ async fn sync_to_genesis(ctx: &ChainSyncContext<'_>) -> Result<(KeyBlockInfo, Bl
     let mut trusted_key_block_info = get_trusted_key_block_info(ctx).await?;
 
     let trusted_block = *fetch_and_store_block_by_hash(ctx.trusted_hash(), ctx).await?;
+    sync_deploys_and_transfers_and_state(&trusted_block, ctx).await?;
 
     fetch_to_genesis(&trusted_block, ctx).await?;
 
