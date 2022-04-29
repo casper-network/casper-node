@@ -219,11 +219,14 @@ where
             return Err(Error::EmptyKnownHosts);
         }
 
+        let net_metrics = Arc::new(Metrics::new(registry)?);
+
         let outgoing_limiter: Box<dyn Limiter> = if cfg.max_outgoing_byte_rate_non_validators == 0 {
             Box::new(limiter::Unlimited)
         } else {
             Box::new(limiter::ClassBasedLimiter::new(
                 cfg.max_outgoing_byte_rate_non_validators,
+                net_metrics.accumulated_outgoing_limiter_delay.clone(),
             ))
         };
 
@@ -233,10 +236,9 @@ where
             } else {
                 Box::new(limiter::ClassBasedLimiter::new(
                     cfg.max_incoming_message_rate_non_validators,
+                    net_metrics.accumulated_incoming_limiter_delay.clone(),
                 ))
             };
-
-        let net_metrics = Arc::new(Metrics::new(registry)?);
 
         let outgoing_manager = OutgoingManager::with_metrics(
             OutgoingConfig {

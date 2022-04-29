@@ -7,6 +7,7 @@ use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use casper_types::PublicKey;
+use prometheus::Counter;
 use tokio::{
     sync::{mpsc, oneshot},
     time::Instant,
@@ -141,14 +142,16 @@ struct ConsumerId {
 impl ClassBasedLimiter {
     /// Creates a new class based limiter.
     ///
-    /// Starts the background worker task as well.
-    pub(super) fn new(resources_per_second: u32) -> Self {
+    /// Starts the background worker task as well. Any time the limiter caused a delay,
+    /// `wait_time_sec` will be incremented.
+    pub(super) fn new(resources_per_second: u32, wait_time_sec: Counter) -> Self {
         let (sender, receiver) = mpsc::unbounded_channel();
 
         tokio::spawn(worker(
             receiver,
             resources_per_second,
             ((resources_per_second as f64) * STORED_BUFFER_SECS.as_secs_f64()) as u32,
+            wait_time_sec,
         ));
 
         ClassBasedLimiter { sender }
@@ -234,6 +237,7 @@ async fn worker(
     mut receiver: mpsc::UnboundedReceiver<ClassBasedCommand>,
     resources_per_second: u32,
     max_stored_resource: u32,
+    wait_time_sec: Counter,
 ) {
     let mut active_validators = HashSet::new();
     let mut upcoming_validators = HashSet::new();
@@ -311,6 +315,7 @@ async fn worker(
                                 );
 
                                 tokio::time::sleep(estimated_time_remaining).await;
+                                wait_time_sec.inc_by(estimated_time_remaining.as_secs_f64());
                             }
                         }
 
@@ -336,6 +341,7 @@ async fn worker(
 mod tests {
     use std::{collections::HashSet, time::Duration};
 
+    use prometheus::Counter;
     use tokio::time::Instant;
 
     use super::{ClassBasedLimiter, Limiter, NodeId, PublicKey, Unlimited};
@@ -343,6 +349,12 @@ mod tests {
 
     /// Something that happens almost immediately, with some allowance for test jitter.
     const SHORT_TIME: Duration = Duration::from_millis(250);
+
+    /// Creates a new counter for testing.
+    fn new_wait_time_sec() -> Counter {
+        Counter::new("test_time_waiting", "wait time counter used in tests")
+            .expect("could not create new counter")
+    }
 
     #[tokio::test]
     async fn unlimited_limiter_is_unlimited() {
@@ -366,7 +378,7 @@ mod tests {
         let mut rng = crate::new_rng();
 
         let validator_id = PublicKey::random(&mut rng);
-        let limiter = ClassBasedLimiter::new(1_000);
+        let limiter = ClassBasedLimiter::new(1_000, new_wait_time_sec());
 
         let mut active_validators = HashSet::new();
         active_validators.insert(validator_id.clone());
@@ -388,7 +400,7 @@ mod tests {
         let mut rng = crate::new_rng();
 
         let validator_id = PublicKey::random(&mut rng);
-        let limiter = ClassBasedLimiter::new(1_000);
+        let limiter = ClassBasedLimiter::new(1_000, new_wait_time_sec());
 
         // We insert one unrelated active validator to avoid triggering the automatic disabling of
         // the limiter in case there are no active validators.
@@ -425,7 +437,8 @@ mod tests {
         let mut rng = crate::new_rng();
 
         let validator_id = PublicKey::random(&mut rng);
-        let limiter = ClassBasedLimiter::new(1_000);
+        let wait_metric = new_wait_time_sec();
+        let limiter = ClassBasedLimiter::new(1_000, wait_metric.clone());
 
         let start = Instant::now();
 
@@ -456,6 +469,20 @@ mod tests {
         let diff = end - start;
         assert!(diff >= Duration::from_secs(5));
         assert!(diff <= Duration::from_secs(6));
+
+        // Ensure metrics recorded the correct number of seconds.
+        assert!(
+            wait_metric.get() <= 6.0,
+            "wait metric is too large: {}",
+            wait_metric.get()
+        );
+
+        // Note: The limiting will not apply to all data, so it should be slightly below 5 seconds.
+        assert!(
+            wait_metric.get() >= 4.5,
+            "wait metric is too small: {}",
+            wait_metric.get()
+        );
     }
 
     #[tokio::test]
@@ -465,7 +492,8 @@ mod tests {
         let mut rng = crate::new_rng();
 
         let validator_id = PublicKey::random(&mut rng);
-        let limiter = ClassBasedLimiter::new(1_000);
+        let wait_metric = new_wait_time_sec();
+        let limiter = ClassBasedLimiter::new(1_000, wait_metric.clone());
 
         limiter.update_validators(HashSet::new(), HashSet::new());
 
@@ -478,7 +506,7 @@ mod tests {
         for handle in handles {
             let start = Instant::now();
 
-            // Send 9_0001 bytes, we expect this to take roughly 15 seconds.
+            // Send 9_0001 bytes, should now finish instantly.
             handle.request_allowance(1000).await;
             handle.request_allowance(1000).await;
             handle.request_allowance(1000).await;
@@ -490,5 +518,12 @@ mod tests {
             let diff = end - start;
             assert!(diff <= SHORT_TIME);
         }
+
+        // There should have been no time spent waiting.
+        assert!(
+            wait_metric.get() < SHORT_TIME.as_secs_f64(),
+            "wait_metric is too large: {}",
+            wait_metric.get()
+        );
     }
 }
