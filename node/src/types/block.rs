@@ -1379,6 +1379,26 @@ impl BlockSignatures {
         }
         Ok(())
     }
+
+    /// Generates a random instance using a `TestRng`.
+    #[cfg(test)]
+    pub fn random(rng: &mut TestRng) -> Self {
+        let block_hash = BlockHash::random(rng);
+        let era_id = rng.gen::<u64>().into();
+        let mut proofs = BTreeMap::new();
+        for _ in 0..rng.gen_range(0usize..100usize) {
+            let secret_key = SecretKey::random(rng);
+            let public_key: PublicKey = (&secret_key).into();
+            let bytes = rng.gen::<[u8; 32]>();
+            let signature = casper_types::sign(bytes, &secret_key, &public_key);
+            let _ = proofs.insert(public_key.clone(), signature);
+        }
+        BlockSignatures {
+            block_hash,
+            era_id,
+            proofs,
+        }
+    }
 }
 
 impl Display for BlockSignatures {
@@ -1390,6 +1410,42 @@ impl Display for BlockSignatures {
             self.era_id,
             self.proofs.len()
         )
+    }
+}
+
+impl ToBytes for BlockSignatures {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buf = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buf)?;
+        Ok(buf)
+    }
+
+    fn serialized_length(&self) -> usize {
+        ToBytes::serialized_length(&self.block_hash)
+            + ToBytes::serialized_length(&self.era_id)
+            + ToBytes::serialized_length(&self.proofs)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.block_hash.write_bytes(writer)?;
+        self.era_id.write_bytes(writer)?;
+        self.proofs.write_bytes(writer)
+    }
+}
+
+impl FromBytes for BlockSignatures {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (block_hash, bytes) = FromBytes::from_bytes(bytes)?;
+        let (era_id, bytes) = FromBytes::from_bytes(bytes)?;
+        let (proofs, bytes) = FromBytes::from_bytes(bytes)?;
+        Ok((
+            BlockSignatures {
+                block_hash,
+                era_id,
+                proofs,
+            },
+            bytes,
+        ))
     }
 }
 
