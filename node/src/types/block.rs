@@ -1874,6 +1874,50 @@ pub struct BlockWithMetadata {
     pub finality_signatures: BlockSignatures,
 }
 
+#[cfg(test)]
+impl BlockWithMetadata {
+    pub fn random(rng: &mut TestRng) -> Self {
+        let block = Block::random(rng);
+        let finality_signatures = BlockSignatures::random(rng);
+        BlockWithMetadata {
+            block,
+            finality_signatures,
+        }
+    }
+}
+
+impl ToBytes for BlockWithMetadata {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buf = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buf)?;
+        Ok(buf)
+    }
+
+    fn serialized_length(&self) -> usize {
+        ToBytes::serialized_length(&self.block)
+            + ToBytes::serialized_length(&self.finality_signatures)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.block.write_bytes(writer)?;
+        self.finality_signatures.write_bytes(writer)
+    }
+}
+
+impl FromBytes for BlockWithMetadata {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (block, bytes) = FromBytes::from_bytes(bytes)?;
+        let (finality_signatures, bytes) = FromBytes::from_bytes(bytes)?;
+        Ok((
+            BlockWithMetadata {
+                block,
+                finality_signatures,
+            },
+            bytes,
+        ))
+    }
+}
+
 impl Display for BlockWithMetadata {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
