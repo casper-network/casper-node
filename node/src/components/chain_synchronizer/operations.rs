@@ -928,8 +928,9 @@ async fn sync_deploys_and_transfers_and_state(
 ///    a. Fetches the deploys for that block (parallelized tasks).
 ///    b. Fetches the tries under that block's state root hash (parallelized tasks).
 ///    c. Fetches the next block.
-///  4. Starting at the trusted block and iterating forwards towards tip until we get to a block at
-///     the same protocol version as we're currently running:
+///  4. Starting at the trusted block and iterating forwards towards tip until we have (or are past)
+///     the immediate switch block (the very first block after upgrade) of the same protocol version
+///     as we're currently running:
 ///    a. Fetches the block.
 ///    b. Fetches the deploys for that block (parallelized tasks).
 ///    c. Fetches the tries under that block's state root hash (parallelized tasks).
@@ -969,15 +970,10 @@ async fn fetch_forward(
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fetch_forward_duration_seconds);
 
     let mut most_recent_block = trusted_block;
-    while most_recent_block.header().protocol_version() < ctx.config.protocol_version()
-        && most_recent_block.header().next_block_era_id()
-            != ctx
-                .config
-                .chainspec()
-                .protocol_config
-                .activation_point
-                .era_id()
-    {
+    // This iterates until we have downloaded the immediate switch block of the current version.  We
+    // need to download this rather than execute it as, in order to execute it, we would first have
+    // to commit the upgrade via the contract runtime.
+    while most_recent_block.header().protocol_version() < ctx.config.protocol_version() {
         let maybe_fetched_block_with_metadata = fetch_and_store_next::<BlockWithMetadata>(
             most_recent_block.header(),
             &*trusted_key_block_info,
