@@ -194,7 +194,10 @@ impl Metrics {
             "accumulated_outgoing_limiter_delay",
             "seconds spent delaying outgoing traffic to non-validators due to limiter, in seconds",
         )?;
-        let accumulated_incoming_limiter_delay = Counter::new("accumulated_incoming_limiter_delay","seconds spent delaying incoming traffic from non-validators due to limiter, in seconds.")?;
+        let accumulated_incoming_limiter_delay = Counter::new(
+            "accumulated_incoming_limiter_delay",
+            "seconds spent delaying incoming traffic from non-validators due to limiter, in seconds."
+        )?;
 
         registry.register(Box::new(broadcast_requests.clone()))?;
         registry.register(Box::new(direct_message_requests.clone()))?;
