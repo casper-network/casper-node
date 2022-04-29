@@ -1,0 +1,10 @@
+{
+    "casper-client-rs": {
+        "github_repo_url": "https://github.com/casper-ecosystem/casper-client-rs.git",
+        "branch": "dev"
+    },
+    "casper-node-launcher": {
+        "github_repo_url": "https://github.com/casper-network/casper-node-launcher.git",
+        "branch": "main"
+    }
+}
