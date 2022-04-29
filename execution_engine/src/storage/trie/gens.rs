@@ -7,6 +7,7 @@ use casper_types::{
 };
 
 use super::{Pointer, PointerBlock, Trie};
+use crate::storage::trie::TrieOrChunkId;
 
 pub fn blake2b_hash_arb() -> impl Strategy<Value = Digest> {
     vec(any::<u8>(), 0..1000).prop_map(|b| Digest::hash(&b))
@@ -42,4 +43,8 @@ pub fn trie_node_arb() -> impl Strategy<Value = Trie<Key, StoredValue>> {
     trie_pointer_block_arb().prop_map(|pointer_block| Trie::Node {
         pointer_block: Box::new(pointer_block),
     })
+}
+
+pub fn trie_or_chunk_id_arb() -> impl Strategy<Value = TrieOrChunkId> {
+    (any::<u64>(), blake2b_hash_arb()).prop_map(|(idx, digest)| TrieOrChunkId(idx, digest))
 }

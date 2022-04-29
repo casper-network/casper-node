@@ -450,6 +450,31 @@ impl Display for TrieOrChunkId {
     }
 }
 
+impl ToBytes for TrieOrChunkId {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buf = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buf)?;
+        Ok(buf)
+    }
+
+    fn serialized_length(&self) -> usize {
+        ToBytes::serialized_length(&self.0) + ToBytes::serialized_length(&self.1)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.0.write_bytes(writer)?;
+        self.1.write_bytes(writer)
+    }
+}
+
+impl FromBytes for TrieOrChunkId {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (idx, bytes) = FromBytes::from_bytes(bytes)?;
+        let (digest, bytes) = FromBytes::from_bytes(bytes)?;
+        Ok((TrieOrChunkId(idx, digest), bytes))
+    }
+}
+
 /// Represents a Merkle Trie.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Trie<K, V> {
