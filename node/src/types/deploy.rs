@@ -629,6 +629,38 @@ impl FinalizedApprovals {
     pub fn into_inner(self) -> BTreeSet<Approval> {
         self.0
     }
+
+    #[cfg(test)]
+    pub fn random(rng: &mut TestRng) -> Self {
+        let mut set = BTreeSet::new();
+        for _ in 0..rng.gen_range(0usize..100usize) {
+            set.insert(Approval::random(rng));
+        }
+        Self::new(set)
+    }
+}
+
+impl ToBytes for FinalizedApprovals {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buf = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buf)?;
+        Ok(buf)
+    }
+
+    fn serialized_length(&self) -> usize {
+        ToBytes::serialized_length(&self.0)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.0.write_bytes(writer)
+    }
+}
+
+impl FromBytes for FinalizedApprovals {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (approvals, bytes) = FromBytes::from_bytes(bytes)?;
+        Ok((FinalizedApprovals::new(approvals), bytes))
+    }
 }
 
 impl AsRef<BTreeSet<Approval>> for FinalizedApprovals {
