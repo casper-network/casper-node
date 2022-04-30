@@ -16,7 +16,7 @@ use futures::{
 };
 use prometheus::IntGauge;
 use quanta::Instant;
-use tracing::{info, trace, warn};
+use tracing::{error, info, trace, warn};
 
 use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
 use casper_hashing::Digest;
@@ -33,9 +33,9 @@ use crate::{
     effect::{requests::FetcherRequest, EffectBuilder},
     reactor::joiner::JoinerEvent,
     types::{
-        Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata,
-        Deploy, DeployHash, FinalizedApprovals, FinalizedApprovalsWithId, FinalizedBlock, Item,
-        NodeId, TimeDiff, Timestamp,
+        AvailableBlockRange, Block, BlockHash, BlockHeader, BlockHeaderWithMetadata,
+        BlockSignatures, BlockWithMetadata, Deploy, DeployHash, FinalizedApprovals,
+        FinalizedApprovalsWithId, FinalizedBlock, Item, NodeId, TimeDiff, Timestamp,
     },
     utils::work_queue::WorkQueue,
 };
@@ -75,6 +75,8 @@ struct ChainSyncContext<'a> {
     bad_peer_list: RwLock<VecDeque<NodeId>>,
     /// Number of times peer lists have been filtered.
     filter_count: AtomicI64,
+    /// A range of blocks for which we already have all required data stored locally.
+    locally_available_block_range_on_start: AvailableBlockRange,
 }
 
 impl<'a> ChainSyncContext<'a> {
@@ -82,6 +84,7 @@ impl<'a> ChainSyncContext<'a> {
         effect_builder: &'a EffectBuilder<JoinerEvent>,
         config: &'a Config,
         metrics: &'a Metrics,
+        locally_available_block_range_on_start: AvailableBlockRange,
     ) -> Self {
         Self {
             effect_builder,
@@ -90,6 +93,7 @@ impl<'a> ChainSyncContext<'a> {
             metrics,
             bad_peer_list: RwLock::new(VecDeque::new()),
             filter_count: AtomicI64::new(0),
+            locally_available_block_range_on_start,
         }
     }
 
@@ -1002,33 +1006,55 @@ async fn fetch_forward(
 async fn fetch_to_genesis(trusted_block: &Block, ctx: &ChainSyncContext<'_>) -> Result<(), Error> {
     let _metric = ScopeTimer::new(&ctx.metrics.chain_sync_fetch_to_genesis_duration_seconds);
 
-    let locally_available_block_range = ctx
-        .effect_builder
-        .get_available_block_range_from_storage()
-        .await;
+    info!(
+        trusted_block_height = %trusted_block.height(),
+        locally_available_block_range_on_start = %ctx.locally_available_block_range_on_start,
+        "starting fetch to genesis",
+    );
 
     let mut walkback_block = trusted_block.clone();
     loop {
         // The available range from storage indicates a range of blocks for which we already have
         // all the corresponding deploys and global state stored locally.  Skip fetching for such a
         // range.
-        if locally_available_block_range.contains(walkback_block.height()) {
+        if ctx
+            .locally_available_block_range_on_start
+            .contains(walkback_block.height())
+        {
             let maybe_lowest_available_block = ctx
                 .effect_builder
-                .get_lowest_available_block_from_storage()
+                .get_block_at_height_with_metadata_from_storage(
+                    ctx.locally_available_block_range_on_start.low(),
+                    false,
+                )
                 .await;
             if let Some(lowest_available_block) = maybe_lowest_available_block {
-                if lowest_available_block.height() == 0 {
+                info!(
+                    skip_to_height = %ctx.locally_available_block_range_on_start.low(),
+                    current_walkback_height = %walkback_block.height(),
+                    "skipping fetch for blocks, deploys and tries in available block range"
+                );
+
+                if lowest_available_block.block.height() == 0 {
                     ctx.effect_builder
                         .update_lowest_available_block_height_in_storage(0)
                         .await;
                     break;
                 }
                 walkback_block = *fetch_and_store_block_by_hash(
-                    *lowest_available_block.header().parent_hash(),
+                    *lowest_available_block.block.header().parent_hash(),
                     ctx,
                 )
                 .await?;
+            } else if ctx.locally_available_block_range_on_start != AvailableBlockRange::RANGE_0_0 {
+                // For a first run with no blocks previously stored locally, it is expected that the
+                // reported lowest available block is actually unavailable. In this case the
+                // available range at startup will be [0, 0]. For all other cases, this is an error.
+                error!(
+                    locally_available_block_range_on_start =
+                        %ctx.locally_available_block_range_on_start,
+                    "failed to get lowest block reported as available"
+                );
             }
         }
 
@@ -1060,7 +1086,16 @@ pub(super) async fn run_chain_sync_task(
 ) -> Result<BlockHeader, Error> {
     let _metric = ScopeTimer::new(&metrics.chain_sync_total_duration_seconds);
 
-    let mut chain_sync_context = ChainSyncContext::new(&effect_builder, &config, &metrics);
+    let locally_available_block_range_on_start = effect_builder
+        .get_available_block_range_from_storage()
+        .await;
+
+    let mut chain_sync_context = ChainSyncContext::new(
+        &effect_builder,
+        &config,
+        &metrics,
+        locally_available_block_range_on_start,
+    );
 
     let trusted_block_header =
         fetch_and_store_initial_trusted_block_header(&chain_sync_context, &metrics, trusted_hash)
