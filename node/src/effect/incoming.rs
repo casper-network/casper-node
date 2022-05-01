@@ -4,6 +4,7 @@
 
 use std::{fmt::Display, sync::Arc};
 
+use casper_execution_engine::storage::trie::TrieOrChunkIdDisplay;
 use datasize::DataSize;
 use serde::Serialize;
 
@@ -137,7 +138,7 @@ pub(crate) struct TrieRequest(pub(crate) Vec<u8>);
 
 impl Display for TrieRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("request for trie")
+        write!(f, "request for trie {}", TrieOrChunkIdDisplay(&self.0))
     }
 }
 
