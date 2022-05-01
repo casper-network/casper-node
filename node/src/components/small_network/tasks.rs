@@ -545,9 +545,9 @@ where
                                 // Note: For now, demands bypass the limiter, as we expect the
                                 //       backpressure to handle this instead.
 
-                                // Acquire a permit. If we are handling too many demands at this time,
-                                // this will block, halting the processing of new message, thus letting
-                                // the peer they have reached their maximum allowance.
+                                // Acquire a permit. If we are handling too many demands at this
+                                // time, this will block, halting the processing of new message,
+                                // thus letting the peer they have reached their maximum allowance.
                                 let in_flight = demands_in_flight
                                     .clone()
                                     .acquire_owned()
