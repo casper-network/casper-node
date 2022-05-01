@@ -268,7 +268,7 @@ impl ContractRuntime {
         let fetched_or_not_found = match self.get_trie(serialized_id) {
             Ok(fetched_or_not_found) => fetched_or_not_found,
             Err(error) => {
-                // Something is wrong in our trie store, but courteous and still send a reply.
+                // Something is wrong in our trie store, but be courteous and still send a reply.
                 debug!("failed to get trie: {}", error);
                 return responder.respond(None).ignore();
             }
