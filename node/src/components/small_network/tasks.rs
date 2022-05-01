@@ -193,6 +193,8 @@ where
     pub(super) tarpit_duration: TimeDiff,
     /// The chance, expressed as a number between 0.0 and 1.0, of triggering the tarpit.
     pub(super) tarpit_chance: f32,
+    /// Maximum number of demands allowed to be running at once. If 0, no limit is enforced.
+    pub(super) max_in_flight_demands: usize,
 }
 
 /// Handles an incoming connection.
@@ -522,8 +524,7 @@ where
     REv: From<Event<P>> + FromIncoming<P> + From<NetworkRequest<P>> + Send,
     // TODO: Remove `From<Event<P>>` bound, should be covered by `FromIncoming<P>`.
 {
-    let max_demands_in_flight = 4; // TODO: Move to config.
-    let demands_in_flight = Arc::new(Semaphore::new(max_demands_in_flight));
+    let demands_in_flight = Arc::new(Semaphore::new(context.max_in_flight_demands));
 
     let read_messages =
         async move {

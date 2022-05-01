@@ -283,6 +283,12 @@ where
             .map_err(Error::LoadConsensusKeys)?
             .map(|(secret_key, public_key)| ConsensusKeyPair::new(secret_key, public_key));
 
+        // Set the demand max from configuration, regarding `0` as "unlimited".
+        let demand_max = if cfg.max_in_flight_demands == 0 {
+            usize::MAX
+        } else {
+            cfg.max_in_flight_demands as usize
+        };
         let context = Arc::new(NetworkContext {
             event_queue,
             our_id: NodeId::from(&small_network_identity),
@@ -298,6 +304,7 @@ where
             tarpit_version_threshold: cfg.tarpit_version_threshold,
             tarpit_duration: cfg.tarpit_duration,
             tarpit_chance: cfg.tarpit_chance,
+            max_in_flight_demands: demand_max,
         });
 
         // Run the server task.
