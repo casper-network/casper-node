@@ -528,7 +528,6 @@ pub(super) async fn message_reader<REv, P>(
 where
     P: DeserializeOwned + Send + Display + Payload,
     REv: From<Event<P>> + FromIncoming<P> + From<NetworkRequest<P>> + Send,
-    // TODO: Remove `From<Event<P>>` bound, should be covered by `FromIncoming<P>`.
 {
     let demands_in_flight = Arc::new(Semaphore::new(context.max_in_flight_demands));
 
