@@ -492,8 +492,9 @@ impl<REv> EffectBuilder<REv> {
             match receiver.await {
                 Ok(value) => value,
                 Err(err) => {
-                    // The channel should usually not be closed except during shutdowns, as it indicates
-                    // a panic or disappearance of the remote that is supposed to process the request.
+                    // The channel should usually not be closed except during shutdowns, as it
+                    // indicates a panic or disappearance of the remote that is
+                    // supposed to process the request.
                     //
                     // If it does happen, we pretend nothing happened instead of crashing.
                     if self.event_queue.shutdown_flag().is_set() {
@@ -503,8 +504,8 @@ impl<REv> EffectBuilder<REv> {
                             check if a component is stuck from now on");
                     }
 
-                    // We cannot produce any value to satisfy the request, so we just abandon this task
-                    // by waiting on a resource we can never acquire.
+                    // We cannot produce any value to satisfy the request, so we just abandon this
+                    // task by waiting on a resource we can never acquire.
                     let _ = UNOBTAINABLE.acquire().await;
                     panic!("should never obtain unobtainable semaphore");
                 }
@@ -567,7 +568,8 @@ impl<REv> EffectBuilder<REv> {
 
     /// Sends a network message.
     ///
-    /// The message is queued and sent, but no delivery guaranteed. Will return after the message has been buffered in the outgoing kernel buffer and thus is subject to backpressure.
+    /// The message is queued and sent, but no delivery guaranteed. Will return after the message
+    /// has been buffered in the outgoing kernel buffer and thus is subject to backpressure.
     pub(crate) async fn send_message<P>(self, dest: NodeId, payload: P)
     where
         REv: From<NetworkRequest<P>>,

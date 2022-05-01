@@ -218,7 +218,8 @@ where
         + From<TrieResponseIncoming>
         + From<FinalitySignatureIncoming>,
 {
-    // fn from_incoming(sender: NodeId, payload: Message, effect_builder: EffectBuilder<REv>) -> Self {
+    // fn from_incoming(sender: NodeId, payload: Message, effect_builder: EffectBuilder<REv>) ->
+    // Self {
     fn from_incoming(sender: NodeId, payload: Message) -> Self {
         match payload {
             Message::Consensus(message) => ConsensusMessageIncoming { sender, message }.into(),
