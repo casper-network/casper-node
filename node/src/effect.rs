@@ -567,8 +567,7 @@ impl<REv> EffectBuilder<REv> {
 
     /// Sends a network message.
     ///
-    /// The message is queued in "fire-and-forget" fashion, there is no guarantee that the peer
-    /// will receive it.
+    /// The message is queued and sent, but no delivery guaranteed. Will return after the message has been buffered in the outgoing kernel buffer and thus is subject to backpressure.
     pub(crate) async fn send_message<P>(self, dest: NodeId, payload: P)
     where
         REv: From<NetworkRequest<P>>,
@@ -577,6 +576,27 @@ impl<REv> EffectBuilder<REv> {
             |responder| NetworkRequest::SendMessage {
                 dest: Box::new(dest),
                 payload: Box::new(payload),
+                respond_after_queueing: false,
+                responder,
+            },
+            QueueKind::Network,
+        )
+        .await
+    }
+
+    /// Enqueues a network message.
+    ///
+    /// The message is queued in "fire-and-forget" fashion, there is no guarantee that the peer
+    /// will receive it. Returns as soon as the message is queued inside the networking component.
+    pub(crate) async fn enqueue_message<P>(self, dest: NodeId, payload: P)
+    where
+        REv: From<NetworkRequest<P>>,
+    {
+        self.make_request(
+            |responder| NetworkRequest::SendMessage {
+                dest: Box::new(dest),
+                payload: Box::new(payload),
+                respond_after_queueing: true,
                 responder,
             },
             QueueKind::Network,

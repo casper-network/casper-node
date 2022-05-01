@@ -869,17 +869,24 @@ where
                     NetworkRequest::SendMessage {
                         dest,
                         payload,
+                        respond_after_queueing,
                         responder,
                     } => {
                         // We're given a message to send. Pass on the responder so that confirmation
                         // can later be given once the message has actually been buffered.
                         self.net_metrics.direct_message_requests.inc();
-                        self.send_message(
-                            *dest,
-                            Arc::new(Message::Payload(*payload)),
-                            Some(responder),
-                        );
-                        Effects::new()
+
+                        if respond_after_queueing {
+                            self.send_message(*dest, Arc::new(Message::Payload(*payload)), None);
+                            responder.respond(()).ignore()
+                        } else {
+                            self.send_message(
+                                *dest,
+                                Arc::new(Message::Payload(*payload)),
+                                Some(responder),
+                            );
+                            Effects::new()
+                        }
                     }
                     NetworkRequest::Broadcast { payload, responder } => {
                         // We're given a message to broadcast.

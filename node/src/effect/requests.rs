@@ -94,6 +94,9 @@ pub(crate) enum NetworkRequest<P> {
         dest: Box<NodeId>,
         /// Message payload.
         payload: Box<P>,
+        /// If `true`, the responder will be called early after the message has been queued, not
+        /// waiting until it has passed to the kernel.
+        respond_after_queueing: bool,
         /// Responder to be called when the message has been *buffered for sending*.
         #[serde(skip_serializing)]
         responder: Responder<()>,
@@ -135,10 +138,12 @@ impl<P> NetworkRequest<P> {
             NetworkRequest::SendMessage {
                 dest,
                 payload,
+                respond_after_queueing,
                 responder,
             } => NetworkRequest::SendMessage {
                 dest,
                 payload: Box::new(wrap_payload(*payload)),
+                respond_after_queueing,
                 responder,
             },
             NetworkRequest::Broadcast { payload, responder } => NetworkRequest::Broadcast {
