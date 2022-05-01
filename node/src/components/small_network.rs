@@ -83,7 +83,7 @@ use self::{
     metrics::Metrics,
     outgoing::{DialOutcome, DialRequest, OutgoingConfig, OutgoingManager},
     symmetry::ConnectionSymmetry,
-    tasks::NetworkContext,
+    tasks::{MessageQueueItem, NetworkContext},
 };
 pub(crate) use self::{
     config::Config,
@@ -127,7 +127,7 @@ const OUTGOING_MANAGER_SWEEP_INTERVAL: Duration = Duration::from_secs(1);
 #[derive(Clone, DataSize, Debug)]
 pub(crate) struct OutgoingHandle<P> {
     #[data_size(skip)] // Unfortunately, there is no way to inspect an `UnboundedSender`.
-    sender: UnboundedSender<(Arc<Message<P>>, Option<Responder<()>>)>,
+    sender: UnboundedSender<MessageQueueItem<P>>,
     peer_addr: SocketAddr,
 }
 

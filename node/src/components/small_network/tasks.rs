@@ -55,6 +55,12 @@ use crate::{
     utils::display_error,
 };
 
+/// An item on the internal outgoing message queue.
+///
+/// Contains a reference counted message and an optional responder to call once the message has been
+/// successfully handed over to the kernel for sending.
+pub(super) type MessageQueueItem<P> = (Arc<Message<P>>, Option<Responder<()>>);
+
 /// Low-level TLS connection function.
 ///
 /// Performs the actual TCP+TLS connection setup.
@@ -561,24 +567,20 @@ where
                                 // Spawn a future that will eventually send the returned message. It
                                 // will essentially buffer the response.
                                 tokio::spawn(async move {
-                                    match wait_for_response.await {
-                                        Some(payload) => {
-                                            // Send message and await its return. `send_message`
-                                            // should only return when the message has been
-                                            // buffered, if the peer is not accepting data, we will
-                                            // block here until the send buffer has sufficient room.
-                                            effect_builder.send_message(peer_id, payload).await;
+                                    if let Some(payload) = wait_for_response.await {
+                                        // Send message and await its return. `send_message` should
+                                        // only return when the message has been buffered, if the
+                                        // peer is not accepting data, we will block here until the
+                                        // send buffer has sufficient room.
+                                        effect_builder.send_message(peer_id, payload).await;
 
-                                            // Note: We could short-circuit the event queue here and
-                                            //       directly insert into the outgoing message
-                                            //       queue, which may be potential performance
-                                            //       improvement.
-                                        }
-                                        None => {
-                                            // The handler of the demand did not deem it worthy of
-                                            // a response. Just drop it.
-                                        }
+                                        // Note: We could short-circuit the event queue here and
+                                        //       directly insert into the outgoing message queue,
+                                        //       which may be potential performance improvement.
                                     }
+
+                                    // Missing else: The handler of the demand did not deem it
+                                    // worthy a response. Just drop it.
 
                                     // After we have either successfully buffered the message for
                                     // sending, failed to do so or did not have a message to send
@@ -649,7 +651,7 @@ where
 ///
 /// Reads from a channel and sends all messages, until the stream is closed or an error occurs.
 pub(super) async fn message_sender<P>(
-    mut queue: UnboundedReceiver<(Arc<Message<P>>, Option<Responder<()>>)>,
+    mut queue: UnboundedReceiver<MessageQueueItem<P>>,
     mut sink: SplitSink<FullTransport<P>, Arc<Message<P>>>,
     limiter: Box<dyn LimiterHandle>,
     counter: IntGauge,
