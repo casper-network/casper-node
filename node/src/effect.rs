@@ -459,6 +459,26 @@ impl<REv> EffectBuilder<REv> {
         Q: Into<REv>,
         F: FnOnce(Responder<T>) -> Q,
     {
+        let (event, wait_future) = self.create_request_parts(f);
+
+        // Schedule the request before awaiting the response.
+        self.event_queue.schedule(event, queue_kind).await;
+        wait_future.await
+    }
+
+    /// Creates the part necessary to make a request.
+    ///
+    /// A request usually consists of two parts: The request event that needs to be scheduled on the
+    /// reactor queue and associated future that allows waiting for the response. This function
+    /// creates both of them without processing or spawning either.
+    ///
+    /// Usually you will want to call the higher level `make_request` function.
+    pub(crate) fn create_request_parts<T, Q, F>(self, f: F) -> (REv, impl Future<Output = T>)
+    where
+        T: Send + 'static,
+        Q: Into<REv>,
+        F: FnOnce(Responder<T>) -> Q,
+    {
         // Prepare a channel.
         let (sender, receiver) = oneshot::channel();
 
@@ -467,28 +487,31 @@ impl<REv> EffectBuilder<REv> {
 
         // Now inject the request event into the event loop.
         let request_event = f(responder).into();
-        self.event_queue.schedule(request_event, queue_kind).await;
 
-        match receiver.await {
-            Ok(value) => value,
-            Err(err) => {
-                // The channel should usually not be closed except during shutdowns, as it indicates
-                // a panic or disappearance of the remote that is supposed to process the request.
-                //
-                // If it does happen, we pretend nothing happened instead of crashing.
-                if self.event_queue.shutdown_flag().is_set() {
-                    debug!(%err, ?queue_kind, channel=?type_name::<T>(), "ignoring closed channel due to shutdown")
-                } else {
-                    error!(%err, ?queue_kind, channel=?type_name::<T>(), "request for channel closed, this may be a bug? \
-                           check if a component is stuck from now on");
+        let fut = async move {
+            match receiver.await {
+                Ok(value) => value,
+                Err(err) => {
+                    // The channel should usually not be closed except during shutdowns, as it indicates
+                    // a panic or disappearance of the remote that is supposed to process the request.
+                    //
+                    // If it does happen, we pretend nothing happened instead of crashing.
+                    if self.event_queue.shutdown_flag().is_set() {
+                        debug!(%err, channel=?type_name::<T>(), "ignoring closed channel due to shutdown")
+                    } else {
+                        error!(%err, channel=?type_name::<T>(), "request for channel closed, this may be a bug? \
+                            check if a component is stuck from now on");
+                    }
+
+                    // We cannot produce any value to satisfy the request, so we just abandon this task
+                    // by waiting on a resource we can never acquire.
+                    let _ = UNOBTAINABLE.acquire().await;
+                    panic!("should never obtain unobtainable semaphore");
                 }
-
-                // We cannot produce any value to satisfy the request, so we just abandon this task
-                // by waiting on a resource we can never acquire.
-                let _ = UNOBTAINABLE.acquire().await;
-                panic!("should never obtain unobtainable semaphore");
             }
-        }
+        };
+
+        (request_event, fut)
     }
 
     /// Run and end effect immediately.
