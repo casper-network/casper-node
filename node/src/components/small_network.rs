@@ -97,7 +97,7 @@ use crate::{
     effect::{
         announcements::{BlocklistAnnouncement, ContractRuntimeAnnouncement},
         requests::{BeginGossipRequest, NetworkInfoRequest, NetworkRequest, StorageRequest},
-        EffectBuilder, EffectExt, Effects,
+        EffectBuilder, EffectExt, Effects, Responder,
     },
     reactor::{EventQueueHandle, Finalize, ReactorEvent},
     tls::{self, TlsCert, ValidationError},
@@ -127,7 +127,7 @@ const OUTGOING_MANAGER_SWEEP_INTERVAL: Duration = Duration::from_secs(1);
 #[derive(Clone, DataSize, Debug)]
 pub(crate) struct OutgoingHandle<P> {
     #[data_size(skip)] // Unfortunately, there is no way to inspect an `UnboundedSender`.
-    sender: UnboundedSender<Arc<Message<P>>>,
+    sender: UnboundedSender<(Arc<Message<P>>, Option<Responder<()>>)>,
     peer_addr: SocketAddr,
 }
 
@@ -362,7 +362,7 @@ where
     /// Queues a message to be sent to all nodes.
     fn broadcast_message(&self, msg: Arc<Message<P>>) {
         for peer_id in self.outgoing_manager.connected_peers() {
-            self.send_message(peer_id, msg.clone());
+            self.send_message(peer_id, msg.clone(), None);
         }
     }
 
@@ -393,17 +393,22 @@ where
         }
 
         for &peer_id in &peer_ids {
-            self.send_message(peer_id, msg.clone());
+            self.send_message(peer_id, msg.clone(), None);
         }
 
         peer_ids.into_iter().collect()
     }
 
     /// Queues a message to be sent to a specific node.
-    fn send_message(&self, dest: NodeId, msg: Arc<Message<P>>) {
+    fn send_message(
+        &self,
+        dest: NodeId,
+        msg: Arc<Message<P>>,
+        opt_responder: Option<Responder<()>>,
+    ) {
         // Try to send the message.
         if let Some(connection) = self.outgoing_manager.get_route(dest) {
-            if let Err(msg) = connection.sender.send(msg) {
+            if let Err(msg) = connection.sender.send((msg, opt_responder)) {
                 // We lost the connection, but that fact has not reached us yet.
                 warn!(our_id=%self.context.our_id, %dest, ?msg, "dropped outgoing message, lost connection");
             } else {
@@ -859,12 +864,15 @@ where
                         payload,
                         responder,
                     } => {
-                        // We're given a message to send out.
+                        // We're given a message to send. Pass on the responder so that confirmation
+                        // can later be given once the message has actually been buffered.
                         self.net_metrics.direct_message_requests.inc();
-                        self.send_message(*dest, Arc::new(Message::Payload(*payload)));
-
-                        // TODO: ENSURE THIS ONLY GETS CALLED AFTER SENDING.
-                        responder.respond(()).ignore()
+                        self.send_message(
+                            *dest,
+                            Arc::new(Message::Payload(*payload)),
+                            Some(responder),
+                        );
+                        Effects::new()
                     }
                     NetworkRequest::Broadcast { payload, responder } => {
                         // We're given a message to broadcast.

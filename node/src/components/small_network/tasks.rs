@@ -48,7 +48,7 @@ use super::{
 };
 use crate::{
     components::small_network::{framed_transport, FromIncoming},
-    effect::{requests::NetworkRequest, EffectBuilder},
+    effect::{requests::NetworkRequest, EffectBuilder, Responder},
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert},
     types::{NodeId, TimeDiff},
@@ -648,14 +648,14 @@ where
 ///
 /// Reads from a channel and sends all messages, until the stream is closed or an error occurs.
 pub(super) async fn message_sender<P>(
-    mut queue: UnboundedReceiver<Arc<Message<P>>>,
+    mut queue: UnboundedReceiver<(Arc<Message<P>>, Option<Responder<()>>)>,
     mut sink: SplitSink<FullTransport<P>, Arc<Message<P>>>,
     limiter: Box<dyn LimiterHandle>,
     counter: IntGauge,
 ) where
     P: Payload,
 {
-    while let Some(message) = queue.recv().await {
+    while let Some((message, opt_responder)) = queue.recv().await {
         counter.dec();
 
         // TODO: Refactor message sending to not use `tokio_serde` anymore to avoid duplicate
@@ -666,8 +666,15 @@ pub(super) async fn message_sender<P>(
             .unwrap_or(0) as u32;
         limiter.request_allowance(estimated_wire_size).await;
 
+        let outcome = sink.send(message).await;
+
+        // Notify via responder that the message has been buffered by the kernel.
+        if let Some(responder) = opt_responder {
+            responder.respond(()).await;
+        }
+
         // We simply error-out if the sink fails, it means that our connection broke.
-        if let Err(ref err) = sink.send(message).await {
+        if let Err(ref err) = outcome {
             info!(
                 err = display_error(err),
                 "message send failed, closing outgoing connection"
