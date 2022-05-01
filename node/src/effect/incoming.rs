@@ -10,8 +10,11 @@ use serde::Serialize;
 
 use crate::{
     components::{consensus, gossiper},
+    protocol::Message,
     types::{FinalitySignature, NodeId, Tag},
 };
+
+use super::Responder;
 
 /// An envelope for an incoming message, attaching a sender address.
 #[derive(DataSize, Debug, Serialize)]
@@ -139,6 +142,25 @@ pub(crate) struct TrieRequest(pub(crate) Vec<u8>);
 impl Display for TrieRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "request for trie {}", TrieOrChunkIdDisplay(&self.0))
+    }
+}
+
+/// A request for a trie that must be answered.
+#[derive(DataSize, Debug, Serialize)]
+pub(crate) struct TrieDemand {
+    /// The serialized of the trie demanded.
+    serialized_id: Vec<u8>,
+    /// Responder to send the message down to.
+    responder: Responder<Option<Message>>,
+}
+
+impl Display for TrieDemand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "demand for trie {}",
+            TrieOrChunkIdDisplay(&self.serialized_id)
+        )
     }
 }
 
