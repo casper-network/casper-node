@@ -187,7 +187,11 @@ where
 impl<REv, P> SmallNetwork<REv, P>
 where
     P: Payload + 'static,
-    REv: ReactorEvent + From<Event<P>> + FromIncoming<P> + From<StorageRequest>,
+    REv: ReactorEvent
+        + From<Event<P>>
+        + FromIncoming<P>
+        + From<StorageRequest>
+        + From<NetworkRequest<P>>,
 {
     /// Creates a new small network component instance.
     #[allow(clippy::type_complexity)]
@@ -813,7 +817,8 @@ where
         + From<Event<P>>
         + From<BeginGossipRequest<GossipedAddress>>
         + FromIncoming<P>
-        + From<StorageRequest>,
+        + From<StorageRequest>
+        + From<NetworkRequest<P>>,
     P: Payload,
 {
     type Event = Event<P>;
@@ -857,6 +862,8 @@ where
                         // We're given a message to send out.
                         self.net_metrics.direct_message_requests.inc();
                         self.send_message(*dest, Arc::new(Message::Payload(*payload)));
+
+                        // TODO: ENSURE THIS ONLY GETS CALLED AFTER SENDING.
                         responder.respond(()).ignore()
                     }
                     NetworkRequest::Broadcast { payload, responder } => {

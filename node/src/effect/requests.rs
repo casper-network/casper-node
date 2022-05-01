@@ -94,7 +94,7 @@ pub(crate) enum NetworkRequest<P> {
         dest: Box<NodeId>,
         /// Message payload.
         payload: Box<P>,
-        /// Responder to be called when the message is queued.
+        /// Responder to be called when the message has been *buffered for sending*.
         #[serde(skip_serializing)]
         responder: Responder<()>,
     },

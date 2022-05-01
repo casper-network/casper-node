@@ -71,6 +71,27 @@ impl<P: Payload> Message<P> {
             Message::Payload(payload) => payload.incoming_resource_estimate(weights),
         }
     }
+
+    /// Attempts to create a demand-event from this message.
+    ///
+    /// Succeeds if the outer message contains a payload that can be converd into a demand.
+    pub(super) fn try_into_demand<REv>(
+        self,
+        effect_builder: EffectBuilder<REv>,
+        sender: NodeId,
+    ) -> Result<(REv, BoxFuture<'static, Option<P>>), Self>
+    where
+        REv: FromIncoming<P> + Send,
+    {
+        match self {
+            Message::Handshake { .. } => Err(self),
+            Message::Payload(payload) => {
+                // Note: For now, the wrapping/unwrapp of the payload is a bit unfortunate here.
+                REv::try_demand_from_incoming(effect_builder, sender, payload)
+                    .map_err(Message::Payload)
+            }
+        }
+    }
 }
 
 /// A pair of secret keys used by consensus.
