@@ -317,7 +317,6 @@ pub(crate) trait FromIncoming<P> {
     // TODO: Replace both this and `from_incoming` with a single function that returns an
     //       appropriate `Either`.
     fn try_demand_from_incoming(
-        self,
         _effect_builder: EffectBuilder<Self>,
         _sender: NodeId,
         payload: P,

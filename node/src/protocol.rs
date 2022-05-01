@@ -318,7 +318,6 @@ where
     }
 
     fn try_demand_from_incoming(
-        self,
         effect_builder: EffectBuilder<REv>,
         sender: NodeId,
         payload: Message,
