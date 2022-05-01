@@ -7,6 +7,7 @@ use std::{
 
 use derive_more::From;
 use fmt::Debug;
+use futures::{future::BoxFuture, FutureExt};
 use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 
@@ -17,10 +18,13 @@ use crate::{
         gossiper,
         small_network::{EstimatorWeights, FromIncoming, GossipedAddress, MessageKind, Payload},
     },
-    effect::incoming::{
-        ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming, NetRequest,
-        NetRequestIncoming, NetResponse, NetResponseIncoming, TrieRequest, TrieRequestIncoming,
-        TrieResponse, TrieResponseIncoming,
+    effect::{
+        incoming::{
+            ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming, NetRequest,
+            NetRequestIncoming, NetResponse, NetResponseIncoming, TrieDemand, TrieRequest,
+            TrieRequestIncoming, TrieResponse, TrieResponseIncoming,
+        },
+        EffectBuilder,
     },
     types::{Deploy, FinalitySignature, Item, NodeId, Tag},
 };
@@ -210,9 +214,11 @@ where
         + From<NetRequestIncoming>
         + From<NetResponseIncoming>
         + From<TrieRequestIncoming>
+        + From<TrieDemand>
         + From<TrieResponseIncoming>
         + From<FinalitySignatureIncoming>,
 {
+    // fn from_incoming(sender: NodeId, payload: Message, effect_builder: EffectBuilder<REv>) -> Self {
     fn from_incoming(sender: NodeId, payload: Message) -> Self {
         match payload {
             Message::Consensus(message) => ConsensusMessageIncoming { sender, message }.into(),
@@ -308,6 +314,29 @@ where
             Message::FinalitySignature(message) => {
                 FinalitySignatureIncoming { sender, message }.into()
             }
+        }
+    }
+
+    fn try_demand_from_incoming(
+        self,
+        effect_builder: EffectBuilder<REv>,
+        sender: NodeId,
+        payload: Message,
+    ) -> Result<(Self, BoxFuture<'static, Option<Message>>), Message>
+    where
+        Self: Sized + Send,
+    {
+        match payload {
+            Message::GetRequest { tag, serialized_id } if tag == Tag::TrieOrChunk => {
+                let (ev, fut) = effect_builder.create_request_parts(move |responder| TrieDemand {
+                    sender,
+                    request_msg: TrieRequest(serialized_id),
+                    responder,
+                });
+
+                Ok((ev, fut.boxed()))
+            }
+            _ => Err(payload),
         }
     }
 }

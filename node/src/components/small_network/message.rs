@@ -6,6 +6,7 @@ use std::{
 
 use casper_types::{AsymmetricType, ProtocolVersion, PublicKey, SecretKey, Signature};
 use datasize::DataSize;
+use futures::future::BoxFuture;
 use serde::{
     de::{DeserializeOwned, Error as SerdeError},
     Deserialize, Deserializer, Serialize, Serializer,
@@ -15,7 +16,7 @@ use serde::{
 use crate::crypto::AsymmetricKeyExt;
 #[cfg(test)]
 use crate::testing::TestRng;
-use crate::{crypto, types::NodeId};
+use crate::{crypto, effect::EffectBuilder, types::NodeId};
 
 use super::counting_format::ConnectionId;
 
@@ -307,6 +308,25 @@ pub(crate) trait Payload:
 pub(crate) trait FromIncoming<P> {
     /// Creates a new value from a received payload.
     fn from_incoming(sender: NodeId, payload: P) -> Self;
+
+    /// Tries to convert a payload into a demand.
+    ///
+    /// This function can optionally be called before `from_incoming` to attempt to convert an
+    /// incoming payload into a potential demand.
+
+    // TODO: Replace both this and `from_incoming` with a single function that returns an
+    //       appropriate `Either`.
+    fn try_demand_from_incoming(
+        self,
+        _effect_builder: EffectBuilder<Self>,
+        _sender: NodeId,
+        payload: P,
+    ) -> Result<(Self, BoxFuture<'static, Option<P>>), P>
+    where
+        Self: Sized + Send,
+    {
+        Err(payload)
+    }
 }
 /// A generic configuration for payload weights.
 ///
