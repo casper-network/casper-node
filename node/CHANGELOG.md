@@ -58,6 +58,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Fixed
 * Limiters for incoming requests and outgoing bandwidth will no longer inadvertently delay some validator traffic when maxed out due to joining nodes.
+* Dropped connections no longer cause the outstanding messages metric to become incorrect.
 
 ### Security
 * OpenSSL has been bumped to version 1.1.1.n, if compiling with vendored OpenSSL to address [CVE-2022-0778](https://www.openssl.org/news/secadv/20220315.txt).
