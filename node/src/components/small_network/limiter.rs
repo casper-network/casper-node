@@ -152,7 +152,7 @@ enum PeerClass {
 /// Handle for `ClassBasedLimiter`.
 #[derive(Debug)]
 struct ClassBasedHandle {
-    /// Data share between handles and limiter.
+    /// Data shared between handles and limiter.
     data: Arc<ClassBasedLimiterData>,
     /// Consumer ID for the sender holding this handle.
     consumer_id: ConsumerId,
@@ -497,7 +497,7 @@ mod tests {
         );
     }
 
-    /// Regression test for #2929 (fill in issue once created)
+    /// Regression test for #2929.
     #[tokio::test]
     async fn throttling_of_non_validators_does_not_affect_validators() {
         init_logging();
