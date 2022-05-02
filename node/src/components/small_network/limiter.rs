@@ -116,7 +116,7 @@ struct ResourceData {
 impl ClassBasedLimiterData {
     /// Creates a new set of class based limiter data.
     ///
-    /// Initial resources will be initialized 0, with the last refill set to the current time.
+    /// Initial resources will be initialized to 0, with the last refill set to the current time.
     fn new(resources_per_second: u32, wait_time_sec: Counter) -> Self {
         ClassBasedLimiterData {
             resources_per_second,
@@ -152,7 +152,7 @@ enum PeerClass {
 /// Handle for `ClassBasedLimiter`.
 #[derive(Debug)]
 struct ClassBasedHandle {
-    /// Sender for commands.
+    /// Data share between handles and limiter.
     data: Arc<ClassBasedLimiterData>,
     /// Consumer ID for the sender holding this handle.
     consumer_id: ConsumerId,
@@ -497,7 +497,7 @@ mod tests {
         );
     }
 
-    /// Regression test for #??? (fill in issue once created)
+    /// Regression test for #2929 (fill in issue once created)
     #[tokio::test]
     async fn throttling_of_non_validators_does_not_affect_validators() {
         init_logging();
