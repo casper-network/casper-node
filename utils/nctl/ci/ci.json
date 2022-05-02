@@ -1,10 +1,15 @@
 {
-    "casper-client-rs": {
-        "github_repo_url": "https://github.com/casper-ecosystem/casper-client-rs.git",
-        "branch": "dev"
+    "external_deps": {
+        "casper-client-rs": {
+            "github_repo_url": "https://github.com/casper-ecosystem/casper-client-rs.git",
+            "branch": "dev"
+        },
+        "casper-node-launcher": {
+            "github_repo_url": "https://github.com/casper-network/casper-node-launcher.git",
+            "branch": "main"
+        }
     },
-    "casper-node-launcher": {
-        "github_repo_url": "https://github.com/casper-network/casper-node-launcher.git",
-        "branch": "main"
+    "nctl_upgrade_tests": {
+        "protocol_1": "1.5.0"
     }
 }

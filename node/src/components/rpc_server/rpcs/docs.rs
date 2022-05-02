@@ -453,6 +453,28 @@ impl RpcWithoutParamsExt for ListRpcs {
         async move { Ok(response_builder.success(ListRpcsResult::doc_example().clone())?) }.boxed()
     }
 }
+
+mod doc_example_impls {
+    use std::str::FromStr;
+
+    use once_cell::sync::Lazy;
+
+    use casper_types::Timestamp;
+
+    use super::DocExample;
+
+    static TIMESTAMP_EXAMPLE: Lazy<Timestamp> = Lazy::new(|| {
+        let example_str: &str = "2020-11-17T00:39:24.072Z";
+        Timestamp::from_str(example_str).unwrap()
+    });
+
+    impl DocExample for Timestamp {
+        fn doc_example() -> &'static Self {
+            &*TIMESTAMP_EXAMPLE
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
