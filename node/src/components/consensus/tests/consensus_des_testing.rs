@@ -6,8 +6,9 @@ use std::{
 
 use datasize::DataSize;
 
+use casper_types::Timestamp;
+
 use super::queue::{MessageT, Queue, QueueEntry};
-use crate::types::Timestamp;
 
 /// Enum defining recipients of the message.
 #[derive(Debug)]

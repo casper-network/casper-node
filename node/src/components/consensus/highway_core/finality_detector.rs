@@ -6,17 +6,16 @@ use std::iter;
 use datasize::DataSize;
 use tracing::{trace, warn};
 
-use crate::{
-    components::consensus::{
-        consensus_protocol::{FinalizedBlock, TerminalBlockData},
-        highway_core::{
-            highway::Highway,
-            state::{Observation, State, Unit, Weight},
-            validators::ValidatorIndex,
-        },
-        traits::Context,
+use casper_types::Timestamp;
+
+use crate::components::consensus::{
+    consensus_protocol::{FinalizedBlock, TerminalBlockData},
+    highway_core::{
+        highway::Highway,
+        state::{Observation, State, Unit, Weight},
+        validators::ValidatorIndex,
     },
-    types::Timestamp,
+    traits::Context,
 };
 use horizon::Horizon;
 

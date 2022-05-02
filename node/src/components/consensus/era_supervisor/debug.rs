@@ -6,13 +6,10 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 
-use casper_types::{EraId, PublicKey, U512};
+use casper_types::{EraId, PublicKey, Timestamp, U512};
 use serde::Serialize;
 
-use crate::{
-    components::consensus::{highway_core::State, ClContext, HighwayProtocol},
-    types::Timestamp,
-};
+use crate::components::consensus::{highway_core::State, ClContext, HighwayProtocol};
 
 use super::Era;
 

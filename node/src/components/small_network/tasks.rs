@@ -10,7 +10,7 @@ use std::{
     time::Duration,
 };
 
-use casper_types::{ProtocolVersion, PublicKey};
+use casper_types::{ProtocolVersion, PublicKey, TimeDiff};
 use futures::{
     future::{self, Either},
     stream::{SplitSink, SplitStream},
@@ -47,7 +47,7 @@ use super::{
 use crate::{
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert},
-    types::{NodeId, TimeDiff},
+    types::NodeId,
     utils::display_error,
 };
 

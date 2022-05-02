@@ -1,9 +1,8 @@
 use prometheus::{Gauge, IntGauge, Registry};
 
-use crate::{
-    types::{FinalizedBlock, Timestamp},
-    unregister_metric,
-};
+use casper_types::Timestamp;
+
+use crate::{types::FinalizedBlock, unregister_metric};
 
 /// Network metrics to track Consensus
 #[derive(Debug)]
