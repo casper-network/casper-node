@@ -806,24 +806,32 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         }
         let our_faulty = self.validator_bit_field(first_validator_idx, self.faults.keys().cloned());
         let mut contents = vec![];
-        if let Some(hash) = proposal_hash {
-            if let Some(echo_map) = round.echos.get(&hash) {
-                let our_echos =
-                    self.validator_bit_field(first_validator_idx, echo_map.keys().cloned());
-                let missing_echos = our_echos & !(echos | faulty | our_faulty);
-                for v_idx in self.iter_validator_bit_field(first_validator_idx, missing_echos) {
-                    contents.push((Content::Echo(hash), v_idx, echo_map[&v_idx]));
+        match proposal_hash {
+            Some(hash)
+                if round.outcome.quorum_echos == None
+                    || round.outcome.quorum_echos == Some(hash) =>
+            {
+                if let Some(echo_map) = round.echos.get(&hash) {
+                    let our_echos =
+                        self.validator_bit_field(first_validator_idx, echo_map.keys().cloned());
+                    let missing_echos = our_echos & !(echos | faulty | our_faulty);
+                    for v_idx in self.iter_validator_bit_field(first_validator_idx, missing_echos) {
+                        contents.push((Content::Echo(hash), v_idx, echo_map[&v_idx]));
+                    }
+                }
+                if !has_proposal {
+                    if let Some((proposal, signature)) = round.proposals.get(&hash) {
+                        let content = Content::Proposal(proposal.clone());
+                        contents.push((content, self.leader(round_id), *signature));
+                    }
                 }
             }
-            if !has_proposal {
-                if let Some((proposal, signature)) = round.proposals.get(&hash) {
-                    let content = Content::Proposal(proposal.clone());
-                    contents.push((content, self.leader(round_id), *signature));
+            _ => {
+                if let Some(hash) = round.outcome.quorum_echos {
+                    for (v_idx, signature) in &round.echos[&hash] {
+                        contents.push((Content::Echo(hash), *v_idx, *signature));
+                    }
                 }
-            }
-        } else if let Some(hash) = round.outcome.quorum_echos {
-            for (v_idx, signature) in &round.echos[&hash] {
-                contents.push((Content::Echo(hash), *v_idx, *signature));
             }
         }
         let our_true_votes =
