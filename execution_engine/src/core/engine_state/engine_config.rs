@@ -20,8 +20,8 @@ pub const DEFAULT_MINIMUM_DELEGATION_AMOUNT: u64 = 500 * 1_000_000_000;
 pub const DEFAULT_STRICT_ARGUMENT_CHECKING: bool = false;
 /// Default value for allowing auction bids.
 pub const DEFAULT_ALLOW_AUCTION_BIDS: bool = true;
-/// Default value for allowing p2p transfers
-pub const DEFAULT_ALLOW_P2P_TRANSFERS: bool = true;
+/// Default value for allowing unrestricted transfers
+pub const DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS: bool = true;
 
 ///
 /// The runtime configuration of the execution engine
@@ -44,13 +44,13 @@ pub struct EngineConfig {
     /// Auction entrypoints such as "add_bid" or "delegate" are disabled if this flag is set to
     /// `true`.
     allow_auction_bids: bool,
-    /// Allow p2p transfers between normal accounts.
+    /// Allow unrestricted transfers between normal accounts.
     ///
     /// If set to `true` accounts can transfer tokens between themselves without restrictions (aka
     /// public chain mode). If set to `false` tokens can be transferred only from normal
     /// accounts to administrators and administrators to normal accounts but not normal accounts to
     /// normal accounts (aka private chain mode).
-    allow_p2p_transfers: bool,
+    allow_unrestricted_transfers: bool,
 }
 
 impl Default for EngineConfig {
@@ -65,7 +65,7 @@ impl Default for EngineConfig {
             system_config: SystemConfig::default(),
             administrative_accounts: Default::default(),
             allow_auction_bids: DEFAULT_ALLOW_AUCTION_BIDS,
-            allow_p2p_transfers: DEFAULT_ALLOW_P2P_TRANSFERS,
+            allow_unrestricted_transfers: DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS,
         }
     }
 }
@@ -119,10 +119,10 @@ impl EngineConfig {
         self.allow_auction_bids
     }
 
-    /// Get the engine config's allow p2p transfers.
+    /// Get the engine config's allow unrestricted transfers.
     #[must_use]
-    pub fn allow_p2p_transfers(&self) -> bool {
-        self.allow_p2p_transfers
+    pub fn allow_unrestricted_transfers(&self) -> bool {
+        self.allow_unrestricted_transfers
     }
 
     /// Checks if an account hash is an administrator.
@@ -165,7 +165,7 @@ pub struct EngineConfigBuilder {
     strict_argument_checking: Option<bool>,
     administrative_accounts: Option<Vec<AdministratorAccount>>,
     allow_auction_bids: Option<bool>,
-    allow_p2p_transfers: Option<bool>,
+    allow_unrestricted_transfers: Option<bool>,
 }
 
 impl EngineConfigBuilder {
@@ -241,9 +241,9 @@ impl EngineConfigBuilder {
         self
     }
 
-    /// Set the engine config builder's allow p2p transfers.
-    pub fn with_allow_p2p_transfers(mut self, allow_p2p_transfers: bool) -> Self {
-        self.allow_p2p_transfers = Some(allow_p2p_transfers);
+    /// Set the engine config builder's allow unrestricted transfers.
+    pub fn with_allow_unrestricted_transfers(mut self, allow_unrestricted_transfers: bool) -> Self {
+        self.allow_unrestricted_transfers = Some(allow_unrestricted_transfers);
         self
     }
 
@@ -268,9 +268,9 @@ impl EngineConfigBuilder {
         let allow_auction_bids = self
             .allow_auction_bids
             .unwrap_or(DEFAULT_ALLOW_AUCTION_BIDS);
-        let allow_p2p_transfers = self
-            .allow_p2p_transfers
-            .unwrap_or(DEFAULT_ALLOW_P2P_TRANSFERS);
+        let allow_unrestricted_transfers = self
+            .allow_unrestricted_transfers
+            .unwrap_or(DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS);
         EngineConfig {
             max_query_depth,
             max_associated_keys,
@@ -281,7 +281,7 @@ impl EngineConfigBuilder {
             system_config,
             administrative_accounts: Arc::new(Mutex::new(administrative_accounts)),
             allow_auction_bids,
-            allow_p2p_transfers,
+            allow_unrestricted_transfers,
         }
     }
 }

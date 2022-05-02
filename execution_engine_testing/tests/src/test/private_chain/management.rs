@@ -723,7 +723,8 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
 #[ignore]
 #[test]
 fn administrator_account_should_disable_any_contract_used_as_payment() {
-    // We'll simulate enabled p2p transfers here to test if stored payment contract is disabled.
+    // We'll simulate enabled unrestricted transfers here to test if stored payment contract is
+    // disabled.
     let mut builder = super::custom_private_chain_setup(PRIVATE_CHAIN_ALLOW_AUCTION_BIDS, true);
 
     let store_contract_request = ExecuteRequestBuilder::standard(

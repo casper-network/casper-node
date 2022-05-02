@@ -2255,7 +2255,7 @@ where
         let _scoped_host_function_flag = self.host_function_flag.enter_host_function_scope();
 
         if let (false, Some(is_source_admin)) = (
-            self.config.allow_p2p_transfers(),
+            self.config.allow_unrestricted_transfers(),
             self.config
                 .is_account_administrator(&self.context.get_caller()),
         ) {
@@ -2266,7 +2266,7 @@ where
 
             if !is_source_admin && !is_target_admin {
                 // Transferring from normal account to a purse doesn't work.
-                return Err(Error::DisabledP2PTransfers);
+                return Err(Error::DisabledUnrestrictedTransfers);
             }
         }
 
@@ -2329,14 +2329,14 @@ where
         let mint_contract_key = self.get_mint_contract()?;
 
         if let (false, Some(is_caller_admin)) = (
-            self.config.allow_p2p_transfers(),
+            self.config.allow_unrestricted_transfers(),
             self.config
                 .is_account_administrator(&self.context.get_caller()),
         ) {
             if !is_caller_admin {
                 // On private chain we can't assume a valid purse `target` is created by the caller.
                 // Therefore only admins executing a session code can transfer to purse.
-                return Err(Error::DisabledP2PTransfers);
+                return Err(Error::DisabledUnrestrictedTransfers);
             }
         }
 

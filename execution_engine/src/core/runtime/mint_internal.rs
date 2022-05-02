@@ -72,8 +72,8 @@ where
         self.config.is_account_administrator(account_hash)
     }
 
-    fn can_perform_p2p_transfer(&mut self) -> bool {
-        self.config.allow_p2p_transfers()
+    fn can_perform_unrestricted_transfer(&mut self) -> bool {
+        self.config.allow_unrestricted_transfers()
     }
 
     fn is_in_host_function(&mut self) -> bool {

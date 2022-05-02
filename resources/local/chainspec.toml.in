@@ -62,7 +62,7 @@ strict_argument_checking = false
 # Changing this option makes sense only for private chains which dont need auctioning new validator slots.
 allow_auction_bids = true
 # Allow peer to peer transfers between users. Setting this to false makes sense only on private chains.
-allow_p2p_transfers = true
+allow_unrestricted_transfers = true
 
 [highway]
 # A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.

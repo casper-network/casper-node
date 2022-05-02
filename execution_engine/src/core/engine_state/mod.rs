@@ -773,7 +773,7 @@ where
         // account which has to be created.
 
         if let (false, Some(is_source_admin)) = (
-            self.config.allow_p2p_transfers(),
+            self.config.allow_unrestricted_transfers(),
             self.config.is_account_administrator(&account_hash),
         ) {
             // Under private chain operation mode we need to ensure that source or target has to be
@@ -794,7 +794,7 @@ where
                     if !is_source_admin && !is_target_admin {
                         // Transferring from normal account to a purse doesn't work.
                         return Ok(make_charged_execution_failure(
-                            execution::Error::DisabledP2PTransfers.into(),
+                            execution::Error::DisabledUnrestrictedTransfers.into(),
                         ));
                     }
                 }
@@ -804,7 +804,7 @@ where
                     // by one entity in the system.
                     if !is_source_admin {
                         return Ok(make_charged_execution_failure(
-                            execution::Error::DisabledP2PTransfers.into(),
+                            execution::Error::DisabledUnrestrictedTransfers.into(),
                         ));
                     }
                 }

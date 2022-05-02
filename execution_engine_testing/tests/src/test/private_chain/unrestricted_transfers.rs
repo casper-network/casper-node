@@ -56,7 +56,10 @@ fn should_disallow_native_p2p_transfer_to_create_new_account_by_user() {
 
     let error = builder.get_error().expect("should have error");
     assert!(
-        matches!(error, Error::Exec(execution::Error::DisabledP2PTransfers)),
+        matches!(
+            error,
+            Error::Exec(execution::Error::DisabledUnrestrictedTransfers)
+        ),
         "expected DisabledP2PTransfers error, found {:?}",
         error
     );
@@ -108,7 +111,10 @@ fn should_disallow_wasm_p2p_transfer_to_create_new_account_by_user() {
 
     let error = builder.get_error().expect("should have error");
     assert!(
-        matches!(error, Error::Exec(execution::Error::DisabledP2PTransfers)),
+        matches!(
+            error,
+            Error::Exec(execution::Error::DisabledUnrestrictedTransfers)
+        ),
         "expected DisabledP2PTransfers error, found {:?}",
         error
     );
@@ -259,7 +265,10 @@ fn should_disallow_transfer_to_own_purse_in_wasm_session() {
     builder.exec(create_purse_request).expect_failure().commit();
     let error = builder.get_error().expect("should have error");
     assert!(
-        matches!(error, Error::Exec(execution::Error::DisabledP2PTransfers)),
+        matches!(
+            error,
+            Error::Exec(execution::Error::DisabledUnrestrictedTransfers)
+        ),
         "expected DisabledP2PTransfers error, found {:?}",
         error
     )
@@ -325,7 +334,10 @@ fn should_disallow_transfer_to_own_purse_via_native_transfer() {
 
     let error = builder.get_error().expect("should have error");
     assert!(
-        matches!(error, Error::Exec(execution::Error::DisabledP2PTransfers)),
+        matches!(
+            error,
+            Error::Exec(execution::Error::DisabledUnrestrictedTransfers)
+        ),
         "expected DisabledP2PTransfers error, found {:?}",
         error
     );
@@ -402,7 +414,10 @@ fn should_disallow_wasm_payment_to_purse() {
 
     let error = builder.get_error().expect("should have error");
     assert!(
-        matches!(error, Error::Exec(execution::Error::DisabledP2PTransfers)),
+        matches!(
+            error,
+            Error::Exec(execution::Error::DisabledUnrestrictedTransfers)
+        ),
         "expected DisabledP2PTransfers error, found {:?}",
         error
     );
@@ -455,7 +470,10 @@ fn should_not_allow_payment_to_purse_in_stored_payment() {
 
     let error = builder.get_error().expect("should have error");
     assert!(
-        matches!(error, Error::Exec(execution::Error::DisabledP2PTransfers)),
+        matches!(
+            error,
+            Error::Exec(execution::Error::DisabledUnrestrictedTransfers)
+        ),
         "expected DisabledP2PTransfers error, found {:?}",
         error
     );

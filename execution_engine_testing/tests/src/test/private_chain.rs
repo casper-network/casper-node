@@ -1,6 +1,6 @@
 pub mod management;
-mod p2p_transfers;
 mod restricted_auction;
+mod unrestricted_transfers;
 mod update_admins;
 
 use std::collections::BTreeMap;
@@ -67,7 +67,7 @@ const ADMIN_ACCOUNT_INITIAL_BALANCE: U512 = U512([100_000_000_000_000_000u64, 0,
 const CONTROL_MANAGEMENT_CONTRACT: &str = "control_management.wasm";
 
 const PRIVATE_CHAIN_ALLOW_AUCTION_BIDS: bool = false;
-const PRIVATE_CHAIN_ALLOW_P2P_TRANSFERS: bool = false;
+const PRIVATE_CHAIN_ALLOW_UNRESTRICTED_TRANSFERS: bool = false;
 
 static PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS: Lazy<Vec<AdministratorAccount>> = Lazy::new(|| {
     let default_admin = AdministratorAccount::new(
@@ -157,12 +157,12 @@ static DEFAULT_PRIVATE_CHAIN_GENESIS: Lazy<RunGenesisRequest> = Lazy::new(|| {
 
 fn custom_private_chain_setup(
     allow_auction_bids: bool,
-    allow_p2p_transfers: bool,
+    allow_unrestricted_transfers: bool,
 ) -> InMemoryWasmTestBuilder {
     let engine_config = EngineConfigBuilder::default()
         .with_administrative_accounts(PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS.clone())
         .with_allow_auction_bids(allow_auction_bids)
-        .with_allow_p2p_transfers(allow_p2p_transfers)
+        .with_allow_unrestricted_transfers(allow_unrestricted_transfers)
         .build();
 
     let mut builder = InMemoryWasmTestBuilder::new_with_config(engine_config);
@@ -193,6 +193,6 @@ fn custom_private_chain_setup(
 fn private_chain_setup() -> InMemoryWasmTestBuilder {
     custom_private_chain_setup(
         PRIVATE_CHAIN_ALLOW_AUCTION_BIDS,
-        PRIVATE_CHAIN_ALLOW_P2P_TRANSFERS,
+        PRIVATE_CHAIN_ALLOW_UNRESTRICTED_TRANSFERS,
     )
 }

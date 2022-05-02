@@ -41,8 +41,8 @@ pub struct CoreConfig {
     /// `true`. Setting up this option makes sense only for private chains where validator set
     /// rotation is unnecessary.
     pub(crate) allow_auction_bids: bool,
-    /// Allows peer-to-peer transfers between users.
-    pub(crate) allow_p2p_transfers: bool,
+    /// Allows unrestricted transfers between users.
+    pub(crate) allow_unrestricted_transfers: bool,
     /// Administrative accounts are valid option for for a private chain only.
     #[serde(default)]
     pub(crate) administrative_accounts: Vec<AdministratorAccount>,
@@ -67,7 +67,7 @@ impl CoreConfig {
         let minimum_delegation_amount = rng.gen::<u32>() as u64;
         let strict_argument_checking = rng.gen();
         let allow_auction_bids = rng.gen();
-        let allow_p2p_transfers = rng.gen();
+        let allow_unrestricted_transfers = rng.gen();
         let administrative_accounts = (0..rng.gen_range(0..=10u32))
             .map(|_| {
                 AdministratorAccount::new(
@@ -92,7 +92,7 @@ impl CoreConfig {
             strict_argument_checking,
             allow_auction_bids,
             administrative_accounts,
-            allow_p2p_transfers,
+            allow_unrestricted_transfers,
         }
     }
 }
@@ -114,7 +114,7 @@ impl ToBytes for CoreConfig {
             minimum_delegation_amount,
             strict_argument_checking,
             allow_auction_bids,
-            allow_p2p_transfers,
+            allow_unrestricted_transfers,
             administrative_accounts,
         } = self;
         buffer.extend(era_duration.to_bytes()?);
@@ -129,7 +129,7 @@ impl ToBytes for CoreConfig {
         buffer.extend(minimum_delegation_amount.to_bytes()?);
         buffer.extend(strict_argument_checking.to_bytes()?);
         buffer.extend(allow_auction_bids.to_bytes()?);
-        buffer.extend(allow_p2p_transfers.to_bytes()?);
+        buffer.extend(allow_unrestricted_transfers.to_bytes()?);
         buffer.extend(administrative_accounts.to_bytes()?);
         Ok(buffer)
     }
@@ -148,7 +148,7 @@ impl ToBytes for CoreConfig {
             minimum_delegation_amount,
             strict_argument_checking,
             allow_auction_bids,
-            allow_p2p_transfers,
+            allow_unrestricted_transfers,
             administrative_accounts,
         } = self;
         era_duration.serialized_length()
@@ -163,7 +163,7 @@ impl ToBytes for CoreConfig {
             + minimum_delegation_amount.serialized_length()
             + strict_argument_checking.serialized_length()
             + allow_auction_bids.serialized_length()
-            + allow_p2p_transfers.serialized_length()
+            + allow_unrestricted_transfers.serialized_length()
             + administrative_accounts.serialized_length()
     }
 }
@@ -182,7 +182,7 @@ impl FromBytes for CoreConfig {
         let (minimum_delegation_amount, remainder) = u64::from_bytes(remainder)?;
         let (strict_argument_checking, remainder) = bool::from_bytes(remainder)?;
         let (allow_auction_bids, remainder) = FromBytes::from_bytes(remainder)?;
-        let (allow_p2p_transfers, remainder) = FromBytes::from_bytes(remainder)?;
+        let (allow_unrestricted_transfers, remainder) = FromBytes::from_bytes(remainder)?;
         let (administrative_accounts, remainder) = FromBytes::from_bytes(remainder)?;
         let config = CoreConfig {
             era_duration,
@@ -197,7 +197,7 @@ impl FromBytes for CoreConfig {
             minimum_delegation_amount,
             strict_argument_checking,
             allow_auction_bids,
-            allow_p2p_transfers,
+            allow_unrestricted_transfers,
             administrative_accounts,
         };
         Ok((config, remainder))

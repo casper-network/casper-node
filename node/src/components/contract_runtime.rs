@@ -565,7 +565,7 @@ impl ContractRuntime {
         verifiable_chunked_hash_activation: EraId,
         administrative_accounts: Vec<AdministratorAccount>,
         allow_auction_bids: bool,
-        allow_p2p_transfers: bool,
+        allow_unrestricted_transfers: bool,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
         let execution_pre_state = Arc::new(Mutex::new(ExecutionPreState {
@@ -600,7 +600,7 @@ impl ContractRuntime {
             .with_strict_argument_checking(strict_argument_checking)
             .with_administrative_accounts(administrative_accounts)
             .with_allow_auction_bids(allow_auction_bids)
-            .with_allow_p2p_transfers(allow_p2p_transfers)
+            .with_allow_unrestricted_transfers(allow_unrestricted_transfers)
             .build();
 
         let engine_state = Arc::new(EngineState::new(global_state, engine_config));

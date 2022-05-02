@@ -111,14 +111,14 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             return Err(Error::InvalidContext);
         }
 
-        if !self.can_perform_p2p_transfer() && self.get_phase() == Phase::Session {
+        if !self.can_perform_unrestricted_transfer() && self.get_phase() == Phase::Session {
             match self.get_immediate_caller().cloned() {
                 Some(CallStackElement::StoredSession { account_hash, .. }) => {
                     if !self.is_in_host_function() && account_hash != *SYSTEM_ACCOUNT_ADDRESS {
                         if let Some(is_account_admin) = self.is_account_administrator(&account_hash)
                         {
                             if !is_account_admin {
-                                return Err(Error::DisabledP2PTransfers);
+                                return Err(Error::DisabledUnrestrictedTransfers);
                             }
                         }
                     }
@@ -128,7 +128,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
                         if let Some(is_account_admin) = self.is_account_administrator(&account_hash)
                         {
                             if !is_account_admin {
-                                return Err(Error::DisabledP2PTransfers);
+                                return Err(Error::DisabledUnrestrictedTransfers);
                             }
                         }
                     }
@@ -139,7 +139,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
                 }
                 None => {
                     // There's always an immediate caller, but we should return something.
-                    return Err(Error::DisabledP2PTransfers);
+                    return Err(Error::DisabledUnrestrictedTransfers);
                 }
             }
         }

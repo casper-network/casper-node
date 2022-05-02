@@ -174,7 +174,7 @@ pub enum Error {
     DisabledContract(ContractHash),
     /// Failed to transfer tokens on a private chain.
     #[error("Failed to transfer tokens on a private chain")]
-    DisabledP2PTransfers,
+    DisabledUnrestrictedTransfers,
 }
 
 impl From<wasm_prep::PreprocessingError> for Error {
