@@ -604,6 +604,13 @@ pub(super) async fn message_sender<P>(
                 err = display_error(err),
                 "message send failed, closing outgoing connection"
             );
+
+            // To ensure, metrics are up to date, we close the queue and drain it.
+            queue.close();
+            while queue.recv().await.is_some() {
+                counter.dec();
+            }
+
             break;
         };
     }
