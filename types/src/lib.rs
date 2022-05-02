@@ -5,7 +5,6 @@
         feature = "json-schema",
         feature = "datasize",
         feature = "std",
-        feature = "std",
         feature = "testing",
         test,
     )),
