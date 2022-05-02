@@ -1162,11 +1162,6 @@ impl StorageInner {
             StorageRequest::GetAvailableBlockRange { responder } => responder
                 .respond(self.get_available_block_range()?)
                 .ignore(),
-            StorageRequest::GetLowestAvailableBlock { responder } => {
-                let maybe_lowest_block =
-                    self.read_block_by_height(self.get_lowest_available_block_height()?)?;
-                responder.respond(maybe_lowest_block).ignore()
-            }
             StorageRequest::StoreFinalizedApprovals {
                 ref deploy_hash,
                 ref finalized_approvals,
@@ -1905,10 +1900,6 @@ impl StorageInner {
                 Ok(AvailableBlockRange::default())
             }
         }
-    }
-
-    fn get_lowest_available_block_height(&self) -> Result<u64, FatalStorageError> {
-        Ok(self.indices.read()?.lowest_available_block_height)
     }
 
     fn update_lowest_available_block_height(
