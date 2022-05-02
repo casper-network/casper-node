@@ -617,7 +617,7 @@ mod tests {
         // proper JSON header present.
         assert_eq!(
             output,
-            r#"{"queues":{"Control":[],"NetworkIncoming":[],"NetworkLowPriority":[],"Network":[],"Regular":[],"Api":[]}}"#
+            r#"{"queues":{"Control":[],"NetworkIncoming":[],"NetworkLowPriority":[],"NetworkDemand":[],"Network":[],"Regular":[],"Api":[]}}"#
         );
     }
 
@@ -630,7 +630,7 @@ mod tests {
         // The output will be empty queues in debug format.
         assert_eq!(
             output,
-            r#"QueueDump { queues: {Control: [], NetworkIncoming: [], NetworkLowPriority: [], Network: [], Regular: [], Api: []} }"#
+            r#"QueueDump { queues: {Control: [], NetworkIncoming: [], NetworkLowPriority: [], NetworkDemand: [], Network: [], Regular: [], Api: []} }"#
         );
     }
 
