@@ -69,7 +69,8 @@ impl ToBytes for GossipedAddress {
 impl FromBytes for GossipedAddress {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), BytesreprError> {
         let (sock_addr_str, bytes): (String, &[u8]) = FromBytes::from_bytes(bytes)?;
-        let sock_addr = std::str::FromStr::from_str(sock_addr_str.as_str())
+        let sock_addr = sock_addr_str
+            .parse()
             .map_err(|_| BytesreprError::Formatting)?;
         Ok((GossipedAddress::new(sock_addr), bytes))
     }
