@@ -160,6 +160,44 @@ fn remove_messages_to_random(
     result
 }
 
+/// Removes all `CreatedTargetedMessage`s from `outcomes` and returns the deserialized content of
+/// all `Message::Signed`, after verifying the signatures.
+fn remove_targeted_messages(
+    validators: &Validators<PublicKey>,
+    outcomes: &mut ProtocolOutcomes<ClContext>,
+) -> HashSet<(NodeId, RoundId, PublicKey, Content<ClContext>)> {
+    let mut result = HashSet::new();
+    let expected_instance_id = ClContext::hash(INSTANCE_ID_DATA);
+    outcomes.retain(|outcome| {
+        let (msg, peer) = match outcome {
+            ProtocolOutcome::CreatedTargetedMessage(msg, peer) => (msg, *peer),
+            _ => return true,
+        };
+        if let Message::Signed {
+            round_id,
+            instance_id,
+            content,
+            validator_idx,
+            signature,
+        } =
+            bincode::deserialize::<Message<ClContext>>(msg.as_slice()).expect("deserialize message")
+        {
+            assert_eq!(instance_id, expected_instance_id);
+            let serialized_fields =
+                bincode::serialize(&(round_id, &instance_id, &content, validator_idx))
+                    .expect("failed to serialize fields");
+            let hash = ClContext::hash(&serialized_fields);
+            let public_key = validators.id(validator_idx).expect("validator ID").clone();
+            assert!(ClContext::verify_signature(&hash, &public_key, &signature));
+            assert!(result.insert((peer, round_id, public_key, content)));
+            false
+        } else {
+            true
+        }
+    });
+    result
+}
+
 /// Expects exactly one `CreateNewBlock` in `outcomes`, removes and returns it.
 fn remove_create_new_block(outcomes: &mut ProtocolOutcomes<ClContext>) -> BlockContext<ClContext> {
     let mut result = None;
@@ -616,6 +654,107 @@ fn simple_consensus_sends_sync_state() {
         }
         (msg0, msg1) => panic!("unexpected messages: {:?}, {:?}", msg0, msg1),
     }
+}
+
+/// Tests that we respond to a `SyncState` message with the missing signatures.
+#[test]
+fn simple_consensus_handles_sync_state() {
+    let mut rng = crate::new_rng();
+    let (weights, validators) = abc_weights(50, 40, 10);
+    let alice_idx = validators.get_index(&*ALICE_PUBLIC_KEY).unwrap();
+    let bob_idx = validators.get_index(&*BOB_PUBLIC_KEY).unwrap();
+    let carol_idx = validators.get_index(&*CAROL_PUBLIC_KEY).unwrap();
+
+    // The first round leader is Alice.
+    let mut sc = new_test_simple_consensus(weights, vec![], &[alice_idx]);
+
+    let alice_kp = Keypair::from(ALICE_SECRET_KEY.clone());
+    let bob_kp = Keypair::from(BOB_SECRET_KEY.clone());
+    let carol_kp = Keypair::from(CAROL_SECRET_KEY.clone());
+
+    let sender = *ALICE_NODE_ID;
+    let timestamp = Timestamp::from(100000);
+
+    let proposal0 = Proposal {
+        timestamp,
+        maybe_block: Some(new_payload(false)),
+        maybe_parent_round_id: None,
+        inactive: None,
+    };
+    let hash0 = proposal0.hash();
+
+    let proposal1 = Proposal::<ClContext> {
+        timestamp,
+        maybe_block: Some(new_payload(true)),
+        maybe_parent_round_id: None,
+        inactive: None,
+    };
+    let hash1 = proposal1.hash();
+
+    // We get a proposal, echo and true vote from Alice, one echo and false vote from Bob, and
+    // Carol double-signs.
+    let msg = create_message(&validators, 0, proposal(&proposal0), &alice_kp);
+    sc.handle_message(&mut rng, sender, msg, timestamp);
+    let msg = create_message(&validators, 0, echo(hash0), &alice_kp);
+    sc.handle_message(&mut rng, sender, msg, timestamp);
+    let msg = create_message(&validators, 0, echo(hash0), &bob_kp);
+    sc.handle_message(&mut rng, sender, msg, timestamp);
+    let msg = create_message(&validators, 0, vote(false), &bob_kp);
+    sc.handle_message(&mut rng, sender, msg, timestamp);
+    let msg = create_message(&validators, 0, vote(true), &alice_kp);
+    sc.handle_message(&mut rng, sender, msg, timestamp);
+    let msg = create_message(&validators, 0, vote(true), &carol_kp);
+    sc.handle_message(&mut rng, sender, msg, timestamp);
+    let msg = create_message(&validators, 0, vote(false), &carol_kp);
+    sc.handle_message(&mut rng, sender, msg, timestamp);
+
+    let first_validator_idx = ValidatorIndex(rng.gen_range(0..3));
+
+    // The sender has everything we have except the proposal itself.
+    let msg = Message::<ClContext>::SyncState {
+        round_id: 0,
+        proposal_hash: Some(hash0),
+        proposal: false,
+        first_validator_idx,
+        echos: sc.validator_bit_field(first_validator_idx, vec![alice_idx, bob_idx].into_iter()),
+        true_votes: sc
+            .validator_bit_field(first_validator_idx, vec![alice_idx, bob_idx].into_iter()),
+        false_votes: sc
+            .validator_bit_field(first_validator_idx, vec![alice_idx, bob_idx].into_iter()),
+        faulty: sc.validator_bit_field(first_validator_idx, vec![carol_idx].into_iter()),
+        instance_id: sc.instance_id,
+    };
+    let mut outcomes = sc.handle_message(&mut rng, sender, msg.serialize(), timestamp);
+    let mut msgs = remove_targeted_messages(&validators, &mut outcomes);
+    assert!(msgs.remove(&(sender, 0, ALICE_PUBLIC_KEY.clone(), proposal(&proposal0))));
+    assert!(msgs.is_empty(), "unexpected messages: {:?}", msgs);
+    expect_no_gossip_block_finalized(outcomes);
+
+    // But if there are missing messages, these are sent back.
+    let msg = Message::<ClContext>::SyncState {
+        round_id: 0,
+        proposal_hash: Some(hash1), // Wrong proposal!
+        proposal: true,
+        first_validator_idx,
+        echos: sc.validator_bit_field(first_validator_idx, vec![alice_idx].into_iter()),
+        true_votes: sc
+            .validator_bit_field(first_validator_idx, vec![bob_idx, alice_idx].into_iter()),
+        false_votes: sc.validator_bit_field(first_validator_idx, vec![].into_iter()),
+        faulty: sc.validator_bit_field(first_validator_idx, vec![].into_iter()),
+        instance_id: sc.instance_id,
+    };
+    let mut outcomes = sc.handle_message(&mut rng, sender, msg.serialize(), timestamp);
+    let mut msgs = remove_targeted_messages(&validators, &mut outcomes);
+    // The sender's proposal hash is different from the one we have a quorum for:
+    assert!(msgs.remove(&(sender, 0, ALICE_PUBLIC_KEY.clone(), echo(hash0))));
+    assert!(msgs.remove(&(sender, 0, BOB_PUBLIC_KEY.clone(), echo(hash0))));
+    // The sender has Alice's but not Bob's vote:
+    assert!(msgs.remove(&(sender, 0, BOB_PUBLIC_KEY.clone(), vote(false))));
+    // The sender doesn't know Carol is faulty:
+    assert!(msgs.remove(&(sender, 0, CAROL_PUBLIC_KEY.clone(), vote(true))));
+    assert!(msgs.remove(&(sender, 0, CAROL_PUBLIC_KEY.clone(), vote(false))));
+    assert!(msgs.is_empty());
+    expect_no_gossip_block_finalized(outcomes);
 }
 
 #[test]
