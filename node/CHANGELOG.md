@@ -57,6 +57,7 @@ All notable changes to this project will be documented in this file.  The format
 * Remove a temporary chainspec setting `max_stored_value_size` to limit the size of individual values stored in global state.
 
 ### Fixed
+* Limiters for incoming requests and outgoing bandwidth will no longer inadvertently delay some validator traffic when maxed out due to joining nodes.
 * Dropped connections no longer cause the outstanding messages metric to become incorrect.
 
 ### Security
