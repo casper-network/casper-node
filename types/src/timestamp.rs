@@ -1,6 +1,7 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
+use alloc::vec::Vec;
 use core::{
     ops::{Add, AddAssign, Div, Mul, Rem, Shl, Shr, Sub, SubAssign},
     time::Duration,
@@ -23,7 +24,6 @@ use schemars::JsonSchema;
 #[cfg(any(feature = "std", test))]
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
-#[cfg(any(feature = "std", test))]
 use crate::bytesrepr::{self, FromBytes, ToBytes};
 
 #[cfg(any(feature = "testing", test))]
@@ -201,7 +201,6 @@ impl<'de> Deserialize<'de> for Timestamp {
     }
 }
 
-#[cfg(any(feature = "std", test))]
 impl ToBytes for Timestamp {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         self.0.to_bytes()
@@ -212,7 +211,6 @@ impl ToBytes for Timestamp {
     }
 }
 
-#[cfg(any(feature = "std", test))]
 impl FromBytes for Timestamp {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         u64::from_bytes(bytes).map(|(inner, remainder)| (Timestamp(inner), remainder))
@@ -352,7 +350,6 @@ impl<'de> Deserialize<'de> for TimeDiff {
     }
 }
 
-#[cfg(any(feature = "std", test))]
 impl ToBytes for TimeDiff {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         self.0.to_bytes()
@@ -363,7 +360,6 @@ impl ToBytes for TimeDiff {
     }
 }
 
-#[cfg(any(feature = "std", test))]
 impl FromBytes for TimeDiff {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         u64::from_bytes(bytes).map(|(inner, remainder)| (TimeDiff(inner), remainder))
