@@ -74,6 +74,18 @@ impl<VID: Eq + Hash> Validators<VID> {
         self.total_weight
     }
 
+    /// Returns the weight of the validator with the given index.
+    ///
+    /// *Panics* if the validator index does not exist.
+    pub(crate) fn weight(&self, idx: ValidatorIndex) -> Weight {
+        self.validators[idx.0 as usize].weight
+    }
+
+    /// Returns the number of validators.
+    pub(crate) fn len(&self) -> usize {
+        self.validators.len()
+    }
+
     pub(crate) fn get_index(&self, id: &VID) -> Option<ValidatorIndex> {
         self.index_by_id.get(id).cloned()
     }
