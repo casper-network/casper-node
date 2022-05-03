@@ -17,8 +17,8 @@ function main() {
     log "Starting Scenario: itst06"
     log "------------------------------------------------------------"
 
-    # 0. Verify network is creating blocks
-    do_await_n_blocks '5'
+    # 0. Await genesis era to complete
+    do_await_genesis_era_to_complete
     # 1. Verify network is in sync
     check_network_sync
     # 2. Background transfers so we can stop the node mid-stream

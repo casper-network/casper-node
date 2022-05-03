@@ -78,6 +78,7 @@ function _main()
     local PROTOCOL_VERSION
     local COUNT_NODES
 
+
     PATH_TO_STAGE="$NCTL/stages/stage-$STAGE_ID"
     COUNT_NODES=$(get_count_of_nodes)
     PROTOCOL_VERSION=$(_get_protocol_version_of_next_upgrade "$PATH_TO_STAGE")
@@ -98,7 +99,7 @@ function _main()
                               "$(get_protocol_version_for_chainspec "$PROTOCOL_VERSION")" \
                               "$ACTIVATION_POINT" \
                               "$PATH_TO_STAGE/$PROTOCOL_VERSION/chainspec.toml" \
-                              false
+                              false \
         setup_asset_node_configs "$COUNT_NODES" \
                                  "$PROTOCOL_VERSION" \
                                  "$PATH_TO_STAGE/$PROTOCOL_VERSION/config.toml" \
