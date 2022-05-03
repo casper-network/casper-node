@@ -333,7 +333,7 @@ fn simple_consensus_no_fault() {
 
     sc_c.activate_validator(CAROL_PUBLIC_KEY.clone(), carol_kp, Timestamp::now(), None);
 
-    let round_len = sc_c.params.min_round_length();
+    let round_len = sc_c.params.min_block_time();
 
     let sender = *ALICE_NODE_ID;
     let mut timestamp = Timestamp::from(100000);
@@ -506,7 +506,7 @@ fn simple_consensus_faults() {
     let hash1 = proposal1.hash();
 
     let proposal2 = Proposal {
-        timestamp: timestamp + sc.params.min_round_length(),
+        timestamp: timestamp + sc.params.min_block_time(),
         maybe_block: Some(new_payload(true)),
         maybe_parent_round_id: Some(1),
         inactive: Some(iter::once(carol_idx).collect()),
@@ -722,7 +722,7 @@ fn simple_consensus_handles_sync_state() {
         false_votes: sc
             .validator_bit_field(first_validator_idx, vec![alice_idx, bob_idx].into_iter()),
         faulty: sc.validator_bit_field(first_validator_idx, vec![carol_idx].into_iter()),
-        instance_id: sc.instance_id,
+        instance_id: *sc.instance_id(),
     };
     let mut outcomes = sc.handle_message(&mut rng, sender, msg.serialize(), timestamp);
     let mut msgs = remove_targeted_messages(&validators, &mut outcomes);
@@ -741,7 +741,7 @@ fn simple_consensus_handles_sync_state() {
             .validator_bit_field(first_validator_idx, vec![bob_idx, alice_idx].into_iter()),
         false_votes: sc.validator_bit_field(first_validator_idx, vec![].into_iter()),
         faulty: sc.validator_bit_field(first_validator_idx, vec![].into_iter()),
-        instance_id: sc.instance_id,
+        instance_id: *sc.instance_id(),
     };
     let mut outcomes = sc.handle_message(&mut rng, sender, msg.serialize(), timestamp);
     let mut msgs = remove_targeted_messages(&validators, &mut outcomes);

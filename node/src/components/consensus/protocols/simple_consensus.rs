@@ -53,6 +53,7 @@
 //! periodically sent to a random peer. The peer compares that to its local state, and responds with
 //! all signed messages that it has and the other is missing.
 
+mod params;
 #[cfg(test)]
 mod tests;
 
@@ -71,7 +72,7 @@ use rand::{seq::IteratorRandom, Rng};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
-use casper_types::{system::auction::BLOCK_REWARD, TimeDiff, Timestamp, U512};
+use casper_types::{TimeDiff, Timestamp, U512};
 
 use crate::{
     components::consensus::{
@@ -81,8 +82,8 @@ use crate::{
             ProtocolOutcomes, TerminalBlockData,
         },
         highway_core::{
-            state::{weight::Weight, Params},
             validators::{ValidatorIndex, ValidatorMap, Validators},
+            Weight,
         },
         protocols,
         traits::{ConsensusValueT, Context, ValidatorSecret},
@@ -92,6 +93,7 @@ use crate::{
     utils::{div_round, ds},
     NodeRng,
 };
+use params::Params;
 
 /// The timer for syncing with a random peer.
 const TIMER_ID_SYNC_PEER: TimerId = TimerId(0);
@@ -210,10 +212,7 @@ where
     C: Context,
 {
     /// Contains numerical parameters for the protocol
-    /// TODO currently using Highway params
-    params: Params,
-    /// Identifies this instance of the protocol uniquely
-    instance_id: C::InstanceId,
+    params: Params<C>,
     /// The timeout for the current round's proposal
     proposal_timeout: TimeDiff,
     /// The validators in this instantiation of the protocol
@@ -238,13 +237,9 @@ where
     rounds: BTreeMap<RoundId, Round<C>>,
     /// List of faulty validators and their type of fault.
     faults: HashMap<ValidatorIndex, Fault<C>>,
-    /// The threshold weight above which we are not fault tolerant any longer.
-    ftt: Weight,
     /// The configuration for the protocol
     /// TODO currently using Highway config
     config: super::highway::config::Config,
-    /// The validator's voting weights.
-    weights: ValidatorMap<Weight>,
     /// This is `true` for every validator we have received a signature from or we know to be
     /// faulty.
     active: ValidatorMap<bool>,
@@ -280,10 +275,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         let validators = protocols::common::validators::<C>(faulty, inactive, validator_stakes);
         let weights = protocols::common::validator_weights::<C>(&validators);
         let mut active: ValidatorMap<bool> = weights.iter().map(|_| false).collect();
-        let ftt = protocols::common::ftt::<C>(
-            chainspec.highway_config.finality_threshold_fraction,
-            &validators,
-        );
+        let highway_config = &chainspec.highway_config;
 
         // Use the estimate from the previous era as the proposal timeout. Start with one minimum
         // round length.
@@ -311,17 +303,19 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             "initializing SimpleConsensus instance",
         );
 
+        // TODO: Configure this explicitly, not via Highway.
+        let block_time = TimeDiff::from(
+            1_u64
+                .checked_shl(highway_config.minimum_round_exponent.into())
+                .unwrap_or(u64::MAX),
+        );
         let params = Params::new(
-            seed,
-            BLOCK_REWARD,
-            (chainspec.highway_config.reduced_reward_multiplier * BLOCK_REWARD).to_integer(),
-            chainspec.highway_config.minimum_round_exponent,
-            chainspec.highway_config.maximum_round_exponent,
-            chainspec.highway_config.minimum_round_exponent,
-            chainspec.core_config.minimum_era_height,
+            instance_id,
+            block_time,
             era_start_time,
+            chainspec.core_config.minimum_era_height,
             era_start_time + chainspec.core_config.era_duration,
-            0,
+            protocols::common::ftt::<C>(highway_config.finality_threshold_fraction, &validators),
         );
 
         SimpleConsensus {
@@ -338,12 +332,9 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             active,
             config: config.highway.clone(),
             params,
-            instance_id,
             proposal_timeout,
             validators,
-            ftt,
             active_validator: None,
-            weights,
             pending_proposal: None,
             progress_detected: false,
             paused: false,
@@ -392,11 +383,11 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 match status {
                     ParticipationStatus::Equivocated
                     | ParticipationStatus::EquivocatedInOtherEra => {
-                        faulty_w += u128::from(self.weights[idx].0);
+                        faulty_w += u128::from(self.validators.weight(idx).0);
                         faulty_validators.push((idx, v_id.clone(), status));
                     }
                     ParticipationStatus::Inactive | ParticipationStatus::LastSeenInRound(_) => {
-                        inactive_w += u128::from(self.weights[idx].0);
+                        inactive_w += u128::from(self.validators.weight(idx).0);
                         inactive_validators.push((idx, v_id.clone(), status));
                     }
                 }
@@ -405,7 +396,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         inactive_validators.sort_by_key(|(idx, _, status)| (Reverse(*status), *idx));
         faulty_validators.sort_by_key(|(idx, _, status)| (Reverse(*status), *idx));
         let participation = Participation::<C> {
-            instance_id: self.instance_id,
+            instance_id: *self.instance_id(),
             inactive_stake_percent: div_round(inactive_w * 100, total_w) as u8,
             faulty_stake_percent: div_round(faulty_w * 100, total_w) as u8,
             inactive_validators,
@@ -467,11 +458,11 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             return vec![]; // Era has ended. No further progress is expected.
         }
         debug!(
-            instance_id = ?self.instance_id,
+            instance_id = ?self.instance_id(),
             "syncing with random peer",
         );
         // Inform a peer about our protocol state and schedule the next request.
-        let first_validator_idx = ValidatorIndex(rng.gen_range(0..self.weights.len() as u32));
+        let first_validator_idx = ValidatorIndex(rng.gen_range(0..self.validators.len() as u32));
         let round_id = (self.first_non_finalized_round_id..=self.current_round)
             .choose(rng)
             .unwrap_or(self.current_round);
@@ -520,7 +511,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                     round_id,
                     first_validator_idx,
                     faulty,
-                    self.instance_id,
+                    *self.instance_id(),
                 );
             }
         };
@@ -551,7 +542,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             true_votes,
             false_votes,
             faulty,
-            instance_id: self.instance_id,
+            instance_id: *self.instance_id(),
         }
     }
 
@@ -566,7 +557,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         index_iter: impl Iterator<Item = ValidatorIndex>,
     ) -> u128 {
         let mut bit_field = 0;
-        let validator_count = self.weights.len() as u32;
+        let validator_count = self.validators.len() as u32;
         for ValidatorIndex(v_idx) in index_iter {
             // The validator's bit is v_idx - first_idx, but we wrap around.
             let i = v_idx
@@ -588,7 +579,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         first_idx: ValidatorIndex,
         mut bit_field: u128,
     ) -> impl Iterator<Item = ValidatorIndex> {
-        let validator_count = self.weights.len() as u32;
+        let validator_count = self.validators.len() as u32;
         let mut idx = first_idx.0; // The last bit stands for first_idx.
         iter::from_fn(move || {
             if bit_field == 0 {
@@ -643,14 +634,14 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             return vec![]; // Not creating message, so we don't double-sign or duplicate.
         }
         let serialized_fields =
-            bincode::serialize(&(round_id, &self.instance_id, &content, validator_idx))
+            bincode::serialize(&(round_id, self.instance_id(), &content, validator_idx))
                 .expect("failed to serialize fields");
         let hash = <C as Context>::hash(&serialized_fields);
         let signature = secret_key.sign(&hash);
         self.add_content(round_id, content.clone(), validator_idx, signature);
         let message = Message::Signed {
             round_id,
-            instance_id: self.instance_id,
+            instance_id: *self.instance_id(),
             content,
             validator_idx,
             signature,
@@ -681,14 +672,14 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         }
         let msg0 = Message::Signed {
             round_id,
-            instance_id: self.instance_id,
+            instance_id: *self.instance_id(),
             content: content0,
             validator_idx,
             signature: signature0,
         };
         let msg1 = Message::Signed {
             round_id,
-            instance_id: self.instance_id,
+            instance_id: *self.instance_id(),
             content: content1,
             validator_idx,
             signature: signature1,
@@ -702,7 +693,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         self.faults.insert(validator_idx, Fault::Direct(msg0, msg1));
         self.active[validator_idx] = true;
         self.progress_detected = true;
-        if self.faulty_weight() > self.ftt {
+        if self.faulty_weight() > self.params.ftt() {
             outcomes.push(ProtocolOutcome::FttExceeded);
             return outcomes;
         }
@@ -768,7 +759,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             Some(round) => round,
             None => return vec![],
         };
-        if first_validator_idx.0 >= self.weights.len() as u32 {
+        if first_validator_idx.0 >= self.validators.len() as u32 {
             info!(
                 first_validator_idx = first_validator_idx.0,
                 ?sender,
@@ -825,7 +816,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             .map(|(content, validator_idx, signature)| {
                 let msg = Message::Signed {
                     round_id,
-                    instance_id: self.instance_id,
+                    instance_id: *self.instance_id(),
                     content,
                     validator_idx,
                     signature,
@@ -922,7 +913,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         }
 
         let serialized_fields =
-            bincode::serialize(&(round_id, &self.instance_id, &content, validator_idx))
+            bincode::serialize(&(round_id, self.instance_id(), &content, validator_idx))
                 .expect("failed to serialize fields");
         let hash = <C as Context>::hash(&serialized_fields);
         if !C::verify_signature(&hash, &validator_id, &signature) {
@@ -985,7 +976,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 if let Some(inactive) = &proposal.inactive {
                     if inactive
                         .iter()
-                        .any(|idx| *idx == validator_idx || !self.weights.has(*idx))
+                        .any(|idx| *idx == validator_idx || self.validators.id(*idx).is_none())
                     {
                         outcomes.extend(err_msg(
                             "invalid proposal: invalid inactive validator index",
@@ -1162,7 +1153,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 outcomes.extend(self.create_message(round_id, Content::Vote(true)));
 
                 if self.is_committed_round(round_id) {
-                    self.proposal_timeout = self.params.min_round_length();
+                    self.proposal_timeout = self.params.min_block_time();
                     outcomes.extend(self.finalize_round(round_id)); // Proposal is finalized!
                 }
 
@@ -1238,7 +1229,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             return vec![]; // We don't have a proposal with a quorum of echos
         };
         if let Some(inactive) = &proposal.inactive {
-            for idx in self.weights.keys() {
+            for (idx, _) in self.validators.enumerate_ids() {
                 if !inactive.contains(&idx) && !self.active[idx] {
                     // The proposal claims validator idx is active but we haven't seen anything from
                     // them yet.
@@ -1269,7 +1260,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         }
         let min_child_timestamp = proposal
             .timestamp
-            .saturating_add(self.params.min_round_length());
+            .saturating_add(self.params.min_block_time());
 
         // We have a proposal with accepted parent, a quorum of Echos, and all rounds since the
         // parent are skippable. That means the proposal is now accepted.
@@ -1300,7 +1291,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             .maybe_parent_round_id
             .and_then(|parent_round_id| self.accepted_proposal(parent_round_id))
         {
-            let min_round_len = self.params.min_round_length();
+            let min_round_len = self.params.min_block_time();
             if proposal.timestamp < parent_proposal.timestamp.saturating_add(min_round_len) {
                 info!("rejecting proposal with timestamp earlier than the parent");
                 return vec![];
@@ -1459,7 +1450,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     /// Returns a parent if a block with that parent could be proposed in the current round, and the
     /// earliest possible timestamp for a new proposal.
     fn suitable_parent_round(&self, now: Timestamp) -> Option<(Option<RoundId>, Timestamp)> {
-        let min_round_len = self.params.min_round_length();
+        let min_round_len = self.params.min_block_time();
         let mut maybe_parent = None;
         // We iterate through the rounds before the current one, in reverse order.
         for round_id in (0..self.current_round).rev() {
@@ -1517,7 +1508,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         }
         for vidx in vidxs {
             if !self.faults.contains_key(&vidx) {
-                sum += self.weights[vidx];
+                sum += self.validators.weight(vidx);
                 if sum > quorum_threshold {
                     return true;
                 }
@@ -1546,7 +1537,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     /// one correct validator in common.
     fn quorum_threshold(&self) -> Weight {
         let total_weight = self.validators.total_weight().0;
-        let ftt = self.ftt.0;
+        let ftt = self.params.ftt().0;
         #[allow(clippy::integer_arithmetic)] // Cannot overflow, even if both are u64::MAX.
         Weight(total_weight / 2 + ftt / 2 + (total_weight & ftt & 1))
     }
@@ -1558,7 +1549,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
 
     /// Returns the sum of the weights of the given validators.
     fn sum_weights<'a>(&self, vidxs: impl Iterator<Item = &'a ValidatorIndex>) -> Weight {
-        vidxs.map(|vidx| self.weights[*vidx]).sum()
+        vidxs.map(|vidx| self.validators.weight(*vidx)).sum()
     }
 
     /// Retrieves a shared reference to the round.
@@ -1571,7 +1562,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     fn round_mut(&mut self, round_id: RoundId) -> &mut Round<C> {
         match self.rounds.entry(round_id) {
             btree_map::Entry::Occupied(entry) => entry.into_mut(),
-            btree_map::Entry::Vacant(entry) => entry.insert(Round::new(self.weights.len())),
+            btree_map::Entry::Vacant(entry) => entry.insert(Round::new(self.validators.len())),
         }
     }
 
@@ -1786,7 +1777,7 @@ where
                 let outcome = ProtocolOutcome::InvalidIncomingMessage(msg, sender, err.into());
                 vec![outcome]
             }
-            Ok(message) if *message.instance_id() != self.instance_id => {
+            Ok(message) if message.instance_id() != self.instance_id() => {
                 let instance_id = message.instance_id();
                 info!(?instance_id, ?sender, "wrong instance ID; disconnecting");
                 let err = anyhow::Error::msg("invalid instance ID");
@@ -1895,8 +1886,9 @@ where
                 return vec![];
             }
             let inactive = self
-                .weights
-                .keys()
+                .validators
+                .enumerate_ids()
+                .map(|(idx, _)| idx)
                 .filter(|idx| !self.active[*idx] && !self.faults.contains_key(idx));
             let content = Content::Proposal(Proposal::with_block(
                 &proposed_block,
@@ -2035,11 +2027,11 @@ where
     }
 
     fn instance_id(&self) -> &C::InstanceId {
-        &self.instance_id
+        self.params.instance_id()
     }
 
     fn next_round_length(&self) -> Option<TimeDiff> {
-        Some(self.params.min_round_length())
+        Some(self.params.min_block_time())
     }
 }
 
