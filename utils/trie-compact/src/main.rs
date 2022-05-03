@@ -13,13 +13,13 @@ use trie_compact::copy_state_root;
 
 #[derive(Debug, StructOpt)]
 struct Opts {
-    #[structopt(short, long, required = true, default_value = retrieve_state::CHAIN_DOWNLOAD_PATH)]
+    #[structopt(long, required = true, default_value = retrieve_state::CHAIN_DOWNLOAD_PATH)]
     storage_path: PathBuf,
 
-    #[structopt(short, long, required = true, default_value = retrieve_state::LMDB_PATH)]
+    #[structopt(long, required = true, default_value = retrieve_state::LMDB_PATH)]
     source_lmdb_path: PathBuf,
 
-    #[structopt(short, long, required = true)]
+    #[structopt(long, required = true)]
     destination_lmdb_path: PathBuf,
 }
 
@@ -31,6 +31,12 @@ async fn main() -> Result<(), anyhow::Error> {
     let storage_path = normalize_path(&opts.storage_path)?;
     let source_lmdb_path = normalize_path(&opts.source_lmdb_path)?;
     let destination_lmdb_path = normalize_path(&opts.destination_lmdb_path)?;
+
+    assert_neq!(
+        source_lmdb_path,
+        destination_lmdb_path,
+        "Source and destination should not be the same lmdb database file."
+    );
 
     let (source_state, _env) = storage::load_execution_engine(
         source_lmdb_path,
