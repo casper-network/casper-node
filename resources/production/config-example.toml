@@ -63,6 +63,29 @@ abbreviate_modules = false
 secret_key_path = '/etc/casper/validator_keys/secret_key.pem'
 
 
+# ==========================================
+# Configuration options for simple consensus
+# ==========================================
+[consensus.simple_consensus]
+
+# If the current era's protocol state has not progressed for this long, shut down.
+# standstill_timeout = '10min'
+
+# Request the latest protocol state from a random peer periodically, with this interval.
+sync_state_interval = '1sec'
+
+# Log inactive or faulty validators periodically, with this interval.
+log_participation_interval = '1min'
+
+# The initial proposal timeout. Validators wait this long for a proposal to receive a quorum of
+# echo messages, before they vote to make the round skippable and move on to the next proposer.
+proposal_timeout = '10sec'
+
+# The maximum difference between validators' clocks we expect. Incoming proposals whose timestamp
+# lies in the future by more than that are rejected.
+clock_tolerance = '1sec'
+
+
 # ===========================================
 # Configuration options for Highway consensus
 # ===========================================

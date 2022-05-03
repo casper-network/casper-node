@@ -10,7 +10,7 @@ use crate::{
         config::Config,
         consensus_protocol::{ConsensusProtocol, ProtocolOutcome},
         leader_sequence,
-        protocols::{common, highway::config::Config as HighwayConfig},
+        protocols::common,
         tests::utils::{
             new_test_chainspec, ALICE_NODE_ID, ALICE_PUBLIC_KEY, ALICE_SECRET_KEY, BOB_PUBLIC_KEY,
             BOB_SECRET_KEY, CAROL_PUBLIC_KEY, CAROL_SECRET_KEY,
@@ -41,15 +41,8 @@ where
         .collect::<Vec<_>>();
     let mut chainspec = new_test_chainspec(weights.clone());
     chainspec.core_config.minimum_era_height = 3;
-    let config = Config {
-        secret_key_path: Default::default(),
-        highway: HighwayConfig {
-            pending_vertex_timeout: "1min".parse().unwrap(),
-            log_participation_interval: Some("10sec".parse().unwrap()),
-            max_execution_delay: 3,
-            ..HighwayConfig::default()
-        },
-    };
+    let mut config = Config::default();
+    config.simple_consensus.standstill_timeout = Some("1sec".parse().unwrap());
     let validators = common::validators::<ClContext>(
         &Default::default(),
         &Default::default(),
@@ -333,7 +326,7 @@ fn simple_consensus_no_fault() {
 
     sc_c.activate_validator(CAROL_PUBLIC_KEY.clone(), carol_kp, Timestamp::now(), None);
 
-    let round_len = sc_c.params.min_block_time();
+    let block_time = sc_c.params.min_block_time();
 
     let sender = *ALICE_NODE_ID;
     let mut timestamp = Timestamp::from(100000);
@@ -355,7 +348,7 @@ fn simple_consensus_no_fault() {
     let hash1 = proposal1.hash();
 
     let proposal2 = Proposal {
-        timestamp: timestamp + round_len,
+        timestamp: timestamp + block_time,
         maybe_block: Some(new_payload(true)),
         maybe_parent_round_id: Some(1),
         inactive: Some(Default::default()),
@@ -363,7 +356,7 @@ fn simple_consensus_no_fault() {
     let hash2 = proposal2.hash();
 
     let proposal3 = Proposal {
-        timestamp: timestamp + round_len * 2,
+        timestamp: timestamp + block_time * 2,
         maybe_block: Some(new_payload(false)),
         maybe_parent_round_id: Some(2),
         inactive: Some(Default::default()),
@@ -371,12 +364,15 @@ fn simple_consensus_no_fault() {
     let hash3 = proposal3.hash();
 
     let proposal4 = Proposal::<ClContext> {
-        timestamp: timestamp + round_len * 3,
+        timestamp: timestamp + block_time * 3,
         maybe_block: None,
         maybe_parent_round_id: Some(3),
         inactive: None,
     };
     let hash4 = proposal4.hash();
+
+    // Carol's node joins a bit late, and gets some messages out of order.
+    timestamp += block_time;
 
     // Alice makes a proposal in round 2 with parent in round 1. Alice and Bob echo it.
     let msg = create_message(&validators, 2, proposal(&proposal2), &alice_kp);
@@ -422,8 +418,6 @@ fn simple_consensus_no_fault() {
     let msg = create_message(&validators, 0, vote(false), &bob_kp);
     expect_no_gossip_block_finalized(sc_c.handle_message(&mut rng, sender, msg, timestamp));
 
-    timestamp += round_len;
-
     // But with Alice's vote round 0 becomes skippable. That means rounds 1 and 2 are now accepted
     // and Carol votes for them. Since round 2 is already committed, both 1 and 2 are finalized.
     // Since round 2 became current, Carol echoes the proposal, too.
@@ -435,9 +429,9 @@ fn simple_consensus_no_fault() {
     assert!(gossip.remove(&(2, CAROL_PUBLIC_KEY.clone(), vote(true))));
     assert!(gossip.is_empty(), "unexpected gossip: {:?}", gossip);
     expect_finalized(&outcomes, &[(&proposal1, 0), (&proposal2, 1)]);
-    expect_timer(&outcomes, timestamp + round_len, TIMER_ID_UPDATE);
+    expect_timer(&outcomes, timestamp + block_time, TIMER_ID_UPDATE);
 
-    timestamp += round_len;
+    timestamp += block_time;
 
     // In round 3 Carol is the leader, so she creates a new block to propose.
     let mut outcomes = sc_c.handle_timer(timestamp, TIMER_ID_UPDATE, &mut rng);
@@ -453,7 +447,7 @@ fn simple_consensus_no_fault() {
     assert!(gossip.remove(&(3, CAROL_PUBLIC_KEY.clone(), echo(hash3))));
     assert!(gossip.is_empty(), "unexpected gossip: {:?}", gossip);
 
-    timestamp += round_len;
+    timestamp += block_time;
 
     // Once Alice echoes Carol's proposal, she can go on to propose in round 4, too.
     // Since the round height is 3, the 4th proposal does not contain a block.
@@ -495,7 +489,7 @@ fn simple_consensus_faults() {
     let carol_kp = Keypair::from(CAROL_SECRET_KEY.clone());
 
     let sender = *ALICE_NODE_ID;
-    let timestamp = Timestamp::now();
+    let mut timestamp = Timestamp::now();
 
     let proposal1 = Proposal {
         timestamp,
@@ -512,6 +506,8 @@ fn simple_consensus_faults() {
         inactive: Some(iter::once(carol_idx).collect()),
     };
     let hash2 = proposal2.hash();
+
+    timestamp += sc.params.min_block_time();
 
     // Alice makes sproposals in rounds 1 and 2, echoes and votes for them.
     let msg = create_message(&validators, 1, proposal(&proposal1), &alice_kp);
@@ -565,11 +561,7 @@ fn simple_consensus_sends_sync_state() {
     let bob_kp = Keypair::from(BOB_SECRET_KEY.clone());
     let carol_kp = Keypair::from(CAROL_SECRET_KEY.clone());
 
-    let timeout = sc
-        .config
-        .request_state_interval
-        .expect("request state timer")
-        / 100;
+    let timeout = sc.config.sync_state_interval.expect("request state timer");
     let sender = *ALICE_NODE_ID;
     let mut timestamp = Timestamp::from(100000);
 
