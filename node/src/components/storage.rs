@@ -403,12 +403,12 @@ impl Storage {
     }
 
     /// Directly returns a deploy from internal store.
+    #[inline]
     pub fn read_deploy_by_hash(
         &self,
         deploy_hash: DeployHash,
     ) -> Result<Option<Deploy>, FatalStorageError> {
-        let mut txn = self.storage.env.begin_ro_txn()?;
-        Ok(txn.get_value(self.storage.deploy_db, &deploy_hash)?)
+        self.storage.read_deploy_by_hash(deploy_hash)
     }
 
     /// Put a single deploy into storage.
@@ -605,7 +605,6 @@ impl StorageInner {
             transfer_db,
             state_store_db,
             finalized_approvals_db,
-
             highest_block_at_startup,
             indices: RwLock::new(indices),
             enable_mem_deduplication: config.enable_mem_deduplication,
@@ -1703,6 +1702,15 @@ impl StorageInner {
             debug!(?block_header, "Missing block body for header");
             Ok(None)
         }
+    }
+
+    /// Directly returns a deploy from internal store.
+    pub fn read_deploy_by_hash(
+        &self,
+        deploy_hash: DeployHash,
+    ) -> Result<Option<Deploy>, FatalStorageError> {
+        let mut txn = self.env.begin_ro_txn()?;
+        Ok(txn.get_value(self.deploy_db, &deploy_hash)?)
     }
 
     /// Stores a set of finalized approvals.

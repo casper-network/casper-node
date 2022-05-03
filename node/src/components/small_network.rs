@@ -23,6 +23,7 @@
 //! Nodes gossip their public listening addresses periodically, and will try to establish and
 //! maintain an outgoing connection to any new address learned.
 
+mod bincode_format;
 mod chain_info;
 mod config;
 mod counting_format;
@@ -50,7 +51,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use casper_types::{EraId, PublicKey};
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use openssl::{error::ErrorStack as OpenSslErrorStack, pkey};
@@ -71,6 +71,16 @@ use tokio_openssl::SslStream;
 use tokio_util::codec::LengthDelimitedCodec;
 use tracing::{debug, error, info, trace, warn, Instrument, Span};
 
+use casper_types::{EraId, PublicKey};
+
+pub(crate) use self::{
+    bincode_format::BincodeFormat,
+    config::Config,
+    error::Error,
+    event::Event,
+    gossiped_address::GossipedAddress,
+    message::{EstimatorWeights, FromIncoming, Message, MessageKind, Payload},
+};
 use self::{
     chain_info::ChainInfo,
     counting_format::{ConnectionId, CountingFormat, Role},
@@ -78,19 +88,12 @@ use self::{
     event::{IncomingConnection, OutgoingConnection},
     limiter::Limiter,
     message::ConsensusKeyPair,
-    message_pack_format::MessagePackFormat,
     metrics::Metrics,
     outgoing::{DialOutcome, DialRequest, OutgoingConfig, OutgoingManager},
     symmetry::ConnectionSymmetry,
     tasks::NetworkContext,
 };
-pub(crate) use self::{
-    config::Config,
-    error::Error,
-    event::Event,
-    gossiped_address::GossipedAddress,
-    message::{EstimatorWeights, FromIncoming, Message, MessageKind, Payload},
-};
+
 use crate::{
     components::{consensus, Component},
     effect::{
@@ -218,11 +221,14 @@ where
             return Err(Error::EmptyKnownHosts);
         }
 
+        let net_metrics = Arc::new(Metrics::new(registry)?);
+
         let outgoing_limiter: Box<dyn Limiter> = if cfg.max_outgoing_byte_rate_non_validators == 0 {
             Box::new(limiter::Unlimited)
         } else {
             Box::new(limiter::ClassBasedLimiter::new(
                 cfg.max_outgoing_byte_rate_non_validators,
+                net_metrics.accumulated_outgoing_limiter_delay.clone(),
             ))
         };
 
@@ -232,10 +238,9 @@ where
             } else {
                 Box::new(limiter::ClassBasedLimiter::new(
                     cfg.max_incoming_message_rate_non_validators,
+                    net_metrics.accumulated_incoming_limiter_delay.clone(),
                 ))
             };
-
-        let net_metrics = Arc::new(Metrics::new(registry)?);
 
         let outgoing_manager = OutgoingManager::with_metrics(
             OutgoingConfig {
@@ -555,10 +560,16 @@ where
             | ConnectionError::HandshakeRecv(_)
             | ConnectionError::IncompatibleVersion(_) => false,
 
+            // These errors are potential bugs on our side.
+            ConnectionError::HandshakeSenderCrashed(_)
+            | ConnectionError::FailedToReuniteHandshakeSinkAndStream
+            | ConnectionError::CouldNotEncodeOurHandshake(_) => false,
+
             // These could be candidates for blocking, but for now we decided not to.
             ConnectionError::NoPeerCertificate
             | ConnectionError::PeerCertificateInvalid(_)
             | ConnectionError::DidNotSendHandshake
+            | ConnectionError::InvalidRemoteHandshakeMessage(_)
             | ConnectionError::InvalidConsensusCertificate(_) => false,
 
             // Definitely something we want to avoid.
@@ -1044,35 +1055,41 @@ impl From<&SmallNetworkIdentity> for NodeId {
 type Transport = SslStream<TcpStream>;
 
 /// A framed transport for `Message`s.
-pub(crate) type FramedTransport<P> = tokio_serde::Framed<
-    tokio_util::codec::Framed<Transport, LengthDelimitedCodec>,
+pub(crate) type FullTransport<P> = tokio_serde::Framed<
+    FramedTransport,
     Message<P>,
     Arc<Message<P>>,
-    CountingFormat<MessagePackFormat>,
+    CountingFormat<BincodeFormat>,
 >;
 
-/// Constructs a new framed transport on a stream.
-fn framed<P>(
+pub(crate) type FramedTransport = tokio_util::codec::Framed<Transport, LengthDelimitedCodec>;
+
+/// Constructs a new full transport on a stream.
+///
+/// A full transport contains the framing as well as the encoding scheme used to send messages.
+fn full_transport<P>(
     metrics: Weak<Metrics>,
     connection_id: ConnectionId,
-    stream: Transport,
+    framed: FramedTransport,
     role: Role,
-    maximum_net_message_size: u32,
-) -> FramedTransport<P>
+) -> FullTransport<P>
 where
     for<'de> P: Serialize + Deserialize<'de>,
     for<'de> Message<P>: Serialize + Deserialize<'de>,
 {
-    let length_delimited = tokio_util::codec::Framed::new(
-        stream,
+    tokio_serde::Framed::new(
+        framed,
+        CountingFormat::new(metrics, connection_id, role, BincodeFormat::default()),
+    )
+}
+
+/// Constructs a framed transport.
+fn framed_transport(transport: Transport, maximum_net_message_size: u32) -> FramedTransport {
+    tokio_util::codec::Framed::new(
+        transport,
         LengthDelimitedCodec::builder()
             .max_frame_length(maximum_net_message_size as usize)
             .new_codec(),
-    );
-
-    tokio_serde::Framed::new(
-        length_delimited,
-        CountingFormat::new(metrics, connection_id, role, MessagePackFormat),
     )
 }
 
