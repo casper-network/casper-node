@@ -118,11 +118,12 @@ pub fn create_execution_engine(
 
 pub fn normalize_path(path: impl AsRef<Path>) -> Result<PathBuf, anyhow::Error> {
     let path = path.as_ref();
-    if path.is_absolute() {
-        Ok(path.into())
+    let path = if path.is_absolute() {
+        path.into()
     } else {
-        Ok(env::current_dir()?.join(path))
-    }
+        env::current_dir()?.join(path)
+    };
+    Ok(fs::canonicalize(path)?)
 }
 
 pub fn create_storage(chain_download_path: impl AsRef<Path>) -> Result<Storage, anyhow::Error> {

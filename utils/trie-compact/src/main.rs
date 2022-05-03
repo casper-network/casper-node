@@ -32,11 +32,12 @@ async fn main() -> Result<(), anyhow::Error> {
     let source_lmdb_path = normalize_path(&opts.source_lmdb_path)?;
     let destination_lmdb_path = normalize_path(&opts.destination_lmdb_path)?;
 
-    assert_neq!(
-        source_lmdb_path,
-        destination_lmdb_path,
-        "Source and destination should not be the same lmdb database file."
-    );
+    if source_lmdb_path == destination_lmdb_path {
+        return Err(anyhow::anyhow!(
+            "Source and destination should not be the same lmdb database file: {}",
+            source_lmdb_path.display()
+        ));
+    }
 
     let (source_state, _env) = storage::load_execution_engine(
         source_lmdb_path,
