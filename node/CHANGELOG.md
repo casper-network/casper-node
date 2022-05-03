@@ -10,7 +10,10 @@ All notable changes to this project will be documented in this file.  The format
 [comment]: <> (Security:   in case of vulnerabilities)
 
 
-## [Unreleased]
+## 1.4.6
+
+### Changed
+* Update dependencies to make use of scratch global state in the contract runtime.
 
 
 
