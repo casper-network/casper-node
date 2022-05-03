@@ -25,6 +25,7 @@ pub struct Config {
     pub log_unit_sizes: bool,
     /// The maximum number of blocks by which execution is allowed to lag behind finalization.
     /// If it is more than that, consensus will pause, and resume once the executor has caught up.
+    // TODO: This is not Highway-specific. Move this to consensus config.
     pub max_execution_delay: u64,
     /// The maximum number of peers we request the same vertex from in parallel.
     pub max_requests_for_vertex: usize,

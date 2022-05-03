@@ -53,6 +53,7 @@
 //! periodically sent to a random peer. The peer compares that to its local state, and responds with
 //! all signed messages that it has and the other is missing.
 
+pub(crate) mod config;
 mod params;
 #[cfg(test)]
 mod tests;
@@ -238,7 +239,7 @@ where
     faults: HashMap<ValidatorIndex, Fault<C>>,
     /// The configuration for the protocol
     /// TODO currently using Highway config
-    config: super::highway::config::Config,
+    config: config::Config,
     /// This is `true` for every validator we have received a signature from or we know to be
     /// faulty.
     active: ValidatorMap<bool>,
@@ -281,7 +282,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         let proposal_timeout = prev_cp
             .and_then(|cp| cp.as_any().downcast_ref::<SimpleConsensus<C>>())
             .map(|sc| sc.proposal_timeout)
-            .unwrap_or_else(|| highway_config.min_round_length());
+            .unwrap_or(config.simple_consensus.proposal_timeout);
 
         let mut can_propose: ValidatorMap<bool> = weights.iter().map(|_| true).collect();
         for vidx in validators.iter_cannot_propose_idx() {
@@ -303,14 +304,14 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         );
 
         // TODO: Configure this explicitly, not via Highway.
-        let block_time = TimeDiff::from(
+        let min_block_time = TimeDiff::from(
             1_u64
                 .checked_shl(highway_config.minimum_round_exponent.into())
                 .unwrap_or(u64::MAX),
         );
         let params = Params::new(
             instance_id,
-            block_time,
+            min_block_time,
             era_start_time,
             chainspec.core_config.minimum_era_height,
             era_start_time + chainspec.core_config.era_duration,
@@ -329,7 +330,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             evidence_only: false,
             faults,
             active,
-            config: config.highway.clone(),
+            config: config.simple_consensus.clone(),
             params,
             proposal_timeout,
             validators,
@@ -470,10 +471,9 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             .serialize();
         let mut outcomes = vec![ProtocolOutcome::CreatedMessageToRandomPeer(payload)];
         // Periodically sync the state with a random peer.
-        // TODO: In this protocol the interval should be shorter than in Highway.
-        if let Some(interval) = self.config.request_state_interval {
+        if let Some(interval) = self.config.sync_state_interval {
             outcomes.push(ProtocolOutcome::ScheduleTimer(
-                now.max(self.params.start_timestamp()) + interval / 100,
+                now.max(self.params.start_timestamp()) + interval,
                 TIMER_ID_SYNC_PEER,
             ));
         }
@@ -964,7 +964,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
 
         match content {
             Content::Proposal(proposal) => {
-                if proposal.timestamp > now + self.config.pending_vertex_timeout {
+                if proposal.timestamp > now + self.config.clock_tolerance {
                     trace!("received a proposal with a timestamp far in the future; dropping");
                     return outcomes;
                 }
@@ -1881,10 +1881,9 @@ where
 
     fn handle_is_current(&self, now: Timestamp) -> ProtocolOutcomes<C> {
         let mut outcomes = vec![];
-        // TODO: In this protocol the interval should be shorter than in Highway.
-        if let Some(interval) = self.config.request_state_interval {
+        if let Some(interval) = self.config.sync_state_interval {
             outcomes.push(ProtocolOutcome::ScheduleTimer(
-                now.max(self.params.start_timestamp()) + interval / 100,
+                now.max(self.params.start_timestamp()) + interval,
                 TIMER_ID_SYNC_PEER,
             ));
         }

@@ -66,7 +66,6 @@ where
         .collect::<Vec<_>>();
     let chainspec = new_test_chainspec(weights.clone());
     let config = Config {
-        secret_key_path: Default::default(),
         highway: HighwayConfig {
             pending_vertex_timeout: "1min".parse().unwrap(),
             standstill_timeout: Some(STANDSTILL_TIMEOUT.parse().unwrap()),
@@ -74,6 +73,7 @@ where
             max_execution_delay: 3,
             ..HighwayConfig::default()
         },
+        ..Default::default()
     };
     // Timestamp of the genesis era start and test start.
     let start_timestamp: Timestamp = 0.into();

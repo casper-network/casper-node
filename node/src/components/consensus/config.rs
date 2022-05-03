@@ -7,7 +7,12 @@ use casper_types::{PublicKey, SecretKey};
 
 use crate::{
     components::consensus::{
-        era_supervisor::PAST_OPEN_ERAS, protocols::highway::config::Config as HighwayConfig, EraId,
+        era_supervisor::PAST_OPEN_ERAS,
+        protocols::{
+            highway::config::Config as HighwayConfig,
+            simple_consensus::config::Config as SimpleConsensusConfig,
+        },
+        EraId,
     },
     types::Chainspec,
     utils::{External, LoadError, Loadable},
@@ -22,6 +27,8 @@ pub(crate) struct Config {
     pub(crate) secret_key_path: External,
     /// Highway-specific node configuration.
     pub(crate) highway: HighwayConfig,
+    /// SimpleConsensus-specific node configuration.
+    pub(crate) simple_consensus: SimpleConsensusConfig,
 }
 
 impl Default for Config {
@@ -29,6 +36,7 @@ impl Default for Config {
         Config {
             secret_key_path: External::Missing,
             highway: HighwayConfig::default(),
+            simple_consensus: SimpleConsensusConfig::default(),
         }
     }
 }
