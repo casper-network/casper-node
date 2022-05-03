@@ -25,26 +25,35 @@ use super::db::{DbGlobalState, DbGlobalStateView};
 type SharedCache = Arc<RwLock<Cache>>;
 
 struct Cache {
-    stored_values: HashMap<Key, StoredValue>,
+    cached_values: HashMap<Key, (bool, StoredValue)>,
 }
 
 impl Cache {
     fn new() -> Self {
         Cache {
-            stored_values: HashMap::new(),
+            cached_values: HashMap::new(),
         }
     }
 
-    fn insert(&mut self, key: Key, value: StoredValue) {
-        self.stored_values.insert(key, value);
+    fn insert_write(&mut self, key: Key, value: StoredValue) {
+        self.cached_values.insert(key, (true, value));
+    }
+
+    fn insert_read(&mut self, key: Key, value: StoredValue) {
+        self.cached_values.entry(key).or_insert((false, value));
     }
 
     fn get(&self, key: &Key) -> Option<&StoredValue> {
-        self.stored_values.get(key)
+        self.cached_values.get(key).map(|(_dirty, value)| value)
     }
 
-    fn into_inner(self) -> HashMap<Key, StoredValue> {
-        self.stored_values
+    /// Consumes self and returns only written values as values that were only read must be filtered
+    /// out to prevent unecessary writes.
+    fn into_dirty_writes(self) -> HashMap<Key, StoredValue> {
+        self.cached_values
+            .into_iter()
+            .filter_map(|(key, (dirty, value))| if dirty { Some((key, value)) } else { None })
+            .collect()
     }
 }
 
@@ -77,7 +86,7 @@ impl ScratchGlobalState {
     /// Consume self and return inner cache.
     pub fn into_inner(self) -> HashMap<Key, StoredValue> {
         let cache = mem::replace(&mut *self.cache.write().unwrap(), Cache::new());
-        cache.into_inner()
+        cache.into_dirty_writes()
     }
 }
 
@@ -97,7 +106,7 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
             self.cache
                 .write()
                 .map_err(|_| error::Error::Poison)?
-                .insert(*key, value.clone());
+                .insert_read(*key, value.clone());
         }
         Ok(ret)
     }
@@ -177,7 +186,7 @@ impl CommitProvider for ScratchGlobalState {
                 },
             };
 
-            self.cache.write().unwrap().insert(key, value);
+            self.cache.write().unwrap().insert_write(key, value);
         }
         Ok(state_hash)
     }

@@ -141,7 +141,6 @@ const STORAGE_FILES: [&str; 5] = [
     "storage.lmdb-lock",
     "sse_index",
 ];
-
 /// Storage component.
 #[derive(DataSize, Debug)]
 pub struct Storage {
@@ -205,7 +204,6 @@ pub struct StorageInner {
     /// An in-memory pool of already loaded serialized items.
     ///
     /// Keyed by serialized item ID, contains the serialized item.
-    // Note: `DataSize` is skipped here to avoid incurring locking overhead.
     #[data_size(skip)]
     serialized_item_pool: RwLock<ObjectPool<Box<[u8]>>>,
     /// The fraction of validators, by weight, that have to sign a block to prove its finality.
@@ -403,12 +401,12 @@ impl Storage {
     }
 
     /// Directly returns a deploy from internal store.
+    #[inline]
     pub fn read_deploy_by_hash(
         &self,
         deploy_hash: DeployHash,
     ) -> Result<Option<Deploy>, FatalStorageError> {
-        let mut txn = self.storage.env.begin_ro_txn()?;
-        Ok(txn.get_value(self.storage.deploy_db, &deploy_hash)?)
+        self.storage.read_deploy_by_hash(deploy_hash)
     }
 
     /// Put a single deploy into storage.
@@ -1178,13 +1176,8 @@ impl StorageInner {
                 .respond(self.get_available_block_range()?)
                 .ignore(),
             StorageRequest::GetLowestAvailableBlock { responder } => {
-                let mut txn = self.env.begin_ro_txn()?;
-                let indices = &*self.indices.read()?;
-                let maybe_lowest_block = self.get_block_by_height(
-                    &mut txn,
-                    indices,
-                    indices.lowest_available_block_height,
-                )?;
+                let maybe_lowest_block =
+                    self.read_block_by_height(self.get_lowest_available_block_height()?)?;
                 responder.respond(maybe_lowest_block).ignore()
             }
             StorageRequest::StoreFinalizedApprovals {
@@ -1727,6 +1720,15 @@ impl StorageInner {
         }
     }
 
+    /// Directly returns a deploy from internal store.
+    pub fn read_deploy_by_hash(
+        &self,
+        deploy_hash: DeployHash,
+    ) -> Result<Option<Deploy>, FatalStorageError> {
+        let mut txn = self.env.begin_ro_txn()?;
+        Ok(txn.get_value(self.deploy_db, &deploy_hash)?)
+    }
+
     /// Stores a set of finalized approvals.
     pub fn store_finalized_approvals(
         &self,
@@ -1917,6 +1919,10 @@ impl StorageInner {
                 Ok(AvailableBlockRange::default())
             }
         }
+    }
+
+    fn get_lowest_available_block_height(&self) -> Result<u64, FatalStorageError> {
+        Ok(self.indices.read()?.lowest_available_block_height)
     }
 
     fn update_lowest_available_block_height(

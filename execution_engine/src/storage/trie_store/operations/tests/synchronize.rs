@@ -42,6 +42,7 @@ where
             &txn,
             source_store,
             vec![root.to_owned()],
+            &Default::default(),
         )?;
         assert_eq!(missing_from_source, Vec::new());
         txn.commit()?;
@@ -65,6 +66,7 @@ where
                 &target_txn,
                 target_store,
                 vec![trie_key],
+                &Default::default(),
             )?;
 
             queue.extend(new_keys);
@@ -81,6 +83,7 @@ where
             &target_txn,
             target_store,
             vec![root.to_owned()],
+            &Default::default(),
         )?;
         assert_eq!(missing_from_target, Vec::new());
         target_txn.commit()?;

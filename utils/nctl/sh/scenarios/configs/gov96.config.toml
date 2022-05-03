@@ -10,14 +10,17 @@
 # If set, use this hash as a trust anchor when joining an existing network.
 #trusted_hash = 'HEX-FORMATTED BLOCK HASH'
 
-# Maximum number of deploys to fetch in parallel.
-max_parallel_deploy_fetches = 20
+# Maximum number of fetch-deploy tasks per peer to run in parallel during chain synchronization.
+max_parallel_deploy_fetches_per_peer = 10
 
-# Maximum number of trie nodes to fetch in parallel.
-max_parallel_trie_fetches = 20
+# Maximum number of fetch-trie tasks per peer to run in parallel during chain synchronization.
+max_parallel_trie_fetches_per_peer = 10
 
 # The duration for which to pause between retry attempts while synchronising during joining.
 retry_interval = '100ms'
+
+# How often between sync attempts to redeem a bad node.
+sync_peer_redemption_interval = 10_000
 
 # Whether to synchronize all data back to genesis when joining.
 sync_to_genesis = true

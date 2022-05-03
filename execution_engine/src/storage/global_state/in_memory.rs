@@ -299,14 +299,19 @@ impl StateProvider for InMemoryGlobalState {
         trie_keys: Vec<Digest>,
     ) -> Result<Vec<Digest>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
-        let missing_descendants =
-            missing_trie_keys::<
-                Key,
-                StoredValue,
-                InMemoryReadTransaction,
-                InMemoryTrieStore,
-                Self::Error,
-            >(correlation_id, &txn, self.trie_store.deref(), trie_keys)?;
+        let missing_descendants = missing_trie_keys::<
+            Key,
+            StoredValue,
+            InMemoryReadTransaction,
+            InMemoryTrieStore,
+            Self::Error,
+        >(
+            correlation_id,
+            &txn,
+            self.trie_store.deref(),
+            trie_keys,
+            &Default::default(),
+        )?;
         txn.commit()?;
         Ok(missing_descendants)
     }
