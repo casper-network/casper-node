@@ -2,22 +2,37 @@
 set -e
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)"
-NCTL_CLIENT_BRANCH='dev'
+JSON_CONFIG_FILE="$ROOT_DIR/utils/nctl/ci/ci.json"
+JSON_KEYS=($(jq -r '.external_deps | keys[]' "$JSON_CONFIG_FILE"))
+
+function clone_external_repo() {
+    local NAME=${1}
+    local JSON_FILE=${2}
+    local URL
+    local BRANCH
+    local CLONE_REPO_PATH
+
+    CLONE_REPO_PATH="$ROOT_DIR/../$NAME"
+    URL=$(jq -r ".external_deps.\"${NAME}\".github_repo_url" "$JSON_FILE")
+    BRANCH=$(jq -r ".external_deps.\"${NAME}\".branch" "$JSON_FILE")
+
+    if [ ! -d "$CLONE_REPO_PATH" ]; then
+        echo "... cloning $NAME: branch=$BRANCH"
+        git clone -b "$BRANCH" "$URL" "$CLONE_REPO_PATH"
+    else
+        echo "skipping clone of $NAME: directory already exists."
+    fi
+}
 
 # Activate Environment
 pushd "$ROOT_DIR"
 source $(pwd)/utils/nctl/activate
-
-# Clone the client and launcher repos if required.
-if [ ! -d "$NCTL_CASPER_CLIENT_HOME" ]; then
-    echo "Checking out $NCTL_CLIENT_BRANCH of casper-client-rs..."
-    git clone -b "$NCTL_CLIENT_BRANCH" https://github.com/casper-ecosystem/casper-client-rs "$NCTL_CASPER_CLIENT_HOME"
-fi
-if [ ! -d "$NCTL_CASPER_NODE_LAUNCHER_HOME" ]; then
-    git clone https://github.com/casper-network/casper-node-launcher "$NCTL_CASPER_NODE_LAUNCHER_HOME"
-fi
-
 popd
+
+# Clone external dependencies
+for i in "${JSON_KEYS[@]}"; do
+    clone_external_repo "$i" "$JSON_CONFIG_FILE"
+done
 
 # NCTL Build
 nctl-compile

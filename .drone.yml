@@ -138,11 +138,6 @@ steps:
 
 - name: nctl-upgrade-test
   <<: *buildenv
-  environment:
-    AWS_ACCESS_KEY_ID:
-      from_secret: put-drone-aws-ak
-    AWS_SECRET_ACCESS_KEY:
-      from_secret: put-drone-aws-sk
   commands:
   - bash -i ./ci/nctl_upgrade.sh
 
@@ -171,13 +166,6 @@ kind: pipeline
 type: docker
 name: package
 
-environment:
-  RUSTC_WRAPPER: '/root/.cargo/bin/cachepot'
-  CACHEPOT_BUCKET: 'drone-sccache'
-  CACHEPOT_S3_KEY_PREFIX: ci
-  CACHEPOT_REGION: 'us-east-2'
-  CARGO_INCREMENTAL: '0'
-
 __buildenv: &buildenv
   image: casperlabs/node-build-u1804
   volumes:
@@ -189,11 +177,6 @@ __buildenv: &buildenv
     path: "/drone"
   - name: nctl-temp-dir
     path: "/tmp/nctl_upgrade_stage"
-  environment:
-    AWS_ACCESS_KEY_ID:
-      from_secret: cachepot_aws_ak
-    AWS_SECRET_ACCESS_KEY:
-      from_secret: cachepot_aws_sk
 
 __buildenv_upload: &buildenv_upload
   image: casperlabs/node-build-u1804
@@ -320,13 +303,6 @@ kind: pipeline
 type: docker
 name: release-by-tag
 
-environment:
-  RUSTC_WRAPPER: '/root/.cargo/bin/cachepot'
-  CACHEPOT_BUCKET: 'drone-sccache'
-  CACHEPOT_S3_KEY_PREFIX: ci
-  CACHEPOT_REGION: 'us-east-2'
-  CARGO_INCREMENTAL: '0'
-
 __buildenv: &buildenv
   image: casperlabs/node-build-u1804
   volumes:
@@ -338,11 +314,6 @@ __buildenv: &buildenv
     path: "/drone"
   - name: nctl-temp-dir
     path: "/tmp/nctl_upgrade_stage"
-  environment:
-    AWS_ACCESS_KEY_ID:
-      from_secret: cachepot_aws_ak
-    AWS_SECRET_ACCESS_KEY:
-      from_secret: cachepot_aws_sk
 
 __buildenv_upload: &buildenv_upload
   image: casperlabs/node-build-u1804
@@ -381,7 +352,7 @@ steps:
     - sha256
     - md5
     files:
-    - "./target/upgrade_build/*/*.gz"
+    - "./target/upgrade_build/*/bin.tar.gz"
     prerelease:
     - true
 
@@ -499,11 +470,6 @@ steps:
 
 - name: nctl-nightly-tests
   <<: *buildenv
-  environment:
-    AWS_ACCESS_KEY_ID:
-      from_secret: put-drone-aws-ak
-    AWS_SECRET_ACCESS_KEY:
-      from_secret: put-drone-aws-sk
   commands:
   - bash -i ./ci/nightly-test.sh
 
@@ -532,4 +498,4 @@ volumes:
   temp: {}
 
 trigger:
-  cron: [ nightly-tests-cron, feat-fast-sync ]
+  cron: [ nightly-tests-cron, release-1.4.6 ]
