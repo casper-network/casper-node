@@ -68,7 +68,7 @@ where
         self.context.account().main_purse()
     }
 
-    fn is_account_administrator(&mut self, account_hash: &AccountHash) -> Option<bool> {
+    fn is_account_administrator(&self, account_hash: &AccountHash) -> Option<bool> {
         self.config.is_account_administrator(account_hash)
     }
 
@@ -76,7 +76,7 @@ where
         self.config.allow_unrestricted_transfers()
     }
 
-    fn is_in_host_function(&mut self) -> bool {
+    fn is_in_host_function(&self) -> bool {
         self.host_function_flag.is_in_host_function_scope()
     }
 }

@@ -265,7 +265,9 @@ impl Display for Error {
             Error::GasLimit => formatter.write_str("GasLimit"),
             Error::InvalidContext => formatter.write_str("Invalid context"),
             Error::UnapprovedSpendingAmount => formatter.write_str("Unapproved spending amount"),
-            Error::DisabledUnrestrictedTransfers => formatter.write_str("Disabled p2p transfers"),
+            Error::DisabledUnrestrictedTransfers => {
+                formatter.write_str("Disabled unrestricted transfers")
+            }
             #[cfg(test)]
             Error::Sentinel => formatter.write_str("Sentinel error"),
         }

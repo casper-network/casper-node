@@ -34,10 +34,10 @@ pub trait RuntimeProvider {
     /// valid only for private chains.
     ///
     /// On public chains this will always return None.
-    fn is_account_administrator(&mut self, account_hash: &AccountHash) -> Option<bool>;
-    /// Checks if users can perform peer to peer transfers. This option is valid only for private
+    fn is_account_administrator(&self, account_hash: &AccountHash) -> Option<bool>;
+    /// Checks if users can perform unrestricted transfers. This option is valid only for private
     /// chains.
     fn can_perform_unrestricted_transfer(&mut self) -> bool;
     /// Checks if we're currently executing a host function.
-    fn is_in_host_function(&mut self) -> bool;
+    fn is_in_host_function(&self) -> bool;
 }

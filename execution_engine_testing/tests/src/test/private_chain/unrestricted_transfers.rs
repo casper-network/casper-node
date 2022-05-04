@@ -25,7 +25,7 @@ const TEST_PAYMENT_STORED_HASH_NAME: &str = "test_payment_hash";
 
 #[ignore]
 #[test]
-fn should_disallow_native_p2p_transfer_to_create_new_account_by_user() {
+fn should_disallow_native_unrestricted_transfer_to_create_new_account_by_user() {
     let mut builder = super::private_chain_setup();
 
     let fund_transfer_1 = ExecuteRequestBuilder::transfer(
@@ -60,7 +60,7 @@ fn should_disallow_native_p2p_transfer_to_create_new_account_by_user() {
             error,
             Error::Exec(execution::Error::DisabledUnrestrictedTransfers)
         ),
-        "expected DisabledP2PTransfers error, found {:?}",
+        "expected DisabledUnrestrictedTransfers error, found {:?}",
         error
     );
 
@@ -80,7 +80,7 @@ fn should_disallow_native_p2p_transfer_to_create_new_account_by_user() {
 
 #[ignore]
 #[test]
-fn should_disallow_wasm_p2p_transfer_to_create_new_account_by_user() {
+fn should_disallow_wasm_unrestricted_transfer_to_create_new_account_by_user() {
     let mut builder = super::private_chain_setup();
 
     let fund_transfer_1 = ExecuteRequestBuilder::standard(
@@ -115,7 +115,7 @@ fn should_disallow_wasm_p2p_transfer_to_create_new_account_by_user() {
             error,
             Error::Exec(execution::Error::DisabledUnrestrictedTransfers)
         ),
-        "expected DisabledP2PTransfers error, found {:?}",
+        "expected DisabledUnrestrictedTransfers error, found {:?}",
         error
     );
 
@@ -269,7 +269,7 @@ fn should_disallow_transfer_to_own_purse_in_wasm_session() {
             error,
             Error::Exec(execution::Error::DisabledUnrestrictedTransfers)
         ),
-        "expected DisabledP2PTransfers error, found {:?}",
+        "expected DisabledUnrestrictedTransfers error, found {:?}",
         error
     )
 }
@@ -338,7 +338,7 @@ fn should_disallow_transfer_to_own_purse_via_native_transfer() {
             error,
             Error::Exec(execution::Error::DisabledUnrestrictedTransfers)
         ),
-        "expected DisabledP2PTransfers error, found {:?}",
+        "expected DisabledUnrestrictedTransfers error, found {:?}",
         error
     );
 }
@@ -418,7 +418,7 @@ fn should_disallow_wasm_payment_to_purse() {
             error,
             Error::Exec(execution::Error::DisabledUnrestrictedTransfers)
         ),
-        "expected DisabledP2PTransfers error, found {:?}",
+        "expected DisabledUnrestrictedTransfers error, found {:?}",
         error
     );
 }
@@ -474,7 +474,7 @@ fn should_not_allow_payment_to_purse_in_stored_payment() {
             error,
             Error::Exec(execution::Error::DisabledUnrestrictedTransfers)
         ),
-        "expected DisabledP2PTransfers error, found {:?}",
+        "expected DisabledUnrestrictedTransfers error, found {:?}",
         error
     );
 }
