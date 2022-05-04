@@ -1,15 +1,14 @@
 use tracing::trace;
 
+use casper_types::Timestamp;
+
 use super::Horizon;
-use crate::{
-    components::consensus::{
-        highway_core::{
-            state::{Observation, Panorama, State, Weight},
-            validators::ValidatorMap,
-        },
-        traits::Context,
+use crate::components::consensus::{
+    highway_core::{
+        state::{Observation, Panorama, State, Weight},
+        validators::ValidatorMap,
     },
-    types::Timestamp,
+    traits::Context,
 };
 
 /// Returns the map of rewards to be paid out when the block `bhash` gets finalized.

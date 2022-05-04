@@ -364,6 +364,7 @@ dependencies = [
  "casper-hashing",
  "casper-types",
  "humantime",
+ "filesize",
  "lmdb",
  "log",
  "num-rational 0.4.0",
@@ -372,6 +373,7 @@ dependencies = [
  "rand 0.8.4",
  "serde",
  "toml",
+ "tempfile",
  "version-sync",
 ]
 
@@ -510,7 +512,6 @@ dependencies = [
  "hex_fmt",
  "hostname",
  "http",
- "humantime",
  "hyper",
  "itertools",
  "libc",
@@ -597,6 +598,7 @@ dependencies = [
  "getrandom",
  "hex",
  "hex_fmt",
+ "humantime",
  "k256",
  "num",
  "num-derive",
@@ -1657,6 +1659,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "filesize"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "12d741e2415d4e2e5bd1c1d00409d1a8865a57892c2d689b504365655d237d43"
+dependencies = [
+ "winapi",
+]
+
+[[package]]
 name = "finalize-payment"
 version = "0.1.0"
 dependencies = [
@@ -1983,6 +1994,7 @@ dependencies = [
  "casper-types",
  "clap 2.34.0",
  "lmdb",
+ "rand 0.8.4",
 ]
 
 [[package]]

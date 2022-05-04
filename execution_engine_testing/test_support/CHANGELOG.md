@@ -26,8 +26,6 @@ All notable changes to this project will be documented in this file.  The format
 ### Deprecated
 * Deprecated the `DEFAULT_GENESIS_REQUEST` in favor of `PRODUCTION_GENESIS_REQUEST`.
 
-<<<<<<< HEAD
-=======
 ## 2.1.0
 
 ### Added
@@ -35,7 +33,6 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
->>>>>>> upstream/dev
 ## 2.0.3 - 2021-12-06
 
 ### Added

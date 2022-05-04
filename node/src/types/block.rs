@@ -27,7 +27,7 @@ use casper_hashing::Digest;
 use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    crypto, EraId, ProtocolVersion, PublicKey, SecretKey, Signature, U512,
+    crypto, EraId, ProtocolVersion, PublicKey, SecretKey, Signature, Timestamp, U512,
 };
 #[cfg(test)]
 use casper_types::{crypto::generate_ed25519_keypair, system::auction::BLOCK_REWARD};
@@ -43,7 +43,7 @@ use crate::{
     utils::DisplayIter,
 };
 
-use super::{Item, Tag, Timestamp};
+use super::{Item, Tag};
 use crate::types::error::{
     BlockHeaderWithMetadataValidationError, BlockWithMetadataValidationError,
 };

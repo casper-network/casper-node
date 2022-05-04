@@ -3,12 +3,11 @@ use std::{cmp::max, collections::VecDeque, mem};
 use datasize::DataSize;
 use tracing::trace;
 
-use crate::{
-    components::consensus::{
-        highway_core::{finality_detector::FinalityDetector, state, State, Weight},
-        traits::Context,
-    },
-    types::Timestamp,
+use casper_types::Timestamp;
+
+use crate::components::consensus::{
+    highway_core::{finality_detector::FinalityDetector, state, State, Weight},
+    traits::Context,
 };
 
 pub(crate) mod config;
@@ -212,12 +211,11 @@ fn round_index(r_id: Timestamp, round_exp: u8) -> u64 {
 mod tests {
     use config::{Config, ACCELERATION_PARAMETER, MAX_FAILED_ROUNDS, NUM_ROUNDS_TO_CONSIDER};
 
-    use crate::{
-        components::consensus::{
-            cl_context::ClContext,
-            protocols::highway::round_success_meter::{config, round_index},
-        },
-        types::TimeDiff,
+    use casper_types::{TimeDiff, Timestamp};
+
+    use crate::components::consensus::{
+        cl_context::ClContext,
+        protocols::highway::round_success_meter::{config, round_index},
     };
 
     const TEST_ROUND_EXP: u8 = 13;
@@ -231,7 +229,7 @@ mod tests {
                 TEST_ROUND_EXP,
                 TEST_MIN_ROUND_EXP,
                 TEST_MAX_ROUND_EXP,
-                crate::types::Timestamp::now(),
+                Timestamp::now(),
                 Config::default(),
             );
         assert_eq!(round_success_meter.new_exponent(), TEST_ROUND_EXP);
@@ -244,7 +242,7 @@ mod tests {
                 TEST_ROUND_EXP,
                 TEST_MIN_ROUND_EXP,
                 TEST_MAX_ROUND_EXP,
-                crate::types::Timestamp::now(),
+                Timestamp::now(),
                 Config::default(),
             );
         // If there have been more rounds of failure than MAX_FAILED_ROUNDS, slow down
@@ -260,7 +258,7 @@ mod tests {
                 TEST_MAX_ROUND_EXP,
                 TEST_MIN_ROUND_EXP,
                 TEST_MAX_ROUND_EXP,
-                crate::types::Timestamp::now(),
+                Timestamp::now(),
                 Config::default(),
             );
         // If there have been more rounds of failure than MAX_FAILED_ROUNDS, slow down -- but can't
@@ -277,7 +275,7 @@ mod tests {
                 TEST_ROUND_EXP,
                 TEST_MIN_ROUND_EXP,
                 TEST_MAX_ROUND_EXP,
-                crate::types::Timestamp::now(),
+                Timestamp::now(),
                 Config::default(),
             );
         round_success_meter.rounds = vec![true; NUM_ROUNDS_TO_CONSIDER].into();
@@ -304,7 +302,7 @@ mod tests {
                 TEST_MIN_ROUND_EXP,
                 TEST_MIN_ROUND_EXP,
                 TEST_MAX_ROUND_EXP,
-                crate::types::Timestamp::now(),
+                Timestamp::now(),
                 Config::default(),
             );
         round_success_meter.rounds = vec![true; NUM_ROUNDS_TO_CONSIDER].into();

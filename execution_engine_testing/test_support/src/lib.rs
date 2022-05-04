@@ -8,10 +8,14 @@
 )]
 #![warn(missing_docs)]
 mod additive_map_diff;
+/// Utility methods for running the auction in a test or bench context.
+pub mod auction;
 mod chainspec_config;
 mod deploy_item_builder;
 mod execute_request_builder;
 mod step_request_builder;
+/// Utilities for running transfers in a test or bench context.
+pub mod transfer;
 mod upgrade_request_builder;
 pub mod utils;
 mod wasm_test_builder;

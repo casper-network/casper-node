@@ -12,7 +12,7 @@ use std::{
 use itertools::Itertools;
 use serde::Serialize;
 
-use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey, U512};
+use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey, Timestamp, U512};
 
 use crate::{
     components::{
@@ -21,7 +21,6 @@ use crate::{
     effect::Responder,
     types::{
         Block, Deploy, DeployHash, DeployHeader, FinalitySignature, FinalizedBlock, Item, NodeId,
-        Timestamp,
     },
     utils::Source,
 };

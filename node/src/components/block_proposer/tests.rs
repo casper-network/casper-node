@@ -5,11 +5,11 @@ use itertools::Itertools;
 use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
 use casper_types::{
     bytesrepr::Bytes, runtime_args, system::standard_payment::ARG_AMOUNT, testing::TestRng, EraId,
-    Gas, PublicKey, RuntimeArgs, SecretKey,
+    Gas, PublicKey, RuntimeArgs, SecretKey, TimeDiff,
 };
 
 use super::*;
-use crate::types::{BlockPayload, Deploy, DeployHash, FinalizedBlock, TimeDiff};
+use crate::types::{BlockPayload, Deploy, DeployHash, FinalizedBlock};
 
 const DEFAULT_TEST_GAS_PRICE: u64 = 1;
 

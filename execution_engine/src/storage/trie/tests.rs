@@ -49,6 +49,7 @@ mod pointer_block {
 mod proptests {
     use proptest::prelude::*;
 
+    use casper_hashing::Digest;
     use casper_types::{bytesrepr, gens::key_arb, Key, StoredValue};
 
     use crate::storage::trie::{gens::*, PointerBlock, Trie};
@@ -157,6 +158,30 @@ mod proptests {
              let json_str = serde_json::to_string(&key)?;
              let deserialized_key = serde_json::from_str(&json_str)?;
              assert_eq!(key, deserialized_key)
+        }
+
+        #[test]
+        fn iter_descendants_trie_leaf(trie_leaf in trie_leaf_arb()) {
+            assert!(trie_leaf.iter_descendants().next().is_none());
+        }
+
+        #[test]
+        fn iter_descendants_trie_extension(trie_extension in trie_extension_arb()) {
+            let children = if let Trie::Extension { pointer, .. } = trie_extension {
+                vec![*pointer.hash()]
+            } else {
+                unreachable!()
+            };
+            assert_eq!(children, trie_extension.iter_descendants().collect::<Vec<Digest>>());
+        }
+
+        #[test]
+        fn iter_descendants_trie_node(trie_node in trie_node_arb()) {
+            let children: Vec<Digest> = trie_node.as_pointer_block().unwrap()
+                    .as_indexed_pointers()
+                    .map(|(_index, ptr)| *ptr.hash())
+                    .collect();
+            assert_eq!(children, trie_node.iter_descendants().collect::<Vec<Digest>>());
         }
     }
 }

@@ -1,11 +1,9 @@
 #[cfg(test)]
 use std::net::{Ipv4Addr, SocketAddr};
 
-use casper_types::ProtocolVersion;
+use casper_types::{ProtocolVersion, TimeDiff};
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
-
-use crate::types::TimeDiff;
 
 use super::EstimatorWeights;
 
