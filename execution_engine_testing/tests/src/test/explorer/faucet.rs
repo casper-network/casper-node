@@ -592,8 +592,8 @@ fn should_allow_installer_to_fund_freely() {
         [AVAILABLE_AMOUNT_NAMED_KEY.to_string()].into(),
     );
 
-    // // the available amount per interval should be zero until the installer calls
-    // // the set_variable entrypoint to finish setup.
+    // the available amount per interval should be zero until the installer calls
+    // the set_variable entrypoint to finish setup.
     assert_eq!(available_amount, U512::zero());
 
     builder

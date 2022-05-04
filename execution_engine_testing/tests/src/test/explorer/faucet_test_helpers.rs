@@ -297,16 +297,6 @@ impl FaucetFundRequestBuilder {
         self
     }
 
-    pub fn with_arg_id(mut self, id: Option<u64>) -> Self {
-        self.arg_id = id;
-        self
-    }
-
-    pub fn with_payment_amount(mut self, payment_amount: U512) -> Self {
-        self.payment_amount = payment_amount;
-        self
-    }
-
     pub fn with_faucet_contract_hash(mut self, faucet_contract_hash: ContractHash) -> Self {
         self.faucet_contract_hash = Some(faucet_contract_hash);
         self
@@ -487,24 +477,6 @@ impl FaucetDeployHelper {
         self
     }
 
-    pub fn with_installer_fund_id(mut self, installer_fund_id: Option<u64>) -> Self {
-        self.installer_fund_id = installer_fund_id;
-        self
-    }
-
-    pub fn with_authorized_user_public_key(
-        mut self,
-        authorized_user_public_key: PublicKey,
-    ) -> Self {
-        self.authorized_user_public_key = Some(authorized_user_public_key);
-        self
-    }
-
-    pub fn with_faucet_id(mut self, faucet_id: u64) -> Self {
-        self.faucet_id = faucet_id;
-        self
-    }
-
     pub fn with_faucet_purse_fund_amount(mut self, faucet_purse_fund_amount: U512) -> Self {
         self.faucet_purse_fund_amount = faucet_purse_fund_amount;
         self
@@ -543,7 +515,7 @@ impl FaucetDeployHelper {
     }
 
     pub fn query_faucet_purse_balance(&self, builder: &InMemoryWasmTestBuilder) -> U512 {
-        let faucet_purse = self.query_faucet_purse(&builder);
+        let faucet_purse = self.query_faucet_purse(builder);
         builder.get_purse_balance(faucet_purse)
     }
 
@@ -567,10 +539,6 @@ impl FaucetDeployHelper {
 
     pub fn faucet_distributions_per_interval(&self) -> Option<u64> {
         self.faucet_distributions_per_interval
-    }
-
-    pub fn faucet_available_amount(&self) -> Option<U512> {
-        self.faucet_available_amount
     }
 
     pub fn faucet_time_interval(&self) -> Option<u64> {
