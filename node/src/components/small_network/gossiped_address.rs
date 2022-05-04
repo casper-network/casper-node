@@ -58,20 +58,17 @@ impl ToBytes for GossipedAddress {
     }
 
     fn serialized_length(&self) -> usize {
-        ToBytes::serialized_length(&self.0.to_string())
+        self.0.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), BytesreprError> {
-        self.0.to_string().write_bytes(writer)
+        self.0.write_bytes(writer)
     }
 }
 
 impl FromBytes for GossipedAddress {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), BytesreprError> {
-        let (sock_addr_str, bytes): (String, &[u8]) = FromBytes::from_bytes(bytes)?;
-        let sock_addr = sock_addr_str
-            .parse()
-            .map_err(|_| BytesreprError::Formatting)?;
+        let (sock_addr, bytes) = SocketAddr::from_bytes(bytes)?;
         Ok((GossipedAddress::new(sock_addr), bytes))
     }
 }
