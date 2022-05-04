@@ -28,7 +28,8 @@ All notable changes to this project will be documented in this file.  The format
 * Add run-mode field to the `/status` endpoint and the `info_get_status` JSON-RPC.
 * Add new REST `/chainspec` and JSON-RPC `info_get_chainspec` endpoints that return the raw bytes of the `chainspec.toml`, `accounts.toml` and `global_state.toml` files as read at node startup.
 * Add a new parameter to `info_get_deploys` JSON-RPC, `finalized_approvals` - controlling whether the approvals returned with the deploy should be the ones originally received by the node, or overridden by the approvals that were finalized along with the deploy.
-* Add a `[consensus.simple_consensus]` section to `config.toml` for the new consensus protocol.
+* Add a `[consensus.simple_consensus]` section to `config.toml` for the simple consensus protocol.
+* Add a `consensus_protocol` setting to the chainspec to choose a consensus protocol.
 
 ### Changed
 * Detection of a crash no longer triggers DB integrity checks to run on node start; the checks can be triggered manually instead.
