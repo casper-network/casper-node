@@ -649,7 +649,7 @@ impl ToBytes for FinalizedApprovals {
     }
 
     fn serialized_length(&self) -> usize {
-        ToBytes::serialized_length(&self.0)
+        self.0.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
@@ -659,7 +659,7 @@ impl ToBytes for FinalizedApprovals {
 
 impl FromBytes for FinalizedApprovals {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (approvals, bytes) = FromBytes::from_bytes(bytes)?;
+        let (approvals, bytes) = BTreeSet::from_bytes(bytes)?;
         Ok((FinalizedApprovals::new(approvals), bytes))
     }
 }
@@ -703,7 +703,7 @@ impl ToBytes for FinalizedApprovalsWithId {
     }
 
     fn serialized_length(&self) -> usize {
-        ToBytes::serialized_length(&self.id) + ToBytes::serialized_length(&self.approvals)
+        self.id.serialized_length() + self.approvals.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
@@ -714,8 +714,8 @@ impl ToBytes for FinalizedApprovalsWithId {
 
 impl FromBytes for FinalizedApprovalsWithId {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (id, bytes) = FromBytes::from_bytes(bytes)?;
-        let (approvals, bytes) = FromBytes::from_bytes(bytes)?;
+        let (id, bytes) = DeployHash::from_bytes(bytes)?;
+        let (approvals, bytes) = FinalizedApprovals::from_bytes(bytes)?;
         Ok((FinalizedApprovalsWithId::new(id, approvals), bytes))
     }
 }

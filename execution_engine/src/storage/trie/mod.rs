@@ -458,7 +458,7 @@ impl ToBytes for TrieOrChunkId {
     }
 
     fn serialized_length(&self) -> usize {
-        ToBytes::serialized_length(&self.0) + ToBytes::serialized_length(&self.1)
+        self.0.serialized_length() + self.1.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
@@ -469,8 +469,8 @@ impl ToBytes for TrieOrChunkId {
 
 impl FromBytes for TrieOrChunkId {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (idx, bytes) = FromBytes::from_bytes(bytes)?;
-        let (digest, bytes) = FromBytes::from_bytes(bytes)?;
+        let (idx, bytes) = u64::from_bytes(bytes)?;
+        let (digest, bytes) = Digest::from_bytes(bytes)?;
         Ok((TrieOrChunkId(idx, digest), bytes))
     }
 }

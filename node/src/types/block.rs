@@ -1061,8 +1061,7 @@ impl ToBytes for BlockHeaderWithMetadata {
     }
 
     fn serialized_length(&self) -> usize {
-        ToBytes::serialized_length(&self.block_header)
-            + ToBytes::serialized_length(&self.block_signatures)
+        self.block_header.serialized_length() + self.block_signatures.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
@@ -1073,8 +1072,8 @@ impl ToBytes for BlockHeaderWithMetadata {
 
 impl FromBytes for BlockHeaderWithMetadata {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (block_header, bytes) = FromBytes::from_bytes(bytes)?;
-        let (block_signatures, bytes) = FromBytes::from_bytes(bytes)?;
+        let (block_header, bytes) = BlockHeader::from_bytes(bytes)?;
+        let (block_signatures, bytes) = BlockSignatures::from_bytes(bytes)?;
         Ok((
             BlockHeaderWithMetadata {
                 block_header,
@@ -1466,9 +1465,9 @@ impl ToBytes for BlockSignatures {
     }
 
     fn serialized_length(&self) -> usize {
-        ToBytes::serialized_length(&self.block_hash)
-            + ToBytes::serialized_length(&self.era_id)
-            + ToBytes::serialized_length(&self.proofs)
+        self.block_hash.serialized_length()
+            + self.era_id.serialized_length()
+            + self.proofs.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
@@ -1480,9 +1479,9 @@ impl ToBytes for BlockSignatures {
 
 impl FromBytes for BlockSignatures {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (block_hash, bytes) = FromBytes::from_bytes(bytes)?;
-        let (era_id, bytes) = FromBytes::from_bytes(bytes)?;
-        let (proofs, bytes) = FromBytes::from_bytes(bytes)?;
+        let (block_hash, bytes) = BlockHash::from_bytes(bytes)?;
+        let (era_id, bytes) = EraId::from_bytes(bytes)?;
+        let (proofs, bytes) = BTreeMap::from_bytes(bytes)?;
         Ok((
             BlockSignatures {
                 block_hash,
@@ -1894,8 +1893,7 @@ impl ToBytes for BlockWithMetadata {
     }
 
     fn serialized_length(&self) -> usize {
-        ToBytes::serialized_length(&self.block)
-            + ToBytes::serialized_length(&self.finality_signatures)
+        self.block.serialized_length() + self.finality_signatures.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
@@ -1906,8 +1904,8 @@ impl ToBytes for BlockWithMetadata {
 
 impl FromBytes for BlockWithMetadata {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (block, bytes) = FromBytes::from_bytes(bytes)?;
-        let (finality_signatures, bytes) = FromBytes::from_bytes(bytes)?;
+        let (block, bytes) = Block::from_bytes(bytes)?;
+        let (finality_signatures, bytes) = BlockSignatures::from_bytes(bytes)?;
         Ok((
             BlockWithMetadata {
                 block,
