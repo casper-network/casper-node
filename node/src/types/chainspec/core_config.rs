@@ -1,8 +1,14 @@
 use datasize::DataSize;
 use num::rational::Ratio;
 #[cfg(test)]
-use rand::Rng;
-use serde::{Deserialize, Serialize};
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
+use serde::{
+    de::{Deserializer, Error as DeError},
+    Deserialize, Serialize, Serializer,
+};
 use tracing::warn;
 
 #[cfg(test)]
@@ -42,6 +48,8 @@ pub struct CoreConfig {
     pub(crate) strict_argument_checking: bool,
     /// How many peers to simultaneously ask when sync leaping.
     pub(crate) simultaneous_peer_requests: u32,
+    /// Which consensus protocol to use.
+    pub(crate) consensus_protocol: ConsensusProtocolName,
 }
 
 impl CoreConfig {
@@ -93,7 +101,8 @@ impl CoreConfig {
         let max_runtime_call_stack_height = rng.gen();
         let minimum_delegation_amount = rng.gen::<u32>() as u64;
         let strict_argument_checking = rng.gen();
-        let maximum_simultaneous_peer_requests = rng.gen();
+        let simultaneous_peer_requests = rng.gen_range(3..100);
+        let consensus_protocol = rng.gen();
 
         CoreConfig {
             era_duration,
@@ -108,7 +117,8 @@ impl CoreConfig {
             max_runtime_call_stack_height,
             minimum_delegation_amount,
             strict_argument_checking,
-            simultaneous_peer_requests: maximum_simultaneous_peer_requests,
+            simultaneous_peer_requests,
+            consensus_protocol,
         }
     }
 }
@@ -129,6 +139,7 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.minimum_delegation_amount.to_bytes()?);
         buffer.extend(self.strict_argument_checking.to_bytes()?);
         buffer.extend(self.simultaneous_peer_requests.to_bytes()?);
+        buffer.extend(self.consensus_protocol.to_bytes()?);
         Ok(buffer)
     }
 
@@ -146,6 +157,7 @@ impl ToBytes for CoreConfig {
             + self.minimum_delegation_amount.serialized_length()
             + self.strict_argument_checking.serialized_length()
             + self.simultaneous_peer_requests.serialized_length()
+            + self.consensus_protocol.serialized_length()
     }
 }
 
@@ -163,7 +175,8 @@ impl FromBytes for CoreConfig {
         let (max_runtime_call_stack_height, remainder) = u32::from_bytes(remainder)?;
         let (minimum_delegation_amount, remainder) = u64::from_bytes(remainder)?;
         let (strict_argument_checking, remainder) = bool::from_bytes(remainder)?;
-        let (maximum_simultaneous_peer_requests, remainder) = u32::from_bytes(remainder)?;
+        let (simultaneous_peer_requests, remainder) = u32::from_bytes(remainder)?;
+        let (consensus_protocol, remainder) = ConsensusProtocolName::from_bytes(remainder)?;
         let config = CoreConfig {
             era_duration,
             minimum_era_height,
@@ -177,9 +190,79 @@ impl FromBytes for CoreConfig {
             max_runtime_call_stack_height,
             minimum_delegation_amount,
             strict_argument_checking,
-            simultaneous_peer_requests: maximum_simultaneous_peer_requests,
+            simultaneous_peer_requests,
+            consensus_protocol,
         };
         Ok((config, remainder))
+    }
+}
+
+#[derive(Copy, Clone, DataSize, PartialEq, Eq, Debug)]
+pub(crate) enum ConsensusProtocolName {
+    Highway,
+    Simple,
+}
+
+impl Serialize for ConsensusProtocolName {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            ConsensusProtocolName::Highway => "Highway",
+            ConsensusProtocolName::Simple => "Simple",
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ConsensusProtocolName {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        match String::deserialize(deserializer)?.to_lowercase().as_str() {
+            "highway" => Ok(ConsensusProtocolName::Highway),
+            "simple" => Ok(ConsensusProtocolName::Simple),
+            _ => Err(DeError::custom("unknown consensus protocol name")),
+        }
+    }
+}
+
+const CONSENSUS_HIGHWAY_TAG: u8 = 0;
+const CONSENSUS_SIMPLE_TAG: u8 = 1;
+
+impl ToBytes for ConsensusProtocolName {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let tag = match self {
+            ConsensusProtocolName::Highway => CONSENSUS_HIGHWAY_TAG,
+            ConsensusProtocolName::Simple => CONSENSUS_SIMPLE_TAG,
+        };
+        Ok(vec![tag])
+    }
+
+    fn serialized_length(&self) -> usize {
+        1
+    }
+}
+
+impl FromBytes for ConsensusProtocolName {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        let name = match tag {
+            CONSENSUS_HIGHWAY_TAG => ConsensusProtocolName::Highway,
+            CONSENSUS_SIMPLE_TAG => ConsensusProtocolName::Simple,
+            _ => return Err(bytesrepr::Error::Formatting),
+        };
+        Ok((name, remainder))
+    }
+}
+
+#[cfg(test)]
+impl Distribution<ConsensusProtocolName> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ConsensusProtocolName {
+        if rng.gen() {
+            ConsensusProtocolName::Highway
+        } else {
+            ConsensusProtocolName::Simple
+        }
     }
 }
 

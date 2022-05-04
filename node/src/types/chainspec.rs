@@ -37,10 +37,15 @@ use casper_types::{
 pub(crate) use self::accounts_config::{AccountConfig, ValidatorConfig};
 pub use self::error::Error;
 pub(crate) use self::{
-    accounts_config::AccountsConfig, activation_point::ActivationPoint,
-    chainspec_raw_bytes::ChainspecRawBytes, core_config::CoreConfig, deploy_config::DeployConfig,
-    global_state_update::GlobalStateUpdate, highway_config::HighwayConfig,
-    network_config::NetworkConfig, protocol_config::ProtocolConfig,
+    accounts_config::AccountsConfig,
+    activation_point::ActivationPoint,
+    chainspec_raw_bytes::ChainspecRawBytes,
+    core_config::{ConsensusProtocolName, CoreConfig},
+    deploy_config::DeployConfig,
+    global_state_update::GlobalStateUpdate,
+    highway_config::HighwayConfig,
+    network_config::NetworkConfig,
+    protocol_config::ProtocolConfig,
 };
 use crate::utils::Loadable;
 

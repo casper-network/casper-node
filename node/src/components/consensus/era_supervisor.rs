@@ -51,8 +51,8 @@ use crate::{
     },
     fatal,
     types::{
-        BlockHash, BlockHeader, Chainspec, Deploy, DeployHash, DeployOrTransferHash,
-        FinalizedApprovals, FinalizedBlock, NodeId,
+        chainspec::ConsensusProtocolName, BlockHash, BlockHeader, Chainspec, Deploy, DeployHash,
+        DeployOrTransferHash, FinalizedApprovals, FinalizedBlock, NodeId,
     },
     NodeRng,
 };
@@ -444,12 +444,11 @@ impl EraSupervisor {
             .cloned()
             .collect();
 
-        // TODO: This is for testing. Make configurable or remove one.
-        let new_consensus: &ConsensusConstructor = if era_id.value() % 3 == 0 {
-            &HighwayProtocol::new_boxed
-        } else {
-            &SimpleConsensus::new_boxed
-        };
+        let new_consensus: &ConsensusConstructor =
+            match self.chainspec.core_config.consensus_protocol {
+                ConsensusProtocolName::Highway => &HighwayProtocol::new_boxed,
+                ConsensusProtocolName::Simple => &SimpleConsensus::new_boxed,
+            };
 
         let (consensus, mut outcomes) = new_consensus(
             instance_id,
