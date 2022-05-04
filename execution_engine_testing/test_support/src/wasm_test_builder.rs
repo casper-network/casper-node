@@ -172,6 +172,7 @@ impl InMemoryWasmTestBuilder {
             genesis_transforms: None,
             scratch_engine_state: None,
             system_contract_registry: None,
+            global_state_dir: None,
         }
     }
 
