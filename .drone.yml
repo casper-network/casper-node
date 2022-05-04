@@ -498,4 +498,4 @@ volumes:
   temp: {}
 
 trigger:
-  cron: [ nightly-tests-cron, release-1.4.6 ]
+  cron: [ nightly-tests-cron, release-1-4-6 ]
