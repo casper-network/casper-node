@@ -129,6 +129,11 @@ impl EngineState<ScratchGlobalState> {
 }
 
 impl EngineState<LmdbGlobalState> {
+    /// Gets underlyng LmdbGlobalState
+    pub fn get_state(&self) -> &LmdbGlobalState {
+        &self.state
+    }
+
     /// Flushes the LMDB environment to disk when manual sync is enabled in the config.toml.
     pub fn flush_environment(&self) -> Result<(), lmdb::Error> {
         if self.state.environment.is_manual_sync_enabled() {

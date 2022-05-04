@@ -1,15 +1,16 @@
 use casper_execution_engine::core::engine_state::genesis::AdministratorAccount;
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    TimeDiff,
+};
 use datasize::DataSize;
 use num::rational::Ratio;
 #[cfg(test)]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 #[cfg(test)]
 use casper_types::{account::Weight, testing::TestRng, Motes, PublicKey};
-
-use crate::types::TimeDiff;
 
 #[derive(Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
@@ -206,6 +207,8 @@ impl FromBytes for CoreConfig {
 
 #[cfg(test)]
 mod tests {
+    use casper_types::bytesrepr;
+
     use super::*;
 
     #[test]

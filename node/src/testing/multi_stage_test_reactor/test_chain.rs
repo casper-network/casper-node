@@ -6,7 +6,9 @@ use num_rational::Ratio;
 use rand::Rng;
 use tempfile::TempDir;
 
-use casper_types::{system::auction::DelegationRate, EraId, Motes, PublicKey, SecretKey, U512};
+use casper_types::{
+    system::auction::DelegationRate, EraId, Motes, PublicKey, SecretKey, Timestamp, U512,
+};
 
 use crate::{
     components::{gossiper, small_network, storage, storage::Storage},
@@ -19,7 +21,7 @@ use crate::{
     },
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
-        ActivationPoint, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, NodeId, Timestamp,
+        ActivationPoint, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, NodeId,
     },
     utils::{External, Loadable, WithDir},
     NodeRng,

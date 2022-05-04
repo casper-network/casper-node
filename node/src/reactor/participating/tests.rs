@@ -13,7 +13,7 @@ use casper_execution_engine::core::engine_state::GetBidsRequest;
 use casper_types::{
     system::auction::{Bids, DelegationRate},
     testing::TestRng,
-    EraId, Motes, ProtocolVersion, PublicKey, SecretKey, U512,
+    EraId, Motes, ProtocolVersion, PublicKey, SecretKey, Timestamp, U512,
 };
 
 use crate::{
@@ -33,7 +33,7 @@ use crate::{
     testing::{self, filter_reactor::FilterReactor, network::Network, ConditionCheckReactor},
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
-        ActivationPoint, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, ExitCode, Timestamp,
+        ActivationPoint, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, ExitCode,
     },
     utils::{External, Loadable, Source, WithDir, RESOURCES_PATH},
     NodeRng,

@@ -1,7 +1,9 @@
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use crate::types::{BlockHash, TimeDiff};
+use crate::types::BlockHash;
+
+use casper_types::TimeDiff;
 
 /// Maximum number of deploys to fetch in parallel, by default.
 const DEFAULT_MAX_PARALLEL_DEPLOY_FETCHES: u32 = 20;

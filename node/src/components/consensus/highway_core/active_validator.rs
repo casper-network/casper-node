@@ -9,6 +9,8 @@ use std::{
 use datasize::DataSize;
 use tracing::{error, info, trace, warn};
 
+use casper_types::{TimeDiff, Timestamp};
+
 use super::{
     endorsement::{Endorsement, SignedEndorsement},
     evidence::Evidence,
@@ -18,13 +20,10 @@ use super::{
     ENABLE_ENDORSEMENTS,
 };
 
-use crate::{
-    components::consensus::{
-        consensus_protocol::BlockContext,
-        highway_core::{highway::SignedWireUnit, state::Fault},
-        traits::{Context, ValidatorSecret},
-    },
-    types::{TimeDiff, Timestamp},
+use crate::components::consensus::{
+    consensus_protocol::BlockContext,
+    highway_core::{highway::SignedWireUnit, state::Fault},
+    traits::{Context, ValidatorSecret},
 };
 
 /// An action taken by a validator.

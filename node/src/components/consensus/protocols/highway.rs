@@ -19,7 +19,7 @@ use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
-use casper_types::{system::auction::BLOCK_REWARD, U512};
+use casper_types::{system::auction::BLOCK_REWARD, TimeDiff, Timestamp, U512};
 
 use crate::{
     components::consensus::{
@@ -41,7 +41,7 @@ use crate::{
         traits::{ConsensusValueT, Context},
         ActionId, TimerId,
     },
-    types::{Chainspec, NodeId, TimeDiff, Timestamp},
+    types::{Chainspec, NodeId},
     NodeRng,
 };
 

@@ -4,13 +4,11 @@ use datasize::DataSize;
 use num::rational::Ratio;
 
 use casper_execution_engine::core::engine_state::{ChainspecRegistry, UpgradeConfig};
-use casper_types::{bytesrepr, EraId, ProtocolVersion};
+use casper_types::{bytesrepr, EraId, ProtocolVersion, TimeDiff, Timestamp};
 
 use crate::{
     components::consensus::ChainspecConsensusExt,
-    types::{
-        BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, NodeConfig, TimeDiff, Timestamp,
-    },
+    types::{BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, NodeConfig},
     SmallNetworkConfig,
 };
 

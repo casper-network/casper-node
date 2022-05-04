@@ -34,10 +34,11 @@ use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     crypto, runtime_args,
     system::standard_payment::ARG_AMOUNT,
-    EraId, ExecutionResult, Motes, PublicKey, RuntimeArgs, SecretKey, Signature, U512,
+    EraId, ExecutionResult, Motes, PublicKey, RuntimeArgs, SecretKey, Signature, TimeDiff,
+    Timestamp, U512,
 };
 
-use super::{BlockHash, Item, Tag, TimeDiff, Timestamp};
+use super::{BlockHash, Item, Tag};
 use crate::{
     components::block_proposer::DeployInfo,
     rpcs::docs::DocExample,

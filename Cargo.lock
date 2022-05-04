@@ -371,12 +371,14 @@ dependencies = [
  "casper-execution-engine",
  "casper-hashing",
  "casper-types",
+ "filesize",
  "lmdb",
  "log",
  "num-rational 0.4.0",
  "num-traits",
  "once_cell",
  "rand 0.8.5",
+ "tempfile",
  "version-sync",
 ]
 
@@ -516,7 +518,6 @@ dependencies = [
  "hex_fmt",
  "hostname",
  "http",
- "humantime",
  "hyper",
  "itertools",
  "libc",
@@ -603,6 +604,7 @@ dependencies = [
  "getrandom",
  "hex",
  "hex_fmt",
+ "humantime",
  "k256",
  "num",
  "num-derive",
@@ -1684,6 +1686,15 @@ dependencies = [
  "bitvec",
  "rand_core 0.5.1",
  "subtle",
+]
+
+[[package]]
+name = "filesize"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "12d741e2415d4e2e5bd1c1d00409d1a8865a57892c2d689b504365655d237d43"
+dependencies = [
+ "winapi",
 ]
 
 [[package]]
