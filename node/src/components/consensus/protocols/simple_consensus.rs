@@ -303,15 +303,9 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             "initializing SimpleConsensus instance",
         );
 
-        // TODO: Configure this explicitly, not via Highway.
-        let min_block_time = TimeDiff::from(
-            1_u64
-                .checked_shl(highway_config.minimum_round_exponent.into())
-                .unwrap_or(u64::MAX),
-        );
         let params = Params::new(
             instance_id,
-            min_block_time,
+            chainspec.core_config.minimum_block_time,
             era_start_time,
             chainspec.core_config.minimum_era_height,
             era_start_time + chainspec.core_config.era_duration,

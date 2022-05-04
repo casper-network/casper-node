@@ -11,6 +11,7 @@ maximum_net_message_size = 23_068_672
 [core]
 era_duration = '3minutes'
 minimum_era_height = 9
+minimum_block_time = '4seconds'
 validator_slots = 5
 auction_delay = 3
 locked_funds_period = '90days'

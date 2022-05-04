@@ -27,7 +27,7 @@ impl Default for Config {
             standstill_timeout: None,
             sync_state_interval: Some("1sec".parse().unwrap()),
             log_participation_interval: Some("10sec".parse().unwrap()),
-            proposal_timeout: "10sec".parse().unwrap(),
+            proposal_timeout: "1sec".parse().unwrap(),
             clock_tolerance: "1sec".parse().unwrap(),
         }
     }
