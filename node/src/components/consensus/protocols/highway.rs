@@ -151,6 +151,14 @@ impl<C: Context + 'static> HighwayProtocol<C> {
             endorsement_evidence_limit,
         );
 
+        if min_round_len < chainspec.core_config.minimum_block_time {
+            warn!(
+                %min_round_len,
+                min_block_time = %chainspec.core_config.minimum_block_time,
+                "Minimum round length is shorter than minimum block time.",
+            );
+        }
+
         let outcomes = Self::initialize_timers(now, era_start_time, &config.highway);
 
         let highway = Highway::new(instance_id, validators, params);

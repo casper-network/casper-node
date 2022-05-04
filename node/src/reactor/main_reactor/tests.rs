@@ -306,7 +306,7 @@ async fn run_equivocator_network() {
         .collect();
     let mut stakes: BTreeMap<PublicKey, U512> = keys
         .iter()
-        .map(|secret_key| (PublicKey::from(&*secret_key.clone()), U512::from(100u64)))
+        .map(|secret_key| (PublicKey::from(&*secret_key.clone()), U512::from(100000u64)))
         .collect();
     stakes.insert(PublicKey::from(&*alice_secret_key), U512::from(1));
     stakes.insert(PublicKey::from(&*bob_secret_key), U512::from(1));
@@ -316,8 +316,9 @@ async fn run_equivocator_network() {
     keys.push(alice_secret_key);
 
     // We configure the era to take ten rounds, and delay all messages to and from one of Alice's
-    // nodes until three rounds after the first message. That should guarantee that the two nodes
-    // equivocate.
+    // nodes. That should guarantee that the two nodes equivocate: Since Alice and Bob have very low
+    // weight, the first leader will be someone else, and will only be seen (and echoed) by one
+    // of Alice's nodes.
     let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
     chain.chainspec_mut().core_config.minimum_era_height = 10;
 
@@ -325,7 +326,10 @@ async fn run_equivocator_network() {
         .create_initialized_network(&mut rng)
         .await
         .expect("network initialization failed");
-    let min_round_len = chain.chainspec.highway_config.min_round_length();
+    let timeout = Config::default()
+        .consensus
+        .simple_consensus
+        .proposal_timeout;
     let mut maybe_first_message_time = None;
     net.reactors_mut()
         .find(|reactor| *reactor.inner().consensus().public_key() == alice_public_key)
@@ -342,8 +346,8 @@ async fn run_equivocator_network() {
                 _ => return Either::Right(event),
             };
             let first_message_time = *maybe_first_message_time.get_or_insert(now);
-            if now < first_message_time + min_round_len * 3 {
-                return Either::Left(time::sleep(min_round_len.into()).event(move |_| event));
+            if now < first_message_time + timeout {
+                return Either::Left(time::sleep(timeout.into()).event(move |_| event));
             }
             Either::Right(event)
         });

@@ -24,6 +24,7 @@ use casper_types::{
 pub struct CoreConfig {
     pub(crate) era_duration: TimeDiff,
     pub(crate) minimum_era_height: u64,
+    pub(crate) minimum_block_time: TimeDiff,
     pub(crate) validator_slots: u32,
     /// Number of eras before an auction actually defines the set of validators.
     /// If you bond with a sufficient bid in era N, you will be a validator in era N +
@@ -88,6 +89,7 @@ impl CoreConfig {
     pub fn random(rng: &mut TestRng) -> Self {
         let era_duration = TimeDiff::from(rng.gen_range(600_000..604_800_000));
         let minimum_era_height = rng.gen_range(5..100);
+        let minimum_block_time = TimeDiff::from(rng.gen_range(1_000..60_000));
         let validator_slots = rng.gen();
         let auction_delay = rng.gen::<u32>() as u64;
         let locked_funds_period = TimeDiff::from(rng.gen_range(600_000..604_800_000));
@@ -107,6 +109,7 @@ impl CoreConfig {
         CoreConfig {
             era_duration,
             minimum_era_height,
+            minimum_block_time,
             validator_slots,
             auction_delay,
             locked_funds_period,
@@ -128,6 +131,7 @@ impl ToBytes for CoreConfig {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         buffer.extend(self.era_duration.to_bytes()?);
         buffer.extend(self.minimum_era_height.to_bytes()?);
+        buffer.extend(self.minimum_block_time.to_bytes()?);
         buffer.extend(self.validator_slots.to_bytes()?);
         buffer.extend(self.auction_delay.to_bytes()?);
         buffer.extend(self.locked_funds_period.to_bytes()?);
@@ -146,6 +150,7 @@ impl ToBytes for CoreConfig {
     fn serialized_length(&self) -> usize {
         self.era_duration.serialized_length()
             + self.minimum_era_height.serialized_length()
+            + self.minimum_block_time.serialized_length()
             + self.validator_slots.serialized_length()
             + self.auction_delay.serialized_length()
             + self.locked_funds_period.serialized_length()
@@ -165,6 +170,7 @@ impl FromBytes for CoreConfig {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (era_duration, remainder) = TimeDiff::from_bytes(bytes)?;
         let (minimum_era_height, remainder) = u64::from_bytes(remainder)?;
+        let (minimum_block_time, remainder) = TimeDiff::from_bytes(remainder)?;
         let (validator_slots, remainder) = u32::from_bytes(remainder)?;
         let (auction_delay, remainder) = u64::from_bytes(remainder)?;
         let (locked_funds_period, remainder) = TimeDiff::from_bytes(remainder)?;
@@ -180,6 +186,7 @@ impl FromBytes for CoreConfig {
         let config = CoreConfig {
             era_duration,
             minimum_era_height,
+            minimum_block_time,
             validator_slots,
             auction_delay,
             locked_funds_period,
