@@ -364,13 +364,16 @@ dependencies = [
  "casper-hashing",
  "casper-types",
  "filesize",
+ "humantime",
  "lmdb",
  "log",
  "num-rational 0.4.0",
  "num-traits",
  "once_cell",
  "rand 0.8.4",
+ "serde",
  "tempfile",
+ "toml",
  "version-sync",
 ]
 

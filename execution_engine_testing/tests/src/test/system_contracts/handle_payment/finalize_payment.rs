@@ -2,7 +2,7 @@ use std::convert::TryInto;
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
+    DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR,
 };
 use casper_types::{
     account::{Account, AccountHash},
@@ -46,7 +46,7 @@ fn initialize() -> InMemoryWasmTestBuilder {
     )
     .build();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     builder.exec(exec_request_1).expect_success().commit();
 
@@ -99,7 +99,7 @@ fn finalize_payment_should_refund_to_specified_purse() {
         ARG_PURSE_NAME => LOCAL_REFUND_PURSE,
     };
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let create_purse_request = {
         ExecuteRequestBuilder::standard(
