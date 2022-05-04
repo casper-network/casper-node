@@ -5,7 +5,6 @@ use std::{
     array::TryFromSliceError,
     cmp,
     collections::{BTreeSet, HashMap},
-    convert::TryInto,
     error::Error as StdError,
     fmt::{self, Debug, Display, Formatter},
     hash,
@@ -32,7 +31,7 @@ use casper_hashing::Digest;
 #[cfg(test)]
 use casper_types::{bytesrepr::Bytes, testing::TestRng};
 use casper_types::{
-    bytesrepr::{self, Error as BytesreprError, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
+    bytesrepr::{self, FromBytes, ToBytes},
     crypto, runtime_args,
     system::standard_payment::ARG_AMOUNT,
     EraId, ExecutionResult, Motes, PublicKey, RuntimeArgs, SecretKey, Signature, TimeDiff,
@@ -1678,8 +1677,6 @@ pub struct DeployMetadata {
     pub execution_results: HashMap<BlockHash, ExecutionResult>,
 }
 
-// `bytesrepr::ToBytes` is not implemented for the inner `HashMap` because
-// bytesrepr is no-std and `HashMap` is only available in `std`.
 impl ToBytes for DeployMetadata {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buf = bytesrepr::allocate_buffer(self)?;
@@ -1688,41 +1685,17 @@ impl ToBytes for DeployMetadata {
     }
 
     fn serialized_length(&self) -> usize {
-        U32_SERIALIZED_LENGTH
-            + self
-                .execution_results
-                .iter()
-                .map(|(key, value)| key.serialized_length() + value.serialized_length())
-                .sum::<usize>()
+        self.execution_results.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        let num_keys: u32 = self
-            .execution_results
-            .len()
-            .try_into()
-            .map_err(|_| BytesreprError::NotRepresentable)?;
-        num_keys.write_bytes(writer)?;
-        for (key, value) in self.execution_results.iter() {
-            key.write_bytes(writer)?;
-            value.write_bytes(writer)?;
-        }
-        Ok(())
+        self.execution_results.write_bytes(writer)
     }
 }
 
-// `bytesrepr::FromBytes` is not implemented for the inner `HashMap` because
-// bytesrepr is no-std and `HashMap` is only available in `std`.
 impl FromBytes for DeployMetadata {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (num_keys, mut stream) = u32::from_bytes(bytes)?;
-        let mut execution_results = HashMap::new();
-        for _ in 0..num_keys {
-            let (k, rem) = BlockHash::from_bytes(stream)?;
-            let (v, rem) = ExecutionResult::from_bytes(rem)?;
-            execution_results.insert(k, v);
-            stream = rem;
-        }
+        let (execution_results, stream) = HashMap::from_bytes(bytes)?;
         Ok((DeployMetadata { execution_results }, stream))
     }
 }
