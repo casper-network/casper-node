@@ -4,7 +4,10 @@
 
 use alloc::{boxed::Box, string::String, vec};
 #[cfg(feature = "std")]
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+use std::{
+    collections::HashMap,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+};
 
 use proptest::{
     array, bits, bool,
@@ -52,6 +55,11 @@ pub fn u2_slice_32() -> impl Strategy<Value = [u8; 32]> {
 
 pub fn named_keys_arb(depth: usize) -> impl Strategy<Value = NamedKeys> {
     collection::btree_map("\\PC*", key_arb(), depth)
+}
+
+#[cfg(feature = "std")]
+pub fn hash_map_arb(size: usize) -> impl Strategy<Value = HashMap<u32, u32>> {
+    collection::hash_map(any::<u32>(), any::<u32>(), size)
 }
 
 pub fn access_rights_arb() -> impl Strategy<Value = AccessRights> {

@@ -18,7 +18,11 @@ use core::{
     ptr::NonNull,
 };
 #[cfg(feature = "std")]
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+use std::{
+    collections::HashMap,
+    hash::Hash,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -670,6 +674,56 @@ where
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
         let (num_keys, mut stream) = u32::from_bytes(bytes)?;
         let mut result = BTreeMap::new();
+        for _ in 0..num_keys {
+            let (k, rem) = K::from_bytes(stream)?;
+            let (v, rem) = V::from_bytes(rem)?;
+            result.insert(k, v);
+            stream = rem;
+        }
+        Ok((result, stream))
+    }
+}
+
+#[cfg(feature = "std")]
+impl<K, V> ToBytes for HashMap<K, V>
+where
+    K: ToBytes,
+    V: ToBytes,
+{
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut buf = allocate_buffer(self)?;
+        self.write_bytes(&mut buf)?;
+        Ok(buf)
+    }
+
+    fn serialized_length(&self) -> usize {
+        U32_SERIALIZED_LENGTH
+            + self
+                .iter()
+                .map(|(key, value)| key.serialized_length() + value.serialized_length())
+                .sum::<usize>()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        let length_32: u32 = self.len().try_into().map_err(|_| Error::NotRepresentable)?;
+        writer.extend_from_slice(&length_32.to_le_bytes());
+        for (key, value) in self.iter() {
+            key.write_bytes(writer)?;
+            value.write_bytes(writer)?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(feature = "std")]
+impl<K, V> FromBytes for HashMap<K, V>
+where
+    K: FromBytes + Hash + Ord,
+    V: FromBytes,
+{
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let (num_keys, mut stream) = u32::from_bytes(bytes)?;
+        let mut result = HashMap::new();
         for _ in 0..num_keys {
             let (k, rem) = K::from_bytes(stream)?;
             let (v, rem) = V::from_bytes(rem)?;
@@ -1648,6 +1702,11 @@ mod proptests {
 
         #[test]
         fn test_uref_map(m in named_keys_arb(20)) {
+            bytesrepr::test_serialization_roundtrip(&m);
+        }
+
+        #[test]
+        fn test_hash_map(m in hash_map_arb(20)) {
             bytesrepr::test_serialization_roundtrip(&m);
         }
 
