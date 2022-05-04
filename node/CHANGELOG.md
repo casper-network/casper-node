@@ -53,7 +53,7 @@ All notable changes to this project will be documented in this file.  The format
 * The network handshake now contains the hash of the chainspec used and will be successful only if they match.
 * Add an `identity` option to load existing network identity certificates signed by a CA.
 * Add a `[consensus.simple_consensus]` section to `config.toml` for the simple consensus protocol.
-* Add a `consensus_protocol` setting to the chainspec to choose a consensus protocol.
+* Add a `consensus_protocol` setting to the chainspec to choose a consensus protocol, and a `minimum_block_time` setting for the minimum difference between a block's timestamp and its child's.
 
 ### Changed
 * Detection of a crash no longer triggers DB integrity checks to run on node start; the checks can be triggered manually instead.
