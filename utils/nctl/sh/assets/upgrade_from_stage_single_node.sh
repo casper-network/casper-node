@@ -341,7 +341,7 @@ function _main()
         _setup_asset_chainspec "$(get_protocol_version_for_chainspec "$PROTOCOL_VERSION")" \
                               "$ACTIVATION_POINT" \
                               "$PATH_TO_STAGE/$PROTOCOL_VERSION/chainspec.toml" \
-                              false \
+                              false
         _setup_asset_node_configs "$NODE_ID" \
                                  "$PROTOCOL_VERSION" \
                                  "$PATH_TO_STAGE/$PROTOCOL_VERSION/config.toml" \
