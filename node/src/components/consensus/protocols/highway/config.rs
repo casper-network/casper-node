@@ -23,10 +23,6 @@ pub struct Config {
     pub log_synchronizer_interval: Option<TimeDiff>,
     /// Log the size of every incoming and outgoing serialized unit.
     pub log_unit_sizes: bool,
-    /// The maximum number of blocks by which execution is allowed to lag behind finalization.
-    /// If it is more than that, consensus will pause, and resume once the executor has caught up.
-    // TODO: This is not Highway-specific. Move this to consensus config.
-    pub max_execution_delay: u64,
     /// The maximum number of peers we request the same vertex from in parallel.
     pub max_requests_for_vertex: usize,
     /// The maximum number of dependencies we request per validator in a batch.
@@ -45,7 +41,6 @@ impl Default for Config {
             log_participation_interval: Some("10sec".parse().unwrap()),
             log_synchronizer_interval: Some("5sec".parse().unwrap()),
             log_unit_sizes: false,
-            max_execution_delay: 3,
             max_requests_for_vertex: 5,
             max_request_batch_size: 20,
             round_success_meter: RSMConfig::default(),

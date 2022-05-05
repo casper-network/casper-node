@@ -62,11 +62,6 @@ impl CoreConfig {
             );
             return false;
         }
-
-        if self.validator_slots == 0 {
-            error!("more than 0 validator slots required");
-            return false;
-        }
         true
     }
 }

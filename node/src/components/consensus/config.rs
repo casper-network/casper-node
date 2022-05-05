@@ -25,6 +25,9 @@ use crate::{
 pub(crate) struct Config {
     /// Path to secret key file.
     pub(crate) secret_key_path: External,
+    /// The maximum number of blocks by which execution is allowed to lag behind finalization.
+    /// If it is more than that, consensus will pause, and resume once the executor has caught up.
+    pub max_execution_delay: u64,
     /// Highway-specific node configuration.
     pub(crate) highway: HighwayConfig,
     /// SimpleConsensus-specific node configuration.
@@ -35,6 +38,7 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             secret_key_path: External::Missing,
+            max_execution_delay: 3,
             highway: HighwayConfig::default(),
             simple_consensus: SimpleConsensusConfig::default(),
         }
