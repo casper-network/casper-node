@@ -64,10 +64,10 @@ where
         .collect::<Vec<_>>();
     let chainspec = new_test_chainspec(weights.clone());
     let config = Config {
+        max_execution_delay: 3,
         highway: HighwayConfig {
             pending_vertex_timeout: "1min".parse().unwrap(),
             log_participation_interval: Some("10sec".parse().unwrap()),
-            max_execution_delay: 3,
             ..HighwayConfig::default()
         },
         ..Default::default()

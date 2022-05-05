@@ -308,7 +308,7 @@ impl EraSupervisor {
         let paused = self
             .next_block_height
             .saturating_sub(self.next_executed_height)
-            > self.config.highway.max_execution_delay;
+            > self.config.max_execution_delay;
         self.delegate_to_era(effect_builder, rng, era_id, |consensus, _| {
             consensus.set_paused(paused, Timestamp::now())
         })
