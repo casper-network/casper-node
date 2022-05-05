@@ -944,20 +944,20 @@ impl ToBytes for SocketAddrV4 {
     }
 
     fn serialized_length(&self) -> usize {
-        U16_SERIALIZED_LENGTH + IPV4_SERIALIZED_LENGTH
+        IPV4_SERIALIZED_LENGTH + U16_SERIALIZED_LENGTH
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
-        self.port().write_bytes(writer)?;
-        self.ip().write_bytes(writer)
+        self.ip().write_bytes(writer)?;
+        self.port().write_bytes(writer)
     }
 }
 
 #[cfg(feature = "std")]
 impl FromBytes for SocketAddrV4 {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (port, remainder): (u16, &[u8]) = FromBytes::from_bytes(bytes)?;
-        let (addr, rem): (Ipv4Addr, &[u8]) = FromBytes::from_bytes(remainder)?;
+        let (addr, remainder) = Ipv4Addr::from_bytes(bytes)?;
+        let (port, rem) = u16::from_bytes(remainder)?;
         Ok((Self::new(addr, port), rem))
     }
 }
@@ -971,27 +971,27 @@ impl ToBytes for SocketAddrV6 {
     }
 
     fn serialized_length(&self) -> usize {
-        U16_SERIALIZED_LENGTH
+        IPV6_SERIALIZED_LENGTH
+            + U16_SERIALIZED_LENGTH
             + U32_SERIALIZED_LENGTH
             + U32_SERIALIZED_LENGTH
-            + IPV6_SERIALIZED_LENGTH
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        self.ip().write_bytes(writer)?;
         self.port().write_bytes(writer)?;
         self.flowinfo().write_bytes(writer)?;
-        self.scope_id().write_bytes(writer)?;
-        self.ip().write_bytes(writer)
+        self.scope_id().write_bytes(writer)
     }
 }
 
 #[cfg(feature = "std")]
 impl FromBytes for SocketAddrV6 {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (port, remainder) = u16::from_bytes(bytes)?;
+        let (addr, remainder) = Ipv6Addr::from_bytes(bytes)?;
+        let (port, remainder) = u16::from_bytes(remainder)?;
         let (flowinfo, remainder) = u32::from_bytes(remainder)?;
-        let (scope_id, remainder) = u32::from_bytes(remainder)?;
-        let (addr, rem) = Ipv6Addr::from_bytes(remainder)?;
+        let (scope_id, rem) = u32::from_bytes(remainder)?;
         Ok((Self::new(addr, port, flowinfo, scope_id), rem))
     }
 }
