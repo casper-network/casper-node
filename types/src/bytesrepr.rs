@@ -723,8 +723,7 @@ where
 {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
         let (num_keys, mut stream) = u32::from_bytes(bytes)?;
-        let mut result =
-            HashMap::with_capacity(num_keys.try_into().map_err(|_| Error::NotRepresentable)?);
+        let mut result = HashMap::new();
         for _ in 0..num_keys {
             let (k, rem) = K::from_bytes(stream)?;
             let (v, rem) = V::from_bytes(rem)?;
