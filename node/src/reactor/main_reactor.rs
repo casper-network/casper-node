@@ -166,7 +166,7 @@ impl reactor::Reactor for MainReactor {
         let (root_dir, config) = config.into_parts();
         let (our_secret_key, our_public_key) = config.consensus.load_keys(&root_dir)?;
         let validator_matrix = ValidatorMatrix::new(
-            chainspec.highway_config.finality_threshold_fraction,
+            chainspec.core_config.finality_threshold_fraction,
             our_secret_key.clone(),
             our_public_key.clone(),
             chainspec.core_config.auction_delay,
@@ -177,7 +177,7 @@ impl reactor::Reactor for MainReactor {
         let hard_reset_to_start_of_era = chainspec.hard_reset_to_start_of_era();
         let storage = Storage::new(
             &storage_config,
-            chainspec.highway_config.finality_threshold_fraction,
+            chainspec.core_config.finality_threshold_fraction,
             hard_reset_to_start_of_era,
             protocol_version,
             &chainspec.network_config.name,

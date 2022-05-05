@@ -102,8 +102,10 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         let validators_count = validator_stakes.len();
         let validators = protocols::common::validators::<C>(faulty, inactive, validator_stakes);
         let highway_config = &chainspec.highway_config;
-        let ftt =
-            protocols::common::ftt::<C>(highway_config.finality_threshold_fraction, &validators);
+        let ftt = protocols::common::ftt::<C>(
+            chainspec.core_config.finality_threshold_fraction,
+            &validators,
+        );
 
         let round_success_meter = prev_cp
             .and_then(|cp| cp.as_any().downcast_ref::<HighwayProtocol<C>>())

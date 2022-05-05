@@ -275,7 +275,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         let validators = protocols::common::validators::<C>(faulty, inactive, validator_stakes);
         let weights = protocols::common::validator_weights::<C>(&validators);
         let mut active: ValidatorMap<bool> = weights.iter().map(|_| false).collect();
-        let highway_config = &chainspec.highway_config;
+        let core_config = &chainspec.core_config;
 
         // Use the estimate from the previous era as the proposal timeout. Start with one minimum
         // round length.
@@ -305,11 +305,11 @@ impl<C: Context + 'static> SimpleConsensus<C> {
 
         let params = Params::new(
             instance_id,
-            chainspec.core_config.minimum_block_time,
+            core_config.minimum_block_time,
             era_start_time,
-            chainspec.core_config.minimum_era_height,
-            era_start_time + chainspec.core_config.era_duration,
-            protocols::common::ftt::<C>(highway_config.finality_threshold_fraction, &validators),
+            core_config.minimum_era_height,
+            era_start_time + core_config.era_duration,
+            protocols::common::ftt::<C>(core_config.finality_threshold_fraction, &validators),
         );
 
         SimpleConsensus {
@@ -2038,7 +2038,7 @@ where
     C: Context,
 {
     /// The validator was known to be malicious from the beginning. All their messages are
-    /// considered invalid in this Highway instance.
+    /// considered invalid in this `SimpleConsensus` instance.
     Banned,
     /// We have direct evidence of the validator's fault.
     // TODO: Store only the necessary information, e.g. not the full signed proposal, and only one

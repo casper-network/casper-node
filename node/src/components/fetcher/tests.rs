@@ -265,7 +265,7 @@ impl ReactorTrait for Reactor {
 
         let storage = Storage::new(
             &WithDir::new(cfg.temp_dir.path(), cfg.storage_config),
-            chainspec.highway_config.finality_threshold_fraction,
+            chainspec.core_config.finality_threshold_fraction,
             chainspec.hard_reset_to_start_of_era(),
             chainspec.protocol_config.version,
             &chainspec.network_config.name,
