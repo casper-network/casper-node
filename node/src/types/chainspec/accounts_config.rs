@@ -8,7 +8,7 @@ mod validator_config;
 use std::path::Path;
 
 use datasize::DataSize;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::core::engine_state::GenesisAccount;
 #[cfg(test)]
@@ -20,31 +20,22 @@ use casper_types::{
 
 pub use self::administrator_config::AdministratorConfig;
 use super::error::ChainspecAccountsLoadError;
+use crate::utils::serde_helpers;
 pub use account_config::AccountConfig;
 pub use delegator_config::DelegatorConfig;
 pub use validator_config::ValidatorConfig;
 
 const CHAINSPEC_ACCOUNTS_FILENAME: &str = "accounts.toml";
 
-fn sorted_vec_deserializer<'de, T, D>(deserializer: D) -> Result<Vec<T>, D::Error>
-where
-    T: Deserialize<'de> + Ord,
-    D: Deserializer<'de>,
-{
-    let mut vec = Vec::<T>::deserialize(deserializer)?;
-    vec.sort_unstable();
-    Ok(vec)
-}
-
 #[derive(PartialEq, Eq, Serialize, Deserialize, DataSize, Debug, Clone)]
 pub struct AccountsConfig {
-    #[serde(deserialize_with = "sorted_vec_deserializer")]
+    #[serde(deserialize_with = "serde_helpers::sorted_vec_deserializer")]
     accounts: Vec<AccountConfig>,
-    #[serde(default, deserialize_with = "sorted_vec_deserializer")]
+    #[serde(default, deserialize_with = "serde_helpers::sorted_vec_deserializer")]
     delegators: Vec<DelegatorConfig>,
     #[serde(
         default,
-        deserialize_with = "sorted_vec_deserializer",
+        deserialize_with = "serde_helpers::sorted_vec_deserializer",
         skip_serializing_if = "Vec::is_empty"
     )]
     administrators: Vec<AdministratorConfig>,

@@ -18,6 +18,8 @@ use casper_execution_engine::core::engine_state::{
     genesis::{AdministratorAccount, GenesisValidator},
     ExecConfig, GenesisAccount, RunGenesisRequest,
 };
+use num_rational::Ratio;
+use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_types::{
@@ -163,6 +165,9 @@ fn custom_private_chain_setup(
         .with_administrative_accounts(PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS.clone())
         .with_allow_auction_bids(allow_auction_bids)
         .with_allow_unrestricted_transfers(allow_unrestricted_transfers)
+        // TODO: Non-zero refund with default refund mechanism tries to transfer tokens from purse
+        // to user.
+        .with_refund_ratio(Ratio::zero())
         .build();
 
     let mut builder = InMemoryWasmTestBuilder::new_with_config(engine_config);

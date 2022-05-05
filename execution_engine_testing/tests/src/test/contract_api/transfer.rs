@@ -499,5 +499,9 @@ fn should_transfer_total_amount() {
     let account_1_main_purse = account_1.main_purse();
     let account_1_balance = builder.get_purse_balance(account_1_main_purse);
 
-    assert_eq!(account_1_balance, U512::zero());
+    assert_eq!(
+        account_1_balance,
+        builder.calculate_refund_amount(*DEFAULT_PAYMENT),
+        "account 1 should only have refunded amount after trasnferring full amount"
+    );
 }

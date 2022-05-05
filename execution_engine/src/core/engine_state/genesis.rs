@@ -196,8 +196,13 @@ impl AdministratorAccount {
 impl AdministratorAccount {
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
+        let public_key = {
+            let secret_key_bytes: [u8; 32] = rng.gen();
+            let secret_key = SecretKey::ed25519_from_bytes(secret_key_bytes).unwrap();
+            PublicKey::from(&secret_key)
+        };
         Self {
-            public_key: PublicKey::random(rng),
+            public_key,
             balance: Motes::new(rng.gen()),
             weight: Weight::new(rng.gen_range(1..=255)),
         }

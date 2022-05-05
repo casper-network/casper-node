@@ -63,6 +63,8 @@ strict_argument_checking = false
 allow_auction_bids = false
 # Allow peer to peer transfers between users. Setting this to false makes sense only on private chains.
 allow_unrestricted_transfers = false
+# Refund ratio for the default finalization method.
+refund_ratio = [0, 100]
 
 [highway]
 # A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.

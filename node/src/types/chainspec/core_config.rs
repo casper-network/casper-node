@@ -1,16 +1,18 @@
 use casper_execution_engine::core::engine_state::genesis::AdministratorAccount;
+#[cfg(test)]
+use casper_types::{account::Weight, testing::TestRng, Motes, PublicKey};
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     TimeDiff,
 };
+
 use datasize::DataSize;
 use num::rational::Ratio;
 #[cfg(test)]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-#[cfg(test)]
-use casper_types::{account::Weight, testing::TestRng, Motes, PublicKey};
+use crate::utils::serde_helpers;
 
 #[derive(Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
@@ -47,6 +49,10 @@ pub struct CoreConfig {
     /// Administrative accounts are valid option for for a private chain only.
     #[serde(default)]
     pub(crate) administrative_accounts: Vec<AdministratorAccount>,
+    // Refund ratio
+    #[data_size(skip)]
+    #[serde(deserialize_with = "serde_helpers::proper_fraction_deserializer")]
+    pub(crate) refund_ratio: Ratio<u64>,
 }
 
 #[cfg(test)]
@@ -78,6 +84,10 @@ impl CoreConfig {
                 )
             })
             .collect();
+        let refund_ratio = {
+            let numer = rng.gen_range(0..=100);
+            Ratio::new(numer, 100)
+        };
 
         CoreConfig {
             era_duration,
@@ -94,6 +104,7 @@ impl CoreConfig {
             allow_auction_bids,
             administrative_accounts,
             allow_unrestricted_transfers,
+            refund_ratio,
         }
     }
 }
@@ -117,6 +128,7 @@ impl ToBytes for CoreConfig {
             allow_auction_bids,
             allow_unrestricted_transfers,
             administrative_accounts,
+            refund_ratio,
         } = self;
         buffer.extend(era_duration.to_bytes()?);
         buffer.extend(minimum_era_height.to_bytes()?);
@@ -132,6 +144,7 @@ impl ToBytes for CoreConfig {
         buffer.extend(allow_auction_bids.to_bytes()?);
         buffer.extend(allow_unrestricted_transfers.to_bytes()?);
         buffer.extend(administrative_accounts.to_bytes()?);
+        buffer.extend(refund_ratio.to_bytes()?);
         Ok(buffer)
     }
 
@@ -151,6 +164,7 @@ impl ToBytes for CoreConfig {
             allow_auction_bids,
             allow_unrestricted_transfers,
             administrative_accounts,
+            refund_ratio,
         } = self;
         era_duration.serialized_length()
             + minimum_era_height.serialized_length()
@@ -166,6 +180,7 @@ impl ToBytes for CoreConfig {
             + allow_auction_bids.serialized_length()
             + allow_unrestricted_transfers.serialized_length()
             + administrative_accounts.serialized_length()
+            + refund_ratio.serialized_length()
     }
 }
 
@@ -185,6 +200,7 @@ impl FromBytes for CoreConfig {
         let (allow_auction_bids, remainder) = FromBytes::from_bytes(remainder)?;
         let (allow_unrestricted_transfers, remainder) = FromBytes::from_bytes(remainder)?;
         let (administrative_accounts, remainder) = FromBytes::from_bytes(remainder)?;
+        let (refund_ratio, remainder) = FromBytes::from_bytes(remainder)?;
         let config = CoreConfig {
             era_duration,
             minimum_era_height,
@@ -200,6 +216,7 @@ impl FromBytes for CoreConfig {
             allow_auction_bids,
             allow_unrestricted_transfers,
             administrative_accounts,
+            refund_ratio,
         };
         Ok((config, remainder))
     }

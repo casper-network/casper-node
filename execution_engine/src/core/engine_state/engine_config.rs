@@ -2,7 +2,10 @@
 //! `EngineState` instance.
 use std::sync::{Arc, Mutex};
 
-use casper_types::account::AccountHash;
+use num::One;
+use num_rational::Ratio;
+
+use casper_types::{account::AccountHash, U512};
 
 use crate::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
 
@@ -22,6 +25,8 @@ pub const DEFAULT_STRICT_ARGUMENT_CHECKING: bool = false;
 pub const DEFAULT_ALLOW_AUCTION_BIDS: bool = true;
 /// Default value for allowing unrestricted transfers
 pub const DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS: bool = true;
+/// Default gas cost refund ratio.
+pub const DEFAULT_REFUND_RATIO: Ratio<u64> = Ratio::new_raw(0, 100);
 
 ///
 /// The runtime configuration of the execution engine
@@ -51,6 +56,8 @@ pub struct EngineConfig {
     /// accounts to administrators and administrators to normal accounts but not normal accounts to
     /// normal accounts (aka private chain mode).
     allow_unrestricted_transfers: bool,
+    /// Gas cost refund ratio.
+    refund_ratio: Ratio<u64>,
 }
 
 impl Default for EngineConfig {
@@ -66,6 +73,7 @@ impl Default for EngineConfig {
             administrative_accounts: Default::default(),
             allow_auction_bids: DEFAULT_ALLOW_AUCTION_BIDS,
             allow_unrestricted_transfers: DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS,
+            refund_ratio: DEFAULT_REFUND_RATIO,
         }
     }
 }
@@ -148,6 +156,13 @@ impl EngineConfig {
         let mut guard = self.administrative_accounts.lock().unwrap();
         *guard = value;
     }
+
+    /// Get the engine config's refund ratio.
+    #[must_use]
+    pub fn refund_ratio(&self) -> Ratio<U512> {
+        let (numer, denom) = self.refund_ratio.into();
+        Ratio::new_raw(U512::from_u64(numer), U512::from_u64(denom))
+    }
 }
 
 /// This is a builder pattern applied to the [`EngineConfig`] structure to shield any changes to the
@@ -166,6 +181,7 @@ pub struct EngineConfigBuilder {
     administrative_accounts: Option<Vec<AdministratorAccount>>,
     allow_auction_bids: Option<bool>,
     allow_unrestricted_transfers: Option<bool>,
+    refund_ratio: Option<Ratio<u64>>,
 }
 
 impl EngineConfigBuilder {
@@ -247,6 +263,16 @@ impl EngineConfigBuilder {
         self
     }
 
+    /// Set the engine config builder's refund ratio.
+    pub fn with_refund_ratio(mut self, refund_ratio: Ratio<u64>) -> Self {
+        debug_assert!(
+            refund_ratio <= Ratio::one(),
+            "refund ratio is a value between 0 and 1"
+        );
+        self.refund_ratio = Some(refund_ratio);
+        self
+    }
+
     /// Build a new [`EngineConfig`] object.
     pub fn build(self) -> EngineConfig {
         let max_query_depth = self.max_query_depth.unwrap_or(DEFAULT_MAX_QUERY_DEPTH);
@@ -271,6 +297,8 @@ impl EngineConfigBuilder {
         let allow_unrestricted_transfers = self
             .allow_unrestricted_transfers
             .unwrap_or(DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS);
+        let refund_ratio = self.refund_ratio.unwrap_or(DEFAULT_REFUND_RATIO);
+
         EngineConfig {
             max_query_depth,
             max_associated_keys,
@@ -282,6 +310,7 @@ impl EngineConfigBuilder {
             administrative_accounts: Arc::new(Mutex::new(administrative_accounts)),
             allow_auction_bids,
             allow_unrestricted_transfers,
+            refund_ratio,
         }
     }
 }

@@ -61,13 +61,14 @@ use casper_types::{
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,
-    DeployHash, DeployInfo, EraId, Gas, Key, KeyTag, ProtocolVersion, PublicKey, RuntimeArgs,
-    StoredValue, Transfer, TransferAddr, URef, U512,
+    DeployHash, DeployInfo, EraId, Gas, Key, KeyTag, Motes, ProtocolVersion, PublicKey,
+    RuntimeArgs, StoredValue, Transfer, TransferAddr, URef, U512,
 };
+use num_rational::Ratio;
 
 use crate::{
-    utils, ExecuteRequestBuilder, StepRequestBuilder, DEFAULT_AUCTION_DELAY, DEFAULT_PROPOSER_ADDR,
-    DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
+    utils, ExecuteRequestBuilder, StepRequestBuilder, DEFAULT_AUCTION_DELAY, DEFAULT_GAS_PRICE,
+    DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
 };
 
 /// LMDB initial map size is calculated based on DEFAULT_LMDB_PAGES and systems page size.
@@ -1254,5 +1255,18 @@ where
             .get_trie_full(CorrelationId::default(), state_hash)
             .unwrap()
             .map(|bytes| bytesrepr::deserialize(bytes.into()).unwrap())
+    }
+
+    /// Calculates refunded amount from a last execution request.
+    pub fn calculate_refund_amount(&self, payment_amount: U512) -> U512 {
+        let gas_amount = Motes::from_gas(self.last_exec_gas_cost(), DEFAULT_GAS_PRICE)
+            .expect("should create motes from gas");
+
+        let refund_ratio = self.engine_state.config().refund_ratio();
+        // amount declared to be paid in payment code MINUS gas spent in last execution.
+        let refundable_amount = Ratio::from(payment_amount) - Ratio::from(gas_amount.value());
+        (refundable_amount * refund_ratio)
+            .ceil() // assumes possible dust amounts are always transferred to the user
+            .to_integer()
     }
 }

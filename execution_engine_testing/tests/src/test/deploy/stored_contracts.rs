@@ -413,7 +413,10 @@ fn should_empty_account_using_stored_payment_code_by_hash() {
 
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
 
-    assert_eq!(modified_balance_bravo, U512::zero());
+    assert_eq!(
+        modified_balance_bravo,
+        builder.calculate_refund_amount(payment_purse_amount)
+    );
 
     assert!(
         modified_balance_alpha < initial_balance,

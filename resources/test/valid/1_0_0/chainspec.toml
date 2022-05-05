@@ -21,6 +21,7 @@ max_associated_keys = 100
 max_runtime_call_stack_height = 12
 minimum_delegation_amount = 500_000_000_000
 strict_argument_checking = false
+refund_ratio = [0, 100]
 
 [highway]
 finality_threshold_fraction = [2, 25]

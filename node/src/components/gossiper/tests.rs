@@ -22,7 +22,8 @@ use casper_execution_engine::{
     core::engine_state::{
         engine_config::{
             DEFAULT_ALLOW_AUCTION_BIDS, DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS,
-            DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
+            DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_REFUND_RATIO,
+            DEFAULT_STRICT_ARGUMENT_CHECKING,
         },
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
     },
@@ -251,6 +252,7 @@ impl reactor::Reactor for Reactor {
             Vec::default(),
             DEFAULT_ALLOW_AUCTION_BIDS,
             DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS,
+            DEFAULT_REFUND_RATIO,
         )
         .unwrap();
 

@@ -1,4 +1,7 @@
-use casper_types::{account::AccountHash, system::handle_payment::Error, BlockTime, Key, Phase};
+use casper_types::{
+    account::AccountHash, system::handle_payment::Error, BlockTime, Key, Phase, U512,
+};
+use num_rational::Ratio;
 
 /// Provider of runtime host functionality.
 pub trait RuntimeProvider {
@@ -19,4 +22,7 @@ pub trait RuntimeProvider {
 
     /// Get caller.
     fn get_caller(&self) -> AccountHash;
+
+    /// Get refund ratio.
+    fn refund_ratio(&self) -> Ratio<U512>;
 }

@@ -3,11 +3,10 @@ use casper_types::{
     system::handle_payment::{Error, PAYMENT_PURSE_KEY, REFUND_PURSE_KEY},
     Key, Phase, PublicKey, URef, U512,
 };
+use num::{CheckedAdd, CheckedMul, CheckedSub};
+use num_rational::Ratio;
 
 use super::{mint_provider::MintProvider, runtime_provider::RuntimeProvider};
-
-// A simplified representation of a refund percentage which is currently hardcoded to 0%.
-const REFUND_PERCENTAGE: U512 = U512::zero();
 
 /// Returns the purse for accepting payment for transactions.
 pub fn get_payment_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<URef, Error> {
@@ -38,6 +37,59 @@ pub fn get_refund_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<Opti
     }
 }
 
+/// Returns tuple where 1st element is user part, and 2nd element is validator part.
+fn calculate_refund_parts(
+    amount_gas_spent: U512,
+    payment_purse_balance: U512,
+    refund_ratio: Ratio<U512>,
+) -> Result<(U512, U512), Error> {
+    let amount_gas_spent = Ratio::from(amount_gas_spent);
+    let payment_purse_balance = Ratio::from(payment_purse_balance);
+
+    let refund_amount = {
+        let refund_amount_raw = payment_purse_balance
+            .checked_sub(&amount_gas_spent)
+            .ok_or(Error::ArithmeticOverflow)?;
+
+        refund_amount_raw
+            .checked_mul(&refund_ratio)
+            .ok_or(Error::ArithmeticOverflow)?
+    };
+
+    let validator_reward = payment_purse_balance
+        .checked_sub(&refund_amount)
+        .ok_or(Error::ArithmeticOverflow)?;
+
+    let refund_amount_trunc = refund_amount.trunc();
+    let validator_reward_trunc = validator_reward.trunc();
+
+    let dust_amount = validator_reward
+        .fract()
+        .checked_add(&refund_amount.fract())
+        .ok_or(Error::ArithmeticOverflow)?;
+
+    // Give the dust amount to the user to reward him for depositing a larger than needed collateral
+    // to execute the code.
+    let user_part = refund_amount_trunc
+        .checked_add(&dust_amount)
+        .ok_or(Error::ArithmeticOverflow)?;
+    debug_assert_eq!(user_part.fract(), Ratio::from(U512::zero()));
+
+    let validator_part = validator_reward_trunc;
+    debug_assert_eq!(validator_part.fract(), Ratio::from(U512::zero()));
+
+    // Makes sure both parts: for user, and for validator sums to the total amount in the
+    // payment's purse.
+    debug_assert_eq!(
+        user_part + validator_part,
+        payment_purse_balance,
+        "both user part and validator part should equal to the purse balance"
+    );
+
+    // Safely convert ratio to integer after making sure there's no dust amount left behind.
+    Ok((user_part.to_integer(), validator_part.to_integer()))
+}
+
 /// Transfers funds from the payment purse to the validator rewards purse, as well as to the
 /// refund purse, depending on how much was spent on the computation. This function maintains
 /// the invariant that the balance of the payment purse is zero at the beginning and end of each
@@ -63,25 +115,9 @@ pub fn finalize_payment<P: MintProvider + RuntimeProvider>(
         return Err(Error::InsufficientPaymentForAmountSpent);
     }
 
-    // User's part
-    let refund_amount = {
-        let refund_amount_raw = total
-            .checked_sub(amount_spent)
-            .ok_or(Error::ArithmeticOverflow)?;
-        // Currently refund percentage is zero and we expect no overflows.
-        // However, we put this check should the constant change in the future.
-        refund_amount_raw
-            .checked_mul(REFUND_PERCENTAGE)
-            .ok_or(Error::ArithmeticOverflow)?
-    };
+    let (refund_amount, validator_reward) =
+        calculate_refund_parts(amount_spent, total, provider.refund_ratio())?;
 
-    // Validator reward
-    let validator_reward = total
-        .checked_sub(refund_amount)
-        .ok_or(Error::ArithmeticOverflow)?;
-
-    // Makes sure both parts: for user, and for validator sums to the total amount in the
-    // payment's purse.
     debug_assert_eq!(validator_reward + refund_amount, total);
 
     let refund_purse = get_refund_purse(provider)?;
@@ -130,6 +166,30 @@ pub fn refund_to_account<M: MintProvider>(
 ) -> Result<(), Error> {
     match mint_provider.transfer_purse_to_account(payment_purse, account, amount) {
         Ok(_) => Ok(()),
-        Err(_) => Err(Error::FailedTransferToAccountPurse),
+        Err(error) => {
+            eprintln!("refund to account real error {:?}", error);
+            Err(Error::FailedTransferToAccountPurse)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn should_account_refund_for_dust() {
+        let purse_bal = U512::from(9973u64);
+        let gas = U512::from(9161u64);
+
+        for percentage in 0..=100 {
+            let ratio = Ratio::new_raw(U512::from_u64(percentage), U512::from_u64(100));
+
+            let (a, b) = calculate_refund_parts(gas, purse_bal, ratio).unwrap();
+
+            let a = Ratio::from(a);
+            let b = Ratio::from(b);
+
+            assert_eq!(a + b, Ratio::from(purse_bal));
+        }
     }
 }
