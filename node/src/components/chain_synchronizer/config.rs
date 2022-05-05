@@ -95,7 +95,7 @@ impl Config {
     }
 
     pub(super) fn finality_threshold_fraction(&self) -> Ratio<u64> {
-        self.chainspec.highway_config.finality_threshold_fraction
+        self.chainspec.core_config.finality_threshold_fraction
     }
 
     pub(super) fn deploy_max_ttl(&self) -> TimeDiff {

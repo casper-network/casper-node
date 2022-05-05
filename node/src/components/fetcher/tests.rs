@@ -81,7 +81,7 @@ reactor!(Reactor {
             &chainspec_loader.chainspec().network_config.name,
             chainspec_loader
                 .chainspec()
-                .highway_config
+                .core_config
                 .finality_threshold_fraction,
             chainspec_loader
                 .chainspec()

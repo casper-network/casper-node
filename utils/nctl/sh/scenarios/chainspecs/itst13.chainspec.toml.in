@@ -34,6 +34,11 @@ minimum_era_height = 30
 minimum_block_time = '4seconds'
 # Number of slots available in validator auction.
 validator_slots = 5
+# A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.
+# It is the fraction of validators that would need to equivocate to make two honest nodes see two conflicting blocks as
+# finalized: A higher value F makes it safer to rely on finalized blocks.  It also makes it more difficult to finalize
+# blocks, however, and requires strictly more than (F + 1)/2 validators to be working correctly.
+finality_threshold_fraction = [1, 3]
 # Number of eras before an auction actually defines the set of validators.  If you bond with a sufficient bid in era N,
 # you will be a validator in era N + auction_delay + 1.
 auction_delay = 1
@@ -60,11 +65,6 @@ strict_argument_checking = false
 consensus_protocol = 'Simple'
 
 [highway]
-# A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.
-# It is the fraction of validators that would need to equivocate to make two honest nodes see two conflicting blocks as
-# finalized: A higher value F makes it safer to rely on finalized blocks.  It also makes it more difficult to finalize
-# blocks, however, and requires strictly more than (F + 1)/2 validators to be working correctly.
-finality_threshold_fraction = [1, 3]
 # Integer between 0 and 255.  The power of two that is the number of milliseconds in the minimum round length, and
 # therefore the minimum delay between a block and its child.  E.g. 14 means 2^14 milliseconds, i.e. about 16 seconds.
 minimum_round_exponent = 12

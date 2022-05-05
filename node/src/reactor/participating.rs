@@ -725,7 +725,7 @@ impl reactor::Reactor for Reactor {
             protocol_version,
             chainspec.core_config.auction_delay,
             chainspec.core_config.unbonding_delay,
-            chainspec.highway_config.finality_threshold_fraction,
+            chainspec.core_config.finality_threshold_fraction,
             next_upgrade_activation_point,
             chainspec.protocol_config.verifiable_chunked_hash_activation,
         )?;

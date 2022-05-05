@@ -95,7 +95,9 @@ impl Chainspec {
             warn!("era duration is less than minimum era height * round length!");
         }
 
-        self.protocol_config.is_valid() && self.highway_config.is_valid()
+        self.protocol_config.is_valid()
+            && self.highway_config.is_valid()
+            && self.core_config.is_valid()
     }
 
     /// Serializes `self` and hashes the resulting bytes.
@@ -362,7 +364,7 @@ mod tests {
         assert_eq!(spec.core_config.era_duration, TimeDiff::from(180000));
         assert_eq!(spec.core_config.minimum_era_height, 9);
         assert_eq!(
-            spec.highway_config.finality_threshold_fraction,
+            spec.core_config.finality_threshold_fraction,
             Ratio::new(2, 25)
         );
         assert_eq!(spec.highway_config.minimum_round_exponent, 14);

@@ -112,7 +112,7 @@ impl TestChain {
         chainspec.protocol_config.activation_point = ActivationPoint::Genesis(genesis_time);
 
         chainspec.core_config.minimum_era_height = 1;
-        chainspec.highway_config.finality_threshold_fraction = Ratio::new(34, 100);
+        chainspec.core_config.finality_threshold_fraction = Ratio::new(34, 100);
         chainspec.core_config.era_duration = 10.into();
         chainspec.core_config.auction_delay = 1;
         chainspec.core_config.unbonding_delay = 3;
