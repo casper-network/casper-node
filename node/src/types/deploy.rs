@@ -34,10 +34,11 @@ use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     crypto, runtime_args,
     system::standard_payment::ARG_AMOUNT,
-    EraId, ExecutionResult, Motes, PublicKey, RuntimeArgs, SecretKey, Signature, U512,
+    EraId, ExecutionResult, Motes, PublicKey, RuntimeArgs, SecretKey, Signature, TimeDiff,
+    Timestamp, U512,
 };
 
-use super::{BlockHash, Item, Tag, TimeDiff, Timestamp};
+use super::{BlockHash, Item, Tag};
 use crate::{
     components::block_proposer::DeployInfo,
     rpcs::docs::DocExample,
@@ -628,6 +629,38 @@ impl FinalizedApprovals {
     pub fn into_inner(self) -> BTreeSet<Approval> {
         self.0
     }
+
+    #[cfg(test)]
+    pub fn random(rng: &mut TestRng) -> Self {
+        let mut set = BTreeSet::new();
+        for _ in 0..rng.gen_range(0usize..100usize) {
+            set.insert(Approval::random(rng));
+        }
+        Self::new(set)
+    }
+}
+
+impl ToBytes for FinalizedApprovals {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buf = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buf)?;
+        Ok(buf)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.0.write_bytes(writer)
+    }
+}
+
+impl FromBytes for FinalizedApprovals {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (approvals, bytes) = BTreeSet::from_bytes(bytes)?;
+        Ok((FinalizedApprovals::new(approvals), bytes))
+    }
 }
 
 impl AsRef<BTreeSet<Approval>> for FinalizedApprovals {
@@ -653,6 +686,36 @@ impl FinalizedApprovalsWithId {
     /// Return the inner set of approvals.
     pub fn into_inner(self) -> BTreeSet<Approval> {
         self.approvals.into_inner()
+    }
+
+    #[cfg(test)]
+    pub fn random(rng: &mut TestRng) -> Self {
+        Self::new(DeployHash::random(rng), FinalizedApprovals::random(rng))
+    }
+}
+
+impl ToBytes for FinalizedApprovalsWithId {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buf = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buf)?;
+        Ok(buf)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.id.serialized_length() + self.approvals.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.id.write_bytes(writer)?;
+        self.approvals.write_bytes(writer)
+    }
+}
+
+impl FromBytes for FinalizedApprovalsWithId {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (id, bytes) = DeployHash::from_bytes(bytes)?;
+        let (approvals, bytes) = FinalizedApprovals::from_bytes(bytes)?;
+        Ok((FinalizedApprovalsWithId::new(id, approvals), bytes))
     }
 }
 
@@ -1614,6 +1677,43 @@ pub struct DeployMetadata {
     pub execution_results: HashMap<BlockHash, ExecutionResult>,
 }
 
+impl ToBytes for DeployMetadata {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buf = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buf)?;
+        Ok(buf)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.execution_results.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.execution_results.write_bytes(writer)
+    }
+}
+
+impl FromBytes for DeployMetadata {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (execution_results, stream) = HashMap::from_bytes(bytes)?;
+        Ok((DeployMetadata { execution_results }, stream))
+    }
+}
+
+#[cfg(test)]
+impl DeployMetadata {
+    /// Generates a completely random instance.
+    pub fn random(rng: &mut TestRng) -> Self {
+        let mut execution_results = HashMap::new();
+        for _ in 0..rng.gen_range(0usize..100usize) {
+            let block_hash = BlockHash::random(rng);
+            let execution_result: ExecutionResult = rng.gen();
+            let _ = execution_results.insert(block_hash, execution_result);
+        }
+        DeployMetadata { execution_results }
+    }
+}
+
 impl ToBytes for Deploy {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
@@ -1691,6 +1791,15 @@ mod tests {
         let deploy = Deploy::random(&mut rng);
         bytesrepr::test_serialization_roundtrip(deploy.header());
         bytesrepr::test_serialization_roundtrip(&deploy);
+
+        let deploy_metadata = DeployMetadata::random(&mut rng);
+        bytesrepr::test_serialization_roundtrip(&deploy_metadata);
+
+        let finalized_approvals = FinalizedApprovals::random(&mut rng);
+        bytesrepr::test_serialization_roundtrip(&finalized_approvals);
+
+        let finalized_approvals_with_id = FinalizedApprovalsWithId::random(&mut rng);
+        bytesrepr::test_serialization_roundtrip(&finalized_approvals_with_id);
     }
 
     fn create_deploy(

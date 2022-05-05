@@ -86,6 +86,11 @@ mod proptests {
         }
 
         #[test]
+        fn bytesrepr_roundtrip_trie_chunk_or_id(trie_chunk_or_id in trie_or_chunk_id_arb()) {
+            bytesrepr::test_serialization_roundtrip(&trie_chunk_or_id);
+        }
+
+        #[test]
         fn roundtrip_key(key in key_arb()) {
             bytesrepr::test_serialization_roundtrip(&key);
         }

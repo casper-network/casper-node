@@ -1,46 +1,46 @@
 use alloc::string::String;
 use core::fmt::Debug;
-#[cfg(not(any(feature = "crypto-std", test)))]
+#[cfg(not(any(feature = "std", test)))]
 use core::fmt::{self, Display, Formatter};
 
 use ed25519_dalek::ed25519::Error as SignatureError;
-#[cfg(any(feature = "crypto-std", test))]
+#[cfg(any(feature = "std", test))]
 use pem::PemError;
-#[cfg(any(feature = "crypto-std", test))]
+#[cfg(any(feature = "std", test))]
 use thiserror::Error;
 
-#[cfg(any(feature = "crypto-std", test))]
+#[cfg(any(feature = "std", test))]
 use crate::file_utils::{ReadFileError, WriteFileError};
 
 /// Cryptographic errors.
 #[derive(Debug)]
-#[cfg_attr(any(feature = "crypto-std", test), derive(Error))]
+#[cfg_attr(any(feature = "std", test), derive(Error))]
 pub enum Error {
     /// Error resulting from creating or using asymmetric key types.
-    #[cfg_attr(any(feature = "crypto-std", test), error("asymmetric key error: {0}"))]
+    #[cfg_attr(any(feature = "std", test), error("asymmetric key error: {0}"))]
     AsymmetricKey(String),
 
     /// Error resulting when decoding a type from a hex-encoded representation.
-    #[cfg_attr(any(feature = "crypto-std", test), error("parsing from hex: {0}"))]
+    #[cfg_attr(any(feature = "std", test), error("parsing from hex: {0}"))]
     FromHex(base16::DecodeError),
 
     /// Error resulting when decoding a type from a base64 representation.
-    #[cfg_attr(any(feature = "crypto-std", test), error("decoding error: {0}"))]
+    #[cfg_attr(any(feature = "std", test), error("decoding error: {0}"))]
     FromBase64(base64::DecodeError),
 
     /// Signature error.
-    #[cfg_attr(any(feature = "crypto-std", test), error("error in signature"))]
+    #[cfg_attr(any(feature = "std", test), error("error in signature"))]
     SignatureError(SignatureError),
 
     /// Error trying to manipulate the system key.
     #[cfg_attr(
-        any(feature = "crypto-std", test),
+        any(feature = "std", test),
         error("invalid operation on system key: {0}")
     )]
     System(String),
 }
 
-#[cfg(not(any(feature = "crypto-std", test)))]
+#[cfg(not(any(feature = "std", test)))]
 impl Display for Error {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         Debug::fmt(self, formatter)
@@ -60,7 +60,7 @@ impl From<SignatureError> for Error {
 }
 
 /// Cryptographic errors extended with some additional variants.
-#[cfg(any(feature = "crypto-std", test))]
+#[cfg(any(feature = "std", test))]
 #[derive(Debug, Error)]
 pub enum ErrorExt {
     /// A basic crypto error.
@@ -96,7 +96,7 @@ pub enum ErrorExt {
     GetRandomBytes(#[from] getrandom::Error),
 }
 
-#[cfg(any(feature = "crypto-std", test))]
+#[cfg(any(feature = "std", test))]
 impl From<PemError> for ErrorExt {
     fn from(error: PemError) -> Self {
         ErrorExt::FromPem(error.to_string())

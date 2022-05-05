@@ -1613,18 +1613,15 @@ fn can_put_and_get_blocks_v2() {
             block_body_merkle.clone().take_hashes_and_proofs()
         {
             assert_eq!(
-                txn.get_value_bytesrepr::<_, (Digest, Digest)>(
-                    storage.storage.block_body_v2_db,
-                    &node_hash
-                )
-                .unwrap()
-                .unwrap(),
+                txn.get_value::<_, (Digest, Digest)>(storage.storage.block_body_v2_db, &node_hash)
+                    .unwrap()
+                    .unwrap(),
                 (value_hash, proof_of_rest)
             );
         }
 
         assert_eq!(
-            txn.get_value_bytesrepr::<_, Vec<DeployHash>>(
+            txn.get_value::<_, Vec<DeployHash>>(
                 storage.storage.deploy_hashes_db,
                 block_body_merkle.deploy_hashes.value_hash()
             )
@@ -1634,7 +1631,7 @@ fn can_put_and_get_blocks_v2() {
         );
 
         assert_eq!(
-            txn.get_value_bytesrepr::<_, Vec<DeployHash>>(
+            txn.get_value::<_, Vec<DeployHash>>(
                 storage.storage.transfer_hashes_db,
                 block_body_merkle.transfer_hashes.value_hash()
             )
@@ -1644,7 +1641,7 @@ fn can_put_and_get_blocks_v2() {
         );
 
         assert_eq!(
-            txn.get_value_bytesrepr::<_, PublicKey>(
+            txn.get_value::<_, PublicKey>(
                 storage.storage.proposer_db,
                 block_body_merkle.proposer.value_hash()
             )

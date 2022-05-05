@@ -1,5 +1,7 @@
 use std::cmp::Reverse;
 
+use casper_types::Timestamp;
+
 use crate::{
     components::consensus::{
         highway_core::{
@@ -9,7 +11,6 @@ use crate::{
         },
         traits::Context,
     },
-    types::Timestamp,
     utils::div_round,
 };
 

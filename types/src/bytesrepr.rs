@@ -17,6 +17,12 @@ use core::{
     mem,
     ptr::NonNull,
 };
+#[cfg(feature = "std")]
+use std::{
+    collections::HashMap,
+    hash::Hash,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -48,6 +54,14 @@ pub const U128_SERIALIZED_LENGTH: usize = mem::size_of::<u128>();
 pub const U256_SERIALIZED_LENGTH: usize = U128_SERIALIZED_LENGTH * 2;
 /// The number of bytes in a serialized [`U512`](crate::U512).
 pub const U512_SERIALIZED_LENGTH: usize = U256_SERIALIZED_LENGTH * 2;
+/// The number of bytes in a serialized `Ipv4Addr`.
+pub const IPV4_SERIALIZED_LENGTH: usize = 4;
+/// The number of bytes in a serialized `Ipv6Addr`.
+pub const IPV6_SERIALIZED_LENGTH: usize = 16;
+/// The tag representing an IPv4 value.
+pub const IP_V4_TAG: u8 = 0;
+/// The tag representing an IPv6 value.
+pub const IP_V6_TAG: u8 = 1;
 /// The tag representing a `None` value.
 pub const OPTION_NONE_TAG: u8 = 0;
 /// The tag representing a `Some` value.
@@ -670,6 +684,58 @@ where
     }
 }
 
+#[cfg(feature = "std")]
+impl<K, V> ToBytes for HashMap<K, V>
+where
+    K: ToBytes + Ord,
+    V: ToBytes,
+{
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut buf = allocate_buffer(self)?;
+        self.write_bytes(&mut buf)?;
+        Ok(buf)
+    }
+
+    fn serialized_length(&self) -> usize {
+        U32_SERIALIZED_LENGTH
+            + self
+                .iter()
+                .map(|(key, value)| key.serialized_length() + value.serialized_length())
+                .sum::<usize>()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        let length_32: u32 = self.len().try_into().map_err(|_| Error::NotRepresentable)?;
+        writer.extend_from_slice(&length_32.to_le_bytes());
+        let mut entries = self.iter().collect::<Vec<(&K, &V)>>();
+        entries.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
+        for (key, value) in entries {
+            key.write_bytes(writer)?;
+            value.write_bytes(writer)?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(feature = "std")]
+impl<K, V> FromBytes for HashMap<K, V>
+where
+    K: FromBytes + Hash + Ord,
+    V: FromBytes,
+{
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let (num_keys, mut stream) = u32::from_bytes(bytes)?;
+        let mut result = HashMap::new();
+        for _ in 0..num_keys {
+            let (k, rem) = K::from_bytes(stream)?;
+            let (v, rem) = V::from_bytes(rem)?;
+            result.insert(k, v);
+            stream = rem;
+        }
+        Ok((result, stream))
+    }
+}
+
 impl<T: ToBytes> ToBytes for Option<T> {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         match self {
@@ -766,6 +832,213 @@ impl<T: FromBytes, E: FromBytes> FromBytes for Result<T, E> {
             RESULT_OK_TAG => {
                 let (value, rem) = T::from_bytes(rem)?;
                 Ok((Ok(value), rem))
+            }
+            _ => Err(Error::Formatting),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl ToBytes for Ipv4Addr {
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut buf = allocate_buffer(self)?;
+        self.write_bytes(&mut buf)?;
+        Ok(buf)
+    }
+
+    fn serialized_length(&self) -> usize {
+        IPV4_SERIALIZED_LENGTH
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        self.octets().write_bytes(writer)
+    }
+}
+
+#[cfg(feature = "std")]
+impl FromBytes for Ipv4Addr {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let (octets, remainder): ([u8; IPV4_SERIALIZED_LENGTH], &[u8]) =
+            FromBytes::from_bytes(bytes)?;
+        Ok((octets.into(), remainder))
+    }
+}
+
+#[cfg(feature = "std")]
+impl ToBytes for Ipv6Addr {
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut buf = allocate_buffer(self)?;
+        self.write_bytes(&mut buf)?;
+        Ok(buf)
+    }
+
+    fn serialized_length(&self) -> usize {
+        IPV6_SERIALIZED_LENGTH
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        self.octets().write_bytes(writer)
+    }
+}
+
+#[cfg(feature = "std")]
+impl FromBytes for Ipv6Addr {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let (octets, remainder): ([u8; IPV6_SERIALIZED_LENGTH], &[u8]) =
+            FromBytes::from_bytes(bytes)?;
+        Ok((octets.into(), remainder))
+    }
+}
+
+#[cfg(feature = "std")]
+impl ToBytes for IpAddr {
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut buf = allocate_buffer(self)?;
+        self.write_bytes(&mut buf)?;
+        Ok(buf)
+    }
+
+    fn serialized_length(&self) -> usize {
+        match self {
+            IpAddr::V4(_) => U8_SERIALIZED_LENGTH + IPV4_SERIALIZED_LENGTH,
+            IpAddr::V6(_) => U8_SERIALIZED_LENGTH + IPV6_SERIALIZED_LENGTH,
+        }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        match self {
+            IpAddr::V4(addr) => {
+                writer.push(IP_V4_TAG);
+                addr.write_bytes(writer)
+            }
+            IpAddr::V6(addr) => {
+                writer.push(IP_V6_TAG);
+                addr.write_bytes(writer)
+            }
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl FromBytes for IpAddr {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        match tag {
+            IP_V4_TAG => {
+                let (addr, rem) = Ipv4Addr::from_bytes(remainder)?;
+                Ok((Self::V4(addr), rem))
+            }
+            IP_V6_TAG => {
+                let (addr, rem) = Ipv6Addr::from_bytes(remainder)?;
+                Ok((Self::V6(addr), rem))
+            }
+            _ => Err(Error::Formatting),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl ToBytes for SocketAddrV4 {
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut buf = allocate_buffer(self)?;
+        self.write_bytes(&mut buf)?;
+        Ok(buf)
+    }
+
+    fn serialized_length(&self) -> usize {
+        IPV4_SERIALIZED_LENGTH + U16_SERIALIZED_LENGTH
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        self.ip().write_bytes(writer)?;
+        self.port().write_bytes(writer)
+    }
+}
+
+#[cfg(feature = "std")]
+impl FromBytes for SocketAddrV4 {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let (addr, remainder) = Ipv4Addr::from_bytes(bytes)?;
+        let (port, rem) = u16::from_bytes(remainder)?;
+        Ok((Self::new(addr, port), rem))
+    }
+}
+
+#[cfg(feature = "std")]
+impl ToBytes for SocketAddrV6 {
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut buf = allocate_buffer(self)?;
+        self.write_bytes(&mut buf)?;
+        Ok(buf)
+    }
+
+    fn serialized_length(&self) -> usize {
+        IPV6_SERIALIZED_LENGTH
+            + U16_SERIALIZED_LENGTH
+            + U32_SERIALIZED_LENGTH
+            + U32_SERIALIZED_LENGTH
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        self.ip().write_bytes(writer)?;
+        self.port().write_bytes(writer)?;
+        self.flowinfo().write_bytes(writer)?;
+        self.scope_id().write_bytes(writer)
+    }
+}
+
+#[cfg(feature = "std")]
+impl FromBytes for SocketAddrV6 {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let (addr, remainder) = Ipv6Addr::from_bytes(bytes)?;
+        let (port, remainder) = u16::from_bytes(remainder)?;
+        let (flowinfo, remainder) = u32::from_bytes(remainder)?;
+        let (scope_id, rem) = u32::from_bytes(remainder)?;
+        Ok((Self::new(addr, port, flowinfo, scope_id), rem))
+    }
+}
+
+#[cfg(feature = "std")]
+impl ToBytes for SocketAddr {
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut buf = allocate_buffer(self)?;
+        self.write_bytes(&mut buf)?;
+        Ok(buf)
+    }
+
+    fn serialized_length(&self) -> usize {
+        match self {
+            SocketAddr::V4(addr) => U8_SERIALIZED_LENGTH + addr.serialized_length(),
+            SocketAddr::V6(addr) => U8_SERIALIZED_LENGTH + addr.serialized_length(),
+        }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        match self {
+            SocketAddr::V4(addr) => {
+                writer.push(IP_V4_TAG);
+                addr.write_bytes(writer)
+            }
+            SocketAddr::V6(addr) => {
+                writer.push(IP_V6_TAG);
+                addr.write_bytes(writer)
+            }
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl FromBytes for SocketAddr {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        match tag {
+            IP_V4_TAG => {
+                let (addr, rem) = SocketAddrV4::from_bytes(remainder)?;
+                Ok((Self::V4(addr), rem))
+            }
+            IP_V6_TAG => {
+                let (addr, rem) = SocketAddrV6::from_bytes(remainder)?;
+                Ok((Self::V6(addr), rem))
             }
             _ => Err(Error::Formatting),
         }
@@ -1352,12 +1625,12 @@ mod tests {
 
 #[cfg(test)]
 mod proptests {
-    use std::collections::VecDeque;
+    use std::collections::{HashMap, VecDeque};
 
     use proptest::{collection::vec, prelude::*};
 
     use crate::{
-        bytesrepr::{self, bytes::gens::bytes_arb, ToBytes},
+        bytesrepr::{self, bytes::gens::bytes_arb, FromBytes, ToBytes},
         gens::*,
     };
 
@@ -1435,6 +1708,19 @@ mod proptests {
         }
 
         #[test]
+        fn test_hash_map(m in hash_map_arb(20)) {
+            bytesrepr::test_serialization_roundtrip(&m);
+        }
+
+        #[test]
+        fn test_hash_map_consistency(m in hash_map_arb(20)) {
+            let serialized = m.to_bytes().expect("couldn't serialize");
+            let (deserialized_map, _) = HashMap::<u32, u32>::from_bytes(&serialized).expect("couldn't deserialize");
+            let second_serialized = deserialized_map.to_bytes().expect("couldn't serialize");
+            assert_eq!(serialized, second_serialized);
+        }
+
+        #[test]
         fn test_array_u8_32(arr in any::<[u8; 32]>()) {
             bytesrepr::test_serialization_roundtrip(&arr);
         }
@@ -1503,6 +1789,36 @@ mod proptests {
         #[test]
         fn test_result(result in result_arb()) {
             bytesrepr::test_serialization_roundtrip(&result);
+        }
+
+        #[test]
+        fn test_ipv4_addr(addr in ipv4_addr_arb()) {
+            bytesrepr::test_serialization_roundtrip(&addr);
+        }
+
+        #[test]
+        fn test_ipv6_addr(addr in ipv6_addr_arb()) {
+            bytesrepr::test_serialization_roundtrip(&addr);
+        }
+
+        #[test]
+        fn test_ip_addr(addr in ip_addr_arb()) {
+            bytesrepr::test_serialization_roundtrip(&addr);
+        }
+
+        #[test]
+        fn test_socket_addr_v4(addr in socket_addr_v4_arb()) {
+            bytesrepr::test_serialization_roundtrip(&addr);
+        }
+
+        #[test]
+        fn test_socket_addr_v6(addr in socket_addr_v6_arb()) {
+            bytesrepr::test_serialization_roundtrip(&addr);
+        }
+
+        #[test]
+        fn test_socket_addr(addr in socket_addr_arb()) {
+            bytesrepr::test_serialization_roundtrip(&addr);
         }
 
         #[test]

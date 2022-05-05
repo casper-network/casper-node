@@ -27,7 +27,7 @@ use casper_hashing::Digest;
 use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    crypto, EraId, ProtocolVersion, PublicKey, SecretKey, Signature, U512,
+    crypto, EraId, ProtocolVersion, PublicKey, SecretKey, Signature, Timestamp, U512,
 };
 #[cfg(test)]
 use casper_types::{crypto::generate_ed25519_keypair, system::auction::BLOCK_REWARD};
@@ -43,7 +43,7 @@ use crate::{
     utils::DisplayIter,
 };
 
-use super::{Item, Tag, Timestamp};
+use super::{Item, Tag};
 use crate::types::error::{
     BlockHeaderWithMetadataValidationError, BlockWithMetadataValidationError,
 };
@@ -1040,6 +1040,50 @@ pub struct BlockHeaderWithMetadata {
     pub block_signatures: BlockSignatures,
 }
 
+#[cfg(test)]
+impl BlockHeaderWithMetadata {
+    /// Generates a completely random instance.
+    pub fn random(rng: &mut TestRng) -> Self {
+        let block_header = Block::random(rng).header;
+        let block_signatures = BlockSignatures::random(rng);
+        BlockHeaderWithMetadata {
+            block_header,
+            block_signatures,
+        }
+    }
+}
+
+impl ToBytes for BlockHeaderWithMetadata {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buf = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buf)?;
+        Ok(buf)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.block_header.serialized_length() + self.block_signatures.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.block_header.write_bytes(writer)?;
+        self.block_signatures.write_bytes(writer)
+    }
+}
+
+impl FromBytes for BlockHeaderWithMetadata {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (block_header, bytes) = BlockHeader::from_bytes(bytes)?;
+        let (block_signatures, bytes) = BlockSignatures::from_bytes(bytes)?;
+        Ok((
+            BlockHeaderWithMetadata {
+                block_header,
+                block_signatures,
+            },
+            bytes,
+        ))
+    }
+}
+
 impl Display for BlockHeaderWithMetadata {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{} and {}", self.block_header, self.block_signatures)
@@ -1379,6 +1423,26 @@ impl BlockSignatures {
         }
         Ok(())
     }
+
+    /// Generates a random instance using a `TestRng`.
+    #[cfg(test)]
+    pub fn random(rng: &mut TestRng) -> Self {
+        let block_hash = BlockHash::random(rng);
+        let era_id = rng.gen::<u64>().into();
+        let mut proofs = BTreeMap::new();
+        for _ in 0..rng.gen_range(0usize..100usize) {
+            let secret_key = SecretKey::random(rng);
+            let public_key: PublicKey = (&secret_key).into();
+            let bytes = rng.gen::<[u8; 32]>();
+            let signature = casper_types::sign(bytes, &secret_key, &public_key);
+            let _ = proofs.insert(public_key.clone(), signature);
+        }
+        BlockSignatures {
+            block_hash,
+            era_id,
+            proofs,
+        }
+    }
 }
 
 impl Display for BlockSignatures {
@@ -1390,6 +1454,42 @@ impl Display for BlockSignatures {
             self.era_id,
             self.proofs.len()
         )
+    }
+}
+
+impl ToBytes for BlockSignatures {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buf = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buf)?;
+        Ok(buf)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.block_hash.serialized_length()
+            + self.era_id.serialized_length()
+            + self.proofs.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.block_hash.write_bytes(writer)?;
+        self.era_id.write_bytes(writer)?;
+        self.proofs.write_bytes(writer)
+    }
+}
+
+impl FromBytes for BlockSignatures {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (block_hash, bytes) = BlockHash::from_bytes(bytes)?;
+        let (era_id, bytes) = EraId::from_bytes(bytes)?;
+        let (proofs, bytes) = BTreeMap::from_bytes(bytes)?;
+        Ok((
+            BlockSignatures {
+                block_hash,
+                era_id,
+                proofs,
+            },
+            bytes,
+        ))
     }
 }
 
@@ -1771,6 +1871,49 @@ impl Item for Block {
 pub struct BlockWithMetadata {
     pub block: Block,
     pub finality_signatures: BlockSignatures,
+}
+
+#[cfg(test)]
+impl BlockWithMetadata {
+    pub fn random(rng: &mut TestRng) -> Self {
+        let block = Block::random(rng);
+        let finality_signatures = BlockSignatures::random(rng);
+        BlockWithMetadata {
+            block,
+            finality_signatures,
+        }
+    }
+}
+
+impl ToBytes for BlockWithMetadata {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buf = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buf)?;
+        Ok(buf)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.block.serialized_length() + self.finality_signatures.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.block.write_bytes(writer)?;
+        self.finality_signatures.write_bytes(writer)
+    }
+}
+
+impl FromBytes for BlockWithMetadata {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (block, bytes) = Block::from_bytes(bytes)?;
+        let (finality_signatures, bytes) = BlockSignatures::from_bytes(bytes)?;
+        Ok((
+            BlockWithMetadata {
+                block,
+                finality_signatures,
+            },
+            bytes,
+        ))
+    }
 }
 
 impl Display for BlockWithMetadata {
@@ -2215,6 +2358,27 @@ mod tests {
         let mut rng = TestRng::new();
         let block_header: BlockHeader = Block::random(&mut rng).header;
         bytesrepr::test_serialization_roundtrip(&block_header);
+    }
+
+    #[test]
+    fn block_header_with_metadata_bytesrepr_roundtrip() {
+        let mut rng = TestRng::new();
+        let block_header = BlockHeaderWithMetadata::random(&mut rng);
+        bytesrepr::test_serialization_roundtrip(&block_header);
+    }
+
+    #[test]
+    fn block_signatures_bytesrepr_roundtrip() {
+        let mut rng = TestRng::new();
+        let block = BlockSignatures::random(&mut rng);
+        bytesrepr::test_serialization_roundtrip(&block);
+    }
+
+    #[test]
+    fn block_with_metadata_bytesrepr_roundtrip() {
+        let mut rng = TestRng::new();
+        let block = BlockWithMetadata::random(&mut rng);
+        bytesrepr::test_serialization_roundtrip(&block);
     }
 
     #[test]

@@ -31,6 +31,8 @@ use rand_chacha::ChaCha8Rng;
 use thiserror::Error;
 use tracing::{error, info, trace, warn};
 
+use casper_types::{TimeDiff, Timestamp};
+
 use crate::{
     components::consensus::{
         highway_core::{
@@ -42,7 +44,6 @@ use crate::{
         },
         traits::Context,
     },
-    types::{TimeDiff, Timestamp},
     utils::ds,
 };
 use block::Block;

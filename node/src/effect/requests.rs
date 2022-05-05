@@ -31,7 +31,7 @@ use casper_execution_engine::{
 use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::Bytes, system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion,
-    PublicKey, Transfer, URef,
+    PublicKey, TimeDiff, Transfer, URef,
 };
 
 use crate::{
@@ -51,7 +51,7 @@ use crate::{
         AvailableBlockRange, Block, BlockHash, BlockHeader, BlockHeaderWithMetadata, BlockPayload,
         BlockSignatures, BlockWithMetadata, Chainspec, ChainspecInfo, ChainspecRawBytes, Deploy,
         DeployHash, DeployMetadata, DeployWithFinalizedApprovals, FinalizedApprovals,
-        FinalizedBlock, Item, NodeId, StatusFeed, TimeDiff,
+        FinalizedBlock, Item, NodeId, StatusFeed,
     },
     utils::{DisplayIter, Source},
 };

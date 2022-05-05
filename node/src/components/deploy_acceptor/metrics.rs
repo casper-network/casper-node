@@ -1,6 +1,8 @@
 use prometheus::{Histogram, Registry};
 
-use crate::{types::Timestamp, unregister_metric, utils};
+use casper_types::Timestamp;
+
+use crate::{unregister_metric, utils};
 
 const DEPLOY_ACCEPTED_NAME: &str = "deploy_acceptor_accepted_deploy";
 const DEPLOY_ACCEPTED_HELP: &str = "time in seconds to accept a deploy in the deploy acceptor";

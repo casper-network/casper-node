@@ -3,7 +3,7 @@ set -e
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)"
 JSON_CONFIG_FILE="$ROOT_DIR/utils/nctl/ci/ci.json"
-JSON_KEYS=($(jq -r 'keys[]' "$JSON_CONFIG_FILE"))
+JSON_KEYS=($(jq -r '.external_deps | keys[]' "$JSON_CONFIG_FILE"))
 
 function clone_external_repo() {
     local NAME=${1}
@@ -13,8 +13,8 @@ function clone_external_repo() {
     local CLONE_REPO_PATH
 
     CLONE_REPO_PATH="$ROOT_DIR/../$NAME"
-    URL=$(jq -r ".\"${NAME}\".github_repo_url" "$JSON_FILE")
-    BRANCH=$(jq -r ".\"${NAME}\".branch" "$JSON_FILE")
+    URL=$(jq -r ".external_deps.\"${NAME}\".github_repo_url" "$JSON_FILE")
+    BRANCH=$(jq -r ".external_deps.\"${NAME}\".branch" "$JSON_FILE")
 
     if [ ! -d "$CLONE_REPO_PATH" ]; then
         echo "... cloning $NAME: branch=$BRANCH"

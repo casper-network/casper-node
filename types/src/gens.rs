@@ -3,6 +3,11 @@
 #![allow(missing_docs)]
 
 use alloc::{boxed::Box, string::String, vec};
+#[cfg(feature = "std")]
+use std::{
+    collections::HashMap,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+};
 
 use proptest::{
     array, bits, bool,
@@ -50,6 +55,11 @@ pub fn u2_slice_32() -> impl Strategy<Value = [u8; 32]> {
 
 pub fn named_keys_arb(depth: usize) -> impl Strategy<Value = NamedKeys> {
     collection::btree_map("\\PC*", key_arb(), depth)
+}
+
+#[cfg(feature = "std")]
+pub fn hash_map_arb(size: usize) -> impl Strategy<Value = HashMap<u32, u32>> {
+    collection::hash_map(any::<u32>(), any::<u32>(), size)
 }
 
 pub fn access_rights_arb() -> impl Strategy<Value = AccessRights> {
@@ -262,6 +272,36 @@ pub fn cl_value_arb() -> impl Strategy<Value = CLValue> {
 
 pub fn result_arb() -> impl Strategy<Value = Result<u32, u32>> {
     result::maybe_ok(any::<u32>(), any::<u32>())
+}
+
+#[cfg(feature = "std")]
+pub fn ipv4_addr_arb() -> impl Strategy<Value = Ipv4Addr> {
+    Ipv4Addr::arbitrary()
+}
+
+#[cfg(feature = "std")]
+pub fn ipv6_addr_arb() -> impl Strategy<Value = Ipv6Addr> {
+    Ipv6Addr::arbitrary()
+}
+
+#[cfg(feature = "std")]
+pub fn ip_addr_arb() -> impl Strategy<Value = IpAddr> {
+    IpAddr::arbitrary()
+}
+
+#[cfg(feature = "std")]
+pub fn socket_addr_v4_arb() -> impl Strategy<Value = SocketAddrV4> {
+    SocketAddrV4::arbitrary()
+}
+
+#[cfg(feature = "std")]
+pub fn socket_addr_v6_arb() -> impl Strategy<Value = SocketAddrV6> {
+    SocketAddrV6::arbitrary()
+}
+
+#[cfg(feature = "std")]
+pub fn socket_addr_arb() -> impl Strategy<Value = SocketAddr> {
+    SocketAddr::arbitrary()
 }
 
 pub fn named_args_arb() -> impl Strategy<Value = NamedArg> {

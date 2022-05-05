@@ -11,7 +11,10 @@ use thiserror::Error;
 
 use casper_execution_engine::storage::trie::{TrieOrChunk, TrieOrChunkId};
 use casper_hashing::{error::ChunkWithProofVerificationError, Digest};
-use casper_types::EraId;
+use casper_types::{
+    bytesrepr::{FromBytes, ToBytes},
+    EraId,
+};
 
 use crate::types::{BlockHash, BlockHeader};
 
@@ -54,10 +57,20 @@ pub enum Tag {
 /// furthermore allows generic network messages to include this type due to the provision of the
 /// type-identifying `TAG`.
 pub(crate) trait Item:
-    Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Display + Eq
+    Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Display + Eq + FromBytes + ToBytes
 {
     /// The type of ID of the item.
-    type Id: Copy + Eq + Hash + Serialize + DeserializeOwned + Send + Sync + Debug + Display;
+    type Id: Copy
+        + Eq
+        + Hash
+        + Serialize
+        + DeserializeOwned
+        + Send
+        + Sync
+        + Debug
+        + Display
+        + FromBytes
+        + ToBytes;
     /// The error type returned when validating to get the ID of the item.
     type ValidationError: std::error::Error + Debug;
     /// The tag representing the type of the item.
