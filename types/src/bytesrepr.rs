@@ -687,7 +687,7 @@ where
 #[cfg(feature = "std")]
 impl<K, V> ToBytes for HashMap<K, V>
 where
-    K: ToBytes,
+    K: ToBytes + Ord,
     V: ToBytes,
 {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
@@ -707,7 +707,9 @@ where
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
         let length_32: u32 = self.len().try_into().map_err(|_| Error::NotRepresentable)?;
         writer.extend_from_slice(&length_32.to_le_bytes());
-        for (key, value) in self.iter() {
+        let mut entries = self.iter().collect::<Vec<(&K, &V)>>();
+        entries.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
+        for (key, value) in entries {
             key.write_bytes(writer)?;
             value.write_bytes(writer)?;
         }
@@ -1623,12 +1625,12 @@ mod tests {
 
 #[cfg(test)]
 mod proptests {
-    use std::collections::VecDeque;
+    use std::collections::{HashMap, VecDeque};
 
     use proptest::{collection::vec, prelude::*};
 
     use crate::{
-        bytesrepr::{self, bytes::gens::bytes_arb, ToBytes},
+        bytesrepr::{self, bytes::gens::bytes_arb, FromBytes, ToBytes},
         gens::*,
     };
 
@@ -1708,6 +1710,14 @@ mod proptests {
         #[test]
         fn test_hash_map(m in hash_map_arb(20)) {
             bytesrepr::test_serialization_roundtrip(&m);
+        }
+
+        #[test]
+        fn test_hash_map_consistency(m in hash_map_arb(20)) {
+            let serialized = m.to_bytes().expect("couldn't serialize");
+            let (deserialized_map, _) = HashMap::<u32, u32>::from_bytes(&serialized).expect("couldn't deserialize");
+            let second_serialized = deserialized_map.to_bytes().expect("couldn't serialize");
+            assert_eq!(serialized, second_serialized);
         }
 
         #[test]
