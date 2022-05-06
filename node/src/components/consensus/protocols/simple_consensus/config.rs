@@ -2,18 +2,23 @@ use serde::{Deserialize, Serialize};
 
 use datasize::DataSize;
 
-use crate::types::TimeDiff;
+use crate::types::{serde_option_time_diff, TimeDiff};
 
 /// `SimpleConsensus`-specific configuration.
 /// *Note*: This is *not* protocol configuration that has to be the same on all nodes.
 #[derive(DataSize, Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
-    /// If the initial era's protocol state has not progressed for this long, restart.
+    /// If the initial era's protocol state has not progressed for this long, restart. 0 means
+    /// disabled.
+    #[serde(with = "serde_option_time_diff")]
     pub standstill_timeout: Option<TimeDiff>,
-    /// Request the latest protocol state from a random peer periodically, with this interval.
+    /// Request the latest protocol state from a random peer periodically, with this interval. 0
+    /// means disabled.
+    #[serde(with = "serde_option_time_diff")]
     pub sync_state_interval: Option<TimeDiff>,
-    /// Log inactive or faulty validators periodically, with this interval.
+    /// Log inactive or faulty validators periodically, with this interval. 0 means disabled.
+    #[serde(with = "serde_option_time_diff")]
     pub log_participation_interval: Option<TimeDiff>,
     /// The initial timeout for a proposal.
     pub proposal_timeout: TimeDiff,

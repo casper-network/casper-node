@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use datasize::DataSize;
 
-use crate::types::TimeDiff;
+use crate::types::{serde_option_time_diff, TimeDiff};
 
 use super::round_success_meter::config::Config as RSMConfig;
 
@@ -14,12 +14,16 @@ pub struct Config {
     /// The duration for which incoming vertices with missing dependencies are kept in a queue.
     pub pending_vertex_timeout: TimeDiff,
     /// If the initial era's protocol state has not progressed for this long, restart.
+    #[serde(with = "serde_option_time_diff")]
     pub standstill_timeout: Option<TimeDiff>,
     /// Request the latest protocol state from a random peer periodically, with this interval.
+    #[serde(with = "serde_option_time_diff")]
     pub request_state_interval: Option<TimeDiff>,
     /// Log inactive or faulty validators periodically, with this interval.
+    #[serde(with = "serde_option_time_diff")]
     pub log_participation_interval: Option<TimeDiff>,
     /// Log synchronizer state periodically, with this interval.
+    #[serde(with = "serde_option_time_diff")]
     pub log_synchronizer_interval: Option<TimeDiff>,
     /// Log the size of every incoming and outgoing serialized unit.
     pub log_unit_sizes: bool,
