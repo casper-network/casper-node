@@ -10,6 +10,7 @@ use once_cell::sync::Lazy;
 
 use casper_execution_engine::{
     core::engine_state::{
+        engine_config::DEFAULT_FEE_ELIMINATION,
         execution_result::ExecutionResult,
         genesis::{ExecConfig, GenesisAccount, GenesisConfig},
         run_genesis_request::RunGenesisRequest,
@@ -142,6 +143,7 @@ pub fn create_exec_config(accounts: Vec<GenesisAccount>) -> ExecConfig {
     let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
     let unbonding_delay = DEFAULT_UNBONDING_DELAY;
     let genesis_timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
+    let fee_elimination = DEFAULT_FEE_ELIMINATION;
     ExecConfig::new(
         accounts,
         wasm_config,
@@ -152,6 +154,7 @@ pub fn create_exec_config(accounts: Vec<GenesisAccount>) -> ExecConfig {
         round_seigniorage_rate,
         unbonding_delay,
         genesis_timestamp_millis,
+        fee_elimination,
     )
 }
 

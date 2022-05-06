@@ -6,6 +6,7 @@ use std::{
 
 use fs_extra::dir;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use tempfile::TempDir;
 
 use casper_engine_test_support::LmdbWasmTestBuilder;
@@ -109,8 +110,12 @@ pub fn generate_fixture(
 
     let post_state_hash = builder.get_post_state_hash();
 
+    let genesis_request_json = json!({
+        GENESIS_PROTOCOL_VERSION_FIELD: genesis_request.protocol_version(),
+    });
+
     let state = LmdbFixtureState {
-        genesis_request: serde_json::to_value(genesis_request)?,
+        genesis_request: genesis_request_json,
         post_state_hash,
     };
     let serialized_state = serde_json::to_string_pretty(&state)?;

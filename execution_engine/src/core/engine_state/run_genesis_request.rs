@@ -4,7 +4,6 @@ use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-use serde::{Deserialize, Serialize};
 
 use casper_hashing::Digest;
 use casper_types::ProtocolVersion;
@@ -12,7 +11,7 @@ use casper_types::ProtocolVersion;
 use super::{genesis::ExecConfig, ChainspecRegistry};
 
 /// Represents a genesis request.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunGenesisRequest {
     genesis_config_hash: Digest,
     protocol_version: ProtocolVersion,

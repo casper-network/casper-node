@@ -8,6 +8,7 @@ use casper_engine_test_support::{
     DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
 use casper_execution_engine::core::engine_state::{
+    engine_config::DEFAULT_FEE_ELIMINATION,
     genesis::{ExecConfig, GenesisAccount, GenesisValidator},
     run_genesis_request::RunGenesisRequest,
 };
@@ -73,6 +74,7 @@ fn should_run_genesis() {
     let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
     let unbonding_delay = DEFAULT_UNBONDING_DELAY;
     let genesis_timestamp = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
+    let fee_elimination = DEFAULT_FEE_ELIMINATION;
 
     let exec_config = ExecConfig::new(
         GENESIS_CUSTOM_ACCOUNTS.clone(),
@@ -84,6 +86,7 @@ fn should_run_genesis() {
         round_seigniorage_rate,
         unbonding_delay,
         genesis_timestamp,
+        fee_elimination,
     );
     let run_genesis_request = RunGenesisRequest::new(
         GENESIS_CONFIG_HASH.into(),
@@ -148,6 +151,7 @@ fn should_track_total_token_supply_in_mint() {
     let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
     let unbonding_delay = DEFAULT_UNBONDING_DELAY;
     let genesis_timestamp = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
+    let fee_elimination = DEFAULT_FEE_ELIMINATION;
     let ee_config = ExecConfig::new(
         accounts.clone(),
         wasm_config,
@@ -158,6 +162,7 @@ fn should_track_total_token_supply_in_mint() {
         round_seigniorage_rate,
         unbonding_delay,
         genesis_timestamp,
+        fee_elimination,
     );
     let run_genesis_request = RunGenesisRequest::new(
         GENESIS_CONFIG_HASH.into(),

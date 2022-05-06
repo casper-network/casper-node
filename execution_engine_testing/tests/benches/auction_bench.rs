@@ -17,9 +17,10 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     core::engine_state::{
-        engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, genesis::GenesisValidator,
-        run_genesis_request::RunGenesisRequest, EngineConfig, ExecConfig, ExecuteRequest,
-        GenesisAccount, RewardItem,
+        engine_config::{DEFAULT_FEE_ELIMINATION, DEFAULT_MINIMUM_DELEGATION_AMOUNT},
+        genesis::GenesisValidator,
+        run_genesis_request::RunGenesisRequest,
+        EngineConfig, ExecConfig, ExecuteRequest, GenesisAccount, RewardItem,
     },
     shared::system_config::auction_costs::DEFAULT_DELEGATE_COST,
 };
@@ -121,6 +122,7 @@ fn create_run_genesis_request(
             DEFAULT_ROUND_SEIGNIORAGE_RATE,
             DEFAULT_UNBONDING_DELAY,
             DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+            DEFAULT_FEE_ELIMINATION,
         )
     };
     RunGenesisRequest::new(

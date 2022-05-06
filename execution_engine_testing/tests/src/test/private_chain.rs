@@ -1,3 +1,4 @@
+mod fees_accumulation;
 pub mod management;
 mod restricted_auction;
 mod unrestricted_transfers;
@@ -18,8 +19,6 @@ use casper_execution_engine::core::engine_state::{
     genesis::{AdministratorAccount, GenesisValidator},
     ExecConfig, GenesisAccount, RunGenesisRequest,
 };
-use num_rational::Ratio;
-use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_types::{
@@ -134,6 +133,8 @@ static PRIVATE_CHAIN_DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| 
     default_accounts
 });
 
+const PRIVATE_CHAIN_FEE_ELIMINATION: FeeElimination = FeeElimination::Accumulate;
+
 static DEFUALT_PRIVATE_CHAIN_EXEC_CONFIG: Lazy<ExecConfig> = Lazy::new(|| {
     ExecConfig::new(
         PRIVATE_CHAIN_DEFAULT_ACCOUNTS.clone(),
@@ -145,6 +146,7 @@ static DEFUALT_PRIVATE_CHAIN_EXEC_CONFIG: Lazy<ExecConfig> = Lazy::new(|| {
         DEFAULT_ROUND_SEIGNIORAGE_RATE,
         DEFAULT_UNBONDING_DELAY,
         DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+        PRIVATE_CHAIN_FEE_ELIMINATION,
     )
 });
 
@@ -160,16 +162,13 @@ static DEFAULT_PRIVATE_CHAIN_GENESIS: Lazy<RunGenesisRequest> = Lazy::new(|| {
 fn custom_private_chain_setup(
     allow_auction_bids: bool,
     allow_unrestricted_transfers: bool,
+    fee_elimination: FeeElimination,
 ) -> InMemoryWasmTestBuilder {
     let engine_config = EngineConfigBuilder::default()
         .with_administrative_accounts(PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS.clone())
         .with_allow_auction_bids(allow_auction_bids)
         .with_allow_unrestricted_transfers(allow_unrestricted_transfers)
-        // TODO: Non-zero refund with default refund mechanism tries to transfer tokens from purse
-        // to user.
-        .with_fee_elimination(FeeElimination::Refund {
-            refund_ratio: Ratio::zero(),
-        })
+        .with_fee_elimination(fee_elimination)
         .build();
 
     let mut builder = InMemoryWasmTestBuilder::new_with_config(engine_config);
@@ -201,5 +200,6 @@ fn private_chain_setup() -> InMemoryWasmTestBuilder {
     custom_private_chain_setup(
         PRIVATE_CHAIN_ALLOW_AUCTION_BIDS,
         PRIVATE_CHAIN_ALLOW_UNRESTRICTED_TRANSFERS,
+        PRIVATE_CHAIN_FEE_ELIMINATION,
     )
 }

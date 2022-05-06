@@ -478,3 +478,135 @@ fn should_not_allow_payment_to_purse_in_stored_payment() {
         error
     );
 }
+
+#[ignore]
+#[test]
+fn should_disallow_native_unrestricted_transfer_to_existing_account_by_user() {
+    let mut builder = super::private_chain_setup();
+
+    let fund_transfer_1 = ExecuteRequestBuilder::transfer(
+        *DEFAULT_ADMIN_ACCOUNT_ADDR,
+        runtime_args! {
+            mint::ARG_TARGET => *ACCOUNT_1_ADDR,
+            mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
+            mint::ARG_ID => <Option<u64>>::None,
+        },
+    )
+    .build();
+
+    let fund_transfer_2 = ExecuteRequestBuilder::transfer(
+        *DEFAULT_ADMIN_ACCOUNT_ADDR,
+        runtime_args! {
+            mint::ARG_TARGET => *ACCOUNT_2_ADDR,
+            mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
+            mint::ARG_ID => <Option<u64>>::None,
+        },
+    )
+    .build();
+
+    // Admin can transfer funds to create new account.
+    builder.exec(fund_transfer_1).expect_success().commit();
+    builder.exec(fund_transfer_2).expect_success().commit();
+
+    let transfer_request_1 = ExecuteRequestBuilder::transfer(
+        *ACCOUNT_1_ADDR,
+        runtime_args! {
+            mint::ARG_TARGET => *ACCOUNT_2_ADDR,
+            mint::ARG_AMOUNT => U512::one(),
+            mint::ARG_ID => <Option<u64>>::None,
+        },
+    )
+    .build();
+
+    // User can't transfer funds to create new account.
+    builder.exec(transfer_request_1).expect_failure().commit();
+
+    let error = builder.get_error().expect("should have error");
+    assert!(
+        matches!(
+            error,
+            Error::Exec(execution::Error::DisabledUnrestrictedTransfers)
+        ),
+        "expected DisabledUnrestrictedTransfers error, found {:?}",
+        error
+    );
+
+    let transfer_request_2 = ExecuteRequestBuilder::transfer(
+        *ACCOUNT_1_ADDR,
+        runtime_args! {
+            mint::ARG_TARGET => *DEFAULT_ADMIN_ACCOUNT_ADDR,
+            mint::ARG_AMOUNT => U512::one(),
+            mint::ARG_ID => <Option<u64>>::None,
+        },
+    )
+    .build();
+
+    // User can transfer funds back to admin.
+    builder.exec(transfer_request_2).expect_success().commit();
+}
+
+#[ignore]
+#[test]
+fn should_disallow_wasm_unrestricted_transfer_to_existing_account_by_user() {
+    let mut builder = super::private_chain_setup();
+
+    let fund_transfer_1 = ExecuteRequestBuilder::standard(
+        *DEFAULT_ADMIN_ACCOUNT_ADDR,
+        TRANSFER_TO_ACCOUNT_U512_CONTRACT,
+        runtime_args! {
+            mint::ARG_TARGET => *ACCOUNT_1_ADDR,
+            mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
+        },
+    )
+    .build();
+
+    let fund_transfer_2 = ExecuteRequestBuilder::transfer(
+        *DEFAULT_ADMIN_ACCOUNT_ADDR,
+        runtime_args! {
+            mint::ARG_TARGET => *ACCOUNT_2_ADDR,
+            mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
+            mint::ARG_ID => <Option<u64>>::None,
+        },
+    )
+    .build();
+
+    // Admin can transfer funds to create new account.
+    builder.exec(fund_transfer_1).expect_success().commit();
+    builder.exec(fund_transfer_2).expect_success().commit();
+
+    let transfer_request_1 = ExecuteRequestBuilder::standard(
+        *ACCOUNT_1_ADDR,
+        TRANSFER_TO_ACCOUNT_U512_CONTRACT,
+        runtime_args! {
+            mint::ARG_TARGET => *ACCOUNT_2_ADDR,
+            mint::ARG_AMOUNT => U512::one(),
+        },
+    )
+    .build();
+
+    // User can't transfer funds to create new account.
+    builder.exec(transfer_request_1).expect_failure().commit();
+
+    let error = builder.get_error().expect("should have error");
+    assert!(
+        matches!(
+            error,
+            Error::Exec(execution::Error::DisabledUnrestrictedTransfers)
+        ),
+        "expected DisabledUnrestrictedTransfers error, found {:?}",
+        error
+    );
+
+    let transfer_request_2 = ExecuteRequestBuilder::standard(
+        *ACCOUNT_1_ADDR,
+        TRANSFER_TO_ACCOUNT_U512_CONTRACT,
+        runtime_args! {
+            mint::ARG_TARGET => *DEFAULT_ADMIN_ACCOUNT_ADDR,
+            mint::ARG_AMOUNT => U512::one(),
+        },
+    )
+    .build();
+
+    // User can transfer funds back to admin.
+    builder.exec(transfer_request_2).expect_success().commit();
+}

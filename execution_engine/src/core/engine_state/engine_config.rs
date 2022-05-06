@@ -277,6 +277,7 @@ impl EngineConfigBuilder {
                     "refund ratio should be a proper fraction"
                 );
             }
+            FeeElimination::Accumulate => {}
         }
 
         self.fee_elimination = Some(fee_elimination);

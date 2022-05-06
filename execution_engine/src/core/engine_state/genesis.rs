@@ -25,7 +25,10 @@ use casper_types::{
             SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
         handle_payment,
-        mint::{self, ARG_ROUND_SEIGNIORAGE_RATE, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
+        mint::{
+            self, ARG_ROUND_SEIGNIORAGE_RATE, REWARDS_PURSE_KEY, ROUND_SEIGNIORAGE_RATE_KEY,
+            TOTAL_SUPPLY_KEY,
+        },
         standard_payment, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
@@ -52,6 +55,8 @@ use crate::{
 };
 #[cfg(test)]
 use casper_types::testing::TestRng;
+
+use super::engine_config::FeeElimination;
 
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
 const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
@@ -683,7 +688,7 @@ impl Distribution<GenesisConfig> for Standard {
 }
 
 /// Represents the details of a genesis process.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExecConfig {
     accounts: Vec<GenesisAccount>,
     wasm_config: WasmConfig,
@@ -694,6 +699,7 @@ pub struct ExecConfig {
     round_seigniorage_rate: Ratio<u64>,
     unbonding_delay: u64,
     genesis_timestamp_millis: u64,
+    fee_elimination: FeeElimination,
 }
 
 impl ExecConfig {
@@ -709,6 +715,7 @@ impl ExecConfig {
         round_seigniorage_rate: Ratio<u64>,
         unbonding_delay: u64,
         genesis_timestamp_millis: u64,
+        fee_elimination: FeeElimination,
     ) -> ExecConfig {
         ExecConfig {
             accounts,
@@ -720,6 +727,7 @@ impl ExecConfig {
             round_seigniorage_rate,
             unbonding_delay,
             genesis_timestamp_millis,
+            fee_elimination,
         }
     }
 
@@ -791,6 +799,11 @@ impl ExecConfig {
     pub fn genesis_timestamp_millis(&self) -> u64 {
         self.genesis_timestamp_millis
     }
+
+    /// Returns fee elimination config.
+    pub fn fee_elimination(&self) -> &FeeElimination {
+        &self.fee_elimination
+    }
 }
 
 impl Distribution<ExecConfig> for Standard {
@@ -818,6 +831,10 @@ impl Distribution<ExecConfig> for Standard {
 
         let genesis_timestamp_millis = rng.gen();
 
+        let fee_elimination = FeeElimination::Refund {
+            refund_ratio: Ratio::new_raw(rng.gen_range(0..=100), 100),
+        };
+
         ExecConfig {
             accounts,
             wasm_config,
@@ -828,6 +845,7 @@ impl Distribution<ExecConfig> for Standard {
             round_seigniorage_rate,
             unbonding_delay,
             genesis_timestamp_millis,
+            fee_elimination,
         }
     }
 }
@@ -1008,6 +1026,33 @@ where
                 round_seigniorage_rate_uref.into(),
             );
             named_keys.insert(TOTAL_SUPPLY_KEY.to_string(), total_supply_uref.into());
+
+            match self.exec_config.fee_elimination() {
+                FeeElimination::Refund { .. } => {}
+                FeeElimination::Accumulate => {
+                    let rewards_purse_uref = {
+                        let rewards_purse_uref = self
+                            .address_generator
+                            .borrow_mut()
+                            .new_uref(AccessRights::READ_ADD_WRITE);
+
+                        self.tracking_copy.borrow_mut().write(
+                            Key::Balance(rewards_purse_uref.addr()),
+                            StoredValue::CLValue(CLValue::from_t(U512::zero()).map_err(|_| {
+                                GenesisError::CLValue(REWARDS_PURSE_KEY.to_string())
+                            })?),
+                        );
+
+                        self.tracking_copy.borrow_mut().write(
+                            rewards_purse_uref.into(),
+                            StoredValue::CLValue(CLValue::unit()),
+                        );
+                        rewards_purse_uref
+                    };
+
+                    named_keys.insert(REWARDS_PURSE_KEY.to_string(), rewards_purse_uref.into());
+                }
+            }
             named_keys
         };
 

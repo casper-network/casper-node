@@ -16,7 +16,9 @@ use casper_engine_test_support::{
 };
 use casper_engine_tests::profiling;
 use casper_execution_engine::core::engine_state::{
-    engine_config::EngineConfig, genesis::ExecConfig, run_genesis_request::RunGenesisRequest,
+    engine_config::{EngineConfig, DEFAULT_FEE_ELIMINATION},
+    genesis::ExecConfig,
+    run_genesis_request::RunGenesisRequest,
 };
 use casper_types::{runtime_args, RuntimeArgs};
 
@@ -78,6 +80,7 @@ fn main() {
         DEFAULT_ROUND_SEIGNIORAGE_RATE,
         DEFAULT_UNBONDING_DELAY,
         DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+        DEFAULT_FEE_ELIMINATION,
     );
     let run_genesis_request = RunGenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,

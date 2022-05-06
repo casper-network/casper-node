@@ -66,6 +66,7 @@ use casper_types::{
     RuntimeArgs, StoredValue, Transfer, TransferAddr, URef, U512,
 };
 use num_rational::Ratio;
+use num_traits::One;
 
 use crate::{
     utils, ExecuteRequestBuilder, StepRequestBuilder, DEFAULT_AUCTION_DELAY, DEFAULT_GAS_PRICE,
@@ -1263,18 +1264,18 @@ where
         let gas_amount = Motes::from_gas(self.last_exec_gas_cost(), DEFAULT_GAS_PRICE)
             .expect("should create motes from gas");
 
-        match self.engine_state.config().fee_elimination() {
-            FeeElimination::Refund { refund_ratio } => {
-                let (numer, denom) = (*refund_ratio).into();
-                let refund_ratio = Ratio::new_raw(U512::from_u64(numer), U512::from_u64(denom));
+        let refund_ratio = match self.engine_state.config().fee_elimination() {
+            FeeElimination::Refund { refund_ratio } => *refund_ratio,
+            FeeElimination::Accumulate => Ratio::one(),
+        };
 
-                // amount declared to be paid in payment code MINUS gas spent in last execution.
-                let refundable_amount =
-                    Ratio::from(payment_amount) - Ratio::from(gas_amount.value());
-                (refundable_amount * refund_ratio)
-                    .ceil() // assumes possible dust amounts are always transferred to the user
-                    .to_integer()
-            }
-        }
+        let (numer, denom) = refund_ratio.into();
+        let refund_ratio = Ratio::new_raw(U512::from_u64(numer), U512::from_u64(denom));
+
+        // amount declared to be paid in payment code MINUS gas spent in last execution.
+        let refundable_amount = Ratio::from(payment_amount) - Ratio::from(gas_amount.value());
+        (refundable_amount * refund_ratio)
+            .ceil() // assumes possible dust amounts are always transferred to the user
+            .to_integer()
     }
 }

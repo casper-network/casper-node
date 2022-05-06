@@ -3,7 +3,7 @@ use casper_types::{
     system::handle_payment::{Error, PAYMENT_PURSE_KEY, REFUND_PURSE_KEY},
     Key, Phase, PublicKey, URef, U512,
 };
-use num::{CheckedAdd, CheckedMul, CheckedSub};
+use num::{CheckedAdd, CheckedMul, CheckedSub, One};
 use num_rational::Ratio;
 
 use crate::core::engine_state::engine_config::FeeElimination;
@@ -124,51 +124,51 @@ pub fn finalize_payment<P: MintProvider + RuntimeProvider>(
         return Err(Error::InsufficientPaymentForAmountSpent);
     }
 
-    match provider.fee_elimination() {
-        FeeElimination::Refund { refund_ratio } => {
-            let (refund_amount, validator_reward) =
-                calculate_refund_parts(amount_spent, total, *refund_ratio)?;
+    let refund_ratio = match provider.fee_elimination() {
+        FeeElimination::Refund { refund_ratio } => *refund_ratio,
+        FeeElimination::Accumulate => Ratio::one(), // Implied 100%
+    };
 
-            debug_assert_eq!(validator_reward + refund_amount, total);
+    let (refund_amount, validator_reward) =
+        calculate_refund_parts(amount_spent, total, refund_ratio)?;
 
-            let refund_purse = get_refund_purse(provider)?;
+    debug_assert_eq!(validator_reward + refund_amount, total);
 
-            if let Some(refund_purse) = refund_purse {
-                if refund_purse.remove_access_rights() == payment_purse.remove_access_rights() {
-                    // Make sure we're not refunding into a payment purse to invalidate payment code
-                    // postconditions.
-                    return Err(Error::RefundPurseIsPaymentPurse);
-                }
-            }
+    let refund_purse = get_refund_purse(provider)?;
 
-            provider.remove_key(REFUND_PURSE_KEY)?; //unset refund purse after reading it
-
-            // pay target validator
-            provider
-                .transfer_purse_to_purse(payment_purse, target, validator_reward)
-                .map_err(|_| Error::FailedTransferToRewardsPurse)?;
-
-            if refund_amount.is_zero() {
-                return Ok(());
-            }
-
-            // give refund
-            let refund_purse = match refund_purse {
-                Some(uref) => uref,
-                None => {
-                    return refund_to_account::<P>(provider, payment_purse, account, refund_amount)
-                }
-            };
-
-            // in case of failure to transfer to refund purse we fall back on the account's main
-            // purse
-            if provider
-                .transfer_purse_to_purse(payment_purse, refund_purse, refund_amount)
-                .is_err()
-            {
-                return refund_to_account::<P>(provider, payment_purse, account, refund_amount);
-            }
+    if let Some(refund_purse) = refund_purse {
+        if refund_purse.remove_access_rights() == payment_purse.remove_access_rights() {
+            // Make sure we're not refunding into a payment purse to invalidate payment code
+            // postconditions.
+            return Err(Error::RefundPurseIsPaymentPurse);
         }
+    }
+
+    provider.remove_key(REFUND_PURSE_KEY)?; //unset refund purse after reading it
+
+    // validator_reward purse is already resolved based on fee elimination config which is either a
+    // proposer or rewards purse
+    provider
+        .transfer_purse_to_purse(payment_purse, target, validator_reward)
+        .map_err(|_| Error::FailedTransferToRewardsPurse)?;
+
+    if refund_amount.is_zero() {
+        return Ok(());
+    }
+
+    // give refund
+    let refund_purse = match refund_purse {
+        Some(uref) => uref,
+        None => return refund_to_account::<P>(provider, payment_purse, account, refund_amount),
+    };
+
+    // in case of failure to transfer to refund purse we fall back on the account's main
+    // purse
+    if provider
+        .transfer_purse_to_purse(payment_purse, refund_purse, refund_amount)
+        .is_err()
+    {
+        return refund_to_account::<P>(provider, payment_purse, account, refund_amount);
     }
 
     Ok(())
@@ -182,7 +182,10 @@ pub fn refund_to_account<M: MintProvider>(
 ) -> Result<(), Error> {
     match mint_provider.transfer_purse_to_account(payment_purse, account, amount) {
         Ok(_) => Ok(()),
-        Err(_error) => Err(Error::FailedTransferToAccountPurse),
+        Err(error) => {
+            dbg!(error);
+            Err(Error::FailedTransferToAccountPurse)
+        }
     }
 }
 

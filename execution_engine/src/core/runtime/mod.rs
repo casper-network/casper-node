@@ -49,7 +49,7 @@ use crate::{
         tracking_copy::TrackingCopyExt,
     },
     shared::{
-        account::{self, AccountConfig},
+        account::{self, AccountConfig, SYSTEM_ACCOUNT_ADDRESS},
         host_function_costs::{Cost, HostFunction},
         wasm_prep::{self, PreprocessingError},
     },
@@ -2264,8 +2264,10 @@ where
                 .is_account_administrator(&target)
                 .expect("is_account_administrator() returns Some(_) on a private chain");
 
-            if !is_source_admin && !is_target_admin {
-                // Transferring from normal account to a purse doesn't work.
+            if self.context.get_caller() != *SYSTEM_ACCOUNT_ADDRESS
+                && !is_source_admin
+                && !is_target_admin
+            {
                 return Err(Error::DisabledUnrestrictedTransfers);
             }
         }

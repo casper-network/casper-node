@@ -43,7 +43,7 @@ use casper_types::{
             VALIDATOR_SLOTS_KEY,
         },
         handle_payment,
-        mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
+        mint::{self, REWARDS_PURSE_KEY, ROUND_SEIGNIORAGE_RATE_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, ApiError, BlockTime, CLValue, ContractHash, DeployHash, DeployInfo, Gas, Key,
@@ -73,6 +73,7 @@ pub use self::{
 use crate::{
     core::{
         engine_state::{
+            engine_config::FeeElimination,
             executable_deploy_item::ExecutionKind,
             execution_result::{ExecutionResultBuilder, ExecutionResults},
             genesis::GenesisInstaller,
@@ -1430,8 +1431,7 @@ where
             }
         };
 
-        // the proposer of the block this deploy is in receives the gas from this deploy execution
-        let proposer_purse = {
+        let rewards_target_purse = {
             let proposer_account: Account = match tracking_copy
                 .borrow_mut()
                 .get_account(correlation_id, AccountHash::from(&proposer))
@@ -1441,7 +1441,28 @@ where
                     return Ok(ExecutionResult::precondition_failure(error.into()));
                 }
             };
-            proposer_account.main_purse()
+
+            match self.config.fee_elimination() {
+                FeeElimination::Refund { .. } => {
+                    // the proposer of the block this deploy is in receives the gas from this deploy
+                    // execution
+                    proposer_account.main_purse()
+                }
+                FeeElimination::Accumulate => {
+                    let mint_hash = self.get_system_mint_hash(correlation_id, prestate_hash)?;
+
+                    let mint_contract = tracking_copy
+                        .borrow_mut()
+                        .get_contract(correlation_id, mint_hash)?;
+
+                    let rewards_purse_uref = mint_contract.named_keys().get(REWARDS_PURSE_KEY).and_then(|key| (*key).into_uref()).unwrap_or_else(|| {
+                        error!("fee elimination is configured to accumulate but mint does not have rewards purse; defaulting to a proposer");
+                        proposer_account.main_purse()
+                    });
+
+                    rewards_purse_uref
+                }
+            }
         };
 
         let proposer_main_purse_balance_key = {
@@ -1449,7 +1470,7 @@ where
             // payment_code_spec_6: system contract validity
             match tracking_copy
                 .borrow_mut()
-                .get_purse_balance_key(correlation_id, proposer_purse.into())
+                .get_purse_balance_key(correlation_id, rewards_target_purse.into())
             {
                 Ok(key) => key,
                 Err(error) => {
@@ -1622,7 +1643,7 @@ where
                 let maybe_runtime_args = RuntimeArgs::try_new(|args| {
                     args.insert(handle_payment::ARG_AMOUNT, finalize_cost_motes.value())?;
                     args.insert(handle_payment::ARG_ACCOUNT, account.account_hash())?;
-                    args.insert(handle_payment::ARG_TARGET, proposer_purse)?;
+                    args.insert(handle_payment::ARG_TARGET, rewards_target_purse)?;
                     Ok(())
                 });
                 match maybe_runtime_args {
@@ -1661,7 +1682,7 @@ where
                 payment_purse_key
                     .into_uref()
                     .ok_or(Error::InvalidKeyVariant)?,
-                proposer_purse,
+                rewards_target_purse,
             ]);
 
             let gas_limit = Gas::new(U512::MAX);

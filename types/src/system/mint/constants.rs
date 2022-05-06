@@ -38,3 +38,5 @@ pub const BASE_ROUND_REWARD_KEY: &str = "mint_base_round_reward";
 pub const TOTAL_SUPPLY_KEY: &str = "total_supply";
 /// Storage for mint round seigniorage rate.
 pub const ROUND_SEIGNIORAGE_RATE_KEY: &str = "round_seigniorage_rate";
+/// Storage for mint rewards purse key.
+pub const REWARDS_PURSE_KEY: &str = "rewards";

@@ -24,7 +24,8 @@ use once_cell::sync::Lazy;
 
 use casper_execution_engine::{
     core::engine_state::{
-        ChainspecRegistry, ExecConfig, GenesisAccount, GenesisConfig, RunGenesisRequest,
+        engine_config::DEFAULT_FEE_ELIMINATION, ChainspecRegistry, ExecConfig, GenesisAccount,
+        GenesisConfig, RunGenesisRequest,
     },
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
@@ -145,6 +146,7 @@ pub static DEFAULT_EXEC_CONFIG: Lazy<ExecConfig> = Lazy::new(|| {
         DEFAULT_ROUND_SEIGNIORAGE_RATE,
         DEFAULT_UNBONDING_DELAY,
         DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+        DEFAULT_FEE_ELIMINATION,
     )
 });
 /// Default [`GenesisConfig`].
