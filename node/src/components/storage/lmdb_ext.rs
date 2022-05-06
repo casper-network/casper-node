@@ -179,7 +179,7 @@ pub(crate) fn serialize_internal<V: 'static + Serialize>(
     Ok(buffer)
 }
 
-/// Deerializes an object from the raw bytes.
+/// Deserializes an object from the raw bytes.
 /// In case the expected object is of the `UnbondingPurse` type it uses the specialized
 /// function to provide compatibility with the legacy version of the `UnbondingPurse` struct.
 /// See [`deserialize_unbonding_purse`] for more details.
