@@ -2079,8 +2079,8 @@ fn should_get_block_header_by_height() {
 fn should_read_legacy_unbonding_purse() {
     // These bytes represent the `UnbondingPurse` struct with the `new_validator` field removed
     // and serialized with `bincode`.
-    // In theory, we can generate these bytes by serializing the `WithdrawPurse`, but at some point
-    // these two structs may diverge and it's a safe bet to relay on the bytes
+    // In theory, we can generate these bytes by serializing the `WithdrawPurse`, but at some point,
+    // these two structs may diverge and it's a safe bet to rely on the bytes
     // that are consistent with what we keep in the current storage.
     const LEGACY_BYTES: &str = "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e07010000002000000000000000197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d610100000020000000000000004508a07aa941707f3eb2db94c8897a80b2c1197476b6de213ac273df7d86c4ffffffffffffffffff40feffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
 
@@ -2123,6 +2123,6 @@ fn unbonding_purse_serialization_roundtrip() {
 
     assert_eq!(original, deserialized);
 
-    // Explicitely assert that the `new_validator` is not `None`
+    // Explicitly assert that the `new_validator` is not `None`
     assert!(deserialized.new_validator().is_some())
 }
