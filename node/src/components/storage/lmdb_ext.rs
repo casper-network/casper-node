@@ -10,11 +10,19 @@
 //! Serialization errors are unified into a generic, type erased `std` error to allow for easy
 //! interchange of the serialization format if desired.
 
+use std::any::TypeId;
+
 use lmdb::{Database, RwTransaction, Transaction, WriteFlags};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use thiserror::Error;
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    system::auction::UnbondingPurse,
+    EraId, PublicKey, URef, U512,
+};
+
+pub const UNBONDED_PURSE_V2_MAGIC_BYTES: &[u8] = &[121, 17, 133, 179, 91, 63, 69, 222];
 
 /// Error wrapper for lower-level storage errors.
 ///
@@ -79,7 +87,7 @@ impl From<lmdb::Error> for LmdbExtError {
 /// Additional methods on transaction.
 pub(super) trait TransactionExt {
     /// Helper function to load a value from a database.
-    fn get_value<K: AsRef<[u8]>, V: DeserializeOwned>(
+    fn get_value<K: AsRef<[u8]>, V: 'static + DeserializeOwned>(
         &mut self,
         db: Database,
         key: &K,
@@ -101,7 +109,7 @@ pub(super) trait WriteTransactionExt {
     /// Returns `true` if the value has actually been written, `false` if the key already existed.
     ///
     /// Setting `overwrite` to true will cause the value to always be written instead.
-    fn put_value<K: AsRef<[u8]>, V: Serialize>(
+    fn put_value<K: AsRef<[u8]>, V: 'static + Serialize>(
         &mut self,
         db: Database,
         key: &K,
@@ -129,14 +137,14 @@ where
     T: Transaction,
 {
     #[inline]
-    fn get_value<K: AsRef<[u8]>, V: DeserializeOwned>(
+    fn get_value<K: AsRef<[u8]>, V: 'static + DeserializeOwned>(
         &mut self,
         db: Database,
         key: &K,
     ) -> Result<Option<V>, LmdbExtError> {
         match self.get(db, key) {
             // Deserialization failures are likely due to storage corruption.
-            Ok(raw) => deserialize(raw).map(Some),
+            Ok(raw) => deserialize_internal(raw),
             Err(lmdb::Error::NotFound) => Ok(None),
             Err(err) => Err(err.into()),
         }
@@ -157,15 +165,36 @@ where
     }
 }
 
+pub(crate) fn serialize_internal<V: 'static + Serialize>(
+    value: &V,
+) -> Result<Vec<u8>, LmdbExtError> {
+    let buffer = if TypeId::of::<UnbondingPurse>() == TypeId::of::<V>() {
+        serialize_unbonding_purse(value)?
+    } else {
+        serialize(value)?
+    };
+    Ok(buffer)
+}
+
+pub(crate) fn deserialize_internal<V: 'static + DeserializeOwned>(
+    raw: &[u8],
+) -> Result<Option<V>, LmdbExtError> {
+    if TypeId::of::<UnbondingPurse>() == TypeId::of::<V>() {
+        deserialize_unbonding_purse(raw).map(Some)
+    } else {
+        deserialize(raw).map(Some)
+    }
+}
+
 impl WriteTransactionExt for RwTransaction<'_> {
-    fn put_value<K: AsRef<[u8]>, V: Serialize>(
+    fn put_value<K: AsRef<[u8]>, V: 'static + Serialize>(
         &mut self,
         db: Database,
         key: &K,
         value: &V,
         overwrite: bool,
     ) -> Result<bool, LmdbExtError> {
-        let buffer = serialize(value)?;
+        let buffer = serialize_internal(value)?;
 
         let flags = if overwrite {
             WriteFlags::empty()
@@ -211,10 +240,51 @@ pub(super) fn deserialize<T: DeserializeOwned>(raw: &[u8]) -> Result<T, LmdbExtE
     bincode::deserialize(raw).map_err(|err| LmdbExtError::DataCorrupted(Box::new(err)))
 }
 
+fn is_legacy(raw: &[u8]) -> bool {
+    !raw.starts_with(UNBONDED_PURSE_V2_MAGIC_BYTES)
+}
+
+/// Deserializes `UnbondingPurse` from a buffer.
+pub(super) fn deserialize_unbonding_purse<T: DeserializeOwned>(
+    raw: &[u8],
+) -> Result<T, LmdbExtError> {
+    if is_legacy(raw) {
+        #[derive(Deserialize)]
+        pub struct LegacyUnbondingPurse {
+            bonding_purse: URef,
+            validator_public_key: PublicKey,
+            unbonder_public_key: PublicKey,
+            era_of_creation: EraId,
+            amount: U512,
+        }
+        let deserialized: LegacyUnbondingPurse = bincode::deserialize(raw).unwrap();
+        let upgraded_unbonding_purse = UnbondingPurse::new(
+            deserialized.bonding_purse,
+            deserialized.validator_public_key,
+            deserialized.unbonder_public_key,
+            deserialized.era_of_creation,
+            deserialized.amount,
+            Option::default(),
+        );
+        let raw = bincode::serialize(&upgraded_unbonding_purse).unwrap();
+        bincode::deserialize(&raw).map_err(|err| LmdbExtError::DataCorrupted(Box::new(err)))
+    } else {
+        deserialize(&raw[UNBONDED_PURSE_V2_MAGIC_BYTES.len()..])
+    }
+}
+
 /// Serializes into a buffer.
 #[inline(always)]
 pub(super) fn serialize<T: Serialize>(value: &T) -> Result<Vec<u8>, LmdbExtError> {
     bincode::serialize(value).map_err(|err| LmdbExtError::Other(Box::new(err)))
+}
+
+/// Serializes `UnbondingPurse` into a buffer.
+#[inline(always)]
+pub(super) fn serialize_unbonding_purse<T: Serialize>(value: &T) -> Result<Vec<u8>, LmdbExtError> {
+    let mut serialized = UNBONDED_PURSE_V2_MAGIC_BYTES.to_vec();
+    serialized.extend(bincode::serialize(value).map_err(|err| LmdbExtError::Other(Box::new(err)))?);
+    Ok(serialized)
 }
 
 /// Deserializes from a buffer.
