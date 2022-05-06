@@ -6,6 +6,8 @@ use casper_types::{
 use num::{CheckedAdd, CheckedMul, CheckedSub};
 use num_rational::Ratio;
 
+use crate::core::engine_state::engine_config::FeeElimination;
+
 use super::{mint_provider::MintProvider, runtime_provider::RuntimeProvider};
 
 /// Returns the purse for accepting payment for transactions.
@@ -41,7 +43,7 @@ pub fn get_refund_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<Opti
 fn calculate_refund_parts(
     amount_gas_spent: U512,
     payment_purse_balance: U512,
-    refund_ratio: Ratio<U512>,
+    refund_ratio: Ratio<u64>,
 ) -> Result<(U512, U512), Error> {
     let amount_gas_spent = Ratio::from(amount_gas_spent);
     let payment_purse_balance = Ratio::from(payment_purse_balance);
@@ -51,8 +53,15 @@ fn calculate_refund_parts(
             .checked_sub(&amount_gas_spent)
             .ok_or(Error::ArithmeticOverflow)?;
 
+        let refund_ratio_u512 = {
+            let (numer, denom) = refund_ratio.into();
+            debug_assert!(numer <= denom, "refund ratio should be a proper fraction");
+            debug_assert!(denom > 0, "denominator should be greater than zero");
+            Ratio::new_raw(U512::from_u64(numer), U512::from_u64(denom))
+        };
+
         refund_amount_raw
-            .checked_mul(&refund_ratio)
+            .checked_mul(&refund_ratio_u512)
             .ok_or(Error::ArithmeticOverflow)?
     };
 
@@ -115,44 +124,51 @@ pub fn finalize_payment<P: MintProvider + RuntimeProvider>(
         return Err(Error::InsufficientPaymentForAmountSpent);
     }
 
-    let (refund_amount, validator_reward) =
-        calculate_refund_parts(amount_spent, total, provider.refund_ratio())?;
+    match provider.fee_elimination() {
+        FeeElimination::Refund { refund_ratio } => {
+            let (refund_amount, validator_reward) =
+                calculate_refund_parts(amount_spent, total, *refund_ratio)?;
 
-    debug_assert_eq!(validator_reward + refund_amount, total);
+            debug_assert_eq!(validator_reward + refund_amount, total);
 
-    let refund_purse = get_refund_purse(provider)?;
+            let refund_purse = get_refund_purse(provider)?;
 
-    if let Some(refund_purse) = refund_purse {
-        if refund_purse.remove_access_rights() == payment_purse.remove_access_rights() {
-            // Make sure we're not refunding into a payment purse to invalidate payment code
-            // postconditions.
-            return Err(Error::RefundPurseIsPaymentPurse);
+            if let Some(refund_purse) = refund_purse {
+                if refund_purse.remove_access_rights() == payment_purse.remove_access_rights() {
+                    // Make sure we're not refunding into a payment purse to invalidate payment code
+                    // postconditions.
+                    return Err(Error::RefundPurseIsPaymentPurse);
+                }
+            }
+
+            provider.remove_key(REFUND_PURSE_KEY)?; //unset refund purse after reading it
+
+            // pay target validator
+            provider
+                .transfer_purse_to_purse(payment_purse, target, validator_reward)
+                .map_err(|_| Error::FailedTransferToRewardsPurse)?;
+
+            if refund_amount.is_zero() {
+                return Ok(());
+            }
+
+            // give refund
+            let refund_purse = match refund_purse {
+                Some(uref) => uref,
+                None => {
+                    return refund_to_account::<P>(provider, payment_purse, account, refund_amount)
+                }
+            };
+
+            // in case of failure to transfer to refund purse we fall back on the account's main
+            // purse
+            if provider
+                .transfer_purse_to_purse(payment_purse, refund_purse, refund_amount)
+                .is_err()
+            {
+                return refund_to_account::<P>(provider, payment_purse, account, refund_amount);
+            }
         }
-    }
-
-    provider.remove_key(REFUND_PURSE_KEY)?; //unset refund purse after reading it
-
-    // pay target validator
-    provider
-        .transfer_purse_to_purse(payment_purse, target, validator_reward)
-        .map_err(|_| Error::FailedTransferToRewardsPurse)?;
-
-    if refund_amount.is_zero() {
-        return Ok(());
-    }
-
-    // give refund
-    let refund_purse = match refund_purse {
-        Some(uref) => uref,
-        None => return refund_to_account::<P>(provider, payment_purse, account, refund_amount),
-    };
-
-    // in case of failure to transfer to refund purse we fall back on the account's main purse
-    if provider
-        .transfer_purse_to_purse(payment_purse, refund_purse, refund_amount)
-        .is_err()
-    {
-        return refund_to_account::<P>(provider, payment_purse, account, refund_amount);
     }
 
     Ok(())
@@ -166,10 +182,7 @@ pub fn refund_to_account<M: MintProvider>(
 ) -> Result<(), Error> {
     match mint_provider.transfer_purse_to_account(payment_purse, account, amount) {
         Ok(_) => Ok(()),
-        Err(error) => {
-            eprintln!("refund to account real error {:?}", error);
-            Err(Error::FailedTransferToAccountPurse)
-        }
+        Err(_error) => Err(Error::FailedTransferToAccountPurse),
     }
 }
 
@@ -182,7 +195,7 @@ mod tests {
         let gas = U512::from(9161u64);
 
         for percentage in 0..=100 {
-            let ratio = Ratio::new_raw(U512::from_u64(percentage), U512::from_u64(100));
+            let ratio = Ratio::new_raw(percentage, 100);
 
             let (a, b) = calculate_refund_parts(gas, purse_bal, ratio).unwrap();
 

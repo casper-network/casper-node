@@ -12,7 +12,9 @@ use num::rational::Ratio;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-use crate::utils::serde_helpers;
+use self::fee_elimination_config::FeeEliminationConfig;
+
+mod fee_elimination_config;
 
 #[derive(Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
@@ -50,9 +52,7 @@ pub struct CoreConfig {
     #[serde(default)]
     pub(crate) administrative_accounts: Vec<AdministratorAccount>,
     // Refund ratio
-    #[data_size(skip)]
-    #[serde(deserialize_with = "serde_helpers::proper_fraction_deserializer")]
-    pub(crate) refund_ratio: Ratio<u64>,
+    pub(crate) fee_elimination: FeeEliminationConfig,
 }
 
 #[cfg(test)]
@@ -84,9 +84,10 @@ impl CoreConfig {
                 )
             })
             .collect();
-        let refund_ratio = {
+        let fee_elimination = {
             let numer = rng.gen_range(0..=100);
-            Ratio::new(numer, 100)
+            let refund_ratio = Ratio::new(numer, 100);
+            FeeEliminationConfig::Refund { refund_ratio }
         };
 
         CoreConfig {
@@ -104,7 +105,7 @@ impl CoreConfig {
             allow_auction_bids,
             administrative_accounts,
             allow_unrestricted_transfers,
-            refund_ratio,
+            fee_elimination,
         }
     }
 }
@@ -128,7 +129,7 @@ impl ToBytes for CoreConfig {
             allow_auction_bids,
             allow_unrestricted_transfers,
             administrative_accounts,
-            refund_ratio,
+            fee_elimination: refund_ratio,
         } = self;
         buffer.extend(era_duration.to_bytes()?);
         buffer.extend(minimum_era_height.to_bytes()?);
@@ -164,7 +165,7 @@ impl ToBytes for CoreConfig {
             allow_auction_bids,
             allow_unrestricted_transfers,
             administrative_accounts,
-            refund_ratio,
+            fee_elimination: refund_ratio,
         } = self;
         era_duration.serialized_length()
             + minimum_era_height.serialized_length()
@@ -216,7 +217,7 @@ impl FromBytes for CoreConfig {
             allow_auction_bids,
             allow_unrestricted_transfers,
             administrative_accounts,
-            refund_ratio,
+            fee_elimination: refund_ratio,
         };
         Ok((config, remainder))
     }

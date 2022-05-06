@@ -2,10 +2,9 @@ use casper_types::{
     account::AccountHash, system::handle_payment::Error, BlockTime, Key, Phase, StoredValue,
     TransferredTo, URef, U512,
 };
-use num_rational::Ratio;
 
 use crate::{
-    core::{execution, runtime::Runtime},
+    core::{engine_state::engine_config::FeeElimination, execution, runtime::Runtime},
     storage::global_state::StateReader,
     system::handle_payment::{
         mint_provider::MintProvider, runtime_provider::RuntimeProvider, HandlePayment,
@@ -103,8 +102,8 @@ where
         self.context.get_caller()
     }
 
-    fn refund_ratio(&self) -> Ratio<U512> {
-        self.config.refund_ratio()
+    fn fee_elimination(&self) -> &FeeElimination {
+        self.config.fee_elimination()
     }
 }
 

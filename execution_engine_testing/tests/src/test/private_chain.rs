@@ -14,7 +14,7 @@ use casper_engine_test_support::{
     MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
 };
 use casper_execution_engine::core::engine_state::{
-    engine_config::EngineConfigBuilder,
+    engine_config::{EngineConfigBuilder, FeeElimination},
     genesis::{AdministratorAccount, GenesisValidator},
     ExecConfig, GenesisAccount, RunGenesisRequest,
 };
@@ -167,7 +167,9 @@ fn custom_private_chain_setup(
         .with_allow_unrestricted_transfers(allow_unrestricted_transfers)
         // TODO: Non-zero refund with default refund mechanism tries to transfer tokens from purse
         // to user.
-        .with_refund_ratio(Ratio::zero())
+        .with_fee_elimination(FeeElimination::Refund {
+            refund_ratio: Ratio::zero(),
+        })
         .build();
 
     let mut builder = InMemoryWasmTestBuilder::new_with_config(engine_config);

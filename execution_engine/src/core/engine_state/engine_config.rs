@@ -1,15 +1,19 @@
 //! Support for runtime configuration of the execution engine - as an integral property of the
 //! `EngineState` instance.
+mod fee_elimination;
+
 use std::sync::{Arc, Mutex};
 
 use num::One;
 use num_rational::Ratio;
 
-use casper_types::{account::AccountHash, U512};
+use casper_types::account::AccountHash;
 
 use crate::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
 
 use super::genesis::AdministratorAccount;
+
+pub use fee_elimination::FeeElimination;
 
 /// Default value for a maximum query depth configuration option.
 pub const DEFAULT_MAX_QUERY_DEPTH: u64 = 5;
@@ -26,7 +30,9 @@ pub const DEFAULT_ALLOW_AUCTION_BIDS: bool = true;
 /// Default value for allowing unrestricted transfers
 pub const DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS: bool = true;
 /// Default gas cost refund ratio.
-pub const DEFAULT_REFUND_RATIO: Ratio<u64> = Ratio::new_raw(0, 100);
+pub const DEFAULT_FEE_ELIMINATION: FeeElimination = FeeElimination::Refund {
+    refund_ratio: Ratio::new_raw(0, 100),
+};
 
 ///
 /// The runtime configuration of the execution engine
@@ -56,8 +62,8 @@ pub struct EngineConfig {
     /// accounts to administrators and administrators to normal accounts but not normal accounts to
     /// normal accounts (aka private chain mode).
     allow_unrestricted_transfers: bool,
-    /// Gas cost refund ratio.
-    refund_ratio: Ratio<u64>,
+    /// Fee elimination config.
+    fee_elimination: FeeElimination,
 }
 
 impl Default for EngineConfig {
@@ -73,7 +79,7 @@ impl Default for EngineConfig {
             administrative_accounts: Default::default(),
             allow_auction_bids: DEFAULT_ALLOW_AUCTION_BIDS,
             allow_unrestricted_transfers: DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS,
-            refund_ratio: DEFAULT_REFUND_RATIO,
+            fee_elimination: DEFAULT_FEE_ELIMINATION,
         }
     }
 }
@@ -159,9 +165,8 @@ impl EngineConfig {
 
     /// Get the engine config's refund ratio.
     #[must_use]
-    pub fn refund_ratio(&self) -> Ratio<U512> {
-        let (numer, denom) = self.refund_ratio.into();
-        Ratio::new_raw(U512::from_u64(numer), U512::from_u64(denom))
+    pub fn fee_elimination(&self) -> &FeeElimination {
+        &self.fee_elimination
     }
 }
 
@@ -181,7 +186,7 @@ pub struct EngineConfigBuilder {
     administrative_accounts: Option<Vec<AdministratorAccount>>,
     allow_auction_bids: Option<bool>,
     allow_unrestricted_transfers: Option<bool>,
-    refund_ratio: Option<Ratio<u64>>,
+    fee_elimination: Option<FeeElimination>,
 }
 
 impl EngineConfigBuilder {
@@ -264,12 +269,17 @@ impl EngineConfigBuilder {
     }
 
     /// Set the engine config builder's refund ratio.
-    pub fn with_refund_ratio(mut self, refund_ratio: Ratio<u64>) -> Self {
-        debug_assert!(
-            refund_ratio <= Ratio::one(),
-            "refund ratio is a value between 0 and 1"
-        );
-        self.refund_ratio = Some(refund_ratio);
+    pub fn with_fee_elimination(mut self, fee_elimination: FeeElimination) -> Self {
+        match fee_elimination {
+            FeeElimination::Refund { refund_ratio } => {
+                debug_assert!(
+                    refund_ratio <= Ratio::one(),
+                    "refund ratio should be a proper fraction"
+                );
+            }
+        }
+
+        self.fee_elimination = Some(fee_elimination);
         self
     }
 
@@ -297,7 +307,7 @@ impl EngineConfigBuilder {
         let allow_unrestricted_transfers = self
             .allow_unrestricted_transfers
             .unwrap_or(DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS);
-        let refund_ratio = self.refund_ratio.unwrap_or(DEFAULT_REFUND_RATIO);
+        let fee_elimination = self.fee_elimination.unwrap_or(DEFAULT_FEE_ELIMINATION);
 
         EngineConfig {
             max_query_depth,
@@ -310,7 +320,7 @@ impl EngineConfigBuilder {
             administrative_accounts: Arc::new(Mutex::new(administrative_accounts)),
             allow_auction_bids,
             allow_unrestricted_transfers,
-            refund_ratio,
+            fee_elimination,
         }
     }
 }

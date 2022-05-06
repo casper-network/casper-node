@@ -66,8 +66,8 @@ strict_argument_checking = false
 #
 # Changing this option makes sense only for private chains which dont need auctioning new validator slots.
 allow_auction_bids = true
-# Refund ratio for the default finalization method.
-refund_ratio = [0, 100]
+# Fee elimination config for finalization of an execution.
+fee_elimination = { Refund = { refund_ratio = [0, 100] } }
 
 [highway]
 # A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.

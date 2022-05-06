@@ -1,7 +1,5 @@
-use casper_types::{
-    account::AccountHash, system::handle_payment::Error, BlockTime, Key, Phase, U512,
-};
-use num_rational::Ratio;
+use crate::core::engine_state::engine_config::FeeElimination;
+use casper_types::{account::AccountHash, system::handle_payment::Error, BlockTime, Key, Phase};
 
 /// Provider of runtime host functionality.
 pub trait RuntimeProvider {
@@ -24,5 +22,5 @@ pub trait RuntimeProvider {
     fn get_caller(&self) -> AccountHash;
 
     /// Get refund ratio.
-    fn refund_ratio(&self) -> Ratio<U512>;
+    fn fee_elimination(&self) -> &FeeElimination;
 }

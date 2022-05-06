@@ -246,7 +246,11 @@ impl Reactor {
                 .chainspec()
                 .core_config
                 .allow_unrestricted_transfers,
-            chainspec_loader.chainspec().core_config.refund_ratio,
+            chainspec_loader
+                .chainspec()
+                .core_config
+                .fee_elimination
+                .into(),
         )?;
 
         let effects = reactor::wrap_effects(Event::Chainspec, chainspec_effects);
