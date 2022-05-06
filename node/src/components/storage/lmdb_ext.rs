@@ -13,13 +13,12 @@
 use std::any::TypeId;
 
 use lmdb::{Database, RwTransaction, Transaction, WriteFlags};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Serialize};
 use thiserror::Error;
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     system::auction::UnbondingPurse,
-    EraId, PublicKey, URef, U512,
 };
 
 const UNBONDING_PURSE_V2_MAGIC_BYTES: &[u8] = &[121, 17, 133, 179, 91, 63, 69, 222];
@@ -249,26 +248,9 @@ fn is_legacy(raw: &[u8]) -> bool {
 pub(super) fn deserialize_unbonding_purse<T: DeserializeOwned>(
     raw: &[u8],
 ) -> Result<T, LmdbExtError> {
+    const BINCODE_ENCODED_NONE: [u8; 4] = [0; 4];
     if is_legacy(raw) {
-        #[derive(Deserialize)]
-        pub struct LegacyUnbondingPurse {
-            bonding_purse: URef,
-            validator_public_key: PublicKey,
-            unbonder_public_key: PublicKey,
-            era_of_creation: EraId,
-            amount: U512,
-        }
-        let deserialized: LegacyUnbondingPurse = bincode::deserialize(raw).unwrap();
-        let upgraded_unbonding_purse = UnbondingPurse::new(
-            deserialized.bonding_purse,
-            deserialized.validator_public_key,
-            deserialized.unbonder_public_key,
-            deserialized.era_of_creation,
-            deserialized.amount,
-            Option::default(),
-        );
-        let raw = bincode::serialize(&upgraded_unbonding_purse).unwrap();
-        bincode::deserialize(&raw).map_err(|err| LmdbExtError::DataCorrupted(Box::new(err)))
+        deserialize(&[raw, &BINCODE_ENCODED_NONE].concat())
     } else {
         deserialize(&raw[UNBONDING_PURSE_V2_MAGIC_BYTES.len()..])
     }
