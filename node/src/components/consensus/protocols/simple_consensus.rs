@@ -804,37 +804,46 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             );
             return vec![];
         }
+        let our_faulty = self.validator_bit_field(first_validator_idx, self.faults.keys().cloned());
         let mut contents = vec![];
-        if let Some(hash) = proposal_hash {
-            if let Some(echo_map) = round.echos.get(&hash) {
-                let our_echos =
-                    self.validator_bit_field(first_validator_idx, echo_map.keys().cloned());
-                let missing_echos = our_echos & !echos;
-                for v_idx in self.iter_validator_bit_field(first_validator_idx, missing_echos) {
-                    contents.push((Content::Echo(hash), v_idx, echo_map[&v_idx]));
+        match proposal_hash {
+            Some(hash)
+                if round.outcome.quorum_echos == None
+                    || round.outcome.quorum_echos == Some(hash) =>
+            {
+                if let Some(echo_map) = round.echos.get(&hash) {
+                    let our_echos =
+                        self.validator_bit_field(first_validator_idx, echo_map.keys().cloned());
+                    let missing_echos = our_echos & !(echos | faulty | our_faulty);
+                    for v_idx in self.iter_validator_bit_field(first_validator_idx, missing_echos) {
+                        contents.push((Content::Echo(hash), v_idx, echo_map[&v_idx]));
+                    }
+                }
+                if !has_proposal {
+                    if let Some((proposal, signature)) = round.proposals.get(&hash) {
+                        let content = Content::Proposal(proposal.clone());
+                        contents.push((content, self.leader(round_id), *signature));
+                    }
                 }
             }
-            if !has_proposal {
-                if let Some((proposal, signature)) = round.proposals.get(&hash) {
-                    let content = Content::Proposal(proposal.clone());
-                    contents.push((content, self.leader(round_id), *signature));
+            _ => {
+                if let Some(hash) = round.outcome.quorum_echos {
+                    for (v_idx, signature) in &round.echos[&hash] {
+                        contents.push((Content::Echo(hash), *v_idx, *signature));
+                    }
                 }
-            }
-        } else if let Some(hash) = round.outcome.quorum_echos {
-            for (v_idx, signature) in &round.echos[&hash] {
-                contents.push((Content::Echo(hash), *v_idx, *signature));
             }
         }
         let our_true_votes =
             self.validator_bit_field(first_validator_idx, round.votes[&true].keys_some());
-        let missing_true_votes = our_true_votes & !true_votes;
+        let missing_true_votes = our_true_votes & !(true_votes | faulty | our_faulty);
         for v_idx in self.iter_validator_bit_field(first_validator_idx, missing_true_votes) {
             let signature = round.votes[&true][v_idx].unwrap();
             contents.push((Content::Vote(true), v_idx, signature));
         }
         let our_false_votes =
             self.validator_bit_field(first_validator_idx, round.votes[&false].keys_some());
-        let missing_false_votes = our_false_votes & !false_votes;
+        let missing_false_votes = our_false_votes & !(false_votes | faulty | our_faulty);
         for v_idx in self.iter_validator_bit_field(first_validator_idx, missing_false_votes) {
             let signature = round.votes[&false][v_idx].unwrap();
             contents.push((Content::Vote(false), v_idx, signature));
@@ -852,7 +861,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 ProtocolOutcome::CreatedTargetedMessage(msg.serialize(), sender)
             })
             .collect_vec();
-        let our_faulty = self.validator_bit_field(first_validator_idx, self.faults.keys().cloned());
         let missing_faulty = our_faulty & !faulty;
         for v_idx in self.iter_validator_bit_field(first_validator_idx, missing_faulty) {
             match &self.faults[&v_idx] {
@@ -959,6 +967,10 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 (content2, signature2),
                 now,
             ));
+            if !content.is_proposal() {
+                debug!(?validator_id, "ignoring message from faulty validator");
+                return outcomes;
+            }
         }
 
         match content {
