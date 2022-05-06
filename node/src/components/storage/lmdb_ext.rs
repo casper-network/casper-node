@@ -22,7 +22,7 @@ use casper_types::{
     EraId, PublicKey, URef, U512,
 };
 
-pub const UNBONDED_PURSE_V2_MAGIC_BYTES: &[u8] = &[121, 17, 133, 179, 91, 63, 69, 222];
+pub const UNBONDING_PURSE_V2_MAGIC_BYTES: &[u8] = &[121, 17, 133, 179, 91, 63, 69, 222];
 
 /// Error wrapper for lower-level storage errors.
 ///
@@ -240,8 +240,9 @@ pub(super) fn deserialize<T: DeserializeOwned>(raw: &[u8]) -> Result<T, LmdbExtE
     bincode::deserialize(raw).map_err(|err| LmdbExtError::DataCorrupted(Box::new(err)))
 }
 
+/// Returns `true` if the specified bytes represent the legacy version of `UnbondingPurse`.
 fn is_legacy(raw: &[u8]) -> bool {
-    !raw.starts_with(UNBONDED_PURSE_V2_MAGIC_BYTES)
+    !raw.starts_with(UNBONDING_PURSE_V2_MAGIC_BYTES)
 }
 
 /// Deserializes `UnbondingPurse` from a buffer.
@@ -269,7 +270,7 @@ pub(super) fn deserialize_unbonding_purse<T: DeserializeOwned>(
         let raw = bincode::serialize(&upgraded_unbonding_purse).unwrap();
         bincode::deserialize(&raw).map_err(|err| LmdbExtError::DataCorrupted(Box::new(err)))
     } else {
-        deserialize(&raw[UNBONDED_PURSE_V2_MAGIC_BYTES.len()..])
+        deserialize(&raw[UNBONDING_PURSE_V2_MAGIC_BYTES.len()..])
     }
 }
 
@@ -282,7 +283,7 @@ pub(super) fn serialize<T: Serialize>(value: &T) -> Result<Vec<u8>, LmdbExtError
 /// Serializes `UnbondingPurse` into a buffer.
 #[inline(always)]
 pub(super) fn serialize_unbonding_purse<T: Serialize>(value: &T) -> Result<Vec<u8>, LmdbExtError> {
-    let mut serialized = UNBONDED_PURSE_V2_MAGIC_BYTES.to_vec();
+    let mut serialized = UNBONDING_PURSE_V2_MAGIC_BYTES.to_vec();
     serialized.extend(bincode::serialize(value).map_err(|err| LmdbExtError::Other(Box::new(err)))?);
     Ok(serialized)
 }
