@@ -22,7 +22,7 @@ use casper_types::{
     EraId, PublicKey, URef, U512,
 };
 
-pub const UNBONDING_PURSE_V2_MAGIC_BYTES: &[u8] = &[121, 17, 133, 179, 91, 63, 69, 222];
+const UNBONDING_PURSE_V2_MAGIC_BYTES: &[u8] = &[121, 17, 133, 179, 91, 63, 69, 222];
 
 /// Error wrapper for lower-level storage errors.
 ///
