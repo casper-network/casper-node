@@ -164,6 +164,10 @@ where
     }
 }
 
+/// Serializes `value` into the buffer.
+/// In case the `value` is of the `UnbondingPurse` type it uses the specialized
+/// function to provide compatibility with the legacy version of the `UnbondingPurse` struct.
+/// See [`serialize_unbonding_purse`] for more details.
 pub(crate) fn serialize_internal<V: 'static + Serialize>(
     value: &V,
 ) -> Result<Vec<u8>, LmdbExtError> {
@@ -175,6 +179,10 @@ pub(crate) fn serialize_internal<V: 'static + Serialize>(
     Ok(buffer)
 }
 
+/// Deerializes an object from the raw bytes.
+/// In case the expected object is of the `UnbondingPurse` type it uses the specialized
+/// function to provide compatibility with the legacy version of the `UnbondingPurse` struct.
+/// See [`deserialize_unbonding_purse`] for more details.
 pub(crate) fn deserialize_internal<V: 'static + DeserializeOwned>(
     raw: &[u8],
 ) -> Result<Option<V>, LmdbExtError> {
@@ -245,6 +253,13 @@ fn is_legacy(raw: &[u8]) -> bool {
 }
 
 /// Deserializes `UnbondingPurse` from a buffer.
+/// To provide backward compatibility with the previous version of the `UnbondingPurse`,
+/// it checks if the raw bytes stream begins with "magic bytes". If yes, the magic bytes are
+/// stripped and the struct is deserialized as a new version. Otherwise, the raw bytes
+/// are treated as bytes representing the legacy `UnbondingPurse` and deserialized accordingly.
+/// In order for the latter scenario to work, the raw bytes stream is extended with
+/// bytes that represent the `None` serialized with `bincode` - these bytes simulate
+/// the existence of the `new_validator` field added to the `UnbondingPurse` struct.
 pub(super) fn deserialize_unbonding_purse<T: DeserializeOwned>(
     raw: &[u8],
 ) -> Result<T, LmdbExtError> {
@@ -263,6 +278,9 @@ pub(super) fn serialize<T: Serialize>(value: &T) -> Result<Vec<u8>, LmdbExtError
 }
 
 /// Serializes `UnbondingPurse` into a buffer.
+/// To provide backward compatibility with the previous version of the `UnbondingPurse`,
+/// the serialized bytes are prefixed with the "magic bytes", which will be used by the
+/// deserialization routine to detect the version of the `UnbondingPurse` struct.
 #[inline(always)]
 pub(super) fn serialize_unbonding_purse<T: Serialize>(value: &T) -> Result<Vec<u8>, LmdbExtError> {
     let mut serialized = UNBONDING_PURSE_V2_MAGIC_BYTES.to_vec();
