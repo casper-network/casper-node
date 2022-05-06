@@ -12,7 +12,6 @@ use num_rational::Ratio;
 use rand::{prelude::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
-use uint::hex;
 
 use casper_hashing::Digest;
 use casper_types::{
@@ -2084,7 +2083,7 @@ fn should_read_legacy_unbonding_purse() {
     // that are consistent with what we keep in the current storage.
     const LEGACY_BYTES: &str = "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e07010000002000000000000000197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d610100000020000000000000004508a07aa941707f3eb2db94c8897a80b2c1197476b6de213ac273df7d86c4ffffffffffffffffff40feffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
 
-    let decoded = hex::decode(LEGACY_BYTES).expect("decode");
+    let decoded = base16::decode(LEGACY_BYTES).expect("decode");
     let deserialized: UnbondingPurse = deserialize_internal(&decoded)
         .expect("should deserialize w/o error")
         .expect("should be Some");
