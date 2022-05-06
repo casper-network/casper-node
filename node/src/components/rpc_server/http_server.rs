@@ -78,6 +78,7 @@ pub(super) async fn run<REv: ReactorEventT>(
     let rpc_get_dictionary_item =
         rpcs::state::GetDictionaryItem::create_filter(effect_builder, api_version);
     let rpc_get_chainspec = rpcs::info::GetChainspec::create_filter(effect_builder, api_version);
+    let rpc_query_balance = rpcs::state::QueryBalance::create_filter(effect_builder, api_version);
 
     // Catch requests where the method is not one we handle.
     let unknown_method = warp::path(RPC_API_PATH)
@@ -112,6 +113,7 @@ pub(super) async fn run<REv: ReactorEventT>(
         .or(rpc_get_trie)
         .or(rpc_get_chainspec)
         .or(rpc_query_global_state)
+        .or(rpc_query_balance)
         .or(unknown_method)
         .or(parse_failure)
         .with(

@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
+    DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{engine_state::Error, execution};
 use casper_types::{
@@ -178,7 +178,7 @@ fn test_multisig_auth(
 
 fn setup() -> InMemoryWasmTestBuilder {
     let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     for account in ROLE_A_KEYS.iter().chain(&ROLE_B_KEYS) {
         let add_key_request = {

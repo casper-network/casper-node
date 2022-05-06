@@ -1114,6 +1114,20 @@ impl StorageInner {
             StorageRequest::GetFinalizedBlocks { ttl, responder } => {
                 responder.respond(self.get_finalized_blocks(ttl)?).ignore()
             }
+            StorageRequest::GetBlockHeaderByHeight {
+                block_height,
+                only_from_available_block_range,
+                responder,
+            } => {
+                let indices = self.indices.read()?;
+                let result = self.get_block_header_by_height_restricted(
+                    &mut self.env.begin_ro_txn()?,
+                    &indices,
+                    block_height,
+                    only_from_available_block_range,
+                )?;
+                responder.respond(result).ignore()
+            }
             StorageRequest::GetBlockHeaderAndSufficientFinalitySignaturesByHeight {
                 block_height,
                 responder,
@@ -1421,6 +1435,21 @@ impl StorageInner {
 
         self.validate_block_header_hash(&block_header, block_hash)?;
         Ok(Some(block_header))
+    }
+
+    fn get_block_header_by_height_restricted<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        indices: &Indices,
+        block_height: u64,
+        only_from_available_block_range: bool,
+    ) -> Result<Option<BlockHeader>, FatalStorageError> {
+        let block_hash = match indices.block_height_index.get(&block_height) {
+            None => return Ok(None),
+            Some(block_hash) => block_hash,
+        };
+
+        self.get_single_block_header_restricted(tx, block_hash, only_from_available_block_range)
     }
 
     /// Retrieves a single block header in a given transaction from storage.

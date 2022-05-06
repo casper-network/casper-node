@@ -290,6 +290,16 @@ pub(crate) enum StorageRequest {
         /// local storage.
         responder: Responder<Option<BlockHeader>>,
     },
+    GetBlockHeaderByHeight {
+        /// Height of block to get header of.
+        block_height: u64,
+        /// Flag indicating whether storage should check the block availability before trying to
+        /// retrieve it.
+        only_from_available_block_range: bool,
+        /// Responder to call with the result.  Returns `None` is the block header doesn't exist in
+        /// local storage.
+        responder: Responder<Option<BlockHeader>>,
+    },
     /// Checks if a block header at the given height exists in storage.
     CheckBlockHeaderExistence {
         /// Height of the block to check.
@@ -459,6 +469,9 @@ impl Display for StorageRequest {
             }
             StorageRequest::GetBlockHeader { block_hash, .. } => {
                 write!(formatter, "get {}", block_hash)
+            }
+            StorageRequest::GetBlockHeaderByHeight { block_height, .. } => {
+                write!(formatter, "get header for height {}", block_height)
             }
             StorageRequest::CheckBlockHeaderExistence { block_height, .. } => {
                 write!(formatter, "check existence {}", block_height)
