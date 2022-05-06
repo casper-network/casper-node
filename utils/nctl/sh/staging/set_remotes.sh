@@ -37,6 +37,7 @@ function _main()
     for PROTOCOL_VERSION in "${_PROTOCOL_VERSIONS[@]}"
     do
         source "$NCTL/sh/staging/set_remote.sh" version=$PROTOCOL_VERSION
+        source "$NCTL/sh/staging/set_remote_chainspecs.sh" version=$PROTOCOL_VERSION
     done
 }
 

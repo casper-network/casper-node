@@ -38,7 +38,7 @@ function _main()
         PATH_TO_STAGE="$(get_path_to_stage "$STAGE_ID")/$PROTOCOL_VERSION"
     fi
 
-    cp "$PATH_TO_REMOTE"/* "$PATH_TO_STAGE"
+    cp -r "$PATH_TO_REMOTE"/* "$PATH_TO_STAGE"
     cp "$(get_path_to_remotes)/casper-node-launcher" "$PATH_TO_STAGE"
     mv "$PATH_TO_STAGE/chainspec.toml.in" "$PATH_TO_STAGE/chainspec.toml"
 }
