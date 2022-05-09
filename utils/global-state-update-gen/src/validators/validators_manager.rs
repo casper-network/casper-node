@@ -5,11 +5,13 @@ use std::{
 
 use casper_engine_test_support::LmdbWasmTestBuilder;
 use casper_types::{
-    system::auction::{
-        Bid, Bids, SeigniorageRecipient, SeigniorageRecipientsSnapshot,
-        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+    system::{
+        auction::{
+            Bid, Bids, SeigniorageRecipient, SeigniorageRecipientsSnapshot,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+        },
+        mint::TOTAL_SUPPLY_KEY,
     },
-    system::mint::TOTAL_SUPPLY_KEY,
     AsymmetricType, CLValue, EraId, Key, PublicKey, StoredValue, U512,
 };
 
@@ -185,8 +187,8 @@ impl ValidatorsUpdateManager {
                 }
 
                 let bonding_purse = if let Some(bid) = maybe_bid {
-                    // update the balance of the existing purse and increase the supply if we created
-                    // any tokens
+                    // update the balance of the existing purse and increase the supply if we
+                    // created any tokens
                     let bonding_purse = *bid.bonding_purse();
                     self.state_tracker.write_entry(
                         Key::Balance(bonding_purse.addr()),
