@@ -658,15 +658,6 @@ where
             Err(e) => return Ok(ExecutionResult::precondition_failure(e)),
         };
 
-        let proposer_addr = proposer.to_account_hash();
-        let proposer_account = match tracking_copy
-            .borrow_mut()
-            .get_account(correlation_id, proposer_addr)
-        {
-            Ok(proposer) => proposer,
-            Err(error) => return Ok(ExecutionResult::precondition_failure(Error::Exec(error))),
-        };
-
         let system_contract_registry = tracking_copy
             .borrow_mut()
             .get_system_contracts(correlation_id)?;
@@ -709,19 +700,49 @@ where
             }
         };
 
-        let proposer_main_purse_balance_key = {
-            let proposer_main_purse = proposer_account.main_purse();
+        let rewards_target_purse = {
+            let proposer_account: Account = match tracking_copy
+                .borrow_mut()
+                .get_account(correlation_id, AccountHash::from(&proposer))
+            {
+                Ok(account) => account,
+                Err(error) => {
+                    return Ok(ExecutionResult::precondition_failure(error.into()));
+                }
+            };
 
+            match self.config.fee_elimination() {
+                FeeElimination::Refund { .. } => {
+                    // the proposer of the block this deploy is in receives the gas from this deploy
+                    // execution
+                    proposer_account.main_purse()
+                }
+                FeeElimination::Accumulate => {
+                    let mint_hash = self.get_system_mint_hash(correlation_id, prestate_hash)?;
+
+                    let mint_contract = tracking_copy
+                        .borrow_mut()
+                        .get_contract(correlation_id, mint_hash)?;
+
+                    let rewards_purse_uref = mint_contract.named_keys().get(REWARDS_PURSE_KEY).and_then(|key| (*key).into_uref()).unwrap_or_else(|| {
+                        error!("fee elimination is configured to accumulate but mint does not have rewards purse; defaulting to a proposer");
+                        proposer_account.main_purse()
+                    });
+
+                    rewards_purse_uref
+                }
+            }
+        };
+
+        let proposer_main_purse_balance_key = {
             match tracking_copy
                 .borrow_mut()
-                .get_purse_balance_key(correlation_id, proposer_main_purse.into())
+                .get_purse_balance_key(correlation_id, rewards_target_purse.into())
             {
                 Ok(balance_key) => balance_key,
                 Err(error) => return Ok(ExecutionResult::precondition_failure(Error::Exec(error))),
             }
         };
-
-        let proposer_purse = proposer_account.main_purse();
 
         let account_main_purse = account.main_purse();
 
@@ -1088,7 +1109,7 @@ where
                 let maybe_runtime_args = RuntimeArgs::try_new(|args| {
                     args.insert(handle_payment::ARG_AMOUNT, finalize_cost_motes.value())?;
                     args.insert(handle_payment::ARG_ACCOUNT, account)?;
-                    args.insert(handle_payment::ARG_TARGET, proposer_purse)?;
+                    args.insert(handle_payment::ARG_TARGET, rewards_target_purse)?;
                     Ok(())
                 });
 
@@ -1113,7 +1134,7 @@ where
             let finalization_tc = Rc::new(RefCell::new(tc.fork()));
 
             let finalize_payment_stack = self.get_new_system_call_stack();
-            handle_payment_access_rights.extend(&[payment_uref, proposer_purse]);
+            handle_payment_access_rights.extend(&[payment_uref, rewards_target_purse]);
 
             let (_ret, finalize_result): (Option<()>, ExecutionResult) = executor
                 .call_system_contract(

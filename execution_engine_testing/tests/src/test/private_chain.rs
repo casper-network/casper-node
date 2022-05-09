@@ -17,7 +17,7 @@ use casper_engine_test_support::{
 use casper_execution_engine::core::engine_state::{
     engine_config::{EngineConfigBuilder, FeeElimination},
     genesis::{AdministratorAccount, GenesisValidator},
-    ExecConfig, GenesisAccount, RunGenesisRequest,
+    EngineConfig, ExecConfig, GenesisAccount, RunGenesisRequest,
 };
 use once_cell::sync::Lazy;
 
@@ -164,15 +164,11 @@ fn custom_private_chain_setup(
     allow_unrestricted_transfers: bool,
     fee_elimination: FeeElimination,
 ) -> InMemoryWasmTestBuilder {
-    let engine_config = EngineConfigBuilder::default()
-        .with_administrative_accounts(PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS.clone())
-        .with_allow_auction_bids(allow_auction_bids)
-        .with_allow_unrestricted_transfers(allow_unrestricted_transfers)
-        .with_fee_elimination(fee_elimination)
-        .build();
-
-    let mut builder = InMemoryWasmTestBuilder::new_with_config(engine_config);
-    builder.run_genesis(&DEFAULT_PRIVATE_CHAIN_GENESIS);
+    let mut builder = custom_setup_genesis_only(
+        allow_auction_bids,
+        allow_unrestricted_transfers,
+        fee_elimination,
+    );
 
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ADMIN_ACCOUNT_ADDR,
@@ -194,6 +190,42 @@ fn custom_private_chain_setup(
     builder.exec(fund_system_request).expect_success().commit();
 
     builder
+}
+
+fn custom_setup_genesis_only(
+    allow_auction_bids: bool,
+    allow_unrestricted_transfers: bool,
+    fee_elimination: FeeElimination,
+) -> InMemoryWasmTestBuilder {
+    let engine_config = make_engine_config(
+        allow_auction_bids,
+        allow_unrestricted_transfers,
+        fee_elimination,
+    );
+    let mut builder = InMemoryWasmTestBuilder::new_with_config(engine_config);
+    builder.run_genesis(&DEFAULT_PRIVATE_CHAIN_GENESIS);
+    builder
+}
+
+fn setup_genesis_only() -> InMemoryWasmTestBuilder {
+    custom_setup_genesis_only(
+        PRIVATE_CHAIN_ALLOW_AUCTION_BIDS,
+        PRIVATE_CHAIN_ALLOW_UNRESTRICTED_TRANSFERS,
+        PRIVATE_CHAIN_FEE_ELIMINATION,
+    )
+}
+
+fn make_engine_config(
+    allow_auction_bids: bool,
+    allow_unrestricted_transfers: bool,
+    fee_elimination: FeeElimination,
+) -> EngineConfig {
+    EngineConfigBuilder::default()
+        .with_administrative_accounts(PRIVATE_CHAIN_GENESIS_ADMIN_ACCOUNTS.clone())
+        .with_allow_auction_bids(allow_auction_bids)
+        .with_allow_unrestricted_transfers(allow_unrestricted_transfers)
+        .with_fee_elimination(fee_elimination)
+        .build()
 }
 
 fn private_chain_setup() -> InMemoryWasmTestBuilder {
