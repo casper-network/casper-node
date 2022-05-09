@@ -12,7 +12,7 @@ use serde::Serialize;
 use static_assertions::const_assert;
 use tracing::Span;
 
-use super::{error::ConnectionError, FramedTransport, GossipedAddress, Message, NodeId};
+use super::{error::ConnectionError, FullTransport, GossipedAddress, Message, NodeId};
 use crate::{
     effect::{
         announcements::{BlocklistAnnouncement, ContractRuntimeAnnouncement},
@@ -181,7 +181,7 @@ pub(crate) enum IncomingConnection<P> {
         peer_consensus_public_key: Option<PublicKey>,
         /// Stream of incoming messages. for incoming connections.
         #[serde(skip_serializing)]
-        stream: SplitStream<FramedTransport<P>>,
+        stream: SplitStream<FullTransport<P>>,
     },
 }
 
@@ -251,7 +251,7 @@ pub(crate) enum OutgoingConnection<P> {
         peer_consensus_public_key: Option<PublicKey>,
         /// Sink for outgoing messages.
         #[serde(skip_serializing)]
-        sink: SplitSink<FramedTransport<P>, Arc<Message<P>>>,
+        sink: SplitSink<FullTransport<P>, Arc<Message<P>>>,
     },
 }
 
