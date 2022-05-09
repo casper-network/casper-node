@@ -842,12 +842,6 @@ impl EraSupervisor {
             }
         };
         match consensus_result {
-            ProtocolOutcome::InvalidIncomingMessage(_, sender, error) => effect_builder
-                .announce_block_peer_with_justification(
-                    sender,
-                    BlocklistJustification::SentInvalidConsensusMessage { error },
-                )
-                .ignore(),
             ProtocolOutcome::Disconnect(sender) => {
                 warn!(
                     %sender,

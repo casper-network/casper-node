@@ -250,13 +250,7 @@ fn expect_no_gossip_block_finalized(outcomes: ProtocolOutcomes<ClContext>) {
 /// Checks that the expected timer was requested by the protocol.
 fn expect_timer(outcomes: &ProtocolOutcomes<ClContext>, timestamp: Timestamp, timer_id: TimerId) {
     assert!(
-        outcomes.iter().any(|outcome| {
-            if let ProtocolOutcome::ScheduleTimer(actual_time, actual_id) = outcome {
-                *actual_time == timestamp && *actual_id == timer_id
-            } else {
-                false
-            }
-        }),
+        outcomes.contains(&ProtocolOutcome::ScheduleTimer(timestamp, timer_id)),
         "missing timer {} for {:?} from {:?}",
         timer_id.0,
         timestamp,
@@ -540,9 +534,7 @@ fn simple_consensus_faults() {
     expect_no_gossip_block_finalized(sc.handle_message(&mut rng, sender, msg, timestamp));
     let msg = create_message(&validators, 3, vote(false), &carol_kp);
     let outcomes = sc.handle_message(&mut rng, sender, msg, timestamp);
-    assert!(outcomes
-        .iter()
-        .any(|outcome| { matches!(outcome, ProtocolOutcome::FttExceeded) }));
+    assert!(outcomes.contains(&ProtocolOutcome::FttExceeded));
 }
 
 /// Tests that a `SyncState` message is periodically sent to a random peer.

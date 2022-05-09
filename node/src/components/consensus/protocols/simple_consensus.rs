@@ -649,16 +649,11 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         &mut self,
         round_id: RoundId,
         validator_idx: ValidatorIndex,
+        validator_id: C::ValidatorId,
         (content0, signature0): (Content<C>, C::Signature),
         (content1, signature1): (Content<C>, C::Signature),
         now: Timestamp,
     ) -> ProtocolOutcomes<C> {
-        let validator_id = if let Some(validator_id) = self.validators.id(validator_idx) {
-            validator_id.clone()
-        } else {
-            error!("invalid validator index");
-            return vec![];
-        };
         info!(index = validator_idx.0, id = %validator_id, "validator double-signed");
         if let Some(Fault::Direct(_, _)) = self.faults.get(&validator_idx) {
             return vec![]; // Validator is already known to be faulty.
@@ -821,7 +816,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         for v_idx in self.iter_validator_bit_field(first_validator_idx, missing_faulty) {
             match &self.faults[&v_idx] {
                 Fault::Banned => {
-                    error!(
+                    debug!(
                         validator_index = v_idx.0,
                         ?sender,
                         "peer disagrees about banned validator"
@@ -852,7 +847,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     #[allow(clippy::too_many_arguments)]
     fn handle_signed_message(
         &mut self,
-        msg: Vec<u8>,
         round_id: RoundId,
         content: Content<C>,
         validator_idx: ValidatorIndex,
@@ -860,19 +854,22 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         sender: NodeId,
         now: Timestamp,
     ) -> ProtocolOutcomes<C> {
-        // TODO: Error handling.
-        let err_msg = |message: &'static str| {
-            vec![ProtocolOutcome::InvalidIncomingMessage(
-                msg.clone(),
-                sender,
-                anyhow::Error::msg(message),
-            )]
+        let disconnect_from_sender = |content: &Content<C>, message: &'static str| {
+            warn!(
+                ?round_id,
+                ?content,
+                ?validator_idx,
+                ?sender,
+                "invalid incoming message: {}",
+                message
+            );
+            vec![ProtocolOutcome::Disconnect(sender)]
         };
 
         let validator_id = if let Some(validator_id) = self.validators.id(validator_idx) {
             validator_id.clone()
         } else {
-            return err_msg("invalid validator index");
+            return disconnect_from_sender(&content, "invalid validator index");
         };
 
         if let Some(fault) = self.faults.get(&validator_idx) {
@@ -910,7 +907,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 .expect("failed to serialize fields");
         let hash = <C as Context>::hash(&serialized_fields);
         if !C::verify_signature(&hash, &validator_id, &signature) {
-            return err_msg("invalid signature");
+            return disconnect_from_sender(&content, "invalid signature");
         }
 
         let mut outcomes = vec![];
@@ -919,6 +916,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             outcomes.extend(self.handle_fault(
                 round_id,
                 validator_idx,
+                validator_id.clone(),
                 (content.clone(), signature),
                 (content2, signature2),
                 now,
@@ -944,14 +942,18 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 }
 
                 if validator_idx != self.leader(round_id) {
-                    outcomes.extend(err_msg("wrong leader"));
+                    outcomes.extend(disconnect_from_sender(
+                        &Content::Proposal(proposal),
+                        "wrong leader",
+                    ));
                     return outcomes;
                 }
                 if proposal
                     .maybe_parent_round_id
                     .map_or(false, |parent_round_id| parent_round_id >= round_id)
                 {
-                    outcomes.extend(err_msg(
+                    outcomes.extend(disconnect_from_sender(
+                        &Content::Proposal(proposal),
                         "invalid proposal: parent is not from an earlier round",
                     ));
                     return outcomes;
@@ -960,7 +962,8 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 if (proposal.maybe_parent_round_id.is_none() || proposal.maybe_block.is_none())
                     != proposal.inactive.is_none()
                 {
-                    outcomes.extend(err_msg(
+                    outcomes.extend(disconnect_from_sender(
+                        &Content::Proposal(proposal),
                         "invalid proposal: inactive must be present in all except the first and \
                         dummy proposals",
                     ));
@@ -971,7 +974,8 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                         .iter()
                         .any(|idx| *idx == validator_idx || self.validators.id(*idx).is_none())
                     {
-                        outcomes.extend(err_msg(
+                        outcomes.extend(disconnect_from_sender(
+                            &Content::Proposal(proposal),
                             "invalid proposal: invalid inactive validator index",
                         ));
                         return outcomes;
@@ -1767,15 +1771,13 @@ where
     ) -> ProtocolOutcomes<C> {
         match bincode::deserialize::<Message<C>>(msg.as_slice()) {
             Err(err) => {
-                let outcome = ProtocolOutcome::InvalidIncomingMessage(msg, sender, err.into());
-                vec![outcome]
+                warn!(?sender, ?err, "failed to deserialize message");
+                vec![ProtocolOutcome::Disconnect(sender)]
             }
             Ok(message) if message.instance_id() != self.instance_id() => {
                 let instance_id = message.instance_id();
-                info!(?instance_id, ?sender, "wrong instance ID; disconnecting");
-                let err = anyhow::Error::msg("invalid instance ID");
-                let outcome = ProtocolOutcome::InvalidIncomingMessage(msg.clone(), sender, err);
-                vec![outcome]
+                warn!(?instance_id, ?sender, "wrong instance ID; disconnecting");
+                vec![ProtocolOutcome::Disconnect(sender)]
             }
             Ok(Message::SyncState {
                 round_id,
@@ -1804,15 +1806,9 @@ where
                 content,
                 validator_idx,
                 signature,
-            }) => self.handle_signed_message(
-                msg,
-                round_id,
-                content,
-                validator_idx,
-                signature,
-                sender,
-                now,
-            ),
+            }) => {
+                self.handle_signed_message(round_id, content, validator_idx, signature, sender, now)
+            }
         }
     }
 

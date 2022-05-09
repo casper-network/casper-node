@@ -5,7 +5,6 @@ use std::{
     path::PathBuf,
 };
 
-use anyhow::Error;
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
@@ -193,13 +192,11 @@ pub(crate) struct FinalizedBlock<C: Context> {
 
 pub(crate) type ProtocolOutcomes<C> = Vec<ProtocolOutcome<C>>;
 
-// TODO: get rid of anyhow::Error; use variant and derive Clone and PartialEq. This is for testing.
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) enum ProtocolOutcome<C: Context> {
     CreatedGossipMessage(Vec<u8>),
     CreatedTargetedMessage(Vec<u8>, NodeId),
     CreatedMessageToRandomPeer(Vec<u8>),
-    InvalidIncomingMessage(Vec<u8>, NodeId, Error),
     ScheduleTimer(Timestamp, TimerId),
     QueueAction(ActionId),
     /// Request deploys for a new block, providing the necessary context.
