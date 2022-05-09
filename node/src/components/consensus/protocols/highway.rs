@@ -711,11 +711,10 @@ where
         now: Timestamp,
     ) -> ProtocolOutcomes<C> {
         match bincode::deserialize(msg.as_slice()) {
-            Err(err) => vec![ProtocolOutcome::InvalidIncomingMessage(
-                msg,
-                sender,
-                err.into(),
-            )],
+            Err(err) => {
+                warn!(?sender, ?err, "failed to deserialize message");
+                vec![ProtocolOutcome::Disconnect(sender)]
+            }
             Ok(HighwayMessage::NewVertex(v))
                 if self.highway.has_vertex(&v) || (self.evidence_only && !v.is_evidence()) =>
             {
@@ -739,13 +738,10 @@ where
                         trace!("received an invalid vertex");
                         // drop the vertices that might have depended on this one
                         let faulty_senders = self.synchronizer.invalid_vertices(vec![v_id]);
-                        return iter::once(ProtocolOutcome::InvalidIncomingMessage(
-                            msg,
-                            sender,
-                            err.into(),
-                        ))
-                        .chain(faulty_senders.into_iter().map(ProtocolOutcome::Disconnect))
-                        .collect();
+                        warn!(?err, ?sender, ?faulty_senders, "invalid incoming message");
+                        return iter::once(ProtocolOutcome::Disconnect(sender))
+                            .chain(faulty_senders.into_iter().map(ProtocolOutcome::Disconnect))
+                            .collect();
                     }
                 };
                 // Keep track of whether the prevalidated vertex was from an equivocator
