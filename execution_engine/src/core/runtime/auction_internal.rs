@@ -12,7 +12,7 @@ use casper_types::{
     BLAKE2B_DIGEST_LENGTH, U512,
 };
 
-use super::Runtime;
+use super::{stack::ExecutionContext, Runtime};
 use crate::{
     core::execution,
     storage::global_state::StateReader,
@@ -210,7 +210,12 @@ where
         })?;
 
         let cl_value = self
-            .call_contract(mint_contract_hash, mint::METHOD_TRANSFER, args_values)
+            .call_contract(
+                ExecutionContext::Host,
+                mint_contract_hash,
+                mint::METHOD_TRANSFER,
+                args_values,
+            )
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Transfer))?;
 
         self.set_gas_counter(gas_counter);
@@ -241,6 +246,7 @@ where
 
         let cl_value = self
             .call_contract(
+                ExecutionContext::Host,
                 mint_contract_hash,
                 mint::METHOD_MINT_INTO_EXISTING_PURSE,
                 args_values,

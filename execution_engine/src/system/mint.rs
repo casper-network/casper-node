@@ -15,6 +15,7 @@ use casper_types::{
 };
 
 use crate::{
+    core::runtime::stack::ExecutionContext,
     shared::account::SYSTEM_ACCOUNT_ADDRESS,
     system::mint::{
         runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
@@ -96,6 +97,8 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
     }
 
     /// Transfers `amount` of tokens from `source` purse to a `target` purse.
+    ///
+    /// A flag `is_host_function` identifies if the contract call comes from a host function.
     fn transfer(
         &mut self,
         maybe_to: Option<AccountHash>,
@@ -104,18 +107,21 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         amount: U512,
         id: Option<u64>,
     ) -> Result<(), Error> {
-        if let (Phase::Session, Some(&CallStackElement::StoredSession { .. })) =
+        if let (Phase::Session, Some(CallStackElement::StoredSession { .. })) =
             (self.get_phase(), self.get_immediate_caller())
         {
             // stored session code is not allowed to call this method in the session phase
             return Err(Error::InvalidContext);
         }
 
-        if !self.can_perform_unrestricted_transfer() && self.get_phase() == Phase::Session {
-            match self.get_immediate_caller().cloned() {
-                Some(CallStackElement::StoredSession { account_hash, .. }) => {
-                    if !self.is_in_host_function() && account_hash != *SYSTEM_ACCOUNT_ADDRESS {
-                        if let Some(is_account_admin) = self.is_account_administrator(&account_hash)
+        if !self.can_perform_unrestricted_transfer() {
+            match self.get_immediate_caller() {
+                Some(CallStackElement::StoredSession { account_hash, .. })
+                | Some(CallStackElement::Session { account_hash }) => {
+                    if self.get_current_execution_context() == Some(ExecutionContext::User)
+                        && account_hash != &*SYSTEM_ACCOUNT_ADDRESS
+                    {
+                        if let Some(is_account_admin) = self.is_account_administrator(account_hash)
                         {
                             if !is_account_admin {
                                 return Err(Error::DisabledUnrestrictedTransfers);
@@ -123,20 +129,12 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
                         }
                     }
                 }
-                Some(CallStackElement::Session { account_hash }) => {
-                    if !self.is_in_host_function() && account_hash != *SYSTEM_ACCOUNT_ADDRESS {
-                        if let Some(is_account_admin) = self.is_account_administrator(&account_hash)
-                        {
-                            if !is_account_admin {
-                                return Err(Error::DisabledUnrestrictedTransfers);
-                            }
-                        }
-                    }
-                }
+
                 Some(CallStackElement::StoredContract { .. }) => {
-                    // Contract call transfer funds. This is safe assuming only admins can deploy
-                    // contracts and transfer funds.
+                    // Contract call transfer funds. This is safe assuming only admins can
+                    // deploy contracts and transfer funds.
                 }
+
                 None => {
                     // There's always an immediate caller, but we should return something.
                     return Err(Error::DisabledUnrestrictedTransfers);

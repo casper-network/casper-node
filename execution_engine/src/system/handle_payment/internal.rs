@@ -182,10 +182,7 @@ pub fn refund_to_account<M: MintProvider>(
 ) -> Result<(), Error> {
     match mint_provider.transfer_purse_to_account(payment_purse, account, amount) {
         Ok(_) => Ok(()),
-        Err(error) => {
-            dbg!(error);
-            Err(Error::FailedTransferToAccountPurse)
-        }
+        Err(_error) => Err(Error::FailedTransferToAccountPurse),
     }
 }
 

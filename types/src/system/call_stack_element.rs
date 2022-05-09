@@ -22,7 +22,7 @@ pub enum CallStackElementTag {
 }
 
 /// Represents the origin of a sub-call.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum CallStackElement {
     /// Session
     Session {

@@ -4,6 +4,8 @@ use casper_types::{
     Key, Phase, URef, U512,
 };
 
+use crate::core::runtime::stack::ExecutionContext;
+
 /// Provider of runtime host functionality.
 pub trait RuntimeProvider {
     /// This method should return the caller of the current context.
@@ -11,6 +13,9 @@ pub trait RuntimeProvider {
 
     /// This method should return the immediate caller of the current context.
     fn get_immediate_caller(&self) -> Option<&CallStackElement>;
+
+    /// This method should return the current [`crate::core::runtime::ExecutionContext`].
+    fn get_current_execution_context(&self) -> Option<ExecutionContext>;
 
     /// Gets execution phase
     fn get_phase(&self) -> Phase;
@@ -37,7 +42,5 @@ pub trait RuntimeProvider {
     fn is_account_administrator(&self, account_hash: &AccountHash) -> Option<bool>;
     /// Checks if users can perform unrestricted transfers. This option is valid only for private
     /// chains.
-    fn can_perform_unrestricted_transfer(&mut self) -> bool;
-    /// Checks if we're currently executing a host function.
-    fn is_in_host_function(&self) -> bool;
+    fn can_perform_unrestricted_transfer(&self) -> bool;
 }

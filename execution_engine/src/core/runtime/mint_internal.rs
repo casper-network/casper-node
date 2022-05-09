@@ -5,7 +5,7 @@ use casper_types::{
     CLTyped, CLValue, Key, Phase, StoredValue, URef, U512,
 };
 
-use super::Runtime;
+use super::{stack::ExecutionContext, Runtime};
 use crate::{
     core::execution,
     storage::global_state::StateReader,
@@ -72,12 +72,17 @@ where
         self.config.is_account_administrator(account_hash)
     }
 
-    fn can_perform_unrestricted_transfer(&mut self) -> bool {
+    fn can_perform_unrestricted_transfer(&self) -> bool {
         self.config.allow_unrestricted_transfers()
     }
 
-    fn is_in_host_function(&self) -> bool {
-        self.host_function_flag.is_in_host_function_scope()
+    fn get_current_execution_context(&self) -> Option<ExecutionContext> {
+        Some(
+            Runtime::try_get_stack(self)
+                .ok()?
+                .current_frame()?
+                .execution_context(),
+        )
     }
 }
 

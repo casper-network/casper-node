@@ -448,6 +448,12 @@ impl<T: CLTyped> CLTyped for BTreeSet<T> {
     }
 }
 
+impl<T: CLTyped> CLTyped for &T {
+    fn cl_type() -> CLType {
+        T::cl_type()
+    }
+}
+
 macro_rules! impl_cl_typed_for_array {
     ($($N:literal)+) => {
         $(
@@ -778,5 +784,10 @@ mod tests {
 
         let any = Any("Any test".to_string());
         round_trip(&any);
+    }
+
+    #[test]
+    fn should_have_valid_cltype_with_nested_containers() {
+        assert_eq!(<Vec<&u64>>::cl_type(), <Vec<u64>>::cl_type())
     }
 }

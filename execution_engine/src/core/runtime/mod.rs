@@ -61,6 +61,8 @@ use crate::{
 };
 pub use stack::{RuntimeStack, RuntimeStackFrame, RuntimeStackOverflow};
 
+use self::stack::ExecutionContext;
+
 /// Represents the runtime properties of a WASM execution.
 pub struct Runtime<'a, R> {
     config: EngineConfig,
@@ -136,7 +138,13 @@ where
             debug_assert!(false);
         }
 
-        if stack.first_frame().unwrap().contract_hash().is_some() {
+        if stack
+            .first_frame()
+            .unwrap()
+            .call_stack_element()
+            .contract_hash()
+            .is_some()
+        {
             error!("First element of the call stack should always represent a Session call");
             debug_assert!(false);
         }
@@ -356,8 +364,14 @@ where
     }
 
     /// Gets the immediate caller of the current execution
-    fn get_immediate_caller(&self) -> Option<&CallStackElement> {
+    fn get_immediate_stack_frame(&self) -> Option<&RuntimeStackFrame> {
         self.stack.as_ref().and_then(|stack| stack.previous_frame())
+    }
+
+    /// Gets the immediate caller of the current execution
+    fn get_immediate_caller(&self) -> Option<&CallStackElement> {
+        self.get_immediate_stack_frame()
+            .map(|stack_frame| stack_frame.call_stack_element())
     }
 
     /// Checks if immediate caller is of session type of the same account as the provided account
@@ -406,8 +420,8 @@ where
             // Exit early if the host buffer is already occupied
             return Ok(Err(ApiError::HostBufferFull));
         }
-        let call_stack = match self.try_get_stack() {
-            Ok(stack) => stack.call_stack_elements(),
+        let call_stack: Vec<&CallStackElement> = match self.try_get_stack() {
+            Ok(stack) => stack.call_stack_elements().collect(),
             Err(_error) => return Ok(Err(ApiError::Unhandled)),
         };
         let call_stack_len: u32 = match call_stack.len().try_into() {
@@ -427,7 +441,7 @@ where
             return Ok(Ok(()));
         }
 
-        let call_stack_cl_value = CLValue::from_t(call_stack.clone()).map_err(Error::CLValue)?;
+        let call_stack_cl_value = CLValue::from_t(call_stack).map_err(Error::CLValue)?;
 
         let call_stack_cl_value_bytes_len: u32 =
             match call_stack_cl_value.inner_bytes().len().try_into() {
@@ -1002,13 +1016,14 @@ where
     /// Call a contract by pushing a stack element onto the frame.
     pub(crate) fn call_contract_with_stack(
         &mut self,
+        execution_context: ExecutionContext,
         contract_hash: ContractHash,
         entry_point_name: &str,
         args: RuntimeArgs,
         stack: RuntimeStack,
     ) -> Result<CLValue, Error> {
         self.stack = Some(stack);
-        self.call_contract(contract_hash, entry_point_name, args)
+        self.call_contract(execution_context, contract_hash, entry_point_name, args)
     }
 
     pub(crate) fn execute_module_bytes(
@@ -1062,6 +1077,7 @@ where
     /// Calls contract living under a `key`, with supplied `args`.
     pub fn call_contract(
         &mut self,
+        execution_context: ExecutionContext,
         contract_hash: ContractHash,
         entry_point_name: &str,
         args: RuntimeArgs,
@@ -1091,6 +1107,7 @@ where
         };
 
         self.execute_contract(
+            execution_context,
             contract_package,
             contract_hash,
             contract,
@@ -1104,6 +1121,7 @@ where
     /// types given in the contract header.
     pub fn call_versioned_contract(
         &mut self,
+        execution_context: ExecutionContext,
         contract_package_hash: ContractPackageHash,
         contract_version: Option<ContractVersion>,
         entry_point_name: String,
@@ -1150,6 +1168,7 @@ where
             .ok_or_else(|| Error::NoSuchMethod(entry_point_name.to_owned()))?;
 
         self.execute_contract(
+            execution_context,
             contract_package,
             contract_hash,
             contract,
@@ -1197,6 +1216,7 @@ where
 
     fn execute_contract(
         &mut self,
+        execution_context: ExecutionContext,
         contract_package: ContractPackage,
         contract_hash: ContractHash,
         contract: Contract,
@@ -1292,7 +1312,10 @@ where
                     contract_hash,
                 ),
             };
-            stack.push(call_stack_element)?;
+            stack.push(RuntimeStackFrame::new(
+                execution_context,
+                call_stack_element,
+            ))?;
 
             stack
         };
@@ -1451,7 +1474,12 @@ where
             return Ok(Err(err));
         }
         let args: RuntimeArgs = bytesrepr::deserialize(args_bytes)?;
-        let result = self.call_contract(contract_hash, entry_point_name, args)?;
+        let result = self.call_contract(
+            ExecutionContext::User,
+            contract_hash,
+            entry_point_name,
+            args,
+        )?;
         self.manage_call_contract_host_buffer(result_size_ptr, result)
     }
 
@@ -1469,6 +1497,7 @@ where
         }
         let args: RuntimeArgs = bytesrepr::deserialize(args_bytes)?;
         let result = self.call_versioned_contract(
+            ExecutionContext::User,
             contract_package_hash,
             contract_version,
             entry_point_name,
@@ -2058,6 +2087,7 @@ where
     ) -> Result<U512, Error> {
         let gas_counter = self.gas_counter();
         let call_result = self.call_contract(
+            ExecutionContext::Host,
             mint_contract_hash,
             mint::METHOD_READ_BASE_ROUND_REWARD,
             RuntimeArgs::default(),
@@ -2077,7 +2107,12 @@ where
             runtime_args.insert(mint::ARG_AMOUNT, amount)?;
             runtime_args
         };
-        let call_result = self.call_contract(mint_contract_hash, mint::METHOD_MINT, runtime_args);
+        let call_result = self.call_contract(
+            ExecutionContext::Host,
+            mint_contract_hash,
+            mint::METHOD_MINT,
+            runtime_args,
+        );
         self.set_gas_counter(gas_counter);
 
         let result: Result<URef, mint::Error> = call_result?.into_t()?;
@@ -2098,6 +2133,7 @@ where
             runtime_args
         };
         let call_result = self.call_contract(
+            ExecutionContext::Host,
             mint_contract_hash,
             mint::METHOD_REDUCE_TOTAL_SUPPLY,
             runtime_args,
@@ -2111,8 +2147,12 @@ where
     /// Calls the "create" method on the mint contract at the given mint
     /// contract key
     fn mint_create(&mut self, mint_contract_hash: ContractHash) -> Result<URef, Error> {
-        let result =
-            self.call_contract(mint_contract_hash, mint::METHOD_CREATE, RuntimeArgs::new());
+        let result = self.call_contract(
+            ExecutionContext::Host,
+            mint_contract_hash,
+            mint::METHOD_CREATE,
+            RuntimeArgs::new(),
+        );
         let purse = result?.into_t()?;
         Ok(purse)
     }
@@ -2146,8 +2186,12 @@ where
         };
 
         let gas_counter = self.gas_counter();
-        let call_result =
-            self.call_contract(mint_contract_hash, mint::METHOD_TRANSFER, args_values);
+        let call_result = self.call_contract(
+            ExecutionContext::Host,
+            mint_contract_hash,
+            mint::METHOD_TRANSFER,
+            args_values,
+        );
         self.set_gas_counter(gas_counter);
 
         Ok(call_result?.into_t()?)

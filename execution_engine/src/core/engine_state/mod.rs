@@ -1333,7 +1333,7 @@ where
             let payment_stack = RuntimeStack::from_account_hash(
                 deploy_item.address,
                 self.config.max_runtime_call_stack_height() as usize,
-            );
+            )?;
 
             // payment_code_spec_2: execute payment code
             let payment_access_rights = account.extract_access_rights();
@@ -1545,7 +1545,7 @@ where
         let session_stack = RuntimeStack::from_account_hash(
             deploy_item.address,
             self.config.max_runtime_call_stack_height() as usize,
-        );
+        )?;
 
         let session_access_rights = account.extract_access_rights();
 
