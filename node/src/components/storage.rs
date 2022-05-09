@@ -1192,7 +1192,7 @@ impl StorageInner {
     /// Put a single deploy into storage.
     pub fn put_deploy(&self, deploy: &Deploy) -> Result<bool, FatalStorageError> {
         let mut txn = self.env.begin_rw_txn()?;
-        let outcome = txn.put_value(self.deploy_db, deploy.id(), &deploy, false)?;
+        let outcome = txn.put_value(self.deploy_db, deploy.id(), deploy, false)?;
         txn.commit()?;
         Ok(outcome)
     }
