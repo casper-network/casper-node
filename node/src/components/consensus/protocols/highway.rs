@@ -107,8 +107,10 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         let validators_count = validator_stakes.len();
         let validators = protocols::common::validators::<C>(faulty, inactive, validator_stakes);
         let highway_config = &chainspec.highway_config;
-        let ftt =
-            protocols::common::ftt::<C>(highway_config.finality_threshold_fraction, &validators);
+        let ftt = protocols::common::ftt::<C>(
+            chainspec.core_config.finality_threshold_fraction,
+            &validators,
+        );
 
         let round_success_meter = prev_cp
             .and_then(|cp| cp.as_any().downcast_ref::<HighwayProtocol<C>>())
@@ -155,6 +157,14 @@ impl<C: Context + 'static> HighwayProtocol<C> {
             era_start_time + chainspec.core_config.era_duration,
             endorsement_evidence_limit,
         );
+
+        if min_round_len < chainspec.core_config.minimum_block_time {
+            warn!(
+                %min_round_len,
+                min_block_time = %chainspec.core_config.minimum_block_time,
+                "Minimum round length is shorter than minimum block time.",
+            );
+        }
 
         let outcomes = Self::initialize_timers(now, era_start_time, &config.highway);
 

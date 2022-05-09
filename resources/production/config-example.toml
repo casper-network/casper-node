@@ -43,6 +43,36 @@ abbreviate_modules = false
 # consensus messages.
 secret_key_path = '/etc/casper/validator_keys/secret_key.pem'
 
+# The maximum number of blocks by which execution is allowed to lag behind finalization.
+# If it is more than that, consensus will pause, and resume once the executor has caught up.
+max_execution_delay = 3
+
+
+# ==========================================
+# Configuration options for simple consensus
+# ==========================================
+[consensus.simple_consensus]
+
+# If the current era's protocol state has not progressed for this long, shut down.
+# '0sec' means it is disabled and we never shutdown due to lack of progress.
+standstill_timeout = '0sec'
+
+# Request the latest protocol state from a random peer periodically, with this interval.
+# '0sec' means it is disabled and we never request the protocol state from a peer.
+sync_state_interval = '1sec'
+
+# Log inactive or faulty validators periodically, with this interval.
+# '0sec' means it is disabled and we never print the log message.
+log_participation_interval = '1min'
+
+# The initial proposal timeout. Validators wait this long for a proposal to receive a quorum of
+# echo messages, before they vote to make the round skippable and move on to the next proposer.
+proposal_timeout = '10sec'
+
+# The maximum difference between validators' clocks we expect. Incoming proposals whose timestamp
+# lies in the future by more than that are rejected.
+clock_tolerance = '1sec'
+
 
 # ===========================================
 # Configuration options for Highway consensus
@@ -53,23 +83,23 @@ secret_key_path = '/etc/casper/validator_keys/secret_key.pem'
 pending_vertex_timeout = '30min'
 
 # If the current era's protocol state has not progressed for this long, shut down.
+# '0sec' means it is disabled and we never shutdown due to lack of progress.
 standstill_timeout = '30min'
 
 # Request the latest protocol state from a random peer periodically, with this interval.
+# '0sec' means it is disabled and we never request the protocol state from a peer.
 request_state_interval = '20sec'
 
 # Log inactive or faulty validators periodically, with this interval.
+# '0sec' means it is disabled and we never print the log message.
 log_participation_interval = '1min'
 
 # Log the synchronizer state periodically, with this interval.
+# '0sec' means it is disabled and we never print the log message.
 log_synchronizer_interval = '5sec'
 
 # Log the size of every incoming and outgoing serialized unit.
 log_unit_sizes = false
-
-# The maximum number of blocks by which execution is allowed to lag behind finalization.
-# If it is more than that, consensus will pause, and resume once the executor has caught up.
-max_execution_delay = 3
 
 # The maximum number of peers we request the same vertex from in parallel.
 max_requests_for_vertex = 5

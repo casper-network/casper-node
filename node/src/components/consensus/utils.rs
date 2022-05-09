@@ -5,6 +5,12 @@ use num::rational::Ratio;
 
 use crate::{components::consensus::error::FinalitySignatureError, types::BlockSignatures};
 
+// TODO: move these types out of highway_core.
+pub(crate) use crate::components::consensus::highway_core::{
+    state::weight::Weight,
+    validators::{ValidatorIndex, ValidatorMap, Validators},
+};
+
 /// Returns `Ok(())` if the finality signatures' total weight exceeds the threshold. Returns an
 /// error if it doesn't, or if one of the signatures does not belong to a validator.
 ///

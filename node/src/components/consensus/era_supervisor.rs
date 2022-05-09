@@ -51,9 +51,9 @@ use crate::{
     },
     fatal,
     types::{
-        ActivationPoint, BlockHash, BlockHeader, Chainspec, Deploy, DeployHash,
-        DeployOrTransferHash, FinalitySignature, FinalizedApprovals, FinalizedBlock, NodeId,
-        TimeDiff, Timestamp,
+        chainspec::ConsensusProtocolName, ActivationPoint, BlockHash, BlockHeader, Chainspec,
+        Deploy, DeployHash, DeployOrTransferHash, FinalitySignature, FinalizedApprovals,
+        FinalizedBlock, NodeId, TimeDiff, Timestamp,
     },
     NodeRng,
 };
@@ -314,7 +314,7 @@ impl EraSupervisor {
         let paused = self
             .next_block_height
             .saturating_sub(self.next_executed_height)
-            > self.config.highway.max_execution_delay;
+            > self.config.max_execution_delay;
         self.delegate_to_era(effect_builder, rng, era_id, |consensus, _| {
             consensus.set_paused(paused, Timestamp::now())
         })
@@ -446,12 +446,11 @@ impl EraSupervisor {
             .cloned()
             .collect();
 
-        // TODO: This is for testing. Make configurable or remove one.
-        let new_consensus: &ConsensusConstructor = if era_id.value() % 3 == 0 {
-            &HighwayProtocol::new_boxed
-        } else {
-            &SimpleConsensus::new_boxed
-        };
+        let new_consensus: &ConsensusConstructor =
+            match self.chainspec.core_config.consensus_protocol {
+                ConsensusProtocolName::Highway => &HighwayProtocol::new_boxed,
+                ConsensusProtocolName::Simple => &SimpleConsensus::new_boxed,
+            };
 
         // Create and insert the new era instance.
         let (consensus, mut outcomes) = new_consensus(

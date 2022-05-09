@@ -11,7 +11,9 @@ maximum_net_message_size = 23_068_672
 [core]
 era_duration = '3minutes'
 minimum_era_height = 9
+minimum_block_time = '4seconds'
 validator_slots = 5
+finality_threshold_fraction = [2, 25]
 auction_delay = 3
 locked_funds_period = '90days'
 round_seigniorage_rate = [6_414, 623_437_335_209]
@@ -20,9 +22,9 @@ max_associated_keys = 100
 max_runtime_call_stack_height = 12
 minimum_delegation_amount = 500_000_000_000
 strict_argument_checking = false
+consensus_protocol = 'Simple'
 
 [highway]
-finality_threshold_fraction = [2, 25]
 minimum_round_exponent = 14
 maximum_round_exponent = 19
 reduced_reward_multiplier = [1, 5]
