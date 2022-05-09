@@ -12,6 +12,7 @@ use casper_types::testing::TestRng;
 use crate::utils::serde_helpers;
 
 const FEE_ELIMINATION_REFUND_TAG: u8 = 0;
+const FEE_ELIMINATION_ACCUMULATE_TAG: u8 = 1;
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub enum FeeEliminationConfig {
@@ -19,6 +20,7 @@ pub enum FeeEliminationConfig {
         #[serde(deserialize_with = "serde_helpers::proper_fraction_deserializer")]
         refund_ratio: Ratio<u64>,
     },
+    Accumulate,
 }
 
 impl DataSize for FeeEliminationConfig {
@@ -47,6 +49,7 @@ impl From<FeeEliminationConfig> for engine_config::FeeElimination {
             FeeEliminationConfig::Refund { refund_ratio } => {
                 engine_config::FeeElimination::Refund { refund_ratio }
             }
+            FeeEliminationConfig::Accumulate => engine_config::FeeElimination::Accumulate,
         }
     }
 }
@@ -59,6 +62,7 @@ impl FromBytes for FeeEliminationConfig {
                 let (refund_ratio, rem) = FromBytes::from_bytes(rem)?;
                 Ok((FeeEliminationConfig::Refund { refund_ratio }, rem))
             }
+            FEE_ELIMINATION_ACCUMULATE_TAG => Ok((FeeEliminationConfig::Accumulate, rem)),
             _ => Err(Error::Formatting),
         }
     }
@@ -73,6 +77,7 @@ impl ToBytes for FeeEliminationConfig {
                 buffer.push(FEE_ELIMINATION_REFUND_TAG);
                 buffer.extend(refund_ratio.to_bytes()?);
             }
+            FeeEliminationConfig::Accumulate => todo!(),
         }
 
         Ok(buffer)
@@ -81,6 +86,7 @@ impl ToBytes for FeeEliminationConfig {
     fn serialized_length(&self) -> usize {
         1 + match self {
             FeeEliminationConfig::Refund { refund_ratio } => refund_ratio.serialized_length(),
+            FeeEliminationConfig::Accumulate => 0,
         }
     }
 }

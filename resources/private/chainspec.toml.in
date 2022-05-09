@@ -64,7 +64,7 @@ allow_auction_bids = false
 # Allow peer to peer transfers between users. Setting this to false makes sense only on private chains.
 allow_unrestricted_transfers = false
 # Fee elimination config for finalization of an execution.
-fee_elimination = { Refund = { refund_ratio = [0, 100] } }
+fee_elimination = { Accumulate = {} }
 
 [highway]
 # A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.
