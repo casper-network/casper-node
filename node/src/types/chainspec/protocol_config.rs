@@ -70,11 +70,11 @@ impl ProtocolConfig {
         if self.global_state_update.is_none() {
             if let Some(last_emergency_restart) = self.last_emergency_restart {
                 let activation_point = self.activation_point.era_id();
-                if last_emergency_restart >= activation_point {
+                if last_emergency_restart > activation_point {
                     error!(
                         %activation_point,
                         %last_emergency_restart,
-                        "[protocol.last_emergency_restart] must be lower than \
+                        "[protocol.last_emergency_restart] cannot be greater than \
                         [protocol.activation_point] in the chainspec."
                     );
                     return false;
