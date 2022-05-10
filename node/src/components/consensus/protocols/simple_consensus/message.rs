@@ -89,8 +89,8 @@ pub(crate) enum Message<C: Context> {
     /// data.
     ///
     /// The sender chooses a random peer and a random era, and includes in its `SyncState` message
-    /// information about received proposals, echos and votes. The idea is to set the `i`-th bit in
-    /// the `u128` fields to `1` if we have a signature from the `i`-th validator.
+    /// information about received proposals, echoes and votes. The idea is to set the `i`-th bit
+    /// in the `u128` fields to `1` if we have a signature from the `i`-th validator.
     ///
     /// To keep the size of these messages constant even if there are more than 128 validators, a
     /// random interval is selected and only information about validators in that interval is
@@ -103,14 +103,14 @@ pub(crate) enum Message<C: Context> {
     SyncState {
         /// The round the information refers to.
         round_id: RoundId,
-        /// The proposal hash with the most echos (by weight).
+        /// The proposal hash with the most echoes (by weight).
         proposal_hash: Option<C::Hash>,
         /// Whether the sender has the proposal with that hash.
         proposal: bool,
         /// The index of the first validator covered by the bit fields below.
         first_validator_idx: ValidatorIndex,
         /// A bit field with 1 for every validator the sender has an echo from.
-        echos: u128,
+        echoes: u128,
         /// A bit field with 1 for every validator the sender has a `true` vote from.
         true_votes: u128,
         /// A bit field with 1 for every validator the sender has a `false` vote from.
@@ -140,7 +140,7 @@ impl<C: Context> Message<C> {
             proposal_hash: None,
             proposal: false,
             first_validator_idx,
-            echos: 0,
+            echoes: 0,
             true_votes: 0,
             false_votes: 0,
             faulty,

@@ -16,7 +16,7 @@ use crate::{
 };
 
 /// The protocol proceeds in rounds, for each of which we must
-/// keep track of proposals, echos, votes, and the current outcome
+/// keep track of proposals, echoes, votes, and the current outcome
 /// of the round.
 #[derive(Debug, DataSize)]
 pub(crate) struct Round<C>
@@ -25,18 +25,18 @@ where
 {
     /// All of the proposals sent to us this round from the leader
     #[data_size(with = ds::hashmap_sample)]
-    pub(super) proposals: HashMap<C::Hash, (Proposal<C>, C::Signature)>,
-    /// The echos we've received for each proposal so far.
+    proposals: HashMap<C::Hash, (Proposal<C>, C::Signature)>,
+    /// The echoes we've received for each proposal so far.
     #[data_size(with = ds::hashmap_sample)]
-    pub(super) echos: HashMap<C::Hash, BTreeMap<ValidatorIndex, C::Signature>>,
+    echoes: HashMap<C::Hash, BTreeMap<ValidatorIndex, C::Signature>>,
     /// The votes we've received for this round so far.
-    pub(super) votes: BTreeMap<bool, ValidatorMap<Option<C::Signature>>>,
+    votes: BTreeMap<bool, ValidatorMap<Option<C::Signature>>>,
     /// The memoized results in this round.
-    pub(super) outcome: RoundOutcome<C>,
+    outcome: RoundOutcome<C>,
 }
 
 impl<C: Context> Round<C> {
-    /// Creates a new [`Round`] with no proposals, echos, votes, and empty
+    /// Creates a new [`Round`] with no proposals, echoes, votes, and empty
     /// round outcome.
     pub(super) fn new(validator_count: usize) -> Round<C> {
         let mut votes = BTreeMap::new();
@@ -44,10 +44,20 @@ impl<C: Context> Round<C> {
         votes.insert(true, vec![None; validator_count].into());
         Round {
             proposals: HashMap::new(),
-            echos: HashMap::new(),
+            echoes: HashMap::new(),
             votes,
             outcome: RoundOutcome::default(),
         }
+    }
+
+    /// Returns the map of all proposals sent to us this round from the leader
+    pub(super) fn proposals(&self) -> &HashMap<C::Hash, (Proposal<C>, C::Signature)> {
+        &self.proposals
+    }
+
+    /// Returns whether we have received at least one proposal.
+    pub(super) fn has_proposal(&self) -> bool {
+        !self.proposals.is_empty()
     }
 
     /// Inserts a `Proposal` and returns `false` if we already had it.
@@ -60,6 +70,11 @@ impl<C: Context> Round<C> {
         self.proposals.insert(hash, (proposal, signature)).is_none()
     }
 
+    /// Returns the echoes we've received for each proposal so far.
+    pub(super) fn echoes(&self) -> &HashMap<C::Hash, BTreeMap<ValidatorIndex, C::Signature>> {
+        &self.echoes
+    }
+
     /// Inserts an `Echo`; returns `false` if we already had it.
     pub(super) fn insert_echo(
         &mut self,
@@ -67,11 +82,33 @@ impl<C: Context> Round<C> {
         validator_idx: ValidatorIndex,
         signature: C::Signature,
     ) -> bool {
-        self.echos
+        self.echoes
             .entry(hash)
             .or_insert_with(BTreeMap::new)
             .insert(validator_idx, signature)
             .is_none()
+    }
+
+    /// Returns whether the validator has already sent an `Echo` in this round.
+    pub(super) fn has_echoed(&self, validator_idx: ValidatorIndex) -> bool {
+        self.echoes
+            .values()
+            .any(|echo_map| echo_map.contains_key(&validator_idx))
+    }
+
+    /// Stores in the outcome that we have a quorum of echoes for this hash.
+    pub(super) fn set_quorum_echoes(&mut self, hash: C::Hash) {
+        self.outcome.quorum_echoes = Some(hash);
+    }
+
+    /// Returns the hash for which we have a quorum of echoes, if any.
+    pub(super) fn quorum_echoes(&self) -> Option<C::Hash> {
+        self.outcome.quorum_echoes
+    }
+
+    /// Returns the votes we've received for this round so far.
+    pub(super) fn votes(&self, vote: bool) -> &ValidatorMap<Option<C::Signature>> {
+        &self.votes[&vote]
     }
 
     /// Inserts a `Vote`; returns `false` if we already had it.
@@ -91,10 +128,41 @@ impl<C: Context> Round<C> {
         }
     }
 
+    /// Returns whether the validator has already cast a `true` or `false` vote.
+    pub(super) fn has_voted(&self, validator_idx: ValidatorIndex) -> bool {
+        self.votes(true)[validator_idx].is_some() || self.votes(false)[validator_idx].is_some()
+    }
+
+    /// Stores in the outcome that we have a quorum of votes for this value.
+    pub(super) fn set_quorum_votes(&mut self, vote: bool) {
+        self.outcome.quorum_votes = Some(vote);
+    }
+
+    /// Returns the value for which we have a quorum of votes, if any.
+    pub(super) fn quorum_votes(&self) -> Option<bool> {
+        self.outcome.quorum_votes
+    }
+
+    /// Removes all votes and echoes from the given validator.
+    pub(super) fn remove_votes_and_echoes(&mut self, validator_idx: ValidatorIndex) {
+        self.votes.get_mut(&false).unwrap()[validator_idx] = None;
+        self.votes.get_mut(&true).unwrap()[validator_idx] = None;
+        self.echoes.retain(|_, echo_map| {
+            echo_map.remove(&validator_idx);
+            !echo_map.is_empty()
+        });
+    }
+
+    /// Updates the outcome and marks the proposal that has a quorum of echoes as accepted. It also
+    /// stores the proposal's block height.
+    pub(super) fn set_accepted_proposal_height(&mut self, height: u64) {
+        self.outcome.accepted_proposal_height = Some(height);
+    }
+
     /// Returns the accepted proposal, if any, together with its height.
     pub(super) fn accepted_proposal(&self) -> Option<(u64, &Proposal<C>)> {
         let height = self.outcome.accepted_proposal_height?;
-        let hash = self.outcome.quorum_echos?;
+        let hash = self.outcome.quorum_echoes?;
         let (proposal, _signature) = self.proposals.get(&hash)?;
         Some((height, proposal))
     }
@@ -104,7 +172,7 @@ impl<C: Context> Round<C> {
         match content {
             Content::Proposal(proposal) => self.proposals.contains_key(&proposal.hash()),
             Content::Echo(hash) => self
-                .echos
+                .echoes
                 .get(hash)
                 .map_or(false, |echo_map| echo_map.contains_key(&validator_idx)),
             Content::Vote(vote) => self.votes[vote][validator_idx].is_some(),
@@ -123,17 +191,18 @@ where
     C: Context,
 {
     /// This is `Some(h)` if there is an accepted proposal with relative height `h`, i.e. there is
-    /// a quorum of echos, `h` accepted ancestors, and all rounds since the parent's are skippable.
-    pub(super) accepted_proposal_height: Option<u64>,
-    pub(super) quorum_echos: Option<C::Hash>,
-    pub(super) quorum_votes: Option<bool>,
+    /// a quorum of echoes, `h` accepted ancestors, and all rounds since the parent's are
+    /// skippable.
+    accepted_proposal_height: Option<u64>,
+    quorum_echoes: Option<C::Hash>,
+    quorum_votes: Option<bool>,
 }
 
 impl<C: Context> Default for RoundOutcome<C> {
     fn default() -> RoundOutcome<C> {
         RoundOutcome {
             accepted_proposal_height: None,
-            quorum_echos: None,
+            quorum_echoes: None,
             quorum_votes: None,
         }
     }
