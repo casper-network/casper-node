@@ -179,37 +179,38 @@ mod tests {
     }
 
     #[test]
-    fn should_validate_if_not_emergency_restart() {
+    fn should_perform_checks_without_global_state_update() {
         let mut rng = crate::new_rng();
         let mut protocol_config = ProtocolConfig::random(&mut rng);
 
-        // If `global_state_update` is `None` then config is valid if `last_emergency_restart` is
-        // also `None`.
+        let activation_point = EraId::new(rng.gen_range(2..u64::MAX));
+
+        // We force `global_state_update` to be `None`.
         protocol_config.global_state_update = None;
-        protocol_config.last_emergency_restart = None;
+
+        // The config is valid only if `last_emergency_restart` is no more than `activation_point`.
+        protocol_config.activation_point = ActivationPoint::EraId(activation_point);
+        protocol_config.last_emergency_restart = Some(activation_point);
         assert!(protocol_config.is_valid());
 
-        // If `global_state_update` is `None` then config is valid if `last_emergency_restart` is
-        // less than `activation_point`.
-        let activation_point = EraId::new(rng.gen_range(2..u64::MAX));
-        protocol_config.activation_point = ActivationPoint::EraId(activation_point);
-        protocol_config.last_emergency_restart = Some(activation_point - 1);
-        assert!(protocol_config.is_valid());
+        protocol_config.last_emergency_restart = Some(activation_point + 1);
+        assert!(!protocol_config.is_valid());
     }
 
     #[test]
-    fn should_fail_to_validate_if_not_emergency_restart_with_invalid_last() {
+    fn should_perform_checks_with_global_state_update() {
         let mut rng = crate::new_rng();
         let mut protocol_config = ProtocolConfig::random(&mut rng);
 
         let activation_point = EraId::new(rng.gen_range(2..u64::MAX));
 
-        // If `global_state_update` is `None` then config is valid only if `last_emergency_restart`
-        // is less than `activation_point`.
-        protocol_config.global_state_update = None;
+        // We force `global_state_update` to be `Some`.
+        protocol_config.global_state_update = Some(GlobalStateUpdate::random(&mut rng));
+
+        // The config is valid only if `last_emergency_restart` is no more than `activation_point`.
         protocol_config.activation_point = ActivationPoint::EraId(activation_point);
         protocol_config.last_emergency_restart = Some(activation_point);
-        assert!(!protocol_config.is_valid());
+        assert!(protocol_config.is_valid());
 
         protocol_config.last_emergency_restart = Some(activation_point + 1);
         assert!(!protocol_config.is_valid());
