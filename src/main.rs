@@ -6,7 +6,7 @@ use std::{
     task::{Context, Poll},
 };
 
-use bytes::Buf;
+use bytes::{Buf, Bytes};
 use futures::{AsyncWrite, Future};
 use pin_project::pin_project;
 use thiserror::Error;
@@ -25,34 +25,45 @@ pub trait FrameSink<F> {
     fn send_frame(&mut self, frame: F) -> Self::SendFrameFut;
 }
 
-struct Framer<W, F> {
-    writer: W,
+struct LengthPrefixer<W, F> {
+    writer: Option<W>,
     _frame_phantom: PhantomData<F>,
 }
 
-type FramerFrame<F> = bytes::buf::Chain<u16, F>;
+// TODO: Instead of bytes, use custom prefixer for small ints, so we do not have to heap allocate.
+type LengthPrefixedFrame<F> = bytes::buf::Chain<Bytes, F>;
 
-impl<W, F> FrameSink<F> for Framer<W, F>
+impl<W, F> FrameSink<F> for LengthPrefixer<W, F>
 where
-    W: AsyncWrite,
-    F: Buf,
+    W: AsyncWrite + Send + Unpin,
+    F: Buf + Send,
 {
-    type SendFrameFut = GenericBufSender<FramerFrame<F>, W>;
+    type SendFrameFut = GenericBufSender<LengthPrefixedFrame<F>, W>;
 
     fn send_frame(&mut self, frame: F) -> Self::SendFrameFut {
-        let length_prefixed = ();
-        todo!()
+        let length = frame.remaining() as u64; // TODO: Try into + handle error.
+        let length_prefixed_frame = Bytes::copy_from_slice(&length.to_le_bytes()).chain(frame);
+
+        let writer = self.writer.take().unwrap(); // TODO: Handle error if missing.
+
+        GenericBufSender::new(length_prefixed_frame, writer)
     }
 }
 
 #[pin_project]
-struct GenericBufSender<'a, B, W> {
+struct GenericBufSender<B, W> {
     buf: B,
     #[pin]
-    out: &'a mut W,
+    out: W,
 }
 
-impl<'a, B, W> Future for GenericBufSender<'a, B, W>
+impl<B, W> GenericBufSender<B, W> {
+    fn new(buf: B, out: W) -> Self {
+        Self { buf, out }
+    }
+}
+
+impl<B, W> Future for GenericBufSender<B, W>
 where
     B: Buf,
     W: AsyncWrite + Unpin,
@@ -80,16 +91,6 @@ where
             // No writing possible, simply return pending.
             Poll::Pending => Poll::Pending,
         }
-    }
-}
-
-struct FramerSendFrame;
-
-impl Future for FramerSendFrame {
-    type Output = Result<(), FrameSinkError>;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        todo!()
     }
 }
 
