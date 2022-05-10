@@ -298,7 +298,7 @@ fn abc_weights(
     (weights, validators)
 }
 
-/// Tests the core logic of the consensus protocol, i.e. the criteria for sending votes and echos
+/// Tests the core logic of the consensus protocol, i.e. the criteria for sending votes and echoes
 /// and finalizing blocks.
 ///
 /// In this scenario Alice has 60%, Bob 30% and Carol 10% of the weight, and we create Carol's
@@ -656,7 +656,7 @@ fn simple_consensus_sends_sync_state() {
                 proposal_hash: None,
                 proposal: false,
                 first_validator_idx: _,
-                echos: 0,
+                echoes: 0,
                 true_votes: 0,
                 false_votes: 0,
                 faulty: 0,
@@ -692,7 +692,7 @@ fn simple_consensus_sends_sync_state() {
                 proposal_hash: Some(hash),
                 proposal: true,
                 first_validator_idx,
-                echos,
+                echoes,
                 true_votes: 0,
                 false_votes,
                 faulty,
@@ -704,9 +704,9 @@ fn simple_consensus_sends_sync_state() {
             let mut faulty_iter = sc.iter_validator_bit_field(first_validator_idx, faulty);
             assert_eq!(Some(carol_idx), faulty_iter.next());
             assert_eq!(None, faulty_iter.next());
-            let mut echos_iter = sc.iter_validator_bit_field(first_validator_idx, echos);
-            assert_eq!(Some(alice_idx), echos_iter.next());
-            assert_eq!(None, echos_iter.next());
+            let mut echoes_iter = sc.iter_validator_bit_field(first_validator_idx, echoes);
+            assert_eq!(Some(alice_idx), echoes_iter.next());
+            assert_eq!(None, echoes_iter.next());
             let mut false_iter = sc.iter_validator_bit_field(first_validator_idx, false_votes);
             assert_eq!(Some(bob_idx), false_iter.next());
             assert_eq!(None, false_iter.next());
@@ -775,7 +775,7 @@ fn simple_consensus_handles_sync_state() {
         proposal_hash: Some(hash0),
         proposal: false,
         first_validator_idx,
-        echos: sc.validator_bit_field(first_validator_idx, vec![alice_idx, bob_idx].into_iter()),
+        echoes: sc.validator_bit_field(first_validator_idx, vec![alice_idx, bob_idx].into_iter()),
         true_votes: sc
             .validator_bit_field(first_validator_idx, vec![alice_idx, bob_idx].into_iter()),
         false_votes: sc
@@ -795,7 +795,7 @@ fn simple_consensus_handles_sync_state() {
         proposal_hash: Some(hash1), // Wrong proposal!
         proposal: true,
         first_validator_idx,
-        echos: sc.validator_bit_field(first_validator_idx, vec![alice_idx].into_iter()),
+        echoes: sc.validator_bit_field(first_validator_idx, vec![alice_idx].into_iter()),
         true_votes: sc
             .validator_bit_field(first_validator_idx, vec![bob_idx, alice_idx].into_iter()),
         false_votes: sc.validator_bit_field(first_validator_idx, vec![].into_iter()),

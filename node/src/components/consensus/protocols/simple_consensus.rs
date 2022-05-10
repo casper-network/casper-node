@@ -341,20 +341,14 @@ impl<C: Context + 'static> SimpleConsensus<C> {
 
     /// Returns whether the validator has already sent an `Echo` in this round.
     fn has_echoed(&self, round_id: RoundId, validator_idx: ValidatorIndex) -> bool {
-        self.round(round_id).map_or(false, |round| {
-            round
-                .echos
-                .values()
-                .any(|echo_map| echo_map.contains_key(&validator_idx))
-        })
+        self.round(round_id)
+            .map_or(false, |round| round.has_echoed(validator_idx))
     }
 
     /// Returns whether the validator has already cast a `true` or `false` vote.
     fn has_voted(&self, round_id: RoundId, validator_idx: ValidatorIndex) -> bool {
-        self.round(round_id).map_or(false, |round| {
-            round.votes[&true][validator_idx].is_some()
-                || round.votes[&false][validator_idx].is_some()
-        })
+        self.round(round_id)
+            .map_or(false, |round| round.has_voted(validator_idx))
     }
 
     /// Request the latest state from a random peer.
@@ -447,29 +441,30 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             }
         };
         let true_votes =
-            self.validator_bit_field(first_validator_idx, round.votes[&true].keys_some());
+            self.validator_bit_field(first_validator_idx, round.votes(true).keys_some());
         let false_votes =
-            self.validator_bit_field(first_validator_idx, round.votes[&false].keys_some());
-        let proposal_hash = round.outcome.quorum_echos.or_else(|| {
+            self.validator_bit_field(first_validator_idx, round.votes(false).keys_some());
+        let proposal_hash = round.quorum_echoes().or_else(|| {
             round
-                .echos
+                .echoes()
                 .iter()
                 .max_by_key(|(_, echo_map)| self.sum_weights(echo_map.keys()))
                 .map(|(hash, _)| *hash)
         });
-        let mut echos = 0;
+        let mut echoes = 0;
         let mut proposal = false;
         if let Some(hash) = proposal_hash {
-            echos =
-                self.validator_bit_field(first_validator_idx, round.echos[&hash].keys().cloned());
-            proposal = round.proposals.contains_key(&hash);
+            if let Some(echo_map) = round.echoes().get(&hash) {
+                echoes = self.validator_bit_field(first_validator_idx, echo_map.keys().cloned());
+            }
+            proposal = round.proposals().contains_key(&hash);
         }
         Message::SyncState {
             round_id,
             proposal_hash,
             proposal,
             first_validator_idx,
-            echos,
+            echoes,
             true_votes,
             false_votes,
             faulty,
@@ -555,8 +550,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                     );
                     return vec![]; // Not creating a proposal: We're not the leader.
                 }
-                self.round(round_id)
-                    .map_or(false, |round| !round.proposals.is_empty())
+                self.round(round_id).map_or(false, Round::has_proposal)
             }
             Content::Echo(_) => self.has_echoed(round_id, validator_idx),
             Content::Vote(_) => self.has_voted(round_id, validator_idx),
@@ -624,15 +618,10 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             return outcomes;
         }
 
-        // Remove all Votes and Echos from the faulty validator: They count towards every quorum now
-        // so nobody has to store their messages.
+        // Remove all votes and echoes from the faulty validator: They count towards every quorum
+        // now so nobody has to store their messages.
         for round in self.rounds.values_mut() {
-            round.votes.get_mut(&false).unwrap()[validator_idx] = None;
-            round.votes.get_mut(&true).unwrap()[validator_idx] = None;
-            round.echos.retain(|_, echo_map| {
-                echo_map.remove(&validator_idx);
-                !echo_map.is_empty()
-            });
+            round.remove_votes_and_echoes(validator_idx);
         }
 
         // Recompute quorums; if any new quorums are found, call `update`.
@@ -642,8 +631,12 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             if !self.rounds.contains_key(&round_id) {
                 continue;
             }
-            if self.rounds[&round_id].outcome.quorum_echos.is_none() {
-                let hashes = self.rounds[&round_id].echos.keys().copied().collect_vec();
+            if self.rounds[&round_id].quorum_echoes().is_none() {
+                let hashes = self.rounds[&round_id]
+                    .echoes()
+                    .keys()
+                    .copied()
+                    .collect_vec();
                 if hashes
                     .into_iter()
                     .any(|hash| self.check_new_echo_quorum(round_id, hash))
@@ -671,7 +664,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         proposal_hash: Option<C::Hash>,
         has_proposal: bool,
         first_validator_idx: ValidatorIndex,
-        echos: u128,
+        echoes: u128,
         true_votes: u128,
         false_votes: u128,
         faulty: u128,
@@ -696,45 +689,43 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         let our_faulty = self.validator_bit_field(first_validator_idx, self.faults.keys().cloned());
         let mut contents = vec![];
         match proposal_hash {
-            Some(hash)
-                if round.outcome.quorum_echos == None
-                    || round.outcome.quorum_echos == Some(hash) =>
-            {
-                if let Some(echo_map) = round.echos.get(&hash) {
-                    let our_echos =
+            Some(hash) if round.quorum_echoes() == None || round.quorum_echoes() == Some(hash) => {
+                if let Some(echo_map) = round.echoes().get(&hash) {
+                    let our_echoes =
                         self.validator_bit_field(first_validator_idx, echo_map.keys().cloned());
-                    let missing_echos = our_echos & !(echos | faulty | our_faulty);
-                    for v_idx in self.iter_validator_bit_field(first_validator_idx, missing_echos) {
+                    let missing_echoes = our_echoes & !(echoes | faulty | our_faulty);
+                    for v_idx in self.iter_validator_bit_field(first_validator_idx, missing_echoes)
+                    {
                         contents.push((Content::Echo(hash), v_idx, echo_map[&v_idx]));
                     }
                 }
                 if !has_proposal {
-                    if let Some((proposal, signature)) = round.proposals.get(&hash) {
+                    if let Some((proposal, signature)) = round.proposals().get(&hash) {
                         let content = Content::Proposal(proposal.clone());
                         contents.push((content, self.leader(round_id), *signature));
                     }
                 }
             }
             _ => {
-                if let Some(hash) = round.outcome.quorum_echos {
-                    for (v_idx, signature) in &round.echos[&hash] {
+                if let Some(hash) = round.quorum_echoes() {
+                    for (v_idx, signature) in &round.echoes()[&hash] {
                         contents.push((Content::Echo(hash), *v_idx, *signature));
                     }
                 }
             }
         }
         let our_true_votes =
-            self.validator_bit_field(first_validator_idx, round.votes[&true].keys_some());
+            self.validator_bit_field(first_validator_idx, round.votes(true).keys_some());
         let missing_true_votes = our_true_votes & !(true_votes | faulty | our_faulty);
         for v_idx in self.iter_validator_bit_field(first_validator_idx, missing_true_votes) {
-            let signature = round.votes[&true][v_idx].unwrap();
+            let signature = round.votes(true)[v_idx].unwrap();
             contents.push((Content::Vote(true), v_idx, signature));
         }
         let our_false_votes =
-            self.validator_bit_field(first_validator_idx, round.votes[&false].keys_some());
+            self.validator_bit_field(first_validator_idx, round.votes(false).keys_some());
         let missing_false_votes = our_false_votes & !(false_votes | faulty | our_faulty);
         for v_idx in self.iter_validator_bit_field(first_validator_idx, missing_false_votes) {
-            let signature = round.votes[&false][v_idx].unwrap();
+            let signature = round.votes(false)[v_idx].unwrap();
             contents.push((Content::Vote(false), v_idx, signature));
         }
         let mut outcomes = contents
@@ -953,14 +944,14 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         outcomes
     }
 
-    /// Updates the round's outcome and returns `true` if there is a new quorum of echos for the
+    /// Updates the round's outcome and returns `true` if there is a new quorum of echoes for the
     /// given hash.
     fn check_new_echo_quorum(&mut self, round_id: RoundId, hash: C::Hash) -> bool {
         if self.rounds.contains_key(&round_id)
-            && self.rounds[&round_id].outcome.quorum_echos.is_none()
-            && self.is_quorum(self.rounds[&round_id].echos[&hash].keys().copied())
+            && self.rounds[&round_id].quorum_echoes().is_none()
+            && self.is_quorum(self.rounds[&round_id].echoes()[&hash].keys().copied())
         {
-            self.round_mut(round_id).outcome.quorum_echos = Some(hash);
+            self.round_mut(round_id).set_quorum_echoes(hash);
             return true;
         }
         false
@@ -970,10 +961,10 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     /// given value.
     fn check_new_vote_quorum(&mut self, round_id: RoundId, vote: bool) -> bool {
         if self.rounds.contains_key(&round_id)
-            && self.rounds[&round_id].outcome.quorum_votes.is_none()
-            && self.is_quorum(self.rounds[&round_id].votes[&vote].keys_some())
+            && self.rounds[&round_id].quorum_votes().is_none()
+            && self.is_quorum(self.rounds[&round_id].votes(vote).keys_some())
         {
-            self.round_mut(round_id).outcome.quorum_votes = Some(vote);
+            self.round_mut(round_id).set_quorum_votes(vote);
             return true;
         }
         false
@@ -1051,12 +1042,12 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 }
                 let hash = proposal.hash(); // TODO: Avoid redundant hashing!
                 round
-                    .proposals
+                    .proposals()
                     .iter()
                     .find(|(hash2, _)| **hash2 != hash)
                     .map(|(_, (proposal2, sig))| (Content::Proposal(proposal2.clone()), *sig))
             }
-            Content::Echo(hash) => round.echos.iter().find_map(|(hash2, echo_map)| {
+            Content::Echo(hash) => round.echoes().iter().find_map(|(hash2, echo_map)| {
                 if hash2 == hash {
                     return None;
                 }
@@ -1065,7 +1056,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                     .map(|sig| (Content::Echo(*hash2), *sig))
             }),
             Content::Vote(vote) => {
-                round.votes[&!vote][validator_idx].map(|sig| (Content::Vote(!vote), sig))
+                round.votes(!vote)[validator_idx].map(|sig| (Content::Vote(!vote), sig))
             }
         }
     }
@@ -1079,7 +1070,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         }
         while let Some(round_id) = self.maybe_dirty_round_id {
             self.create_round(round_id);
-            if let Some(hash) = self.rounds[&round_id].proposals.keys().next().copied() {
+            if let Some(hash) = self.rounds[&round_id].proposals().keys().next().copied() {
                 outcomes.extend(self.create_message(round_id, Content::Echo(hash)));
             }
             outcomes.extend(self.update_accepted_proposal(round_id, now));
@@ -1157,11 +1148,11 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         let proposal = if let Some((proposal, _)) = self
             .rounds
             .get(&round_id)
-            .and_then(|round| round.proposals.get(&round.outcome.quorum_echos?))
+            .and_then(|round| round.proposals().get(&round.quorum_echoes()?))
         {
             proposal
         } else {
-            return vec![]; // We don't have a proposal with a quorum of echos
+            return vec![]; // We don't have a proposal with a quorum of echoes
         };
         if let Some(inactive) = &proposal.inactive {
             for (idx, _) in self.validators.enumerate_ids() {
@@ -1174,9 +1165,9 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         }
         let (first_skipped_round_id, rel_height) =
             if let Some(parent_round_id) = proposal.maybe_parent_round_id {
-                if let Some(parent_height) = self
+                if let Some((parent_height, _)) = self
                     .round(parent_round_id)
-                    .and_then(|round| round.outcome.accepted_proposal_height)
+                    .and_then(Round::accepted_proposal)
                 {
                     (
                         parent_round_id.saturating_add(1),
@@ -1197,9 +1188,10 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             .timestamp
             .saturating_add(self.params.min_block_time());
 
-        // We have a proposal with accepted parent, a quorum of Echos, and all rounds since the
+        // We have a proposal with accepted parent, a quorum of echoes, and all rounds since the
         // parent are skippable. That means the proposal is now accepted.
-        self.round_mut(round_id).outcome.accepted_proposal_height = Some(rel_height);
+        self.round_mut(round_id)
+            .set_accepted_proposal_height(rel_height);
         // Schedule an update where we check if this proposal's child can now be proposed.
         if now < min_child_timestamp {
             // Schedule an update where we check if this proposal's child can now be proposed.
@@ -1351,7 +1343,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             return vec![]; // Not a validator.
         };
         if self.pending_proposal.is_some() // TODO: Or if it's in an old round?
-            || !self.round_mut(self.current_round).proposals.is_empty()
+            || self.round_mut(self.current_round).has_proposal()
             || our_idx != self.leader(self.current_round)
         {
             return vec![]; // We already proposed, or we are not the leader.
@@ -1410,23 +1402,19 @@ impl<C: Context + 'static> SimpleConsensus<C> {
 
     /// Returns whether a quorum has voted for `false`.
     fn is_skippable_round(&self, round_id: RoundId) -> bool {
-        self.rounds
-            .get(&round_id)
-            .map_or(false, |round| round.outcome.quorum_votes == Some(false))
+        self.rounds.get(&round_id).and_then(Round::quorum_votes) == Some(false)
     }
 
     /// Returns whether a quorum has voted for `true`.
     fn is_committed_round(&self, round_id: RoundId) -> bool {
-        self.rounds
-            .get(&round_id)
-            .map_or(false, |round| round.outcome.quorum_votes == Some(true))
+        self.rounds.get(&round_id).and_then(Round::quorum_votes) == Some(true)
     }
 
     /// Returns whether a round has an accepted proposal.
     fn has_accepted_proposal(&self, round_id: RoundId) -> bool {
-        self.round(round_id).map_or(false, |round| {
-            round.outcome.accepted_proposal_height.is_some()
-        })
+        self.round(round_id)
+            .and_then(Round::accepted_proposal)
+            .is_some()
     }
 
     /// Returns the accepted proposal, if any, together with its height.
@@ -1544,7 +1532,7 @@ where
                 proposal_hash,
                 proposal,
                 first_validator_idx,
-                echos,
+                echoes,
                 true_votes,
                 false_votes,
                 faulty,
@@ -1554,7 +1542,7 @@ where
                 proposal_hash,
                 proposal,
                 first_validator_idx,
-                echos,
+                echoes,
                 true_votes,
                 false_votes,
                 faulty,
