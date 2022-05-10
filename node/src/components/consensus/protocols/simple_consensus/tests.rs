@@ -1,6 +1,6 @@
 use super::*;
 
-use std::sync::Arc;
+use std::{collections::BTreeSet, sync::Arc};
 
 use casper_types::{PublicKey, SecretKey, Timestamp, U512};
 

@@ -54,14 +54,18 @@
 //! all signed messages that it has and the other is missing.
 
 pub(crate) mod config;
+mod fault;
+mod message;
 mod params;
+mod participation;
+mod round;
 #[cfg(test)]
 mod tests;
 
 use std::{
     any::Any,
     cmp::Reverse,
-    collections::{btree_map, BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{btree_map, BTreeMap, HashMap, HashSet},
     fmt::Debug,
     iter,
     path::PathBuf,
@@ -70,7 +74,6 @@ use std::{
 use datasize::DataSize;
 use itertools::Itertools;
 use rand::{seq::IteratorRandom, Rng};
-use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{TimeDiff, Timestamp, U512};
@@ -91,10 +94,14 @@ use crate::{
         ActionId, LeaderSequence, TimerId,
     },
     types::{Chainspec, NodeId},
-    utils::{div_round, ds},
+    utils::div_round,
     NodeRng,
 };
+use fault::Fault;
+use message::{Content, Message, Proposal};
 use params::Params;
+use participation::{Participation, ParticipationStatus};
+use round::Round;
 
 /// The timer for syncing with a random peer.
 const TIMER_ID_SYNC_PEER: TimerId = TimerId(0);
@@ -109,101 +116,6 @@ const MAX_FUTURE_ROUNDS: u32 = 10;
 
 /// Identifies a single [`Round`] in the protocol.
 pub(crate) type RoundId = u32;
-
-/// The protocol proceeds in rounds, for each of which we must
-/// keep track of proposals, echos, votes, and the current outcome
-/// of the round.
-#[derive(Debug, DataSize)]
-pub(crate) struct Round<C>
-where
-    C: Context,
-{
-    /// All of the proposals sent to us this round from the leader
-    #[data_size(with = ds::hashmap_sample)]
-    proposals: HashMap<C::Hash, (Proposal<C>, C::Signature)>,
-    /// The echos we've received for each proposal so far.
-    #[data_size(with = ds::hashmap_sample)]
-    echos: HashMap<C::Hash, BTreeMap<ValidatorIndex, C::Signature>>,
-    /// The votes we've received for this round so far.
-    votes: BTreeMap<bool, ValidatorMap<Option<C::Signature>>>,
-    /// The memoized results in this round.
-    outcome: RoundOutcome<C>,
-}
-
-impl<C: Context> Round<C> {
-    /// Creates a new [`Round`] with no proposals, echos, votes, and empty
-    /// round outcome.
-    fn new(validator_count: usize) -> Round<C> {
-        let mut votes = BTreeMap::new();
-        votes.insert(false, vec![None; validator_count].into());
-        votes.insert(true, vec![None; validator_count].into());
-        Round {
-            proposals: HashMap::new(),
-            echos: HashMap::new(),
-            votes,
-            outcome: RoundOutcome::default(),
-        }
-    }
-
-    /// Inserts a `Proposal` and returns `false` if we already had it.
-    fn insert_proposal(&mut self, proposal: Proposal<C>, signature: C::Signature) -> bool {
-        let hash = proposal.hash();
-        self.proposals.insert(hash, (proposal, signature)).is_none()
-    }
-
-    /// Inserts an `Echo`; returns `false` if we already had it.
-    fn insert_echo(
-        &mut self,
-        hash: C::Hash,
-        validator_idx: ValidatorIndex,
-        signature: C::Signature,
-    ) -> bool {
-        self.echos
-            .entry(hash)
-            .or_insert_with(BTreeMap::new)
-            .insert(validator_idx, signature)
-            .is_none()
-    }
-
-    /// Inserts a `Vote`; returns `false` if we already had it.
-    fn insert_vote(
-        &mut self,
-        vote: bool,
-        validator_idx: ValidatorIndex,
-        signature: C::Signature,
-    ) -> bool {
-        // Safe to unwrap: Both `true` and `false` entries were created in `new`.
-        let votes_map = self.votes.get_mut(&vote).unwrap();
-        if votes_map[validator_idx].is_none() {
-            votes_map[validator_idx] = Some(signature);
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Returns the accepted proposal, if any, together with its height.
-    fn accepted_proposal(&self) -> Option<(u64, &Proposal<C>)> {
-        let height = self.outcome.accepted_proposal_height?;
-        let hash = self.outcome.quorum_echos?;
-        let (proposal, _signature) = self.proposals.get(&hash)?;
-        Some((height, proposal))
-    }
-}
-
-impl<C: Context> Round<C> {
-    /// Check if the round has already received this message.
-    fn contains(&self, content: &Content<C>, validator_idx: ValidatorIndex) -> bool {
-        match content {
-            Content::Proposal(proposal) => self.proposals.contains_key(&proposal.hash()),
-            Content::Echo(hash) => self
-                .echos
-                .get(hash)
-                .map_or(false, |echo_map| echo_map.contains_key(&validator_idx)),
-            Content::Vote(vote) => self.votes[vote][validator_idx].is_some(),
-        }
-    }
-}
 
 /// Contains the state required for the protocol.
 #[derive(DataSize, Debug)]
@@ -1580,184 +1492,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     }
 }
 
-/// A proposal in the consensus protocol.
-#[derive(Clone, Hash, Serialize, Deserialize, Debug, PartialEq, Eq, DataSize)]
-#[serde(bound(
-    serialize = "C::Hash: Serialize",
-    deserialize = "C::Hash: Deserialize<'de>",
-))]
-pub(crate) struct Proposal<C>
-where
-    C: Context,
-{
-    timestamp: Timestamp,
-    maybe_block: Option<C::ConsensusValue>,
-    maybe_parent_round_id: Option<RoundId>,
-    /// The set of validators that appear to be inactive in this era.
-    /// This is `None` in round 0 and in dummy blocks.
-    inactive: Option<BTreeSet<ValidatorIndex>>,
-}
-
-impl<C: Context> Proposal<C> {
-    fn dummy(timestamp: Timestamp, parent_round_id: RoundId) -> Self {
-        Proposal {
-            timestamp,
-            maybe_block: None,
-            maybe_parent_round_id: Some(parent_round_id),
-            inactive: None,
-        }
-    }
-
-    fn with_block(
-        proposed_block: &ProposedBlock<C>,
-        maybe_parent_round_id: Option<RoundId>,
-        inactive: impl Iterator<Item = ValidatorIndex>,
-    ) -> Self {
-        Proposal {
-            maybe_block: Some(proposed_block.value().clone()),
-            timestamp: proposed_block.context().timestamp(),
-            maybe_parent_round_id,
-            inactive: maybe_parent_round_id.map(|_| inactive.collect()),
-        }
-    }
-
-    fn hash(&self) -> C::Hash {
-        let serialized = bincode::serialize(&self).expect("failed to serialize fields");
-        <C as Context>::hash(&serialized)
-    }
-}
-
-/// The content of a message in the main protocol, as opposed to the
-/// sync messages, which are somewhat decoupled from the rest of the
-/// protocol. This message, along with the instance and round ID,
-/// are what are signed by the active validators.
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
-#[serde(bound(
-    serialize = "C::Hash: Serialize",
-    deserialize = "C::Hash: Deserialize<'de>",
-))]
-pub(crate) enum Content<C: Context> {
-    Proposal(Proposal<C>),
-    Echo(C::Hash),
-    Vote(bool),
-}
-
-impl<C: Context> Content<C> {
-    fn is_proposal(&self) -> bool {
-        matches!(self, Content::Proposal(_))
-    }
-}
-
-/// Indicates the outcome of a given round.
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
-#[serde(bound(
-    serialize = "C::Hash: Serialize",
-    deserialize = "C::Hash: Deserialize<'de>",
-))]
-pub(crate) struct RoundOutcome<C>
-where
-    C: Context,
-{
-    /// This is `Some(h)` if there is an accepted proposal with relative height `h`, i.e. there is
-    /// a quorum of echos, `h` accepted ancestors, and all rounds since the parent's are skippable.
-    accepted_proposal_height: Option<u64>,
-    quorum_echos: Option<C::Hash>,
-    quorum_votes: Option<bool>,
-}
-
-impl<C: Context> Default for RoundOutcome<C> {
-    fn default() -> RoundOutcome<C> {
-        RoundOutcome {
-            accepted_proposal_height: None,
-            quorum_echos: None,
-            quorum_votes: None,
-        }
-    }
-}
-
-/// All messages of the protocol.
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
-#[serde(bound(
-    serialize = "C::Hash: Serialize",
-    deserialize = "C::Hash: Deserialize<'de>",
-))]
-pub(crate) enum Message<C: Context> {
-    /// Partial information about the sender's protocol state. The receiver should send missing
-    /// data.
-    ///
-    /// The sender chooses a random peer and a random era, and includes in its `SyncState` message
-    /// information about received proposals, echos and votes. The idea is to set the `i`-th bit in
-    /// the `u128` fields to `1` if we have a signature from the `i`-th validator.
-    ///
-    /// To keep the size of these messages constant even if there are more than 128 validators, a
-    /// random interval is selected and only information about validators in that interval is
-    /// included: The bit with the lowest significance corresponds to validator number
-    /// `first_validator_idx`, and the one with the highest to
-    /// `(first_validator_idx + 127) % validator_count`.
-    ///
-    /// For example if there are 500 validators and `first_validator_idx` is 450, the `u128`'s bits
-    /// refer to validators 450, 451, ..., 499, 0, 1, ..., 77.
-    SyncState {
-        /// The round the information refers to.
-        round_id: RoundId,
-        /// The proposal hash with the most echos (by weight).
-        proposal_hash: Option<C::Hash>,
-        /// Whether the sender has the proposal with that hash.
-        proposal: bool,
-        /// The index of the first validator covered by the bit fields below.
-        first_validator_idx: ValidatorIndex,
-        /// A bit field with 1 for every validator the sender has an echo from.
-        echos: u128,
-        /// A bit field with 1 for every validator the sender has a `true` vote from.
-        true_votes: u128,
-        /// A bit field with 1 for every validator the sender has a `false` vote from.
-        false_votes: u128,
-        /// A bit field with 1 for every validator the sender has evidence against.
-        faulty: u128,
-        instance_id: C::InstanceId,
-    },
-    Signed {
-        round_id: RoundId,
-        instance_id: C::InstanceId,
-        content: Content<C>,
-        validator_idx: ValidatorIndex,
-        signature: C::Signature,
-    },
-}
-
-impl<C: Context> Message<C> {
-    fn new_empty_round_sync_state(
-        round_id: RoundId,
-        first_validator_idx: ValidatorIndex,
-        faulty: u128,
-        instance_id: C::InstanceId,
-    ) -> Self {
-        Message::SyncState {
-            round_id,
-            proposal_hash: None,
-            proposal: false,
-            first_validator_idx,
-            echos: 0,
-            true_votes: 0,
-            false_votes: 0,
-            faulty,
-            instance_id,
-        }
-    }
-
-    fn serialize(&self) -> Vec<u8> {
-        bincode::serialize(self).expect("should serialize message")
-    }
-
-    fn instance_id(&self) -> &C::InstanceId {
-        match self {
-            Message::SyncState { instance_id, .. } | Message::Signed { instance_id, .. } => {
-                instance_id
-            }
-        }
-    }
-}
-
 impl<C> ConsensusProtocol<C> for SimpleConsensus<C>
 where
     C: Context + 'static,
@@ -2020,89 +1754,5 @@ where
 
     fn next_round_length(&self) -> Option<TimeDiff> {
         Some(self.params.min_block_time())
-    }
-}
-
-/// A reason for a validator to be marked as faulty.
-///
-/// The `Banned` state is fixed from the beginning and can't be replaced. However, `Indirect` can
-/// be replaced with `Direct` evidence, which has the same effect but doesn't rely on information
-/// from other consensus protocol instances.
-#[derive(DataSize, Debug)]
-pub(crate) enum Fault<C>
-where
-    C: Context,
-{
-    /// The validator was known to be malicious from the beginning. All their messages are
-    /// considered invalid in this `SimpleConsensus` instance.
-    Banned,
-    /// We have direct evidence of the validator's fault.
-    // TODO: Store only the necessary information, e.g. not the full signed proposal, and only one
-    // round ID, instance ID and validator index.
-    Direct(Message<C>, Message<C>),
-    /// The validator is known to be faulty, but the evidence is not in this era.
-    Indirect,
-}
-
-impl<C: Context> Fault<C> {
-    fn is_direct(&self) -> bool {
-        matches!(self, Fault::Direct(_, _))
-    }
-
-    fn is_banned(&self) -> bool {
-        matches!(self, Fault::Banned)
-    }
-}
-
-/// A validator's participation status: whether they are faulty or inactive.
-#[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
-enum ParticipationStatus {
-    LastSeenInRound(RoundId),
-    Inactive,
-    EquivocatedInOtherEra,
-    Equivocated,
-}
-
-/// A map of status (faulty, inactive) by validator ID.
-#[derive(Debug)]
-// False positive, as the fields of this struct are all used in logging validator participation.
-#[allow(dead_code)]
-pub(crate) struct Participation<C>
-where
-    C: Context,
-{
-    instance_id: C::InstanceId,
-    faulty_stake_percent: u8,
-    inactive_stake_percent: u8,
-    inactive_validators: Vec<(ValidatorIndex, C::ValidatorId, ParticipationStatus)>,
-    faulty_validators: Vec<(ValidatorIndex, C::ValidatorId, ParticipationStatus)>,
-}
-
-impl ParticipationStatus {
-    /// Returns a `Status` for a validator unless they are honest and online.
-    fn for_index<C: Context + 'static>(
-        idx: ValidatorIndex,
-        sc: &SimpleConsensus<C>,
-    ) -> Option<ParticipationStatus> {
-        if let Some(fault) = sc.faults.get(&idx) {
-            return Some(match fault {
-                Fault::Banned | Fault::Indirect => ParticipationStatus::EquivocatedInOtherEra,
-                Fault::Direct(_, _) => ParticipationStatus::Equivocated,
-            });
-        }
-        // TODO: Avoid iterating over all old rounds every time we log this.
-        for r_id in sc.rounds.keys().rev() {
-            if sc.has_echoed(*r_id, idx)
-                || sc.has_voted(*r_id, idx)
-                || (sc.has_accepted_proposal(*r_id) && sc.leader(*r_id) == idx)
-            {
-                if r_id.saturating_add(2) < sc.current_round {
-                    return Some(ParticipationStatus::LastSeenInRound(*r_id));
-                } else {
-                    return None; // Seen recently; considered currently active.
-                }
-            }
-        }
-        Some(ParticipationStatus::Inactive)
     }
 }
