@@ -51,7 +51,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use casper_types::{EraId, PublicKey};
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use openssl::{error::ErrorStack as OpenSslErrorStack, pkey};
@@ -72,8 +71,17 @@ use tokio_openssl::SslStream;
 use tokio_util::codec::LengthDelimitedCodec;
 use tracing::{debug, error, info, trace, warn, Instrument, Span};
 
-use self::{
+use casper_types::{EraId, PublicKey};
+
+pub(crate) use self::{
     bincode_format::BincodeFormat,
+    config::Config,
+    error::Error,
+    event::Event,
+    gossiped_address::GossipedAddress,
+    message::{EstimatorWeights, FromIncoming, Message, MessageKind, Payload},
+};
+use self::{
     chain_info::ChainInfo,
     counting_format::{ConnectionId, CountingFormat, Role},
     error::{ConnectionError, Result},
@@ -85,13 +93,7 @@ use self::{
     symmetry::ConnectionSymmetry,
     tasks::NetworkContext,
 };
-pub(crate) use self::{
-    config::Config,
-    error::Error,
-    event::Event,
-    gossiped_address::GossipedAddress,
-    message::{EstimatorWeights, FromIncoming, Message, MessageKind, Payload},
-};
+
 use crate::{
     components::{consensus, Component},
     effect::{
@@ -108,9 +110,6 @@ use crate::{
 
 const MAX_METRICS_DROP_ATTEMPTS: usize = 25;
 const DROP_RETRY_DELAY: Duration = Duration::from_millis(100);
-
-/// Duration peers are kept on the block list, before being redeemed.
-const BLOCKLIST_RETAIN_DURATION: Duration = Duration::from_secs(60 * 10);
 
 /// How often to keep attempting to reconnect to a node before giving up. Note that reconnection
 /// delays increase exponentially!
@@ -219,11 +218,14 @@ where
             return Err(Error::EmptyKnownHosts);
         }
 
+        let net_metrics = Arc::new(Metrics::new(registry)?);
+
         let outgoing_limiter: Box<dyn Limiter> = if cfg.max_outgoing_byte_rate_non_validators == 0 {
             Box::new(limiter::Unlimited)
         } else {
             Box::new(limiter::ClassBasedLimiter::new(
                 cfg.max_outgoing_byte_rate_non_validators,
+                net_metrics.accumulated_outgoing_limiter_delay.clone(),
             ))
         };
 
@@ -233,16 +235,15 @@ where
             } else {
                 Box::new(limiter::ClassBasedLimiter::new(
                     cfg.max_incoming_message_rate_non_validators,
+                    net_metrics.accumulated_incoming_limiter_delay.clone(),
                 ))
             };
-
-        let net_metrics = Arc::new(Metrics::new(registry)?);
 
         let outgoing_manager = OutgoingManager::with_metrics(
             OutgoingConfig {
                 retry_attempts: RECONNECTION_ATTEMPTS,
                 base_timeout: BASE_RECONNECTION_TIMEOUT,
-                unblock_after: BLOCKLIST_RETAIN_DURATION,
+                unblock_after: cfg.blocklist_retain_duration.into(),
                 sweep_timeout: cfg.max_addr_pending_time.into(),
             },
             net_metrics.create_outgoing_metrics(),

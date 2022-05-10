@@ -5,16 +5,13 @@ use rand::{distributions::Standard, prelude::*};
 use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::core::engine_state::genesis::GenesisValidator;
-#[cfg(test)]
-use casper_types::U512;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     system::auction::DelegationRate,
     Motes,
 };
-
 #[cfg(test)]
-use crate::testing::TestRng;
+use casper_types::{testing::TestRng, U512};
 
 #[derive(PartialEq, Eq, Ord, PartialOrd, Serialize, Deserialize, DataSize, Debug, Copy, Clone)]
 pub struct ValidatorConfig {

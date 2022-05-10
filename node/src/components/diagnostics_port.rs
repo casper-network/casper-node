@@ -195,7 +195,7 @@ mod tests {
         // We give it a strict umask to check.
         let listener = setup_listener(&socket_path, 0o077).expect("could not setup listener");
 
-        let meta = fs::metadata(&socket_path).expect("could not get meatadata");
+        let meta = fs::metadata(&socket_path).expect("could not get metadata");
         // With the given umask, world and group permissions should be 0.
         assert_eq!(meta.permissions().mode() & 0o077, 0);
 
@@ -231,7 +231,7 @@ mod tests {
         fs::write(&socket_path, b"this-file-should-be-deleted-soon")
             .expect("could not write to socket-blocking temporary file");
 
-        let meta = fs::metadata(&socket_path).expect("could not get meatadata");
+        let meta = fs::metadata(&socket_path).expect("could not get metadata");
         assert!(
             !meta.file_type().is_socket(),
             "temporary file created should not be a socket"
@@ -240,7 +240,7 @@ mod tests {
         // Creating the listener should remove the underlying file.
         let _listener = setup_listener(&socket_path, 0o022).expect("could not setup listener");
 
-        let meta = fs::metadata(&socket_path).expect("could not get meatadata");
+        let meta = fs::metadata(&socket_path).expect("could not get metadata");
         assert!(
             meta.file_type().is_socket(),
             "did not overwrite previous file"

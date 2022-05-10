@@ -85,7 +85,7 @@ fn depth_limited_to_json<'a>(
             }
         }
         CLType::Map { key, value } => {
-            let (num_keys, mut stream) = u32::from_bytes(bytes).unwrap();
+            let (num_keys, mut stream) = u32::from_bytes(bytes).ok()?;
             let mut result: Vec<Value> = Vec::new();
             for _ in 0..num_keys {
                 let (k, remainder) = depth_limited_to_json(depth, key, stream)?;

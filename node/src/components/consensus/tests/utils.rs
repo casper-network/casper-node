@@ -3,13 +3,13 @@ use std::sync::Arc;
 use num::Zero;
 use once_cell::sync::Lazy;
 
-use casper_types::{system::auction::DelegationRate, Motes, PublicKey, SecretKey, U512};
+use casper_types::{system::auction::DelegationRate, Motes, PublicKey, SecretKey, Timestamp, U512};
 
 use crate::{
     tls::{KeyFingerprint, Sha512},
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
-        ActivationPoint, Chainspec, ChainspecRawBytes, NodeId, Timestamp,
+        ActivationPoint, Chainspec, ChainspecRawBytes, NodeId,
     },
     utils::Loadable,
 };

@@ -24,6 +24,7 @@ use std::{
 
 use anyhow::Context;
 use assert_json_diff::{assert_json_eq, assert_json_matches_no_panic, CompareMode, Config};
+use casper_types::testing::TestRng;
 use derive_more::From;
 use futures::channel::oneshot;
 use once_cell::sync::Lazy;
@@ -32,6 +33,8 @@ use serde_json::Value;
 use tempfile::TempDir;
 use tokio::runtime::{self, Runtime};
 use tracing::{debug, warn};
+
+use casper_types::{TimeDiff, Timestamp};
 
 use crate::{
     components::Component,
@@ -42,12 +45,11 @@ use crate::{
     logging,
     protocol::Message,
     reactor::{EventQueueHandle, QueueKind, ReactorEvent, Scheduler},
-    types::{Deploy, TimeDiff, Timestamp},
+    types::Deploy,
 };
 pub(crate) use condition_check_reactor::ConditionCheckReactor;
 pub(crate) use multi_stage_test_reactor::MultiStageTestReactor;
 use schemars::schema::RootSchema;
-pub(crate) use test_rng::TestRng;
 
 /// Time to wait (at most) for a `fatal` to resolve before considering the dropping of a responder a
 /// problem.

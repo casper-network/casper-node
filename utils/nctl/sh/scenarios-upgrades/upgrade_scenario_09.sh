@@ -59,12 +59,20 @@ function _main()
 function _step_01()
 {
     local STAGE_ID=${1}
+    local PATH_TO_STAGE
+    local PATH_TO_PROTO1
+
+    PATH_TO_STAGE=$(get_path_to_stage "$STAGE_ID")
+    pushd "$PATH_TO_STAGE"
+    PATH_TO_PROTO1=$(ls -d */ | sort | head -n 1 | tr -d '/')
+    popd
 
     log_step_upgrades 0 "Begin upgrade_scenario_09"
     log_step_upgrades 1 "starting network from stage ($STAGE_ID)"
 
     source "$NCTL/sh/assets/setup_from_stage.sh" \
-            stage="$STAGE_ID"
+            stage="$STAGE_ID" \
+            chainspec_path="$PATH_TO_STAGE/$PATH_TO_PROTO1/upgrade_chainspecs/upgrade_scenario_9.chainspec.toml.in"
     log "... Starting 5 validators"
     source "$NCTL/sh/node/start.sh" node=all
 }
@@ -88,7 +96,7 @@ function _step_03()
 
     for i in $(seq 1 5); do
         log "... staging upgrade on validator node-$i"
-        source "$NCTL/sh/assets/upgrade_from_stage_single_node.sh" stage="$STAGE_ID" verbose=false node="$i" era="$ACTIVATION_POINT"
+        source "$NCTL/sh/assets/upgrade_from_stage_single_node.sh" stage="$STAGE_ID" verbose=false node="$i" era="$ACTIVATION_POINT" chainspec_path="$NCTL/sh/scenarios/chainspecs/upgrade_scenario_9.chainspec.toml.in"
         echo ""
     done
 
@@ -173,7 +181,7 @@ function _step_07()
 
     log "... setting upgrade assets"
 
-    source "$NCTL/sh/assets/upgrade_from_stage_single_node.sh" stage="$STAGE_ID" verbose=false node="6" era="$ACTIVATION_POINT"
+    source "$NCTL/sh/assets/upgrade_from_stage_single_node.sh" stage="$STAGE_ID" verbose=false node="6" era="$ACTIVATION_POINT" chainspec_path="$NCTL/sh/scenarios/chainspecs/upgrade_scenario_9.chainspec.toml.in"
     echo ""
     # add hash to upgrades config
     PATH_TO_NODE_CONFIG_UPGRADE="$(get_path_to_node_config $i)/$N2_PROTO_VERSION/config.toml"

@@ -10,7 +10,7 @@ use std::{
     time::Duration,
 };
 
-use casper_types::{ProtocolVersion, PublicKey};
+use bincode::Options;
 use futures::{
     future::{self, Either},
     stream::{SplitSink, SplitStream},
@@ -30,10 +30,12 @@ use tokio::{
 use tokio_openssl::SslStream;
 use tokio_serde::{Deserializer, Serializer};
 use tracing::{
-    debug, error_span,
+    debug, error, error_span,
     field::{self, Empty},
     info, trace, warn, Instrument, Span,
 };
+
+use casper_types::{ProtocolVersion, PublicKey, TimeDiff};
 
 use super::{
     chain_info::ChainInfo,
@@ -47,10 +49,10 @@ use super::{
     Event, FramedTransport, FullTransport, Message, Metrics, Payload, Transport,
 };
 use crate::{
-    components::small_network::framed_transport,
+    components::small_network::{framed_transport, BincodeFormat},
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert},
-    types::{NodeId, TimeDiff},
+    types::NodeId,
     utils::display_error,
 };
 
@@ -590,12 +592,16 @@ pub(super) async fn message_sender<P>(
     while let Some(message) = queue.recv().await {
         counter.dec();
 
-        // TODO: Refactor message sending to not use `tokio_serde` anymore to avoid duplicate
-        //       serialization.
-        let estimated_wire_size = rmp_serde::to_vec(&message)
-            .as_ref()
-            .map(Vec::len)
-            .unwrap_or(0) as u32;
+        let estimated_wire_size = match BincodeFormat::default().0.serialized_size(&*message) {
+            Ok(size) => size as u32,
+            Err(error) => {
+                error!(
+                    error = display_error(&error),
+                    "failed to get serialized size of outgoing message, closing outgoing connection"
+                );
+                break;
+            }
+        };
         limiter.request_allowance(estimated_wire_size).await;
 
         // We simply error-out if the sink fails, it means that our connection broke.
@@ -604,6 +610,13 @@ pub(super) async fn message_sender<P>(
                 err = display_error(err),
                 "message send failed, closing outgoing connection"
             );
+
+            // To ensure, metrics are up to date, we close the queue and drain it.
+            queue.close();
+            while queue.recv().await.is_some() {
+                counter.dec();
+            }
+
             break;
         };
     }

@@ -32,6 +32,9 @@ pub struct AvailableBlockRange {
 }
 
 impl AvailableBlockRange {
+    /// An `AvailableRange` of [0, 0].
+    pub const RANGE_0_0: AvailableBlockRange = AvailableBlockRange { low: 0, high: 0 };
+
     /// Returns a new `AvailableBlockRange`.
     pub fn new(low: u64, high: u64) -> Result<Self, AvailableBlockRangeError> {
         if low > high {

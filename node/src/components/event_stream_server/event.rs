@@ -1,11 +1,9 @@
 use std::fmt::{self, Display, Formatter};
 
-use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey};
+use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey, Timestamp};
 use itertools::Itertools;
 
-use crate::types::{
-    Block, BlockHash, Deploy, DeployHash, DeployHeader, FinalitySignature, Timestamp,
-};
+use crate::types::{Block, BlockHash, Deploy, DeployHash, DeployHeader, FinalitySignature};
 
 #[derive(Debug)]
 pub enum Event {

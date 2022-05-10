@@ -70,7 +70,7 @@ use tracing::{debug, error, info, warn};
 use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
-    EraId, ExecutionResult, ProtocolVersion, PublicKey, Transfer, Transform,
+    EraId, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Transfer, Transform,
 };
 
 // The reactor! macro needs this in the fetcher tests
@@ -92,7 +92,7 @@ use crate::{
         BlockSignatures, BlockWithMetadata, Deploy, DeployHash, DeployMetadata,
         DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedApprovalsWithId,
         HashingAlgorithmVersion, Item, MerkleBlockBody, MerkleBlockBodyPart, MerkleLinkedListNode,
-        NodeId, TimeDiff,
+        NodeId,
     },
     utils::{display_error, FlattenResult, WithDir},
     NodeRng,
@@ -141,6 +141,7 @@ const STORAGE_FILES: [&str; 5] = [
     "storage.lmdb-lock",
     "sse_index",
 ];
+
 /// Storage component.
 #[derive(DataSize, Debug)]
 pub struct Storage {
@@ -204,6 +205,7 @@ pub struct StorageInner {
     /// An in-memory pool of already loaded serialized items.
     ///
     /// Keyed by serialized item ID, contains the serialized item.
+    // Note: `DataSize` is skipped here to avoid incurring locking overhead.
     #[data_size(skip)]
     serialized_item_pool: RwLock<ObjectPool<Box<[u8]>>>,
     /// The fraction of validators, by weight, that have to sign a block to prove its finality.
@@ -1125,6 +1127,20 @@ impl StorageInner {
             StorageRequest::GetFinalizedBlocks { ttl, responder } => {
                 responder.respond(self.get_finalized_blocks(ttl)?).ignore()
             }
+            StorageRequest::GetBlockHeaderByHeight {
+                block_height,
+                only_from_available_block_range,
+                responder,
+            } => {
+                let indices = self.indices.read()?;
+                let result = self.get_block_header_by_height_restricted(
+                    &mut self.env.begin_ro_txn()?,
+                    &indices,
+                    block_height,
+                    only_from_available_block_range,
+                )?;
+                responder.respond(result).ignore()
+            }
             StorageRequest::GetBlockHeaderAndSufficientFinalitySignaturesByHeight {
                 block_height,
                 responder,
@@ -1175,11 +1191,6 @@ impl StorageInner {
             StorageRequest::GetAvailableBlockRange { responder } => responder
                 .respond(self.get_available_block_range()?)
                 .ignore(),
-            StorageRequest::GetLowestAvailableBlock { responder } => {
-                let maybe_lowest_block =
-                    self.read_block_by_height(self.get_lowest_available_block_height()?)?;
-                responder.respond(maybe_lowest_block).ignore()
-            }
             StorageRequest::StoreFinalizedApprovals {
                 ref deploy_hash,
                 ref finalized_approvals,
@@ -1193,7 +1204,7 @@ impl StorageInner {
     /// Put a single deploy into storage.
     pub fn put_deploy(&self, deploy: &Deploy) -> Result<bool, FatalStorageError> {
         let mut txn = self.env.begin_rw_txn()?;
-        let outcome = txn.put_value(self.deploy_db, deploy.id(), &deploy, false)?;
+        let outcome = txn.put_value(self.deploy_db, deploy.id(), deploy, false)?;
         txn.commit()?;
         Ok(outcome)
     }
@@ -1437,6 +1448,21 @@ impl StorageInner {
 
         self.validate_block_header_hash(&block_header, block_hash)?;
         Ok(Some(block_header))
+    }
+
+    fn get_block_header_by_height_restricted<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        indices: &Indices,
+        block_height: u64,
+        only_from_available_block_range: bool,
+    ) -> Result<Option<BlockHeader>, FatalStorageError> {
+        let block_hash = match indices.block_height_index.get(&block_height) {
+            None => return Ok(None),
+            Some(block_hash) => block_hash,
+        };
+
+        self.get_single_block_header_restricted(tx, block_hash, only_from_available_block_range)
     }
 
     /// Retrieves a single block header in a given transaction from storage.
@@ -1919,10 +1945,6 @@ impl StorageInner {
                 Ok(AvailableBlockRange::default())
             }
         }
-    }
-
-    fn get_lowest_available_block_height(&self) -> Result<u64, FatalStorageError> {
-        Ok(self.indices.read()?.lowest_available_block_height)
     }
 
     fn update_lowest_available_block_height(

@@ -23,7 +23,8 @@ use super::{
     chain::{GetBlock, GetBlockTransfers, GetEraInfoBySwitchBlock, GetStateRootHash},
     info::{GetChainspec, GetDeploy, GetPeers, GetStatus, GetValidatorChanges},
     state::{
-        GetAccountInfo, GetAuctionInfo, GetBalance, GetDictionaryItem, GetItem, QueryGlobalState,
+        GetAccountInfo, GetAuctionInfo, GetBalance, GetDictionaryItem, GetItem, QueryBalance,
+        QueryGlobalState,
     },
     Error, ReactorEventT, RpcWithOptionalParams, RpcWithParams, RpcWithoutParams,
     RpcWithoutParamsExt,
@@ -75,6 +76,9 @@ pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
     schema.push_with_params::<GetDictionaryItem>("returns an item from a Dictionary");
     schema.push_with_params::<QueryGlobalState>(
         "a query to global state using either a Block hash or state root hash",
+    );
+    schema.push_with_params::<QueryBalance>(
+        "query for a balance using a purse identifier and a state identifier",
     );
     schema.push_without_params::<GetPeers>("returns a list of peers connected to the node");
     schema.push_without_params::<GetStatus>("returns the current status of the node");
@@ -453,6 +457,28 @@ impl RpcWithoutParamsExt for ListRpcs {
         async move { Ok(response_builder.success(ListRpcsResult::doc_example().clone())?) }.boxed()
     }
 }
+
+mod doc_example_impls {
+    use std::str::FromStr;
+
+    use once_cell::sync::Lazy;
+
+    use casper_types::Timestamp;
+
+    use super::DocExample;
+
+    static TIMESTAMP_EXAMPLE: Lazy<Timestamp> = Lazy::new(|| {
+        let example_str: &str = "2020-11-17T00:39:24.072Z";
+        Timestamp::from_str(example_str).unwrap()
+    });
+
+    impl DocExample for Timestamp {
+        fn doc_example() -> &'static Self {
+            &*TIMESTAMP_EXAMPLE
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{

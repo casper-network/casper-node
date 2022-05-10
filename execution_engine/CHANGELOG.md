@@ -9,8 +9,6 @@ All notable changes to this project will be documented in this file.  The format
 [comment]: <> (Fixed:      any bug fixes)
 [comment]: <> (Security:   in case of vulnerabilities)
 
-
-
 ## [Unreleased]
 
 ### Added
