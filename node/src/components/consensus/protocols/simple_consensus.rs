@@ -73,7 +73,7 @@ use rand::{seq::IteratorRandom, Rng};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
-use casper_types::U512;
+use casper_types::{TimeDiff, Timestamp, U512};
 
 use crate::{
     components::consensus::{
@@ -87,7 +87,7 @@ use crate::{
         utils::{ValidatorIndex, ValidatorMap, Validators, Weight},
         ActionId, LeaderSequence, TimerId,
     },
-    types::{Chainspec, NodeId, TimeDiff, Timestamp},
+    types::{Chainspec, NodeId},
     utils::{div_round, ds},
     NodeRng,
 };

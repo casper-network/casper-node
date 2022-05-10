@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
+    DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::engine_state::ExecuteRequest;
 use casper_types::{
@@ -17,7 +17,7 @@ const CONTRACT_HASH_KEY: &str = "contract_hash";
 
 fn setup() -> (InMemoryWasmTestBuilder, ContractPackageHash, ContractHash) {
     let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let install_contract_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,

@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_RUN_GENESIS_REQUEST,
+    DEFAULT_ACCOUNT_INITIAL_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     core::engine_state::WASMLESS_TRANSFER_FIXED_GAS_PRICE,
@@ -26,7 +26,7 @@ fn ee_1160_wasmless_transfer_should_empty_account() {
         U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE) - wasmless_transfer_cost.value();
 
     let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -80,7 +80,7 @@ fn ee_1160_transfer_larger_than_balance_should_fail() {
         + U512::one();
 
     let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -141,7 +141,7 @@ fn ee_1160_large_wasmless_transfer_should_avoid_overflow() {
     let transfer_amount = U512::max_value();
 
     let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use datasize::DataSize;
 
-use crate::types::{serde_option_time_diff, TimeDiff};
+use casper_types::{serde_option_time_diff, TimeDiff};
 
 /// `SimpleConsensus`-specific configuration.
 /// *Note*: This is *not* protocol configuration that has to be the same on all nodes.

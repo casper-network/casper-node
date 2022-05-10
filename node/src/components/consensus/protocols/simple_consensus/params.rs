@@ -1,10 +1,9 @@
 use datasize::DataSize;
 use serde::Serialize;
 
-use crate::{
-    components::consensus::{traits::Context, utils::Weight},
-    types::{TimeDiff, Timestamp},
-};
+use casper_types::{TimeDiff, Timestamp};
+
+use crate::components::consensus::{traits::Context, utils::Weight};
 
 /// Protocol parameters for `SimpleConsensus`.
 #[derive(Debug, DataSize, Clone, Serialize)]

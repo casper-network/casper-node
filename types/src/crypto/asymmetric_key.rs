@@ -13,12 +13,12 @@ use core::{
     iter,
     marker::Copy,
 };
-#[cfg(any(feature = "crypto-std", test))]
+#[cfg(any(feature = "std", test))]
 use std::path::Path;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(any(feature = "crypto-std", test))]
+#[cfg(any(feature = "std", test))]
 use derp::{Der, Tag};
 use ed25519_dalek::{
     ed25519::signature::Signature as _Signature, ExpandedSecretKey,
@@ -31,19 +31,19 @@ use k256::ecdsa::{
     Signature as Secp256k1Signature, SigningKey as Secp256k1SecretKey,
     VerifyingKey as Secp256k1PublicKey,
 };
-#[cfg(any(feature = "crypto-std", test))]
+#[cfg(any(feature = "std", test))]
 use once_cell::sync::Lazy;
-#[cfg(any(feature = "crypto-std", test))]
+#[cfg(any(feature = "std", test))]
 use pem::Pem;
-#[cfg(any(all(feature = "crypto-std", feature = "testing"), test))]
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 use rand::{Rng, RngCore};
 #[cfg(feature = "json-schema")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-#[cfg(any(feature = "crypto-std", test))]
+#[cfg(any(feature = "std", test))]
 use untrusted::Input;
 
-#[cfg(any(all(feature = "crypto-std", feature = "testing"), test))]
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::testing::TestRng;
 use crate::{
     account::AccountHash,
@@ -53,7 +53,7 @@ use crate::{
     crypto::Error,
     CLType, CLTyped, Tagged,
 };
-#[cfg(any(feature = "crypto-std", test))]
+#[cfg(any(feature = "std", test))]
 use crate::{
     crypto::ErrorExt,
     file_utils::{read_file, write_file, write_private_file},
@@ -86,32 +86,32 @@ const SECP256K1_SIGNATURE_LENGTH: usize = 64;
 pub const SYSTEM_ACCOUNT: PublicKey = PublicKey::System;
 
 // See https://www.secg.org/sec1-v2.pdf#subsection.C.4
-#[cfg(any(feature = "crypto-std", test))]
+#[cfg(any(feature = "std", test))]
 const EC_PUBLIC_KEY_OBJECT_IDENTIFIER: [u8; 7] = [42, 134, 72, 206, 61, 2, 1];
 
 // See https://tools.ietf.org/html/rfc8410#section-10.3
-#[cfg(any(feature = "crypto-std", test))]
+#[cfg(any(feature = "std", test))]
 const ED25519_OBJECT_IDENTIFIER: [u8; 3] = [43, 101, 112];
-#[cfg(any(feature = "crypto-std", test))]
+#[cfg(any(feature = "std", test))]
 const ED25519_PEM_SECRET_KEY_TAG: &str = "PRIVATE KEY";
-#[cfg(any(feature = "crypto-std", test))]
+#[cfg(any(feature = "std", test))]
 const ED25519_PEM_PUBLIC_KEY_TAG: &str = "PUBLIC KEY";
 
 // Ref?
-#[cfg(any(feature = "crypto-std", test))]
+#[cfg(any(feature = "std", test))]
 const SECP256K1_OBJECT_IDENTIFIER: [u8; 5] = [43, 129, 4, 0, 10];
-#[cfg(any(feature = "crypto-std", test))]
+#[cfg(any(feature = "std", test))]
 const SECP256K1_PEM_SECRET_KEY_TAG: &str = "EC PRIVATE KEY";
-#[cfg(any(feature = "crypto-std", test))]
+#[cfg(any(feature = "std", test))]
 const SECP256K1_PEM_PUBLIC_KEY_TAG: &str = "PUBLIC KEY";
 
-#[cfg(any(feature = "crypto-std", test))]
+#[cfg(any(feature = "std", test))]
 static ED25519_SECRET_KEY: Lazy<SecretKey> = Lazy::new(|| {
     let bytes = [15u8; SecretKey::ED25519_LENGTH];
     SecretKey::ed25519_from_bytes(bytes).unwrap()
 });
 
-#[cfg(any(feature = "crypto-std", test))]
+#[cfg(any(feature = "std", test))]
 static ED25519_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
     let bytes = [15u8; SecretKey::ED25519_LENGTH];
     let secret_key = SecretKey::ed25519_from_bytes(bytes).unwrap();
@@ -227,7 +227,7 @@ impl SecretKey {
     }
 }
 
-#[cfg(any(feature = "crypto-std", test))]
+#[cfg(any(feature = "std", test))]
 impl SecretKey {
     /// Generates a new ed25519 variant using the system's secure random number generator.
     pub fn generate_ed25519() -> Result<Self, ErrorExt> {
@@ -502,7 +502,7 @@ impl PublicKey {
     }
 }
 
-#[cfg(any(feature = "crypto-std", test))]
+#[cfg(any(feature = "std", test))]
 impl PublicKey {
     /// Generates a new ed25519 variant using the system's secure random number generator.
     pub fn generate_ed25519() -> Result<Self, ErrorExt> {
@@ -1191,7 +1191,7 @@ pub fn verify<T: AsRef<[u8]>>(
 
 /// Generates an Ed25519 keypair using the operating system's cryptographically secure random number
 /// generator.
-#[cfg(any(feature = "crypto-std", test))]
+#[cfg(any(feature = "std", test))]
 pub fn generate_ed25519_keypair() -> (SecretKey, PublicKey) {
     let secret_key = SecretKey::generate_ed25519().unwrap();
     let public_key = PublicKey::from(&secret_key);

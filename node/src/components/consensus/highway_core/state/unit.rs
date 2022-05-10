@@ -3,16 +3,15 @@ use std::collections::BTreeSet;
 use datasize::DataSize;
 use serde::Serialize;
 
-use crate::{
-    components::consensus::{
-        highway_core::{
-            highway::SignedWireUnit,
-            state::{self, Panorama, State},
-            validators::ValidatorIndex,
-        },
-        traits::Context,
+use casper_types::{TimeDiff, Timestamp};
+
+use crate::components::consensus::{
+    highway_core::{
+        highway::SignedWireUnit,
+        state::{self, Panorama, State},
+        validators::ValidatorIndex,
     },
-    types::{TimeDiff, Timestamp},
+    traits::Context,
 };
 
 /// A unit sent to or received from the network.

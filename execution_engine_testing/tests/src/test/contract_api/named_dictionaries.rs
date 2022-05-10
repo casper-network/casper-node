@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_RUN_GENESIS_REQUEST,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{runtime_args, RuntimeArgs};
 use rand::{rngs::StdRng, Rng, SeedableRng};
@@ -20,7 +20,7 @@ fn named_dictionaries_should_work_as_expected() {
         .collect();
 
     let builder = &mut InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
     builder
         .exec(
             ExecuteRequestBuilder::standard(

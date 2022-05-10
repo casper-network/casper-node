@@ -1,7 +1,12 @@
-use std::{collections::HashMap, ops::Deref, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    ops::Deref,
+    sync::{Arc, RwLock},
+};
 
 use casper_hashing::{ChunkWithProof, Digest};
 use casper_types::{bytesrepr::Bytes, Key, StoredValue};
+use tracing::info;
 
 use crate::{
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
@@ -20,7 +25,8 @@ use crate::{
         trie_store::{
             lmdb::{LmdbTrieStore, ScratchTrieStore},
             operations::{
-                keys_with_prefix, missing_trie_keys, put_trie, read, read_with_proof, ReadResult,
+                descendant_trie_keys, keys_with_prefix, missing_trie_keys, put_trie, read,
+                read_with_proof, ReadResult,
             },
         },
     },
@@ -35,6 +41,7 @@ pub struct LmdbGlobalState {
     // TODO: make this a lazy-static
     /// Empty root hash used for a new trie.
     pub(crate) empty_root_hash: Digest,
+    digests_without_missing_descendants: RwLock<HashSet<Digest>>,
 }
 
 /// Represents a "view" of global state at a particular root hash.
@@ -75,6 +82,7 @@ impl LmdbGlobalState {
             environment,
             trie_store,
             empty_root_hash,
+            digests_without_missing_descendants: Default::default(),
         }
     }
 
@@ -299,16 +307,68 @@ impl StateProvider for LmdbGlobalState {
         correlation_id: CorrelationId,
         trie_keys: Vec<Digest>,
     ) -> Result<Vec<Digest>, Self::Error> {
-        let txn = self.environment.create_read_txn()?;
-        let missing_descendants =
-            missing_trie_keys::<Key, StoredValue, lmdb::RoTransaction, LmdbTrieStore, Self::Error>(
+        let trie_count = {
+            let digests_without_missing_descendants = self
+                .digests_without_missing_descendants
+                .read()
+                .expect("digest cache read lock");
+            trie_keys
+                .iter()
+                .filter(|digest| !digests_without_missing_descendants.contains(digest))
+                .count()
+        };
+        if trie_count == 0 {
+            info!("no need to call missing_trie_keys");
+            Ok(vec![])
+        } else {
+            let txn = self.environment.create_read_txn()?;
+            let missing_descendants = missing_trie_keys::<
+                Key,
+                StoredValue,
+                lmdb::RoTransaction,
+                LmdbTrieStore,
+                Self::Error,
+            >(
                 correlation_id,
                 &txn,
                 self.trie_store.deref(),
-                trie_keys,
+                trie_keys.clone(),
+                &self
+                    .digests_without_missing_descendants
+                    .read()
+                    .expect("digest cache read lock"),
             )?;
-        txn.commit()?;
-        Ok(missing_descendants)
+            if missing_descendants.is_empty() {
+                // There were no missing descendants on `trie_keys`, let's add them *and all of
+                // their descendants* to the cache.
+
+                let mut all_descendants: HashSet<Digest> = HashSet::new();
+                all_descendants.extend(&trie_keys);
+                all_descendants.extend(descendant_trie_keys::<
+                    Key,
+                    StoredValue,
+                    lmdb::RoTransaction,
+                    LmdbTrieStore,
+                    Self::Error,
+                >(
+                    &txn,
+                    self.trie_store.deref(),
+                    trie_keys,
+                    &self
+                        .digests_without_missing_descendants
+                        .read()
+                        .expect("digest cache read lock"),
+                )?);
+
+                self.digests_without_missing_descendants
+                    .write()
+                    .expect("digest cache write lock")
+                    .extend(all_descendants.into_iter());
+            }
+            txn.commit()?;
+
+            Ok(missing_descendants)
+        }
     }
 }
 
