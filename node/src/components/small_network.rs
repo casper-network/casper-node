@@ -111,9 +111,6 @@ use crate::{
 const MAX_METRICS_DROP_ATTEMPTS: usize = 25;
 const DROP_RETRY_DELAY: Duration = Duration::from_millis(100);
 
-/// Duration peers are kept on the block list, before being redeemed.
-const BLOCKLIST_RETAIN_DURATION: Duration = Duration::from_secs(60 * 10);
-
 /// How often to keep attempting to reconnect to a node before giving up. Note that reconnection
 /// delays increase exponentially!
 const RECONNECTION_ATTEMPTS: u8 = 8;
@@ -246,7 +243,7 @@ where
             OutgoingConfig {
                 retry_attempts: RECONNECTION_ATTEMPTS,
                 base_timeout: BASE_RECONNECTION_TIMEOUT,
-                unblock_after: BLOCKLIST_RETAIN_DURATION,
+                unblock_after: cfg.blocklist_retain_duration.into(),
                 sweep_timeout: cfg.max_addr_pending_time.into(),
             },
             net_metrics.create_outgoing_metrics(),
