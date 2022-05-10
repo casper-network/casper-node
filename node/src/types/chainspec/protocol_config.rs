@@ -65,22 +65,18 @@ impl ProtocolConfig {
 
     /// Checks whether the values set in the config make sense and returns `false` if they don't.
     pub(super) fn is_valid(&self) -> bool {
-        // If this is not an emergency restart config, assert the `last_emergency_restart` is `None`
-        // or less than `activation_point`.
-        if self.global_state_update.is_none() {
-            if let Some(last_emergency_restart) = self.last_emergency_restart {
-                let activation_point = self.activation_point.era_id();
-                if last_emergency_restart > activation_point {
-                    error!(
-                        %activation_point,
-                        %last_emergency_restart,
-                        "[protocol.last_emergency_restart] cannot be greater than \
-                        [protocol.activation_point] in the chainspec."
-                    );
-                    return false;
-                };
-            }
-            return true;
+        // Assert the `last_emergency_restart` is `None` or no more than `activation_point`.
+        if let Some(last_emergency_restart) = self.last_emergency_restart {
+            let activation_point = self.activation_point.era_id();
+            if last_emergency_restart > activation_point {
+                error!(
+                    %activation_point,
+                    %last_emergency_restart,
+                    "[protocol.last_emergency_restart] cannot be greater than \
+                    [protocol.activation_point] in the chainspec."
+                );
+                return false;
+            };
         }
 
         true
