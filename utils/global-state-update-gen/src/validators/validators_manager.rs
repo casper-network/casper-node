@@ -125,18 +125,18 @@ impl ValidatorsUpdateManager {
 
         let bids = self.builder.get_bids();
 
-        for (pkey, seigniorage_recipient) in new_snapshot.values().next().unwrap() {
+        for (pub_key, seigniorage_recipient) in new_snapshot.values().next().unwrap() {
             let stake = *seigniorage_recipient.stake();
-            self.create_or_update_bid(&bids, pkey, stake);
+            self.create_or_update_bid(&bids, pub_key, stake);
         }
 
-        for pkey in to_unbid {
-            let account_hash = pkey.to_account_hash();
-            if let Some(bid) = bids.get(pkey) {
+        for pub_key in to_unbid {
+            let account_hash = pub_key.to_account_hash();
+            if let Some(bid) = bids.get(pub_key) {
                 // Replace the bid with an empty bid.
                 self.state_tracker.write_entry(
                     Key::Bid(account_hash),
-                    Bid::empty(pkey.clone(), *bid.bonding_purse()).into(),
+                    Bid::empty(pub_key.clone(), *bid.bonding_purse()).into(),
                 );
                 // Zero the balance of the bonding purse.
                 self.state_tracker.write_entry(
@@ -153,13 +153,13 @@ impl ValidatorsUpdateManager {
     // bid.
     // Transfers as much as possible from the validator's purse to the bid purse, and if it's not
     // enough, creates additional tokens.
-    fn create_or_update_bid(&mut self, bids: &Bids, pkey: &PublicKey, stake: U512) {
-        let maybe_bid = bids.get(pkey);
+    fn create_or_update_bid(&mut self, bids: &Bids, pub_key: &PublicKey, stake: U512) {
+        let maybe_bid = bids.get(pub_key);
         let bid_amount = maybe_bid
             .map(|bid| *bid.staked_amount())
             .unwrap_or(U512::zero());
 
-        let account_hash = pkey.to_account_hash();
+        let account_hash = pub_key.to_account_hash();
         let maybe_account = self.builder.get_account(account_hash);
         let account_balance = maybe_account
             .as_ref()
@@ -205,7 +205,7 @@ impl ValidatorsUpdateManager {
 
                 self.state_tracker.write_entry(
                     Key::Bid(account_hash),
-                    Bid::unlocked(pkey.clone(), bonding_purse, stake, Default::default()).into(),
+                    Bid::unlocked(pub_key.clone(), bonding_purse, stake, Default::default()).into(),
                 );
             }
             Ordering::Less => {
@@ -225,7 +225,7 @@ impl ValidatorsUpdateManager {
                 // update the bid
                 self.state_tracker.write_entry(
                     Key::Bid(account_hash),
-                    Bid::unlocked(pkey.clone(), bonding_purse, stake, Default::default()).into(),
+                    Bid::unlocked(pub_key.clone(), bonding_purse, stake, Default::default()).into(),
                 );
             }
             // nothing to do if the target bid equals the current bid
@@ -261,10 +261,10 @@ impl ValidatorsUpdateManager {
         self.builder
             .get_bids()
             .into_iter()
-            .filter(|(pkey, bid)| {
-                bid.staked_amount() >= min_bid && !seigniorage_recipients.contains_key(pkey)
+            .filter(|(pub_key, bid)| {
+                bid.staked_amount() >= min_bid && !seigniorage_recipients.contains_key(pub_key)
             })
-            .map(|(pkey, _bid)| pkey)
+            .map(|(pub_key, _bid)| pub_key)
             .collect()
     }
 }
