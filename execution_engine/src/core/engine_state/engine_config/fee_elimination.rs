@@ -16,8 +16,9 @@ pub enum FeeElimination {
         /// Any dust amount that was a result of multiplying by refund_ratio goes back to user.
         refund_ratio: Ratio<u64>,
     },
-    /// Works like a [`Refund`] variant, but instead of paying a block proposer the money is
-    /// accumulated in a purse owned by a mint. This setting implies 100% refund ratio.
+    /// Works like a [`FeeElimination::Refund`] variant, but instead of paying a block proposer the
+    /// money is accumulated in a purse owned by a mint. This setting implies 100% refund
+    /// ratio.
     ///
     /// This setting makes sense for private chains.
     Accumulate,
