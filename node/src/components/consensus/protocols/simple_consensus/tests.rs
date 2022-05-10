@@ -250,13 +250,7 @@ fn expect_no_gossip_block_finalized(outcomes: ProtocolOutcomes<ClContext>) {
 /// Checks that the expected timer was requested by the protocol.
 fn expect_timer(outcomes: &ProtocolOutcomes<ClContext>, timestamp: Timestamp, timer_id: TimerId) {
     assert!(
-        outcomes.iter().any(|outcome| {
-            if let ProtocolOutcome::ScheduleTimer(actual_time, actual_id) = outcome {
-                *actual_time == timestamp && *actual_id == timer_id
-            } else {
-                false
-            }
-        }),
+        outcomes.contains(&ProtocolOutcome::ScheduleTimer(timestamp, timer_id)),
         "missing timer {} for {:?} from {:?}",
         timer_id.0,
         timestamp,
@@ -266,9 +260,7 @@ fn expect_timer(outcomes: &ProtocolOutcomes<ClContext>, timestamp: Timestamp, ti
 
 /// Returns whether any of the outcomes is a standstill alert.
 fn has_standstill_alert(outcomes: &ProtocolOutcomes<ClContext>) -> bool {
-    outcomes
-        .iter()
-        .any(|outcome| matches!(outcome, ProtocolOutcome::StandstillAlert))
+    outcomes.contains(&ProtocolOutcome::StandstillAlert)
 }
 
 /// Creates a new payload with the given random bit and no deploys or transfers.
@@ -547,9 +539,7 @@ fn simple_consensus_faults() {
     expect_no_gossip_block_finalized(sc.handle_message(&mut rng, sender, msg, timestamp));
     let msg = create_message(&validators, 3, vote(false), &carol_kp);
     let outcomes = sc.handle_message(&mut rng, sender, msg, timestamp);
-    assert!(outcomes
-        .iter()
-        .any(|outcome| { matches!(outcome, ProtocolOutcome::FttExceeded) }));
+    assert!(outcomes.contains(&ProtocolOutcome::FttExceeded));
 }
 
 /// Tests that the standstill alert is raised if and only if no new messages were received.

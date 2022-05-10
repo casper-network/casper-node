@@ -829,14 +829,6 @@ impl EraSupervisor {
         consensus_result: ProtocolOutcome<ClContext>,
     ) -> Effects<Event> {
         match consensus_result {
-            ProtocolOutcome::InvalidIncomingMessage(_, sender, error) => {
-                warn!(
-                    %sender,
-                    %error,
-                    "invalid incoming message to consensus instance; disconnecting from the sender"
-                );
-                self.disconnect(effect_builder, sender)
-            }
             ProtocolOutcome::Disconnect(sender) => {
                 warn!(
                     %sender,
