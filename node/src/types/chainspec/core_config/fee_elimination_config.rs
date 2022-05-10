@@ -1,13 +1,9 @@
 use datasize::DataSize;
 use num_rational::Ratio;
-#[cfg(test)]
-use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::core::engine_state::engine_config;
 use casper_types::bytesrepr::{self, Error, FromBytes, ToBytes};
-#[cfg(test)]
-use casper_types::testing::TestRng;
 
 use crate::utils::serde_helpers;
 
@@ -30,16 +26,6 @@ impl DataSize for FeeEliminationConfig {
 
     fn estimate_heap_size(&self) -> usize {
         0
-    }
-}
-
-#[cfg(test)]
-impl FeeEliminationConfig {
-    /// Generates a random instance using a `TestRng`.
-    pub fn random(rng: &mut TestRng) -> Self {
-        FeeEliminationConfig::Refund {
-            refund_ratio: Ratio::new(rng.gen_range(0..=100), 100),
-        }
     }
 }
 
@@ -77,7 +63,9 @@ impl ToBytes for FeeEliminationConfig {
                 buffer.push(FEE_ELIMINATION_REFUND_TAG);
                 buffer.extend(refund_ratio.to_bytes()?);
             }
-            FeeEliminationConfig::Accumulate => todo!(),
+            FeeEliminationConfig::Accumulate => {
+                buffer.push(FEE_ELIMINATION_ACCUMULATE_TAG);
+            }
         }
 
         Ok(buffer)
@@ -98,9 +86,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn bytesrepr_roundtrip() {
-        let mut rng = crate::new_rng();
-        let config = FeeEliminationConfig::random(&mut rng);
-        bytesrepr::test_serialization_roundtrip(&config);
+    fn bytesrepr_roundtrip_for_refund() {
+        let refund_config = FeeEliminationConfig::Refund {
+            refund_ratio: Ratio::new(49, 313),
+        };
+        bytesrepr::test_serialization_roundtrip(&refund_config);
+    }
+
+    #[test]
+    fn bytesrepr_roundtrip_for_accumulate() {
+        let refund_config = FeeEliminationConfig::Accumulate;
+        bytesrepr::test_serialization_roundtrip(&refund_config);
     }
 }
