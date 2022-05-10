@@ -8,8 +8,10 @@ use datasize::DataSize;
 use itertools::{Either, Itertools};
 use serde::{Deserialize, Serialize};
 
+use casper_types::{TimeDiff, Timestamp};
+
 use super::{BlockHeight, CachedState, DeployInfo, FinalizationQueue};
-use crate::types::{Approval, Block, DeployHash, TimeDiff, Timestamp};
+use crate::types::{Approval, Block, DeployHash};
 
 pub(crate) struct PruneResult {
     pub(crate) total_pruned: usize,
@@ -159,7 +161,7 @@ impl Display for BlockProposerDeploySets {
 /// Returns keys of the drained elements.
 ///
 /// To be replaced with `HashMap::drain_filter` when stabilized.
-/// [https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.drain_filter]
+/// <https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.drain_filter>
 fn hashmap_drain_filter_in_place<K, V, F>(hash_map: &mut HashMap<K, V>, pred: F) -> Vec<K>
 where
     K: Eq + Hash + Copy,
@@ -185,7 +187,9 @@ pub(super) fn prune_pending_deploys(
 
 #[cfg(test)]
 mod tests {
-    use crate::{testing, testing::TestRng};
+    use casper_types::testing::TestRng;
+
+    use crate::testing;
 
     use super::*;
 

@@ -456,7 +456,7 @@ impl TryFrom<i32> for UpdateKeyFailure {
 }
 
 #[doc(hidden)]
-#[cfg(any(feature = "gens", test))]
+#[cfg(any(feature = "testing", test))]
 pub mod gens {
     use proptest::prelude::*;
 

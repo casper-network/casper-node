@@ -13,6 +13,8 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tracing::{trace, warn};
 
+use casper_types::Timestamp;
+
 use super::{
     active_validator::Effect,
     finality_detector::{FinalityDetector, FttExceeded},
@@ -37,7 +39,6 @@ use crate::{
         traits::{ConsensusValueT, Context, ValidatorSecret},
         BlockContext,
     },
-    types::Timestamp,
     NodeRng,
 };
 
@@ -1064,6 +1065,8 @@ mod test_harness {
 
     use itertools::Itertools;
 
+    use casper_types::Timestamp;
+
     use super::{
         crank_until, crank_until_finalized, crank_until_time, test_params, ConsensusValue,
         HighwayTestHarness, HighwayTestHarnessBuilder, InstantDeliveryNoDropping, TestRunError,
@@ -1075,7 +1078,6 @@ mod test_harness {
             tests::consensus_des_testing::{Fault as DesFault, ValidatorId},
         },
         logging,
-        types::Timestamp,
     };
     use logging::{LoggingConfig, LoggingFormat};
 

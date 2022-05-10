@@ -12,12 +12,12 @@ use tracing::{error, info};
 use casper_execution_engine::core::engine_state::GetBidsRequest;
 use casper_types::{
     system::auction::{Bids, DelegationRate},
-    EraId, Motes, ProtocolVersion, PublicKey, SecretKey, U512,
+    testing::TestRng,
+    EraId, Motes, ProtocolVersion, PublicKey, SecretKey, Timestamp, U512,
 };
 
 use crate::{
     components::{chainspec_loader::NextUpgrade, gossiper, small_network, storage},
-    crypto::AsymmetricKeyExt,
     effect::{
         requests::{
             BlockPayloadRequest, BlockProposerRequest, ContractRuntimeRequest, NetworkRequest,
@@ -30,12 +30,10 @@ use crate::{
         participating::{self, ParticipatingEvent},
         Reactor, ReactorExit, Runner,
     },
-    testing::{
-        self, filter_reactor::FilterReactor, network::Network, ConditionCheckReactor, TestRng,
-    },
+    testing::{self, filter_reactor::FilterReactor, network::Network, ConditionCheckReactor},
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
-        ActivationPoint, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, ExitCode, Timestamp,
+        ActivationPoint, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, ExitCode,
     },
     utils::{External, Loadable, Source, WithDir, RESOURCES_PATH},
     NodeRng,

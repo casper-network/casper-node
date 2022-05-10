@@ -28,6 +28,10 @@ All notable changes to this project will be documented in this file.  The format
 * Add run-mode field to the `/status` endpoint and the `info_get_status` JSON-RPC.
 * Add new REST `/chainspec` and JSON-RPC `info_get_chainspec` endpoints that return the raw bytes of the `chainspec.toml`, `accounts.toml` and `global_state.toml` files as read at node startup.
 * Add a new parameter to `info_get_deploys` JSON-RPC, `finalized_approvals` - controlling whether the approvals returned with the deploy should be the ones originally received by the node, or overridden by the approvals that were finalized along with the deploy.
+* Add metrics `accumulated_outgoing_limiter_delay` and `accumulated_incoming_limiter_delay` to report how much time was spent throttling other peers.
+* Add a new identifier `PurseIdentifier` which is a new parameter to identify URefs for balance related queries.
+* Extend `GlobalStateIdentifier` to include `BlockHeight`.
+* Add a new RPC endpoint `query_balance` which queries for balances underneath a URef identified by a given `PurseIdentifier`.
 
 ### Changed
 * Detection of a crash no longer triggers DB integrity checks to run on node start; the checks can be triggered manually instead.
@@ -54,6 +58,12 @@ All notable changes to this project will be documented in this file.  The format
 * Integrity check has been removed.
 * Remove `verify_accounts` option from `config.toml`, meaning deploys received from clients always undergo account balance checks to assess suitability for execution or not.
 * Remove a temporary chainspec setting `max_stored_value_size` to limit the size of individual values stored in global state.
+* Remove asymmetric key functionality (move to `casper-types` crate behind feature "std").
+* Remove time types (move to `casper-types` with some functionality behind feature "std").
+
+### Fixed
+* Limiters for incoming requests and outgoing bandwidth will no longer inadvertently delay some validator traffic when maxed out due to joining nodes.
+* Dropped connections no longer cause the outstanding messages metric to become incorrect.
 
 ### Security
 * OpenSSL has been bumped to version 1.1.1.n, if compiling with vendored OpenSSL to address [CVE-2022-0778](https://www.openssl.org/news/secadv/20220315.txt).

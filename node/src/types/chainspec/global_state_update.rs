@@ -5,16 +5,14 @@ use datasize::DataSize;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
+#[cfg(test)]
+use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    Key,
+    file_utils, Key,
 };
 
 use super::error::GlobalStateUpdateLoadError;
-
-#[cfg(test)]
-use crate::testing::TestRng;
-use crate::utils;
 
 const GLOBAL_STATE_UPDATE_FILENAME: &str = "global_state.toml";
 
@@ -40,7 +38,7 @@ impl GlobalStateUpdateConfig {
         if !update_path.is_file() {
             return Ok(None);
         }
-        let bytes = utils::read_file(update_path)?;
+        let bytes = file_utils::read_file(update_path)?;
         let config: GlobalStateUpdateConfig = toml::from_slice(&bytes)?;
         Ok(Some((config, Bytes::from(bytes))))
     }

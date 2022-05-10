@@ -8,15 +8,12 @@ use itertools::Itertools;
 use once_cell::sync::Lazy;
 use tracing::{debug, warn};
 
-use casper_types::{PublicKey, U512};
+use casper_types::{PublicKey, Timestamp, U512};
 
-use crate::{
-    components::consensus::{
-        cl_context::ClContext,
-        consensus_protocol::{ConsensusProtocol, ProposedBlock},
-        protocols::highway::HighwayProtocol,
-    },
-    types::Timestamp,
+use crate::components::consensus::{
+    cl_context::ClContext,
+    consensus_protocol::{ConsensusProtocol, ProposedBlock},
+    protocols::highway::HighwayProtocol,
 };
 
 const CASPER_ENABLE_DETAILED_CONSENSUS_METRICS_ENV_VAR: &str =

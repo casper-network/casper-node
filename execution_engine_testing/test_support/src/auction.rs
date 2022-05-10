@@ -1,6 +1,5 @@
 use std::{collections::HashSet, convert::TryFrom, io::Write, time::Instant};
 
-use casper_hashing::Digest;
 use rand::Rng;
 use tempfile::TempDir;
 
@@ -18,6 +17,7 @@ use casper_execution_engine::{
         trie::{Pointer, Trie, TrieOrChunk, TrieOrChunkId},
     },
 };
+use casper_hashing::Digest;
 use casper_types::{
     account::AccountHash, bytesrepr, runtime_args, system::auction, Key, Motes, ProtocolVersion,
     PublicKey, RuntimeArgs, SecretKey, StoredValue, U512,

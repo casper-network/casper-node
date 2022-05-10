@@ -12,7 +12,7 @@ It takes a single optional command line argument to specify the directory in whi
 
 # `simple-transfer`
 
-This runs a single transfer via the `LmdbWasmTestBuilder` and is designed to be used along with `perf` to analyse the performance data.
+This runs a single transfer via the `DbWasmTestBuilder` and is designed to be used along with `perf` to analyse the performance data.
 
 First, run `state-initializer` to set up a persistent global state, then the `simple-transfer` executable will make use of that state, and can be profiled.
 

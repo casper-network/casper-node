@@ -1,7 +1,9 @@
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use crate::types::{BlockHash, TimeDiff};
+use crate::types::BlockHash;
+
+use casper_types::TimeDiff;
 
 /// Maximum number of fetch-deploy tasks per peer to run in parallel during chain synchronization,
 /// by default.

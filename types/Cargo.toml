@@ -16,40 +16,58 @@ base64 = { version = "0.13.0", default-features = false }
 bitflags = "1"
 blake2 = { version = "0.9.0", default-features = false }
 datasize = { version = "0.2.4", optional = true }
+derp = { version = "0.0.14", optional = true }
 ed25519-dalek = { version = "1.0.0", default-features = false, features = ["rand", "u64_backend"] }
+getrandom = { version = "0.2.0", features = ["rdrand"], optional = true }
 hex = { version = "0.4.2", default-features = false, features = ["alloc"] }
 hex_fmt = "0.3.0"
-k256 = { version = "0.7.2", default-features = false, features = ["ecdsa", "zeroize"] }
+humantime = { version = "2", optional = true }
+k256 = { version = "0.7.2", default-features = false, features = ["ecdsa", "sha256", "zeroize"] }
 num = { version = "0.4.0", default-features = false, features = ["alloc"] }
 num-derive = { version = "0.3.0", default-features = false }
 num-integer = { version = "0.1.42", default-features = false }
 num-rational = { version = "0.4.0", default-features = false }
 num-traits = { version = "0.2.10", default-features = false }
 once_cell = { version = "1.5.2", optional = true }
+pem = { version = "0.8.1", optional = true }
 proptest = { version = "1.0.0", optional = true }
 rand = { version = "0.8.3", default-features = false, features = ["small_rng"] }
+rand_pcg = { version = "0.3.0", optional = true }
 schemars = { version = "=0.8.5", features = ["preserve_order"], optional = true }
 serde = { version = "1", default-features = false, features = ["alloc", "derive"] }
 serde_bytes = { version = "0.11.5", default-features = false, features = ["alloc"] }
 serde_json = { version = "1.0.59", default-features = false, features = ["alloc"] }
+thiserror = {version = "1", optional = true }
 uint = { version = "0.9.0", default-features = false }
+untrusted = { version = "0.7.1", optional = true }
 version-sync = { version = "0.9", optional = true }
 
 [dev-dependencies]
 bincode = "1.3.1"
 criterion = "0.3.5"
-getrandom = { version = "0.2.0", features = ["rdrand"] }
+derp = "0.0.14"
+getrandom = "0.2.0"
+humantime = "2"
+once_cell = "1.5.2"
+openssl = "0.10.32"
+pem = "0.8.1"
 proptest = "1.0.0"
 proptest-attr-macro = "1.0.0"
+rand = "0.8.3"
+rand_pcg = "0.3.0"
 serde_json = "1.0.55"
 serde_test = "1.0.117"
 strum = { version = "0.21", features = ["derive"] }
+tempfile = "3"
+thiserror = "1"
+untrusted = "0.7.1"
 
 [features]
 json-schema = ["once_cell", "schemars"]
-gens = ["proptest"]
-# DEPRECATED - enabling `std` has no effect.
-std = []
+std = ["derp", "getrandom", "humantime", "once_cell", "pem", "thiserror", "untrusted"]
+testing = ["proptest", "rand_pcg"]
+# DEPRECATED - use "testing" instead of "gens".
+gens = ["testing"]
 
 [[bench]]
 name = "bytesrepr_bench"

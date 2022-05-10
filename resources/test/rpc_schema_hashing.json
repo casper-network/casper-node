@@ -1388,6 +1388,21 @@
               },
               {
                 "additionalProperties": false,
+                "description": "Query using a block height.",
+                "properties": {
+                  "BlockHeight": {
+                    "format": "uint64",
+                    "minimum": 0.0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "BlockHeight"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
                 "description": "Query using the state root hash.",
                 "properties": {
                   "StateRootHash": {
@@ -2037,6 +2052,50 @@
           "PublicKey": {
             "description": "Hex-encoded cryptographic public key, including the algorithm tag prefix.",
             "type": "string"
+          },
+          "PurseIdentifier": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "description": "The main purse of the account identified by this public key.",
+                "properties": {
+                  "main_purse_under_public_key": {
+                    "$ref": "#/components/schemas/PublicKey"
+                  }
+                },
+                "required": [
+                  "main_purse_under_public_key"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "The main purse of the account identified by this account hash.",
+                "properties": {
+                  "main_purse_under_account_hash": {
+                    "$ref": "#/components/schemas/AccountHash"
+                  }
+                },
+                "required": [
+                  "main_purse_under_account_hash"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "The purse identified by this URef.",
+                "properties": {
+                  "purse_uref": {
+                    "$ref": "#/components/schemas/URef"
+                  }
+                },
+                "required": [
+                  "purse_uref"
+                ],
+                "type": "object"
+              }
+            ],
+            "description": "Identifier of a purse."
           },
           "Reward": {
             "additionalProperties": false,
@@ -3443,6 +3502,82 @@
             }
           },
           "summary": "a query to global state using either a Block hash or state root hash"
+        },
+        {
+          "examples": [
+            {
+              "name": "query_balance_example",
+              "params": [
+                {
+                  "name": "purse_identifier",
+                  "value": {
+                    "main_purse_under_account_hash": "account-hash-0909090909090909090909090909090909090909090909090909090909090909"
+                  }
+                },
+                {
+                  "name": "state_identifier",
+                  "value": {
+                    "BlockHash": "13c2d7a68ecdd4b74bf4393c88915c836c863fc4bf11d7f2bd930a1bbccacdcb"
+                  }
+                }
+              ],
+              "result": {
+                "name": "query_balance_example_result",
+                "value": {
+                  "api_version": "1.4.5",
+                  "balance": "123456"
+                }
+              }
+            }
+          ],
+          "name": "query_balance",
+          "params": [
+            {
+              "name": "purse_identifier",
+              "required": true,
+              "schema": {
+                "$ref": "#/components/schemas/PurseIdentifier",
+                "description": "The identifier to obtain the purse corresponding to balance query."
+              }
+            },
+            {
+              "name": "state_identifier",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/GlobalStateIdentifier"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The state identifier used for the query, if none is passed the tip of the chain will be used."
+              }
+            }
+          ],
+          "result": {
+            "name": "query_balance_result",
+            "schema": {
+              "description": "Result for \"query_balance\" RPC response.",
+              "properties": {
+                "api_version": {
+                  "description": "The RPC API version.",
+                  "type": "string"
+                },
+                "balance": {
+                  "$ref": "#/components/schemas/U512",
+                  "description": "The balance represented in motes."
+                }
+              },
+              "required": [
+                "api_version",
+                "balance"
+              ],
+              "type": "object"
+            }
+          },
+          "summary": "query for a balance using a purse identifier and a state identifier"
         },
         {
           "examples": [

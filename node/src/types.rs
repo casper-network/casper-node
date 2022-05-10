@@ -15,7 +15,6 @@ mod node_id;
 pub mod peers_map;
 mod shared_object;
 mod status_feed;
-mod timestamp;
 
 use rand::{CryptoRng, RngCore};
 #[cfg(not(test))]
@@ -43,7 +42,6 @@ pub use node_config::NodeConfig;
 pub(crate) use node_id::NodeId;
 pub use peers_map::PeersMap;
 pub use status_feed::{ChainspecInfo, GetStatusResult, NodeState, StatusFeed};
-pub use timestamp::{TimeDiff, Timestamp};
 
 /// An object-safe RNG trait that requires a cryptographically strong random number generator.
 pub trait CryptoRngCore: CryptoRng + RngCore {}
@@ -56,4 +54,4 @@ pub type NodeRng = ChaCha20Rng;
 
 /// The RNG used throughout the node for testing.
 #[cfg(test)]
-pub type NodeRng = crate::testing::TestRng;
+pub type NodeRng = casper_types::testing::TestRng;

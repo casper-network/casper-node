@@ -24,15 +24,16 @@ use thiserror::Error;
 
 use casper_hashing::Digest;
 #[cfg(test)]
-use casper_types::system::auction::BLOCK_REWARD;
+use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    EraId, ProtocolVersion, PublicKey, SecretKey, Signature, U512,
+    crypto, EraId, ProtocolVersion, PublicKey, SecretKey, Signature, Timestamp, U512,
 };
+#[cfg(test)]
+use casper_types::{crypto::generate_ed25519_keypair, system::auction::BLOCK_REWARD};
 
 use crate::{
     components::consensus,
-    crypto::{self, AsymmetricKeyExt},
     rpcs::docs::DocExample,
     types::{
         error::{BlockCreationError, BlockValidationError},
@@ -41,10 +42,8 @@ use crate::{
     },
     utils::DisplayIter,
 };
-#[cfg(test)]
-use crate::{crypto::generate_ed25519_keypair, testing::TestRng};
 
-use super::{Item, Tag, Timestamp};
+use super::{Item, Tag};
 use crate::types::error::{
     BlockHeaderWithMetadataValidationError, BlockWithMetadataValidationError,
 };
@@ -1368,7 +1367,7 @@ impl BlockSignatures {
     }
 
     /// Verify the signatures contained within.
-    pub(crate) fn verify(&self) -> crypto::Result<()> {
+    pub(crate) fn verify(&self) -> Result<(), crypto::Error> {
         for (public_key, signature) in self.proofs.iter() {
             let signature = FinalitySignature {
                 block_hash: self.block_hash,
@@ -2154,7 +2153,7 @@ impl FinalitySignature {
     }
 
     /// Verifies whether the signature is correct.
-    pub fn verify(&self) -> crypto::Result<()> {
+    pub fn verify(&self) -> Result<(), crypto::Error> {
         // NOTE: This needs to be in sync with the `new` constructor.
         let mut bytes = self.block_hash.inner().into_vec();
         bytes.extend_from_slice(&self.era_id.to_le_bytes());
@@ -2182,9 +2181,7 @@ impl Display for FinalitySignature {
 mod tests {
     use std::rc::Rc;
 
-    use casper_types::bytesrepr;
-
-    use crate::testing::TestRng;
+    use casper_types::{bytesrepr, testing::TestRng};
 
     use super::*;
 

@@ -49,12 +49,19 @@ function _main()
 function _step_01()
 {
     local STAGE_ID=${1}
+    local PATH_TO_STAGE
+    local PATH_TO_PROTO1
+
+    PATH_TO_STAGE=$(get_path_to_stage "$STAGE_ID")
+    pushd "$PATH_TO_STAGE"
+    PATH_TO_PROTO1=$(ls -d */ | sort | head -n 1 | tr -d '/')
+    popd
 
     log_step_upgrades 1 "starting network from stage ($STAGE_ID)"
 
     source "$NCTL/sh/assets/setup_from_stage.sh" \
         stage="$STAGE_ID" \
-        chainspec_path="$NCTL/sh/scenarios/chainspecs/upgrade_scenario_1.chainspec.toml.in"
+        chainspec_path="$PATH_TO_STAGE/$PATH_TO_PROTO1/upgrade_chainspecs/upgrade_scenario_1.chainspec.toml.in"
     source "$NCTL/sh/node/start.sh" node=all
 }
 
@@ -97,7 +104,7 @@ function _step_05()
     log_step_upgrades 5 "upgrading network from stage ($STAGE_ID)"
 
     log "... setting upgrade assets"
-    source "$NCTL/sh/assets/upgrade_from_stage.sh" stage="$STAGE_ID" verbose=false
+    source "$NCTL/sh/assets/upgrade_from_stage.sh" stage="$STAGE_ID" verbose=false chainspec_path="$NCTL/sh/scenarios/chainspecs/upgrade_scenario_1.chainspec.toml.in"
 
     log "... awaiting 2 eras + 1 block"
     await_n_eras 2 'true' '2.0'

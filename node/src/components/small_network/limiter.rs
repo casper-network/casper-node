@@ -3,15 +3,17 @@
 //! Resource limiters restrict the usable amount of a resource through slowing down the request rate
 //! by making each user request an allowance first.
 
-use std::{collections::HashSet, sync::Arc, time::Duration};
+use std::{
+    collections::HashSet,
+    sync::{Arc, RwLock},
+    time::{Duration, Instant},
+};
 
 use async_trait::async_trait;
 use casper_types::PublicKey;
-use tokio::{
-    sync::{mpsc, oneshot},
-    time::Instant,
-};
-use tracing::{debug, info, warn};
+use prometheus::Counter;
+use tokio::sync::Mutex;
+use tracing::{debug, trace};
 
 use crate::types::NodeId;
 
@@ -78,13 +80,63 @@ impl LimiterHandle for UnlimitedHandle {
     }
 }
 
-/// A limiter dividing resources into multiple classes based on their validator status.
+/// A limiter dividing resources into two classes based on their validator status.
 ///
 /// Imposes a limit on non-validator resources while not limiting active validator resources at all.
 #[derive(Debug)]
 pub(super) struct ClassBasedLimiter {
-    /// Sender for commands to the limiter.
-    sender: mpsc::UnboundedSender<ClassBasedCommand>,
+    /// Shared data across all handles.
+    data: Arc<ClassBasedLimiterData>,
+}
+
+/// The limiter's state.
+#[derive(Debug)]
+struct ClassBasedLimiterData {
+    /// Number of resource units to allow for non-validators per second.
+    resources_per_second: u32,
+    /// Set of active and upcoming validators.
+    validator_sets: RwLock<ValidatorSets>,
+    /// Information about available resources.
+    resources: Mutex<ResourceData>,
+    /// Total time spent waiting.
+    wait_time_sec: Counter,
+}
+
+/// Resource data.
+#[derive(Debug)]
+struct ResourceData {
+    /// How many resource units are buffered.
+    ///
+    /// May go negative in the case of a deficit.
+    available: i64,
+    /// Last time resource data was refilled.
+    last_refill: Instant,
+}
+
+impl ClassBasedLimiterData {
+    /// Creates a new set of class based limiter data.
+    ///
+    /// Initial resources will be initialized to 0, with the last refill set to the current time.
+    fn new(resources_per_second: u32, wait_time_sec: Counter) -> Self {
+        ClassBasedLimiterData {
+            resources_per_second,
+            validator_sets: Default::default(),
+            resources: Mutex::new(ResourceData {
+                available: 0,
+                last_refill: Instant::now(),
+            }),
+            wait_time_sec,
+        }
+    }
+}
+
+/// Sets of validators used to classify traffic.
+#[derive(Debug, Default)]
+struct ValidatorSets {
+    /// The new set of validators active in the current era.
+    active_validators: HashSet<PublicKey>,
+    /// The new set of validators in future eras.
+    upcoming_validators: HashSet<PublicKey>,
 }
 
 /// Peer class for the `ClassBasedLimiter`.
@@ -97,35 +149,13 @@ enum PeerClass {
     Bulk,
 }
 
-/// Command sent to the `ClassBasedLimiter`.
-enum ClassBasedCommand {
-    /// Updates the set of active/upcoming validators.
-    UpdateValidators {
-        /// The new set of validators active in the current era.
-        active_validators: HashSet<PublicKey>,
-        /// The new set of validators in future eras.
-        upcoming_validators: HashSet<PublicKey>,
-    },
-    /// Requests a certain amount of a resource.
-    RequestResource {
-        /// Amount of resource requested.
-        amount: u32,
-        /// Id of the requesting sender.
-        id: Arc<ConsumerId>,
-        /// Response channel.
-        responder: oneshot::Sender<()>,
-    },
-    /// Shuts down the worker task
-    Shutdown,
-}
-
 /// Handle for `ClassBasedLimiter`.
 #[derive(Debug)]
 struct ClassBasedHandle {
-    /// Sender for commands.
-    sender: mpsc::UnboundedSender<ClassBasedCommand>,
+    /// Data shared between handles and limiter.
+    data: Arc<ClassBasedLimiterData>,
     /// Consumer ID for the sender holding this handle.
-    consumer_id: Arc<ConsumerId>,
+    consumer_id: ConsumerId,
 }
 
 /// An identity for a consumer.
@@ -142,16 +172,13 @@ impl ClassBasedLimiter {
     /// Creates a new class based limiter.
     ///
     /// Starts the background worker task as well.
-    pub(super) fn new(resources_per_second: u32) -> Self {
-        let (sender, receiver) = mpsc::unbounded_channel();
-
-        tokio::spawn(worker(
-            receiver,
-            resources_per_second,
-            ((resources_per_second as f64) * STORED_BUFFER_SECS.as_secs_f64()) as u32,
-        ));
-
-        ClassBasedLimiter { sender }
+    pub(super) fn new(resources_per_second: u32, wait_time_sec: Counter) -> Self {
+        ClassBasedLimiter {
+            data: Arc::new(ClassBasedLimiterData::new(
+                resources_per_second,
+                wait_time_sec,
+            )),
+        }
     }
 }
 
@@ -162,11 +189,11 @@ impl Limiter for ClassBasedLimiter {
         validator_id: Option<PublicKey>,
     ) -> Box<dyn LimiterHandle> {
         Box::new(ClassBasedHandle {
-            sender: self.sender.clone(),
-            consumer_id: Arc::new(ConsumerId {
+            data: self.data.clone(),
+            consumer_id: ConsumerId {
                 peer_id,
                 validator_id,
-            }),
+            },
         })
     }
 
@@ -175,15 +202,19 @@ impl Limiter for ClassBasedLimiter {
         active_validators: HashSet<PublicKey>,
         upcoming_validators: HashSet<PublicKey>,
     ) {
-        if self
-            .sender
-            .send(ClassBasedCommand::UpdateValidators {
-                active_validators,
-                upcoming_validators,
-            })
-            .is_err()
-        {
-            debug!("could not update validator data set of limiter, channel closed");
+        match self.data.validator_sets.write() {
+            Ok(mut validators) => {
+                debug!(
+                    ?active_validators,
+                    ?upcoming_validators,
+                    "updating resources classes"
+                );
+                validators.active_validators = active_validators;
+                validators.upcoming_validators = upcoming_validators;
+            }
+            Err(_) => {
+                debug!("could not update validator data set of limiter, lock poisoned");
+            }
         }
     }
 }
@@ -191,158 +222,109 @@ impl Limiter for ClassBasedLimiter {
 #[async_trait]
 impl LimiterHandle for ClassBasedHandle {
     async fn request_allowance(&self, amount: u32) {
-        let (responder, waiter) = oneshot::channel();
-
-        // Send a request to the limiter and await a response. If we do not receive one due to
-        // errors, simply ignore it and do not restrict resources.
-        //
-        // While ignoring it is suboptimal, it is likely that we can continue operation normally in
-        // many circumstances, thus the message is downgraded from what would be a `warn!` to
-        // `debug!`.
-        if self
-            .sender
-            .send(ClassBasedCommand::RequestResource {
-                amount,
-                id: self.consumer_id.clone(),
-                responder,
-            })
-            .is_err()
-        {
-            debug!("worker was shutdown, sending is unlimited");
-        } else if waiter.await.is_err() {
-            debug!("failed to await resource allowance, unlimited");
-        }
-    }
-}
-
-impl Drop for ClassBasedLimiter {
-    fn drop(&mut self) {
-        if self.sender.send(ClassBasedCommand::Shutdown).is_err() {
-            warn!("error sending shutdown command to class based limiter");
-        }
-    }
-}
-
-/// Background worker for the limiter.
-///
-/// Will permit any amount of current/future validator resource requests, while restricting
-/// non-validators to `resources_per_second`, although with unlimited one-time burst. The latter
-/// guarantees that any size request can be satisfied (e.g. a message larger than the burst limit).
-///
-/// Stores up to `max_stored_resources` during idle times to smooth this process.
-async fn worker(
-    mut receiver: mpsc::UnboundedReceiver<ClassBasedCommand>,
-    resources_per_second: u32,
-    max_stored_resource: u32,
-) {
-    let mut active_validators = HashSet::new();
-    let mut upcoming_validators = HashSet::new();
-
-    let mut resources_available: i64 = 0;
-    let mut last_refill: Instant = Instant::now();
-
-    // Whether or not we emitted a warning that the limiter is currently implicitly disabled.
-    let mut logged_uninitialized = false;
-
-    while let Some(msg) = receiver.recv().await {
-        match msg {
-            ClassBasedCommand::UpdateValidators {
-                active_validators: new_active_validators,
-                upcoming_validators: new_upcoming_validators,
-            } => {
-                active_validators = new_active_validators;
-                upcoming_validators = new_upcoming_validators;
-                debug!(
-                    ?active_validators,
-                    ?upcoming_validators,
-                    "resource classes updated"
-                );
-            }
-            ClassBasedCommand::RequestResource {
-                amount,
-                id,
-                responder,
-            } => {
-                if active_validators.is_empty() && upcoming_validators.is_empty() {
+        // As a first step, determine the peer class by checking if our id is in the validator set.
+        let peer_class = match self.data.validator_sets.read() {
+            Ok(validators) => {
+                if validators.active_validators.is_empty()
+                    && validators.upcoming_validators.is_empty()
+                {
                     // It is likely that we have not been initialized, thus no node is getting the
                     // reserved resources. In this case, do not limit at all.
-                    if !logged_uninitialized {
-                        logged_uninitialized = true;
-                        info!("empty set of validators, not limiting resources at all");
-                    }
-                    continue;
+                    trace!("empty set of validators, not limiting resources at all");
+
+                    return;
                 }
 
-                let peer_class = if let Some(ref validator_id) = id.validator_id {
-                    if active_validators.contains(validator_id) {
+                if let Some(ref validator_id) = self.consumer_id.validator_id {
+                    if validators.active_validators.contains(validator_id) {
                         PeerClass::ActiveValidator
-                    } else if upcoming_validators.contains(validator_id) {
+                    } else if validators.upcoming_validators.contains(validator_id) {
                         PeerClass::UpcomingValidator
                     } else {
                         PeerClass::Bulk
                     }
                 } else {
                     PeerClass::Bulk
-                };
-
-                match peer_class {
-                    PeerClass::ActiveValidator | PeerClass::UpcomingValidator => {
-                        // No limit imposed on validators.
-                    }
-                    PeerClass::Bulk => {
-                        while resources_available < 0 {
-                            // Determine time delta since last refill.
-                            let now = Instant::now();
-                            let elapsed = now - last_refill;
-                            last_refill = now;
-
-                            // Add appropriate amount of resources, capped at `max_stored_bytes`.
-                            resources_available +=
-                                ((elapsed.as_nanos() * resources_per_second as u128)
-                                    / 1_000_000_000) as i64;
-                            resources_available =
-                                resources_available.min(max_stored_resource as i64);
-
-                            // If we do not have enough resources available, sleep until we do.
-                            if resources_available < 0 {
-                                let estimated_time_remaining = Duration::from_millis(
-                                    (-resources_available) as u64 * 1000
-                                        / resources_per_second as u64,
-                                );
-
-                                tokio::time::sleep(estimated_time_remaining).await;
-                            }
-                        }
-
-                        // Subtract requested amount.
-                        resources_available -= amount as i64;
-                    }
-                }
-
-                if responder.send(()).is_err() {
-                    debug!("resource requester disappeared before we could answer.")
                 }
             }
-            ClassBasedCommand::Shutdown => {
-                // Shutdown the channel, processing only the remaining messages.
-                receiver.close();
+            Err(_) => {
+                debug!("limiter lock poisoned, not limiting");
+                return;
+            }
+        };
+
+        match peer_class {
+            PeerClass::ActiveValidator | PeerClass::UpcomingValidator => {
+                // No limit imposed on validators.
+                return;
+            }
+            PeerClass::Bulk => {
+                let max_stored_resource = ((self.data.resources_per_second as f64)
+                    * STORED_BUFFER_SECS.as_secs_f64())
+                    as u32;
+
+                // We are a low-priority sender. Obtain a lock on the resources and wait an
+                // appropriate amount of time to fill them up.
+                {
+                    let mut resources = self.data.resources.lock().await;
+
+                    while resources.available < 0 {
+                        // Determine time delta since last refill.
+                        let now = Instant::now();
+                        let elapsed = now - resources.last_refill;
+                        resources.last_refill = now;
+
+                        // Add appropriate amount of resources, capped at `max_stored_bytes`. We
+                        // are still maintaining the lock here to avoid issues with other
+                        // low-priority requestors.
+                        resources.available += ((elapsed.as_nanos()
+                            * self.data.resources_per_second as u128)
+                            / 1_000_000_000) as i64;
+                        resources.available = resources.available.min(max_stored_resource as i64);
+
+                        // If we do not have enough resources available, sleep until we do.
+                        if resources.available < 0 {
+                            let estimated_time_remaining = Duration::from_millis(
+                                (-resources.available) as u64 * 1000
+                                    / self.data.resources_per_second as u64,
+                            );
+
+                            // Note: This sleep call is the reason we are using a tokio mutex
+                            //       instead of a regular `std` one, as we are holding it across the
+                            //       await point here.
+                            tokio::time::sleep(estimated_time_remaining).await;
+                            self.data
+                                .wait_time_sec
+                                .inc_by(estimated_time_remaining.as_secs_f64());
+                        }
+                    }
+
+                    // Subtract the amount. If available resources go negative as a result, it
+                    // is the next senders problem.
+                    resources.available -= amount as i64;
+                }
             }
         }
     }
-    debug!("class based worker exiting");
 }
-
 #[cfg(test)]
 mod tests {
     use std::{collections::HashSet, time::Duration};
 
+    use prometheus::Counter;
     use tokio::time::Instant;
 
     use super::{ClassBasedLimiter, Limiter, NodeId, PublicKey, Unlimited};
-    use crate::{crypto::AsymmetricKeyExt, testing::init_logging};
+    use crate::testing::init_logging;
 
     /// Something that happens almost immediately, with some allowance for test jitter.
     const SHORT_TIME: Duration = Duration::from_millis(250);
+
+    /// Creates a new counter for testing.
+    fn new_wait_time_sec() -> Counter {
+        Counter::new("test_time_waiting", "wait time counter used in tests")
+            .expect("could not create new counter")
+    }
 
     #[tokio::test]
     async fn unlimited_limiter_is_unlimited() {
@@ -366,7 +348,7 @@ mod tests {
         let mut rng = crate::new_rng();
 
         let validator_id = PublicKey::random(&mut rng);
-        let limiter = ClassBasedLimiter::new(1_000);
+        let limiter = ClassBasedLimiter::new(1_000, new_wait_time_sec());
 
         let mut active_validators = HashSet::new();
         active_validators.insert(validator_id.clone());
@@ -388,7 +370,7 @@ mod tests {
         let mut rng = crate::new_rng();
 
         let validator_id = PublicKey::random(&mut rng);
-        let limiter = ClassBasedLimiter::new(1_000);
+        let limiter = ClassBasedLimiter::new(1_000, new_wait_time_sec());
 
         // We insert one unrelated active validator to avoid triggering the automatic disabling of
         // the limiter in case there are no active validators.
@@ -425,7 +407,8 @@ mod tests {
         let mut rng = crate::new_rng();
 
         let validator_id = PublicKey::random(&mut rng);
-        let limiter = ClassBasedLimiter::new(1_000);
+        let wait_metric = new_wait_time_sec();
+        let limiter = ClassBasedLimiter::new(1_000, wait_metric.clone());
 
         let start = Instant::now();
 
@@ -456,6 +439,20 @@ mod tests {
         let diff = end - start;
         assert!(diff >= Duration::from_secs(5));
         assert!(diff <= Duration::from_secs(6));
+
+        // Ensure metrics recorded the correct number of seconds.
+        assert!(
+            wait_metric.get() <= 6.0,
+            "wait metric is too large: {}",
+            wait_metric.get()
+        );
+
+        // Note: The limiting will not apply to all data, so it should be slightly below 5 seconds.
+        assert!(
+            wait_metric.get() >= 4.5,
+            "wait metric is too small: {}",
+            wait_metric.get()
+        );
     }
 
     #[tokio::test]
@@ -465,7 +462,8 @@ mod tests {
         let mut rng = crate::new_rng();
 
         let validator_id = PublicKey::random(&mut rng);
-        let limiter = ClassBasedLimiter::new(1_000);
+        let wait_metric = new_wait_time_sec();
+        let limiter = ClassBasedLimiter::new(1_000, wait_metric.clone());
 
         limiter.update_validators(HashSet::new(), HashSet::new());
 
@@ -478,7 +476,7 @@ mod tests {
         for handle in handles {
             let start = Instant::now();
 
-            // Send 9_0001 bytes, we expect this to take roughly 15 seconds.
+            // Send 9_0001 bytes, should now finish instantly.
             handle.request_allowance(1000).await;
             handle.request_allowance(1000).await;
             handle.request_allowance(1000).await;
@@ -490,5 +488,67 @@ mod tests {
             let diff = end - start;
             assert!(diff <= SHORT_TIME);
         }
+
+        // There should have been no time spent waiting.
+        assert!(
+            wait_metric.get() < SHORT_TIME.as_secs_f64(),
+            "wait_metric is too large: {}",
+            wait_metric.get()
+        );
+    }
+
+    /// Regression test for #2929.
+    #[tokio::test]
+    async fn throttling_of_non_validators_does_not_affect_validators() {
+        init_logging();
+
+        let mut rng = crate::new_rng();
+
+        let validator_id = PublicKey::random(&mut rng);
+        let limiter = ClassBasedLimiter::new(1_000, new_wait_time_sec());
+
+        let mut active_validators = HashSet::new();
+        active_validators.insert(validator_id.clone());
+        limiter.update_validators(active_validators, HashSet::new());
+
+        let non_validator_handle = limiter.create_handle(NodeId::random(&mut rng), None);
+        let validator_handle = limiter.create_handle(NodeId::random(&mut rng), Some(validator_id));
+
+        // We request a large resource at once using a non-validator handle. At the same time,
+        // validator requests should be still served, even while waiting for the long-delayed
+        // request still blocking.
+        let start = Instant::now();
+        let background_nv_request = tokio::spawn(async move {
+            non_validator_handle.request_allowance(5000).await;
+            non_validator_handle.request_allowance(5000).await;
+
+            Instant::now()
+        });
+
+        // Allow for a little bit of time to pass to ensure the background task is running.
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        validator_handle.request_allowance(10000).await;
+        validator_handle.request_allowance(10000).await;
+
+        let v_finished = Instant::now();
+
+        let nv_finished = background_nv_request
+            .await
+            .expect("failed to join background nv task");
+
+        let nv_completed = nv_finished.duration_since(start);
+        assert!(
+            nv_completed >= Duration::from_millis(4500),
+            "non-validator did not delay sufficiently: {:?}",
+            nv_completed
+        );
+
+        let v_completed = v_finished.duration_since(start);
+        assert!(
+            v_completed <= Duration::from_millis(1500),
+            "validator did not finish quickly enough: {:?}",
+            v_completed
+        );
     }
 }
