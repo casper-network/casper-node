@@ -17,40 +17,65 @@ use crate::{FrameSink, FrameSinkError, ImmediateFrame};
 //     _frame_phantom: PhantomData<F>,
 // }
 
+trait Foo {
+    type Fut: Future<Output = usize>;
+
+    fn mk_fut(self) -> Self::Fut;
+}
+
+struct Bar;
+
+impl Foo for Bar {
+    type Fut: Future<Output = usize> = impl Future<Output = usize>;
+
+    fn mk_fut(self) -> Self::Fut {
+        async move { 123 }
+    }
+}
+
 type SingleChunk = bytes::buf::Chain<ImmediateFrame<[u8; 1]>, Bytes>;
 
 /// TODO: Turn into non-anonymous future with zero allocations.
-fn x<B, S>(
-    mut frame: B,
-    chunk_size: usize,
-    mut sink: S,
-) -> impl Future<Output = Result<(), FrameSinkError>>
+async fn x<B, S>(frame: B, chunk_size: usize, mut sink: S) -> Result<(), FrameSinkError>
 where
     B: Buf,
     for<'a> &'a mut S: FrameSink<SingleChunk>,
 {
+    for chunk in chunk_frame(frame, chunk_size) {
+        sink.send_frame(chunk).await?;
+    }
+    Ok(())
+}
+
+fn chunk_frame<B: Buf>(mut frame: B, chunk_size: usize) -> impl Iterator<Item = SingleChunk> {
     let num_frames = (frame.remaining() + chunk_size - 1) / chunk_size;
 
-    let chunk_id_ceil: u8 = num_frames.try_into().unwrap(); // TODO: Report error.
-    async move {
-        for n in 0..num_frames {
-            let chunk_id = if n == 0 {
-                chunk_id_ceil
-            } else {
-                // Will never overflow, since `chunk_id_ceil` already fits into a `u8`.
-                n as u8
-            };
+    let chunk_id_ceil: u8 = num_frames.try_into().unwrap();
 
-            // Note: If the given frame is `Bytes`, `copy_to_bytes` should be a cheap copy.
-            let chunk_data = frame.copy_to_bytes(chunk_size);
-            let chunk = ImmediateFrame::from(chunk_id).chain(chunk_data);
+    (0..num_frames).into_iter().map(move |n| {
+        let chunk_id = if n == 0 {
+            chunk_id_ceil
+        } else {
+            // Will never overflow, since `chunk_id_ceil` already fits into a `u8`.
+            n as u8
+        };
 
-            // We have produced a chunk, now send it.
-            sink.send_frame(chunk).await?;
-        }
+        let chunk_data = frame.copy_to_bytes(chunk_size);
+        ImmediateFrame::from(chunk_id).chain(chunk_data)
+    })
+    // TODO: Report error.
+    // async move {
 
-        Result::<(), FrameSinkError>::Ok(())
-    }
+    //         // Note: If the given frame is `Bytes`, `copy_to_bytes` should be a cheap copy.
+    //         let chunk_data = frame.copy_to_bytes(chunk_size);
+    //         let chunk = ImmediateFrame::from(chunk_id).chain(chunk_data);
+
+    //         // We have produced a chunk, now send it.
+    //         sink.send_frame(chunk).await?;
+    //     }
+
+    //     Result::<(), FrameSinkError>::Ok(())
+    // }
 }
 
 // NEW
