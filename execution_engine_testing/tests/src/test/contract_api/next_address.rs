@@ -4,12 +4,12 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::{runtime_args, RuntimeArgs, ADDRESS_LENGTH};
+use casper_types::{runtime_args, RuntimeArgs, KEY_HASH_LENGTH};
 
 const NEXT_ADDRESS_WASM: &str = "next_address.wasm";
 const NEXT_ADDRESS_RESULT: &str = "next_address_result";
 
-fn get_next_address(builder: &InMemoryWasmTestBuilder) -> [u8; ADDRESS_LENGTH] {
+fn get_next_address(builder: &InMemoryWasmTestBuilder) -> [u8; KEY_HASH_LENGTH] {
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");

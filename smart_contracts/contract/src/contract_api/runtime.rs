@@ -10,7 +10,7 @@ use casper_types::{
     contracts::{ContractVersion, NamedKeys},
     system::CallStackElement,
     ApiError, BlockTime, CLTyped, CLValue, ContractHash, ContractPackageHash, Key, Phase,
-    RuntimeArgs, URef, ADDRESS_LENGTH, BLAKE2B_DIGEST_LENGTH, BLOCKTIME_SERIALIZED_LENGTH,
+    RuntimeArgs, URef, BLAKE2B_DIGEST_LENGTH, BLOCKTIME_SERIALIZED_LENGTH, KEY_HASH_LENGTH,
     PHASE_SERIALIZED_LENGTH,
 };
 
@@ -345,9 +345,10 @@ pub fn blake2b<T: AsRef<[u8]>>(input: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
 }
 
 /// Returns a 32-bytes long new address.
-pub fn next_address() -> [u8; ADDRESS_LENGTH] {
-    let mut ret = [0; ADDRESS_LENGTH];
-    let result = unsafe { ext_ffi::casper_next_address(ret.as_mut_ptr(), ADDRESS_LENGTH) };
+pub fn next_address() -> [u8; KEY_HASH_LENGTH] {
+    // TODO[RC]: Shall we introduce a dedicated named const?
+    let mut ret = [0; KEY_HASH_LENGTH];
+    let result = unsafe { ext_ffi::casper_next_address(ret.as_mut_ptr(), KEY_HASH_LENGTH) };
     api_error::result_from(result).unwrap_or_revert();
     ret
 }
