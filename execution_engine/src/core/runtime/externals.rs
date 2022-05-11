@@ -929,6 +929,7 @@ where
                 self.record_era_info(era_id, era_info)?;
                 Ok(Some(RuntimeValue::I32(0)))
             }
+
             FunctionIndex::NewDictionaryFuncIndex => {
                 // args(0) = pointer to output size (output param)
                 let (output_size_ptr,): (u32,) = Args::parse(args)?;
@@ -940,6 +941,7 @@ where
                 let ret = self.new_dictionary(output_size_ptr)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
+
             FunctionIndex::DictionaryGetFuncIndex => {
                 // args(0) = pointer to uref in Wasm memory
                 // args(1) = size of uref in Wasm memory
@@ -966,6 +968,7 @@ where
                 )?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
+
             FunctionIndex::DictionaryPutFuncIndex => {
                 // args(0) = pointer to uref in Wasm memory
                 // args(1) = size of uref in Wasm memory
@@ -988,6 +991,7 @@ where
                 )?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
+
             FunctionIndex::LoadCallStack => {
                 // args(0) (Output) Pointer to number of elements in the call stack.
                 // args(1) (Output) Pointer to size in bytes of the serialized call stack.
@@ -1000,6 +1004,7 @@ where
                 let ret = self.load_call_stack(call_stack_len_ptr, result_size_ptr)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
+
             FunctionIndex::LoadAuthorizationKeys => {
                 // args(0) (Output) Pointer to number of authorization keys.
                 // args(1) (Output) Pointer to size in bytes of the total bytes.
@@ -1010,6 +1015,32 @@ where
                 )?;
                 let ret = self.load_authorization_keys(len_ptr, result_size_ptr)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
+            }
+
+            FunctionIndex::NextAddress => {
+                let (out_ptr, out_size) = Args::parse(args)?;
+                self.charge_host_function_call(
+                    &host_function_costs.next_address,
+                    [out_ptr, out_size],
+                )?;
+
+                let next_address = self
+                    .context()
+                    .address_generator()
+                    .try_borrow_mut()
+                    .map_err(|error| Error::Interpreter(error.to_string()))? // TODO[RC]: Address generator already in use, We shouldn't propagate error details to ourside world
+                    .create_address();
+
+                if next_address.len() != out_size as usize {
+                    let err_value = u32::from(api_error::ApiError::BufferTooSmall) as i32;
+                    return Ok(Some(RuntimeValue::I32(err_value)));
+                }
+
+                self.try_get_memory()?
+                    .set(out_ptr, &next_address)
+                    .map_err(|error| Error::Interpreter(error.into()))?;
+
+                Ok(Some(RuntimeValue::I32(0)))
             }
         }
     }
