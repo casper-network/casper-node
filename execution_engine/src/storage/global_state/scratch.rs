@@ -14,7 +14,6 @@ use crate::{
     storage::{
         error,
         global_state::{CommitError, CommitProvider, StateProvider, StateReader},
-        transaction_source::{Transaction, TransactionSource},
         trie::{merkle_proof::TrieMerkleProof, TrieOrChunk, TrieOrChunkId},
         trie_store::operations::{read, ReadResult},
     },
@@ -131,7 +130,7 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
 impl CommitProvider for ScratchGlobalState {
     /// State hash returned is the one provided, as we do not write to lmdb with this kind of global
     /// state. Note that the state hash is NOT used, and simply passed back to the caller.
-    fn commit(
+    fn commit_effects(
         &self,
         correlation_id: CorrelationId,
         state_hash: Digest,
@@ -144,10 +143,8 @@ impl CommitProvider for ScratchGlobalState {
                 (None, transform) => {
                     // It might be the case that for `Add*` operations we don't have the previous
                     // value in cache yet.
-                    let txn = self.store.rocksdb_store.create_read_txn()?;
-                    let updated_value = match read::<Key, StoredValue, _, _, Self::Error>(
+                    let updated_value = match read::<_, StoredValue, _, Self::Error>(
                         correlation_id,
-                        &txn,
                         &self.store.rocksdb_store,
                         &state_hash,
                         &key,
@@ -174,7 +171,6 @@ impl CommitProvider for ScratchGlobalState {
                             return Err(CommitError::ReadRootNotFound(state_hash).into());
                         }
                     };
-                    txn.commit()?;
                     updated_value
                 }
                 (Some(current_value), transform) => match transform.apply(current_value.clone()) {
@@ -227,8 +223,12 @@ impl StateProvider for ScratchGlobalState {
         self.store.get_trie_full(correlation_id, trie_key)
     }
 
-    fn put_trie(&self, correlation_id: CorrelationId, trie: &[u8]) -> Result<Digest, Self::Error> {
-        self.store.put_trie(correlation_id, trie)
+    fn put_trie_bytes(
+        &self,
+        correlation_id: CorrelationId,
+        trie: &[u8],
+    ) -> Result<Digest, Self::Error> {
+        self.store.put_trie_bytes(correlation_id, trie)
     }
 
     /// Finds all of the keys of missing descendant `Trie<K,V>` values
@@ -366,7 +366,7 @@ mod tests {
         };
 
         let scratch_root_hash = scratch
-            .commit(correlation_id, root_hash, effects.clone())
+            .commit_effects(correlation_id, root_hash, effects.clone())
             .unwrap();
 
         assert_eq!(
@@ -374,7 +374,9 @@ mod tests {
             "ScratchGlobalState should not modify the state root, as it does no hashing"
         );
 
-        let lmdb_hash = state.commit(correlation_id, root_hash, effects).unwrap();
+        let lmdb_hash = state
+            .commit_effects(correlation_id, root_hash, effects)
+            .unwrap();
         let updated_checkout = state.checkout(lmdb_hash).unwrap().unwrap();
 
         let all_keys = updated_checkout
@@ -427,19 +429,19 @@ mod tests {
 
         // Commit effects to both databases.
         scratch
-            .commit(correlation_id, root_hash, effects.clone())
+            .commit_effects(correlation_id, root_hash, effects.clone())
             .unwrap();
         let updated_hash = state2
-            .commit(correlation_id, state_2_root_hash, effects)
+            .commit_effects(correlation_id, state_2_root_hash, effects)
             .unwrap();
 
         // Create add transforms as well
         let add_effects = create_test_transforms();
         scratch
-            .commit(correlation_id, root_hash, add_effects.clone())
+            .commit_effects(correlation_id, root_hash, add_effects.clone())
             .unwrap();
         let updated_hash = state2
-            .commit(correlation_id, updated_hash, add_effects)
+            .commit_effects(correlation_id, updated_hash, add_effects)
             .unwrap();
 
         let scratch_checkout = scratch.checkout(root_hash).unwrap().unwrap();
@@ -482,7 +484,9 @@ mod tests {
             tmp
         };
 
-        let updated_hash = scratch.commit(correlation_id, root_hash, effects).unwrap();
+        let updated_hash = scratch
+            .commit_effects(correlation_id, root_hash, effects)
+            .unwrap();
 
         let updated_checkout = scratch.checkout(updated_hash).unwrap().unwrap();
         for TestPair { key, value } in test_pairs_updated.iter().cloned() {

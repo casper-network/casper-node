@@ -139,7 +139,6 @@ impl EngineState<DbGlobalState> {
         let root_migration_state = self
             .state
             .rocksdb_store
-            .rocksdb
             .get_root_migration_state(state_root_bytes)?;
 
         if !root_migration_state.is_complete() {
@@ -149,7 +148,6 @@ impl EngineState<DbGlobalState> {
             // mark that we're starting the migration
             self.state
                 .rocksdb_store
-                .rocksdb
                 .mark_state_root_migration_incomplete(state_root_bytes)?;
 
             // perform migration
@@ -158,7 +156,6 @@ impl EngineState<DbGlobalState> {
 
             self.state
                 .rocksdb_store
-                .rocksdb
                 .mark_state_root_migration_completed(state_root_bytes)?;
             return Ok(true);
         }
@@ -269,7 +266,7 @@ where
 
         let post_state_hash = self
             .state
-            .commit(
+            .commit_effects(
                 correlation_id,
                 initial_root_hash,
                 execution_effect.transforms.to_owned(),
@@ -478,7 +475,7 @@ where
         // commit
         let post_state_hash = self
             .state
-            .commit(
+            .commit_effects(
                 correlation_id,
                 pre_state_hash,
                 execution_effect.transforms.to_owned(),
@@ -1670,7 +1667,7 @@ where
         effects: AdditiveMap<Key, Transform>,
     ) -> Result<Digest, Error> {
         self.state
-            .commit(correlation_id, pre_state_hash, effects)
+            .commit_effects(correlation_id, pre_state_hash, effects)
             .map_err(|err| Error::Exec(err.into()))
     }
 
@@ -1709,7 +1706,7 @@ where
     where
         Error: From<S::Error>,
     {
-        let inserted_trie_key = self.state.put_trie(correlation_id, trie_bytes)?;
+        let inserted_trie_key = self.state.put_trie_bytes(correlation_id, trie_bytes)?;
         let missing_descendant_trie_keys = self
             .state
             .missing_trie_keys(correlation_id, vec![inserted_trie_key])?;
@@ -1981,7 +1978,7 @@ where
         // commit
         let post_state_hash = self
             .state
-            .commit(
+            .commit_effects(
                 correlation_id,
                 step_request.pre_state_hash,
                 execution_effect.transforms,

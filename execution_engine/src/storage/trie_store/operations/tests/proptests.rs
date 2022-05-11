@@ -25,32 +25,20 @@ fn get_range() -> RangeInclusive<usize> {
 fn lmdb_roundtrip_succeeds(pairs: &[(TestKey, TestValue)]) -> bool {
     let correlation_id = CorrelationId::new();
     let (root_hash, tries) = TEST_TRIE_GENERATORS[0]().unwrap();
-    let context = LmdbTestContext::new(&tries).unwrap();
+    let context = RocksDbTestContext::new(&tries).unwrap();
     let mut states_to_check = vec![];
 
-    let root_hashes = write_pairs::<_, _, _, _, error::Error>(
-        correlation_id,
-        &context.environment,
-        &context.store,
-        &root_hash,
-        pairs,
-    )
-    .unwrap();
+    let root_hashes =
+        write_pairs::<_, _, _, error::Error>(correlation_id, &context.store, &root_hash, pairs)
+            .unwrap();
 
     states_to_check.extend(root_hashes);
 
-    check_pairs::<_, _, _, _, error::Error>(
-        correlation_id,
-        &context.environment,
-        &context.store,
-        &states_to_check,
-        pairs,
-    )
-    .unwrap();
+    check_pairs::<_, _, _, error::Error>(correlation_id, &context.store, &states_to_check, pairs)
+        .unwrap();
 
-    check_pairs_proofs::<_, _, _, _, error::Error>(
+    check_pairs_proofs::<_, _, _, error::Error>(
         correlation_id,
-        &context.environment,
         &context.store,
         &states_to_check,
         pairs,
@@ -64,29 +52,22 @@ fn in_memory_roundtrip_succeeds(pairs: &[(TestKey, TestValue)]) -> bool {
     let context = InMemoryTestContext::new(&tries).unwrap();
     let mut states_to_check = vec![];
 
-    let root_hashes = write_pairs::<_, _, _, _, in_memory::Error>(
-        correlation_id,
-        &context.environment,
-        &context.store,
-        &root_hash,
-        pairs,
-    )
-    .unwrap();
+    let root_hashes =
+        write_pairs::<_, _, _, in_memory::Error>(correlation_id, &context.store, &root_hash, pairs)
+            .unwrap();
 
     states_to_check.extend(root_hashes);
 
-    check_pairs::<_, _, _, _, in_memory::Error>(
+    check_pairs::<_, _, _, in_memory::Error>(
         correlation_id,
-        &context.environment,
         &context.store,
         &states_to_check,
         pairs,
     )
     .unwrap();
 
-    check_pairs_proofs::<_, _, _, _, in_memory::Error>(
+    check_pairs_proofs::<_, _, _, in_memory::Error>(
         correlation_id,
-        &context.environment,
         &context.store,
         &states_to_check,
         pairs,

@@ -3,9 +3,7 @@ use std::{
     sync::Arc,
 };
 
-use lmdb::{
-    self, Database, Environment, EnvironmentFlags, RoTransaction, RwTransaction, WriteFlags,
-};
+use lmdb::{self, Environment, EnvironmentFlags};
 use rocksdb::{
     BoundColumnFamily, DBIteratorWithThreadMode, DBWithThreadMode, IteratorMode, MultiThreaded,
     Options,
@@ -16,21 +14,16 @@ use casper_types::bytesrepr::Bytes;
 use crate::storage::{
     error,
     transaction_source::{
-        Readable, Transaction, TransactionSource, Writable,
-        ROCKS_DB_LMDB_MIGRATED_STATE_ROOTS_COLUMN_FAMILY, ROCKS_DB_TRIE_V1_COLUMN_FAMILY,
+        Readable, Writable, LMDB_MIGRATED_STATE_ROOTS_COLUMN_FAMILY, TRIE_V1_COLUMN_FAMILY,
     },
     trie_store::db::ScratchTrieStore,
     MAX_DBS,
 };
 
+use super::{ErrorSource, WORKING_SET_COLUMN_FAMILY};
+
 /// Filename for the LMDB database created by the EE.
 const EE_LMDB_FILENAME: &str = "data.lmdb";
-
-/// Newtype over RocksDB.
-#[derive(Clone)]
-pub struct RocksDb {
-    db: Arc<DBWithThreadMode<MultiThreaded>>,
-}
 
 /// Represents the state of a migration of a state root from lmdb to rocksdb.
 pub enum RootMigration {
@@ -57,7 +50,72 @@ impl RootMigration {
     }
 }
 
-impl RocksDb {
+impl ErrorSource for ScratchTrieStore {
+    type Error = error::Error;
+}
+
+impl Readable for ScratchTrieStore {
+    fn read(&self, key: &[u8]) -> Result<Option<Bytes>, Self::Error> {
+        self.store.read(key)
+    }
+}
+
+impl Writable for ScratchTrieStore {
+    fn write(&self, key: &[u8], value: &[u8]) -> Result<(), Self::Error> {
+        self.store.write(key, value)
+    }
+}
+
+impl ErrorSource for RocksDbStore {
+    type Error = error::Error;
+}
+
+impl Readable for RocksDbStore {
+    fn read(&self, key: &[u8]) -> Result<Option<Bytes>, Self::Error> {
+        let cf = self.trie_column_family()?;
+        Ok(self.db.get_cf(&cf, key)?.map(|some| {
+            let value = some.as_ref();
+            Bytes::from(value)
+        }))
+    }
+}
+
+impl Writable for RocksDbStore {
+    fn write(&self, key: &[u8], value: &[u8]) -> Result<(), Self::Error> {
+        let cf = self.trie_column_family()?;
+        let _result = self.db.put_cf(&cf, key, value)?;
+        Ok(())
+    }
+}
+
+/// Environment for rocksdb.
+#[derive(Clone)]
+pub struct RocksDbStore {
+    db: Arc<DBWithThreadMode<MultiThreaded>>,
+    pub(crate) path: PathBuf,
+}
+
+impl RocksDbStore {
+    /// Create a new environment for RocksDB.
+    pub(crate) fn new(
+        path: impl AsRef<Path>,
+        rocksdb_opts: Options,
+    ) -> Result<RocksDbStore, rocksdb::Error> {
+        let db = Arc::new(DBWithThreadMode::<MultiThreaded>::open_cf(
+            &rocksdb_opts,
+            path.as_ref(),
+            vec![
+                TRIE_V1_COLUMN_FAMILY,
+                LMDB_MIGRATED_STATE_ROOTS_COLUMN_FAMILY,
+                WORKING_SET_COLUMN_FAMILY,
+            ],
+        )?);
+
+        Ok(RocksDbStore {
+            db,
+            path: path.as_ref().to_path_buf(),
+        })
+    }
     /// Check if a state root has been marked as migrated from lmdb to rocksdb.
     pub(crate) fn get_root_migration_state(
         &self,
@@ -94,23 +152,28 @@ impl RocksDb {
 
     /// Trie V1 column family.
     fn trie_column_family(&self) -> Result<Arc<BoundColumnFamily<'_>>, error::Error> {
-        self.db
-            .cf_handle(ROCKS_DB_TRIE_V1_COLUMN_FAMILY)
-            .ok_or_else(|| {
-                error::Error::UnableToOpenColumnFamily(ROCKS_DB_TRIE_V1_COLUMN_FAMILY.to_string())
-            })
+        self.db.cf_handle(TRIE_V1_COLUMN_FAMILY).ok_or_else(|| {
+            error::Error::UnableToOpenColumnFamily(TRIE_V1_COLUMN_FAMILY.to_string())
+        })
     }
 
     /// Column family tracking state roots migrated from lmdb (supports safely resuming if the node
     /// were to be stopped during a migration).
     fn lmdb_tries_migrated_column(&self) -> Result<Arc<BoundColumnFamily<'_>>, error::Error> {
         self.db
-            .cf_handle(ROCKS_DB_LMDB_MIGRATED_STATE_ROOTS_COLUMN_FAMILY)
+            .cf_handle(LMDB_MIGRATED_STATE_ROOTS_COLUMN_FAMILY)
             .ok_or_else(|| {
                 error::Error::UnableToOpenColumnFamily(
-                    ROCKS_DB_LMDB_MIGRATED_STATE_ROOTS_COLUMN_FAMILY.to_string(),
+                    LMDB_MIGRATED_STATE_ROOTS_COLUMN_FAMILY.to_string(),
                 )
             })
+    }
+
+    /// Working set column family.
+    pub fn working_set_column_family(&self) -> Result<Arc<BoundColumnFamily<'_>>, error::Error> {
+        self.db.cf_handle(WORKING_SET_COLUMN_FAMILY).ok_or_else(|| {
+            error::Error::UnableToOpenColumnFamily(WORKING_SET_COLUMN_FAMILY.to_string())
+        })
     }
 
     /// Trie store iterator.
@@ -120,187 +183,10 @@ impl RocksDb {
         let cf_handle = self.trie_column_family()?;
         Ok(self.db.iterator_cf(&cf_handle, IteratorMode::Start))
     }
-}
-
-impl Transaction for ScratchTrieStore {
-    type Error = error::Error;
-    type Handle = ScratchTrieStore;
-    fn commit(self) -> Result<(), Self::Error> {
-        // NO OP as scratch doesn't use transactions.
-        Ok(())
-    }
-}
-
-impl Readable for ScratchTrieStore {
-    fn read(&self, handle: Self::Handle, key: &[u8]) -> Result<Option<Bytes>, Self::Error> {
-        let store = &handle.store;
-        let txn = store.create_read_txn()?;
-        txn.read(handle.store.rocksdb(), key)
-    }
-}
-
-impl Writable for ScratchTrieStore {
-    fn write(&mut self, handle: Self::Handle, key: &[u8], value: &[u8]) -> Result<(), Self::Error> {
-        let store = &handle.store;
-        let mut txn = store.create_read_write_txn()?;
-        txn.write(store.rocksdb(), key, value)
-    }
-}
-
-impl<'a> TransactionSource<'a> for ScratchTrieStore {
-    type Error = error::Error;
-    type Handle = ScratchTrieStore;
-    type ReadTransaction = ScratchTrieStore;
-    type ReadWriteTransaction = ScratchTrieStore;
-    fn create_read_txn(&'a self) -> Result<Self::ReadTransaction, Self::Error> {
-        Ok(self.clone())
-    }
-
-    fn create_read_write_txn(&'a self) -> Result<Self::ReadWriteTransaction, Self::Error> {
-        Ok(self.clone())
-    }
-}
-
-impl Transaction for RocksDb {
-    type Error = error::Error;
-
-    type Handle = RocksDb;
-
-    fn commit(self) -> Result<(), Self::Error> {
-        // NO OP as rocksdb doesn't use transactions.
-        Ok(())
-    }
-}
-
-impl Readable for RocksDb {
-    fn read(&self, _handle: Self::Handle, key: &[u8]) -> Result<Option<Bytes>, Self::Error> {
-        let cf = self.trie_column_family()?;
-        Ok(self.db.get_cf(&cf, key)?.map(|some| {
-            let value = some.as_ref();
-            Bytes::from(value)
-        }))
-    }
-}
-
-impl Writable for RocksDb {
-    fn write(
-        &mut self,
-        _handle: Self::Handle,
-        key: &[u8],
-        value: &[u8],
-    ) -> Result<(), Self::Error> {
-        let cf = self.trie_column_family()?;
-        let _result = self.db.put_cf(&cf, key, value)?;
-        Ok(())
-    }
-}
-
-/// Environment for rocksdb.
-#[derive(Clone)]
-pub struct RocksDbStore {
-    pub(crate) rocksdb: RocksDb,
-    pub(crate) path: PathBuf,
-}
-
-impl RocksDbStore {
-    /// Create a new environment for RocksDB.
-    pub(crate) fn new(
-        path: impl AsRef<Path>,
-        rocksdb_opts: Options,
-    ) -> Result<RocksDbStore, rocksdb::Error> {
-        let db = Arc::new(DBWithThreadMode::<MultiThreaded>::open_cf(
-            &rocksdb_opts,
-            path.as_ref(),
-            vec![
-                ROCKS_DB_TRIE_V1_COLUMN_FAMILY,
-                ROCKS_DB_LMDB_MIGRATED_STATE_ROOTS_COLUMN_FAMILY,
-            ],
-        )?);
-
-        let rocksdb = RocksDb { db };
-
-        Ok(RocksDbStore {
-            rocksdb,
-            path: path.as_ref().to_path_buf(),
-        })
-    }
 
     /// Return the path to the backing rocksdb files.
     pub(crate) fn path(&self) -> PathBuf {
         self.path.clone()
-    }
-
-    /// Get a reference to the rocks db store's rocksdb.
-    #[must_use]
-    pub fn rocksdb(&self) -> RocksDb {
-        self.rocksdb.clone()
-    }
-}
-
-// TODO: remove this abstraction entirely when we've moved from lmdb to rocksdb for global state.
-
-impl<'a> TransactionSource<'a> for RocksDbStore {
-    type Error = error::Error;
-
-    type Handle = RocksDb;
-
-    type ReadTransaction = RocksDb;
-
-    type ReadWriteTransaction = RocksDb;
-
-    fn create_read_txn(&'a self) -> Result<Self::ReadTransaction, Self::Error> {
-        Ok(self.rocksdb.clone())
-    }
-
-    fn create_read_write_txn(&'a self) -> Result<Self::ReadWriteTransaction, Self::Error> {
-        Ok(self.rocksdb.clone())
-    }
-}
-
-impl<'a> Transaction for RoTransaction<'a> {
-    type Error = lmdb::Error;
-
-    type Handle = Database;
-
-    fn commit(self) -> Result<(), Self::Error> {
-        lmdb::Transaction::commit(self)
-    }
-}
-
-impl<'a> Readable for RoTransaction<'a> {
-    fn read(&self, handle: Self::Handle, key: &[u8]) -> Result<Option<Bytes>, Self::Error> {
-        match lmdb::Transaction::get(self, handle, &key) {
-            Ok(bytes) => Ok(Some(Bytes::from(bytes))),
-            Err(lmdb::Error::NotFound) => Ok(None),
-            Err(e) => Err(e),
-        }
-    }
-}
-
-impl<'a> Transaction for RwTransaction<'a> {
-    type Error = lmdb::Error;
-
-    type Handle = Database;
-
-    fn commit(self) -> Result<(), Self::Error> {
-        <RwTransaction<'a> as lmdb::Transaction>::commit(self)
-    }
-}
-
-impl<'a> Readable for RwTransaction<'a> {
-    fn read(&self, handle: Self::Handle, key: &[u8]) -> Result<Option<Bytes>, Self::Error> {
-        match lmdb::Transaction::get(self, handle, &key) {
-            Ok(bytes) => Ok(Some(Bytes::from(bytes))),
-            Err(lmdb::Error::NotFound) => Ok(None),
-            Err(e) => Err(e),
-        }
-    }
-}
-
-impl<'a> Writable for RwTransaction<'a> {
-    fn write(&mut self, handle: Self::Handle, key: &[u8], value: &[u8]) -> Result<(), Self::Error> {
-        self.put(handle, &key, &value, WriteFlags::empty())
-            .map_err(Into::into)
     }
 }
 
@@ -358,23 +244,5 @@ impl LmdbEnvironment {
     /// Manually synchronize LMDB to disk.
     pub fn sync(&self) -> Result<(), lmdb::Error> {
         self.env.sync(true)
-    }
-}
-
-impl<'a> TransactionSource<'a> for LmdbEnvironment {
-    type Error = lmdb::Error;
-
-    type Handle = Database;
-
-    type ReadTransaction = RoTransaction<'a>;
-
-    type ReadWriteTransaction = RwTransaction<'a>;
-
-    fn create_read_txn(&'a self) -> Result<RoTransaction<'a>, Self::Error> {
-        self.env.begin_ro_txn()
-    }
-
-    fn create_read_write_txn(&'a self) -> Result<RwTransaction<'a>, Self::Error> {
-        self.env.begin_rw_txn()
     }
 }

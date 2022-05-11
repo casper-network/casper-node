@@ -14,10 +14,7 @@ use crate::storage::{
     error,
     global_state::CommitError,
     store::Store,
-    transaction_source::{
-        db::{LmdbEnvironment, RocksDb, RocksDbStore},
-        Readable, Transaction, TransactionSource, Writable,
-    },
+    transaction_source::db::{LmdbEnvironment, RocksDbStore},
     trie::Trie,
     trie_store::{self, TrieStore},
 };
@@ -61,18 +58,6 @@ impl LmdbTrieStore {
     }
 }
 
-impl<K, V> Store<Digest, Trie<K, V>> for LmdbTrieStore {
-    type Error = error::Error;
-
-    type Handle = Database;
-
-    fn handle(&self) -> Self::Handle {
-        self.db
-    }
-}
-
-impl<K, V> TrieStore<K, V> for LmdbTrieStore {}
-
 /// Cache used by the scratch trie.  The keys represent the hash of the trie being cached.  The
 /// values represent:  1) A boolean, where `false` means the trie was _not_ written and `true` means
 /// it was 2) A deserialized trie
@@ -109,7 +94,6 @@ impl ScratchTrieStore {
             return Ok(());
         }
 
-        let mut txn = store.create_read_write_txn()?;
         let mut tries_to_visit = vec![(state_root, root_trie, root_trie.iter_descendants())];
 
         while let Some((digest, current_trie, mut descendants_iterator)) = tries_to_visit.pop() {
@@ -122,36 +106,18 @@ impl ScratchTrieStore {
                 }
             } else {
                 // We can write this node since it has no children, or they were already written.
-                store.put(&mut txn, &digest, current_trie)?;
+                store.put(&digest, current_trie)?;
             }
         }
 
-        txn.commit()?;
         Ok(())
     }
 }
 
 impl Store<Digest, Trie<Key, StoredValue>> for ScratchTrieStore {
-    type Error = error::Error;
-
-    type Handle = ScratchTrieStore;
-
-    fn handle(&self) -> Self::Handle {
-        self.clone()
-    }
-
     /// Puts a `value` into the store at `key` within a transaction, potentially returning an
     /// error of type `Self::Error` if that fails.
-    fn put<T>(
-        &self,
-        _txn: &mut T,
-        digest: &Digest,
-        trie: &Trie<Key, StoredValue>,
-    ) -> Result<(), Self::Error>
-    where
-        T: Writable<Handle = Self::Handle>,
-        Self::Error: From<T::Error>,
-    {
+    fn put(&self, digest: &Digest, trie: &Trie<Key, StoredValue>) -> Result<(), Self::Error> {
         self.cache
             .lock()
             .map_err(|_| error::Error::Poison)?
@@ -161,15 +127,7 @@ impl Store<Digest, Trie<Key, StoredValue>> for ScratchTrieStore {
 
     /// Returns an optional value (may exist or not) as read through a transaction, or an error
     /// of the associated `Self::Error` variety.
-    fn get<T>(
-        &self,
-        txn: &T,
-        digest: &Digest,
-    ) -> Result<Option<Trie<Key, StoredValue>>, Self::Error>
-    where
-        T: Readable<Handle = Self::Handle>,
-        Self::Error: From<T::Error>,
-    {
+    fn get(&self, digest: &Digest) -> Result<Option<Trie<Key, StoredValue>>, Self::Error> {
         let maybe_trie = {
             self.cache
                 .lock()
@@ -180,7 +138,7 @@ impl Store<Digest, Trie<Key, StoredValue>> for ScratchTrieStore {
         match maybe_trie {
             Some((_, cached)) => Ok(Some(cached)),
             None => {
-                let raw = self.get_raw(txn, digest)?;
+                let raw = self.get_raw(digest)?;
                 match raw {
                     Some(bytes) => {
                         let value: Trie<Key, StoredValue> = bytesrepr::deserialize(bytes.into())?;
@@ -201,15 +159,5 @@ impl Store<Digest, Trie<Key, StoredValue>> for ScratchTrieStore {
 }
 
 impl TrieStore<Key, StoredValue> for ScratchTrieStore {}
-
-impl<K, V> Store<Digest, Trie<K, V>> for RocksDbStore {
-    type Error = error::Error;
-
-    type Handle = RocksDb;
-
-    fn handle(&self) -> Self::Handle {
-        self.rocksdb.clone()
-    }
-}
-
+impl<K, V> Store<Digest, Trie<K, V>> for RocksDbStore {}
 impl<K, V> TrieStore<K, V> for RocksDbStore {}

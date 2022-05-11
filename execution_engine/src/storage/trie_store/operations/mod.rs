@@ -17,7 +17,7 @@ use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 use crate::{
     shared::newtypes::CorrelationId,
     storage::{
-        transaction_source::{Readable, Writable},
+        transaction_source::{ErrorSource, Readable, Writable},
         trie::{
             hash_bytes_into_chunks_if_necessary,
             merkle_proof::{TrieMerkleProof, TrieMerkleProofStep},
@@ -43,9 +43,8 @@ impl<V> ReadResult<V> {
 }
 
 /// Returns a value from the corresponding key at a given root in a given store
-pub fn read<K, V, T, S, E>(
+pub fn read<K, V, S, E>(
     _correlation_id: CorrelationId,
-    txn: &T,
     store: &S,
     root: &Digest,
     key: &K,
@@ -53,15 +52,13 @@ pub fn read<K, V, T, S, E>(
 where
     K: ToBytes + FromBytes + Eq + std::fmt::Debug,
     V: ToBytes + FromBytes,
-    T: Readable<Handle = S::Handle>,
     S: TrieStore<K, V>,
-    S::Error: From<T::Error>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
     let path: Vec<u8> = key.to_bytes()?;
 
     let mut depth: usize = 0;
-    let mut current: Trie<K, V> = match store.get(txn, root)? {
+    let mut current: Trie<K, V> = match store.get(root)? {
         Some(root) => root,
         None => return Ok(ReadResult::RootNotFound),
     };
@@ -91,7 +88,7 @@ where
                     pointer_block[index]
                 };
                 match maybe_pointer {
-                    Some(pointer) => match store.get(txn, pointer.hash())? {
+                    Some(pointer) => match store.get(pointer.hash())? {
                         Some(next) => {
                             depth += 1;
                             current = next;
@@ -112,7 +109,7 @@ where
             Trie::Extension { affix, pointer } => {
                 let sub_path = &path[depth..depth + affix.len()];
                 if sub_path == affix.as_slice() {
-                    match store.get(txn, pointer.hash())? {
+                    match store.get(pointer.hash())? {
                         Some(next) => {
                             depth += affix.len();
                             current = next;
@@ -135,9 +132,8 @@ where
 
 /// Same as [`read`], except that a [`TrieMerkleProof`] is generated and returned along with the key
 /// and the value given the root and store.
-pub fn read_with_proof<K, V, T, S, E>(
+pub fn read_with_proof<K, V, S, E>(
     _correlation_id: CorrelationId,
-    txn: &T,
     store: &S,
     root: &Digest,
     key: &K,
@@ -145,16 +141,14 @@ pub fn read_with_proof<K, V, T, S, E>(
 where
     K: ToBytes + FromBytes + Eq + std::fmt::Debug,
     V: ToBytes + FromBytes,
-    T: Readable<Handle = S::Handle>,
     S: TrieStore<K, V>,
-    S::Error: From<T::Error>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
     let mut proof_steps = VecDeque::new();
     let path: Vec<u8> = key.to_bytes()?;
 
     let mut depth: usize = 0;
-    let mut current: Trie<K, V> = match store.get(txn, root)? {
+    let mut current: Trie<K, V> = match store.get(root)? {
         Some(root) => root,
         None => return Ok(ReadResult::RootNotFound),
     };
@@ -190,7 +184,7 @@ where
                     .as_indexed_pointers()
                     .filter(|(index, _)| *index as usize != hole_index)
                     .collect();
-                let next = match store.get(txn, pointer.hash())? {
+                let next = match store.get(pointer.hash())? {
                     Some(next) => next,
                     None => {
                         panic!(
@@ -214,7 +208,7 @@ where
                     return Ok(ReadResult::NotFound);
                 };
 
-                let next = match store.get(txn, pointer.hash())? {
+                let next = match store.get(pointer.hash())? {
                     Some(next) => next,
                     None => {
                         panic!(
@@ -235,9 +229,8 @@ where
 /// Given a root hash, find any trie keys that are descendant from it that are referenced but not
 /// present in the database.
 // TODO: We only need to check one trie key at a time
-pub fn missing_trie_keys<K, V, T, S, E>(
+pub fn missing_trie_keys<K, V, S, E>(
     _correlation_id: CorrelationId,
-    txn: &T,
     store: &S,
     mut trie_keys_to_visit: Vec<Digest>,
     known_complete: &HashSet<Digest>,
@@ -245,9 +238,7 @@ pub fn missing_trie_keys<K, V, T, S, E>(
 where
     K: ToBytes + FromBytes + Eq + std::fmt::Debug,
     V: ToBytes + FromBytes + std::fmt::Debug,
-    T: Readable<Handle = S::Handle>,
     S: TrieStore<K, V>,
-    S::Error: From<T::Error>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
     let mut missing_descendants = Vec::new();
@@ -262,7 +253,7 @@ where
             continue;
         }
 
-        let retrieved_trie_bytes = match store.get_raw(txn, &trie_key)? {
+        let retrieved_trie_bytes = match store.get_raw(&trie_key)? {
             Some(bytes) => bytes,
             None => {
                 // No entry under this trie key.
@@ -313,8 +304,7 @@ where
 }
 
 /// Returns a collection of all descendant trie keys.
-pub fn descendant_trie_keys<K, V, T, S, E>(
-    txn: &T,
+pub fn descendant_trie_keys<K, V, S, E>(
     store: &S,
     mut trie_keys_to_visit: Vec<Digest>,
     known_complete: &HashSet<Digest>,
@@ -322,9 +312,7 @@ pub fn descendant_trie_keys<K, V, T, S, E>(
 where
     K: ToBytes + FromBytes + Eq + std::fmt::Debug,
     V: ToBytes + FromBytes + std::fmt::Debug,
-    T: Readable<Handle = S::Handle>,
     S: TrieStore<K, V>,
-    S::Error: From<T::Error>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
     let start = Instant::now();
@@ -340,7 +328,7 @@ where
             continue;
         }
 
-        let retrieved_trie_bytes = match store.get_raw(txn, &trie_key)? {
+        let retrieved_trie_bytes = match store.get_raw(&trie_key)? {
             Some(bytes) => bytes,
             None => {
                 // No entry under this trie key.
@@ -405,9 +393,8 @@ impl<K, V> TrieScan<K, V> {
 /// A scan consists of the deepest trie variant found at that key, a.k.a. the
 /// "tip", along the with the parents of that variant. Parents are ordered by
 /// their depth from the root (shallow to deep).
-fn scan<K, V, T, S, E>(
+fn scan<K, V, S, E>(
     _correlation_id: CorrelationId,
-    txn: &T,
     store: &S,
     key_bytes: &[u8],
     root: &Trie<K, V>,
@@ -415,9 +402,8 @@ fn scan<K, V, T, S, E>(
 where
     K: ToBytes + FromBytes + Clone,
     V: ToBytes + FromBytes + Clone,
-    T: Readable<Handle = S::Handle>,
+    S: Readable,
     S: TrieStore<K, V>,
-    S::Error: From<T::Error>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
     let path = key_bytes;
@@ -447,7 +433,7 @@ where
                         return Ok(TrieScan::new(Trie::Node { pointer_block }, acc));
                     }
                 };
-                match store.get(txn, pointer.hash())? {
+                match store.get(pointer.hash())? {
                     Some(next) => {
                         current = next;
                         depth += 1;
@@ -467,7 +453,7 @@ where
                 if sub_path != affix.as_slice() {
                     return Ok(TrieScan::new(Trie::Extension { affix, pointer }, acc));
                 }
-                match store.get(txn, pointer.hash())? {
+                match store.get(pointer.hash())? {
                     Some(next) => {
                         let index = {
                             assert!(depth < path.len(), "depth must be < {}", path.len());
@@ -498,9 +484,8 @@ pub enum DeleteResult {
 }
 
 #[allow(unused)]
-fn delete<K, V, T, S, E>(
+fn delete<K, V, S, E>(
     correlation_id: CorrelationId,
-    txn: &mut T,
     store: &S,
     root: &Digest,
     key_to_delete: &K,
@@ -508,19 +493,18 @@ fn delete<K, V, T, S, E>(
 where
     K: ToBytes + FromBytes + Clone + PartialEq + std::fmt::Debug,
     V: ToBytes + FromBytes + Clone,
-    T: Readable<Handle = S::Handle> + Writable<Handle = S::Handle>,
+    S: Readable + Writable,
     S: TrieStore<K, V>,
-    S::Error: From<T::Error>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
-    let root_trie = match store.get(txn, root)? {
+    let root_trie = match store.get(root)? {
         None => return Ok(DeleteResult::RootNotFound),
         Some(root_trie) => root_trie,
     };
 
     let key_bytes = key_to_delete.to_bytes()?;
     let TrieScan { tip, mut parents } =
-        scan::<_, _, _, _, E>(correlation_id, txn, store, &key_bytes, &root_trie)?;
+        scan::<_, _, _, E>(correlation_id, store, &key_bytes, &root_trie)?;
 
     // Check that tip is a leaf
     match tip {
@@ -610,9 +594,8 @@ where
                         parents.push((idx, grandparent));
                         // Elsewhere we maintain the invariant that all trie keys have corresponding
                         // trie values.
-                        let sibling_trie = store
-                            .get(txn, &sibling_trie_key)?
-                            .expect("should have sibling");
+                        let sibling_trie =
+                            store.get(&sibling_trie_key)?.expect("should have sibling");
                         match sibling_trie {
                             Trie::Leaf { .. } => {
                                 panic!("Node pointer should not point to leaf")
@@ -698,7 +681,7 @@ where
         }
     }
     for (hash, element) in new_elements.iter() {
-        store.put(txn, hash, element)?;
+        store.put(hash, element)?;
     }
     // The hash of the final trie in the new elements is the new root
     let new_root = new_elements
@@ -943,9 +926,8 @@ pub enum WriteResult {
     RootNotFound,
 }
 
-pub fn write<K, V, T, S, E>(
+pub fn write<K, V, S, E>(
     correlation_id: CorrelationId,
-    txn: &mut T,
     store: &S,
     root: &Digest,
     key: &K,
@@ -954,12 +936,10 @@ pub fn write<K, V, T, S, E>(
 where
     K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
     V: ToBytes + FromBytes + Clone + Eq,
-    T: Readable<Handle = S::Handle> + Writable<Handle = S::Handle>,
     S: TrieStore<K, V>,
-    S::Error: From<T::Error>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
-    match store.get(txn, root)? {
+    match store.get(root)? {
         None => Ok(WriteResult::RootNotFound),
         Some(current_root) => {
             let new_leaf = Trie::Leaf {
@@ -968,7 +948,7 @@ where
             };
             let path: Vec<u8> = key.to_bytes()?;
             let TrieScan { tip, parents } =
-                scan::<K, V, T, S, E>(correlation_id, txn, store, &path, &current_root)?;
+                scan::<_, _, _, E>(correlation_id, store, &path, &current_root)?;
             let new_elements: Vec<(Digest, Trie<K, V>)> = match tip {
                 // If the "tip" is the same as the new leaf, then the leaf
                 // is already in the Trie.
@@ -1025,7 +1005,7 @@ where
             }
             let mut root_hash = root.to_owned();
             for (hash, element) in new_elements.iter() {
-                store.put(txn, hash, element)?;
+                store.put(hash, element)?;
                 root_hash = *hash;
             }
             Ok(WriteResult::Written(root_hash))
@@ -1034,26 +1014,21 @@ where
 }
 
 /// Puts a trie pointer block, extension node or leaf into the trie.
-pub fn put_trie<K, V, T, S, E>(
+pub fn put_trie_bytes<K, V, S, E>(
     _correlation_id: CorrelationId,
-    txn: &mut T,
     store: &S,
     trie_bytes: &[u8],
 ) -> Result<Digest, E>
 where
-    K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
-    V: ToBytes + FromBytes + Clone + Eq,
-    T: Readable<Handle = S::Handle> + Writable<Handle = S::Handle>,
     S: TrieStore<K, V>,
-    S::Error: From<T::Error>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
     let trie_hash = hash_bytes_into_chunks_if_necessary(trie_bytes);
-    store.put_raw(txn, &trie_hash, trie_bytes)?;
+    store.put_raw(&trie_hash, trie_bytes)?;
     Ok(trie_hash)
 }
 
-enum KeysIteratorState<K, V, S: TrieStore<K, V>> {
+enum KeysIteratorState<S: ErrorSource> {
     /// Iterate normally
     Ok,
     /// Return the error and stop iterating
@@ -1069,21 +1044,19 @@ struct VisitedTrieNode<K, V> {
     path: Vec<u8>,
 }
 
-pub struct KeysIterator<'a, 'b, K, V, T, S: TrieStore<K, V>> {
+pub struct KeysIterator<'a, K, V, S: TrieStore<K, V>> {
     initial_descend: VecDeque<u8>,
     visited: Vec<VisitedTrieNode<K, V>>,
     store: &'a S,
-    txn: &'b T,
-    state: KeysIteratorState<K, V, S>,
+    state: KeysIteratorState<S>,
 }
 
-impl<'a, 'b, K, V, T, S> Iterator for KeysIterator<'a, 'b, K, V, T, S>
+impl<'a, K, V, S> Iterator for KeysIterator<'a, K, V, S>
 where
     K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
     V: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
-    T: Readable<Handle = S::Handle>,
     S: TrieStore<K, V>,
-    S::Error: From<T::Error> + From<bytesrepr::Error>,
+    S::Error: From<bytesrepr::Error>,
 {
     type Item = Result<K, S::Error>;
 
@@ -1134,7 +1107,7 @@ where
                         .unwrap_or_default();
                     while index < RADIX {
                         if let Some(ref pointer) = pointer_block[index] {
-                            maybe_next_trie = match self.store.get(self.txn, pointer.hash()) {
+                            maybe_next_trie = match self.store.get(pointer.hash()) {
                                 Ok(trie) => trie,
                                 Err(e) => {
                                     self.state = KeysIteratorState::Failed;
@@ -1172,7 +1145,7 @@ where
                     // if we are not, the check_prefix will be empty, so we will enter the if
                     // anyway
                     if affix.starts_with(&check_prefix) {
-                        maybe_next_trie = match self.store.get(self.txn, pointer.hash()) {
+                        maybe_next_trie = match self.store.get(pointer.hash()) {
                             Ok(trie) => trie,
                             Err(e) => {
                                 self.state = KeysIteratorState::Failed;
@@ -1201,40 +1174,34 @@ where
 ///
 /// The root should be the apex of the trie.
 #[cfg(test)]
-pub fn keys<'a, 'b, K, V, T, S>(
+pub fn keys<'a, K, V, S>(
     correlation_id: CorrelationId,
-    txn: &'b T,
     store: &'a S,
     root: &Digest,
-) -> KeysIterator<'a, 'b, K, V, T, S>
+) -> KeysIterator<'a, K, V, S>
 where
     K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
     V: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
-    T: Readable<Handle = S::Handle>,
     S: TrieStore<K, V>,
-    S::Error: From<T::Error>,
 {
-    keys_with_prefix(correlation_id, txn, store, root, &[])
+    keys_with_prefix(correlation_id, store, root, &[])
 }
 
 /// Returns the iterator over the keys in the subtrie matching `prefix`.
 ///
 /// The root should be the apex of the trie.
-pub fn keys_with_prefix<'a, 'b, K, V, T, S>(
+pub fn keys_with_prefix<'a, K, V, S>(
     _correlation_id: CorrelationId,
-    txn: &'b T,
     store: &'a S,
     root: &Digest,
     prefix: &[u8],
-) -> KeysIterator<'a, 'b, K, V, T, S>
+) -> KeysIterator<'a, K, V, S>
 where
     K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
     V: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
-    T: Readable<Handle = S::Handle>,
     S: TrieStore<K, V>,
-    S::Error: From<T::Error>,
 {
-    let (visited, init_state): (Vec<VisitedTrieNode<K, V>>, _) = match store.get(txn, root) {
+    let (visited, init_state): (Vec<VisitedTrieNode<K, V>>, _) = match store.get(root) {
         Ok(None) => (vec![], KeysIteratorState::Ok),
         Err(e) => (vec![], KeysIteratorState::ReturnError(e)),
         Ok(Some(current_root)) => (
@@ -1251,7 +1218,6 @@ where
         initial_descend: prefix.iter().cloned().collect(),
         visited,
         store,
-        txn,
         state: init_state,
     }
 }

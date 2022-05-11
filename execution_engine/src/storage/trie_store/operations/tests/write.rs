@@ -10,12 +10,11 @@ mod empty_tries {
         for num_leaves in 1..=TEST_LEAVES_LENGTH {
             let correlation_id = CorrelationId::new();
             let (root_hash, tries) = TEST_TRIE_GENERATORS[0]().unwrap();
-            let context = LmdbTestContext::new(&tries).unwrap();
+            let context = RocksDbTestContext::new(&tries).unwrap();
             let initial_states = vec![root_hash];
 
-            writes_to_n_leaf_empty_trie_had_expected_results::<_, _, _, _, error::Error>(
+            writes_to_n_leaf_empty_trie_had_expected_results::<_, _, _, error::Error>(
                 correlation_id,
-                &context.environment,
                 &context.store,
                 &initial_states,
                 &TEST_LEAVES_NON_COLLIDING[..num_leaves],
@@ -32,9 +31,8 @@ mod empty_tries {
             let context = InMemoryTestContext::new(&tries).unwrap();
             let initial_states = vec![root_hash];
 
-            writes_to_n_leaf_empty_trie_had_expected_results::<_, _, _, _, in_memory::Error>(
+            writes_to_n_leaf_empty_trie_had_expected_results::<_, _, _, in_memory::Error>(
                 correlation_id,
-                &context.environment,
                 &context.store,
                 &initial_states,
                 &TEST_LEAVES_NON_COLLIDING[..num_leaves],
@@ -48,12 +46,11 @@ mod empty_tries {
         for num_leaves in 1..=TEST_LEAVES_LENGTH {
             let correlation_id = CorrelationId::new();
             let (root_hash, tries) = TEST_TRIE_GENERATORS[0]().unwrap();
-            let context = LmdbTestContext::new(&tries).unwrap();
+            let context = RocksDbTestContext::new(&tries).unwrap();
             let initial_states = vec![root_hash];
 
-            writes_to_n_leaf_empty_trie_had_expected_results::<_, _, _, _, error::Error>(
+            writes_to_n_leaf_empty_trie_had_expected_results::<_, _, _, error::Error>(
                 correlation_id,
-                &context.environment,
                 &context.store,
                 &initial_states,
                 &TEST_LEAVES[..num_leaves],
@@ -70,9 +67,8 @@ mod empty_tries {
             let context = InMemoryTestContext::new(&tries).unwrap();
             let initial_states = vec![root_hash];
 
-            writes_to_n_leaf_empty_trie_had_expected_results::<_, _, _, _, in_memory::Error>(
+            writes_to_n_leaf_empty_trie_had_expected_results::<_, _, _, in_memory::Error>(
                 correlation_id,
-                &context.environment,
                 &context.store,
                 &initial_states,
                 &TEST_LEAVES[..num_leaves],
@@ -99,16 +95,15 @@ mod empty_tries {
             let (root_hash, tries) = TEST_TRIE_GENERATORS[0]().unwrap();
             let context = InMemoryTestContext::new(&tries).unwrap();
 
-            write_leaves::<_, _, _, _, in_memory::Error>(
+            write_leaves::<_, _, _, in_memory::Error>(
                 correlation_id,
-                &context.environment,
                 &context.store,
                 &root_hash,
                 &TEST_LEAVES,
             )
             .unwrap();
 
-            context.environment.dump(None).unwrap()
+            context.store.dump().unwrap()
         };
 
         assert_eq!(expected_contents, actual_contents)
@@ -118,23 +113,19 @@ mod empty_tries {
 mod partial_tries {
     use super::*;
 
-    fn noop_writes_to_n_leaf_partial_trie_had_expected_results<'a, R, S, E>(
+    fn noop_writes_to_n_leaf_partial_trie_had_expected_results<S, E>(
         correlation_id: CorrelationId,
-        environment: &'a R,
         store: &S,
         states: &[Digest],
         num_leaves: usize,
     ) -> Result<(), E>
     where
-        R: TransactionSource<'a, Handle = S::Handle>,
         S: TrieStore<TestKey, TestValue>,
-        S::Error: From<R::Error>,
-        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+        E: From<S::Error> + From<bytesrepr::Error>,
     {
         // Check that the expected set of leaves is in the trie
-        check_leaves::<_, _, _, _, E>(
+        check_leaves::<_, _, _, E>(
             correlation_id,
-            environment,
             store,
             &states[0],
             &TEST_LEAVES[..num_leaves],
@@ -142,9 +133,8 @@ mod partial_tries {
         )?;
 
         // Rewrite that set of leaves
-        let write_results = write_leaves::<_, _, _, _, E>(
+        let write_results = write_leaves::<_, _, _, E>(
             correlation_id,
-            environment,
             store,
             &states[0],
             &TEST_LEAVES[..num_leaves],
@@ -155,9 +145,8 @@ mod partial_tries {
             .all(|result| *result == WriteResult::AlreadyExists));
 
         // Check that the expected set of leaves is in the trie
-        check_leaves::<_, _, _, _, E>(
+        check_leaves(
             correlation_id,
-            environment,
             store,
             &states[0],
             &TEST_LEAVES[..num_leaves],
@@ -170,12 +159,11 @@ mod partial_tries {
         for (num_leaves, generator) in TEST_TRIE_GENERATORS.iter().enumerate() {
             let correlation_id = CorrelationId::new();
             let (root_hash, tries) = generator().unwrap();
-            let context = LmdbTestContext::new(&tries).unwrap();
+            let context = RocksDbTestContext::new(&tries).unwrap();
             let states = vec![root_hash];
 
-            noop_writes_to_n_leaf_partial_trie_had_expected_results::<_, _, error::Error>(
+            noop_writes_to_n_leaf_partial_trie_had_expected_results::<_, error::Error>(
                 correlation_id,
-                &context.environment,
                 &context.store,
                 &states,
                 num_leaves,
@@ -192,9 +180,8 @@ mod partial_tries {
             let context = InMemoryTestContext::new(&tries).unwrap();
             let states = vec![root_hash];
 
-            noop_writes_to_n_leaf_partial_trie_had_expected_results::<_, _, in_memory::Error>(
+            noop_writes_to_n_leaf_partial_trie_had_expected_results::<_, in_memory::Error>(
                 correlation_id,
-                &context.environment,
                 &context.store,
                 &states,
                 num_leaves,
@@ -203,25 +190,21 @@ mod partial_tries {
         }
     }
 
-    fn update_writes_to_n_leaf_partial_trie_had_expected_results<'a, R, S, E>(
+    fn update_writes_to_n_leaf_partial_trie_had_expected_results<S, E>(
         correlation_id: CorrelationId,
-        environment: &'a R,
         store: &S,
         states: &[Digest],
         num_leaves: usize,
     ) -> Result<(), E>
     where
-        R: TransactionSource<'a, Handle = S::Handle>,
         S: TrieStore<TestKey, TestValue>,
-        S::Error: From<R::Error>,
-        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+        E: From<S::Error> + From<bytesrepr::Error>,
     {
         let mut states = states.to_owned();
 
         // Check that the expected set of leaves is in the trie
-        check_leaves::<_, _, _, _, E>(
+        check_leaves::<_, _, _, E>(
             correlation_id,
-            environment,
             store,
             &states[0],
             &TEST_LEAVES[..num_leaves],
@@ -241,9 +224,8 @@ mod partial_tries {
 
             let root_hash = {
                 let current_root = states.last().unwrap();
-                let results = write_leaves::<_, _, _, _, E>(
+                let results = write_leaves::<_, _, _, E>(
                     correlation_id,
-                    environment,
                     store,
                     current_root,
                     &[leaf.to_owned()],
@@ -258,9 +240,8 @@ mod partial_tries {
             states.push(root_hash);
 
             // Check that the expected set of leaves is in the trie
-            check_leaves::<_, _, _, _, E>(
+            check_leaves::<_, _, _, E>(
                 correlation_id,
-                environment,
                 store,
                 states.last().unwrap(),
                 &expected_leaves,
@@ -276,12 +257,11 @@ mod partial_tries {
         for (num_leaves, generator) in TEST_TRIE_GENERATORS.iter().enumerate() {
             let correlation_id = CorrelationId::new();
             let (root_hash, tries) = generator().unwrap();
-            let context = LmdbTestContext::new(&tries).unwrap();
+            let context = RocksDbTestContext::new(&tries).unwrap();
             let initial_states = vec![root_hash];
 
-            update_writes_to_n_leaf_partial_trie_had_expected_results::<_, _, error::Error>(
+            update_writes_to_n_leaf_partial_trie_had_expected_results::<_, error::Error>(
                 correlation_id,
-                &context.environment,
                 &context.store,
                 &initial_states,
                 num_leaves,
@@ -298,9 +278,8 @@ mod partial_tries {
             let context = InMemoryTestContext::new(&tries).unwrap();
             let states = vec![root_hash];
 
-            update_writes_to_n_leaf_partial_trie_had_expected_results::<_, _, in_memory::Error>(
+            update_writes_to_n_leaf_partial_trie_had_expected_results::<_, in_memory::Error>(
                 correlation_id,
-                &context.environment,
                 &context.store,
                 &states,
                 num_leaves,
@@ -313,24 +292,20 @@ mod partial_tries {
 mod full_tries {
     use super::*;
 
-    fn noop_writes_to_n_leaf_full_trie_had_expected_results<'a, R, S, E>(
+    fn noop_writes_to_n_leaf_full_trie_had_expected_results<S, E>(
         correlation_id: CorrelationId,
-        environment: &'a R,
         store: &S,
         states: &[Digest],
         index: usize,
     ) -> Result<(), E>
     where
-        R: TransactionSource<'a, Handle = S::Handle>,
         S: TrieStore<TestKey, TestValue>,
-        S::Error: From<R::Error>,
-        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+        E: From<S::Error> + From<bytesrepr::Error>,
     {
         // Check that the expected set of leaves is in the trie at every state reference
         for (num_leaves, state) in states[..index].iter().enumerate() {
-            check_leaves::<_, _, _, _, E>(
+            check_leaves::<_, _, _, E>(
                 correlation_id,
-                environment,
                 store,
                 state,
                 &TEST_LEAVES[..num_leaves],
@@ -339,9 +314,8 @@ mod full_tries {
         }
 
         // Rewrite that set of leaves
-        let write_results = write_leaves::<_, _, _, _, E>(
+        let write_results = write_leaves::<_, _, _, E>(
             correlation_id,
-            environment,
             store,
             states.last().unwrap(),
             &TEST_LEAVES[..index],
@@ -353,9 +327,8 @@ mod full_tries {
 
         // Check that the expected set of leaves is in the trie at every state reference
         for (num_leaves, state) in states[..index].iter().enumerate() {
-            check_leaves::<_, _, _, _, E>(
+            check_leaves::<_, _, _, E>(
                 correlation_id,
-                environment,
                 store,
                 state,
                 &TEST_LEAVES[..num_leaves],
@@ -369,7 +342,7 @@ mod full_tries {
     #[test]
     fn lmdb_noop_writes_to_n_leaf_full_trie_had_expected_results() {
         let correlation_id = CorrelationId::new();
-        let context = LmdbTestContext::new(EMPTY_HASHED_TEST_TRIES).unwrap();
+        let context = RocksDbTestContext::new(EMPTY_HASHED_TEST_TRIES).unwrap();
         let mut states: Vec<Digest> = Vec::new();
 
         for (index, generator) in TEST_TRIE_GENERATORS.iter().enumerate() {
@@ -377,9 +350,8 @@ mod full_tries {
             context.update(&tries).unwrap();
             states.push(root_hash);
 
-            noop_writes_to_n_leaf_full_trie_had_expected_results::<_, _, error::Error>(
+            noop_writes_to_n_leaf_full_trie_had_expected_results::<_, error::Error>(
                 correlation_id,
-                &context.environment,
                 &context.store,
                 &states,
                 index,
@@ -399,9 +371,8 @@ mod full_tries {
             context.update(&tries).unwrap();
             states.push(root_hash);
 
-            noop_writes_to_n_leaf_full_trie_had_expected_results::<_, _, in_memory::Error>(
+            noop_writes_to_n_leaf_full_trie_had_expected_results::<_, in_memory::Error>(
                 correlation_id,
-                &context.environment,
                 &context.store,
                 &states,
                 index,
@@ -410,26 +381,22 @@ mod full_tries {
         }
     }
 
-    fn update_writes_to_n_leaf_full_trie_had_expected_results<'a, R, S, E>(
+    fn update_writes_to_n_leaf_full_trie_had_expected_results<S, E>(
         correlation_id: CorrelationId,
-        environment: &'a R,
         store: &S,
         states: &[Digest],
         num_leaves: usize,
     ) -> Result<(), E>
     where
-        R: TransactionSource<'a, Handle = S::Handle>,
         S: TrieStore<TestKey, TestValue>,
-        S::Error: From<R::Error>,
-        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+        E: From<S::Error> + From<bytesrepr::Error>,
     {
         let mut states = states.to_vec();
 
         // Check that the expected set of leaves is in the trie at every state reference
         for (state_index, state) in states.iter().enumerate() {
-            check_leaves::<_, _, _, _, E>(
+            check_leaves::<_, _, _, E>(
                 correlation_id,
-                environment,
                 store,
                 state,
                 &TEST_LEAVES[..state_index],
@@ -438,9 +405,8 @@ mod full_tries {
         }
 
         // Write set of leaves to the trie
-        let hashes = write_leaves::<_, _, _, _, E>(
+        let hashes = write_leaves::<_, _, _, E>(
             correlation_id,
-            environment,
             store,
             states.last().unwrap(),
             &TEST_LEAVES_UPDATED[..num_leaves],
@@ -477,14 +443,7 @@ mod full_tries {
 
         // Check that the expected set of leaves is in the trie at every state reference
         for (state_index, state) in states.iter().enumerate() {
-            check_leaves::<_, _, _, _, E>(
-                correlation_id,
-                environment,
-                store,
-                state,
-                &expected[state_index],
-                &[],
-            )?;
+            check_leaves::<_, _, _, E>(correlation_id, store, state, &expected[state_index], &[])?;
         }
 
         Ok(())
@@ -493,7 +452,7 @@ mod full_tries {
     #[test]
     fn lmdb_update_writes_to_n_leaf_full_trie_had_expected_results() {
         let correlation_id = CorrelationId::new();
-        let context = LmdbTestContext::new(EMPTY_HASHED_TEST_TRIES).unwrap();
+        let context = RocksDbTestContext::new(EMPTY_HASHED_TEST_TRIES).unwrap();
         let mut states: Vec<Digest> = Vec::new();
 
         for (num_leaves, generator) in TEST_TRIE_GENERATORS.iter().enumerate() {
@@ -501,9 +460,8 @@ mod full_tries {
             context.update(&tries).unwrap();
             states.push(root_hash);
 
-            update_writes_to_n_leaf_full_trie_had_expected_results::<_, _, error::Error>(
+            update_writes_to_n_leaf_full_trie_had_expected_results::<_, error::Error>(
                 correlation_id,
-                &context.environment,
                 &context.store,
                 &states,
                 num_leaves,
@@ -523,9 +481,8 @@ mod full_tries {
             context.update(&tries).unwrap();
             states.push(root_hash);
 
-            update_writes_to_n_leaf_full_trie_had_expected_results::<_, _, in_memory::Error>(
+            update_writes_to_n_leaf_full_trie_had_expected_results::<_, in_memory::Error>(
                 correlation_id,
-                &context.environment,
                 &context.store,
                 &states,
                 num_leaves,
@@ -534,26 +491,22 @@ mod full_tries {
         }
     }
 
-    fn node_writes_to_5_leaf_full_trie_had_expected_results<'a, R, S, E>(
+    fn node_writes_to_5_leaf_full_trie_had_expected_results<S, E>(
         correlation_id: CorrelationId,
-        environment: &'a R,
         store: &S,
         states: &[Digest],
     ) -> Result<(), E>
     where
-        R: TransactionSource<'a, Handle = S::Handle>,
         S: TrieStore<TestKey, TestValue>,
-        S::Error: From<R::Error>,
-        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+        E: From<S::Error> + From<bytesrepr::Error>,
     {
         let mut states = states.to_vec();
         let num_leaves = TEST_LEAVES_LENGTH;
 
         // Check that the expected set of leaves is in the trie at every state reference
         for (state_index, state) in states.iter().enumerate() {
-            check_leaves::<_, _, _, _, E>(
+            check_leaves::<_, _, _, E>(
                 correlation_id,
-                environment,
                 store,
                 state,
                 &TEST_LEAVES[..state_index],
@@ -562,9 +515,8 @@ mod full_tries {
         }
 
         // Write set of leaves to the trie
-        let hashes = write_leaves::<_, _, _, _, E>(
+        let hashes = write_leaves::<_, _, _, E>(
             correlation_id,
-            environment,
             store,
             states.last().unwrap(),
             &TEST_LEAVES_ADJACENTS,
@@ -601,14 +553,7 @@ mod full_tries {
 
         // Check that the expected set of leaves is in the trie at every state reference
         for (state_index, state) in states.iter().enumerate() {
-            check_leaves::<_, _, _, _, E>(
-                correlation_id,
-                environment,
-                store,
-                state,
-                &expected[state_index],
-                &[],
-            )?;
+            check_leaves::<_, _, _, E>(correlation_id, store, state, &expected[state_index], &[])?;
         }
         Ok(())
     }
@@ -616,7 +561,7 @@ mod full_tries {
     #[test]
     fn lmdb_node_writes_to_5_leaf_full_trie_had_expected_results() {
         let correlation_id = CorrelationId::new();
-        let context = LmdbTestContext::new(EMPTY_HASHED_TEST_TRIES).unwrap();
+        let context = RocksDbTestContext::new(EMPTY_HASHED_TEST_TRIES).unwrap();
         let mut states: Vec<Digest> = Vec::new();
 
         for generator in &TEST_TRIE_GENERATORS {
@@ -625,9 +570,8 @@ mod full_tries {
             states.push(root_hash);
         }
 
-        node_writes_to_5_leaf_full_trie_had_expected_results::<_, _, error::Error>(
+        node_writes_to_5_leaf_full_trie_had_expected_results::<_, error::Error>(
             correlation_id,
-            &context.environment,
             &context.store,
             &states,
         )
@@ -646,9 +590,8 @@ mod full_tries {
             states.push(root_hash);
         }
 
-        node_writes_to_5_leaf_full_trie_had_expected_results::<_, _, in_memory::Error>(
+        node_writes_to_5_leaf_full_trie_had_expected_results::<_, in_memory::Error>(
             correlation_id,
-            &context.environment,
             &context.store,
             &states,
         )

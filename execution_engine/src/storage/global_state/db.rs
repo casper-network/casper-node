@@ -1,3 +1,4 @@
+use lmdb::Transaction;
 use std::{
     collections::{HashMap, HashSet},
     path::Path,
@@ -16,16 +17,16 @@ use casper_types::{
 use crate::{
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
     storage::{
-        error,
+        error::{self, db::DbError},
         global_state::{
-            commit, put_stored_values, scratch::ScratchGlobalState, CommitProvider, StateProvider,
-            StateReader,
+            commit_effects, put_stored_values, scratch::ScratchGlobalState, CommitProvider,
+            StateProvider, StateReader,
         },
         store::Store,
         transaction_source::{
             self,
-            db::{LmdbEnvironment, RocksDb, RocksDbStore},
-            Readable, Transaction, TransactionSource, Writable,
+            db::{LmdbEnvironment, RocksDbStore},
+            Readable, Writable,
         },
         trie::{
             merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Pointer, Trie,
@@ -34,7 +35,7 @@ use crate::{
         trie_store::{
             db::{LmdbTrieStore, ScratchTrieStore},
             operations::{
-                descendant_trie_keys, keys_with_prefix, missing_trie_keys, put_trie, read,
+                descendant_trie_keys, keys_with_prefix, missing_trie_keys, put_trie_bytes, read,
                 read_with_proof, ReadResult,
             },
         },
@@ -117,42 +118,39 @@ impl DbGlobalState {
                 heartbeat_interval = Instant::now();
             }
 
-            let lmdb_txn = self.lmdb_environment.create_read_txn()?;
-
-            // TODO(dwerner): after this migration clean up read and write traits to fix:
-            let mut handle = self.rocksdb_store.rocksdb.clone();
-            let rocksdb = self.rocksdb_store.rocksdb.clone();
+            let lmdb_txn = self.lmdb_environment.env().begin_ro_txn()?;
 
             let trie_key_bytes = next_trie_key.to_bytes()?;
-            match lmdb_txn.read(self.lmdb_trie_store.get_db(), &trie_key_bytes)? {
-                Some(value_bytes) => {
+            match lmdb_txn.get(self.lmdb_trie_store.get_db(), &trie_key_bytes) {
+                Ok(value_bytes) => {
+                    let rocksdb = self.rocksdb_store.clone();
                     let key_bytes = next_trie_key.to_bytes()?;
                     let read_bytes = key_bytes.len() as u64 + value_bytes.len() as u64;
                     interval_bytes += read_bytes;
                     total_bytes += read_bytes;
                     total_tries += 1;
 
-                    handle.write(rocksdb.clone(), &key_bytes, &value_bytes)?;
+                    rocksdb.write(&key_bytes, value_bytes)?;
 
                     memoized_find_missing_descendants(
-                        value_bytes,
-                        handle,
+                        Bytes::from(value_bytes),
                         rocksdb,
                         &mut missing_trie_keys,
                         &mut time_searching_for_trie_keys,
                         force,
                     )?;
                 }
-                None => {
+                Err(lmdb::Error::NotFound) => {
                     // Gracefully handle roots that only exist in rocksdb, unless we're forcing a
                     // refresh of children (in the case where we have an incomplete root).
-                    if force || handle.read(rocksdb.clone(), &trie_key_bytes)?.is_none() {
+                    if force || self.rocksdb_store.read(&trie_key_bytes)?.is_none() {
                         return Err(error::Error::CorruptLmdbStateRootDuringMigrationToRocksDb {
                             trie_key: next_trie_key,
                             state_root,
                         });
                     }
                 }
+                Err(other) => return Err(error::Error::Db(DbError::Lmdb(other))),
             }
             lmdb_txn.commit()?;
         }
@@ -178,11 +176,7 @@ impl DbGlobalState {
 
         let empty_root_hash: Digest = {
             let (root_hash, root) = create_hashed_empty_trie::<Key, StoredValue>()?;
-            let mut txn = environment.create_read_write_txn()?;
-            let mut rocksdb_txn = rocksdb_store.create_read_write_txn()?;
-            rocksdb_store.put(&mut rocksdb_txn, &root_hash, &root)?;
-            trie_store.put(&mut txn, &root_hash, &root)?;
-            txn.commit()?;
+            rocksdb_store.put(&root_hash, &root)?;
             environment.env().sync(true)?;
             root_hash
         };
@@ -228,8 +222,7 @@ impl DbGlobalState {
         stored_values: HashMap<Key, StoredValue>,
     ) -> Result<Digest, error::Error> {
         let scratch_trie = self.get_scratch_store();
-        let new_state_root = put_stored_values::<_, _, error::Error>(
-            &scratch_trie,
+        let new_state_root = put_stored_values::<_, error::Error>(
             &scratch_trie,
             correlation_id,
             prestate_hash,
@@ -253,8 +246,7 @@ impl DbGlobalState {
 
 fn memoized_find_missing_descendants(
     value_bytes: Bytes,
-    handle: RocksDb,
-    rocksdb: RocksDb,
+    rocksdb: RocksDbStore,
     missing_trie_keys: &mut Vec<Digest>,
     time_in_missing_trie_keys: &mut Duration,
     force: bool,
@@ -273,11 +265,11 @@ fn memoized_find_missing_descendants(
         }
         Trie::Node { pointer_block } => {
             for (_index, ptr) in pointer_block.as_indexed_pointers() {
-                find_missing_trie_keys(ptr, force, missing_trie_keys, &handle, &rocksdb)?;
+                find_missing_trie_keys(ptr, force, missing_trie_keys, &rocksdb)?;
             }
         }
         Trie::Extension { affix: _, pointer } => {
-            find_missing_trie_keys(pointer, force, missing_trie_keys, &handle, &rocksdb)?;
+            find_missing_trie_keys(pointer, force, missing_trie_keys, &rocksdb)?;
         }
     }
     *time_in_missing_trie_keys += start_trie_keys.elapsed();
@@ -288,8 +280,7 @@ fn find_missing_trie_keys(
     ptr: Pointer,
     force: bool,
     missing_trie_keys: &mut Vec<Digest>,
-    handle: &RocksDb,
-    rocksdb: &RocksDb,
+    rocksdb: &RocksDbStore,
 ) -> Result<(), error::Error> {
     let ptr = match ptr {
         Pointer::LeafPointer(pointer) | Pointer::NodePointer(pointer) => pointer,
@@ -297,7 +288,7 @@ fn find_missing_trie_keys(
     if force {
         missing_trie_keys.push(ptr);
     } else {
-        let existing = handle.read(rocksdb.clone(), &ptr.to_bytes()?)?;
+        let existing = rocksdb.read(&ptr.to_bytes()?)?;
         if existing.is_none() {
             missing_trie_keys.push(ptr);
         }
@@ -313,10 +304,8 @@ impl StateReader<Key, StoredValue> for DbGlobalStateView {
         correlation_id: CorrelationId,
         key: &Key,
     ) -> Result<Option<StoredValue>, Self::Error> {
-        let txn = self.rocksdb_store.create_read_txn()?;
-        let ret = match read::<Key, StoredValue, _, RocksDbStore, Self::Error>(
+        let ret = match read::<_, _, _, Self::Error>(
             correlation_id,
-            &txn,
             &self.rocksdb_store,
             &self.root_hash,
             key,
@@ -325,7 +314,6 @@ impl StateReader<Key, StoredValue> for DbGlobalStateView {
             ReadResult::NotFound => None,
             ReadResult::RootNotFound => panic!("DbGlobalState has invalid root"),
         };
-        txn.commit()?;
         Ok(ret)
     }
 
@@ -334,10 +322,8 @@ impl StateReader<Key, StoredValue> for DbGlobalStateView {
         correlation_id: CorrelationId,
         key: &Key,
     ) -> Result<Option<TrieMerkleProof<Key, StoredValue>>, Self::Error> {
-        let txn = self.rocksdb_store.create_read_txn()?;
-        let ret = match read_with_proof::<Key, StoredValue, _, _, Self::Error>(
+        let ret = match read_with_proof::<_, _, _, Self::Error>(
             correlation_id,
-            &txn,
             &self.rocksdb_store,
             &self.root_hash,
             key,
@@ -346,7 +332,6 @@ impl StateReader<Key, StoredValue> for DbGlobalStateView {
             ReadResult::NotFound => None,
             ReadResult::RootNotFound => panic!("DbGlobalState has invalid root"),
         };
-        txn.commit()?;
         Ok(ret)
     }
 
@@ -355,10 +340,8 @@ impl StateReader<Key, StoredValue> for DbGlobalStateView {
         correlation_id: CorrelationId,
         prefix: &[u8],
     ) -> Result<Vec<Key>, Self::Error> {
-        let txn = self.rocksdb_store.create_read_txn()?;
-        let keys_iter = keys_with_prefix::<Key, StoredValue, _, _>(
+        let keys_iter = keys_with_prefix::<Key, StoredValue, RocksDbStore>(
             correlation_id,
-            &txn,
             &self.rocksdb_store,
             &self.root_hash,
             prefix,
@@ -370,20 +353,18 @@ impl StateReader<Key, StoredValue> for DbGlobalStateView {
                 Err(error) => return Err(error),
             }
         }
-        txn.commit()?;
         Ok(ret)
     }
 }
 
 impl CommitProvider for DbGlobalState {
-    fn commit(
+    fn commit_effects(
         &self,
         correlation_id: CorrelationId,
         prestate_hash: Digest,
         effects: AdditiveMap<Key, Transform>,
     ) -> Result<Digest, Self::Error> {
-        commit::<RocksDbStore, RocksDbStore, _, Self::Error>(
-            &self.rocksdb_store,
+        commit_effects::<RocksDbStore, _, Self::Error>(
             &self.rocksdb_store,
             correlation_id,
             prestate_hash,
@@ -399,14 +380,12 @@ impl StateProvider for DbGlobalState {
     type Reader = DbGlobalStateView;
 
     fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, Self::Error> {
-        let txn = self.rocksdb_store.create_read_txn()?;
         let rocksdb_store = self.rocksdb_store.clone();
-        let maybe_root: Option<Trie<Key, StoredValue>> = rocksdb_store.get(&txn, &state_hash)?;
+        let maybe_root: Option<Trie<Key, StoredValue>> = rocksdb_store.get(&state_hash)?;
         let maybe_state = maybe_root.map(|_| DbGlobalStateView {
             root_hash: state_hash,
             rocksdb_store,
         });
-        txn.commit()?;
         Ok(maybe_state)
     }
 
@@ -421,12 +400,8 @@ impl StateProvider for DbGlobalState {
     ) -> Result<Option<TrieOrChunk>, Self::Error> {
         let TrieOrChunkId(trie_index, trie_key) = trie_or_chunk_id;
 
-        let txn = self.rocksdb_store.clone();
-        let bytes = Store::<Digest, Trie<Digest, StoredValue>>::get_raw(
-            &self.rocksdb_store,
-            &txn.rocksdb,
-            &trie_key,
-        )?;
+        let bytes =
+            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&self.rocksdb_store, &trie_key)?;
 
         bytes.map_or_else(
             || Ok(None),
@@ -446,28 +421,20 @@ impl StateProvider for DbGlobalState {
         _correlation_id: CorrelationId,
         trie_key: &Digest,
     ) -> Result<Option<Bytes>, Self::Error> {
-        let txn = self.rocksdb_store.clone();
-        Store::<Digest, Trie<Digest, StoredValue>>::get_raw(
-            &self.rocksdb_store,
-            &txn.rocksdb,
-            trie_key,
-        )
+        Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&self.rocksdb_store, trie_key)
     }
 
-    fn put_trie(
+    fn put_trie_bytes(
         &self,
         correlation_id: CorrelationId,
         trie_bytes: &[u8],
     ) -> Result<Digest, Self::Error> {
-        let mut txn = self.rocksdb_store.create_read_write_txn()?;
         let trie_store = self.rocksdb_store.clone();
-        let trie_hash = put_trie::<Key, StoredValue, _, _, Self::Error>(
+        let trie_hash = put_trie_bytes::<Key, StoredValue, _, Self::Error>(
             correlation_id,
-            &mut txn,
             &trie_store,
             trie_bytes,
         )?;
-        txn.commit()?;
         Ok(trie_hash)
     }
 
@@ -491,10 +458,8 @@ impl StateProvider for DbGlobalState {
             info!("no need to call missing_trie_keys");
             Ok(vec![])
         } else {
-            let txn = self.rocksdb_store.create_read_txn()?;
-            let missing_descendants = missing_trie_keys::<Key, StoredValue, _, _, Self::Error>(
+            let missing_descendants = missing_trie_keys::<Key, StoredValue, _, Self::Error>(
                 correlation_id,
-                &txn,
                 &self.rocksdb_store,
                 trie_keys.clone(),
                 &self
@@ -508,24 +473,20 @@ impl StateProvider for DbGlobalState {
 
                 let mut all_descendants = HashSet::new();
                 all_descendants.extend(&trie_keys);
-                all_descendants.extend(
-                    descendant_trie_keys::<Key, StoredValue, _, _, Self::Error>(
-                        &txn,
-                        &self.rocksdb_store,
-                        trie_keys,
-                        &self
-                            .digests_without_missing_descendants
-                            .read()
-                            .expect("digest cache read lock"),
-                    )?,
-                );
+                all_descendants.extend(descendant_trie_keys::<Key, StoredValue, _, Self::Error>(
+                    &self.rocksdb_store,
+                    trie_keys,
+                    &self
+                        .digests_without_missing_descendants
+                        .read()
+                        .expect("digest cache read lock"),
+                )?);
 
                 self.digests_without_missing_descendants
                     .write()
                     .expect("digest cache write lock")
                     .extend(all_descendants.into_iter());
             }
-            txn.commit()?;
 
             Ok(missing_descendants)
         }
@@ -660,7 +621,9 @@ mod tests {
             tmp
         };
 
-        let updated_hash = state.commit(correlation_id, root_hash, effects).unwrap();
+        let updated_hash = state
+            .commit_effects(correlation_id, root_hash, effects)
+            .unwrap();
 
         let updated_checkout = state.checkout(updated_hash).unwrap().unwrap();
 
@@ -687,7 +650,9 @@ mod tests {
             tmp
         };
 
-        let updated_hash = state.commit(correlation_id, root_hash, effects).unwrap();
+        let updated_hash = state
+            .commit_effects(correlation_id, root_hash, effects)
+            .unwrap();
 
         let updated_checkout = state.checkout(updated_hash).unwrap().unwrap();
         for TestPair { key, value } in test_pairs_updated.iter().cloned() {

@@ -1,6 +1,5 @@
 use std::{collections::BTreeMap, ops::RangeInclusive};
 
-use lmdb::DatabaseFlags;
 use proptest::{collection::vec, prelude::proptest};
 use tempfile::tempdir;
 
@@ -9,11 +8,11 @@ use casper_types::{bytesrepr::ToBytes, Key, StoredValue};
 
 use crate::storage::{
     store::tests as store_tests,
+    transaction_source::{db::RocksDbStore, rocksdb_defaults},
     trie::{
         gens::{trie_extension_arb, trie_leaf_arb, trie_node_arb},
         Trie,
     },
-    DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
 };
 
 const DEFAULT_MIN_LENGTH: usize = 1;
@@ -30,42 +29,29 @@ fn get_range() -> RangeInclusive<usize> {
 }
 
 fn in_memory_roundtrip_succeeds(inputs: Vec<Trie<Key, StoredValue>>) -> bool {
-    use crate::storage::{
-        transaction_source::in_memory::InMemoryEnvironment,
-        trie_store::in_memory::InMemoryTrieStore,
-    };
+    use crate::storage::trie_store::in_memory::InMemoryTrieStore;
 
-    let env = InMemoryEnvironment::new();
-    let store = InMemoryTrieStore::new(&env, None);
+    let store = InMemoryTrieStore::new();
 
     let inputs: BTreeMap<Digest, Trie<Key, StoredValue>> = inputs
         .into_iter()
         .map(|trie| (Digest::hash(&trie.to_bytes().unwrap()), trie))
         .collect();
 
-    store_tests::roundtrip_succeeds(&env, &store, inputs).unwrap()
+    store_tests::roundtrip_succeeds(&store, inputs).unwrap()
 }
 
 fn lmdb_roundtrip_succeeds(inputs: Vec<Trie<Key, StoredValue>>) -> bool {
-    use crate::storage::{transaction_source::db::LmdbEnvironment, trie_store::db::LmdbTrieStore};
-
-    let tmp_dir = tempdir().unwrap();
-    let env = LmdbEnvironment::new(
-        tmp_dir.path(),
-        DEFAULT_TEST_MAX_DB_SIZE,
-        DEFAULT_TEST_MAX_READERS,
-        true,
-    )
-    .unwrap();
-    let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
+    let dir = tempdir().unwrap();
+    let store = RocksDbStore::new(dir.path(), rocksdb_defaults()).unwrap();
 
     let inputs: BTreeMap<Digest, Trie<Key, StoredValue>> = inputs
         .into_iter()
         .map(|trie| (Digest::hash(&trie.to_bytes().unwrap()), trie))
         .collect();
 
-    let ret = store_tests::roundtrip_succeeds(&env, &store, inputs).unwrap();
-    tmp_dir.close().unwrap();
+    let ret = store_tests::roundtrip_succeeds(&store, inputs).unwrap();
+    dir.close().unwrap();
     ret
 }
 

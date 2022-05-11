@@ -9,34 +9,21 @@ use tempfile::tempdir;
 use super::TestData;
 use crate::storage::{
     store::Store,
-    transaction_source::{
-        db::LmdbEnvironment, in_memory::InMemoryEnvironment, Transaction, TransactionSource,
-    },
+    transaction_source::{db::RocksDbStore, rocksdb_defaults},
     trie::Trie,
-    trie_store::{db::LmdbTrieStore, in_memory::InMemoryTrieStore},
-    DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
+    trie_store::in_memory::InMemoryTrieStore,
 };
 
 #[test]
 fn lmdb_writer_mutex_does_not_collide_with_readers() {
     let dir = tempdir().unwrap();
-    let env = Arc::new(
-        LmdbEnvironment::new(
-            dir.path(),
-            DEFAULT_TEST_MAX_DB_SIZE,
-            DEFAULT_TEST_MAX_READERS,
-            true,
-        )
-        .unwrap(),
-    );
-    let store = Arc::new(LmdbTrieStore::new(&env, None, Default::default()).unwrap());
+    let store = RocksDbStore::new(dir.path(), rocksdb_defaults()).unwrap();
     let num_threads = 10;
     let barrier = Arc::new(Barrier::new(num_threads + 1));
     let mut handles = Vec::new();
     let TestData(ref leaf_1_hash, ref leaf_1) = &super::create_data()[0..1][0];
 
     for _ in 0..num_threads {
-        let reader_env = env.clone();
         let reader_store = store.clone();
         let reader_barrier = barrier.clone();
         let leaf_1_hash = *leaf_1_hash;
@@ -45,11 +32,8 @@ fn lmdb_writer_mutex_does_not_collide_with_readers() {
 
         handles.push(thread::spawn(move || {
             {
-                let txn = reader_env.create_read_txn().unwrap();
-                let result: Option<Trie<Bytes, Bytes>> =
-                    reader_store.get(&txn, &leaf_1_hash).unwrap();
+                let result: Option<Trie<Bytes, Bytes>> = reader_store.get(&leaf_1_hash).unwrap();
                 assert_eq!(result, None);
-                txn.commit().unwrap();
             }
             // wait for other reader threads to read and the main thread to
             // take a read-write transaction
@@ -57,20 +41,15 @@ fn lmdb_writer_mutex_does_not_collide_with_readers() {
             // wait for main thread to put and commit
             reader_barrier.wait();
             {
-                let txn = reader_env.create_read_txn().unwrap();
-                let result: Option<Trie<Bytes, Bytes>> =
-                    reader_store.get(&txn, &leaf_1_hash).unwrap();
-                txn.commit().unwrap();
+                let result: Option<Trie<Bytes, Bytes>> = reader_store.get(&leaf_1_hash).unwrap();
                 result.unwrap() == leaf_1
             }
         }));
     }
 
-    let mut txn = env.create_read_write_txn().unwrap();
     // wait for reader threads to read
     barrier.wait();
-    store.put(&mut txn, leaf_1_hash, leaf_1).unwrap();
-    txn.commit().unwrap();
+    store.put(leaf_1_hash, leaf_1).unwrap();
     // sync with reader threads
     barrier.wait();
 
@@ -79,15 +58,13 @@ fn lmdb_writer_mutex_does_not_collide_with_readers() {
 
 #[test]
 fn in_memory_writer_mutex_does_not_collide_with_readers() {
-    let env = Arc::new(InMemoryEnvironment::new());
-    let store = Arc::new(InMemoryTrieStore::new(&env, None));
+    let store = Arc::new(InMemoryTrieStore::new());
     let num_threads = 10;
     let barrier = Arc::new(Barrier::new(num_threads + 1));
     let mut handles = Vec::new();
     let TestData(ref leaf_1_hash, ref leaf_1) = &super::create_data()[0..1][0];
 
     for _ in 0..num_threads {
-        let reader_env = env.clone();
         let reader_store = store.clone();
         let reader_barrier = barrier.clone();
         let leaf_1_hash = *leaf_1_hash;
@@ -96,11 +73,8 @@ fn in_memory_writer_mutex_does_not_collide_with_readers() {
 
         handles.push(thread::spawn(move || {
             {
-                let txn = reader_env.create_read_txn().unwrap();
-                let result: Option<Trie<Bytes, Bytes>> =
-                    reader_store.get(&txn, &leaf_1_hash).unwrap();
+                let result: Option<Trie<Bytes, Bytes>> = reader_store.get(&leaf_1_hash).unwrap();
                 assert_eq!(result, None);
-                txn.commit().unwrap();
             }
             // wait for other reader threads to read and the main thread to
             // take a read-write transaction
@@ -108,20 +82,15 @@ fn in_memory_writer_mutex_does_not_collide_with_readers() {
             // wait for main thread to put and commit
             reader_barrier.wait();
             {
-                let txn = reader_env.create_read_txn().unwrap();
-                let result: Option<Trie<Bytes, Bytes>> =
-                    reader_store.get(&txn, &leaf_1_hash).unwrap();
-                txn.commit().unwrap();
+                let result: Option<Trie<Bytes, Bytes>> = reader_store.get(&leaf_1_hash).unwrap();
                 result.unwrap() == leaf_1
             }
         }));
     }
 
-    let mut txn = env.create_read_write_txn().unwrap();
     // wait for reader threads to read
     barrier.wait();
-    store.put(&mut txn, leaf_1_hash, leaf_1).unwrap();
-    txn.commit().unwrap();
+    store.put(leaf_1_hash, leaf_1).unwrap();
     // sync with reader threads
     barrier.wait();
 
