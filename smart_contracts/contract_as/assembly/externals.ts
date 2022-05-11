@@ -226,3 +226,12 @@ export declare function load_authorization_keys(
     total_keys_ptr: usize,
     result_size_ptr: usize,
 ): i32;
+/** @hidden */
+@external("env", "casper_next_address")
+export declare function casper_next_address(
+    out_ptr: usize,
+    out_size: usize,
+): i32;
+/**
+ * TODO[RC]: Should it be `next_address` instead of `casper_next_address`?
+ */

@@ -16,3 +16,7 @@ const BLAKE2B_DIGEST_LENGTH: i32 = 32;
     }
     return hashBytes;
 }
+
+/**
+ * TODO[RC]: Shall we export `next_address` function here?
+ */
