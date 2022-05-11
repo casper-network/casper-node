@@ -26,7 +26,7 @@ pub trait FrameSink<F> {
     fn send_frame(self, frame: F) -> Self::SendFrameFut;
 }
 
-#[pin_project]
+#[pin_project] // TODO: We only need `pin_project` for deriving the `DerefMut` impl we need.
 pub struct GenericBufSender<'a, B, W> {
     buf: B,
     out: &'a mut W,
@@ -45,12 +45,13 @@ where
 {
     type Output = Result<(), FrameSinkError>;
 
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let mref = self.get_mut();
         loop {
             let GenericBufSender {
                 ref mut buf,
                 ref mut out,
-            } = &mut *self;
+            } = mref;
 
             let current_slice = buf.chunk();
             let out_pinned = Pin::new(out);
@@ -58,8 +59,8 @@ where
             match out_pinned.poll_write(cx, current_slice) {
                 Poll::Ready(Ok(bytes_written)) => {
                     // Record the number of bytes written.
-                    self.buf.advance(bytes_written);
-                    if !self.buf.has_remaining() {
+                    buf.advance(bytes_written);
+                    if !buf.has_remaining() {
                         // All bytes written, return success.
                         return Poll::Ready(Ok(()));
                     }
