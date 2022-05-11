@@ -268,6 +268,7 @@ mod tests {
             remove_contract_user_group_urefs: HostFunction::new(131, [0, 1, 2, 3, 4, 5]),
             print: HostFunction::new(123, [0, 1]),
             blake2b: HostFunction::new(133, [0, 1, 2, 3]),
+            next_address: HostFunction::new(123, [0, 1]), // TODO[RC]: Verify cost
         });
     static EXPECTED_GENESIS_WASM_COSTS: Lazy<WasmConfig> = Lazy::new(|| {
         WasmConfig::new(

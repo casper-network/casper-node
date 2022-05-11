@@ -48,6 +48,8 @@ const CHAINSPEC_REGISTRY_PREFIX: &str = "chainspec-registry-";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
+/// The length of the address.
+pub const ADDRESS_LENGTH: usize = TRANSFER_ADDR_LENGTH;
 /// The number of bytes in a [`Key::Hash`].
 pub const KEY_HASH_LENGTH: usize = 32;
 /// The number of bytes in a [`Key::Transfer`].

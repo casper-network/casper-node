@@ -13,6 +13,7 @@ mod main_purse;
 mod mint_purse;
 mod multisig_authorization;
 mod named_dictionaries;
+mod next_address;
 mod revert;
 mod subcall;
 mod transfer;
