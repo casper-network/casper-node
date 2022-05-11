@@ -59,7 +59,7 @@ where
 }
 
 #[pin_project]
-struct GenericBufSender<B, W> {
+pub struct GenericBufSender<B, W> {
     buf: B,
     #[pin]
     out: W,
@@ -123,6 +123,22 @@ mod tests {
         assert_eq!(
             output.as_slice(),
             b"\x07\x00\x00\x00\x00\x00\x00\x00abcdefg"
+        );
+    }
+
+    #[tokio::test]
+    async fn length_prefixer_multi_frame_works() {
+        let mut output = Vec::new();
+
+        let mut lp = LengthPrefixer::new(&mut output);
+
+        assert!(lp.send_frame(&b"one"[..]).await.is_ok());
+        assert!(lp.send_frame(&b"two"[..]).await.is_ok());
+        assert!(lp.send_frame(&b"three"[..]).await.is_ok());
+
+        assert_eq!(
+            output.as_slice(),
+            b"\x03\x00\x00\x00\x00\x00\x00\x00one\x03\x00\x00\x00\x00\x00\x00\x00two\x05\x00\x00\x00\x00\x00\x00\x00three"
         );
     }
 }
