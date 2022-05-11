@@ -1,3 +1,4 @@
+mod chunked;
 mod length_prefixed;
 
 use std::{
@@ -35,6 +36,13 @@ impl<A> ImmediateFrame<A> {
     #[inline]
     pub fn new(value: A) -> Self {
         Self { pos: 0, value }
+    }
+}
+
+impl From<u8> for ImmediateFrame<[u8; 1]> {
+    #[inline]
+    fn from(value: u8) -> Self {
+        ImmediateFrame::new(value.to_le_bytes())
     }
 }
 
