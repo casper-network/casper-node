@@ -6,8 +6,10 @@ use serde::{Deserialize, Serialize};
 use casper_types::Timestamp;
 
 use crate::components::consensus::{
-    consensus_protocol::ProposedBlock, protocols::simple_consensus::RoundId, traits::Context,
-    utils::ValidatorIndex,
+    consensus_protocol::ProposedBlock,
+    highway_core::validators::ValidatorIndex,
+    protocols::simple_consensus::RoundId,
+    traits::{Context, ValidatorSecret},
 };
 
 /// A proposal in the consensus protocol.
@@ -57,24 +59,92 @@ impl<C: Context> Proposal<C> {
     }
 }
 
-/// The content of a message in the main protocol, as opposed to the
-/// sync messages, which are somewhat decoupled from the rest of the
-/// protocol. This message, along with the instance and round ID,
-/// are what are signed by the active validators.
+/// The content of a message in the main protocol, as opposed to the proposal, and to sync messages,
+/// which are somewhat decoupled from the rest of the protocol. These messages, along with the
+/// instance and round ID, are signed by the active validators.
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
 pub(crate) enum Content<C: Context> {
-    Proposal(Proposal<C>),
+    /// By signing the echo of a proposal hash a validator affirms that this is the first (and
+    /// usually only) proposal by the round leader that they have received. A quorum of echoes is a
+    /// requirement for a proposal to become accepted.
     Echo(C::Hash),
+    /// By signing a `true` vote a validator confirms that they have accepted a proposal in this
+    /// round before the timeout. If there is a quorum of `true` votes, the proposal becomes
+    /// finalized, together with its ancestors.
+    ///
+    /// A `false` vote means they timed out waiting for a proposal to get accepted. A quorum of
+    /// `false` votes allows the next round's leader to make a proposal without waiting for this
+    /// round's.
     Vote(bool),
 }
 
-impl<C: Context> Content<C> {
-    pub(super) fn is_proposal(&self) -> bool {
-        matches!(self, Content::Proposal(_))
+/// A vote or echo with a signature.
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[serde(bound(
+    serialize = "C::Hash: Serialize",
+    deserialize = "C::Hash: Deserialize<'de>",
+))]
+pub(crate) struct SignedMessage<C: Context> {
+    pub(super) round_id: RoundId,
+    pub(super) instance_id: C::InstanceId,
+    pub(super) content: Content<C>,
+    pub(super) validator_idx: ValidatorIndex,
+    pub(super) signature: C::Signature,
+}
+
+impl<C: Context> SignedMessage<C> {
+    /// Creates a new signed message with a valid signature.
+    pub(crate) fn sign_new(
+        round_id: RoundId,
+        instance_id: C::InstanceId,
+        content: Content<C>,
+        validator_idx: ValidatorIndex,
+        secret: &C::ValidatorSecret,
+    ) -> SignedMessage<C> {
+        let hash = Self::hash_fields(round_id, &instance_id, &content, validator_idx);
+        SignedMessage {
+            round_id,
+            instance_id,
+            content,
+            validator_idx,
+            signature: secret.sign(&hash),
+        }
+    }
+    /// Creates a new signed message with the alternative content and signature.
+    pub(crate) fn with(&self, content: Content<C>, signature: C::Signature) -> SignedMessage<C> {
+        SignedMessage {
+            content,
+            signature,
+            ..*self
+        }
+    }
+
+    /// Returns whether the signature is valid.
+    pub(crate) fn verify_signature(&self, validator_id: &C::ValidatorId) -> bool {
+        let hash = Self::hash_fields(
+            self.round_id,
+            &self.instance_id,
+            &self.content,
+            self.validator_idx,
+        );
+        C::verify_signature(&hash, validator_id, &self.signature)
+    }
+
+    /// Returns the hash of all fields except the signature.
+    fn hash_fields(
+        round_id: RoundId,
+        instance_id: &C::InstanceId,
+        content: &Content<C>,
+        validator_idx: ValidatorIndex,
+    ) -> C::Hash {
+        let serialized_fields =
+            bincode::serialize(&(round_id, instance_id, content, validator_idx))
+                .expect("failed to serialize fields");
+        <C as Context>::hash(&serialized_fields)
     }
 }
 
@@ -119,13 +189,17 @@ pub(crate) enum Message<C: Context> {
         faulty: u128,
         instance_id: C::InstanceId,
     },
-    Signed {
+    /// A proposal for a new block. This does not contain any signature; instead, the proposer is
+    /// expected to sign an echo with the proposal hash. Validators will drop any proposal they
+    /// receive unless they either have a signed echo by the proposer and the proposer has not
+    /// double-signed, or they have a quorum of echoes.
+    Proposal {
         round_id: RoundId,
         instance_id: C::InstanceId,
-        content: Content<C>,
-        validator_idx: ValidatorIndex,
-        signature: C::Signature,
+        proposal: Proposal<C>,
     },
+    /// An echo or vote signed by an active validator.
+    Signed(SignedMessage<C>),
 }
 
 impl<C: Context> Message<C> {
@@ -154,9 +228,9 @@ impl<C: Context> Message<C> {
 
     pub(super) fn instance_id(&self) -> &C::InstanceId {
         match self {
-            Message::SyncState { instance_id, .. } | Message::Signed { instance_id, .. } => {
-                instance_id
-            }
+            Message::SyncState { instance_id, .. }
+            | Message::Signed(SignedMessage { instance_id, .. })
+            | Message::Proposal { instance_id, .. } => instance_id,
         }
     }
 }

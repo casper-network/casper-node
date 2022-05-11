@@ -1,9 +1,9 @@
 use std::fmt::Debug;
 
 use crate::components::consensus::{
+    highway_core::validators::ValidatorIndex,
     protocols::simple_consensus::{Fault, RoundId, SimpleConsensus},
     traits::Context,
-    utils::ValidatorIndex,
 };
 
 /// A map of status (faulty, inactive) by validator ID.
