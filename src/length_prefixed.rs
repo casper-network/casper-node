@@ -1,9 +1,9 @@
 use std::marker::PhantomData;
 
-use bytes::{Buf, Bytes};
+use bytes::Buf;
 use futures::AsyncWrite;
 
-use crate::{FrameSink, GenericBufSender};
+use crate::{FrameSink, GenericBufSender, ImmediateFrame};
 
 #[derive(Debug)]
 pub struct LengthPrefixer<W, F> {
@@ -20,8 +20,7 @@ impl<W, F> LengthPrefixer<W, F> {
     }
 }
 
-// TODO: Instead of bytes, use custom prefixer for small ints, so we do not have to heap allocate.
-type LengthPrefixedFrame<F> = bytes::buf::Chain<Bytes, F>;
+type LengthPrefixedFrame<F> = bytes::buf::Chain<ImmediateFrame<[u8; 2]>, F>;
 
 impl<'a, W, F> FrameSink<F> for &'a mut LengthPrefixer<W, F>
 where
@@ -31,9 +30,8 @@ where
     type SendFrameFut = GenericBufSender<'a, LengthPrefixedFrame<F>, W>;
 
     fn send_frame(self, frame: F) -> Self::SendFrameFut {
-        let length = frame.remaining() as u64; // TODO: Try into + handle error.
-        let length_prefixed_frame = Bytes::copy_from_slice(&length.to_le_bytes()).chain(frame);
-        GenericBufSender::new(length_prefixed_frame, &mut self.writer)
+        let length = frame.remaining() as u16; // TODO: Try into + handle error.
+        GenericBufSender::new(ImmediateFrame::from(length).chain(frame), &mut self.writer)
     }
 }
 
@@ -50,10 +48,7 @@ mod tests {
 
         assert!(lp.send_frame(frame).await.is_ok());
 
-        assert_eq!(
-            output.as_slice(),
-            b"\x07\x00\x00\x00\x00\x00\x00\x00abcdefg"
-        );
+        assert_eq!(output.as_slice(), b"\x07\x00abcdefg");
     }
 
     #[tokio::test]
@@ -66,9 +61,6 @@ mod tests {
         assert!(lp.send_frame(&b"two"[..]).await.is_ok());
         assert!(lp.send_frame(&b"three"[..]).await.is_ok());
 
-        assert_eq!(
-            output.as_slice(),
-            b"\x03\x00\x00\x00\x00\x00\x00\x00one\x03\x00\x00\x00\x00\x00\x00\x00two\x05\x00\x00\x00\x00\x00\x00\x00three"
-        );
+        assert_eq!(output.as_slice(), b"\x03\x00one\x03\x00two\x05\x00three");
     }
 }
