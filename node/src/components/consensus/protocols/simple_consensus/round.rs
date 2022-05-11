@@ -23,9 +23,8 @@ pub(crate) struct Round<C>
 where
     C: Context,
 {
-    /// All of the proposals sent to us this round from the leader
-    #[data_size(with = ds::hashmap_sample)]
-    proposals: HashMap<C::Hash, (Proposal<C>, C::Signature)>,
+    /// The unique proposal signed by the leader, or the unique proposal with a quorum of echoes.
+    proposal: Option<Proposal<C>>,
     /// The echoes we've received for each proposal so far.
     #[data_size(with = ds::hashmap_sample)]
     echoes: HashMap<C::Hash, BTreeMap<ValidatorIndex, C::Signature>>,
@@ -43,7 +42,7 @@ impl<C: Context> Round<C> {
         votes.insert(false, vec![None; validator_count].into());
         votes.insert(true, vec![None; validator_count].into());
         Round {
-            proposals: HashMap::new(),
+            proposal: None,
             echoes: HashMap::new(),
             votes,
             outcome: RoundOutcome::default(),
@@ -51,23 +50,45 @@ impl<C: Context> Round<C> {
     }
 
     /// Returns the map of all proposals sent to us this round from the leader
-    pub(super) fn proposals(&self) -> &HashMap<C::Hash, (Proposal<C>, C::Signature)> {
-        &self.proposals
+    pub(super) fn proposal(&self) -> Option<&Proposal<C>> {
+        self.proposal.as_ref()
     }
 
     /// Returns whether we have received at least one proposal.
     pub(super) fn has_proposal(&self) -> bool {
-        !self.proposals.is_empty()
+        self.proposal.is_some()
     }
 
-    /// Inserts a `Proposal` and returns `false` if we already had it.
+    /// Returns whether this proposal is justified by an echo signature from the round leader or by
+    /// a quorum of echoes.
+    pub(super) fn has_echoes_for_proposal(
+        &self,
+        hash: &C::Hash,
+        leader_idx: ValidatorIndex,
+    ) -> bool {
+        match (self.quorum_echoes(), self.echoes.get(hash)) {
+            (Some(quorum_hash), _) => quorum_hash == *hash,
+            (None, Some(echo_map)) => echo_map.contains_key(&leader_idx),
+            (None, None) => false,
+        }
+    }
+
+    /// Inserts a `Proposal` and returns `false` if we already had it or it cannot be added due to
+    /// missing echoes.
     pub(super) fn insert_proposal(
         &mut self,
         proposal: Proposal<C>,
-        signature: C::Signature,
+        leader_idx: ValidatorIndex,
     ) -> bool {
         let hash = proposal.hash();
-        self.proposals.insert(hash, (proposal, signature)).is_none()
+        if self.has_echoes_for_proposal(&hash, leader_idx)
+            && self.proposal.as_ref() != Some(&proposal)
+        {
+            self.proposal = Some(proposal);
+            true
+        } else {
+            false
+        }
     }
 
     /// Returns the echoes we've received for each proposal so far.
@@ -99,6 +120,13 @@ impl<C: Context> Round<C> {
     /// Stores in the outcome that we have a quorum of echoes for this hash.
     pub(super) fn set_quorum_echoes(&mut self, hash: C::Hash) {
         self.outcome.quorum_echoes = Some(hash);
+        if self
+            .proposal
+            .as_ref()
+            .map_or(false, |proposal| proposal.hash() != hash)
+        {
+            self.proposal = None;
+        }
     }
 
     /// Returns the hash for which we have a quorum of echoes, if any.
@@ -162,15 +190,13 @@ impl<C: Context> Round<C> {
     /// Returns the accepted proposal, if any, together with its height.
     pub(super) fn accepted_proposal(&self) -> Option<(u64, &Proposal<C>)> {
         let height = self.outcome.accepted_proposal_height?;
-        let hash = self.outcome.quorum_echoes?;
-        let (proposal, _signature) = self.proposals.get(&hash)?;
+        let proposal = self.proposal.as_ref()?;
         Some((height, proposal))
     }
 
     /// Check if the round has already received this message.
     pub(super) fn contains(&self, content: &Content<C>, validator_idx: ValidatorIndex) -> bool {
         match content {
-            Content::Proposal(proposal) => self.proposals.contains_key(&proposal.hash()),
             Content::Echo(hash) => self
                 .echoes
                 .get(hash)

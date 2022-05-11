@@ -1,6 +1,6 @@
 use datasize::DataSize;
 
-use crate::components::consensus::{protocols::simple_consensus::Message, traits::Context};
+use crate::components::consensus::{protocols::simple_consensus::SignedMessage, traits::Context};
 
 /// A reason for a validator to be marked as faulty.
 ///
@@ -15,10 +15,8 @@ where
     /// The validator was known to be malicious from the beginning. All their messages are
     /// considered invalid in this `SimpleConsensus` instance.
     Banned,
-    /// We have direct evidence of the validator's fault.
-    // TODO: Store only the necessary information, e.g. not the full signed proposal, and only one
-    // round ID, instance ID and validator index.
-    Direct(Message<C>, Message<C>),
+    /// We have direct evidence of the validator's fault: two conflicting signed messages.
+    Direct(SignedMessage<C>, SignedMessage<C>),
     /// The validator is known to be faulty, but the evidence is not in this era.
     Indirect,
 }
@@ -26,9 +24,5 @@ where
 impl<C: Context> Fault<C> {
     pub(super) fn is_direct(&self) -> bool {
         matches!(self, Fault::Direct(_, _))
-    }
-
-    pub(super) fn is_banned(&self) -> bool {
-        matches!(self, Fault::Banned)
     }
 }
