@@ -3,18 +3,23 @@ use std::collections::HashSet;
 use rand::Rng;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::ADDRESS_LENGTH;
 use casper_types::{crypto, runtime_args, RuntimeArgs, BLAKE2B_DIGEST_LENGTH};
 
-const BLAKE2B_WASM: &str = "blake2b.wasm";
 const ARG_BYTES: &str = "bytes";
+const ARG_AMOUNT: &str = "amount";
+
+const BLAKE2B_WASM: &str = "blake2b.wasm";
 const HASH_RESULT: &str = "hash_result";
 
 const NEXT_ADDRESS_WASM: &str = "next_address.wasm";
 const NEXT_ADDRESS_RESULT: &str = "next_address_result";
+
+const NEXT_ADDRESS_PAYMENT_WASM: &str = "next_address_payment.wasm";
+const NEXT_ADDRESS_PAYMENT_RESULT: &str = "next_address_payment_result";
 
 fn get_value<const COUNT: usize>(builder: &InMemoryWasmTestBuilder, result: &str) -> [u8; COUNT] {
     let account = builder
@@ -31,6 +36,40 @@ fn get_value<const COUNT: usize>(builder: &InMemoryWasmTestBuilder, result: &str
         .expect("should be CLValue")
         .into_t()
         .expect("should convert")
+}
+
+#[ignore]
+#[test]
+fn should_return_different_first_addresses_on_different_phases() {
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+
+    let execute_request = {
+        let mut rng = rand::thread_rng();
+        let deploy_hash = rng.gen();
+        let address = *DEFAULT_ACCOUNT_ADDR;
+        let deploy = DeployItemBuilder::new()
+            .with_address(address)
+            .with_session_code(NEXT_ADDRESS_WASM, runtime_args! {})
+            .with_payment_code(
+                NEXT_ADDRESS_PAYMENT_WASM,
+                runtime_args! {
+                    ARG_AMOUNT => *DEFAULT_PAYMENT
+                },
+            )
+            .with_authorization_keys(&[address])
+            .with_deploy_hash(deploy_hash)
+            .build();
+        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    };
+
+    builder.exec(execute_request).commit().expect_success();
+
+    let session_generated_address = get_value::<ADDRESS_LENGTH>(&builder, NEXT_ADDRESS_RESULT);
+    let payment_generated_address =
+        get_value::<ADDRESS_LENGTH>(&builder, NEXT_ADDRESS_PAYMENT_RESULT);
+
+    assert_ne!(session_generated_address, payment_generated_address)
 }
 
 #[ignore]
