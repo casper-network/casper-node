@@ -1138,7 +1138,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 }
             }
             if round_id == self.current_round {
-                if now >= self.current_timeout {
+                if now >= self.current_timeout || self.faults.contains_key(&self.leader(round_id)) {
                     outcomes.extend(self.create_message(round_id, Content::Vote(false)));
                 }
                 if self.is_skippable_round(round_id) || self.has_accepted_proposal(round_id) {
