@@ -154,7 +154,6 @@ impl EngineState<LmdbGlobalState> {
     }
 
     /// Clears the cache of visited descendants.
-    /// NOTE: Should be called only after node transition to participating mode.
     pub fn clear_visited_tries_cache(&self) -> Result<(), Error> {
         self.state.clear_visited_tries_cache().map_err(Into::into)
     }

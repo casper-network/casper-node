@@ -113,7 +113,6 @@ impl LmdbGlobalState {
     }
 
     /// Clears the cache of visited descendants.
-    /// NOTE: Should be called only after node transition to participating mode.
     pub fn clear_visited_tries_cache(&self) -> Result<(), error::Error> {
         self.digests_without_missing_descendants
             .write()
