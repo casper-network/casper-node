@@ -113,12 +113,11 @@ impl LmdbGlobalState {
     }
 
     /// Clears the cache of visited descendants.
-    pub fn clear_visited_tries_cache(&self) -> Result<(), error::Error> {
+    pub fn clear_visited_tries_cache(&self) {
         self.digests_without_missing_descendants
             .write()
             .expect("digest cache write lock")
             .clear();
-        Ok(())
     }
 }
 

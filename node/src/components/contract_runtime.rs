@@ -547,7 +547,7 @@ impl ContractRuntime {
 
     /// Clears the cache of visited descendants.
     /// NOTE: Should be called only after node transition to participating mode.
-    pub fn clear_visited_tries_cache(&self) -> Result<(), engine_state::Error> {
+    pub fn clear_visited_tries_cache(&self) {
         self.engine_state.clear_visited_tries_cache()
     }
 }

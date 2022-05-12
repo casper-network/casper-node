@@ -154,8 +154,8 @@ impl EngineState<LmdbGlobalState> {
     }
 
     /// Clears the cache of visited descendants.
-    pub fn clear_visited_tries_cache(&self) -> Result<(), Error> {
-        self.state.clear_visited_tries_cache().map_err(Into::into)
+    pub fn clear_visited_tries_cache(&self) {
+        self.state.clear_visited_tries_cache();
     }
 }
 
