@@ -675,6 +675,18 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Gets the current network non-joiner peers in random order.
+    pub async fn get_fully_connected_non_joiner_peers(self) -> Vec<NodeId>
+    where
+        REv: From<NetworkInfoRequest>,
+    {
+        self.make_request(
+            |responder| NetworkInfoRequest::GetFullyConnectedNonJoinerPeers { responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Announces which deploys have expired.
     pub(crate) async fn announce_expired_deploys(self, hashes: Vec<DeployHash>)
     where

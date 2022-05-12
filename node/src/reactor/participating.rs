@@ -692,6 +692,7 @@ impl reactor::Reactor for Reactor {
             registry,
             small_network_identity,
             chainspec.as_ref(),
+            false,
         )?;
 
         effects.extend(reactor::wrap_effects(
