@@ -40,6 +40,9 @@ use crate::testing::TestRng;
 pub struct Timestamp(u64);
 
 impl Timestamp {
+    /// The maximum value a timestamp can have.
+    pub const MAX: Timestamp = Timestamp(u64::MAX);
+
     #[cfg(any(feature = "std", test))]
     /// Returns the timestamp of the current moment.
     pub fn now() -> Self {
