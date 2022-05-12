@@ -54,14 +54,18 @@
 //! all signed messages that it has and the other is missing.
 
 pub(crate) mod config;
+mod fault;
+mod message;
 mod params;
+mod participation;
+mod round;
 #[cfg(test)]
 mod tests;
 
 use std::{
     any::Any,
     cmp::Reverse,
-    collections::{btree_map, BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{btree_map, BTreeMap, HashMap, HashSet},
     fmt::Debug,
     iter,
     path::PathBuf,
@@ -70,8 +74,7 @@ use std::{
 use datasize::DataSize;
 use itertools::Itertools;
 use rand::{seq::IteratorRandom, Rng};
-use serde::{Deserialize, Serialize};
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, event, info, warn, Level};
 
 use casper_types::{TimeDiff, Timestamp, U512};
 
@@ -83,15 +86,19 @@ use crate::{
             ProtocolOutcomes, TerminalBlockData,
         },
         protocols,
-        traits::{ConsensusValueT, Context, ValidatorSecret},
+        traits::{ConsensusValueT, Context},
         utils::{ValidatorIndex, ValidatorMap, Validators, Weight},
         ActionId, LeaderSequence, TimerId,
     },
     types::{Chainspec, NodeId},
-    utils::{div_round, ds},
+    utils::div_round,
     NodeRng,
 };
+use fault::Fault;
+use message::{Content, Message, Proposal, SignedMessage};
 use params::Params;
+use participation::{Participation, ParticipationStatus};
+use round::Round;
 
 /// The timer for syncing with a random peer.
 const TIMER_ID_SYNC_PEER: TimerId = TimerId(0);
@@ -104,105 +111,10 @@ const TIMER_ID_STANDSTILL_ALERT: TimerId = TimerId(3);
 
 /// The maximum number of future rounds we instantiate if we get messages from rounds that we
 /// haven't started yet.
-const MAX_FUTURE_ROUNDS: u32 = 10;
+const MAX_FUTURE_ROUNDS: u32 = 7200; // Don't drop messages in 2-hour eras with 1-second rounds.
 
 /// Identifies a single [`Round`] in the protocol.
 pub(crate) type RoundId = u32;
-
-/// The protocol proceeds in rounds, for each of which we must
-/// keep track of proposals, echos, votes, and the current outcome
-/// of the round.
-#[derive(Debug, DataSize)]
-pub(crate) struct Round<C>
-where
-    C: Context,
-{
-    /// All of the proposals sent to us this round from the leader
-    #[data_size(with = ds::hashmap_sample)]
-    proposals: HashMap<C::Hash, (Proposal<C>, C::Signature)>,
-    /// The echos we've received for each proposal so far.
-    #[data_size(with = ds::hashmap_sample)]
-    echos: HashMap<C::Hash, BTreeMap<ValidatorIndex, C::Signature>>,
-    /// The votes we've received for this round so far.
-    votes: BTreeMap<bool, ValidatorMap<Option<C::Signature>>>,
-    /// The memoized results in this round.
-    outcome: RoundOutcome<C>,
-}
-
-impl<C: Context> Round<C> {
-    /// Creates a new [`Round`] with no proposals, echos, votes, and empty
-    /// round outcome.
-    fn new(validator_count: usize) -> Round<C> {
-        let mut votes = BTreeMap::new();
-        votes.insert(false, vec![None; validator_count].into());
-        votes.insert(true, vec![None; validator_count].into());
-        Round {
-            proposals: HashMap::new(),
-            echos: HashMap::new(),
-            votes,
-            outcome: RoundOutcome::default(),
-        }
-    }
-
-    /// Inserts a `Proposal` and returns `false` if we already had it.
-    fn insert_proposal(&mut self, proposal: Proposal<C>, signature: C::Signature) -> bool {
-        let hash = proposal.hash();
-        self.proposals.insert(hash, (proposal, signature)).is_none()
-    }
-
-    /// Inserts an `Echo`; returns `false` if we already had it.
-    fn insert_echo(
-        &mut self,
-        hash: C::Hash,
-        validator_idx: ValidatorIndex,
-        signature: C::Signature,
-    ) -> bool {
-        self.echos
-            .entry(hash)
-            .or_insert_with(BTreeMap::new)
-            .insert(validator_idx, signature)
-            .is_none()
-    }
-
-    /// Inserts a `Vote`; returns `false` if we already had it.
-    fn insert_vote(
-        &mut self,
-        vote: bool,
-        validator_idx: ValidatorIndex,
-        signature: C::Signature,
-    ) -> bool {
-        // Safe to unwrap: Both `true` and `false` entries were created in `new`.
-        let votes_map = self.votes.get_mut(&vote).unwrap();
-        if votes_map[validator_idx].is_none() {
-            votes_map[validator_idx] = Some(signature);
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Returns the accepted proposal, if any, together with its height.
-    fn accepted_proposal(&self) -> Option<(u64, &Proposal<C>)> {
-        let height = self.outcome.accepted_proposal_height?;
-        let hash = self.outcome.quorum_echos?;
-        let (proposal, _signature) = self.proposals.get(&hash)?;
-        Some((height, proposal))
-    }
-}
-
-impl<C: Context> Round<C> {
-    /// Check if the round has already received this message.
-    fn contains(&self, content: &Content<C>, validator_idx: ValidatorIndex) -> bool {
-        match content {
-            Content::Proposal(proposal) => self.proposals.contains_key(&proposal.hash()),
-            Content::Echo(hash) => self
-                .echos
-                .get(hash)
-                .map_or(false, |echo_map| echo_map.contains_key(&validator_idx)),
-            Content::Vote(vote) => self.votes[vote][validator_idx].is_some(),
-        }
-    }
-}
 
 /// Contains the state required for the protocol.
 #[derive(DataSize, Debug)]
@@ -225,10 +137,10 @@ where
     evidence_only: bool,
     /// Proposals which have not yet had their parent accepted yet.
     proposals_waiting_for_parent:
-        HashMap<RoundId, HashMap<Proposal<C>, HashSet<(RoundId, NodeId, C::Signature)>>>,
+        HashMap<RoundId, HashMap<Proposal<C>, HashSet<(RoundId, NodeId)>>>,
     /// Incoming blocks we can't add yet because we are waiting for validation.
     proposals_waiting_for_validation:
-        HashMap<ProposedBlock<C>, HashSet<(RoundId, Proposal<C>, NodeId, C::Signature)>>,
+        HashMap<ProposedBlock<C>, HashSet<(RoundId, Proposal<C>, NodeId)>>,
     /// If we requested a new block from the block proposer component this contains the proposal's
     /// round ID and the parent's round ID, if there is a parent.
     pending_proposal: Option<(BlockContext<C>, RoundId, Option<RoundId>)>,
@@ -254,6 +166,9 @@ where
     progress_detected: bool,
     /// Whether or not the protocol is currently paused
     paused: bool,
+    /// The next update we have set a timer for. This helps deduplicate redundant calls to
+    /// `update`.
+    next_scheduled_update: Timestamp,
 }
 
 impl<C: Context + 'static> SimpleConsensus<C> {
@@ -319,7 +234,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             first_non_finalized_round_id: 0,
             maybe_dirty_round_id: None,
             current_round: 0,
-            current_timeout: Timestamp::from(u64::MAX),
+            current_timeout: Timestamp::MAX,
             evidence_only: false,
             faults,
             active,
@@ -331,6 +246,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             pending_proposal: None,
             progress_detected: false,
             paused: false,
+            next_scheduled_update: Timestamp::MAX,
         }
     }
 
@@ -429,20 +345,14 @@ impl<C: Context + 'static> SimpleConsensus<C> {
 
     /// Returns whether the validator has already sent an `Echo` in this round.
     fn has_echoed(&self, round_id: RoundId, validator_idx: ValidatorIndex) -> bool {
-        self.round(round_id).map_or(false, |round| {
-            round
-                .echos
-                .values()
-                .any(|echo_map| echo_map.contains_key(&validator_idx))
-        })
+        self.round(round_id)
+            .map_or(false, |round| round.has_echoed(validator_idx))
     }
 
     /// Returns whether the validator has already cast a `true` or `false` vote.
     fn has_voted(&self, round_id: RoundId, validator_idx: ValidatorIndex) -> bool {
-        self.round(round_id).map_or(false, |round| {
-            round.votes[&true][validator_idx].is_some()
-                || round.votes[&false][validator_idx].is_some()
-        })
+        self.round(round_id)
+            .map_or(false, |round| round.has_voted(validator_idx))
     }
 
     /// Request the latest state from a random peer.
@@ -517,6 +427,11 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         );
     }
 
+    /// Creates a `SyncState` message to inform a peer about our view of the given round, so that
+    /// the peer can send us any data we are missing.
+    ///
+    /// If there are more than 128 validators, the information only covers echoes and votes of
+    /// validators with index in `first_validator_idx..=(first_validator_idx + 127)`.
     fn create_sync_state_message(
         &self,
         first_validator_idx: ValidatorIndex,
@@ -535,29 +450,29 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             }
         };
         let true_votes =
-            self.validator_bit_field(first_validator_idx, round.votes[&true].keys_some());
+            self.validator_bit_field(first_validator_idx, round.votes(true).keys_some());
         let false_votes =
-            self.validator_bit_field(first_validator_idx, round.votes[&false].keys_some());
-        let proposal_hash = round.outcome.quorum_echos.or_else(|| {
+            self.validator_bit_field(first_validator_idx, round.votes(false).keys_some());
+        // We only request information about the proposal with the most echoes, by weight.
+        // TODO: If there's no quorum, should we prefer the one for which we have the leader's echo?
+        let proposal_hash = round.quorum_echoes().or_else(|| {
             round
-                .echos
+                .echoes()
                 .iter()
                 .max_by_key(|(_, echo_map)| self.sum_weights(echo_map.keys()))
                 .map(|(hash, _)| *hash)
         });
-        let mut echos = 0;
-        let mut proposal = false;
-        if let Some(hash) = proposal_hash {
-            echos =
-                self.validator_bit_field(first_validator_idx, round.echos[&hash].keys().cloned());
-            proposal = round.proposals.contains_key(&hash);
+        let proposal = round.proposal().map(Proposal::hash) == proposal_hash;
+        let mut echoes = 0;
+        if let Some(echo_map) = proposal_hash.and_then(|hash| round.echoes().get(&hash)) {
+            echoes = self.validator_bit_field(first_validator_idx, echo_map.keys().cloned());
         }
         Message::SyncState {
             round_id,
             proposal_hash,
             proposal,
             first_validator_idx,
-            echos,
+            echoes,
             true_votes,
             false_votes,
             faulty,
@@ -615,6 +530,20 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         })
     }
 
+    /// Returns whether `v_idx` is covered by a validator index that starts at `first_idx`.
+    #[allow(clippy::integer_arithmetic)] // We convert to u64 so it can't overflow.
+    fn validator_bit_field_includes(
+        &self,
+        ValidatorIndex(first_idx): ValidatorIndex,
+        ValidatorIndex(v_idx): ValidatorIndex,
+    ) -> bool {
+        let v_idx = v_idx as u64;
+        let first_idx = first_idx as u64;
+        let count = self.validators.len() as u64;
+        (v_idx < first_idx + 128 && v_idx >= first_idx)
+            || (v_idx + count < first_idx + 128 && v_idx + count >= first_idx)
+    }
+
     /// Returns the leader in the specified round.
     pub(crate) fn leader(&self, round_id: RoundId) -> ValidatorIndex {
         self.leader_sequence.leader(u64::from(round_id))
@@ -635,36 +564,21 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             return vec![];
         }
         let already_signed = match &content {
-            Content::Proposal(_) => {
-                if self.leader(round_id) != validator_idx {
-                    error!(
-                        %round_id, validator_idx = %validator_idx.0,
-                        "Tried to create a proposal in wrong round."
-                    );
-                    return vec![]; // Not creating a proposal: We're not the leader.
-                }
-                self.round(round_id)
-                    .map_or(false, |round| !round.proposals.is_empty())
-            }
             Content::Echo(_) => self.has_echoed(round_id, validator_idx),
             Content::Vote(_) => self.has_voted(round_id, validator_idx),
         };
         if already_signed {
             return vec![]; // Not creating message, so we don't double-sign or duplicate.
         }
-        let serialized_fields =
-            bincode::serialize(&(round_id, self.instance_id(), &content, validator_idx))
-                .expect("failed to serialize fields");
-        let hash = <C as Context>::hash(&serialized_fields);
-        let signature = secret_key.sign(&hash);
-        self.add_content(round_id, content.clone(), validator_idx, signature);
-        let message = Message::Signed {
+        let signed_msg = SignedMessage::sign_new(
             round_id,
-            instance_id: *self.instance_id(),
+            *self.instance_id(),
             content,
             validator_idx,
-            signature,
-        };
+            secret_key,
+        );
+        self.add_content(signed_msg.clone());
+        let message = Message::Signed(signed_msg);
         vec![ProtocolOutcome::CreatedGossipMessage(message.serialize())]
     }
 
@@ -673,54 +587,28 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     /// from the protocol state.
     fn handle_fault(
         &mut self,
-        round_id: RoundId,
-        validator_idx: ValidatorIndex,
+        signed_msg: SignedMessage<C>,
         validator_id: C::ValidatorId,
-        (content0, signature0): (Content<C>, C::Signature),
-        (content1, signature1): (Content<C>, C::Signature),
+        content2: Content<C>,
+        signature2: C::Signature,
         now: Timestamp,
     ) -> ProtocolOutcomes<C> {
-        info!(index = validator_idx.0, id = %validator_id, "validator double-signed");
-        if let Some(Fault::Direct(_, _)) = self.faults.get(&validator_idx) {
-            return vec![]; // Validator is already known to be faulty.
-        }
-        let msg0 = Message::Signed {
-            round_id,
-            instance_id: *self.instance_id(),
-            content: content0,
-            validator_idx,
-            signature: signature0,
-        };
-        let msg1 = Message::Signed {
-            round_id,
-            instance_id: *self.instance_id(),
-            content: content1,
-            validator_idx,
-            signature: signature1,
-        };
-        // TODO should we send this as one message?
-        let mut outcomes = vec![
-            ProtocolOutcome::CreatedGossipMessage(msg0.serialize()),
-            ProtocolOutcome::CreatedGossipMessage(msg1.serialize()),
-            ProtocolOutcome::NewEvidence(validator_id),
-        ];
-        self.faults.insert(validator_idx, Fault::Direct(msg0, msg1));
+        let validator_idx = signed_msg.validator_idx;
+        warn!(?signed_msg, ?content2, id = %validator_id, "validator double-signed");
+        let fault = Fault::Direct(signed_msg, content2, signature2);
+        self.faults.insert(validator_idx, fault);
         self.active[validator_idx] = true;
         self.progress_detected = true;
+        let mut outcomes = vec![ProtocolOutcome::NewEvidence(validator_id)];
         if self.faulty_weight() > self.params.ftt() {
             outcomes.push(ProtocolOutcome::FttExceeded);
             return outcomes;
         }
 
-        // Remove all Votes and Echos from the faulty validator: They count towards every quorum now
-        // so nobody has to store their messages.
+        // Remove all votes and echoes from the faulty validator: They count towards every quorum
+        // now so nobody has to store their messages.
         for round in self.rounds.values_mut() {
-            round.votes.get_mut(&false).unwrap()[validator_idx] = None;
-            round.votes.get_mut(&true).unwrap()[validator_idx] = None;
-            round.echos.retain(|_, echo_map| {
-                echo_map.remove(&validator_idx);
-                !echo_map.is_empty()
-            });
+            round.remove_votes_and_echoes(validator_idx);
         }
 
         // Recompute quorums; if any new quorums are found, call `update`.
@@ -730,8 +618,12 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             if !self.rounds.contains_key(&round_id) {
                 continue;
             }
-            if self.rounds[&round_id].outcome.quorum_echos.is_none() {
-                let hashes = self.rounds[&round_id].echos.keys().copied().collect_vec();
+            if self.rounds[&round_id].quorum_echoes().is_none() {
+                let hashes = self.rounds[&round_id]
+                    .echoes()
+                    .keys()
+                    .copied()
+                    .collect_vec();
                 if hashes
                     .into_iter()
                     .any(|hash| self.check_new_echo_quorum(round_id, hash))
@@ -759,7 +651,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         proposal_hash: Option<C::Hash>,
         has_proposal: bool,
         first_validator_idx: ValidatorIndex,
-        echos: u128,
+        echoes: u128,
         true_votes: u128,
         false_votes: u128,
         faulty: u128,
@@ -782,62 +674,89 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             return vec![];
         }
         let our_faulty = self.validator_bit_field(first_validator_idx, self.faults.keys().cloned());
-        let mut contents = vec![];
+        let mut contents: Vec<(Content<C>, ValidatorIndex, C::Signature)> = vec![];
+        let mut proposal_outcome = None;
         match proposal_hash {
-            Some(hash)
-                if round.outcome.quorum_echos == None
-                    || round.outcome.quorum_echos == Some(hash) =>
-            {
-                if let Some(echo_map) = round.echos.get(&hash) {
-                    let our_echos =
+            Some(hash) if round.quorum_echoes() == None || round.quorum_echoes() == Some(hash) => {
+                // They requested echoes for the proposal that we have a quorum for, or we don't
+                // have a quorum of echoes yet.
+                if let Some(echo_map) = round.echoes().get(&hash) {
+                    // Send them echoes they are missing, but exclude faulty validators.
+                    let our_echoes =
                         self.validator_bit_field(first_validator_idx, echo_map.keys().cloned());
-                    let missing_echos = our_echos & !(echos | faulty | our_faulty);
-                    for v_idx in self.iter_validator_bit_field(first_validator_idx, missing_echos) {
+                    let missing_echoes = our_echoes & !(echoes | faulty | our_faulty);
+                    for v_idx in self.iter_validator_bit_field(first_validator_idx, missing_echoes)
+                    {
                         contents.push((Content::Echo(hash), v_idx, echo_map[&v_idx]));
                     }
-                }
-                if !has_proposal {
-                    if let Some((proposal, signature)) = round.proposals.get(&hash) {
-                        let content = Content::Proposal(proposal.clone());
-                        contents.push((content, self.leader(round_id), *signature));
+                    if !has_proposal {
+                        // If they don't have the proposal make sure we include the leader's echo.
+                        let leader_idx = self.leader(round_id);
+                        if !self.validator_bit_field_includes(first_validator_idx, leader_idx) {
+                            if let Some(signature) = echo_map.get(&leader_idx) {
+                                contents.push((Content::Echo(hash), leader_idx, *signature));
+                            }
+                        }
+                        if let Some(proposal) = round.proposal() {
+                            if proposal.hash() == hash {
+                                let msg = Message::Proposal {
+                                    round_id,
+                                    instance_id: *self.instance_id(),
+                                    proposal: proposal.clone(),
+                                };
+                                let ser_msg = msg.serialize();
+                                proposal_outcome =
+                                    Some(ProtocolOutcome::CreatedTargetedMessage(ser_msg, sender))
+                            }
+                        }
                     }
                 }
             }
             _ => {
-                if let Some(hash) = round.outcome.quorum_echos {
-                    for (v_idx, signature) in &round.echos[&hash] {
+                if let Some(hash) = round.quorum_echoes() {
+                    // We have a quorum of echoes that they don't know about.
+                    for (v_idx, signature) in &round.echoes()[&hash] {
                         contents.push((Content::Echo(hash), *v_idx, *signature));
                     }
                 }
             }
         }
+
+        // Send them votes they are missing, but exclude faulty validators.
         let our_true_votes =
-            self.validator_bit_field(first_validator_idx, round.votes[&true].keys_some());
+            self.validator_bit_field(first_validator_idx, round.votes(true).keys_some());
         let missing_true_votes = our_true_votes & !(true_votes | faulty | our_faulty);
         for v_idx in self.iter_validator_bit_field(first_validator_idx, missing_true_votes) {
-            let signature = round.votes[&true][v_idx].unwrap();
+            let signature = round.votes(true)[v_idx].unwrap();
             contents.push((Content::Vote(true), v_idx, signature));
         }
         let our_false_votes =
-            self.validator_bit_field(first_validator_idx, round.votes[&false].keys_some());
+            self.validator_bit_field(first_validator_idx, round.votes(false).keys_some());
         let missing_false_votes = our_false_votes & !(false_votes | faulty | our_faulty);
         for v_idx in self.iter_validator_bit_field(first_validator_idx, missing_false_votes) {
-            let signature = round.votes[&false][v_idx].unwrap();
+            let signature = round.votes(false)[v_idx].unwrap();
             contents.push((Content::Vote(false), v_idx, signature));
         }
+
+        // Convert the contents to protocol outcomes.
         let mut outcomes = contents
             .into_iter()
             .map(|(content, validator_idx, signature)| {
-                let msg = Message::Signed {
+                let msg = Message::Signed(SignedMessage {
                     round_id,
                     instance_id: *self.instance_id(),
                     content,
                     validator_idx,
                     signature,
-                };
-                ProtocolOutcome::CreatedTargetedMessage(msg.serialize(), sender)
+                });
+                let ser_msg = msg.serialize();
+                ProtocolOutcome::CreatedTargetedMessage(ser_msg, sender)
             })
             .collect_vec();
+        // Add the proposal _after_ the corresponding echo, so it gets accepted by the peer.
+        outcomes.extend(proposal_outcome);
+
+        // Add evidence for validators they don't know are faulty.
         let missing_faulty = our_faulty & !faulty;
         for v_idx in self.iter_validator_bit_field(first_validator_idx, missing_faulty) {
             match &self.faults[&v_idx] {
@@ -848,13 +767,10 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                         "peer disagrees about banned validator"
                     );
                 }
-                Fault::Direct(msg0, msg1) => {
+                Fault::Direct(signed_msg, content2, signature2) => {
                     outcomes.push(ProtocolOutcome::CreatedTargetedMessage(
-                        msg0.serialize(),
-                        sender,
-                    ));
-                    outcomes.push(ProtocolOutcome::CreatedTargetedMessage(
-                        msg1.serialize(),
+                        Message::Evidence(signed_msg.clone(), content2.clone(), *signature2)
+                            .serialize(),
                         sender,
                     ));
                 }
@@ -867,188 +783,239 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         outcomes
     }
 
-    /// The main entry point for non-synchronization messages. This function mostly authenticates
+    /// The main entry point for signed echoes or votes. This function mostly authenticates
     /// and authorizes the message, passing it to [`add_content`] if it passes snuff for the
     /// main protocol logic.
-    #[allow(clippy::too_many_arguments)]
     fn handle_signed_message(
         &mut self,
-        round_id: RoundId,
-        content: Content<C>,
-        validator_idx: ValidatorIndex,
-        signature: C::Signature,
+        signed_msg: SignedMessage<C>,
         sender: NodeId,
         now: Timestamp,
     ) -> ProtocolOutcomes<C> {
-        let disconnect_from_sender = |content: &Content<C>, message: &'static str| {
-            warn!(
-                ?round_id,
-                ?content,
-                ?validator_idx,
-                ?sender,
-                "invalid incoming message: {}",
-                message
-            );
-            vec![ProtocolOutcome::Disconnect(sender)]
-        };
-
+        let validator_idx = signed_msg.validator_idx;
         let validator_id = if let Some(validator_id) = self.validators.id(validator_idx) {
             validator_id.clone()
         } else {
-            return disconnect_from_sender(&content, "invalid validator index");
+            warn!(
+                ?signed_msg,
+                ?sender,
+                "invalid incoming message: validator index out of range",
+            );
+            return vec![ProtocolOutcome::Disconnect(sender)];
         };
 
-        if let Some(fault) = self.faults.get(&validator_idx) {
-            if fault.is_banned() || !content.is_proposal() {
-                debug!(?validator_id, "ignoring message from faulty validator");
-                return vec![];
-            }
+        if self.faults.contains_key(&validator_idx) {
+            debug!(?validator_id, "ignoring message from faulty validator");
+            return vec![];
         }
 
-        if round_id > self.current_round.saturating_add(MAX_FUTURE_ROUNDS) {
-            debug!(%round_id, "dropping message from future round");
+        if signed_msg.round_id > self.current_round.saturating_add(MAX_FUTURE_ROUNDS) {
+            debug!(?signed_msg, "dropping message from future round");
             return vec![];
         }
 
         if self.evidence_only {
-            debug!("received an irrelevant message");
-            // TODO: Return vec![] if this isn't an evidence message.
-        }
-
-        if self
-            .round(round_id)
-            .map_or(false, |round| round.contains(&content, validator_idx))
-        {
-            debug!(
-                ?round_id,
-                ?content,
-                validator_idx = validator_idx.0,
-                "received a duplicated message"
-            );
+            debug!(?signed_msg, "received an irrelevant message");
             return vec![];
         }
 
-        let serialized_fields =
-            bincode::serialize(&(round_id, self.instance_id(), &content, validator_idx))
-                .expect("failed to serialize fields");
-        let hash = <C as Context>::hash(&serialized_fields);
-        if !C::verify_signature(&hash, &validator_id, &signature) {
-            return disconnect_from_sender(&content, "invalid signature");
-        }
-
-        let mut outcomes = vec![];
-
-        if let Some((content2, signature2)) = self.detect_fault(round_id, validator_idx, &content) {
-            outcomes.extend(self.handle_fault(
-                round_id,
-                validator_idx,
-                validator_id.clone(),
-                (content.clone(), signature),
-                (content2, signature2),
-                now,
-            ));
-            if !content.is_proposal() {
-                debug!(?validator_id, "ignoring message from faulty validator");
-                return outcomes;
+        if let Some(round) = self.round(signed_msg.round_id) {
+            if round.contains(&signed_msg.content, validator_idx) {
+                debug!(?signed_msg, ?sender, "received a duplicated message");
+                return vec![];
             }
         }
 
-        match content {
-            Content::Proposal(proposal) => {
-                if proposal.timestamp > now + self.config.clock_tolerance {
-                    trace!("received a proposal with a timestamp far in the future; dropping");
-                    return outcomes;
-                }
-                if proposal.timestamp > now {
-                    trace!("received a proposal with a timestamp slightly in the future");
-                    // TODO: If it's not from an equivocator and from the future, add to queue
-                    // trace!("received a proposal from the future; storing for later");
-                    // let timer_id = TIMER_ID_VERTEX_WITH_FUTURE_TIMESTAMP;
-                    // vec![ProtocolOutcome::ScheduleTimer(timestamp, timer_id)]
-                }
+        if !signed_msg.verify_signature(&validator_id) {
+            warn!(?signed_msg, ?sender, "invalid signature",);
+            return vec![ProtocolOutcome::Disconnect(sender)];
+        }
 
-                if validator_idx != self.leader(round_id) {
-                    outcomes.extend(disconnect_from_sender(
-                        &Content::Proposal(proposal),
-                        "wrong leader",
-                    ));
-                    return outcomes;
-                }
-                if proposal
-                    .maybe_parent_round_id
-                    .map_or(false, |parent_round_id| parent_round_id >= round_id)
-                {
-                    outcomes.extend(disconnect_from_sender(
-                        &Content::Proposal(proposal),
-                        "invalid proposal: parent is not from an earlier round",
-                    ));
-                    return outcomes;
-                }
+        if let Some((content2, signature2)) = self.detect_fault(&signed_msg) {
+            let evidence_msg = Message::Evidence(signed_msg.clone(), content2.clone(), signature2);
+            let mut outcomes =
+                self.handle_fault(signed_msg, validator_id, content2, signature2, now);
+            let serialized_msg = evidence_msg.serialize();
+            outcomes.push(ProtocolOutcome::CreatedGossipMessage(serialized_msg));
+            outcomes
+        } else {
+            self.add_content(signed_msg);
+            self.update(now)
+        }
+    }
 
-                if (proposal.maybe_parent_round_id.is_none() || proposal.maybe_block.is_none())
-                    != proposal.inactive.is_none()
-                {
-                    outcomes.extend(disconnect_from_sender(
-                        &Content::Proposal(proposal),
-                        "invalid proposal: inactive must be present in all except the first and \
-                        dummy proposals",
-                    ));
-                    return outcomes;
-                }
-                if let Some(inactive) = &proposal.inactive {
-                    if inactive
-                        .iter()
-                        .any(|idx| *idx == validator_idx || self.validators.id(*idx).is_none())
-                    {
-                        outcomes.extend(disconnect_from_sender(
-                            &Content::Proposal(proposal),
-                            "invalid proposal: invalid inactive validator index",
-                        ));
-                        return outcomes;
-                    }
-                }
+    /// Verifies an evidence message that is supposed to contain two conflicting sigantures by the
+    /// same validator, and then calls `handle_fault`.
+    fn handle_evidence(
+        &mut self,
+        signed_msg: SignedMessage<C>,
+        content2: Content<C>,
+        signature2: C::Signature,
+        sender: NodeId,
+        now: Timestamp,
+    ) -> ProtocolOutcomes<C> {
+        let validator_idx = signed_msg.validator_idx;
+        if let Some(Fault::Direct(..)) = self.faults.get(&validator_idx) {
+            return vec![]; // Validator is already known to be faulty.
+        }
+        let validator_id = if let Some(validator_id) = self.validators.id(validator_idx) {
+            validator_id.clone()
+        } else {
+            warn!(
+                ?signed_msg,
+                ?sender,
+                "invalid incoming evidence: validator index out of range",
+            );
+            return vec![ProtocolOutcome::Disconnect(sender)];
+        };
+        if !signed_msg.content.contradicts(&content2) {
+            warn!(
+                ?signed_msg,
+                ?content2,
+                ?sender,
+                "invalid evidence: contents don't conflict",
+            );
+            return vec![ProtocolOutcome::Disconnect(sender)];
+        }
+        if !signed_msg.verify_signature(&validator_id)
+            || !signed_msg
+                .with(content2.clone(), signature2)
+                .verify_signature(&validator_id)
+        {
+            warn!(
+                ?signed_msg,
+                ?content2,
+                ?sender,
+                "invalid signature in evidence",
+            );
+            return vec![ProtocolOutcome::Disconnect(sender)];
+        }
+        self.handle_fault(signed_msg, validator_id, content2, signature2, now)
+    }
 
-                let ancestor_values = if let Some(parent_round_id) = proposal.maybe_parent_round_id
-                {
-                    if let Some(ancestor_values) = self.ancestor_values(parent_round_id) {
-                        ancestor_values
-                    } else {
-                        self.proposals_waiting_for_parent
-                            .entry(parent_round_id)
-                            .or_insert_with(HashMap::new)
-                            .entry(proposal)
-                            .or_insert_with(HashSet::new)
-                            .insert((round_id, sender, signature));
-                        return outcomes;
-                    }
-                } else {
-                    vec![]
-                };
+    /// Checks whether an incoming proposal should be added to the protocol state and starts
+    /// validation.
+    fn handle_proposal(
+        &mut self,
+        round_id: RoundId,
+        proposal: Proposal<C>,
+        sender: NodeId,
+        now: Timestamp,
+    ) -> ProtocolOutcomes<C> {
+        let leader_idx = self.leader(round_id);
 
-                outcomes.extend(self.validate_proposal(
+        macro_rules! log_proposal {
+            ($lvl:expr, $msg:expr $(,)?) => {
+                event!(
+                    $lvl,
                     round_id,
-                    proposal,
-                    ancestor_values,
-                    sender,
-                    signature,
-                ));
-            }
-            content @ Content::Echo(_) | content @ Content::Vote(_) => {
-                self.add_content(round_id, content, validator_idx, signature);
+                    parent = proposal.maybe_parent_round_id,
+                    timestamp = %proposal.timestamp,
+                    leader_idx = leader_idx.0,
+                    ?sender,
+                    "{}",
+                    $msg
+                );
             }
         }
+
+        if let Some(parent_round_id) = proposal.maybe_parent_round_id {
+            if parent_round_id >= round_id {
+                log_proposal!(
+                    Level::WARN,
+                    "invalid proposal: parent is not from an earlier round",
+                );
+                return vec![ProtocolOutcome::Disconnect(sender)];
+            }
+        }
+
+        if proposal.timestamp > now + self.config.clock_tolerance {
+            log_proposal!(
+                Level::TRACE,
+                "received a proposal with a timestamp far in the future; dropping",
+            );
+            return vec![];
+        }
+        if proposal.timestamp > now {
+            log_proposal!(
+                Level::TRACE,
+                "received a proposal with a timestamp slightly in the future",
+            );
+            // TODO: If it's not from an equivocator and from the future, add to queue
+            // trace!("received a proposal from the future; storing for later");
+            // let timer_id = TIMER_ID_VERTEX_WITH_FUTURE_TIMESTAMP;
+            // vec![ProtocolOutcome::ScheduleTimer(timestamp, timer_id)]
+        }
+
+        let hash = proposal.hash();
+
+        if self.round(round_id).map_or(true, |round| {
+            !round.has_echoes_for_proposal(&hash, leader_idx)
+        }) {
+            log_proposal!(Level::DEBUG, "dropping proposal: missing echoes");
+            return vec![];
+        }
+
+        if self.round(round_id).and_then(Round::proposal) == Some(&proposal) {
+            log_proposal!(Level::DEBUG, "dropping proposal: we already have it");
+            return vec![];
+        }
+
+        if (proposal.maybe_parent_round_id.is_none() || proposal.maybe_block.is_none())
+            != proposal.inactive.is_none()
+        {
+            log_proposal!(
+                Level::WARN,
+                "invalid proposal: inactive must be present in all except the first and dummy proposals",
+            );
+            return vec![ProtocolOutcome::Disconnect(sender)];
+        }
+        if let Some(inactive) = &proposal.inactive {
+            if inactive
+                .iter()
+                .any(|idx| *idx == leader_idx || self.validators.id(*idx).is_none())
+            {
+                log_proposal!(
+                    Level::WARN,
+                    "invalid proposal: invalid inactive validator index",
+                );
+                return vec![ProtocolOutcome::Disconnect(sender)];
+            }
+        }
+
+        let ancestor_values = if let Some(parent_round_id) = proposal.maybe_parent_round_id {
+            if let Some(ancestor_values) = self.ancestor_values(parent_round_id) {
+                ancestor_values
+            } else {
+                log_proposal!(
+                    Level::DEBUG,
+                    "storing proposal for later; still missing ancestors",
+                );
+                self.proposals_waiting_for_parent
+                    .entry(parent_round_id)
+                    .or_insert_with(HashMap::new)
+                    .entry(proposal)
+                    .or_insert_with(HashSet::new)
+                    .insert((round_id, sender));
+                return vec![];
+            }
+        } else {
+            vec![]
+        };
+
+        let mut outcomes = self.validate_proposal(round_id, proposal, ancestor_values, sender);
         outcomes.extend(self.update(now));
         outcomes
     }
 
-    /// Updates the round's outcome and returns `true` if there is a new quorum of echos for the
+    /// Updates the round's outcome and returns `true` if there is a new quorum of echoes for the
     /// given hash.
     fn check_new_echo_quorum(&mut self, round_id: RoundId, hash: C::Hash) -> bool {
         if self.rounds.contains_key(&round_id)
-            && self.rounds[&round_id].outcome.quorum_echos.is_none()
-            && self.is_quorum(self.rounds[&round_id].echos[&hash].keys().copied())
+            && self.rounds[&round_id].quorum_echoes().is_none()
+            && self.is_quorum(self.rounds[&round_id].echoes()[&hash].keys().copied())
         {
-            self.round_mut(round_id).outcome.quorum_echos = Some(hash);
+            self.round_mut(round_id).set_quorum_echoes(hash);
             return true;
         }
         false
@@ -1058,10 +1025,10 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     /// given value.
     fn check_new_vote_quorum(&mut self, round_id: RoundId, vote: bool) -> bool {
         if self.rounds.contains_key(&round_id)
-            && self.rounds[&round_id].outcome.quorum_votes.is_none()
-            && self.is_quorum(self.rounds[&round_id].votes[&vote].keys_some())
+            && self.rounds[&round_id].quorum_votes().is_none()
+            && self.is_quorum(self.rounds[&round_id].votes(vote).keys_some())
         {
-            self.round_mut(round_id).outcome.quorum_votes = Some(vote);
+            self.round_mut(round_id).set_quorum_votes(vote);
             return true;
         }
         false
@@ -1069,28 +1036,22 @@ impl<C: Context + 'static> SimpleConsensus<C> {
 
     /// Adds a signed message content to the state, but does not call `update` and does not detect
     /// faults.
-    fn add_content(
-        &mut self,
-        round_id: RoundId,
-        content: Content<C>,
-        validator_idx: ValidatorIndex,
-        signature: C::Signature,
-    ) {
+    fn add_content(&mut self, signed_msg: SignedMessage<C>) {
+        let SignedMessage {
+            round_id,
+            instance_id: _,
+            content,
+            validator_idx,
+            signature,
+        } = signed_msg;
+        if self.faults.contains_key(&validator_idx) {
+            return; // Echoes and votes from double-signers can be ignored.
+        }
         match content {
-            Content::Proposal(proposal) => {
+            Content::Echo(hash) => {
                 if self
                     .round_mut(round_id)
-                    .insert_proposal(proposal, signature)
-                {
-                    self.register_activity(validator_idx);
-                    self.mark_dirty(round_id);
-                }
-            }
-            Content::Echo(hash) => {
-                if !self.faults.contains_key(&validator_idx)
-                    && self
-                        .round_mut(round_id)
-                        .insert_echo(hash, validator_idx, signature)
+                    .insert_echo(hash, validator_idx, signature)
                 {
                     self.register_activity(validator_idx);
                     if self.check_new_echo_quorum(round_id, hash) {
@@ -1099,10 +1060,9 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 }
             }
             Content::Vote(vote) => {
-                if !self.faults.contains_key(&validator_idx)
-                    & self
-                        .round_mut(round_id)
-                        .insert_vote(vote, validator_idx, signature)
+                if self
+                    .round_mut(round_id)
+                    .insert_vote(vote, validator_idx, signature)
                 {
                     self.register_activity(validator_idx);
                     if self.check_new_vote_quorum(round_id, vote) {
@@ -1125,36 +1085,30 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     }
 
     /// If there is a signature for conflicting content, returns the content and signature.
-    fn detect_fault(
-        &self,
-        round_id: RoundId,
-        validator_idx: ValidatorIndex,
-        content: &Content<C>,
-    ) -> Option<(Content<C>, C::Signature)> {
-        let round = self.round(round_id)?;
-        match content {
-            Content::Proposal(proposal) => {
-                if validator_idx != self.leader(round_id) {
-                    return None;
-                }
-                let hash = proposal.hash(); // TODO: Avoid redundant hashing!
-                round
-                    .proposals
-                    .iter()
-                    .find(|(hash2, _)| **hash2 != hash)
-                    .map(|(_, (proposal2, sig))| (Content::Proposal(proposal2.clone()), *sig))
-            }
-            Content::Echo(hash) => round.echos.iter().find_map(|(hash2, echo_map)| {
+    fn detect_fault(&self, signed_msg: &SignedMessage<C>) -> Option<(Content<C>, C::Signature)> {
+        let round = self.round(signed_msg.round_id)?;
+        match &signed_msg.content {
+            Content::Echo(hash) => round.echoes().iter().find_map(|(hash2, echo_map)| {
                 if hash2 == hash {
                     return None;
                 }
                 echo_map
-                    .get(&validator_idx)
+                    .get(&signed_msg.validator_idx)
                     .map(|sig| (Content::Echo(*hash2), *sig))
             }),
             Content::Vote(vote) => {
-                round.votes[&!vote][validator_idx].map(|sig| (Content::Vote(!vote), sig))
+                round.votes(!vote)[signed_msg.validator_idx].map(|sig| (Content::Vote(!vote), sig))
             }
+        }
+    }
+
+    /// Sets an update timer for the given timestamp, unless an earlier timer is already set.
+    fn schedule_update(&mut self, timestamp: Timestamp) -> ProtocolOutcomes<C> {
+        if self.next_scheduled_update > timestamp {
+            self.next_scheduled_update = timestamp;
+            vec![ProtocolOutcome::ScheduleTimer(timestamp, TIMER_ID_UPDATE)]
+        } else {
+            vec![]
         }
     }
 
@@ -1162,116 +1116,121 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     /// round.
     fn update(&mut self, now: Timestamp) -> ProtocolOutcomes<C> {
         let mut outcomes = vec![];
-        if self.maybe_dirty_round_id.is_none() || self.finalized_switch_block() {
+        if self.maybe_dirty_round_id.is_none()
+            || self.finalized_switch_block()
+            || self.faulty_weight() > self.params.ftt()
+        {
             return outcomes; // This era has ended or all rounds are up to date.
         }
-        while let Some(round_id) = self.maybe_dirty_round_id {
-            self.create_round(round_id);
-            if let Some(hash) = self.rounds[&round_id].proposals.keys().next().copied() {
-                outcomes.extend(self.create_message(round_id, Content::Echo(hash)));
+        while let Some(round_id) = self.maybe_dirty_round_id.take() {
+            outcomes.extend(self.update_round(round_id, now));
+            if let Some(next_round_id) = round_id.checked_add(1) {
+                self.mark_dirty(next_round_id);
             }
-            outcomes.extend(self.update_accepted_proposal(round_id, now));
-
-            if self.has_accepted_proposal(round_id) {
-                outcomes.extend(self.create_message(round_id, Content::Vote(true)));
-
-                if self.is_committed_round(round_id) {
-                    self.proposal_timeout = self.params.min_block_time();
-                    outcomes.extend(self.finalize_round(round_id)); // Proposal is finalized!
-                }
-
-                // Proposed descendants of this block can now be validated.
-                if let Some(proposals) = self.proposals_waiting_for_parent.remove(&round_id) {
-                    let ancestor_values = self
-                        .ancestor_values(round_id)
-                        .expect("missing ancestors of accepted proposal");
-                    for (proposal, rounds_and_senders) in proposals {
-                        for (proposal_round_id, sender, signature) in rounds_and_senders {
-                            outcomes.extend(self.validate_proposal(
-                                proposal_round_id,
-                                proposal.clone(),
-                                ancestor_values.clone(),
-                                sender,
-                                signature,
-                            ));
-                        }
-                    }
-                }
-            }
-            if round_id == self.current_round {
-                if now >= self.current_timeout {
-                    outcomes.extend(self.create_message(round_id, Content::Vote(false)));
-                }
-                if self.is_skippable_round(round_id) || self.has_accepted_proposal(round_id) {
-                    self.current_timeout = Timestamp::from(u64::MAX);
-                    self.current_round = self.current_round.saturating_add(1);
-                } else if let Some((maybe_parent_round_id, timestamp)) =
-                    self.suitable_parent_round(now)
-                {
-                    if now < timestamp {
-                        // The first opportunity to make a proposal is in the future; check again at
-                        // that time.
-                        outcomes.push(ProtocolOutcome::ScheduleTimer(timestamp, TIMER_ID_UPDATE));
-                    } else if self.current_timeout > now + self.proposal_timeout {
-                        // A proposal could be made now. Start the timer and propose if leader.
-                        self.current_timeout = now + self.proposal_timeout;
-                        self.proposal_timeout = self.proposal_timeout * 2u64;
-                        outcomes.push(ProtocolOutcome::ScheduleTimer(
-                            self.current_timeout,
-                            TIMER_ID_UPDATE,
-                        ));
-                        outcomes.extend(self.propose_if_leader(maybe_parent_round_id, now));
-                    }
-                } else {
-                    error!("No suitable parent for current round");
-                }
-            }
-            self.maybe_dirty_round_id = round_id
-                .checked_add(1)
-                .filter(|r_id| *r_id <= self.current_round);
         }
         outcomes
     }
 
-    /// Checks whether a proposal is accepted in that round, and adds it to the round outcome.
-    fn update_accepted_proposal(
-        &mut self,
-        round_id: RoundId,
-        now: Timestamp,
-    ) -> ProtocolOutcomes<C> {
-        if self.has_accepted_proposal(round_id) {
-            return vec![]; // We already have an accepted proposal.
+    /// Updates a round and sends appropriate messages.
+    fn update_round(&mut self, round_id: RoundId, now: Timestamp) -> ProtocolOutcomes<C> {
+        self.create_round(round_id);
+        let mut outcomes = vec![];
+
+        // If we have a proposal, echo it.
+        if let Some(hash) = self.rounds[&round_id].proposal().map(Proposal::hash) {
+            outcomes.extend(self.create_message(round_id, Content::Echo(hash)));
         }
-        let proposal = if let Some((proposal, _)) = self
-            .rounds
-            .get(&round_id)
-            .and_then(|round| round.proposals.get(&round.outcome.quorum_echos?))
-        {
+
+        // Update the round outcome if there is a new accepted proposal.
+        if self.update_accepted_proposal(round_id) {
+            // Vote for finalizing this proposal.
+            outcomes.extend(self.create_message(round_id, Content::Vote(true)));
+            // Proposed descendants of this proposal can now be validated.
+            if let Some(proposals) = self.proposals_waiting_for_parent.remove(&round_id) {
+                let ancestor_values = self
+                    .ancestor_values(round_id)
+                    .expect("missing ancestors of accepted proposal");
+                for (proposal, rounds_and_senders) in proposals {
+                    for (proposal_round_id, sender) in rounds_and_senders {
+                        outcomes.extend(self.validate_proposal(
+                            proposal_round_id,
+                            proposal.clone(),
+                            ancestor_values.clone(),
+                            sender,
+                        ));
+                    }
+                }
+            }
+        }
+
+        if round_id == self.current_round {
+            if now >= self.current_timeout || self.faults.contains_key(&self.leader(round_id)) {
+                outcomes.extend(self.create_message(round_id, Content::Vote(false)));
+            }
+            if self.is_skippable_round(round_id) || self.has_accepted_proposal(round_id) {
+                self.current_timeout = Timestamp::MAX;
+                self.current_round = self.current_round.saturating_add(1);
+            } else if let Some((maybe_parent_round_id, timestamp)) = self.suitable_parent_round(now)
+            {
+                if now < timestamp {
+                    // The first opportunity to make a proposal is in the future; check again at
+                    // that time.
+                    outcomes.extend(self.schedule_update(timestamp));
+                } else if self.current_timeout > now + self.proposal_timeout {
+                    // A proposal could be made now. Start the timer and propose if leader.
+                    self.current_timeout = now + self.proposal_timeout;
+                    self.proposal_timeout = self.proposal_timeout * 2u64;
+                    outcomes.extend(self.schedule_update(self.current_timeout));
+                    outcomes.extend(self.propose_if_leader(maybe_parent_round_id, now));
+                }
+            } else {
+                error!("No suitable parent for current round");
+            }
+        }
+
+        // If the round has an accepted proposal and is committed, it is finalized.
+        if self.has_accepted_proposal(round_id) && self.is_committed_round(round_id) {
+            self.proposal_timeout = self.params.min_block_time();
+            outcomes.extend(self.finalize_round(round_id));
+        }
+        outcomes
+    }
+
+    /// If a new proposal is accepted in that round, adds it to the round outcome and returns
+    /// `true`.
+    fn update_accepted_proposal(&mut self, round_id: RoundId) -> bool {
+        if self.has_accepted_proposal(round_id) {
+            return false; // We already have an accepted proposal.
+        }
+        let proposal = if let Some(proposal) = self.round(round_id).and_then(Round::proposal) {
             proposal
         } else {
-            return vec![]; // We don't have a proposal with a quorum of echos
+            return false; // We don't have a proposal.
         };
+        if self.round(round_id).and_then(Round::quorum_echoes) != Some(proposal.hash()) {
+            return false; // We don't have a quorum of echoes.
+        }
         if let Some(inactive) = &proposal.inactive {
             for (idx, _) in self.validators.enumerate_ids() {
                 if !inactive.contains(&idx) && !self.active[idx] {
                     // The proposal claims validator idx is active but we haven't seen anything from
                     // them yet.
-                    return vec![];
+                    return false;
                 }
             }
         }
         let (first_skipped_round_id, rel_height) =
             if let Some(parent_round_id) = proposal.maybe_parent_round_id {
-                if let Some(parent_height) = self
+                if let Some((parent_height, _)) = self
                     .round(parent_round_id)
-                    .and_then(|round| round.outcome.accepted_proposal_height)
+                    .and_then(Round::accepted_proposal)
                 {
                     (
                         parent_round_id.saturating_add(1),
                         parent_height.saturating_add(1),
                     )
                 } else {
-                    return vec![]; // Parent is not accepted yet.
+                    return false; // Parent is not accepted yet.
                 }
             } else {
                 (0, 0)
@@ -1279,36 +1238,24 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         if (first_skipped_round_id..round_id)
             .any(|skipped_round_id| !self.is_skippable_round(skipped_round_id))
         {
-            return vec![]; // A skipped round is not skippable yet.
+            return false; // A skipped round is not skippable yet.
         }
-        let min_child_timestamp = proposal
-            .timestamp
-            .saturating_add(self.params.min_block_time());
 
-        // We have a proposal with accepted parent, a quorum of Echos, and all rounds since the
+        // We have a proposal with accepted parent, a quorum of echoes, and all rounds since the
         // parent are skippable. That means the proposal is now accepted.
-        self.round_mut(round_id).outcome.accepted_proposal_height = Some(rel_height);
-        // Schedule an update where we check if this proposal's child can now be proposed.
-        if now < min_child_timestamp {
-            // Schedule an update where we check if this proposal's child can now be proposed.
-            vec![ProtocolOutcome::ScheduleTimer(
-                min_child_timestamp,
-                TIMER_ID_UPDATE,
-            )]
-        } else {
-            vec![]
-        }
+        self.round_mut(round_id)
+            .set_accepted_proposal_height(rel_height);
+        true
     }
 
     /// Sends a proposal to the `BlockValidator` component for validation. If no validation is
-    /// needed, immediately calls `add_content`.
+    /// needed, immediately calls `insert_proposal`.
     fn validate_proposal(
         &mut self,
         round_id: RoundId,
         proposal: Proposal<C>,
         ancestor_values: Vec<C::ConsensusValue>,
         sender: NodeId,
-        signature: C::Signature,
     ) -> ProtocolOutcomes<C> {
         if let Some((_, parent_proposal)) = proposal
             .maybe_parent_round_id
@@ -1341,7 +1288,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 .proposals_waiting_for_validation
                 .entry(proposed_block.clone())
                 .or_default()
-                .insert((round_id, proposal, sender, signature))
+                .insert((round_id, proposal, sender))
             {
                 vec![ProtocolOutcome::ValidateConsensusValue {
                     sender,
@@ -1360,8 +1307,13 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 validator_idx,
                 "proposal does not need validation",
             );
-            let content = Content::Proposal(proposal);
-            self.add_content(round_id, content, validator_idx, signature);
+            if self
+                .round_mut(round_id)
+                .insert_proposal(proposal, validator_idx)
+            {
+                self.progress_detected = true;
+                self.mark_dirty(round_id);
+            }
             vec![]
         }
     }
@@ -1439,7 +1391,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             return vec![]; // Not a validator.
         };
         if self.pending_proposal.is_some() // TODO: Or if it's in an old round?
-            || !self.round_mut(self.current_round).proposals.is_empty()
+            || self.round_mut(self.current_round).has_proposal()
             || our_idx != self.leader(self.current_round)
         {
             return vec![]; // We already proposed, or we are not the leader.
@@ -1449,9 +1401,18 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 if self.accepted_switch_block(parent_round_id)
                     || self.accepted_dummy_proposal(parent_round_id)
                 {
-                    let content = Content::Proposal(Proposal::dummy(now, parent_round_id));
+                    let proposal = Proposal::<C>::dummy(now, parent_round_id);
+                    let content = Content::Echo(proposal.hash());
+                    let prop_msg = Message::Proposal {
+                        round_id: self.current_round,
+                        proposal: proposal.clone(),
+                        instance_id: *self.instance_id(),
+                    };
                     let mut outcomes = self.create_message(self.current_round, content);
-                    outcomes.extend(self.update(now));
+                    self.round_mut(self.current_round)
+                        .insert_proposal(proposal, our_idx);
+                    outcomes.push(ProtocolOutcome::CreatedGossipMessage(prop_msg.serialize()));
+                    self.mark_dirty(self.current_round);
                     return outcomes;
                 }
                 let ancestor_values = self
@@ -1498,23 +1459,19 @@ impl<C: Context + 'static> SimpleConsensus<C> {
 
     /// Returns whether a quorum has voted for `false`.
     fn is_skippable_round(&self, round_id: RoundId) -> bool {
-        self.rounds
-            .get(&round_id)
-            .map_or(false, |round| round.outcome.quorum_votes == Some(false))
+        self.rounds.get(&round_id).and_then(Round::quorum_votes) == Some(false)
     }
 
     /// Returns whether a quorum has voted for `true`.
     fn is_committed_round(&self, round_id: RoundId) -> bool {
-        self.rounds
-            .get(&round_id)
-            .map_or(false, |round| round.outcome.quorum_votes == Some(true))
+        self.rounds.get(&round_id).and_then(Round::quorum_votes) == Some(true)
     }
 
     /// Returns whether a round has an accepted proposal.
     fn has_accepted_proposal(&self, round_id: RoundId) -> bool {
-        self.round(round_id).map_or(false, |round| {
-            round.outcome.accepted_proposal_height.is_some()
-        })
+        self.round(round_id)
+            .and_then(Round::accepted_proposal)
+            .is_some()
     }
 
     /// Returns the accepted proposal, if any, together with its height.
@@ -1606,184 +1563,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     }
 }
 
-/// A proposal in the consensus protocol.
-#[derive(Clone, Hash, Serialize, Deserialize, Debug, PartialEq, Eq, DataSize)]
-#[serde(bound(
-    serialize = "C::Hash: Serialize",
-    deserialize = "C::Hash: Deserialize<'de>",
-))]
-pub(crate) struct Proposal<C>
-where
-    C: Context,
-{
-    timestamp: Timestamp,
-    maybe_block: Option<C::ConsensusValue>,
-    maybe_parent_round_id: Option<RoundId>,
-    /// The set of validators that appear to be inactive in this era.
-    /// This is `None` in round 0 and in dummy blocks.
-    inactive: Option<BTreeSet<ValidatorIndex>>,
-}
-
-impl<C: Context> Proposal<C> {
-    fn dummy(timestamp: Timestamp, parent_round_id: RoundId) -> Self {
-        Proposal {
-            timestamp,
-            maybe_block: None,
-            maybe_parent_round_id: Some(parent_round_id),
-            inactive: None,
-        }
-    }
-
-    fn with_block(
-        proposed_block: &ProposedBlock<C>,
-        maybe_parent_round_id: Option<RoundId>,
-        inactive: impl Iterator<Item = ValidatorIndex>,
-    ) -> Self {
-        Proposal {
-            maybe_block: Some(proposed_block.value().clone()),
-            timestamp: proposed_block.context().timestamp(),
-            maybe_parent_round_id,
-            inactive: maybe_parent_round_id.map(|_| inactive.collect()),
-        }
-    }
-
-    fn hash(&self) -> C::Hash {
-        let serialized = bincode::serialize(&self).expect("failed to serialize fields");
-        <C as Context>::hash(&serialized)
-    }
-}
-
-/// The content of a message in the main protocol, as opposed to the
-/// sync messages, which are somewhat decoupled from the rest of the
-/// protocol. This message, along with the instance and round ID,
-/// are what are signed by the active validators.
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
-#[serde(bound(
-    serialize = "C::Hash: Serialize",
-    deserialize = "C::Hash: Deserialize<'de>",
-))]
-pub(crate) enum Content<C: Context> {
-    Proposal(Proposal<C>),
-    Echo(C::Hash),
-    Vote(bool),
-}
-
-impl<C: Context> Content<C> {
-    fn is_proposal(&self) -> bool {
-        matches!(self, Content::Proposal(_))
-    }
-}
-
-/// Indicates the outcome of a given round.
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
-#[serde(bound(
-    serialize = "C::Hash: Serialize",
-    deserialize = "C::Hash: Deserialize<'de>",
-))]
-pub(crate) struct RoundOutcome<C>
-where
-    C: Context,
-{
-    /// This is `Some(h)` if there is an accepted proposal with relative height `h`, i.e. there is
-    /// a quorum of echos, `h` accepted ancestors, and all rounds since the parent's are skippable.
-    accepted_proposal_height: Option<u64>,
-    quorum_echos: Option<C::Hash>,
-    quorum_votes: Option<bool>,
-}
-
-impl<C: Context> Default for RoundOutcome<C> {
-    fn default() -> RoundOutcome<C> {
-        RoundOutcome {
-            accepted_proposal_height: None,
-            quorum_echos: None,
-            quorum_votes: None,
-        }
-    }
-}
-
-/// All messages of the protocol.
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
-#[serde(bound(
-    serialize = "C::Hash: Serialize",
-    deserialize = "C::Hash: Deserialize<'de>",
-))]
-pub(crate) enum Message<C: Context> {
-    /// Partial information about the sender's protocol state. The receiver should send missing
-    /// data.
-    ///
-    /// The sender chooses a random peer and a random era, and includes in its `SyncState` message
-    /// information about received proposals, echos and votes. The idea is to set the `i`-th bit in
-    /// the `u128` fields to `1` if we have a signature from the `i`-th validator.
-    ///
-    /// To keep the size of these messages constant even if there are more than 128 validators, a
-    /// random interval is selected and only information about validators in that interval is
-    /// included: The bit with the lowest significance corresponds to validator number
-    /// `first_validator_idx`, and the one with the highest to
-    /// `(first_validator_idx + 127) % validator_count`.
-    ///
-    /// For example if there are 500 validators and `first_validator_idx` is 450, the `u128`'s bits
-    /// refer to validators 450, 451, ..., 499, 0, 1, ..., 77.
-    SyncState {
-        /// The round the information refers to.
-        round_id: RoundId,
-        /// The proposal hash with the most echos (by weight).
-        proposal_hash: Option<C::Hash>,
-        /// Whether the sender has the proposal with that hash.
-        proposal: bool,
-        /// The index of the first validator covered by the bit fields below.
-        first_validator_idx: ValidatorIndex,
-        /// A bit field with 1 for every validator the sender has an echo from.
-        echos: u128,
-        /// A bit field with 1 for every validator the sender has a `true` vote from.
-        true_votes: u128,
-        /// A bit field with 1 for every validator the sender has a `false` vote from.
-        false_votes: u128,
-        /// A bit field with 1 for every validator the sender has evidence against.
-        faulty: u128,
-        instance_id: C::InstanceId,
-    },
-    Signed {
-        round_id: RoundId,
-        instance_id: C::InstanceId,
-        content: Content<C>,
-        validator_idx: ValidatorIndex,
-        signature: C::Signature,
-    },
-}
-
-impl<C: Context> Message<C> {
-    fn new_empty_round_sync_state(
-        round_id: RoundId,
-        first_validator_idx: ValidatorIndex,
-        faulty: u128,
-        instance_id: C::InstanceId,
-    ) -> Self {
-        Message::SyncState {
-            round_id,
-            proposal_hash: None,
-            proposal: false,
-            first_validator_idx,
-            echos: 0,
-            true_votes: 0,
-            false_votes: 0,
-            faulty,
-            instance_id,
-        }
-    }
-
-    fn serialize(&self) -> Vec<u8> {
-        bincode::serialize(self).expect("should serialize message")
-    }
-
-    fn instance_id(&self) -> &C::InstanceId {
-        match self {
-            Message::SyncState { instance_id, .. } | Message::Signed { instance_id, .. } => {
-                instance_id
-            }
-        }
-    }
-}
-
 impl<C> ConsensusProtocol<C> for SimpleConsensus<C>
 where
     C: Context + 'static,
@@ -1810,7 +1589,7 @@ where
                 proposal_hash,
                 proposal,
                 first_validator_idx,
-                echos,
+                echoes,
                 true_votes,
                 false_votes,
                 faulty,
@@ -1820,20 +1599,20 @@ where
                 proposal_hash,
                 proposal,
                 first_validator_idx,
-                echos,
+                echoes,
                 true_votes,
                 false_votes,
                 faulty,
                 sender,
             ),
-            Ok(Message::Signed {
+            Ok(Message::Proposal {
                 round_id,
                 instance_id: _,
-                content,
-                validator_idx,
-                signature,
-            }) => {
-                self.handle_signed_message(round_id, content, validator_idx, signature, sender, now)
+                proposal,
+            }) => self.handle_proposal(round_id, proposal, sender, now),
+            Ok(Message::Signed(signed_msg)) => self.handle_signed_message(signed_msg, sender, now),
+            Ok(Message::Evidence(signed_msg, content2, signature2)) => {
+                self.handle_evidence(signed_msg, content2, signature2, sender, now)
             }
         }
     }
@@ -1848,6 +1627,7 @@ where
         match timer_id {
             TIMER_ID_SYNC_PEER => self.handle_sync_peer_timer(now, rng),
             TIMER_ID_UPDATE => {
+                self.next_scheduled_update = Timestamp::MAX;
                 self.mark_dirty(self.current_round);
                 self.update(now)
             }
@@ -1897,13 +1677,11 @@ where
     }
 
     fn propose(&mut self, proposed_block: ProposedBlock<C>, now: Timestamp) -> ProtocolOutcomes<C> {
-        if let Some((block_context, proposal_round_id, maybe_parent_round_id)) =
-            self.pending_proposal.take()
+        if let Some((block_context, round_id, maybe_parent_round_id)) = self.pending_proposal.take()
         {
             if block_context != *proposed_block.context() {
                 warn!(block_context = ?proposed_block.context(), "skipping outdated proposal");
-                self.pending_proposal =
-                    Some((block_context, proposal_round_id, maybe_parent_round_id));
+                self.pending_proposal = Some((block_context, round_id, maybe_parent_round_id));
                 return vec![];
             }
             let inactive = self
@@ -1911,12 +1689,17 @@ where
                 .enumerate_ids()
                 .map(|(idx, _)| idx)
                 .filter(|idx| !self.active[*idx] && !self.faults.contains_key(idx));
-            let content = Content::Proposal(Proposal::with_block(
-                &proposed_block,
-                maybe_parent_round_id,
-                inactive,
-            ));
-            let mut outcomes = self.create_message(proposal_round_id, content);
+            let proposal = Proposal::with_block(&proposed_block, maybe_parent_round_id, inactive);
+            let leader_idx = self.leader(round_id);
+            let mut outcomes = self.create_message(round_id, Content::Echo(proposal.hash()));
+            self.round_mut(round_id)
+                .insert_proposal(proposal.clone(), leader_idx);
+            let msg = Message::Proposal {
+                round_id,
+                instance_id: *self.instance_id(),
+                proposal,
+            };
+            outcomes.push(ProtocolOutcome::CreatedGossipMessage(msg.serialize()));
             outcomes.extend(self.update(now));
             outcomes
         } else {
@@ -1936,26 +1719,30 @@ where
             .remove(&proposed_block)
             .into_iter()
             .flatten();
+        let mut outcomes = vec![];
         if valid {
-            let mut outcomes = vec![];
-            for (round_id, proposal, _sender, signature) in rounds_and_node_ids {
+            for (round_id, proposal, _sender) in rounds_and_node_ids {
                 info!(?proposal, "handling valid proposal");
-                let content = Content::Proposal(proposal);
-                let validator_idx = self.leader(round_id);
-                self.add_content(round_id, content, validator_idx, signature);
-                outcomes.extend(self.update(now));
+                let leader_idx = self.leader(round_id);
+                if self
+                    .round_mut(round_id)
+                    .insert_proposal(proposal, leader_idx)
+                {
+                    self.mark_dirty(round_id);
+                    self.progress_detected = true;
+                    outcomes.extend(self.update(now));
+                }
             }
-            outcomes
         } else {
-            for (round_id, _, sender, _) in rounds_and_node_ids {
+            for (round_id, _, sender) in rounds_and_node_ids {
                 // We don't disconnect from the faulty sender here: The block validator considers
                 // the value "invalid" even if it just couldn't download the deploys, which could
                 // just be because the original sender went offline.
                 let validator_index = self.leader(round_id).0;
                 info!(validator_index, %round_id, ?sender, "dropping invalid proposal");
             }
-            vec![]
         }
+        outcomes
     }
 
     fn activate_validator(
@@ -1971,17 +1758,14 @@ where
         if let Some(our_idx) = self.validators.get_index(&our_id) {
             self.active_validator = Some((our_idx, secret));
             self.active[our_idx] = true;
-            return vec![ProtocolOutcome::ScheduleTimer(
-                now.max(self.params.start_timestamp()),
-                TIMER_ID_UPDATE,
-            )];
+            self.schedule_update(self.params.start_timestamp().max(now))
         } else {
             warn!(
                 ?our_id,
                 "we are not a validator in this era; not activating"
             );
+            vec![]
         }
-        vec![]
     }
 
     fn deactivate_validator(&mut self) {
@@ -2053,89 +1837,5 @@ where
 
     fn next_round_length(&self) -> Option<TimeDiff> {
         Some(self.params.min_block_time())
-    }
-}
-
-/// A reason for a validator to be marked as faulty.
-///
-/// The `Banned` state is fixed from the beginning and can't be replaced. However, `Indirect` can
-/// be replaced with `Direct` evidence, which has the same effect but doesn't rely on information
-/// from other consensus protocol instances.
-#[derive(DataSize, Debug)]
-pub(crate) enum Fault<C>
-where
-    C: Context,
-{
-    /// The validator was known to be malicious from the beginning. All their messages are
-    /// considered invalid in this `SimpleConsensus` instance.
-    Banned,
-    /// We have direct evidence of the validator's fault.
-    // TODO: Store only the necessary information, e.g. not the full signed proposal, and only one
-    // round ID, instance ID and validator index.
-    Direct(Message<C>, Message<C>),
-    /// The validator is known to be faulty, but the evidence is not in this era.
-    Indirect,
-}
-
-impl<C: Context> Fault<C> {
-    fn is_direct(&self) -> bool {
-        matches!(self, Fault::Direct(_, _))
-    }
-
-    fn is_banned(&self) -> bool {
-        matches!(self, Fault::Banned)
-    }
-}
-
-/// A validator's participation status: whether they are faulty or inactive.
-#[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
-enum ParticipationStatus {
-    LastSeenInRound(RoundId),
-    Inactive,
-    EquivocatedInOtherEra,
-    Equivocated,
-}
-
-/// A map of status (faulty, inactive) by validator ID.
-#[derive(Debug)]
-// False positive, as the fields of this struct are all used in logging validator participation.
-#[allow(dead_code)]
-pub(crate) struct Participation<C>
-where
-    C: Context,
-{
-    instance_id: C::InstanceId,
-    faulty_stake_percent: u8,
-    inactive_stake_percent: u8,
-    inactive_validators: Vec<(ValidatorIndex, C::ValidatorId, ParticipationStatus)>,
-    faulty_validators: Vec<(ValidatorIndex, C::ValidatorId, ParticipationStatus)>,
-}
-
-impl ParticipationStatus {
-    /// Returns a `Status` for a validator unless they are honest and online.
-    fn for_index<C: Context + 'static>(
-        idx: ValidatorIndex,
-        sc: &SimpleConsensus<C>,
-    ) -> Option<ParticipationStatus> {
-        if let Some(fault) = sc.faults.get(&idx) {
-            return Some(match fault {
-                Fault::Banned | Fault::Indirect => ParticipationStatus::EquivocatedInOtherEra,
-                Fault::Direct(_, _) => ParticipationStatus::Equivocated,
-            });
-        }
-        // TODO: Avoid iterating over all old rounds every time we log this.
-        for r_id in sc.rounds.keys().rev() {
-            if sc.has_echoed(*r_id, idx)
-                || sc.has_voted(*r_id, idx)
-                || (sc.has_accepted_proposal(*r_id) && sc.leader(*r_id) == idx)
-            {
-                if r_id.saturating_add(2) < sc.current_round {
-                    return Some(ParticipationStatus::LastSeenInRound(*r_id));
-                } else {
-                    return None; // Seen recently; considered currently active.
-                }
-            }
-        }
-        Some(ParticipationStatus::Inactive)
     }
 }

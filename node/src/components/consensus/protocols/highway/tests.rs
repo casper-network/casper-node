@@ -41,7 +41,7 @@ where
         4,
         u64::MAX,
         0.into(),
-        Timestamp::from(u64::MAX),
+        Timestamp::MAX,
         highway_testing::TEST_ENDORSEMENT_EVIDENCE_LIMIT,
     );
     let weights = weights.into_iter().map(|w| w.into()).collect::<Vec<_>>();

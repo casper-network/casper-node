@@ -1,6 +1,6 @@
 use super::*;
 
-use std::sync::Arc;
+use std::{collections::BTreeSet, sync::Arc};
 
 use casper_types::{PublicKey, SecretKey, Timestamp, U512};
 
@@ -76,56 +76,105 @@ fn create_message(
 ) -> Vec<u8> {
     let validator_idx = validators.get_index(keypair.public_key()).unwrap();
     let instance_id = ClContext::hash(INSTANCE_ID_DATA);
-    let serialized_fields = bincode::serialize(&(round_id, &instance_id, &content, validator_idx))
-        .expect("failed to serialize fields");
-    let hash = ClContext::hash(&serialized_fields);
-    let signature = keypair.sign(&hash);
-    Message::Signed {
+    let signed_msg =
+        SignedMessage::sign_new(round_id, instance_id, content, validator_idx, keypair);
+    Message::Signed(signed_msg).serialize()
+}
+
+/// Creates a serialized `Message::Proposal`
+fn create_proposal_message(round_id: RoundId, proposal: &Proposal<ClContext>) -> Vec<u8> {
+    Message::Proposal {
         round_id,
-        instance_id,
-        content,
-        validator_idx,
-        signature,
+        instance_id: ClContext::hash(INSTANCE_ID_DATA),
+        proposal: proposal.clone(),
     }
     .serialize()
 }
 
-/// Removes all `CreatedGossipMessage`s from `outcomes` and returns the deserialized content of all
-/// `Message::Signed`, after verifying the signatures.
+/// Removes all `CreatedGossipMessage`s from `outcomes` and returns the deserialized messages, after
+/// verifying the signatures and instance ID.
 fn remove_gossip(
     validators: &Validators<PublicKey>,
     outcomes: &mut ProtocolOutcomes<ClContext>,
-) -> HashSet<(RoundId, PublicKey, Content<ClContext>)> {
-    let mut result = HashSet::new();
+) -> Vec<Message<ClContext>> {
+    let mut result = Vec::new();
     let expected_instance_id = ClContext::hash(INSTANCE_ID_DATA);
     outcomes.retain(|outcome| {
         let msg = match outcome {
             ProtocolOutcome::CreatedGossipMessage(msg) => msg,
             _ => return true,
         };
-        if let Message::Signed {
-            round_id,
-            instance_id,
-            content,
-            validator_idx,
-            signature,
-        } =
-            bincode::deserialize::<Message<ClContext>>(msg.as_slice()).expect("deserialize message")
-        {
-            assert_eq!(instance_id, expected_instance_id);
-            let serialized_fields =
-                bincode::serialize(&(round_id, &instance_id, &content, validator_idx))
-                    .expect("failed to serialize fields");
-            let hash = ClContext::hash(&serialized_fields);
-            let public_key = validators.id(validator_idx).expect("validator ID").clone();
-            assert!(ClContext::verify_signature(&hash, &public_key, &signature));
-            assert!(result.insert((round_id, public_key, content)));
-            false
-        } else {
-            true
+        let message = bincode::deserialize::<Message<ClContext>>(msg.as_slice())
+            .expect("deserialize message");
+        assert_eq!(*message.instance_id(), expected_instance_id);
+        if let Message::Signed(signed_msg) = &message {
+            let public_key = validators
+                .id(signed_msg.validator_idx)
+                .expect("validator ID")
+                .clone();
+            assert!(signed_msg.verify_signature(&public_key));
         }
+        result.push(message);
+        false
     });
     result
+}
+
+/// Removes the expected signed message; returns `true` if found.
+fn remove_signed(
+    gossip: &mut Vec<Message<ClContext>>,
+    expected_round_id: RoundId,
+    expected_validator_idx: ValidatorIndex,
+    expected_content: Content<ClContext>,
+) -> bool {
+    let maybe_pos = gossip.iter().position(|message| {
+        if let Message::Signed(SignedMessage {
+            round_id,
+            instance_id: _,
+            content,
+            validator_idx,
+            signature: _,
+        }) = &message
+        {
+            *round_id == expected_round_id
+                && *validator_idx == expected_validator_idx
+                && *content == expected_content
+        } else {
+            false
+        }
+    });
+    if let Some(pos) = maybe_pos {
+        gossip.remove(pos);
+        true
+    } else {
+        false
+    }
+}
+
+/// Removes the expected proposal message; returns `true` if found.
+fn remove_proposal(
+    gossip: &mut Vec<Message<ClContext>>,
+    expected_round_id: RoundId,
+    expected_proposal: &Proposal<ClContext>,
+) -> bool {
+    let maybe_pos = gossip.iter().position(|message| {
+        if let Message::Proposal {
+            round_id,
+            instance_id: _,
+            proposal,
+        } = &message
+        {
+            *round_id == expected_round_id && proposal == expected_proposal
+        } else {
+            false
+        }
+    });
+    if let Some(pos) = maybe_pos {
+        gossip.remove(pos);
+        true
+    } else {
+        false
+    }
 }
 
 /// Removes all `CreatedMessageToRandomPeer`s from `outcomes` and returns the deserialized messages.
@@ -157,36 +206,31 @@ fn remove_messages_to_random(
 /// all `Message::Signed`, after verifying the signatures.
 fn remove_targeted_messages(
     validators: &Validators<PublicKey>,
+    expected_peer: NodeId,
     outcomes: &mut ProtocolOutcomes<ClContext>,
-) -> HashSet<(NodeId, RoundId, PublicKey, Content<ClContext>)> {
-    let mut result = HashSet::new();
+) -> Vec<Message<ClContext>> {
+    let mut result = Vec::new();
     let expected_instance_id = ClContext::hash(INSTANCE_ID_DATA);
     outcomes.retain(|outcome| {
         let (msg, peer) = match outcome {
             ProtocolOutcome::CreatedTargetedMessage(msg, peer) => (msg, *peer),
             _ => return true,
         };
-        if let Message::Signed {
-            round_id,
-            instance_id,
-            content,
-            validator_idx,
-            signature,
-        } =
-            bincode::deserialize::<Message<ClContext>>(msg.as_slice()).expect("deserialize message")
-        {
-            assert_eq!(instance_id, expected_instance_id);
-            let serialized_fields =
-                bincode::serialize(&(round_id, &instance_id, &content, validator_idx))
-                    .expect("failed to serialize fields");
-            let hash = ClContext::hash(&serialized_fields);
-            let public_key = validators.id(validator_idx).expect("validator ID").clone();
-            assert!(ClContext::verify_signature(&hash, &public_key, &signature));
-            assert!(result.insert((peer, round_id, public_key, content)));
-            false
-        } else {
-            true
+        if peer != expected_peer {
+            return true;
         }
+        let message = bincode::deserialize::<Message<ClContext>>(msg.as_slice())
+            .expect("deserialize message");
+        assert_eq!(*message.instance_id(), expected_instance_id);
+        if let Message::Signed(signed_msg) = &message {
+            let public_key = validators
+                .id(signed_msg.validator_idx)
+                .expect("validator ID")
+                .clone();
+            assert!(signed_msg.verify_signature(&public_key));
+        }
+        result.push(message);
+        false
     });
     result
 }
@@ -268,10 +312,6 @@ fn new_payload(random_bit: bool) -> Arc<BlockPayload> {
     Arc::new(BlockPayload::new(vec![], vec![], vec![], random_bit))
 }
 
-fn proposal(p: &Proposal<ClContext>) -> Content<ClContext> {
-    Content::Proposal(p.clone())
-}
-
 fn vote(v: bool) -> Content<ClContext> {
     Content::Vote(v)
 }
@@ -298,7 +338,7 @@ fn abc_weights(
     (weights, validators)
 }
 
-/// Tests the core logic of the consensus protocol, i.e. the criteria for sending votes and echos
+/// Tests the core logic of the consensus protocol, i.e. the criteria for sending votes and echoes
 /// and finalizing blocks.
 ///
 /// In this scenario Alice has 60%, Bob 30% and Carol 10% of the weight, and we create Carol's
@@ -330,7 +370,7 @@ fn simple_consensus_no_fault() {
     let sender = *ALICE_NODE_ID;
     let mut timestamp = Timestamp::from(100000);
 
-    let proposal0 = Proposal {
+    let proposal0 = Proposal::<ClContext> {
         timestamp,
         maybe_block: Some(new_payload(false)),
         maybe_parent_round_id: None,
@@ -374,9 +414,9 @@ fn simple_consensus_no_fault() {
     timestamp += block_time;
 
     // Alice makes a proposal in round 2 with parent in round 1. Alice and Bob echo it.
-    let msg = create_message(&validators, 2, proposal(&proposal2), &alice_kp);
-    expect_no_gossip_block_finalized(sc_c.handle_message(&mut rng, sender, msg, timestamp));
     let msg = create_message(&validators, 2, echo(hash2), &alice_kp);
+    expect_no_gossip_block_finalized(sc_c.handle_message(&mut rng, sender, msg, timestamp));
+    let msg = create_proposal_message(2, &proposal2);
     expect_no_gossip_block_finalized(sc_c.handle_message(&mut rng, sender, msg, timestamp));
     let msg = create_message(&validators, 2, echo(hash2), &bob_kp);
     expect_no_gossip_block_finalized(sc_c.handle_message(&mut rng, sender, msg, timestamp));
@@ -389,16 +429,18 @@ fn simple_consensus_no_fault() {
     expect_no_gossip_block_finalized(sc_c.handle_message(&mut rng, sender, msg, timestamp));
 
     // Alice makes a proposal in round 1 with no parent, and echoes it.
-    let msg = create_message(&validators, 1, proposal(&proposal1), &alice_kp);
-    expect_no_gossip_block_finalized(sc_c.handle_message(&mut rng, sender, msg, timestamp));
     let msg = create_message(&validators, 1, echo(hash1), &alice_kp);
+    expect_no_gossip_block_finalized(sc_c.handle_message(&mut rng, sender, msg, timestamp));
+    let msg = create_proposal_message(1, &proposal1);
     expect_no_gossip_block_finalized(sc_c.handle_message(&mut rng, sender, msg, timestamp));
 
     // Now Carol receives Bob's proposal in round 0. Carol echoes it.
-    let msg = create_message(&validators, 0, proposal(&proposal0), &bob_kp);
+    let msg = create_message(&validators, 0, echo(hash0), &bob_kp);
+    expect_no_gossip_block_finalized(sc_c.handle_message(&mut rng, sender, msg, timestamp));
+    let msg = create_proposal_message(0, &proposal0);
     let mut outcomes = sc_c.handle_message(&mut rng, sender, msg, timestamp);
     let mut gossip = remove_gossip(&validators, &mut outcomes);
-    assert!(gossip.remove(&(0, CAROL_PUBLIC_KEY.clone(), echo(hash0))));
+    assert!(remove_signed(&mut gossip, 0, carol_idx, echo(hash0)));
     assert!(gossip.is_empty(), "unexpected gossip: {:?}", gossip);
     expect_no_gossip_block_finalized(outcomes);
 
@@ -409,13 +451,16 @@ fn simple_consensus_no_fault() {
     let msg = create_message(&validators, 0, echo(hash0), &alice_kp);
     let mut outcomes = sc_c.handle_message(&mut rng, sender, msg, timestamp);
     let mut gossip = remove_gossip(&validators, &mut outcomes);
-    assert!(gossip.remove(&(1, CAROL_PUBLIC_KEY.clone(), echo(hash1))));
-    assert!(gossip.remove(&(0, CAROL_PUBLIC_KEY.clone(), vote(true))));
+    assert!(remove_signed(&mut gossip, 1, carol_idx, echo(hash1)));
+    assert!(remove_signed(&mut gossip, 0, carol_idx, vote(true)));
     assert!(gossip.is_empty(), "unexpected gossip: {:?}", gossip);
 
     // Bob votes false in round 0. That's not a quorum yet.
     let msg = create_message(&validators, 0, vote(false), &bob_kp);
     expect_no_gossip_block_finalized(sc_c.handle_message(&mut rng, sender, msg, timestamp));
+
+    // Call the update timer so that it doesn't think a timer is still outstanding.
+    expect_no_gossip_block_finalized(sc_c.handle_timer(timestamp, TIMER_ID_UPDATE, &mut rng));
 
     // But with Alice's vote round 0 becomes skippable. That means rounds 1 and 2 are now accepted
     // and Carol votes for them. Since round 2 is already committed, both 1 and 2 are finalized.
@@ -423,9 +468,9 @@ fn simple_consensus_no_fault() {
     let msg = create_message(&validators, 0, vote(false), &alice_kp);
     let mut outcomes = sc_c.handle_message(&mut rng, sender, msg, timestamp);
     let mut gossip = remove_gossip(&validators, &mut outcomes);
-    assert!(gossip.remove(&(2, CAROL_PUBLIC_KEY.clone(), echo(hash2))));
-    assert!(gossip.remove(&(1, CAROL_PUBLIC_KEY.clone(), vote(true))));
-    assert!(gossip.remove(&(2, CAROL_PUBLIC_KEY.clone(), vote(true))));
+    assert!(remove_signed(&mut gossip, 2, carol_idx, echo(hash2)));
+    assert!(remove_signed(&mut gossip, 1, carol_idx, vote(true)));
+    assert!(remove_signed(&mut gossip, 2, carol_idx, vote(true)));
     assert!(gossip.is_empty(), "unexpected gossip: {:?}", gossip);
     expect_finalized(&outcomes, &[(&proposal1, 0), (&proposal2, 1)]);
     expect_timer(&outcomes, timestamp + block_time, TIMER_ID_UPDATE);
@@ -442,8 +487,8 @@ fn simple_consensus_no_fault() {
     let proposed_block = ProposedBlock::new(new_payload(false), block_context);
     let mut outcomes = sc_c.propose(proposed_block, timestamp);
     let mut gossip = remove_gossip(&validators, &mut outcomes);
-    assert!(gossip.remove(&(3, CAROL_PUBLIC_KEY.clone(), proposal(&proposal3))));
-    assert!(gossip.remove(&(3, CAROL_PUBLIC_KEY.clone(), echo(hash3))));
+    assert!(remove_proposal(&mut gossip, 3, &proposal3));
+    assert!(remove_signed(&mut gossip, 3, carol_idx, echo(hash3)));
     assert!(gossip.is_empty(), "unexpected gossip: {:?}", gossip);
 
     timestamp += block_time;
@@ -453,9 +498,9 @@ fn simple_consensus_no_fault() {
     let msg = create_message(&validators, 3, echo(hash3), &alice_kp);
     let mut outcomes = sc_c.handle_message(&mut rng, sender, msg, timestamp);
     let mut gossip = remove_gossip(&validators, &mut outcomes);
-    assert!(gossip.remove(&(3, CAROL_PUBLIC_KEY.clone(), vote(true))));
-    assert!(gossip.remove(&(4, CAROL_PUBLIC_KEY.clone(), proposal(&proposal4))));
-    assert!(gossip.remove(&(4, CAROL_PUBLIC_KEY.clone(), echo(hash4))));
+    assert!(remove_signed(&mut gossip, 3, carol_idx, vote(true)));
+    assert!(remove_proposal(&mut gossip, 4, &proposal4));
+    assert!(remove_signed(&mut gossip, 4, carol_idx, echo(hash4)));
     assert!(gossip.is_empty(), "unexpected gossip: {:?}", gossip);
 
     // Only when Alice also votes for the switch block is it finalized.
@@ -509,15 +554,15 @@ fn simple_consensus_faults() {
     timestamp += sc.params.min_block_time();
 
     // Alice makes sproposals in rounds 1 and 2, echoes and votes for them.
-    let msg = create_message(&validators, 1, proposal(&proposal1), &alice_kp);
-    expect_no_gossip_block_finalized(sc.handle_message(&mut rng, sender, msg, timestamp));
     let msg = create_message(&validators, 1, echo(hash1), &alice_kp);
+    expect_no_gossip_block_finalized(sc.handle_message(&mut rng, sender, msg, timestamp));
+    let msg = create_proposal_message(1, &proposal1);
     expect_no_gossip_block_finalized(sc.handle_message(&mut rng, sender, msg, timestamp));
     let msg = create_message(&validators, 1, vote(true), &alice_kp);
     expect_no_gossip_block_finalized(sc.handle_message(&mut rng, sender, msg, timestamp));
-    let msg = create_message(&validators, 2, proposal(&proposal2), &alice_kp);
-    expect_no_gossip_block_finalized(sc.handle_message(&mut rng, sender, msg, timestamp));
     let msg = create_message(&validators, 2, echo(hash2), &alice_kp);
+    expect_no_gossip_block_finalized(sc.handle_message(&mut rng, sender, msg, timestamp));
+    let msg = create_proposal_message(2, &proposal2);
     expect_no_gossip_block_finalized(sc.handle_message(&mut rng, sender, msg, timestamp));
     let msg = create_message(&validators, 2, vote(true), &alice_kp);
     expect_no_gossip_block_finalized(sc.handle_message(&mut rng, sender, msg, timestamp));
@@ -561,7 +606,7 @@ fn simple_consensus_standstill_alert() {
     let sender = *ALICE_NODE_ID;
     let mut timestamp = Timestamp::from(100000);
 
-    let proposal0 = Proposal {
+    let proposal0 = Proposal::<ClContext> {
         timestamp,
         maybe_block: Some(new_payload(false)),
         maybe_parent_round_id: None,
@@ -593,7 +638,7 @@ fn simple_consensus_standstill_alert() {
     expect_timer(&outcomes, timestamp + timeout, TIMER_ID_STANDSTILL_ALERT);
 
     // So does a proposal.
-    let msg = create_message(&validators, 0, proposal(&proposal0), &alice_kp);
+    let msg = create_proposal_message(0, &proposal0);
     sc_c.handle_message(&mut rng, sender, msg, timestamp);
 
     timestamp += timeout;
@@ -632,7 +677,7 @@ fn simple_consensus_sends_sync_state() {
     let sender = *ALICE_NODE_ID;
     let mut timestamp = Timestamp::from(100000);
 
-    let proposal0 = Proposal {
+    let proposal0 = Proposal::<ClContext> {
         timestamp,
         maybe_block: Some(new_payload(false)),
         maybe_parent_round_id: None,
@@ -656,7 +701,7 @@ fn simple_consensus_sends_sync_state() {
                 proposal_hash: None,
                 proposal: false,
                 first_validator_idx: _,
-                echos: 0,
+                echoes: 0,
                 true_votes: 0,
                 false_votes: 0,
                 faulty: 0,
@@ -672,7 +717,7 @@ fn simple_consensus_sends_sync_state() {
     // Now we get a proposal and echo from Alice, one false vote from Bob, and Carol double-signs.
     let msg = create_message(&validators, 0, echo(hash0), &alice_kp);
     sc.handle_message(&mut rng, sender, msg, timestamp);
-    let msg = create_message(&validators, 0, proposal(&proposal0), &alice_kp);
+    let msg = create_proposal_message(0, &proposal0);
     sc.handle_message(&mut rng, sender, msg, timestamp);
     let msg = create_message(&validators, 0, vote(false), &bob_kp);
     sc.handle_message(&mut rng, sender, msg, timestamp);
@@ -692,7 +737,7 @@ fn simple_consensus_sends_sync_state() {
                 proposal_hash: Some(hash),
                 proposal: true,
                 first_validator_idx,
-                echos,
+                echoes,
                 true_votes: 0,
                 false_votes,
                 faulty,
@@ -704,9 +749,9 @@ fn simple_consensus_sends_sync_state() {
             let mut faulty_iter = sc.iter_validator_bit_field(first_validator_idx, faulty);
             assert_eq!(Some(carol_idx), faulty_iter.next());
             assert_eq!(None, faulty_iter.next());
-            let mut echos_iter = sc.iter_validator_bit_field(first_validator_idx, echos);
-            assert_eq!(Some(alice_idx), echos_iter.next());
-            assert_eq!(None, echos_iter.next());
+            let mut echoes_iter = sc.iter_validator_bit_field(first_validator_idx, echoes);
+            assert_eq!(Some(alice_idx), echoes_iter.next());
+            assert_eq!(None, echoes_iter.next());
             let mut false_iter = sc.iter_validator_bit_field(first_validator_idx, false_votes);
             assert_eq!(Some(bob_idx), false_iter.next());
             assert_eq!(None, false_iter.next());
@@ -752,9 +797,9 @@ fn simple_consensus_handles_sync_state() {
 
     // We get a proposal, echo and true vote from Alice, one echo and false vote from Bob, and
     // Carol double-signs.
-    let msg = create_message(&validators, 0, proposal(&proposal0), &alice_kp);
-    sc.handle_message(&mut rng, sender, msg, timestamp);
     let msg = create_message(&validators, 0, echo(hash0), &alice_kp);
+    sc.handle_message(&mut rng, sender, msg, timestamp);
+    let msg = create_proposal_message(0, &proposal0);
     sc.handle_message(&mut rng, sender, msg, timestamp);
     let msg = create_message(&validators, 0, echo(hash0), &bob_kp);
     sc.handle_message(&mut rng, sender, msg, timestamp);
@@ -775,7 +820,7 @@ fn simple_consensus_handles_sync_state() {
         proposal_hash: Some(hash0),
         proposal: false,
         first_validator_idx,
-        echos: sc.validator_bit_field(first_validator_idx, vec![alice_idx, bob_idx].into_iter()),
+        echoes: sc.validator_bit_field(first_validator_idx, vec![alice_idx, bob_idx].into_iter()),
         true_votes: sc
             .validator_bit_field(first_validator_idx, vec![alice_idx, bob_idx].into_iter()),
         false_votes: sc
@@ -784,8 +829,8 @@ fn simple_consensus_handles_sync_state() {
         instance_id: *sc.instance_id(),
     };
     let mut outcomes = sc.handle_message(&mut rng, sender, msg.serialize(), timestamp);
-    let mut msgs = remove_targeted_messages(&validators, &mut outcomes);
-    assert!(msgs.remove(&(sender, 0, ALICE_PUBLIC_KEY.clone(), proposal(&proposal0))));
+    let mut msgs = remove_targeted_messages(&validators, sender, &mut outcomes);
+    assert!(remove_proposal(&mut msgs, 0, &proposal0));
     assert!(msgs.is_empty(), "unexpected messages: {:?}", msgs);
     expect_no_gossip_block_finalized(outcomes);
 
@@ -795,7 +840,7 @@ fn simple_consensus_handles_sync_state() {
         proposal_hash: Some(hash1), // Wrong proposal!
         proposal: true,
         first_validator_idx,
-        echos: sc.validator_bit_field(first_validator_idx, vec![alice_idx].into_iter()),
+        echoes: sc.validator_bit_field(first_validator_idx, vec![alice_idx].into_iter()),
         true_votes: sc
             .validator_bit_field(first_validator_idx, vec![bob_idx, alice_idx].into_iter()),
         false_votes: sc.validator_bit_field(first_validator_idx, vec![].into_iter()),
@@ -803,16 +848,31 @@ fn simple_consensus_handles_sync_state() {
         instance_id: *sc.instance_id(),
     };
     let mut outcomes = sc.handle_message(&mut rng, sender, msg.serialize(), timestamp);
-    let mut msgs = remove_targeted_messages(&validators, &mut outcomes);
+    let mut msgs = remove_targeted_messages(&validators, sender, &mut outcomes);
     // The sender's proposal hash is different from the one we have a quorum for:
-    assert!(msgs.remove(&(sender, 0, ALICE_PUBLIC_KEY.clone(), echo(hash0))));
-    assert!(msgs.remove(&(sender, 0, BOB_PUBLIC_KEY.clone(), echo(hash0))));
+    assert!(remove_signed(&mut msgs, 0, alice_idx, echo(hash0)));
+    assert!(remove_signed(&mut msgs, 0, bob_idx, echo(hash0)));
     // The sender has Alice's but not Bob's vote:
-    assert!(msgs.remove(&(sender, 0, BOB_PUBLIC_KEY.clone(), vote(false))));
+    assert!(remove_signed(&mut msgs, 0, bob_idx, vote(false)));
     // The sender doesn't know Carol is faulty:
-    assert!(msgs.remove(&(sender, 0, CAROL_PUBLIC_KEY.clone(), vote(true))));
-    assert!(msgs.remove(&(sender, 0, CAROL_PUBLIC_KEY.clone(), vote(false))));
+    let evidence_msg = msgs.pop().expect("missing evidence message");
     assert!(msgs.is_empty());
+    match evidence_msg {
+        Message::Evidence(
+            SignedMessage {
+                round_id: 0,
+                content: Content::Vote(vote),
+                validator_idx,
+                ..
+            },
+            Content::Vote(vote2),
+            _,
+        ) => {
+            assert_ne!(vote, vote2);
+            assert_eq!(validator_idx, carol_idx);
+        }
+        evidence_msg => panic!("unexpected message: {:?}", evidence_msg),
+    }
     expect_no_gossip_block_finalized(outcomes);
 }
 
