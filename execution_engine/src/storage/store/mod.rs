@@ -5,7 +5,24 @@ pub(crate) mod tests;
 use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 
 pub use self::store_ext::StoreExt;
-use crate::storage::transaction_source::{Readable, Writable};
+
+/// Base trait for db operations that can raise an error.
+pub trait ErrorSource: Sized {
+    /// Type of error held by the trait.
+    type Error: From<bytesrepr::Error>;
+}
+
+/// Represents a store that can be read from.
+pub trait Readable: ErrorSource {
+    /// Returns the value from the corresponding key.
+    fn read(&self, key: &[u8]) -> Result<Option<Bytes>, Self::Error>;
+}
+
+/// Represents a store that can be written to.
+pub trait Writable: ErrorSource {
+    /// Inserts a key-value pair.
+    fn write(&self, key: &[u8], value: &[u8]) -> Result<(), Self::Error>;
+}
 
 /// Store is responsible for abstracting `get` and `put` operations over the underlying store
 /// specified by its associated `Handle` type.

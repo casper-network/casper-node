@@ -9,15 +9,14 @@ use tempfile::tempdir;
 use super::TestData;
 use crate::storage::{
     store::Store,
-    transaction_source::{db::RocksDbStore, rocksdb_defaults},
     trie::Trie,
-    trie_store::in_memory::InMemoryTrieStore,
+    trie_store::{db::RocksDbStore, in_memory::InMemoryTrieStore},
 };
 
 #[test]
 fn lmdb_writer_mutex_does_not_collide_with_readers() {
     let dir = tempdir().unwrap();
-    let store = RocksDbStore::new(dir.path(), rocksdb_defaults()).unwrap();
+    let store = RocksDbStore::new(dir.path()).unwrap();
     let num_threads = 10;
     let barrier = Arc::new(Barrier::new(num_threads + 1));
     let mut handles = Vec::new();

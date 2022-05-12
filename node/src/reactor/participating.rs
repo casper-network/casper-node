@@ -733,20 +733,24 @@ impl reactor::Reactor for Reactor {
                 let block_header = match storage.read_block_by_height(height) {
                     Ok(Some(block)) => block.header().clone(),
                     Ok(None) => {
-                        error!(
+                        warn!(
                             "unable to retrieve block at height {} for migration to rocksdb",
                             height,
                         );
                         continue;
                     }
                     Err(err) => {
-                        error!(
+                        warn!(
                             "unable to retrieve parent block at height {} for migration to rocksdb {:?}",
                             height, err,
                         );
                         continue;
                     }
                 };
+                info!(
+                    "Will migrate state root {:#?} at height {}",
+                    state_roots, height
+                );
                 state_roots.push(*block_header.state_root_hash());
             }
 

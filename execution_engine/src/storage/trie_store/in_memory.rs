@@ -10,7 +10,7 @@ use casper_types::bytesrepr::Bytes;
 use super::{Digest, Store, Trie, TrieStore};
 use crate::storage::{
     error::in_memory::Error,
-    transaction_source::{ErrorSource, Readable, Writable},
+    store::{ErrorSource, Readable, Writable},
 };
 
 /// An in-memory trie store.

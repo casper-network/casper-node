@@ -1,7 +1,7 @@
-use lmdb::Transaction;
+use lmdb::{DatabaseFlags, Transaction};
 use std::{
     collections::{HashMap, HashSet},
-    path::Path,
+    path::PathBuf,
     sync::{Arc, RwLock},
     thread,
     time::{Duration, Instant},
@@ -22,18 +22,13 @@ use crate::{
             commit_effects, put_stored_values, scratch::ScratchGlobalState, CommitProvider,
             StateProvider, StateReader,
         },
-        store::Store,
-        transaction_source::{
-            self,
-            db::{LmdbEnvironment, RocksDbStore},
-            Readable, Writable,
-        },
+        store::{Readable, Store, Writable},
         trie::{
             merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Pointer, Trie,
             TrieOrChunk, TrieOrChunkId,
         },
         trie_store::{
-            db::{LmdbTrieStore, ScratchTrieStore},
+            db::{RocksDbStore, ScratchTrieStore},
             operations::{
                 descendant_trie_keys, keys_with_prefix, missing_trie_keys, put_trie_bytes, read,
                 read_with_proof, ReadResult,
@@ -42,13 +37,55 @@ use crate::{
     },
 };
 
+// This module is intended to be private and will be sunset after migration to rocksdb is complete.
+mod legacy_lmdb {
+
+    use std::path::Path;
+
+    use lmdb::{self, Environment, EnvironmentFlags};
+
+    use crate::storage::{error, MAX_DBS};
+
+    /// Filename for the LMDB database created by the EE.
+    const EE_LMDB_FILENAME: &str = "data.lmdb";
+
+    // LMDB database name.
+    pub(super) const LMDB_DATABASE_NAME: &str = "TRIE_STORE";
+
+    /// The environment for an LMDB-backed trie store.
+    ///
+    /// Wraps [`lmdb::Environment`].
+    #[derive(Debug)]
+    pub(crate) struct LmdbEnvironment {
+        env: Environment,
+    }
+
+    impl LmdbEnvironment {
+        /// Constructor for `LmdbEnvironment`.
+        pub fn new<P: AsRef<Path>>(path: P) -> Result<Self, error::Error> {
+            // Set the flag to manage our own directory like in the storage component.
+            let lmdb_flags = EnvironmentFlags::NO_SUB_DIR | EnvironmentFlags::NO_READAHEAD;
+            let env = Environment::new()
+                .set_flags(lmdb_flags)
+                .set_max_dbs(MAX_DBS)
+                .set_map_size(0)
+                .set_max_readers(1)
+                .open(&path.as_ref().join(EE_LMDB_FILENAME))?;
+            Ok(LmdbEnvironment { env })
+        }
+
+        /// Returns a reference to the wrapped `Environment`.
+        pub fn env(&self) -> &Environment {
+            &self.env
+        }
+    }
+}
+
 /// Global state implemented against a database as a backing data store.
 #[derive(Clone)]
 pub struct DbGlobalState {
-    /// Environment for LMDB.
-    pub(crate) lmdb_environment: Arc<LmdbEnvironment>,
-    /// Trie store held within LMDB.
-    pub(crate) lmdb_trie_store: Arc<LmdbTrieStore>,
+    /// Optional path to legacy LMDB files - loaded for migration only if present.
+    maybe_lmdb_path: Option<PathBuf>,
     /// Empty root hash used for a new trie.
     pub(crate) empty_root_hash: Digest,
     /// Handle to rocksdb.
@@ -81,6 +118,21 @@ impl DbGlobalState {
         limit_rate: bool,
         force: bool,
     ) -> Result<(), error::Error> {
+        let (lmdb_environment, lmdb_db) = match self.maybe_lmdb_path.as_ref() {
+            Some(path) => {
+                let env = legacy_lmdb::LmdbEnvironment::new(path)?;
+                let db = env.env().create_db(
+                    Some(legacy_lmdb::LMDB_DATABASE_NAME),
+                    DatabaseFlags::empty(),
+                )?;
+                (env, db)
+            }
+            None => {
+                info!("No existing lmdb database found, skipping migration.");
+                return Ok(());
+            }
+        };
+
         let mut missing_trie_keys = vec![state_root];
         let start_time = Instant::now();
         let mut interval_start = start_time;
@@ -118,10 +170,10 @@ impl DbGlobalState {
                 heartbeat_interval = Instant::now();
             }
 
-            let lmdb_txn = self.lmdb_environment.env().begin_ro_txn()?;
+            let lmdb_txn = lmdb_environment.env().begin_ro_txn()?;
 
             let trie_key_bytes = next_trie_key.to_bytes()?;
-            match lmdb_txn.get(self.lmdb_trie_store.get_db(), &trie_key_bytes) {
+            match lmdb_txn.get(lmdb_db, &trie_key_bytes) {
                 Ok(value_bytes) => {
                     let rocksdb = self.rocksdb_store.clone();
                     let key_bytes = next_trie_key.to_bytes()?;
@@ -162,47 +214,22 @@ impl DbGlobalState {
             time_searching_for_trie_keys_micros = %time_searching_for_trie_keys.as_micros(),
             "trie migration complete",
         );
+
         Ok(())
     }
 
     /// Creates an empty state from an existing environment and trie_store.
     pub fn empty(
-        environment: Arc<LmdbEnvironment>,
-        trie_store: Arc<LmdbTrieStore>,
-        rocksdb_path: impl AsRef<Path>,
+        maybe_lmdb_path: Option<PathBuf>,
+        rocksdb_store: RocksDbStore,
     ) -> Result<Self, error::Error> {
-        let rocksdb_store =
-            RocksDbStore::new(rocksdb_path, transaction_source::rocksdb_defaults())?;
-
         let empty_root_hash: Digest = {
             let (root_hash, root) = create_hashed_empty_trie::<Key, StoredValue>()?;
             rocksdb_store.put(&root_hash, &root)?;
-            environment.env().sync(true)?;
             root_hash
         };
         Ok(DbGlobalState {
-            lmdb_environment: environment,
-            lmdb_trie_store: trie_store,
-            empty_root_hash,
-            rocksdb_store,
-            digests_without_missing_descendants: Default::default(),
-        })
-    }
-
-    /// Creates a state from an existing environment, store, and root_hash.
-    /// Intended to be used for testing.
-    pub fn new(
-        environment: Arc<LmdbEnvironment>,
-        trie_store: Arc<LmdbTrieStore>,
-        empty_root_hash: Digest,
-        rocksdb_path: impl AsRef<Path>,
-    ) -> Result<Self, error::Error> {
-        let rocksdb_store =
-            RocksDbStore::new(rocksdb_path, transaction_source::rocksdb_defaults())?;
-
-        Ok(DbGlobalState {
-            lmdb_environment: environment,
-            lmdb_trie_store: trie_store,
+            maybe_lmdb_path,
             empty_root_hash,
             rocksdb_store,
             digests_without_missing_descendants: Default::default(),
@@ -235,12 +262,6 @@ impl DbGlobalState {
     /// Gets a scratch trie store.
     fn get_scratch_store(&self) -> ScratchTrieStore {
         ScratchTrieStore::new(self.rocksdb_store.clone())
-    }
-
-    /// Get a reference to the lmdb global state's environment.
-    #[must_use]
-    pub fn lmdb_environment(&self) -> &LmdbEnvironment {
-        &self.lmdb_environment
     }
 }
 
@@ -495,14 +516,12 @@ impl StateProvider for DbGlobalState {
 
 #[cfg(test)]
 mod tests {
-    use lmdb::DatabaseFlags;
     use tempfile::tempdir;
 
     use casper_hashing::Digest;
     use casper_types::{account::AccountHash, CLValue};
 
     use super::*;
-    use crate::storage::{DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS};
 
     #[derive(Debug, Clone)]
     struct TestPair {
@@ -561,22 +580,10 @@ mod tests {
 
     fn create_test_state(pairs_creator: fn() -> [TestPair; 2]) -> (DbGlobalState, Digest) {
         let correlation_id = CorrelationId::new();
-        let lmdb_temp_dir = tempdir().unwrap();
         let rocksdb_temp_dir = tempdir().unwrap();
-        let environment = Arc::new(
-            LmdbEnvironment::new(
-                lmdb_temp_dir.path(),
-                DEFAULT_TEST_MAX_DB_SIZE,
-                DEFAULT_TEST_MAX_READERS,
-                true,
-            )
-            .unwrap(),
-        );
-        let trie_store =
-            Arc::new(LmdbTrieStore::new(&environment, None, DatabaseFlags::empty()).unwrap());
 
-        let engine_state =
-            DbGlobalState::empty(environment, trie_store, &rocksdb_temp_dir.path()).unwrap();
+        let trie_store = RocksDbStore::new(&rocksdb_temp_dir.path()).unwrap();
+        let engine_state = DbGlobalState::empty(None, trie_store).unwrap();
         let mut current_root = engine_state.empty_root_hash;
         for TestPair { key, value } in pairs_creator() {
             let mut stored_values = HashMap::new();

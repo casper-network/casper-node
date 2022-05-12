@@ -56,7 +56,6 @@ fn should_transfer_to_account_with_correct_balances() {
         .expect_success();
 
     builder.write_scratch_to_db();
-    builder.flush_environment();
 
     assert_ne!(
         pre_state_hash,
@@ -144,7 +143,6 @@ fn should_transfer_from_default_and_then_to_another_account() {
         .expect_failure();
 
     builder.write_scratch_to_db();
-    builder.flush_environment();
 
     assert_ne!(
         pre_state_hash,

@@ -8,11 +8,11 @@ use casper_types::{bytesrepr::ToBytes, Key, StoredValue};
 
 use crate::storage::{
     store::tests as store_tests,
-    transaction_source::{db::RocksDbStore, rocksdb_defaults},
     trie::{
         gens::{trie_extension_arb, trie_leaf_arb, trie_node_arb},
         Trie,
     },
+    trie_store::db::RocksDbStore,
 };
 
 const DEFAULT_MIN_LENGTH: usize = 1;
@@ -43,7 +43,7 @@ fn in_memory_roundtrip_succeeds(inputs: Vec<Trie<Key, StoredValue>>) -> bool {
 
 fn lmdb_roundtrip_succeeds(inputs: Vec<Trie<Key, StoredValue>>) -> bool {
     let dir = tempdir().unwrap();
-    let store = RocksDbStore::new(dir.path(), rocksdb_defaults()).unwrap();
+    let store = RocksDbStore::new(dir.path()).unwrap();
 
     let inputs: BTreeMap<Digest, Trie<Key, StoredValue>> = inputs
         .into_iter()

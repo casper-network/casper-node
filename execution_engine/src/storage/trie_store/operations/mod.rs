@@ -17,7 +17,7 @@ use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 use crate::{
     shared::newtypes::CorrelationId,
     storage::{
-        transaction_source::{ErrorSource, Readable, Writable},
+        store::{Readable, Writable},
         trie::{
             hash_bytes_into_chunks_if_necessary,
             merkle_proof::{TrieMerkleProof, TrieMerkleProofStep},
@@ -1028,7 +1028,7 @@ where
     Ok(trie_hash)
 }
 
-enum KeysIteratorState<S: ErrorSource> {
+enum KeysIteratorState<S: Readable> {
     /// Iterate normally
     Ok,
     /// Return the error and stop iterating

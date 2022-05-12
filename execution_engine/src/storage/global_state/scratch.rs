@@ -243,7 +243,6 @@ impl StateProvider for ScratchGlobalState {
 
 #[cfg(test)]
 mod tests {
-    use lmdb::DatabaseFlags;
     use tempfile::tempdir;
 
     use casper_hashing::Digest;
@@ -252,9 +251,7 @@ mod tests {
     use super::*;
     use crate::storage::{
         global_state::{db::DbGlobalState, CommitProvider},
-        transaction_source::db::LmdbEnvironment,
-        trie_store::db::LmdbTrieStore,
-        DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
+        trie_store::db::RocksDbStore,
     };
 
     #[derive(Debug, Clone)]
@@ -317,21 +314,9 @@ mod tests {
 
     fn create_test_state() -> TestState {
         let correlation_id = CorrelationId::new();
-        let temp_dir = tempdir().unwrap();
-        let environment = Arc::new(
-            LmdbEnvironment::new(
-                temp_dir.path(),
-                DEFAULT_TEST_MAX_DB_SIZE,
-                DEFAULT_TEST_MAX_READERS,
-                true,
-            )
-            .unwrap(),
-        );
-        let trie_store =
-            Arc::new(LmdbTrieStore::new(&environment, None, DatabaseFlags::empty()).unwrap());
+        let rocksdb = RocksDbStore::new(tempdir().unwrap()).unwrap();
 
-        let engine_state =
-            DbGlobalState::empty(environment, trie_store, tempdir().unwrap()).unwrap();
+        let engine_state = DbGlobalState::empty(None, rocksdb).unwrap();
         let mut current_root = engine_state.empty_root_hash;
         for TestPair { key, value } in create_test_pairs() {
             let mut stored_values = HashMap::new();

@@ -19,7 +19,7 @@ use casper_execution_engine::core::engine_state::GetEraValidatorsError;
 pub(crate) enum ConfigError {
     /// Error initializing the storage environment.
     #[error("failed to initialize storage environment for contract runtime: {0}")]
-    Lmdb(#[from] StorageError),
+    Db(#[from] StorageError),
     /// Error initializing metrics.
     #[error("failed to initialize metrics for contract runtime: {0}")]
     Prometheus(#[from] prometheus::Error),

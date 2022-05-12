@@ -18,9 +18,9 @@ use crate::{
     shared::newtypes::CorrelationId,
     storage::{
         error::{self, in_memory},
-        transaction_source::{db::RocksDbStore, rocksdb_defaults},
         trie::{merkle_proof::TrieMerkleProof, Pointer, Trie},
         trie_store::{
+            db::RocksDbStore,
             in_memory::InMemoryTrieStore,
             operations::{self, read, read_with_proof, write, ReadResult, WriteResult},
             TrieStore,
@@ -506,7 +506,7 @@ impl RocksDbTestContext {
         V: FromBytes + ToBytes,
     {
         let dir = tempdir()?;
-        let store = RocksDbStore::new(dir.path(), rocksdb_defaults())?;
+        let store = RocksDbStore::new(dir.path())?;
         put_tries::<_, _, _, error::Error>(&store, tries)?;
         Ok(RocksDbTestContext {
             _temp_dir: dir,

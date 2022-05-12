@@ -167,14 +167,6 @@ impl EngineState<DbGlobalState> {
         &self.state
     }
 
-    /// Flushes the LMDB environment to disk when manual sync is enabled in the config.toml.
-    pub fn flush_environment(&self) -> Result<(), storage::error::Error> {
-        if self.state.lmdb_environment.is_manual_sync_enabled() {
-            self.state.lmdb_environment.sync()?;
-        }
-        Ok(())
-    }
-
     /// Gets path to rocksdb data files.
     pub fn data_path(&self) -> PathBuf {
         self.state.rocksdb_store.path()

@@ -6,11 +6,9 @@ use std::{
     ops::Deref,
     path::{Path, PathBuf},
     rc::Rc,
-    sync::Arc,
 };
 
 use filesize::PathExt;
-use lmdb::DatabaseFlags;
 use log::LevelFilter;
 use num_rational::Ratio;
 use num_traits::CheckedMul;
@@ -41,16 +39,14 @@ use casper_execution_engine::{
             mint_costs::MintCosts,
         },
         transform::Transform,
-        utils::OS_PAGE_SIZE,
     },
     storage::{
         global_state::{
             db::DbGlobalState, in_memory::InMemoryGlobalState, scratch::ScratchGlobalState,
             CommitProvider, StateProvider, StateReader,
         },
-        transaction_source::db::LmdbEnvironment,
         trie::{merkle_proof::TrieMerkleProof, Trie},
-        trie_store::db::LmdbTrieStore,
+        trie_store::db::RocksDbStore,
         ROCKS_DB_DATA_DIR,
     },
 };
@@ -78,14 +74,6 @@ use crate::{
     utils, ExecuteRequestBuilder, StepRequestBuilder, DEFAULT_PROPOSER_ADDR,
     DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
 };
-
-/// LMDB initial map size is calculated based on DEFAULT_LMDB_PAGES and systems page size.
-const DEFAULT_LMDB_PAGES: usize = 256_000_000;
-
-/// LMDB max readers
-///
-/// The default value is chosen to be the same as the node itself.
-const DEFAULT_MAX_READERS: u32 = 512;
 
 /// This is appended to the data dir path provided to the `DbWasmTestBuilder`".
 const GLOBAL_STATE_DIR: &str = "global_state";
@@ -209,29 +197,14 @@ impl DbWasmTestBuilder {
         engine_config: EngineConfig,
     ) -> Self {
         Self::initialize_logging();
-        let page_size = *OS_PAGE_SIZE;
         let global_state_dir = Self::global_state_dir(data_dir);
         Self::create_global_state_dir(&global_state_dir);
-        let environment = Arc::new(
-            LmdbEnvironment::new(
-                &global_state_dir,
-                page_size * DEFAULT_LMDB_PAGES,
-                DEFAULT_MAX_READERS,
-                true,
-            )
-            .expect("should create LmdbEnvironment"),
-        );
-        let trie_store = Arc::new(
-            LmdbTrieStore::new(&environment, None, DatabaseFlags::empty())
-                .expect("should create LmdbTrieStore"),
-        );
 
-        let global_state = DbGlobalState::empty(
-            environment,
-            trie_store,
-            global_state_dir.join(ROCKS_DB_DATA_DIR),
-        )
-        .expect("should create DbGlobalState");
+        let trie_store = RocksDbStore::new(global_state_dir.join(ROCKS_DB_DATA_DIR)).unwrap();
+
+        let global_state =
+            DbGlobalState::empty(None, trie_store).expect("should create DbGlobalState");
+
         let engine_state = EngineState::new(global_state, engine_config);
         WasmTestBuilder {
             engine_state: Rc::new(engine_state),
@@ -276,12 +249,6 @@ impl DbWasmTestBuilder {
         Self::new_with_chainspec(data_dir, &*PRODUCTION_PATH)
     }
 
-    /// Flushes the LMDB environment to disk.
-    pub fn flush_environment(&self) {
-        let engine_state = &*self.engine_state;
-        engine_state.flush_environment().unwrap();
-    }
-
     /// Returns the file size on disk of rocksdb.
     pub fn rocksdb_on_disk_size(&self) -> Result<usize, io::Error> {
         let mut total = 0;
@@ -322,26 +289,14 @@ impl DbWasmTestBuilder {
         post_state_hash: Digest,
     ) -> Self {
         Self::initialize_logging();
-        let page_size = *OS_PAGE_SIZE;
         Self::create_global_state_dir(&global_state_dir);
-        let environment = Arc::new(
-            LmdbEnvironment::new(
-                &global_state_dir,
-                page_size * DEFAULT_LMDB_PAGES,
-                DEFAULT_MAX_READERS,
-                true,
-            )
-            .expect("should create LmdbEnvironment"),
-        );
-        let trie_store =
-            Arc::new(LmdbTrieStore::open(&environment, None).expect("should open LmdbTrieStore"));
 
-        let global_state = DbGlobalState::empty(
-            environment,
-            trie_store,
-            global_state_dir.as_ref().join(ROCKS_DB_DATA_DIR),
-        )
-        .expect("should create DbGlobalState");
+        let trie_store =
+            RocksDbStore::new(global_state_dir.as_ref().join(ROCKS_DB_DATA_DIR)).unwrap();
+
+        let global_state =
+            DbGlobalState::empty(Some(global_state_dir.as_ref().to_path_buf()), trie_store)
+                .expect("should create DbGlobalState");
         let engine_state = EngineState::new(global_state, engine_config);
 
         // TODO: replace lmdb fixture files with rocksdb ones, or perhaps a more universal format.
@@ -378,16 +333,6 @@ impl DbWasmTestBuilder {
         let mut path = PathBuf::from(data_dir);
         path.push(GLOBAL_STATE_DIR);
         path
-    }
-
-    /// Returns the file size on disk of the backing lmdb file behind DbGlobalState.
-    pub fn lmdb_on_disk_size(&self) -> Option<u64> {
-        if let Some(path) = self.global_state_dir.as_ref() {
-            let mut path = path.clone();
-            path.push("data.lmdb");
-            return path.as_path().size_on_disk().ok();
-        }
-        None
     }
 
     /// Execute and commit transforms from an ExecuteRequest into a scratch global state.

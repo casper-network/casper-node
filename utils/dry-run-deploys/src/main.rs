@@ -1,10 +1,9 @@
 use std::{path::PathBuf, time::Instant};
 
-use casper_hashing::Digest;
 use histogram::Histogram;
 use indicatif::{ProgressBar, ProgressStyle};
 use structopt::StructOpt;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use casper_node::{
     contract_runtime::{execute_finalized_block, ExecutionPreState},
@@ -42,15 +41,6 @@ struct Opts {
     #[structopt(short, long)]
     verbose: bool,
 
-    #[structopt(short, long, about = "Enable manual syncing after each block to LMDB")]
-    manual_sync_enabled: bool,
-
-    #[structopt(
-        long = "max-db-size",
-        about = "Max LMDB database size, may be useful to set this when running under valgrind."
-    )]
-    max_db_size: Option<usize>,
-
     #[structopt(
         long = "run-rocksdb-migration",
         about = "Perform the rocksdb migration from lmdb to rockdb for all tries present in lmdb."
@@ -73,18 +63,8 @@ async fn main() -> Result<(), anyhow::Error> {
     let storage = create_storage(&chain_download_path, verifiable_chunked_hash_activation)
         .expect("should create storage");
 
-    let max_db_size = opts
-        .max_db_size
-        .unwrap_or(retrieve_state::DEFAULT_MAX_DB_SIZE);
-
     if opts.run_rocksdb_migration {
-        let (engine_state, _env) = storage::load_execution_engine(
-            lmdb_path,
-            rocksdb_path,
-            max_db_size,
-            Digest::from([0; 32]),
-            opts.manual_sync_enabled,
-        )?;
+        let engine_state = storage::load_execution_engine(lmdb_path, rocksdb_path)?;
         info!("Running migration of data from lmdb to rocksdb...");
 
         let mut state_roots = Vec::new();
@@ -95,20 +75,24 @@ async fn main() -> Result<(), anyhow::Error> {
                     let block_header = match storage.read_block_by_height(height) {
                         Ok(Some(block)) => block.header().clone(),
                         Ok(None) => {
-                            error!(
+                            warn!(
                                 "unable to retrieve block at height {} for migration to rocksdb",
                                 height,
                             );
                             continue;
                         }
                         Err(err) => {
-                            error!(
-                            "unable to retrieve parent block at height {} for migration to rocksdb {:?}",
-                            height, err,
-                        );
+                            warn!(
+                                "unable to retrieve parent block at height {} for migration to rocksdb {:?}",
+                                height, err,
+                            );
                             continue;
                         }
                     };
+                    info!(
+                        "Will migrate state root {:#?} at height {}",
+                        state_roots, height
+                    );
                     state_roots.push(*block_header.state_root_hash());
                 }
                 casper_node::migrate_lmdb_data_to_rocksdb(engine_state, state_roots, false);
@@ -132,13 +116,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .unwrap_or_else(|| panic!("no block at height {}", load_height));
 
     let previous_block_header = previous_block.take_header();
-    let (engine_state, _env) = storage::load_execution_engine(
-        lmdb_path,
-        rocksdb_path,
-        max_db_size,
-        *previous_block_header.state_root_hash(),
-        opts.manual_sync_enabled,
-    )?;
+    let engine_state = storage::load_execution_engine(lmdb_path, rocksdb_path)?;
 
     let mut execution_pre_state = ExecutionPreState::from_block_header(
         &previous_block_header,

@@ -193,7 +193,7 @@ pub fn run_blocks_with_transfers_and_step(
             report_writer,
             "{},{},{},{},{},{}",
             current_block,
-            builder.lmdb_on_disk_size().unwrap(),
+            builder.rocksdb_on_disk_size().unwrap(),
             total_transfers,
             exec_time.as_millis() as usize,
             necessary_tries.len(),
