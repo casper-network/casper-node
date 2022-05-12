@@ -693,7 +693,7 @@ impl<REv> EffectBuilder<REv> {
         REv: From<NetworkInfoRequest>,
     {
         self.make_request(
-            |responder| NetworkInfoRequest::GetPeers { responder },
+            |responder| NetworkInfoRequest::Peers { responder },
             QueueKind::Api,
         )
         .await
@@ -705,7 +705,7 @@ impl<REv> EffectBuilder<REv> {
         REv: From<NetworkInfoRequest>,
     {
         self.make_request(
-            |responder| NetworkInfoRequest::GetFullyConnectedPeers { responder },
+            |responder| NetworkInfoRequest::FullyConnectedPeers { responder },
             QueueKind::Regular,
         )
         .await
@@ -717,7 +717,7 @@ impl<REv> EffectBuilder<REv> {
         REv: From<NetworkInfoRequest>,
     {
         self.make_request(
-            |responder| NetworkInfoRequest::GetFullyConnectedNonJoinerPeers { responder },
+            |responder| NetworkInfoRequest::FullyConnectedNonJoinerPeers { responder },
             QueueKind::Regular,
         )
         .await

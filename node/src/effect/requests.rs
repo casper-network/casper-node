@@ -186,18 +186,18 @@ where
 #[derive(Debug)]
 pub(crate) enum NetworkInfoRequest {
     /// Get incoming and outgoing peers.
-    GetPeers {
+    Peers {
         /// Responder to be called with all connected peers.
         /// Responds with a map from [NodeId]s to a socket address, represented as a string.
         responder: Responder<BTreeMap<NodeId, String>>,
     },
     /// Get the peers in random order.
-    GetFullyConnectedPeers {
+    FullyConnectedPeers {
         /// Responder to be called with all connected in random order peers.
         responder: Responder<Vec<NodeId>>,
     },
     /// Get only non-joiner peers in random order.
-    GetFullyConnectedNonJoinerPeers {
+    FullyConnectedNonJoinerPeers {
         /// Responder to be called with all connected non-joiner peers in random order.
         responder: Responder<Vec<NodeId>>,
     },
@@ -206,13 +206,13 @@ pub(crate) enum NetworkInfoRequest {
 impl Display for NetworkInfoRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            NetworkInfoRequest::GetPeers { responder: _ } => {
+            NetworkInfoRequest::Peers { responder: _ } => {
                 write!(formatter, "get peers-to-socket-address map")
             }
-            NetworkInfoRequest::GetFullyConnectedPeers { responder: _ } => {
+            NetworkInfoRequest::FullyConnectedPeers { responder: _ } => {
                 write!(formatter, "get fully connected peers")
             }
-            NetworkInfoRequest::GetFullyConnectedNonJoinerPeers { responder: _ } => {
+            NetworkInfoRequest::FullyConnectedNonJoinerPeers { responder: _ } => {
                 write!(formatter, "get fully connected non-joiner peers")
             }
         }

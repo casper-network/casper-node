@@ -932,10 +932,8 @@ where
                 }
             }
             Event::NetworkInfoRequest { req } => match *req {
-                NetworkInfoRequest::GetPeers { responder } => {
-                    responder.respond(self.peers()).ignore()
-                }
-                NetworkInfoRequest::GetFullyConnectedPeers { responder } => {
+                NetworkInfoRequest::Peers { responder } => responder.respond(self.peers()).ignore(),
+                NetworkInfoRequest::FullyConnectedPeers { responder } => {
                     let mut symmetric_peers: Vec<NodeId> = self
                         .connection_symmetries
                         .iter()
@@ -948,7 +946,7 @@ where
 
                     responder.respond(symmetric_peers).ignore()
                 }
-                NetworkInfoRequest::GetFullyConnectedNonJoinerPeers { responder } => {
+                NetworkInfoRequest::FullyConnectedNonJoinerPeers { responder } => {
                     let mut symmetric_validator_peers: Vec<NodeId> = self
                         .connection_symmetries
                         .iter()
