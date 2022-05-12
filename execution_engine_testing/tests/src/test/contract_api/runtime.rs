@@ -6,7 +6,8 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::{crypto, runtime_args, RuntimeArgs, BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH};
+use casper_execution_engine::core::ADDRESS_LENGTH;
+use casper_types::{crypto, runtime_args, RuntimeArgs, BLAKE2B_DIGEST_LENGTH};
 
 const BLAKE2B_WASM: &str = "blake2b.wasm";
 const ARG_BYTES: &str = "bytes";
@@ -52,7 +53,7 @@ fn should_return_distinct_next_addresses() {
 
             builder.exec(exec_request).commit().expect_success();
 
-            get_value::<KEY_HASH_LENGTH>(&builder, NEXT_ADDRESS_RESULT)
+            get_value::<ADDRESS_LENGTH>(&builder, NEXT_ADDRESS_RESULT)
         })
         .collect();
 
