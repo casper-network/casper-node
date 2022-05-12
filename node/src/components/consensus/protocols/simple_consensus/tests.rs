@@ -459,6 +459,9 @@ fn simple_consensus_no_fault() {
     let msg = create_message(&validators, 0, vote(false), &bob_kp);
     expect_no_gossip_block_finalized(sc_c.handle_message(&mut rng, sender, msg, timestamp));
 
+    // Call the update timer so that it doesn't think a timer is still outstanding.
+    expect_no_gossip_block_finalized(sc_c.handle_timer(timestamp, TIMER_ID_UPDATE, &mut rng));
+
     // But with Alice's vote round 0 becomes skippable. That means rounds 1 and 2 are now accepted
     // and Carol votes for them. Since round 2 is already committed, both 1 and 2 are finalized.
     // Since round 2 became current, Carol echoes the proposal, too.
