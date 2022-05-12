@@ -1,6 +1,7 @@
 import * as externals from "./externals";
 import {Error} from "./error";
 
+const ADDRESS_LENGTH: i32 = 32;
 const BLAKE2B_DIGEST_LENGTH: i32 = 32;
 
 /**
@@ -18,5 +19,14 @@ const BLAKE2B_DIGEST_LENGTH: i32 = 32;
 }
 
 /**
- * TODO[RC]: Shall we export `next_address` function here?
+ * Returns a 32-bytes long new address.
  */
+export function next_address(): Uint8Array {
+    let addressBytes = new Uint8Array(ADDRESS_LENGTH);
+    const ret = externals.casper_next_address(addressBytes.dataStart, addressBytes.length);
+    let error = Error.fromResult(ret);
+    if (error != null) {
+        error.revert();
+    }
+    return addressBytes;
+}

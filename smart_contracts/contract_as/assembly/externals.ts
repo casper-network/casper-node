@@ -232,6 +232,3 @@ export declare function casper_next_address(
     out_ptr: usize,
     out_size: usize,
 ): i32;
-/**
- * TODO[RC]: Should it be `next_address` instead of `casper_next_address`?
- */
