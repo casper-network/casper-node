@@ -1,7 +1,12 @@
-use std::{borrow::BorrowMut, pin::Pin, task::Context};
+use std::{
+    iter::Peekable,
+    pin::Pin,
+    task::{Context, Poll},
+};
 
 use bytes::{Buf, Bytes};
 use futures::Future;
+use pin_project::pin_project;
 
 use crate::{FrameSink, FrameSinkError, ImmediateFrame};
 
@@ -23,16 +28,6 @@ trait Foo {
     fn mk_fut(self) -> Self::Fut;
 }
 
-struct Bar;
-
-impl Foo for Bar {
-    type Fut: Future<Output = usize> = impl Future<Output = usize>;
-
-    fn mk_fut(self) -> Self::Fut {
-        async move { 123 }
-    }
-}
-
 type SingleChunk = bytes::buf::Chain<ImmediateFrame<[u8; 1]>, Bytes>;
 
 /// TODO: Turn into non-anonymous future with zero allocations.
@@ -47,6 +42,12 @@ where
     Ok(())
 }
 
+/// Chunks a frame into ready-to-send chunks.
+///
+/// # Notes
+///
+/// Internally, data is copied into chunks by using `Buf::copy_to_bytes`. It is advisable to use a
+/// `B` that has an efficient implementation for this that avoids copies, like `Bytes` itself.
 fn chunk_frame<B: Buf>(mut frame: B, chunk_size: usize) -> impl Iterator<Item = SingleChunk> {
     let num_frames = (frame.remaining() + chunk_size - 1) / chunk_size;
 
@@ -63,36 +64,50 @@ fn chunk_frame<B: Buf>(mut frame: B, chunk_size: usize) -> impl Iterator<Item = 
         let chunk_data = frame.copy_to_bytes(chunk_size);
         ImmediateFrame::from(chunk_id).chain(chunk_data)
     })
-    // TODO: Report error.
-    // async move {
-
-    //         // Note: If the given frame is `Bytes`, `copy_to_bytes` should be a cheap copy.
-    //         let chunk_data = frame.copy_to_bytes(chunk_size);
-    //         let chunk = ImmediateFrame::from(chunk_id).chain(chunk_data);
-
-    //         // We have produced a chunk, now send it.
-    //         sink.send_frame(chunk).await?;
-    //     }
-
-    //     Result::<(), FrameSinkError>::Ok(())
-    // }
 }
 
-// NEW
-// struct ChunkSender<F, S> {
-//     sent: usize,
-//     chunk_size: usize,
-//     frame: F,
-//     sink: S,
-// }
+#[pin_project]
+struct ChunkSender<'a, S>
+where
+    &'a mut S: FrameSink<SingleChunk>,
+    S: 'a,
+{
+    chunks: Box<dyn Iterator<Item = SingleChunk>>,
+    chunk_in_progress: Option<<&'a mut S as FrameSink<SingleChunk>>::SendFrameFut>,
+    sink: S,
+}
 
-// impl<F, S> Future for ChunkSender<F, S> {
-//     type Output = Result<(), FrameSinkError>;
+impl<'a, S> Future for ChunkSender<'a, S>
+where
+    for<'b> &'b mut S: FrameSink<SingleChunk>,
+{
+    type Output = Result<(), FrameSinkError>;
 
-//     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> std::task::Poll<Self::Output> {
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        match self.chunks.next() {
+            Some(current_chunk) => {
+                let mut fut = self.sink.send_frame(current_chunk);
+                let pinned_fut = Pin::new(&mut fut);
+                match pinned_fut.poll(cx) {
+                    Poll::Ready(_) => {
+                        todo!()
+                    }
+                    Poll::Pending => {
+                        // Store the future for future polling.
+                        self.chunk_in_progress = Some(fut);
 
-//     }
-// }
+                        // We need to wait to make progress.
+                        Poll::Pending
+                    }
+                }
+            }
+            None => {
+                // We're all done sending.
+                Poll::Ready(Ok(()))
+            }
+        }
+    }
+}
 // END NEW
 
 // // TODO: Use special single-byte prefix type.

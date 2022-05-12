@@ -22,7 +22,7 @@ pub enum FrameSinkError {
 }
 
 pub trait FrameSink<F> {
-    type SendFrameFut: Future<Output = Result<(), FrameSinkError>> + Send;
+    type SendFrameFut: Future<Output = Result<(), FrameSinkError>> + Send + Unpin;
 
     fn send_frame(self, frame: F) -> Self::SendFrameFut;
 }
