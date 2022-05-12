@@ -152,6 +152,12 @@ impl EngineState<LmdbGlobalState> {
             .put_stored_values(CorrelationId::new(), state_root_hash, stored_values)
             .map_err(Into::into)
     }
+
+    /// Clears the cache of visited descendants.
+    /// NOTE: Should be called only after node transition to participating mode.
+    pub fn clear_visited_tries_cache(&self) -> Result<(), Error> {
+        self.state.clear_visited_tries_cache().map_err(Into::into)
+    }
 }
 
 impl<S> EngineState<S>

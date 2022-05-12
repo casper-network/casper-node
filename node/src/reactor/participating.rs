@@ -537,6 +537,9 @@ impl reactor::Reactor for Reactor {
             node_startup_instant,
         } = config;
 
+        // Clear the visited trie cache. It's not needed in the participator reactor anymore.
+        contract_runtime.clear_visited_tries_cache()?;
+
         let (our_secret_key, our_public_key) = config.consensus.load_keys(&root)?;
 
         let effect_builder = EffectBuilder::new(event_queue);
