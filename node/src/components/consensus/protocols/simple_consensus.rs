@@ -536,7 +536,8 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         let v_idx = v_idx as u64;
         let first_idx = first_idx as u64;
         let count = self.validators.len() as u64;
-        v_idx < first_idx + 128 && (v_idx >= first_idx || v_idx + count >= first_idx + 128)
+        (v_idx < first_idx + 128 && v_idx >= first_idx)
+            || (v_idx + count < first_idx + 128 && v_idx + count >= first_idx)
     }
 
     /// Returns the leader in the specified round.
@@ -589,23 +590,12 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         now: Timestamp,
     ) -> ProtocolOutcomes<C> {
         let validator_idx = signed_msg.validator_idx;
-        if let Some(Fault::Direct(_, _)) = self.faults.get(&validator_idx) {
-            return vec![]; // Validator is already known to be faulty.
-        }
-        info!(?signed_msg, ?content2, id = %validator_id, "validator double-signed");
-        let signed_msg2 = signed_msg.with(content2, signature2);
-        self.faults.insert(
-            validator_idx,
-            Fault::Direct(signed_msg.clone(), signed_msg2.clone()),
-        );
-        // TODO should we send this as one message?
-        let mut outcomes = vec![
-            ProtocolOutcome::CreatedGossipMessage(Message::Signed(signed_msg).serialize()),
-            ProtocolOutcome::CreatedGossipMessage(Message::Signed(signed_msg2).serialize()),
-            ProtocolOutcome::NewEvidence(validator_id),
-        ];
+        warn!(?signed_msg, ?content2, id = %validator_id, "validator double-signed");
+        let fault = Fault::Direct(signed_msg, content2, signature2);
+        self.faults.insert(validator_idx, fault);
         self.active[validator_idx] = true;
         self.progress_detected = true;
+        let mut outcomes = vec![ProtocolOutcome::NewEvidence(validator_id)];
         if self.faulty_weight() > self.params.ftt() {
             outcomes.push(ProtocolOutcome::FttExceeded);
             return outcomes;
@@ -773,13 +763,10 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                         "peer disagrees about banned validator"
                     );
                 }
-                Fault::Direct(msg0, msg1) => {
+                Fault::Direct(signed_msg, content2, signature2) => {
                     outcomes.push(ProtocolOutcome::CreatedTargetedMessage(
-                        Message::Signed(msg0.clone()).serialize(),
-                        sender,
-                    ));
-                    outcomes.push(ProtocolOutcome::CreatedTargetedMessage(
-                        Message::Signed(msg1.clone()).serialize(),
+                        Message::Evidence(signed_msg.clone(), content2.clone(), *signature2)
+                            .serialize(),
                         sender,
                     ));
                 }
@@ -795,7 +782,6 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     /// The main entry point for signed echoes or votes. This function mostly authenticates
     /// and authorizes the message, passing it to [`add_content`] if it passes snuff for the
     /// main protocol logic.
-    #[allow(clippy::too_many_arguments)]
     fn handle_signed_message(
         &mut self,
         signed_msg: SignedMessage<C>,
@@ -826,7 +812,7 @@ impl<C: Context + 'static> SimpleConsensus<C> {
 
         if self.evidence_only {
             debug!(?signed_msg, "received an irrelevant message");
-            // TODO: Return vec![] if this isn't an evidence message.
+            return vec![];
         }
 
         if let Some(round) = self.round(signed_msg.round_id) {
@@ -842,12 +828,65 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         }
 
         if let Some((content2, signature2)) = self.detect_fault(&signed_msg) {
-            debug!(?validator_id, "ignoring message from faulty validator");
-            self.handle_fault(signed_msg, validator_id, content2, signature2, now)
+            let evidence_msg = Message::Evidence(signed_msg.clone(), content2.clone(), signature2);
+            let mut outcomes =
+                self.handle_fault(signed_msg, validator_id, content2, signature2, now);
+            let serialized_msg = evidence_msg.serialize();
+            outcomes.push(ProtocolOutcome::CreatedGossipMessage(serialized_msg));
+            outcomes
         } else {
             self.add_content(signed_msg);
             self.update(now)
         }
+    }
+
+    /// Verifies an evidence message that is supposed to contain two conflicting sigantures by the
+    /// same validator, and then calls `handle_fault`.
+    fn handle_evidence(
+        &mut self,
+        signed_msg: SignedMessage<C>,
+        content2: Content<C>,
+        signature2: C::Signature,
+        sender: NodeId,
+        now: Timestamp,
+    ) -> ProtocolOutcomes<C> {
+        let validator_idx = signed_msg.validator_idx;
+        if let Some(Fault::Direct(..)) = self.faults.get(&validator_idx) {
+            return vec![]; // Validator is already known to be faulty.
+        }
+        let validator_id = if let Some(validator_id) = self.validators.id(validator_idx) {
+            validator_id.clone()
+        } else {
+            warn!(
+                ?signed_msg,
+                ?sender,
+                "invalid incoming evidence: validator index out of range",
+            );
+            return vec![ProtocolOutcome::Disconnect(sender)];
+        };
+        if !signed_msg.content.contradicts(&content2) {
+            warn!(
+                ?signed_msg,
+                ?content2,
+                ?sender,
+                "invalid evidence: contents don't conflict",
+            );
+            return vec![ProtocolOutcome::Disconnect(sender)];
+        }
+        if !signed_msg.verify_signature(&validator_id)
+            || !signed_msg
+                .with(content2.clone(), signature2)
+                .verify_signature(&validator_id)
+        {
+            warn!(
+                ?signed_msg,
+                ?content2,
+                ?sender,
+                "invalid signature in evidence",
+            );
+            return vec![ProtocolOutcome::Disconnect(sender)];
+        }
+        self.handle_fault(signed_msg, validator_id, content2, signature2, now)
     }
 
     /// Checks whether an incoming proposal should be added to the protocol state and starts
@@ -1564,6 +1603,9 @@ where
                 proposal,
             }) => self.handle_proposal(round_id, proposal, sender, now),
             Ok(Message::Signed(signed_msg)) => self.handle_signed_message(signed_msg, sender, now),
+            Ok(Message::Evidence(signed_msg, content2, signature2)) => {
+                self.handle_evidence(signed_msg, content2, signature2, sender, now)
+            }
         }
     }
 

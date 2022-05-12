@@ -852,9 +852,24 @@ fn simple_consensus_handles_sync_state() {
     // The sender has Alice's but not Bob's vote:
     assert!(remove_signed(&mut msgs, 0, bob_idx, vote(false)));
     // The sender doesn't know Carol is faulty:
-    assert!(remove_signed(&mut msgs, 0, carol_idx, vote(true)));
-    assert!(remove_signed(&mut msgs, 0, carol_idx, vote(false)));
+    let evidence_msg = msgs.pop().expect("missing evidence message");
     assert!(msgs.is_empty());
+    match evidence_msg {
+        Message::Evidence(
+            SignedMessage {
+                round_id: 0,
+                content: Content::Vote(vote),
+                validator_idx,
+                ..
+            },
+            Content::Vote(vote2),
+            _,
+        ) => {
+            assert_ne!(vote, vote2);
+            assert_eq!(validator_idx, carol_idx);
+        }
+        evidence_msg => panic!("unexpected message: {:?}", evidence_msg),
+    }
     expect_no_gossip_block_finalized(outcomes);
 }
 
