@@ -949,7 +949,7 @@ where
 
                     responder.respond(symmetric_peers).ignore()
                 }
-                NetworkInfoRequest::GetFullyConnectedValidatorPeers { responder } => {
+                NetworkInfoRequest::GetFullyConnectedNonJoinerPeers { responder } => {
                     let mut symmetric_validator_peers: Vec<NodeId> = self
                         .connection_symmetries
                         .iter()

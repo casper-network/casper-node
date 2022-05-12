@@ -196,9 +196,9 @@ pub(crate) enum NetworkInfoRequest {
         /// Responder to be called with all connected in random order peers.
         responder: Responder<Vec<NodeId>>,
     },
-    /// Get only validator peers in random order.
-    GetFullyConnectedValidatorPeers {
-        /// Responder to be called with all connected validator peers in random order.
+    /// Get only non-joiner peers in random order.
+    GetFullyConnectedNonJoinerPeers {
+        /// Responder to be called with all connected non-joiner peers in random order.
         responder: Responder<Vec<NodeId>>,
     },
 }
@@ -212,8 +212,8 @@ impl Display for NetworkInfoRequest {
             NetworkInfoRequest::GetFullyConnectedPeers { responder: _ } => {
                 write!(formatter, "get fully connected peers")
             }
-            NetworkInfoRequest::GetFullyConnectedValidatorPeers { responder: _ } => {
-                write!(formatter, "get fully connected validator peers")
+            NetworkInfoRequest::GetFullyConnectedNonJoinerPeers { responder: _ } => {
+                write!(formatter, "get fully connected non-joiner peers")
             }
         }
     }
