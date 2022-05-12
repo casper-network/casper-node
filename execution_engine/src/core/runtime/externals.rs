@@ -1028,8 +1028,7 @@ where
                     .context()
                     .address_generator()
                     .try_borrow_mut()
-                    .map_err(|error| Error::Interpreter(error.to_string()))? // TODO[RC]: Address generator already in use, We shouldn't propagate error
-                    // details to outside world
+                    .map_err(|_| Error::AddressGenerationFailed)?
                     .create_address();
 
                 if next_address.len() != out_size as usize {
