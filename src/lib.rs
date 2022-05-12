@@ -21,8 +21,8 @@ pub enum FrameSinkError {
     Other(Box<dyn Error + Send + Sync>),
 }
 
-pub trait FrameSink<F> {
-    type SendFrameFut: Future<Output = Result<(), FrameSinkError>> + Send + Unpin;
+pub trait FrameSink<F>: Sized {
+    type SendFrameFut: Future<Output = Result<Self, FrameSinkError>> + Send;
 
     fn send_frame(self, frame: F) -> Self::SendFrameFut;
 }
@@ -83,34 +83,39 @@ where
 }
 
 #[pin_project] // TODO: We only need `pin_project` for deriving the `DerefMut` impl we need.
-pub struct GenericBufSender<'a, B, W> {
+pub struct GenericBufSender<B, W> {
     buf: B,
-    out: &'a mut W,
+    out: Option<W>,
 }
 
-impl<'a, B, W> GenericBufSender<'a, B, W> {
-    fn new(buf: B, out: &'a mut W) -> Self {
-        Self { buf, out }
+impl<B, W> GenericBufSender<B, W> {
+    fn new(buf: B, out: W) -> Self {
+        Self {
+            buf,
+            out: Some(out),
+        }
     }
 }
 
-impl<'a, B, W> Future for GenericBufSender<'a, B, W>
+impl<B, W> Future for GenericBufSender<B, W>
 where
     B: Buf,
     W: AsyncWrite + Unpin,
 {
-    type Output = Result<(), FrameSinkError>;
+    type Output = Result<W, FrameSinkError>;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let mut out = self
+            .out
+            .take()
+            .expect("(unfused) GenericBufSender polled after completion");
+
         let mref = self.get_mut();
-        loop {
-            let GenericBufSender {
-                ref mut buf,
-                ref mut out,
-            } = mref;
+        let out = loop {
+            let GenericBufSender { ref mut buf, .. } = mref;
 
             let current_slice = buf.chunk();
-            let out_pinned = Pin::new(out);
+            let out_pinned = Pin::new(&mut out);
 
             match out_pinned.poll_write(cx, current_slice) {
                 Poll::Ready(Ok(bytes_written)) => {
@@ -118,15 +123,20 @@ where
                     buf.advance(bytes_written);
                     if !buf.has_remaining() {
                         // All bytes written, return success.
-                        return Poll::Ready(Ok(()));
+                        return Poll::Ready(Ok(out));
                     }
                     // We have more data to write, and `out` has not stalled yet, try to send more.
                 }
                 // An error occured writing, we can just return it.
                 Poll::Ready(Err(error)) => return Poll::Ready(Err(error.into())),
                 // No writing possible, simply return pending.
-                Poll::Pending => return Poll::Pending,
+                Poll::Pending => {
+                    break out;
+                }
             }
-        }
+        };
+
+        mref.out = Some(out);
+        Poll::Pending
     }
 }
