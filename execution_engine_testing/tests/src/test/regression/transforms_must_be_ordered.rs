@@ -1,7 +1,7 @@
 //! Tests whether transforms produced by contracts appear ordered in the transform journal.
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_RUN_GENESIS_REQUEST,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::shared::transform::Transform;
 use casper_types::{
@@ -19,7 +19,7 @@ fn contract_transforms_should_be_ordered_in_the_journal() {
     const N_OPS: usize = 1000;
 
     let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let mut rng = StdRng::seed_from_u64(0);
 

@@ -11,14 +11,13 @@ use std::{convert::TryFrom, path::Path};
 use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
-use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion};
+use casper_types::{bytesrepr::Bytes, file_utils, EraId, ProtocolVersion};
 
 use super::{
     accounts_config::AccountsConfig, global_state_update::GlobalStateUpdateConfig, ActivationPoint,
     Chainspec, ChainspecRawBytes, CoreConfig, DeployConfig, Error, GlobalStateUpdate,
     HighwayConfig, NetworkConfig, ProtocolConfig,
 };
-use crate::utils;
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
@@ -90,7 +89,7 @@ pub(super) fn parse_toml<P: AsRef<Path>>(
     chainspec_path: P,
 ) -> Result<(Chainspec, ChainspecRawBytes), Error> {
     let chainspec_bytes =
-        utils::read_file(chainspec_path.as_ref()).map_err(Error::LoadChainspec)?;
+        file_utils::read_file(chainspec_path.as_ref()).map_err(Error::LoadChainspec)?;
     let toml_chainspec: TomlChainspec = toml::from_slice(&chainspec_bytes)?;
 
     let root = chainspec_path

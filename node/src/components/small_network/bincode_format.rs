@@ -22,7 +22,7 @@ use super::Message;
 pub struct BincodeFormat(
     // Note: `bincode` encodes its options at the type level. The exact shape is determined by
     // `BincodeFormat::default()`.
-    WithOtherTrailing<
+    pub(crate)  WithOtherTrailing<
         WithOtherIntEncoding<
             WithOtherEndian<
                 WithOtherLimit<bincode::DefaultOptions, bincode::config::Infinite>,

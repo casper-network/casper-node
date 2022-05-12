@@ -27,8 +27,10 @@ macro_rules! add_unit {
                 highway::{SignedWireUnit, WireUnit},
                 highway_testing::TEST_INSTANCE_ID,
             },
-            types::{TimeDiff, Timestamp},
         };
+
+        #[allow(unused_imports)] // These might be already imported at the call site.
+        use casper_types::{TimeDiff, Timestamp};
 
         let creator = $creator;
         let panorama = panorama!($($obs),*);

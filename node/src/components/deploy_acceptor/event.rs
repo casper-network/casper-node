@@ -6,13 +6,13 @@ use super::Source;
 use crate::{
     components::deploy_acceptor::Error,
     effect::{announcements::RpcServerAnnouncement, Responder},
-    types::{BlockHeader, Deploy, Timestamp},
+    types::{BlockHeader, Deploy},
 };
 
 use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
-    Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersion, U512,
+    Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersion, Timestamp, U512,
 };
 
 /// A utility struct to hold duplicated information across events.

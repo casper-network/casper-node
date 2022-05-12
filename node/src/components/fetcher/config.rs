@@ -3,7 +3,7 @@ use std::str::FromStr;
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use crate::types::TimeDiff;
+use casper_types::TimeDiff;
 
 const DEFAULT_GET_FROM_PEER_TIMEOUT: &str = "3sec";
 

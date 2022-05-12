@@ -21,7 +21,7 @@ pub use seigniorage_recipient::SeigniorageRecipient;
 pub use unbonding_purse::UnbondingPurse;
 pub use withdraw_purse::WithdrawPurse;
 
-#[cfg(any(feature = "gens", test))]
+#[cfg(any(feature = "testing", test))]
 pub(crate) mod gens {
     pub use super::era_info::gens::*;
 }

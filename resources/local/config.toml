@@ -192,6 +192,9 @@ tarpit_duration = '10min'
 # legacy nodes running this software.
 tarpit_chance = 0.2
 
+# How long peers remain blocked after they get blacklisted.
+blocklist_retain_duration = '1min'
+
 # Weights for impact estimation of incoming messages, used in combination with
 # `max_incoming_message_rate_non_validators`.
 #

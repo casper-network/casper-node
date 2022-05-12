@@ -1,3 +1,5 @@
+mod state_tracker;
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     convert::TryInto,
@@ -8,6 +10,8 @@ use casper_types::{
     bytesrepr::ToBytes, checksummed_hex, system::auction::SeigniorageRecipientsSnapshot, Key,
     PublicKey, StoredValue,
 };
+
+pub use state_tracker::StateTracker;
 
 /// Parses a Digest from a string. Panics if parsing fails.
 pub fn hash_from_str(hex_str: &str) -> Digest {

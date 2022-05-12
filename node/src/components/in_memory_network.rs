@@ -285,6 +285,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use casper_types::testing::TestRng;
 use rand::seq::IteratorRandom;
 use serde::Serialize;
 use tokio::sync::mpsc::{self, error::SendError};
@@ -295,7 +296,6 @@ use crate::{
     effect::{requests::NetworkRequest, EffectBuilder, EffectExt, Effects},
     logging,
     reactor::{EventQueueHandle, QueueKind},
-    testing::TestRng,
     types::NodeId,
     NodeRng,
 };

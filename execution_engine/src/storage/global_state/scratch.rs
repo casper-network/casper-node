@@ -52,6 +52,8 @@ impl Cache {
         self.cached_values.get(key).map(|(_dirty, value)| value)
     }
 
+    /// Consumes self and returns only written values as values that were only read must be filtered
+    /// out to prevent unnecessary writes.
     fn into_dirty_writes(self) -> HashMap<Key, StoredValue> {
         self.cached_values
             .into_iter()
@@ -298,9 +300,9 @@ impl StateProvider for ScratchGlobalState {
             || Ok(None),
             |bytes| {
                 if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
-                    Ok(Some(TrieOrChunk::Trie(bytes.to_owned().into())))
+                    Ok(Some(TrieOrChunk::Trie(bytes)))
                 } else {
-                    let chunk_with_proof = ChunkWithProof::new(bytes, trie_index)?;
+                    let chunk_with_proof = ChunkWithProof::new(&bytes, trie_index)?;
                     Ok(Some(TrieOrChunk::ChunkWithProof(chunk_with_proof)))
                 }
             },
@@ -317,8 +319,7 @@ impl StateProvider for ScratchGlobalState {
     ) -> Result<Option<Bytes>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
         let ret: Option<Bytes> =
-            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?
-                .map(|slice| slice.to_owned().into());
+            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?;
         txn.commit()?;
         Ok(ret)
     }

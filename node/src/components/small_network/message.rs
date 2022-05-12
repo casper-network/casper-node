@@ -4,7 +4,9 @@ use std::{
     sync::Arc,
 };
 
-use casper_types::{AsymmetricType, ProtocolVersion, PublicKey, SecretKey, Signature};
+#[cfg(test)]
+use casper_types::testing::TestRng;
+use casper_types::{crypto, AsymmetricType, ProtocolVersion, PublicKey, SecretKey, Signature};
 use datasize::DataSize;
 use futures::future::BoxFuture;
 use serde::{
@@ -16,6 +18,7 @@ use serde::{
 use crate::crypto::AsymmetricKeyExt;
 #[cfg(test)]
 use crate::testing::TestRng;
+use crate::types::NodeId;
 use crate::{crypto, effect::EffectBuilder, types::NodeId};
 
 use super::counting_format::ConnectionId;

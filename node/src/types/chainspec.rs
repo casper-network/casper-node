@@ -26,6 +26,8 @@ use casper_execution_engine::{
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
 use casper_hashing::{ChunkWithProof, Digest};
+#[cfg(test)]
+use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     ProtocolVersion,
@@ -40,8 +42,6 @@ pub(crate) use self::{
     global_state_update::GlobalStateUpdate, highway_config::HighwayConfig,
     network_config::NetworkConfig, protocol_config::ProtocolConfig,
 };
-#[cfg(test)]
-use crate::testing::TestRng;
 use crate::utils::Loadable;
 
 /// The name of the chainspec file on disk.
@@ -219,13 +219,10 @@ mod tests {
         storage_costs::StorageCosts,
         wasm_config::WasmConfig,
     };
-    use casper_types::{EraId, Motes, ProtocolVersion, StoredValue, U512};
+    use casper_types::{EraId, Motes, ProtocolVersion, StoredValue, TimeDiff, Timestamp, U512};
 
     use super::*;
-    use crate::{
-        types::{TimeDiff, Timestamp},
-        utils::RESOURCES_PATH,
-    };
+    use crate::utils::RESOURCES_PATH;
 
     static EXPECTED_GENESIS_HOST_FUNCTION_COSTS: Lazy<HostFunctionCosts> =
         Lazy::new(|| HostFunctionCosts {

@@ -8,9 +8,14 @@
 )]
 #![warn(missing_docs)]
 mod additive_map_diff;
+/// Utility methods for running the auction in a test or bench context.
+pub mod auction;
+mod chainspec_config;
 mod deploy_item_builder;
 mod execute_request_builder;
 mod step_request_builder;
+/// Utilities for running transfers in a test or bench context.
+pub mod transfer;
 mod upgrade_request_builder;
 pub mod utils;
 mod wasm_test_builder;
@@ -27,7 +32,9 @@ use casper_execution_engine::{
 use casper_hashing::Digest;
 use casper_types::{account::AccountHash, Motes, ProtocolVersion, PublicKey, SecretKey, U512};
 
+use crate::chainspec_config::PRODUCTION_PATH;
 pub use additive_map_diff::AdditiveMapDiff;
+pub use chainspec_config::ChainspecConfig;
 pub use deploy_item_builder::DeployItemBuilder;
 pub use execute_request_builder::ExecuteRequestBuilder;
 pub use step_request_builder::StepRequestBuilder;
@@ -138,20 +145,39 @@ pub static DEFAULT_GENESIS_CONFIG: Lazy<GenesisConfig> = Lazy::new(|| {
         DEFAULT_CHAIN_NAME.to_string(),
         DEFAULT_GENESIS_TIMESTAMP_MILLIS,
         *DEFAULT_PROTOCOL_VERSION,
+        #[allow(deprecated)]
         DEFAULT_EXEC_CONFIG.clone(),
     )
 });
 /// Default [`ChainspecRegistry`].
 pub static DEFAULT_CHAINSPEC_REGISTRY: Lazy<ChainspecRegistry> =
     Lazy::new(|| ChainspecRegistry::new_with_genesis(&[1, 2, 3], &[4, 5, 6]));
+// This static constant has been deprecated in favor of the Production counterpart
+// which uses costs tables and values which reflect values used by the Casper Mainnet.
+#[deprecated]
 /// Default [`RunGenesisRequest`].
 pub static DEFAULT_RUN_GENESIS_REQUEST: Lazy<RunGenesisRequest> = Lazy::new(|| {
     RunGenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
         *DEFAULT_PROTOCOL_VERSION,
+        #[allow(deprecated)]
         DEFAULT_EXEC_CONFIG.clone(),
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     )
+});
+/// [`RunGenesisRequest`] instantiated using chainspec values.
+pub static PRODUCTION_RUN_GENESIS_REQUEST: Lazy<RunGenesisRequest> = Lazy::new(|| {
+    ChainspecConfig::create_genesis_request_from_production_chainspec(
+        DEFAULT_ACCOUNTS.clone(),
+        *DEFAULT_PROTOCOL_VERSION,
+    )
+    .expect("must create the request")
+});
+/// Round seigniorage rate from the production chainspec.
+pub static PRODUCTION_ROUND_SEIGNIORAGE_RATE: Lazy<Ratio<u64>> = Lazy::new(|| {
+    let chainspec = ChainspecConfig::from_chainspec_path(&*PRODUCTION_PATH)
+        .expect("must create chainspec_config");
+    chainspec.core_config.round_seigniorage_rate
 });
 /// System address.
 pub static SYSTEM_ADDR: Lazy<AccountHash> = Lazy::new(|| PublicKey::System.to_account_hash());

@@ -32,6 +32,7 @@ use std::{
 };
 
 use anyhow::Context;
+use casper_types::file_utils::read_file;
 use datasize::DataSize;
 use hex_fmt::HexFmt;
 use nid::Nid;
@@ -54,8 +55,6 @@ use rand::{
 };
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use thiserror::Error;
-
-use crate::utils::read_file;
 
 // This is inside a private module so that the generated `BigArray` does not form part of this
 // crate's public API, and hence also doesn't appear in the rustdocs.

@@ -9,13 +9,17 @@ use blake2::{
 };
 
 use crate::key::BLAKE2B_DIGEST_LENGTH;
-#[cfg(any(feature = "gens", test))]
+#[cfg(any(feature = "std", test))]
+pub use asymmetric_key::generate_ed25519_keypair;
+#[cfg(any(feature = "testing", test))]
 pub use asymmetric_key::gens;
 pub use asymmetric_key::{
-    AsymmetricType, PublicKey, SecretKey, Signature, ED25519_TAG, SECP256K1_TAG, SYSTEM_ACCOUNT,
-    SYSTEM_TAG,
+    sign, verify, AsymmetricType, PublicKey, SecretKey, Signature, ED25519_TAG, SECP256K1_TAG,
+    SYSTEM_ACCOUNT, SYSTEM_TAG,
 };
 pub use error::Error;
+#[cfg(any(feature = "std", test))]
+pub use error::ErrorExt;
 
 #[doc(hidden)]
 pub fn blake2b<T: AsRef<[u8]>>(data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {

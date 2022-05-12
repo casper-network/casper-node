@@ -15,11 +15,11 @@ The Casper MainNet is live.
 
 ## Specification
 
-- [Platform Specification](https://docs.casperlabs.io/en/latest/implementation/index.html)
+- [Platform Specification](https://docs.casperlabs.io/design/)
 - [Highway Consensus Proofs](https://github.com/CasperLabs/highway/releases/latest)
 
 ## Get Started with Smart Contracts
-- [Writing Smart Contracts](https://docs.casperlabs.io/en/latest/dapp-dev-guide/index.html)
+- [Writing Smart Contracts](https://docs.casperlabs.io/dapp-dev-guide/)
 - [Rust Smart Contract SDK](https://crates.io/crates/cargo-casper)
 - [Rust Smart Contract API Docs](https://docs.rs/casper-contract/latest/casper_contract/contract_api/index.html)
 - [AssemblyScript Smart Contract API](https://www.npmjs.com/package/casper-contract)
