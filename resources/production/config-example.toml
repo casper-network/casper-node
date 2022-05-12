@@ -372,22 +372,10 @@ get_from_peer_timeout = '3sec'
 # ========================================================
 [contract_runtime]
 
-# Optional maximum size of the database to use for the global state store.
-#
-# If unset, defaults to 805,306,368,000 == 750 GiB.
-#
-# The size should be a multiple of the OS page size.
-max_global_state_size = 1_099_511_627_776
-
 # Optional depth limit to use for global state queries.
 #
 # If unset, defaults to 5.
 #max_query_depth = 5
-
-# Enable manual synchronizing to disk.
-#
-# If unset, defaults to true.
-#enable_manual_sync = true
 
 
 # ====================================================================
