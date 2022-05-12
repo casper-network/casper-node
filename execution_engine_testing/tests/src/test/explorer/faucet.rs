@@ -7,8 +7,8 @@ use casper_engine_test_support::{
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{
-    account::AccountHash, runtime_args, system::mint, ApiError, ContractHash, Key, PublicKey,
-    RuntimeArgs, SecretKey, U512,
+    account::AccountHash, runtime_args, system::mint, ApiError, Key, PublicKey, RuntimeArgs,
+    SecretKey, U512,
 };
 
 // test constants.
@@ -828,7 +828,8 @@ fn should_allow_funding_by_an_authorized_account() {
 #[test]
 fn faucet_costs() {
     // This test will fail if execution costs vary.  The expected costs should not be updated
-    // without understanding why the cost has changed.
+    // without understanding why the cost has changed.  If the costs do change, it should be
+    // reflected in the "Costs by Entry Point" section of the README.md.
     const EXPECTED_FAUCET_INSTALL_COST: u64 = 81_557_223_780;
     const EXPECTED_FAUCET_SET_VARIABLES_COST: u64 = 48_195_450;
     const EXPECTED_FAUCET_CALL_BY_INSTALLER_COST: u64 = 2_584_139_370;
@@ -937,14 +938,7 @@ fn faucet_costs() {
         EXPECTED_FAUCET_CALL_BY_INSTALLER_COST
     );
 
-    let faucet_contract_hash = builder
-        .get_expected_account(installer_account)
-        .named_keys()
-        .get(&format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID))
-        .cloned()
-        .and_then(Key::into_hash)
-        .map(ContractHash::new)
-        .expect("failed to find faucet contract");
+    let faucet_contract_hash = get_faucet_contract_hash(&builder, installer_account);
 
     let faucet_call_by_user_request = {
         let deploy_item = DeployItemBuilder::new()

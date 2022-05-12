@@ -157,7 +157,7 @@ pub extern "C" fn call() {
     };
 
     // The installer will create the faucet purse and give it to the newly installed
-    // contract so that the installing account and the newly installed account will
+    // contract so that the installing account and the newly installed contract will
     // have a handle on it via the shared purse URef.
     //
     // The faucet named keys include the faucet purse, these are the named keys that we pass to the
