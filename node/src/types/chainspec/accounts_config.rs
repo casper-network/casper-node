@@ -10,11 +10,12 @@ use datasize::DataSize;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use casper_execution_engine::core::engine_state::GenesisAccount;
-use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes};
-
 #[cfg(test)]
-use crate::testing::TestRng;
-use crate::utils;
+use casper_types::testing::TestRng;
+use casper_types::{
+    bytesrepr::{self, Bytes, FromBytes, ToBytes},
+    file_utils,
+};
 
 use super::error::ChainspecAccountsLoadError;
 pub use account_config::AccountConfig;
@@ -69,7 +70,7 @@ impl AccountsConfig {
             let maybe_bytes = None;
             return Ok((config, maybe_bytes));
         }
-        let bytes = utils::read_file(accounts_path)?;
+        let bytes = file_utils::read_file(accounts_path)?;
         let config: AccountsConfig = toml::from_slice(&bytes)?;
         Ok((config, Some(Bytes::from(bytes))))
     }

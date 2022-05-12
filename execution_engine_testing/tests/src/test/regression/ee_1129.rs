@@ -5,7 +5,7 @@ use parity_wasm::builder;
 use casper_engine_test_support::{
     utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
-    DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
+    DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     core::{
@@ -184,7 +184,7 @@ fn should_run_ee_1129_underfunded_add_bid_call() {
 fn should_run_ee_1129_underfunded_mint_contract_call() {
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let install_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -232,7 +232,7 @@ fn should_run_ee_1129_underfunded_mint_contract_call() {
 fn should_not_panic_when_calling_session_contract_by_uref() {
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let install_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -280,7 +280,7 @@ fn should_not_panic_when_calling_session_contract_by_uref() {
 fn should_not_panic_when_calling_payment_contract_by_uref() {
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let install_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -326,7 +326,7 @@ fn should_not_panic_when_calling_payment_contract_by_uref() {
 fn should_not_panic_when_calling_contract_package_by_uref() {
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let install_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -379,7 +379,7 @@ fn should_not_panic_when_calling_contract_package_by_uref() {
 fn should_not_panic_when_calling_payment_versioned_contract_by_uref() {
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let install_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -446,7 +446,7 @@ fn do_nothing_without_memory() -> Vec<u8> {
 fn should_not_panic_when_calling_module_without_memory() {
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&*PRODUCTION_RUN_GENESIS_REQUEST);
 
     let exec_request = {
         let deploy = DeployItemBuilder::new()

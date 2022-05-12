@@ -497,12 +497,12 @@ mod tests {
         testing::{
             self,
             network::{Network, NetworkedReactor},
-            TestRng,
         },
         utils::WeightedRoundRobin,
         WithDir,
     };
     use casper_node_macros::reactor;
+    use casper_types::testing::TestRng;
     use tokio::{
         io::{AsyncReadExt, AsyncWriteExt},
         net::UnixStream,

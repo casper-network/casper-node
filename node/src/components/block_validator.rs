@@ -25,6 +25,8 @@ use itertools::Itertools;
 use smallvec::{smallvec, SmallVec};
 use tracing::{info, warn};
 
+use casper_types::Timestamp;
+
 use crate::{
     components::{
         block_proposer::DeployInfo,
@@ -37,7 +39,7 @@ use crate::{
     },
     types::{
         appendable_block::AppendableBlock, Approval, Block, Chainspec, Deploy, DeployHash,
-        DeployOrTransferHash, DeployWithApprovals, NodeId, Timestamp,
+        DeployOrTransferHash, DeployWithApprovals, NodeId,
     },
     NodeRng,
 };

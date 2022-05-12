@@ -17,8 +17,9 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     core::engine_state::{
-        genesis::GenesisValidator, run_genesis_request::RunGenesisRequest, EngineConfig,
-        ExecConfig, ExecuteRequest, GenesisAccount, RewardItem,
+        engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, genesis::GenesisValidator,
+        run_genesis_request::RunGenesisRequest, EngineConfig, ExecConfig, ExecuteRequest,
+        GenesisAccount, RewardItem,
     },
     shared::system_config::auction_costs::DEFAULT_DELEGATE_COST,
 };
@@ -33,9 +34,9 @@ const ARG_AMOUNT: &str = "amount";
 const ARG_TARGET: &str = "target";
 const ARG_ID: &str = "id";
 
-const DELEGATION_AMOUNT: u64 = 42;
+const DELEGATION_AMOUNT: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 const DELEGATION_RATE: u8 = 1;
-const DELEGATOR_INITIAL_BALANCE: u64 = 500 * 1_000_000_000u64;
+const DELEGATOR_INITIAL_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 
 const VALIDATOR_BID_AMOUNT: u64 = 100;
 const TIMESTAMP_INCREMENT_MILLIS: u64 = 30_000;
@@ -53,7 +54,7 @@ fn run_genesis_and_create_initial_accounts(
     let mut genesis_accounts = vec![
         GenesisAccount::account(
             DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-            Motes::new(U512::MAX), // all the monies
+            Motes::new(U512::MAX / u64::MAX), // enough motes
             None,
         ),
         GenesisAccount::account(
@@ -236,6 +237,7 @@ fn step_and_run_auction(builder: &mut LmdbWasmTestBuilder, validator_keys: &[Pub
     let mut step_request_builder = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0);
+
     for validator in validator_keys {
         step_request_builder =
             step_request_builder.with_reward_item(RewardItem::new(validator.clone(), 1));

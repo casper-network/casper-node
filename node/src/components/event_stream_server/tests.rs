@@ -9,6 +9,7 @@ use std::{
     time::Duration,
 };
 
+use casper_types::testing::TestRng;
 use futures::{join, StreamExt};
 use http::StatusCode;
 use pretty_assertions::assert_eq;
@@ -23,10 +24,7 @@ use tokio::{
 use tracing::debug;
 
 use super::*;
-use crate::{
-    logging,
-    testing::{assert_schema, TestRng},
-};
+use crate::{logging, testing::assert_schema};
 use sse_server::{
     DeployAccepted, Id, QUERY_FIELD, SSE_API_DEPLOYS_PATH as DEPLOYS_PATH,
     SSE_API_MAIN_PATH as MAIN_PATH, SSE_API_ROOT_PATH as ROOT_PATH,

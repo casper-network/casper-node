@@ -1,7 +1,9 @@
 use datasize::DataSize;
 use prometheus::{self, Histogram, IntGauge, Registry};
 
-use crate::{types::Timestamp, utils};
+use casper_types::Timestamp;
+
+use crate::utils;
 
 /// Bucket parameters for the `chain_sync_sync_trie_store_duration_seconds` and
 /// `chain_sync_fetch_deploys_duration_seconds` metrics. The last bucket is expected to catch

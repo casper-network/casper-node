@@ -1,6 +1,6 @@
 use std::{collections::BTreeSet, sync::Arc};
 
-use casper_types::{PublicKey, U512};
+use casper_types::{testing::TestRng, PublicKey, TimeDiff, Timestamp, U512};
 
 use crate::{
     components::consensus::{
@@ -24,8 +24,7 @@ use crate::{
         traits::Context,
         HighwayProtocol,
     },
-    testing::TestRng,
-    types::{BlockPayload, TimeDiff, Timestamp},
+    types::BlockPayload,
 };
 
 /// Returns a new `State` with `ClContext` parameters suitable for tests.

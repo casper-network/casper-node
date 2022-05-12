@@ -5,7 +5,7 @@ use assert_matches::assert_matches;
 use casper_engine_test_support::{
     utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_KEY, DEFAULT_GAS_PRICE, DEFAULT_PAYMENT,
-    DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     core::{
@@ -42,7 +42,7 @@ fn should_raise_insufficient_payment_when_caller_lacks_minimum_balance() {
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
         .expect_success()
         .commit()
@@ -101,7 +101,7 @@ fn should_forward_payment_execution_runtime_error() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
@@ -155,7 +155,7 @@ fn should_forward_payment_execution_gas_limit_error() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let exec_request = {
         let deploy = DeployItemBuilder::new()
@@ -245,7 +245,7 @@ fn should_run_out_of_gas_when_session_code_exceeds_gas_limit() {
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
         .commit();
 
@@ -285,7 +285,7 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
         .commit();
 
@@ -351,7 +351,7 @@ fn should_correctly_charge_when_session_code_fails() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
@@ -401,7 +401,7 @@ fn should_correctly_charge_when_session_code_succeeds() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let proposer_reward_starting_balance_1 = builder.get_proposer_purse_balance();
 
@@ -458,7 +458,7 @@ fn should_finalize_to_rewards_purse() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
@@ -498,7 +498,7 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
 
     // create another account via transfer
     builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(setup_exec_request)
         .expect_success()
         .commit();

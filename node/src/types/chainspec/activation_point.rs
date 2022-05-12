@@ -9,14 +9,12 @@ use rand::Rng;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+#[cfg(test)]
+use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    EraId,
+    EraId, Timestamp,
 };
-
-#[cfg(test)]
-use crate::testing::TestRng;
-use crate::types::Timestamp;
 
 const ERA_ID_TAG: u8 = 0;
 const GENESIS_TAG: u8 = 1;

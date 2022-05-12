@@ -256,9 +256,9 @@ impl StateProvider for InMemoryGlobalState {
             || Ok(None),
             |bytes| {
                 if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
-                    Ok(Some(TrieOrChunk::Trie(bytes.to_owned().into())))
+                    Ok(Some(TrieOrChunk::Trie(bytes)))
                 } else {
-                    let chunk_with_proof = ChunkWithProof::new(bytes, trie_index)?;
+                    let chunk_with_proof = ChunkWithProof::new(&bytes, trie_index)?;
                     Ok(Some(TrieOrChunk::ChunkWithProof(chunk_with_proof)))
                 }
             },
@@ -274,8 +274,7 @@ impl StateProvider for InMemoryGlobalState {
     ) -> Result<Option<Bytes>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
         let ret: Option<Bytes> =
-            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?
-                .map(|slice| slice.to_owned().into());
+            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?;
         txn.commit()?;
         Ok(ret)
     }

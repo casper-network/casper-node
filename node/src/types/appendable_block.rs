@@ -1,13 +1,13 @@
 use std::collections::HashSet;
 
-use casper_types::{Gas, PublicKey};
+use casper_types::{Gas, PublicKey, Timestamp};
 use datasize::DataSize;
 use num_traits::Zero;
 use thiserror::Error;
 
 use crate::{
     components::block_proposer::DeployInfo,
-    types::{chainspec::DeployConfig, BlockPayload, DeployHash, DeployWithApprovals, Timestamp},
+    types::{chainspec::DeployConfig, BlockPayload, DeployHash, DeployWithApprovals},
 };
 
 #[derive(Debug, Error)]

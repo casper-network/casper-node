@@ -38,8 +38,8 @@ use casper_types::{
     contracts::NamedKeys,
     system::{
         auction::{
-            EraValidators, UnbondingPurse, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS,
-            ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY, ERA_ID_KEY,
+            EraValidators, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS,
+            ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY,
             LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY,
             VALIDATOR_SLOTS_KEY,
         },
@@ -47,8 +47,8 @@ use casper_types::{
         mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, ApiError, BlockTime, CLValue, ContractHash, DeployHash, DeployInfo, EraId, Gas,
-    Key, KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
+    AccessRights, ApiError, BlockTime, CLValue, ContractHash, DeployHash, DeployInfo, Gas, Key,
+    KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
 };
 
 pub use self::{
@@ -125,6 +125,11 @@ impl EngineState<ScratchGlobalState> {
 }
 
 impl EngineState<LmdbGlobalState> {
+    /// Gets underlyng LmdbGlobalState
+    pub fn get_state(&self) -> &LmdbGlobalState {
+        &self.state
+    }
+
     /// Flushes the LMDB environment to disk when manual sync is enabled in the config.toml.
     pub fn flush_environment(&self) -> Result<(), lmdb::Error> {
         if self.state.environment.is_manual_sync_enabled() {
@@ -421,80 +426,6 @@ where
         // apply the arbitrary modifications
         for (key, value) in upgrade_config.global_state_update() {
             tracking_copy.borrow_mut().write(*key, value.clone());
-        }
-
-        // This is a one time data transformation which will be removed
-        // in a following upgrade.
-        // TODO: CRef={https://github.com/casper-network/casper-node/issues/2479}
-        {
-            let withdraw_keys = tracking_copy
-                .borrow_mut()
-                .get_keys(correlation_id, &KeyTag::Withdraw)
-                .map_err(|_| Error::FailedToGetWithdrawKeys)?;
-
-            let (unbonding_delay, current_era_id) = {
-                let auction_contract = tracking_copy
-                    .borrow_mut()
-                    .get_contract(correlation_id, *auction_hash)?;
-
-                let unbonding_delay_key = auction_contract.named_keys()[UNBONDING_DELAY_KEY];
-                let delay = tracking_copy
-                    .borrow_mut()
-                    .read(correlation_id, &unbonding_delay_key)
-                    .map_err(|error| error.into())?
-                    .ok_or(Error::FailedToRetrieveUnbondingDelay)?
-                    .as_cl_value()
-                    .ok_or_else(|| Error::Bytesrepr("unbonding_delay".to_string()))?
-                    .clone()
-                    .into_t::<u64>()
-                    .map_err(execution::Error::from)?;
-
-                let era_id_key = auction_contract.named_keys()[ERA_ID_KEY];
-
-                let era_id = tracking_copy
-                    .borrow_mut()
-                    .read(correlation_id, &era_id_key)
-                    .map_err(|error| error.into())?
-                    .ok_or(Error::FailedToRetrieveEraId)?
-                    .as_cl_value()
-                    .ok_or_else(|| Error::Bytesrepr("era_id".to_string()))?
-                    .clone()
-                    .into_t::<EraId>()
-                    .map_err(execution::Error::from)?;
-
-                (delay, era_id)
-            };
-
-            for key in withdraw_keys {
-                // Transform only those withdraw purses that are still to be
-                // processed in the unbonding queue.
-                let withdraw_purses = tracking_copy
-                    .borrow_mut()
-                    .read(correlation_id, &key)
-                    .map_err(|_| Error::FailedToGetWithdrawKeys)?
-                    .ok_or(Error::FailedToGetStoredWithdraws)?
-                    .as_withdraw()
-                    .ok_or(Error::FailedToGetWithdrawPurses)?
-                    .to_owned();
-
-                let unbonding_purses: Vec<UnbondingPurse> = withdraw_purses
-                    .into_iter()
-                    .filter_map(|purse| {
-                        if purse.era_of_creation() + unbonding_delay >= current_era_id {
-                            return Some(UnbondingPurse::from(purse));
-                        }
-                        None
-                    })
-                    .collect();
-
-                let unbonding_key = key
-                    .withdraw_to_unbond()
-                    .ok_or_else(|| Error::Bytesrepr("unbond".to_string()))?;
-
-                let _ = tracking_copy
-                    .borrow_mut()
-                    .write(unbonding_key, StoredValue::Unbonding(unbonding_purses));
-            }
         }
 
         let execution_effect = tracking_copy.borrow().effect();
