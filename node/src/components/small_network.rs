@@ -153,6 +153,9 @@ where
     /// Tracks whether a connection is symmetric or not.
     connection_symmetries: HashMap<NodeId, ConnectionSymmetry>,
 
+    /// Tracks nodes that have announced themselves as joining nodes.
+    joining_nodes: HashSet<NodeId>,
+
     /// Channel signaling a shutdown of the small network.
     // Note: This channel is closed when `SmallNetwork` is dropped, signalling the receivers that
     // they should cease operation.
@@ -202,6 +205,7 @@ where
         registry: &Registry,
         small_network_identity: SmallNetworkIdentity,
         chain_info_source: C,
+        is_joiner: bool,
     ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>)> {
         let mut known_addresses = HashSet::new();
         for address in &cfg.known_addresses {
@@ -305,6 +309,7 @@ where
             tarpit_duration: cfg.tarpit_duration,
             tarpit_chance: cfg.tarpit_chance,
             max_in_flight_demands: demand_max,
+            is_joiner,
         });
 
         // Run the server task.
@@ -328,6 +333,7 @@ where
             context,
             outgoing_manager,
             connection_symmetries: HashMap::new(),
+            joining_nodes: HashSet::new(),
             shutdown_sender: Some(server_shutdown_sender),
             shutdown_receiver,
             server_join_handle: Some(server_join_handle),
@@ -468,6 +474,7 @@ where
                 peer_id,
                 peer_consensus_public_key,
                 stream,
+                is_joiner,
             } => {
                 if self.cfg.max_incoming_peer_connections != 0 {
                     if let Some(symmetries) = self.connection_symmetries.get(&peer_id) {
@@ -504,6 +511,7 @@ where
                     .add_incoming(peer_addr, Instant::now())
                 {
                     self.connection_completed(peer_id);
+                    self.update_joining_set(peer_id, is_joiner);
                 }
 
                 // Now we can start the message reader.
@@ -642,6 +650,7 @@ where
                 peer_id,
                 peer_consensus_public_key,
                 sink,
+                is_joiner,
             } => {
                 info!("new outgoing connection established");
 
@@ -666,6 +675,7 @@ where
                     .mark_outgoing(now)
                 {
                     self.connection_completed(peer_id);
+                    self.update_joining_set(peer_id, is_joiner);
                 }
 
                 effects.extend(
@@ -764,6 +774,17 @@ where
     fn connection_completed(&self, peer_id: NodeId) {
         trace!(num_peers = self.peers().len(), new_peer=%peer_id, "connection complete");
         self.net_metrics.peers.set(self.peers().len() as i64);
+    }
+
+    /// Updates a set of known joining nodes.
+    /// If we've just connected to a non-joining node that peer will be removed from the set.
+    fn update_joining_set(&mut self, peer_id: NodeId, is_joiner: bool) {
+        // Update set of joining peers.
+        if is_joiner {
+            self.joining_nodes.insert(peer_id);
+        } else {
+            self.joining_nodes.remove(&peer_id);
+        }
     }
 
     /// Returns the set of connected nodes.
@@ -927,6 +948,20 @@ where
                     symmetric_peers.shuffle(rng);
 
                     responder.respond(symmetric_peers).ignore()
+                }
+                NetworkInfoRequest::GetFullyConnectedValidatorPeers { responder } => {
+                    let mut symmetric_validator_peers: Vec<NodeId> = self
+                        .connection_symmetries
+                        .iter()
+                        .filter_map(|(node_id, sym)| {
+                            matches!(sym, ConnectionSymmetry::Symmetric { .. }).then(|| *node_id)
+                        })
+                        .filter(|node_id| !self.joining_nodes.contains(node_id))
+                        .collect();
+
+                    symmetric_validator_peers.shuffle(rng);
+
+                    responder.respond(symmetric_validator_peers).ignore()
                 }
             },
             Event::PeerAddressReceived(gossiped_address) => {

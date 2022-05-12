@@ -132,7 +132,7 @@ where
 
     // Negotiate the handshake, concluding the incoming connection process.
     match negotiate_handshake::<P, _>(&context, framed, connection_id).await {
-        Ok((framed, public_addr, peer_consensus_public_key)) => {
+        Ok((framed, public_addr, peer_consensus_public_key, is_joiner)) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));
             }
@@ -156,6 +156,7 @@ where
                 peer_id,
                 peer_consensus_public_key,
                 sink,
+                is_joiner,
             }
         }
         Err(error) => OutgoingConnection::Failed {
@@ -201,6 +202,8 @@ where
     pub(super) tarpit_chance: f32,
     /// Maximum number of demands allowed to be running at once. If 0, no limit is enforced.
     pub(super) max_in_flight_demands: usize,
+    /// Flag indicating whether this node is a joining node.
+    pub(super) is_joiner: bool,
 }
 
 /// Handles an incoming connection.
@@ -241,7 +244,7 @@ where
 
     // Negotiate the handshake, concluding the incoming connection process.
     match negotiate_handshake::<P, _>(&context, framed, connection_id).await {
-        Ok((framed, public_addr, peer_consensus_public_key)) => {
+        Ok((framed, public_addr, peer_consensus_public_key, is_peer_joiner)) => {
             if let Some(ref public_key) = peer_consensus_public_key {
                 Span::current().record("validator_id", &field::display(public_key));
             }
@@ -262,6 +265,7 @@ where
                 peer_id,
                 peer_consensus_public_key,
                 stream,
+                is_joiner: is_peer_joiner,
             }
         }
         Err(error) => IncomingConnection::Failed {
@@ -339,7 +343,7 @@ async fn negotiate_handshake<P, REv>(
     context: &NetworkContext<REv>,
     framed: FramedTransport,
     connection_id: ConnectionId,
-) -> Result<(FramedTransport, SocketAddr, Option<PublicKey>), ConnectionError>
+) -> Result<(FramedTransport, SocketAddr, Option<PublicKey>, bool), ConnectionError>
 where
     P: Payload,
 {
@@ -350,6 +354,7 @@ where
         context.public_addr,
         context.consensus_keys.as_ref(),
         connection_id,
+        context.is_joiner,
     );
 
     let serialized_handshake_message = Pin::new(&mut encoder)
@@ -387,6 +392,7 @@ where
         public_addr,
         protocol_version,
         consensus_certificate,
+        is_joiner: is_peer_joiner,
     } = remote_message
     {
         debug!(%protocol_version, "handshake received");
@@ -434,7 +440,12 @@ where
             .reunite(stream)
             .map_err(|_| ConnectionError::FailedToReuniteHandshakeSinkAndStream)?;
 
-        Ok((framed, public_addr, peer_consensus_public_key))
+        Ok((
+            framed,
+            public_addr,
+            peer_consensus_public_key,
+            is_peer_joiner,
+        ))
     } else {
         // Received a non-handshake, this is an error.
         Err(ConnectionError::DidNotSendHandshake)
