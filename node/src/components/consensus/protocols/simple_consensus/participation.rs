@@ -39,7 +39,7 @@ impl ParticipationStatus {
         if let Some(fault) = sc.faults.get(&idx) {
             return Some(match fault {
                 Fault::Banned | Fault::Indirect => ParticipationStatus::EquivocatedInOtherEra,
-                Fault::Direct(_, _) => ParticipationStatus::Equivocated,
+                Fault::Direct(..) => ParticipationStatus::Equivocated,
             });
         }
         // TODO: Avoid iterating over all old rounds every time we log this.

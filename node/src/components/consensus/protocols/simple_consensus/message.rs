@@ -82,6 +82,18 @@ pub(crate) enum Content<C: Context> {
     Vote(bool),
 }
 
+impl<C: Context> Content<C> {
+    /// Returns whether the two contents contradict each other. A correct validator is expected to
+    /// never sign two contradictory contents in the same round.
+    pub(crate) fn contradicts(&self, other: &Content<C>) -> bool {
+        match (self, other) {
+            (Content::Vote(vote0), Content::Vote(vote1)) => vote0 != vote1,
+            (Content::Echo(hash0), Content::Echo(hash1)) => hash0 != hash1,
+            _ => false,
+        }
+    }
+}
+
 /// A vote or echo with a signature.
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[serde(bound(
@@ -200,6 +212,8 @@ pub(crate) enum Message<C: Context> {
     },
     /// An echo or vote signed by an active validator.
     Signed(SignedMessage<C>),
+    /// Two conflicting signatures by the same validator.
+    Evidence(SignedMessage<C>, Content<C>, C::Signature),
 }
 
 impl<C: Context> Message<C> {
@@ -230,7 +244,8 @@ impl<C: Context> Message<C> {
         match self {
             Message::SyncState { instance_id, .. }
             | Message::Signed(SignedMessage { instance_id, .. })
-            | Message::Proposal { instance_id, .. } => instance_id,
+            | Message::Proposal { instance_id, .. }
+            | Message::Evidence(SignedMessage { instance_id, .. }, ..) => instance_id,
         }
     }
 }
