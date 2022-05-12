@@ -348,7 +348,6 @@ pub fn blake2b<T: AsRef<[u8]>>(input: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
 
 /// Returns a 32-bytes long new address.
 pub fn next_address() -> [u8; ADDRESS_LENGTH] {
-    // TODO[RC]: Shall we introduce a dedicated named const?
     let mut ret = [0; ADDRESS_LENGTH];
     let result = unsafe { ext_ffi::casper_next_address(ret.as_mut_ptr(), ADDRESS_LENGTH) };
     api_error::result_from(result).unwrap_or_revert();

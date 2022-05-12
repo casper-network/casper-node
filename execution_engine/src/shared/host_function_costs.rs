@@ -403,7 +403,7 @@ impl Default for HostFunctionCosts {
                 [NOT_USED, DEFAULT_PRINT_TEXT_SIZE_WEIGHT],
             ),
             blake2b: HostFunction::default(),
-            next_address: HostFunction::default(), // TODO[RC]: Is the cost ok?
+            next_address: HostFunction::default(),
         }
     }
 }

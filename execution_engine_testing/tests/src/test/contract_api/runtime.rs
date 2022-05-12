@@ -35,7 +35,7 @@ fn get_value<const COUNT: usize>(builder: &InMemoryWasmTestBuilder, result: &str
 
 #[ignore]
 #[test]
-fn should_return_distinct_next_addresses() {
+fn should_return_different_next_addresses_on_each_call() {
     const RUNS: usize = 10;
 
     let mut builder = InMemoryWasmTestBuilder::default();
