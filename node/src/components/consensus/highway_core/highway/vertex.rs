@@ -3,18 +3,17 @@ use std::{collections::BTreeSet, fmt::Debug};
 use datasize::DataSize;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::{
-    components::consensus::{
-        highway_core::{
-            endorsement::SignedEndorsement,
-            evidence::Evidence,
-            highway::{PingError, VertexError},
-            state::{self, Panorama},
-            validators::{ValidatorIndex, Validators},
-        },
-        traits::{Context, ValidatorSecret},
+use casper_types::Timestamp;
+
+use crate::components::consensus::{
+    highway_core::{
+        endorsement::SignedEndorsement,
+        evidence::Evidence,
+        highway::{PingError, VertexError},
+        state::{self, Panorama},
+        validators::{ValidatorIndex, Validators},
     },
-    types::Timestamp,
+    traits::{Context, ValidatorSecret},
 };
 
 /// A dependency of a `Vertex` that can be satisfied by one or more other vertices.

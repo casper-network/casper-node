@@ -34,6 +34,8 @@ use tempfile::TempDir;
 use tokio::runtime::{self, Runtime};
 use tracing::{debug, warn};
 
+use casper_types::{TimeDiff, Timestamp};
+
 use crate::{
     components::Component,
     effect::{
@@ -43,7 +45,7 @@ use crate::{
     logging,
     protocol::Message,
     reactor::{EventQueueHandle, QueueKind, ReactorEvent, Scheduler},
-    types::{Deploy, TimeDiff, Timestamp},
+    types::Deploy,
 };
 pub(crate) use condition_check_reactor::ConditionCheckReactor;
 pub(crate) use multi_stage_test_reactor::MultiStageTestReactor;

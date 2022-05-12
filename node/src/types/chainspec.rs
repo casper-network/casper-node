@@ -226,13 +226,10 @@ mod tests {
         storage_costs::StorageCosts,
         wasm_config::WasmConfig,
     };
-    use casper_types::{EraId, Motes, ProtocolVersion, StoredValue, U512};
+    use casper_types::{EraId, Motes, ProtocolVersion, StoredValue, TimeDiff, Timestamp, U512};
 
     use super::*;
-    use crate::{
-        types::{TimeDiff, Timestamp},
-        utils::RESOURCES_PATH,
-    };
+    use crate::utils::RESOURCES_PATH;
 
     static EXPECTED_GENESIS_HOST_FUNCTION_COSTS: Lazy<HostFunctionCosts> =
         Lazy::new(|| HostFunctionCosts {

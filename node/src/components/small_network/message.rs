@@ -341,12 +341,14 @@ pub struct EstimatorWeights {
 // We use a variety of weird names in these tests.
 #[allow(non_camel_case_types)]
 mod tests {
-    use std::net::SocketAddr;
+    use std::{net::SocketAddr, pin::Pin};
 
+    use bytes::BytesMut;
     use casper_types::ProtocolVersion;
     use serde::{de::DeserializeOwned, Deserialize, Serialize};
+    use tokio_serde::{Deserializer, Serializer};
 
-    use crate::protocol;
+    use crate::{components::small_network::message_pack_format::MessagePackFormat, protocol};
 
     use super::*;
 
@@ -430,16 +432,22 @@ mod tests {
 
     /// Serialize a message using the standard serialization method for handshakes.
     fn serialize_message<M: Serialize>(msg: &M) -> Vec<u8> {
-        // The actual serialization/deserialization code can be found at
-        // https://github.com/carllerche/tokio-serde/blob/f3c3d69ce049437973468118c9d01b46e0b1ade5/src/lib.rs#L426-L450
+        let mut serializer = MessagePackFormat;
 
-        rmp_serde::to_vec(&msg).expect("handshake serialization failed")
+        Pin::new(&mut serializer)
+            .serialize(&msg)
+            .expect("handshake serialization failed")
+            .into_iter()
+            .collect()
     }
 
     /// Deserialize a message using the standard deserialization method for handshakes.
     fn deserialize_message<M: DeserializeOwned>(serialized: &[u8]) -> M {
-        rmp_serde::from_read(std::io::Cursor::new(&serialized))
-            .expect("handshake deserialization failed")
+        let mut deserializer = MessagePackFormat;
+
+        Pin::new(&mut deserializer)
+            .deserialize(&BytesMut::from(serialized))
+            .expect("message deserialization failed")
     }
 
     /// Given a message `from` of type `F`, serializes it, then deserializes it as `T`.

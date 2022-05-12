@@ -23,7 +23,7 @@ use futures::join;
 use prometheus::{self, Registry};
 use tracing::{debug, error, info, warn};
 
-use casper_types::PublicKey;
+use casper_types::{PublicKey, Timestamp};
 
 use crate::{
     components::{
@@ -39,7 +39,7 @@ use crate::{
         appendable_block::{AddError, AppendableBlock},
         chainspec::DeployConfig,
         Approval, BlockPayload, Chainspec, DeployHash, DeployHeader, DeployOrTransferHash,
-        DeployWithApprovals, FinalizedBlock, Timestamp,
+        DeployWithApprovals, FinalizedBlock,
     },
     NodeRng,
 };

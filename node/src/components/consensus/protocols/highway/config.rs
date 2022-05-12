@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use datasize::DataSize;
 
-use crate::types::{serde_option_time_diff, TimeDiff};
+use casper_types::{serde_option_time_diff, TimeDiff};
 
 use super::round_success_meter::config::Config as RSMConfig;
 

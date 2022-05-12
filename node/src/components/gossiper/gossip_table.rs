@@ -473,11 +473,11 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
 mod tests {
     use std::{collections::BTreeSet, iter, str::FromStr};
 
-    use casper_types::testing::TestRng;
+    use casper_types::{testing::TestRng, TimeDiff};
     use rand::Rng;
 
     use super::{super::config::DEFAULT_FINISHED_ENTRY_DURATION, *};
-    use crate::{logging, types::TimeDiff, utils::DisplayIter};
+    use crate::{logging, utils::DisplayIter};
 
     const EXPECTED_DEFAULT_INFECTION_TARGET: usize = 3;
     const EXPECTED_DEFAULT_HOLDERS_LIMIT: usize = 15;

@@ -171,8 +171,7 @@ pub enum FatalStorageError {
     StoredItemSerializationFailure(#[source] bincode::Error),
     /// We tried to store finalized approvals for a nonexistent deploy.
     #[error(
-        "Tried to store FinalizedApprovals for a nonexistent deploy. \
-            Deploy hash: {deploy_hash:?}"
+        "Tried to store FinalizedApprovals for a nonexistent deploy. Deploy hash: {deploy_hash:?}"
     )]
     UnexpectedFinalizedApprovals {
         /// The missing deploy hash.

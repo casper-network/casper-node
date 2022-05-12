@@ -70,7 +70,7 @@ use tracing::{debug, error, info, warn};
 use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
-    EraId, ExecutionResult, ProtocolVersion, PublicKey, Transfer, Transform,
+    EraId, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Transfer, Transform,
 };
 
 // The reactor! macro needs this in the fetcher tests
@@ -92,7 +92,7 @@ use crate::{
         BlockSignatures, BlockWithMetadata, Deploy, DeployHash, DeployMetadata,
         DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedApprovalsWithId,
         HashingAlgorithmVersion, Item, MerkleBlockBody, MerkleBlockBodyPart, MerkleLinkedListNode,
-        NodeId, TimeDiff,
+        NodeId,
     },
     utils::{display_error, FlattenResult, WithDir},
     NodeRng,
@@ -403,12 +403,12 @@ impl Storage {
     }
 
     /// Directly returns a deploy from internal store.
+    #[inline]
     pub fn read_deploy_by_hash(
         &self,
         deploy_hash: DeployHash,
     ) -> Result<Option<Deploy>, FatalStorageError> {
-        let mut txn = self.storage.env.begin_ro_txn()?;
-        Ok(txn.get_value(self.storage.deploy_db, &deploy_hash)?)
+        self.storage.read_deploy_by_hash(deploy_hash)
     }
 
     /// Put a single deploy into storage.
@@ -605,7 +605,6 @@ impl StorageInner {
             transfer_db,
             state_store_db,
             finalized_approvals_db,
-
             highest_block_at_startup,
             indices: RwLock::new(indices),
             enable_mem_deduplication: config.enable_mem_deduplication,
@@ -1115,6 +1114,20 @@ impl StorageInner {
             StorageRequest::GetFinalizedBlocks { ttl, responder } => {
                 responder.respond(self.get_finalized_blocks(ttl)?).ignore()
             }
+            StorageRequest::GetBlockHeaderByHeight {
+                block_height,
+                only_from_available_block_range,
+                responder,
+            } => {
+                let indices = self.indices.read()?;
+                let result = self.get_block_header_by_height_restricted(
+                    &mut self.env.begin_ro_txn()?,
+                    &indices,
+                    block_height,
+                    only_from_available_block_range,
+                )?;
+                responder.respond(result).ignore()
+            }
             StorageRequest::GetBlockHeaderAndSufficientFinalitySignaturesByHeight {
                 block_height,
                 responder,
@@ -1178,7 +1191,7 @@ impl StorageInner {
     /// Put a single deploy into storage.
     pub fn put_deploy(&self, deploy: &Deploy) -> Result<bool, FatalStorageError> {
         let mut txn = self.env.begin_rw_txn()?;
-        let outcome = txn.put_value(self.deploy_db, deploy.id(), &deploy, false)?;
+        let outcome = txn.put_value(self.deploy_db, deploy.id(), deploy, false)?;
         txn.commit()?;
         Ok(outcome)
     }
@@ -1422,6 +1435,21 @@ impl StorageInner {
 
         self.validate_block_header_hash(&block_header, block_hash)?;
         Ok(Some(block_header))
+    }
+
+    fn get_block_header_by_height_restricted<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        indices: &Indices,
+        block_height: u64,
+        only_from_available_block_range: bool,
+    ) -> Result<Option<BlockHeader>, FatalStorageError> {
+        let block_hash = match indices.block_height_index.get(&block_height) {
+            None => return Ok(None),
+            Some(block_hash) => block_hash,
+        };
+
+        self.get_single_block_header_restricted(tx, block_hash, only_from_available_block_range)
     }
 
     /// Retrieves a single block header in a given transaction from storage.
@@ -1703,6 +1731,15 @@ impl StorageInner {
             debug!(?block_header, "Missing block body for header");
             Ok(None)
         }
+    }
+
+    /// Directly returns a deploy from internal store.
+    pub fn read_deploy_by_hash(
+        &self,
+        deploy_hash: DeployHash,
+    ) -> Result<Option<Deploy>, FatalStorageError> {
+        let mut txn = self.env.begin_ro_txn()?;
+        Ok(txn.get_value(self.deploy_db, &deploy_hash)?)
     }
 
     /// Stores a set of finalized approvals.

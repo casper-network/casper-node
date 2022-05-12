@@ -2,7 +2,7 @@ use super::*;
 
 use std::sync::Arc;
 
-use casper_types::{PublicKey, SecretKey, U512};
+use casper_types::{PublicKey, SecretKey, Timestamp, U512};
 
 use crate::{
     components::consensus::{
@@ -17,7 +17,7 @@ use crate::{
         },
         traits::Context,
     },
-    types::{BlockPayload, Timestamp},
+    types::BlockPayload,
 };
 
 const INSTANCE_ID_DATA: &[u8; 1] = &[123u8; 1];

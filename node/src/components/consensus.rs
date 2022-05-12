@@ -32,7 +32,7 @@ use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
-use casper_types::{EraId, PublicKey};
+use casper_types::{EraId, PublicKey, Timestamp};
 
 use crate::{
     components::Component,
@@ -48,7 +48,7 @@ use crate::{
     },
     protocol::Message,
     reactor::ReactorEvent,
-    types::{ActivationPoint, BlockHash, BlockHeader, BlockPayload, NodeId, Timestamp},
+    types::{ActivationPoint, BlockHash, BlockHeader, BlockPayload, NodeId},
     NodeRng,
 };
 use protocols::{highway::HighwayProtocol, simple_consensus::SimpleConsensus};
