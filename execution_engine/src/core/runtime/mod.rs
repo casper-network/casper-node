@@ -3,6 +3,7 @@ mod args;
 mod auction_internal;
 mod externals;
 mod handle_payment_internal;
+mod host_function_flag;
 mod mint_internal;
 pub mod stack;
 mod standard_payment_internal;
@@ -43,6 +44,7 @@ use crate::{
     core::{
         engine_state::EngineConfig,
         execution::{self, Error},
+        runtime::host_function_flag::HostFunctionFlag,
         runtime_context::{self, RuntimeContext},
         tracking_copy::TrackingCopyExt,
     },
@@ -59,7 +61,7 @@ use crate::{
 };
 pub use stack::{RuntimeStack, RuntimeStackFrame, RuntimeStackOverflow};
 
-use self::stack::InvokedBy;
+use self::stack::ExecutionContext;
 
 /// Represents the runtime properties of a WASM execution.
 pub struct Runtime<'a, R> {
@@ -69,6 +71,7 @@ pub struct Runtime<'a, R> {
     host_buffer: Option<CLValue>,
     context: RuntimeContext<'a, R>,
     stack: Option<RuntimeStack>,
+    host_function_flag: HostFunctionFlag,
 }
 
 impl<'a, R> Runtime<'a, R>
@@ -85,6 +88,7 @@ where
             host_buffer: None,
             context,
             stack: None,
+            host_function_flag: HostFunctionFlag::default(),
         }
     }
 
@@ -104,6 +108,7 @@ where
             host_buffer: None,
             context,
             stack: Some(stack),
+            host_function_flag: self.host_function_flag.clone(),
         }
     }
 
@@ -121,6 +126,7 @@ where
             host_buffer: None,
             context,
             stack: Some(stack),
+            host_function_flag: self.host_function_flag.clone(),
         }
     }
 
@@ -173,18 +179,14 @@ where
     where
         T: Into<Gas>,
     {
-        if self.current_stack_frame()?.is_invoked_by_host() || self.is_system_immediate_caller()? {
+        if self.host_function_flag.is_in_host_function_scope()
+            || self.is_system_immediate_caller()?
+        {
             // This avoids charging the user in situation when the runtime is in the middle of
             // handling a host function call or a system contract calls other system contract.
             return Ok(());
         }
         self.context.charge_system_contract_call(amount)
-    }
-
-    fn current_stack_frame(&mut self) -> Result<&RuntimeStackFrame, Error> {
-        self.try_get_stack()?
-            .current_frame()
-            .ok_or(Error::MissingRuntimeStack)
     }
 
     /// Returns bytes from the WASM memory instance.
@@ -1014,14 +1016,14 @@ where
     /// Call a contract by pushing a stack element onto the frame.
     pub(crate) fn call_contract_with_stack(
         &mut self,
-        invoked_by: InvokedBy,
+        execution_context: ExecutionContext,
         contract_hash: ContractHash,
         entry_point_name: &str,
         args: RuntimeArgs,
         stack: RuntimeStack,
     ) -> Result<CLValue, Error> {
         self.stack = Some(stack);
-        self.call_contract(invoked_by, contract_hash, entry_point_name, args)
+        self.call_contract(execution_context, contract_hash, entry_point_name, args)
     }
 
     pub(crate) fn execute_module_bytes(
@@ -1073,9 +1075,9 @@ where
     }
 
     /// Calls contract living under a `key`, with supplied `args`.
-    fn call_contract(
+    pub fn call_contract(
         &mut self,
-        invoked_by: InvokedBy,
+        execution_context: ExecutionContext,
         contract_hash: ContractHash,
         entry_point_name: &str,
         args: RuntimeArgs,
@@ -1105,7 +1107,7 @@ where
         };
 
         self.execute_contract(
-            invoked_by,
+            execution_context,
             contract_package,
             contract_hash,
             contract,
@@ -1119,7 +1121,7 @@ where
     /// types given in the contract header.
     pub fn call_versioned_contract(
         &mut self,
-        invoked_by: InvokedBy,
+        execution_context: ExecutionContext,
         contract_package_hash: ContractPackageHash,
         contract_version: Option<ContractVersion>,
         entry_point_name: String,
@@ -1166,7 +1168,7 @@ where
             .ok_or_else(|| Error::NoSuchMethod(entry_point_name.to_owned()))?;
 
         self.execute_contract(
-            invoked_by,
+            execution_context,
             contract_package,
             contract_hash,
             contract,
@@ -1214,7 +1216,7 @@ where
 
     fn execute_contract(
         &mut self,
-        invoked_by: InvokedBy,
+        execution_context: ExecutionContext,
         contract_package: ContractPackage,
         contract_hash: ContractHash,
         contract: Contract,
@@ -1310,7 +1312,10 @@ where
                     contract_hash,
                 ),
             };
-            stack.push(RuntimeStackFrame::new(invoked_by, call_stack_element))?;
+            stack.push(RuntimeStackFrame::new(
+                execution_context,
+                call_stack_element,
+            ))?;
 
             stack
         };
@@ -1323,7 +1328,6 @@ where
             self.is_system_contract(self.context.access_rights().context_key())?;
         // Checks if the contract we're about to call is a system contract.
         let is_calling_system_contract = self.is_system_contract(context_key)?;
-
         // uref attenuation is necessary in the following circumstances:
         //   the originating account (aka the caller) is not the system account and
         //   the immediate caller is either a normal account or a normal contract and
@@ -1470,7 +1474,12 @@ where
             return Ok(Err(err));
         }
         let args: RuntimeArgs = bytesrepr::deserialize(args_bytes)?;
-        let result = self.call_contract(InvokedBy::User, contract_hash, entry_point_name, args)?;
+        let result = self.call_contract(
+            ExecutionContext::User,
+            contract_hash,
+            entry_point_name,
+            args,
+        )?;
         self.manage_call_contract_host_buffer(result_size_ptr, result)
     }
 
@@ -1488,7 +1497,7 @@ where
         }
         let args: RuntimeArgs = bytesrepr::deserialize(args_bytes)?;
         let result = self.call_versioned_contract(
-            InvokedBy::User,
+            ExecutionContext::User,
             contract_package_hash,
             contract_version,
             entry_point_name,
@@ -2078,7 +2087,7 @@ where
     ) -> Result<U512, Error> {
         let gas_counter = self.gas_counter();
         let call_result = self.call_contract(
-            InvokedBy::Host,
+            ExecutionContext::Host,
             mint_contract_hash,
             mint::METHOD_READ_BASE_ROUND_REWARD,
             RuntimeArgs::default(),
@@ -2099,7 +2108,7 @@ where
             runtime_args
         };
         let call_result = self.call_contract(
-            InvokedBy::Host,
+            ExecutionContext::Host,
             mint_contract_hash,
             mint::METHOD_MINT,
             runtime_args,
@@ -2124,7 +2133,7 @@ where
             runtime_args
         };
         let call_result = self.call_contract(
-            InvokedBy::Host,
+            ExecutionContext::Host,
             mint_contract_hash,
             mint::METHOD_REDUCE_TOTAL_SUPPLY,
             runtime_args,
@@ -2139,7 +2148,7 @@ where
     /// contract key
     fn mint_create(&mut self, mint_contract_hash: ContractHash) -> Result<URef, Error> {
         let result = self.call_contract(
-            InvokedBy::Host,
+            ExecutionContext::Host,
             mint_contract_hash,
             mint::METHOD_CREATE,
             RuntimeArgs::new(),
@@ -2149,6 +2158,7 @@ where
     }
 
     fn create_purse(&mut self) -> Result<URef, Error> {
+        let _scoped_host_function_flag = self.host_function_flag.enter_host_function_scope();
         self.mint_create(self.get_mint_contract()?)
     }
 
@@ -2177,7 +2187,7 @@ where
 
         let gas_counter = self.gas_counter();
         let call_result = self.call_contract(
-            InvokedBy::Host,
+            ExecutionContext::Host,
             mint_contract_hash,
             mint::METHOD_TRANSFER,
             args_values,
@@ -2286,6 +2296,8 @@ where
         amount: U512,
         id: Option<u64>,
     ) -> Result<TransferResult, Error> {
+        let _scoped_host_function_flag = self.host_function_flag.enter_host_function_scope();
+
         if let (false, Some(is_source_admin)) = (
             self.config.allow_unrestricted_transfers(),
             self.config

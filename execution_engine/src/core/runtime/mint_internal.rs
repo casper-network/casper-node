@@ -5,7 +5,7 @@ use casper_types::{
     CLTyped, CLValue, Key, Phase, StoredValue, URef, U512,
 };
 
-use super::{Runtime, RuntimeStackFrame};
+use super::{stack::ExecutionContext, Runtime};
 use crate::{
     core::execution,
     storage::global_state::StateReader,
@@ -76,8 +76,13 @@ where
         self.config.allow_unrestricted_transfers()
     }
 
-    fn get_current_runtime_stack_frame(&self) -> Option<&RuntimeStackFrame> {
-        Runtime::try_get_stack(self).ok()?.current_frame()
+    fn get_current_execution_context(&self) -> Option<ExecutionContext> {
+        Some(
+            Runtime::try_get_stack(self)
+                .ok()?
+                .current_frame()?
+                .execution_context(),
+        )
     }
 }
 

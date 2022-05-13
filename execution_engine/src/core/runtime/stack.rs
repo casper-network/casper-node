@@ -2,36 +2,16 @@
 
 use casper_types::{account::AccountHash, system::CallStackElement, PublicKey};
 
-/// Representation of who created given call stack.
+/// Representation of a context of given call stack.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum InvokedBy {
-    /// Call stack frame is invoked by the host.
+pub enum ExecutionContext {
+    /// Call stack frame is invoked by a host.
     ///
     /// For example if user is executing a mint through a Wasm host function then a new mint's call
     /// frame will be marked as Host.
     Host,
     /// Call stack frame is created by a user.
-    ///
-    /// For example user is using call_contract to execute mint's transfer entry point.
     User,
-}
-
-impl InvokedBy {
-    /// Returns `true` if the self is [`Host`].
-    ///
-    /// [`Host`]: InvokedBy::Host
-    #[must_use]
-    fn is_host(&self) -> bool {
-        matches!(self, Self::Host)
-    }
-
-    /// Returns `true` if the self is [`User`].
-    ///
-    /// [`User`]: InvokedBy::User
-    #[must_use]
-    fn is_user(&self) -> bool {
-        matches!(self, Self::User)
-    }
 }
 
 /// A runtime stack frame.
@@ -39,21 +19,15 @@ impl InvokedBy {
 /// Currently it aliases to a [`CallStackElement`].
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct RuntimeStackFrame {
-    /// If `invoked_by` is set to [`InvokedBy::User`] then this runtime stack frame is invoked by
-    /// user's interaction such as Wasm's `call_contract`, calling system contract directly by
-    /// hash, etc.
-    ///
-    /// If it is set to [`InvokedBy::Host`] then this runtime stack is created by
-    /// the host. For example a host function executes a mint's transfer entrypoint.
-    invoked_by: InvokedBy,
+    execution_context: ExecutionContext,
     call_stack_element: CallStackElement,
 }
 
 impl RuntimeStackFrame {
     /// Creates new runtime stack frame object.
-    pub fn new(invoked_by: InvokedBy, call_stack_element: CallStackElement) -> Self {
+    pub fn new(execution_context: ExecutionContext, call_stack_element: CallStackElement) -> Self {
         Self {
-            invoked_by,
+            execution_context,
             call_stack_element,
         }
     }
@@ -64,18 +38,10 @@ impl RuntimeStackFrame {
         &self.call_stack_element
     }
 
-    /// Is this runtime stack frame invoked by the user?
+    /// Get the runtime stack frame's execution context.
     #[must_use]
-    pub(crate) fn is_invoked_by_user(&self) -> bool {
-        self.invoked_by.is_user()
-    }
-
-    /// Is this runtime stack frame invoked by the host?
-    ///
-    /// For example this happens when the user invokes
-    #[must_use]
-    pub(crate) fn is_invoked_by_host(&self) -> bool {
-        self.invoked_by.is_host()
+    pub fn execution_context(&self) -> ExecutionContext {
+        self.execution_context
     }
 }
 
@@ -116,7 +82,7 @@ impl RuntimeStack {
         RuntimeStack::new_with_frame(
             max_height,
             RuntimeStackFrame::new(
-                InvokedBy::Host,
+                ExecutionContext::Host,
                 CallStackElement::session(PublicKey::System.to_account_hash()),
             ),
         )
@@ -185,7 +151,7 @@ impl RuntimeStack {
 
         let frame = {
             let session = CallStackElement::session(account_hash);
-            RuntimeStackFrame::new(InvokedBy::User, session)
+            RuntimeStackFrame::new(ExecutionContext::User, session)
         };
         runtime_stack.push(frame)?;
 
@@ -208,7 +174,7 @@ mod test {
         let n: u32 = n.try_into().unwrap();
         bytes[0..4].copy_from_slice(&n.to_le_bytes());
         RuntimeStackFrame::new(
-            InvokedBy::User,
+            ExecutionContext::User,
             CallStackElement::session(AccountHash::new(bytes)),
         )
     }

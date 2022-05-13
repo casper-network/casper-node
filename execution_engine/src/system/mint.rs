@@ -15,6 +15,7 @@ use casper_types::{
 };
 
 use crate::{
+    core::runtime::stack::ExecutionContext,
     shared::account::SYSTEM_ACCOUNT_ADDRESS,
     system::mint::{
         runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
@@ -117,10 +118,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             match self.get_immediate_caller() {
                 Some(CallStackElement::StoredSession { account_hash, .. })
                 | Some(CallStackElement::Session { account_hash }) => {
-                    let current_runtime_stack = self
-                        .get_current_runtime_stack_frame()
-                        .expect("valid immediate caller implies existence of current stack frame");
-                    if current_runtime_stack.is_invoked_by_user()
+                    if self.get_current_execution_context() == Some(ExecutionContext::User)
                         && account_hash != &*SYSTEM_ACCOUNT_ADDRESS
                     {
                         if let Some(is_account_admin) = self.is_account_administrator(account_hash)

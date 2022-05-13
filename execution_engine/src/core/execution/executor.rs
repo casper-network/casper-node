@@ -16,7 +16,7 @@ use crate::{
             ExecError,
         },
         execution::{address_generator::AddressGenerator, Error},
-        runtime::{stack::InvokedBy, Runtime, RuntimeStack},
+        runtime::{stack::ExecutionContext, Runtime, RuntimeStack},
         runtime_context::RuntimeContext,
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
@@ -114,7 +114,7 @@ impl Executor {
                 // `Runtime` during the contract's execution (i.e. inside
                 // `Runtime::execute_contract`).
                 runtime.call_contract_with_stack(
-                    InvokedBy::User,
+                    ExecutionContext::User,
                     contract_hash,
                     &entry_point_name,
                     args,
@@ -319,7 +319,7 @@ impl Executor {
         // contracts, to force all such security checks for usage via the executor into a single
         // execution path.
         let result = runtime.call_contract_with_stack(
-            InvokedBy::Host,
+            ExecutionContext::Host,
             contract_hash,
             entry_point_name,
             runtime_args,

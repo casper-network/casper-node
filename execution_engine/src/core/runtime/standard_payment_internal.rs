@@ -12,7 +12,7 @@ use crate::{
     },
 };
 
-use super::stack::InvokedBy;
+use super::stack::ExecutionContext;
 
 pub(crate) const METHOD_GET_PAYMENT_PURSE: &str = "get_payment_purse";
 
@@ -78,7 +78,7 @@ where
 
         let cl_value = self
             .call_contract(
-                InvokedBy::Host,
+                ExecutionContext::Host,
                 handle_payment_contract_hash,
                 METHOD_GET_PAYMENT_PURSE,
                 RuntimeArgs::new(),
