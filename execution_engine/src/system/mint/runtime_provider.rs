@@ -4,7 +4,7 @@ use casper_types::{
     Key, Phase, URef, U512,
 };
 
-use crate::core::runtime::stack::ExecutionContext;
+use crate::core::runtime::RuntimeStackFrame;
 
 /// Provider of runtime host functionality.
 pub trait RuntimeProvider {
@@ -15,7 +15,7 @@ pub trait RuntimeProvider {
     fn get_immediate_caller(&self) -> Option<&CallStackElement>;
 
     /// This method should return the current [`crate::core::runtime::ExecutionContext`].
-    fn get_current_execution_context(&self) -> Option<ExecutionContext>;
+    fn get_current_runtime_stack_frame(&self) -> Option<&RuntimeStackFrame>;
 
     /// Gets execution phase
     fn get_phase(&self) -> Phase;

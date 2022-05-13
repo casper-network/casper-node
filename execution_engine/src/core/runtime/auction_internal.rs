@@ -12,7 +12,7 @@ use casper_types::{
     BLAKE2B_DIGEST_LENGTH, U512,
 };
 
-use super::{stack::ExecutionContext, Runtime};
+use super::{stack::InvokedBy, Runtime};
 use crate::{
     core::execution,
     storage::global_state::StateReader,
@@ -211,7 +211,7 @@ where
 
         let cl_value = self
             .call_contract(
-                ExecutionContext::Host,
+                InvokedBy::Host,
                 mint_contract_hash,
                 mint::METHOD_TRANSFER,
                 args_values,
@@ -246,7 +246,7 @@ where
 
         let cl_value = self
             .call_contract(
-                ExecutionContext::Host,
+                InvokedBy::Host,
                 mint_contract_hash,
                 mint::METHOD_MINT_INTO_EXISTING_PURSE,
                 args_values,
