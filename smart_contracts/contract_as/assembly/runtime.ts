@@ -21,7 +21,7 @@ const BLAKE2B_DIGEST_LENGTH: i32 = 32;
 /**
  * Returns a 32-bytes long new address.
  */
-export function next_address(): Uint8Array {
+export function nextAddress(): Uint8Array {
     let addressBytes = new Uint8Array(ADDRESS_LENGTH);
     const ret = externals.casper_next_address(addressBytes.dataStart, addressBytes.length);
     let error = Error.fromResult(ret);
