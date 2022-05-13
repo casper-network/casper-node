@@ -351,6 +351,15 @@ async fn fetch_and_store_block_header(
             bogus_block_hash: block_hash,
         });
     }
+
+    if let Some(stored_block_header) = ctx
+        .effect_builder
+        .get_block_header_from_storage(block_hash, false)
+        .await
+    {
+        return Ok(Box::new(stored_block_header));
+    }
+
     let fetched_block_header = fetch_retry_forever::<BlockHeader>(ctx, block_hash).await?;
     match fetched_block_header {
         FetchedData::FromStorage { item: block_header } => Ok(block_header),
@@ -370,6 +379,14 @@ async fn fetch_and_store_deploy(
     deploy_or_transfer_hash: DeployHash,
     ctx: &ChainSyncContext<'_>,
 ) -> Result<Box<Deploy>, FetcherError<Deploy>> {
+    if let Some((stored_deploy, _)) = ctx
+        .effect_builder
+        .get_deploy_and_metadata_from_storage(deploy_or_transfer_hash)
+        .await
+    {
+        return Ok(Box::new(stored_deploy.discard_finalized_approvals()));
+    }
+
     let fetched_deploy = fetch_retry_forever::<Deploy>(ctx, deploy_or_transfer_hash).await?;
     Ok(match fetched_deploy {
         FetchedData::FromStorage { item: deploy } => deploy,
@@ -698,6 +715,10 @@ async fn sync_trie_store_worker(
 
 /// Synchronizes the trie store under a given state root hash.
 async fn sync_trie_store(state_root_hash: Digest, ctx: &ChainSyncContext<'_>) -> Result<(), Error> {
+    if let Ok(Some(_trie)) = ctx.effect_builder.get_trie_full(state_root_hash).await {
+        return Ok(());
+    }
+
     info!(?state_root_hash, "syncing trie store");
     let start_instant = Timestamp::now();
 
