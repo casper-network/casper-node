@@ -20,6 +20,7 @@ use crate::{
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, DataSize)]
 pub struct NodeId(KeyFingerprint);
 
+/// An invalid node identifier.
 pub const INVALID_NODE_ID: NodeId = NodeId(INVALID_FINGERPRINT);
 
 impl NodeId {

@@ -958,6 +958,9 @@ where
 
                     symmetric_validator_peers.shuffle(rng);
 
+                    // Workaround hack for upgrade issue: Since we currently require a node ID to
+                    // request data using the fetcher API even if we have everything locally, we
+                    // insert an invalid peer to cause at least one local fetch attempt to happen.
                     if symmetric_validator_peers.is_empty() {
                         symmetric_validator_peers.push(crate::types::INVALID_NODE_ID);
                     }
