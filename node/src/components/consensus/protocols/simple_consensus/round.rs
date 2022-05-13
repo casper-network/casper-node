@@ -23,6 +23,8 @@ pub(crate) struct Round<C>
 where
     C: Context,
 {
+    /// The leader, who is allowed to create a proposal in this round.
+    leader_idx: ValidatorIndex,
     /// The unique proposal signed by the leader, or the unique proposal with a quorum of echoes.
     proposal: Option<Proposal<C>>,
     /// The echoes we've received for each proposal so far.
@@ -37,11 +39,12 @@ where
 impl<C: Context> Round<C> {
     /// Creates a new [`Round`] with no proposals, echoes, votes, and empty
     /// round outcome.
-    pub(super) fn new(validator_count: usize) -> Round<C> {
+    pub(super) fn new(validator_count: usize, leader_idx: ValidatorIndex) -> Round<C> {
         let mut votes = BTreeMap::new();
         votes.insert(false, vec![None; validator_count].into());
         votes.insert(true, vec![None; validator_count].into());
         Round {
+            leader_idx,
             proposal: None,
             echoes: HashMap::new(),
             votes,
@@ -61,29 +64,19 @@ impl<C: Context> Round<C> {
 
     /// Returns whether this proposal is justified by an echo signature from the round leader or by
     /// a quorum of echoes.
-    pub(super) fn has_echoes_for_proposal(
-        &self,
-        hash: &C::Hash,
-        leader_idx: ValidatorIndex,
-    ) -> bool {
+    pub(super) fn has_echoes_for_proposal(&self, hash: &C::Hash) -> bool {
         match (self.quorum_echoes(), self.echoes.get(hash)) {
             (Some(quorum_hash), _) => quorum_hash == *hash,
-            (None, Some(echo_map)) => echo_map.contains_key(&leader_idx),
+            (None, Some(echo_map)) => echo_map.contains_key(&self.leader_idx),
             (None, None) => false,
         }
     }
 
     /// Inserts a `Proposal` and returns `false` if we already had it or it cannot be added due to
     /// missing echoes.
-    pub(super) fn insert_proposal(
-        &mut self,
-        proposal: Proposal<C>,
-        leader_idx: ValidatorIndex,
-    ) -> bool {
+    pub(super) fn insert_proposal(&mut self, proposal: Proposal<C>) -> bool {
         let hash = proposal.hash();
-        if self.has_echoes_for_proposal(&hash, leader_idx)
-            && self.proposal.as_ref() != Some(&proposal)
-        {
+        if self.has_echoes_for_proposal(&hash) && self.proposal.as_ref() != Some(&proposal) {
             self.proposal = Some(proposal);
             true
         } else {

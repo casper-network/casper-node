@@ -411,17 +411,19 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     }
 
     /// Prints a log message if the message is a proposal.
-    fn log_proposal(&self, proposal: &Proposal<C>, creator_index: ValidatorIndex, msg: &str) {
+    fn log_proposal(&self, proposal: &Proposal<C>, round_id: RoundId, msg: &str) {
+        let creator_index = self.leader(round_id);
         let creator = if let Some(creator) = self.validators.id(creator_index) {
             creator
         } else {
-            error!(?proposal, ?creator_index, "{}: invalid creator", msg);
+            error!(?creator_index, ?round_id, "{}: invalid creator", msg);
             return;
         };
         info!(
             hash = ?proposal.hash(),
             ?creator,
             creator_index = creator_index.0,
+            ?round_id,
             timestamp = %proposal.timestamp,
             "{}", msg,
         );
@@ -949,9 +951,10 @@ impl<C: Context + 'static> SimpleConsensus<C> {
 
         let hash = proposal.hash();
 
-        if self.round(round_id).map_or(true, |round| {
-            !round.has_echoes_for_proposal(&hash, leader_idx)
-        }) {
+        if self
+            .round(round_id)
+            .map_or(true, |round| !round.has_echoes_for_proposal(&hash))
+        {
             log_proposal!(Level::DEBUG, "dropping proposal: missing echoes");
             return vec![];
         }
@@ -1275,13 +1278,12 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 }
             }
         }
-        let validator_idx = self.leader(round_id);
         if let Some(block) = proposal
             .maybe_block
             .clone()
             .filter(ConsensusValueT::needs_validation)
         {
-            self.log_proposal(&proposal, validator_idx, "requesting proposal validation");
+            self.log_proposal(&proposal, round_id, "requesting proposal validation");
             let block_context = BlockContext::new(proposal.timestamp, ancestor_values);
             let proposed_block = ProposedBlock::new(block, block_context);
             if self
@@ -1302,15 +1304,8 @@ impl<C: Context + 'static> SimpleConsensus<C> {
                 info!("rejecting proposal with timestamp earlier than era start");
                 return vec![];
             }
-            self.log_proposal(
-                &proposal,
-                validator_idx,
-                "proposal does not need validation",
-            );
-            if self
-                .round_mut(round_id)
-                .insert_proposal(proposal, validator_idx)
-            {
+            self.log_proposal(&proposal, round_id, "proposal does not need validation");
+            if self.round_mut(round_id).insert_proposal(proposal) {
                 self.progress_detected = true;
                 self.mark_dirty(round_id);
             }
@@ -1425,17 +1420,13 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     /// inserts them into our protocol state and gossips them.
     fn create_echo_and_proposal(&mut self, proposal: Proposal<C>) -> ProtocolOutcomes<C> {
         let round_id = self.current_round;
-        let leader_idx = self.leader(round_id);
         let prop_msg = Message::Proposal {
             round_id,
             proposal: proposal.clone(),
             instance_id: *self.instance_id(),
         };
         let mut outcomes = self.create_message(round_id, Content::Echo(proposal.hash()));
-        if self
-            .round_mut(round_id)
-            .insert_proposal(proposal, leader_idx)
-        {
+        if self.round_mut(round_id).insert_proposal(proposal) {
             outcomes.push(ProtocolOutcome::CreatedGossipMessage(prop_msg.serialize()));
         }
         self.mark_dirty(round_id);
@@ -1553,7 +1544,10 @@ impl<C: Context + 'static> SimpleConsensus<C> {
     fn round_mut(&mut self, round_id: RoundId) -> &mut Round<C> {
         match self.rounds.entry(round_id) {
             btree_map::Entry::Occupied(entry) => entry.into_mut(),
-            btree_map::Entry::Vacant(entry) => entry.insert(Round::new(self.validators.len())),
+            btree_map::Entry::Vacant(entry) => {
+                let leader_idx = self.leader_sequence.leader(u64::from(round_id));
+                entry.insert(Round::new(self.validators.len(), leader_idx))
+            }
         }
     }
 
@@ -1727,11 +1721,7 @@ where
         if valid {
             for (round_id, proposal, _sender) in rounds_and_node_ids {
                 info!(?proposal, "handling valid proposal");
-                let leader_idx = self.leader(round_id);
-                if self
-                    .round_mut(round_id)
-                    .insert_proposal(proposal, leader_idx)
-                {
+                if self.round_mut(round_id).insert_proposal(proposal) {
                     self.mark_dirty(round_id);
                     self.progress_detected = true;
                     outcomes.extend(self.update(now));
