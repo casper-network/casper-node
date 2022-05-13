@@ -1030,12 +1030,7 @@ where
                     [out_ptr, out_size],
                 )?;
 
-                let next_address = self
-                    .context()
-                    .address_generator()
-                    .try_borrow_mut()
-                    .map_err(|_| Error::AddressGenerationFailed)?
-                    .create_address();
+                let next_address = self.context.new_hash_address()?;
 
                 let result = if next_address.len() != out_size as usize {
                     Err(ApiError::BufferTooSmall)

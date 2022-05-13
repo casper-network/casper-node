@@ -169,9 +169,6 @@ pub enum Error {
     /// The runtime stack is `None`.
     #[error("Runtime stack missing")]
     MissingRuntimeStack,
-    /// Address generation failed.
-    #[error("Address generation failed")]
-    AddressGenerationFailed,
 }
 
 impl From<wasm_prep::PreprocessingError> for Error {
