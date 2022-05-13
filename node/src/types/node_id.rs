@@ -9,18 +9,13 @@ use once_cell::sync::Lazy;
 use rand::Rng;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::{
-    rpcs::docs::DocExample,
-    tls::{KeyFingerprint, INVALID_FINGERPRINT},
-};
+use crate::{rpcs::docs::DocExample, tls::KeyFingerprint};
 
 /// The network identifier for a node.
 ///
 /// A node's ID is derived from the fingerprint of its TLS certificate.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, DataSize)]
 pub struct NodeId(KeyFingerprint);
-
-pub const INVALID_NODE_ID: NodeId = NodeId(INVALID_FINGERPRINT);
 
 impl NodeId {
     /// Generates a random instance using a `TestRng`.

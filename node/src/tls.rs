@@ -142,8 +142,6 @@ impl Debug for CertFingerprint {
 #[derive(Copy, Clone, DataSize, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct KeyFingerprint(Sha512);
 
-pub const INVALID_FINGERPRINT: KeyFingerprint = KeyFingerprint(Sha512([0; KeyFingerprint::LENGTH]));
-
 impl KeyFingerprint {
     /// Size of digest in bytes.
     pub const LENGTH: usize = Sha512::SIZE;

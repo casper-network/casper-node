@@ -39,7 +39,7 @@ pub use error::BlockValidationError;
 pub use exit_code::ExitCode;
 pub(crate) use item::{Item, Tag};
 pub use node_config::NodeConfig;
-pub(crate) use node_id::{NodeId, INVALID_NODE_ID};
+pub(crate) use node_id::NodeId;
 pub use peers_map::PeersMap;
 pub use status_feed::{ChainspecInfo, GetStatusResult, NodeState, StatusFeed};
 

@@ -958,10 +958,6 @@ where
 
                     symmetric_validator_peers.shuffle(rng);
 
-                    if symmetric_validator_peers.is_empty() {
-                        symmetric_validator_peers.push(crate::types::INVALID_NODE_ID);
-                    }
-
                     responder.respond(symmetric_validator_peers).ignore()
                 }
             },
