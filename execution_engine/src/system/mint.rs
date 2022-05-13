@@ -130,9 +130,27 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
                     }
                 }
 
-                Some(CallStackElement::StoredContract { .. }) => {
+                Some(CallStackElement::StoredContract {
+                    contract_package_hash: _,
+                    contract_hash: _,
+                }) => {
                     // Contract call transfer funds. This is safe assuming only admins can
                     // deploy contracts and transfer funds.
+                    let current_runtime_stack = self
+                        .get_current_runtime_stack_frame()
+                        .expect("valid immediate caller implies existence of current stack frame");
+
+                    if current_runtime_stack.is_invoked_by_user()
+                        && self.get_caller() != *SYSTEM_ACCOUNT_ADDRESS
+                    {
+                        if let Some(is_account_admin) =
+                            self.is_account_administrator(&self.get_caller())
+                        {
+                            if !is_account_admin {
+                                return Err(Error::DisabledUnrestrictedTransfers);
+                            }
+                        }
+                    }
                 }
 
                 None => {
