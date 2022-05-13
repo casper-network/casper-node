@@ -34,9 +34,7 @@ const FAUCET_CALL_BY_USER_WITH_AUTHORIZED_ACCOUNT_SET: u16 = 25;
 #[test]
 fn should_install_faucet_contract() {
     let mut builder = InMemoryWasmTestBuilder::default();
-    builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .commit();
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let fund_installer_account_request = FundAccountRequestBuilder::new()
         .with_target_account(INSTALLER_ACCOUNT)
@@ -134,9 +132,7 @@ fn should_install_faucet_contract() {
 #[test]
 fn should_allow_installer_to_set_variables() {
     let mut builder = InMemoryWasmTestBuilder::default();
-    builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .commit();
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let mut helper = FaucetDeployHelper::new()
         .with_installer_account(INSTALLER_ACCOUNT)
@@ -228,9 +224,7 @@ fn should_allow_installer_to_set_variables() {
 fn should_fund_new_account() {
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .commit();
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let faucet_purse_fund_amount = U512::from(9_000_000_000u64);
     let faucet_distributions_per_interval = 3;
@@ -294,9 +288,7 @@ fn should_fund_existing_account() {
     let user_account = AccountHash::new([7u8; 32]);
 
     let mut builder = InMemoryWasmTestBuilder::default();
-    builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .commit();
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let faucet_purse_fund_amount = U512::from(9_000_000_000u64);
     let faucet_distributions_per_interval = 3;
@@ -365,9 +357,7 @@ fn should_not_fund_once_exhausted() {
     let user_account = AccountHash::new([2u8; 32]);
 
     let mut builder = InMemoryWasmTestBuilder::default();
-    builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .commit();
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let faucet_fund_amount = U512::from(400_000_000_000_000u64);
     let half_of_faucet_fund_amount = faucet_fund_amount / 2;
@@ -521,9 +511,7 @@ fn should_allow_installer_to_fund_freely() {
     let user_account = AccountHash::new([2u8; 32]);
 
     let mut builder = InMemoryWasmTestBuilder::default();
-    builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .commit();
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let faucet_fund_amount = U512::from(200_000_000_000u64);
     let half_of_faucet_fund_amount = faucet_fund_amount / 2;
@@ -618,9 +606,7 @@ fn should_not_fund_if_zero_distributions_per_interval() {
     let user_account = AccountHash::new([2u8; 32]);
 
     let mut builder = InMemoryWasmTestBuilder::default();
-    builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .commit();
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // Fund installer account
     let fund_installer_account_request = FundAccountRequestBuilder::new()
@@ -678,9 +664,7 @@ fn should_allow_funding_by_an_authorized_account() {
     let half_of_faucet_fund_amount = faucet_fund_amount / 2;
 
     let mut builder = InMemoryWasmTestBuilder::default();
-    builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .commit();
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let mut helper = FaucetDeployHelper::new()
         .with_installer_account(installer_account)
@@ -829,19 +813,17 @@ fn should_allow_funding_by_an_authorized_account() {
 fn faucet_costs() {
     // This test will fail if execution costs vary.  The expected costs should not be updated
     // without understanding why the cost has changed.  If the costs do change, it should be
-    // reflected in the "Costs by Entry Point" section of the README.md.
-    const EXPECTED_FAUCET_INSTALL_COST: u64 = 81_557_223_780;
+    // reflected in the "Costs by Entry Point" section of the faucet crate's README.md.
+    const EXPECTED_FAUCET_INSTALL_COST: u64 = 73_923_513_780;
     const EXPECTED_FAUCET_SET_VARIABLES_COST: u64 = 48_195_450;
-    const EXPECTED_FAUCET_CALL_BY_INSTALLER_COST: u64 = 2_584_139_370;
-    const EXPECTED_FAUCET_CALL_BY_USER_COST: u64 = 2_544_521_990;
+    const EXPECTED_FAUCET_CALL_BY_INSTALLER_COST: u64 = 2_584_138_930;
+    const EXPECTED_FAUCET_CALL_BY_USER_COST: u64 = 2_530_886_950;
 
     let installer_account = AccountHash::new([1u8; 32]);
     let user_account = AccountHash::new([2u8; 32]);
 
     let mut builder = InMemoryWasmTestBuilder::default();
-    builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .commit();
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let fund_installer_account_request = ExecuteRequestBuilder::transfer(
         *DEFAULT_ACCOUNT_ADDR,
