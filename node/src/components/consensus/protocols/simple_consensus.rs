@@ -1354,48 +1354,38 @@ impl<C: Context + 'static> SimpleConsensus<C> {
         outcomes
     }
 
+    /// Makes a new proposal if we are the curretn round leader.
     fn propose_if_leader(
         &mut self,
         maybe_parent_round_id: Option<RoundId>,
         now: Timestamp,
     ) -> ProtocolOutcomes<C> {
-        let our_idx = if let Some((our_idx, _)) = self.active_validator {
-            our_idx
-        } else {
-            return vec![]; // Not a validator.
-        };
-        if self.pending_proposal.is_some() // TODO: Or if it's in an old round?
-            || self.round_mut(self.current_round).has_proposal()
-            || our_idx != self.leader(self.current_round)
-        {
-            return vec![]; // We already proposed, or we are not the leader.
+        match self.active_validator {
+            Some((our_idx, _)) if our_idx == self.leader(self.current_round) => {}
+            _ => return vec![], // Not the current round leader.
         }
-        let (maybe_parent_round_id, ancestor_values) = match maybe_parent_round_id {
-            Some(parent_round_id) => {
+        match self.pending_proposal {
+            // We already requested a block to propose.
+            Some((_, round_id, _)) if round_id == self.current_round => return vec![],
+            _ => {}
+        }
+        if self.round_mut(self.current_round).has_proposal() {
+            return vec![]; // We already made a proposal.
+        }
+        let ancestor_values = match maybe_parent_round_id {
+            Some(parent_round_id)
                 if self.accepted_switch_block(parent_round_id)
-                    || self.accepted_dummy_proposal(parent_round_id)
-                {
-                    let proposal = Proposal::<C>::dummy(now, parent_round_id);
-                    let content = Content::Echo(proposal.hash());
-                    let prop_msg = Message::Proposal {
-                        round_id: self.current_round,
-                        proposal: proposal.clone(),
-                        instance_id: *self.instance_id(),
-                    };
-                    let mut outcomes = self.create_message(self.current_round, content);
-                    self.round_mut(self.current_round)
-                        .insert_proposal(proposal, our_idx);
-                    outcomes.push(ProtocolOutcome::CreatedGossipMessage(prop_msg.serialize()));
-                    self.mark_dirty(self.current_round);
-                    return outcomes;
-                }
-                let ancestor_values = self
-                    .ancestor_values(parent_round_id)
-                    .expect("missing ancestor value");
-                (Some(parent_round_id), ancestor_values)
+                    || self.accepted_dummy_proposal(parent_round_id) =>
+            {
+                // One of the ancestors is the switch block, so this proposal has no block.
+                return self.create_echo_and_proposal(Proposal::dummy(now, parent_round_id));
             }
-            None => (None, vec![]),
+            Some(parent_round_id) => self
+                .ancestor_values(parent_round_id)
+                .expect("missing ancestor value"),
+            None => vec![],
         };
+        // Request a block payload to propose.
         let block_context = BlockContext::new(now, ancestor_values);
         self.pending_proposal = Some((
             block_context.clone(),
@@ -1403,6 +1393,27 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             maybe_parent_round_id,
         ));
         vec![ProtocolOutcome::CreateNewBlock(block_context)]
+    }
+
+    /// Creates a new proposal message in the current round, and a corresponding signed echo,
+    /// inserts them into our protocol state and gossips them.
+    fn create_echo_and_proposal(&mut self, proposal: Proposal<C>) -> ProtocolOutcomes<C> {
+        let round_id = self.current_round;
+        let leader_idx = self.leader(round_id);
+        let prop_msg = Message::Proposal {
+            round_id,
+            proposal: proposal.clone(),
+            instance_id: *self.instance_id(),
+        };
+        let mut outcomes = self.create_message(round_id, Content::Echo(proposal.hash()));
+        if self
+            .round_mut(round_id)
+            .insert_proposal(proposal, leader_idx)
+        {
+            outcomes.push(ProtocolOutcome::CreatedGossipMessage(prop_msg.serialize()));
+        }
+        self.mark_dirty(round_id);
+        outcomes
     }
 
     /// Returns a parent if a block with that parent could be proposed in the current round, and the
@@ -1644,35 +1655,28 @@ where
     }
 
     fn propose(&mut self, proposed_block: ProposedBlock<C>, now: Timestamp) -> ProtocolOutcomes<C> {
-        if let Some((block_context, round_id, maybe_parent_round_id)) = self.pending_proposal.take()
+        let maybe_parent_round_id = if let Some((block_context, round_id, maybe_parent_round_id)) =
+            self.pending_proposal.take()
         {
-            if block_context != *proposed_block.context() {
+            if block_context != *proposed_block.context() || round_id != self.current_round {
                 warn!(block_context = ?proposed_block.context(), "skipping outdated proposal");
                 self.pending_proposal = Some((block_context, round_id, maybe_parent_round_id));
                 return vec![];
             }
-            let inactive = self
-                .validators
-                .enumerate_ids()
-                .map(|(idx, _)| idx)
-                .filter(|idx| !self.active[*idx] && !self.faults.contains_key(idx));
-            let proposal = Proposal::with_block(&proposed_block, maybe_parent_round_id, inactive);
-            let leader_idx = self.leader(round_id);
-            let mut outcomes = self.create_message(round_id, Content::Echo(proposal.hash()));
-            self.round_mut(round_id)
-                .insert_proposal(proposal.clone(), leader_idx);
-            let msg = Message::Proposal {
-                round_id,
-                instance_id: *self.instance_id(),
-                proposal,
-            };
-            outcomes.push(ProtocolOutcome::CreatedGossipMessage(msg.serialize()));
-            outcomes.extend(self.update(now));
-            outcomes
+            maybe_parent_round_id
         } else {
             error!("unexpected call to propose");
-            vec![]
-        }
+            return vec![];
+        };
+        let inactive = self
+            .validators
+            .enumerate_ids()
+            .map(|(idx, _)| idx)
+            .filter(|idx| !self.active[*idx] && !self.faults.contains_key(idx));
+        let proposal = Proposal::with_block(&proposed_block, maybe_parent_round_id, inactive);
+        let mut outcomes = self.create_echo_and_proposal(proposal);
+        outcomes.extend(self.update(now));
+        outcomes
     }
 
     fn resolve_validity(
