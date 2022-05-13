@@ -352,6 +352,10 @@ async fn fetch_and_store_block_header(
         });
     }
 
+    // We're querying storage directly and short-circuting here (before using the fetcher)
+    // as joiners don't talk to joiners and in a network comprised only of joining nodes
+    // we would never move past the initial sync since we would wait on fetcher
+    // trying to query a peer for block but have no peers to query for the data.
     if let Some(stored_block_header) = ctx
         .effect_builder
         .get_block_header_from_storage(block_hash, false)
@@ -379,6 +383,10 @@ async fn fetch_and_store_deploy(
     deploy_or_transfer_hash: DeployHash,
     ctx: &ChainSyncContext<'_>,
 ) -> Result<Box<Deploy>, FetcherError<Deploy>> {
+    // We're querying storage directly and short-circuting here (before using the fetcher)
+    // as joiners don't talk to joiners and in a network comprised only of joining nodes
+    // we would never move past the initial sync since we would wait on fetcher
+    // trying to query a peer for a deploy but have no peers to query for the data.
     if let Some((stored_deploy, _)) = ctx
         .effect_builder
         .get_deploy_and_metadata_from_storage(deploy_or_transfer_hash)
@@ -715,6 +723,10 @@ async fn sync_trie_store_worker(
 
 /// Synchronizes the trie store under a given state root hash.
 async fn sync_trie_store(state_root_hash: Digest, ctx: &ChainSyncContext<'_>) -> Result<(), Error> {
+    // We're querying storage directly and short-circuting here (before using the fetcher)
+    // as joiners don't talk to joiners and in a network comprised only of joining nodes
+    // we would never move past the initial sync since we would wait on fetcher
+    // trying to query a peer for a trie but have no peers to query for the data.
     if let Ok(Some(_trie)) = ctx.effect_builder.get_trie_full(state_root_hash).await {
         return Ok(());
     }
