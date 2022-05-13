@@ -17,8 +17,6 @@ use casper_types::{
     ApiError, BlockTime, CLTyped, Key, PublicKey, URef, U512,
 };
 
-use num_rational::Ratio;
-
 pub const ARG_AMOUNT: &str = "amount";
 pub const ARG_TARGET: &str = "target";
 pub const ARG_ID: &str = "id";
@@ -325,11 +323,7 @@ fn get_distribution_amount_rate_limited() -> U512 {
         return remaining_requests;
     }
 
-    // could use a struct that represents a number of slots, when the interval is reached they an
-    // all be reset to be available, use bool.
-    //
-    // let distribution_amount = available_amount / U512::from(distributions_per_interval);
-    Ratio::new(available_amount, U512::from(distributions_per_interval)).to_integer()
+    available_amount / U512::from(distributions_per_interval)
 }
 
 fn reset_remaining_requests() {
