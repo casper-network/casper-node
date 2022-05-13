@@ -884,10 +884,16 @@ where
                 )?;
                 let input: Vec<u8> = self.bytes_from_mem(in_ptr, in_size as usize)?;
                 let digest = crypto::blake2b(&input);
-                if digest.len() != out_size as usize {
-                    let err_value = u32::from(api_error::ApiError::BufferTooSmall) as i32;
-                    return Ok(Some(RuntimeValue::I32(err_value)));
+
+                let result = if digest.len() != out_size as usize {
+                    Err(ApiError::BufferTooSmall)
+                } else {
+                    Ok(())
+                };
+                if result.is_err() {
+                    return Ok(Some(RuntimeValue::I32(api_error::i32_from(result))));
                 }
+
                 self.try_get_memory()?
                     .set(out_ptr, &digest)
                     .map_err(|error| Error::Interpreter(error.into()))?;
@@ -1031,9 +1037,13 @@ where
                     .map_err(|_| Error::AddressGenerationFailed)?
                     .create_address();
 
-                if next_address.len() != out_size as usize {
-                    let err_value = u32::from(api_error::ApiError::BufferTooSmall) as i32;
-                    return Ok(Some(RuntimeValue::I32(err_value)));
+                let result = if next_address.len() != out_size as usize {
+                    Err(ApiError::BufferTooSmall)
+                } else {
+                    Ok(())
+                };
+                if result.is_err() {
+                    return Ok(Some(RuntimeValue::I32(api_error::i32_from(result))));
                 }
 
                 self.try_get_memory()?
