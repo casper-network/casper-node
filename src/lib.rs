@@ -1,10 +1,12 @@
 pub mod chunked;
 pub mod error;
 pub mod length_prefixed;
+pub mod mux;
 
 use bytes::Buf;
 
 /// A frame for stack allocated data.
+#[derive(Debug)]
 pub struct ImmediateFrame<A> {
     /// How much of the frame has been read.
     pos: usize,
