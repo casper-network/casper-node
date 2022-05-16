@@ -197,6 +197,28 @@ impl<C: Context> Round<C> {
             Content::Vote(vote) => self.votes[vote][validator_idx].is_some(),
         }
     }
+
+    /// Removes all echoes, `true` votes and the proposal: This round was skipped and will never
+    /// become finalized.
+    pub(super) fn prune_skipped(&mut self) {
+        self.proposal = None;
+        self.outcome.quorum_echoes = None;
+        self.outcome.accepted_proposal_height = None;
+        self.echoes.clear();
+        for maybe_vote in self.votes.get_mut(&true).unwrap().iter_mut() {
+            *maybe_vote = None;
+        }
+    }
+
+    /// Removes all `false` votes: This round was finalized and can never be skipped.
+    pub(super) fn prune_finalized(&mut self) {
+        for maybe_vote in self.votes.get_mut(&false).unwrap().iter_mut() {
+            *maybe_vote = None;
+        }
+        if self.outcome.quorum_votes == Some(false) {
+            self.outcome.quorum_votes = None;
+        }
+    }
 }
 
 /// Indicates the outcome of a given round.

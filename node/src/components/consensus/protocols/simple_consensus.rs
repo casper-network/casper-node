@@ -135,7 +135,7 @@ where
     /// When an era has already completed, sometimes we still need to keep
     /// it around to provide evidence for equivocation in previous eras.
     evidence_only: bool,
-    /// Proposals which have not yet had their parent accepted yet.
+    /// Proposals which have not yet had their parent accepted, by parent round ID.
     proposals_waiting_for_parent:
         HashMap<RoundId, HashMap<Proposal<C>, HashSet<(RoundId, NodeId)>>>,
     /// Incoming blocks we can't add yet because we are waiting for validation.
@@ -1053,6 +1053,10 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             // consider them inactive could become accepted now.
             self.mark_dirty(self.first_non_finalized_round_id);
         }
+        if signed_msg.round_id < self.first_non_finalized_round_id {
+            debug!(?signed_msg, "dropping message from decided round");
+            return;
+        }
         let SignedMessage {
             round_id,
             instance_id: _,
@@ -1337,6 +1341,10 @@ impl<C: Context + 'static> SimpleConsensus<C> {
             // Output the parent first if it isn't already finalized.
             outcomes.extend(self.finalize_round(parent_round_id));
         }
+        for prune_round_id in self.first_non_finalized_round_id..round_id {
+            self.round_mut(prune_round_id).prune_skipped();
+        }
+        self.round_mut(round_id).prune_finalized();
         self.first_non_finalized_round_id = round_id.saturating_add(1);
         let value = if let Some(block) = proposal.maybe_block.clone() {
             block
