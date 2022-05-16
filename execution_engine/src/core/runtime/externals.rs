@@ -1023,16 +1023,16 @@ where
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
 
-            FunctionIndex::NextAddress => {
+            FunctionIndex::RandomBytes => {
                 let (out_ptr, out_size) = Args::parse(args)?;
                 self.charge_host_function_call(
-                    &host_function_costs.next_address,
+                    &host_function_costs.random_bytes,
                     [out_ptr, out_size],
                 )?;
 
-                let next_address = self.context.new_hash_address()?;
+                let random_bytes = self.context.random_bytes()?;
 
-                let result = if next_address.len() != out_size as usize {
+                let result = if random_bytes.len() != out_size as usize {
                     Err(ApiError::BufferTooSmall)
                 } else {
                     Ok(())
@@ -1042,7 +1042,7 @@ where
                 }
 
                 self.try_get_memory()?
-                    .set(out_ptr, &next_address)
+                    .set(out_ptr, &random_bytes)
                     .map_err(|error| Error::Interpreter(error.into()))?;
 
                 Ok(Some(RuntimeValue::I32(0)))

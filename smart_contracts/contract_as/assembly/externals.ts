@@ -227,8 +227,8 @@ export declare function load_authorization_keys(
     result_size_ptr: usize,
 ): i32;
 /** @hidden */
-@external("env", "casper_next_address")
-export declare function casper_next_address(
+@external("env", "casper_random_bytes")
+export declare function casper_random_bytes(
     out_ptr: usize,
     out_size: usize,
 ): i32;

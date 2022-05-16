@@ -1,11 +1,11 @@
 [package]
-name = "next-address"
+name = "random-bytes"
 version = "0.1.0"
 authors = ["Rafał Chabowski <rafal@casperlabs.io>"]
 edition = "2018"
 
 [[bin]]
-name = "next_address"
+name = "random_bytes"
 path = "src/main.rs"
 bench = false
 doctest = false

@@ -24,7 +24,7 @@ fn standard_payment(amount: U512) {
     system::transfer_from_purse_to_purse(main_purse, payment_purse, amount, None).unwrap_or_revert()
 }
 
-const NEXT_ADDRESS_PAYMENT_RESULT: &str = "next_address_payment_result";
+const RANDOM_BYTES_PAYMENT_RESULT: &str = "random_bytes_payment_result";
 
 #[no_mangle]
 pub extern "C" fn call() {
@@ -36,9 +36,9 @@ pub extern "C" fn call() {
     );
     let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
 
-    let next_address = runtime::next_address();
-    let uref = storage::new_uref(next_address);
-    runtime::put_key(NEXT_ADDRESS_PAYMENT_RESULT, uref.into());
+    let random_bytes = runtime::random_bytes();
+    let uref = storage::new_uref(random_bytes);
+    runtime::put_key(RANDOM_BYTES_PAYMENT_RESULT, uref.into());
 
     standard_payment(amount);
 }

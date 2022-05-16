@@ -1,14 +1,14 @@
 import * as externals from "./externals";
 import {Error} from "./error";
 
-const ADDRESS_LENGTH: i32 = 32;
 const BLAKE2B_DIGEST_LENGTH: i32 = 32;
+const RANDOM_BYTES_COUNT: usize = 32;
 
 /**
  * Performs a blake2b hash using a host function.
  * @param data Input bytes
  */
- export function blake2b(data: Array<u8>): Uint8Array {
+export function blake2b(data: Array<u8>): Uint8Array {
     let hashBytes = new Uint8Array(BLAKE2B_DIGEST_LENGTH);
     const ret = externals.casper_blake2b(data.dataStart, data.length, hashBytes.dataStart, hashBytes.length);
     let error = Error.fromResult(ret);
@@ -19,14 +19,14 @@ const BLAKE2B_DIGEST_LENGTH: i32 = 32;
 }
 
 /**
- * Returns a 32-bytes long new address.
+ * Returns 32 pseudo random bytes.
  */
-export function nextAddress(): Uint8Array {
-    let addressBytes = new Uint8Array(ADDRESS_LENGTH);
-    const ret = externals.casper_next_address(addressBytes.dataStart, addressBytes.length);
+export function randomBytes(): Uint8Array {
+    let randomBytes = new Uint8Array(RANDOM_BYTES_COUNT);
+    const ret = externals.casper_random_bytes(randomBytes.dataStart, randomBytes.length);
     let error = Error.fromResult(ret);
     if (error != null) {
         error.revert();
     }
-    return addressBytes;
+    return randomBytes;
 }

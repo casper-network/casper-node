@@ -233,9 +233,9 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
                 Signature::new(&[ValueType::I32; 2][..], Some(ValueType::I32)),
                 FunctionIndex::LoadAuthorizationKeys.into(),
             ),
-            "casper_next_address" => FuncInstance::alloc_host(
+            "casper_random_bytes" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 2][..], Some(ValueType::I32)),
-                FunctionIndex::NextAddress.into(),
+                FunctionIndex::RandomBytes.into(),
             ),
             _ => {
                 return Err(InterpreterError::Function(format!(

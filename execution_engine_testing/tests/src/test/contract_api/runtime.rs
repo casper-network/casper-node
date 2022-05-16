@@ -6,7 +6,7 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::core::ADDRESS_LENGTH;
+use casper_execution_engine::core::{runtime_context::RANDOM_BYTES_COUNT, ADDRESS_LENGTH};
 use casper_types::{crypto, runtime_args, RuntimeArgs, BLAKE2B_DIGEST_LENGTH};
 
 const ARG_BYTES: &str = "bytes";
@@ -15,11 +15,11 @@ const ARG_AMOUNT: &str = "amount";
 const BLAKE2B_WASM: &str = "blake2b.wasm";
 const HASH_RESULT: &str = "hash_result";
 
-const NEXT_ADDRESS_WASM: &str = "next_address.wasm";
-const NEXT_ADDRESS_RESULT: &str = "next_address_result";
+const RANDOM_BYTES_WASM: &str = "random_bytes.wasm";
+const RANDOM_BYTES_RESULT: &str = "random_bytes_result";
 
-const NEXT_ADDRESS_PAYMENT_WASM: &str = "next_address_payment.wasm";
-const NEXT_ADDRESS_PAYMENT_RESULT: &str = "next_address_payment_result";
+const RANDOM_BYTES_PAYMENT_WASM: &str = "random_bytes_payment.wasm";
+const RANDOM_BYTES_PAYMENT_RESULT: &str = "random_bytes_payment_result";
 
 fn get_value<const COUNT: usize>(builder: &InMemoryWasmTestBuilder, result: &str) -> [u8; COUNT] {
     let account = builder
@@ -40,7 +40,7 @@ fn get_value<const COUNT: usize>(builder: &InMemoryWasmTestBuilder, result: &str
 
 #[ignore]
 #[test]
-fn should_return_different_first_addresses_on_different_phases() {
+fn should_return_different_random_bytes_on_different_phases() {
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -50,9 +50,9 @@ fn should_return_different_first_addresses_on_different_phases() {
         let address = *DEFAULT_ACCOUNT_ADDR;
         let deploy = DeployItemBuilder::new()
             .with_address(address)
-            .with_session_code(NEXT_ADDRESS_WASM, runtime_args! {})
+            .with_session_code(RANDOM_BYTES_WASM, runtime_args! {})
             .with_payment_code(
-                NEXT_ADDRESS_PAYMENT_WASM,
+                RANDOM_BYTES_PAYMENT_WASM,
                 runtime_args! {
                     ARG_AMOUNT => *DEFAULT_PAYMENT
                 },
@@ -65,16 +65,16 @@ fn should_return_different_first_addresses_on_different_phases() {
 
     builder.exec(execute_request).commit().expect_success();
 
-    let session_generated_address = get_value::<ADDRESS_LENGTH>(&builder, NEXT_ADDRESS_RESULT);
-    let payment_generated_address =
-        get_value::<ADDRESS_LENGTH>(&builder, NEXT_ADDRESS_PAYMENT_RESULT);
+    let session_generated_bytes = get_value::<RANDOM_BYTES_COUNT>(&builder, RANDOM_BYTES_RESULT);
+    let payment_generated_bytes =
+        get_value::<ADDRESS_LENGTH>(&builder, RANDOM_BYTES_PAYMENT_RESULT);
 
-    assert_ne!(session_generated_address, payment_generated_address)
+    assert_ne!(session_generated_bytes, payment_generated_bytes)
 }
 
 #[ignore]
 #[test]
-fn should_return_different_next_addresses_on_each_call() {
+fn should_return_different_random_bytes_on_each_call() {
     const RUNS: usize = 10;
 
     let mut builder = InMemoryWasmTestBuilder::default();
@@ -85,14 +85,14 @@ fn should_return_different_next_addresses_on_each_call() {
         .map(|_| {
             let exec_request = ExecuteRequestBuilder::standard(
                 *DEFAULT_ACCOUNT_ADDR,
-                NEXT_ADDRESS_WASM,
+                RANDOM_BYTES_WASM,
                 runtime_args! {},
             )
             .build();
 
             builder.exec(exec_request).commit().expect_success();
 
-            get_value::<ADDRESS_LENGTH>(&builder, NEXT_ADDRESS_RESULT)
+            get_value::<RANDOM_BYTES_COUNT>(&builder, RANDOM_BYTES_RESULT)
         })
         .collect();
 

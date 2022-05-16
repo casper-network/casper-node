@@ -4,7 +4,7 @@
 use casper_contract::contract_api::{runtime, storage};
 use casper_types::Phase;
 
-const NEXT_ADDRESS_RESULT: &str = "next_address_result";
+const RANDOM_BYTES_RESULT: &str = "random_bytes_result";
 
 #[no_mangle]
 pub extern "C" fn call() {
@@ -15,7 +15,7 @@ pub extern "C" fn call() {
         "should not be invoked in payment phase"
     );
 
-    let next_address = runtime::next_address();
-    let uref = storage::new_uref(next_address);
-    runtime::put_key(NEXT_ADDRESS_RESULT, uref.into())
+    let random_bytes = runtime::random_bytes();
+    let uref = storage::new_uref(random_bytes);
+    runtime::put_key(RANDOM_BYTES_RESULT, uref.into())
 }

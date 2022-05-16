@@ -14,7 +14,7 @@ All notable changes to this project will be documented in this file.  The format
 ## [Unreleased]
 
 ### Added
-* Add `casper_next_address` function.
+* Add `casper_random_bytes` function.
 
 
 ## 1.4.4

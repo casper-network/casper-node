@@ -285,7 +285,7 @@ pub struct HostFunctionCosts {
     /// Cost of calling the `blake2b` host function.
     pub blake2b: HostFunction<[Cost; 4]>,
     /// Cost of calling the `next address` host function.
-    pub next_address: HostFunction<[Cost; 2]>,
+    pub random_bytes: HostFunction<[Cost; 2]>,
 }
 
 impl Default for HostFunctionCosts {
@@ -403,7 +403,7 @@ impl Default for HostFunctionCosts {
                 [NOT_USED, DEFAULT_PRINT_TEXT_SIZE_WEIGHT],
             ),
             blake2b: HostFunction::default(),
-            next_address: HostFunction::default(),
+            random_bytes: HostFunction::default(),
         }
     }
 }
@@ -453,7 +453,7 @@ impl ToBytes for HostFunctionCosts {
         ret.append(&mut self.remove_contract_user_group_urefs.to_bytes()?);
         ret.append(&mut self.print.to_bytes()?);
         ret.append(&mut self.blake2b.to_bytes()?);
-        ret.append(&mut self.next_address.to_bytes()?);
+        ret.append(&mut self.random_bytes.to_bytes()?);
         Ok(ret)
     }
 
@@ -500,7 +500,7 @@ impl ToBytes for HostFunctionCosts {
             + self.remove_contract_user_group_urefs.serialized_length()
             + self.print.serialized_length()
             + self.blake2b.serialized_length()
-            + self.next_address.serialized_length()
+            + self.random_bytes.serialized_length()
     }
 }
 
@@ -548,7 +548,7 @@ impl FromBytes for HostFunctionCosts {
         let (remove_contract_user_group_urefs, rem) = FromBytes::from_bytes(rem)?;
         let (print, rem) = FromBytes::from_bytes(rem)?;
         let (blake2b, rem) = FromBytes::from_bytes(rem)?;
-        let (next_address, rem) = FromBytes::from_bytes(rem)?;
+        let (random_bytes, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             HostFunctionCosts {
                 read_value,
@@ -593,7 +593,7 @@ impl FromBytes for HostFunctionCosts {
                 remove_contract_user_group_urefs,
                 print,
                 blake2b,
-                next_address,
+                random_bytes,
             },
             rem,
         ))
@@ -645,7 +645,7 @@ impl Distribution<HostFunctionCosts> for Standard {
             remove_contract_user_group_urefs: rng.gen(),
             print: rng.gen(),
             blake2b: rng.gen(),
-            next_address: rng.gen(),
+            random_bytes: rng.gen(),
         }
     }
 }
@@ -705,7 +705,7 @@ pub mod gens {
             remove_contract_user_group_urefs in host_function_cost_arb(),
             print in host_function_cost_arb(),
             blake2b in host_function_cost_arb(),
-            next_address in host_function_cost_arb(),
+            random_bytes in host_function_cost_arb(),
         ) -> HostFunctionCosts {
             HostFunctionCosts {
                 read_value,
@@ -750,7 +750,7 @@ pub mod gens {
                 remove_contract_user_group_urefs,
                 print,
                 blake2b,
-                next_address,
+                random_bytes,
             }
         }
     }
