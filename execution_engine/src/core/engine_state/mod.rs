@@ -143,7 +143,7 @@ impl EngineState<DbGlobalState> {
 
         if !root_migration_state.is_complete() {
             // was there a previous migration that had been interrupted?
-            let force = root_migration_state.is_incomplete();
+            let force = root_migration_state.is_partial();
 
             // mark that we're starting the migration
             self.state

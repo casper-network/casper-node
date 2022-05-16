@@ -147,22 +147,22 @@ impl Store<Digest, Trie<Key, StoredValue>> for ScratchTrieStore {
 
 /// Represents the state of a migration of a state root from lmdb to rocksdb.
 pub enum RootMigration {
-    /// Has the migration been left incomplete
-    NotMigrated,
     /// Has the migration been not yet been started or completed
-    Incomplete,
+    NotStarted,
+    /// Has the migration been left incomplete
+    Partial,
     /// Has the migration been completed
     Complete,
 }
 
 impl RootMigration {
-    /// Has the migration been left incomplete
-    pub fn is_incomplete(&self) -> bool {
-        matches!(self, RootMigration::Incomplete)
-    }
     /// Has the migration been not yet been started or completed
-    pub fn is_not_migrated(&self) -> bool {
-        matches!(self, RootMigration::NotMigrated)
+    pub fn is_not_started(&self) -> bool {
+        matches!(self, RootMigration::NotStarted)
+    }
+    /// Has the migration been partially completed
+    pub fn is_partial(&self) -> bool {
+        matches!(self, RootMigration::Partial)
     }
     /// Has the migration been completed
     pub fn is_complete(&self) -> bool {
@@ -289,8 +289,8 @@ impl RocksDbStore {
         let migration_state = self.db.get_cf(&lmdb_migration_column, state_root)?;
         Ok(match migration_state {
             Some(state) if state.is_empty() => RootMigration::Complete,
-            Some(state) if state.get(0) == Some(&1u8) => RootMigration::Incomplete,
-            _ => RootMigration::NotMigrated,
+            Some(state) if state.get(0) == Some(&1u8) => RootMigration::Partial,
+            _ => RootMigration::NotStarted,
         })
     }
 

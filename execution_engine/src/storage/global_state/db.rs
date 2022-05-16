@@ -236,11 +236,6 @@ impl DbGlobalState {
         })
     }
 
-    /// Creates an in-memory cache for changes written.
-    pub fn create_scratch(&self) -> ScratchGlobalState {
-        ScratchGlobalState::new(self.clone())
-    }
-
     /// Write stored values to RocksDb.
     pub fn put_stored_values(
         &self,
@@ -262,6 +257,11 @@ impl DbGlobalState {
     /// Gets a scratch trie store.
     fn get_scratch_store(&self) -> ScratchTrieStore {
         ScratchTrieStore::new(self.rocksdb_store.clone())
+    }
+
+    /// Creates an in-memory cache for changes written.
+    pub fn create_scratch(&self) -> ScratchGlobalState {
+        ScratchGlobalState::new(self.clone())
     }
 }
 
