@@ -26,11 +26,7 @@ pub fn frame_add_length_prefix<F: Buf>(frame: F) -> Result<LengthPrefixedFrame<F
 
 #[cfg(test)]
 mod tests {
-    use std::io::Read;
-
-    use bytes::Buf;
-
-    use crate::length_prefixed::Error;
+    use crate::{length_prefixed::Error, tests::collect_buf};
 
     use super::frame_add_length_prefix;
 
@@ -39,12 +35,7 @@ mod tests {
         let frame = &b"abcdefg"[..];
         let prefixed = frame_add_length_prefix(frame).expect("prefixing failed");
 
-        let mut output = Vec::new();
-        prefixed
-            .reader()
-            .read_to_end(&mut output)
-            .expect("failed to read");
-
+        let output = collect_buf(prefixed);
         assert_eq!(output, b"\x07\x00abcdefg");
     }
 

@@ -1,132 +1,86 @@
-// use std::{
-//     pin::Pin,
-//     task::{Context, Poll},
-// };
+use bytes::{Buf, Bytes};
+use thiserror::Error;
 
-// use bytes::{Buf, Bytes};
-// use futures::{future::BoxFuture, Future, FutureExt};
-// use pin_project::pin_project;
+use crate::ImmediateFrame;
 
-// use crate::{FrameSink, FrameSinkError, ImmediateFrame};
+pub type SingleChunk = bytes::buf::Chain<ImmediateFrame<[u8; 1]>, Bytes>;
 
-// // use std::marker::PhantomData;
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("file of {} be chunked into {chunk_size} byte chunks, exceeds max")]
+    FrameTooLarge {
+        chunk_size: usize,
+        actual_size: usize,
+        max_size: usize,
+    },
+}
 
-// // use bytes::{Buf, Bytes};
+/// Chunks a frame into ready-to-send chunks.
+///
+/// # Notes
+///
+/// Internally, data is copied into chunks by using `Buf::copy_to_bytes`. It is advisable to use a
+/// `B` that has an efficient implementation for this that avoids copies, like `Bytes` itself.
+pub fn chunk_frame<B: Buf>(
+    mut frame: B,
+    chunk_size: usize,
+) -> Result<impl Iterator<Item = SingleChunk>, Error> {
+    let frame_size = frame.remaining();
+    let num_frames = (frame_size + chunk_size - 1) / chunk_size;
 
-// // use crate::{FrameSink, GenericBufSender};
+    let chunk_id_ceil: u8 = num_frames.try_into().map_err(|_err| Error::FrameTooLarge {
+        chunk_size,
+        actual_size: frame_size,
+        max_size: u8::MAX as usize * frame_size,
+    })?;
 
-// // #[derive(Debug)]
-// // pub struct Chunker<S, F> {
-// //     frame_sink: S,
-// //     _frame_phantom: PhantomData<F>,
-// // }
+    Ok((0..num_frames).into_iter().map(move |n| {
+        let chunk_id = if n == 0 {
+            chunk_id_ceil
+        } else {
+            // Will never overflow, since `chunk_id_ceil` already fits into a `u8`.
+            n as u8
+        };
 
-// trait Foo {
-//     type Fut: Future<Output = usize>;
+        let next_chunk_size = chunk_size.min(frame.remaining());
+        let chunk_data = frame.copy_to_bytes(next_chunk_size);
+        ImmediateFrame::from(chunk_id).chain(chunk_data)
+    }))
+}
 
-//     fn mk_fut(self) -> Self::Fut;
-// }
+#[cfg(test)]
+mod tests {
+    use crate::tests::collect_buf;
 
-// type SingleChunk = bytes::buf::Chain<ImmediateFrame<[u8; 1]>, Bytes>;
+    use super::chunk_frame;
 
-// /// TODO: Turn into non-anonymous future with zero allocations.
-// async fn x<B, S>(frame: B, chunk_size: usize, mut sink: S) -> Result<(), FrameSinkError>
-// where
-//     B: Buf,
-//     for<'a> &'a mut S: FrameSink<SingleChunk>,
-// {
-//     for chunk in chunk_frame(frame, chunk_size) {
-//         sink.send_frame(chunk).await?;
-//     }
-//     Ok(())
-// }
+    #[test]
+    fn basic_chunking_works() {
+        let frame = b"01234567890abcdefghijklmno";
 
-// /// Chunks a frame into ready-to-send chunks.
-// ///
-// /// # Notes
-// ///
-// /// Internally, data is copied into chunks by using `Buf::copy_to_bytes`. It is advisable to use a
-// /// `B` that has an efficient implementation for this that avoids copies, like `Bytes` itself.
-// fn chunk_frame<B: Buf>(mut frame: B, chunk_size: usize) -> impl Iterator<Item = SingleChunk> {
-//     let num_frames = (frame.remaining() + chunk_size - 1) / chunk_size;
+        let chunks: Vec<_> = chunk_frame(&frame[..], 7)
+            .expect("chunking failed")
+            .map(collect_buf)
+            .collect();
 
-//     let chunk_id_ceil: u8 = num_frames.try_into().unwrap();
+        assert_eq!(
+            chunks,
+            vec![
+                b"\x040123456".to_vec(),
+                b"\x017890abc".to_vec(),
+                b"\x02defghij".to_vec(),
+                b"\x03klmno".to_vec(),
+            ]
+        );
+    }
 
-//     (0..num_frames).into_iter().map(move |n| {
-//         let chunk_id = if n == 0 {
-//             chunk_id_ceil
-//         } else {
-//             // Will never overflow, since `chunk_id_ceil` already fits into a `u8`.
-//             n as u8
-//         };
+    #[test]
+    fn chunking_with_maximum_size_works() {
+        todo!()
+    }
 
-//         let chunk_data = frame.copy_to_bytes(chunk_size);
-//         ImmediateFrame::from(chunk_id).chain(chunk_data)
-//     })
-// }
-
-// #[pin_project]
-// struct ChunkSender<S> {
-//     chunks: Box<dyn Iterator<Item = SingleChunk>>,
-//     chunk_in_progress: Option<Box<dyn Future<Output = Result<S, FrameSinkError>> + Send>>,
-//     sink: Option<S>,
-// }
-
-// impl<S> Future for ChunkSender<S>
-// where
-//     S: FrameSink<SingleChunk>,
-// {
-//     type Output = Result<(), FrameSinkError>;
-
-//     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-//         match self.chunks.next() {
-//             Some(current_chunk) => {
-//                 let sink = self.sink.take().unwrap(); // TODO
-
-//                 let mut fut: Pin<
-//                     Box<dyn Future<Output = Result<(), FrameSinkError>> + Send + Unpin>,
-//                 > = sink.send_frame(current_chunk).boxed();
-
-//                 // TODO: Simplify?
-//                 let mut pinned_fut = Pin::new(&mut fut);
-//                 match pinned_fut.poll(cx) {
-//                     Poll::Ready(_) => {
-//                         todo!()
-//                     }
-//                     Poll::Pending => {
-//                         // Store the future for future polling.
-//                         self.chunk_in_progress = Some(Pin::into_inner(fut));
-
-//                         // We need to wait to make progress.
-//                         Poll::Pending
-//                     }
-//                 }
-//             }
-//             None => {
-//                 // We're all done sending.
-//                 Poll::Ready(Ok(()))
-//             }
-//         }
-//     }
-// }
-// // END NEW
-
-// // // TODO: Use special single-byte prefix type.
-// // type SingleChunk<F = bytes::buf::Chain<Bytes, F>;
-// // struct SingleChunk {
-
-// // }
-
-// // impl<'a, S, F> FrameSink<F> for &'a mut Chunker<S, F>
-// // where
-// //     F: Buf + Send,
-// // {
-// //     type SendFrameFut = GenericBufSender<'a, ChunkedFrames<F>, W>;
-
-// //     fn send_frame(self, frame: F) -> Self::SendFrameFut {
-// //         todo!()
-// //         // let length = frame.remaining() as u64; // TODO: Try into + handle error.
-// //         // let length_prefixed_frame = Bytes::copy_from_slice(&length.to_le_bytes()).chain(frame);
-// //         // GenericBufSender::new(length_prefixed_frame, &mut self.writer)
-// //     }
-// // }
+    #[test]
+    fn chunking_with_too_large_data_fails() {
+        todo!()
+    }
+}
