@@ -151,18 +151,14 @@ pub(crate) trait ItemFetcher<T: Item + 'static> {
         id: T::Id,
         peer: NodeId,
     ) -> Effects<Event<T>> {
+        let peer_timeout = self.peer_timeout();
         match Message::new_get_request::<T>(&id) {
-            Ok(message) => {
-                let mut effects = effect_builder.send_message(peer, message).ignore();
+            Ok(message) => async move {
+                effect_builder.send_message(peer, message).await;
 
-                effects.extend(
-                    effect_builder
-                        .set_timeout(self.peer_timeout())
-                        .event(move |_| Event::TimeoutPeer { id, peer }),
-                );
-
-                effects
+                effect_builder.set_timeout(peer_timeout).await
             }
+            .event(move |_| Event::TimeoutPeer { id, peer }),
             Err(error) => {
                 error!(
                     "failed to construct get request for peer {}: {}",

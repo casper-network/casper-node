@@ -209,7 +209,10 @@ where
     JoinerEvent: From<FetcherRequest<T>>,
 {
     loop {
-        let mut new_peer_list = ctx.effect_builder.get_fully_connected_peers().await;
+        let mut new_peer_list = ctx
+            .effect_builder
+            .get_fully_connected_non_joiner_peers()
+            .await;
         ctx.filter_bad_peers(&mut new_peer_list);
 
         for peer in new_peer_list {
@@ -348,6 +351,19 @@ async fn fetch_and_store_block_header(
             bogus_block_hash: block_hash,
         });
     }
+
+    // We're querying storage directly and short-circuting here (before using the fetcher)
+    // as joiners don't talk to joiners and in a network comprised only of joining nodes
+    // we would never move past the initial sync since we would wait on fetcher
+    // trying to query a peer for block but have no peers to query for the data.
+    if let Some(stored_block_header) = ctx
+        .effect_builder
+        .get_block_header_from_storage(block_hash, false)
+        .await
+    {
+        return Ok(Box::new(stored_block_header));
+    }
+
     let fetched_block_header = fetch_retry_forever::<BlockHeader>(ctx, block_hash).await?;
     match fetched_block_header {
         FetchedData::FromStorage { item: block_header } => Ok(block_header),
@@ -367,6 +383,18 @@ async fn fetch_and_store_deploy(
     deploy_or_transfer_hash: DeployHash,
     ctx: &ChainSyncContext<'_>,
 ) -> Result<Box<Deploy>, FetcherError<Deploy>> {
+    // We're querying storage directly and short-circuting here (before using the fetcher)
+    // as joiners don't talk to joiners and in a network comprised only of joining nodes
+    // we would never move past the initial sync since we would wait on fetcher
+    // trying to query a peer for a deploy but have no peers to query for the data.
+    if let Some((stored_deploy, _)) = ctx
+        .effect_builder
+        .get_deploy_and_metadata_from_storage(deploy_or_transfer_hash)
+        .await
+    {
+        return Ok(Box::new(stored_deploy.discard_finalized_approvals()));
+    }
+
     let fetched_deploy = fetch_retry_forever::<Deploy>(ctx, deploy_or_transfer_hash).await?;
     Ok(match fetched_deploy {
         FetchedData::FromStorage { item: deploy } => deploy,
@@ -518,7 +546,10 @@ where
     // fetch the data.
     let mut peers = vec![];
     for _ in 0..ctx.config.max_retries_while_not_connected() {
-        peers = ctx.effect_builder.get_fully_connected_peers().await;
+        peers = ctx
+            .effect_builder
+            .get_fully_connected_non_joiner_peers()
+            .await;
         if !peers.is_empty() {
             break;
         }
@@ -692,6 +723,14 @@ async fn sync_trie_store_worker(
 
 /// Synchronizes the trie store under a given state root hash.
 async fn sync_trie_store(state_root_hash: Digest, ctx: &ChainSyncContext<'_>) -> Result<(), Error> {
+    // We're querying storage directly and short-circuting here (before using the fetcher)
+    // as joiners don't talk to joiners and in a network comprised only of joining nodes
+    // we would never move past the initial sync since we would wait on fetcher
+    // trying to query a peer for a trie but have no peers to query for the data.
+    if let Ok(Some(_trie)) = ctx.effect_builder.get_trie_full(state_root_hash).await {
+        return Ok(());
+    }
+
     info!(?state_root_hash, "syncing trie store");
     let start_instant = Timestamp::now();
 
@@ -703,7 +742,7 @@ async fn sync_trie_store(state_root_hash: Digest, ctx: &ChainSyncContext<'_>) ->
     let peer_count = cmp::max(
         1,
         ctx.effect_builder
-            .get_fully_connected_peers()
+            .get_fully_connected_non_joiner_peers()
             .await
             .len()
             .saturating_sub(
@@ -1346,7 +1385,7 @@ async fn execute_blocks(
             let mut success = false;
             for peer in ctx
                 .effect_builder
-                .get_fully_connected_peers()
+                .get_fully_connected_non_joiner_peers()
                 .await
                 .into_iter()
                 .take(APPROVAL_FETCH_RETRIES)
@@ -1436,7 +1475,7 @@ async fn fetch_and_store_deploys(
     let peer_count = cmp::max(
         1,
         ctx.effect_builder
-            .get_fully_connected_peers()
+            .get_fully_connected_non_joiner_peers()
             .await
             .len()
             .saturating_sub(

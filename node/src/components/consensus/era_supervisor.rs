@@ -858,7 +858,7 @@ impl EraSupervisor {
                 async move {
                     let peers = effect_builder.get_fully_connected_peers().await;
                     if let Some(to) = peers.into_iter().next() {
-                        effect_builder.send_message(to, message.into()).await;
+                        effect_builder.enqueue_message(to, message.into()).await;
                     }
                 }
                 .ignore()
