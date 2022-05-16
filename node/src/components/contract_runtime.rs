@@ -38,7 +38,7 @@ use casper_execution_engine::{
     },
 };
 use casper_hashing::Digest;
-use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion};
+use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion, Timestamp};
 
 use crate::{
     components::{contract_runtime::types::StepEffectAndUpcomingEraValidators, Component},
@@ -50,9 +50,7 @@ use crate::{
     },
     fatal,
     protocol::Message,
-    types::{
-        BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, FinalizedBlock, Timestamp,
-    },
+    types::{BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, FinalizedBlock},
     NodeRng,
 };
 pub(crate) use config::Config;
