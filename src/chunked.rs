@@ -7,9 +7,8 @@
 use std::num::NonZeroUsize;
 
 use bytes::{Buf, Bytes};
-use thiserror::Error;
 
-use crate::ImmediateFrame;
+use crate::{error::Error, ImmediateFrame};
 
 pub type SingleChunk = bytes::buf::Chain<ImmediateFrame<[u8; 1]>, Bytes>;
 
@@ -18,16 +17,6 @@ const MORE_CHUNKS: u8 = 0x00;
 
 /// Final chunk indicator.
 const FINAL_CHUNK: u8 = 0xFF;
-
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error("file of {} be chunked into {chunk_size} byte chunks, exceeds max")]
-    FrameTooLarge {
-        chunk_size: usize,
-        actual_size: usize,
-        max_size: usize,
-    },
-}
 
 /// Chunks a frame into ready-to-send chunks.
 ///

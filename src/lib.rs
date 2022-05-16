@@ -1,4 +1,5 @@
 pub mod chunked;
+pub mod error;
 pub mod length_prefixed;
 
 use bytes::Buf;
@@ -65,7 +66,10 @@ where
 pub(crate) mod tests {
     use std::io::Read;
 
-    use bytes::Buf;
+    use bytes::{Buf, Bytes};
+    use futures::{future, SinkExt};
+
+    use crate::length_prefixed::{frame_add_length_prefix, LengthPrefixedFrame};
 
     /// Collects everything inside a `Buf` into a `Vec`.
     pub fn collect_buf<B: Buf>(buf: B) -> Vec<u8> {
@@ -74,5 +78,29 @@ pub(crate) mod tests {
             .read_to_end(&mut vec)
             .expect("reading buf should never fail");
         vec
+    }
+
+    /// Test an "end-to-end" instance of the assembled pipeline for sending.
+    #[tokio::test]
+    async fn chunked_length_prefixed_sink() {
+        let base_sink: Vec<LengthPrefixedFrame<Bytes>> = Vec::new();
+
+        let mut length_prefixed_sink =
+            base_sink.with(|frame| future::ready(frame_add_length_prefix(frame)));
+
+        let sample_data = Bytes::from(&b"abcdef"[..]);
+
+        length_prefixed_sink
+            .send(sample_data)
+            .await
+            .expect("send failed");
+
+        let chunks: Vec<_> = length_prefixed_sink
+            .into_inner()
+            .into_iter()
+            .map(collect_buf)
+            .collect();
+
+        assert_eq!(chunks, vec![b"\x06\x00abcdef".to_vec()])
     }
 }

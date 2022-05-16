@@ -3,23 +3,16 @@
 //! Prefixes frames with their length, which is hard coded at 16 bit little endian ints.
 
 use bytes::Buf;
-use thiserror::Error;
 
-use crate::ImmediateFrame;
-
-/// A frame prefix conversion error.
-#[derive(Debug, Error)]
-pub enum Error {
-    /// The frame's length cannot be represented with the prefix.
-    #[error("frame too long {actual}/{max}")]
-    FrameTooLong { actual: usize, max: usize },
-}
+use crate::{error::Error, ImmediateFrame};
 
 /// A frame that has had a length prefix added.
 pub type LengthPrefixedFrame<F> = bytes::buf::Chain<ImmediateFrame<[u8; 2]>, F>;
 
 /// Adds a length prefix to the given frame.
-pub fn frame_add_length_prefix<F: Buf>(frame: F) -> Result<LengthPrefixedFrame<F>, Error> {
+pub fn frame_add_length_prefix<F: Buf, E: std::error::Error>(
+    frame: F,
+) -> Result<LengthPrefixedFrame<F>, Error<E>> {
     let remaining = frame.remaining();
     let length: u16 = remaining.try_into().map_err(|_err| Error::FrameTooLong {
         actual: remaining,
@@ -30,14 +23,16 @@ pub fn frame_add_length_prefix<F: Buf>(frame: F) -> Result<LengthPrefixedFrame<F
 
 #[cfg(test)]
 mod tests {
-    use crate::{length_prefixed::Error, tests::collect_buf};
+    use std::convert::Infallible;
+
+    use crate::{error::Error, tests::collect_buf};
 
     use super::frame_add_length_prefix;
 
     #[test]
     fn length_prefixing_of_single_frame_works() {
         let frame = &b"abcdefg"[..];
-        let prefixed = frame_add_length_prefix(frame).expect("prefixing failed");
+        let prefixed = frame_add_length_prefix::<_, Infallible>(frame).expect("prefixing failed");
 
         let output = collect_buf(prefixed);
         assert_eq!(output, b"\x07\x00abcdefg");
@@ -46,7 +41,7 @@ mod tests {
     #[test]
     fn large_frames_reject() {
         let frame = [0; 1024 * 1024];
-        let result = frame_add_length_prefix(&frame[..]);
+        let result = frame_add_length_prefix::<_, Infallible>(&frame[..]);
 
         assert!(matches!(
             result,
