@@ -30,6 +30,8 @@ mod tests {
 
     use bytes::Buf;
 
+    use crate::length_prefixed::Error;
+
     use super::frame_add_length_prefix;
 
     #[test]
@@ -44,5 +46,17 @@ mod tests {
             .expect("failed to read");
 
         assert_eq!(output, b"\x07\x00abcdefg");
+    }
+
+    #[test]
+    fn large_frames_reject() {
+        let frame = [0; 1024 * 1024];
+        let result = frame_add_length_prefix(&frame[..]);
+
+        assert!(matches!(
+            result,
+            Err(Error::FrameTooLong { actual, max })
+                if actual == frame.len() && max == u16::MAX as usize
+        ))
     }
 }
