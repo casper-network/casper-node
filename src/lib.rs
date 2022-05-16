@@ -3,8 +3,11 @@ pub mod length_prefixed;
 
 use bytes::Buf;
 
+/// A frame for stack allocated data.
 pub struct ImmediateFrame<A> {
+    /// How much of the frame has been read.
     pos: usize,
+    /// The actual value contained.
     value: A,
 }
 
