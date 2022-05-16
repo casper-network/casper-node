@@ -1,5 +1,5 @@
-mod chunked;
-mod length_prefixed;
+pub mod chunked;
+pub mod length_prefixed;
 
 use bytes::Buf;
 

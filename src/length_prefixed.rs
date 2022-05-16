@@ -1,3 +1,7 @@
+//! Length prefixed chunking.
+//!
+//! Prefixes frames with their length, which is hard coded at 16 bit little endian ints.
+
 use bytes::Buf;
 use thiserror::Error;
 
