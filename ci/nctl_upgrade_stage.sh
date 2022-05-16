@@ -29,6 +29,7 @@ BIN_BUILD_DIR="$ROOT_DIR/target/release"
 WASM_BUILD_DIR="$ROOT_DIR/target/wasm32-unknown-unknown/release"
 CONFIG_DIR="$ROOT_DIR/resources/local"
 TEMP_STAGE_DIR='/tmp/nctl_upgrade_stage'
+NCTL_UPGRADE_CHAINSPECS="$ROOT_DIR/utils/nctl/sh/scenarios/chainspecs"
 
 # FILES
 BIN_ARRAY=(casper-node)
@@ -92,3 +93,8 @@ for i in "${CONFIG_ARRAY[@]}"; do
     fi
     echo ""
 done
+
+# Copy NCTL upgrade chainspecs
+pushd "$NCTL_UPGRADE_CHAINSPECS"
+cp upgrade* "$TEMP_STAGE_DIR"
+popd

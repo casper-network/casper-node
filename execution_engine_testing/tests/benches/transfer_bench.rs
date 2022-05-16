@@ -9,7 +9,7 @@ use tempfile::TempDir;
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::engine_state::{EngineConfig, ExecuteRequest};
 use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, URef, U512};
@@ -25,7 +25,6 @@ const TARGET_ADDR: AccountHash = AccountHash::new([127; 32]);
 const ARG_AMOUNT: &str = "amount";
 const ARG_ID: &str = "id";
 const ARG_ACCOUNTS: &str = "accounts";
-const ARG_SEED_AMOUNT: &str = "seed_amount";
 const ARG_TOTAL_PURSES: &str = "total_purses";
 const ARG_TARGET: &str = "target";
 const ARG_TARGET_PURSE: &str = "target_purse";
@@ -42,10 +41,11 @@ fn make_deploy_hash(i: u64) -> [u8; 32] {
 }
 
 fn bootstrap(data_dir: &Path, accounts: Vec<AccountHash>, amount: U512) -> LmdbWasmTestBuilder {
+    let seed_amount = amount * accounts.len();
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_CREATE_ACCOUNTS,
-        runtime_args! { ARG_ACCOUNTS => accounts, ARG_SEED_AMOUNT => amount },
+        runtime_args! { ARG_ACCOUNTS => accounts, ARG_AMOUNT => seed_amount },
     )
     .build();
 
@@ -54,7 +54,7 @@ fn bootstrap(data_dir: &Path, accounts: Vec<AccountHash>, amount: U512) -> LmdbW
     let mut builder = LmdbWasmTestBuilder::new_with_config(data_dir, engine_config);
 
     builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
+        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
         .expect_success()
         .commit();
@@ -68,10 +68,11 @@ fn create_purses(
     total_purses: u64,
     purse_amount: U512,
 ) -> Vec<URef> {
+    let seed_amount = purse_amount * total_purses;
     let exec_request = ExecuteRequestBuilder::standard(
         source,
         CONTRACT_CREATE_PURSES,
-        runtime_args! { ARG_TOTAL_PURSES => total_purses, ARG_SEED_AMOUNT => purse_amount },
+        runtime_args! { ARG_TOTAL_PURSES => total_purses, ARG_AMOUNT => seed_amount },
     )
     .build();
 

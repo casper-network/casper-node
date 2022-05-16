@@ -37,34 +37,15 @@ function main() {
     fi
 }
 
-# Pulls down all remotely staged files
-# from s3 bucket to NCTL remotes directiory.
+# Pulls down remotely staged file
+# from s3 bucket to NCTL remotes directory.
 function get_remotes() {
-    local VERSION_ARRAY
+    local CI_JSON_CONFIG_FILE
+    local PROTO_1
 
-    log "... downloading remote files and binaries"
-
-    if [ -z "$AWS_SECRET_ACCESS_KEY" ] || [ -z "$AWS_ACCESS_KEY_ID" ]; then
-        log "ERROR: AWS KEYS needed to run. Contact SRE."
-        exit 1
-    fi
-
-    VERSION_ARRAY=(
-                $(aws s3 ls s3://nctl.casperlabs.io/ | \
-                    awk '{ print $2 }' | \
-                    grep 'v\|rel' | \
-                    tr -d "[:alpha:]" | \
-                    tr -d '-' | \
-                    tr -d '/'
-                )
-    )
-
-    if [ -z "${VERSION_ARRAY[*]}" ]; then
-        log "ERROR: Version Array was blank. Exiting."
-        exit 1
-    fi
-
-    nctl-stage-set-remotes "${VERSION_ARRAY[*]}"
+    CI_JSON_CONFIG_FILE="$NCTL/ci/ci.json"
+    PROTO_1=$(jq -r '.nctl_upgrade_tests."protocol_1"' "$CI_JSON_CONFIG_FILE")
+    nctl-stage-set-remotes "$PROTO_1"
 }
 
 # Sets up settings.sh for CI test.
@@ -171,6 +152,9 @@ function start_upgrade_scenario_10() {
     local PATH_TO_STAGE
 
     PATH_TO_STAGE="$(get_path_to_stage 1)"
+
+    log "... downloading remote for 1.3.0"
+    nctl-stage-set-remotes "1.3.0"
 
     log "... tearing down old stages"
     nctl-stage-teardown

@@ -17,7 +17,8 @@ All notable changes to this project will be documented in this file.  The format
 * Add new `bytesrepr::Error::NotRepresentable` error variant that represents values that are not representable by the serialization format.
 * Add new `Key::ChainspecRegistry` key variant under which the `ChainspecRegistry` is written.
 * Add a new type `WithdrawPurses` which is meant to represent `UnbondingPurses` as they exist in current live networks.
-* Extend asymmetric key functionality, available via new feature "crypto-std".
+* Extend asymmetric key functionality, available via feature "std".
+* Provide `Timestamp` and `TimeDiff` types for time operations, with extended functionality available via feature "std".
 * Provide test-only functionality, in particular a seedable RNG `TestRng` which outputs its seed on test failure. Available via a new feature "testing".
 
 ### Changed

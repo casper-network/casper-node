@@ -8,8 +8,10 @@ use datasize::DataSize;
 use itertools::{Either, Itertools};
 use serde::{Deserialize, Serialize};
 
+use casper_types::{TimeDiff, Timestamp};
+
 use super::{BlockHeight, CachedState, DeployInfo, FinalizationQueue};
-use crate::types::{Approval, Block, DeployHash, TimeDiff, Timestamp};
+use crate::types::{Approval, Block, DeployHash};
 
 pub(crate) struct PruneResult {
     pub(crate) total_pruned: usize,

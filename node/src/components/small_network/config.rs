@@ -1,11 +1,9 @@
 #[cfg(test)]
 use std::net::{Ipv4Addr, SocketAddr};
 
-use casper_types::ProtocolVersion;
+use casper_types::{ProtocolVersion, TimeDiff};
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
-
-use crate::types::TimeDiff;
 
 use super::EstimatorWeights;
 
@@ -50,6 +48,7 @@ impl Default for Config {
             tarpit_version_threshold: None,
             tarpit_duration: TimeDiff::from_seconds(600),
             tarpit_chance: 0.2,
+            blocklist_retain_duration: TimeDiff::from_seconds(600),
         }
     }
 }
@@ -91,6 +90,8 @@ pub struct Config {
     pub tarpit_duration: TimeDiff,
     /// The chance, expressed as a number between 0.0 and 1.0, of triggering the tarpit.
     pub tarpit_chance: f32,
+    /// Duration peers are kept on the block list, before being redeemed.
+    pub blocklist_retain_duration: TimeDiff,
 }
 
 #[cfg(test)]

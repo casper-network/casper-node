@@ -4,7 +4,6 @@
     not(any(
         feature = "json-schema",
         feature = "datasize",
-        feature = "crypto-std",
         feature = "std",
         feature = "testing",
         test,
@@ -36,7 +35,7 @@ pub mod crypto;
 mod deploy_info;
 mod era_id;
 mod execution_result;
-#[cfg(any(feature = "crypto-std", test))]
+#[cfg(any(feature = "std", test))]
 pub mod file_utils;
 mod gas;
 #[cfg(any(feature = "testing", test))]
@@ -54,6 +53,7 @@ pub mod system;
 mod tagged;
 #[cfg(any(feature = "testing", test))]
 pub mod testing;
+mod timestamp;
 mod transfer;
 mod transfer_result;
 mod uint;
@@ -95,6 +95,7 @@ pub use runtime_args::{NamedArg, RuntimeArgs};
 pub use semver::{ParseSemVerError, SemVer, SEM_VER_SERIALIZED_LENGTH};
 pub use stored_value::{StoredValue, TypeMismatch as StoredValueTypeMismatch};
 pub use tagged::Tagged;
+pub use timestamp::{TimeDiff, Timestamp};
 pub use transfer::{
     DeployHash, FromStrError as TransferFromStrError, Transfer, TransferAddr, DEPLOY_HASH_LENGTH,
     TRANSFER_ADDR_LENGTH,
