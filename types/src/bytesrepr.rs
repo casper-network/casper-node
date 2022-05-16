@@ -553,7 +553,7 @@ impl<const COUNT: usize> ToBytes for [u8; COUNT] {
 impl<const COUNT: usize> FromBytes for [u8; COUNT] {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
         let (bytes, rem) = safe_split_at(bytes, COUNT)?;
-        // SAFETY: safe_split_at makes sure `bytes` is exactly $N bytes.
+        // SAFETY: safe_split_at makes sure `bytes` is exactly `COUNT` bytes.
         let ptr = bytes.as_ptr() as *const [u8; COUNT];
         let result = unsafe { *ptr };
         Ok((result, rem))
