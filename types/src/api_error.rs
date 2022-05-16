@@ -76,7 +76,7 @@ const AUCTION_ERROR_MAX: u32 = AUCTION_ERROR_OFFSET + u8::MAX as u32;
 /// | [64512, 64767]  | `Auction`                                                       |
 /// | [64768, 65023]  | `ContractHeader`                                                |
 /// | [65024, 65279]  | `Mint`                                                          |
-/// | [65280, 65535]  | `HandlePayment`                                                  |
+/// | [65280, 65535]  | `HandlePayment`                                                 |
 /// | [65536, 131071] | `User`                                                          |
 ///
 /// Users can specify a C-style enum and implement `From` to ease usage of

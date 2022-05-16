@@ -90,6 +90,7 @@ has_key = { cost = 119, arguments = [0, 1] }
 is_valid_uref = { cost = 120, arguments = [0, 1] }
 load_named_keys = { cost = 121, arguments = [0, 1] }
 new_uref = { cost = 122, arguments = [0, 1, 2] }
+random_bytes = { cost = 200, arguments = [0, 0] }
 print = { cost = 123, arguments = [0, 1] }
 provision_contract_user_group_uref = { cost = 124, arguments = [0,1,2,3,4] }
 put_key = { cost = 125, arguments = [0, 1, 2, 3] }
