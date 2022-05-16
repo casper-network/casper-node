@@ -191,8 +191,8 @@ fn remove_messages_to_random(
             }
             _ => return true,
         };
-        if let Message::SyncState { instance_id, .. } = &msg {
-            assert_eq!(*instance_id, expected_instance_id);
+        assert_eq!(*msg.instance_id(), expected_instance_id);
+        if let Message::SyncState(_) = &msg {
             result.push(msg);
             false
         } else {
@@ -621,17 +621,18 @@ fn simple_consensus_sends_sync_state() {
     let mut msg_iter = remove_messages_to_random(&mut outcomes).into_iter();
     match (msg_iter.next(), msg_iter.next()) {
         (
-            Some(Message::SyncState {
+            Some(Message::SyncState(SyncState {
                 round_id: 0,
                 proposal_hash: None,
-                proposal: false,
+                has_proposal: false,
                 first_validator_idx: _,
                 echoes: 0,
                 true_votes: 0,
                 false_votes: 0,
+                active: 0,
                 faulty: 0,
                 instance_id: _,
-            }),
+            })),
             None,
         ) => {}
         (msg0, msg1) => panic!("unexpected messages: {:?}, {:?}", msg0, msg1),
@@ -657,17 +658,18 @@ fn simple_consensus_sends_sync_state() {
     let mut msg_iter = remove_messages_to_random(&mut outcomes).into_iter();
     match (msg_iter.next(), msg_iter.next()) {
         (
-            Some(Message::SyncState {
+            Some(Message::SyncState(SyncState {
                 round_id: 0,
                 proposal_hash: Some(hash),
-                proposal: true,
+                has_proposal: true,
                 first_validator_idx,
                 echoes,
                 true_votes: 0,
                 false_votes,
+                active,
                 faulty,
                 instance_id: _,
-            }),
+            })),
             None,
         ) => {
             assert_eq!(hash0, hash);
@@ -680,6 +682,10 @@ fn simple_consensus_sends_sync_state() {
             let mut false_iter = sc.iter_validator_bit_field(first_validator_idx, false_votes);
             assert_eq!(Some(bob_idx), false_iter.next());
             assert_eq!(None, false_iter.next());
+            // When we marked Carol as faulty we removed her entry from the active list.
+            let expected_active =
+                sc.validator_bit_field(first_validator_idx, vec![alice_idx, bob_idx].into_iter());
+            assert_eq!(active, expected_active);
         }
         (msg0, msg1) => panic!("unexpected messages: {:?}, {:?}", msg0, msg1),
     }
@@ -740,19 +746,23 @@ fn simple_consensus_handles_sync_state() {
     let first_validator_idx = ValidatorIndex(rng.gen_range(0..3));
 
     // The sender has everything we have except the proposal itself.
-    let msg = Message::<ClContext>::SyncState {
+    let msg = Message::<ClContext>::SyncState(SyncState {
         round_id: 0,
         proposal_hash: Some(hash0),
-        proposal: false,
+        has_proposal: false,
         first_validator_idx,
         echoes: sc.validator_bit_field(first_validator_idx, vec![alice_idx, bob_idx].into_iter()),
         true_votes: sc
             .validator_bit_field(first_validator_idx, vec![alice_idx, bob_idx].into_iter()),
         false_votes: sc
             .validator_bit_field(first_validator_idx, vec![alice_idx, bob_idx].into_iter()),
+        active: sc.validator_bit_field(
+            first_validator_idx,
+            vec![alice_idx, bob_idx, carol_idx].into_iter(),
+        ),
         faulty: sc.validator_bit_field(first_validator_idx, vec![carol_idx].into_iter()),
         instance_id: *sc.instance_id(),
-    };
+    });
     let mut outcomes = sc.handle_message(&mut rng, sender, msg.serialize(), timestamp);
     let mut msgs = remove_targeted_messages(&validators, sender, &mut outcomes);
     assert!(remove_proposal(&mut msgs, 0, &proposal0));
@@ -760,18 +770,19 @@ fn simple_consensus_handles_sync_state() {
     expect_no_gossip_block_finalized(outcomes);
 
     // But if there are missing messages, these are sent back.
-    let msg = Message::<ClContext>::SyncState {
+    let msg = Message::<ClContext>::SyncState(SyncState {
         round_id: 0,
         proposal_hash: Some(hash1), // Wrong proposal!
-        proposal: true,
+        has_proposal: true,
         first_validator_idx,
         echoes: sc.validator_bit_field(first_validator_idx, vec![alice_idx].into_iter()),
         true_votes: sc
             .validator_bit_field(first_validator_idx, vec![bob_idx, alice_idx].into_iter()),
         false_votes: sc.validator_bit_field(first_validator_idx, vec![].into_iter()),
+        active: sc.validator_bit_field(first_validator_idx, vec![alice_idx, bob_idx].into_iter()),
         faulty: sc.validator_bit_field(first_validator_idx, vec![].into_iter()),
         instance_id: *sc.instance_id(),
-    };
+    });
     let mut outcomes = sc.handle_message(&mut rng, sender, msg.serialize(), timestamp);
     let mut msgs = remove_targeted_messages(&validators, sender, &mut outcomes);
     // The sender's proposal hash is different from the one we have a quorum for:

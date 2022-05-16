@@ -160,6 +160,50 @@ impl<C: Context> SignedMessage<C> {
     }
 }
 
+/// Partial information about the sender's protocol state. The receiver should send missing data.
+///
+/// The sender chooses a random peer and a random era, and includes in its `SyncState` message
+/// information about received proposals, echoes and votes. The idea is to set the `i`-th bit
+/// in the `u128` fields to `1` if we have a signature from the `i`-th validator.
+///
+/// To keep the size of these messages constant even if there are more than 128 validators, a
+/// random interval is selected and only information about validators in that interval is
+/// included: The bit with the lowest significance corresponds to validator number
+/// `first_validator_idx`, and the one with the highest to
+/// `(first_validator_idx + 127) % validator_count`.
+///
+/// For example if there are 500 validators and `first_validator_idx` is 450, the `u128`'s bits
+/// refer to validators 450, 451, ..., 499, 0, 1, ..., 77.
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[serde(bound(
+    serialize = "C::Hash: Serialize",
+    deserialize = "C::Hash: Deserialize<'de>",
+))]
+pub(crate) struct SyncState<C>
+where
+    C: Context,
+{
+    /// The round the information refers to.
+    pub(crate) round_id: RoundId,
+    /// The proposal hash with the most echoes (by weight).
+    pub(crate) proposal_hash: Option<C::Hash>,
+    /// Whether the sender has the proposal with that hash.
+    pub(crate) has_proposal: bool,
+    /// The index of the first validator covered by the bit fields below.
+    pub(crate) first_validator_idx: ValidatorIndex,
+    /// A bit field with 1 for every validator the sender has an echo from.
+    pub(crate) echoes: u128,
+    /// A bit field with 1 for every validator the sender has a `true` vote from.
+    pub(crate) true_votes: u128,
+    /// A bit field with 1 for every validator the sender has a `false` vote from.
+    pub(crate) false_votes: u128,
+    /// A bit field with 1 for every validator the sender has any signed message from.
+    pub(crate) active: u128,
+    /// A bit field with 1 for every validator the sender has evidence against.
+    pub(crate) faulty: u128,
+    pub(crate) instance_id: C::InstanceId,
+}
+
 /// All messages of the protocol.
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[serde(bound(
@@ -169,38 +213,7 @@ impl<C: Context> SignedMessage<C> {
 pub(crate) enum Message<C: Context> {
     /// Partial information about the sender's protocol state. The receiver should send missing
     /// data.
-    ///
-    /// The sender chooses a random peer and a random era, and includes in its `SyncState` message
-    /// information about received proposals, echoes and votes. The idea is to set the `i`-th bit
-    /// in the `u128` fields to `1` if we have a signature from the `i`-th validator.
-    ///
-    /// To keep the size of these messages constant even if there are more than 128 validators, a
-    /// random interval is selected and only information about validators in that interval is
-    /// included: The bit with the lowest significance corresponds to validator number
-    /// `first_validator_idx`, and the one with the highest to
-    /// `(first_validator_idx + 127) % validator_count`.
-    ///
-    /// For example if there are 500 validators and `first_validator_idx` is 450, the `u128`'s bits
-    /// refer to validators 450, 451, ..., 499, 0, 1, ..., 77.
-    SyncState {
-        /// The round the information refers to.
-        round_id: RoundId,
-        /// The proposal hash with the most echoes (by weight).
-        proposal_hash: Option<C::Hash>,
-        /// Whether the sender has the proposal with that hash.
-        proposal: bool,
-        /// The index of the first validator covered by the bit fields below.
-        first_validator_idx: ValidatorIndex,
-        /// A bit field with 1 for every validator the sender has an echo from.
-        echoes: u128,
-        /// A bit field with 1 for every validator the sender has a `true` vote from.
-        true_votes: u128,
-        /// A bit field with 1 for every validator the sender has a `false` vote from.
-        false_votes: u128,
-        /// A bit field with 1 for every validator the sender has evidence against.
-        faulty: u128,
-        instance_id: C::InstanceId,
-    },
+    SyncState(SyncState<C>),
     /// A proposal for a new block. This does not contain any signature; instead, the proposer is
     /// expected to sign an echo with the proposal hash. Validators will drop any proposal they
     /// receive unless they either have a signed echo by the proposer and the proposer has not
@@ -223,17 +236,18 @@ impl<C: Context> Message<C> {
         faulty: u128,
         instance_id: C::InstanceId,
     ) -> Self {
-        Message::SyncState {
+        Message::SyncState(SyncState {
             round_id,
             proposal_hash: None,
-            proposal: false,
+            has_proposal: false,
             first_validator_idx,
             echoes: 0,
             true_votes: 0,
             false_votes: 0,
+            active: 0,
             faulty,
             instance_id,
-        }
+        })
     }
 
     pub(super) fn serialize(&self) -> Vec<u8> {
@@ -242,7 +256,7 @@ impl<C: Context> Message<C> {
 
     pub(super) fn instance_id(&self) -> &C::InstanceId {
         match self {
-            Message::SyncState { instance_id, .. }
+            Message::SyncState(SyncState { instance_id, .. })
             | Message::Signed(SignedMessage { instance_id, .. })
             | Message::Proposal { instance_id, .. }
             | Message::Evidence(SignedMessage { instance_id, .. }, ..) => instance_id,
