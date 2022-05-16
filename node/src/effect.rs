@@ -1386,6 +1386,25 @@ impl<REv> EffectBuilder<REv> {
                 id,
                 peer,
                 responder,
+                local_first: true,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Fetches an item from a fetcher without checking local storage first.
+    pub(crate) async fn fetch_peer_only<T>(self, id: T::Id, peer: NodeId) -> FetchResult<T>
+    where
+        REv: From<FetcherRequest<T>>,
+        T: Item + 'static,
+    {
+        self.make_request(
+            |responder| FetcherRequest {
+                id,
+                peer,
+                responder,
+                local_first: false,
             },
             QueueKind::Regular,
         )

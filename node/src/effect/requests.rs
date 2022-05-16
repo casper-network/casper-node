@@ -1056,6 +1056,8 @@ where
     pub(crate) peer: NodeId,
     /// Responder to call with the result.
     pub(crate) responder: Responder<FetchResult<T>>,
+    /// Indicates whether to check local storage before querying peer.
+    pub(crate) local_first: bool,
 }
 
 impl<T: Item> Display for FetcherRequest<T> {

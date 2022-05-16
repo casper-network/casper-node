@@ -121,7 +121,11 @@ pub(crate) trait ItemFetcher<T: Item + 'static> {
         id: T::Id,
         peer: NodeId,
         responder: FetchResponder<T>,
+        local_first: bool,
     ) -> Effects<Event<T>> {
+        if !local_first {
+            return self.failed_to_get_from_storage(effect_builder, id, peer);
+        }
         // Capture responder for later signalling.
         let responders = self.responders();
         responders
@@ -551,7 +555,8 @@ where
                 id,
                 peer,
                 responder,
-            }) => self.fetch(effect_builder, id, peer, responder),
+                local_first,
+            }) => self.fetch(effect_builder, id, peer, responder, local_first),
             Event::GetFromStorageResult {
                 id,
                 peer,
