@@ -36,7 +36,7 @@ where
         target: AccountHash,
         amount: U512,
     ) -> Result<TransferredTo, Error> {
-        match self.transfer_from_purse_to_account(source, target, amount, None) {
+        match self.transfer_from_purse_to_account_hash(source, target, amount, None) {
             Ok(Ok(transferred_to)) => Ok(transferred_to),
             Ok(Err(_mint_error)) => Err(Error::Transfer),
             Err(exec_error) => Err(<Option<Error>>::from(exec_error).unwrap_or(Error::Transfer)),

@@ -2,46 +2,22 @@
 
 use casper_types::{account::AccountHash, system::CallStackElement, PublicKey};
 
-/// Representation of a context of given call stack.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum ExecutionContext {
-    /// Call stack frame is invoked by a host.
-    ///
-    /// For example if user is executing a mint through a Wasm host function then a new mint's call
-    /// frame will be marked as Host.
-    Host,
-    /// Call stack frame is created by a user.
-    User,
-}
-
 /// A runtime stack frame.
-///
-/// Currently it aliases to a [`CallStackElement`].
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct RuntimeStackFrame {
-    execution_context: ExecutionContext,
     call_stack_element: CallStackElement,
 }
 
 impl RuntimeStackFrame {
     /// Creates new runtime stack frame object.
-    pub fn new(execution_context: ExecutionContext, call_stack_element: CallStackElement) -> Self {
-        Self {
-            execution_context,
-            call_stack_element,
-        }
+    pub fn new(call_stack_element: CallStackElement) -> Self {
+        Self { call_stack_element }
     }
 
     /// Get the runtime stack frame's call stack element.
     #[must_use]
     pub fn call_stack_element(&self) -> &CallStackElement {
         &self.call_stack_element
-    }
-
-    /// Get the runtime stack frame's execution context.
-    #[must_use]
-    pub fn execution_context(&self) -> ExecutionContext {
-        self.execution_context
     }
 }
 
@@ -81,10 +57,9 @@ impl RuntimeStack {
     pub(crate) fn new_system_call_stack(max_height: usize) -> Self {
         RuntimeStack::new_with_frame(
             max_height,
-            RuntimeStackFrame::new(
-                ExecutionContext::Host,
-                CallStackElement::session(PublicKey::System.to_account_hash()),
-            ),
+            RuntimeStackFrame::new(CallStackElement::session(
+                PublicKey::System.to_account_hash(),
+            )),
         )
     }
 
@@ -151,7 +126,7 @@ impl RuntimeStack {
 
         let frame = {
             let session = CallStackElement::session(account_hash);
-            RuntimeStackFrame::new(ExecutionContext::User, session)
+            RuntimeStackFrame::new(session)
         };
         runtime_stack.push(frame)?;
 
@@ -173,10 +148,7 @@ mod test {
         let mut bytes = [0_u8; ACCOUNT_HASH_LENGTH];
         let n: u32 = n.try_into().unwrap();
         bytes[0..4].copy_from_slice(&n.to_le_bytes());
-        RuntimeStackFrame::new(
-            ExecutionContext::User,
-            CallStackElement::session(AccountHash::new(bytes)),
-        )
+        RuntimeStackFrame::new(CallStackElement::session(AccountHash::new(bytes)))
     }
 
     #[allow(clippy::redundant_clone)]

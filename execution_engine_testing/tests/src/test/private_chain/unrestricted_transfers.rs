@@ -6,10 +6,10 @@ use casper_types::{
     account::AccountHash,
     runtime_args,
     system::{mint, standard_payment},
-    Key, RuntimeArgs, URef, U512,
+    Key, PublicKey, RuntimeArgs, URef, U512,
 };
 
-use crate::wasm_utils;
+use crate::{test::private_chain::ADMIN_1_ACCOUNT_ADDR, wasm_utils};
 
 use super::{ACCOUNT_1_ADDR, ACCOUNT_2_ADDR, DEFAULT_ADMIN_ACCOUNT_ADDR};
 
@@ -131,6 +131,8 @@ fn should_disallow_wasm_unrestricted_transfer_to_create_new_account_by_user() {
 
     // User can transfer funds back to admin.
     builder.exec(transfer_request_2).expect_success().commit();
+
+    // What is
 }
 
 #[ignore]
@@ -267,7 +269,7 @@ fn should_disallow_transfer_to_own_purse_in_wasm_session() {
     assert!(
         matches!(
             error,
-            Error::Exec(execution::Error::DisabledUnrestrictedTransfers)
+            Error::Exec(execution::Error::Revert(revert)) if revert == mint::Error::DisabledUnrestrictedTransfers.into()
         ),
         "expected DisabledUnrestrictedTransfers error, found {:?}",
         error
@@ -416,7 +418,7 @@ fn should_disallow_wasm_payment_to_purse() {
     assert!(
         matches!(
             error,
-            Error::Exec(execution::Error::DisabledUnrestrictedTransfers)
+            Error::Exec(execution::Error::Revert(revert)) if revert == mint::Error::DisabledUnrestrictedTransfers.into()
         ),
         "expected DisabledUnrestrictedTransfers error, found {:?}",
         error
@@ -472,7 +474,7 @@ fn should_not_allow_payment_to_purse_in_stored_payment() {
     assert!(
         matches!(
             error,
-            Error::Exec(execution::Error::DisabledUnrestrictedTransfers)
+            Error::Exec(execution::Error::Revert(revert)) if revert == mint::Error::DisabledUnrestrictedTransfers.into()
         ),
         "expected DisabledUnrestrictedTransfers error, found {:?}",
         error
@@ -591,8 +593,7 @@ fn should_disallow_wasm_unrestricted_transfer_to_existing_account_by_user() {
     assert!(
         matches!(
             error,
-            Error::Exec(execution::Error::DisabledUnrestrictedTransfers)
-        ),
+            Error::Exec(execution::Error::Revert(api_error)) if api_error == mint::Error::DisabledUnrestrictedTransfers.into()),
         "expected DisabledUnrestrictedTransfers error, found {:?}",
         error
     );
@@ -609,4 +610,88 @@ fn should_disallow_wasm_unrestricted_transfer_to_existing_account_by_user() {
 
     // User can transfer funds back to admin.
     builder.exec(transfer_request_2).expect_success().commit();
+}
+
+#[ignore]
+#[test]
+fn should_not_allow_direct_mint_transfer_with_system_addr_specified() {
+    // This test executes mint's transfer entrypoint with a SYSTEM_ADDR as to field in attempt to
+    // avoid restrictions.
+    let mut builder = super::private_chain_setup();
+
+    let fund_transfer_1 = ExecuteRequestBuilder::standard(
+        *ACCOUNT_1_ADDR,
+        "mint_transfer_proxy.wasm",
+        runtime_args! {
+            "to" => Some(PublicKey::System.to_account_hash()),
+            "amount" => U512::from_u64(1),
+        },
+    )
+    .build();
+
+    // Admin can transfer funds to create new account.
+    builder.exec(fund_transfer_1).expect_failure().commit();
+
+    let error = builder.get_error().expect("should have error");
+    assert!(
+        matches!(error, Error::Exec(execution::Error::Revert(revert)) if revert == mint::Error::DisabledUnrestrictedTransfers.into()),
+        "expected DisabledUnrestrictedTransfers error, found {:?}",
+        error
+    );
+}
+
+#[ignore]
+#[test]
+fn should_not_allow_direct_mint_transfer_with_an_admin_in_to_field() {
+    // This test executes mint's transfer entrypoint with a SYSTEM_ADDR as to field in attempt to
+    // avoid restrictions.
+    let mut builder = super::private_chain_setup();
+
+    let fund_transfer_1 = ExecuteRequestBuilder::standard(
+        *ACCOUNT_1_ADDR,
+        "mint_transfer_proxy.wasm",
+        runtime_args! {
+            "to" => Some(*ADMIN_1_ACCOUNT_ADDR),
+            "amount" => U512::from_u64(1),
+        },
+    )
+    .build();
+
+    // Admin can transfer funds to create new account.
+    builder.exec(fund_transfer_1).expect_failure().commit();
+
+    let error = builder.get_error().expect("should have error");
+    assert!(
+        matches!(error, Error::Exec(execution::Error::Revert(revert)) if revert == mint::Error::DisabledUnrestrictedTransfers.into()),
+        "expected DisabledUnrestrictedTransfers error, found {:?}",
+        error
+    );
+}
+
+#[ignore]
+#[test]
+fn should_not_allow_direct_mint_transfer_without_to_field() {
+    // This test executes mint's transfer entrypoint with a SYSTEM_ADDR as to field in attempt to
+    // avoid restrictions.
+    let mut builder = super::private_chain_setup();
+
+    let fund_transfer_1 = ExecuteRequestBuilder::standard(
+        *ACCOUNT_1_ADDR,
+        "mint_transfer_proxy.wasm",
+        runtime_args! {
+            "to" => None::<AccountHash>,
+            "amount" => U512::from_u64(1),
+        },
+    )
+    .build();
+
+    // Admin can transfer funds to create new account.
+    builder.exec(fund_transfer_1).expect_failure().commit();
+
+    let error = builder.get_error().expect("should have error");
+    assert!(
+        matches!(error, Error::Exec(execution::Error::Revert(revert)) if revert == mint::Error::DisabledUnrestrictedTransfers.into()),
+        "expected DisabledUnrestrictedTransfers error, found {:?}",
+        error
+    );
 }

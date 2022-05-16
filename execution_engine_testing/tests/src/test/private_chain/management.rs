@@ -991,11 +991,15 @@ fn should_not_allow_add_bid_on_private_chain() {
 
     let error = builder.get_error().expect("should have error");
 
-    assert!(matches!(
+    assert!(
+        matches!(
+            error,
+            Error::Exec(execution::Error::Revert(api_error))
+            if api_error == auction::Error::AuctionBidsDisabled.into(),
+        ),
+        "{:?}",
         error,
-        Error::Exec(execution::Error::Revert(api_error))
-        if api_error == auction::Error::AuctionBidsDisabled.into()
-    ));
+    );
 }
 
 #[ignore]

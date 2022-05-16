@@ -61,8 +61,6 @@ use crate::{
 };
 pub use stack::{RuntimeStack, RuntimeStackFrame, RuntimeStackOverflow};
 
-use self::stack::ExecutionContext;
-
 /// Represents the runtime properties of a WASM execution.
 pub struct Runtime<'a, R> {
     config: EngineConfig,
@@ -1016,14 +1014,13 @@ where
     /// Call a contract by pushing a stack element onto the frame.
     pub(crate) fn call_contract_with_stack(
         &mut self,
-        execution_context: ExecutionContext,
         contract_hash: ContractHash,
         entry_point_name: &str,
         args: RuntimeArgs,
         stack: RuntimeStack,
     ) -> Result<CLValue, Error> {
         self.stack = Some(stack);
-        self.call_contract(execution_context, contract_hash, entry_point_name, args)
+        self.call_contract(contract_hash, entry_point_name, args)
     }
 
     pub(crate) fn execute_module_bytes(
@@ -1077,7 +1074,6 @@ where
     /// Calls contract living under a `key`, with supplied `args`.
     pub fn call_contract(
         &mut self,
-        execution_context: ExecutionContext,
         contract_hash: ContractHash,
         entry_point_name: &str,
         args: RuntimeArgs,
@@ -1107,7 +1103,6 @@ where
         };
 
         self.execute_contract(
-            execution_context,
             contract_package,
             contract_hash,
             contract,
@@ -1121,7 +1116,6 @@ where
     /// types given in the contract header.
     pub fn call_versioned_contract(
         &mut self,
-        execution_context: ExecutionContext,
         contract_package_hash: ContractPackageHash,
         contract_version: Option<ContractVersion>,
         entry_point_name: String,
@@ -1168,7 +1162,6 @@ where
             .ok_or_else(|| Error::NoSuchMethod(entry_point_name.to_owned()))?;
 
         self.execute_contract(
-            execution_context,
             contract_package,
             contract_hash,
             contract,
@@ -1216,7 +1209,6 @@ where
 
     fn execute_contract(
         &mut self,
-        execution_context: ExecutionContext,
         contract_package: ContractPackage,
         contract_hash: ContractHash,
         contract: Contract,
@@ -1312,10 +1304,7 @@ where
                     contract_hash,
                 ),
             };
-            stack.push(RuntimeStackFrame::new(
-                execution_context,
-                call_stack_element,
-            ))?;
+            stack.push(RuntimeStackFrame::new(call_stack_element))?;
 
             stack
         };
@@ -1474,12 +1463,7 @@ where
             return Ok(Err(err));
         }
         let args: RuntimeArgs = bytesrepr::deserialize(args_bytes)?;
-        let result = self.call_contract(
-            ExecutionContext::User,
-            contract_hash,
-            entry_point_name,
-            args,
-        )?;
+        let result = self.call_contract(contract_hash, entry_point_name, args)?;
         self.manage_call_contract_host_buffer(result_size_ptr, result)
     }
 
@@ -1497,7 +1481,6 @@ where
         }
         let args: RuntimeArgs = bytesrepr::deserialize(args_bytes)?;
         let result = self.call_versioned_contract(
-            ExecutionContext::User,
             contract_package_hash,
             contract_version,
             entry_point_name,
@@ -2087,7 +2070,6 @@ where
     ) -> Result<U512, Error> {
         let gas_counter = self.gas_counter();
         let call_result = self.call_contract(
-            ExecutionContext::Host,
             mint_contract_hash,
             mint::METHOD_READ_BASE_ROUND_REWARD,
             RuntimeArgs::default(),
@@ -2107,12 +2089,7 @@ where
             runtime_args.insert(mint::ARG_AMOUNT, amount)?;
             runtime_args
         };
-        let call_result = self.call_contract(
-            ExecutionContext::Host,
-            mint_contract_hash,
-            mint::METHOD_MINT,
-            runtime_args,
-        );
+        let call_result = self.call_contract(mint_contract_hash, mint::METHOD_MINT, runtime_args);
         self.set_gas_counter(gas_counter);
 
         let result: Result<URef, mint::Error> = call_result?.into_t()?;
@@ -2133,7 +2110,6 @@ where
             runtime_args
         };
         let call_result = self.call_contract(
-            ExecutionContext::Host,
             mint_contract_hash,
             mint::METHOD_REDUCE_TOTAL_SUPPLY,
             runtime_args,
@@ -2147,12 +2123,8 @@ where
     /// Calls the "create" method on the mint contract at the given mint
     /// contract key
     fn mint_create(&mut self, mint_contract_hash: ContractHash) -> Result<URef, Error> {
-        let result = self.call_contract(
-            ExecutionContext::Host,
-            mint_contract_hash,
-            mint::METHOD_CREATE,
-            RuntimeArgs::new(),
-        );
+        let result =
+            self.call_contract(mint_contract_hash, mint::METHOD_CREATE, RuntimeArgs::new());
         let purse = result?.into_t()?;
         Ok(purse)
     }
@@ -2186,12 +2158,8 @@ where
         };
 
         let gas_counter = self.gas_counter();
-        let call_result = self.call_contract(
-            ExecutionContext::Host,
-            mint_contract_hash,
-            mint::METHOD_TRANSFER,
-            args_values,
-        );
+        let call_result =
+            self.call_contract(mint_contract_hash, mint::METHOD_TRANSFER, args_values);
         self.set_gas_counter(gas_counter);
 
         Ok(call_result?.into_t()?)
@@ -2209,6 +2177,24 @@ where
         let mint_contract_hash = self.get_mint_contract()?;
 
         let target_key = Key::Account(target);
+
+        if let (false, Some(is_source_admin)) = (
+            self.config.allow_unrestricted_transfers(),
+            self.config
+                .is_account_administrator(&self.context.get_caller()),
+        ) {
+            let is_target_admin = self
+                .config
+                .is_account_administrator(&target)
+                .expect("is_account_administrator() returns Some(_) on a private chain");
+
+            if self.context.get_caller() != *SYSTEM_ACCOUNT_ADDRESS
+                && !is_source_admin
+                && !is_target_admin
+            {
+                return Err(Error::DisabledUnrestrictedTransfers);
+            }
+        }
 
         // A precondition check that verifies that the transfer can be done
         // as the source purse has enough funds to cover the transfer.
@@ -2261,13 +2247,15 @@ where
     /// been created by the mint contract (or are the genesis account's).
     fn transfer_to_existing_account(
         &mut self,
-        to: Option<AccountHash>,
+        to: Option<&Account>,
         source: URef,
         target: URef,
         amount: U512,
         id: Option<u64>,
     ) -> Result<TransferResult, Error> {
         let mint_contract_key = self.get_mint_contract()?;
+
+        let to = to.map(Account::account_hash);
 
         match self.mint_transfer(mint_contract_key, to, source, target, amount, id)? {
             Ok(()) => Ok(Ok(TransferredTo::ExistingAccount)),
@@ -2284,12 +2272,12 @@ where
         id: Option<u64>,
     ) -> Result<TransferResult, Error> {
         let source = self.context.get_main_purse()?;
-        self.transfer_from_purse_to_account(source, target, amount, id)
+        self.transfer_from_purse_to_account_hash(source, target, amount, id)
     }
 
     /// Transfers `amount` of motes from `source` purse to `target` account.
     /// If that account does not exist, creates one.
-    fn transfer_from_purse_to_account(
+    fn transfer_from_purse_to_account_hash(
         &mut self,
         source: URef,
         target: AccountHash,
@@ -2297,24 +2285,6 @@ where
         id: Option<u64>,
     ) -> Result<TransferResult, Error> {
         let _scoped_host_function_flag = self.host_function_flag.enter_host_function_scope();
-
-        if let (false, Some(is_source_admin)) = (
-            self.config.allow_unrestricted_transfers(),
-            self.config
-                .is_account_administrator(&self.context.get_caller()),
-        ) {
-            let is_target_admin = self
-                .config
-                .is_account_administrator(&target)
-                .expect("is_account_administrator() returns Some(_) on a private chain");
-
-            if self.context.get_caller() != *SYSTEM_ACCOUNT_ADDRESS
-                && !is_source_admin
-                && !is_target_admin
-            {
-                return Err(Error::DisabledUnrestrictedTransfers);
-            }
-        }
 
         let target_key = Key::Account(target);
         // Look up the account at the given public key's address
@@ -2325,42 +2295,52 @@ where
                 self.transfer_to_new_account(source, target, amount, id)
             }
             Some(StoredValue::Account(account)) => {
-                // Attenuate the target main purse
-                let target_uref = account.main_purse_add_only();
-
-                if source.with_access_rights(AccessRights::ADD) == target_uref {
-                    return Ok(Ok(TransferredTo::ExistingAccount));
-                }
-
-                // Upsert ADD access to caller on target allowing deposit of motes; this will be
-                // revoked after the transfer is completed if caller did not already have ADD access
-                let granted_access = self.context.grant_access(target_uref);
-
-                // If an account exists, transfer the amount to its purse
-                let transfer_result = self.transfer_to_existing_account(
-                    Some(target),
-                    source,
-                    target_uref,
-                    amount,
-                    id,
-                );
-
-                // Remove from caller temporarily granted ADD access on target.
-                if let GrantedAccess::Granted {
-                    uref_addr,
-                    newly_granted_access_rights,
-                } = granted_access
-                {
-                    self.context
-                        .remove_access(uref_addr, newly_granted_access_rights)
-                }
-                transfer_result
+                self.transfer_from_purse_to_account(source, &account, amount, id)
             }
             Some(_) => {
                 // If some other value exists, return an error
                 Err(Error::AccountNotFound(target_key))
             }
         }
+    }
+
+    fn transfer_from_purse_to_account(
+        &mut self,
+        source: URef,
+        target_account: &Account,
+        amount: U512,
+        id: Option<u64>,
+    ) -> Result<TransferResult, Error> {
+        // Attenuate the target main purse
+        let target_uref = target_account.main_purse_add_only();
+
+        if source.with_access_rights(AccessRights::ADD) == target_uref {
+            return Ok(Ok(TransferredTo::ExistingAccount));
+        }
+
+        // Upsert ADD access to caller on target allowing deposit of motes; this will be
+        // revoked after the transfer is completed if caller did not already have ADD access
+        let granted_access = self.context.grant_access(target_uref);
+
+        // If an account exists, transfer the amount to its purse
+        let transfer_result = self.transfer_to_existing_account(
+            Some(target_account),
+            source,
+            target_uref,
+            amount,
+            id,
+        );
+
+        // Remove from caller temporarily granted ADD access on target.
+        if let GrantedAccess::Granted {
+            uref_addr,
+            newly_granted_access_rights,
+        } = granted_access
+        {
+            self.context
+                .remove_access(uref_addr, newly_granted_access_rights)
+        }
+        transfer_result
     }
 
     /// Transfers `amount` of motes from `source` purse to `target` purse.
@@ -2373,19 +2353,6 @@ where
     ) -> Result<Result<(), mint::Error>, Error> {
         self.context.validate_uref(&source)?;
         let mint_contract_key = self.get_mint_contract()?;
-
-        if let (false, Some(is_caller_admin)) = (
-            self.config.allow_unrestricted_transfers(),
-            self.config
-                .is_account_administrator(&self.context.get_caller()),
-        ) {
-            if !is_caller_admin {
-                // On private chain we can't assume a valid purse `target` is created by the caller.
-                // Therefore only admins executing a session code can transfer to purse.
-                return Err(Error::DisabledUnrestrictedTransfers);
-            }
-        }
-
         match self.mint_transfer(mint_contract_key, None, source, target, amount, id)? {
             Ok(()) => Ok(Ok(())),
             Err(mint_error) => Ok(Err(mint_error)),

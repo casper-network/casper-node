@@ -1,10 +1,10 @@
 use casper_types::{
     account::AccountHash,
     system::{mint::Error, CallStackElement},
-    Key, Phase, URef, U512,
+    Key, Phase, StoredValue, URef, U512,
 };
 
-use crate::core::runtime::stack::ExecutionContext;
+use crate::core::{engine_state::SystemContractRegistry, execution};
 
 /// Provider of runtime host functionality.
 pub trait RuntimeProvider {
@@ -14,8 +14,15 @@ pub trait RuntimeProvider {
     /// This method should return the immediate caller of the current context.
     fn get_immediate_caller(&self) -> Option<&CallStackElement>;
 
-    /// This method should return the current [`crate::core::runtime::ExecutionContext`].
-    fn get_current_execution_context(&self) -> Option<ExecutionContext>;
+    /// Get system contract registry.
+    fn get_system_contract_registry(&self) -> Result<SystemContractRegistry, execution::Error>;
+
+    fn is_called_from_standard_payment(&self) -> bool;
+
+    fn read_account(
+        &mut self,
+        account_hash: &AccountHash,
+    ) -> Result<Option<StoredValue>, execution::Error>;
 
     /// Gets execution phase
     fn get_phase(&self) -> Phase;

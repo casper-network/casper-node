@@ -396,7 +396,7 @@ where
                     let bytes = self.bytes_from_mem(id_ptr, id_size as usize)?;
                     bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
                 };
-                let ret = match self.transfer_from_purse_to_account(
+                let ret = match self.transfer_from_purse_to_account_hash(
                     source_purse,
                     account_hash,
                     amount,
