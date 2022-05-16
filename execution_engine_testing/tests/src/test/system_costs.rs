@@ -973,7 +973,7 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         remove_contract_user_group_urefs: HostFunction::fixed(0),
         print: HostFunction::fixed(0),
         blake2b: HostFunction::fixed(0),
-        next_address: HostFunction::fixed(0),
+        random_bytes: HostFunction::fixed(0),
     };
 
     let new_wasm_config = WasmConfig::new(
