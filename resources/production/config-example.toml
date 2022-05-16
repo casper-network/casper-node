@@ -371,7 +371,7 @@ get_remainder_timeout = '5sec'
 # The timeout duration for a single fetcher request, i.e. for a single fetcher message
 # sent from this node to another node, it will be considered timed out if the expected response from that peer is
 # not received within this specified duration.
-get_from_peer_timeout = '3sec'
+get_from_peer_timeout = '30sec'
 
 
 # ========================================================
