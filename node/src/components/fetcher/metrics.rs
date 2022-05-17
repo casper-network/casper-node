@@ -57,5 +57,6 @@ impl Drop for Metrics {
         unregister_metric!(self.registry, self.found_in_storage);
         unregister_metric!(self.registry, self.found_on_peer);
         unregister_metric!(self.registry, self.timeouts);
+        unregister_metric!(self.registry, self.fetch_total);
     }
 }
