@@ -623,8 +623,6 @@ where
                 self.signal(id, Err(FetcherError::Absent { id, peer }), peer)
             }
             Event::TimeoutPeer { id, peer } => {
-                info!(TAG=%T::TAG, %id, %peer, "request timed out");
-                self.metrics().timeouts.inc();
                 self.signal(id, Err(FetcherError::TimedOut { id, peer }), peer)
             }
         }
