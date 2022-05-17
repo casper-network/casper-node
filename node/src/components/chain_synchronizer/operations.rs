@@ -167,6 +167,11 @@ impl<'a> ChainSyncContext<'a> {
 
     /// Marks a peer as bad.
     fn mark_bad_peer(&self, peer: NodeId) {
+        if self.config.redemption_interval == 0 {
+            info!(%peer, "not marking peer as bad for syncing, redemption is disabled");
+            return;
+        }
+
         let mut bad_peer_list = self
             .bad_peer_list
             .write()
