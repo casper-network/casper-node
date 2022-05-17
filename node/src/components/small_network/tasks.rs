@@ -77,6 +77,10 @@ where
         .await
         .map_err(ConnectionError::TcpConnection)?;
 
+    stream
+        .set_nodelay(true)
+        .map_err(ConnectionError::TcpNoDelay)?;
+
     let mut transport = tls::create_tls_connector(context.our_cert.as_x509(), &context.secret_key)
         .and_then(|connector| connector.configure())
         .and_then(|mut config| {
