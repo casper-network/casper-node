@@ -9,7 +9,9 @@ use num_rational::Ratio;
 
 use casper_types::account::AccountHash;
 
-use crate::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
+use crate::shared::{
+    account::SYSTEM_ACCOUNT_ADDRESS, system_config::SystemConfig, wasm_config::WasmConfig,
+};
 
 use super::genesis::AdministratorAccount;
 
@@ -150,6 +152,11 @@ impl EngineConfig {
 
         // Ensure it's a private chain and there's at least one administrator configured.
         admins.peek()?;
+
+        if account_hash == &*SYSTEM_ACCOUNT_ADDRESS {
+            // Admin is also an administrator to allow custom payment code.
+            return Some(true);
+        }
 
         // Find an administrator by its public key.
         let has_admin_account_hash =

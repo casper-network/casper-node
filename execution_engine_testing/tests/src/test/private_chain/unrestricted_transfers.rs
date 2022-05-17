@@ -1,11 +1,12 @@
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    SYSTEM_ADDR,
 };
 use casper_execution_engine::core::{engine_state::Error, execution};
 use casper_types::{
     account::AccountHash,
     runtime_args,
-    system::{mint, standard_payment},
+    system::{handle_payment, mint, standard_payment},
     Key, PublicKey, RuntimeArgs, URef, U512,
 };
 
@@ -693,5 +694,131 @@ fn should_not_allow_direct_mint_transfer_without_to_field() {
         matches!(error, Error::Exec(execution::Error::Revert(revert)) if revert == mint::Error::DisabledUnrestrictedTransfers.into()),
         "expected DisabledUnrestrictedTransfers error, found {:?}",
         error
+    );
+}
+
+#[ignore]
+#[test]
+fn should_allow_custom_payment_by_paying_to_system_account() {
+    let mut builder = super::private_chain_setup();
+
+    // Account 1 can deploy after genesis
+    let exec_request_1 = {
+        let sender = *ACCOUNT_1_ADDR;
+        let deploy_hash = [100; 32];
+
+        let payment_amount = *DEFAULT_PAYMENT + U512::from(1u64);
+
+        let payment_args = runtime_args! {
+            standard_payment::ARG_AMOUNT => payment_amount,
+        };
+        let session_args = RuntimeArgs::default();
+
+        let deploy = DeployItemBuilder::new()
+            .with_address(sender)
+            .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
+            .with_payment_code("non_standard_payment.wasm", payment_args)
+            .with_authorization_keys(&[sender])
+            .with_deploy_hash(deploy_hash)
+            .build();
+        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    };
+
+    builder.exec(exec_request_1).expect_success().commit();
+
+    let handle_payment_contract = builder
+        .get_contract(builder.get_handle_payment_contract_hash())
+        .unwrap();
+    let payment_purse_key = handle_payment_contract.named_keys()[handle_payment::PAYMENT_PURSE_KEY];
+    let payment_purse_uref = payment_purse_key.into_uref().unwrap();
+    assert_eq!(
+        builder.get_purse_balance(payment_purse_uref),
+        U512::zero(),
+        "after finalizing a private chain custom payment code a payment purse should be empty"
+    );
+}
+
+#[ignore]
+#[test]
+fn should_allow_transfer_to_system_in_a_session_code() {
+    let mut builder = super::private_chain_setup();
+
+    // Account 1 can deploy after genesis
+    let exec_request_1 = {
+        let sender = *ACCOUNT_1_ADDR;
+        let deploy_hash = [100; 32];
+
+        let payment_amount = *DEFAULT_PAYMENT + U512::from(1u64);
+
+        let payment_args = runtime_args! {
+            standard_payment::ARG_AMOUNT => payment_amount,
+        };
+        let session_args = runtime_args! {
+            "target" => *SYSTEM_ADDR,
+            "amount" => U512::one(),
+        };
+
+        let deploy = DeployItemBuilder::new()
+            .with_address(sender)
+            .with_session_code("transfer_to_account_u512.wasm", session_args)
+            .with_payment_code("non_standard_payment.wasm", payment_args)
+            .with_authorization_keys(&[sender])
+            .with_deploy_hash(deploy_hash)
+            .build();
+        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    };
+
+    builder.exec(exec_request_1).expect_success().commit();
+
+    let handle_payment_contract = builder
+        .get_contract(builder.get_handle_payment_contract_hash())
+        .unwrap();
+    let payment_purse_key = handle_payment_contract.named_keys()[handle_payment::PAYMENT_PURSE_KEY];
+    let payment_purse_uref = payment_purse_key.into_uref().unwrap();
+    assert_eq!(
+        builder.get_purse_balance(payment_purse_uref),
+        U512::zero(),
+        "after finalizing a private chain custom payment code a payment purse should be empty"
+    );
+
+    let system_account = builder.get_account(*SYSTEM_ADDR).unwrap();
+    assert_eq!(
+        system_account.main_purse().addr(),
+        payment_purse_uref.addr()
+    );
+}
+
+#[ignore]
+#[test]
+fn should_allow_transfer_to_system_in_a_native_transfer() {
+    let mut builder = super::private_chain_setup();
+
+    let fund_transfer_1 = ExecuteRequestBuilder::transfer(
+        *DEFAULT_ADMIN_ACCOUNT_ADDR,
+        runtime_args! {
+            mint::ARG_TARGET => *SYSTEM_ADDR,
+            mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
+            mint::ARG_ID => <Option<u64>>::None,
+        },
+    )
+    .build();
+
+    builder.exec(fund_transfer_1).expect_success().commit();
+
+    let handle_payment_contract = builder
+        .get_contract(builder.get_handle_payment_contract_hash())
+        .unwrap();
+    let payment_purse_key = handle_payment_contract.named_keys()[handle_payment::PAYMENT_PURSE_KEY];
+    let payment_purse_uref = payment_purse_key.into_uref().unwrap();
+    assert_eq!(
+        builder.get_purse_balance(payment_purse_uref),
+        U512::zero(),
+        "after finalizing a private chain custom payment code a payment purse should be empty"
+    );
+
+    let system_account = builder.get_account(*SYSTEM_ADDR).unwrap();
+    assert_eq!(
+        system_account.main_purse().addr(),
+        payment_purse_uref.addr()
     );
 }

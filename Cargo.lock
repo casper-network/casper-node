@@ -2733,6 +2733,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "non-standard-payment"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "ntapi"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"

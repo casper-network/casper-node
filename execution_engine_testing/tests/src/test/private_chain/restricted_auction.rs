@@ -1,19 +1,11 @@
-use std::collections::BTreeMap;
-
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-    SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
+    StepRequestBuilder, DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+    DEFAULT_PROTOCOL_VERSION, TIMESTAMP_MILLIS_INCREMENT,
 };
-use casper_types::{
-    runtime_args,
-    system::auction::{self, SeigniorageAllocation},
-    Key, PublicKey, RuntimeArgs, U512,
-};
+use casper_execution_engine::core::engine_state::RewardItem;
+use casper_types::{system::auction::SeigniorageAllocation, Key, U512};
 
 use crate::test::private_chain::{PRIVATE_CHAIN_GENESIS_VALIDATORS, VALIDATOR_1_PUBLIC_KEY};
-
-const CONTRACT_AUCTION_BIDS: &str = "auction_bids.wasm";
-const ARG_ENTRY_POINT: &str = "entry_point";
 
 #[ignore]
 #[test]
@@ -28,36 +20,38 @@ fn should_not_distribute_rewards_but_compute_next_set() {
     // initial token supply
     let initial_supply = builder.total_supply(None);
 
-    for _ in 0..5 {
-        builder.run_auction(timestamp_millis, Vec::new());
+    for _ in 0..3 {
+        // builder.run_auction(timestamp_millis, Vec::new());
+        let step_request = StepRequestBuilder::new()
+            .with_parent_state_hash(builder.get_post_state_hash())
+            .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+            .with_next_era_id(builder.get_era().successor())
+            .with_era_end_timestamp_millis(timestamp_millis)
+            .with_run_auction(true)
+            .build();
+        builder.step(step_request).unwrap();
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
-    let reward_factors: BTreeMap<PublicKey, u64> = {
-        let mut tmp = BTreeMap::new();
-        tmp.insert(VALIDATOR_1_PUBLIC_KEY.clone(), VALIDATOR_1_REWARD_FACTOR);
-        // tmp.insert(VALIDATOR_2.clone(), VALIDATOR_2_REWARD_FACTOR);
-        // tmp.insert(VALIDATOR_3.clone(), VALIDATOR_3_REWARD_FACTOR);
-        tmp
-    };
+    let last_trusted_era = builder.get_era();
 
-    let distribute_request = ExecuteRequestBuilder::standard(
-        *SYSTEM_ADDR,
-        CONTRACT_AUCTION_BIDS,
-        runtime_args! {
-            ARG_ENTRY_POINT => auction::METHOD_DISTRIBUTE,
-            auction::ARG_REWARD_FACTORS => reward_factors
-        },
-    )
-    .build();
+    let step_request = StepRequestBuilder::new()
+        .with_parent_state_hash(builder.get_post_state_hash())
+        .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+        .with_reward_item(RewardItem::new(
+            VALIDATOR_1_PUBLIC_KEY.clone(),
+            VALIDATOR_1_REWARD_FACTOR,
+        ))
+        .with_next_era_id(last_trusted_era.successor())
+        .with_era_end_timestamp_millis(timestamp_millis)
+        .with_run_auction(true)
+        .build();
 
-    builder.exec(distribute_request).commit().expect_success();
+    builder.step(step_request).unwrap();
 
     let era_info = {
-        let era = builder.get_era();
-
         let era_info_value = builder
-            .query(None, Key::EraInfo(era), &[])
+            .query(None, Key::EraInfo(last_trusted_era), &[])
             .expect("should have value");
 
         era_info_value

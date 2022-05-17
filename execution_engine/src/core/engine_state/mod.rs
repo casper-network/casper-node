@@ -35,6 +35,7 @@ use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::{Bytes, ToBytes},
+    contracts::NamedKeys,
     system::{
         auction::{
             EraValidators, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS,
@@ -84,7 +85,7 @@ use crate::{
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
     shared::{
-        account::{self, AccountConfig, SYSTEM_ACCOUNT_ADDRESS, VIRTUAL_SYSTEM_ACCOUNT},
+        account::{self, AccountConfig, SYSTEM_ACCOUNT_ADDRESS},
         additive_map::AdditiveMap,
         newtypes::CorrelationId,
         transform::Transform,
@@ -99,7 +100,8 @@ use crate::{
 };
 
 /// The maximum amount of motes that payment code execution can cost.
-pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
+// pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
+pub const MAX_PAYMENT_AMOUNT: u64 = 3_500_000_000;
 /// The maximum amount of gas a payment code can use.
 ///
 /// This value also indicates the minimum balance of the main purse of an account when
@@ -1300,12 +1302,59 @@ where
             ));
         }
 
+        // Get handle payment system contract details
+        // payment_code_spec_6: system contract validity
+        let system_contract_registry = tracking_copy
+            .borrow_mut()
+            .get_system_contracts(correlation_id)?;
+
+        let handle_payment_contract_hash = system_contract_registry
+            .get(HANDLE_PAYMENT)
+            .ok_or_else(|| {
+                error!("Missing system handle payment contract hash");
+                Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
+            })?;
+
+        let handle_payment_contract = match tracking_copy
+            .borrow_mut()
+            .get_contract(correlation_id, *handle_payment_contract_hash)
+        {
+            Ok(contract) => contract,
+            Err(error) => {
+                return Ok(ExecutionResult::precondition_failure(error.into()));
+            }
+        };
+
+        // Get payment purse Key from handle payment contract
+        // payment_code_spec_6: system contract validity
+        let payment_purse_key = match handle_payment_contract
+            .named_keys()
+            .get(handle_payment::PAYMENT_PURSE_KEY)
+        {
+            Some(key) => *key,
+            None => return Ok(ExecutionResult::precondition_failure(Error::Deploy)),
+        };
+
+        let payment_purse_uref = payment_purse_key
+            .into_uref()
+            .ok_or(Error::InvalidKeyVariant)?;
+
+        let purse_balance_key = match tracking_copy
+            .borrow_mut()
+            .get_purse_balance_key(correlation_id, payment_purse_key)
+        {
+            Ok(key) => key,
+            Err(error) => {
+                return Ok(ExecutionResult::precondition_failure(error.into()));
+            }
+        };
+
         // Finalization is executed by system account (currently genesis account)
         // payment_code_spec_5: system executes finalization
         let system_account = Account::new(
             *SYSTEM_ACCOUNT_ADDRESS,
             Default::default(),
-            URef::new(Default::default(), AccessRights::READ_ADD_WRITE),
+            payment_purse_uref,
             Default::default(),
             Default::default(),
         );
@@ -1399,47 +1448,6 @@ where
         // payment_code_spec_3: fork based upon payment purse balance and cost of
         // payment code execution
 
-        // Get handle payment system contract details
-        // payment_code_spec_6: system contract validity
-        let system_contract_registry = tracking_copy
-            .borrow_mut()
-            .get_system_contracts(correlation_id)?;
-
-        let handle_payment_contract_hash = system_contract_registry
-            .get(HANDLE_PAYMENT)
-            .ok_or_else(|| {
-                error!("Missing system handle payment contract hash");
-                Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
-            })?;
-
-        let handle_payment_contract = match tracking_copy
-            .borrow_mut()
-            .get_contract(correlation_id, *handle_payment_contract_hash)
-        {
-            Ok(contract) => contract,
-            Err(error) => {
-                return Ok(ExecutionResult::precondition_failure(error.into()));
-            }
-        };
-
-        // Get payment purse Key from handle payment contract
-        // payment_code_spec_6: system contract validity
-        let payment_purse_key: Key = match handle_payment_contract
-            .named_keys()
-            .get(handle_payment::PAYMENT_PURSE_KEY)
-        {
-            Some(key) => *key,
-            None => return Ok(ExecutionResult::precondition_failure(Error::Deploy)),
-        };
-        let purse_balance_key = match tracking_copy
-            .borrow_mut()
-            .get_purse_balance_key(correlation_id, payment_purse_key)
-        {
-            Ok(key) => key,
-            Err(error) => {
-                return Ok(ExecutionResult::precondition_failure(error.into()));
-            }
-        };
         let payment_purse_balance: Motes = {
             match tracking_copy
                 .borrow_mut()
@@ -1699,12 +1707,7 @@ where
 
             let mut handle_payment_access_rights =
                 handle_payment_contract.extract_access_rights(*handle_payment_contract_hash);
-            handle_payment_access_rights.extend(&[
-                payment_purse_key
-                    .into_uref()
-                    .ok_or(Error::InvalidKeyVariant)?,
-                rewards_target_purse,
-            ]);
+            handle_payment_access_rights.extend(&[payment_purse_uref, rewards_target_purse]);
 
             let gas_limit = Gas::new(U512::MAX);
 
@@ -1927,7 +1930,11 @@ where
 
         let executor = Executor::new(self.config().clone());
 
-        let virtual_system_account = VIRTUAL_SYSTEM_ACCOUNT.clone();
+        let virtual_system_account = {
+            let purse = URef::new(Default::default(), AccessRights::READ_ADD_WRITE);
+            Account::create(*SYSTEM_ACCOUNT_ADDRESS, NamedKeys::default(), purse)
+        };
+
         let authorization_keys = {
             let mut ret = BTreeSet::new();
             ret.insert(*SYSTEM_ACCOUNT_ADDRESS);

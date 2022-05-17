@@ -2287,6 +2287,7 @@ where
         let _scoped_host_function_flag = self.host_function_flag.enter_host_function_scope();
 
         let target_key = Key::Account(target);
+
         // Look up the account at the given public key's address
         match self.context.read_account(&target_key)? {
             None => {

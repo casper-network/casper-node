@@ -1,5 +1,5 @@
 //! Support for a genesis process.
-use std::{borrow::Cow, cell::RefCell, collections::BTreeMap, fmt, iter, rc::Rc};
+use std::{cell::RefCell, collections::BTreeMap, fmt, iter, rc::Rc};
 
 use datasize::DataSize;
 use itertools::Itertools;
@@ -46,7 +46,7 @@ use crate::{
         tracking_copy::TrackingCopy,
     },
     shared::{
-        account::{self, AccountConfig, SYSTEM_ACCOUNT_ADDRESS, VIRTUAL_SYSTEM_ACCOUNT},
+        account::{self, AccountConfig},
         newtypes::CorrelationId,
         system_config::SystemConfig,
         wasm_config::WasmConfig,
@@ -957,15 +957,6 @@ where
             Rc::new(RefCell::new(generator))
         };
 
-        let system_account_addr = *SYSTEM_ACCOUNT_ADDRESS;
-
-        let virtual_system_account = VIRTUAL_SYSTEM_ACCOUNT.clone();
-
-        let key = Key::Account(system_account_addr);
-        let value = StoredValue::Account(virtual_system_account);
-
-        let _ = tracking_copy.borrow_mut().write(key, value);
-
         GenesisInstaller {
             protocol_version,
             correlation_id,
@@ -1083,13 +1074,16 @@ where
         Ok(total_supply_uref.into())
     }
 
-    fn create_handle_payment(&self) -> Result<ContractHash, GenesisError> {
-        let handle_payment_payment_purse = self.create_purse(U512::zero())?;
-
+    fn create_handle_payment(
+        &self,
+        payment_purse_uref: URef,
+    ) -> Result<ContractHash, GenesisError> {
         let named_keys = {
             let mut named_keys = NamedKeys::new();
-            let named_key = Key::URef(handle_payment_payment_purse);
-            named_keys.insert(handle_payment::PAYMENT_PURSE_KEY.to_string(), named_key);
+            named_keys.insert(
+                handle_payment::PAYMENT_PURSE_KEY.to_string(),
+                payment_purse_uref.into(),
+            );
             named_keys
         };
 
@@ -1383,12 +1377,15 @@ where
         self.exec_config.administrative_accounts().next().is_some()
     }
 
-    pub(crate) fn create_accounts<'a>(&'a self, total_supply_key: Key) -> Result<(), GenesisError> {
+    pub(crate) fn create_accounts(
+        &self,
+        total_supply_key: Key,
+        payment_purse_uref: URef,
+    ) -> Result<(), GenesisError> {
         let accounts = {
-            let mut ret: Vec<Cow<'a, GenesisAccount>> =
-                self.exec_config.accounts().map(Cow::Borrowed).collect();
+            let mut ret: Vec<GenesisAccount> = self.exec_config.accounts().cloned().collect();
             let system_account = GenesisAccount::system();
-            ret.push(Cow::Owned(system_account));
+            ret.push(system_account);
             ret
         };
 
@@ -1411,7 +1408,10 @@ where
 
         for account in accounts.iter() {
             let account_hash = account.account_hash();
-            let main_purse = self.create_purse(account.balance().value())?;
+            let main_purse = match account {
+                GenesisAccount::System if self.is_private_chain() => payment_purse_uref,
+                _ => self.create_purse(account.balance().value())?,
+            };
             total_supply += account.balance().value();
 
             let key = Key::Account(account_hash);
@@ -1588,14 +1588,16 @@ where
         // Create mint
         let total_supply_key = self.create_mint()?;
 
+        let payment_purse_uref = self.create_purse(U512::zero())?;
+
         // Create all genesis accounts
-        self.create_accounts(total_supply_key)?;
+        self.create_accounts(total_supply_key, payment_purse_uref)?;
 
         // Create the auction and setup the stake of all genesis validators.
         self.create_auction(total_supply_key)?;
 
         // Create handle payment
-        self.create_handle_payment()?;
+        self.create_handle_payment(payment_purse_uref)?;
 
         // Create standard payment
         self.create_standard_payment()?;

@@ -12,7 +12,6 @@ use casper_engine_test_support::{
     DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
     DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE,
     DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY, DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
-    MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
 };
 use casper_execution_engine::core::engine_state::{
     engine_config::{EngineConfigBuilder, FeeElimination},
@@ -23,8 +22,7 @@ use once_cell::sync::Lazy;
 
 use casper_types::{
     account::{AccountHash, Weight},
-    runtime_args,
-    system::{auction::DELEGATION_RATE_DENOMINATOR, mint},
+    system::auction::DELEGATION_RATE_DENOMINATOR,
     Motes, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
@@ -177,17 +175,7 @@ fn custom_private_chain_setup(
     )
     .build();
 
-    let transfer_args_1 = runtime_args! {
-        mint::ARG_TARGET => *SYSTEM_ADDR,
-        mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
-        mint::ARG_ID => <Option<u64>>::None,
-    };
-
-    let fund_system_request =
-        ExecuteRequestBuilder::transfer(*DEFAULT_ADMIN_ACCOUNT_ADDR, transfer_args_1).build();
-
     builder.exec(exec_request).expect_success().commit();
-    builder.exec(fund_system_request).expect_success().commit();
 
     builder
 }

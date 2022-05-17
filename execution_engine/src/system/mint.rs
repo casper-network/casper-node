@@ -259,7 +259,9 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         if self.read_balance(target)?.is_none() {
             return Err(Error::DestNotFound);
         }
-        if self.get_main_purse().addr() == source.addr() {
+        if self.get_caller() != *SYSTEM_ACCOUNT_ADDRESS
+            && self.get_main_purse().addr() == source.addr()
+        {
             if amount > self.get_approved_spending_limit() {
                 return Err(Error::UnapprovedSpendingAmount);
             }

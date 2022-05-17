@@ -40,10 +40,10 @@ pub fn get_refund_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<Opti
 }
 
 /// Returns tuple where 1st element is user part, and 2nd element is validator part.
-fn calculate_refund_parts(
+fn calculate_amounts(
     amount_gas_spent: U512,
     payment_purse_balance: U512,
-    refund_ratio: Ratio<u64>,
+    fee_elimination: &FeeElimination,
 ) -> Result<(U512, U512), Error> {
     let amount_gas_spent = Ratio::from(amount_gas_spent);
     let payment_purse_balance = Ratio::from(payment_purse_balance);
@@ -52,6 +52,11 @@ fn calculate_refund_parts(
         let refund_amount_raw = payment_purse_balance
             .checked_sub(&amount_gas_spent)
             .ok_or(Error::ArithmeticOverflow)?;
+
+        let refund_ratio = match fee_elimination {
+            FeeElimination::Refund { refund_ratio } => *refund_ratio,
+            FeeElimination::Accumulate => Ratio::one(), // Implied 100%
+        };
 
         let refund_ratio_u512 = {
             let (numer, denom) = refund_ratio.into();
@@ -124,13 +129,8 @@ pub fn finalize_payment<P: MintProvider + RuntimeProvider>(
         return Err(Error::InsufficientPaymentForAmountSpent);
     }
 
-    let refund_ratio = match provider.fee_elimination() {
-        FeeElimination::Refund { refund_ratio } => *refund_ratio,
-        FeeElimination::Accumulate => Ratio::one(), // Implied 100%
-    };
-
     let (refund_amount, validator_reward) =
-        calculate_refund_parts(amount_spent, total, refund_ratio)?;
+        calculate_amounts(amount_spent, total, provider.fee_elimination())?;
 
     debug_assert_eq!(validator_reward + refund_amount, total);
 
@@ -195,9 +195,10 @@ mod tests {
         let gas = U512::from(9161u64);
 
         for percentage in 0..=100 {
-            let ratio = Ratio::new_raw(percentage, 100);
+            let refund_ratio = Ratio::new_raw(percentage, 100);
+            let refund = FeeElimination::Refund { refund_ratio };
 
-            let (a, b) = calculate_refund_parts(gas, purse_bal, ratio).unwrap();
+            let (a, b) = calculate_amounts(gas, purse_bal, &refund).unwrap();
 
             let a = Ratio::from(a);
             let b = Ratio::from(b);

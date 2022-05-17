@@ -8,17 +8,12 @@
 use casper_types::{
     account::{Account, AccountHash, ActionThresholds, AddKeyFailure, AssociatedKeys, Weight},
     contracts::NamedKeys,
-    AccessRights, PublicKey, URef,
+    PublicKey, URef,
 };
 use once_cell::sync::Lazy;
 
 pub(crate) static SYSTEM_ACCOUNT_ADDRESS: Lazy<AccountHash> =
     Lazy::new(|| PublicKey::System.to_account_hash());
-
-pub(crate) static VIRTUAL_SYSTEM_ACCOUNT: Lazy<Account> = Lazy::new(|| {
-    let purse = URef::new(Default::default(), AccessRights::READ_ADD_WRITE);
-    Account::create(*SYSTEM_ACCOUNT_ADDRESS, NamedKeys::default(), purse)
-});
 
 /// Restricted account's action thresholds
 const DEFAULT_PRIVATE_CHAIN_ACTION_THRESHOLDS: ActionThresholds = ActionThresholds {

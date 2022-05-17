@@ -52,7 +52,7 @@ where
         let mint_contract_key = match self.get_mint_contract() {
             Ok(mint_hash) => mint_hash,
             Err(exec_error) => {
-                return Err(<Option<Error>>::from(exec_error).unwrap_or(Error::Transfer))
+                return Err(<Option<Error>>::from(exec_error).unwrap_or(Error::Transfer));
             }
         };
         match self.mint_transfer(mint_contract_key, None, source, target, amount, None) {

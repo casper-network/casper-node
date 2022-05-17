@@ -103,8 +103,6 @@ pub struct WasmTestBuilder<S> {
     /// Cached transform maps after subsequent successful runs i.e. `transforms[0]` is for first
     /// exec call etc.
     transforms: Vec<ExecutionJournal>,
-    /// Cached genesis transforms
-    genesis_account: Option<Account>,
     /// Genesis transforms
     genesis_transforms: Option<AdditiveMap<Key, Transform>>,
     /// Scratch global state used for in-memory execution and commit optimization.
@@ -137,7 +135,6 @@ impl Default for InMemoryWasmTestBuilder {
             genesis_hash: None,
             post_state_hash: None,
             transforms: Vec::new(),
-            genesis_account: None,
             genesis_transforms: None,
             scratch_engine_state: None,
             system_contract_registry: None,
@@ -157,7 +154,6 @@ impl<S> Clone for WasmTestBuilder<S> {
             genesis_hash: self.genesis_hash,
             post_state_hash: self.post_state_hash,
             transforms: self.transforms.clone(),
-            genesis_account: self.genesis_account.clone(),
             genesis_transforms: self.genesis_transforms.clone(),
             scratch_engine_state: None,
             system_contract_registry: self.system_contract_registry.clone(),
@@ -182,7 +178,6 @@ impl InMemoryWasmTestBuilder {
             genesis_hash: None,
             post_state_hash: maybe_post_state_hash,
             transforms: Vec::new(),
-            genesis_account: None,
             genesis_transforms: None,
             scratch_engine_state: None,
             system_contract_registry: None,
@@ -233,7 +228,6 @@ impl LmdbWasmTestBuilder {
             genesis_hash: None,
             post_state_hash: None,
             transforms: Vec::new(),
-            genesis_account: None,
             genesis_transforms: None,
             scratch_engine_state: None,
             system_contract_registry: None,
@@ -297,7 +291,6 @@ impl LmdbWasmTestBuilder {
             genesis_hash: None,
             post_state_hash: Some(post_state_hash),
             transforms: Vec::new(),
-            genesis_account: None,
             genesis_transforms: None,
             scratch_engine_state: None,
             system_contract_registry: None,
@@ -415,8 +408,6 @@ where
 {
     /// Takes a [`RunGenesisRequest`], executes the request and returns Self.
     pub fn run_genesis(&mut self, run_genesis_request: &RunGenesisRequest) -> &mut Self {
-        let system_account = Key::Account(PublicKey::System.to_account_hash());
-
         let GenesisSuccess {
             post_state_hash,
             execution_effect,
@@ -432,14 +423,11 @@ where
             .expect("Unable to get genesis response");
 
         let transforms = execution_effect.transforms;
-        let genesis_account =
-            utils::get_account(&transforms, &system_account).expect("Unable to get system account");
 
         self.system_contract_registry = self.query_system_contract_registry(Some(post_state_hash));
 
         self.genesis_hash = Some(post_state_hash);
         self.post_state_hash = Some(post_state_hash);
-        self.genesis_account = Some(genesis_account);
         self.genesis_transforms = Some(transforms);
         self
     }
@@ -742,13 +730,6 @@ where
     /// Gets `ExecutionJournal`s of all passed runs.
     pub fn get_execution_journals(&self) -> Vec<ExecutionJournal> {
         self.transforms.clone()
-    }
-
-    /// Gets genesis account (if present)
-    pub fn get_genesis_account(&self) -> &Account {
-        self.genesis_account
-            .as_ref()
-            .expect("Unable to obtain genesis account. Please run genesis first.")
     }
 
     /// Returns the [`ContractHash`] of the mint, panics if it can't be found.
