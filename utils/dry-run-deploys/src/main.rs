@@ -89,11 +89,9 @@ async fn main() -> Result<(), anyhow::Error> {
                             continue;
                         }
                     };
-                    info!(
-                        "Will migrate state root {:#?} at height {}",
-                        state_roots, height
-                    );
-                    state_roots.push(*block_header.state_root_hash());
+                    let state_root = *block_header.state_root_hash();
+                    info!(?state_root, %height, "will migrate state root at height");
+                    state_roots.push(state_root);
                 }
                 casper_node::migrate_lmdb_data_to_rocksdb(engine_state, state_roots, false);
                 return Ok(());

@@ -1,4 +1,4 @@
-//! An LMDB-backed trie store.
+//! A database-backed trie store.
 
 use std::{
     collections::HashMap,
@@ -41,9 +41,6 @@ const TRIE_V1_COLUMN_FAMILY: &str = "trie_v1_column";
 
 /// Column family name for tracking progress of data migration.
 const LMDB_MIGRATED_STATE_ROOTS_COLUMN_FAMILY: &str = "lmdb_migrated_state_roots_column";
-
-/// Working set column famliy.
-const WORKING_SET_COLUMN_FAMILY: &str = "working_set";
 
 /// Cache used by the scratch trie.  The keys represent the hash of the trie being cached.  The
 /// values represent:  1) A boolean, where `false` means the trie was _not_ written and `true` means
@@ -218,7 +215,6 @@ pub struct RocksDbStore {
 const ACTIVE_COLUMN_FAMILIES: &[&str] = &[
     TRIE_V1_COLUMN_FAMILY,
     LMDB_MIGRATED_STATE_ROOTS_COLUMN_FAMILY,
-    WORKING_SET_COLUMN_FAMILY,
 ];
 
 impl RocksDbStore {
@@ -331,13 +327,6 @@ impl RocksDbStore {
                     LMDB_MIGRATED_STATE_ROOTS_COLUMN_FAMILY.to_string(),
                 )
             })
-    }
-
-    /// Working set column family.
-    pub fn working_set_column_family(&self) -> Result<Arc<BoundColumnFamily<'_>>, error::Error> {
-        self.db.cf_handle(WORKING_SET_COLUMN_FAMILY).ok_or_else(|| {
-            error::Error::UnableToOpenColumnFamily(WORKING_SET_COLUMN_FAMILY.to_string())
-        })
     }
 
     /// Trie store iterator.
