@@ -690,10 +690,12 @@ pub(super) async fn message_sender<P>(
         };
         limiter.request_allowance(estimated_wire_size).await;
 
-        let outcome = sink.send(message).await;
+        let mut outcome = sink.send(message).await;
 
         // Notify via responder that the message has been buffered by the kernel.
         if let Some(responder) = opt_responder {
+            // Since someone is interested in the message, flush the socket to ensure it was sent.
+            outcome = outcome.and(sink.flush().await);
             responder.respond(()).await;
         }
 
