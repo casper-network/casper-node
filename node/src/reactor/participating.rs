@@ -747,11 +747,9 @@ impl reactor::Reactor for Reactor {
                         continue;
                     }
                 };
-                info!(
-                    "Will migrate state root {:#?} at height {}",
-                    state_roots, height
-                );
-                state_roots.push(*block_header.state_root_hash());
+                let state_root = *block_header.state_root_hash();
+                info!(?state_root, %height, "will migrate state root at height");
+                state_roots.push(state_root);
             }
 
             let background_migration = tokio::task::spawn_blocking(move || {
