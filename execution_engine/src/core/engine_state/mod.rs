@@ -136,27 +136,22 @@ impl EngineState<DbGlobalState> {
     ) -> Result<bool, storage::error::db::Error> {
         let state_root_bytes = &state_root.value();
 
-        let root_migration_state = self
-            .state
-            .rocksdb_store
-            .get_root_migration_state(state_root_bytes)?;
+        let db_store = &self.state.rocksdb_store;
+
+        let root_migration_state = db_store.get_root_migration_state(state_root_bytes)?;
 
         if !root_migration_state.is_complete() {
             // was there a previous migration that had been interrupted?
             let force = root_migration_state.is_partial();
 
             // mark that we're starting the migration
-            self.state
-                .rocksdb_store
-                .mark_state_root_migration_incomplete(state_root_bytes)?;
+            db_store.mark_state_root_migration_incomplete(state_root_bytes)?;
 
             // perform migration
             self.state
                 .migrate_state_root_to_rocksdb(state_root, limit_rate, force)?;
 
-            self.state
-                .rocksdb_store
-                .mark_state_root_migration_completed(state_root_bytes)?;
+            db_store.mark_state_root_migration_completed(state_root_bytes)?;
             return Ok(true);
         }
         Ok(false)
@@ -169,7 +164,7 @@ impl EngineState<DbGlobalState> {
 
     /// Gets path to rocksdb data files.
     pub fn data_path(&self) -> PathBuf {
-        self.state.rocksdb_store.path()
+        self.state.rocksdb_store.get_db_store().path()
     }
 
     /// Provide a local cached-only version of engine-state.

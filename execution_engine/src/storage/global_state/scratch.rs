@@ -251,7 +251,7 @@ mod tests {
     use super::*;
     use crate::storage::{
         global_state::{db::DbGlobalState, CommitProvider},
-        trie_store::db::RocksDbStore,
+        trie_store::db::RocksDbTrieStore,
     };
 
     #[derive(Debug, Clone)]
@@ -314,7 +314,7 @@ mod tests {
 
     fn create_test_state() -> TestState {
         let correlation_id = CorrelationId::new();
-        let rocksdb = RocksDbStore::new(tempdir().unwrap()).unwrap();
+        let rocksdb = RocksDbTrieStore::new(tempdir().unwrap()).unwrap();
 
         let engine_state = DbGlobalState::empty(None, rocksdb).unwrap();
         let mut current_root = engine_state.empty_root_hash;

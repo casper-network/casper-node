@@ -7,7 +7,7 @@ use crate::storage::{
     error::{self, in_memory},
     store::StoreExt,
     trie::Trie,
-    trie_store::{db::RocksDbStore, in_memory::InMemoryTrieStore, TrieStore},
+    trie_store::{db::RocksDbTrieStore, in_memory::InMemoryTrieStore, TrieStore},
 };
 
 fn put_succeeds<K, V, S, E>(store: &S, items: &[TestData<K, V>]) -> Result<(), E>
@@ -32,7 +32,7 @@ fn in_memory_put_succeeds() {
 #[test]
 fn rocksdb_put_succeeds() {
     let tmp_dir = tempdir().unwrap();
-    let store = RocksDbStore::new(tmp_dir.path()).unwrap();
+    let store = RocksDbTrieStore::new(tmp_dir.path()).unwrap();
     let data = &super::create_data()[0..1];
     assert!(put_succeeds::<_, _, _, error::Error>(&store, data).is_ok());
     tmp_dir.close().unwrap();
@@ -75,7 +75,7 @@ fn in_memory_put_get_succeeds() {
 #[test]
 fn rocksdb_put_get_succeeds() {
     let tmp_dir = tempdir().unwrap();
-    let store = RocksDbStore::new(tmp_dir.path()).unwrap();
+    let store = RocksDbTrieStore::new(tmp_dir.path()).unwrap();
     let data = &super::create_data()[0..1];
 
     let expected: Vec<Trie<Bytes, Bytes>> = data.iter().cloned().map(|TestData(_, v)| v).collect();
@@ -112,7 +112,7 @@ fn in_memory_put_get_many_succeeds() {
 #[test]
 fn rocksdb_put_get_many_succeeds() {
     let tmp_dir = tempdir().unwrap();
-    let store = RocksDbStore::new(tmp_dir.path()).unwrap();
+    let store = RocksDbTrieStore::new(tmp_dir.path()).unwrap();
     let data = super::create_data();
 
     let expected: Vec<Trie<Bytes, Bytes>> = data.iter().cloned().map(|TestData(_, v)| v).collect();

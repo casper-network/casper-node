@@ -46,7 +46,7 @@ use casper_execution_engine::{
             CommitProvider, StateProvider, StateReader,
         },
         trie::{merkle_proof::TrieMerkleProof, Trie},
-        trie_store::db::RocksDbStore,
+        trie_store::db::DbStore,
         ROCKS_DB_DATA_DIR,
     },
 };
@@ -200,7 +200,7 @@ impl DbWasmTestBuilder {
         let global_state_dir = Self::global_state_dir(data_dir);
         Self::create_global_state_dir(&global_state_dir);
 
-        let trie_store = RocksDbStore::new(global_state_dir.join(ROCKS_DB_DATA_DIR)).unwrap();
+        let trie_store = DbStore::new(global_state_dir.join(ROCKS_DB_DATA_DIR)).unwrap();
 
         let global_state =
             DbGlobalState::empty(None, trie_store).expect("should create DbGlobalState");
@@ -291,8 +291,7 @@ impl DbWasmTestBuilder {
         Self::initialize_logging();
         Self::create_global_state_dir(&global_state_dir);
 
-        let trie_store =
-            RocksDbStore::new(global_state_dir.as_ref().join(ROCKS_DB_DATA_DIR)).unwrap();
+        let trie_store = DbStore::new(global_state_dir.as_ref().join(ROCKS_DB_DATA_DIR)).unwrap();
 
         let global_state =
             DbGlobalState::empty(Some(global_state_dir.as_ref().to_path_buf()), trie_store)

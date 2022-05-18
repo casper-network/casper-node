@@ -20,7 +20,7 @@ use crate::{
         error::{self, in_memory},
         trie::{merkle_proof::TrieMerkleProof, Pointer, Trie},
         trie_store::{
-            db::RocksDbStore,
+            db::RocksDbTrieStore,
             in_memory::InMemoryTrieStore,
             operations::{self, read, read_with_proof, write, ReadResult, WriteResult},
             TrieStore,
@@ -496,7 +496,7 @@ where
 // A context for holding lmdb-based test resources
 struct RocksDbTestContext {
     _temp_dir: TempDir,
-    store: RocksDbStore,
+    store: RocksDbTrieStore,
 }
 
 impl RocksDbTestContext {
@@ -506,7 +506,7 @@ impl RocksDbTestContext {
         V: FromBytes + ToBytes,
     {
         let dir = tempdir()?;
-        let store = RocksDbStore::new(dir.path())?;
+        let store = RocksDbTrieStore::new(dir.path())?;
         put_tries::<_, _, _, error::Error>(&store, tries)?;
         Ok(RocksDbTestContext {
             _temp_dir: dir,

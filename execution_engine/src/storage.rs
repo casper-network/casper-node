@@ -11,6 +11,9 @@ pub mod trie;
 /// Merkle Trie storage.
 pub mod trie_store;
 
+/// Generic data store.
+pub mod db_store;
+
 const MAX_DBS: u32 = 2;
 
-pub use trie_store::db::ROCKS_DB_DATA_DIR;
+pub use db_store::ROCKS_DB_DATA_DIR;

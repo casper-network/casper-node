@@ -28,7 +28,7 @@ use crate::{
             TrieOrChunk, TrieOrChunkId,
         },
         trie_store::{
-            db::{RocksDbStore, ScratchTrieStore},
+            db::{RocksDbTrieStore, ScratchTrieStore},
             operations::{
                 descendant_trie_keys, keys_with_prefix, missing_trie_keys, put_trie_bytes, read,
                 read_with_proof, ReadResult,
@@ -89,7 +89,7 @@ pub struct DbGlobalState {
     /// Empty root hash used for a new trie.
     pub(crate) empty_root_hash: Digest,
     /// Handle to rocksdb.
-    pub(crate) rocksdb_store: RocksDbStore,
+    pub(crate) rocksdb_store: RocksDbTrieStore,
     digests_without_missing_descendants: Arc<RwLock<HashSet<Digest>>>,
 }
 
@@ -99,12 +99,12 @@ pub struct DbGlobalStateView {
     /// Root hash of this "view".
     root_hash: Digest,
     /// Handle to rocksdb.
-    rocksdb_store: RocksDbStore,
+    rocksdb_store: RocksDbTrieStore,
 }
 
 impl DbGlobalState {
     /// Return the rocksdb store.
-    pub fn get_rocksdb_store(&self) -> &RocksDbStore {
+    pub fn get_rocksdb_store(&self) -> &RocksDbTrieStore {
         &self.rocksdb_store
     }
 
@@ -175,18 +175,17 @@ impl DbGlobalState {
             let trie_key_bytes = next_trie_key.to_bytes()?;
             match lmdb_txn.get(lmdb_db, &trie_key_bytes) {
                 Ok(value_bytes) => {
-                    let rocksdb = self.rocksdb_store.clone();
                     let key_bytes = next_trie_key.to_bytes()?;
                     let read_bytes = key_bytes.len() as u64 + value_bytes.len() as u64;
                     interval_bytes += read_bytes;
                     total_bytes += read_bytes;
                     total_tries += 1;
 
-                    rocksdb.write(&key_bytes, value_bytes)?;
+                    self.rocksdb_store.write(&key_bytes, value_bytes)?;
 
                     memoized_find_missing_descendants(
                         Bytes::from(value_bytes),
-                        rocksdb,
+                        &self.rocksdb_store,
                         &mut missing_trie_keys,
                         &mut time_searching_for_trie_keys,
                         force,
@@ -221,7 +220,7 @@ impl DbGlobalState {
     /// Creates an empty state from an existing environment and trie_store.
     pub fn empty(
         maybe_lmdb_path: Option<PathBuf>,
-        rocksdb_store: RocksDbStore,
+        rocksdb_store: RocksDbTrieStore,
     ) -> Result<Self, error::Error> {
         let empty_root_hash: Digest = {
             let (root_hash, root) = create_hashed_empty_trie::<Key, StoredValue>()?;
@@ -267,7 +266,7 @@ impl DbGlobalState {
 
 fn memoized_find_missing_descendants(
     value_bytes: Bytes,
-    rocksdb: RocksDbStore,
+    rocksdb_store: &RocksDbTrieStore,
     missing_trie_keys: &mut Vec<Digest>,
     time_in_missing_trie_keys: &mut Duration,
     force: bool,
@@ -286,11 +285,11 @@ fn memoized_find_missing_descendants(
         }
         Trie::Node { pointer_block } => {
             for (_index, ptr) in pointer_block.as_indexed_pointers() {
-                find_missing_trie_keys(ptr, force, missing_trie_keys, &rocksdb)?;
+                find_missing_trie_keys(ptr, force, missing_trie_keys, rocksdb_store)?;
             }
         }
         Trie::Extension { affix: _, pointer } => {
-            find_missing_trie_keys(pointer, force, missing_trie_keys, &rocksdb)?;
+            find_missing_trie_keys(pointer, force, missing_trie_keys, rocksdb_store)?;
         }
     }
     *time_in_missing_trie_keys += start_trie_keys.elapsed();
@@ -301,7 +300,7 @@ fn find_missing_trie_keys(
     ptr: Pointer,
     force: bool,
     missing_trie_keys: &mut Vec<Digest>,
-    rocksdb: &RocksDbStore,
+    rocksdb: &RocksDbTrieStore,
 ) -> Result<(), error::Error> {
     let ptr = match ptr {
         Pointer::LeafPointer(pointer) | Pointer::NodePointer(pointer) => pointer,
@@ -361,7 +360,7 @@ impl StateReader<Key, StoredValue> for DbGlobalStateView {
         correlation_id: CorrelationId,
         prefix: &[u8],
     ) -> Result<Vec<Key>, Self::Error> {
-        let keys_iter = keys_with_prefix::<Key, StoredValue, RocksDbStore>(
+        let keys_iter = keys_with_prefix::<Key, StoredValue, RocksDbTrieStore>(
             correlation_id,
             &self.rocksdb_store,
             &self.root_hash,
@@ -385,7 +384,7 @@ impl CommitProvider for DbGlobalState {
         prestate_hash: Digest,
         effects: AdditiveMap<Key, Transform>,
     ) -> Result<Digest, Self::Error> {
-        commit_effects::<RocksDbStore, _, Self::Error>(
+        commit_effects::<RocksDbTrieStore, _, Self::Error>(
             &self.rocksdb_store,
             correlation_id,
             prestate_hash,
@@ -582,7 +581,7 @@ mod tests {
         let correlation_id = CorrelationId::new();
         let rocksdb_temp_dir = tempdir().unwrap();
 
-        let trie_store = RocksDbStore::new(&rocksdb_temp_dir.path()).unwrap();
+        let trie_store = RocksDbTrieStore::new(&rocksdb_temp_dir.path()).unwrap();
         let engine_state = DbGlobalState::empty(None, trie_store).unwrap();
         let mut current_root = engine_state.empty_root_hash;
         for TestPair { key, value } in pairs_creator() {
