@@ -6,7 +6,7 @@ use std::{
 
 use casper_execution_engine::{
     core::engine_state::{EngineConfig, EngineState},
-    storage::{global_state::db::DbGlobalState, trie_store::db::DbStore},
+    storage::{global_state::db::DbGlobalState, trie_store::db::RocksDbTrieStore},
 };
 use casper_node::{
     storage::Storage,
@@ -50,7 +50,7 @@ pub fn load_execution_engine(
     }
     let global_state = DbGlobalState::empty(
         Some(ee_lmdb_path.as_ref().to_path_buf()),
-        DbStore::new(rocksdb_path)?,
+        RocksDbTrieStore::new(rocksdb_path)?,
     )?;
     Ok(Arc::new(EngineState::new(
         global_state,
@@ -62,7 +62,7 @@ pub fn load_execution_engine(
 pub fn create_execution_engine(
     rocksdb_path: impl AsRef<Path>,
 ) -> Result<Arc<EngineState<DbGlobalState>>, anyhow::Error> {
-    let global_state = DbGlobalState::empty(None, DbStore::new(rocksdb_path.as_ref())?)?;
+    let global_state = DbGlobalState::empty(None, RocksDbTrieStore::new(rocksdb_path.as_ref())?)?;
     Ok(Arc::new(EngineState::new(
         global_state,
         EngineConfig::default(),

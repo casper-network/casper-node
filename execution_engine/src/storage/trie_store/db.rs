@@ -205,7 +205,8 @@ impl RocksDbTrieStore {
         Ok(Self { store })
     }
 
-    pub(crate) fn get_db_store(&self) -> &DbStore {
+    /// Access the underlying DbStore.
+    pub fn get_db_store(&self) -> &DbStore {
         &self.store
     }
 
