@@ -409,7 +409,7 @@ mod tests {
     // greater than the chunk limit.
     fn create_test_pairs_with_large_data() -> [TestPair; 2] {
         let val = CLValue::from_t(
-            String::from_utf8(vec![b'a'; ChunkWithProof::CHUNK_SIZE_BYTES * 5]).unwrap(),
+            String::from_utf8(vec![b'a'; ChunkWithProof::CHUNK_SIZE_BYTES * 2]).unwrap(),
         )
         .unwrap();
         [
