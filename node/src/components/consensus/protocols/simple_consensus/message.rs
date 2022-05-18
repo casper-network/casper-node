@@ -62,12 +62,15 @@ impl<C: Context> Proposal<C> {
 /// The content of a message in the main protocol, as opposed to the proposal, and to sync messages,
 /// which are somewhat decoupled from the rest of the protocol. These messages, along with the
 /// instance and round ID, are signed by the active validators.
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Hash, DataSize)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-pub(crate) enum Content<C: Context> {
+pub(crate) enum Content<C>
+where
+    C: Context,
+{
     /// By signing the echo of a proposal hash a validator affirms that this is the first (and
     /// usually only) proposal by the round leader that they have received. A quorum of echoes is a
     /// requirement for a proposal to become accepted.
@@ -95,12 +98,15 @@ impl<C: Context> Content<C> {
 }
 
 /// A vote or echo with a signature.
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, DataSize)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-pub(crate) struct SignedMessage<C: Context> {
+pub(crate) struct SignedMessage<C>
+where
+    C: Context,
+{
     pub(super) round_id: RoundId,
     pub(super) instance_id: C::InstanceId,
     pub(super) content: Content<C>,
