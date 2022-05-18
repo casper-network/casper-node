@@ -516,8 +516,10 @@ impl StorageInner {
                     if block_header.hashing_algorithm_version(verifiable_chunked_hash_activation)
                         == HashingAlgorithmVersion::V1
                     {
+                        // ----------
                         let _ = deleted_block_body_hashes_v1.insert(*block_header.body_hash());
                         {
+                            // Refactor to "get_block_body()"
                             let body_v1_of_deleted_block: Option<BlockBody> =
                                 body_txn.get_value(block_body_v1_db, block_header.body_hash())?;
                             if let Some(body_v1_of_deleted_block) = body_v1_of_deleted_block {
@@ -527,14 +529,36 @@ impl StorageInner {
                                     .extend(body_v1_of_deleted_block.transfer_hashes());
                             }
                         }
+                        //------------
                     }
                     let _ = deleted_block_hashes
                         .insert(block_header.hash(verifiable_chunked_hash_activation));
-                    let body_v2_of_deleted_block: Option<BlockBody> =
-                        body_txn.get_value(block_body_v2_db, block_header.body_hash())?;
-                    if let Some(body_v2_of_deleted_block) = body_v2_of_deleted_block {
-                        // TODO[RC]: This branch is not covered by tests!
-                        deleted_deploy_hashes.extend(body_v2_of_deleted_block.deploy_hashes());
+
+                    {
+                        // --------------
+                        // Refactor to "get_block_body()"
+                        let maybe_block_body = match block_header
+                            .hashing_algorithm_version(verifiable_chunked_hash_activation)
+                        {
+                            HashingAlgorithmVersion::V1 => {
+                                body_txn.get_value(block_body_v1_db, block_header.body_hash())?
+                            }
+                            HashingAlgorithmVersion::V2 => get_single_block_body_v2(
+                                &mut body_txn,
+                                block_body_v2_db,
+                                deploy_hashes_db,
+                                transfer_hashes_db,
+                                proposer_db,
+                                block_header.body_hash(),
+                            )?,
+                        };
+                        // -----------
+
+                        if let Some(body_v2_of_deleted_block) = maybe_block_body {
+                            deleted_deploy_hashes.extend(body_v2_of_deleted_block.deploy_hashes());
+                            deleted_deploy_hashes
+                                .extend(body_v2_of_deleted_block.transfer_hashes());
+                        }
                     }
 
                     cursor.del(WriteFlags::empty())?;
