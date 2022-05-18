@@ -1,77 +1,46 @@
-//! An LMDB-backed trie store.
+//! A database-backed trie store.
 
 use std::{
     collections::HashMap,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
 
-use casper_types::{bytesrepr, Key, StoredValue};
-use lmdb::{Database, DatabaseFlags};
+use rocksdb::{
+    BlockBasedOptions, BoundColumnFamily, DBIteratorWithThreadMode, DBWithThreadMode, IteratorMode,
+    MultiThreaded, Options,
+};
+
+use casper_types::{bytesrepr, bytesrepr::Bytes, Key, StoredValue};
 
 use casper_hashing::Digest;
 
 use crate::storage::{
     error,
     global_state::CommitError,
-    store::Store,
-    transaction_source::{
-        db::{LmdbEnvironment, RocksDb, RocksDbStore},
-        Readable, Transaction, TransactionSource, Writable,
-    },
+    store::{ErrorSource, Readable, Store, Writable},
     trie::Trie,
-    trie_store::{self, TrieStore},
+    trie_store::TrieStore,
 };
 
-/// An LMDB-backed trie store.
-///
-/// Wraps [`lmdb::Database`].
-#[derive(Debug, Clone)]
-pub struct LmdbTrieStore {
-    db: Database,
-}
+/// Relative location (to storage) where rocksdb data will be stored.
+pub const ROCKS_DB_DATA_DIR: &str = "rocksdb-data";
 
-impl LmdbTrieStore {
-    /// Constructor for new `LmdbTrieStore`.
-    pub fn new(
-        env: &LmdbEnvironment,
-        maybe_name: Option<&str>,
-        flags: DatabaseFlags,
-    ) -> Result<Self, error::Error> {
-        let name = Self::name(maybe_name);
-        let db = env.env().create_db(Some(&name), flags)?;
-        Ok(LmdbTrieStore { db })
-    }
+const ROCKS_DB_BLOCK_SIZE_BYTES: usize = 256 * 1024;
+const ROCKS_DB_COMPRESSION_TYPE: rocksdb::DBCompressionType = rocksdb::DBCompressionType::Zstd;
+const ROCKS_DB_COMPACTION_STYLE: rocksdb::DBCompactionStyle = rocksdb::DBCompactionStyle::Level;
+const ROCKS_DB_ZSTD_MAX_DICT_BYTES: i32 = 256 * 1024;
+const ROCKS_DB_MAX_LEVEL_FILE_SIZE_BYTES: u64 = 512 * 1024 * 1024;
+const ROCKS_DB_MAX_OPEN_FILES: i32 = 768;
+const ROCKS_DB_ZSTD_COMPRESSION_LEVEL: i32 = 3; // Default compression level
+const ROCKS_DB_ZSTD_STRATEGY: i32 = 4; // 4: Lazy
+const ROCKS_DB_WINDOW_BITS: i32 = -14;
 
-    /// Constructor for `LmdbTrieStore` which opens an existing lmdb store file.
-    pub fn open(env: &LmdbEnvironment, maybe_name: Option<&str>) -> Result<Self, error::Error> {
-        let name = Self::name(maybe_name);
-        let db = env.env().open_db(Some(&name))?;
-        Ok(LmdbTrieStore { db })
-    }
+/// Column family name for the v1 trie data store.
+const TRIE_V1_COLUMN_FAMILY: &str = "trie_v1_column";
 
-    fn name(maybe_name: Option<&str>) -> String {
-        maybe_name
-            .map(|name| format!("{}-{}", trie_store::NAME, name))
-            .unwrap_or_else(|| String::from(trie_store::NAME))
-    }
-
-    /// Get a handle to the underlying database.
-    pub fn get_db(&self) -> Database {
-        self.db
-    }
-}
-
-impl<K, V> Store<Digest, Trie<K, V>> for LmdbTrieStore {
-    type Error = error::Error;
-
-    type Handle = Database;
-
-    fn handle(&self) -> Self::Handle {
-        self.db
-    }
-}
-
-impl<K, V> TrieStore<K, V> for LmdbTrieStore {}
+/// Column family name for tracking progress of data migration.
+const LMDB_MIGRATED_STATE_ROOTS_COLUMN_FAMILY: &str = "lmdb_migrated_state_roots_column";
 
 /// Cache used by the scratch trie.  The keys represent the hash of the trie being cached.  The
 /// values represent:  1) A boolean, where `false` means the trie was _not_ written and `true` means
@@ -109,7 +78,6 @@ impl ScratchTrieStore {
             return Ok(());
         }
 
-        let mut txn = store.create_read_write_txn()?;
         let mut tries_to_visit = vec![(state_root, root_trie, root_trie.iter_descendants())];
 
         while let Some((digest, current_trie, mut descendants_iterator)) = tries_to_visit.pop() {
@@ -122,36 +90,18 @@ impl ScratchTrieStore {
                 }
             } else {
                 // We can write this node since it has no children, or they were already written.
-                store.put(&mut txn, &digest, current_trie)?;
+                store.put(&digest, current_trie)?;
             }
         }
 
-        txn.commit()?;
         Ok(())
     }
 }
 
 impl Store<Digest, Trie<Key, StoredValue>> for ScratchTrieStore {
-    type Error = error::Error;
-
-    type Handle = ScratchTrieStore;
-
-    fn handle(&self) -> Self::Handle {
-        self.clone()
-    }
-
     /// Puts a `value` into the store at `key` within a transaction, potentially returning an
     /// error of type `Self::Error` if that fails.
-    fn put<T>(
-        &self,
-        _txn: &mut T,
-        digest: &Digest,
-        trie: &Trie<Key, StoredValue>,
-    ) -> Result<(), Self::Error>
-    where
-        T: Writable<Handle = Self::Handle>,
-        Self::Error: From<T::Error>,
-    {
+    fn put(&self, digest: &Digest, trie: &Trie<Key, StoredValue>) -> Result<(), Self::Error> {
         self.cache
             .lock()
             .map_err(|_| error::Error::Poison)?
@@ -161,15 +111,7 @@ impl Store<Digest, Trie<Key, StoredValue>> for ScratchTrieStore {
 
     /// Returns an optional value (may exist or not) as read through a transaction, or an error
     /// of the associated `Self::Error` variety.
-    fn get<T>(
-        &self,
-        txn: &T,
-        digest: &Digest,
-    ) -> Result<Option<Trie<Key, StoredValue>>, Self::Error>
-    where
-        T: Readable<Handle = Self::Handle>,
-        Self::Error: From<T::Error>,
-    {
+    fn get(&self, digest: &Digest) -> Result<Option<Trie<Key, StoredValue>>, Self::Error> {
         let maybe_trie = {
             self.cache
                 .lock()
@@ -180,7 +122,7 @@ impl Store<Digest, Trie<Key, StoredValue>> for ScratchTrieStore {
         match maybe_trie {
             Some((_, cached)) => Ok(Some(cached)),
             None => {
-                let raw = self.get_raw(txn, digest)?;
+                let raw = self.get_raw(digest)?;
                 match raw {
                     Some(bytes) => {
                         let value: Trie<Key, StoredValue> = bytesrepr::deserialize(bytes.into())?;
@@ -200,16 +142,207 @@ impl Store<Digest, Trie<Key, StoredValue>> for ScratchTrieStore {
     }
 }
 
-impl TrieStore<Key, StoredValue> for ScratchTrieStore {}
+/// Represents the state of a migration of a state root from lmdb to rocksdb.
+pub enum RootMigration {
+    /// Has the migration been not yet been started or completed
+    NotStarted,
+    /// Has the migration been left incomplete
+    Partial,
+    /// Has the migration been completed
+    Complete,
+}
 
-impl<K, V> Store<Digest, Trie<K, V>> for RocksDbStore {
-    type Error = error::Error;
-
-    type Handle = RocksDb;
-
-    fn handle(&self) -> Self::Handle {
-        self.rocksdb.clone()
+impl RootMigration {
+    /// Has the migration been not yet been started or completed
+    pub fn is_not_started(&self) -> bool {
+        matches!(self, RootMigration::NotStarted)
+    }
+    /// Has the migration been partially completed
+    pub fn is_partial(&self) -> bool {
+        matches!(self, RootMigration::Partial)
+    }
+    /// Has the migration been completed
+    pub fn is_complete(&self) -> bool {
+        matches!(self, RootMigration::Complete)
     }
 }
 
+impl ErrorSource for ScratchTrieStore {
+    type Error = error::Error;
+}
+
+impl Readable for ScratchTrieStore {
+    fn read(&self, key: &[u8]) -> Result<Option<Bytes>, Self::Error> {
+        self.store.read(key)
+    }
+}
+
+impl Writable for ScratchTrieStore {
+    fn write(&self, key: &[u8], value: &[u8]) -> Result<(), Self::Error> {
+        self.store.write(key, value)
+    }
+}
+
+impl ErrorSource for RocksDbStore {
+    type Error = error::Error;
+}
+
+impl Readable for RocksDbStore {
+    fn read(&self, key: &[u8]) -> Result<Option<Bytes>, Self::Error> {
+        let cf = self.trie_column_family()?;
+        Ok(self.db.get_cf(&cf, key)?.map(|some| {
+            let value = some.as_ref();
+            Bytes::from(value)
+        }))
+    }
+}
+
+impl Writable for RocksDbStore {
+    fn write(&self, key: &[u8], value: &[u8]) -> Result<(), Self::Error> {
+        let cf = self.trie_column_family()?;
+        let _result = self.db.put_cf(&cf, key, value)?;
+        Ok(())
+    }
+}
+
+/// Environment for rocksdb.
+#[derive(Clone)]
+pub struct RocksDbStore {
+    db: Arc<DBWithThreadMode<MultiThreaded>>,
+    pub(crate) path: PathBuf,
+}
+
+const ACTIVE_COLUMN_FAMILIES: &[&str] = &[
+    TRIE_V1_COLUMN_FAMILY,
+    LMDB_MIGRATED_STATE_ROOTS_COLUMN_FAMILY,
+];
+
+impl RocksDbStore {
+    /// Create a new environment for RocksDB.
+    pub fn new(path: impl AsRef<Path>) -> Result<RocksDbStore, rocksdb::Error> {
+        Self::new_with_opts(path, Self::rocksdb_defaults())
+    }
+
+    /// Create a new environment for RocksDB with the specified options.
+    pub fn new_with_opts(
+        path: impl AsRef<Path>,
+        rocksdb_opts: Options,
+    ) -> Result<RocksDbStore, rocksdb::Error> {
+        let db = Arc::new(DBWithThreadMode::<MultiThreaded>::open_cf(
+            &rocksdb_opts,
+            path.as_ref(),
+            ACTIVE_COLUMN_FAMILIES.to_vec(),
+        )?);
+
+        Ok(RocksDbStore {
+            db,
+            path: path.as_ref().to_path_buf(),
+        })
+    }
+
+    /// Default constructor for rocksdb options.
+    pub fn rocksdb_defaults() -> Options {
+        let mut factory_opts = BlockBasedOptions::default();
+        factory_opts.set_block_size(ROCKS_DB_BLOCK_SIZE_BYTES);
+
+        let mut db_opts = Options::default();
+        db_opts.set_block_based_table_factory(&factory_opts);
+
+        db_opts.set_compression_type(ROCKS_DB_COMPRESSION_TYPE);
+        db_opts.set_compression_options(
+            ROCKS_DB_WINDOW_BITS,
+            ROCKS_DB_ZSTD_COMPRESSION_LEVEL,
+            ROCKS_DB_ZSTD_STRATEGY,
+            ROCKS_DB_ZSTD_MAX_DICT_BYTES,
+        );
+
+        // seems to lead to a sporadic segfault within rocksdb compaction
+        // const ROCKS_DB_ZSTD_MAX_TRAIN_BYTES: i32 = 1024 * 1024; // 1 MB
+        // db_opts.set_zstd_max_train_bytes(ROCKS_DB_ZSTD_MAX_TRAIN_BYTES);
+
+        db_opts.set_compaction_style(ROCKS_DB_COMPACTION_STYLE);
+        db_opts.set_max_bytes_for_level_base(ROCKS_DB_MAX_LEVEL_FILE_SIZE_BYTES);
+        db_opts.set_max_open_files(ROCKS_DB_MAX_OPEN_FILES);
+
+        db_opts.create_missing_column_families(true);
+        db_opts.create_if_missing(true);
+
+        // recommended to match # of cores on host.
+        db_opts.increase_parallelism(num_cpus::get() as i32);
+
+        db_opts.create_missing_column_families(true);
+        db_opts.create_if_missing(true);
+
+        db_opts
+    }
+
+    /// Check if a state root has been marked as migrated from lmdb to rocksdb.
+    pub(crate) fn get_root_migration_state(
+        &self,
+        state_root: &[u8],
+    ) -> Result<RootMigration, error::Error> {
+        let lmdb_migration_column = self.lmdb_tries_migrated_column()?;
+        let migration_state = self.db.get_cf(&lmdb_migration_column, state_root)?;
+        Ok(match migration_state {
+            Some(state) if state.is_empty() => RootMigration::Complete,
+            Some(state) if state.get(0) == Some(&1u8) => RootMigration::Partial,
+            _ => RootMigration::NotStarted,
+        })
+    }
+
+    /// Marks a state root as started migration from lmdb to rocksdb.
+    pub(crate) fn mark_state_root_migration_incomplete(
+        &self,
+        state_root: &[u8],
+    ) -> Result<(), error::Error> {
+        let lmdb_migration_column = self.lmdb_tries_migrated_column()?;
+        self.db.put_cf(&lmdb_migration_column, state_root, &[1u8])?;
+        Ok(())
+    }
+
+    /// Marks a state root as fully migrated from lmdb to rocksdb.
+    pub(crate) fn mark_state_root_migration_completed(
+        &self,
+        state_root: &[u8],
+    ) -> Result<(), error::Error> {
+        let lmdb_migration_column = self.lmdb_tries_migrated_column()?;
+        self.db.put_cf(&lmdb_migration_column, state_root, &[])?;
+        Ok(())
+    }
+
+    /// Trie V1 column family.
+    fn trie_column_family(&self) -> Result<Arc<BoundColumnFamily<'_>>, error::Error> {
+        self.db.cf_handle(TRIE_V1_COLUMN_FAMILY).ok_or_else(|| {
+            error::Error::UnableToOpenColumnFamily(TRIE_V1_COLUMN_FAMILY.to_string())
+        })
+    }
+
+    /// Column family tracking state roots migrated from lmdb (supports safely resuming if the node
+    /// were to be stopped during a migration).
+    fn lmdb_tries_migrated_column(&self) -> Result<Arc<BoundColumnFamily<'_>>, error::Error> {
+        self.db
+            .cf_handle(LMDB_MIGRATED_STATE_ROOTS_COLUMN_FAMILY)
+            .ok_or_else(|| {
+                error::Error::UnableToOpenColumnFamily(
+                    LMDB_MIGRATED_STATE_ROOTS_COLUMN_FAMILY.to_string(),
+                )
+            })
+    }
+
+    /// Trie store iterator.
+    pub fn trie_store_iterator<'a: 'b, 'b>(
+        &'a self,
+    ) -> Result<DBIteratorWithThreadMode<'b, DBWithThreadMode<MultiThreaded>>, error::Error> {
+        let cf_handle = self.trie_column_family()?;
+        Ok(self.db.iterator_cf(&cf_handle, IteratorMode::Start))
+    }
+
+    /// Return the path to the backing rocksdb files.
+    pub(crate) fn path(&self) -> PathBuf {
+        self.path.clone()
+    }
+}
+
+impl TrieStore<Key, StoredValue> for ScratchTrieStore {}
+impl<K, V> Store<Digest, Trie<K, V>> for RocksDbStore {}
 impl<K, V> TrieStore<K, V> for RocksDbStore {}

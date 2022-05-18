@@ -1,34 +1,54 @@
 //! An in-memory trie store, intended to be used for testing.
 
-use super::{Digest, Store, Trie, TrieStore, NAME};
-use crate::storage::{error::in_memory::Error, transaction_source::in_memory::InMemoryEnvironment};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
+
+use casper_types::bytesrepr::Bytes;
+
+use super::{Digest, Store, Trie, TrieStore};
+use crate::storage::{
+    error::in_memory::Error,
+    store::{ErrorSource, Readable, Writable},
+};
 
 /// An in-memory trie store.
 pub struct InMemoryTrieStore {
-    maybe_name: Option<String>,
+    /// Data backing the trie store.
+    pub data: Arc<Mutex<HashMap<Bytes, Bytes>>>,
+}
+
+impl ErrorSource for InMemoryTrieStore {
+    type Error = Error;
+}
+
+impl Readable for InMemoryTrieStore {
+    fn read(&self, key: &[u8]) -> Result<Option<Bytes>, Self::Error> {
+        let bytes = self.data.lock().unwrap().get(&Bytes::from(key)).cloned();
+        Ok(bytes)
+    }
+}
+
+impl Writable for InMemoryTrieStore {
+    fn write(&self, key: &[u8], value: &[u8]) -> Result<(), Self::Error> {
+        self.data
+            .lock()
+            .unwrap()
+            .insert(Bytes::from(key), Bytes::from(value));
+        Ok(())
+    }
 }
 
 impl InMemoryTrieStore {
-    pub(crate) fn new(_env: &InMemoryEnvironment, maybe_name: Option<&str>) -> Self {
-        let name = maybe_name
-            .map(|name| format!("{}-{}", NAME, name))
-            .unwrap_or_else(|| String::from(NAME));
+    pub(crate) fn new() -> Self {
         InMemoryTrieStore {
-            maybe_name: Some(name),
+            data: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }
 
-impl<K, V> Store<Digest, Trie<K, V>> for InMemoryTrieStore {
-    type Error = Error;
-
-    type Handle = Option<String>;
-
-    fn handle(&self) -> Self::Handle {
-        self.maybe_name.to_owned()
-    }
-}
-
+impl<K, V> Store<Digest, Trie<K, V>> for InMemoryTrieStore {}
 impl<K, V> TrieStore<K, V> for InMemoryTrieStore {}
 
 #[cfg(test)]
@@ -38,7 +58,6 @@ mod tests {
 
     use crate::storage::{
         store::Store,
-        transaction_source::{in_memory::InMemoryEnvironment, Transaction, TransactionSource},
         trie::{Pointer, PointerBlock, Trie},
         trie_store::in_memory::InMemoryTrieStore,
     };
@@ -71,69 +90,25 @@ mod tests {
         // Get its hash
         let node_hash = Digest::hash(&node.to_bytes().unwrap());
 
-        // Create the environment and the store. For both the in-memory and
-        // LMDB-backed implementations, the environment is the source of
-        // transactions.
-        let env = InMemoryEnvironment::new();
-        let store = InMemoryTrieStore::new(&env, None);
+        let store = InMemoryTrieStore::new();
 
-        // First let's create a read-write transaction, persist the values, but
-        // forget to commit the transaction.
-        {
-            // Create a read-write transaction
-            let mut txn = env.create_read_write_txn().unwrap();
-
-            // Put the values in the store
-            store.put(&mut txn, &leaf_1_hash, &leaf_1).unwrap();
-            store.put(&mut txn, &leaf_2_hash, &leaf_2).unwrap();
-            store.put(&mut txn, &node_hash, &node).unwrap();
-
-            // Here we forget to commit the transaction before it goes out of scope
+        // Observe that nothing has been persisted to the store
+        for hash in vec![&leaf_1_hash, &leaf_2_hash, &node_hash].iter() {
+            // We need to use a type annotation here to help the compiler choose
+            // a suitable FromBytes instance
+            let maybe_trie: Option<Trie<Bytes, Bytes>> = store.get(hash).unwrap();
+            assert!(maybe_trie.is_none());
         }
 
-        // Now let's check to see if the values were stored
-        {
-            // Create a read transaction
-            let txn = env.create_read_txn().unwrap();
-
-            // Observe that nothing has been persisted to the store
-            for hash in vec![&leaf_1_hash, &leaf_2_hash, &node_hash].iter() {
-                // We need to use a type annotation here to help the compiler choose
-                // a suitable FromBytes instance
-                let maybe_trie: Option<Trie<Bytes, Bytes>> = store.get(&txn, hash).unwrap();
-                assert!(maybe_trie.is_none());
-            }
-
-            // Commit the read transaction.  Not strictly necessary, but better to be hygienic.
-            txn.commit().unwrap();
-        }
-
-        // Now let's try that again, remembering to commit the transaction this time
-        {
-            // Create a read-write transaction
-            let mut txn = env.create_read_write_txn().unwrap();
-
-            // Put the values in the store
-            store.put(&mut txn, &leaf_1_hash, &leaf_1).unwrap();
-            store.put(&mut txn, &leaf_2_hash, &leaf_2).unwrap();
-            store.put(&mut txn, &node_hash, &node).unwrap();
-
-            // Commit the transaction.
-            txn.commit().unwrap();
-        }
+        // Put the values in the store
+        store.put(&leaf_1_hash, &leaf_1).unwrap();
+        store.put(&leaf_2_hash, &leaf_2).unwrap();
+        store.put(&node_hash, &node).unwrap();
 
         // Now let's check to see if the values were stored again
-        {
-            // Create a read transaction
-            let txn = env.create_read_txn().unwrap();
-
-            // Get the values in the store
-            assert_eq!(Some(leaf_1), store.get(&txn, &leaf_1_hash).unwrap());
-            assert_eq!(Some(leaf_2), store.get(&txn, &leaf_2_hash).unwrap());
-            assert_eq!(Some(node), store.get(&txn, &node_hash).unwrap());
-
-            // Commit the read transaction.
-            txn.commit().unwrap();
-        }
+        // Get the values in the store
+        assert_eq!(Some(leaf_1), store.get(&leaf_1_hash).unwrap());
+        assert_eq!(Some(leaf_2), store.get(&leaf_2_hash).unwrap());
+        assert_eq!(Some(node), store.get(&node_hash).unwrap());
     }
 }

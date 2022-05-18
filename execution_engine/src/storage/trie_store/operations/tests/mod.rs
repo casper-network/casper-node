@@ -9,7 +9,6 @@ mod write;
 
 use std::{collections::HashMap, convert, ops::Not};
 
-use lmdb::DatabaseFlags;
 use tempfile::{tempdir, TempDir};
 
 use casper_hashing::Digest;
@@ -19,19 +18,13 @@ use crate::{
     shared::newtypes::CorrelationId,
     storage::{
         error::{self, in_memory},
-        transaction_source::{
-            db::LmdbEnvironment, in_memory::InMemoryEnvironment, Readable, Transaction,
-            TransactionSource,
-        },
         trie::{merkle_proof::TrieMerkleProof, Pointer, Trie},
         trie_store::{
-            self,
-            db::LmdbTrieStore,
+            db::RocksDbStore,
             in_memory::InMemoryTrieStore,
             operations::{self, read, read_with_proof, write, ReadResult, WriteResult},
             TrieStore,
         },
-        DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
     },
 };
 
@@ -484,55 +477,39 @@ fn create_6_leaf_trie() -> Result<(Digest, Vec<HashedTestTrie>), bytesrepr::Erro
     Ok((root_hash, tries))
 }
 
-fn put_tries<'a, K, V, R, S, E>(
-    environment: &'a R,
-    store: &S,
-    tries: &[HashedTrie<K, V>],
-) -> Result<(), E>
+fn put_tries<K, V, S, E>(store: &S, tries: &[HashedTrie<K, V>]) -> Result<(), E>
 where
     K: ToBytes,
     V: ToBytes,
-    R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<K, V>,
-    S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+    E: From<S::Error> + From<bytesrepr::Error>,
 {
     if tries.is_empty() {
         return Ok(());
     }
-    let mut txn = environment.create_read_write_txn()?;
     for HashedTrie { hash, trie } in tries.iter() {
-        store.put(&mut txn, hash, trie)?;
+        store.put(hash, trie)?;
     }
-    txn.commit()?;
     Ok(())
 }
 
 // A context for holding lmdb-based test resources
-struct LmdbTestContext {
+struct RocksDbTestContext {
     _temp_dir: TempDir,
-    environment: LmdbEnvironment,
-    store: LmdbTrieStore,
+    store: RocksDbStore,
 }
 
-impl LmdbTestContext {
+impl RocksDbTestContext {
     fn new<K, V>(tries: &[HashedTrie<K, V>]) -> anyhow::Result<Self>
     where
         K: FromBytes + ToBytes,
         V: FromBytes + ToBytes,
     {
-        let _temp_dir = tempdir()?;
-        let environment = LmdbEnvironment::new(
-            _temp_dir.path(),
-            DEFAULT_TEST_MAX_DB_SIZE,
-            DEFAULT_TEST_MAX_READERS,
-            true,
-        )?;
-        let store = LmdbTrieStore::new(&environment, None, DatabaseFlags::empty())?;
-        put_tries::<_, _, _, _, error::Error>(&environment, &store, tries)?;
-        Ok(LmdbTestContext {
-            _temp_dir,
-            environment,
+        let dir = tempdir()?;
+        let store = RocksDbStore::new(dir.path())?;
+        put_tries::<_, _, _, error::Error>(&store, tries)?;
+        Ok(RocksDbTestContext {
+            _temp_dir: dir,
             store,
         })
     }
@@ -542,14 +519,13 @@ impl LmdbTestContext {
         K: ToBytes,
         V: ToBytes,
     {
-        put_tries::<_, _, _, _, error::Error>(&self.environment, &self.store, tries)?;
+        put_tries::<_, _, _, error::Error>(&self.store, tries)?;
         Ok(())
     }
 }
 
 // A context for holding in-memory test resources
 struct InMemoryTestContext {
-    environment: InMemoryEnvironment,
     store: InMemoryTrieStore,
 }
 
@@ -559,10 +535,9 @@ impl InMemoryTestContext {
         K: ToBytes,
         V: ToBytes,
     {
-        let environment = InMemoryEnvironment::new();
-        let store = InMemoryTrieStore::new(&environment, None);
-        put_tries::<_, _, _, _, in_memory::Error>(&environment, &store, tries)?;
-        Ok(InMemoryTestContext { environment, store })
+        let store = InMemoryTrieStore::new();
+        put_tries::<K, V, _, in_memory::Error>(&store, tries)?;
+        Ok(InMemoryTestContext { store })
     }
 
     fn update<K, V>(&self, tries: &[HashedTrie<K, V>]) -> anyhow::Result<()>
@@ -570,14 +545,13 @@ impl InMemoryTestContext {
         K: ToBytes,
         V: ToBytes,
     {
-        put_tries::<_, _, _, _, in_memory::Error>(&self.environment, &self.store, tries)?;
+        put_tries::<K, V, _, in_memory::Error>(&self.store, tries)?;
         Ok(())
     }
 }
 
-fn check_leaves_exist<K, V, T, S, E>(
+fn check_leaves_exist<K, V, S, E>(
     correlation_id: CorrelationId,
-    txn: &T,
     store: &S,
     root: &Digest,
     leaves: &[Trie<K, V>],
@@ -585,17 +559,14 @@ fn check_leaves_exist<K, V, T, S, E>(
 where
     K: ToBytes + FromBytes + Eq + std::fmt::Debug,
     V: ToBytes + FromBytes + Eq + Copy,
-    T: Readable<Handle = S::Handle>,
     S: TrieStore<K, V>,
-    S::Error: From<T::Error>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
     let mut ret = Vec::new();
 
     for leaf in leaves {
         if let Trie::Leaf { key, value } = leaf {
-            let maybe_value: ReadResult<V> =
-                read::<_, _, _, _, E>(correlation_id, txn, store, root, key)?;
+            let maybe_value: ReadResult<V> = read::<_, _, _, E>(correlation_id, store, root, key)?;
             ret.push(ReadResult::Found(*value) == maybe_value)
         } else {
             panic!("leaves should only contain leaves")
@@ -605,9 +576,8 @@ where
 }
 
 /// For a given vector of leaves check the merkle proofs exist and are correct
-fn check_merkle_proofs<K, V, T, S, E>(
+fn check_merkle_proofs<K, V, S, E>(
     correlation_id: CorrelationId,
-    txn: &T,
     store: &S,
     root: &Digest,
     leaves: &[Trie<K, V>],
@@ -615,9 +585,7 @@ fn check_merkle_proofs<K, V, T, S, E>(
 where
     K: ToBytes + FromBytes + Eq + std::fmt::Debug + Copy,
     V: ToBytes + FromBytes + Eq + Copy,
-    T: Readable<Handle = S::Handle>,
     S: TrieStore<K, V>,
-    S::Error: From<T::Error>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
     let mut ret = Vec::new();
@@ -625,7 +593,7 @@ where
     for leaf in leaves {
         if let Trie::Leaf { key, value } = leaf {
             let maybe_proof: ReadResult<TrieMerkleProof<K, V>> =
-                read_with_proof::<_, _, _, _, E>(correlation_id, txn, store, root, key)?;
+                read_with_proof::<_, _, _, E>(correlation_id, store, root, key)?;
             match maybe_proof {
                 ReadResult::Found(proof) => {
                     let hash = proof.compute_state_hash()?;
@@ -643,9 +611,8 @@ where
     Ok(ret)
 }
 
-fn check_keys<K, V, T, S, E>(
+fn check_keys<K, V, S, E>(
     correlation_id: CorrelationId,
-    txn: &T,
     store: &S,
     root: &Digest,
     leaves: &[Trie<K, V>],
@@ -653,9 +620,7 @@ fn check_keys<K, V, T, S, E>(
 where
     K: ToBytes + FromBytes + Eq + std::fmt::Debug + Clone + Ord,
     V: ToBytes + FromBytes + Eq + std::fmt::Debug + Copy,
-    T: Readable<Handle = S::Handle>,
     S: TrieStore<K, V>,
-    S::Error: From<T::Error>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
     let expected = {
@@ -668,7 +633,7 @@ where
         tmp
     };
     let actual = {
-        let mut tmp = operations::keys::<_, _, _, _>(correlation_id, txn, store, root)
+        let mut tmp = operations::keys(correlation_id, store, root)
             .filter_map(Result::ok)
             .collect::<Vec<K>>();
         tmp.sort();
@@ -677,9 +642,8 @@ where
     expected == actual
 }
 
-fn check_leaves<'a, K, V, R, S, E>(
+fn check_leaves<K, V, S, E>(
     correlation_id: CorrelationId,
-    environment: &'a R,
     store: &S,
     root: &Digest,
     present: &[Trie<K, V>],
@@ -688,52 +652,45 @@ fn check_leaves<'a, K, V, R, S, E>(
 where
     K: ToBytes + FromBytes + Eq + std::fmt::Debug + Copy + Clone + Ord,
     V: ToBytes + FromBytes + Eq + std::fmt::Debug + Copy,
-    R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<K, V>,
-    S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+    E: From<S::Error> + From<bytesrepr::Error>,
 {
-    let txn: R::ReadTransaction = environment.create_read_txn()?;
-
     assert!(
-        check_leaves_exist::<_, _, _, _, E>(correlation_id, &txn, store, root, present)?
+        check_leaves_exist::<_, _, _, E>(correlation_id, store, root, present)?
             .into_iter()
             .all(convert::identity)
     );
 
     assert!(
-        check_merkle_proofs::<_, _, _, _, E>(correlation_id, &txn, store, root, present)?
+        check_merkle_proofs::<_, _, _, E>(correlation_id, store, root, present)?
             .into_iter()
             .all(convert::identity)
     );
 
     assert!(
-        check_leaves_exist::<_, _, _, _, E>(correlation_id, &txn, store, root, absent)?
+        check_leaves_exist::<_, _, _, E>(correlation_id, store, root, absent)?
             .into_iter()
             .all(bool::not)
     );
 
     assert!(
-        check_merkle_proofs::<_, _, _, _, E>(correlation_id, &txn, store, root, absent)?
+        check_merkle_proofs::<_, _, _, E>(correlation_id, store, root, absent)?
             .into_iter()
             .all(bool::not)
     );
 
-    assert!(check_keys::<_, _, _, _, E>(
+    assert!(check_keys::<_, _, _, E>(
         correlation_id,
-        &txn,
         store,
         root,
         present,
     ));
 
-    txn.commit()?;
     Ok(())
 }
 
-fn write_leaves<'a, K, V, R, S, E>(
+fn write_leaves<K, V, S, E>(
     correlation_id: CorrelationId,
-    environment: &'a R,
     store: &S,
     root_hash: &Digest,
     leaves: &[Trie<K, V>],
@@ -741,22 +698,18 @@ fn write_leaves<'a, K, V, R, S, E>(
 where
     K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
     V: ToBytes + FromBytes + Clone + Eq,
-    R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<K, V>,
-    S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+    E: From<S::Error> + From<bytesrepr::Error>,
 {
     let mut results = Vec::new();
     if leaves.is_empty() {
         return Ok(results);
     }
     let mut root_hash = root_hash.to_owned();
-    let mut txn = environment.create_read_write_txn()?;
 
     for leaf in leaves.iter() {
         if let Trie::Leaf { key, value } = leaf {
-            let write_result =
-                write::<_, _, _, _, E>(correlation_id, &mut txn, store, &root_hash, key, value)?;
+            let write_result = write::<_, _, _, E>(correlation_id, store, &root_hash, key, value)?;
             match write_result {
                 WriteResult::Written(hash) => {
                     root_hash = hash;
@@ -769,13 +722,11 @@ where
             panic!("leaves should contain only leaves");
         }
     }
-    txn.commit()?;
     Ok(results)
 }
 
-fn check_pairs_proofs<'a, K, V, R, S, E>(
+fn check_pairs_proofs<K, V, S, E>(
     correlation_id: CorrelationId,
-    environment: &'a R,
     store: &S,
     root_hashes: &[Digest],
     pairs: &[(K, V)],
@@ -783,16 +734,12 @@ fn check_pairs_proofs<'a, K, V, R, S, E>(
 where
     K: ToBytes + FromBytes + Eq + std::fmt::Debug + Copy + Clone + Ord,
     V: ToBytes + FromBytes + Eq + std::fmt::Debug + Copy,
-    R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<K, V>,
-    S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+    E: From<S::Error> + From<bytesrepr::Error>,
 {
-    let txn = environment.create_read_txn()?;
     for (index, root_hash) in root_hashes.iter().enumerate() {
         for (key, value) in &pairs[..=index] {
-            let maybe_proof =
-                read_with_proof::<_, _, _, _, E>(correlation_id, &txn, store, root_hash, key)?;
+            let maybe_proof = read_with_proof::<_, _, _, E>(correlation_id, store, root_hash, key)?;
             match maybe_proof {
                 ReadResult::Found(proof) => {
                     let hash = proof.compute_state_hash()?;
@@ -808,9 +755,8 @@ where
     Ok(true)
 }
 
-fn check_pairs<'a, K, V, R, S, E>(
+fn check_pairs<K, V, S, E>(
     correlation_id: CorrelationId,
-    environment: &'a R,
     store: &S,
     root_hashes: &[Digest],
     pairs: &[(K, V)],
@@ -818,15 +764,12 @@ fn check_pairs<'a, K, V, R, S, E>(
 where
     K: ToBytes + FromBytes + Eq + std::fmt::Debug + Clone + Ord,
     V: ToBytes + FromBytes + Eq + std::fmt::Debug + Copy,
-    R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<K, V>,
-    S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+    E: From<S::Error> + From<bytesrepr::Error>,
 {
-    let txn = environment.create_read_txn()?;
     for (index, root_hash) in root_hashes.iter().enumerate() {
         for (key, value) in &pairs[..=index] {
-            let result = read::<_, _, _, _, E>(correlation_id, &txn, store, root_hash, key)?;
+            let result = read::<_, _, _, E>(correlation_id, store, root_hash, key)?;
             if ReadResult::Found(*value) != result {
                 return Ok(false);
             }
@@ -841,7 +784,7 @@ where
             tmp
         };
         let actual = {
-            let mut tmp = operations::keys::<_, _, _, _>(correlation_id, &txn, store, root_hash)
+            let mut tmp = operations::keys(correlation_id, store, root_hash)
                 .filter_map(Result::ok)
                 .collect::<Vec<K>>();
             tmp.sort();
@@ -854,9 +797,8 @@ where
     Ok(true)
 }
 
-fn write_pairs<'a, K, V, R, S, E>(
+fn write_pairs<K, V, S, E>(
     correlation_id: CorrelationId,
-    environment: &'a R,
     store: &S,
     root_hash: &Digest,
     pairs: &[(K, V)],
@@ -864,20 +806,17 @@ fn write_pairs<'a, K, V, R, S, E>(
 where
     K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
     V: ToBytes + FromBytes + Clone + Eq,
-    R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<K, V>,
-    S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+    E: From<S::Error> + From<bytesrepr::Error>,
 {
     let mut results = Vec::new();
     if pairs.is_empty() {
         return Ok(results);
     }
     let mut root_hash = root_hash.to_owned();
-    let mut txn = environment.create_read_write_txn()?;
 
     for (key, value) in pairs.iter() {
-        match write::<_, _, _, _, E>(correlation_id, &mut txn, store, &root_hash, key, value)? {
+        match write::<_, _, _, E>(correlation_id, store, &root_hash, key, value)? {
             WriteResult::Written(hash) => {
                 root_hash = hash;
             }
@@ -886,13 +825,11 @@ where
         };
         results.push(root_hash);
     }
-    txn.commit()?;
     Ok(results)
 }
 
-fn writes_to_n_leaf_empty_trie_had_expected_results<'a, K, V, R, S, E>(
+fn writes_to_n_leaf_empty_trie_had_expected_results<K, V, S, E>(
     correlation_id: CorrelationId,
-    environment: &'a R,
     store: &S,
     states: &[Digest],
     test_leaves: &[Trie<K, V>],
@@ -900,27 +837,20 @@ fn writes_to_n_leaf_empty_trie_had_expected_results<'a, K, V, R, S, E>(
 where
     K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug + Copy + Ord,
     V: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug + Copy,
-    R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<K, V>,
-    S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+    E: From<S::Error> + From<bytesrepr::Error>,
 {
     let mut states = states.to_vec();
 
     // Write set of leaves to the trie
-    let hashes = write_leaves::<_, _, _, _, E>(
-        correlation_id,
-        environment,
-        store,
-        states.last().unwrap(),
-        test_leaves,
-    )?
-    .into_iter()
-    .map(|result| match result {
-        WriteResult::Written(root_hash) => root_hash,
-        _ => panic!("write_leaves resulted in non-write"),
-    })
-    .collect::<Vec<Digest>>();
+    let hashes =
+        write_leaves::<_, _, _, E>(correlation_id, store, states.last().unwrap(), test_leaves)?
+            .into_iter()
+            .map(|result| match result {
+                WriteResult::Written(root_hash) => root_hash,
+                _ => panic!("write_leaves resulted in non-write"),
+            })
+            .collect::<Vec<Digest>>();
 
     states.extend(hashes);
 
@@ -928,26 +858,22 @@ where
     // state, and that the set of other leaves is not.
     for (num_leaves, state) in states.iter().enumerate() {
         let (used, unused) = test_leaves.split_at(num_leaves);
-        check_leaves::<_, _, _, _, E>(correlation_id, environment, store, state, used, unused)?;
+        check_leaves::<_, _, _, E>(correlation_id, store, state, used, unused)?;
     }
 
     Ok(states)
 }
 
-impl InMemoryEnvironment {
-    pub fn dump<K, V>(
-        &self,
-        maybe_name: Option<&str>,
-    ) -> Result<HashMap<Digest, Trie<K, V>>, in_memory::Error>
+impl InMemoryTrieStore {
+    pub fn dump<K, V>(&self) -> Result<HashMap<Digest, Trie<K, V>>, in_memory::Error>
     where
         K: FromBytes,
         V: FromBytes,
     {
-        let name = maybe_name
-            .map(|name| format!("{}-{}", trie_store::NAME, name))
-            .unwrap_or_else(|| trie_store::NAME.to_string());
-        let data = self.data(Some(&name))?.unwrap();
-        data.into_iter()
+        self.data
+            .lock()
+            .unwrap()
+            .iter()
             .map(|(hash_bytes, trie_bytes)| {
                 let hash: Digest = bytesrepr::deserialize_from_slice(hash_bytes)?;
                 let trie: Trie<K, V> = bytesrepr::deserialize_from_slice(trie_bytes)?;

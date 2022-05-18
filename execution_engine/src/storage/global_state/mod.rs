@@ -23,7 +23,6 @@ use crate::{
         transform::{self, Transform},
     },
     storage::{
-        transaction_source::{Transaction, TransactionSource},
         trie::{merkle_proof::TrieMerkleProof, Trie, TrieOrChunk, TrieOrChunkId},
         trie_store::{
             operations::{read, write, ReadResult, WriteResult},
@@ -82,7 +81,7 @@ pub enum CommitError {
 pub trait CommitProvider: StateProvider {
     /// Applies changes and returns a new post state hash.
     /// block_hash is used for computing a deterministic and unique keys.
-    fn commit(
+    fn commit_effects(
         &self,
         correlation_id: CorrelationId,
         state_hash: Digest,
@@ -119,7 +118,11 @@ pub trait StateProvider {
     ) -> Result<Option<Bytes>, Self::Error>;
 
     /// Insert a trie node into the trie
-    fn put_trie(&self, correlation_id: CorrelationId, trie: &[u8]) -> Result<Digest, Self::Error>;
+    fn put_trie_bytes(
+        &self,
+        correlation_id: CorrelationId,
+        trie: &[u8],
+    ) -> Result<Digest, Self::Error>;
 
     /// Finds all of the missing or corrupt keys of which are descendants of `trie_key`.
     fn missing_trie_keys(
@@ -130,28 +133,23 @@ pub trait StateProvider {
 }
 
 /// Write multiple key/stored value pairs to the store in a single rw transaction.
-pub fn put_stored_values<'a, R, S, E>(
-    environment: &'a R,
+pub fn put_stored_values<S, E>(
     store: &S,
     correlation_id: CorrelationId,
     prestate_hash: Digest,
     stored_values: HashMap<Key, StoredValue>,
 ) -> Result<Digest, E>
 where
-    R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<Key, StoredValue>,
-    S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<CommitError>,
+    E: From<S::Error> + From<bytesrepr::Error> + From<CommitError>,
 {
-    let mut txn = environment.create_read_write_txn()?;
     let mut state_root = prestate_hash;
-    let maybe_root: Option<Trie<Key, StoredValue>> = store.get(&txn, &state_root)?;
+    let maybe_root: Option<Trie<Key, StoredValue>> = store.get(&state_root)?;
     if maybe_root.is_none() {
         return Err(CommitError::RootNotFound(prestate_hash).into());
     };
     for (key, value) in stored_values.iter() {
-        let write_result =
-            write::<_, _, _, _, E>(correlation_id, &mut txn, store, &state_root, key, value)?;
+        let write_result = write::<_, _, S, E>(correlation_id, store, &state_root, key, value)?;
         match write_result {
             WriteResult::Written(root_hash) => {
                 state_root = root_hash;
@@ -163,36 +161,31 @@ where
             }
         }
     }
-    txn.commit()?;
     Ok(state_root)
 }
 
 /// Commit `effects` to the store.
-pub fn commit<'a, R, S, H, E>(
-    environment: &'a R,
+pub fn commit_effects<S, H, E>(
     store: &S,
     correlation_id: CorrelationId,
     prestate_hash: Digest,
     effects: AdditiveMap<Key, Transform, H>,
 ) -> Result<Digest, E>
 where
-    R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<Key, StoredValue>,
-    S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<CommitError>,
+    E: From<S::Error> + From<bytesrepr::Error> + From<CommitError>,
     H: BuildHasher,
 {
-    let mut txn = environment.create_read_write_txn()?;
     let mut state_root = prestate_hash;
 
-    let maybe_root: Option<Trie<Key, StoredValue>> = store.get(&txn, &state_root)?;
+    let maybe_root: Option<Trie<Key, StoredValue>> = store.get(&state_root)?;
 
     if maybe_root.is_none() {
         return Err(CommitError::RootNotFound(prestate_hash).into());
     };
 
     for (key, transform) in effects.into_iter() {
-        let read_result = read::<_, _, _, _, E>(correlation_id, &txn, store, &state_root, &key)?;
+        let read_result = read::<_, _, _, E>(correlation_id, store, &state_root, &key)?;
 
         let value = match (read_result, transform) {
             (ReadResult::NotFound, Transform::Write(new_value)) => new_value,
@@ -228,8 +221,7 @@ where
             }
         };
 
-        let write_result =
-            write::<_, _, _, _, E>(correlation_id, &mut txn, store, &state_root, &key, &value)?;
+        let write_result = write::<_, _, _, E>(correlation_id, store, &state_root, &key, &value)?;
 
         match write_result {
             WriteResult::Written(root_hash) => {
@@ -242,8 +234,5 @@ where
             }
         }
     }
-
-    txn.commit()?;
-
     Ok(state_root)
 }

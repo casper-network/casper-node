@@ -3,36 +3,23 @@ use casper_hashing::Digest;
 use super::*;
 use crate::{
     shared::newtypes::CorrelationId,
-    storage::{
-        error::{self, in_memory},
-        trie_store::operations::{scan, TrieScan},
-    },
+    storage::trie_store::operations::{scan, TrieScan},
 };
 
-fn check_scan<'a, R, S, E>(
+fn check_scan<S, E>(
     correlation_id: CorrelationId,
-    environment: &'a R,
     store: &S,
     root_hash: &Digest,
     key: &[u8],
 ) -> Result<(), E>
 where
-    R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<TestKey, TestValue>,
-    S::Error: From<R::Error> + std::fmt::Debug,
-    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+    E: From<S::Error> + From<bytesrepr::Error>,
 {
-    let txn: R::ReadTransaction = environment.create_read_txn()?;
     let root = store
-        .get(&txn, root_hash)?
+        .get(root_hash)?
         .expect("check_scan received an invalid root hash");
-    let TrieScan { mut tip, parents } = scan::<TestKey, TestValue, R::ReadTransaction, S, E>(
-        correlation_id,
-        &txn,
-        store,
-        key,
-        &root,
-    )?;
+    let TrieScan { mut tip, parents } = scan::<_, _, _, E>(correlation_id, store, key, &root)?;
 
     for (index, parent) in parents.into_iter().rev() {
         let expected_tip_hash = {
@@ -54,7 +41,6 @@ where
         }
     }
     assert_eq!(root, tip);
-    txn.commit()?;
     Ok(())
 }
 
@@ -66,13 +52,12 @@ mod partial_tries {
         for generator in &TEST_TRIE_GENERATORS {
             let correlation_id = CorrelationId::new();
             let (root_hash, tries) = generator().unwrap();
-            let context = LmdbTestContext::new(&tries).unwrap();
+            let context = RocksDbTestContext::new(&tries).unwrap();
 
             for leaf in TEST_LEAVES.iter() {
                 let leaf_bytes = leaf.to_bytes().unwrap();
-                check_scan::<_, _, error::Error>(
+                check_scan::<_, error::Error>(
                     correlation_id,
-                    &context.environment,
                     &context.store,
                     &root_hash,
                     &leaf_bytes,
@@ -91,9 +76,8 @@ mod partial_tries {
 
             for leaf in TEST_LEAVES.iter() {
                 let leaf_bytes = leaf.to_bytes().unwrap();
-                check_scan::<_, _, in_memory::Error>(
+                check_scan::<_, in_memory::Error>(
                     correlation_id,
-                    &context.environment,
                     &context.store,
                     &root_hash,
                     &leaf_bytes,
@@ -110,7 +94,7 @@ mod full_tries {
     #[test]
     fn lmdb_scans_from_n_leaf_full_trie_had_expected_results() {
         let correlation_id = CorrelationId::new();
-        let context = LmdbTestContext::new(EMPTY_HASHED_TEST_TRIES).unwrap();
+        let context = RocksDbTestContext::new(EMPTY_HASHED_TEST_TRIES).unwrap();
         let mut states: Vec<Digest> = Vec::new();
 
         for (state_index, generator) in TEST_TRIE_GENERATORS.iter().enumerate() {
@@ -121,9 +105,8 @@ mod full_tries {
             for state in &states[..state_index] {
                 for leaf in TEST_LEAVES.iter() {
                     let leaf_bytes = leaf.to_bytes().unwrap();
-                    check_scan::<_, _, error::Error>(
+                    check_scan::<_, error::Error>(
                         correlation_id,
-                        &context.environment,
                         &context.store,
                         state,
                         &leaf_bytes,
@@ -148,9 +131,8 @@ mod full_tries {
             for state in &states[..state_index] {
                 for leaf in TEST_LEAVES.iter() {
                     let leaf_bytes = leaf.to_bytes().unwrap();
-                    check_scan::<_, _, in_memory::Error>(
+                    check_scan::<_, in_memory::Error>(
                         correlation_id,
-                        &context.environment,
                         &context.store,
                         state,
                         &leaf_bytes,

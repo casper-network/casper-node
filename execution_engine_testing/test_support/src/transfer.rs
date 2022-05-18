@@ -241,8 +241,6 @@ pub fn transfer_to_account_multiple_native_transfers(
     if use_scratch {
         builder.write_scratch_to_db();
     }
-    // flush to disk only after entire block (simulates manual_sync_enabled=true config entry)
-    builder.flush_environment();
 
     // WasmTestBuilder holds on to all execution results. This needs to be cleared to reduce
     // overhead in this test - it will likely OOM without.

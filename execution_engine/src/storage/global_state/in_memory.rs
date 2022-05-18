@@ -7,14 +7,8 @@ use crate::{
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
     storage::{
         error::{self, in_memory},
-        global_state::{commit, CommitProvider, StateProvider, StateReader},
+        global_state::{commit_effects, CommitProvider, StateProvider, StateReader},
         store::Store,
-        transaction_source::{
-            in_memory::{
-                InMemoryEnvironment, InMemoryReadTransaction, InMemoryReadWriteTransaction,
-            },
-            Transaction, TransactionSource,
-        },
         trie::{
             merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie, TrieOrChunk,
             TrieOrChunkId,
@@ -22,7 +16,7 @@ use crate::{
         trie_store::{
             in_memory::InMemoryTrieStore,
             operations::{
-                self, keys_with_prefix, missing_trie_keys, put_trie, read, read_with_proof,
+                self, keys_with_prefix, missing_trie_keys, put_trie_bytes, read, read_with_proof,
                 ReadResult, WriteResult,
             },
         },
@@ -32,10 +26,7 @@ use crate::{
 /// Global state implemented purely in memory only. No state is saved to disk. This is mostly
 /// used for testing purposes.
 pub struct InMemoryGlobalState {
-    /// Environment for `InMemoryGlobalState`.
-    /// Basically empty because this global state does not support transactions.
-    pub(crate) environment: Arc<InMemoryEnvironment>,
-    /// Trie store for `InMemoryGlobalState`.
+    // Trie store for `InMemoryGlobalState`.
     pub(crate) trie_store: Arc<InMemoryTrieStore>,
     /// Empty state root hash.
     pub(crate) empty_root_hash: Digest,
@@ -43,8 +34,6 @@ pub struct InMemoryGlobalState {
 
 /// Represents a "view" of global state at a particular root hash.
 pub struct InMemoryGlobalStateView {
-    /// Environment for `InMemoryGlobalState`.
-    pub(crate) environment: Arc<InMemoryEnvironment>,
     /// Trie store for `InMemoryGlobalState`.
     pub(crate) store: Arc<InMemoryTrieStore>,
     /// State root hash for this "view".
@@ -54,29 +43,20 @@ pub struct InMemoryGlobalStateView {
 impl InMemoryGlobalState {
     /// Creates an empty state.
     pub fn empty() -> Result<Self, error::Error> {
-        let environment = Arc::new(InMemoryEnvironment::new());
-        let trie_store = Arc::new(InMemoryTrieStore::new(&environment, None));
+        let trie_store = Arc::new(InMemoryTrieStore::new());
         let root_hash: Digest = {
             let (root_hash, root) = create_hashed_empty_trie::<Key, StoredValue>()?;
-            let mut txn = environment.create_read_write_txn()?;
-            trie_store.put(&mut txn, &root_hash, &root)?;
-            txn.commit()?;
+            trie_store.put(&root_hash, &root)?;
             root_hash
         };
-        Ok(InMemoryGlobalState::new(environment, trie_store, root_hash))
+        Ok(InMemoryGlobalState::new(trie_store, root_hash))
     }
 
     /// Creates a state from an existing environment, trie_Store, and root_hash.
     /// Intended to be used for testing.
-    pub(crate) fn new(
-        environment: Arc<InMemoryEnvironment>,
-        trie_store: Arc<InMemoryTrieStore>,
-        empty_root_hash: Digest,
-    ) -> Self {
+    pub(crate) fn new(trie_store: Arc<InMemoryTrieStore>, empty_root_hash: Digest) -> Self {
         InMemoryGlobalState {
-            environment,
             trie_store,
-
             empty_root_hash,
         }
     }
@@ -89,13 +69,11 @@ impl InMemoryGlobalState {
         let state = InMemoryGlobalState::empty()?;
         let mut current_root = state.empty_root_hash;
         {
-            let mut txn = state.environment.create_read_write_txn()?;
             for (key, value) in pairs {
                 let key = key.normalize();
-                match operations::write::<_, _, _, InMemoryTrieStore, in_memory::Error>(
+                match operations::write::<Key, StoredValue, InMemoryTrieStore, in_memory::Error>(
                     correlation_id,
-                    &mut txn,
-                    &state.trie_store,
+                    state.trie_store.deref(),
                     &current_root,
                     &key,
                     value,
@@ -107,7 +85,6 @@ impl InMemoryGlobalState {
                     WriteResult::RootNotFound => panic!("InMemoryGlobalState has invalid root"),
                 }
             }
-            txn.commit()?;
         }
         Ok((state, current_root))
     }
@@ -126,16 +103,8 @@ impl StateReader<Key, StoredValue> for InMemoryGlobalStateView {
         correlation_id: CorrelationId,
         key: &Key,
     ) -> Result<Option<StoredValue>, Self::Error> {
-        let txn = self.environment.create_read_txn()?;
-        let ret = match read::<
-            Key,
-            StoredValue,
-            InMemoryReadTransaction,
-            InMemoryTrieStore,
-            Self::Error,
-        >(
+        let ret = match read::<Key, StoredValue, InMemoryTrieStore, Self::Error>(
             correlation_id,
-            &txn,
             self.store.deref(),
             &self.root_hash,
             key,
@@ -144,7 +113,6 @@ impl StateReader<Key, StoredValue> for InMemoryGlobalStateView {
             ReadResult::NotFound => None,
             ReadResult::RootNotFound => panic!("InMemoryGlobalState has invalid root"),
         };
-        txn.commit()?;
         Ok(ret)
     }
 
@@ -153,16 +121,8 @@ impl StateReader<Key, StoredValue> for InMemoryGlobalStateView {
         correlation_id: CorrelationId,
         key: &Key,
     ) -> Result<Option<TrieMerkleProof<Key, StoredValue>>, Self::Error> {
-        let txn = self.environment.create_read_txn()?;
-        let ret = match read_with_proof::<
-            Key,
-            StoredValue,
-            InMemoryReadTransaction,
-            InMemoryTrieStore,
-            Self::Error,
-        >(
+        let ret = match read_with_proof::<Key, StoredValue, _, Self::Error>(
             correlation_id,
-            &txn,
             self.store.deref(),
             &self.root_hash,
             key,
@@ -171,7 +131,6 @@ impl StateReader<Key, StoredValue> for InMemoryGlobalStateView {
             ReadResult::NotFound => None,
             ReadResult::RootNotFound => panic!("InMemoryGlobalState has invalid root"),
         };
-        txn.commit()?;
         Ok(ret)
     }
 
@@ -180,10 +139,8 @@ impl StateReader<Key, StoredValue> for InMemoryGlobalStateView {
         correlation_id: CorrelationId,
         prefix: &[u8],
     ) -> Result<Vec<Key>, Self::Error> {
-        let txn = self.environment.create_read_txn()?;
-        let keys_iter = keys_with_prefix::<Key, StoredValue, _, _>(
+        let keys_iter = keys_with_prefix::<Key, StoredValue, _>(
             correlation_id,
-            &txn,
             self.store.deref(),
             &self.root_hash,
             prefix,
@@ -195,21 +152,19 @@ impl StateReader<Key, StoredValue> for InMemoryGlobalStateView {
                 Err(error) => return Err(error.into()),
             }
         }
-        txn.commit()?;
         Ok(ret)
     }
 }
 
 impl CommitProvider for InMemoryGlobalState {
-    fn commit(
+    fn commit_effects(
         &self,
         correlation_id: CorrelationId,
         prestate_hash: Digest,
         effects: AdditiveMap<Key, Transform>,
     ) -> Result<Digest, Self::Error> {
-        commit::<InMemoryEnvironment, InMemoryTrieStore, _, Self::Error>(
-            &self.environment,
-            &self.trie_store,
+        commit_effects::<InMemoryTrieStore, _, Self::Error>(
+            self.trie_store.deref(),
             correlation_id,
             prestate_hash,
             effects,
@@ -224,15 +179,11 @@ impl StateProvider for InMemoryGlobalState {
     type Reader = InMemoryGlobalStateView;
 
     fn checkout(&self, prestate_hash: Digest) -> Result<Option<Self::Reader>, Self::Error> {
-        let txn = self.environment.create_read_txn()?;
-        let maybe_root: Option<Trie<Key, StoredValue>> =
-            self.trie_store.get(&txn, &prestate_hash)?;
+        let maybe_root: Option<Trie<Key, StoredValue>> = self.trie_store.get(&prestate_hash)?;
         let maybe_state = maybe_root.map(|_| InMemoryGlobalStateView {
-            environment: Arc::clone(&self.environment),
             store: Arc::clone(&self.trie_store),
             root_hash: prestate_hash,
         });
-        txn.commit()?;
         Ok(maybe_state)
     }
 
@@ -246,13 +197,9 @@ impl StateProvider for InMemoryGlobalState {
         trie_or_chunk_id: TrieOrChunkId,
     ) -> Result<Option<TrieOrChunk>, Self::Error> {
         let TrieOrChunkId(trie_index, trie_key) = trie_or_chunk_id;
-        let txn = self.environment.create_read_txn()?;
-        let bytes = Store::<Digest, Trie<Digest, StoredValue>>::get_raw(
-            &*self.trie_store,
-            &txn,
-            &trie_key,
-        )?;
-        let maybe_trie_or_chunk = bytes.map_or_else(
+        let bytes =
+            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &trie_key)?;
+        bytes.map_or_else(
             || Ok(None),
             |bytes| {
                 if bytes.len() <= ChunkWithProof::CHUNK_SIZE_BYTES {
@@ -262,9 +209,7 @@ impl StateProvider for InMemoryGlobalState {
                     Ok(Some(TrieOrChunk::ChunkWithProof(chunk_with_proof)))
                 }
             },
-        );
-        txn.commit()?;
-        maybe_trie_or_chunk
+        )
     }
 
     fn get_trie_full(
@@ -272,23 +217,21 @@ impl StateProvider for InMemoryGlobalState {
         _correlation_id: CorrelationId,
         trie_key: &Digest,
     ) -> Result<Option<Bytes>, Self::Error> {
-        let txn = self.environment.create_read_txn()?;
         let ret: Option<Bytes> =
-            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?;
-        txn.commit()?;
+            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, trie_key)?;
         Ok(ret)
     }
 
-    fn put_trie(&self, correlation_id: CorrelationId, trie: &[u8]) -> Result<Digest, Self::Error> {
-        let mut txn = self.environment.create_read_write_txn()?;
-        let trie_hash = put_trie::<
-            Key,
-            StoredValue,
-            InMemoryReadWriteTransaction,
-            InMemoryTrieStore,
-            Self::Error,
-        >(correlation_id, &mut txn, &self.trie_store, trie)?;
-        txn.commit()?;
+    fn put_trie_bytes(
+        &self,
+        correlation_id: CorrelationId,
+        trie: &[u8],
+    ) -> Result<Digest, Self::Error> {
+        let trie_hash = put_trie_bytes::<Key, StoredValue, InMemoryTrieStore, Self::Error>(
+            correlation_id,
+            self.trie_store.deref(),
+            trie,
+        )?;
         Ok(trie_hash)
     }
 
@@ -298,21 +241,13 @@ impl StateProvider for InMemoryGlobalState {
         correlation_id: CorrelationId,
         trie_keys: Vec<Digest>,
     ) -> Result<Vec<Digest>, Self::Error> {
-        let txn = self.environment.create_read_txn()?;
-        let missing_descendants = missing_trie_keys::<
-            Key,
-            StoredValue,
-            InMemoryReadTransaction,
-            InMemoryTrieStore,
-            Self::Error,
-        >(
-            correlation_id,
-            &txn,
-            self.trie_store.deref(),
-            trie_keys,
-            &Default::default(),
-        )?;
-        txn.commit()?;
+        let missing_descendants =
+            missing_trie_keys::<Key, StoredValue, InMemoryTrieStore, Self::Error>(
+                correlation_id,
+                self.trie_store.deref(),
+                trie_keys,
+                &Default::default(),
+            )?;
         Ok(missing_descendants)
     }
 }
@@ -404,7 +339,9 @@ mod tests {
             .map(|TestPair { key, value }| (key, Transform::Write(value)))
             .collect();
 
-        let updated_hash = state.commit(correlation_id, root_hash, effects).unwrap();
+        let updated_hash = state
+            .commit_effects(correlation_id, root_hash, effects)
+            .unwrap();
 
         let updated_checkout = state.checkout(updated_hash).unwrap().unwrap();
 
@@ -431,7 +368,9 @@ mod tests {
             tmp
         };
 
-        let updated_hash = state.commit(correlation_id, root_hash, effects).unwrap();
+        let updated_hash = state
+            .commit_effects(correlation_id, root_hash, effects)
+            .unwrap();
 
         let updated_checkout = state.checkout(updated_hash).unwrap().unwrap();
         for TestPair { key, value } in test_pairs_updated.iter().cloned() {

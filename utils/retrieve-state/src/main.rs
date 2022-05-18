@@ -23,7 +23,7 @@ use casper_types::EraId;
 const DOWNLOAD_TRIES: &str = "download-tries";
 const DOWNLOAD_BLOCKS: &str = "download-blocks";
 
-#[derive(Debug, StructOpt)]
+#[derive(StructOpt)]
 struct Opts {
     #[structopt(
         short = "n",
@@ -68,32 +68,13 @@ struct Opts {
 
     #[structopt(
         long,
-        default_value = retrieve_state::LMDB_PATH,
-        about = "Specify the path to the folder containing the trie LMDB data files."
-    )]
-    lmdb_path: PathBuf,
-
-    #[structopt(
-        long,
         default_value = retrieve_state::ROCKSDB_PATH,
         about = "Specify the path to the folder containing the trie rocksdb data files."
     )]
     rocksdb_path: PathBuf,
 
-    #[structopt(
-        long,
-        about = "Specify the max size (in bytes) that the underlying LMDB can grow to."
-    )]
-    max_db_size: Option<usize>,
-
     #[structopt(long, about = "Disable gzip for requests.")]
     disable_gzip: bool,
-
-    #[structopt(
-        long,
-        about = "Disable manual syncing after each block to LMDB (on by default)."
-    )]
-    disable_manual_sync: bool,
 
     #[structopt(
         long,
@@ -247,16 +228,9 @@ async fn main() -> Result<(), anyhow::Error> {
                 "retrieving global state at height {}...",
                 block.header.height
             );
-            let lmdb_path = env::current_dir()?.join(opts.lmdb_path);
             let rocksdb_path = env::current_dir()?.join(opts.rocksdb_path);
-            let (engine_state, _environment) = retrieve_state::storage::create_execution_engine(
-                lmdb_path,
-                rocksdb_path,
-                opts.max_db_size
-                    .unwrap_or(retrieve_state::DEFAULT_MAX_DB_SIZE),
-                !opts.disable_manual_sync,
-            )
-            .expect("unable to create execution engine");
+            let engine_state = retrieve_state::storage::create_execution_engine(rocksdb_path)
+                .expect("unable to create execution engine");
 
             'download_tries: loop {
                 info!("Downloading tries at height {}", block.header.height);

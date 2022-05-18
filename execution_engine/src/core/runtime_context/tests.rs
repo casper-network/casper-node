@@ -53,7 +53,7 @@ fn new_tracking_copy(
     let mut m = AdditiveMap::new();
     m.insert(init_key, transform);
     let new_hash = hist
-        .commit(correlation_id, root_hash, m)
+        .commit_effects(correlation_id, root_hash, m)
         .expect("Creation of account should be a success.");
 
     let reader = hist

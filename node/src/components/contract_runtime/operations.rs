@@ -140,9 +140,6 @@ pub fn execute_finalized_block(
             None
         };
 
-    // Flush once, after all deploys have been executed.
-    engine_state.flush_environment()?;
-
     // Update the metric.
     let block_height = finalized_block.height();
     if let Some(metrics) = metrics.as_ref() {

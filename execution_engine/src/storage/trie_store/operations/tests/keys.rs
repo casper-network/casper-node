@@ -2,12 +2,11 @@ mod partial_tries {
     use crate::{
         shared::newtypes::CorrelationId,
         storage::{
-            transaction_source::{Transaction, TransactionSource},
             trie::Trie,
             trie_store::operations::{
                 self,
                 tests::{
-                    InMemoryTestContext, LmdbTestContext, TestKey, TestValue, TEST_LEAVES,
+                    InMemoryTestContext, RocksDbTestContext, TestKey, TestValue, TEST_LEAVES,
                     TEST_TRIE_GENERATORS,
                 },
             },
@@ -19,7 +18,7 @@ mod partial_tries {
         for (num_leaves, generator) in TEST_TRIE_GENERATORS.iter().enumerate() {
             let correlation_id = CorrelationId::new();
             let (root_hash, tries) = generator().unwrap();
-            let context = LmdbTestContext::new(&tries).unwrap();
+            let context = RocksDbTestContext::new(&tries).unwrap();
             let test_leaves = TEST_LEAVES;
             let (used, _) = test_leaves.split_at(num_leaves);
 
@@ -33,16 +32,13 @@ mod partial_tries {
                 tmp
             };
             let actual = {
-                let txn = context.environment.create_read_txn().unwrap();
-                let mut tmp = operations::keys::<TestKey, TestValue, _, _>(
+                let mut tmp = operations::keys::<TestKey, TestValue, _>(
                     correlation_id,
-                    &txn,
                     &context.store,
                     &root_hash,
                 )
                 .filter_map(Result::ok)
                 .collect::<Vec<TestKey>>();
-                txn.commit().unwrap();
                 tmp.sort();
                 tmp
             };
@@ -69,16 +65,13 @@ mod partial_tries {
                 tmp
             };
             let actual = {
-                let txn = context.environment.create_read_txn().unwrap();
-                let mut tmp = operations::keys::<TestKey, TestValue, _, _>(
+                let mut tmp = operations::keys::<TestKey, TestValue, _>(
                     correlation_id,
-                    &txn,
                     &context.store,
                     &root_hash,
                 )
                 .filter_map(Result::ok)
                 .collect::<Vec<TestKey>>();
-                txn.commit().unwrap();
                 tmp.sort();
                 tmp
             };
@@ -93,7 +86,6 @@ mod full_tries {
     use crate::{
         shared::newtypes::CorrelationId,
         storage::{
-            transaction_source::{Transaction, TransactionSource},
             trie::Trie,
             trie_store::operations::{
                 self,
@@ -130,16 +122,13 @@ mod full_tries {
                     tmp
                 };
                 let actual = {
-                    let txn = context.environment.create_read_txn().unwrap();
-                    let mut tmp = operations::keys::<TestKey, TestValue, _, _>(
+                    let mut tmp = operations::keys::<TestKey, TestValue, _>(
                         correlation_id,
-                        &txn,
                         &context.store,
                         state,
                     )
                     .filter_map(Result::ok)
                     .collect::<Vec<TestKey>>();
-                    txn.commit().unwrap();
                     tmp.sort();
                     tmp
                 };
@@ -157,7 +146,6 @@ mod keys_iterator {
     use crate::{
         shared::newtypes::CorrelationId,
         storage::{
-            transaction_source::TransactionSource,
             trie::{Pointer, Trie},
             trie_store::operations::{
                 self,
@@ -220,14 +208,9 @@ mod keys_iterator {
     fn test_trie(root_hash: Digest, tries: Vec<HashedTestTrie>) {
         let correlation_id = CorrelationId::new();
         let context = return_on_err!(InMemoryTestContext::new(&tries));
-        let txn = return_on_err!(context.environment.create_read_txn());
-        let _tmp = operations::keys::<TestKey, TestValue, _, _>(
-            correlation_id,
-            &txn,
-            &context.store,
-            &root_hash,
-        )
-        .collect::<Vec<_>>();
+        let _tmp =
+            operations::keys::<TestKey, TestValue, _>(correlation_id, &context.store, &root_hash)
+                .collect::<Vec<_>>();
     }
 
     #[test]
@@ -256,7 +239,6 @@ mod keys_with_prefix_iterator {
     use crate::{
         shared::newtypes::CorrelationId,
         storage::{
-            transaction_source::TransactionSource,
             trie::Trie,
             trie_store::operations::{
                 self,
@@ -280,14 +262,9 @@ mod keys_with_prefix_iterator {
         let correlation_id = CorrelationId::new();
         let (root_hash, tries) = create_6_leaf_trie().expect("should create a trie");
         let context = InMemoryTestContext::new(&tries).expect("should create a new context");
-        let txn = context
-            .environment
-            .create_read_txn()
-            .expect("should create a read txn");
         let expected = expected_keys(prefix);
-        let mut actual = operations::keys_with_prefix::<TestKey, TestValue, _, _>(
+        let mut actual = operations::keys_with_prefix::<TestKey, TestValue, _>(
             correlation_id,
-            &txn,
             &context.store,
             &root_hash,
             prefix,

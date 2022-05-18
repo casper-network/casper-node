@@ -16,7 +16,6 @@ use std::{
 
 use datasize::DataSize;
 use derive_more::From;
-use lmdb::DatabaseFlags;
 use once_cell::sync::Lazy;
 use prometheus::Registry;
 use serde::Serialize;
@@ -31,10 +30,10 @@ use casper_execution_engine::{
     },
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::{
+        self,
         global_state::db::DbGlobalState,
-        transaction_source::db::LmdbEnvironment,
         trie::{TrieOrChunk, TrieOrChunkId},
-        trie_store::db::LmdbTrieStore,
+        trie_store::db::RocksDbStore,
         ROCKS_DB_DATA_DIR,
     },
 };
@@ -416,19 +415,9 @@ impl ContractRuntime {
                         correlation_id,
                         &*trie_bytes,
                     );
-                    // PERF: this *could* be called only periodically.
-                    if let Err(lmdb_error) = engine_state.flush_environment() {
-                        fatal!(
-                            effect_builder,
-                            "error flushing lmdb environment {:?}",
-                            lmdb_error
-                        )
-                        .await;
-                    } else {
-                        metrics.put_trie.observe(start.elapsed().as_secs_f64());
-                        trace!(?result, "put_trie response");
-                        responder.respond(result).await
-                    }
+                    metrics.put_trie.observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "put_trie response");
+                    responder.respond(result).await
                 }
                 .ignore()
             }
@@ -570,21 +559,10 @@ impl ContractRuntime {
             parent_seed: Default::default(),
         }));
 
-        let environment = Arc::new(LmdbEnvironment::new(
-            storage_dir,
-            contract_runtime_config.max_global_state_size(),
-            contract_runtime_config.max_readers(),
-            contract_runtime_config.manual_sync_enabled(),
-        )?);
+        let trie_store = RocksDbStore::new(storage_dir.join(ROCKS_DB_DATA_DIR))
+            .map_err(|err| ConfigError::Db(storage::error::Error::Db(err.into())))?;
 
-        let trie_store = Arc::new(LmdbTrieStore::new(
-            &environment,
-            None,
-            DatabaseFlags::empty(),
-        )?);
-
-        let global_state =
-            DbGlobalState::empty(environment, trie_store, storage_dir.join(ROCKS_DB_DATA_DIR))?;
+        let global_state = DbGlobalState::empty(Some(storage_dir.to_path_buf()), trie_store)?;
         let engine_config = EngineConfig::new(
             contract_runtime_config.max_query_depth(),
             max_associated_keys,
@@ -637,15 +615,13 @@ impl ContractRuntime {
                 })?,
         );
 
-        let result = self.engine_state.commit_genesis(
+        self.engine_state.commit_genesis(
             correlation_id,
             genesis_config_hash,
             protocol_version,
             &ee_config,
             chainspec_registry,
-        );
-        self.engine_state.flush_environment()?;
-        result
+        )
     }
 
     fn commit_upgrade(
@@ -657,7 +633,6 @@ impl ContractRuntime {
         let result = self
             .engine_state
             .commit_upgrade(CorrelationId::new(), upgrade_config);
-        self.engine_state.flush_environment()?;
         self.metrics
             .commit_upgrade
             .observe(start.elapsed().as_secs_f64());
